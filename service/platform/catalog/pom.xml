@@ -24,5 +24,15 @@
 
     <build>
         <sourceDirectory>${maven.multiModuleProjectDirectory}/specs/generated/java</sourceDirectory>
+        <resources>
+            <resource>
+                <directory>${maven.multiModuleProjectDirectory}/specs/generated</directory>
+                <filtering>false</filtering>
+                <includes>
+                    <include>catalog.snapshot.json</include>
+                </includes>
+                <targetPath>specs/generated</targetPath>
+            </resource>
+        </resources>
     </build>
 </project>

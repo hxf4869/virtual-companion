@@ -1,12 +1,12 @@
 {
-  "name": "虚拟对象开发基线",
+  "name": "Technical Alpha 内部边界台",
   "appid": "",
-  "description": "Technical Alpha H5 项目开发基线",
+  "description": "Technical Alpha Runtime 连通性与关闭门禁内部预检页",
   "versionName": "0.0.1",
   "versionCode": "1",
   "transformPx": false,
   "h5": {
-    "title": "虚拟对象开发基线"
+    "title": "Technical Alpha 内部边界台"
   },
   "uniStatistics": {
     "enable": false

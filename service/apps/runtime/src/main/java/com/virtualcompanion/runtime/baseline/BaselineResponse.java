@@ -7,7 +7,8 @@ public record BaselineResponse(
         String phase,
         String transport,
         Technology technology,
-        Catalogs catalogs) {
+        Catalogs catalogs,
+        TechnicalAlphaCapabilities capabilities) {
 
     public record Technology(
             String javaVersion,

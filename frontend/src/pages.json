@@ -3,14 +3,14 @@
 		{
 			"path": "pages/index/index",
 			"style": {
-				"navigationBarTitleText": "开发基线"
+				"navigationBarTitleText": "Technical Alpha 边界台"
 			}
 		}
 	],
 	"globalStyle": {
-		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "开发基线",
-		"navigationBarBackgroundColor": "#F8F8F8",
-		"backgroundColor": "#F8F8F8"
+		"navigationBarTextStyle": "white",
+		"navigationBarTitleText": "Technical Alpha 边界台",
+		"navigationBarBackgroundColor": "#14213D",
+		"backgroundColor": "#14213D"
 	}
 }
