@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0007
+activeTaskCard: docs/tasks/TASK-0007-model-protocol-fake-failure-baseline.md
 lastAcceptedTask: TASK-0006
 lastAcceptedHandoff: docs/handoffs/TASK-0006.json
 lastTerminalTask: TASK-0006
 lastTerminalHandoff: docs/handoffs/TASK-0006.json
-nextAction: 创建供应商中立 ModelProtocolAdapter 与 Fake/Failure Adapter 合同测试基线任务
+nextAction: 实现供应商中立 ModelProtocolAdapter 与确定性 Fake/Failure Adapter 合同测试基线
 capabilityGates:
   businessImplementation:
     state: BLOCKED
