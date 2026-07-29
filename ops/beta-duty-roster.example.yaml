@@ -1,0 +1,32 @@
+schemaVersion: 1
+beta_generation_enabled: false
+timezone: Asia/Shanghai
+date: YYYY-MM-DD
+dutyWindow:
+  startsAt: '20:15'
+  generationOpensAt: '20:30'
+  longConversationCutoff: '23:45'
+  newGenerationCutoff: '00:00'
+  inFlightGraceUntil: '00:10'
+  endsAt: '00:30'
+primary:
+  name: ""
+  contactSecretRef: ""
+  confirmedAt: null
+backup:
+  name: ""
+  contactSecretRef: ""
+  confirmedAt: null
+handoffReceiver:
+  name: ""
+  contactSecretRef: ""
+  confirmedAt: null
+complaintAndAppeal:
+  ownerName: ""
+  contactSecretRef: ""
+validation:
+  blockOnBlank: true
+  blockOnTbd: true
+  blockOnExpiredDate: true
+  blockOnMissingConfirmation: true
+  blockOnInvalidSecretRef: true

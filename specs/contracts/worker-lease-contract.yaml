@@ -1,0 +1,52 @@
+schemaVersion: 1
+contractId: WORKER_CLAIM_LEASE_FENCE_RLS
+roles:
+  vc_job_coordinator:
+    bypassRls: false
+    mayRead: [opaque_job_metadata]
+    mayNotRead: [message_body, canonical_memory, authorization_content, emergency_contact]
+  vc_worker:
+    bypassRls: false
+    mayRead: [tenant_data_after_valid_job_context]
+    mayNotDo: [cross_tenant_scan, arbitrary_set_owner_context]
+  vc_dispatcher:
+    bypassRls: false
+    mayRead: [committed_event_envelope_and_channel_metadata]
+claimFunction:
+  name: claim_work_items
+  securityDefiner: true
+  fixedSearchPath: true
+  publicExecuteRevoked: true
+  returns:
+    - workItemId
+    - ownerUserId
+    - capabilityCode
+    - processingPurpose
+    - requestedAuthorizationSnapshotId
+    - opaqueLeaseToken
+    - fenceVersion
+    - leaseExpiresAt
+  payloadContainsUserText: false
+tenantContextFunction:
+  name: app_begin_job_context
+  validates:
+    - authenticatedWorker
+    - workItemId
+    - leaseTokenHash
+    - fenceVersion
+    - leaseExpiry
+    - workItemState
+    - workerCapability
+    - ownerAndPurposeConsistency
+  setsLocal:
+    - app.current_user_id
+    - app.current_work_item_id
+    - app.processing_purpose
+    - app.fence_version
+completionFunctions:
+  - renew_work_item_lease
+  - complete_work_item
+  - fail_work_item
+  - cancel_work_item
+lateWorkerRule: a stale fence cannot write a result, usage, final message, event or memory job
+optionalExecutorPolicy: a community job library may carry only opaque workItemId and is never the tenant authorization boundary

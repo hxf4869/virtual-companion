@@ -1,0 +1,35 @@
+schemaVersion: 1
+invariants:
+  - id: INV-GEN-001
+    statement: one logical request has one stable generationId
+    enforcement: [database_unique_constraint, integration_test]
+  - id: INV-GEN-002
+    statement: one generation may have many route decisions and provider attempts but at most one final assistant message
+    enforcement: [composite_foreign_keys, partial_unique_index, integration_test]
+  - id: INV-GEN-003
+    statement: provider EOS never implies chat.completed
+    enforcement: [finalization_contract, fault_injection_test]
+  - id: INV-TX-001
+    statement: final message, final safety review, generation terminal state, chat.completed and eligible memory/summary outbox events commit atomically
+    enforcement: [database_transaction_test]
+  - id: INV-TENANT-001
+    statement: API and Worker roles have no BYPASSRLS and cannot read another owner
+    enforcement: [force_rls, cross_tenant_test]
+  - id: INV-WORKER-001
+    statement: Worker reads tenant data only after valid claim, lease and fence establish SET LOCAL job context
+    enforcement: [security_definer_contract, lease_test]
+  - id: INV-MEM-001
+    statement: canonical memory is PostgreSQL truth and model output only creates candidates
+    enforcement: [module_boundary_test, database_constraint]
+  - id: INV-MEM-002
+    statement: all model-extracted Alpha memory candidates require user confirmation
+    enforcement: [catalog_check, database_check]
+  - id: INV-AUTH-001
+    statement: every external model attempt binds requested and execution authorization snapshots
+    enforcement: [not_null_constraint, composite_foreign_key, integration_test]
+  - id: INV-RT-001
+    statement: event gaps and epoch changes are explicit; client never fabricates missing deltas
+    enforcement: [protocol_contract_test]
+  - id: INV-COST-001
+    statement: core runtime has no paid software feature prerequisite except model or compute usage
+    enforcement: [license_scan, paid_feature_denylist]

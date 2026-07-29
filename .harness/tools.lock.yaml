@@ -1,0 +1,25 @@
+schemaVersion: 1
+baselineDate: 2026-07-29
+runtime:
+  java:
+    distribution: Eclipse Temurin or compatible OpenJDK
+    versionLine: 25-LTS
+    fallback: 21-LTS_BY_ACCEPTED_ADR_ONLY
+  maven:
+    versionLine: 3.9.x
+frameworks:
+  springBoot: 4.1.x
+  springAi: 2.0.x
+  springModulith: 2.1.x
+data:
+  postgresql: 18.4
+  pgvector: 0.8.5
+frontend:
+  node: UNI_APP_COMPATIBLE_LTS
+  packageManager: LOCKFILE_REQUIRED
+rules:
+  snapshotsAllowed: false
+  releaseCandidatesAllowed: false
+  latestContainerTagsAllowed: false
+  majorUpgradeRequiresAdr: true
+  containerDigestRequiredForRelease: true

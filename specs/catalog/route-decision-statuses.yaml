@@ -1,0 +1,13 @@
+schemaVersion: 1
+catalogId: route-decision-statuses
+entries:
+- code: CREATED
+  order: 0
+- code: SELECTED
+  order: 1
+- code: NO_ELIGIBLE_DEPLOYMENT
+  order: 2
+- code: SUPERSEDED
+  order: 3
+- code: CANCELLED
+  order: 4

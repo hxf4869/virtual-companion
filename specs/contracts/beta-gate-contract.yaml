@@ -1,0 +1,27 @@
+schemaVersion: 1
+contractId: CONTROLLED_BETA_HARD_GATE
+generationWindow:
+  timezone: Asia/Shanghai
+  opensAt: '20:30'
+  longConversationCutoff: '23:45'
+  newGenerationCutoff: '00:00'
+  inFlightGraceUntil: '00:10'
+dutyWindow:
+  startsAt: '20:15'
+  endsAt: '00:30'
+requiredBeforeEnable:
+  - personal_information_protection_impact_assessment_completed
+  - internal_product_ethics_review_completed
+  - external_ethics_procedure_applicability_decision_recorded
+  - age_state_is_ADULT_VERIFIED
+  - named_safety_owner_and_backup_confirmed
+  - dated_duty_roster_complete
+  - risk_classifier_fail_closed_tests_pass
+  - complaint_and_appeal_contact_active
+  - high_risk_handoff_runbook_tested
+hardDefault: beta_generation_enabled_false
+highRiskAtClose: close_case_or_named_handoff; never abandon
+emergencyContact:
+  requiredForParticipation: false
+  automaticContactAllowed: false
+  missingOrInvalidFallback: show_real_world_help_options_and_follow_manual_runbook

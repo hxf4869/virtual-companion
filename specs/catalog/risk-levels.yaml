@@ -1,0 +1,26 @@
+schemaVersion: 1
+catalogId: risk-levels
+entries:
+- code: R0_NORMAL
+  order: 0
+  userVisibleLabel: 正常
+  caseRequired: false
+- code: R1_DISTRESS
+  order: 1
+  userVisibleLabel: 轻度困扰
+  caseRequired: false
+- code: R2_ELEVATED
+  order: 2
+  userVisibleLabel: 风险升高
+  caseRequired: false
+  samplingRequired: true
+- code: R3_HIGH
+  order: 3
+  userVisibleLabel: 高风险
+  caseRequired: true
+  freePersonaGenerationAllowed: false
+- code: R4_IMMINENT
+  order: 4
+  userVisibleLabel: 紧迫极端情境
+  caseRequired: true
+  freePersonaGenerationAllowed: false

@@ -1,0 +1,11 @@
+schemaVersion: 1
+catalogId: memory-item-statuses
+entries:
+- code: ACTIVE
+  order: 0
+- code: SUPERSEDED
+  order: 1
+- code: EXPIRED
+  order: 2
+- code: DELETED
+  order: 3

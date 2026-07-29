@@ -1,0 +1,23 @@
+schemaVersion: 1
+contractId: REQUESTED_AND_EXECUTION_AUTHORIZATION_SNAPSHOTS
+requiredOn:
+  - message_generation
+  - generation_route_decision
+  - provider_attempt
+  - memory_candidate
+  - memory_embedding
+  - deferred_model_job
+creationTimeSnapshot: requestedAuthorizationSnapshotId
+executionTimeSnapshot: executionAuthorizationSnapshotId
+executionChecks:
+  - task_not_cancelled
+  - source_data_not_deleted_or_no_memory
+  - current_consent_covers_processing_purpose
+  - current_consent_covers_data_categories
+  - provider_and_region_are_allowed
+  - provider_contract_and_registry_are_active
+revocationRule: pending work must not use an old authorization after current authorization is withdrawn or narrowed
+failureDisposition:
+  state: CANCELLED_BY_AUTHORIZATION
+  externalDataTransferAllowed: false
+  quotaAction: RELEASE

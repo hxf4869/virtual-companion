@@ -1,0 +1,15 @@
+schemaVersion: 1
+catalogId: data-categories
+entries:
+- code: MESSAGE_TEXT
+  order: 0
+- code: MEMORY_SNIPPET
+  order: 1
+- code: SAFETY_SIGNAL
+  order: 2
+- code: ACCOUNT_METADATA
+  order: 3
+- code: AGE_VERIFICATION_RESULT
+  order: 4
+- code: USAGE_METADATA
+  order: 5

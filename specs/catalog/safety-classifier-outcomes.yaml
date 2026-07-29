@@ -1,0 +1,15 @@
+schemaVersion: 1
+catalogId: safety-classifier-outcomes
+entries:
+- code: CLASSIFIED
+  order: 0
+- code: LOW_CONFIDENCE
+  order: 1
+- code: TIMEOUT
+  order: 2
+- code: UNAVAILABLE
+  order: 3
+- code: INVALID_RESPONSE
+  order: 4
+- code: RULE_CONFLICT
+  order: 5

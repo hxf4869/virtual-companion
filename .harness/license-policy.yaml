@@ -1,0 +1,32 @@
+schemaVersion: 1
+policyId: NO_PAID_SOFTWARE_RUNTIME_PREREQUISITE
+statement: >-
+  除模型推理、Embedding、模型审核算力以及普通服务器、存储、带宽等实际资源外，
+  Technical Alpha 和 Controlled Beta 的正确运行不得依赖商业许可证、企业版、付费插件或 SaaS 专属能力。
+allowedLicenseFamilies:
+  - Apache-2.0
+  - MIT
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - EPL-2.0
+  - MPL-2.0
+  - LGPL-2.1-or-later
+  - LGPL-3.0-or-later
+  - PostgreSQL
+  - COMMUNITY_FREE_REVIEW_REQUIRED
+allowedPaidExternalCapabilities:
+  - MODEL_INFERENCE
+  - MODEL_EMBEDDING
+  - MODEL_MODERATION
+forbiddenArchitectureDependencies:
+  - paid_transaction_plugin
+  - enterprise_rbac_as_only_authorization
+  - saas_trace_as_audit_source_of_truth
+  - managed_vector_database_as_only_memory_index
+  - pro_realtime_history_as_only_resume_path
+  - paid_workflow_engine_as_only_deletion_or_safety_path
+requirements:
+  - every_component_behind_owned_port_adapter
+  - production_truth_remains_in_project_database
+  - community_feature_matrix_reviewed_before_upgrade
+  - commercial_purchase_requires_separate_adr

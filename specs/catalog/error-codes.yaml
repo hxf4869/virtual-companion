@@ -1,0 +1,33 @@
+schemaVersion: 1
+catalogId: error-codes
+entries:
+- code: AUTHENTICATION_REQUIRED
+  order: 0
+- code: ACCESS_DENIED
+  order: 1
+- code: NOT_FOUND_OR_FORBIDDEN
+  order: 2
+- code: AGE_VERIFICATION_REQUIRED
+  order: 3
+- code: MODEL_NO_ELIGIBLE_DEPLOYMENT
+  order: 4
+- code: MODEL_ATTEMPT_TIMEOUT
+  order: 5
+- code: MODEL_ALL_UNAVAILABLE
+  order: 6
+- code: GENERATION_CANCELLED
+  order: 7
+- code: GENERATION_OUTPUT_BLOCKED
+  order: 8
+- code: STREAM_GAP_EXPIRED
+  order: 9
+- code: STREAM_RESET_REQUIRED
+  order: 10
+- code: MEMORY_CONFIRMATION_REQUIRED
+  order: 11
+- code: MEMORY_FORBIDDEN_CONTENT
+  order: 12
+- code: CATALOG_DRIFT_DETECTED
+  order: 13
+- code: BETA_OPERATIONS_NOT_READY
+  order: 14

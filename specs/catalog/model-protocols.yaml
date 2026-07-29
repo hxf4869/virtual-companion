@@ -1,0 +1,34 @@
+schemaVersion: 1
+catalogId: model-protocols
+entries:
+- code: OPENAI_CHAT_COMPLETIONS
+  order: 0
+  external: true
+  alphaAllowed: true
+  defaultPath: /v1/chat/completions
+  streamTransport: SSE
+- code: OPENAI_RESPONSES
+  order: 1
+  external: true
+  alphaAllowed: false
+  spikeOnly: true
+  defaultPath: /v1/responses
+  streamTransport: SSE
+- code: ANTHROPIC_MESSAGES
+  order: 2
+  external: true
+  alphaAllowed: true
+  defaultPath: /v1/messages
+  streamTransport: SSE
+- code: FAKE
+  order: 3
+  external: false
+  alphaAllowed: true
+- code: FAILURE
+  order: 4
+  external: false
+  alphaAllowed: true
+- code: ZERO_LLM
+  order: 5
+  external: false
+  alphaAllowed: true

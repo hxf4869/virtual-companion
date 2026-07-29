@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvidencePack",
+  "type": "object",
+  "required": ["taskId", "baseCommit", "headCommit", "contextFingerprint", "checks"],
+  "properties": {
+    "taskId": {"type": "string", "pattern": "^TASK-[0-9]+"},
+    "baseCommit": {"type": "string", "minLength": 7},
+    "headCommit": {"type": "string", "minLength": 7},
+    "contextFingerprint": {"type": "string", "minLength": 8},
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "status"],
+        "properties": {
+          "command": {"type": "string"},
+          "status": {"enum": ["PASS", "FAIL", "NOT_RUN"]},
+          "exitCode": {"type": ["integer", "null"]},
+          "artifactHash": {"type": ["string", "null"]},
+          "reason": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

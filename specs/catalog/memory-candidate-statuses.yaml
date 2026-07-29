@@ -1,0 +1,15 @@
+schemaVersion: 1
+catalogId: memory-candidate-statuses
+entries:
+- code: PROPOSED
+  order: 0
+- code: PENDING_CONFIRMATION
+  order: 1
+- code: ACCEPTED
+  order: 2
+- code: REJECTED
+  order: 3
+- code: EXPIRED
+  order: 4
+alphaModelCandidateInitialStatus: PENDING_CONFIRMATION
+alphaModelCandidatesRequireConfirmation: true

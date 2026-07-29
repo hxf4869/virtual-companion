@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskHandoff",
+  "type": "object",
+  "required": ["taskId", "state", "baseCommit", "headCommit", "completed", "remaining", "knownRisks", "nextAction"],
+  "properties": {
+    "taskId": {"type": "string"},
+    "state": {"enum": ["READY", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "ACCEPTED", "REJECTED"]},
+    "baseCommit": {"type": "string"},
+    "headCommit": {"type": "string"},
+    "completed": {"type": "array", "items": {"type": "string"}},
+    "remaining": {"type": "array", "items": {"type": "string"}},
+    "knownRisks": {"type": "array", "items": {"type": "string"}},
+    "nextAction": {"type": "string"}
+  }
+}

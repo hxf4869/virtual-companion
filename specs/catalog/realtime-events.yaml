@@ -1,0 +1,62 @@
+schemaVersion: 1
+catalogId: realtime-events
+envelopeRequired:
+- schemaVersion
+- event
+- generationId
+- streamEpoch
+- eventSeq
+- committedAt
+- payload
+entries:
+- code: chat.accepted
+  order: 0
+  durable: true
+- code: chat.delta
+  order: 1
+  durable: false
+- code: chat.replace
+  order: 2
+  durable: false
+- code: chat.completed
+  order: 3
+  durable: true
+- code: chat.cancelled
+  order: 4
+  durable: true
+- code: chat.blocked
+  order: 5
+  durable: true
+- code: chat.failed
+  order: 6
+  durable: true
+- code: safety.notice
+  order: 7
+  durable: true
+- code: service.mode.changed
+  order: 8
+  durable: true
+- code: memory.candidate.created
+  order: 9
+  durable: true
+- code: memory.candidate.confirmation_required
+  order: 10
+  durable: true
+- code: stream.resume.accepted
+  order: 11
+  durable: false
+- code: stream.gap
+  order: 12
+  durable: false
+- code: stream.reset
+  order: 13
+  durable: false
+- code: stream.denied
+  order: 14
+  durable: false
+resumeDispositions:
+- RESUMED
+- TERMINAL_SNAPSHOT
+- GAP_EXPIRED
+- RESET_REQUIRED
+- NOT_FOUND_OR_FORBIDDEN

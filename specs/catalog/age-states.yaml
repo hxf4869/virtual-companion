@@ -1,0 +1,79 @@
+schemaVersion: 1
+catalogId: age-states
+entries:
+- code: AGE_UNKNOWN
+  order: 0
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: ADULT_SELF_DECLARED
+  order: 1
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: ADULT_VERIFICATION_REQUIRED
+  order: 2
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: ADULT_VERIFIED
+  order: 3
+  betaGenerativeChatAllowed: true
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: MINOR_SUSPECTED
+  order: 4
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: MINOR_VERIFIED
+  order: 5
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: AGE_APPEAL_PENDING
+  order: 6
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: AGE_REVERIFY_REQUIRED
+  order: 7
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+- code: AGE_ACCESS_SUSPENDED
+  order: 8
+  betaGenerativeChatAllowed: false
+  dataRightsAllowed: true
+  verificationOrAppealAllowed: true
+transitions:
+- from: AGE_UNKNOWN
+  to:
+  - ADULT_SELF_DECLARED
+- from: ADULT_SELF_DECLARED
+  to:
+  - ADULT_VERIFICATION_REQUIRED
+- from: ADULT_VERIFICATION_REQUIRED
+  to:
+  - ADULT_VERIFIED
+  - MINOR_VERIFIED
+  - AGE_APPEAL_PENDING
+- from: ADULT_VERIFIED
+  to:
+  - AGE_REVERIFY_REQUIRED
+  - MINOR_SUSPECTED
+- from: MINOR_SUSPECTED
+  to:
+  - ADULT_VERIFICATION_REQUIRED
+  - MINOR_VERIFIED
+  - AGE_APPEAL_PENDING
+- from: AGE_APPEAL_PENDING
+  to:
+  - ADULT_VERIFIED
+  - MINOR_VERIFIED
+  - AGE_ACCESS_SUSPENDED
+- from: AGE_REVERIFY_REQUIRED
+  to:
+  - ADULT_VERIFIED
+  - MINOR_VERIFIED
+  - AGE_ACCESS_SUSPENDED

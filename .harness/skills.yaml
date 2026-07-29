@@ -1,0 +1,20 @@
+schemaVersion: 1
+skills:
+  - id: task-intake
+    version: 1.0.0
+    path: skills/task-intake/SKILL.md
+  - id: database-migration
+    version: 1.0.0
+    path: skills/database-migration/SKILL.md
+  - id: memory-change
+    version: 1.0.0
+    path: skills/memory-change/SKILL.md
+  - id: model-routing-change
+    version: 1.0.0
+    path: skills/model-routing-change/SKILL.md
+  - id: safety-change
+    version: 1.0.0
+    path: skills/safety-change/SKILL.md
+  - id: harness-change
+    version: 1.0.0
+    path: skills/harness-change/SKILL.md

@@ -1,0 +1,87 @@
+schemaVersion: 1
+catalogId: generation-states
+entries:
+- code: CREATED
+  order: 0
+  terminal: false
+- code: INPUT_REVIEW
+  order: 1
+  terminal: false
+- code: INPUT_BLOCKED
+  order: 2
+  terminal: true
+- code: QUEUED
+  order: 3
+  terminal: false
+- code: IN_PROGRESS
+  order: 4
+  terminal: false
+- code: WAITING_FOR_CAPACITY
+  order: 5
+  terminal: false
+- code: FINAL_REVIEW
+  order: 6
+  terminal: false
+- code: COMMITTING
+  order: 7
+  terminal: false
+- code: COMPLETED
+  order: 8
+  terminal: true
+- code: COMPLETED_FALLBACK
+  order: 9
+  terminal: true
+- code: CANCEL_REQUESTED
+  order: 10
+  terminal: false
+- code: CANCELLED
+  order: 11
+  terminal: true
+- code: OUTPUT_BLOCKED
+  order: 12
+  terminal: true
+- code: FAILED_FINAL
+  order: 13
+  terminal: true
+forbiddenCodes:
+- FAILED_RETRYABLE
+transitions:
+- from: CREATED
+  to:
+  - INPUT_REVIEW
+  - CANCEL_REQUESTED
+- from: INPUT_REVIEW
+  to:
+  - INPUT_BLOCKED
+  - QUEUED
+  - CANCEL_REQUESTED
+- from: QUEUED
+  to:
+  - IN_PROGRESS
+  - WAITING_FOR_CAPACITY
+  - CANCEL_REQUESTED
+- from: WAITING_FOR_CAPACITY
+  to:
+  - IN_PROGRESS
+  - FINAL_REVIEW
+  - FAILED_FINAL
+  - CANCEL_REQUESTED
+- from: IN_PROGRESS
+  to:
+  - FINAL_REVIEW
+  - WAITING_FOR_CAPACITY
+  - FAILED_FINAL
+  - CANCEL_REQUESTED
+- from: FINAL_REVIEW
+  to:
+  - OUTPUT_BLOCKED
+  - COMMITTING
+  - CANCEL_REQUESTED
+- from: COMMITTING
+  to:
+  - COMPLETED
+  - COMPLETED_FALLBACK
+  - FAILED_FINAL
+- from: CANCEL_REQUESTED
+  to:
+  - CANCELLED

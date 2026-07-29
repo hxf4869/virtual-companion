@@ -1,0 +1,31 @@
+schemaVersion: 1
+contractId: GENERATION_ROUTE_PROVIDER_ATTEMPT
+entities:
+  messageGeneration:
+    table: message_generation
+    cardinality: exactly one per owner and idempotent logical request
+    stableId: generationId
+  generationRouteDecision:
+    table: generation_route_decision
+    cardinality: zero or many per generation
+    immutableDecisionNo: true
+  providerAttempt:
+    table: provider_attempt
+    cardinality: zero or many per route decision
+    oneExternalProviderRequestPerRow: true
+  generationCandidate:
+    table: generation_candidate
+    cardinality: zero or many per provider attempt or deterministic source
+invariants:
+  - generationId never changes during retry, fallback, model switch, service-class degradation or ZERO_LLM selection
+  - a generation can have multiple route decisions and provider attempts
+  - at most one selected candidate and one final assistant message exist per generation
+  - output from different provider attempts is never stitched into one visible response
+  - provider EOS closes an attempt but never completes a generation
+  - late events require matching owner, generation, providerAttemptId and fence, otherwise they are discarded
+  - ZERO_LLM creates no provider attempt
+requiredOwnershipTuple:
+  - ownerUserId
+  - relationshipId
+  - conversationId
+  - generationId

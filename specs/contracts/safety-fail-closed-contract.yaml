@@ -1,0 +1,20 @@
+schemaVersion: 1
+contractId: SAFETY_CLASSIFIER_FAIL_CLOSED
+priority:
+  - deterministic_hard_rules
+  - approved_classifier_signals
+  - business_safety_policy
+  - persona_style
+rules:
+  - a model classifier may raise but never lower a deterministic hard-rule risk
+  - timeout, unavailable, invalid response, low confidence or rule conflict cannot release unreviewed free-form content
+  - incremental review failure pauses streaming
+  - final review failure prevents chat.completed
+  - if all approved review paths are unavailable, use a deterministic safety response, ZERO_LLM, or fail; never bypass
+requiredOutcomes:
+  - CLASSIFIED
+  - LOW_CONFIDENCE
+  - TIMEOUT
+  - UNAVAILABLE
+  - INVALID_RESPONSE
+  - RULE_CONFLICT

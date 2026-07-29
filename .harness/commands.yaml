@@ -1,0 +1,8 @@
+schemaVersion: 1
+commands:
+  catalogValidate: python scripts/harness/catalog_tool.py validate
+  catalogGenerate: python scripts/harness/catalog_tool.py generate
+  catalogDrift: python scripts/harness/catalog_tool.py diff --fail-on-drift
+  paidFeatureCheck: python scripts/harness/check_paid_features.py
+  betaGateCheck: python scripts/harness/check_beta_gate.py
+  precheck: bash scripts/harness/precheck.sh

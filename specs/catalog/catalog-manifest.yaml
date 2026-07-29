@@ -1,0 +1,54 @@
+schemaVersion: 1
+catalogId: catalog-manifest
+generatorVersion: 1.0.0
+packageName: com.virtualcompanion.catalog
+catalogs:
+- file: product-scope.yaml
+  kind: config
+- file: risk-levels.yaml
+  kind: enum
+  typeName: RiskLevel
+- file: safety-classifier-outcomes.yaml
+  kind: enum
+  typeName: SafetyClassifierOutcome
+- file: age-states.yaml
+  kind: enum
+  typeName: AgeState
+- file: generation-states.yaml
+  kind: enum
+  typeName: GenerationState
+- file: route-decision-statuses.yaml
+  kind: enum
+  typeName: RouteDecisionStatus
+- file: provider-attempt-statuses.yaml
+  kind: enum
+  typeName: ProviderAttemptStatus
+- file: model-protocols.yaml
+  kind: enum
+  typeName: ModelProtocol
+- file: message-states.yaml
+  kind: multi-enum
+- file: memory-scopes.yaml
+  kind: enum
+  typeName: MemoryScope
+- file: memory-candidate-statuses.yaml
+  kind: enum
+  typeName: MemoryCandidateStatus
+- file: memory-item-statuses.yaml
+  kind: enum
+  typeName: MemoryItemStatus
+- file: realtime-events.yaml
+  kind: enum
+  typeName: RealtimeEventType
+- file: service-modes.yaml
+  kind: enum
+  typeName: ServiceMode
+- file: data-categories.yaml
+  kind: enum
+  typeName: DataCategory
+- file: processing-purposes.yaml
+  kind: enum
+  typeName: ProcessingPurpose
+- file: error-codes.yaml
+  kind: enum
+  typeName: ErrorCode

@@ -1,0 +1,23 @@
+schemaVersion: 1
+contractId: NO_PAID_SOFTWARE_PREREQUISITE
+allowedUnavoidableCosts:
+  - model_inference
+  - model_embedding
+  - model_moderation
+  - server_compute
+  - storage
+  - bandwidth
+forbiddenAsCorePrerequisite:
+  - commercial_software_license
+  - enterprise_only_feature
+  - paid_plugin
+  - hosted_saas_only_feature
+  - managed_identity_only_feature
+  - paid_vector_database_only_feature
+optionalCommunityCandidates:
+  - LiteLLM Community
+  - JobRunr OSS
+  - Langfuse OSS self-hosted
+  - Centrifugo OSS
+  - Keycloak Community
+rule: if a required behavior exists only in a commercial edition, implement it in the owned core or choose another community component

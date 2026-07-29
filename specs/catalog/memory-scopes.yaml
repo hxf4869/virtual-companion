@@ -1,0 +1,30 @@
+schemaVersion: 1
+catalogId: memory-scopes
+entries:
+- code: SESSION
+  order: 0
+  enabledInAlpha: true
+  longTerm: false
+  relationshipIdRequired: true
+  conversationIdRequired: true
+- code: RELATIONSHIP
+  order: 1
+  enabledInAlpha: true
+  longTerm: true
+  relationshipIdRequired: true
+  conversationIdRequired: false
+- code: ACCOUNT_PRIVATE
+  order: 2
+  enabledInAlpha: false
+  longTerm: true
+  relationshipIdRequired: false
+  automaticWriteAllowed: false
+- code: ACCOUNT_SHARED
+  order: 3
+  enabledInAlpha: false
+  longTerm: true
+  relationshipIdRequired: false
+  explicitSharingConsentRequired: true
+forbiddenAliases:
+- COMPANION
+- SAFETY_INTERNAL

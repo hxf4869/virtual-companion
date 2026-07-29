@@ -1,0 +1,28 @@
+schemaVersion: 1
+contractId: FINALIZE_GENERATION_TRANSACTION
+transaction: finalize_generation
+preconditions:
+  - generation state is FINAL_REVIEW
+  - candidate content is frozen and hash-addressed
+  - final safety review passed or approved deterministic safety replacement exists
+  - winning provider attempt fence matches current generation fence when source type is PROVIDER
+  - execution authorization snapshot was valid at attempt execution
+writesAtomically:
+  - final assistant message
+  - selected generation candidate
+  - final moderation result
+  - message generation terminal state and assistantMessageId
+  - provider attempt usage and actual cost when applicable
+  - quota ledger settlement or release
+  - durable realtime event chat.completed
+  - outbox event memory.extract.requested when eligible
+  - outbox event conversation.summary.requested when eligible
+  - audit record
+forbidden:
+  - publish chat.completed before commit
+  - enqueue memory or summary only after commit on a best-effort path
+  - call another model merely because persistence retry failed
+  - complete generation directly from provider EOS
+postCommitOnly:
+  - realtime dispatcher publishes committed chat.completed
+  - generic job coordinator materializes opaque work item ids

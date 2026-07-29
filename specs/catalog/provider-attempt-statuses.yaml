@@ -1,0 +1,25 @@
+schemaVersion: 1
+catalogId: provider-attempt-statuses
+entries:
+- code: CREATED
+  order: 0
+- code: CONNECTING
+  order: 1
+- code: STREAMING
+  order: 2
+- code: EOS_RECEIVED
+  order: 3
+- code: SUCCEEDED
+  order: 4
+- code: RETRYABLE_FAILED
+  order: 5
+- code: NON_RETRYABLE_FAILED
+  order: 6
+- code: TIMED_OUT
+  order: 7
+- code: CANCEL_REQUESTED
+  order: 8
+- code: CANCELLED
+  order: 9
+- code: ABANDONED_LATE
+  order: 10

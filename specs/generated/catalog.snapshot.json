@@ -1,0 +1,1249 @@
+{
+  "generatedEnums": {
+    "AgeState": [
+      "AGE_UNKNOWN",
+      "ADULT_SELF_DECLARED",
+      "ADULT_VERIFICATION_REQUIRED",
+      "ADULT_VERIFIED",
+      "MINOR_SUSPECTED",
+      "MINOR_VERIFIED",
+      "AGE_APPEAL_PENDING",
+      "AGE_REVERIFY_REQUIRED",
+      "AGE_ACCESS_SUSPENDED"
+    ],
+    "AssistantMessageState": [
+      "DRAFT",
+      "FINAL",
+      "CANCELLED",
+      "BLOCKED",
+      "FAILED",
+      "DELETE_PENDING",
+      "DELETED"
+    ],
+    "DataCategory": [
+      "MESSAGE_TEXT",
+      "MEMORY_SNIPPET",
+      "SAFETY_SIGNAL",
+      "ACCOUNT_METADATA",
+      "AGE_VERIFICATION_RESULT",
+      "USAGE_METADATA"
+    ],
+    "ErrorCode": [
+      "AUTHENTICATION_REQUIRED",
+      "ACCESS_DENIED",
+      "NOT_FOUND_OR_FORBIDDEN",
+      "AGE_VERIFICATION_REQUIRED",
+      "MODEL_NO_ELIGIBLE_DEPLOYMENT",
+      "MODEL_ATTEMPT_TIMEOUT",
+      "MODEL_ALL_UNAVAILABLE",
+      "GENERATION_CANCELLED",
+      "GENERATION_OUTPUT_BLOCKED",
+      "STREAM_GAP_EXPIRED",
+      "STREAM_RESET_REQUIRED",
+      "MEMORY_CONFIRMATION_REQUIRED",
+      "MEMORY_FORBIDDEN_CONTENT",
+      "CATALOG_DRIFT_DETECTED",
+      "BETA_OPERATIONS_NOT_READY"
+    ],
+    "GenerationState": [
+      "CREATED",
+      "INPUT_REVIEW",
+      "INPUT_BLOCKED",
+      "QUEUED",
+      "IN_PROGRESS",
+      "WAITING_FOR_CAPACITY",
+      "FINAL_REVIEW",
+      "COMMITTING",
+      "COMPLETED",
+      "COMPLETED_FALLBACK",
+      "CANCEL_REQUESTED",
+      "CANCELLED",
+      "OUTPUT_BLOCKED",
+      "FAILED_FINAL"
+    ],
+    "MemoryCandidateStatus": [
+      "PROPOSED",
+      "PENDING_CONFIRMATION",
+      "ACCEPTED",
+      "REJECTED",
+      "EXPIRED"
+    ],
+    "MemoryItemStatus": [
+      "ACTIVE",
+      "SUPERSEDED",
+      "EXPIRED",
+      "DELETED"
+    ],
+    "MemoryScope": [
+      "SESSION",
+      "RELATIONSHIP",
+      "ACCOUNT_PRIVATE",
+      "ACCOUNT_SHARED"
+    ],
+    "ModelProtocol": [
+      "OPENAI_CHAT_COMPLETIONS",
+      "OPENAI_RESPONSES",
+      "ANTHROPIC_MESSAGES",
+      "FAKE",
+      "FAILURE",
+      "ZERO_LLM"
+    ],
+    "ProcessingPurpose": [
+      "COMPANION_CHAT",
+      "OUTPUT_REVIEW",
+      "MEMORY_EXTRACT",
+      "EMBEDDING",
+      "CONVERSATION_SUMMARY",
+      "PRODUCT_EVAL"
+    ],
+    "ProviderAttemptStatus": [
+      "CREATED",
+      "CONNECTING",
+      "STREAMING",
+      "EOS_RECEIVED",
+      "SUCCEEDED",
+      "RETRYABLE_FAILED",
+      "NON_RETRYABLE_FAILED",
+      "TIMED_OUT",
+      "CANCEL_REQUESTED",
+      "CANCELLED",
+      "ABANDONED_LATE"
+    ],
+    "RealtimeEventType": [
+      "chat.accepted",
+      "chat.delta",
+      "chat.replace",
+      "chat.completed",
+      "chat.cancelled",
+      "chat.blocked",
+      "chat.failed",
+      "safety.notice",
+      "service.mode.changed",
+      "memory.candidate.created",
+      "memory.candidate.confirmation_required",
+      "stream.resume.accepted",
+      "stream.gap",
+      "stream.reset",
+      "stream.denied"
+    ],
+    "RiskLevel": [
+      "R0_NORMAL",
+      "R1_DISTRESS",
+      "R2_ELEVATED",
+      "R3_HIGH",
+      "R4_IMMINENT"
+    ],
+    "RouteDecisionStatus": [
+      "CREATED",
+      "SELECTED",
+      "NO_ELIGIBLE_DEPLOYMENT",
+      "SUPERSEDED",
+      "CANCELLED"
+    ],
+    "SafetyClassifierOutcome": [
+      "CLASSIFIED",
+      "LOW_CONFIDENCE",
+      "TIMEOUT",
+      "UNAVAILABLE",
+      "INVALID_RESPONSE",
+      "RULE_CONFLICT"
+    ],
+    "ServiceMode": [
+      "FULL_AI",
+      "DEGRADED_AI",
+      "SAFETY_RESTRICTED",
+      "ZERO_LLM",
+      "MAINTENANCE"
+    ],
+    "UserMessageState": [
+      "PERSISTED",
+      "DELETE_PENDING",
+      "DELETED"
+    ]
+  },
+  "generatorVersion": "1.0.0",
+  "sources": {
+    "age-states.yaml": {
+      "document": {
+        "catalogId": "age-states",
+        "entries": [
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "AGE_UNKNOWN",
+            "dataRightsAllowed": true,
+            "order": 0,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "ADULT_SELF_DECLARED",
+            "dataRightsAllowed": true,
+            "order": 1,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "ADULT_VERIFICATION_REQUIRED",
+            "dataRightsAllowed": true,
+            "order": 2,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": true,
+            "code": "ADULT_VERIFIED",
+            "dataRightsAllowed": true,
+            "order": 3,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "MINOR_SUSPECTED",
+            "dataRightsAllowed": true,
+            "order": 4,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "MINOR_VERIFIED",
+            "dataRightsAllowed": true,
+            "order": 5,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "AGE_APPEAL_PENDING",
+            "dataRightsAllowed": true,
+            "order": 6,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "AGE_REVERIFY_REQUIRED",
+            "dataRightsAllowed": true,
+            "order": 7,
+            "verificationOrAppealAllowed": true
+          },
+          {
+            "betaGenerativeChatAllowed": false,
+            "code": "AGE_ACCESS_SUSPENDED",
+            "dataRightsAllowed": true,
+            "order": 8,
+            "verificationOrAppealAllowed": true
+          }
+        ],
+        "schemaVersion": 1,
+        "transitions": [
+          {
+            "from": "AGE_UNKNOWN",
+            "to": [
+              "ADULT_SELF_DECLARED"
+            ]
+          },
+          {
+            "from": "ADULT_SELF_DECLARED",
+            "to": [
+              "ADULT_VERIFICATION_REQUIRED"
+            ]
+          },
+          {
+            "from": "ADULT_VERIFICATION_REQUIRED",
+            "to": [
+              "ADULT_VERIFIED",
+              "MINOR_VERIFIED",
+              "AGE_APPEAL_PENDING"
+            ]
+          },
+          {
+            "from": "ADULT_VERIFIED",
+            "to": [
+              "AGE_REVERIFY_REQUIRED",
+              "MINOR_SUSPECTED"
+            ]
+          },
+          {
+            "from": "MINOR_SUSPECTED",
+            "to": [
+              "ADULT_VERIFICATION_REQUIRED",
+              "MINOR_VERIFIED",
+              "AGE_APPEAL_PENDING"
+            ]
+          },
+          {
+            "from": "AGE_APPEAL_PENDING",
+            "to": [
+              "ADULT_VERIFIED",
+              "MINOR_VERIFIED",
+              "AGE_ACCESS_SUSPENDED"
+            ]
+          },
+          {
+            "from": "AGE_REVERIFY_REQUIRED",
+            "to": [
+              "ADULT_VERIFIED",
+              "MINOR_VERIFIED",
+              "AGE_ACCESS_SUSPENDED"
+            ]
+          }
+        ]
+      },
+      "sha256": "cd508b7b7086c49718fdb0899db640a8e91a86d6a27f4f67a7ff2b84578a2347"
+    },
+    "catalog-manifest.yaml": {
+      "document": {
+        "catalogId": "catalog-manifest",
+        "catalogs": [
+          {
+            "file": "product-scope.yaml",
+            "kind": "config"
+          },
+          {
+            "file": "risk-levels.yaml",
+            "kind": "enum",
+            "typeName": "RiskLevel"
+          },
+          {
+            "file": "safety-classifier-outcomes.yaml",
+            "kind": "enum",
+            "typeName": "SafetyClassifierOutcome"
+          },
+          {
+            "file": "age-states.yaml",
+            "kind": "enum",
+            "typeName": "AgeState"
+          },
+          {
+            "file": "generation-states.yaml",
+            "kind": "enum",
+            "typeName": "GenerationState"
+          },
+          {
+            "file": "route-decision-statuses.yaml",
+            "kind": "enum",
+            "typeName": "RouteDecisionStatus"
+          },
+          {
+            "file": "provider-attempt-statuses.yaml",
+            "kind": "enum",
+            "typeName": "ProviderAttemptStatus"
+          },
+          {
+            "file": "model-protocols.yaml",
+            "kind": "enum",
+            "typeName": "ModelProtocol"
+          },
+          {
+            "file": "message-states.yaml",
+            "kind": "multi-enum"
+          },
+          {
+            "file": "memory-scopes.yaml",
+            "kind": "enum",
+            "typeName": "MemoryScope"
+          },
+          {
+            "file": "memory-candidate-statuses.yaml",
+            "kind": "enum",
+            "typeName": "MemoryCandidateStatus"
+          },
+          {
+            "file": "memory-item-statuses.yaml",
+            "kind": "enum",
+            "typeName": "MemoryItemStatus"
+          },
+          {
+            "file": "realtime-events.yaml",
+            "kind": "enum",
+            "typeName": "RealtimeEventType"
+          },
+          {
+            "file": "service-modes.yaml",
+            "kind": "enum",
+            "typeName": "ServiceMode"
+          },
+          {
+            "file": "data-categories.yaml",
+            "kind": "enum",
+            "typeName": "DataCategory"
+          },
+          {
+            "file": "processing-purposes.yaml",
+            "kind": "enum",
+            "typeName": "ProcessingPurpose"
+          },
+          {
+            "file": "error-codes.yaml",
+            "kind": "enum",
+            "typeName": "ErrorCode"
+          }
+        ],
+        "generatorVersion": "1.0.0",
+        "packageName": "com.virtualcompanion.catalog",
+        "schemaVersion": 1
+      },
+      "sha256": "726915d89c98c6040a53b6930aaa2c77e0ae747bcd13ef960b9b08d6df44da45"
+    },
+    "data-categories.yaml": {
+      "document": {
+        "catalogId": "data-categories",
+        "entries": [
+          {
+            "code": "MESSAGE_TEXT",
+            "order": 0
+          },
+          {
+            "code": "MEMORY_SNIPPET",
+            "order": 1
+          },
+          {
+            "code": "SAFETY_SIGNAL",
+            "order": 2
+          },
+          {
+            "code": "ACCOUNT_METADATA",
+            "order": 3
+          },
+          {
+            "code": "AGE_VERIFICATION_RESULT",
+            "order": 4
+          },
+          {
+            "code": "USAGE_METADATA",
+            "order": 5
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "40f6ea94b1031c84acc60a0acb5fe493a06981db94d5bd2dbc7993558cf6e396"
+    },
+    "error-codes.yaml": {
+      "document": {
+        "catalogId": "error-codes",
+        "entries": [
+          {
+            "code": "AUTHENTICATION_REQUIRED",
+            "order": 0
+          },
+          {
+            "code": "ACCESS_DENIED",
+            "order": 1
+          },
+          {
+            "code": "NOT_FOUND_OR_FORBIDDEN",
+            "order": 2
+          },
+          {
+            "code": "AGE_VERIFICATION_REQUIRED",
+            "order": 3
+          },
+          {
+            "code": "MODEL_NO_ELIGIBLE_DEPLOYMENT",
+            "order": 4
+          },
+          {
+            "code": "MODEL_ATTEMPT_TIMEOUT",
+            "order": 5
+          },
+          {
+            "code": "MODEL_ALL_UNAVAILABLE",
+            "order": 6
+          },
+          {
+            "code": "GENERATION_CANCELLED",
+            "order": 7
+          },
+          {
+            "code": "GENERATION_OUTPUT_BLOCKED",
+            "order": 8
+          },
+          {
+            "code": "STREAM_GAP_EXPIRED",
+            "order": 9
+          },
+          {
+            "code": "STREAM_RESET_REQUIRED",
+            "order": 10
+          },
+          {
+            "code": "MEMORY_CONFIRMATION_REQUIRED",
+            "order": 11
+          },
+          {
+            "code": "MEMORY_FORBIDDEN_CONTENT",
+            "order": 12
+          },
+          {
+            "code": "CATALOG_DRIFT_DETECTED",
+            "order": 13
+          },
+          {
+            "code": "BETA_OPERATIONS_NOT_READY",
+            "order": 14
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "4275602b48187fd4898c9822177a528bdbfc76ed0780f84763df0e0d8e2e101e"
+    },
+    "generation-states.yaml": {
+      "document": {
+        "catalogId": "generation-states",
+        "entries": [
+          {
+            "code": "CREATED",
+            "order": 0,
+            "terminal": false
+          },
+          {
+            "code": "INPUT_REVIEW",
+            "order": 1,
+            "terminal": false
+          },
+          {
+            "code": "INPUT_BLOCKED",
+            "order": 2,
+            "terminal": true
+          },
+          {
+            "code": "QUEUED",
+            "order": 3,
+            "terminal": false
+          },
+          {
+            "code": "IN_PROGRESS",
+            "order": 4,
+            "terminal": false
+          },
+          {
+            "code": "WAITING_FOR_CAPACITY",
+            "order": 5,
+            "terminal": false
+          },
+          {
+            "code": "FINAL_REVIEW",
+            "order": 6,
+            "terminal": false
+          },
+          {
+            "code": "COMMITTING",
+            "order": 7,
+            "terminal": false
+          },
+          {
+            "code": "COMPLETED",
+            "order": 8,
+            "terminal": true
+          },
+          {
+            "code": "COMPLETED_FALLBACK",
+            "order": 9,
+            "terminal": true
+          },
+          {
+            "code": "CANCEL_REQUESTED",
+            "order": 10,
+            "terminal": false
+          },
+          {
+            "code": "CANCELLED",
+            "order": 11,
+            "terminal": true
+          },
+          {
+            "code": "OUTPUT_BLOCKED",
+            "order": 12,
+            "terminal": true
+          },
+          {
+            "code": "FAILED_FINAL",
+            "order": 13,
+            "terminal": true
+          }
+        ],
+        "forbiddenCodes": [
+          "FAILED_RETRYABLE"
+        ],
+        "schemaVersion": 1,
+        "transitions": [
+          {
+            "from": "CREATED",
+            "to": [
+              "INPUT_REVIEW",
+              "CANCEL_REQUESTED"
+            ]
+          },
+          {
+            "from": "INPUT_REVIEW",
+            "to": [
+              "INPUT_BLOCKED",
+              "QUEUED",
+              "CANCEL_REQUESTED"
+            ]
+          },
+          {
+            "from": "QUEUED",
+            "to": [
+              "IN_PROGRESS",
+              "WAITING_FOR_CAPACITY",
+              "CANCEL_REQUESTED"
+            ]
+          },
+          {
+            "from": "WAITING_FOR_CAPACITY",
+            "to": [
+              "IN_PROGRESS",
+              "FINAL_REVIEW",
+              "FAILED_FINAL",
+              "CANCEL_REQUESTED"
+            ]
+          },
+          {
+            "from": "IN_PROGRESS",
+            "to": [
+              "FINAL_REVIEW",
+              "WAITING_FOR_CAPACITY",
+              "FAILED_FINAL",
+              "CANCEL_REQUESTED"
+            ]
+          },
+          {
+            "from": "FINAL_REVIEW",
+            "to": [
+              "OUTPUT_BLOCKED",
+              "COMMITTING",
+              "CANCEL_REQUESTED"
+            ]
+          },
+          {
+            "from": "COMMITTING",
+            "to": [
+              "COMPLETED",
+              "COMPLETED_FALLBACK",
+              "FAILED_FINAL"
+            ]
+          },
+          {
+            "from": "CANCEL_REQUESTED",
+            "to": [
+              "CANCELLED"
+            ]
+          }
+        ]
+      },
+      "sha256": "b6e7ae2890d07b55a5c33bc1490538879f99ecc8d4f194bfd41d0afca7202b2a"
+    },
+    "memory-candidate-statuses.yaml": {
+      "document": {
+        "alphaModelCandidateInitialStatus": "PENDING_CONFIRMATION",
+        "alphaModelCandidatesRequireConfirmation": true,
+        "catalogId": "memory-candidate-statuses",
+        "entries": [
+          {
+            "code": "PROPOSED",
+            "order": 0
+          },
+          {
+            "code": "PENDING_CONFIRMATION",
+            "order": 1
+          },
+          {
+            "code": "ACCEPTED",
+            "order": 2
+          },
+          {
+            "code": "REJECTED",
+            "order": 3
+          },
+          {
+            "code": "EXPIRED",
+            "order": 4
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "9d7611534a36661c92c031fa1321805a14f577c2c046b43c1bcb881e91b09c9e"
+    },
+    "memory-item-statuses.yaml": {
+      "document": {
+        "catalogId": "memory-item-statuses",
+        "entries": [
+          {
+            "code": "ACTIVE",
+            "order": 0
+          },
+          {
+            "code": "SUPERSEDED",
+            "order": 1
+          },
+          {
+            "code": "EXPIRED",
+            "order": 2
+          },
+          {
+            "code": "DELETED",
+            "order": 3
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "4f77eac1446e2248944a3ef9d9134fee91aedd36c03904f553eab1fa6d68f15d"
+    },
+    "memory-scopes.yaml": {
+      "document": {
+        "catalogId": "memory-scopes",
+        "entries": [
+          {
+            "code": "SESSION",
+            "conversationIdRequired": true,
+            "enabledInAlpha": true,
+            "longTerm": false,
+            "order": 0,
+            "relationshipIdRequired": true
+          },
+          {
+            "code": "RELATIONSHIP",
+            "conversationIdRequired": false,
+            "enabledInAlpha": true,
+            "longTerm": true,
+            "order": 1,
+            "relationshipIdRequired": true
+          },
+          {
+            "automaticWriteAllowed": false,
+            "code": "ACCOUNT_PRIVATE",
+            "enabledInAlpha": false,
+            "longTerm": true,
+            "order": 2,
+            "relationshipIdRequired": false
+          },
+          {
+            "code": "ACCOUNT_SHARED",
+            "enabledInAlpha": false,
+            "explicitSharingConsentRequired": true,
+            "longTerm": true,
+            "order": 3,
+            "relationshipIdRequired": false
+          }
+        ],
+        "forbiddenAliases": [
+          "COMPANION",
+          "SAFETY_INTERNAL"
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "9c0e9606d46e304e16d153de2c21a9df23ce2a7a5429812407b0ab2f854f99bf"
+    },
+    "message-states.yaml": {
+      "document": {
+        "catalogId": "message-states",
+        "enums": [
+          {
+            "entries": [
+              {
+                "code": "PERSISTED",
+                "order": 0
+              },
+              {
+                "code": "DELETE_PENDING",
+                "order": 1
+              },
+              {
+                "code": "DELETED",
+                "order": 2
+              }
+            ],
+            "typeName": "UserMessageState"
+          },
+          {
+            "entries": [
+              {
+                "code": "DRAFT",
+                "order": 0
+              },
+              {
+                "code": "FINAL",
+                "order": 1
+              },
+              {
+                "code": "CANCELLED",
+                "order": 2
+              },
+              {
+                "code": "BLOCKED",
+                "order": 3
+              },
+              {
+                "code": "FAILED",
+                "order": 4
+              },
+              {
+                "code": "DELETE_PENDING",
+                "order": 5
+              },
+              {
+                "code": "DELETED",
+                "order": 6
+              }
+            ],
+            "typeName": "AssistantMessageState"
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "3da0567de355150a61d3d8ed3e0e63f1c1073d30647cb8351849a036faf70381"
+    },
+    "model-protocols.yaml": {
+      "document": {
+        "catalogId": "model-protocols",
+        "entries": [
+          {
+            "alphaAllowed": true,
+            "code": "OPENAI_CHAT_COMPLETIONS",
+            "defaultPath": "/v1/chat/completions",
+            "external": true,
+            "order": 0,
+            "streamTransport": "SSE"
+          },
+          {
+            "alphaAllowed": false,
+            "code": "OPENAI_RESPONSES",
+            "defaultPath": "/v1/responses",
+            "external": true,
+            "order": 1,
+            "spikeOnly": true,
+            "streamTransport": "SSE"
+          },
+          {
+            "alphaAllowed": true,
+            "code": "ANTHROPIC_MESSAGES",
+            "defaultPath": "/v1/messages",
+            "external": true,
+            "order": 2,
+            "streamTransport": "SSE"
+          },
+          {
+            "alphaAllowed": true,
+            "code": "FAKE",
+            "external": false,
+            "order": 3
+          },
+          {
+            "alphaAllowed": true,
+            "code": "FAILURE",
+            "external": false,
+            "order": 4
+          },
+          {
+            "alphaAllowed": true,
+            "code": "ZERO_LLM",
+            "external": false,
+            "order": 5
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "dd5d45b1118baf560591f8f29434a365467cfdd943c539fe0f407d6a8f66c0ab"
+    },
+    "processing-purposes.yaml": {
+      "document": {
+        "catalogId": "processing-purposes",
+        "entries": [
+          {
+            "code": "COMPANION_CHAT",
+            "order": 0
+          },
+          {
+            "code": "OUTPUT_REVIEW",
+            "order": 1
+          },
+          {
+            "code": "MEMORY_EXTRACT",
+            "order": 2
+          },
+          {
+            "code": "EMBEDDING",
+            "order": 3
+          },
+          {
+            "code": "CONVERSATION_SUMMARY",
+            "order": 4
+          },
+          {
+            "code": "PRODUCT_EVAL",
+            "order": 5
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "463a700d1b4f4f93b2fcf6e81b0331050d6ceaccdfcff867f31c90f09035606f"
+    },
+    "product-scope.yaml": {
+      "document": {
+        "alpha": {
+          "activeCompanionLimit": 1,
+          "canonicalLongTermMemoryScope": "RELATIONSHIP",
+          "enabledMemoryScopes": [
+            "SESSION",
+            "RELATIONSHIP"
+          ],
+          "failureAdapterRequired": true,
+          "fakeAdapterRequired": true,
+          "imageEnabled": false,
+          "modelCandidatesRequireConfirmation": true,
+          "paymentEnabled": false,
+          "personaTemplates": [
+            "gentle-listener"
+          ],
+          "publicRegistrationEnabled": false,
+          "realModelEndpointCount": 1,
+          "romanceModeEnabled": false,
+          "transport": "HTTP_SSE",
+          "voiceEnabled": false,
+          "websocketEnabled": false,
+          "zeroLlmDefaultForFree": false
+        },
+        "betaGate": {
+          "ageStateRequired": "ADULT_VERIFIED",
+          "betaGenerationEnabledByDefault": false,
+          "confirmedDutyRosterRequired": true,
+          "dutyFrom": "20:15",
+          "dutyUntil": "00:30",
+          "externalEthicsApplicabilityDecisionRequired": true,
+          "generationWindowFrom": "20:30",
+          "inFlightGraceUntil": "00:10",
+          "internalEthicsReviewRequired": true,
+          "longConversationCutoff": "23:45",
+          "maxDailyActiveUsers": 10,
+          "maxEnabledAccounts": 30,
+          "namedBackupRequired": true,
+          "namedSafetyOwnerRequired": true,
+          "newGenerationCutoff": "00:00",
+          "piaRequired": true,
+          "timezone": "Asia/Shanghai"
+        },
+        "catalogId": "product-scope",
+        "costBoundary": {
+          "allowedPaidExternalCapabilities": [
+            "MODEL_INFERENCE",
+            "MODEL_EMBEDDING",
+            "MODEL_MODERATION"
+          ],
+          "commercialSoftwareLicenseRequired": false,
+          "communityEditionOnlyForOptionalInfrastructure": true,
+          "hostedSaasRequired": false
+        },
+        "hypothesis": {
+          "coreValue": [
+            "LOW_PRESSURE_LISTENING",
+            "TRUSTWORTHY_MEMORY"
+          ],
+          "invalidatesAutomaticallyWhenDiscoveryGateFails": true,
+          "primaryAudience": "evening-office-workers-25-35"
+        },
+        "phase": "TECHNICAL_ALPHA",
+        "schemaVersion": 1,
+        "technology": {
+          "database": "POSTGRESQL_18",
+          "javaBaseline": "25-LTS",
+          "javaFallback": "21-LTS_BY_ADR_ONLY",
+          "modelProtocols": [
+            "OPENAI_CHAT_COMPLETIONS",
+            "ANTHROPIC_MESSAGES"
+          ],
+          "optionalProtocolSpikes": [
+            "OPENAI_RESPONSES"
+          ],
+          "springAiLine": "2.0.x",
+          "springBootLine": "4.1.x",
+          "vector": "PGVECTOR_0.8.5"
+        }
+      },
+      "sha256": "dc8fe7f8a00d4c177a8ce2230376b9738d9da2fd51cbc04de40fae2f6ce1f65b"
+    },
+    "provider-attempt-statuses.yaml": {
+      "document": {
+        "catalogId": "provider-attempt-statuses",
+        "entries": [
+          {
+            "code": "CREATED",
+            "order": 0
+          },
+          {
+            "code": "CONNECTING",
+            "order": 1
+          },
+          {
+            "code": "STREAMING",
+            "order": 2
+          },
+          {
+            "code": "EOS_RECEIVED",
+            "order": 3
+          },
+          {
+            "code": "SUCCEEDED",
+            "order": 4
+          },
+          {
+            "code": "RETRYABLE_FAILED",
+            "order": 5
+          },
+          {
+            "code": "NON_RETRYABLE_FAILED",
+            "order": 6
+          },
+          {
+            "code": "TIMED_OUT",
+            "order": 7
+          },
+          {
+            "code": "CANCEL_REQUESTED",
+            "order": 8
+          },
+          {
+            "code": "CANCELLED",
+            "order": 9
+          },
+          {
+            "code": "ABANDONED_LATE",
+            "order": 10
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "74dc66ca00506f554d94c1494b33be01874b8b9d131c0c3f283f1ed78cbc2710"
+    },
+    "realtime-events.yaml": {
+      "document": {
+        "catalogId": "realtime-events",
+        "entries": [
+          {
+            "code": "chat.accepted",
+            "durable": true,
+            "order": 0
+          },
+          {
+            "code": "chat.delta",
+            "durable": false,
+            "order": 1
+          },
+          {
+            "code": "chat.replace",
+            "durable": false,
+            "order": 2
+          },
+          {
+            "code": "chat.completed",
+            "durable": true,
+            "order": 3
+          },
+          {
+            "code": "chat.cancelled",
+            "durable": true,
+            "order": 4
+          },
+          {
+            "code": "chat.blocked",
+            "durable": true,
+            "order": 5
+          },
+          {
+            "code": "chat.failed",
+            "durable": true,
+            "order": 6
+          },
+          {
+            "code": "safety.notice",
+            "durable": true,
+            "order": 7
+          },
+          {
+            "code": "service.mode.changed",
+            "durable": true,
+            "order": 8
+          },
+          {
+            "code": "memory.candidate.created",
+            "durable": true,
+            "order": 9
+          },
+          {
+            "code": "memory.candidate.confirmation_required",
+            "durable": true,
+            "order": 10
+          },
+          {
+            "code": "stream.resume.accepted",
+            "durable": false,
+            "order": 11
+          },
+          {
+            "code": "stream.gap",
+            "durable": false,
+            "order": 12
+          },
+          {
+            "code": "stream.reset",
+            "durable": false,
+            "order": 13
+          },
+          {
+            "code": "stream.denied",
+            "durable": false,
+            "order": 14
+          }
+        ],
+        "envelopeRequired": [
+          "schemaVersion",
+          "event",
+          "generationId",
+          "streamEpoch",
+          "eventSeq",
+          "committedAt",
+          "payload"
+        ],
+        "resumeDispositions": [
+          "RESUMED",
+          "TERMINAL_SNAPSHOT",
+          "GAP_EXPIRED",
+          "RESET_REQUIRED",
+          "NOT_FOUND_OR_FORBIDDEN"
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "be896592a0e482643db0389993b7edad08fbd94637c5c280bd627085535e3042"
+    },
+    "risk-levels.yaml": {
+      "document": {
+        "catalogId": "risk-levels",
+        "entries": [
+          {
+            "caseRequired": false,
+            "code": "R0_NORMAL",
+            "order": 0,
+            "userVisibleLabel": "正常"
+          },
+          {
+            "caseRequired": false,
+            "code": "R1_DISTRESS",
+            "order": 1,
+            "userVisibleLabel": "轻度困扰"
+          },
+          {
+            "caseRequired": false,
+            "code": "R2_ELEVATED",
+            "order": 2,
+            "samplingRequired": true,
+            "userVisibleLabel": "风险升高"
+          },
+          {
+            "caseRequired": true,
+            "code": "R3_HIGH",
+            "freePersonaGenerationAllowed": false,
+            "order": 3,
+            "userVisibleLabel": "高风险"
+          },
+          {
+            "caseRequired": true,
+            "code": "R4_IMMINENT",
+            "freePersonaGenerationAllowed": false,
+            "order": 4,
+            "userVisibleLabel": "紧迫极端情境"
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "dd4f9a4d34d5b7c5860ffdbbd63cd51bb9b0b56a3175bcd3fe4e327b5d530543"
+    },
+    "route-decision-statuses.yaml": {
+      "document": {
+        "catalogId": "route-decision-statuses",
+        "entries": [
+          {
+            "code": "CREATED",
+            "order": 0
+          },
+          {
+            "code": "SELECTED",
+            "order": 1
+          },
+          {
+            "code": "NO_ELIGIBLE_DEPLOYMENT",
+            "order": 2
+          },
+          {
+            "code": "SUPERSEDED",
+            "order": 3
+          },
+          {
+            "code": "CANCELLED",
+            "order": 4
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "b1910a9295220c34f73c5e8ae3a3837792fb16ecbeb781a275bcdf3f55428186"
+    },
+    "safety-classifier-outcomes.yaml": {
+      "document": {
+        "catalogId": "safety-classifier-outcomes",
+        "entries": [
+          {
+            "code": "CLASSIFIED",
+            "order": 0
+          },
+          {
+            "code": "LOW_CONFIDENCE",
+            "order": 1
+          },
+          {
+            "code": "TIMEOUT",
+            "order": 2
+          },
+          {
+            "code": "UNAVAILABLE",
+            "order": 3
+          },
+          {
+            "code": "INVALID_RESPONSE",
+            "order": 4
+          },
+          {
+            "code": "RULE_CONFLICT",
+            "order": 5
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "e858fe22d267116d432e55c6bcb99b1d003b2073dcaa9fa60979eba11d65cd95"
+    },
+    "service-modes.yaml": {
+      "document": {
+        "catalogId": "service-modes",
+        "entries": [
+          {
+            "code": "FULL_AI",
+            "order": 0
+          },
+          {
+            "code": "DEGRADED_AI",
+            "order": 1
+          },
+          {
+            "code": "SAFETY_RESTRICTED",
+            "order": 2
+          },
+          {
+            "code": "ZERO_LLM",
+            "order": 3
+          },
+          {
+            "code": "MAINTENANCE",
+            "order": 4
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "0af1ef5a8c02f644beea396503bf0ad07b7445833996c69666076970ad28a451"
+    }
+  }
+}

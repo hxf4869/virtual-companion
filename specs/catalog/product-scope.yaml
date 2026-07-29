@@ -1,0 +1,67 @@
+schemaVersion: 1
+catalogId: product-scope
+phase: TECHNICAL_ALPHA
+hypothesis:
+  primaryAudience: evening-office-workers-25-35
+  coreValue:
+  - LOW_PRESSURE_LISTENING
+  - TRUSTWORTHY_MEMORY
+  invalidatesAutomaticallyWhenDiscoveryGateFails: true
+alpha:
+  activeCompanionLimit: 1
+  personaTemplates:
+  - gentle-listener
+  publicRegistrationEnabled: false
+  realModelEndpointCount: 1
+  fakeAdapterRequired: true
+  failureAdapterRequired: true
+  paymentEnabled: false
+  romanceModeEnabled: false
+  voiceEnabled: false
+  imageEnabled: false
+  websocketEnabled: false
+  transport: HTTP_SSE
+  canonicalLongTermMemoryScope: RELATIONSHIP
+  enabledMemoryScopes:
+  - SESSION
+  - RELATIONSHIP
+  modelCandidatesRequireConfirmation: true
+  zeroLlmDefaultForFree: false
+technology:
+  javaBaseline: 25-LTS
+  javaFallback: 21-LTS_BY_ADR_ONLY
+  springBootLine: 4.1.x
+  springAiLine: 2.0.x
+  database: POSTGRESQL_18
+  vector: PGVECTOR_0.8.5
+  modelProtocols:
+  - OPENAI_CHAT_COMPLETIONS
+  - ANTHROPIC_MESSAGES
+  optionalProtocolSpikes:
+  - OPENAI_RESPONSES
+costBoundary:
+  commercialSoftwareLicenseRequired: false
+  hostedSaasRequired: false
+  allowedPaidExternalCapabilities:
+  - MODEL_INFERENCE
+  - MODEL_EMBEDDING
+  - MODEL_MODERATION
+  communityEditionOnlyForOptionalInfrastructure: true
+betaGate:
+  maxEnabledAccounts: 30
+  maxDailyActiveUsers: 10
+  timezone: Asia/Shanghai
+  generationWindowFrom: '20:30'
+  longConversationCutoff: '23:45'
+  newGenerationCutoff: 00:00
+  inFlightGraceUntil: 00:10
+  dutyFrom: '20:15'
+  dutyUntil: 00:30
+  piaRequired: true
+  internalEthicsReviewRequired: true
+  externalEthicsApplicabilityDecisionRequired: true
+  namedSafetyOwnerRequired: true
+  namedBackupRequired: true
+  confirmedDutyRosterRequired: true
+  ageStateRequired: ADULT_VERIFIED
+  betaGenerationEnabledByDefault: false

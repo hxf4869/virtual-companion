@@ -1,0 +1,27 @@
+schemaVersion: 1
+contractId: COMPOSITE_OWNERSHIP_AND_FORCE_RLS
+userDomainRequirements:
+  - owner_user_id column
+  - unique owner_user_id plus id target
+  - composite ownership foreign keys
+  - enable row level security
+  - force row level security
+  - explicit owner predicate in application query
+requiredCompositeChains:
+  - user_relationship_conversation_message
+  - user_relationship_conversation_generation
+  - user_relationship_conversation_generation_route
+  - user_relationship_conversation_generation_attempt
+  - user_relationship_conversation_generation_candidate
+  - user_relationship_memory_and_evidence
+runtimeRolesWithBypassRlsForbidden:
+  - vc_api
+  - vc_worker
+  - vc_job_coordinator
+  - vc_dispatcher
+requiredTests:
+  - cross_user_read_denied
+  - cross_relationship_reference_denied
+  - cross_conversation_reference_denied
+  - stale_worker_fence_denied
+  - missing_context_fail_closed

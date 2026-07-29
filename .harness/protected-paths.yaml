@@ -1,0 +1,34 @@
+schemaVersion: 1
+paths:
+  - glob: specs/catalog/**
+    riskClass: C3
+    requiredSkill: catalog-change
+    independentReview: true
+  - glob: specs/contracts/**
+    riskClass: C3
+    requiredSkill: contract-change
+    independentReview: true
+  - glob: db/migration/**
+    riskClass: C4
+    requiredSkill: database-migration
+    humanApproval: true
+  - glob: service/**/safety/**
+    riskClass: C4
+    requiredSkill: safety-change
+    humanApproval: true
+  - glob: service/**/memory/**
+    riskClass: C3
+    requiredSkill: memory-change
+    independentReview: true
+  - glob: service/**/modelruntime/**
+    riskClass: C3
+    requiredSkill: model-routing-change
+    independentReview: true
+  - glob: .harness/**
+    riskClass: C4
+    requiredSkill: harness-change
+    humanApproval: true
+  - glob: scripts/harness/**
+    riskClass: C4
+    requiredSkill: harness-change
+    humanApproval: true

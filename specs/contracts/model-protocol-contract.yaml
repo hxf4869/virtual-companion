@@ -1,0 +1,37 @@
+schemaVersion: 1
+contractId: MODEL_PROTOCOL_ADAPTERS
+internalPort: ModelProtocolAdapter
+protocolFamilies:
+  OPENAI_CHAT_COMPLETIONS:
+    endpointShape: /v1/chat/completions
+    alphaAllowed: true
+  ANTHROPIC_MESSAGES:
+    endpointShape: /v1/messages
+    alphaAllowed: true
+  OPENAI_RESPONSES:
+    endpointShape: /v1/responses
+    alphaAllowed: false
+    spikeOnly: true
+alphaLiveRequirement: exactly one approved live deployment using either primary protocol family
+offlineContractRequirement: both primary protocol adapters pass local mock-server tests
+requiredContractTests:
+  - non_stream_success
+  - sse_stream_success
+  - unicode_and_long_text
+  - usage_mapping
+  - finish_or_stop_reason_mapping
+  - 429_mapping
+  - 5xx_mapping
+  - connect_timeout
+  - first_token_timeout
+  - total_timeout
+  - malformed_event
+  - cancellation
+  - late_token_fence
+  - structured_output_when_claimed
+businessLayerForbidden:
+  - provider_sdk_type
+  - provider_model_name
+  - provider_api_key
+  - provider_specific_error_class
+  - provider_session_as_memory_truth

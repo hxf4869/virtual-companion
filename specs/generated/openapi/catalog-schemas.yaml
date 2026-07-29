@@ -1,0 +1,184 @@
+openapi: 3.1.0
+info:
+  title: Virtual Companion Generated Catalog Schemas
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    RiskLevel:
+      type: string
+      enum:
+      - R0_NORMAL
+      - R1_DISTRESS
+      - R2_ELEVATED
+      - R3_HIGH
+      - R4_IMMINENT
+    SafetyClassifierOutcome:
+      type: string
+      enum:
+      - CLASSIFIED
+      - LOW_CONFIDENCE
+      - TIMEOUT
+      - UNAVAILABLE
+      - INVALID_RESPONSE
+      - RULE_CONFLICT
+    AgeState:
+      type: string
+      enum:
+      - AGE_UNKNOWN
+      - ADULT_SELF_DECLARED
+      - ADULT_VERIFICATION_REQUIRED
+      - ADULT_VERIFIED
+      - MINOR_SUSPECTED
+      - MINOR_VERIFIED
+      - AGE_APPEAL_PENDING
+      - AGE_REVERIFY_REQUIRED
+      - AGE_ACCESS_SUSPENDED
+    GenerationState:
+      type: string
+      enum:
+      - CREATED
+      - INPUT_REVIEW
+      - INPUT_BLOCKED
+      - QUEUED
+      - IN_PROGRESS
+      - WAITING_FOR_CAPACITY
+      - FINAL_REVIEW
+      - COMMITTING
+      - COMPLETED
+      - COMPLETED_FALLBACK
+      - CANCEL_REQUESTED
+      - CANCELLED
+      - OUTPUT_BLOCKED
+      - FAILED_FINAL
+    RouteDecisionStatus:
+      type: string
+      enum:
+      - CREATED
+      - SELECTED
+      - NO_ELIGIBLE_DEPLOYMENT
+      - SUPERSEDED
+      - CANCELLED
+    ProviderAttemptStatus:
+      type: string
+      enum:
+      - CREATED
+      - CONNECTING
+      - STREAMING
+      - EOS_RECEIVED
+      - SUCCEEDED
+      - RETRYABLE_FAILED
+      - NON_RETRYABLE_FAILED
+      - TIMED_OUT
+      - CANCEL_REQUESTED
+      - CANCELLED
+      - ABANDONED_LATE
+    ModelProtocol:
+      type: string
+      enum:
+      - OPENAI_CHAT_COMPLETIONS
+      - OPENAI_RESPONSES
+      - ANTHROPIC_MESSAGES
+      - FAKE
+      - FAILURE
+      - ZERO_LLM
+    UserMessageState:
+      type: string
+      enum:
+      - PERSISTED
+      - DELETE_PENDING
+      - DELETED
+    AssistantMessageState:
+      type: string
+      enum:
+      - DRAFT
+      - FINAL
+      - CANCELLED
+      - BLOCKED
+      - FAILED
+      - DELETE_PENDING
+      - DELETED
+    MemoryScope:
+      type: string
+      enum:
+      - SESSION
+      - RELATIONSHIP
+      - ACCOUNT_PRIVATE
+      - ACCOUNT_SHARED
+    MemoryCandidateStatus:
+      type: string
+      enum:
+      - PROPOSED
+      - PENDING_CONFIRMATION
+      - ACCEPTED
+      - REJECTED
+      - EXPIRED
+    MemoryItemStatus:
+      type: string
+      enum:
+      - ACTIVE
+      - SUPERSEDED
+      - EXPIRED
+      - DELETED
+    RealtimeEventType:
+      type: string
+      enum:
+      - chat.accepted
+      - chat.delta
+      - chat.replace
+      - chat.completed
+      - chat.cancelled
+      - chat.blocked
+      - chat.failed
+      - safety.notice
+      - service.mode.changed
+      - memory.candidate.created
+      - memory.candidate.confirmation_required
+      - stream.resume.accepted
+      - stream.gap
+      - stream.reset
+      - stream.denied
+    ServiceMode:
+      type: string
+      enum:
+      - FULL_AI
+      - DEGRADED_AI
+      - SAFETY_RESTRICTED
+      - ZERO_LLM
+      - MAINTENANCE
+    DataCategory:
+      type: string
+      enum:
+      - MESSAGE_TEXT
+      - MEMORY_SNIPPET
+      - SAFETY_SIGNAL
+      - ACCOUNT_METADATA
+      - AGE_VERIFICATION_RESULT
+      - USAGE_METADATA
+    ProcessingPurpose:
+      type: string
+      enum:
+      - COMPANION_CHAT
+      - OUTPUT_REVIEW
+      - MEMORY_EXTRACT
+      - EMBEDDING
+      - CONVERSATION_SUMMARY
+      - PRODUCT_EVAL
+    ErrorCode:
+      type: string
+      enum:
+      - AUTHENTICATION_REQUIRED
+      - ACCESS_DENIED
+      - NOT_FOUND_OR_FORBIDDEN
+      - AGE_VERIFICATION_REQUIRED
+      - MODEL_NO_ELIGIBLE_DEPLOYMENT
+      - MODEL_ATTEMPT_TIMEOUT
+      - MODEL_ALL_UNAVAILABLE
+      - GENERATION_CANCELLED
+      - GENERATION_OUTPUT_BLOCKED
+      - STREAM_GAP_EXPIRED
+      - STREAM_RESET_REQUIRED
+      - MEMORY_CONFIRMATION_REQUIRED
+      - MEMORY_FORBIDDEN_CONTENT
+      - CATALOG_DRIFT_DETECTED
+      - BETA_OPERATIONS_NOT_READY

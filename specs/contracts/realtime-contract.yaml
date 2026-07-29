@@ -1,0 +1,47 @@
+schemaVersion: 1
+contractId: REALTIME_RESUME_TICKET_GAP_RESET
+transport:
+  alpha: [FETCH_SSE]
+  betaAfterAdr: [FETCH_SSE, WEBSOCKET]
+ticket:
+  endpoint: POST /api/v1/realtime/tickets
+  ttlSeconds: 45
+  singleUse: true
+  serverStoresHashOnly: true
+  boundTo:
+    - ownerUserId
+    - sessionId
+    - generationId
+    - origin
+    - transport
+    - streamEpoch
+    - afterSeq
+  mayContainLongLivedCredential: false
+resume:
+  cursor: eventSeq
+  epoch: streamEpoch
+  sseHeader: Last-Event-ID
+  dispositions:
+    - RESUMED
+    - TERMINAL_SNAPSHOT
+    - GAP_EXPIRED
+    - RESET_REQUIRED
+    - NOT_FOUND_OR_FORBIDDEN
+  gapEvent: stream.gap
+  resetEvent: stream.reset
+  snapshotEndpoint: GET /api/v1/generations/{generationId}/snapshot
+retention:
+  reviewedDraftAfterTerminalMinutes: 30
+  durableTerminalMinimumDays: 7
+rules:
+  - client advances only the last contiguous sequence
+  - a gap stops draft append and requires snapshot recovery
+  - an epoch mismatch discards uncommitted draft and requires reset
+  - missing deltas are never fabricated
+  - chat.completed exists only after final message and final safety review commit
+h5Security:
+  preferredSession: HttpOnly Secure SameSite cookie
+  csrfRequiredForStateChanges: true
+  originValidationRequired: true
+  longLivedTokenInLocalStorageForbidden: true
+  longLivedTokenInRealtimeQueryForbidden: true

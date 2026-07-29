@@ -1,0 +1,27 @@
+schemaVersion: 1
+catalogId: message-states
+enums:
+- typeName: UserMessageState
+  entries:
+  - code: PERSISTED
+    order: 0
+  - code: DELETE_PENDING
+    order: 1
+  - code: DELETED
+    order: 2
+- typeName: AssistantMessageState
+  entries:
+  - code: DRAFT
+    order: 0
+  - code: FINAL
+    order: 1
+  - code: CANCELLED
+    order: 2
+  - code: BLOCKED
+    order: 3
+  - code: FAILED
+    order: 4
+  - code: DELETE_PENDING
+    order: 5
+  - code: DELETED
+    order: 6

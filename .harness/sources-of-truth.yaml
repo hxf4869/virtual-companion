@@ -1,0 +1,21 @@
+schemaVersion: 1
+sources:
+  phaseScope: specs/catalog/product-scope.yaml
+  catalogManifest: specs/catalog/catalog-manifest.yaml
+  riskLevels: specs/catalog/risk-levels.yaml
+  ageStates: specs/catalog/age-states.yaml
+  generationStates: specs/catalog/generation-states.yaml
+  routeDecisionStatuses: specs/catalog/route-decision-statuses.yaml
+  providerAttemptStatuses: specs/catalog/provider-attempt-statuses.yaml
+  modelProtocols: specs/catalog/model-protocols.yaml
+  memoryScopes: specs/catalog/memory-scopes.yaml
+  realtimeEvents: specs/catalog/realtime-events.yaml
+  technologyBaseline: .harness/tools.lock.yaml
+  licensePolicy: .harness/license-policy.yaml
+  protectedPaths: .harness/protected-paths.yaml
+  invariants: .harness/invariants.yaml
+  betaDutyRoster: ops/beta-duty-roster.yaml
+rules:
+  generatedFilesAreNotEditable: true
+  missingSourceBlocksMerge: true
+  conflictingMarkdownDoesNotOverrideMachineTruth: true

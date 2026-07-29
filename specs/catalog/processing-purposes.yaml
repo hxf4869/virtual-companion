@@ -1,0 +1,15 @@
+schemaVersion: 1
+catalogId: processing-purposes
+entries:
+- code: COMPANION_CHAT
+  order: 0
+- code: OUTPUT_REVIEW
+  order: 1
+- code: MEMORY_EXTRACT
+  order: 2
+- code: EMBEDDING
+  order: 3
+- code: CONVERSATION_SUMMARY
+  order: 4
+- code: PRODUCT_EVAL
+  order: 5

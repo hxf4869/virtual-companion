@@ -1,0 +1,13 @@
+schemaVersion: 1
+catalogId: service-modes
+entries:
+- code: FULL_AI
+  order: 0
+- code: DEGRADED_AI
+  order: 1
+- code: SAFETY_RESTRICTED
+  order: 2
+- code: ZERO_LLM
+  order: 3
+- code: MAINTENANCE
+  order: 4
