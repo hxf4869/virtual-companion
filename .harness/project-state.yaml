@@ -2,8 +2,8 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0005
+activeTaskCard: docs/tasks/TASK-0005-harness-latest-task-fixture.md
 lastAcceptedTask: TASK-0004
 lastAcceptedHandoff: docs/handoffs/TASK-0004.json
 lastTerminalTask: TASK-0004
