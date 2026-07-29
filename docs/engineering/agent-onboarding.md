@@ -20,9 +20,9 @@ AGENTS.md
 | 客户端 | 入口 | 处理方式 |
 |---|---|---|
 | OpenAI Codex | `AGENTS.md` | 原生项目指令 |
-| Zed Agent Panel | `AGENTS.md` | 原生项目指令 |
+| Zed Agent Panel | `AGENTS.md` | Zed 官方 first-match 列表中，本仓库首个现存入口 |
 | Claude Code | `CLAUDE.md` | 仅 `@AGENTS.md` 导入 |
-| GitHub Copilot | `.github/copilot-instructions.md` | 仅引用 `AGENTS.md` |
+| GitHub Copilot CLI | `AGENTS.md` + `CLAUDE.md` | 同时发现并合并：原生加载 `AGENTS.md`，并解析 `CLAUDE.md` 的 `@AGENTS.md` 薄导入 |
 | 其他 Agent / Zcode 类应用 | `AGENTS.md` | 开始工作前手工加载 |
 
 该设计依据各客户端公开机制建立，并把差异限制在薄适配层：
@@ -30,9 +30,12 @@ AGENTS.md
 - OpenAI Codex：<https://learn.chatgpt.com/docs/agent-configuration/agents-md>
 - Zed：<https://zed.dev/docs/ai/instructions>
 - Claude Code：<https://code.claude.com/docs/en/memory>
-- GitHub Copilot：<https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions>
+- GitHub Copilot CLI 导入：<https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions>
+- GitHub Copilot 支持矩阵：<https://docs.github.com/en/copilot/reference/custom-instructions-support>
 
-如果未来客户端支持方式变化，只更新 `.harness/agent-entrypoints.yaml` 和对应薄入口；不得复制整份规则。
+Zed 会使用优先列表中的第一个现存项目指令，因此仓库不创建优先级高于 `AGENTS.md` 的 `.github/copilot-instructions.md`。Copilot CLI 会同时发现并组合 `AGENTS.md` 与 `CLAUDE.md`；后者的 `@AGENTS.md` 可能让同一 Canonical Instructions 再次进入上下文，但两条链路同源且不产生规则冲突。若客户端既未原生加载 `AGENTS.md` 又无法解析导入，则必须 BLOCKED。
+GitHub Copilot 各产品形态支持的指令类型不同，必须以
+<https://docs.github.com/en/copilot/reference/custom-instructions-support> 分别判断，不能笼统宣称所有 Copilot 自动加载同一文件；未在清单中明确登记的 Copilot 形态按未知客户端处理，必须手工加载 `AGENTS.md`。如果未来客户端支持方式变化，只更新 `.harness/agent-entrypoints.yaml` 和现有薄入口；不得复制整份规则。
 
 ## 新会话恢复算法
 

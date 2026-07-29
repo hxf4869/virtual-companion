@@ -48,6 +48,20 @@ WINDOWS_RESERVED_COMPONENT_RE = re.compile(
     re.IGNORECASE,
 )
 WINDOWS_INVALID_COMPONENT_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
+ZED_PROJECT_INSTRUCTION_PRIORITY = (
+    ".rules",
+    ".cursorrules",
+    ".windsurfrules",
+    ".clinerules",
+    ".github/copilot-instructions.md",
+    "AGENT.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+)
+COPILOT_SUPPORT_MATRIX = (
+    "https://docs.github.com/en/copilot/reference/custom-instructions-support"
+)
 RISK_RANK = {"C1": 1, "C2": 2, "C3": 3, "C4": 4}
 AUTHORIZATION_FIELDS = (
     "taskId",
@@ -2353,6 +2367,17 @@ def validate_harness_runtime(audit: Audit) -> None:
         )
 
 
+def first_existing_zed_instruction_path() -> str | None:
+    return next(
+        (
+            candidate
+            for candidate in ZED_PROJECT_INSTRUCTION_PRIORITY
+            if (ROOT / normalize_repo_path(candidate)).is_file()
+        ),
+        None,
+    )
+
+
 def validate_entrypoints(audit: Audit) -> None:
     config = load_yaml(ROOT / ".harness/agent-entrypoints.yaml")
     canonical = str(config.get("canonicalInstructions", ""))
@@ -2366,6 +2391,18 @@ def validate_entrypoints(audit: Audit) -> None:
     audit.require(isinstance(clients, dict), "agent-entrypoints: clients must be an object")
     if not isinstance(clients, dict):
         return
+    expected_clients = {
+        "codex",
+        "zed",
+        "claudeCode",
+        "githubCopilotCliAgentInstructions",
+        "githubCopilotCliClaudeImport",
+    }
+    audit.require(
+        set(clients) == expected_clients,
+        "agent-entrypoints: client discovery mechanisms must be explicit and complete: "
+        f"{sorted(expected_clients)}",
+    )
     allowed_modes = {"NATIVE_DISCOVERY", "THIN_IMPORT", "THIN_REFERENCE"}
     for client_id, client in clients.items():
         if not isinstance(client, dict):
@@ -2399,6 +2436,96 @@ def validate_entrypoints(audit: Audit) -> None:
             nonblank = [line for line in text.splitlines() if line.strip()]
             audit.require(len(nonblank) <= 8, f"agent-entrypoints: {client_id} adapter is not thin")
             audit.require("## 绝对禁止" not in text, f"agent-entrypoints: {client_id} duplicates canonical rules")
+            audit.require(
+                client.get("unavailableAction")
+                == "BLOCK_IF_CANONICAL_UNAVAILABLE",
+                f"agent-entrypoints: {client_id} must fail closed when "
+                "canonical instructions cannot be loaded",
+            )
+            audit.require(
+                "blocked" in text.casefold(),
+                f"agent-entrypoints: {client_id} adapter must state its "
+                "fail-closed behavior",
+            )
+    zed = clients.get("zed")
+    if isinstance(zed, dict):
+        first_existing = first_existing_zed_instruction_path()
+        audit.require(
+            first_existing == zed.get("instructionPath"),
+            "agent-entrypoints: Zed instructionPath must equal the first existing "
+            f"official-priority file, got {first_existing!r}",
+        )
+        audit.require(
+            zed.get("discoverySemantics") == "FIRST_MATCH",
+            "agent-entrypoints: Zed must declare FIRST_MATCH discovery semantics",
+        )
+    copilot_cli_agent = clients.get("githubCopilotCliAgentInstructions")
+    copilot_cli_import = clients.get("githubCopilotCliClaudeImport")
+    copilot_cli_mechanisms = (copilot_cli_agent, copilot_cli_import)
+    for copilot_cli in copilot_cli_mechanisms:
+        if not isinstance(copilot_cli, dict):
+            continue
+        audit.require(
+            copilot_cli.get("clientScope") == "GITHUB_COPILOT_CLI",
+            "agent-entrypoints: Copilot CLI mechanism must have an exact client scope",
+        )
+        audit.require(
+            copilot_cli.get("discoverySemantics") == "MERGE_ALL_DISCOVERED",
+            "agent-entrypoints: Copilot CLI must declare merge-all discovery semantics",
+        )
+        audit.require(
+            copilot_cli.get("supportMatrix") == COPILOT_SUPPORT_MATRIX,
+            "agent-entrypoints: Copilot CLI mechanism must link "
+            "the official support matrix",
+        )
+        audit.require(
+            copilot_cli.get("documentation")
+            == "https://docs.github.com/en/copilot/how-tos/copilot-cli/"
+            "customize-copilot/add-custom-instructions",
+            "agent-entrypoints: Copilot CLI mechanism must link its official "
+            "instruction documentation",
+        )
+    if isinstance(copilot_cli_agent, dict):
+        audit.require(
+            copilot_cli_agent.get("instructionPath") == canonical
+            and copilot_cli_agent.get("mode") == "NATIVE_DISCOVERY"
+            and copilot_cli_agent.get("appliesWhen")
+            == "COPILOT_CLI_AGENT_INSTRUCTIONS_SUPPORTED",
+            "agent-entrypoints: Copilot CLI must register native AGENTS.md discovery",
+        )
+    if isinstance(copilot_cli_import, dict):
+        audit.require(
+            copilot_cli_import.get("instructionPath") == "CLAUDE.md"
+            and copilot_cli_import.get("mode") == "THIN_IMPORT"
+            and copilot_cli_import.get("requiredReference") == "@AGENTS.md"
+            and copilot_cli_import.get("appliesWhen")
+            == "COPILOT_CLI_CLAUDE_IMPORT_SUPPORTED",
+            "agent-entrypoints: Copilot CLI must register the shared CLAUDE.md thin import",
+        )
+        audit.require(
+            copilot_cli_import.get("unavailableAction")
+            == "BLOCK_IF_CANONICAL_UNAVAILABLE",
+            "agent-entrypoints: Copilot CLI import must fail closed when canonical "
+            "instructions are unavailable",
+        )
+        copilot_adapter = ROOT / "CLAUDE.md"
+        if copilot_adapter.is_file():
+            audit.require(
+                "blocked" in copilot_adapter.read_text(encoding="utf-8").casefold(),
+                "agent-entrypoints: shared Copilot CLI adapter must state its "
+                "fail-closed behavior",
+            )
+    if isinstance(copilot_cli_agent, dict) and isinstance(
+        copilot_cli_import, dict
+    ):
+        audit.require(
+            copilot_cli_agent.get("clientScope")
+            == copilot_cli_import.get("clientScope")
+            and copilot_cli_agent.get("documentation")
+            == copilot_cli_import.get("documentation"),
+            "agent-entrypoints: Copilot CLI discovery mechanisms must share "
+            "one exact product scope and documentation",
+        )
 
 
 def validate_command_registry(audit: Audit, config: dict[str, Any]) -> None:

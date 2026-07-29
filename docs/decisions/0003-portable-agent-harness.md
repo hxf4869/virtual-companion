@@ -13,7 +13,7 @@
 ## 决策
 
 1. `AGENTS.md` 是唯一 Agent 行为真源。
-2. 原生支持 `AGENTS.md` 的客户端直接读取；其他客户端只增加薄导入或薄引用。未知客户端必须手工加载 `AGENTS.md`。
+2. 原生支持 `AGENTS.md` 的客户端直接读取；其他客户端只增加薄导入或薄引用。入口登记必须反映客户端真实发现优先级、合并语义与产品形态，不能用一个泛化名称掩盖差异；为保证 Zed 直接命中 `AGENTS.md`，不创建优先级更高的 `.github/copilot-instructions.md`。Copilot CLI 同时发现并组合 `AGENTS.md` 与 `CLAUDE.md`，后者仍只是 `@AGENTS.md` 薄导入，两条链路同源；Claude Code 复用该薄入口。所有适配器仍导向同一 Canonical Instructions。无法通过任何受支持机制加载 Canonical Instructions 时 fail closed。未知客户端必须手工加载 `AGENTS.md`。
 3. `.harness/project-state.yaml` 记录当前阶段、活动任务、最后验收任务、能力门禁和唯一下一动作。
 4. `.harness/task-lifecycle.yaml` 是任务状态机真源；同一时刻最多一个活动任务，终态统一为 `ACCEPTED`/`REJECTED`。
 5. `.harness/task-ledger.yaml` 以 append-only 条目保存终态任务的可发现性；每条 Git 父边都必须保留既有条目。V2 终态边界是唯一、单父、原子追加 Ledger/任务卡/项目状态/Evidence/Handoff 的提交。历史任务卡、完整 Evidence 树和 Handoff 绑定该提交的 Git blob、模式与路径集合，不可删除、改写、链接替换或删后恢复。

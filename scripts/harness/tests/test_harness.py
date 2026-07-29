@@ -36,6 +36,7 @@ from doctor import (  # noqa: E402
     changed_skill_tree_ids,
     current_regular_file_bytes,
     effective_protected_rules,
+    first_existing_zed_instruction_path,
     is_review_evidence_path,
     intervening_terminal_boundaries,
     project_state_closure_projection,
@@ -54,6 +55,7 @@ from doctor import (  # noqa: E402
     validate_check_artifact,
     validate_changed_path_modes,
     validate_evidence_check,
+    validate_entrypoints,
     validate_idle_terminal_paths,
     validate_idle_terminal_history,
     validate_json_schema,
@@ -194,6 +196,61 @@ class PathPolicyTests(unittest.TestCase):
         messages = "\n".join(audit.errors)
         self.assertIn("non-portable backslash", messages)
         self.assertIn("not valid portable UTF-8", messages)
+
+    def test_zed_uses_first_existing_official_priority_entrypoint(self) -> None:
+        self.assertEqual("AGENTS.md", first_existing_zed_instruction_path())
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            (repository / "AGENTS.md").write_text("# canonical\n", encoding="utf-8")
+            adapter = repository / ".github/copilot-instructions.md"
+            adapter.parent.mkdir(parents=True)
+            adapter.write_text("Read AGENTS.md\n", encoding="utf-8")
+            with patch.object(doctor, "ROOT", repository):
+                self.assertEqual(
+                    ".github/copilot-instructions.md",
+                    first_existing_zed_instruction_path(),
+                )
+                (repository / ".rules").write_text("higher priority\n", encoding="utf-8")
+                self.assertEqual(".rules", first_existing_zed_instruction_path())
+
+    def test_copilot_cli_registers_both_merged_discovery_mechanisms(self) -> None:
+        audit = Audit()
+        validate_entrypoints(audit)
+        self.assertEqual([], audit.errors)
+
+        config = copy.deepcopy(
+            load_yaml(ROOT / ".harness/agent-entrypoints.yaml")
+        )
+        del config["clients"]["githubCopilotCliAgentInstructions"]
+        mutated = Audit()
+        with patch.object(doctor, "load_yaml", return_value=config):
+            validate_entrypoints(mutated)
+        self.assertTrue(
+            any(
+                "client discovery mechanisms must be explicit and complete"
+                in error
+                for error in mutated.errors
+            ),
+            mutated.errors,
+        )
+
+    def test_copilot_cli_merge_semantics_cannot_drift(self) -> None:
+        config = copy.deepcopy(
+            load_yaml(ROOT / ".harness/agent-entrypoints.yaml")
+        )
+        config["clients"]["githubCopilotCliClaudeImport"][
+            "discoverySemantics"
+        ] = "FIRST_MATCH"
+        audit = Audit()
+        with patch.object(doctor, "load_yaml", return_value=config):
+            validate_entrypoints(audit)
+        self.assertTrue(
+            any(
+                "merge-all discovery semantics" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
 
 
 class GitHistoryPolicyTests(unittest.TestCase):

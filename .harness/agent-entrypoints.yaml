@@ -9,17 +9,34 @@ clients:
   zed:
     instructionPath: AGENTS.md
     mode: NATIVE_DISCOVERY
+    discoverySemantics: FIRST_MATCH
     contentSha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
   claudeCode:
     instructionPath: CLAUDE.md
     mode: THIN_IMPORT
     requiredReference: "@AGENTS.md"
-    contentSha256: 319f806a793b2ed020352d5a822e0d0625c45cf3b9433de92cafa8b4d27c7207
-  githubCopilot:
-    instructionPath: .github/copilot-instructions.md
-    mode: THIN_REFERENCE
-    requiredReference: AGENTS.md
-    contentSha256: 73267e0875aaaadf4033fb4ea105bde40d4140c0f59a0381914eb3fe73f6dc62
+    unavailableAction: BLOCK_IF_CANONICAL_UNAVAILABLE
+    contentSha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+  githubCopilotCliAgentInstructions:
+    clientScope: GITHUB_COPILOT_CLI
+    instructionPath: AGENTS.md
+    mode: NATIVE_DISCOVERY
+    discoverySemantics: MERGE_ALL_DISCOVERED
+    appliesWhen: COPILOT_CLI_AGENT_INSTRUCTIONS_SUPPORTED
+    supportMatrix: https://docs.github.com/en/copilot/reference/custom-instructions-support
+    documentation: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
+    contentSha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
+  githubCopilotCliClaudeImport:
+    clientScope: GITHUB_COPILOT_CLI
+    instructionPath: CLAUDE.md
+    mode: THIN_IMPORT
+    requiredReference: "@AGENTS.md"
+    unavailableAction: BLOCK_IF_CANONICAL_UNAVAILABLE
+    discoverySemantics: MERGE_ALL_DISCOVERED
+    appliesWhen: COPILOT_CLI_CLAUDE_IMPORT_SUPPORTED
+    supportMatrix: https://docs.github.com/en/copilot/reference/custom-instructions-support
+    documentation: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
+    contentSha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
 rules:
   adaptersMayNotDuplicateCanonicalRules: true
   repositorySkillsMustBeReadByRegisteredPath: true
