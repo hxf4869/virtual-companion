@@ -96,17 +96,17 @@ reviewers:
   - id: architecture-review
     kind: architecture
     verdict: PASS
-    reviewedCommit: 9103214172720bc08b3b45774ad7b802d6af556d
+    reviewedCommit: 6999a1117f6b4ee97395c6b4756553ec48de5c9c
     evidencePath: docs/evidence/TASK-0002/review-architecture.md
   - id: portability-review
     kind: portability
     verdict: PASS
-    reviewedCommit: 9103214172720bc08b3b45774ad7b802d6af556d
+    reviewedCommit: 6999a1117f6b4ee97395c6b4756553ec48de5c9c
     evidencePath: docs/evidence/TASK-0002/review-portability.md
   - id: codex-security-reviewer
     kind: security
     verdict: PASS
-    reviewedCommit: 9103214172720bc08b3b45774ad7b802d6af556d
+    reviewedCommit: 6999a1117f6b4ee97395c6b4756553ec48de5c9c
     evidencePath: docs/evidence/TASK-0002/review-safety.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0002

@@ -5,7 +5,7 @@ taskId: TASK-0002
 reviewerId: architecture-review
 kind: architecture
 verdict: PASS
-reviewedCommit: 9103214172720bc08b3b45774ad7b802d6af556d
+reviewedCommit: 6999a1117f6b4ee97395c6b4756553ec48de5c9c
 ```
 
 ## 结论
@@ -22,8 +22,9 @@ PASS，无阻断项。
 
 ## 独立复验
 
-- `python scripts/harness/doctor.py --task TASK-0002`：PASS，2608 checks。
+- `python scripts/harness/doctor.py --task TASK-0002`：PASS，2789 checks。
 - Harness 单元测试：69 项通过，1 项按平台跳过。
 - Python、PowerShell、WSL 三套 precheck：各 5 项 PASS。
 - `git diff --check`：PASS。
 - 独立检出精确 SHA，复验后工作区保持干净。
+- 最后一跳仅增加 5 行终态测试夹具；生产门禁与原断言均未修改，两个定向状态测试 2/2 PASS。
