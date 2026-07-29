@@ -1,0 +1,15 @@
+{
+  "name": "虚拟对象开发基线",
+  "appid": "",
+  "description": "Technical Alpha H5 项目开发基线",
+  "versionName": "0.0.1",
+  "versionCode": "1",
+  "transformPx": false,
+  "h5": {
+    "title": "虚拟对象开发基线"
+  },
+  "uniStatistics": {
+    "enable": false
+  },
+  "vueVersion": "3"
+}

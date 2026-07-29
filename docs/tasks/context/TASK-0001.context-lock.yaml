@@ -1,0 +1,20 @@
+schemaVersion: 1
+taskId: TASK-0001
+baseCommit: 85cc7393957bc8840207fabce25395dd9bad62bd
+contextFingerprint: a790df0c92e1d237353a07c6848247729814e7d8c227a1af4ecf29101ee92c8e
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+inputs:
+  - path: G:/ai/hxf/AI虚拟陪伴系统技术架构与成熟组件接入方案.md
+    sha256: 7e7a2ace82b0bb9dc9a44d604ed59a4dfd9022b096615110c5fb142e09e38415
+  - path: G:/ai/hxf/虚拟对象_AI陪伴项目_V0.3_产品需求与技术方案.md
+    sha256: 190bf477c3290ef0d840ca5e50f130c6975fd90ebdd7b95e066ea640e86b93d5
+  - path: G:/ai/hxf/虚拟对象_V0.3.1_技术契约与机器真源起步包.zip
+    sha256: 76c6fe71f87864744790c4e809d54c6f853c8303fa74b87278ad8f400d38d6f8
+  - path: .harness/phase-scope.yaml
+    sha256: bcb0e04c27c807f1f8c726789407a52af58096a064c381cb68f484ef3022d98e
+  - path: .harness/sources-of-truth.yaml
+    sha256: a7577c4b3663a02c1c4a79013093b7b51bd9374a669eead25951f8af4e50370f
+  - path: .harness/invariants.yaml
+    sha256: fa54417a6acd8b7a90ed86a47a6a9fd14c9849e27294168826841debd7121559
+  - path: .harness/tools.lock.yaml
+    sha256: 7b6c0b84ea1079cbaef1db90d64178937467f05915fd1306c5c981c5865296df

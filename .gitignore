@@ -1,0 +1,42 @@
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+
+# Java / Maven
+**/target/
+.mvn/timing.properties
+
+# Node / uni-app
+frontend/node_modules/
+frontend/dist/
+frontend/.hbuilderx/
+frontend/.vite/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# Logs and runtime files
+*.log
+logs/
+*.pid
+
+# OS and local tooling
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.swp
+
+# Local evidence scratch files
+docs/evidence/**/raw/

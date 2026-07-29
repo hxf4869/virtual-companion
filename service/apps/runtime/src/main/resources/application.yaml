@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: virtual-companion-runtime
+  threads:
+    virtual:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+virtual-companion:
+  baseline:
+    phase: "@virtual-companion.phase@"
+    transport: "@virtual-companion.transport@"
+    java-version: "@virtual-companion.java-baseline@"
+    spring-boot-version: "@spring-boot.version@"
+    spring-ai-version: "@spring-ai.version@"
+    spring-modulith-version: "@spring-modulith.version@"
