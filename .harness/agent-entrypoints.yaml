@@ -1,0 +1,26 @@
+schemaVersion: 1
+canonicalInstructions: AGENTS.md
+unknownClientAction: LOAD_CANONICAL_INSTRUCTIONS_BEFORE_WORK
+clients:
+  codex:
+    instructionPath: AGENTS.md
+    mode: NATIVE_DISCOVERY
+    contentSha256: fc34bfddf4c8a9c56e9384144db86fd7c55370acf777e9ac09dd8c86db2cc194
+  zed:
+    instructionPath: AGENTS.md
+    mode: NATIVE_DISCOVERY
+    contentSha256: fc34bfddf4c8a9c56e9384144db86fd7c55370acf777e9ac09dd8c86db2cc194
+  claudeCode:
+    instructionPath: CLAUDE.md
+    mode: THIN_IMPORT
+    requiredReference: "@AGENTS.md"
+    contentSha256: 319f806a793b2ed020352d5a822e0d0625c45cf3b9433de92cafa8b4d27c7207
+  githubCopilot:
+    instructionPath: .github/copilot-instructions.md
+    mode: THIN_REFERENCE
+    requiredReference: AGENTS.md
+    contentSha256: 73267e0875aaaadf4033fb4ea105bde40d4140c0f59a0381914eb3fe73f6dc62
+rules:
+  adaptersMayNotDuplicateCanonicalRules: true
+  repositorySkillsMustBeReadByRegisteredPath: true
+  historicalChatIsNotRequiredForRecovery: true

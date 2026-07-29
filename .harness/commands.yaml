@@ -1,8 +1,26 @@
-schemaVersion: 1
+schemaVersion: 2
+runner: scripts/harness/precheck.py
 commands:
-  catalogValidate: python scripts/harness/catalog_tool.py validate
-  catalogGenerate: python scripts/harness/catalog_tool.py generate
-  catalogDrift: python scripts/harness/catalog_tool.py diff --fail-on-drift
-  paidFeatureCheck: python scripts/harness/check_paid_features.py
-  betaGateCheck: python scripts/harness/check_beta_gate.py
-  precheck: bash scripts/harness/precheck.sh
+  doctor:
+    description: Validate project state, task context, Skills, protected paths, schemas, and diff scope
+    argv: [scripts/harness/doctor.py]
+    passTask: true
+  catalogValidate:
+    description: Validate the Catalog sources
+    argv: [scripts/harness/catalog_tool.py, validate]
+  catalogDrift:
+    description: Regenerate Catalog outputs in a temporary directory and reject drift
+    argv: [scripts/harness/catalog_tool.py, diff, --fail-on-drift]
+  paidFeatureCheck:
+    description: Reject paid-only runtime prerequisites
+    argv: [scripts/harness/check_paid_features.py]
+  betaRosterGate:
+    description: Keep generation closed unless the duty-roster structure is complete
+    argv: [scripts/harness/check_beta_gate.py]
+profiles:
+  precheck:
+    - doctor
+    - catalogValidate
+    - catalogDrift
+    - paidFeatureCheck
+    - betaRosterGate

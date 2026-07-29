@@ -2,12 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "TaskHandoff",
   "type": "object",
-  "required": ["taskId", "state", "baseCommit", "headCommit", "completed", "remaining", "knownRisks", "nextAction"],
+  "required": ["taskId", "state", "baseCommit", "headCommit", "evidencePath", "completed", "remaining", "knownRisks", "nextAction"],
   "properties": {
     "taskId": {"type": "string"},
     "state": {"enum": ["READY", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "ACCEPTED", "REJECTED"]},
-    "baseCommit": {"type": "string"},
-    "headCommit": {"type": "string"},
+    "baseCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "headCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "evidencePath": {"type": "string"},
+    "reviewers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "verdict", "reviewedCommit", "evidencePath"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "verdict": {"enum": ["PASS", "FAIL"]},
+          "reviewedCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "evidencePath": {"type": "string", "minLength": 1}
+        }
+      }
+    },
     "completed": {"type": "array", "items": {"type": "string"}},
     "remaining": {"type": "array", "items": {"type": "string"}},
     "knownRisks": {"type": "array", "items": {"type": "string"}},

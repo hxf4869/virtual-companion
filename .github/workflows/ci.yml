@@ -11,11 +11,21 @@ permissions:
 
 jobs:
   harness:
-    name: Catalog and harness
-    runs-on: ubuntu-latest
+    name: Harness (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -24,12 +34,16 @@ jobs:
           cache-dependency-path: requirements-harness.txt
       - name: Install harness dependencies
         run: python -m pip install -r requirements-harness.txt
-      - name: Validate Catalog
-        run: python scripts/harness/catalog_tool.py validate
-      - name: Check generated drift
-        run: python scripts/harness/catalog_tool.py diff --fail-on-drift
-      - name: Check paid feature boundary
-        run: python scripts/harness/check_paid_features.py
+      - name: Test Harness failure and portability rules
+        run: python -m unittest discover -s scripts/harness/tests -p "test_*.py"
+      - name: Run canonical Harness precheck (Windows wrapper)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\scripts\harness\precheck.ps1
+      - name: Run canonical Harness precheck (POSIX wrapper)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash scripts/harness/precheck.sh
 
   backend:
     name: Backend

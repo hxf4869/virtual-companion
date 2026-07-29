@@ -1,0 +1,30 @@
+schemaVersion: 1
+states:
+  - DRAFT
+  - READY
+  - IN_PROGRESS
+  - BLOCKED
+  - IN_REVIEW
+  - ACCEPTED
+  - REJECTED
+activeStates:
+  - READY
+  - IN_PROGRESS
+  - BLOCKED
+  - IN_REVIEW
+terminalStates:
+  - ACCEPTED
+  - REJECTED
+transitions:
+  DRAFT: [READY, REJECTED]
+  READY: [IN_PROGRESS, BLOCKED, REJECTED]
+  IN_PROGRESS: [BLOCKED, IN_REVIEW, REJECTED]
+  BLOCKED: [READY, IN_PROGRESS, REJECTED]
+  IN_REVIEW: [IN_PROGRESS, BLOCKED, ACCEPTED, REJECTED]
+  ACCEPTED: []
+  REJECTED: []
+rules:
+  maximumActiveTasks: 1
+  readyRequiresOwnerApproval: true
+  terminalRequiresEvidenceAndHandoff: true
+  c3AndC4RequireIndependentReview: true

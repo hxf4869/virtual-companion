@@ -1,5 +1,10 @@
 schemaVersion: 1
 sources:
+  projectState: .harness/project-state.yaml
+  taskLifecycle: .harness/task-lifecycle.yaml
+  agentEntrypoints: .harness/agent-entrypoints.yaml
+  commandRegistry: .harness/commands.yaml
+  skillRegistry: .harness/skills.yaml
   phaseScope: specs/catalog/product-scope.yaml
   catalogManifest: specs/catalog/catalog-manifest.yaml
   riskLevels: specs/catalog/risk-levels.yaml
@@ -15,7 +20,10 @@ sources:
   protectedPaths: .harness/protected-paths.yaml
   invariants: .harness/invariants.yaml
   betaDutyRoster: ops/beta-duty-roster.yaml
+  evidenceSchema: docs/schemas/evidence-pack.schema.json
+  handoffSchema: docs/schemas/handoff.schema.json
 rules:
   generatedFilesAreNotEditable: true
   missingSourceBlocksMerge: true
   conflictingMarkdownDoesNotOverrideMachineTruth: true
+  historicalSourceSnapshotsAreNonAuthoritative: true

@@ -1,5 +1,16 @@
 schemaVersion: 1
 baselineDate: 2026-07-29
+governance:
+  python:
+    minimum: "3.11"
+    verifiedLine: "3.12.x"
+  pyyaml:
+    minimum: 6.0
+    maximumExclusive: 7.0
+    verifiedVersions: [6.0.1, 6.0.3]
+  timezoneData:
+    provider: SYSTEM_OR_TZDATA_PACKAGE
+    requiredZone: Asia/Shanghai
 runtime:
   java:
     distribution: Eclipse Temurin or compatible OpenJDK

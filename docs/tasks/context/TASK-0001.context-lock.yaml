@@ -3,12 +3,19 @@ taskId: TASK-0001
 baseCommit: 85cc7393957bc8840207fabce25395dd9bad62bd
 contextFingerprint: a790df0c92e1d237353a07c6848247729814e7d8c227a1af4ecf29101ee92c8e
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: LEGACY_EXTERNAL_PATH_WITH_REPOSITORY_ALIAS
 inputs:
   - path: G:/ai/hxf/AI虚拟陪伴系统技术架构与成熟组件接入方案.md
+    repositoryPath: docs/source/AI虚拟陪伴系统技术架构与成熟组件接入方案.md
+    repositoryCommit: ab62e45abc674cffd167805c11d8e924c6d32be1
     sha256: 7e7a2ace82b0bb9dc9a44d604ed59a4dfd9022b096615110c5fb142e09e38415
   - path: G:/ai/hxf/虚拟对象_AI陪伴项目_V0.3_产品需求与技术方案.md
+    repositoryPath: docs/source/虚拟对象_AI陪伴项目_V0.3_产品需求与技术方案.md
+    repositoryCommit: ab62e45abc674cffd167805c11d8e924c6d32be1
     sha256: 190bf477c3290ef0d840ca5e50f130c6975fd90ebdd7b95e066ea640e86b93d5
   - path: G:/ai/hxf/虚拟对象_V0.3.1_技术契约与机器真源起步包.zip
+    provenanceOnly: true
+    verification: HASH_ONLY_LEGACY_EXTERNAL_NOT_IN_REPOSITORY
     sha256: 76c6fe71f87864744790c4e809d54c6f853c8303fa74b87278ad8f400d38d6f8
   - path: .harness/phase-scope.yaml
     sha256: bcb0e04c27c807f1f8c726789407a52af58096a064c381cb68f484ef3022d98e

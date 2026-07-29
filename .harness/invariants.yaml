@@ -33,3 +33,18 @@ invariants:
   - id: INV-COST-001
     statement: core runtime has no paid software feature prerequisite except model or compute usage
     enforcement: [license_scan, paid_feature_denylist]
+  - id: INV-HARNESS-001
+    statement: AGENTS.md is the single canonical Agent instruction source and client adapters only reference it
+    enforcement: [harness_doctor, ci]
+  - id: INV-HARNESS-002
+    statement: at most one task is active and every repository mutation is authorized by its context lock and diff scope
+    enforcement: [harness_doctor, task_lifecycle, ci]
+  - id: INV-HARNESS-003
+    statement: protected paths require the registered exact Skill and declared approval or independent review
+    enforcement: [harness_doctor, protected_path_gate, ci]
+  - id: INV-HARNESS-004
+    statement: Windows macOS Linux and WSL wrappers execute the same Python Harness implementation
+    enforcement: [commands_registry, harness_tests, ci]
+  - id: INV-HARNESS-005
+    statement: evidence never converts an unexecuted or failed check into PASS
+    enforcement: [evidence_schema, harness_doctor, independent_review]

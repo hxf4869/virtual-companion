@@ -1,70 +1,58 @@
 ---
-id: harness-change
-version: 1.0.0
-riskClass: C4
+name: harness-change
+description: 修改 Agent 规则、Harness 配置、治理脚本、受保护路径、Skill、任务模板、证据 Schema 或 CI 门禁时使用。
+metadata:
+  id: harness-change
+  version: 1.1.0
+  riskClass: C4
 ---
 
-# Purpose
+# Harness Change
 
-修改 Harness、Catalog 生成器、门禁、受保护路径、Skill 或证据机制。
+## Purpose
 
-# When to Use
+在不为当前任务放宽约束的前提下修改治理系统，并证明不同平台和 Agent 客户端仍执行同一套规则。
 
-仅在 READY 任务明确列出 `harness-change`，且任务写入范围覆盖目标文件时使用。
+## Preconditions
 
-# When Not to Use
+- READY 任务明确列出 `harness-change`、精确版本、C4 风险和人工批准；
+- Base Commit、Context Fingerprint、读写范围、禁止路径、验收和前向修复策略完整；
+- 任务要求独立 Reviewer，且 Harness 变更与业务变更隔离。
 
-- 任务仍为 DRAFT、缺少 Owner 或缺少验收；
-- 实际变更属于另一个更高风险 Skill；
-- 需要修改任务禁止路径；
-- 需要引入未批准依赖、商业功能或第二套同类框架。
+## Procedure
 
-# Required Inputs
+1. 在任何受保护写入前复验 READY 任务、Context Lock 和人工批准，再转为 IN_PROGRESS。
+2. 读取全部 Harness 真源、相关 Accepted ADR 和当前脚本调用链。
+3. 先写明唯一真源、派生物、失败场景和兼容边界，再做最小实现。
+4. 所有客户端入口必须是 `AGENTS.md` 的原生发现或薄引用，不复制规则正文。
+5. 跨平台包装只能调用同一核心实现；命令注册表必须被实现和 CI 实际消费。
+6. 为任务、Context、Skill、受保护路径、Diff Scope、Schema 和证据增加自动门禁。
+7. 运行任务规定的 Windows/POSIX 检查和单元测试，记录真实失败与修复。
+8. 由无历史上下文的独立 Reviewer 复跑关键场景，再进入 ACCEPTED。
 
-- READY 任务卡、Base Commit 和 Context Fingerprint；
-- 允许读写路径与禁止路径；
-- 对应 ADR 和真源；
-- 回滚或前向修复策略。
+## Validation
 
-# Required Sources of Truth
+- `doctor.py --task TASK-ID` 能发现越界 Diff、缺失 Skill、Context 漂移和状态冲突；
+- Catalog validate/generate/diff 仍确定性；
+- Windows、macOS/Linux/WSL 入口语义一致；
+- CI 调用统一入口；
+- Evidence 包含命令、状态、退出码、验证提交和产物哈希或无产物理由；
+- `git diff --check` 和独立复核通过。
 
-- `.harness/**`
-- `AGENTS.md`
+## Forbidden Actions
 
-# Procedure
+- Harness 不能为了当前任务放宽自己；
+- 不得删除失败检查、降低阈值、吞掉退出码或把 NOT_RUN 伪装成 PASS；
+- 不得引入第二套规则、任务、ADR、状态或 Evidence 真源；
+- 不得手工编辑生成物；
+- 不得把某个 IDE、Agent、SaaS 或付费插件设为必需运行时。
 
-1. 验证任务状态、Context Fingerprint 和 Diff 基线。
-2. 读取全部真源与相关 ADR，不以历史聊天记忆替代。
-3. 先写最小设计和失败场景，再改代码或契约。
-4. 只修改 `writeAllowlist` 内文件；发现范围不足立即停止。
-5. 增加能证明不变量的自动测试或生成物。
-6. 运行任务规定命令，生成 Evidence Pack。
-7. 输出 Handoff，逐项标明完成、剩余、失败和风险。
+## Evidence Checklist
 
-# Validation
-
-- Catalog validate/generate/diff；
-- Diff Scope Gate；
-- 对应模块单元/集成/契约测试；
-- 所有命令记录真实退出码和提交 SHA；
-- 高风险任务由独立 Reviewer 复跑关键检查。
-
-# Forbidden Actions
-
-- Harness 不能为了当前任务放宽自己
-- 生成器输出必须确定性
-- 变更必须独立复核
-- 不得把 NOT_RUN 伪装成 PASS
-
-- 不得删除失败测试、降低阈值或屏蔽门禁来制造通过；
-- 不得手工编辑生成文件；
-- 不得声称未执行的检查已经通过。
-
-# Evidence Checklist
-
-- [ ] 任务和 Context Fingerprint 有效
+- [ ] 任务、审批和 Context Fingerprint 有效
 - [ ] Diff 未超出白名单
-- [ ] 真源和生成物同步
-- [ ] 必跑检查有机器证据
-- [ ] 安全、隐私、租户和成本边界已复核
+- [ ] 注册表与实现、CI 一致
+- [ ] 关键失败场景有自动测试
+- [ ] 跨平台入口调用同一实现
+- [ ] 独立 Reviewer 已记录结论
 - [ ] Handoff 可供新会话恢复

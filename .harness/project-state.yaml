@@ -1,0 +1,22 @@
+schemaVersion: 1
+projectId: virtual-companion
+phase: TECHNICAL_ALPHA
+phaseSource: specs/catalog/product-scope.yaml
+activeTask: TASK-0002
+activeTaskCard: docs/tasks/TASK-0002-portable-agent-harness.md
+lastAcceptedTask: TASK-0001
+lastAcceptedHandoff: docs/handoffs/TASK-0001.json
+lastTerminalTask: TASK-0001
+lastTerminalHandoff: docs/handoffs/TASK-0001.json
+nextAction: 完成 TASK-0002 的跨平台 Agent Harness，并由独立 Reviewer 复验
+capabilityGates:
+  businessImplementation:
+    state: BLOCKED
+    reason: TASK-0002 仅授权治理变更；完成后仍需新的 READY 业务任务
+  realUserBeta:
+    state: BLOCKED
+    reason: PIA、伦理适用性、成年验证、责任人、值班和安全演练尚未全部形成证据
+  realPayment:
+    state: FORBIDDEN
+    reason: Technical Alpha 范围明确禁止真实支付
+updatedAt: 2026-07-30

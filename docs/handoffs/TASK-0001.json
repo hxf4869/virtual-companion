@@ -1,8 +1,9 @@
 {
   "taskId": "TASK-0001",
-  "state": "DONE",
+  "state": "ACCEPTED",
   "baseCommit": "85cc7393957bc8840207fabce25395dd9bad62bd",
   "headCommit": "3b43a1b418872e5ea428732bc79d26abcb632af2",
+  "evidencePath": "docs/evidence/TASK-0001/evidence-pack.json",
   "completed": [
     "V0.3.1 起步包已作为独立 main 分支基线保存",
     "产品方案和技术架构原文已按原始 SHA-256 复制到 docs/source",

@@ -1,69 +1,66 @@
 ---
-id: task-intake
-version: 1.0.0
-riskClass: C1
+name: task-intake
+description: 将需要修改仓库的原始需求收口为可审计的 DRAFT/READY 任务；在没有活动任务、需要明确范围、风险、Context Lock、验收或审批时使用。
+metadata:
+  id: task-intake
+  version: 1.1.0
+  riskClass: C1
 ---
 
-# Purpose
+# Task Intake
 
-把原始需求收口为 READY 任务，明确范围、真源、风险、写入白名单、验收和证据。
+## Purpose
 
-# When to Use
+把原始需求变成仓库内唯一可执行的任务授权，解决“做什么、为什么、能改哪里、不能改哪里、如何证明完成”。
 
-仅在 READY 任务明确列出 `task-intake`，且任务写入范围覆盖目标文件时使用。
+## When to Use
 
-# When Not to Use
+- 用户要求修改或创建仓库内容，但当前没有活动任务；
+- DRAFT 任务需要补齐范围、Owner、风险、验收、Context Lock 或审批后进入 READY；
+- 现有活动任务无法覆盖新请求，需要先判断新请求是补充、后续任务还是范围扩张。
 
-- 任务仍为 DRAFT、缺少 Owner 或缺少验收；
-- 实际变更属于另一个更高风险 Skill；
-- 需要修改任务禁止路径；
-- 需要引入未批准依赖、商业功能或第二套同类框架。
+只读问答、代码审查和状态查询无需创建任务，但不得借只读名义实施修改。
 
-# Required Inputs
+## Required Inputs
 
-- READY 任务卡、Base Commit 和 Context Fingerprint；
-- 允许读写路径与禁止路径；
-- 对应 ADR 和真源；
-- 回滚或前向修复策略。
+- 用户的可观察目标和明确不做事项；
+- Owner 与必要的人类批准；
+- 当前干净 Base Commit；
+- 需要锁定的仓库相对输入；
+- 风险等级、真源、不变量、读写白名单、禁止路径和必跑命令。
 
-# Required Sources of Truth
+## Procedure
 
-- `.harness/phase-scope.yaml`
-- `.harness/sources-of-truth.yaml`
+1. 读取 `AGENTS.md`、项目状态、生命周期和相关机器真源。
+2. 确认不存在另一个活动任务；若存在，判断请求是否属于该任务，否则停止并交由 Owner 排序。
+3. 创建 DRAFT 任务卡，明确用户目标、范围内/外、失败行为、验收、停止条件和前向修复策略。
+4. 以当前 Base Commit 的仓库相对路径内容生成 Context Lock；外部资料先归档或只记录 provenance，不写入可复验路径。
+5. 解析受保护路径：`requiredSkillVersions` 固定 Base Commit 中实际执行的版本；若任务升级 Skill，另在 `targetSkillVersions` 声明交付版本；同时列出人工批准和独立复核要求。
+6. Owner 批准任务目标、风险、白名单和验收后，将任务转为 READY，并只提交任务卡与 Context Lock，形成不可变授权检查点。
+7. 将该完整 Git SHA 写入 `authorizationCommit`；运行 `doctor.py --task TASK-ID`。通过后才允许实施者转为 IN_PROGRESS。
 
-# Procedure
+## Validation
 
-1. 验证任务状态、Context Fingerprint 和 Diff 基线。
-2. 读取全部真源与相关 ADR，不以历史聊天记忆替代。
-3. 先写最小设计和失败场景，再改代码或契约。
-4. 只修改 `writeAllowlist` 内文件；发现范围不足立即停止。
-5. 增加能证明不变量的自动测试或生成物。
-6. 运行任务规定命令，生成 Evidence Pack。
-7. 输出 Handoff，逐项标明完成、剩余、失败和风险。
+- 任务字段满足 `docs/tasks/task-card-template.md`；
+- Context Fingerprint 可从 Base Commit 独立复算；
+- 当前授权字段与 `authorizationCommit` 中的 READY 任务完全一致；
+- `writeAllowlist` 不与 `forbiddenPaths` 冲突；
+- 所需 Skill 均在 `.harness/skills.yaml` 注册并固定版本；
+- C3/C4 的批准与独立复核要求已声明；
+- 同一时刻最多一个活动任务。
 
-# Validation
+## Forbidden Actions
 
-- Catalog validate/generate/diff；
-- Diff Scope Gate；
-- 对应模块单元/集成/契约测试；
-- 所有命令记录真实退出码和提交 SHA；
-- 高风险任务由独立 Reviewer 复跑关键检查。
+- 不得在 intake 过程中实现业务代码；
+- 不得由 Agent 伪造 Owner 批准或把沉默视为批准；
+- 不得为容纳已经发生的越界修改而倒推放宽白名单；
+- 不明确的关键边界必须标为 BLOCKED；
+- 不得把历史聊天当作唯一 Context 输入。
 
-# Forbidden Actions
+## Evidence Checklist
 
-- 不得实现业务代码
-- 不得自行扩大范围
-- 不明确的关键边界必须标为 BLOCKED
-
-- 不得删除失败测试、降低阈值或屏蔽门禁来制造通过；
-- 不得手工编辑生成文件；
-- 不得声称未执行的检查已经通过。
-
-# Evidence Checklist
-
-- [ ] 任务和 Context Fingerprint 有效
-- [ ] Diff 未超出白名单
-- [ ] 真源和生成物同步
-- [ ] 必跑检查有机器证据
-- [ ] 安全、隐私、租户和成本边界已复核
-- [ ] Handoff 可供新会话恢复
+- [ ] Base Commit 和 Context Fingerprint 有效
+- [ ] 目标、范围外和停止条件明确
+- [ ] 写入白名单与禁止路径可机器校验
+- [ ] Skill、审批和 Reviewer 要求已声明
+- [ ] 验收与必跑命令可复测
