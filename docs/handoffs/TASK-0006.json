@@ -1,0 +1,34 @@
+{
+  "taskId": "TASK-0006",
+  "state": "ACCEPTED",
+  "baseCommit": "512abfbb7f87a49431026ade888abcecc1fe1ba5",
+  "headCommit": "84dcdb80c47360cccfb74498607c28af0a247515",
+  "evidencePath": "docs/evidence/TASK-0006/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-task0006-harness-reviewer",
+      "kind": "harness-portability",
+      "verdict": "PASS",
+      "reviewedCommit": "84dcdb80c47360cccfb74498607c28af0a247515",
+      "evidencePath": "docs/evidence/TASK-0006/review-harness.md"
+    }
+  ],
+  "completed": [
+    "将目标测试发现到的全部任务状态归一为 DRAFT，再显式设置 TASK-0002 为唯一 ACCEPTED",
+    "保留 latest accepted 与 latest terminal 两条精确错误消息断言，未修改生产 Doctor",
+    "定点测试、69 项完整 Harness 测试、Doctor 与 Windows、PowerShell、WSL 三套 precheck 全部通过",
+    "无历史上下文的独立 Reviewer 绑定精确实现提交与 Git Tree 给出 PASS",
+    "GitHub Actions 对精确实现提交运行 Backend、Frontend、Ubuntu、Windows、macOS 五个作业并全部成功"
+  ],
+  "remaining": [
+    "创建供应商中立 ModelProtocolAdapter 与确定性 Fake/Failure Adapter 合同测试基线任务",
+    "真实模型供应商、凭据、动态商业路由、Runtime API、真实用户 Beta 和真实支付仍保持关闭并等待独立授权",
+    "GitHub Actions 的 setup-java@v4 Node 20 弃用提示可在独立 CI 维护任务中处理"
+  ],
+  "knownRisks": [
+    "Windows Hosted Runner 的 Harness 全套约耗时 9 分钟，当前正确但后续可单独优化测试性能",
+    "TASK-0005 的 REJECTED 历史是授权门禁真实生效的证据，不得重写、压缩或误报为实现提交",
+    "本任务只修复测试夹具与 CI，不增加任何产品能力"
+  ],
+  "nextAction": "创建供应商中立 ModelProtocolAdapter 与 Fake/Failure Adapter 合同测试基线任务"
+}

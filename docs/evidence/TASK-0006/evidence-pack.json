@@ -1,0 +1,101 @@
+{
+  "taskId": "TASK-0006",
+  "baseCommit": "512abfbb7f87a49431026ade888abcecc1fe1ba5",
+  "headCommit": "84dcdb80c47360cccfb74498607c28af0a247515",
+  "contextFingerprint": "2462d857768408b9002c5b4797b8668f8e24bc43f9d60ccd98c2d67b380e07e0",
+  "reviewers": [
+    {
+      "id": "codex-task0006-harness-reviewer",
+      "kind": "harness-portability",
+      "verdict": "PASS",
+      "reviewedCommit": "84dcdb80c47360cccfb74498607c28af0a247515",
+      "evidencePath": "docs/evidence/TASK-0006/review-harness.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0006",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现快照完成 11249 项授权、Context、Skill、路径和契约检查；不生成持久产物。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.StateTests.test_project_state_must_point_to_latest_terminal_and_accepted_tasks",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "目标测试 1 项通过；测试场景由归一后的合成任务状态唯一确定为 TASK-0002。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "完整 Harness 测试 69 项通过、1 项按平台设计跳过；无失败或错误。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0006",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "统一 Python 入口的 Doctor、Catalog validate/drift、付费依赖与 Beta roster 共 5 项通过；Beta Gate 保持 CLOSED。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    },
+    {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1 -Task TASK-0006",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Windows PowerShell 包装入口进入统一 precheck，5 项命令全部通过；不生成持久产物。",
+      "environment": "Windows PowerShell 5.1, Python 3.12",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -- bash scripts/harness/precheck.sh --task TASK-0006",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "WSL2 POSIX 包装入口进入统一 precheck，5 项命令全部通过；不生成持久产物。",
+      "environment": "WSL2 Ubuntu-24.04, Python 3.12",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现提交无空白错误；该命令不生成持久产物。",
+      "environment": "Windows PowerShell, Git",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    },
+    {
+      "command": "GitHub Actions ci run 30496656471",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "同一 head SHA 的 Backend、Frontend、Harness ubuntu-latest、windows-latest、macos-latest 五个作业全部 success；运行地址 https://github.com/hxf4869/virtual-companion/actions/runs/30496656471。",
+      "environment": "GitHub-hosted Ubuntu, Windows and macOS runners",
+      "verifiedCommit": "84dcdb80c47360cccfb74498607c28af0a247515"
+    }
+  ],
+  "artifacts": {
+    "implementationTree": "77116787ab5f3d84aa473692964b9f7cdb0d0422",
+    "githubActionsRunId": "30496656471",
+    "githubActionsUrl": "https://github.com/hxf4869/virtual-companion/actions/runs/30496656471",
+    "githubActionsJobs": {
+      "Frontend": "success",
+      "Backend": "success",
+      "Harness (ubuntu-latest)": "success",
+      "Harness (windows-latest)": "success",
+      "Harness (macos-latest)": "success"
+    }
+  }
+}

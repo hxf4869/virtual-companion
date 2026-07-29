@@ -30,3 +30,9 @@ tasks:
     taskCard: docs/tasks/TASK-0005-harness-latest-task-fixture.md
     evidence: docs/evidence/TASK-0005/evidence-pack.json
     handoff: docs/handoffs/TASK-0005.json
+  TASK-0006:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0006-harness-latest-task-fixture.md
+    evidence: docs/evidence/TASK-0006/evidence-pack.json
+    handoff: docs/handoffs/TASK-0006.json
