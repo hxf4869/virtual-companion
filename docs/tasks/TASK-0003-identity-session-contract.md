@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0003
-state: IN_PROGRESS
+state: IN_REVIEW
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -84,7 +84,12 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 用户明确要求继续按需求清单和功能计划自主完成所有不依赖其决策的任务；本任务只冻结现有机器真源已确定的安全边界，不代替 Owner 选择 IdP、API、TTL、账号供给或状态语义
 independentReview: required
-reviewers: []
+reviewers:
+  - id: codex-identity-boundary-reviewer
+    kind: security-contract
+    verdict: PASS
+    reviewedCommit: 3645416657455a54b00725d77b3d7043c51e394b
+    evidencePath: docs/evidence/TASK-0003/review-identity-boundary.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0003
   - python scripts/harness/catalog_tool.py validate
