@@ -2,6 +2,8 @@
 
 实现验证点：`ab62e45abc674cffd167805c11d8e924c6d32be1`
 
+CI 修复验证点：`3b43a1b418872e5ea428732bc79d26abcb632af2`
+
 ## 结果
 
 - Context Lock：7 个输入和指纹全部匹配。
@@ -14,10 +16,12 @@
 - 前端：frozen install、TypeScript 检查和 H5 构建通过。
 - 联调：Vite 代理请求基线 API 返回 200，页面显示已连接，最终浏览器控制台无错误。
 - Diff Scope：52 个实现文件均在 TASK-0001 白名单内，受保护路径变更为 0。
+- GitHub：私有仓库 `hxf4869/virtual-companion` 已连接，`main` 已推送。
+- GitHub Actions：运行 `30468505699` 的 Catalog/Harness、Backend、Frontend 三个作业全部通过。
+- CI 修复范围：仅 `.github/workflows/ci.yml`，为非标准 Python 依赖清单指定缓存路径，并升级到 Node 24 兼容的 Action 版本。
 
 ## 已知但不阻断本任务的问题
 
 1. `catalog_tool.py diff` 在 Windows 原生环境按字节比较 CRLF/LF，会误报全部生成物漂移；应由后续独立 Harness 任务修复，当前 Windows 开发使用 WSL2 运行该门禁。
 2. 起步包受保护路径引用的 `catalog-change`、`contract-change` Skill 尚不存在；在修复前不得修改 Catalog 或 Contract。
 3. JDK 25 测试日志提示 Mockito 动态 Agent 的未来兼容警告；当前测试通过，后续测试基线任务应改为显式 Agent 配置。
-4. GitHub 远程和 GitHub Actions 尚未连接或实际执行；本地 CI 定义已就绪。

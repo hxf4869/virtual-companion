@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0001
-state: IN_REVIEW
+state: DONE
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -169,4 +169,4 @@ reviewers: []
 
 输出到 `docs/evidence/TASK-0001/`，并生成 `docs/handoffs/TASK-0001.json`。
 
-实现代码验证点为 `ab62e45abc674cffd167805c11d8e924c6d32be1`；机器检查见 `docs/evidence/TASK-0001/evidence-pack.json`，恢复与剩余事项见 `docs/handoffs/TASK-0001.json`。
+实现代码验证点为 `ab62e45abc674cffd167805c11d8e924c6d32be1`，CI 修复验证点为 `3b43a1b418872e5ea428732bc79d26abcb632af2`；机器检查见 `docs/evidence/TASK-0001/evidence-pack.json`，恢复与剩余事项见 `docs/handoffs/TASK-0001.json`。
