@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0003
-activeTaskCard: docs/tasks/TASK-0003-identity-session-contract.md
-lastAcceptedTask: TASK-0002
-lastAcceptedHandoff: docs/handoffs/TASK-0002.json
-lastTerminalTask: TASK-0002
-lastTerminalHandoff: docs/handoffs/TASK-0002.json
-nextAction: 冻结供应商中立的身份与登录会话安全边界契约
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0003
+lastAcceptedHandoff: docs/handoffs/TASK-0003.json
+lastTerminalTask: TASK-0003
+lastTerminalHandoff: docs/handoffs/TASK-0003.json
+nextAction: 创建 Technical Alpha 能力门禁与连通性页面任务
 capabilityGates:
   businessImplementation:
     state: BLOCKED

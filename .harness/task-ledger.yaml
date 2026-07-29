@@ -12,3 +12,9 @@ tasks:
     taskCard: docs/tasks/TASK-0002-portable-agent-harness.md
     evidence: docs/evidence/TASK-0002/evidence-pack.json
     handoff: docs/handoffs/TASK-0002.json
+  TASK-0003:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0003-identity-session-contract.md
+    evidence: docs/evidence/TASK-0003/evidence-pack.json
+    handoff: docs/handoffs/TASK-0003.json

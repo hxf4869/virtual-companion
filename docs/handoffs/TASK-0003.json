@@ -1,0 +1,36 @@
+{
+  "taskId": "TASK-0003",
+  "state": "ACCEPTED",
+  "baseCommit": "6a86b19fb9f8671aaaaba26aa2b2bf8573f925a9",
+  "headCommit": "3645416657455a54b00725d77b3d7043c51e394b",
+  "evidencePath": "docs/evidence/TASK-0003/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-identity-boundary-reviewer",
+      "kind": "security-contract",
+      "verdict": "PASS",
+      "reviewedCommit": "3645416657455a54b00725d77b3d7043c51e394b",
+      "evidencePath": "docs/evidence/TASK-0003/review-identity-boundary.md"
+    }
+  ],
+  "completed": [
+    "冻结认证登录会话、Conversation、实时恢复 Ticket 和记忆 SESSION 作用域的术语与类型边界",
+    "冻结外部 provider 加 subject 到内部 owner_user_id 的服务端验证映射边界，并拒绝客户端 Owner 声明",
+    "完整继承复合所有权、FORCE RLS、H5 Cookie、CSRF、Origin、实时 Ticket、成本和失败关闭约束",
+    "明确四个既有身份相关 ErrorCode 的使用语义，不新增 Catalog Code 或 HTTP 映射",
+    "保持公开注册、真实用户 Beta、真实支付、Beta 默认生成和 WebSocket 门禁关闭",
+    "记录 IdP、账号供给、Cookie 或 Bearer 架构、会话生命周期、状态 Catalog、API 与年龄供应商为延后决策",
+    "Windows、PowerShell、WSL2 三套 Harness precheck 全部通过，独立安全契约复核 PASS"
+  ],
+  "remaining": [
+    "正式 IdP、登录渠道、账号供给、首次登录映射、会话生命周期和公开 API 仍需 Owner 决策后单独授权",
+    "在不依赖身份决策的下一任务中实现 Technical Alpha 能力门禁与 Runtime 连通性页面",
+    "随后实现机器真源已要求的 Fake 与 Failure Model Adapter，不接真实模型或凭据"
+  ],
+  "knownRisks": [
+    "当前 Contract 是安全边界而非可运行登录；仓库仍不能创建或认证真实用户",
+    "realtime-contract.yaml 保留旧字段名 sessionId，新 Contract 只冻结其认证会话语义，未来公开协议变更仍需兼容评审",
+    "Reviewer 与本机检查是仓库内可复验证据，不是密码学签名或独立远端证明"
+  ],
+  "nextAction": "创建 Technical Alpha 能力门禁与连通性页面任务"
+}
