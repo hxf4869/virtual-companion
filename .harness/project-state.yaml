@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0006
+activeTaskCard: docs/tasks/TASK-0006-harness-latest-task-fixture.md
 lastAcceptedTask: TASK-0004
 lastAcceptedHandoff: docs/handoffs/TASK-0004.json
 lastTerminalTask: TASK-0005
 lastTerminalHandoff: docs/handoffs/TASK-0005.json
-nextAction: 创建审批范围为 harness-change 的 Harness CI 夹具修复任务
+nextAction: 修复 Harness 最新终态任务测试夹具并恢复三平台 CI
 capabilityGates:
   businessImplementation:
     state: BLOCKED
