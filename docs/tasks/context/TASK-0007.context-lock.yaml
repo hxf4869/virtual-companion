@@ -1,0 +1,69 @@
+schemaVersion: 1
+taskId: TASK-0007
+baseCommit: cbcffad9e0fa7311baa3cf9ba91d0cef86336881
+contextFingerprint: 6d7502efc0da1217389df6d472f6b89fe1f57f1c7de754357e782aa4c8e087a4
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+  - path: AGENTS.md
+    sha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
+  - path: README.md
+    sha256: 7577bc9fed1a57f4f2d9ab91c18fd1e245abb42028da9ddb9372b4ab6a7ed7ae
+  - path: .harness/project-state.yaml
+    sha256: 8a87206e8a7068b4c068f70b59d890f27749a526f8ee106ebd8914e5349ea82c
+  - path: .harness/task-lifecycle.yaml
+    sha256: 038f946cde2c0dd084f92701647aca5f71131c3fc39d7b1252054afd33146b42
+  - path: .harness/sources-of-truth.yaml
+    sha256: c2aee425a5bb92d93acbc4fe63c433b955cb7c16b1edbf7fe74c7ed92795d09b
+  - path: .harness/invariants.yaml
+    sha256: c537c042cc12ab692b39e1a3ca90673200425c86b6e69495a3f75d1c70a6de5e
+  - path: .harness/protected-paths.yaml
+    sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+  - path: .harness/skills.yaml
+    sha256: 691d8c0fef5df189db956d713cc8ae1bd3dd45831192afdd3d55a11f6b3032f5
+  - path: .harness/tools.lock.yaml
+    sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+  - path: .harness/license-policy.yaml
+    sha256: c13ce6bb1a0806f6ea4d47685386df6c7064b66b02173e496d47ec7468478205
+  - path: skills/task-intake/SKILL.md
+    sha256: 43cae37c291a7b0d0b5dd88a9b1db0f3ea46661885fd98d657c98a61dd478e4c
+  - path: skills/model-routing-change/SKILL.md
+    sha256: f988a9be9f21a93a724ca1d62280862107bf22baa1dae410bcfe89aaeae58ded
+  - path: specs/catalog/product-scope.yaml
+    sha256: dc8fe7f8a00d4c177a8ce2230376b9738d9da2fd51cbc04de40fae2f6ce1f65b
+  - path: specs/catalog/model-protocols.yaml
+    sha256: dd5d45b1118baf560591f8f29434a365467cfdd943c539fe0f407d6a8f66c0ab
+  - path: specs/catalog/provider-attempt-statuses.yaml
+    sha256: 74dc66ca00506f554d94c1494b33be01874b8b9d131c0c3f283f1ed78cbc2710
+  - path: specs/catalog/generation-states.yaml
+    sha256: b6e7ae2890d07b55a5c33bc1490538879f99ecc8d4f194bfd41d0afca7202b2a
+  - path: specs/generated/java/com/virtualcompanion/catalog/ModelProtocol.java
+    sha256: 74297ccf560f0ca7c1c0a8deefa5c2fbf8d36f08d7320cab714b87c4b59cdb78
+  - path: specs/generated/java/com/virtualcompanion/catalog/ProviderAttemptStatus.java
+    sha256: e5a5a7b0891ab7d36a0225ef0a03746e5b2d9cf7a5c1cd76d4013c0a4c1bd371
+  - path: specs/generated/java/com/virtualcompanion/catalog/GenerationState.java
+    sha256: 9c7971632ce19924f187c95d649f1e5145071b9d45dca105c9fa94ab9ac857c4
+  - path: specs/contracts/generation-contract.yaml
+    sha256: d91afb5d594982430d83bbb5dcf68dc65fdb4254a844768903749fcac442a32c
+  - path: specs/contracts/model-protocol-contract.yaml
+    sha256: 7b77a389339119adc2f1321c862857962cc00918a213dae0d0400de78e7b7676
+  - path: specs/contracts/authorization-contract.yaml
+    sha256: 64cf6f37928d7cf81cefaeda9d3ab9b08243160a8538055952c2cff2cdbad887
+  - path: specs/contracts/finalization-contract.yaml
+    sha256: 29e89887d05a393bf945d3e446831096663c722911fe4feedaeaa3194945a4af
+  - path: specs/contracts/license-cost-boundary-contract.yaml
+    sha256: f9d3510e23a039398bad483fb777482aa0d24ee727e69c069faa4935d1ac8c49
+  - path: docs/architecture/repository-structure.md
+    sha256: 2b6229812ee79f136fe680079969c54688e84c3455b4f6394713f6b61e572927
+  - path: docs/decisions/0001-v031-technology-and-transport-baseline.md
+    sha256: c295d11765d4407b51f95abc57ccd3ce4872367036b93cf6559ce8d1fce6b73d
+  - path: docs/handoffs/TASK-0006.json
+    sha256: 31f9a63862c46b1a5f346a1cf1a69b84ec75da55ffeb3f70cf0914196d593946
+  - path: docs/tasks/task-card-template.md
+    sha256: 4e5253e86aeea74f502c50aeada52b69f10505ba14e1fb92e7ce1e71471e1bb5
+  - path: pom.xml
+    sha256: a5a4b5de9c9b6c591aebc4812d56faabf7b3594789510bbe8dc4e2a84df8bbde
+  - path: service/platform/catalog/pom.xml
+    sha256: dd9f42d69174d61a10bc111bb5044bda6e0755207c99a50dde43a977ea9a82f3
+  - path: service/apps/runtime/pom.xml
+    sha256: 01a7df5add1b46ad844c7f196be669843e6801b89b60f3490754dbf2fd2c5d48
