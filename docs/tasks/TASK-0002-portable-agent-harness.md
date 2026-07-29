@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0002
-state: IN_PROGRESS
+state: IN_REVIEW
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -92,7 +92,22 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 本次用户消息明确要求在开发前补充 Harness，并授权由 Agent 决定实现方式
 independentReview: required
-reviewers: []
+reviewers:
+  - id: architecture-review
+    kind: architecture
+    verdict: PASS
+    reviewedCommit: 9103214172720bc08b3b45774ad7b802d6af556d
+    evidencePath: docs/evidence/TASK-0002/review-architecture.md
+  - id: portability-review
+    kind: portability
+    verdict: PASS
+    reviewedCommit: 9103214172720bc08b3b45774ad7b802d6af556d
+    evidencePath: docs/evidence/TASK-0002/review-portability.md
+  - id: codex-security-reviewer
+    kind: security
+    verdict: PASS
+    reviewedCommit: 9103214172720bc08b3b45774ad7b802d6af556d
+    evidencePath: docs/evidence/TASK-0002/review-safety.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0002
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
