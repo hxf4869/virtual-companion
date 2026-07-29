@@ -1,0 +1,109 @@
+{
+  "taskId": "TASK-0001",
+  "baseCommit": "85cc7393957bc8840207fabce25395dd9bad62bd",
+  "headCommit": "ab62e45abc674cffd167805c11d8e924c6d32be1",
+  "contextFingerprint": "a790df0c92e1d237353a07c6848247729814e7d8c227a1af4ecf29101ee92c8e",
+  "checks": [
+    {
+      "command": "python context-lock verification",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "a790df0c92e1d237353a07c6848247729814e7d8c227a1af4ecf29101ee92c8e",
+      "reason": "7 个锁定输入的 SHA-256 与 Ordinal 排序指纹全部匹配"
+    },
+    {
+      "command": "python scripts/harness/catalog_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Windows PowerShell，Catalog validation: PASS"
+    },
+    {
+      "command": "python3 scripts/harness/catalog_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "WSL2 Ubuntu-24.04 / PyYAML 6.0.1，Catalog drift check: PASS"
+    },
+    {
+      "command": "python scripts/harness/check_paid_features.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Paid-feature dependency check: PASS"
+    },
+    {
+      "command": ".\\mvnw.cmd --version",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce",
+      "reason": "Windows Maven Wrapper 下载并校验 Apache Maven 3.9.16"
+    },
+    {
+      "command": "./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "431ffb7aaf015d5b1a172e5b6ddf79076c66c644497f8584bff46221c931c9ea",
+      "reason": "锁定 Digest 的 Maven/JDK 25 容器；Catalog 2 个测试、Runtime 5 个测试全部通过"
+    },
+    {
+      "command": "pnpm --dir frontend install --frozen-lockfile",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "pnpm 11.9.0，锁文件无漂移"
+    },
+    {
+      "command": "pnpm --dir frontend type-check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "vue-tsc --noEmit"
+    },
+    {
+      "command": "pnpm --dir frontend build",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "82fd4435dc834fb0434493c94ff2fd4a4736f380d27391163afc8709fa91769c",
+      "reason": "H5 生产构建完成；哈希为 7 个产物的路径与文件哈希树"
+    },
+    {
+      "command": ".\\scripts\\dev\\smoke-backend.ps1",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "health=UP，phase=TECHNICAL_ALPHA，transport=HTTP_SSE，javaBaseline=25-LTS"
+    },
+    {
+      "command": "Playwright http://127.0.0.1:5173/",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "页面显示本地开发基线已连接；基线 API 200；最终浏览器控制台 0 错误"
+    },
+    {
+      "command": "git diff --check && git diff --cached --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "10099bb0fcf597f0d4f025be5cd23ea3a88bf312",
+      "reason": "实现提交树检查通过；docs/source 保留 Markdown 硬换行的精确属性例外"
+    }
+  ],
+  "diagnostics": [
+    {
+      "command": "python scripts/harness/catalog_tool.py diff --fail-on-drift",
+      "environment": "Windows PowerShell",
+      "observedExitCode": 1,
+      "classification": "PLATFORM_LINE_ENDING_FALSE_POSITIVE",
+      "evidence": "仓库生成物为 LF，生成器在 Windows 临时目录写 CRLF；归一化后文本完全一致。受保护生成器未修改，WSL2/Linux 同命令通过。"
+    }
+  ],
+  "artifacts": {
+    "implementationCommit": "ab62e45abc674cffd167805c11d8e924c6d32be1",
+    "implementationTree": "10099bb0fcf597f0d4f025be5cd23ea3a88bf312",
+    "runtimeJarSha256": "431ffb7aaf015d5b1a172e5b6ddf79076c66c644497f8584bff46221c931c9ea",
+    "frontendTreeSha256": "82fd4435dc834fb0434493c94ff2fd4a4736f380d27391163afc8709fa91769c",
+    "mavenDistributionSha256": "5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce",
+    "mavenContainerDigest": "sha256:7e461cec477077c1d9e50b13df8aef9018764410f4c4cd7c34803f10c4c99e4c"
+  }
+}

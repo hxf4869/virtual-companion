@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0001",
+  "state": "IN_REVIEW",
+  "baseCommit": "85cc7393957bc8840207fabce25395dd9bad62bd",
+  "headCommit": "ab62e45abc674cffd167805c11d8e924c6d32be1",
+  "completed": [
+    "V0.3.1 起步包已作为独立 main 分支基线保存",
+    "产品方案和技术架构原文已按原始 SHA-256 复制到 docs/source",
+    "Java 25、Spring Boot 4.1.0、Spring AI 2.0.0、Spring Modulith 2.1.0 技术基线已锁定",
+    "Catalog 编译模块与 Spring Boot Runtime 骨架已建立",
+    "健康检查与只读内部基线端点已实现并验证",
+    "uni-app Vue 3 TypeScript Pinia H5 骨架已建立并联调",
+    "GitHub Actions、Maven Wrapper、Windows/WSL 开发脚本已建立",
+    "Evidence Pack、验证摘要和可恢复 Handoff 已生成"
+  ],
+  "remaining": [
+    "取得用户指定的 GitHub owner/repository、可见性与仓库级授权后添加 origin 并推送 main",
+    "远程推送后观察 GitHub Actions 首次运行并修复任何环境差异",
+    "创建独立 Harness READY 任务修复 Windows 换行漂移与缺失的 Catalog/Contract Skill",
+    "创建首个业务纵切 READY 任务，不在 TASK-0001 中继续扩展业务"
+  ],
+  "knownRisks": [
+    "Windows 原生 Catalog drift 存在 CRLF/LF 误报，当前以 WSL2/Linux 门禁为准",
+    "GitHub CI 尚未实际运行，因此远程 Actions 状态仍未验证",
+    "catalog-change 与 contract-change Skill 缺失会阻塞后续受保护真源修改",
+    "Mockito 动态 Agent 在未来 JDK 中将需要显式配置",
+    "当前系统没有用户、聊天、数据库、模型、记忆或安全业务能力，不能开放真实用户"
+  ],
+  "nextAction": "用户提供 GitHub owner/repository（建议私有仓库）并完成仓库级认证；随后添加 origin、推送 main、检查 Actions，再开启首个业务纵切任务。"
+}
