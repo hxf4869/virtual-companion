@@ -9,9 +9,15 @@ requiredSkills:
   - task-intake
   - harness-change
 requiredSkillVersions:
+  task-intake: 1.0.0
+  harness-change: 1.0.0
+targetSkillVersions:
   task-intake: 1.1.0
   harness-change: 1.1.0
+  catalog-change: 1.0.0
+  contract-change: 1.0.0
 baseCommit: 0ae19df7dec791c0968c731cefbe5328d0f0f93f
+authorizationCommit: afd4d4695eb8d56d28ccd930c92a7086ad8a3411
 contextFingerprint: 2e6eb93c903b74ec4cb0188cc9ceddf8b292f0f1da72422eae6125617945e20f
 contextLock: docs/tasks/context/TASK-0002.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
