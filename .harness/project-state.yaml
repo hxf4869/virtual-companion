@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0002
-activeTaskCard: docs/tasks/TASK-0002-portable-agent-harness.md
-lastAcceptedTask: TASK-0001
-lastAcceptedHandoff: docs/handoffs/TASK-0001.json
-lastTerminalTask: TASK-0001
-lastTerminalHandoff: docs/handoffs/TASK-0001.json
-nextAction: 完成 TASK-0002 的跨平台 Agent Harness，并由独立 Reviewer 复验
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0002
+lastAcceptedHandoff: docs/handoffs/TASK-0002.json
+lastTerminalTask: TASK-0002
+lastTerminalHandoff: docs/handoffs/TASK-0002.json
+nextAction: 创建首个业务纵切 READY 任务，从用户身份与会话最小闭环开始
 capabilityGates:
   businessImplementation:
     state: BLOCKED

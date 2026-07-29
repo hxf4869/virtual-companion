@@ -1,0 +1,53 @@
+{
+  "taskId": "TASK-0002",
+  "state": "ACCEPTED",
+  "baseCommit": "0ae19df7dec791c0968c731cefbe5328d0f0f93f",
+  "headCommit": "6999a1117f6b4ee97395c6b4756553ec48de5c9c",
+  "evidencePath": "docs/evidence/TASK-0002/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "architecture-review",
+      "kind": "architecture",
+      "verdict": "PASS",
+      "reviewedCommit": "6999a1117f6b4ee97395c6b4756553ec48de5c9c",
+      "evidencePath": "docs/evidence/TASK-0002/review-architecture.md"
+    },
+    {
+      "id": "portability-review",
+      "kind": "portability",
+      "verdict": "PASS",
+      "reviewedCommit": "6999a1117f6b4ee97395c6b4756553ec48de5c9c",
+      "evidencePath": "docs/evidence/TASK-0002/review-portability.md"
+    },
+    {
+      "id": "codex-security-reviewer",
+      "kind": "security",
+      "verdict": "PASS",
+      "reviewedCommit": "6999a1117f6b4ee97395c6b4756553ec48de5c9c",
+      "evidencePath": "docs/evidence/TASK-0002/review-safety.md"
+    }
+  ],
+  "completed": [
+    "建立以 AGENTS.md 为唯一规则真源的跨 Agent 入口体系，并为 Claude Code 与 GitHub Copilot CLI 提供不复制规则正文的薄导入",
+    "将 Zed first-match 与 GitHub Copilot CLI 多入口合并语义纳入机器清单和 Doctor 漂移检查",
+    "建立可恢复的 Project State、Task 生命周期、append-only Task Ledger、Context Lock、Evidence 与 Handoff 闭环",
+    "统一 Windows PowerShell、WSL/Linux 与 macOS 的 Python Harness 入口和 CI 命令注册表",
+    "修复 Windows Catalog 换行误报、依赖缓存无界扫描、缺失 Catalog/Contract Skill 与 TASK-0001 生命周期不一致",
+    "增加授权边界、Git DAG、终态不可变、可移植路径、文件模式和 Agent 入口的失败场景测试",
+    "架构、可移植性、安全三位独立 Reviewer 对同一实现提交给出 PASS",
+    "GitHub Actions 的 macOS、Windows、Ubuntu Harness 以及 Backend、Frontend 作业全部通过"
+  ],
+  "remaining": [
+    "创建首个业务纵切 READY 任务后，才允许开始用户身份与会话最小闭环的业务实现",
+    "在新的业务任务内按 Catalog/Contract Skill 更新对应真源并生成契约，不在已关闭的 Harness 任务中扩展"
+  ],
+  "knownRisks": [
+    "Reviewer 与本机命令证据是仓库内可复验记录，尚无密码学签名或独立远端证明",
+    "macOS 已在 GitHub 托管 runner 实跑通过，但尚未在项目成员的真实 Mac 设备上验证",
+    "远端强推或历史改写仍取决于 GitHub 分支保护和仓库权限配置",
+    "GitHub Actions 对 actions/setup-java@v4 报告 Node.js 20 弃用警告，但当前被强制使用 Node.js 24 且作业通过",
+    "TASK-0001 作为旧基线保留 contractVersion 1 兼容处理；后续授权任务必须使用 version 2 闭包",
+    "当前没有用户、聊天、数据库、模型、记忆或安全业务能力，Beta 门禁保持 CLOSED"
+  ],
+  "nextAction": "创建首个业务纵切 READY 任务，从用户身份与会话最小闭环开始"
+}

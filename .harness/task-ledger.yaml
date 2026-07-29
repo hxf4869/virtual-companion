@@ -6,3 +6,9 @@ tasks:
     taskCard: docs/tasks/TASK-0001-project-bootstrap.md
     evidence: docs/evidence/TASK-0001/evidence-pack.json
     handoff: docs/handoffs/TASK-0001.json
+  TASK-0002:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0002-portable-agent-harness.md
+    evidence: docs/evidence/TASK-0002/evidence-pack.json
+    handoff: docs/handoffs/TASK-0002.json
