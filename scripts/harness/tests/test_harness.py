@@ -693,6 +693,7 @@ class StateTests(unittest.TestCase):
     def test_multiple_active_tasks_are_rejected(self) -> None:
         tasks = copy.deepcopy(discover_tasks())
         tasks["TASK-0001"]["state"] = "IN_PROGRESS"
+        tasks["TASK-0002"]["state"] = "IN_PROGRESS"
         audit = Audit()
         validate_project_state(
             audit,
@@ -714,6 +715,10 @@ class StateTests(unittest.TestCase):
         state = load_yaml(ROOT / ".harness/project-state.yaml")
         state["activeTask"] = None
         state["activeTaskCard"] = None
+        state["lastAcceptedTask"] = "TASK-0001"
+        state["lastAcceptedHandoff"] = "docs/handoffs/TASK-0001.json"
+        state["lastTerminalTask"] = "TASK-0001"
+        state["lastTerminalHandoff"] = "docs/handoffs/TASK-0001.json"
         audit = Audit()
         validate_project_state(
             audit,
