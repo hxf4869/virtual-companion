@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0005
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -87,7 +87,12 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 用户已明确“允许修复 CI”，并要求继续按需求清单和功能计划自主完成所有无需其决策的任务；本任务仅修复已定位的 Harness 测试夹具漂移
 independentReview: required
-reviewers: []
+reviewers:
+  - id: codex-task0005-authorization-reviewer
+    kind: harness-authorization
+    verdict: FAIL
+    reviewedCommit: 496b82bb2014a7e6fb093e201d0c8039e8276315
+    evidencePath: docs/evidence/TASK-0005/review-authorization.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0005
   - python -m unittest scripts.harness.tests.test_harness.StateTests.test_project_state_must_point_to_latest_terminal_and_accepted_tasks

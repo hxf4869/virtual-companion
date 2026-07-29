@@ -1,0 +1,32 @@
+{
+  "taskId": "TASK-0005",
+  "state": "REJECTED",
+  "baseCommit": "678eec63aeaaf947e22e5b70f24ffa5c2eb50047",
+  "headCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315",
+  "evidencePath": "docs/evidence/TASK-0005/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-task0005-authorization-reviewer",
+      "kind": "harness-authorization",
+      "verdict": "FAIL",
+      "reviewedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315",
+      "evidencePath": "docs/evidence/TASK-0005/review-authorization.md"
+    }
+  ],
+  "completed": [
+    "确认 GitHub Actions 三平台 Harness 失败来自测试夹具硬编码 TASK-0002，而非 Doctor 生产逻辑",
+    "确认受保护 scripts/harness 路径要求审批 scope 精确等于 harness-change",
+    "撤回未提交的测试候选，reviewedCommit 与 Base Commit 的目标测试 Blob 完全相同",
+    "由无历史上下文的独立 Reviewer 绑定精确提交给出 FAIL，并建议任务进入 REJECTED"
+  ],
+  "remaining": [
+    "创建新的 C4 Harness 任务，并在不可变 READY 授权中使用 humanApprovals.scope: harness-change",
+    "在新任务内实施自包含夹具、运行全部本地检查、独立复核并恢复三平台 GitHub Actions"
+  ],
+  "knownRisks": [
+    "远端 Backend 与 Frontend 作业通过，但 Ubuntu、Windows、macOS Harness 仍因原硬编码夹具失败",
+    "TASK-0005 没有实现代码；任何后续 Agent 都不得把本任务误报为 CI 已修复",
+    "不得通过改写 TASK-0005 READY 历史或放宽 protected-path 审批匹配来继续"
+  ],
+  "nextAction": "创建审批范围为 harness-change 的 Harness CI 夹具修复任务"
+}

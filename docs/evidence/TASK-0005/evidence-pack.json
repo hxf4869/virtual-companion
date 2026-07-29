@@ -1,0 +1,84 @@
+{
+  "taskId": "TASK-0005",
+  "baseCommit": "678eec63aeaaf947e22e5b70f24ffa5c2eb50047",
+  "headCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315",
+  "contextFingerprint": "64663287036c293f6ac78f0ac3a9d3911aa81126e791894348c1900774983a5a",
+  "reviewers": [
+    {
+      "id": "codex-task0005-authorization-reviewer",
+      "kind": "harness-authorization",
+      "verdict": "FAIL",
+      "reviewedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315",
+      "evidencePath": "docs/evidence/TASK-0005/review-authorization.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0005",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "无 Harness 实现变更的 IN_PROGRESS 检查点通过 8986 项基础授权与仓库一致性检查。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.StateTests.test_project_state_must_point_to_latest_terminal_and_accepted_tasks",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "精确 reviewedCommit 保留原硬编码夹具；当前最新接受/终态是 TASK-0004，测试仍错误期待 TASK-0002。该真实失败证明修复尚未实施。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "发现不可变 READY 审批范围不满足受保护路径要求后停止实现；不把未授权候选工作树的运行结果绑定到 reviewedCommit。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0005",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "任务因授权范围错误进入 REJECTED；不得在未授权实现上形成通过证据。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315"
+    },
+    {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1 -Task TASK-0005",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "任务因授权范围错误进入 REJECTED；Windows 包装复验留给正确授权的新任务。",
+      "environment": "Windows PowerShell 5.1, Python 3.12",
+      "verifiedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -- bash scripts/harness/precheck.sh --task TASK-0005",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "任务因授权范围错误进入 REJECTED；WSL/POSIX 包装复验留给正确授权的新任务。",
+      "environment": "WSL2 Ubuntu-24.04, Python 3.12",
+      "verifiedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "reviewedCommit 工作树干净且无空白错误；未提交的测试候选已通过补丁方式完整撤回。",
+      "environment": "Windows PowerShell, Git",
+      "verifiedCommit": "496b82bb2014a7e6fb093e201d0c8039e8276315"
+    }
+  ],
+  "artifacts": {
+    "implementationTree": "0cb7e6ec1c69f41423a6edba0d9aa0e57c997f54",
+    "targetTestBlob": "3349ab403e3e692239098d93e7f01479edbcae7e"
+  }
+}
