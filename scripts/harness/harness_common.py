@@ -23,6 +23,41 @@ class HarnessError(RuntimeError):
     pass
 
 
+class UniqueKeyLoader(yaml.SafeLoader):
+    pass
+
+
+def _construct_unique_mapping(
+    loader: UniqueKeyLoader,
+    node: yaml.nodes.MappingNode,
+    deep: bool = False,
+) -> dict[Any, Any]:
+    loader.flatten_mapping(node)
+    mapping: dict[Any, Any] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
+def strict_yaml_load(value: str | bytes) -> Any:
+    text = value.decode("utf-8") if isinstance(value, bytes) else value
+    return yaml.load(text, Loader=UniqueKeyLoader)
+
+
 def configure_utf8_stdio() -> None:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
@@ -32,7 +67,7 @@ def configure_utf8_stdio() -> None:
 
 def load_yaml(path: Path) -> dict[str, Any]:
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = strict_yaml_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise HarnessError(f"{relative(path)}: cannot load YAML: {exc}") from exc
     if not isinstance(data, dict):
@@ -101,13 +136,18 @@ def parse_task_card(path: Path) -> dict[str, Any]:
     if not match:
         raise HarnessError(f"{relative(path)}: first fenced YAML task metadata block is missing")
     try:
-        data = yaml.safe_load(match.group(1))
+        data = strict_yaml_load(match.group(1))
     except yaml.YAMLError as exc:
         raise HarnessError(f"{relative(path)}: invalid task YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise HarnessError(f"{relative(path)}: task metadata must be an object")
     data["_path"] = relative(path)
     return data
+
+
+def task_id_from_filename(path: Path) -> str | None:
+    match = re.match(r"^(TASK-[0-9]{4,})(?:-|\.md$)", path.name)
+    return match.group(1) if match else None
 
 
 def discover_tasks() -> dict[str, dict[str, Any]]:
@@ -119,6 +159,12 @@ def discover_tasks() -> dict[str, dict[str, Any]]:
         task_id = str(task.get("taskId", ""))
         if not task_id:
             raise HarnessError(f"{relative(path)}: taskId is required")
+        filename_task_id = task_id_from_filename(path)
+        if filename_task_id != task_id:
+            raise HarnessError(
+                f"{relative(path)}: filename task ID {filename_task_id!r} "
+                f"disagrees with metadata {task_id!r}"
+            )
         if task_id in tasks:
             raise HarnessError(f"duplicate taskId: {task_id}")
         tasks[task_id] = task
@@ -134,7 +180,7 @@ def parse_skill_metadata(path: Path) -> dict[str, Any]:
     if not match:
         raise HarnessError(f"{relative(path)}: Skill YAML frontmatter is missing")
     try:
-        data = yaml.safe_load(match.group(1))
+        data = strict_yaml_load(match.group(1))
     except yaml.YAMLError as exc:
         raise HarnessError(f"{relative(path)}: invalid Skill frontmatter: {exc}") from exc
     if not isinstance(data, dict):
@@ -188,6 +234,14 @@ def verify_context_lock(task: dict[str, Any]) -> list[str]:
     for key in ("taskId", "baseCommit", "contextFingerprint", "contextFingerprintAlgorithm"):
         if lock.get(key) != task.get(key):
             errors.append(f"{task.get('taskId')}: task and context lock disagree on {key}")
+    legacy_context = task.get("taskId") == "TASK-0001"
+    expected_path_mode = (
+        "LEGACY_EXTERNAL_PATH_WITH_REPOSITORY_ALIAS"
+        if legacy_context
+        else "REPOSITORY_RELATIVE_AT_BASE_COMMIT"
+    )
+    if lock.get("pathMode") != expected_path_mode:
+        errors.append(f"{task.get('taskId')}: context lock pathMode must bind repository paths at Base Commit")
     if lock.get("contextFingerprintAlgorithm") != CONTEXT_ALGORITHM:
         errors.append(f"{task.get('taskId')}: unsupported context fingerprint algorithm")
     inputs = lock.get("inputs")
@@ -217,11 +271,20 @@ def verify_context_lock(task: dict[str, Any]) -> list[str]:
         if not is_repository_relative(repository_path):
             errors.append(f"{task.get('taskId')}: invalid repositoryPath alias: {repository_path}")
             continue
-        try:
-            content = git_object(
-                str(item.get("repositoryCommit", lock.get("baseCommit", ""))),
-                repository_path,
+        base_commit = str(lock.get("baseCommit", ""))
+        repository_commit = item.get("repositoryCommit")
+        if not legacy_context and repository_commit not in (None, "", base_commit):
+            errors.append(
+                f"{task.get('taskId')}: context input {logical_path} must use the task Base Commit"
             )
+            continue
+        try:
+            content_commit = (
+                str(repository_commit)
+                if legacy_context and repository_commit
+                else base_commit
+            )
+            content = git_object(content_commit, repository_path)
         except HarnessError as exc:
             errors.append(str(exc))
             continue
@@ -246,6 +309,17 @@ def changed_paths(base_commit: str) -> list[str]:
         raise HarnessError(f"baseCommit {base_commit} is not an ancestor of HEAD")
     tracked = git_bytes(
         "diff",
+        "--no-renames",
+        "--name-only",
+        "--diff-filter=ACDMRTUXB",
+        "-z",
+        base_commit,
+        "--",
+    )
+    staged = git_bytes(
+        "diff",
+        "--cached",
+        "--no-renames",
         "--name-only",
         "--diff-filter=ACDMRTUXB",
         "-z",
@@ -253,7 +327,11 @@ def changed_paths(base_commit: str) -> list[str]:
         "--",
     )
     untracked = git_bytes("ls-files", "--others", "--exclude-standard", "-z")
-    values = tracked.stdout.split(b"\0") + untracked.stdout.split(b"\0")
+    values = (
+        tracked.stdout.split(b"\0")
+        + staged.stdout.split(b"\0")
+        + untracked.stdout.split(b"\0")
+    )
     decoded = {
         normalize_repo_path(value.decode("utf-8", errors="surrogateescape"))
         for value in values

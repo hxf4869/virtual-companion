@@ -53,6 +53,15 @@ paths:
     riskClass: C4
     requiredSkill: harness-change
     humanApproval: true
+    lifecycleExemptions:
+      - .harness/project-state.yaml
+      - .harness/task-ledger.yaml
+  - glob: .harness/project-state.yaml
+    riskClass: C2
+    requiredSkill: task-intake
+  - glob: .harness/task-ledger.yaml
+    riskClass: C2
+    requiredSkill: task-intake
   - glob: scripts/harness/**
     riskClass: C4
     requiredSkill: harness-change

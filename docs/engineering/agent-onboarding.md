@@ -6,7 +6,7 @@
 
 ```text
 AGENTS.md
-  -> .harness/project-state.yaml
+  -> .harness/project-state.yaml + append-only task-ledger.yaml
   -> active task + Context Lock
   -> .harness/skills.yaml -> exact SKILL.md
   -> protected paths + diff scope
@@ -43,7 +43,7 @@ AGENTS.md
    python3 scripts/harness/doctor.py --summary
    ```
 
-3. 根据摘要读取 `.harness/project-state.yaml`、活动任务、Context Lock 和精确 Skill。
+3. 根据摘要读取 `.harness/project-state.yaml`、`.harness/task-ledger.yaml`、活动任务、Context Lock 和精确 Skill。
 4. 用任务卡回答以下问题，回答不出来就停止写入：
 
    - 用户可观察目标是什么？
@@ -53,7 +53,7 @@ AGENTS.md
    - 选择当前做法的依据是哪条真源、不变量或 Accepted ADR？
    - 成功、失败、回滚和交接如何证明？
 
-5. 开工前运行 `doctor.py --task TASK-ID`。Context、状态、Skill、审批或 Diff Scope 任一失败都不得继续。
+5. 精确暂存本任务的完整候选快照，继续编辑后重新暂存，确保 Index 与工作树内容一致；开工前运行 `doctor.py --task TASK-ID`。Context、状态、Skill、审批或 Diff Scope 任一失败都不得继续。
 6. 只做任务范围内的最小变更；发现新需求时更新为 BLOCKED 或创建后续任务，不把它偷偷塞进当前任务。
 7. 验证后生成 Evidence/Handoff，由独立 Reviewer 复跑关键失败场景，再进入 ACCEPTED。
 
@@ -62,6 +62,7 @@ AGENTS.md
 `DRAFT -> READY -> IN_PROGRESS -> IN_REVIEW -> ACCEPTED` 是正常路径；`BLOCKED` 和 `REJECTED` 用于明确失败或缺条件。精确迁移见 `.harness/task-lifecycle.yaml`。
 
 - `project-state.yaml`：现在在哪里、最后完成什么、唯一下一动作和能力门禁；
+- `task-ledger.yaml`：所有终态任务及其不可改写审计产物的持久索引；
 - 任务卡：本次为什么做、允许做什么和验收；
 - Context Lock：决策基于哪个 Base Commit 的哪些输入；
 - Skill：高风险变更必须遵守的操作过程；
@@ -82,8 +83,11 @@ PowerShell 和 Shell 文件只负责发现 Python；命令列表来自 `.harness
 ## 失败时怎么做
 
 - `no active task`：只读分析，或用 `task-intake` 创建并批准 READY 任务；
+- `pending DRAFT`：只允许任务卡和 Context Lock；READY 时必须与 `project-state` 活动投影原子提交；
 - `context mismatch`：输入或 Base Commit 已变化，重新 intake，禁止改哈希凑通过；
 - `outside writeAllowlist`：回到任务边界，不能反向扩大白名单包住已有越界修改；
+- `history is not ancestry-closed`：任务并入了从 Base 之前分叉的旧支线，重新基于最后终态整理提交链；
+- `staged snapshot and worktree disagree`：完整暂存待验证快照，确保 Index 与工作树一致后重跑；
 - `missing Skill/approval/reviewer`：补齐真实授权，不能由 Agent 自批；
 - `generated drift`：修改真源并用生成器重建，禁止手改生成物；
 - `Beta roster PASS`：只代表值班结构门禁，不代表 PIA、伦理、年龄或发布审批完成；

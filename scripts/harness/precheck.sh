@@ -1,11 +1,16 @@
 #!/usr/bin/env sh
 set -eu
 
-if command -v python3 >/dev/null 2>&1; then
-  HARNESS_PYTHON=python3
-elif command -v python >/dev/null 2>&1; then
-  HARNESS_PYTHON=python
-else
+HARNESS_PYTHON=
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1 \
+    && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 2)' >/dev/null 2>&1; then
+    HARNESS_PYTHON=$candidate
+    break
+  fi
+done
+
+if [ -z "$HARNESS_PYTHON" ]; then
   echo "ERROR: Python 3.11+ is required" >&2
   exit 2
 fi

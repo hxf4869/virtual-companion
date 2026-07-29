@@ -1,0 +1,8 @@
+schemaVersion: 1
+tasks:
+  TASK-0001:
+    state: ACCEPTED
+    contractVersion: 1
+    taskCard: docs/tasks/TASK-0001-project-bootstrap.md
+    evidence: docs/evidence/TASK-0001/evidence-pack.json
+    handoff: docs/handoffs/TASK-0001.json

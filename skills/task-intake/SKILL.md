@@ -33,17 +33,29 @@ metadata:
 
 1. 读取 `AGENTS.md`、项目状态、生命周期和相关机器真源。
 2. 确认不存在另一个活动任务；若存在，判断请求是否属于该任务，否则停止并交由 Owner 排序。
-3. 创建 DRAFT 任务卡，明确用户目标、范围内/外、失败行为、验收、停止条件和前向修复策略。
+3. 以最后一个终态提交作为新任务唯一 `baseCommit`，不得先提交其他变更再把它们包含进 Base；创建 DRAFT 任务卡，明确用户目标、范围内/外、失败行为、验收、停止条件和前向修复策略。
 4. 以当前 Base Commit 的仓库相对路径内容生成 Context Lock；外部资料先归档或只记录 provenance，不写入可复验路径。
 5. 解析受保护路径：`requiredSkillVersions` 固定 Base Commit 中实际执行的版本；若任务升级 Skill，另在 `targetSkillVersions` 声明交付版本；同时列出人工批准和独立复核要求。
-6. Owner 批准任务目标、风险、白名单和验收后，将任务转为 READY，并只提交任务卡与 Context Lock，形成不可变授权检查点。
-7. 将该完整 Git SHA 写入 `authorizationCommit`；运行 `doctor.py --task TASK-ID`。通过后才允许实施者转为 IN_PROGRESS。
+6. 需要持久保存 DRAFT 时，只提交字段完整的任务卡与 Context Lock，保持 `project-state.activeTask` 为空；Doctor 不接受同一检查点中的其他路径。
+7. Owner 批准目标、风险、白名单和验收后，将任务转为 READY，并在同一授权提交中同步
+   `project-state.activeTask`、`activeTaskCard`、`nextAction`、`updatedAt`。该提交只允许任务卡、Context Lock 和
+   `.harness/project-state.yaml`，且项目状态的阶段、能力门禁和历史指针必须与 Base Commit 一致。
+8. 用后续仅修改任务卡的提交，把 READY 授权提交的完整 Git SHA 写入 `authorizationCommit`；运行
+   `doctor.py --task TASK-ID`。通过后才允许实施者转为 IN_PROGRESS。
+9. 进入 ACCEPTED/REJECTED 时，以单父提交原子更新任务卡、项目状态并把本任务追加到 `.harness/task-ledger.yaml`；同时加入 Evidence Pack 与 Handoff。历史条目和其绑定的任务卡、
+   Evidence、Handoff 不可删除或改写。提交前完整暂存候选快照，并用 `doctor.py --task TASK-ID --pre-closure` 检查候选闭包；正式
+   Doctor/Precheck 只接受已经形成真实 Git 提交的终态。
 
 ## Validation
 
 - 任务字段满足 `docs/tasks/task-card-template.md`；
 - Context Fingerprint 可从 Base Commit 独立复算；
 - 当前授权字段与 `authorizationCommit` 中的 READY 任务完全一致；
+- READY 授权提交与 `project-state` 的活动任务投影是同一原子事务；
+- `authorizationCommit` 必须是 Base 后首个 READY、单父提交；其父节点只能是 idle Base 或未绑定 DRAFT，不能事后前移授权锚；
+- 任务历史完全从 `baseCommit` 后分叉；逐父边变更并集不包含白名单外路径，改后恢复也不能绕过；
+- 正式 Doctor 前完整暂存候选快照，Index 与工作树内容一致；
+- 终态任务已登记到 append-only Task Ledger，历史审计产物仍与首次登记提交一致；
 - `writeAllowlist` 不与 `forbiddenPaths` 冲突；
 - 所需 Skill 均在 `.harness/skills.yaml` 注册并固定版本；
 - C3/C4 的批准与独立复核要求已声明；

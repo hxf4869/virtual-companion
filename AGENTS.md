@@ -4,7 +4,7 @@
 
 ## 每次会话的恢复顺序
 
-1. 从仓库根目录开始，读取 `.harness/project-state.yaml`。
+1. 从仓库根目录开始，读取 `.harness/project-state.yaml` 和 append-only `.harness/task-ledger.yaml`。
 2. 读取 `.harness/sources-of-truth.yaml`、`.harness/invariants.yaml`、`.harness/protected-paths.yaml` 和 `.harness/task-lifecycle.yaml`。
 3. 运行 `python scripts/harness/doctor.py --summary`；若系统只有 `python3`，使用 `python3`。
 4. 读取 `activeTask` 对应任务卡及其 Context Lock；没有活动任务时只能做只读分析或通过 `task-intake` 创建任务，不能实施变更。
@@ -24,9 +24,11 @@
 ## 任务与变更规则
 
 - 业务或仓库变更必须有且只有一个活动任务；合法状态和迁移见 `.harness/task-lifecycle.yaml`。
-- 原始需求先经 `task-intake` 收口为 DRAFT；Owner 批准范围、风险和验收后才可进入 READY。
+- 原始需求先经 `task-intake` 收口为 DRAFT；Owner 批准范围、风险和验收后，任务与项目活动状态必须在同一授权提交进入 READY。
 - 开工前验证 Base Commit、Context Fingerprint、写入白名单、禁止路径、所需 Skill 和审批，再转为 IN_PROGRESS。
 - 只能修改任务 `writeAllowlist` 内文件；`forbiddenPaths` 永远优先。
+- Diff Scope 按 `baseCommit` 后每条 Git 父边累计，改后恢复仍算变更；不得并入从 Base 之前分叉的旧历史。
+- 正式 Doctor/Precheck 前必须精确暂存本任务的完整候选快照；继续编辑后重新暂存，Index 与工作树内容必须一致。
 - 命中 `.harness/protected-paths.yaml` 时，必须具备其中要求的 Skill、人工批准或独立复核。
 - 范围、真源、所有权、安全行为或失败语义不明确时，转为 BLOCKED 并停止相关写入。
 - 变更理由必须能追溯到任务目标、机器真源、不变量或 Accepted ADR；不得用“顺手优化”扩大范围。
@@ -53,4 +55,7 @@ macOS/Linux/WSL: bash scripts/harness/precheck.sh
 
 另外执行任务卡 `requiredCommands`、受影响模块测试和 `git diff --check`。每条检查必须记录 `PASS`、`FAIL` 或 `NOT_RUN`、真实退出码、验证提交和产物哈希或无产物理由。C3/C4 任务需要独立 Reviewer。
 
-结束时更新机器状态，生成 `docs/evidence/TASK-ID/evidence-pack.json` 和 `docs/handoffs/TASK-ID.json`。Handoff 必须明确完成项、剩余项、已知风险和唯一下一动作，让无历史会话可以继续。
+结束时用单父原子提交更新机器状态和任务卡，把终态任务追加到 `.harness/task-ledger.yaml`，并生成 `docs/evidence/TASK-ID/evidence-pack.json` 和
+`docs/handoffs/TASK-ID.json`。Ledger 历史条目及其绑定的任务卡、完整 Evidence 目录和 Handoff 不可删除、改写、
+替换为链接或改变文件模式。Handoff 的下一动作必须与终态
+`project-state` 一致，并明确完成项、剩余项和已知风险，让无历史会话可以继续。

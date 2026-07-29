@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime
+import functools
 import json
+import os
 import re
+import stat
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -29,12 +34,20 @@ from harness_common import (
     relative,
     sha256_file,
     SKILL_FRONTMATTER_RE,
+    strict_yaml_load,
     TASK_BLOCK_RE,
+    task_id_from_filename,
     verify_context_lock,
 )
 
 FULL_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 TASK_ID_RE = re.compile(r"^TASK-[0-9]{4,}$")
+CANONICAL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+WINDOWS_RESERVED_COMPONENT_RE = re.compile(
+    r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$",
+    re.IGNORECASE,
+)
+WINDOWS_INVALID_COMPONENT_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
 RISK_RANK = {"C1": 1, "C2": 2, "C3": 3, "C4": 4}
 AUTHORIZATION_FIELDS = (
     "taskId",
@@ -67,6 +80,21 @@ PROJECT_STATE_CLOSURE_MUTABLE_FIELDS = {
     "nextAction",
     "updatedAt",
 }
+PROJECT_STATE_READY_MUTABLE_FIELDS = {
+    "activeTask",
+    "activeTaskCard",
+    "nextAction",
+    "updatedAt",
+}
+TASK_LEDGER_PATH = ".harness/task-ledger.yaml"
+PROJECT_STATE_PATH = ".harness/project-state.yaml"
+TASK_LEDGER_FIELDS = {
+    "state",
+    "contractVersion",
+    "taskCard",
+    "evidence",
+    "handoff",
+}
 CANONICAL_PRECHECK_COMMANDS = {
     "doctor": ["scripts/harness/doctor.py"],
     "catalogValidate": ["scripts/harness/catalog_tool.py", "validate"],
@@ -95,10 +123,22 @@ class Audit:
         self.warnings.append(message)
 
 
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        value[key] = item
+    return value
+
+
 def load_json(path: Path, audit: Audit) -> dict[str, Any] | None:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_json_object,
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         audit.error(f"{relative(path)}: cannot load JSON: {exc}")
         return None
     if not isinstance(data, dict):
@@ -206,7 +246,7 @@ def task_authorization_projection(text: str) -> str:
     match = TASK_BLOCK_RE.search(normalized)
     if not match:
         raise HarnessError("task authorization projection: YAML block is missing")
-    metadata = yaml.safe_load(match.group(1))
+    metadata = strict_yaml_load(match.group(1))
     if not isinstance(metadata, dict):
         raise HarnessError("task authorization projection: YAML metadata must be an object")
     for field in AUTHORIZATION_MUTABLE_FIELDS:
@@ -220,6 +260,14 @@ def project_state_closure_projection(state: dict[str, Any]) -> dict[str, Any]:
         key: value
         for key, value in state.items()
         if key not in PROJECT_STATE_CLOSURE_MUTABLE_FIELDS
+    }
+
+
+def project_state_ready_projection(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in state.items()
+        if key not in PROJECT_STATE_READY_MUTABLE_FIELDS
     }
 
 
@@ -242,7 +290,7 @@ def task_state_sequence(
         match = TASK_BLOCK_RE.search(raw)
         if not match:
             raise HarnessError(f"{path}: task YAML missing at {commit}")
-        metadata = yaml.safe_load(match.group(1))
+        metadata = strict_yaml_load(match.group(1))
         if not isinstance(metadata, dict):
             raise HarnessError(f"{path}: task YAML invalid at {commit}")
         state = str(metadata.get("state", ""))
@@ -252,6 +300,72 @@ def task_state_sequence(
     if current_state != sequence[-1]:
         sequence.append(current_state)
     return sequence
+
+
+def task_metadata_at_commit(commit: str, path: str) -> dict[str, Any]:
+    raw = git_object(commit, path).decode("utf-8")
+    match = TASK_BLOCK_RE.search(raw)
+    if not match:
+        raise HarnessError(f"{path}: task YAML missing at {commit}")
+    metadata = strict_yaml_load(match.group(1))
+    if not isinstance(metadata, dict):
+        raise HarnessError(f"{path}: task YAML invalid at {commit}")
+    return metadata
+
+
+def validate_task_state_graph(
+    audit: Audit,
+    task: dict[str, Any],
+    lifecycle: dict[str, Any],
+    authorization_commit: str,
+) -> None:
+    task_id = str(task.get("taskId", ""))
+    path = str(task.get("_path", ""))
+    transitions = lifecycle.get("transitions")
+    transitions = transitions if isinstance(transitions, dict) else {}
+    graph = git_text(
+        "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
+        f"{authorization_commit}..HEAD",
+    ).stdout.splitlines()
+    for graph_line in graph:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
+        child_state = str(task_metadata_at_commit(commit, path).get("state", ""))
+        for parent in tokens[1:]:
+            parent_in_scope = (
+                parent == authorization_commit
+                or git_text(
+                    "merge-base",
+                    "--is-ancestor",
+                    authorization_commit,
+                    parent,
+                    check=False,
+                ).returncode
+                == 0
+            )
+            if not parent_in_scope:
+                continue
+            parent_state = str(task_metadata_at_commit(parent, path).get("state", ""))
+            if child_state != parent_state:
+                allowed = transitions.get(parent_state, [])
+                audit.require(
+                    isinstance(allowed, list) and child_state in allowed,
+                    f"{task_id}: invalid task state edge {parent_state} -> "
+                    f"{child_state} at {parent}..{commit}",
+                )
+    head_state = str(task_metadata_at_commit("HEAD", path).get("state", ""))
+    current_state = str(task.get("state", ""))
+    if current_state != head_state:
+        allowed = transitions.get(head_state, [])
+        audit.require(
+            isinstance(allowed, list) and current_state in allowed,
+            f"{task_id}: invalid worktree task state edge {head_state} -> {current_state}",
+        )
 
 
 def first_matching_state_commit(
@@ -274,7 +388,7 @@ def first_matching_state_commit(
         match = TASK_BLOCK_RE.search(raw)
         if not match:
             raise HarnessError(f"{path}: task YAML missing at {commit}")
-        metadata = yaml.safe_load(match.group(1))
+        metadata = strict_yaml_load(match.group(1))
         if not isinstance(metadata, dict):
             raise HarnessError(f"{path}: task YAML invalid at {commit}")
         if str(metadata.get("state", "")) in states:
@@ -351,6 +465,7 @@ def derive_latest_task_in_states(
 def changed_paths_between(base_commit: str, target_commit: str) -> list[str]:
     result = git_bytes(
         "diff",
+        "--no-renames",
         "--name-only",
         "--diff-filter=ACDMRTUXB",
         "-z",
@@ -367,9 +482,48 @@ def changed_paths_between(base_commit: str, target_commit: str) -> list[str]:
     )
 
 
+def changed_paths_across_history(base_commit: str, target_commit: str) -> list[str]:
+    ancestor = git_text(
+        "merge-base",
+        "--is-ancestor",
+        base_commit,
+        target_commit,
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        raise HarnessError("Base Commit must be an ancestor of the target commit")
+    graph = git_text(
+        "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
+        f"{base_commit}..{target_commit}",
+    ).stdout.splitlines()
+    changed: set[str] = set()
+    for graph_line in graph:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
+        commit_descends_from_base = git_text(
+            "merge-base",
+            "--is-ancestor",
+            base_commit,
+            commit,
+            check=False,
+        )
+        if commit_descends_from_base.returncode != 0:
+            raise HarnessError(
+                f"task history is not ancestry-closed after Base Commit: {commit}"
+            )
+        for parent in tokens[1:]:
+            changed.update(changed_paths_between(parent, commit))
+    return sorted(changed)
+
+
 def yaml_at_commit(commit: str, path: str) -> dict[str, Any]:
     try:
-        data = yaml.safe_load(git_object(commit, path))
+        data = strict_yaml_load(git_object(commit, path))
     except (UnicodeError, yaml.YAMLError) as exc:
         raise HarnessError(f"{path}: invalid YAML at {commit}: {exc}") from exc
     if not isinstance(data, dict):
@@ -423,6 +577,360 @@ def effective_protected_rules(
     return deduplicated
 
 
+def first_task_state_commit_from_base(
+    task: dict[str, Any],
+    states: set[str],
+) -> tuple[str, dict[str, Any]] | None:
+    path = str(task.get("_path", ""))
+    base_commit = str(task.get("baseCommit", ""))
+    history = git_text(
+        "log",
+        "--format=%H",
+        "--reverse",
+        f"{base_commit}..HEAD",
+        "--",
+        path,
+    ).stdout.splitlines()
+    for commit in history:
+        raw = git_object(commit.strip(), path).decode("utf-8")
+        match = TASK_BLOCK_RE.search(raw)
+        if not match:
+            raise HarnessError(f"{path}: task YAML missing at {commit}")
+        metadata = strict_yaml_load(match.group(1))
+        if not isinstance(metadata, dict):
+            raise HarnessError(f"{path}: task YAML invalid at {commit}")
+        if str(metadata.get("state", "")) in states:
+            return commit.strip(), metadata
+    return None
+
+
+def validate_history_path_allowlist(
+    audit: Audit,
+    base_commit: str,
+    target_commit: str,
+    allowed_paths: set[str],
+    label: str,
+) -> None:
+    ancestor = git_text(
+        "merge-base",
+        "--is-ancestor",
+        base_commit,
+        target_commit,
+        check=False,
+    )
+    audit.require(
+        ancestor.returncode == 0,
+        f"{label}: Base Commit must be an ancestor of the target commit",
+    )
+    if ancestor.returncode != 0:
+        return
+    graph = git_text(
+        "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
+        f"{base_commit}..{target_commit}",
+    ).stdout.splitlines()
+    for graph_line in graph:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
+        commit_descends_from_base = git_text(
+            "merge-base",
+            "--is-ancestor",
+            base_commit,
+            commit,
+            check=False,
+        )
+        audit.require(
+            commit_descends_from_base.returncode == 0,
+            f"{label}: history is not ancestry-closed after Base Commit: {commit}",
+        )
+        for parent in tokens[1:]:
+            changed = set(changed_paths_between(parent, commit))
+            audit.require(
+                changed <= allowed_paths,
+                f"{label}: commit edge {parent}..{commit} contains unauthorized paths: "
+                f"{sorted(changed - allowed_paths)}",
+            )
+
+
+def validate_ready_parent_projection(
+    audit: Audit,
+    task_id: str,
+    parent_state: dict[str, Any],
+    parent_task: dict[str, Any] | None,
+) -> None:
+    audit.require(
+        parent_state.get("activeTask") in (None, "")
+        and parent_state.get("activeTaskCard") in (None, ""),
+        f"{task_id}: READY parent project-state must be idle",
+    )
+    if parent_task is not None:
+        audit.require(
+            parent_task.get("state") == "DRAFT"
+            and parent_task.get("authorizationCommit") in (None, ""),
+            f"{task_id}: READY parent task must be an unbound DRAFT",
+        )
+
+
+def validate_ready_project_state_checkpoint(
+    audit: Audit,
+    task: dict[str, Any],
+    authorization_commit: str,
+    checkpoint_paths: set[str],
+) -> None:
+    task_id = str(task.get("taskId", ""))
+    task_path = str(task.get("_path", ""))
+    base_commit = str(task.get("baseCommit", ""))
+    baseline_exists = git_text(
+        "cat-file",
+        "-e",
+        f"{base_commit}:{PROJECT_STATE_PATH}",
+        check=False,
+    )
+    if baseline_exists.returncode != 0:
+        audit.require(
+            task_id == "TASK-0002",
+            f"{task_id}: Base Commit is missing .harness/project-state.yaml",
+        )
+        bootstrap_anchor = first_task_state_commit_from_base(
+            task,
+            {"IN_PROGRESS", "BLOCKED", "IN_REVIEW", "ACCEPTED", "REJECTED"},
+        )
+        audit.require(
+            bootstrap_anchor is not None
+            and bootstrap_anchor[1].get("authorizationCommit") == authorization_commit,
+            f"{task_id}: bootstrap authorizationCommit is not anchored by the first implementation state",
+        )
+        return
+
+    first_ready = first_task_state_commit_from_base(task, {"READY"})
+    audit.require(
+        first_ready is not None and first_ready[0] == authorization_commit,
+        f"{task_id}: authorizationCommit must be the first READY commit after Base Commit",
+    )
+    parent_result = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        authorization_commit,
+        check=False,
+    )
+    parent_tokens = parent_result.stdout.split()
+    audit.require(
+        parent_result.returncode == 0 and len(parent_tokens) == 2,
+        f"{task_id}: READY authorization commit must have exactly one parent",
+    )
+    if parent_result.returncode != 0 or len(parent_tokens) != 2:
+        return
+    parent_commit = parent_tokens[1]
+    draft_paths = {task_path, str(task.get("contextLock", ""))}
+    validate_history_path_allowlist(
+        audit,
+        base_commit,
+        parent_commit,
+        draft_paths,
+        f"{task_id}: pre-READY history",
+    )
+    parent_state = yaml_at_commit(parent_commit, PROJECT_STATE_PATH)
+    parent_task_exists = git_text(
+        "cat-file",
+        "-e",
+        f"{parent_commit}:{task_path}",
+        check=False,
+    ).returncode == 0
+    parent_task: dict[str, Any] | None = None
+    if parent_task_exists:
+        parent_task_text = git_object(parent_commit, task_path).decode("utf-8")
+        parent_match = TASK_BLOCK_RE.search(parent_task_text)
+        parent_task = strict_yaml_load(parent_match.group(1)) if parent_match else {}
+        if not isinstance(parent_task, dict):
+            parent_task = {}
+    validate_ready_parent_projection(audit, task_id, parent_state, parent_task)
+    direct_paths = set(changed_paths_between(parent_commit, authorization_commit))
+    allowed_direct_paths = {
+        task_path,
+        str(task.get("contextLock", "")),
+        PROJECT_STATE_PATH,
+    }
+    audit.require(
+        {task_path, PROJECT_STATE_PATH} <= direct_paths,
+        f"{task_id}: READY transition must atomically change task card and project-state",
+    )
+    audit.require(
+        direct_paths <= allowed_direct_paths,
+        f"{task_id}: READY transition commit contains unrelated paths: "
+        f"{sorted(direct_paths - allowed_direct_paths)}",
+    )
+
+    state_path = PROJECT_STATE_PATH
+    audit.require(
+        state_path in checkpoint_paths,
+        f"{task_id}: READY authorization commit must atomically update {state_path}",
+    )
+    base_state = yaml_at_commit(base_commit, state_path)
+    ready_state = yaml_at_commit(authorization_commit, state_path)
+    audit.require(
+        base_state.get("activeTask") in (None, "")
+        and base_state.get("activeTaskCard") in (None, ""),
+        f"{task_id}: Base Commit already has an active task",
+    )
+    audit.require(
+        ready_state.get("activeTask") == task_id,
+        f"{task_id}: READY checkpoint project-state.activeTask must point to the task",
+    )
+    audit.require(
+        ready_state.get("activeTaskCard") == task_path,
+        f"{task_id}: READY checkpoint project-state.activeTaskCard must point to the task card",
+    )
+    validate_nonblank_text(
+        audit,
+        f"{task_id}: READY checkpoint project-state.nextAction",
+        ready_state.get("nextAction"),
+    )
+    audit.require(
+        project_state_ready_projection(base_state)
+        == project_state_ready_projection(ready_state),
+        f"{task_id}: READY checkpoint changed non-lifecycle project-state fields",
+    )
+
+
+def is_valid_approval_timestamp(value: Any) -> bool:
+    if isinstance(value, datetime):
+        return True
+    if isinstance(value, date):
+        return True
+    if not isinstance(value, str) or not value.strip():
+        return False
+    candidate = value.strip()
+    try:
+        if "T" in candidate or " " in candidate:
+            datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        else:
+            date.fromisoformat(candidate)
+    except ValueError:
+        return False
+    return True
+
+
+def is_canonical_identity(value: Any) -> bool:
+    return isinstance(value, str) and bool(CANONICAL_ID_RE.fullmatch(value))
+
+
+def is_legacy_harness_bootstrap(task: dict[str, Any]) -> bool:
+    if task.get("taskId") != "TASK-0002":
+        return False
+    base_commit = str(task.get("baseCommit", ""))
+    result = git_text(
+        "cat-file",
+        "-e",
+        f"{base_commit}:{PROJECT_STATE_PATH}",
+        check=False,
+    )
+    return result.returncode != 0
+
+
+def validate_ready_context_lock_bytes(
+    audit: Audit,
+    task_path: str,
+    current: bytes,
+    authorized: bytes,
+) -> None:
+    audit.require(
+        current == authorized,
+        f"{task_path}: Context Lock changed after READY checkpoint",
+    )
+
+
+def validate_task_authorization_history(
+    audit: Audit,
+    task_id: str,
+    task_path: str,
+    base_commit: str,
+    authorization_commit: str,
+    authorized_text: str,
+    enforce_dominance: bool = True,
+) -> None:
+    expected_projection = task_authorization_projection(authorized_text)
+    history = git_text(
+        "rev-list",
+        f"{authorization_commit}..HEAD",
+    ).stdout.splitlines()
+    for commit in history:
+        try:
+            entry = git_tree_entry(commit.strip(), task_path)
+            audit.require(
+                entry is not None and entry[:2] == ("100644", "blob"),
+                f"{task_id}: task card is missing or not a regular 100644 blob "
+                f"in commit {commit.strip()}",
+            )
+            historical_text = git_object(commit.strip(), task_path).decode("utf-8")
+            audit.require(
+                task_authorization_projection(historical_text) == expected_projection,
+                f"{task_id}: authorization projection changed in commit {commit.strip()}",
+            )
+        except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(
+                f"{task_id}: cannot validate task authorization history at "
+                f"{commit.strip()}: {exc}"
+            )
+    if enforce_dominance:
+        graph = git_text(
+            "rev-list",
+            "--topo-order",
+            "--reverse",
+            f"{base_commit}..HEAD",
+        ).stdout.splitlines()
+        for commit in graph:
+            commit = commit.strip()
+            task_exists = git_text(
+                "cat-file",
+                "-e",
+                f"{commit}:{task_path}",
+                check=False,
+            )
+            if task_exists.returncode != 0:
+                continue
+            try:
+                historical = task_metadata_at_commit(commit, task_path)
+                if historical.get("state") == "DRAFT":
+                    continue
+                dominated = git_text(
+                    "merge-base",
+                    "--is-ancestor",
+                    authorization_commit,
+                    commit,
+                    check=False,
+                )
+                audit.require(
+                    dominated.returncode == 0,
+                    f"{task_id}: non-DRAFT task state at {commit} is outside the "
+                    "authorizationCommit ancestry",
+                )
+            except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+                audit.error(
+                    f"{task_id}: cannot validate authorization dominance at {commit}: {exc}"
+                )
+    current_regular_file_bytes(
+        audit,
+        f"{task_id}: {task_path}",
+        ROOT / normalize_repo_path(task_path),
+    )
+    index_entry = git_index_entry(task_path)
+    audit.require(
+        index_entry is not None and index_entry[0] == "100644",
+        f"{task_id}: current task-card index entry must remain mode 100644",
+    )
+    worktree_oid = git_worktree_blob_oid(task_path)
+    audit.require(
+        index_entry is not None and index_entry[1] == worktree_oid,
+        f"{task_id}: task-card index and worktree content must match before validation",
+    )
+
+
 def validate_tasks(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
@@ -462,7 +970,10 @@ def validate_tasks(
         audit.require(not missing, f"{path}: missing task fields: {missing}")
         audit.require(bool(TASK_ID_RE.fullmatch(task_id)), f"{path}: invalid taskId {task_id!r}")
         audit.require(task.get("state") in states, f"{path}: unknown state {task.get('state')!r}")
-        audit.require(bool(task.get("owner")), f"{path}: owner is required")
+        audit.require(
+            is_canonical_identity(task.get("owner")),
+            f"{path}: owner must be a canonical lowercase identity",
+        )
         audit.require(
             task.get("riskClass") in RISK_RANK,
             f"{path}: riskClass must be one of {sorted(RISK_RANK)}",
@@ -490,24 +1001,62 @@ def validate_tasks(
             "reviewers",
         ):
             audit.require(isinstance(task.get(field), list), f"{path}: {field} must be a list")
+        approvals = task.get("humanApprovals")
+        approvals = approvals if isinstance(approvals, list) else []
+        for index, approval in enumerate(approvals):
+            label = f"{path}: humanApprovals[{index}]"
+            audit.require(isinstance(approval, dict), f"{label} must be an object")
+            if not isinstance(approval, dict):
+                continue
+            audit.require(
+                is_canonical_identity(approval.get("approvedBy")),
+                f"{label}.approvedBy must be a canonical lowercase identity",
+            )
+            audit.require(
+                is_valid_approval_timestamp(approval.get("approvedAt")),
+                f"{label}.approvedAt must be an ISO-8601 date or timestamp",
+            )
+            validate_nonblank_text(audit, f"{label}.scope", approval.get("scope"))
+            validate_nonblank_text(audit, f"{label}.evidence", approval.get("evidence"))
         for error in verify_context_lock(task):
             audit.error(error)
+        expected_context_lock = f"docs/tasks/context/{task_id}.context-lock.yaml"
+        audit.require(
+            task.get("contextLock") == expected_context_lock,
+            f"{path}: contextLock must be {expected_context_lock}",
+        )
         authorization_commit = str(task.get("authorizationCommit", ""))
-        if task_id != "TASK-0001":
+        if task.get("state") == "DRAFT":
+            audit.require(
+                authorization_commit == "",
+                f"{path}: DRAFT task must not declare authorizationCommit",
+            )
+        elif task_id != "TASK-0001":
             audit.require(
                 bool(FULL_COMMIT_RE.fullmatch(authorization_commit)),
                 f"{path}: authorizationCommit must be a full Git SHA",
             )
-        if FULL_COMMIT_RE.fullmatch(authorization_commit):
+        if task.get("state") != "DRAFT" and FULL_COMMIT_RE.fullmatch(authorization_commit):
             ancestor = git_text("merge-base", "--is-ancestor", authorization_commit, "HEAD", check=False)
             audit.require(ancestor.returncode == 0, f"{path}: authorizationCommit is not an ancestor of HEAD")
+            base_to_authorization = git_text(
+                "merge-base",
+                "--is-ancestor",
+                str(task.get("baseCommit", "")),
+                authorization_commit,
+                check=False,
+            )
+            audit.require(
+                base_to_authorization.returncode == 0,
+                f"{path}: baseCommit is not an ancestor of authorizationCommit",
+            )
             try:
                 raw = git_object(authorization_commit, path)
                 authorized_text = raw.decode("utf-8")
                 current_text = (ROOT / path).read_text(encoding="utf-8")
                 match = TASK_BLOCK_RE.search(authorized_text)
                 audit.require(bool(match), f"{path}: authorization checkpoint has no task YAML")
-                authorized = yaml.safe_load(match.group(1)) if match else {}
+                authorized = strict_yaml_load(match.group(1)) if match else {}
                 audit.require(
                     isinstance(authorized, dict) and authorized.get("state") == "READY",
                     f"{path}: authorization checkpoint must contain a READY task",
@@ -526,8 +1075,9 @@ def validate_tasks(
                         owner_approved = any(
                             isinstance(item, dict)
                             and item.get("approvedBy") == task.get("owner")
-                            and item.get("approvedAt")
-                            and item.get("evidence")
+                            and is_valid_approval_timestamp(item.get("approvedAt"))
+                            and isinstance(item.get("evidence"), str)
+                            and bool(item.get("evidence").strip())
                             for item in approvals
                         )
                         audit.require(owner_approved, f"{path}: READY checkpoint lacks Owner approval evidence")
@@ -536,8 +1086,18 @@ def validate_tasks(
                     == task_authorization_projection(authorized_text),
                     f"{path}: task title/body or immutable metadata changed after READY checkpoint",
                 )
+                validate_task_authorization_history(
+                    audit,
+                    task_id,
+                    path,
+                    str(task.get("baseCommit", "")),
+                    authorization_commit,
+                    authorized_text,
+                    enforce_dominance=not is_legacy_harness_bootstrap(task),
+                )
                 changed = git_bytes(
                     "diff",
+                    "--no-renames",
                     "--name-only",
                     "-z",
                     str(task.get("baseCommit", "")),
@@ -549,14 +1109,38 @@ def validate_tasks(
                     for value in changed.split(b"\0")
                     if value
                 }
-                allowed_checkpoint_paths = {path, str(task.get("contextLock", ""))}
+                allowed_checkpoint_paths = {
+                    path,
+                    str(task.get("contextLock", "")),
+                    PROJECT_STATE_PATH,
+                }
                 audit.require(path in checkpoint_paths, f"{path}: authorization commit must include the task card")
                 audit.require(
                     checkpoint_paths <= allowed_checkpoint_paths,
                     f"{path}: authorization commit contains non-authorization files: "
                     f"{sorted(checkpoint_paths - allowed_checkpoint_paths)}",
                 )
-                git_object(authorization_commit, str(task.get("contextLock", "")))
+                validate_ready_project_state_checkpoint(
+                    audit,
+                    task,
+                    authorization_commit,
+                    checkpoint_paths,
+                )
+                context_path = str(task.get("contextLock", ""))
+                authorized_context = git_object(authorization_commit, context_path)
+                current_context = (ROOT / normalize_repo_path(context_path)).read_bytes()
+                validate_ready_context_lock_bytes(
+                    audit,
+                    path,
+                    current_context,
+                    authorized_context,
+                )
+                validate_frozen_repository_artifact(
+                    audit,
+                    task_id,
+                    authorization_commit,
+                    context_path,
+                )
                 sequence = task_state_sequence(task, authorization_commit)
                 transitions = lifecycle.get("transitions") or {}
                 for previous, current in zip(sequence, sequence[1:]):
@@ -566,8 +1150,770 @@ def validate_tasks(
                         f"{path}: invalid task state transition {previous} -> {current}; "
                         f"observed sequence {sequence}",
                     )
+                validate_task_state_graph(
+                    audit,
+                    task,
+                    lifecycle,
+                    authorization_commit,
+                )
             except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
                 audit.error(f"{path}: cannot verify authorization checkpoint: {exc}")
+
+
+def validate_ledger_history(
+    audit: Audit,
+    current_entries: dict[str, Any],
+    historical_snapshots: list[tuple[str, dict[str, Any]]],
+) -> None:
+    immutable_entries: dict[str, Any] = {}
+    previous_entries: dict[str, Any] = {}
+    for commit, snapshot in historical_snapshots:
+        for task_id, entry in previous_entries.items():
+            audit.require(
+                snapshot.get(task_id) == entry,
+                f"task-ledger: entry {task_id} was removed or rewritten in commit {commit}",
+            )
+        for task_id, entry in snapshot.items():
+            if task_id in immutable_entries:
+                audit.require(
+                    immutable_entries[task_id] == entry,
+                    f"task-ledger: immutable entry {task_id} changed in commit {commit}",
+                )
+            else:
+                immutable_entries[task_id] = entry
+        previous_entries = snapshot
+    for task_id, entry in immutable_entries.items():
+        audit.require(
+            current_entries.get(task_id) == entry,
+            f"task-ledger: historical terminal entry {task_id} was removed or rewritten",
+        )
+
+
+def validate_terminal_history_dominance(
+    audit: Audit,
+    task_id: str,
+    task_path: str,
+    base_commit: str,
+    terminal_commit: str,
+    terminal_states: set[str],
+) -> None:
+    history = git_text(
+        "rev-list",
+        "--topo-order",
+        "--reverse",
+        f"{base_commit}..HEAD",
+    ).stdout.splitlines()
+    for commit in history:
+        commit = commit.strip()
+        task_exists = git_text(
+            "cat-file",
+            "-e",
+            f"{commit}:{task_path}",
+            check=False,
+        )
+        if task_exists.returncode != 0:
+            continue
+        historical_task = task_metadata_at_commit(commit, task_path)
+        if historical_task.get("state") not in terminal_states:
+            continue
+        dominated = git_text(
+            "merge-base",
+            "--is-ancestor",
+            terminal_commit,
+            commit,
+            check=False,
+        )
+        audit.require(
+            dominated.returncode == 0,
+            f"task-ledger: v2 task {task_id} has a terminal state outside "
+            f"its canonical terminal boundary at {commit}",
+        )
+
+
+def intervening_terminal_boundaries(
+    base_commit: str,
+    terminal_commit: str,
+    task_id: str,
+    current_entries: dict[str, Any],
+    introductions: dict[str, set[str]],
+) -> list[str]:
+    intervening: list[str] = []
+    for other_task_id, other_commits in introductions.items():
+        if other_task_id == task_id:
+            continue
+        other_entry = current_entries.get(other_task_id)
+        if (
+            not isinstance(other_entry, dict)
+            or other_entry.get("contractVersion") != 2
+        ):
+            continue
+        for other_commit in other_commits:
+            if other_commit == base_commit:
+                continue
+            after_base = git_text(
+                "merge-base",
+                "--is-ancestor",
+                base_commit,
+                other_commit,
+                check=False,
+            )
+            before_terminal = git_text(
+                "merge-base",
+                "--is-ancestor",
+                other_commit,
+                terminal_commit,
+                check=False,
+            )
+            if after_base.returncode == 0 and before_terminal.returncode == 0:
+                intervening.append(f"{other_task_id}@{other_commit}")
+    return sorted(intervening)
+
+
+def validate_ledger_bound_artifacts(
+    audit: Audit,
+    current_entries: dict[str, Any],
+    tasks: dict[str, dict[str, Any]],
+    terminal_states: set[str],
+    introductions: dict[str, set[str]],
+    allow_uncommitted_terminal: bool,
+) -> None:
+    for task_id, raw_entry in current_entries.items():
+        task = tasks.get(task_id)
+        if task is None or not isinstance(raw_entry, dict):
+            continue
+        for field in ("taskCard", "handoff"):
+            path = str(raw_entry.get(field, ""))
+            if is_repository_relative(path):
+                current_regular_file_bytes(
+                    audit,
+                    f"task-ledger: {task_id} {field}",
+                    ROOT / normalize_repo_path(path),
+                )
+        validate_current_regular_tree(
+            audit,
+            task_id,
+            f"docs/evidence/{task_id}",
+        )
+        entry = raw_entry
+        contract_version = entry.get("contractVersion")
+        try:
+            if contract_version == 2:
+                introduction_commits = introductions.get(task_id, set())
+                audit.require(
+                    len(introduction_commits) <= 1,
+                    f"task-ledger: v2 task {task_id} has ambiguous terminal introductions: "
+                    f"{sorted(introduction_commits)}",
+                )
+                terminal_commit = (
+                    next(iter(introduction_commits))
+                    if len(introduction_commits) == 1
+                    else None
+                )
+            else:
+                terminal_commit = first_terminal_commit(task, terminal_states)
+        except HarnessError as exc:
+            audit.error(f"task-ledger: cannot derive {task_id} terminal commit: {exc}")
+            continue
+        if terminal_commit is None:
+            validate_terminal_commit_requirement(
+                audit,
+                task_id,
+                task.get("state") in terminal_states,
+                allow_uncommitted_terminal,
+            )
+            continue
+        for field in ("taskCard", "handoff"):
+            path = str(entry.get(field, ""))
+            if is_repository_relative(path):
+                validate_frozen_repository_artifact(
+                    audit,
+                    task_id,
+                    terminal_commit,
+                    path,
+                )
+        validate_frozen_repository_tree(
+            audit,
+            task_id,
+            terminal_commit,
+            f"docs/evidence/{task_id}",
+        )
+        if contract_version != 2:
+            continue
+        audit.require(
+            introductions.get(task_id) == {terminal_commit},
+            f"task-ledger: v2 task {task_id} must have exactly one introduction at "
+            "its terminal commit",
+        )
+        try:
+            terminal_ledger = yaml_at_commit(terminal_commit, TASK_LEDGER_PATH)
+            terminal_entries = terminal_ledger.get("tasks")
+            audit.require(
+                isinstance(terminal_entries, dict)
+                and terminal_entries.get(task_id) == entry,
+                f"task-ledger: v2 task {task_id} must first register in its terminal commit",
+            )
+            terminal_task = task_metadata_at_commit(
+                terminal_commit,
+                str(entry.get("taskCard", "")),
+            )
+            audit.require(
+                terminal_task.get("state") == entry.get("state")
+                and terminal_task.get("state") in terminal_states,
+                f"task-ledger: v2 task {task_id} terminal commit and ledger state disagree",
+            )
+            authorization_commit = str(terminal_task.get("authorizationCommit", ""))
+            authorization_precedes_terminal = git_text(
+                "merge-base",
+                "--is-ancestor",
+                authorization_commit,
+                terminal_commit,
+                check=False,
+            )
+            audit.require(
+                bool(FULL_COMMIT_RE.fullmatch(authorization_commit))
+                and authorization_precedes_terminal.returncode == 0,
+                f"task-ledger: v2 task {task_id} terminal commit must descend from "
+                "authorizationCommit",
+            )
+            base_commit = str(task.get("baseCommit", ""))
+            intervening_boundaries = intervening_terminal_boundaries(
+                base_commit,
+                terminal_commit,
+                task_id,
+                current_entries,
+                introductions,
+            )
+            audit.require(
+                not intervening_boundaries,
+                f"task-ledger: v2 task {task_id} was based before intervening "
+                f"terminal boundaries: {sorted(intervening_boundaries)}",
+            )
+            terminal_state = yaml_at_commit(terminal_commit, PROJECT_STATE_PATH)
+            audit.require(
+                terminal_state.get("activeTask") in (None, "")
+                and terminal_state.get("activeTaskCard") in (None, "")
+                and terminal_state.get("lastTerminalTask") == task_id
+                and terminal_state.get("lastTerminalHandoff") == entry.get("handoff"),
+                f"task-ledger: v2 task {task_id} terminal project-state is not atomically closed",
+            )
+            if entry.get("state") == "ACCEPTED":
+                audit.require(
+                    terminal_state.get("lastAcceptedTask") == task_id
+                    and terminal_state.get("lastAcceptedHandoff") == entry.get("handoff"),
+                    f"task-ledger: accepted v2 task {task_id} terminal project-state "
+                    "must update accepted pointers",
+                )
+            parent_tokens = git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                terminal_commit,
+            ).stdout.split()
+            audit.require(
+                len(parent_tokens) == 2,
+                f"task-ledger: v2 terminal commit for {task_id} must have exactly one parent",
+            )
+            if len(parent_tokens) == 2:
+                parent_commit = parent_tokens[1]
+                parent_entries = ledger_entries_at_commit(parent_commit)
+                audit.require(
+                    task_id not in parent_entries,
+                    f"task-ledger: v2 task {task_id} was registered before its terminal commit",
+                )
+                parent_task = task_metadata_at_commit(
+                    parent_commit,
+                    str(entry.get("taskCard", "")),
+                )
+                audit.require(
+                    parent_task.get("state") not in terminal_states,
+                    f"task-ledger: v2 task {task_id} terminal parent must be non-terminal",
+                )
+                terminal_paths = set(
+                    changed_paths_between(parent_commit, terminal_commit)
+                )
+                required_terminal_paths = {
+                    str(entry.get("taskCard", "")),
+                    PROJECT_STATE_PATH,
+                    TASK_LEDGER_PATH,
+                    str(entry.get("evidence", "")),
+                    str(entry.get("handoff", "")),
+                }
+                audit.require(
+                    required_terminal_paths <= terminal_paths,
+                    f"task-ledger: v2 task {task_id} terminal commit is missing atomic "
+                    f"closure paths: {sorted(required_terminal_paths - terminal_paths)}",
+                )
+                allowed_terminal_patterns = (
+                    str(entry.get("taskCard", "")),
+                    PROJECT_STATE_PATH,
+                    TASK_LEDGER_PATH,
+                    f"docs/evidence/{task_id}/**",
+                    str(entry.get("handoff", "")),
+                )
+                unauthorized_terminal_paths = [
+                    path
+                    for path in terminal_paths
+                    if not any(
+                        glob_matches(path, pattern)
+                        for pattern in allowed_terminal_patterns
+                    )
+                ]
+                audit.require(
+                    not unauthorized_terminal_paths,
+                    f"task-ledger: v2 task {task_id} terminal commit contains "
+                    f"unrelated paths: {unauthorized_terminal_paths}",
+                )
+            validate_terminal_history_dominance(
+                audit,
+                task_id,
+                str(entry.get("taskCard", "")),
+                str(task.get("baseCommit", "")),
+                terminal_commit,
+                terminal_states,
+            )
+        except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(f"task-ledger: cannot bind {task_id} to terminal commit: {exc}")
+
+
+def ledger_entries_at_commit(commit: str) -> dict[str, Any]:
+    exists = git_text(
+        "cat-file",
+        "-e",
+        f"{commit}:{TASK_LEDGER_PATH}",
+        check=False,
+    )
+    if exists.returncode != 0:
+        return {}
+    ledger = yaml_at_commit(commit, TASK_LEDGER_PATH)
+    if set(ledger) != {"schemaVersion", "tasks"}:
+        raise HarnessError(f"task-ledger: invalid root fields at {commit}")
+    if ledger.get("schemaVersion") != 1 or not isinstance(ledger.get("tasks"), dict):
+        raise HarnessError(f"task-ledger: invalid snapshot at {commit}")
+    return ledger["tasks"]
+
+
+def ledger_introduction_commits_for_task(task_id: str) -> set[str]:
+    introductions: set[str] = set()
+    history = git_text(
+        "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
+        "HEAD",
+    ).stdout.splitlines()
+    for graph_line in history:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
+        child_entries = ledger_entries_at_commit(commit)
+        if task_id not in child_entries:
+            continue
+        parent_entries = [
+            ledger_entries_at_commit(parent)
+            for parent in tokens[1:]
+        ]
+        if not parent_entries or all(
+            task_id not in entries
+            for entries in parent_entries
+        ):
+            introductions.add(commit)
+    return introductions
+
+
+def canonical_terminal_commit(
+    task: dict[str, Any],
+    terminal_states: set[str],
+) -> str | None:
+    task_id = str(task.get("taskId", ""))
+    ledger_path = ROOT / TASK_LEDGER_PATH
+    if ledger_path.is_file():
+        ledger = load_yaml(ledger_path)
+        entries = ledger.get("tasks")
+        entry = entries.get(task_id) if isinstance(entries, dict) else None
+        if isinstance(entry, dict) and entry.get("contractVersion") == 2:
+            introductions = ledger_introduction_commits_for_task(task_id)
+            if len(introductions) > 1:
+                raise HarnessError(
+                    f"task-ledger: v2 task {task_id} has multiple terminal introductions"
+                )
+            return next(iter(introductions)) if introductions else None
+    return first_terminal_commit(task, terminal_states)
+
+
+def validate_active_task_base_freshness(
+    audit: Audit,
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
+    current_entries: dict[str, Any] | None = None,
+    introductions: dict[str, set[str]] | None = None,
+) -> None:
+    if current_entries is None:
+        ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
+        raw_entries = ledger.get("tasks")
+        current_entries = raw_entries if isinstance(raw_entries, dict) else {}
+    if introductions is None:
+        introductions = {
+            task_id: ledger_introduction_commits_for_task(task_id)
+            for task_id, entry in current_entries.items()
+            if isinstance(entry, dict) and entry.get("contractVersion") == 2
+        }
+    active_states = set(str(item) for item in lifecycle.get("activeStates", []))
+    for task_id, task in tasks.items():
+        if task.get("state") not in active_states:
+            continue
+        stale_boundaries = intervening_terminal_boundaries(
+            str(task.get("baseCommit", "")),
+            "HEAD",
+            task_id,
+            current_entries,
+            introductions,
+        )
+        audit.require(
+            not stale_boundaries,
+            f"{task_id}: active task uses a stale Base Commit; terminal boundaries "
+            f"were introduced after authorization: {stale_boundaries}",
+        )
+
+
+def validate_ledger_edge(
+    audit: Audit,
+    parent_entries: dict[str, Any],
+    child_entries: dict[str, Any],
+    edge_label: str,
+) -> None:
+    for task_id, entry in parent_entries.items():
+        audit.require(
+            child_entries.get(task_id) == entry,
+            f"task-ledger: entry {task_id} was removed or rewritten on edge {edge_label}",
+        )
+
+
+def validate_terminal_commit_requirement(
+    audit: Audit,
+    task_id: str,
+    is_terminal: bool,
+    allow_uncommitted_terminal: bool,
+) -> None:
+    if is_terminal:
+        audit.require(
+            allow_uncommitted_terminal,
+            f"{task_id}: terminal state must exist in a real Git commit; "
+            "use --pre-closure only before creating that commit",
+        )
+
+
+def validate_ledger_parent_edges(
+    audit: Audit,
+    current_entries: dict[str, Any],
+) -> dict[str, set[str]]:
+    shallow = git_text("rev-parse", "--is-shallow-repository", check=False)
+    audit.require(
+        shallow.returncode == 0 and shallow.stdout.strip() == "false",
+        "task-ledger: full Git history is required for append-only verification",
+    )
+    history = git_text(
+        "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
+        "HEAD",
+    ).stdout.splitlines()
+    introductions: dict[str, set[str]] = {}
+    snapshots: dict[str, dict[str, Any]] = {}
+
+    def snapshot(commit: str) -> dict[str, Any]:
+        if commit not in snapshots:
+            snapshots[commit] = ledger_entries_at_commit(commit)
+        return snapshots[commit]
+
+    for graph_line in history:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
+        parent_commits = tokens[1:]
+        try:
+            child_entries = snapshot(commit)
+            parent_snapshots = [
+                snapshot(parent_commit)
+                for parent_commit in parent_commits
+            ]
+            for task_id in child_entries:
+                if not parent_snapshots or all(
+                    task_id not in parent_entries
+                    for parent_entries in parent_snapshots
+                ):
+                    introductions.setdefault(task_id, set()).add(commit)
+            for parent_commit, parent_entries in zip(
+                parent_commits,
+                parent_snapshots,
+            ):
+                validate_ledger_edge(
+                    audit,
+                    parent_entries,
+                    child_entries,
+                    f"{parent_commit}..{commit}",
+                )
+        except (HarnessError, yaml.YAMLError) as exc:
+            audit.error(f"task-ledger: cannot validate history edge at {commit}: {exc}")
+    try:
+        head_entries = ledger_entries_at_commit("HEAD")
+        for task_id, entry in head_entries.items():
+            audit.require(
+                current_entries.get(task_id) == entry,
+                f"task-ledger: historical terminal entry {task_id} was removed or rewritten",
+            )
+    except HarnessError as exc:
+        audit.error(f"task-ledger: cannot compare worktree with HEAD: {exc}")
+    for task_id in current_entries:
+        historical_introductions = introductions.get(task_id, set())
+        audit.require(
+            len(historical_introductions) <= 1,
+            f"task-ledger: task {task_id} has multiple introduction commits: "
+            f"{sorted(historical_introductions)}",
+        )
+    return introductions
+
+
+def validate_task_ledger_entries(
+    audit: Audit,
+    entries: dict[str, Any],
+    tasks: dict[str, dict[str, Any]],
+    terminal_states: set[str],
+) -> None:
+    for task_id, raw_entry in entries.items():
+        label = f"task-ledger: {task_id}"
+        audit.require(bool(TASK_ID_RE.fullmatch(str(task_id))), f"{label}: invalid task ID")
+        audit.require(isinstance(raw_entry, dict), f"{label}: entry must be an object")
+        if not isinstance(raw_entry, dict):
+            continue
+        audit.require(
+            set(raw_entry) == TASK_LEDGER_FIELDS,
+            f"{label}: fields must be exactly {sorted(TASK_LEDGER_FIELDS)}",
+        )
+        audit.require(
+            raw_entry.get("state") in terminal_states,
+            f"{label}: state must be terminal",
+        )
+        contract_version = raw_entry.get("contractVersion")
+        audit.require(
+            isinstance(contract_version, int)
+            and not isinstance(contract_version, bool)
+            and contract_version in {1, 2},
+            f"{label}: contractVersion must be a supported version (1 or 2)",
+        )
+        expected_paths = {
+            "evidence": f"docs/evidence/{task_id}/evidence-pack.json",
+            "handoff": f"docs/handoffs/{task_id}.json",
+        }
+        for field, expected in expected_paths.items():
+            audit.require(
+                raw_entry.get(field) == expected,
+                f"{label}: {field} must be {expected}",
+            )
+        task = tasks.get(str(task_id))
+        audit.require(task is not None, f"{label}: task card is missing")
+        if task is not None:
+            expected_contract_version = 2 if task.get("authorizationCommit") else 1
+            audit.require(
+                contract_version == expected_contract_version,
+                f"{label}: contractVersion must be {expected_contract_version} for this task",
+            )
+            audit.require(
+                raw_entry.get("taskCard") == task.get("_path"),
+                f"{label}: taskCard does not match the discovered task",
+            )
+            audit.require(
+                raw_entry.get("state") == task.get("state"),
+                f"{label}: state disagrees with the task card",
+            )
+        for field in ("taskCard", "evidence", "handoff"):
+            path = str(raw_entry.get(field, ""))
+            audit.require(is_repository_relative(path), f"{label}: {field} must be repository-relative")
+            if is_repository_relative(path):
+                audit.require(
+                    (ROOT / normalize_repo_path(path)).is_file(),
+                    f"{label}: missing {path}",
+                )
+    for task_id, task in tasks.items():
+        if task.get("state") in terminal_states:
+            audit.require(
+                task_id in entries,
+                f"task-ledger: terminal task {task_id} is not registered",
+            )
+
+
+def validate_task_ledger(
+    audit: Audit,
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
+    allow_uncommitted_terminal: bool = False,
+) -> dict[str, Any]:
+    ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
+    audit.require(
+        set(ledger) == {"schemaVersion", "tasks"},
+        "task-ledger: root fields must be exactly schemaVersion and tasks",
+    )
+    audit.require(ledger.get("schemaVersion") == 1, "task-ledger: unsupported schemaVersion")
+    raw_entries = ledger.get("tasks")
+    audit.require(isinstance(raw_entries, dict), "task-ledger: tasks must be an object")
+    entries = raw_entries if isinstance(raw_entries, dict) else {}
+    terminal_states = set(str(item) for item in lifecycle.get("terminalStates", []))
+    validate_task_ledger_entries(audit, entries, tasks, terminal_states)
+    introductions = validate_ledger_parent_edges(audit, entries)
+    validate_ledger_bound_artifacts(
+        audit,
+        entries,
+        tasks,
+        terminal_states,
+        introductions,
+        allow_uncommitted_terminal,
+    )
+    return entries
+
+
+def validate_task_base_handoff_anchors(
+    audit: Audit,
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
+) -> None:
+    terminal_states = set(str(item) for item in lifecycle.get("terminalStates", []))
+    for task_id, task in tasks.items():
+        if task_id == "TASK-0001":
+            continue
+        if is_legacy_harness_bootstrap(task):
+            try:
+                legacy_task = tasks.get("TASK-0001")
+                if legacy_task is None:
+                    raise HarnessError("bootstrap predecessor TASK-0001 is missing")
+                first_ready = first_task_state_commit_from_base(task, {"READY"})
+                if first_ready is None:
+                    raise HarnessError("bootstrap task has no READY commit")
+                parent_tokens = git_text(
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    first_ready[0],
+                ).stdout.split()
+                audit.require(
+                    len(parent_tokens) == 2
+                    and parent_tokens[1] == task.get("baseCommit"),
+                    f"{task_id}: legacy bootstrap baseCommit must be the direct parent "
+                    "of its first READY commit",
+                )
+                legacy_previous = git_object(
+                    str(task.get("baseCommit", "")),
+                    str(legacy_task["_path"]),
+                ).decode("utf-8")
+                match = TASK_BLOCK_RE.search(legacy_previous)
+                metadata = strict_yaml_load(match.group(1)) if match else {}
+                audit.require(
+                    isinstance(metadata, dict)
+                    and metadata.get("state") in {"DONE", "COMPLETED", "ACCEPTED"},
+                    f"{task_id}: legacy bootstrap Base Commit is not a prior terminal snapshot",
+                )
+            except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+                audit.error(f"{task_id}: cannot verify legacy bootstrap boundary: {exc}")
+            continue
+        base_commit = str(task.get("baseCommit", ""))
+        try:
+            base_state = yaml_at_commit(base_commit, PROJECT_STATE_PATH)
+            previous_task_id = str(base_state.get("lastTerminalTask", ""))
+            audit.require(
+                previous_task_id in tasks,
+                f"{task_id}: Base Commit project-state has unknown lastTerminalTask "
+                f"{previous_task_id!r}",
+            )
+            if previous_task_id not in tasks:
+                continue
+            previous_boundary = canonical_terminal_commit(
+                tasks[previous_task_id],
+                terminal_states,
+            )
+            audit.require(
+                previous_boundary is not None and base_commit == previous_boundary,
+                f"{task_id}: baseCommit must equal previous task {previous_task_id} "
+                "terminal boundary commit",
+            )
+        except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(f"{task_id}: cannot verify Base Commit handoff boundary: {exc}")
+
+
+def validate_authorized_task_history(
+    audit: Audit,
+    tasks: dict[str, dict[str, Any]],
+) -> None:
+    authorized: dict[str, str] = {}
+    historical_non_draft_paths: dict[str, set[str]] = {}
+    commits = git_text("rev-list", "--reverse", "HEAD").stdout.splitlines()
+    for commit in commits:
+        paths = git_text(
+            "ls-tree",
+            "-r",
+            "--name-only",
+            commit.strip(),
+            "--",
+            "docs/tasks",
+        ).stdout.splitlines()
+        snapshot_paths: dict[str, str] = {}
+        for path in paths:
+            normalized = normalize_repo_path(path)
+            if not re.fullmatch(r"docs/tasks/TASK-[0-9]{4,}.*\.md", normalized):
+                continue
+            try:
+                raw = git_object(commit.strip(), normalized).decode("utf-8")
+                match = TASK_BLOCK_RE.search(raw)
+                metadata = strict_yaml_load(match.group(1)) if match else {}
+            except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+                audit.error(
+                    f"authorized-task-history: cannot inspect {normalized} at {commit}: {exc}"
+                )
+                continue
+            if isinstance(metadata, dict):
+                task_id = str(metadata.get("taskId", ""))
+                filename_task_id = task_id_from_filename(Path(normalized))
+                audit.require(
+                    filename_task_id == task_id,
+                    f"authorized-task-history: filename/taskId mismatch at "
+                    f"{commit}: {normalized}",
+                )
+                previous_snapshot_path = snapshot_paths.setdefault(task_id, normalized)
+                audit.require(
+                    previous_snapshot_path == normalized,
+                    f"authorized-task-history: duplicate taskId {task_id} at "
+                    f"{commit}: {previous_snapshot_path}, {normalized}",
+                )
+                if metadata.get("state") != "DRAFT":
+                    historical_non_draft_paths.setdefault(task_id, set()).add(normalized)
+            if isinstance(metadata, dict) and metadata.get("state") == "READY":
+                previous_path = authorized.setdefault(task_id, normalized)
+                audit.require(
+                    previous_path == normalized,
+                    f"authorized-task-history: {task_id} changed task-card path",
+                )
+    for task_id, canonical_path in authorized.items():
+        observed_paths = historical_non_draft_paths.get(task_id, set())
+        audit.require(
+            observed_paths <= {canonical_path},
+            f"authorized-task-history: {task_id} appeared at non-canonical "
+            f"non-DRAFT paths: {sorted(observed_paths - {canonical_path})}",
+        )
+    validate_authorized_task_presence(audit, tasks, authorized)
+
+
+def validate_authorized_task_presence(
+    audit: Audit,
+    tasks: dict[str, dict[str, Any]],
+    authorized: dict[str, str],
+) -> None:
+    for task_id, path in authorized.items():
+        audit.require(
+            task_id in tasks and tasks[task_id].get("_path") == path,
+            f"authorized-task-history: READY task {task_id} disappeared from {path}",
+        )
 
 
 def validate_project_state(
@@ -576,8 +1922,10 @@ def validate_project_state(
     lifecycle: dict[str, Any],
     tasks: dict[str, dict[str, Any]],
 ) -> str | None:
+    audit.require(state.get("schemaVersion") == 1, "project-state: unsupported schemaVersion")
     phase_source = str(state.get("phaseSource", ""))
     audit.require(is_repository_relative(phase_source), "project-state: phaseSource must be repository-relative")
+    product: dict[str, Any] = {}
     if is_repository_relative(phase_source):
         try:
             product = load_yaml(ROOT / normalize_repo_path(phase_source))
@@ -664,9 +2012,36 @@ def validate_project_state(
     )
     if is_repository_relative(terminal_handoff):
         audit.require((ROOT / terminal_handoff).is_file(), f"project-state: missing {terminal_handoff}")
-    audit.require(bool(state.get("nextAction")), "project-state: nextAction is required")
+    validate_nonblank_text(audit, "project-state: nextAction", state.get("nextAction"))
     gates = state.get("capabilityGates")
     audit.require(isinstance(gates, dict) and bool(gates), "project-state: capabilityGates are required")
+    required_gates = {"businessImplementation", "realUserBeta", "realPayment"}
+    if isinstance(gates, dict):
+        audit.require(
+            required_gates <= set(gates),
+            f"project-state: capabilityGates missing {sorted(required_gates - set(gates))}",
+        )
+        for gate_id, gate in gates.items():
+            audit.require(isinstance(gate, dict), f"project-state: gate {gate_id} must be an object")
+            if not isinstance(gate, dict):
+                continue
+            audit.require(
+                gate.get("state") in {"BLOCKED", "OPEN", "FORBIDDEN"},
+                f"project-state: gate {gate_id} has invalid state {gate.get('state')!r}",
+            )
+            validate_nonblank_text(
+                audit,
+                f"project-state: gate {gate_id}.reason",
+                gate.get("reason"),
+            )
+        alpha = product.get("alpha")
+        alpha = alpha if isinstance(alpha, dict) else {}
+        if alpha.get("paymentEnabled") is False and isinstance(gates.get("realPayment"), dict):
+            audit.require(
+                gates["realPayment"].get("state") == "FORBIDDEN",
+                "project-state: realPayment must remain FORBIDDEN while product-scope "
+                "alpha.paymentEnabled is false",
+            )
 
     for task_id, task in tasks.items():
         if task.get("state") in terminal_states:
@@ -730,6 +2105,21 @@ def validate_skills(
         )
         skill_id = str(rule.get("requiredSkill", ""))
         audit.require(skill_id in skills, f"protected path {rule.get('glob')}: unregistered Skill {skill_id}")
+        lifecycle_exemptions = rule.get("lifecycleExemptions", [])
+        audit.require(
+            isinstance(lifecycle_exemptions, list)
+            and all(
+                item in {PROJECT_STATE_PATH, TASK_LEDGER_PATH}
+                for item in lifecycle_exemptions
+            ),
+            f"protected path {rule.get('glob')}: lifecycleExemptions may contain only "
+            f"{PROJECT_STATE_PATH} and {TASK_LEDGER_PATH}",
+        )
+        if lifecycle_exemptions:
+            audit.require(
+                rule.get("glob") == ".harness/**",
+                "protected path lifecycleExemptions are valid only on .harness/**",
+            )
 
     for task_id, task in tasks.items():
         if task.get("state") in ("DRAFT", "REJECTED"):
@@ -746,7 +2136,7 @@ def validate_skills(
                     match = SKILL_FRONTMATTER_RE.search(raw)
                     if not match:
                         raise HarnessError(f"{skill_path}: baseline Skill frontmatter is missing")
-                    baseline = yaml.safe_load(match.group(1))
+                    baseline = strict_yaml_load(match.group(1))
                     if not isinstance(baseline, dict):
                         raise HarnessError(f"{skill_path}: baseline Skill frontmatter must be an object")
                     extension = baseline.get("metadata")
@@ -765,7 +2155,10 @@ def validate_skills(
         delivery_commit: str | None = None
         if task.get("state") == "ACCEPTED" and task_id != "TASK-0001":
             try:
-                delivery_commit = first_terminal_commit(task, {"ACCEPTED", "REJECTED"})
+                delivery_commit = canonical_terminal_commit(
+                    task,
+                    {"ACCEPTED", "REJECTED"},
+                )
                 if delivery_commit:
                     delivery_skills = skill_registry_at_commit(delivery_commit)
             except HarnessError as exc:
@@ -1066,11 +2459,59 @@ def validate_commands(audit: Audit) -> None:
             audit.require("precheck.py" in path.read_text(encoding="utf-8"), f"{wrapper}: must call precheck.py")
 
 
+def validate_check_artifact(
+    audit: Audit,
+    label: str,
+    artifact_hash: Any,
+    reason: Any,
+) -> None:
+    if artifact_hash is None:
+        audit.require(
+            isinstance(reason, str) and bool(reason.strip()),
+            f"{label}: null artifactHash requires a truthful non-blank no-artifact reason",
+        )
+    else:
+        audit.require(
+            isinstance(artifact_hash, str)
+            and bool(re.fullmatch(r"([0-9a-f]{40}|[0-9a-f]{64})", artifact_hash)),
+            f"{label}: artifactHash must be a non-blank 40- or 64-character lowercase hex digest",
+        )
+
+
+def validate_nonblank_text(audit: Audit, label: str, value: Any) -> None:
+    audit.require(
+        isinstance(value, str) and bool(value.strip()),
+        f"{label}: must be a non-blank string",
+    )
+
+
+def validate_evidence_check(audit: Audit, label: str, check: dict[str, Any]) -> None:
+    status = check.get("status")
+    exit_code = check.get("exitCode")
+    reason = check.get("reason")
+    if status == "PASS":
+        audit.require(exit_code == 0, f"{label}: PASS requires exitCode 0")
+    elif status == "FAIL":
+        audit.require(
+            isinstance(exit_code, int) and exit_code != 0,
+            f"{label}: FAIL requires non-zero exitCode",
+        )
+    elif status == "NOT_RUN":
+        audit.require(exit_code is None, f"{label}: NOT_RUN requires null exitCode")
+        validate_nonblank_text(audit, f"{label}: NOT_RUN reason", reason)
+        audit.require(
+            check.get("artifactHash") is None,
+            f"{label}: NOT_RUN must not claim an artifactHash",
+        )
+    validate_check_artifact(audit, label, check.get("artifactHash"), reason)
+
+
 def validate_evidence_and_handoffs(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
     lifecycle: dict[str, Any],
     current_protected_rules: list[dict[str, Any]],
+    allow_pending_draft: bool = False,
 ) -> None:
     handoff_schema = load_json(ROOT / "docs/schemas/handoff.schema.json", audit)
     evidence_schema = load_json(ROOT / "docs/schemas/evidence-pack.schema.json", audit)
@@ -1087,6 +2528,7 @@ def validate_evidence_and_handoffs(
         if not data:
             continue
         validate_json_schema(audit, data, handoff_schema, relative(path))
+        validate_nonblank_text(audit, f"{relative(path)}.nextAction", data.get("nextAction"))
         task_id = str(data.get("taskId", ""))
         audit.require(task_id in tasks, f"{relative(path)}: unknown taskId {task_id}")
         audit.require(path.stem == task_id, f"{relative(path)}: filename and taskId disagree")
@@ -1128,19 +2570,7 @@ def validate_evidence_and_handoffs(
             if not isinstance(check, dict):
                 audit.error(f"{label}: must be an object")
                 continue
-            status = check.get("status")
-            exit_code = check.get("exitCode")
-            reason = check.get("reason")
-            if status == "PASS":
-                audit.require(exit_code == 0, f"{label}: PASS requires exitCode 0")
-            elif status == "FAIL":
-                audit.require(isinstance(exit_code, int) and exit_code != 0, f"{label}: FAIL requires non-zero exitCode")
-            elif status == "NOT_RUN":
-                audit.require(exit_code is None and bool(reason), f"{label}: NOT_RUN requires null exitCode and reason")
-            audit.require(
-                check.get("artifactHash") is not None or bool(reason),
-                f"{label}: null artifactHash requires a truthful no-artifact reason",
-            )
+            validate_evidence_check(audit, label, check)
         evidence_packs[task_id] = data
 
     terminal_states = set(str(item) for item in lifecycle.get("terminalStates", []))
@@ -1182,6 +2612,7 @@ def validate_evidence_and_handoffs(
                 head_commit,
                 terminal_states,
                 current_protected_rules,
+                allow_pending_draft,
             )
 
 
@@ -1195,9 +2626,15 @@ def validate_required_command_coverage(
     for command in task.get("requiredCommands", []):
         matches = by_command.get(str(command), [])
         audit.require(bool(matches), f"{task_id}: required command missing from Evidence: {command}")
+        audit.require(
+            len(matches) == 1,
+            f"{task_id}: required command must have exactly one final Evidence result: {command}",
+        )
         if require_pass:
             audit.require(
-                any(item.get("status") == "PASS" and item.get("exitCode") == 0 for item in matches),
+                len(matches) == 1
+                and matches[0].get("status") == "PASS"
+                and matches[0].get("exitCode") == 0,
                 f"{task_id}: required command did not PASS: {command}",
             )
 
@@ -1206,6 +2643,35 @@ def validate_idle_terminal_paths(audit: Audit, task_id: str, paths: list[str]) -
     audit.require(
         not paths,
         f"{task_id}: repository changed after terminal commit without a new active task: {paths}",
+    )
+
+
+def validate_idle_terminal_history(
+    audit: Audit,
+    task_id: str,
+    terminal_commit: str,
+) -> None:
+    head_commit = git_text("rev-parse", "HEAD").stdout.strip()
+    audit.require(
+        head_commit == terminal_commit,
+        f"{task_id}: HEAD advanced after terminal commit without a new DRAFT or active task",
+    )
+    validate_idle_terminal_paths(
+        audit,
+        task_id,
+        changed_paths(terminal_commit),
+    )
+    index = git_text(
+        "diff",
+        "--cached",
+        "--quiet",
+        terminal_commit,
+        "--",
+        check=False,
+    )
+    audit.require(
+        index.returncode == 0,
+        f"{task_id}: index changed after terminal commit without a new task",
     )
 
 
@@ -1221,6 +2687,206 @@ def validate_frozen_artifact_bytes(
     )
 
 
+@functools.lru_cache(maxsize=1)
+def git_core_filemode_enabled() -> bool:
+    result = git_text("config", "--bool", "core.filemode", check=False)
+    return result.returncode == 0 and result.stdout.strip().lower() == "true"
+
+
+def current_regular_file_bytes(
+    audit: Audit,
+    label: str,
+    path: Path,
+) -> bytes | None:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        audit.error(f"{label}: cannot inspect current file: {exc}")
+        return None
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    file_attributes = getattr(metadata, "st_file_attributes", 0)
+    regular = (
+        stat.S_ISREG(metadata.st_mode)
+        and not stat.S_ISLNK(metadata.st_mode)
+        and not bool(file_attributes & reparse_flag)
+        and (
+            not git_core_filemode_enabled()
+            or stat.S_IMODE(metadata.st_mode) & 0o111 == 0
+        )
+    )
+    audit.require(
+        regular,
+        f"{label}: must be a regular non-reparse file",
+    )
+    if not regular:
+        return None
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        audit.error(f"{label}: cannot read current file: {exc}")
+        return None
+
+
+def git_tree_entry(commit: str, path: str) -> tuple[str, str, str] | None:
+    result = git_bytes(
+        "ls-tree",
+        "-z",
+        commit,
+        "--",
+        normalize_repo_path(path),
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout:
+        return None
+    records = [record for record in result.stdout.split(b"\0") if record]
+    if len(records) != 1 or b"\t" not in records[0]:
+        return None
+    header, raw_path = records[0].split(b"\t", 1)
+    parts = header.decode("ascii", errors="replace").split()
+    listed_path = raw_path.decode("utf-8", errors="surrogateescape").replace("\\", "/")
+    if len(parts) != 3 or listed_path != normalize_repo_path(path):
+        return None
+    return parts[0], parts[1], parts[2]
+
+
+def git_index_entry(path: str) -> tuple[str, str] | None:
+    result = git_bytes(
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+        normalize_repo_path(path),
+    )
+    records = [record for record in result.stdout.split(b"\0") if record]
+    if len(records) != 1 or b"\t" not in records[0]:
+        return None
+    header, raw_path = records[0].split(b"\t", 1)
+    parts = header.decode("ascii", errors="replace").split()
+    listed_path = raw_path.decode("utf-8", errors="surrogateescape").replace("\\", "/")
+    if (
+        len(parts) != 3
+        or parts[2] != "0"
+        or listed_path != normalize_repo_path(path)
+    ):
+        return None
+    return parts[0], parts[1]
+
+
+def git_worktree_blob_oid(path: str) -> str | None:
+    result = git_text(
+        "hash-object",
+        f"--path={normalize_repo_path(path)}",
+        "--",
+        normalize_repo_path(path),
+        check=False,
+    )
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", value) else None
+
+
+def validate_current_index_snapshot(
+    audit: Audit,
+    task_id: str,
+    paths: list[str],
+) -> None:
+    for path in paths:
+        repository_path = ROOT / normalize_repo_path(path)
+        index_entry = git_index_entry(path)
+        if not os.path.lexists(repository_path):
+            audit.require(
+                index_entry is None,
+                f"{task_id}: staged snapshot and worktree disagree on missing path: {path}",
+            )
+            continue
+        try:
+            metadata = repository_path.lstat()
+            reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            regular = (
+                stat.S_ISREG(metadata.st_mode)
+                and not stat.S_ISLNK(metadata.st_mode)
+                and not bool(getattr(metadata, "st_file_attributes", 0) & reparse_flag)
+            )
+            audit.require(
+                regular,
+                f"{task_id}: changed path must be a regular non-reparse file: {path}",
+            )
+            audit.require(
+                index_entry is not None,
+                f"{task_id}: changed path is not staged in the validated snapshot: {path}",
+            )
+            worktree_oid = git_worktree_blob_oid(path)
+            audit.require(
+                index_entry is not None
+                and worktree_oid is not None
+                and index_entry[1] == worktree_oid,
+                f"{task_id}: staged snapshot and worktree content disagree: {path}",
+            )
+        except OSError as exc:
+            audit.error(f"{task_id}: cannot inspect changed path {path}: {exc}")
+
+
+def allowed_repository_file_modes(
+    audit: Audit,
+    task_id: str,
+    base_commit: str,
+    path: str,
+) -> set[str]:
+    baseline_entry = git_tree_entry(base_commit, path)
+    if baseline_entry is None:
+        return {"100644", "100755"} if path.endswith(".sh") else {"100644"}
+    audit.require(
+        baseline_entry[1] == "blob" and baseline_entry[0] in {"100644", "100755"},
+        f"{task_id}: Base Commit path is not a portable regular Git file: {path}",
+    )
+    return (
+        {baseline_entry[0]}
+        if baseline_entry[1] == "blob"
+        and baseline_entry[0] in {"100644", "100755"}
+        else set()
+    )
+
+
+def validate_changed_path_modes(
+    audit: Audit,
+    task_id: str,
+    base_commit: str,
+    target_commit: str,
+    paths: list[str],
+    include_current_index: bool,
+) -> None:
+    history = git_text(
+        "rev-list",
+        "--topo-order",
+        "--reverse",
+        f"{base_commit}..{target_commit}",
+    ).stdout.splitlines()
+    commits = [commit.strip() for commit in history]
+    for path in paths:
+        allowed_modes = allowed_repository_file_modes(
+            audit,
+            task_id,
+            base_commit,
+            path,
+        )
+        for commit in commits:
+            entry = git_tree_entry(commit, path)
+            if entry is None:
+                continue
+            audit.require(
+                entry[1] == "blob" and entry[0] in allowed_modes,
+                f"{task_id}: changed path has an unauthorized Git mode/type at "
+                f"{commit}: {path} ({entry[0]} {entry[1]})",
+            )
+        if include_current_index:
+            index_entry = git_index_entry(path)
+            if index_entry is not None:
+                audit.require(
+                    index_entry[0] in allowed_modes,
+                    f"{task_id}: staged path has an unauthorized Git mode: "
+                    f"{path} ({index_entry[0]})",
+                )
+
+
 def validate_frozen_repository_artifact(
     audit: Audit,
     task_id: str,
@@ -1228,11 +2894,204 @@ def validate_frozen_repository_artifact(
     path: str,
 ) -> None:
     try:
-        snapshot = git_object(terminal_commit, path)
-        current = (ROOT / normalize_repo_path(path)).read_bytes()
-        validate_frozen_artifact_bytes(audit, f"{task_id}: {path}", current, snapshot)
+        entry = git_tree_entry(terminal_commit, path)
+        audit.require(
+            entry is not None and entry[:2] == ("100644", "blob"),
+            f"{task_id}: {path} must be a regular 100644 Git blob at terminal boundary",
+        )
+        git_object(terminal_commit, path)
+        current = current_regular_file_bytes(
+            audit,
+            f"{task_id}: {path}",
+            ROOT / normalize_repo_path(path),
+        )
+        if current is not None:
+            audit.require(
+                entry is not None and git_worktree_blob_oid(path) == entry[2],
+                f"{task_id}: frozen worktree content changed: {path}",
+            )
+        audit.require(
+            entry is not None and git_index_entry(path) == (entry[0], entry[2]),
+            f"{task_id}: frozen index entry changed: {path}",
+        )
+        history = git_text(
+            "rev-list",
+            f"{terminal_commit}..HEAD",
+        ).stdout.splitlines()
+        for commit in history:
+            audit.require(
+                git_tree_entry(commit.strip(), path) == entry,
+                f"{task_id}: frozen artifact changed in commit {commit.strip()}: {path}",
+            )
     except (HarnessError, OSError) as exc:
         audit.error(f"{task_id}: cannot verify frozen terminal artifact {path}: {exc}")
+
+
+def current_repository_tree_entries(prefix: str) -> dict[str, Path]:
+    root = ROOT / normalize_repo_path(prefix)
+    entries: dict[str, Path] = {}
+    if not root.exists():
+        return entries
+    for directory, directory_names, file_names in os.walk(root, followlinks=False):
+        directory_path = Path(directory)
+        for name in list(directory_names):
+            path = directory_path / name
+            metadata = path.lstat()
+            reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            if stat.S_ISLNK(metadata.st_mode) or bool(
+                getattr(metadata, "st_file_attributes", 0) & reparse_flag
+            ):
+                entries[relative(path)] = path
+                directory_names.remove(name)
+        for name in file_names:
+            path = directory_path / name
+            entries[relative(path)] = path
+    return entries
+
+
+def validate_portable_path_collisions(
+    audit: Audit,
+    label: str,
+    paths: list[str],
+) -> None:
+    seen: dict[str, str] = {}
+    for path in paths:
+        audit.require(
+            "\\" not in path,
+            f"{label}: Git path contains a non-portable backslash: {path!r}",
+        )
+        audit.require(
+            not any(0xD800 <= ord(character) <= 0xDFFF for character in path),
+            f"{label}: Git path is not valid portable UTF-8: {path!r}",
+        )
+        normalized_path = normalize_repo_path(path)
+        for component in normalized_path.split("/"):
+            audit.require(
+                bool(component)
+                and component not in {".", ".."}
+                and not component.endswith((" ", "."))
+                and WINDOWS_INVALID_COMPONENT_RE.search(component) is None
+                and WINDOWS_RESERVED_COMPONENT_RE.fullmatch(component) is None,
+                f"{label}: path component is not portable to Windows: "
+                f"{component!r} in {path!r}",
+            )
+        key = unicodedata.normalize("NFC", normalized_path).casefold()
+        previous = seen.setdefault(key, path)
+        audit.require(
+            previous == path,
+            f"{label}: paths collide on Windows/macOS: {previous!r} and {path!r}",
+        )
+
+
+def repository_paths_at_commit(commit: str) -> list[str]:
+    result = git_bytes(
+        "ls-tree",
+        "-r",
+        "-z",
+        "--name-only",
+        commit,
+    )
+    return sorted(
+        value.decode("utf-8", errors="surrogateescape")
+        for value in result.stdout.split(b"\0")
+        if value
+    )
+
+
+def repository_index_paths() -> list[str]:
+    result = git_bytes("ls-files", "-z")
+    return sorted(
+        value.decode("utf-8", errors="surrogateescape")
+        for value in result.stdout.split(b"\0")
+        if value
+    )
+
+
+def validate_current_regular_tree(
+    audit: Audit,
+    task_id: str,
+    prefix: str,
+) -> None:
+    root = ROOT / normalize_repo_path(prefix)
+    try:
+        metadata = root.lstat()
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        audit.require(
+            stat.S_ISDIR(metadata.st_mode)
+            and not stat.S_ISLNK(metadata.st_mode)
+            and not bool(getattr(metadata, "st_file_attributes", 0) & reparse_flag),
+            f"{task_id}: evidence root must be a regular non-reparse directory: {prefix}",
+        )
+    except OSError as exc:
+        audit.error(f"{task_id}: cannot inspect evidence root {prefix}: {exc}")
+    entries = current_repository_tree_entries(prefix)
+    audit.require(bool(entries), f"{task_id}: evidence tree is empty: {prefix}")
+    validate_portable_path_collisions(
+        audit,
+        f"{task_id}: current evidence tree",
+        list(entries),
+    )
+    for path, current_path in sorted(entries.items()):
+        current_regular_file_bytes(audit, f"{task_id}: {path}", current_path)
+
+
+def git_repository_tree_entries(commit: str, prefix: str) -> dict[str, tuple[str, str, str]]:
+    result = git_bytes(
+        "ls-tree",
+        "-r",
+        "-z",
+        commit,
+        "--",
+        normalize_repo_path(prefix),
+    )
+    entries: dict[str, tuple[str, str, str]] = {}
+    for record in result.stdout.split(b"\0"):
+        if not record or b"\t" not in record:
+            continue
+        header, raw_path = record.split(b"\t", 1)
+        parts = header.decode("ascii", errors="replace").split()
+        path = raw_path.decode("utf-8", errors="surrogateescape").replace("\\", "/")
+        if len(parts) == 3:
+            entries[path] = (parts[0], parts[1], parts[2])
+    return entries
+
+
+def validate_frozen_repository_tree(
+    audit: Audit,
+    task_id: str,
+    terminal_commit: str,
+    prefix: str,
+) -> None:
+    expected = git_repository_tree_entries(terminal_commit, prefix)
+    current = current_repository_tree_entries(prefix)
+    validate_portable_path_collisions(
+        audit,
+        f"{task_id}: terminal evidence tree",
+        list(expected),
+    )
+    audit.require(bool(expected), f"{task_id}: frozen evidence tree is empty: {prefix}")
+    audit.require(
+        set(current) == set(expected),
+        f"{task_id}: frozen evidence tree path set changed: "
+        f"missing={sorted(set(expected) - set(current))}, "
+        f"extra={sorted(set(current) - set(expected))}",
+    )
+    for path, entry in expected.items():
+        audit.require(
+            entry[:2] == ("100644", "blob"),
+            f"{task_id}: frozen evidence entry must be a regular 100644 Git blob: {path}",
+        )
+    history = git_text(
+        "rev-list",
+        f"{terminal_commit}..HEAD",
+    ).stdout.splitlines()
+    for commit in history:
+        audit.require(
+            git_repository_tree_entries(commit.strip(), prefix) == expected,
+            f"{task_id}: frozen evidence tree changed in commit {commit.strip()}: {prefix}",
+        )
+    for path in sorted(set(expected) & set(current)):
+        validate_frozen_repository_artifact(audit, task_id, terminal_commit, path)
 
 
 def validate_authorization_precedes_head(
@@ -1255,6 +3114,23 @@ def validate_authorization_precedes_head(
     )
 
 
+def validate_reviewer_identity_fields(
+    audit: Audit,
+    label: str,
+    reviewer: dict[str, Any],
+) -> str | None:
+    reviewer_id = reviewer.get("id")
+    audit.require(
+        is_canonical_identity(reviewer_id),
+        f"{label}.id must be a canonical lowercase identity",
+    )
+    audit.require(
+        is_canonical_identity(reviewer.get("kind")),
+        f"{label}.kind must be a canonical lowercase identity",
+    )
+    return str(reviewer_id) if is_canonical_identity(reviewer_id) else None
+
+
 def validate_versioned_terminal_evidence(
     audit: Audit,
     task_id: str,
@@ -1264,17 +3140,21 @@ def validate_versioned_terminal_evidence(
     head_commit: str,
     terminal_states: set[str],
     current_protected_rules: list[dict[str, Any]],
+    allow_pending_draft: bool,
 ) -> None:
     if FULL_COMMIT_RE.fullmatch(head_commit):
         validate_authorization_precedes_head(audit, task, head_commit)
     terminal_commit: str | None = None
     try:
-        terminal_commit = first_terminal_commit(task, terminal_states)
+        terminal_commit = canonical_terminal_commit(task, terminal_states)
         if terminal_commit:
-            boundary_state = yaml.safe_load(
+            boundary_state = strict_yaml_load(
                 git_object(terminal_commit, ".harness/project-state.yaml")
             )
-            closure_paths = changed_paths_between(head_commit, terminal_commit)
+            closure_paths = changed_paths_across_history(
+                head_commit,
+                terminal_commit,
+            )
             head_is_ancestor = git_text(
                 "merge-base",
                 "--is-ancestor",
@@ -1299,12 +3179,19 @@ def validate_versioned_terminal_evidence(
                 )
         else:
             boundary_state = load_yaml(ROOT / ".harness/project-state.yaml")
-            closure_paths = changed_paths(head_commit)
-        reviewed_state = yaml.safe_load(
+            closure_paths = sorted(
+                set(changed_paths_across_history(head_commit, "HEAD"))
+                | set(changed_paths(head_commit))
+            )
+        reviewed_state = strict_yaml_load(
             git_object(head_commit, ".harness/project-state.yaml")
         )
         if not isinstance(reviewed_state, dict) or not isinstance(boundary_state, dict):
             raise HarnessError(".harness/project-state.yaml: compared versions must be objects")
+        audit.require(
+            handoff.get("nextAction") == boundary_state.get("nextAction"),
+            f"{task_id}: Handoff nextAction disagrees with terminal project-state",
+        )
         audit.require(
             project_state_closure_projection(reviewed_state)
             == project_state_closure_projection(boundary_state),
@@ -1315,24 +3202,21 @@ def validate_versioned_terminal_evidence(
             terminal_commit
             and current_state.get("activeTask") in (None, "")
             and current_state.get("lastTerminalTask") == task_id
+            and not allow_pending_draft
         ):
             audit.require(
                 project_state_closure_projection(boundary_state)
                 == project_state_closure_projection(current_state),
                 f"{task_id}: protected project-state fields changed after terminal commit without a new task",
             )
-            validate_idle_terminal_paths(
-                audit,
-                task_id,
-                changed_paths(terminal_commit),
-            )
+            validate_idle_terminal_history(audit, task_id, terminal_commit)
     except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
         audit.error(f"{task_id}: cannot verify terminal closure boundary: {exc}")
         closure_paths = []
 
     if FULL_COMMIT_RE.fullmatch(head_commit):
         try:
-            implementation_paths = changed_paths_between(
+            implementation_paths = changed_paths_across_history(
                 str(task.get("baseCommit", "")),
                 head_commit,
             )
@@ -1349,6 +3233,7 @@ def validate_versioned_terminal_evidence(
                 implementation_skills,
                 implementation_rules,
                 changed_override=implementation_paths,
+                target_commit=head_commit,
             )
         except HarnessError as exc:
             audit.error(f"{task_id}: cannot verify implementation scope at headCommit: {exc}")
@@ -1359,7 +3244,11 @@ def validate_versioned_terminal_evidence(
     for check in checks:
         if isinstance(check, dict):
             by_command.setdefault(str(check.get("command", "")), []).append(check)
-            audit.require(bool(check.get("environment")), f"{task_id}: every check requires environment")
+            validate_nonblank_text(
+                audit,
+                f"{task_id}: every check environment",
+                check.get("environment"),
+            )
             verified_commit = str(check.get("verifiedCommit", ""))
             audit.require(
                 bool(FULL_COMMIT_RE.fullmatch(verified_commit)),
@@ -1389,12 +3278,13 @@ def validate_versioned_terminal_evidence(
             audit.require(isinstance(reviewer, dict), f"{label} must be an object")
             if not isinstance(reviewer, dict):
                 continue
-            for field in ("id", "kind", "verdict", "reviewedCommit", "evidencePath"):
+            for field in ("verdict", "reviewedCommit", "evidencePath"):
                 audit.require(bool(reviewer.get(field)), f"{label}.{field} is required")
-            reviewer_id = str(reviewer.get("id", ""))
-            audit.require(reviewer_id not in reviewer_ids, f"{label}.id must be unique")
-            reviewer_ids.add(reviewer_id)
-            audit.require(reviewer.get("id") != task.get("owner"), f"{label} must be independent from owner")
+            reviewer_id = validate_reviewer_identity_fields(audit, label, reviewer)
+            if reviewer_id is not None:
+                audit.require(reviewer_id not in reviewer_ids, f"{label}.id must be unique")
+                reviewer_ids.add(reviewer_id)
+                audit.require(reviewer_id != task.get("owner"), f"{label} must be independent from owner")
             if task.get("state") == "ACCEPTED":
                 audit.require(reviewer.get("verdict") == "PASS", f"{label} verdict must be PASS")
             else:
@@ -1425,7 +3315,7 @@ def validate_versioned_terminal_evidence(
                         review_text = review_file.read_text(encoding="utf-8")
                         match = TASK_BLOCK_RE.search(review_text)
                         audit.require(bool(match), f"{label}.evidencePath lacks fenced YAML metadata")
-                        review_data = yaml.safe_load(match.group(1)) if match else {}
+                        review_data = strict_yaml_load(match.group(1)) if match else {}
                         audit.require(isinstance(review_data, dict), f"{label} metadata must be an object")
                         if isinstance(review_data, dict):
                             expected = {
@@ -1452,6 +3342,7 @@ def validate_versioned_terminal_evidence(
     allowed_closure = (
         task["_path"],
         ".harness/project-state.yaml",
+        TASK_LEDGER_PATH,
         f"docs/evidence/{task_id}/**",
         f"docs/handoffs/{task_id}.json",
     )
@@ -1462,19 +3353,174 @@ def validate_versioned_terminal_evidence(
         )
 
 
+def validate_draft_base_anchor(
+    audit: Audit,
+    task_id: str,
+    base_commit: str,
+    terminal_commit: str | None,
+) -> None:
+    audit.require(
+        terminal_commit is not None and base_commit == terminal_commit,
+        f"{task_id}: DRAFT baseCommit must equal the last terminal boundary commit",
+    )
+
+
+def validate_draft_checkpoint(
+    audit: Audit,
+    task: dict[str, Any],
+    last_terminal_task: dict[str, Any] | None,
+) -> None:
+    task_id = str(task.get("taskId", ""))
+    task_path = str(task.get("_path", ""))
+    context_path = str(task.get("contextLock", ""))
+    terminal_commit: str | None = None
+    if last_terminal_task is not None:
+        try:
+            terminal_commit = canonical_terminal_commit(
+                last_terminal_task,
+                {"ACCEPTED", "REJECTED"},
+            )
+        except HarnessError as exc:
+            audit.error(f"{task_id}: cannot derive last terminal boundary: {exc}")
+    validate_draft_base_anchor(
+        audit,
+        task_id,
+        str(task.get("baseCommit", "")),
+        terminal_commit,
+    )
+    try:
+        changed = changed_paths(str(task.get("baseCommit", "")))
+    except (HarnessError, OSError) as exc:
+        audit.error(f"{task_id}: cannot validate DRAFT checkpoint: {exc}")
+        return
+    allowed = {task_path, context_path}
+    audit.require(task_path in changed, f"{task_id}: DRAFT checkpoint must include the task card")
+    audit.require(
+        set(changed) <= allowed,
+        f"{task_id}: DRAFT checkpoint may contain only task card and Context Lock: "
+        f"{sorted(set(changed) - allowed)}",
+    )
+    validate_history_path_allowlist(
+        audit,
+        str(task.get("baseCommit", "")),
+        "HEAD",
+        allowed,
+        f"{task_id}: DRAFT history",
+    )
+
+
+def validate_project_state_mutation_policy(
+    audit: Audit,
+    task: dict[str, Any],
+    target_commit: str | None,
+) -> None:
+    task_id = str(task.get("taskId", ""))
+    base_commit = str(task.get("baseCommit", ""))
+    approvals = task.get("humanApprovals")
+    approvals = approvals if isinstance(approvals, list) else []
+    harness_approved = any(
+        isinstance(item, dict)
+        and item.get("scope") == "harness-change"
+        and is_canonical_identity(item.get("approvedBy"))
+        and is_valid_approval_timestamp(item.get("approvedAt"))
+        and isinstance(item.get("evidence"), str)
+        and bool(item.get("evidence").strip())
+        for item in approvals
+    )
+    full_harness_authority = (
+        task.get("riskClass") == "C4"
+        and "harness-change" in task_required_skills(task)
+        and harness_approved
+        and task.get("independentReview") in (True, "required", "REQUIRED")
+    )
+    try:
+        baseline = yaml_at_commit(base_commit, PROJECT_STATE_PATH)
+    except HarnessError as exc:
+        audit.require(
+            full_harness_authority and task_id == "TASK-0002",
+            f"{task_id}: cannot establish project-state baseline: {exc}",
+        )
+        return
+    try:
+        candidate = (
+            yaml_at_commit(target_commit, PROJECT_STATE_PATH)
+            if target_commit
+            else load_yaml(ROOT / PROJECT_STATE_PATH)
+        )
+    except HarnessError as exc:
+        audit.error(f"{task_id}: cannot load candidate project-state: {exc}")
+        return
+    if not full_harness_authority:
+        baseline_projection = project_state_closure_projection(baseline)
+        history_target = target_commit or "HEAD"
+        history = git_text(
+            "rev-list",
+            "--topo-order",
+            "--reverse",
+            f"{base_commit}..{history_target}",
+        ).stdout.splitlines()
+        for commit in history:
+            try:
+                historical = yaml_at_commit(commit.strip(), PROJECT_STATE_PATH)
+                audit.require(
+                    project_state_closure_projection(historical)
+                    == baseline_projection,
+                    f"{task_id}: protected project-state fields changed in commit "
+                    f"{commit.strip()} without C4 harness authority",
+                )
+            except HarnessError as exc:
+                audit.error(
+                    f"{task_id}: cannot validate project-state history at "
+                    f"{commit.strip()}: {exc}"
+                )
+        audit.require(
+            baseline_projection
+            == project_state_closure_projection(candidate),
+            f"{task_id}: only a C4 harness-change task may modify protected project-state fields",
+        )
+
+
 def validate_diff_scope(
     audit: Audit,
     task: dict[str, Any],
     skills: dict[str, dict[str, Any]],
     protected_rules: list[dict[str, Any]],
     changed_override: list[str] | None = None,
+    target_commit: str | None = None,
 ) -> None:
     task_id = str(task.get("taskId"))
     try:
-        changed = changed_override if changed_override is not None else changed_paths(str(task.get("baseCommit", "")))
+        if changed_override is not None:
+            changed = changed_override
+        else:
+            base_commit = str(task.get("baseCommit", ""))
+            changed = sorted(
+                set(changed_paths_across_history(base_commit, "HEAD"))
+                | set(changed_paths(base_commit))
+            )
     except (HarnessError, OSError) as exc:
         audit.error(f"{task_id}: cannot calculate diff scope: {exc}")
         return
+    if target_commit is None:
+        validate_current_index_snapshot(audit, task_id, changed)
+        portable_paths = repository_index_paths()
+        portable_label = f"{task_id}: staged repository snapshot"
+    else:
+        portable_paths = repository_paths_at_commit(target_commit)
+        portable_label = f"{task_id}: reviewed repository snapshot"
+    validate_portable_path_collisions(
+        audit,
+        portable_label,
+        portable_paths,
+    )
+    validate_changed_path_modes(
+        audit,
+        task_id,
+        str(task.get("baseCommit", "")),
+        target_commit or "HEAD",
+        changed,
+        include_current_index=target_commit is None,
+    )
     allowlist = [str(item) for item in task.get("writeAllowlist", [])]
     forbidden = [str(item) for item in task.get("forbiddenPaths", [])]
     required_skills = set(task_required_skills(task))
@@ -1483,6 +3529,8 @@ def validate_diff_scope(
     reviewers = task.get("reviewers")
     reviewers = reviewers if isinstance(reviewers, list) else []
     independent_declared = task.get("independentReview") in (True, "required", "REQUIRED")
+    if PROJECT_STATE_PATH in changed:
+        validate_project_state_mutation_policy(audit, task, target_commit)
 
     for path in changed:
         audit.require(
@@ -1495,6 +3543,12 @@ def validate_diff_scope(
         )
         for rule in protected_rules:
             if not glob_matches(path, str(rule.get("glob", ""))):
+                continue
+            lifecycle_exemptions = rule.get("lifecycleExemptions", [])
+            lifecycle_exemptions = (
+                lifecycle_exemptions if isinstance(lifecycle_exemptions, list) else []
+            )
+            if path in lifecycle_exemptions:
                 continue
             skill_id = str(rule.get("requiredSkill", ""))
             task_risk = str(task.get("riskClass", ""))
@@ -1511,8 +3565,10 @@ def validate_diff_scope(
                 approved = any(
                     isinstance(item, dict)
                     and item.get("scope") == skill_id
-                    and item.get("approvedBy")
-                    and item.get("evidence")
+                    and is_canonical_identity(item.get("approvedBy"))
+                    and is_valid_approval_timestamp(item.get("approvedAt"))
+                    and isinstance(item.get("evidence"), str)
+                    and bool(item.get("evidence").strip())
                     for item in approvals
                 )
                 audit.require(approved, f"{task_id}: {path} requires recorded human approval for {skill_id}")
@@ -1555,6 +3611,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Validate the portable Agent Harness")
     parser.add_argument("--task", help="Task ID whose diff scope must be validated")
     parser.add_argument("--summary", action="store_true", help="Print recoverable project status")
+    parser.add_argument(
+        "--pre-closure",
+        action="store_true",
+        help="Allow an otherwise valid terminal worktree before its terminal commit exists",
+    )
     args = parser.parse_args()
     audit = Audit()
     try:
@@ -1562,29 +3623,58 @@ def main() -> int:
         state = load_yaml(ROOT / ".harness/project-state.yaml")
         tasks = discover_tasks()
         validate_tasks(audit, tasks, lifecycle)
+        validate_authorized_task_history(audit, tasks)
+        validate_task_base_handoff_anchors(audit, tasks, lifecycle)
+        validate_task_ledger(
+            audit,
+            tasks,
+            lifecycle,
+            allow_uncommitted_terminal=args.pre_closure,
+        )
+        validate_active_task_base_freshness(audit, tasks, lifecycle)
         active_task = validate_project_state(audit, state, lifecycle, tasks)
         skills, protected_rules = validate_skills(audit, tasks)
         validate_sources(audit, tasks)
         validate_harness_runtime(audit)
         validate_entrypoints(audit)
         validate_commands(audit)
-        validate_evidence_and_handoffs(audit, tasks, lifecycle, protected_rules)
+        draft_tasks = sorted(
+            task_id for task_id, task in tasks.items() if task.get("state") == "DRAFT"
+        )
+        audit.require(
+            len(draft_tasks) <= 1,
+            f"task lifecycle: multiple pending DRAFT tasks are not allowed: {draft_tasks}",
+        )
+        pending_draft = draft_tasks[0] if len(draft_tasks) == 1 else None
+        validate_evidence_and_handoffs(
+            audit,
+            tasks,
+            lifecycle,
+            protected_rules,
+            allow_pending_draft=pending_draft is not None,
+        )
 
         last_terminal_task = str(state.get("lastTerminalTask", ""))
         if args.task and active_task and args.task != active_task:
             audit.error(
                 f"explicit task {args.task} cannot replace activeTask {active_task} for diff-scope validation"
             )
-        if args.task and not active_task and args.task != last_terminal_task:
+        if args.task and not active_task and args.task != (pending_draft or last_terminal_task):
             audit.error(
-                f"explicit task {args.task} cannot replace lastTerminalTask {last_terminal_task} "
-                "when no task is active"
+                f"explicit task {args.task} cannot replace selected task "
+                f"{pending_draft or last_terminal_task} when no task is active"
             )
-        selected_task_id = active_task or last_terminal_task
+        selected_task_id = active_task or pending_draft or last_terminal_task
         if selected_task_id not in tasks:
             audit.error(f"selected task does not exist: {selected_task_id}")
         else:
             selected_task = tasks[selected_task_id]
+            if selected_task.get("state") == "DRAFT":
+                validate_draft_checkpoint(
+                    audit,
+                    selected_task,
+                    tasks.get(last_terminal_task),
+                )
             validate_diff_scope(
                 audit,
                 selected_task,

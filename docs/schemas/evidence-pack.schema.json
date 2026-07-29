@@ -14,8 +14,8 @@
         "type": "object",
         "required": ["id", "kind", "verdict", "reviewedCommit", "evidencePath"],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "kind": {"type": "string", "minLength": 1},
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+          "kind": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
           "verdict": {"enum": ["PASS", "FAIL"]},
           "reviewedCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
           "evidencePath": {"type": "string", "minLength": 1}
@@ -31,7 +31,10 @@
           "command": {"type": "string"},
           "status": {"enum": ["PASS", "FAIL", "NOT_RUN"]},
           "exitCode": {"type": ["integer", "null"]},
-          "artifactHash": {"type": ["string", "null"]},
+          "artifactHash": {
+            "type": ["string", "null"],
+            "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+          },
           "reason": {"type": ["string", "null"]},
           "environment": {"type": "string", "minLength": 1},
           "verifiedCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}

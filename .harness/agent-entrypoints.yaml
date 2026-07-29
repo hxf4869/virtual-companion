@@ -5,11 +5,11 @@ clients:
   codex:
     instructionPath: AGENTS.md
     mode: NATIVE_DISCOVERY
-    contentSha256: fc34bfddf4c8a9c56e9384144db86fd7c55370acf777e9ac09dd8c86db2cc194
+    contentSha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
   zed:
     instructionPath: AGENTS.md
     mode: NATIVE_DISCOVERY
-    contentSha256: fc34bfddf4c8a9c56e9384144db86fd7c55370acf777e9ac09dd8c86db2cc194
+    contentSha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
   claudeCode:
     instructionPath: CLAUDE.md
     mode: THIN_IMPORT

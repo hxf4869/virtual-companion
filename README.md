@@ -58,6 +58,7 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 
 - Agent 恢复和跨客户端说明：`docs/engineering/agent-onboarding.md`
 - 项目机器状态：`.harness/project-state.yaml`
+- 终态任务与审计产物索引：`.harness/task-ledger.yaml`
 - 原始需求与架构快照：`docs/source/`（仅历史来源）
 - 根目录 `MANIFEST.sha256`：仅证明 V0.3.1 起步包来源，不是当前仓库完整性清单
 - 技术基线：`docs/engineering/technology-baseline.md`
@@ -67,6 +68,7 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 - 机器真源：`.harness/`、`specs/catalog/`、`specs/contracts/`
 
 无 READY/IN_PROGRESS 任务时不得直接开发。禁止手改 `specs/generated/**`；Catalog、Contract、数据库、安全、记忆、模型路由和 Harness 变更必须走注册 Skill、审批和独立复核。
+Harness 按完整 Git 父边历史而非最终净差异审计范围；正式检查前需暂存完整候选快照，并由多个 Reviewer 复核同一精确提交。
 
 ## 安全与发布状态
 
