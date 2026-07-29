@@ -710,7 +710,8 @@ class StateTests(unittest.TestCase):
 
     def test_project_state_must_point_to_latest_terminal_and_accepted_tasks(self) -> None:
         tasks = copy.deepcopy(discover_tasks())
-        tasks["TASK-0001"]["state"] = "DRAFT"
+        for task in tasks.values():
+            task["state"] = "DRAFT"
         tasks["TASK-0002"]["state"] = "ACCEPTED"
         state = load_yaml(ROOT / ".harness/project-state.yaml")
         state["activeTask"] = None
