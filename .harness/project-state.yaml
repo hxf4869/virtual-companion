@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0003
+activeTaskCard: docs/tasks/TASK-0003-identity-session-contract.md
 lastAcceptedTask: TASK-0002
 lastAcceptedHandoff: docs/handoffs/TASK-0002.json
 lastTerminalTask: TASK-0002
 lastTerminalHandoff: docs/handoffs/TASK-0002.json
-nextAction: 创建首个业务纵切 READY 任务，从用户身份与会话最小闭环开始
+nextAction: 冻结供应商中立的身份与登录会话安全边界契约
 capabilityGates:
   businessImplementation:
     state: BLOCKED
