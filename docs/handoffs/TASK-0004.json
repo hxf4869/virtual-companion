@@ -1,0 +1,28 @@
+{
+  "taskId": "TASK-0004",
+  "state": "ACCEPTED",
+  "baseCommit": "0bad567f18e2d5eadecff002037af000ddde3227",
+  "headCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27",
+  "evidencePath": "docs/evidence/TASK-0004/evidence-pack.json",
+  "reviewers": [],
+  "completed": [
+    "Catalog JAR 以原字节打包受控 catalog.snapshot.json，Runtime 只读取 phase、transport 与七项关闭门禁白名单投影",
+    "Runtime 对资源缺失、结构或类型错误、阶段或传输漂移以及任一受限能力意外开启全部失败关闭",
+    "内部 baseline 端点保留既有字段并新增最小 capabilities 投影，不暴露完整机器真源",
+    "H5 严格验证 TECHNICAL_ALPHA、HTTP_SSE、能力来源与七项 false 门禁，并区分 timeout、unreachable、http、invalid-response",
+    "Store 在重试和并发请求时清理旧成功数据并忽略过期响应，错误态始终将七项能力按关闭处理",
+    "交付夜间预检边界台，完成 1440x900 桌面、390x844 手机、Runtime 断连、键盘焦点、文字对比度与减弱动画验收",
+    "Vitest 固定到修复 Critical 公告的 3.2.6；后端 36 项、前端 28 项测试及全部必跑检查通过"
+  ],
+  "remaining": [
+    "用独立 Harness C4 任务修复测试夹具对最新终态任务 TASK-0002 的硬编码，恢复 Ubuntu、Windows、macOS 三平台 CI",
+    "CI 恢复后按机器真源创建 Fake 与 Failure Model Adapter 任务，不接真实 Provider、模型凭据或真实用户",
+    "正式 AI 身份声明、品牌与面向真实用户的产品文案仍需单独 Contract 和 Owner 决策"
+  ],
+  "knownRisks": [
+    "本页是内部 Technical Alpha 预检视图，不表示真实模型、身份、注册、支付、Beta 或 ServiceMode 已投入运行",
+    "公开 npm Critical 阈值审计为 0，但仓库已有 Uni/Vite 依赖链仍报告 34 个 low、moderate 或 high 告警，需要独立治理且不能在本任务扩大范围处理",
+    "当前远端 Harness 三平台作业会因测试夹具硬编码 TASK-0002 而失败；产品 Backend 与 Frontend 作业已通过，该夹具漂移将在下一独立任务修复"
+  ],
+  "nextAction": "修复 Harness 最新终态任务测试夹具并恢复三平台 CI"
+}

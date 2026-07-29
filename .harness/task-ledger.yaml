@@ -18,3 +18,9 @@ tasks:
     taskCard: docs/tasks/TASK-0003-identity-session-contract.md
     evidence: docs/evidence/TASK-0003/evidence-pack.json
     handoff: docs/handoffs/TASK-0003.json
+  TASK-0004:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0004-alpha-capability-gate.md
+    evidence: docs/evidence/TASK-0004/evidence-pack.json
+    handoff: docs/handoffs/TASK-0004.json

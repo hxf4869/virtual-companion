@@ -1,0 +1,148 @@
+{
+  "taskId": "TASK-0004",
+  "baseCommit": "0bad567f18e2d5eadecff002037af000ddde3227",
+  "headCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27",
+  "contextFingerprint": "a79fb2988933edc7d57a0fdd4ec57c72b64e5e6fd55de8899e8d61ab5d0c3303",
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0004",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "最终暂存实现快照完成 6817 项授权、Context、Skill、路径和契约检查；不生成持久产物。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "python scripts/harness/catalog_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Catalog 源文件验证通过；TASK-0004 未修改 Catalog。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "python scripts/harness/catalog_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "临时重生成结果与受控生成物一致，无 Catalog 漂移；不保留临时产物。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": ".\\mvnw.cmd --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "6574b6786e85dda0b2d8aefd9354519d29e67aaba5add6fcf8ca1581854acc63",
+      "reason": "Temurin 25.0.4 下 Catalog 2 项、Runtime 36 项测试全部通过；测试同时证明 JAR 内快照资源与受控生成物字节一致。",
+      "environment": "Windows PowerShell, Eclipse Temurin 25.0.4, Maven Wrapper 3.9.16",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "pnpm --dir frontend test:run",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Vitest 3.2.6 共 3 个测试文件、28 项测试通过，覆盖严格响应解析、四类错误、重试清理与七项门禁映射。",
+      "environment": "Windows PowerShell, Node.js 22.23.1, pnpm 11.9.0",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "pnpm --dir frontend type-check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Vue 与 TypeScript 类型检查通过；不生成持久产物。",
+      "environment": "Windows PowerShell, Node.js 22.23.1, pnpm 11.9.0",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "pnpm --dir frontend build:h5",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "uni-app H5 生产构建通过；构建目录为被忽略的可再生产物，不纳入 Evidence Pack。",
+      "environment": "Windows PowerShell, Node.js 22.23.1, pnpm 11.9.0",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0004",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "统一 Python 入口的 Doctor、Catalog、付费依赖与 Beta roster 共 5 项通过；Beta Gate 保持 CLOSED。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1 -Task TASK-0004",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Windows PowerShell 包装入口进入统一 precheck，5 项命令全部通过；不生成持久产物。",
+      "environment": "Windows PowerShell 5.1, Python 3.12",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -- bash scripts/harness/precheck.sh --task TASK-0004",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "WSL2 POSIX 包装入口进入统一 precheck，5 项命令全部通过；不生成持久产物。",
+      "environment": "WSL2 Ubuntu-24.04, Python 3.12",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "最终实现提交无空白错误；该命令不生成持久产物。",
+      "environment": "Windows PowerShell, Git",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "pnpm --dir frontend install --frozen-lockfile",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "冻结锁文件安装验证通过，依赖声明与 pnpm-lock.yaml 完全一致。",
+      "environment": "Windows PowerShell, Node.js 22.23.1, pnpm 11.9.0",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "pnpm --dir frontend audit --registry=https://registry.npmjs.org --audit-level critical",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Critical 阈值审计通过；Vitest 已固定到修复版 3.2.6。仓库仍有 34 个既有 low/moderate/high 告警，留待独立依赖治理任务。",
+      "environment": "Windows PowerShell, Node.js 22.23.1, pnpm 11.9.0, npm public audit endpoint",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "playwright H5 visual check --viewport 1440x900 --state ready --keyboard-focus",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "桌面正常态七项门禁无横向溢出；原始详情默认折叠；键盘 Tab 聚焦技术详情按钮时计算样式为深海蓝 3px inset 焦点环，Enter 可正常展开。",
+      "environment": "Chromium via Playwright, local H5 and Runtime",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    },
+    {
+      "command": "playwright H5 visual check --viewport 390x844 --state runtime-disconnected",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "手机断连态无横向溢出；旧读数不保留，0/7 已验证，七项全部显示未验证并按关闭处理，原始详情被禁用。",
+      "environment": "Chromium via Playwright, local H5 with Runtime stopped",
+      "verifiedCommit": "3b217f67935a8a28e9ebf3d5d1f414b855663e27"
+    }
+  ],
+  "artifacts": {
+    "implementationTree": "bf31b39aa2b5e36fb30e687e75b7c334707862b7",
+    "catalogSnapshotSha256": "6574b6786e85dda0b2d8aefd9354519d29e67aaba5add6fcf8ca1581854acc63"
+  }
+}
