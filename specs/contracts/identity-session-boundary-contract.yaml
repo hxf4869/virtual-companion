@@ -1,0 +1,202 @@
+schemaVersion: 1
+contractId: SERVER_VERIFIED_IDENTITY_SESSION_BOUNDARY
+phase: TECHNICAL_ALPHA
+scope:
+  kind: SECURITY_BOUNDARY
+  runnableLoginIncluded: false
+  concreteIdentityProviderSelected: false
+normativeDependencies:
+  ownership: specs/contracts/database-ownership-contract.yaml
+  realtime: specs/contracts/realtime-contract.yaml
+  betaGate: specs/contracts/beta-gate-contract.yaml
+  costBoundary: specs/contracts/license-cost-boundary-contract.yaml
+  productScope: specs/catalog/product-scope.yaml
+  errors: specs/catalog/error-codes.yaml
+  ageStates: specs/catalog/age-states.yaml
+terminology:
+  authenticationSession:
+    purpose: bind a server-verified external identity to the current authenticated application context
+    identifierType: authenticationSessionId
+  conversation:
+    purpose: contain the user-visible companion conversation
+    identifierType: conversationId
+  realtimeResumeTicket:
+    purpose: grant one short-lived attempt to establish or resume an authorized realtime stream
+    identifierType: realtimeTicketId
+  memorySessionScope:
+    purpose: classify temporary memory within the SESSION memory scope
+    catalogCode: SESSION
+    isIdentifier: false
+    useAsSessionIdentifierForbidden: true
+identifierRules:
+  typeMustBeExplicitAtBoundaries: true
+  crossTypeReuseForbidden: true
+  interchangeForbidden:
+    - authenticationSessionId_as_conversationId
+    - authenticationSessionId_as_realtimeTicketId
+    - conversationId_as_authenticationSessionId
+    - conversationId_as_realtimeTicketId
+    - realtimeTicketId_as_authenticationSessionId
+    - realtimeTicketId_as_conversationId
+    - memory_scope_SESSION_as_any_identifier
+legacyFieldCompatibility:
+  realtimeContractTicketBoundToSessionId:
+    path: specs/contracts/realtime-contract.yaml#ticket.boundTo.sessionId
+    canonicalType: authenticationSessionId
+    fieldRenameRequiredNow: false
+    semanticChange: false
+    forbiddenInterpretations:
+      - conversationId
+      - memory_scope_SESSION
+externalIdentityBoundary:
+  minimumOpaqueKey:
+    - provider
+    - subject
+  verificationRequiredBeforeMapping: true
+  mapping:
+    authority: SERVER_CONTROLLED
+    output: owner_user_id
+    clientOwnerClaimTrusted: false
+    forbiddenAsOwnershipAuthority:
+      - request_body_owner_user_id
+      - query_owner_user_id
+      - header_owner_user_id
+      - path_owner_user_id
+      - shared_fixed_production_identity
+  failClosedWhen:
+    - identity_provider_not_configured
+    - external_identity_unverified
+    - external_identity_mapping_missing
+    - external_identity_mapping_conflicting
+    - authentication_session_unknown
+    - authentication_context_incomplete
+    - required_boundary_field_missing
+providerBoundary:
+  matureIdentityComponentRequired: true
+  projectOwnedProviderNeutralPortRequired: true
+  projectOwnedAuthenticationCoreFromScratchForbidden: true
+  forbiddenAsCorePrerequisite:
+    - commercial_software_license
+    - managed_identity_only_feature
+    - enterprise_only_feature
+    - paid_plugin
+    - hosted_saas_only_feature
+  providerMustNotOwnBusinessTruth:
+    - companion_relationship
+    - conversation
+    - canonical_memory
+authorizationAndOwnership:
+  inheritsContractId: COMPOSITE_OWNERSHIP_AND_FORCE_RLS
+  inheritedRequirementsMustNotBeWeakened: true
+  ownerUserIdColumnRequired: true
+  uniqueOwnerUserIdAndIdTargetRequired: true
+  explicitApplicationOwnerPredicateRequired: true
+  compositeOwnershipForeignKeysRequired: true
+  rowLevelSecurityRequired: true
+  forceRowLevelSecurityRequired: true
+  runtimeRolesWithBypassRlsForbidden:
+    - vc_api
+    - vc_worker
+    - vc_job_coordinator
+    - vc_dispatcher
+errorSemantics:
+  AUTHENTICATION_REQUIRED:
+    when: no valid server-verified authentication context can be established
+  ACCESS_DENIED:
+    when: an authenticated subject is not permitted to perform the requested general operation
+  NOT_FOUND_OR_FORBIDDEN:
+    when: a user-domain resource is absent or is not owned by the current owner
+    resourceExistenceDisclosureForbidden: true
+  AGE_VERIFICATION_REQUIRED:
+    when: an age-gated capability requires a verified adult state and the requirement is not met
+  newCatalogCodeIntroduced: false
+  httpStatusMappingDefined: false
+ageCapabilityBoundary:
+  betaGenerativeChatAllowedOnlyWhen: ADULT_VERIFIED
+  dataRightsAllowedForEveryCatalogAgeState: true
+  verificationOrAppealAllowedForEveryCatalogAgeState: true
+  ageVerificationRequiredMustNotBlock:
+    - data_rights
+    - age_verification
+    - age_appeal
+h5CredentialBoundary:
+  preferredSessionCookie:
+    attributes:
+      - HttpOnly
+      - Secure
+      - SameSite
+    exactSameSiteValueDeferred: true
+  csrfRequiredForStateChanges: true
+  originValidationRequired: true
+  longLivedTokenForbiddenLocations:
+    - localStorage
+    - url
+    - query
+    - realtime_connection_parameters
+realtimeResumeTicketBoundary:
+  ttlSeconds: 45
+  singleUse: true
+  serverStoresHashOnly: true
+  boundTo:
+    - ownerUserId
+    - authenticationSessionId
+    - generationId
+    - origin
+    - transport
+    - streamEpoch
+    - afterSeq
+  mayContainLongLivedCredential: false
+  authorizationArtifactOnly: true
+  ttlDoesNotDefineAuthenticationSessionTtl: true
+privacyBoundary:
+  dataClasses:
+    - external_identity
+    - account
+    - age
+    - authentication_session
+  forbiddenDestinations:
+    - general_application_log
+    - url
+    - model_context
+  minimizationRequired: true
+capabilityGates:
+  publicRegistrationEnabled: false
+  realUserBeta: BLOCKED
+  realPayment: FORBIDDEN
+  betaGenerationEnabledByDefault: false
+  alphaTransport:
+    - FETCH_SSE
+  websocketEnabled: false
+failureRules:
+  identityProviderUnavailableDisposition: FAIL_CLOSED
+  forbiddenFallbacks:
+    - trust_client_owner_user_id
+    - trust_development_identity_header
+    - use_shared_fixed_production_identity
+    - infer_authenticated_state_from_missing_fields
+compatibility:
+  currentProducer: NONE
+  currentConsumer: NONE
+  migrationWindowRequired: false
+  firstImplementationMustConformBeforeExposure: true
+integrationBoundary:
+  futureProducer: mature_identity_provider_adapter
+  futureConsumers:
+    - api_authentication_entrypoint
+    - owner_user_id_resolver
+    - user_domain_query_boundary
+    - realtime_ticket_issuer
+    - security_audit_boundary
+deferredOwnerDecisions:
+  - identity_provider_and_login_channels
+  - technical_alpha_account_provisioning_and_first_login_mapping
+  - cookie_or_bearer_architecture_and_cookie_parameters
+  - authentication_session_ttl_refresh_revocation_and_device_policy
+  - account_and_authentication_session_state_catalogs
+  - external_identity_bind_merge_unbind_and_delete_synchronization
+  - public_api_paths_http_statuses_and_error_envelope
+  - age_verification_provider_and_appeal_flow
+rules:
+  - deferred decisions have no implied default
+  - public registration, real-user beta and real payment remain closed
+  - an identity implementation requires a separate READY task
