@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0004
+activeTaskCard: docs/tasks/TASK-0004-alpha-capability-gate.md
 lastAcceptedTask: TASK-0003
 lastAcceptedHandoff: docs/handoffs/TASK-0003.json
 lastTerminalTask: TASK-0003
 lastTerminalHandoff: docs/handoffs/TASK-0003.json
-nextAction: 创建 Technical Alpha 能力门禁与连通性页面任务
+nextAction: 交付 Technical Alpha 能力门禁与 Runtime 连通性页面
 capabilityGates:
   businessImplementation:
     state: BLOCKED
