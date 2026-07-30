@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0012
+activeTaskCard: docs/tasks/TASK-0012-planned-backlog-harness-governance.md
 lastAcceptedTask: TASK-0011
 lastAcceptedHandoff: docs/handoffs/TASK-0011.json
 lastTerminalTask: TASK-0011
 lastTerminalHandoff: docs/handoffs/TASK-0011.json
-nextAction: 创建 Anthropic Messages 离线 HTTP/SSE Adapter 合同任务
+nextAction: 执行 TASK-0012，建立 Technical Alpha PLANNED Backlog 与 Harness 治理
 capabilityGates:
   businessImplementation:
     state: BLOCKED
