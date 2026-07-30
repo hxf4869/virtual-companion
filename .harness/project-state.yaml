@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0012
-activeTaskCard: docs/tasks/TASK-0012-planned-backlog-harness-governance.md
-lastAcceptedTask: TASK-0011
-lastAcceptedHandoff: docs/handoffs/TASK-0011.json
-lastTerminalTask: TASK-0011
-lastTerminalHandoff: docs/handoffs/TASK-0011.json
-nextAction: 执行 TASK-0012，建立 Technical Alpha PLANNED Backlog 与 Harness 治理
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0012
+lastAcceptedHandoff: docs/handoffs/TASK-0012.json
+lastTerminalTask: TASK-0012
+lastTerminalHandoff: docs/handoffs/TASK-0012.json
+nextAction: 将 TASK-0037 晋级为唯一 DRAFT，建立 Harness 性能基线、分层验证与快照复用
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: 2026-07-30
+updatedAt: 2026-07-31

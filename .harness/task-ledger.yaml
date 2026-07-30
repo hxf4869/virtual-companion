@@ -66,3 +66,9 @@ tasks:
     taskCard: docs/tasks/TASK-0011-openai-chat-completions-offline-adapter.md
     evidence: docs/evidence/TASK-0011/evidence-pack.json
     handoff: docs/handoffs/TASK-0011.json
+  TASK-0012:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0012-planned-backlog-harness-governance.md
+    evidence: docs/evidence/TASK-0012/evidence-pack.json
+    handoff: docs/handoffs/TASK-0012.json

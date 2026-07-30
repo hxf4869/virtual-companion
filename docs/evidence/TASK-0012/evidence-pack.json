@@ -1,0 +1,181 @@
+{
+  "taskId": "TASK-0012",
+  "baseCommit": "b65caf309d4fb740b20648ee74c7b764537582c9",
+  "headCommit": "d629fc20ac17bedb1e43eece361159c652ef785d",
+  "contextFingerprint": "880dfd135a84e1d1c826edeb7b7c783c657696a7a8a9182761604292467b87aa",
+  "reviewers": [
+    {
+      "id": "task-0012-c4-static-reviewer-20260731-r1-performance-delta",
+      "kind": "planned-backlog-harness-governance",
+      "verdict": "PASS",
+      "reviewedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d",
+      "evidencePath": "docs/evidence/TASK-0012/review-planned-backlog-harness-governance.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "父实现快照 0d019ab 本地完整 137 项 Harness 真实 PASS、按平台条件跳过 1 项、墙钟 1014.597 秒；最终 delta 仅隔离三个测试的无关任务输入，精确 headCommit 的 GitHub Ubuntu、Windows、macOS Harness 又完整执行同一发现命令并全部成功，未删除或跳过测试。",
+      "environment": "Windows PowerShell and GitHub-hosted Ubuntu, Windows and macOS runners, Python 3.12",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": ".\\mvnw.cmd --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "父实现快照 0d019ab 使用项目固定 Temurin 25.0.4+7 完成 11/11 模块、132 项测试、0 failure/error/skip，墙钟 20.289 秒；最终 delta 只修改 Python Harness 测试输入，Owner 批准按路径影响复用，精确 headCommit 的 Backend CI 同时成功完成 Maven 构建与测试。",
+      "environment": "Windows PowerShell, Temurin JDK 25.0.4+7; GitHub-hosted Ubuntu backend runner",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0012",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "父实现快照 0d019ab 的统一 Python canonical precheck 真实 PASS，Doctor 43,999 checks、5/5 命令通过、墙钟 191.397 秒；最终 delta 只隔离三个测试的无关任务输入，精确 headCommit 的三平台 CI 又通过由包装器调用的同一 Python precheck。",
+      "environment": "Windows PowerShell and GitHub-hosted cross-platform Python 3.12",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1 -Task TASK-0012",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "父实现快照 0d019ab 本地 PowerShell canonical precheck 真实 PASS，Doctor 43,999 checks、5/5 命令通过、墙钟 184.165 秒；精确 headCommit 的 Windows job 90954082627 又完整通过相同 PowerShell wrapper。",
+      "environment": "Windows PowerShell 5.1, Python 3.12, local and GitHub-hosted Windows",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -- bash scripts/harness/precheck.sh --task TASK-0012",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "父实现快照 0d019ab 的 WSL2 Ubuntu-24.04 POSIX wrapper 真实 PASS，Doctor 43,999 checks、5/5 命令通过、墙钟 530.992 秒；最终 delta 仅修改三个 Windows/Linux 共用 Python 测试的输入隔离，精确 headCommit 的 Ubuntu 和 macOS POSIX wrappers 均再次成功。",
+      "environment": "WSL2 Ubuntu-24.04 and GitHub-hosted Ubuntu/macOS, Python 3.12",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "最终测试隔离候选在提交前完成 git diff --check，退出码 0；精确暂存内容随后形成 headCommit，未产生空白错误。",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "targeted ContextTests performance validation",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "三个指定 fail-close 用例分别 PASS，墙钟 27.285、2.194、27.366 秒；完整 ContextTests 13/13 PASS，墙钟 69.503 秒，较旧基线 611.718 秒减少 542.215 秒。全卡 Context Lock 可重现性测试仍保留。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "independent planned backlog and Harness governance review",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "同一独立 Reviewer 以完整矩阵加有界 delta 复核链覆盖生命周期、唯一 Backlog、DAG/闸门、ID 永久性、动态字段、逐 parent-edge、强类型 amendment、失败关闭和最终性能隔离；最终绑定精确 Commit/Tree，P0/P1/P2 无未闭环发现。",
+      "environment": "Independent static reviewer; no implementation participation",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "GitHub Actions ci run 30567051319",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确 headCommit 的 Backend、Frontend、Ubuntu Harness、Windows Harness、macOS Harness 五个 jobs 全部 success；Windows job 90954082627 在 20 分钟合同内完成完整 Harness 与 canonical PowerShell precheck，总作业墙钟 561 秒。",
+      "environment": "GitHub-hosted Ubuntu, Windows and macOS runners",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    },
+    {
+      "command": "business modules, database and live provider behavior",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "TASK-0012 只交付 PLANNED Backlog 与 Harness 治理；未实现或启动后续业务、数据库、真实 Provider、身份、支付、Beta 或外发能力。",
+      "environment": "Not applicable",
+      "verifiedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d"
+    }
+  ],
+  "artifacts": {
+    "implementationTree": "96148e5e2827efe7fc5c4ffd9aa0507cda33e73d",
+    "backlogPermanentIdCount": 26,
+    "plannedCardCount": 25,
+    "nextPromotionCandidate": "TASK-0037",
+    "fullHarnessTestCount": 137,
+    "fullHarnessSkippedCount": 1,
+    "contextTests": {
+      "testCount": 13,
+      "baselineWallSeconds": 611.718,
+      "finalWallSeconds": 69.503,
+      "savedWallSeconds": 542.215
+    },
+    "pathImpactReuse": {
+      "validatedParentCommit": "0d019ab7dcf2cce4f76cb5246eec46096db5abef",
+      "finalCommit": "d629fc20ac17bedb1e43eece361159c652ef785d",
+      "changedPaths": [
+        "scripts/harness/tests/test_harness.py"
+      ],
+      "reason": "最终 delta 仅把三个 TASK-0002 负例的 validate_tasks 输入隔离为单卡映射；Owner 明确批准复用父快照 Maven 与三包装器结果，精确最终 SHA CI 重新执行完整跨平台 Harness、Backend 和 canonical wrappers。"
+    },
+    "githubActionsRunId": "30567051319",
+    "githubActionsUrl": "https://github.com/hxf4869/virtual-companion/actions/runs/30567051319",
+    "githubActionsJobs": {
+      "Backend": {
+        "id": "90954082509",
+        "conclusion": "success"
+      },
+      "Frontend": {
+        "id": "90954082731",
+        "conclusion": "success"
+      },
+      "Harness (ubuntu-latest)": {
+        "id": "90954082688",
+        "conclusion": "success"
+      },
+      "Harness (windows-latest)": {
+        "id": "90954082627",
+        "conclusion": "success",
+        "durationSeconds": 561
+      },
+      "Harness (macos-latest)": {
+        "id": "90954082615",
+        "conclusion": "success"
+      }
+    },
+    "supersededSnapshots": [
+      {
+        "commit": "170abead3bd28e0a5d5f1fe36e9da3b1342171fb",
+        "tree": "db5e24852690a737edb339c379fbc6234cd3320c",
+        "githubActionsRunId": "30563188010",
+        "conclusion": "cancelled",
+        "reason": "legacy amendment 旧断言与 AGENTS.md 跨平台内容绑定漂移导致 Ubuntu/macOS Harness 失败；Windows 随 run 取消。",
+        "usedAsFinalPass": false
+      },
+      {
+        "commit": "0d019ab7dcf2cce4f76cb5246eec46096db5abef",
+        "tree": "8c8cb5729b4d4f73406c918c5265441ca4aee977",
+        "githubActionsRunId": "30564040240",
+        "windowsJobId": "90943958289",
+        "conclusion": "cancelled",
+        "reason": "137 项 Windows Harness 已 PASS，但 canonical precheck 触发固定 20 分钟 job timeout；以最小测试隔离前向修复。",
+        "usedAsFinalPass": false
+      }
+    ],
+    "recoveryBundle": {
+      "path": "G:/ai/hxf/.task-backups/TASK-0012-pre-rewrite-20260731-002256.bundle",
+      "sha256": "727d518cc6f79adbb474ec720117df1479065fbef6621cd93b3d3c9e92c4c347",
+      "verified": true,
+      "backupRef": "refs/task-backups/TASK-0012-pre-rewrite-20260731-002256",
+      "oldHead": "5c68f41bd08d4640e5f01ed1d5fbd49df895bc8a",
+      "oldTree": "2e305369bf13e652478b10aa8e872fd31cda01b5"
+    }
+  }
+}

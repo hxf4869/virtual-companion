@@ -1,0 +1,41 @@
+{
+  "taskId": "TASK-0012",
+  "state": "ACCEPTED",
+  "baseCommit": "b65caf309d4fb740b20648ee74c7b764537582c9",
+  "headCommit": "d629fc20ac17bedb1e43eece361159c652ef785d",
+  "evidencePath": "docs/evidence/TASK-0012/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0012-c4-static-reviewer-20260731-r1-performance-delta",
+      "kind": "planned-backlog-harness-governance",
+      "verdict": "PASS",
+      "reviewedCommit": "d629fc20ac17bedb1e43eece361159c652ef785d",
+      "evidencePath": "docs/evidence/TASK-0012/review-planned-backlog-harness-governance.md"
+    }
+  ],
+  "completed": [
+    "建立 .harness/task-backlog.yaml 作为 Technical Alpha 执行顺序、依赖 DAG、关键路径、决策闸门、晋级条件和 Owner amendment 的唯一机器真源",
+    "保留 TASK-0012 至 TASK-0036 全部原永久编号和产品语义，并按 Owner replacement 新增 TASK-0037，共 26 个永久 ID；TASK-0013 至 TASK-0037 均有正式 PLANNED 卡",
+    "生命周期支持多个 PLANNED、最多一个 DRAFT、最多一个 active task；PLANNED 不占 activeTask、不可执行且不提前冻结动态证据",
+    "强类型、append-only、单父原子 Owner amendment 绑定稳定条款、授权父提交和规范化精确路径；未列条款与 forbidden 优先级保持不变",
+    "Backlog、规划卡完整投影、resolution、membership、activation anchor 和所有 Git parent edges 对删除、修改、改坏后恢复及 merge 绕过均失败关闭",
+    "TASK-0034 与 TASK-0035 保持硬 Owner 决策闸门；TASK-0036 在依赖未满足时保持 PLANNED/BLOCKED；Technical Alpha 禁止项未扩张",
+    "最终三个 TASK-0002 负例仅隔离无关 execution-card 扫描，ContextTests 从 611.718 秒降至 69.503 秒，未删测、未加 skip、未改生产 fail-close",
+    "固定 JDK 25 Maven、完整 Harness、Python/PowerShell/WSL canonical precheck、git diff --check、独立 Reviewer 和精确最终 SHA 的 GitHub 五作业均有真实 PASS Evidence"
+  ],
+  "remaining": [
+    "未创建或晋级下一任务；仅在 Owner 后续明确指令下把现有 TASK-0037 PLANNED 卡晋级为唯一 DRAFT",
+    "TASK-0037 应完成同环境前后性能基线、分层验证、慢项报告、可审计快照复用、路径感知 CI/包装器策略和 NTFS/WSL 跨盘 fixture 优化",
+    "TASK-0037 晋级时评估正式分级 Reviewer：C1/C2 可由精确 CI 加 TASK-0036 总审，C3/C4 保留限时 diff-only Reviewer；每卡一批修复、一次短复核",
+    "TASK-0037 ACCEPTED 后再按原 DAG 推进 TASK-0013；TASK-0013 至 TASK-0036 的业务、数据库、API、H5、身份和真实供应商工作均未在本卡提前实现"
+  ],
+  "knownRisks": [
+    "本卡耗时主要来自多轮完整 Harness、三种 canonical 包装器和五路 CI 的串行等待；普通业务卡晋级 DRAFT 时应只冻结一个 canonical precheck 加受影响模块测试，跨平台包装器全量仅用于 Harness 或可移植性变更，具体策略由 TASK-0037 实现",
+    "历史实测基线包括本地完整 Harness 119 项 674.036 秒、PowerShell canonical 39,118 checks 174.037 秒、WSL 载入阶段 246.590 秒、GitHub Windows Harness 首轮 18分11秒（job 90878411943）；本卡后续 137 项本地完整 Harness 为 1014.597 秒",
+    "最终测试隔离是 TASK-0012 新增治理造成的确定性重复扫描修复，不是 TASK-0037 的一般性能框架；不能据此跨任意命令、环境或变更复用 PASS",
+    "170abead/run 30563188010 与 0d019ab/run 30564040240 均为 superseded cancelled 快照，原因和未复用声明已写入 Evidence；最终唯一 CI PASS 为 run 30567051319",
+    "预重建恢复 bundle 保存在 G:/ai/hxf/.task-backups/TASK-0012-pre-rewrite-20260731-002256.bundle，SHA-256 为 727d518cc6f79adbb474ec720117df1479065fbef6621cd93b3d3c9e92c4c347；它是本机恢复点，不属于仓库交付物",
+    "公开注册、真实支付、恋爱模式、语音、图片、WebSocket、主动消息、多角色、第二家真实供应商、Beta 和任何未获批真实外发继续禁止"
+  ],
+  "nextAction": "将 TASK-0037 晋级为唯一 DRAFT，建立 Harness 性能基线、分层验证与快照复用"
+}
