@@ -24,6 +24,9 @@ skills:
   - id: harness-change
     version: 1.1.0
     path: skills/harness-change/SKILL.md
+  - id: task-delivery-flow
+    version: 1.0.0
+    path: skills/task-delivery-flow/SKILL.md
 rules:
   taskMustPinExactVersion: true
   agentsReadSkillByPath: true

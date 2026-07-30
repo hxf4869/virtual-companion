@@ -1,0 +1,163 @@
+schemaVersion: 1
+policyId: task-delivery
+canonicalLifecycleSource: .harness/task-lifecycle.yaml
+taskSource: .harness/task-backlog.yaml
+skill:
+  id: task-delivery-flow
+  registry: .harness/skills.yaml
+modes:
+  single-card:
+    kind: TASK_EXECUTION
+    happyPath:
+      - PLANNED
+      - DRAFT
+      - READY
+      - IN_PROGRESS
+      - IN_REVIEW
+      - ACCEPTED
+    governanceExceptions:
+      - IDLE_DRAFT
+      - PLANNING_ONLY_RESOLUTION
+      - TERMINAL_CLOSURE
+    stopConditions:
+      - OWNER_GATE
+      - EVIDENCED_BLOCKED
+  longline:
+    kind: BACKLOG_ORCHESTRATION
+    cardMode: single-card
+    maximumConcurrentCards: 1
+    freshVisibleTaskPerCard: true
+    nextCardRequires:
+      - ACCEPTED
+      - PUSHED
+      - HANDOFF_COMPLETE
+      - REMOTE_REVERIFIED
+      - EXACT_SHA_CI_REVERIFIED
+    terminalStatesThatDoNotReleaseDependencies:
+      - REJECTED
+      - SUPERSEDED
+    blockedCardBehavior:
+      blocksDependencyDescendantsOnly: true
+      continueIndependentPromotableCards: true
+    pauseConditions:
+      - NO_PROMOTABLE_CARD
+      - OWNER_GATE_ONLY
+complexityGate:
+  evaluateBefore: READY
+  splitWhen:
+    crossRiskSurfaces:
+      minimumDistinct: 2
+      surfaces:
+        - GOVERNANCE
+        - AUTHORIZATION
+        - HISTORY
+    reviewerMinutesGreaterThan: 15
+    terminalCheckMinutesGreaterThan: 20
+    estimatedWallMinutesGreaterThan: 90
+budgets:
+  targetWallMinutes: 60
+  hardFuseWallMinutes: 90
+  candidateDeadlineMinutes: 45
+  iterationTargetedMaxSeconds: 60
+  maximumFixBatches: 1
+  maximumReviewRounds: 2
+  thirdReviewForbidden: true
+  stopOnR2NewStructural:
+    - P0
+    - P1
+validation:
+  sequence:
+    - TARGETED
+    - CANDIDATE_COMMIT_TREE
+    - REVIEWER
+    - CANDIDATE_CANONICAL
+    - EXACT_SHA_CI
+    - CLOSURE
+  ordinaryCard:
+    canonicalPythonPrecheckCount: 1
+    canonicalPythonArgv:
+      - python
+      - scripts/harness/precheck.py
+      - --task
+      - TASK-ID
+    wrapperEvidenceAlias: false
+    affectedModuleTestsRequired: true
+    diffCheckCount: 1
+    duplicateCanonicalSubcommandsForbidden: true
+  fullPlatformWrappersFor:
+    - HARNESS
+    - PORTABILITY
+  longRunningCommand:
+    singleProcess: true
+    polling: LOW_FREQUENCY_STATUS_ONLY
+    defaultPollingIntervalSeconds: 60
+    statusObservationOnly: true
+    parallelStatusCommandForbidden: true
+    parallelProcessInspectionCommandForbidden: true
+    repeatedLogFetchForbidden: true
+    duplicateExecutionForbidden: true
+review:
+  conditionalRiskClasses:
+    - C1
+    - C2
+  independentRiskClasses:
+    - C3
+    - C4
+  protectedRuleRequirementsApply: true
+  independentForkTurns: none
+  r1:
+    scope:
+      - COMPLETE_MATRIX
+      - ACCEPTANCE
+      - INVARIANTS
+      - ADJACENT_RISK
+    blocking:
+      - P0
+      - P1
+      - ACCEPTANCE_VIOLATION
+      - INVARIANT_VIOLATION
+    nonBlocking:
+      - P2
+      - P3
+  r2:
+    scope:
+      - FINDING_CLOSURE
+      - DELTA
+      - ADJACENT_RISK
+      - NEW_P0_P1
+    restartFullReviewForbidden: true
+  reviewerRunsExpensiveFullTests: false
+candidateIdentity:
+  requiredInputs:
+    - HEAD_SHA
+    - INDEX_TREE
+    - WORKTREE
+    - UNTRACKED_CANDIDATE
+    - EXACT_COMMAND
+    - OPERATING_SYSTEM
+    - INTERPRETER
+    - TOOLCHAIN
+    - DEPENDENCIES
+    - ENVIRONMENT
+    - GIT_CONFIG
+    - EXTERNAL_SERVICES
+    - DATA_STATE
+    - TASK_AUTHORIZATION
+    - CONTEXT
+    - COMMAND_REGISTRY
+  reuseRequiresAllInputsUnchanged: true
+  unknownOrChanged: RERUN_REQUIRED
+  acceptedResult: PASS
+  reusedPassStatusForbidden: true
+  nonPassResults:
+    - FAIL
+    - CANCELLED
+    - TIMEOUT
+    - NOT_RUN
+  exactShaCiCrossShaReuse: false
+followUpTasks:
+  idlePlanningCheckpointCore: TASK-0049
+  idlePlanningCheckpointConsumers: TASK-0050
+  harnessPerformance: TASK-0051
+  pathAwareCi: TASK-0052
+  snapshotReceipt: TASK-0053
