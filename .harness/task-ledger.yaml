@@ -48,3 +48,9 @@ tasks:
     taskCard: docs/tasks/TASK-0008-generation-attempt-candidate-reducer.md
     evidence: docs/evidence/TASK-0008/evidence-pack.json
     handoff: docs/handoffs/TASK-0008.json
+  TASK-0009:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0009-windows-harness-ci-timeout-budget.md
+    evidence: docs/evidence/TASK-0009/evidence-pack.json
+    handoff: docs/handoffs/TASK-0009.json

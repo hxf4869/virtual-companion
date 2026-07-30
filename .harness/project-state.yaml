@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0009
-activeTaskCard: docs/tasks/TASK-0009-windows-harness-ci-timeout-budget.md
-lastAcceptedTask: TASK-0008
-lastAcceptedHandoff: docs/handoffs/TASK-0008.json
-lastTerminalTask: TASK-0008
-lastTerminalHandoff: docs/handoffs/TASK-0008.json
-nextAction: 修复 Windows Harness CI 超时裕量并完成五平台复验
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0009
+lastAcceptedHandoff: docs/handoffs/TASK-0009.json
+lastTerminalTask: TASK-0009
+lastTerminalHandoff: docs/handoffs/TASK-0009.json
+nextAction: 创建 OpenAI Chat Completions 离线 HTTP/SSE Adapter 合同任务
 capabilityGates:
   businessImplementation:
     state: BLOCKED

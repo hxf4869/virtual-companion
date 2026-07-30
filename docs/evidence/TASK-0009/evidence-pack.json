@@ -1,0 +1,160 @@
+{
+  "taskId": "TASK-0009",
+  "baseCommit": "8e5e7aa5a8b2f245b804be058c799826d81fd74c",
+  "headCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65",
+  "contextFingerprint": "aae0afd52bb7ccae70afa02646a2dd895cbe90e31b5af56b7fcc44e1c5155470",
+  "reviewers": [
+    {
+      "id": "codex-task0009-ci-reviewer",
+      "kind": "ci-harness-timeout-budget",
+      "verdict": "PASS",
+      "reviewedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65",
+      "evidencePath": "docs/evidence/TASK-0009/review-ci-harness-timeout.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.CiWorkflowTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "逐 OS 矩阵、10/20/10 分钟预算、fail-fast、Runner 与原有六个步骤名称及顺序全部由自动测试精确锁定。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "完整 Harness 共 70 项通过，按 Windows 条件跳过 1 项；主 Agent 实测 645.781 秒，独立 Reviewer 实测 761.706 秒。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0009",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现快照完成任务授权、Context、Skill、受保护路径、Schema 与差异范围检查；主 Agent 21,867 项、独立 Reviewer 22,006 项均通过。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "python scripts/harness/catalog_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Catalog 唯一机器真源结构有效。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "python scripts/harness/catalog_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "生成物与 Catalog 无漂移。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0009",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "统一 Python 入口的 Doctor、Catalog、付费依赖和 Beta roster 共 5 项通过；Beta Gate 保持 CLOSED。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1 -Task TASK-0009",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Windows PowerShell 包装入口执行统一 precheck，5 项命令全部通过。",
+      "environment": "Windows PowerShell 5.1, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -- bash scripts/harness/precheck.sh --task TASK-0009",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "WSL2 POSIX 包装入口执行统一 precheck，5 项命令全部通过。",
+      "environment": "WSL2 Ubuntu-24.04, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现提交无空白错误。",
+      "environment": "Windows PowerShell, Git",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "independent CI Harness timeout review",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "未参与实现的 Reviewer 绑定精确 Commit/Tree 复验，70 项 Harness、Doctor 22,006 项、Catalog、差异边界与精确 CI 全部通过，0 阻断、0 非阻断项。",
+      "environment": "Independent detached Git worktree, Windows PowerShell, Python 3.12",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "GitHub Actions ci run 30510419359",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现 SHA 的 Backend、Frontend、Ubuntu、Windows、macOS 五作业全部成功；Windows 在 17 分 35 秒内实际完成 70 项测试和 canonical PowerShell precheck。",
+      "environment": "GitHub-hosted Ubuntu, Windows and macOS runners",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "GitHub Actions root-cause run 30505196389",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "作为根因证据复核：两次 Windows 作业均触及原 10 分钟硬上限；首次 69 项测试已成功后才在 canonical precheck 被取消，排除业务实现或 Harness 断言失败。",
+      "environment": "GitHub-hosted Windows runner",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "business modules and runtime behavior",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "本任务只修复 CI 总作业时间预算，未修改或验证新的 Backend、Frontend、模型协议、数据库、部署或产品能力。",
+      "environment": "Not applicable",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    },
+    {
+      "command": "approved live model deployment and real-user beta",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "没有真实 Provider、模型、凭据、区域、合同准入、网络调用、Beta、注册或支付。",
+      "environment": "Not applicable",
+      "verifiedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65"
+    }
+  ],
+  "artifacts": {
+    "implementationTree": "4ce5e06adab7b7761b90dfc143167ac67ab6a543",
+    "targetedTestCount": 1,
+    "fullHarnessTestCount": 70,
+    "githubActionsRunId": "30510419359",
+    "githubActionsUrl": "https://github.com/hxf4869/virtual-companion/actions/runs/30510419359",
+    "windowsJobId": "90769100277",
+    "windowsJobDuration": "17m35s",
+    "windowsHarnessTestDurationSeconds": 637.814,
+    "githubActionsJobs": {
+      "Backend": "success",
+      "Frontend": "success",
+      "Harness (ubuntu-latest)": "success",
+      "Harness (windows-latest)": "success",
+      "Harness (macos-latest)": "success"
+    }
+  }
+}

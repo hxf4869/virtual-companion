@@ -1,0 +1,36 @@
+{
+  "taskId": "TASK-0009",
+  "state": "ACCEPTED",
+  "baseCommit": "8e5e7aa5a8b2f245b804be058c799826d81fd74c",
+  "headCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65",
+  "evidencePath": "docs/evidence/TASK-0009/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-task0009-ci-reviewer",
+      "kind": "ci-harness-timeout-budget",
+      "verdict": "PASS",
+      "reviewedCommit": "a178e8fb6c3ba05e4c06469fc83f9c553d97ec65",
+      "evidencePath": "docs/evidence/TASK-0009/review-ci-harness-timeout.md"
+    }
+  ],
+  "completed": [
+    "Harness matrix 改为 Ubuntu、Windows、macOS 三个显式项目，预算分别固定为 10、20、10 分钟",
+    "Backend、Frontend、Workflow 权限和 Harness 原有六个步骤保持不变",
+    "新增自动测试锁定逐 OS 预算、Runner、fail-fast 与步骤名称和顺序",
+    "完整 70 项 Harness、Doctor、Catalog 与本机 Python、PowerShell、WSL 三套 precheck 全部通过",
+    "精确实现 SHA 的 GitHub Actions 五作业全部成功，Windows 在 17 分 35 秒内实际完成测试与 canonical precheck",
+    "独立 Reviewer 绑定精确实现 Commit/Tree 给出 PASS，0 阻断和 0 非阻断项"
+  ],
+  "remaining": [
+    "下一轮创建 OpenAI Chat Completions 离线 HTTP/SSE Adapter 与本地 mock-server 合同任务",
+    "其后单独实现 Anthropic Messages 离线 Adapter，不与 OpenAI 或 Runtime 接线合并",
+    "实现 Execution Authorization Guard 后才可讨论真实 Runtime 外发",
+    "真实 Provider、模型、凭据、区域、合同准入、Beta、注册、支付和安全政策继续等待 Owner 决策"
+  ],
+  "knownRisks": [
+    "Windows 本次实测 17 分 35 秒，在 20 分钟上限内保留约 2 分 25 秒余量；若未来再次超时，任务约束要求先做性能诊断而不是继续提高上限",
+    "GitHub 提示 actions/setup-java@v4 的 Node 20 运行时弃用，但当前由平台强制使用 Node 24 且 Backend 成功；未在本 C4 修复中扩范围升级 Action",
+    "宿主默认 Java 仍为 8；仓库 Enforcer 要求业务 Maven 验证使用项目固定 JDK 25"
+  ],
+  "nextAction": "创建 OpenAI Chat Completions 离线 HTTP/SSE Adapter 合同任务"
+}
