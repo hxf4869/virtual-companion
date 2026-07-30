@@ -97,6 +97,11 @@ executionOrder:
   - TASK-0039
   - TASK-0040
   - TASK-0041
+  - TASK-0043
+  - TASK-0044
+  - TASK-0045
+  - TASK-0046
+  - TASK-0047
   - TASK-0013
   - TASK-0014
   - TASK-0015
@@ -368,6 +373,160 @@ tasks:
       - 复用只发生于同一 job 或会话的调度决定且仅接受可验证 PASS
       - Evidence 可审计命中来源、原因、输入身份和结果状态，失败、超时、取消与 NOT_RUN 永不命中
       - 终态 exact-SHA CI 对当前实现 SHA 真实运行且不能由其他 SHA、pre-closure 或历史 receipt 替代
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0043:
+    title: Idle planning checkpoint 核心父边校验
+    taskCard: docs/tasks/TASK-0043-idle-planning-checkpoint-core.md
+    dependencies:
+      - TASK-0042
+    decisionGates: []
+    objective: 建立 idle planning checkpoint 的唯一 Git parent-edge 派生与失败关闭核心，不接入执行消费者。
+    scope:
+      in:
+        - 单父、非空、原子 planning-only resolution 边校验
+        - 可选 project-state nextAction、100644 blob mode、精确任务匹配和无可晋级状态
+        - 正负 parent-edge 矩阵与错误后恢复失败关闭
+      out:
+        - DRAFT、Base-Handoff、idle terminal 与 terminal Diff Scope 消费者接线
+        - run 30581926062 baseline fixture 修复
+        - Git/history 性能、路径感知 CI 与 snapshot receipt
+    forbidden:
+      - 把 checkpoint 变成第二任务状态机或第二 Backlog
+      - 允许 merge、空提交、拆分提交、多 resolution 或额外路径
+      - 用工作区当前 lifecycle 代替显式 fixture
+    acceptanceCriteria:
+      - checkpoint 只从 canonical terminal 后的 Git parent history 派生并失败关闭
+      - 合法 REJECTED/SUPERSEDED 串行边与无尾部行为通过
+      - mode corrupt/restore、静态合同漂移和错误后恢复均失败
+      - 不修改四个执行消费者
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0044:
+    title: Idle planning checkpoint 四消费者接线
+    taskCard: docs/tasks/TASK-0044-idle-planning-checkpoint-consumers.md
+    dependencies:
+      - TASK-0043
+    decisionGates: []
+    objective: 将已验证 checkpoint 统一接入 DRAFT、Base-Handoff、idle terminal 与 terminal Diff Scope。
+    scope:
+      in:
+        - 四个消费者共享同一派生 checkpoint
+        - next DRAFT 与 Base-Handoff 锚定最后 verified checkpoint
+        - 前一执行任务 Diff Scope 截止 canonical terminal
+        - 轻量集成与 exact-SHA CI
+      out:
+        - checkpoint 核心 parent-edge 规则重写
+        - Git/history 性能、路径感知 CI 与 snapshot receipt
+        - Technical Alpha 业务功能
+    forbidden:
+      - 四个消费者各自实现不同 checkpoint 解析
+      - 把规划尾部洗入前一任务或下一任务 Diff Scope
+      - 无合法规划尾部时改变 canonical terminal 行为
+    acceptanceCriteria:
+      - 四个消费者对同一历史得到同一 checkpoint
+      - 无尾部行为保持不变，合法尾部成为唯一下一锚点
+      - 轻量集成、canonical 与 exact-SHA CI 全部通过
+      - 不扩大 TASK-0043 的核心语义
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0045:
+    title: Harness 阶段计时与跨文件系统性能引擎替代
+    taskCard: docs/tasks/TASK-0045-harness-timing-cross-filesystem-successor.md
+    dependencies:
+      - TASK-0044
+    decisionGates: []
+    objective: 承接 TASK-0039，以可审计慢项指标和同环境对比缩短 Windows NTFS 与 WSL 跨盘 Harness 关键路径。
+    scope:
+      in:
+        - 阶段、Git 命令与缓存慢项指标
+        - Context Lock snapshot、运行级 commit graph 与 ancestry 缓存
+        - Ledger 内容寻址解析及 Git/history 批量优化
+        - Windows NTFS 与 WSL 本地临时文件系统同环境对比
+      out:
+        - 路径感知 CI 和包装器平台矩阵
+        - 跨检查结果复用与 Evidence receipt
+        - Technical Alpha 产品功能
+    forbidden:
+      - 增大 timeout、删测、增加 skip 或放宽失败关闭
+      - 缓存掩盖 Git、历史、fixture 或 Ledger 输入变化
+      - 在 PLANNED 阶段冻结易失性能阈值
+    acceptanceCriteria:
+      - 慢项指标与优化前后同环境数据可审计
+      - snapshot、ancestry 缓存和 Ledger 解析保持历史不可变
+      - Windows NTFS 与 WSL 代表性验证通过且 skip 不增加
+      - 原 TASK-0039 保持 SUPERSEDED 历史
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0046:
+    title: Harness 路径感知 CI 与包装器平台策略替代
+    taskCard: docs/tasks/TASK-0046-harness-path-aware-ci-wrapper-successor.md
+    dependencies:
+      - TASK-0045
+    decisionGates: []
+    objective: 承接 TASK-0040，让 CI 始终产生确定终态并按失败关闭路径分类选择 smoke 与参考平台全量验证。
+    scope:
+      in:
+        - workflow 始终触发并在 job 内失败关闭分类
+        - 未知路径回退全量验证
+        - Ubuntu exact-SHA 全量与 Windows、macOS wrapper smoke
+        - Harness 或可移植性变更升级完整矩阵
+      out:
+        - 本地 Git/history 性能引擎
+        - snapshot receipt 与 Evidence 复用门禁
+        - 产品构建、部署或发布策略
+    forbidden:
+      - workflow trigger paths 造成 required check pending
+      - 未知路径静默跳过全量验证
+      - smoke 冒充全量 PASS 或跳过 Ubuntu exact-SHA 全量
+    acceptanceCriteria:
+      - 所有受治理提交得到可判定 required check 终态
+      - 分类失败和未知路径确定回退全量
+      - 平台职责与升级矩阵被机器测试约束
+      - 原 TASK-0040 保持 SUPERSEDED 历史
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0047:
+    title: Harness 内容寻址快照复用与 Evidence 门禁替代
+    taskCard: docs/tasks/TASK-0047-harness-snapshot-receipt-successor.md
+    dependencies:
+      - TASK-0046
+    decisionGates: []
+    objective: 承接 TASK-0041，以完整输入身份和可审计 receipt 约束同一调度上下文内的结果复用。
+    scope:
+      in:
+        - 覆盖代码、任务合同、工具链、环境、外部状态和命令身份的 manifest
+        - 同一 job 或会话调度内完整 manifest 相同 PASS 的内容寻址 receipt
+        - Evidence 命中来源、原因、身份与状态门禁
+        - pre-closure 与真实 HEAD 分离及当前实现 exact-SHA CI
+      out:
+        - Git/history 与跨文件系统性能引擎
+        - 路径感知 CI 和包装器平台矩阵
+        - 跨 job、跨会话或跨提交远端缓存服务
+    forbidden:
+      - 跨 SHA 复用终态 exact-SHA CI
+      - manifest 缺失、未知或不一致时复用
+      - 把失败、超时、取消或 NOT_RUN 转换为 PASS
+    acceptanceCriteria:
+      - receipt 严格内容寻址并绑定完整 manifest
+      - 只在同一调度上下文复用可验证 PASS
+      - Evidence 可审计全部身份与命中信息
+      - 原 TASK-0041 保持 SUPERSEDED 历史
     promotionConditions:
       requiresRepositoryIdle: true
       requiresAcceptedDependencies: true

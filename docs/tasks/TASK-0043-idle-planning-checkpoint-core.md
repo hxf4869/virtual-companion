@@ -1,0 +1,40 @@
+# TASK-0043：Idle planning checkpoint 核心父边校验
+
+```yaml
+taskId: TASK-0043
+state: PLANNED
+owner: repository-owner
+planningBacklog: .harness/task-backlog.yaml
+planningContractHash: 9869f32966add585fc35e858bf6090c1e93f3120041094a1eae52d85aade7df6
+planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
+```
+
+> 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
+
+## 目标
+
+建立 idle planning checkpoint 的唯一 Git parent-edge 派生与失败关闭核心，不接入执行消费者。
+
+## 范围内
+
+- 校验单父、非空、原子 resolution 边、可选 nextAction、100644 mode 与错误后恢复；
+- 覆盖合法串行 resolution 和无可晋级状态的正负矩阵。
+
+## 明确禁止
+
+- 建立第二状态机或第二 Backlog；
+- 接入四个执行消费者，或重做 TASK-0042 已修复的 baseline fixture。
+
+## 依赖与决策闸门
+
+- 依赖：standalone TASK-0042；
+- 无新增硬决策闸门。
+
+## 验收
+
+- checkpoint 只从 canonical terminal 后的 Git parent history 派生；
+- 合法边通过，merge、空提交、拆分、多 resolution、mode 漂移和错误后恢复均失败。
+
+## 晋级规则
+
+TASK-0042 必须 ACCEPTED，仓库必须空闲，且本卡是执行顺序中首个可晋级任务。
