@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0044
-state: PLANNED
+state: SUPERSEDED
+planningResolution:
+  state: SUPERSEDED
+  reason: TASK-0043 已由 TASK-0049 替代；由 TASK-0050 在新后继链上承接相同四消费者接线范围。
+  decidedBy: repository-owner
+  decidedAt: "2026-07-31"
+  replacementTask: TASK-0050
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
 planningContractHash: 6220153904d7e4ab765324d9ce32468408ddac77dc8cb218b994666d1e5952a9
