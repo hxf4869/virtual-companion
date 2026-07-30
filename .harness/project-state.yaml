@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0011
+activeTaskCard: docs/tasks/TASK-0011-openai-chat-completions-offline-adapter.md
 lastAcceptedTask: TASK-0010
 lastAcceptedHandoff: docs/handoffs/TASK-0010.json
 lastTerminalTask: TASK-0010
 lastTerminalHandoff: docs/handoffs/TASK-0010.json
-nextAction: 创建 OpenAI Chat Completions 离线 HTTP/SSE Adapter 合同任务
+nextAction: 实现 TASK-0011 OpenAI Chat Completions 离线 HTTP/SSE Adapter 合同基线
 capabilityGates:
   businessImplementation:
     state: BLOCKED
