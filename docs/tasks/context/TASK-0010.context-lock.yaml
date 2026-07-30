@@ -1,0 +1,59 @@
+schemaVersion: 1
+taskId: TASK-0010
+baseCommit: 5b459750b545afe399755ebb40f03b78dcc6d29c
+contextFingerprint: 3b68447c31d969e71106322f04dc38fb650ad3104743cca4baddf0f24f8b3121
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+  - path: AGENTS.md
+    sha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
+  - path: README.md
+    sha256: 7577bc9fed1a57f4f2d9ab91c18fd1e245abb42028da9ddb9372b4ab6a7ed7ae
+  - path: .github/workflows/ci.yml
+    sha256: 5aff27c23ecc888f93714a1bfb87199b14cdd1b29f304816cb5459c659d5d2a6
+  - path: .harness/project-state.yaml
+    sha256: 01dac440caf95dbf81a9ef822efb4ea4f9ea92a0ae17a92f41edf260bfef9d94
+  - path: .harness/task-lifecycle.yaml
+    sha256: 038f946cde2c0dd084f92701647aca5f71131c3fc39d7b1252054afd33146b42
+  - path: .harness/sources-of-truth.yaml
+    sha256: c2aee425a5bb92d93acbc4fe63c433b955cb7c16b1edbf7fe74c7ed92795d09b
+  - path: .harness/invariants.yaml
+    sha256: c537c042cc12ab692b39e1a3ca90673200425c86b6e69495a3f75d1c70a6de5e
+  - path: .harness/protected-paths.yaml
+    sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+  - path: .harness/skills.yaml
+    sha256: 691d8c0fef5df189db956d713cc8ae1bd3dd45831192afdd3d55a11f6b3032f5
+  - path: .harness/commands.yaml
+    sha256: 841c95a55496e4cb01c42cc5c071ba99fe7cfaeed16b75e0d82f708eab33666a
+  - path: .harness/agent-entrypoints.yaml
+    sha256: 04640adc56cc3947e625983f4855ac21ddb1f1d53e6822946fd2c4172037bfa9
+  - path: .harness/tools.lock.yaml
+    sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+  - path: .harness/license-policy.yaml
+    sha256: c13ce6bb1a0806f6ea4d47685386df6c7064b66b02173e496d47ec7468478205
+  - path: skills/task-intake/SKILL.md
+    sha256: 43cae37c291a7b0d0b5dd88a9b1db0f3ea46661885fd98d657c98a61dd478e4c
+  - path: skills/harness-change/SKILL.md
+    sha256: 8c23d27c60427179f59f65abadd1905e36f01faae8c9ad03b1150f55d5ee1b87
+  - path: scripts/harness/harness_common.py
+    sha256: 1080eebbf7c6dea2c0bc68382149c1dd0c33d3d343e3eecaaee9bbeb0f4e17e4
+  - path: scripts/harness/doctor.py
+    sha256: 9c3a9ad571f36bc35c1f651330a847f442021605a9511ab733e128b117726683
+  - path: scripts/harness/precheck.py
+    sha256: cd6c418bde22a60f07a69c3a76ba90f7cec32f97bdacb40cf7ba3e49ddbc8279
+  - path: scripts/harness/precheck.ps1
+    sha256: aafb76cc11e367890baf6e82e0dadfed841318bd5ed64ce2bd99202b99c2c835
+  - path: scripts/harness/precheck.sh
+    sha256: c559c8c677aea011ed16e2e276ab8517e69ca11051d508b8b0db82ca81520192
+  - path: scripts/harness/tests/test_harness.py
+    sha256: 0876b51b7eb5752479962d32c9447fe2ff43160870bc1a3398b252adb0302ad6
+  - path: docs/tasks/task-card-template.md
+    sha256: 4e5253e86aeea74f502c50aeada52b69f10505ba14e1fb92e7ce1e71471e1bb5
+  - path: docs/decisions/0003-portable-agent-harness.md
+    sha256: f65fe34fa6d0ef493b021e1ba55c7cd9229f90edad51f453fca7bfbad2ec9e5c
+  - path: docs/engineering/agent-onboarding.md
+    sha256: d15c252cd52eb6c9f5ef11f5b8ab22da83bdc10f417482a6f3fdb69206cdcb8f
+  - path: docs/evidence/TASK-0009/evidence-pack.json
+    sha256: 14fd75188a981327864a00418503168afc101c22713876b666b840609b968565
+  - path: docs/handoffs/TASK-0009.json
+    sha256: 0cca30a4464ee47ba27ae91a580adbbd8e9c7ecff5137d0a75d01ac1a5fc9882
