@@ -1420,27 +1420,37 @@ class DeliveryPolicyTests(unittest.TestCase):
             audit.errors,
         )
 
-        duplicated_sources = copy.deepcopy(load_yaml(sources_path))
-        duplicated_sources["sources"]["taskDeliveryPolicyAlias"] = (
-            ".harness/task-delivery-policy.yaml"
-        )
-
-        def load_with_duplicate_source(path: Path) -> dict[str, object]:
-            if Path(path) == sources_path:
-                return duplicated_sources
-            return real_load_yaml(path)
-
-        audit = Audit()
-        with patch.object(
-            doctor,
-            "load_yaml",
-            side_effect=load_with_duplicate_source,
+        for alias in (
+            ".harness/task-delivery-policy.yaml",
+            "./.harness/task-delivery-policy.yaml",
+            r".harness\task-delivery-policy.yaml",
+            ".harness//task-delivery-policy.yaml",
         ):
-            validate_task_delivery_policy(audit)
-        self.assertTrue(
-            any("policy path exactly once" in error for error in audit.errors),
-            audit.errors,
-        )
+            with self.subTest(alias=alias):
+                duplicated_sources = copy.deepcopy(load_yaml(sources_path))
+                duplicated_sources["sources"]["taskDeliveryPolicyAlias"] = alias
+
+                def load_with_duplicate_source(path: Path) -> dict[str, object]:
+                    if Path(path) == sources_path:
+                        return duplicated_sources
+                    return real_load_yaml(path)
+
+                audit = Audit()
+                with patch.object(
+                    doctor,
+                    "load_yaml",
+                    side_effect=load_with_duplicate_source,
+                ):
+                    validate_sources(audit, {})
+                    validate_task_delivery_policy(audit)
+                self.assertTrue(
+                    any(
+                        "canonical repository-relative POSIX path" in error
+                        or "policy path exactly once" in error
+                        for error in audit.errors
+                    ),
+                    audit.errors,
+                )
 
     def test_policy_validator_rejects_wrapper_alias_drift(self) -> None:
         skill_path = ROOT / "skills/task-delivery-flow/SKILL.md"

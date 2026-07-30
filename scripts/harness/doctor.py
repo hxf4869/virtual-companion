@@ -5853,11 +5853,15 @@ def validate_sources(audit: Audit, tasks: dict[str, dict[str, Any]]) -> None:
     audit.require(isinstance(sources, dict), ".harness/sources-of-truth.yaml: sources must be an object")
     if isinstance(sources, dict):
         for source_id, value in sources.items():
-            path = str(value)
-            audit.require(is_repository_relative(path), f"source {source_id}: path must be repository-relative")
-            if is_repository_relative(path):
+            path = canonical_exact_repo_path(value)
+            audit.require(
+                path is not None,
+                f"source {source_id}: path must be one canonical "
+                "repository-relative POSIX path",
+            )
+            if path is not None:
                 audit.require(
-                    current_path_exists(ROOT / normalize_repo_path(path)),
+                    current_path_exists(ROOT / path),
                     f"source {source_id}: missing {path}",
                 )
     invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
@@ -5966,7 +5970,9 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     audit.require(
         isinstance(sources, dict)
         and sum(
-            value == TASK_DELIVERY_POLICY_PATH for value in sources.values()
+            normalize_repo_path(str(value)) == TASK_DELIVERY_POLICY_PATH
+            for value in sources.values()
+            if is_repository_relative(str(value))
         )
         == 1,
         "task-delivery-policy: sources-of-truth must register the policy path "
