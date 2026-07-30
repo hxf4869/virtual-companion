@@ -13,7 +13,7 @@ requiredSkillVersions:
   harness-change: 1.1.0
 targetSkillVersions: {}
 baseCommit: 5b459750b545afe399755ebb40f03b78dcc6d29c
-authorizationCommit: ""
+authorizationCommit: 7cac05e11782f6e3d67efa3e1f346c01ef7d42db
 contextFingerprint: 3b68447c31d969e71106322f04dc38fb650ad3104743cca4baddf0f24f8b3121
 contextLock: docs/tasks/context/TASK-0010.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
