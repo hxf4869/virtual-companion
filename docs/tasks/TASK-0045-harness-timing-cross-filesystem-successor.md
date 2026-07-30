@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0045
-state: PLANNED
+state: SUPERSEDED
+planningResolution:
+  state: SUPERSEDED
+  reason: TASK-0044 已由 TASK-0050 替代；由 TASK-0051 在新后继链上承接相同 Harness 性能引擎范围。
+  decidedBy: repository-owner
+  decidedAt: "2026-07-31"
+  replacementTask: TASK-0051
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
 planningContractHash: 7a1a93fd0481e2a4bc6a9a54bbeb6653d971031cd2e3559b67c2c8576f3549ee
