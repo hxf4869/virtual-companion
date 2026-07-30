@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0009
+activeTaskCard: docs/tasks/TASK-0009-windows-harness-ci-timeout-budget.md
 lastAcceptedTask: TASK-0008
 lastAcceptedHandoff: docs/handoffs/TASK-0008.json
 lastTerminalTask: TASK-0008
 lastTerminalHandoff: docs/handoffs/TASK-0008.json
-nextAction: 创建 Windows Harness CI 超时裕量修复任务
+nextAction: 修复 Windows Harness CI 超时裕量并完成五平台复验
 capabilityGates:
   businessImplementation:
     state: BLOCKED
