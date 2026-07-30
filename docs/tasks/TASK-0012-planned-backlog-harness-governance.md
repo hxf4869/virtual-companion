@@ -194,7 +194,12 @@ scopeAmendments:
             statement: TASK-0012 ACCEPTED 后第一张可晋级为 TASK-0037；TASK-0037 ACCEPTED 后再按原 DAG 推进 TASK-0013。
             statementHash: 99f1ce4576652caa72db70cce3714c64771922b34a0ea921e6c3931c7a304e53
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0012-c4-static-reviewer-20260731-r1-performance-delta
+    kind: planned-backlog-harness-governance
+    verdict: PASS
+    reviewedCommit: d629fc20ac17bedb1e43eece361159c652ef785d
+    evidencePath: docs/evidence/TASK-0012/review-planned-backlog-harness-governance.md
 requiredCommands:
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - .\mvnw.cmd --batch-mode --no-transfer-progress verify
