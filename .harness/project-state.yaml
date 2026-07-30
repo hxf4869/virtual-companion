@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0038
-activeTaskCard: docs/tasks/TASK-0038-task-delivery-policy-skill-entrypoint.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0037
-lastTerminalHandoff: docs/handoffs/TASK-0037.json
-nextAction: 执行 TASK-0038：交付机器策略、双模式 Skill、薄入口与 idle planning checkpoint 后完成独立复核和精确 SHA CI
+lastTerminalTask: TASK-0038
+lastTerminalHandoff: docs/handoffs/TASK-0038.json
+nextAction: 协调任务须在 idle 状态以新永久 ID 登记拆分与下游替代链；完成前不得晋级当前首个可晋级 TASK-0013
 capabilityGates:
   businessImplementation:
     state: BLOCKED

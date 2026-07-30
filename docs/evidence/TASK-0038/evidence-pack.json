@@ -1,0 +1,83 @@
+{
+  "taskId": "TASK-0038",
+  "baseCommit": "def92abfae0fc362be77d5133e6df36a138763f0",
+  "headCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b",
+  "contextFingerprint": "83d3cbae244e04b9fd1c8f9530e51583e7598ddcdcec850b5e5aac439639d08e",
+  "reviewers": [
+    {
+      "id": "task-0038-coordination-gate-pre-review",
+      "kind": "budget-gate-pre-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b",
+      "evidencePath": "docs/evidence/TASK-0038/review-gate-pre-review.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0038",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "45 分钟 gate 到达时没有实现候选，Owner 明确禁止启动 candidate canonical。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_rejected_superseded_serial_and_draft scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_empty_merge_split_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_static_contract_order_dependency_gate_and_next_action_drift scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_dirty_staged_and_corrupt_then_restore scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "未对 reviewedCommit 运行实现矩阵。未提交尝试曾得到 7 项 45.875 秒 PASS，但随后预审新增 P1；修复后的 4 项检查出现 3 个测试断言偏差，下一轮命令在 45 分钟 gate 被主动终止，均不得绑定为候选 PASS。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b"
+    },
+    {
+      "command": "python C:/Users/k/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/task-delivery-flow",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "reviewedCommit 尚未包含新 Skill；未提交尝试先因 Windows GBK 读取 UTF-8 中文失败，改为 ASCII 后曾 PASS，但该结果只属于未评审 stash，不能复用。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "未评审实现进入 stash 后，在干净 reviewedCommit 9c5fa19 上执行，退出码 0。",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b"
+    }
+  ],
+  "artifacts": {
+    "reviewedControlCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b",
+    "reviewedControlTree": "1ba1af457503a50457f367cac542922e1e682f2d",
+    "implementationCandidate": null,
+    "candidateCanonical": "NOT_RUN",
+    "exactShaCi": "NOT_RUN",
+    "gateElapsedMinutes": 45.5,
+    "unreviewedWorktreeStash": {
+      "sha": "16bc536df6f7ebf9e17e0e08a187d8a1b81ebc09",
+      "localOnly": true,
+      "pushed": false,
+      "trackedDiff": "7 files, 1537 insertions, 110 deletions",
+      "untrackedFiles": [
+        ".harness/task-delivery-policy.yaml",
+        "skills/task-delivery-flow/SKILL.md"
+      ]
+    },
+    "baseCiRun": {
+      "runId": 30581926062,
+      "headSha": "def92abfae0fc362be77d5133e6df36a138763f0",
+      "backendJob": 91004019883,
+      "frontendJob": 91004020043,
+      "failedHarnessJobs": [
+        91004019933,
+        91004019982,
+        91004019987
+      ],
+      "closedByThisTask": false
+    }
+  }
+}

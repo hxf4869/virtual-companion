@@ -2,7 +2,8 @@
 
 ```yaml
 taskId: TASK-0038
-state: IN_PROGRESS
+state: REJECTED
+resolutionReason: 45 分钟仍未形成通过冻结定向矩阵的可评审候选，机器硬 gate 要求立即停止；未评审实现仅保存在本地 stash 16bc536df6f7ebf9e17e0e08a187d8a1b81ebc09，未进入实现提交或 origin/main。剩余范围须由协调任务在 idle 状态以新永久 ID 拆分并重建被本卡 REJECTED 阻断的下游依赖链。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -123,7 +124,12 @@ humanApprovals:
     approvedAt: "2026-07-31"
     evidence: Owner 本消息明确批准 TASK-0038 以 C4 Harness/Skill/AGENTS 范围完整实现机器交付策略、task-delivery-flow 双模式 Skill、薄入口、基线 fixture 与 idle planning checkpoint；要求严格按本卡闭环且不得晋级 TASK-0039。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0038-coordination-gate-pre-review
+    kind: budget-gate-pre-review
+    verdict: FAIL
+    reviewedCommit: 9c5fa1962d0add820793fb2af46bfa80f5dd8b6b
+    evidencePath: docs/evidence/TASK-0038/review-gate-pre-review.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0038
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_rejected_superseded_serial_and_draft scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_empty_merge_split_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_static_contract_order_dependency_gate_and_next_action_drift scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_dirty_staged_and_corrupt_then_restore scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift

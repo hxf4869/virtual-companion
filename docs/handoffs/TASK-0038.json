@@ -1,0 +1,37 @@
+{
+  "taskId": "TASK-0038",
+  "state": "REJECTED",
+  "baseCommit": "def92abfae0fc362be77d5133e6df36a138763f0",
+  "headCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b",
+  "evidencePath": "docs/evidence/TASK-0038/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0038-coordination-gate-pre-review",
+      "kind": "budget-gate-pre-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "9c5fa1962d0add820793fb2af46bfa80f5dd8b6b",
+      "evidencePath": "docs/evidence/TASK-0038/review-gate-pre-review.md"
+    }
+  ],
+  "completed": [
+    "同步并核验 main、origin/main 与 Base def92ab，恢复 Doctor 57,150 checks、215.808 秒 PASS，并确认 aiCoding local 环境",
+    "完成 PLANNED→DRAFT→READY→IN_PROGRESS 治理链与 C4 Owner 批准绑定，但没有形成实现候选 Commit/Tree",
+    "定位 Base CI run 30581926062 的三平台共同 fixture 根因，并形成 checkpoint、策略、Skill 与入口的完整预审 findings",
+    "在约 45.5 分钟硬 gate 立即停止；未启动正式 Reviewer、candidate canonical 或 exact-SHA CI",
+    "把全部未评审实现保存为本地可恢复 stash 16bc536，分支只保留治理提交与标准 REJECTED closure，origin/main 未接收半成品"
+  ],
+  "remaining": [
+    "建议新 TASK-0042：仅交付机器 task-delivery policy、双模式 Skill、Sources/Invariants/Doctor 策略校验与 AGENTS/entrypoint 薄入口；依赖 TASK-0012，不依赖 REJECTED TASK-0038",
+    "建议新 TASK-0043：仅交付 real-Git baseline 自包含修复与 idle checkpoint 核心 parent-edge 校验，包括可选 project-state、100644 mode、精确 nextAction、无可晋级状态和正负矩阵；依赖 TASK-0042",
+    "建议新 TASK-0044：仅把统一 checkpoint 接入 DRAFT、Base-Handoff、idle terminal 与 terminal Diff Scope，完成轻量集成、candidate canonical 与 exact-SHA CI；依赖 TASK-0043",
+    "由于 TASK-0039→TASK-0040→TASK-0041 依赖链起点要求 TASK-0038 ACCEPTED，协调任务还需用新永久 ID 为这三张卡建立等价替代链，建议 TASK-0045→TASK-0046→TASK-0047 分别承接原范围并依赖 TASK-0044",
+    "Backlog resolution、新任务卡与依赖重建不在 TASK-0038 frozen allowlist；必须由协调任务在 idle 状态另行合法登记，不得从本 closure 强行 amendment"
+  ],
+  "knownRisks": [
+    "Base exact-SHA CI run 30581926062 的 Ubuntu、Windows、macOS Harness 仍红；Backend 与 Frontend 成功不构成全 CI PASS",
+    "stash 16bc536 是本地恢复材料而非候选、Evidence PASS 或授权真源；恢复前必须先创建新的合法任务并逐项复核预审 findings",
+    "TASK-0038 REJECTED 会使现有 TASK-0039 及其下游依赖不可晋级；在替代链合法登记前不得直接推进该链",
+    "当前 Backlog 可能把 TASK-0013 解析为首个可晋级任务，但协调任务必须先完成本次受控拆分，不得让产品任务越过未修复的 Harness 基线红灯"
+  ],
+  "nextAction": "协调任务须在 idle 状态以新永久 ID 登记拆分与下游替代链；完成前不得晋级当前首个可晋级 TASK-0013"
+}
