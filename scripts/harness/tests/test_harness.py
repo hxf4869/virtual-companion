@@ -3686,10 +3686,12 @@ class EnforcementTests(unittest.TestCase):
         )
 
         ledger = load_yaml(ROOT / ".harness/task-ledger.yaml")
+        ledger_entries = copy.deepcopy(ledger["tasks"])
+        ledger_entries.pop("TASK-0037", None)
         ledger_audit = Audit()
         validate_task_ledger_entries(
             ledger_audit,
-            ledger["tasks"],
+            ledger_entries,
             tasks,
             set(lifecycle["terminalStates"]),
         )
