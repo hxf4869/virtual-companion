@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0008
-activeTaskCard: docs/tasks/TASK-0008-generation-attempt-candidate-reducer.md
-lastAcceptedTask: TASK-0007
-lastAcceptedHandoff: docs/handoffs/TASK-0007.json
-lastTerminalTask: TASK-0007
-lastTerminalHandoff: docs/handoffs/TASK-0007.json
-nextAction: 实现 Generation Attempt/Candidate 事件归约与隔离合同基线
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0008
+lastAcceptedHandoff: docs/handoffs/TASK-0008.json
+lastTerminalTask: TASK-0008
+lastTerminalHandoff: docs/handoffs/TASK-0008.json
+nextAction: 创建 Windows Harness CI 超时裕量修复任务
 capabilityGates:
   businessImplementation:
     state: BLOCKED

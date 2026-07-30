@@ -42,3 +42,9 @@ tasks:
     taskCard: docs/tasks/TASK-0007-model-protocol-fake-failure-baseline.md
     evidence: docs/evidence/TASK-0007/evidence-pack.json
     handoff: docs/handoffs/TASK-0007.json
+  TASK-0008:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0008-generation-attempt-candidate-reducer.md
+    evidence: docs/evidence/TASK-0008/evidence-pack.json
+    handoff: docs/handoffs/TASK-0008.json

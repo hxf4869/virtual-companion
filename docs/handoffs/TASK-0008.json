@@ -1,0 +1,37 @@
+{
+  "taskId": "TASK-0008",
+  "state": "ACCEPTED",
+  "baseCommit": "7bfa82399765ff9014d445eba0bcc4095d7d75d3",
+  "headCommit": "e0057cdec700fb730b48c66907c94429f2672c2b",
+  "evidencePath": "docs/evidence/TASK-0008/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-task0008-generation-reducer-reviewer",
+      "kind": "generation-reducer-boundary",
+      "verdict": "PASS",
+      "reviewedCommit": "e0057cdec700fb730b48c66907c94429f2672c2b",
+      "evidencePath": "docs/evidence/TASK-0008/review-generation-reducer.md"
+    }
+  ],
+  "completed": [
+    "新增纯内存 Generation Attempt 顺序归约器，完整隔离 Binding、Fence、Sequence 与终态",
+    "成功 EOS 冻结不可任意构造且可稳定寻址的 Candidate，失败、取消与非法流不产生 Candidate",
+    "新增完整 Ownership 的 Candidate Set，支持多候选登记、唯一 ID 和显式幂等单选",
+    "Generation 状态 14 项显式穷举，EOS 不自动完成 Generation，也不产生最终 Assistant Message",
+    "目标 43 项、全仓 107 项 Maven 测试、Doctor、Catalog 与本机三套 precheck 全部通过",
+    "独立 Reviewer 绑定精确实现 Commit/Tree 给出 PASS，0 阻断和 0 非阻断项"
+  ],
+  "remaining": [
+    "用独立 C4 任务把 Windows Harness CI 的 10 分钟上限调整到有证据支撑的安全裕量，并重新取得五作业全绿",
+    "分别实现 OpenAI Chat Completions 与 Anthropic Messages 的离线 Adapter 和本地 mock-server HTTP/SSE 合同",
+    "实现 Execution Authorization Guard 后才可讨论真实 Runtime 外发",
+    "真实 Provider、模型、凭据、区域、合同准入、Beta、注册、支付和安全政策继续等待 Owner 决策"
+  ],
+  "knownRisks": [
+    "精确实现 SHA 的 GitHub CI 中四个作业成功，Windows Harness 两次均因 10 分钟总作业预算被取消；首次取消前 69 项 Harness 测试已经全部通过",
+    "当前只有纯内存领域合同，没有数据库持久化、并发 Worker Fence、最终化事务、Runtime API 或实时推送",
+    "Fake/Failure 只能证明内部归一化事件，不证明 OpenAI/Anthropic HTTP/SSE 主协议符合性",
+    "宿主默认 Java 仍为 8；仓库 Enforcer 要求使用项目固定 JDK 25"
+  ],
+  "nextAction": "创建 Windows Harness CI 超时裕量修复任务"
+}
