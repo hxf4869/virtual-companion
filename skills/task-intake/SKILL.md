@@ -44,7 +44,8 @@ metadata:
    `.harness/project-state.yaml`，且项目状态的阶段、能力门禁和历史指针必须与 Base Commit 一致。
 9. 用后续仅修改任务卡的提交，把 READY 授权提交的完整 Git SHA 写入 `authorizationCommit`；运行
    `doctor.py --task TASK-ID`。通过后才允许实施者转为 IN_PROGRESS。
-10. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
+10. READY 后确需 Owner 修订时，不重写授权提交或放宽原合同：先在 `.harness/task-backlog.yaml` 建立强类型 amendment 合同，并在任务卡 `scopeAmendments` 保存完整 Hash 绑定投影。合同逐项记录 `supersedes` 原条款稳定 ID/原文 Hash 与 `replacement` 原文/Hash；未列条款仍受原授权投影约束。新增写路径只能是规范 POSIX 精确路径，不能是 glob；amendment 必须由 `repository-owner` 批准、append-only，并在只改 Backlog 与任务卡的单父原子治理提交中先落入 Git 历史，未提交 worktree/index 不得自授权。
+11. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。
     该规划终态不进入执行 Task Ledger；其中 SUPERSEDED 只允许从 PLANNED 进入。已进入 DRAFT 的任务只能在
     ACCEPTED/REJECTED 时，以单父提交原子更新任务卡、项目状态并把本任务追加到 `.harness/task-ledger.yaml`；同时加入 Evidence Pack 与 Handoff。已执行任务被替代时以 REJECTED 保留原因，并为替代方案分配新的永久 ID；Backlog 条目和永久 ID 不得删除或复用。历史条目和其绑定的任务卡、
@@ -56,6 +57,7 @@ metadata:
 - 任务字段满足 `docs/tasks/task-card-template.md`；
 - Context Fingerprint 可从 Base Commit 独立复算；
 - 当前授权字段与 `authorizationCommit` 中的 READY 任务完全一致；
+- Owner amendment 与 Backlog 强类型合同、任务卡 Hash 投影和其单父引入提交完全一致；对每个 parent edge 保持 append-only，不追溯授权先前改动；
 - READY 授权提交与 `project-state` 的活动任务投影是同一原子事务；
 - `authorizationCommit` 必须是 Base 后首个 READY、单父提交；其父节点只能是 idle Base 或未绑定 DRAFT，不能事后前移授权锚；
 - 任务历史完全从 `baseCommit` 后分叉；逐父边变更并集不包含白名单外路径，改后恢复也不能绕过；
@@ -67,6 +69,7 @@ metadata:
 - 同一时刻最多一个活动任务。
 - 可存在多个 PLANNED，但最多一个 DRAFT；PLANNED 不得携带动态证据或作为 Diff Scope 执行授权。
 - Backlog 中已登记的 Task ID、名称和静态规划合同不可删除、复用或静默改写。
+- planning-only 卡的六个精确元数据字段、标题、固定声明与恰好六个非空正文节形成完整历史投影；引入后改坏再恢复也必须失败。
 
 ## Forbidden Actions
 
@@ -74,6 +77,7 @@ metadata:
 - 不得用多张 DRAFT 冒充规划队列，或绕过 Backlog 顺序、依赖和硬决策闸门；
 - 不得由 Agent 伪造 Owner 批准或把沉默视为批准；
 - 不得为容纳已经发生的越界修改而倒推放宽白名单；
+- 不得用 `acceptanceAdditions`、聊天说明、未提交 amendment、目录别名或宽泛 glob 覆盖原授权；未显式 `supersedes` 的条款保持原 Hash 与语义；
 - 不明确的关键边界必须标为 BLOCKED；
 - 不得把历史聊天当作唯一 Context 输入。
 

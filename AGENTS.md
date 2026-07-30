@@ -34,9 +34,12 @@
 - Backlog 中预建 Task ID 永久占用且不得复用；PLANNED 取消或替代必须保留原卡、Backlog 条目，并向
   append-only `resolutions` 原子登记与原卡一致的 REJECTED/SUPERSEDED 状态、原因和决策证据，不伪造动态
   Evidence/Ledger；已进入 DRAFT 的任务按正常执行终态闭环。
+- planning-only 卡除六个精确元数据字段外，还必须保留绑定 Backlog 标题的一级标题、固定投影声明和恰好六个非空正文节；这些内容虽不覆盖 Backlog 机器语义，但其完整投影在正式登记后按每条 Git parent edge 不可改写，合法规划终态只允许原子状态与 `planningResolution` 变化。
 - 原始需求先经 `task-intake` 收口为 DRAFT；Owner 批准范围、风险和验收后，任务与项目活动状态必须在同一授权提交进入 READY。
 - 开工前验证 Base Commit、Context Fingerprint、写入白名单、禁止路径、所需 Skill 和审批，再转为 IN_PROGRESS。
 - 只能修改任务 `writeAllowlist` 内文件；`forbiddenPaths` 永远优先。
+- READY 后的范围或验收修订只能使用 Backlog 中的强类型 Owner amendment 合同及任务卡中的完整 Hash 绑定投影；每项替代必须绑定原授权条款的稳定 ID、原文 Hash 与替代原文 Hash，未列条款保持原授权投影不变。amendment 只能由 `repository-owner` 批准并以单父原子 Git 提交 append-only 引入，未提交的 worktree/index、聊天或非祖先提交不能获得权限。
+- amendment 新增写路径只作为原 `writeAllowlist` 的规范仓库相对 POSIX 精确路径并集，不作为 glob；拒绝绝对路径、反斜杠、`.`/`..`、重复分隔、Unicode/大小写碰撞和符号链接别名，`forbiddenPaths` 始终优先。Doctor 对每个 merge parent 分别审计，改坏再恢复或事后追溯授权均失败。
 - Diff Scope 按 `baseCommit` 后每条 Git 父边累计，改后恢复仍算变更；不得并入从 Base 之前分叉的旧历史。
 - 正式 Doctor/Precheck 前必须精确暂存本任务的完整候选快照；继续编辑后重新暂存，Index 与工作树内容必须一致。
 - 命中 `.harness/protected-paths.yaml` 时，必须具备其中要求的 Skill、人工批准或独立复核。

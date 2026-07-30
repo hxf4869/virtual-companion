@@ -29,3 +29,4 @@ rules:
   missingSourceBlocksMerge: true
   conflictingMarkdownDoesNotOverrideMachineTruth: true
   historicalSourceSnapshotsAreNonAuthoritative: true
+  ownerAuthorizationAmendmentsAreBacklogContractsWithHashBoundTaskCardProjections: true

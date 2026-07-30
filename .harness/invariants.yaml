@@ -37,7 +37,7 @@ invariants:
     statement: AGENTS.md is the single canonical Agent instruction source and client adapters only reference it
     enforcement: [harness_doctor, ci]
   - id: INV-HARNESS-002
-    statement: at most one task is active and every repository mutation is authorized by its context lock and diff scope
+    statement: at most one task is active and every repository mutation is authorized by its frozen context and diff scope plus only append-only Owner amendments already introduced by a single-parent atomic Git commit
     enforcement: [harness_doctor, task_lifecycle, ci]
   - id: INV-HARNESS-003
     statement: protected paths require the registered exact Skill and declared approval or independent review
@@ -49,5 +49,5 @@ invariants:
     statement: evidence never converts an unexecuted or failed check into PASS
     enforcement: [evidence_schema, harness_doctor, independent_review]
   - id: INV-HARNESS-006
-    statement: the Technical Alpha backlog permanently reserves task IDs and is the only machine authority for PLANNED order dependencies critical path decision gates and promotion conditions
-    enforcement: [task_backlog, harness_doctor, task_lifecycle, harness_tests, independent_review]
+    statement: the Technical Alpha backlog permanently reserves task IDs and is the only machine authority for PLANNED order dependencies critical path decision gates promotion conditions and explicit Owner clause-replacement contracts while each hash-bound planning card preserves its complete six-section projection
+    enforcement: [task_backlog, harness_doctor, task_lifecycle, harness_tests, git_parent_edge_history, independent_review]

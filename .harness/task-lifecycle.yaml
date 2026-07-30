@@ -37,6 +37,19 @@ rules:
   planningTerminalStates: [REJECTED, SUPERSEDED]
   planningTerminalRequiresBacklogResolution: true
   planningTerminalConsumesTaskLedger: false
+  backlogHistoryPolicy:
+    activationCommit: 46278e80287d9f3d5d36e2033fa208f79f453b4b
+    mode: VALIDATE_ACTIVATION_SNAPSHOT_THEN_ALL_PARENT_EDGES
   readyRequiresOwnerApproval: true
   terminalRequiresEvidenceAndHandoff: true
   c3AndC4RequireIndependentReview: true
+  authorizationAmendments:
+    machineSource: .harness/task-backlog.yaml
+    taskCardProjectionField: scopeAmendments
+    approvedBy: repository-owner
+    singleParentAtomicCommitRequired: true
+    uncommittedAuthorizationForbidden: true
+    appendOnlyAndImmutable: true
+    explicitClauseReplacementRequired: true
+    canonicalExactPosixPathsRequired: true
+    forbiddenPathsAlwaysWins: true

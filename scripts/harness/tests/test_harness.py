@@ -1597,14 +1597,16 @@ class BacklogTests(unittest.TestCase):
 
     def test_resolution_introduction_must_atomically_update_planned_card(self) -> None:
         backlog, _, _, _ = self.load_inputs()
+        parent = copy.deepcopy(backlog)
         resolved = copy.deepcopy(backlog)
-        resolved["resolutions"]["TASK-0013"] = {
+        resolution = {
             "state": "REJECTED",
             "reason": "Owner cancelled the planned capability",
             "decidedBy": "repository-owner",
             "decidedAt": "2026-08-01",
             "replacementTask": None,
         }
+        resolved["resolutions"]["TASK-0013"] = resolution
         audit = Audit()
         with patch.object(
             doctor,
@@ -1614,11 +1616,103 @@ class BacklogTests(unittest.TestCase):
             validate_backlog_resolution_commit(
                 audit,
                 "a" * 40,
+                "b" * 40,
+                parent,
                 resolved,
-                {"TASK-0013"},
             )
         self.assertTrue(
             any("must atomically update its planning card" in error for error in audit.errors),
+            audit.errors,
+        )
+
+    def test_resolution_split_across_two_commits_fails_closed(self) -> None:
+        backlog, _, _, _ = self.load_inputs()
+        parent = copy.deepcopy(backlog)
+        resolved = copy.deepcopy(backlog)
+        resolution = {
+            "state": "REJECTED",
+            "reason": "Owner cancelled the planned capability",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        resolved["resolutions"]["TASK-0013"] = resolution
+        parent_commit = "a" * 40
+        child_commit = "b" * 40
+
+        def metadata_at_commit(commit: str, _path: str) -> dict[str, object]:
+            if commit == parent_commit:
+                return {"state": "REJECTED", "planningResolution": resolution}
+            return {"state": "REJECTED", "planningResolution": resolution}
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "task_metadata_at_commit",
+            side_effect=metadata_at_commit,
+        ):
+            validate_backlog_resolution_commit(
+                audit,
+                parent_commit,
+                child_commit,
+                parent,
+                resolved,
+            )
+        self.assertTrue(
+            any(
+                "requires the parent planning card to remain PLANNED"
+                in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+    def test_resolved_card_cannot_be_corrupted_then_restored(self) -> None:
+        backlog, _, _, _ = self.load_inputs()
+        resolution = {
+            "state": "REJECTED",
+            "reason": "Owner cancelled the planned capability",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        resolved = copy.deepcopy(backlog)
+        resolved["resolutions"]["TASK-0013"] = resolution
+        good_commit = "a" * 40
+        corrupt_commit = "b" * 40
+        restored_commit = "c" * 40
+
+        def metadata_at_commit(commit: str, _path: str) -> dict[str, object]:
+            if commit == corrupt_commit:
+                return {"state": "PLANNED"}
+            return {"state": "REJECTED", "planningResolution": resolution}
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "task_metadata_at_commit",
+            side_effect=metadata_at_commit,
+        ):
+            validate_backlog_resolution_commit(
+                audit,
+                good_commit,
+                corrupt_commit,
+                resolved,
+                resolved,
+            )
+            validate_backlog_resolution_commit(
+                audit,
+                corrupt_commit,
+                restored_commit,
+                resolved,
+                resolved,
+            )
+        self.assertTrue(
+            any(
+                f"must atomically update its planning card at {corrupt_commit}"
+                in error
+                for error in audit.errors
+            ),
             audit.errors,
         )
 

@@ -99,7 +99,42 @@ AUTHORIZATION_MUTABLE_FIELDS = {
     "authorizationCommit",
     "reviewers",
     "resolutionReason",
+    "scopeAmendments",
 }
+LEGACY_SCOPE_AMENDMENT_FIELDS = {
+    "amendmentId",
+    "approvedBy",
+    "approvedAt",
+    "evidence",
+    "reason",
+    "addedWriteAllowlist",
+    "acceptanceAdditions",
+}
+SCOPE_AMENDMENT_PROJECTION_FIELDS = {
+    "schemaVersion",
+    "amendmentId",
+    "contractSource",
+    "contractHashAlgorithm",
+    "contractHash",
+    "contract",
+}
+AUTHORIZATION_AMENDMENT_FIELDS = {
+    "schemaVersion",
+    "taskId",
+    "amendmentType",
+    "approvedBy",
+    "approvedAt",
+    "evidence",
+    "reason",
+    "authorizedParentCommit",
+    "baseAuthorizationProjectionHash",
+    "scopeGrantAmendmentId",
+    "addedWriteAllowlist",
+    "replacements",
+}
+AUTHORIZATION_REPLACEMENT_FIELDS = {"supersedes", "replacement"}
+AUTHORIZATION_SUPERSEDES_FIELDS = {"clauseId", "statement", "statementHash"}
+AUTHORIZATION_REPLACEMENT_VALUE_FIELDS = {"statement", "statementHash"}
 PROJECT_STATE_CLOSURE_MUTABLE_FIELDS = {
     "activeTask",
     "activeTaskCard",
@@ -143,6 +178,7 @@ BACKLOG_ROOT_FIELDS = {
     "executionOrder",
     "criticalPath",
     "decisionGates",
+    "authorizationAmendments",
     "resolutions",
     "tasks",
 }
@@ -1673,6 +1709,414 @@ def is_canonical_identity(value: Any) -> bool:
     return isinstance(value, str) and bool(CANONICAL_ID_RE.fullmatch(value))
 
 
+def task_metadata_from_text(text: str, label: str) -> dict[str, Any]:
+    match = TASK_BLOCK_RE.search(text.replace("\r\n", "\n"))
+    if not match:
+        raise HarnessError(f"{label}: task YAML block is missing")
+    metadata = strict_yaml_load(match.group(1))
+    if not isinstance(metadata, dict):
+        raise HarnessError(f"{label}: task YAML metadata must be an object")
+    return metadata
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def canonical_exact_repo_path(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    if value != unicodedata.normalize("NFC", value):
+        return None
+    if value != normalize_repo_path(value) or "\\" in value:
+        return None
+    if value.startswith("/") or value.endswith("/") or "//" in value:
+        return None
+    components = value.split("/")
+    if any(
+        not component
+        or component in {".", ".."}
+        or component.endswith((" ", "."))
+        or WINDOWS_INVALID_COMPONENT_RE.search(component) is not None
+        or WINDOWS_RESERVED_COMPONENT_RE.fullmatch(component) is not None
+        for component in components
+    ):
+        return None
+    if not is_repository_relative(value):
+        return None
+    return value
+
+
+def task_acceptance_clauses(text: str, task_id: str) -> dict[str, str]:
+    normalized = text.replace("\r\n", "\n")
+    section = re.search(
+        r"(?ms)^## 验收标准[ \t]*\n(?P<body>.*?)(?=^## |\Z)",
+        normalized,
+    )
+    if not section:
+        raise HarnessError(f"{task_id}: task acceptance section is missing")
+    clauses: dict[str, str] = {}
+    for match in re.finditer(
+        r"(?ms)^(?P<number>[1-9][0-9]*)\.\s+(?P<text>.*?)(?=^[1-9][0-9]*\.\s+|\Z)",
+        section.group("body"),
+    ):
+        number = int(match.group("number"))
+        statement = re.sub(r"\s+", " ", match.group("text")).strip()
+        clause_id = f"{task_id}-ACCEPTANCE-{number:03d}"
+        if clause_id in clauses:
+            raise HarnessError(f"{task_id}: duplicate acceptance clause {clause_id}")
+        clauses[clause_id] = statement
+    if not clauses:
+        raise HarnessError(f"{task_id}: numbered acceptance clauses are missing")
+    return clauses
+
+
+def validate_exact_amendment_paths(
+    audit: Audit,
+    label: str,
+    raw_paths: Any,
+    *,
+    allow_empty: bool,
+    forbidden: list[str],
+    seen_keys: dict[str, str],
+) -> list[str]:
+    audit.require(
+        isinstance(raw_paths, list) and (allow_empty or bool(raw_paths)),
+        f"{label} must be {'a list' if allow_empty else 'a non-empty list'}",
+    )
+    paths: list[str] = []
+    for index, raw_path in enumerate(raw_paths if isinstance(raw_paths, list) else []):
+        path_label = f"{label}[{index}]"
+        path = canonical_exact_repo_path(raw_path)
+        audit.require(
+            path is not None,
+            f"{path_label} must be one canonical repository-relative POSIX path",
+        )
+        if path is None:
+            continue
+        portable_key = unicodedata.normalize("NFC", path).casefold()
+        previous = seen_keys.setdefault(portable_key, path)
+        audit.require(
+            previous == path,
+            f"{path_label} aliases the already authorized path {previous!r}",
+        )
+        audit.require(
+            not any(glob_matches(path, pattern) for pattern in forbidden),
+            f"{path_label} conflicts with forbiddenPaths",
+        )
+        paths.append(path)
+    return paths
+
+
+def validate_authorization_amendment_contract(
+    audit: Audit,
+    label: str,
+    amendment_id: str,
+    contract: Any,
+    task: dict[str, Any],
+    *,
+    authorized_text: str | None,
+    seen_path_keys: dict[str, str],
+) -> list[str]:
+    audit.require(isinstance(contract, dict), f"{label}.contract must be an object")
+    if not isinstance(contract, dict):
+        return []
+    audit.require(
+        set(contract) == AUTHORIZATION_AMENDMENT_FIELDS,
+        f"{label}.contract fields must be exactly "
+        f"{sorted(AUTHORIZATION_AMENDMENT_FIELDS)}",
+    )
+    audit.require(
+        contract.get("schemaVersion") == 1,
+        f"{label}.contract.schemaVersion must be 1",
+    )
+    audit.require(
+        contract.get("taskId") == task.get("taskId"),
+        f"{label}.contract.taskId must match the task",
+    )
+    audit.require(
+        contract.get("amendmentType") == "OWNER_CLAUSE_REPLACEMENT",
+        f"{label}.contract.amendmentType must be OWNER_CLAUSE_REPLACEMENT",
+    )
+    audit.require(
+        contract.get("approvedBy") == "repository-owner"
+        and contract.get("approvedBy") == task.get("owner"),
+        f"{label}.contract.approvedBy must be the repository-owner task owner",
+    )
+    audit.require(
+        is_valid_approval_timestamp(contract.get("approvedAt")),
+        f"{label}.contract.approvedAt must be an ISO-8601 date or timestamp",
+    )
+    validate_nonblank_text(audit, f"{label}.contract.evidence", contract.get("evidence"))
+    validate_nonblank_text(audit, f"{label}.contract.reason", contract.get("reason"))
+    audit.require(
+        bool(FULL_COMMIT_RE.fullmatch(str(contract.get("authorizedParentCommit", "")))),
+        f"{label}.contract.authorizedParentCommit must be a full Git SHA",
+    )
+    audit.require(
+        bool(
+            re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(contract.get("baseAuthorizationProjectionHash", "")),
+            )
+        ),
+        f"{label}.contract.baseAuthorizationProjectionHash must be SHA-256",
+    )
+    scope_grant_id = contract.get("scopeGrantAmendmentId")
+    audit.require(
+        scope_grant_id is None or is_canonical_identity(scope_grant_id),
+        f"{label}.contract.scopeGrantAmendmentId must be null or canonical",
+    )
+    forbidden = [
+        str(item)
+        for item in task.get("forbiddenPaths", [])
+        if isinstance(item, str)
+    ]
+    added_paths = validate_exact_amendment_paths(
+        audit,
+        f"{label}.contract.addedWriteAllowlist",
+        contract.get("addedWriteAllowlist"),
+        allow_empty=True,
+        forbidden=forbidden,
+        seen_keys=seen_path_keys,
+    )
+    replacements = contract.get("replacements")
+    audit.require(
+        isinstance(replacements, list) and bool(replacements),
+        f"{label}.contract.replacements must be a non-empty list",
+    )
+    authorized_clauses: dict[str, str] = {}
+    if authorized_text is not None:
+        try:
+            authorized_clauses = task_acceptance_clauses(
+                authorized_text,
+                str(task.get("taskId", "")),
+            )
+            expected_projection_hash = sha256_text(
+                task_authorization_projection(authorized_text)
+            )
+            audit.require(
+                contract.get("baseAuthorizationProjectionHash")
+                == expected_projection_hash,
+                f"{label}.contract must bind the complete base authorization projection",
+            )
+        except HarnessError as exc:
+            audit.error(f"{label}.contract cannot bind authorization clauses: {exc}")
+    clause_ids: set[str] = set()
+    for index, replacement_record in enumerate(
+        replacements if isinstance(replacements, list) else []
+    ):
+        replacement_label = f"{label}.contract.replacements[{index}]"
+        audit.require(
+            isinstance(replacement_record, dict)
+            and set(replacement_record) == AUTHORIZATION_REPLACEMENT_FIELDS,
+            f"{replacement_label} fields must be exactly "
+            f"{sorted(AUTHORIZATION_REPLACEMENT_FIELDS)}",
+        )
+        if not isinstance(replacement_record, dict):
+            continue
+        supersedes = replacement_record.get("supersedes")
+        replacement = replacement_record.get("replacement")
+        audit.require(
+            isinstance(supersedes, dict)
+            and set(supersedes) == AUTHORIZATION_SUPERSEDES_FIELDS,
+            f"{replacement_label}.supersedes fields must be exactly "
+            f"{sorted(AUTHORIZATION_SUPERSEDES_FIELDS)}",
+        )
+        audit.require(
+            isinstance(replacement, dict)
+            and set(replacement) == AUTHORIZATION_REPLACEMENT_VALUE_FIELDS,
+            f"{replacement_label}.replacement fields must be exactly "
+            f"{sorted(AUTHORIZATION_REPLACEMENT_VALUE_FIELDS)}",
+        )
+        if not isinstance(supersedes, dict) or not isinstance(replacement, dict):
+            continue
+        clause_id = str(supersedes.get("clauseId", ""))
+        superseded_statement = str(supersedes.get("statement", ""))
+        replacement_statement = str(replacement.get("statement", ""))
+        audit.require(
+            bool(re.fullmatch(r"TASK-[0-9]{4,}-ACCEPTANCE-[0-9]{3}", clause_id)),
+            f"{replacement_label}.supersedes.clauseId is invalid",
+        )
+        audit.require(
+            clause_id not in clause_ids,
+            f"{replacement_label}.supersedes.clauseId must be unique",
+        )
+        clause_ids.add(clause_id)
+        validate_nonblank_text(
+            audit,
+            f"{replacement_label}.supersedes.statement",
+            supersedes.get("statement"),
+        )
+        validate_nonblank_text(
+            audit,
+            f"{replacement_label}.replacement.statement",
+            replacement.get("statement"),
+        )
+        audit.require(
+            supersedes.get("statementHash") == sha256_text(superseded_statement),
+            f"{replacement_label}.supersedes.statementHash is invalid",
+        )
+        audit.require(
+            replacement.get("statementHash") == sha256_text(replacement_statement),
+            f"{replacement_label}.replacement.statementHash is invalid",
+        )
+        if authorized_clauses:
+            audit.require(
+                authorized_clauses.get(clause_id) == superseded_statement,
+                f"{replacement_label}.supersedes must match the authorized clause exactly",
+            )
+    return added_paths
+
+
+def validate_scope_amendments(
+    audit: Audit,
+    label: str,
+    task: dict[str, Any],
+    *,
+    backlog_amendments: dict[str, Any] | None = None,
+    authorized_text: str | None = None,
+) -> list[str]:
+    raw = task.get("scopeAmendments", [])
+    audit.require(isinstance(raw, list), f"{label}: scopeAmendments must be a list")
+    amendments = raw if isinstance(raw, list) else []
+    amendment_ids: set[str] = set()
+    added_paths: list[str] = []
+    seen_path_keys: dict[str, str] = {}
+    forbidden = [
+        str(item)
+        for item in task.get("forbiddenPaths", [])
+        if isinstance(item, str)
+    ]
+    for index, amendment in enumerate(amendments):
+        item_label = f"{label}: scopeAmendments[{index}]"
+        audit.require(isinstance(amendment, dict), f"{item_label} must be an object")
+        if not isinstance(amendment, dict):
+            continue
+        amendment_id = str(amendment.get("amendmentId", ""))
+        audit.require(
+            is_canonical_identity(amendment_id),
+            f"{item_label}.amendmentId must be canonical",
+        )
+        audit.require(
+            amendment_id not in amendment_ids,
+            f"{item_label}.amendmentId must be unique",
+        )
+        amendment_ids.add(amendment_id)
+        fields = set(amendment)
+        if fields == LEGACY_SCOPE_AMENDMENT_FIELDS:
+            audit.require(
+                False,
+                f"{item_label}: retired legacy scope amendment is an immutable "
+                "audit record only and cannot grant write authority",
+            )
+            continue
+        audit.require(
+            fields == SCOPE_AMENDMENT_PROJECTION_FIELDS,
+            f"{item_label} fields must be either the committed legacy path-grant "
+            f"shape or exactly {sorted(SCOPE_AMENDMENT_PROJECTION_FIELDS)}",
+        )
+        if fields != SCOPE_AMENDMENT_PROJECTION_FIELDS:
+            continue
+        audit.require(
+            amendment.get("schemaVersion") == 2,
+            f"{item_label}.schemaVersion must be 2",
+        )
+        audit.require(
+            amendment.get("contractSource") == TASK_BACKLOG_PATH,
+            f"{item_label}.contractSource must be {TASK_BACKLOG_PATH}",
+        )
+        audit.require(
+            amendment.get("contractHashAlgorithm")
+            == PLANNING_CONTRACT_HASH_ALGORITHM,
+            f"{item_label}.contractHashAlgorithm is unsupported",
+        )
+        contract = amendment.get("contract")
+        audit.require(
+            isinstance(contract, dict)
+            and amendment.get("contractHash") == canonical_json_sha256(contract),
+            f"{item_label}.contractHash must bind the complete amendment contract",
+        )
+        if backlog_amendments is not None:
+            audit.require(
+                backlog_amendments.get(amendment_id) == contract,
+                f"{item_label}.contract must exactly project the Backlog amendment",
+            )
+        added_paths.extend(
+            validate_authorization_amendment_contract(
+                audit,
+                item_label,
+                amendment_id,
+                contract,
+                task,
+                authorized_text=authorized_text,
+                seen_path_keys=seen_path_keys,
+            )
+        )
+    return added_paths
+
+
+def validate_scope_amendment_edge(
+    audit: Audit,
+    parent: list[Any],
+    child: list[Any],
+    edge_label: str,
+) -> None:
+    audit.require(
+        len(child) >= len(parent) and child[: len(parent)] == parent,
+        f"{edge_label}: scopeAmendments must be append-only and immutable",
+    )
+
+
+def validate_uncommitted_scope_amendments(
+    audit: Audit,
+    committed: Any,
+    current: Any,
+    edge_label: str,
+) -> None:
+    audit.require(
+        isinstance(committed, list)
+        and isinstance(current, list)
+        and current == committed,
+        f"{edge_label} cannot introduce or rewrite scopeAmendments; an amendment "
+        "must already exist in a single-parent Git commit",
+    )
+
+
+def effective_task_write_allowlist(task: dict[str, Any]) -> list[str]:
+    allowlist, exact_paths = effective_task_write_scope(task)
+    return [*allowlist, *sorted(exact_paths)]
+
+
+def effective_task_write_scope(
+    task: dict[str, Any],
+) -> tuple[list[str], set[str]]:
+    allowlist = [str(item) for item in task.get("writeAllowlist", [])]
+    exact_paths: set[str] = set()
+    amendments = task.get("scopeAmendments")
+    if not isinstance(amendments, list):
+        return allowlist, exact_paths
+    for amendment in amendments:
+        if not isinstance(amendment, dict):
+            continue
+        if set(amendment) == SCOPE_AMENDMENT_PROJECTION_FIELDS:
+            contract = amendment.get("contract")
+            paths = (
+                contract.get("addedWriteAllowlist")
+                if isinstance(contract, dict)
+                else []
+            )
+        else:
+            paths = []
+        if isinstance(paths, list):
+            exact_paths.update(
+                path
+                for raw_path in paths
+                if (path := canonical_exact_repo_path(raw_path)) is not None
+            )
+    return allowlist, exact_paths
+
+
 def is_legacy_harness_bootstrap(task: dict[str, Any]) -> bool:
     if task.get("taskId") != "TASK-0002":
         return False
@@ -1698,6 +2142,107 @@ def validate_ready_context_lock_bytes(
     )
 
 
+def amendment_added_write_paths(amendment: Any) -> list[str]:
+    if not isinstance(amendment, dict):
+        return []
+    if set(amendment) == SCOPE_AMENDMENT_PROJECTION_FIELDS:
+        contract = amendment.get("contract")
+        raw_paths = (
+            contract.get("addedWriteAllowlist")
+            if isinstance(contract, dict)
+            else []
+        )
+    else:
+        raw_paths = []
+    candidates = raw_paths if isinstance(raw_paths, list) else []
+    return [
+        path
+        for raw_path in candidates
+        if (path := canonical_exact_repo_path(raw_path)) is not None
+    ]
+
+
+def backlog_authorization_amendments_at(commit: str) -> dict[str, Any]:
+    if git_tree_entry(commit, TASK_BACKLOG_PATH) is None:
+        return {}
+    backlog = yaml_at_commit(commit, TASK_BACKLOG_PATH)
+    amendments = backlog.get("authorizationAmendments")
+    return amendments if isinstance(amendments, dict) else {}
+
+
+def validate_amendment_introduction(
+    audit: Audit,
+    task_id: str,
+    task_path: str,
+    base_commit: str,
+    parent: str,
+    commit: str,
+    parents: list[str],
+    amendment: Any,
+) -> None:
+    label = f"{task_id}: scope amendment at {commit}"
+    audit.require(
+        len(parents) == 1,
+        f"{label} must be introduced by a single-parent atomic governance commit",
+    )
+    prior_changes = set(changed_paths_across_history(base_commit, parent))
+    for path in amendment_added_write_paths(amendment):
+        audit.require(
+            path not in prior_changes,
+            f"{label} cannot retroactively authorize earlier change to {path}",
+        )
+        entry = git_tree_entry(commit, path)
+        if entry is not None:
+            audit.require(
+                entry[:2] == ("100644", "blob"),
+                f"{label} added path {path} must be a regular 100644 blob",
+            )
+        components = path.split("/")
+        for index in range(1, len(components)):
+            prefix = "/".join(components[:index])
+            prefix_entry = git_tree_entry(commit, prefix)
+            audit.require(
+                prefix_entry is None or prefix_entry[0] != "120000",
+                f"{label} added path {path} traverses symlink component {prefix}",
+            )
+    if not isinstance(amendment, dict):
+        return
+    if set(amendment) == LEGACY_SCOPE_AMENDMENT_FIELDS:
+        audit.require(
+            False,
+            f"{label} uses the retired non-authoritative legacy amendment shape",
+        )
+        return
+    if set(amendment) != SCOPE_AMENDMENT_PROJECTION_FIELDS:
+        return
+    contract = amendment.get("contract")
+    amendment_id = str(amendment.get("amendmentId", ""))
+    audit.require(
+        isinstance(contract, dict)
+        and contract.get("authorizedParentCommit") == parent,
+        f"{label} must bind its exact parent commit",
+    )
+    parent_backlog_amendments = backlog_authorization_amendments_at(parent)
+    child_backlog_amendments = backlog_authorization_amendments_at(commit)
+    audit.require(
+        amendment_id not in parent_backlog_amendments
+        and child_backlog_amendments.get(amendment_id) == contract,
+        f"{label} must atomically introduce the identical Backlog contract",
+    )
+    changed = set(changed_paths_between(parent, commit))
+    expected_changed = {
+        task_path,
+        TASK_BACKLOG_PATH,
+        *amendment_added_write_paths(amendment),
+    }
+    audit.require(
+        changed == expected_changed,
+        f"{label} atomic governance commit must change exactly the task card, "
+        "Backlog and its explicitly authorized new paths; "
+        f"changed={sorted(changed)}",
+    )
+
+
 def validate_task_authorization_history(
     audit: Audit,
     task_id: str,
@@ -1708,28 +2253,114 @@ def validate_task_authorization_history(
     enforce_dominance: bool = True,
 ) -> None:
     expected_projection = task_authorization_projection(authorized_text)
-    history = git_text(
+    authorized_metadata = task_metadata_from_text(
+        authorized_text,
+        f"{task_id}: authorization checkpoint",
+    )
+    graph = git_text(
         "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
         f"{authorization_commit}..HEAD",
     ).stdout.splitlines()
-    for commit in history:
+    for graph_line in graph:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
         try:
-            entry = git_tree_entry(commit.strip(), task_path)
+            entry = git_tree_entry(commit, task_path)
             audit.require(
                 entry is not None and entry[:2] == ("100644", "blob"),
                 f"{task_id}: task card is missing or not a regular 100644 blob "
-                f"in commit {commit.strip()}",
+                f"in commit {commit}",
             )
-            historical_text = git_object(commit.strip(), task_path).decode("utf-8")
+            historical_text = git_object(commit, task_path).decode("utf-8")
             audit.require(
                 task_authorization_projection(historical_text) == expected_projection,
-                f"{task_id}: authorization projection changed in commit {commit.strip()}",
+                f"{task_id}: authorization projection changed in commit {commit}",
             )
+            historical_metadata = task_metadata_from_text(
+                historical_text,
+                f"{task_id}: task at {commit}",
+            )
+            backlog_amendments = backlog_authorization_amendments_at(commit)
+            validate_scope_amendments(
+                audit,
+                f"{task_id}: task at {commit}",
+                historical_metadata,
+                backlog_amendments=backlog_amendments,
+                authorized_text=authorized_text,
+            )
+            child_amendments = historical_metadata.get("scopeAmendments", [])
+            child_amendments = (
+                child_amendments if isinstance(child_amendments, list) else []
+            )
+            parents = tokens[1:]
+            for parent in parents:
+                parent_metadata = (
+                    authorized_metadata
+                    if parent == authorization_commit
+                    else task_metadata_at_commit(parent, task_path)
+                )
+                parent_amendments = parent_metadata.get("scopeAmendments", [])
+                parent_amendments = (
+                    parent_amendments if isinstance(parent_amendments, list) else []
+                )
+                validate_scope_amendment_edge(
+                    audit,
+                    parent_amendments,
+                    child_amendments,
+                    f"{task_id}: {parent}..{commit}",
+                )
+                if (
+                    len(child_amendments) > len(parent_amendments)
+                    and child_amendments[: len(parent_amendments)]
+                    == parent_amendments
+                ):
+                    for amendment in child_amendments[len(parent_amendments) :]:
+                        validate_amendment_introduction(
+                            audit,
+                            task_id,
+                            task_path,
+                            base_commit,
+                            parent,
+                            commit,
+                            parents,
+                            amendment,
+                        )
         except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
             audit.error(
                 f"{task_id}: cannot validate task authorization history at "
-                f"{commit.strip()}: {exc}"
+                f"{commit}: {exc}"
             )
+    try:
+        head_metadata = task_metadata_at_commit("HEAD", task_path)
+        current_text = read_repository_text(ROOT / normalize_repo_path(task_path))
+        current_metadata = task_metadata_from_text(
+            current_text,
+            f"{task_id}: current task",
+        )
+        validate_scope_amendments(
+            audit,
+            f"{task_id}: current task",
+            current_metadata,
+            backlog_amendments=(
+                load_yaml(ROOT / TASK_BACKLOG_PATH).get("authorizationAmendments", {})
+            ),
+            authorized_text=authorized_text,
+        )
+        head_amendments = head_metadata.get("scopeAmendments", [])
+        current_amendments = current_metadata.get("scopeAmendments", [])
+        validate_uncommitted_scope_amendments(
+            audit,
+            head_amendments,
+            current_amendments,
+            f"{task_id}: HEAD..WORKTREE",
+        )
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+        audit.error(f"{task_id}: cannot validate current scope amendments: {exc}")
     if enforce_dominance:
         graph = git_text(
             "rev-list",
@@ -1860,6 +2491,66 @@ def validate_planned_task_metadata(
         )
 
 
+def planned_card_render_projection(
+    audit: Audit,
+    label: str,
+    task_id: str,
+    entry: dict[str, Any],
+    text: str,
+) -> dict[str, Any] | None:
+    normalized = text.replace("\r\n", "\n")
+    metadata_match = TASK_BLOCK_RE.search(normalized)
+    if not metadata_match:
+        audit.error(f"{label}: planning card YAML block is missing")
+        return None
+    expected_heading = f"# {task_id}：{entry.get('title')}"
+    first_line = normalized.split("\n", 1)[0]
+    audit.require(
+        first_line == expected_heading,
+        f"{label}: planning card heading must be exactly {expected_heading!r}",
+    )
+    section_matches = list(re.finditer(r"(?m)^## (?P<heading>[^\n]+)\n", normalized))
+    audit.require(
+        len(section_matches) == 6,
+        f"{label}: planning card must contain exactly six normative sections",
+    )
+    if not section_matches:
+        return None
+    preamble = normalized[metadata_match.end() : section_matches[0].start()].strip()
+    audit.require(
+        preamble == PLANNED_CARD_NON_NORMATIVE_NOTICE,
+        f"{label}: planning card must contain exactly the fixed Backlog projection "
+        "notice and no unbound preamble",
+    )
+    sections: list[dict[str, str]] = []
+    seen_headings: set[str] = set()
+    for index, section_match in enumerate(section_matches):
+        heading = section_match.group("heading").strip()
+        body_end = (
+            section_matches[index + 1].start()
+            if index + 1 < len(section_matches)
+            else len(normalized)
+        )
+        body = normalized[section_match.end() : body_end].strip()
+        audit.require(bool(heading), f"{label}: section {index + 1} heading is blank")
+        audit.require(
+            heading not in seen_headings,
+            f"{label}: section heading {heading!r} is duplicated",
+        )
+        audit.require(bool(body), f"{label}: section {heading!r} body is blank")
+        seen_headings.add(heading)
+        sections.append({"heading": heading, "body": body})
+    audit.require(
+        normalized.count(PLANNED_CARD_NON_NORMATIVE_NOTICE) == 1,
+        f"{label}: fixed Backlog projection notice must appear exactly once",
+    )
+    return {
+        "heading": first_line,
+        "notice": PLANNED_CARD_NON_NORMATIVE_NOTICE,
+        "sections": sections,
+    }
+
+
 def validate_tasks(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
@@ -1969,6 +2660,7 @@ def validate_tasks(
             )
             validate_nonblank_text(audit, f"{label}.scope", approval.get("scope"))
             validate_nonblank_text(audit, f"{label}.evidence", approval.get("evidence"))
+        validate_scope_amendments(audit, path, task)
         for error in verify_context_lock(task):
             audit.error(error)
         expected_context_lock = f"docs/tasks/context/{task_id}.context-lock.yaml"
@@ -3130,16 +3822,29 @@ def validate_backlog_history_edge(
                 f"or rewritten on edge {edge_label}",
             )
 
-    for field in ("executionOrder", "criticalPath"):
-        parent_values = parent.get(field)
-        child_values = child.get(field)
-        audit.require(
-            isinstance(parent_values, list)
-            and isinstance(child_values, list)
-            and child_values[: len(parent_values)] == parent_values,
-            f"task-backlog: {field} must preserve its historical prefix on edge "
-            f"{edge_label}",
-        )
+    parent_order = parent.get("executionOrder")
+    child_order = child.get("executionOrder")
+    order_is_valid = isinstance(parent_order, list) and isinstance(child_order, list)
+    if order_is_valid:
+        parent_ids = set(parent_order)
+        order_is_valid = [
+            task_id for task_id in child_order if task_id in parent_ids
+        ] == parent_order
+    audit.require(
+        order_is_valid,
+        "task-backlog: executionOrder must preserve the relative order of every "
+        f"historical task ID on edge {edge_label}",
+    )
+
+    parent_critical = parent.get("criticalPath")
+    child_critical = child.get("criticalPath")
+    audit.require(
+        isinstance(parent_critical, list)
+        and isinstance(child_critical, list)
+        and child_critical[: len(parent_critical)] == parent_critical,
+        f"task-backlog: criticalPath must preserve its historical prefix on edge "
+        f"{edge_label}",
+    )
 
     parent_gates = parent.get("decisionGates")
     child_gates = child.get("decisionGates")
@@ -3194,68 +3899,538 @@ def validate_backlog_history_edge(
             )
 
 
+def validate_backlog_authorization_amendment_edge(
+    audit: Audit,
+    parent: dict[str, Any],
+    child: dict[str, Any],
+    edge_label: str,
+) -> None:
+    parent_amendments = parent.get("authorizationAmendments", {})
+    child_amendments = child.get("authorizationAmendments", {})
+    audit.require(
+        isinstance(parent_amendments, dict)
+        and isinstance(child_amendments, dict),
+        f"task-backlog: authorizationAmendments must remain objects on edge "
+        f"{edge_label}",
+    )
+    if not isinstance(parent_amendments, dict) or not isinstance(
+        child_amendments,
+        dict,
+    ):
+        return
+    for amendment_id, contract in parent_amendments.items():
+        audit.require(
+            child_amendments.get(amendment_id) == contract,
+            f"task-backlog: authorization amendment {amendment_id} was removed "
+            f"or rewritten on edge {edge_label}",
+        )
+
+
+def validate_backlog_authorization_amendments(
+    audit: Audit,
+    raw: Any,
+    tasks: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    audit.require(
+        isinstance(raw, dict),
+        "task-backlog: authorizationAmendments must be an object",
+    )
+    amendments = raw if isinstance(raw, dict) else {}
+    projected_ids: set[str] = set()
+    for task in tasks.values():
+        task_amendments = task.get("scopeAmendments")
+        if not isinstance(task_amendments, list):
+            continue
+        projected_ids.update(
+            str(item.get("amendmentId"))
+            for item in task_amendments
+            if isinstance(item, dict)
+            and set(item) == SCOPE_AMENDMENT_PROJECTION_FIELDS
+        )
+    audit.require(
+        projected_ids == set(amendments),
+        "task-backlog: strong Owner amendment contracts and task-card projections "
+        f"must have exact bidirectional membership; backlogOnly="
+        f"{sorted(set(amendments) - projected_ids)}, "
+        f"cardOnly={sorted(projected_ids - set(amendments))}",
+    )
+    for amendment_id, contract in amendments.items():
+        label = f"task-backlog.authorizationAmendments.{amendment_id}"
+        audit.require(
+            is_canonical_identity(amendment_id),
+            f"{label}: amendment ID must be canonical",
+        )
+        task_id = (
+            str(contract.get("taskId", ""))
+            if isinstance(contract, dict)
+            else ""
+        )
+        task = tasks.get(task_id)
+        audit.require(task is not None, f"{label}: taskId is not registered")
+        if task is None:
+            continue
+        authorization_commit = str(task.get("authorizationCommit", ""))
+        authorized_text: str | None = None
+        if FULL_COMMIT_RE.fullmatch(authorization_commit):
+            try:
+                authorized_text = git_object(
+                    authorization_commit,
+                    str(task.get("_path", "")),
+                ).decode("utf-8")
+            except (HarnessError, UnicodeError) as exc:
+                audit.error(f"{label}: cannot read authorization checkpoint: {exc}")
+        validate_authorization_amendment_contract(
+            audit,
+            label,
+            str(amendment_id),
+            contract,
+            task,
+            authorized_text=authorized_text,
+            seen_path_keys={},
+        )
+        task_amendments = task.get("scopeAmendments")
+        task_amendment_items = (
+            task_amendments if isinstance(task_amendments, list) else []
+        )
+        projections = [
+            item
+            for item in task_amendment_items
+            if isinstance(item, dict)
+            and set(item) == SCOPE_AMENDMENT_PROJECTION_FIELDS
+            and item.get("amendmentId") == amendment_id
+        ]
+        audit.require(
+            len(projections) == 1
+            and projections[0].get("contract") == contract
+            and projections[0].get("contractHash")
+            == canonical_json_sha256(contract),
+            f"{label}: task card must contain one exact hash-bound projection",
+        )
+        if isinstance(contract, dict):
+            scope_grant_id = contract.get("scopeGrantAmendmentId")
+            audit.require(
+                scope_grant_id is None,
+                f"{label}: scopeGrantAmendmentId must be null because retired "
+                "legacy amendments cannot grant authority",
+            )
+    return amendments
+
+
+def validate_backlog_planning_card_snapshot(
+    audit: Audit,
+    label: str,
+    task_id: str,
+    task_path: str,
+    entry: dict[str, Any],
+    metadata: dict[str, Any],
+    expected_state: str,
+    resolution: dict[str, Any] | None,
+    card_text: str,
+) -> dict[str, Any] | None:
+    historical = dict(metadata)
+    historical["_path"] = task_path
+    validate_planned_task_metadata(audit, task_id, historical)
+    audit.require(
+        metadata.get("taskId") == task_id,
+        f"{label}: planning card taskId must remain {task_id}",
+    )
+    audit.require(
+        metadata.get("state") == expected_state,
+        f"{label}: planning card state must remain {expected_state}",
+    )
+    audit.require(
+        metadata.get("planningContractHash") == canonical_json_sha256(entry),
+        f"{label}: planning card hash must match its immutable Backlog contract",
+    )
+    if resolution is None:
+        audit.require(
+            "planningResolution" not in metadata,
+            f"{label}: PLANNED card must not contain planningResolution",
+        )
+    else:
+        audit.require(
+            metadata.get("planningResolution") == resolution,
+            f"{label}: planning terminal card must project its resolution exactly",
+        )
+    return planned_card_render_projection(
+        audit,
+        label,
+        task_id,
+        entry,
+        card_text,
+    )
+
+
 def validate_backlog_resolution_commit(
     audit: Audit,
+    parent_commit: str,
     commit: str,
+    parent_backlog: dict[str, Any],
     backlog: dict[str, Any],
-    resolution_ids: set[str],
 ) -> None:
+    parent_entries = parent_backlog.get("tasks")
     entries = backlog.get("tasks")
+    parent_resolutions = parent_backlog.get("resolutions")
     resolutions = backlog.get("resolutions")
-    if not isinstance(entries, dict) or not isinstance(resolutions, dict):
+    if (
+        not isinstance(parent_entries, dict)
+        or not isinstance(entries, dict)
+        or not isinstance(parent_resolutions, dict)
+        or not isinstance(resolutions, dict)
+    ):
         return
-    for task_id in sorted(resolution_ids):
+    for task_id in sorted(resolutions):
         entry = entries.get(task_id)
         resolution = resolutions.get(task_id)
         audit.require(
             isinstance(entry, dict) and isinstance(resolution, dict),
-            f"task-backlog: resolution {task_id} introduction at {commit} is invalid",
+            f"task-backlog: resolution {task_id} at {commit} is invalid",
         )
         if not isinstance(entry, dict) or not isinstance(resolution, dict):
             continue
         task_path = str(entry.get("taskCard", ""))
+        child_tree = git_tree_entry(commit, task_path)
+        audit.require(
+            child_tree is not None and child_tree[:2] == ("100644", "blob"),
+            f"task-backlog: resolved planning card {task_id} must remain a "
+            f"regular 100644 blob at {commit}",
+        )
         try:
-            metadata = task_metadata_at_commit(commit, task_path)
-            audit.require(
-                metadata.get("state") == resolution.get("state")
-                and metadata.get("planningResolution") == resolution,
-                f"task-backlog: resolution {task_id} must atomically update its "
-                f"planning card at {commit}",
+            child_text = git_object(commit, task_path).decode("utf-8")
+            child_metadata = task_metadata_from_text(
+                child_text,
+                f"task-backlog: resolution {task_id} child {commit}",
+            )
+            child_render = validate_backlog_planning_card_snapshot(
+                audit,
+                f"task-backlog: resolution {task_id} child {commit}",
+                task_id,
+                task_path,
+                entry,
+                child_metadata,
+                str(resolution.get("state", "")),
+                resolution,
+                child_text,
             )
         except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
             audit.error(
                 f"task-backlog: cannot validate resolution {task_id} card at "
                 f"{commit}: {exc}"
             )
+            continue
+        parent_entry = parent_entries.get(task_id)
+        audit.require(
+            isinstance(parent_entry, dict)
+            and parent_entry.get("taskCard") == task_path,
+            f"task-backlog: resolution {task_id} on edge "
+            f"{parent_commit}..{commit} must preserve its planning card path",
+        )
+        if not isinstance(parent_entry, dict):
+            continue
+        parent_tree = git_tree_entry(parent_commit, task_path)
+        audit.require(
+            parent_tree is not None and parent_tree[:2] == ("100644", "blob"),
+            f"task-backlog: resolved planning card {task_id} must remain a "
+            f"regular 100644 blob at {parent_commit}",
+        )
+        try:
+            parent_text = git_object(parent_commit, task_path).decode("utf-8")
+            parent_metadata = task_metadata_from_text(
+                parent_text,
+                f"task-backlog: resolution {task_id} parent {parent_commit}",
+            )
+        except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(
+                f"task-backlog: cannot validate resolution {task_id} parent card "
+                f"at {parent_commit}: {exc}"
+            )
+            continue
+        if task_id in parent_resolutions:
+            parent_resolution = parent_resolutions.get(task_id)
+            audit.require(
+                isinstance(parent_resolution, dict)
+                and parent_resolution == resolution,
+                f"task-backlog: resolution {task_id} must remain immutable on edge "
+                f"{parent_commit}..{commit}",
+            )
+            if not isinstance(parent_resolution, dict):
+                continue
+            parent_render = validate_backlog_planning_card_snapshot(
+                audit,
+                f"task-backlog: resolution {task_id} parent {parent_commit}",
+                task_id,
+                task_path,
+                parent_entry,
+                parent_metadata,
+                str(parent_resolution.get("state", "")),
+                parent_resolution,
+                parent_text,
+            )
+            audit.require(
+                parent_metadata == child_metadata,
+                f"task-backlog: resolved planning card {task_id} metadata must "
+                f"remain immutable on edge {parent_commit}..{commit}",
+            )
+            audit.require(
+                parent_render == child_render,
+                f"task-backlog: resolved planning card {task_id} title, fixed "
+                f"notice and six-section projection must remain immutable on edge "
+                f"{parent_commit}..{commit}",
+            )
+            continue
+        parent_render = validate_backlog_planning_card_snapshot(
+            audit,
+            f"task-backlog: resolution {task_id} parent {parent_commit}",
+            task_id,
+            task_path,
+            parent_entry,
+            parent_metadata,
+            "PLANNED",
+            None,
+            parent_text,
+        )
+        shared_fields = PLANNED_CARD_FIELDS - {"state"}
+        audit.require(
+            {field: parent_metadata.get(field) for field in shared_fields}
+            == {field: child_metadata.get(field) for field in shared_fields},
+            f"task-backlog: resolution {task_id} introduction on edge "
+            f"{parent_commit}..{commit} may only add planningResolution and "
+            "transition state",
+        )
+        audit.require(
+            parent_render == child_render,
+            f"task-backlog: resolution {task_id} introduction on edge "
+            f"{parent_commit}..{commit} must preserve the title, fixed notice "
+            "and six-section projection",
+        )
+
+
+def validate_backlog_card_history_edge(
+    audit: Audit,
+    parent_commit: str,
+    commit: str,
+    parent: dict[str, Any],
+    child: dict[str, Any],
+    lifecycle: dict[str, Any],
+) -> None:
+    parent_entries = parent.get("tasks")
+    child_entries = child.get("tasks")
+    if not isinstance(parent_entries, dict) or not isinstance(child_entries, dict):
+        return
+    parent_resolutions = parent.get("resolutions")
+    child_resolutions = child.get("resolutions")
+    parent_resolutions = (
+        parent_resolutions if isinstance(parent_resolutions, dict) else {}
+    )
+    child_resolutions = (
+        child_resolutions if isinstance(child_resolutions, dict) else {}
+    )
+    transitions = lifecycle.get("transitions")
+    transitions = transitions if isinstance(transitions, dict) else {}
+    for task_id in sorted(set(parent_entries) | set(child_entries)):
+        parent_entry = parent_entries.get(task_id)
+        child_entry = child_entries.get(task_id)
+        if not isinstance(child_entry, dict):
+            audit.error(
+                f"task-backlog: planning card contract {task_id} was deleted on "
+                f"edge {parent_commit}..{commit}"
+            )
+            continue
+        task_path = str(child_entry.get("taskCard", ""))
+        if not isinstance(parent_entry, dict):
+            if task_id == child.get("bootstrapTask"):
+                continue
+            child_tree = git_tree_entry(commit, task_path)
+            audit.require(
+                child_tree is not None and child_tree[:2] == ("100644", "blob"),
+                f"task-backlog: introduced card {task_id} must be a regular "
+                f"100644 blob at {commit}",
+            )
+            try:
+                child_text = git_object(commit, task_path).decode("utf-8")
+                child_metadata = task_metadata_from_text(
+                    child_text,
+                    f"task-backlog: introduced card {task_id} at {commit}",
+                )
+                validate_backlog_planning_card_snapshot(
+                    audit,
+                    f"task-backlog: introduced card {task_id} at {commit}",
+                    task_id,
+                    task_path,
+                    child_entry,
+                    child_metadata,
+                    "PLANNED",
+                    None,
+                    child_text,
+                )
+            except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+                audit.error(
+                    f"task-backlog: cannot validate introduced card {task_id} "
+                    f"at {commit}: {exc}"
+                )
+            continue
+        parent_task_path = str(parent_entry.get("taskCard", ""))
+        audit.require(
+            parent_task_path == task_path,
+            f"task-backlog: card {task_id} path changed on edge "
+            f"{parent_commit}..{commit}",
+        )
+        parent_tree = git_tree_entry(parent_commit, task_path)
+        child_tree = git_tree_entry(commit, task_path)
+        if parent_tree == child_tree:
+            continue
+        audit.require(
+            parent_tree is not None and parent_tree[:2] == ("100644", "blob"),
+            f"task-backlog: card {task_id} must be a regular 100644 blob at "
+            f"{parent_commit}",
+        )
+        audit.require(
+            child_tree is not None and child_tree[:2] == ("100644", "blob"),
+            f"task-backlog: card {task_id} must be a regular 100644 blob at {commit}",
+        )
+        try:
+            parent_text = git_object(parent_commit, task_path).decode("utf-8")
+            child_text = git_object(commit, task_path).decode("utf-8")
+            parent_metadata = task_metadata_from_text(
+                parent_text,
+                f"task-backlog: card {task_id} parent {parent_commit}",
+            )
+            child_metadata = task_metadata_from_text(
+                child_text,
+                f"task-backlog: card {task_id} child {commit}",
+            )
+        except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(
+                f"task-backlog: cannot validate card {task_id} on edge "
+                f"{parent_commit}..{commit}: {exc}"
+            )
+            continue
+        parent_state = str(parent_metadata.get("state", ""))
+        child_state = str(child_metadata.get("state", ""))
+        if child_state != parent_state:
+            allowed = transitions.get(parent_state, [])
+            audit.require(
+                isinstance(allowed, list) and child_state in allowed,
+                f"task-backlog: invalid card state edge {task_id} "
+                f"{parent_state} -> {child_state} at {parent_commit}..{commit}",
+            )
+        parent_render: dict[str, Any] | None = None
+        child_render: dict[str, Any] | None = None
+        if parent_state == "PLANNED":
+            parent_render = validate_backlog_planning_card_snapshot(
+                audit,
+                f"task-backlog: card {task_id} parent {parent_commit}",
+                task_id,
+                task_path,
+                parent_entry,
+                parent_metadata,
+                "PLANNED",
+                None,
+                parent_text,
+            )
+        elif parent_state in PLANNING_TERMINAL_STATES:
+            parent_resolution = parent_resolutions.get(task_id)
+            parent_render = validate_backlog_planning_card_snapshot(
+                audit,
+                f"task-backlog: card {task_id} parent {parent_commit}",
+                task_id,
+                task_path,
+                parent_entry,
+                parent_metadata,
+                parent_state,
+                parent_resolution if isinstance(parent_resolution, dict) else None,
+                parent_text,
+            )
+        if child_state == "PLANNED":
+            child_render = validate_backlog_planning_card_snapshot(
+                audit,
+                f"task-backlog: card {task_id} child {commit}",
+                task_id,
+                task_path,
+                child_entry,
+                child_metadata,
+                "PLANNED",
+                None,
+                child_text,
+            )
+            audit.require(
+                parent_state == "PLANNED"
+                and parent_metadata == child_metadata,
+                f"task-backlog: unresolved PLANNED card {task_id} metadata must "
+                f"remain immutable on edge {parent_commit}..{commit}",
+            )
+        elif child_state in PLANNING_TERMINAL_STATES:
+            child_resolution = child_resolutions.get(task_id)
+            child_render = validate_backlog_planning_card_snapshot(
+                audit,
+                f"task-backlog: card {task_id} child {commit}",
+                task_id,
+                task_path,
+                child_entry,
+                child_metadata,
+                child_state,
+                child_resolution if isinstance(child_resolution, dict) else None,
+                child_text,
+            )
+        if (
+            parent_state in {"PLANNED", *PLANNING_TERMINAL_STATES}
+            and child_state in {"PLANNED", *PLANNING_TERMINAL_STATES}
+        ):
+            audit.require(
+                parent_render == child_render,
+                f"task-backlog: planning card {task_id} title, fixed notice and "
+                f"six-section projection changed on edge {parent_commit}..{commit}",
+            )
 
 
 def validate_task_backlog_history(
     audit: Audit,
     current: dict[str, Any],
+    lifecycle: dict[str, Any],
 ) -> None:
-    history = git_text(
+    rules = lifecycle.get("rules")
+    policy = rules.get("backlogHistoryPolicy") if isinstance(rules, dict) else None
+    audit.require(
+        isinstance(policy, dict)
+        and set(policy) == {"activationCommit", "mode"},
+        "task-backlog: lifecycle rules must declare the exact backlogHistoryPolicy",
+    )
+    activation = (
+        str(policy.get("activationCommit", "")) if isinstance(policy, dict) else ""
+    )
+    audit.require(
+        bool(FULL_COMMIT_RE.fullmatch(activation)),
+        "task-backlog: backlogHistoryPolicy.activationCommit must be a full Git SHA",
+    )
+    audit.require(
+        isinstance(policy, dict)
+        and policy.get("mode")
+        == "VALIDATE_ACTIVATION_SNAPSHOT_THEN_ALL_PARENT_EDGES",
+        "task-backlog: backlogHistoryPolicy.mode is unsupported",
+    )
+    ancestry = git_text(
+        "merge-base",
+        "--is-ancestor",
+        activation,
+        "HEAD",
+        check=False,
+    )
+    audit.require(
+        ancestry.returncode == 0,
+        "task-backlog: backlogHistoryPolicy.activationCommit must be an ancestor "
+        "of HEAD",
+    )
+    history_tail = git_text(
         "rev-list",
         "--parents",
         "--topo-order",
         "--reverse",
-        "HEAD",
+        "--ancestry-path",
+        f"{activation}..HEAD",
     ).stdout.splitlines()
+    history = [activation, *history_tail] if ancestry.returncode == 0 else []
     introductions: set[str] = set()
     snapshots: dict[str, dict[str, Any]] = {}
-
-    def contracts_are_frozen(commit: str, backlog: dict[str, Any]) -> bool:
-        bootstrap_task = str(backlog.get("bootstrapTask", ""))
-        try:
-            ledger = yaml_at_commit(commit, TASK_LEDGER_PATH)
-        except HarnessError:
-            return False
-        entries = ledger.get("tasks")
-        return (
-            isinstance(entries, dict)
-            and isinstance(entries.get(bootstrap_task), dict)
-            and entries[bootstrap_task].get("state")
-            in {"ACCEPTED", "REJECTED"}
-        )
 
     def snapshot(commit: str) -> dict[str, Any] | None:
         if commit in snapshots:
@@ -3278,25 +4453,33 @@ def validate_task_backlog_history(
             not parent_values or all(value is None for _, value in parent_values)
         ):
             introductions.add(commit)
-        if child is not None:
-            child_resolutions = child.get("resolutions")
-            child_resolution_ids = (
-                set(child_resolutions)
-                if isinstance(child_resolutions, dict)
-                else set()
+            empty_backlog = {
+                "tasks": {},
+                "executionOrder": [],
+                "criticalPath": [],
+                "decisionGates": {},
+                "resolutions": {},
+                "authorizationAmendments": {},
+            }
+            validate_backlog_authorization_amendment_edge(
+                audit,
+                empty_backlog,
+                child,
+                f"<absent>..{commit}",
             )
-            parent_resolution_ids: set[str] = set()
-            for _, parent_value in parent_values:
-                if not isinstance(parent_value, dict):
-                    continue
-                parent_resolutions = parent_value.get("resolutions")
-                if isinstance(parent_resolutions, dict):
-                    parent_resolution_ids.update(parent_resolutions)
-            validate_backlog_resolution_commit(
+            validate_backlog_card_history_edge(
                 audit,
                 commit,
+                commit,
+                empty_backlog,
                 child,
-                child_resolution_ids - parent_resolution_ids,
+                lifecycle,
+            )
+            validate_backlog_history_edge(
+                audit,
+                empty_backlog,
+                child,
+                f"<absent>..{commit}",
             )
         for parent, parent_value in parent_values:
             if parent_value is None:
@@ -3306,10 +4489,29 @@ def validate_task_backlog_history(
                 f"task-backlog: {TASK_BACKLOG_PATH} was deleted on edge "
                 f"{parent}..{commit}",
             )
-            if (
-                child is not None
-                and contracts_are_frozen(parent, parent_value)
-            ):
+            if child is not None:
+                validate_backlog_resolution_commit(
+                    audit,
+                    parent,
+                    commit,
+                    parent_value,
+                    child,
+                )
+                validate_backlog_authorization_amendment_edge(
+                    audit,
+                    parent_value,
+                    child,
+                    f"{parent}..{commit}",
+                )
+            if child is not None:
+                validate_backlog_card_history_edge(
+                    audit,
+                    parent,
+                    commit,
+                    parent_value,
+                    child,
+                    lifecycle,
+                )
                 validate_backlog_history_edge(
                     audit,
                     parent_value,
@@ -3322,7 +4524,15 @@ def validate_task_backlog_history(
         f"{sorted(introductions)}",
     )
     head = snapshot("HEAD")
-    if head is not None and contracts_are_frozen("HEAD", head):
+    if head is not None:
+        audit.require(
+            current.get("authorizationAmendments")
+            == head.get("authorizationAmendments"),
+            "task-backlog: HEAD..WORKTREE cannot introduce or rewrite "
+            "authorizationAmendments; commit the single-parent governance "
+            "amendment before it can authorize later work",
+        )
+    if head is not None:
         validate_backlog_history_edge(
             audit,
             head,
@@ -3564,6 +4774,7 @@ def validate_task_backlog_data(
                 "criticalPath",
                 "decisionGates",
                 "promotionConditions",
+                "authorizationAmendments",
             ],
             "task-backlog: authority must own the complete planning decision set",
         )
@@ -3653,6 +4864,21 @@ def validate_task_backlog_data(
         is True
         and lifecycle_rules.get("planningTerminalConsumesTaskLedger") is False,
         "task-backlog: lifecycle planning-terminal semantics are incomplete",
+    )
+    audit.require(
+        lifecycle_rules.get("authorizationAmendments")
+        == {
+            "machineSource": TASK_BACKLOG_PATH,
+            "taskCardProjectionField": "scopeAmendments",
+            "approvedBy": "repository-owner",
+            "singleParentAtomicCommitRequired": True,
+            "uncommittedAuthorizationForbidden": True,
+            "appendOnlyAndImmutable": True,
+            "explicitClauseReplacementRequired": True,
+            "canonicalExactPosixPathsRequired": True,
+            "forbiddenPathsAlwaysWins": True,
+        },
+        "task-backlog: lifecycle Owner amendment semantics are incomplete",
     )
     promotion = rules.get("promotion")
     audit.require(
@@ -3793,6 +5019,11 @@ def validate_task_backlog_data(
     entries = backlog.get("tasks")
     audit.require(isinstance(entries, dict), "task-backlog: tasks must be an object")
     entries = entries if isinstance(entries, dict) else {}
+    validate_backlog_authorization_amendments(
+        audit,
+        backlog.get("authorizationAmendments"),
+        tasks,
+    )
     execution_order = validate_nonblank_string_list(
         audit,
         "task-backlog.executionOrder",
@@ -3973,6 +5204,14 @@ def validate_task_backlog_data(
                     card_text.startswith(heading),
                     f"{label}: task card heading must preserve the reserved ID/title",
                 )
+                if is_planning_only_task(discovered):
+                    planned_card_render_projection(
+                        audit,
+                        label,
+                        str(task_id),
+                        raw_entry,
+                        card_text,
+                    )
             except (OSError, UnicodeError) as exc:
                 audit.error(f"{label}: cannot read task card heading: {exc}")
 
@@ -4284,7 +5523,7 @@ def validate_task_backlog(
         lifecycle,
         state,
     )
-    validate_task_backlog_history(audit, backlog)
+    validate_task_backlog_history(audit, backlog, lifecycle)
     return projection
 
 
@@ -6021,7 +7260,7 @@ def validate_diff_scope(
         changed,
         include_current_index=target_commit is None,
     )
-    allowlist = [str(item) for item in task.get("writeAllowlist", [])]
+    allowlist, amendment_exact_paths = effective_task_write_scope(task)
     forbidden = [str(item) for item in task.get("forbiddenPaths", [])]
     required_skills = set(task_required_skills(task))
     approvals = task.get("humanApprovals")
@@ -6034,7 +7273,8 @@ def validate_diff_scope(
 
     for path in changed:
         audit.require(
-            any(glob_matches(path, pattern) for pattern in allowlist),
+            path in amendment_exact_paths
+            or any(glob_matches(path, pattern) for pattern in allowlist),
             f"{task_id}: changed path is outside writeAllowlist: {path}",
         )
         audit.require(

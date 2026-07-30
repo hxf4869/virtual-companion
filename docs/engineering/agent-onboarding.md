@@ -74,6 +74,7 @@ ACCEPTED/REJECTED 普通终态闭环。
 - `task-ledger.yaml`：所有终态任务及其不可改写审计产物的持久索引；
 - `task-backlog.yaml`：Technical Alpha 的永久 Task ID、执行顺序、依赖 DAG、关键路径、硬决策闸门和晋级条件；
 - 任务卡：本次为什么做、允许做什么和验收；
+- Owner amendment：Backlog 中显式条款替代与精确路径合同的唯一机器记录；任务卡只保存完整 Hash 绑定投影，不能形成第二授权源；
 - Context Lock：决策基于哪个 Base Commit 的哪些输入；
 - Skill：高风险变更必须遵守的操作过程；
 - ADR：跨任务长期有效的设计理由；
@@ -108,6 +109,8 @@ PowerShell 和 Shell 文件只负责发现 Python；命令列表来自 `.harness
 - `pending DRAFT`：只允许任务卡和 Context Lock；READY 时必须与 `project-state` 活动投影原子提交；
 - `context mismatch`：输入或 Base Commit 已变化，重新 intake，禁止改哈希凑通过；
 - `outside writeAllowlist`：回到任务边界，不能反向扩大白名单包住已有越界修改；
+- `uncommitted authorization amendment`：未提交 worktree/index 不能自授权；先以只改 Backlog 与任务卡的单父原子治理提交登记 Owner amendment，再在后续提交使用规范精确路径权限；
+- `authorization amendment drift`：核对 `supersedes -> replacement` 的稳定条款 ID/Hash、Owner、父提交、Backlog 合同与任务卡投影；任一 merge parent 不一致、路径别名、改坏恢复或追溯授权都必须前向修复；
 - `history is not ancestry-closed`：任务并入了从 Base 之前分叉的旧支线，重新基于最后终态整理提交链；
 - `staged snapshot and worktree disagree`：完整暂存待验证快照，确保 Index 与工作树一致后重跑；
 - `missing Skill/approval/reviewer`：补齐真实授权，不能由 Agent 自批；

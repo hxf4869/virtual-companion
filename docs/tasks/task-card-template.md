@@ -17,6 +17,9 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
 
+一级标题必须精确绑定 Backlog 的 Task ID 与标题；固定声明之后必须恰好存在六个标题唯一、正文非空的二级节。正文不覆盖
+Backlog 语义，但标题、声明与六节正文共同构成完整可审计投影；正式登记后按每条 Git parent edge 不可修改、删除或改坏再恢复。
+
 PLANNED 取消或替代时保留原卡和 Backlog ID，把卡片 `state` 原子改为
 REJECTED/SUPERSEDED，并向 Backlog 的 append-only `resolutions` 登记相同状态、非空原因和决策证据；该规划终态
 不伪造 Base、Context、命令、Evidence 或 Ledger。SUPERSEDED 只允许从 PLANNED 进入；已经进入 DRAFT 或后续状态的任务只以
@@ -60,6 +63,42 @@ requiredCommands:
   - python scripts/harness/precheck.py --task TASK-XXXX
   - git diff --check
 ```
+
+READY 后若 Owner 必须修订显式条款或增加精确写路径，先在 Backlog 的 `authorizationAmendments` 中登记唯一强类型合同，
+再在任务卡 `scopeAmendments` 追加完整 Hash 绑定投影：
+
+```yaml
+scopeAmendments:
+  - schemaVersion: 2
+    amendmentId: task-xxxx-owner-amendment
+    contractSource: .harness/task-backlog.yaml
+    contractHashAlgorithm: SHA256_CANONICAL_JSON_V1
+    contractHash: ""
+    contract:
+      schemaVersion: 1
+      taskId: TASK-XXXX
+      amendmentType: OWNER_CLAUSE_REPLACEMENT
+      approvedBy: repository-owner
+      approvedAt: YYYY-MM-DD
+      evidence: ""
+      reason: ""
+      authorizedParentCommit: ""
+      baseAuthorizationProjectionHash: ""
+      scopeGrantAmendmentId: null
+      addedWriteAllowlist: []
+      replacements:
+        - supersedes:
+            clauseId: TASK-XXXX-ACCEPTANCE-001
+            statement: ""
+            statementHash: ""
+          replacement:
+            statement: ""
+            statementHash: ""
+```
+
+该投影只能在只修改 Backlog 与任务卡的单父原子治理提交中引入；`authorizedParentCommit` 必须等于该提交的唯一父提交。
+未提交 worktree/index、聊天或非祖先提交不授予权限。新增路径必须是规范仓库相对 POSIX 精确路径且不含 glob；
+`forbiddenPaths` 始终优先。未由 `supersedes` 明确列出的原授权条款保持原 Hash 与语义。
 
 ## 背景与用户可观察目标
 
