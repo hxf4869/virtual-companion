@@ -84,3 +84,9 @@ tasks:
     taskCard: docs/tasks/TASK-0038-task-delivery-policy-skill-entrypoint.md
     evidence: docs/evidence/TASK-0038/evidence-pack.json
     handoff: docs/handoffs/TASK-0038.json
+  TASK-0042:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0042-machine-delivery-policy-skill-thin-entrypoint.md
+    evidence: docs/evidence/TASK-0042/evidence-pack.json
+    handoff: docs/handoffs/TASK-0042.json

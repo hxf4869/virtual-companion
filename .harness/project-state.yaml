@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0042
-activeTaskCard: docs/tasks/TASK-0042-machine-delivery-policy-skill-thin-entrypoint.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0038
-lastTerminalHandoff: docs/handoffs/TASK-0038.json
-nextAction: 执行 TASK-0042：交付机器策略、双模式 Skill、薄入口、最小 CI-unblock fixture 与 Backlog 后继链后完成独立复核和精确 SHA CI
+lastTerminalTask: TASK-0042
+lastTerminalHandoff: docs/handoffs/TASK-0042.json
+nextAction: 协调任务须先创建新的永久替代任务与后继链；机器当前首个可晋级 Backlog 任务为 TASK-0013，但治理缺口修复前不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED

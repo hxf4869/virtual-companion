@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0042
-state: IN_PROGRESS
+state: REJECTED
+resolutionReason: >-
+  首候选经 R1 得到 3 个阻断 P1；唯一修复批次关闭其中 2 个，但 R2 发现 Skill 把 wrapper
+  Evidence alias 错误写成条件例外，产生新的阻断 P1。合同禁止第二修复批次和 R3，因此未运行
+  candidate canonical 或 exact-SHA CI。失败候选已保存到本地可验证 bundle/ref，并由前向清理提交
+  恢复实现前 Tree；终态 Tree 不包含 policy、Skill、Doctor/test 或入口/registry 失败实现。
+  候选提交作为不可改写审计祖先保留，绝不表示 PASS 或可交付实现。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -129,7 +135,12 @@ humanApprovals:
     approvedAt: "2026-07-31"
     evidence: Owner 明确批准 standalone TASK-0042 的 C4 Harness、Skill、AGENTS、Backlog successor registration 与独立 Reviewer，并在 DRAFT 冻结前补充仅限已定位 real-Git baseline fixture 的 CI-unblock 修复以及 TASK-0039～0041 到 TASK-0045～0047 的原子 SUPERSEDED 登记。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0042-terminal-cleanup-audit
+    kind: terminal-cleanup-audit
+    verdict: FAIL
+    reviewedCommit: dde501dfa669fb580c8688a9ca388a7eca85fca6
+    evidencePath: docs/evidence/TASK-0042/review-terminal-cleanup.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0042
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift

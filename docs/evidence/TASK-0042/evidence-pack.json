@@ -1,0 +1,166 @@
+{
+  "taskId": "TASK-0042",
+  "baseCommit": "0c15def49faf36cbd9a07fb76203f6191c60e5e6",
+  "headCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6",
+  "contextFingerprint": "e9a60431b971dfec16d7eb3a5563c1a469c360eaf545b659774ad379f2cdf124",
+  "reviewers": [
+    {
+      "id": "task-0042-terminal-cleanup-audit",
+      "kind": "terminal-cleanup-audit",
+      "verdict": "FAIL",
+      "reviewedCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6",
+      "evidencePath": "docs/evidence/TASK-0042/review-terminal-cleanup.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0042",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "R2 在唯一修复批次后发现新的阻断 P1；冻结合同要求立即停止，禁止启动 candidate canonical。前向清理 HEAD 同样未运行 canonical。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "失败候选 26d3eb4 上曾真实 PASS（3.142 秒），但 R2 FAIL 且终态 Tree 已移除候选实现；该结果不得跨 Commit/Tree 复用为清理 HEAD 的 PASS。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6"
+    },
+    {
+      "command": "python C:/Users/k/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/task-delivery-flow",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "失败候选 26d3eb4 上曾真实 PASS（0.073 秒），但终态 Tree 已删除该 Skill；不得把失败候选的 validator 结果绑定到清理 HEAD。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "前向清理提交 dde501d 的干净 HEAD 上精确执行，进程墙钟 0.032 秒、退出码 0。",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6"
+    }
+  ],
+  "artifacts": {
+    "draftCommit": "236a7ab6b5053799612383935dffc7e33c170c18",
+    "readyCommit": "f1b9b46ea157c04956fedbdfea8a31e09873a504",
+    "draftDoctor": {
+      "status": "PASS",
+      "checks": 65150,
+      "elapsedSeconds": 244.265
+    },
+    "readyDoctor": {
+      "status": "PASS",
+      "checks": 66102,
+      "elapsedSeconds": 253.188
+    },
+    "unboundRecoveryDoctor": {
+      "status": "NOT_RUN",
+      "outcome": "CANCELLED",
+      "pid": 36744,
+      "reason": "Owner 性能纠偏后安全终止；未绑定 DRAFT，不计 PASS。"
+    },
+    "initialCandidate": {
+      "commit": "46bbc9824db782c903d70970471629aa26bc29c9",
+      "tree": "8fe69170ab956bfcb5cda0288ac32e062eeee818",
+      "frozenAt": "2026-07-31T06:40:28+08:00",
+      "elapsedMinutes": 26.8,
+      "targetedStatus": "PASS",
+      "targetedSeconds": 17.265,
+      "r1Verdict": "FAIL",
+      "r1P0": 0,
+      "r1P1": 3
+    },
+    "repairCandidate": {
+      "commit": "26d3eb4ea196fedb66b82a8d11b7a36caa0ad2c7",
+      "tree": "890c39976ebbb212ee9afa7b8b3d3de8f5b73681",
+      "frozenAt": "2026-07-31T06:53:48+08:00",
+      "elapsedMinutes": 40.1,
+      "targetedStatus": "PASS",
+      "targetedSeconds": 3.142,
+      "skillValidationStatus": "PASS",
+      "skillValidationSeconds": 0.073,
+      "diffCheckStatus": "PASS",
+      "diffCheckSeconds": 0.032,
+      "adjacentValidationFlowSeconds": 0.007,
+      "r2Verdict": "FAIL",
+      "r2NewP0": 0,
+      "r2NewP1": 1
+    },
+    "reviewRounds": [
+      {
+        "round": "R1",
+        "verdict": "FAIL",
+        "reviewedCommit": "46bbc9824db782c903d70970471629aa26bc29c9",
+        "evidencePath": "docs/evidence/TASK-0042/review-r1.md"
+      },
+      {
+        "round": "R2",
+        "verdict": "FAIL",
+        "reviewedCommit": "26d3eb4ea196fedb66b82a8d11b7a36caa0ad2c7",
+        "evidencePath": "docs/evidence/TASK-0042/review-r2.md"
+      }
+    ],
+    "failedCandidateBackup": {
+      "backupRef": "refs/task-backups/TASK-0042-r2-failed-candidate-20260731-065846",
+      "bundlePath": "G:/ai/hxf/.task-backups/TASK-0042-r2-failed-candidate-20260731-065846.bundle",
+      "bundleSha256": "b4cd2ab34404ba5ee6cad6a625f0a0e56e370738853598dd78ee8a0aec6db071",
+      "bundleVerify": "PASS",
+      "localOnlyBeforeTerminalPush": true
+    },
+    "forwardCleanup": {
+      "commit": "dde501dfa669fb580c8688a9ca388a7eca85fca6",
+      "tree": "78fc27f074d8f0483a91e2cd8e558cc83dffbc23",
+      "preImplementationCommit": "0d67c20e4af4052dabe956e57a14a8790a8c9259",
+      "preImplementationTree": "78fc27f074d8f0483a91e2cd8e558cc83dffbc23",
+      "terminalTreeFailedImplementationResidual": false,
+      "failedCandidateCommitsRemainAuditAncestors": true
+    },
+    "backlogRegistration": {
+      "commit": "36ffbc409318834692b8af3212457e8875a23880",
+      "newCards": [
+        "TASK-0043",
+        "TASK-0044",
+        "TASK-0045",
+        "TASK-0046",
+        "TASK-0047"
+      ],
+      "task0042Registered": false,
+      "promotableAfterRejection": false
+    },
+    "supersededPlanningEdges": {
+      "TASK-0039": {
+        "replacement": "TASK-0045",
+        "commit": "5f0222efb1e48b06f5ae35fbd2608c0483087c71"
+      },
+      "TASK-0040": {
+        "replacement": "TASK-0046",
+        "commit": "94bea2a5bafb1ac49585bd18d76ad439311b3f0c"
+      },
+      "TASK-0041": {
+        "replacement": "TASK-0047",
+        "commit": "0d67c20e4af4052dabe956e57a14a8790a8c9259"
+      }
+    },
+    "candidateCanonical": "NOT_RUN",
+    "exactShaCi": "NOT_RUN",
+    "wallClock": {
+      "startedAt": "2026-07-31T06:13:42.2624992+08:00",
+      "evidenceFrozenAt": "2026-07-31T07:03:36.6364543+08:00",
+      "elapsedMinutesAtEvidenceFreeze": 49.9,
+      "candidateDeadlineMinutes": 45,
+      "candidateDeadlineStatus": "MET_AT_26.8_MINUTES",
+      "hardFuseMinutes": 90,
+      "hardFuseStatus": "NOT_TRIGGERED"
+    }
+  }
+}

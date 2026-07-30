@@ -1,0 +1,38 @@
+{
+  "taskId": "TASK-0042",
+  "state": "REJECTED",
+  "baseCommit": "0c15def49faf36cbd9a07fb76203f6191c60e5e6",
+  "headCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6",
+  "evidencePath": "docs/evidence/TASK-0042/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0042-terminal-cleanup-audit",
+      "kind": "terminal-cleanup-audit",
+      "verdict": "FAIL",
+      "reviewedCommit": "dde501dfa669fb580c8688a9ca388a7eca85fca6",
+      "evidencePath": "docs/evidence/TASK-0042/review-terminal-cleanup.md"
+    }
+  ],
+  "completed": [
+    "同步并核验 main/origin Base 0c15def、aiCoding local 环境与 clean 0/0；未绑定恢复 Doctor 按 Owner 纠偏安全终止并记录 CANCELLED/NOT_RUN",
+    "完成 standalone DRAFT、READY、IN_PROGRESS 生命周期；DRAFT Doctor 65,150 checks/244.265 秒 PASS，READY Doctor 66,102 checks/253.188 秒 PASS",
+    "原子登记 TASK-0043～TASK-0047，并以三个独立规划边把 TASK-0039～TASK-0041 分别 SUPERSEDED 到 TASK-0045～TASK-0047",
+    "首候选 46bbc982/8fe69170 在 26.8 分钟冻结；R1 为 FAIL，0 P0、3 P1；唯一修复批次后候选 26d3eb4e/890c3997 的冻结定向矩阵、Windows Skill validator 与 diff check 均 PASS",
+    "R2 delta-only 为 FAIL，0 新 P0、1 新 P1；wrapper Evidence alias 语义仍冲突，按合同未启动 candidate canonical、exact-SHA CI 或第三轮 Reviewer",
+    "完整失败候选保存为本地 backup ref 与 bundle；bundle verify PASS，SHA-256 为 b4cd2ab34404ba5ee6cad6a625f0a0e56e370738853598dd78ee8a0aec6db071",
+    "以前向清理提交 dde501d 恢复实现前 Tree 78fc27f；终态 Tree 不包含 policy、task-delivery-flow Skill、Doctor/test、AGENTS/entrypoint 或 Sources/Invariants/Skills registry 失败实现"
+  ],
+  "remaining": [
+    "创建新的永久替代任务，重新交付机器策略、双模式 Skill、薄入口、Doctor/tests 与 CI-unblock fixture；必须把 wrapper 作为实际冻结命令记录而非 Evidence alias，并增加能拒绝 unless 例外的精确测试",
+    "为 TASK-0043～TASK-0047 创建新的永久 replacement 链；TASK-0043 依赖已 REJECTED 的 TASK-0042，按机器策略永远不能由本链正常晋级，0044～0047 的依赖后代同样被阻断",
+    "TASK-0039～TASK-0041 已永久 SUPERSEDED，且现有 replacements 0045～0047 又位于被阻断链中；不得恢复旧 ID 或宣称现有链可推进",
+    "新的替代卡必须在全新可见任务中按 standalone idle DRAFT 合法创建；不得把 TASK-0042 改回非终态，也不得在本任务继续修复"
+  ],
+  "knownRisks": [
+    "终态 Tree 已清除失败实现，但前向、不改写历史意味着 46bbc982、237151ee、26d3eb4e 仍是审计祖先；这些提交与 blob 只能作为 FAIL 证据，绝不能当作远端 PASS、可复用候选或依赖放行条件",
+    "TASK-0042 没有 candidate canonical 或 exact-SHA CI；GitHub 5-job run 未创建，任何旧 run 都不能绑定本任务",
+    "Backlog 保留 0043～0047 与 0039～0041 resolution 作为不可改写规划历史，但整个 successor 链因 TASK-0042 REJECTED 不可晋级，协调任务必须使用新永久 ID 重建",
+    "失败候选 bundle/ref 是本机恢复材料，不是仓库真源、候选 PASS 或授权；使用前必须由新任务选择性审阅"
+  ],
+  "nextAction": "协调任务须先创建新的永久替代任务与后继链；机器当前首个可晋级 Backlog 任务为 TASK-0013，但治理缺口修复前不得晋级"
+}
