@@ -1323,6 +1323,35 @@ class DeterminismTests(unittest.TestCase):
             self.assertFalse(any(part in PRUNED_DIRS for part in path.relative_to(ROOT).parts), path)
 
 
+class CiWorkflowTests(unittest.TestCase):
+    def test_harness_matrix_preserves_checks_and_uses_per_os_timeout_budgets(self) -> None:
+        workflow = load_yaml(ROOT / ".github/workflows/ci.yml")
+        harness = workflow["jobs"]["harness"]
+
+        self.assertFalse(harness["strategy"]["fail-fast"])
+        self.assertEqual("${{ matrix.os }}", harness["runs-on"])
+        self.assertEqual("${{ matrix.timeoutMinutes }}", harness["timeout-minutes"])
+        self.assertEqual(
+            [
+                {"os": "ubuntu-latest", "timeoutMinutes": 10},
+                {"os": "windows-latest", "timeoutMinutes": 20},
+                {"os": "macos-latest", "timeoutMinutes": 10},
+            ],
+            harness["strategy"]["matrix"]["include"],
+        )
+        self.assertEqual(
+            [
+                "Checkout",
+                "Set up Python",
+                "Install harness dependencies",
+                "Test Harness failure and portability rules",
+                "Run canonical Harness precheck (Windows wrapper)",
+                "Run canonical Harness precheck (POSIX wrapper)",
+            ],
+            [step["name"] for step in harness["steps"]],
+        )
+
+
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
     def test_posix_wrapper_falls_back_from_old_python3(self) -> None:
