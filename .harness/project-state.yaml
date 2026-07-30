@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0008
+activeTaskCard: docs/tasks/TASK-0008-generation-attempt-candidate-reducer.md
 lastAcceptedTask: TASK-0007
 lastAcceptedHandoff: docs/handoffs/TASK-0007.json
 lastTerminalTask: TASK-0007
 lastTerminalHandoff: docs/handoffs/TASK-0007.json
-nextAction: 创建 Generation Attempt/Candidate 事件归约与隔离合同基线任务
+nextAction: 实现 Generation Attempt/Candidate 事件归约与隔离合同基线
 capabilityGates:
   businessImplementation:
     state: BLOCKED
