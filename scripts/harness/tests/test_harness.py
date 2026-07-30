@@ -620,6 +620,86 @@ class GitHistoryPolicyTests(unittest.TestCase):
                 record.replace(b"source.txt", b"../source.txt")
             )
 
+    def test_doctor_snapshot_rejects_windows_escape_and_malformed_status(self) -> None:
+        oid = b"0" * 40
+        record = (
+            b"2 R. N... 100644 100644 100644 "
+            + oid
+            + b" "
+            + oid
+            + b" R100 target.txt\0source.txt\0"
+        )
+        unsafe_variants = (
+            record.replace(b"target.txt", b"..\\outside.txt"),
+            record.replace(b"source.txt", b"..\\outside.txt"),
+            record.replace(b"target.txt", b"C:\\outside.txt"),
+            record.replace(b"source.txt", b"C:/outside.txt"),
+            record.replace(b"target.txt", b"\\\\server\\share\\outside.txt"),
+        )
+        malformed_variants = (
+            record.rstrip(b"\0"),
+            record.replace(b"R100", b"R101"),
+            b"# branch.oid " + oid + b"\0",
+            b"! ignored.txt\0",
+            record.replace(b"source.txt\0", b"source.txt\0\0"),
+        )
+        for raw in (*unsafe_variants, *malformed_variants):
+            with self.subTest(raw=raw):
+                with self.assertRaises(HarnessError):
+                    doctor.DoctorGitSnapshot._status_candidate_paths(raw)
+
+    def test_doctor_snapshot_rejects_hidden_index_flags(self) -> None:
+        for flag in ("--skip-worktree", "--assume-unchanged"):
+            with self.subTest(flag=flag), tempfile.TemporaryDirectory() as directory:
+                repository = self._repository(directory)
+                fixture = repository / "fixture.txt"
+                fixture.write_text("base\n", encoding="utf-8")
+                self._git(repository, "add", ".")
+                self._git(repository, "commit", "-qm", "base")
+                self._git(repository, "update-index", flag, "fixture.txt")
+                fixture.write_text("hidden-change\n", encoding="utf-8")
+
+                with (
+                    patch.object(harness_common, "ROOT", repository),
+                    patch.object(doctor, "ROOT", repository),
+                    self.assertRaisesRegex(HarnessError, "hidden Git index flag"),
+                ):
+                    with doctor.doctor_git_snapshot():
+                        pass
+                self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_doctor_snapshot_detects_index_flag_change_with_same_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            stage_before = self._git(repository, "ls-files", "--stage")
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    self._git(
+                        repository,
+                        "update-index",
+                        "--skip-worktree",
+                        "fixture.txt",
+                    )
+                    self.assertEqual(
+                        stage_before,
+                        self._git(repository, "ls-files", "--stage"),
+                    )
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            self.assertTrue(
+                any("Git index flag" in error for error in audit.errors),
+                audit.errors,
+            )
+
     def test_doctor_snapshot_cache_does_not_cross_scopes_or_repositories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

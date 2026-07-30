@@ -119,6 +119,26 @@ CANONICAL_PRECHECK_COMMANDS = {
     "paidFeatureCheck": ["scripts/harness/check_paid_features.py"],
     "betaRosterGate": ["scripts/harness/check_beta_gate.py"],
 }
+PORCELAIN_V2_ORDINARY_RE = re.compile(
+    rb"^1 [^ \0]{2} [^ \0]{4} [0-7]{6} [0-7]{6} [0-7]{6} "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) (.+)$",
+    re.DOTALL,
+)
+PORCELAIN_V2_RENAME_RE = re.compile(
+    rb"^2 [^ \0]{2} [^ \0]{4} [0-7]{6} [0-7]{6} [0-7]{6} "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
+    rb"[RC](?:100|[0-9]{1,2}) (.+)$",
+    re.DOTALL,
+)
+PORCELAIN_V2_UNMERGED_RE = re.compile(
+    rb"^u [^ \0]{2} [^ \0]{4} [0-7]{6} [0-7]{6} [0-7]{6} [0-7]{6} "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) (.+)$",
+    re.DOTALL,
+)
 
 
 class DoctorGitSnapshot:
@@ -132,10 +152,18 @@ class DoctorGitSnapshot:
         if index.returncode != 0:
             detail = index.stderr.decode("utf-8", errors="replace").strip()
             raise HarnessError(f"doctor snapshot: cannot read Git index: {detail}")
+        index_flags = git_bytes("ls-files", "-v", "-z", check=False)
+        if index_flags.returncode != 0:
+            detail = index_flags.stderr.decode("utf-8", errors="replace").strip()
+            raise HarnessError(
+                f"doctor snapshot: cannot read Git index flags: {detail}"
+            )
+        self._validate_index_flags(index_flags.stdout)
         worktree_bytes, worktree_fingerprint = self._capture_worktree()
 
         self.head = head.stdout.strip()
         self.index_bytes = index.stdout
+        self.index_flags_bytes = index_flags.stdout
         self.worktree_bytes = worktree_bytes
         self.worktree_fingerprint = worktree_fingerprint
         self._trees: dict[str, dict[str, tuple[str, str, str]]] = {}
@@ -161,37 +189,43 @@ class DoctorGitSnapshot:
 
     @staticmethod
     def _status_candidate_paths(raw: bytes) -> tuple[bytes, ...]:
-        records = raw.split(b"\0")
+        if raw and not raw.endswith(b"\0"):
+            raise HarnessError(
+                "doctor snapshot: unterminated worktree status output"
+            )
+        records = raw.split(b"\0")[:-1] if raw else []
         candidates: set[bytes] = set()
         index = 0
         while index < len(records):
             record = records[index]
             index += 1
             if not record:
-                continue
+                raise HarnessError(
+                    "doctor snapshot: empty worktree status record"
+                )
             prefix = record[:1]
             if prefix == b"1":
-                parts = record.split(b" ", 8)
-                if len(parts) != 9:
+                match = PORCELAIN_V2_ORDINARY_RE.fullmatch(record)
+                if match is None:
                     raise HarnessError(
                         "doctor snapshot: malformed ordinary worktree status record"
                     )
-                record_candidates = (parts[8],)
+                record_candidates = (match.group(1),)
             elif prefix == b"2":
-                parts = record.split(b" ", 9)
-                if len(parts) != 10 or index >= len(records) or not records[index]:
+                match = PORCELAIN_V2_RENAME_RE.fullmatch(record)
+                if match is None or index >= len(records) or not records[index]:
                     raise HarnessError(
                         "doctor snapshot: malformed rename worktree status record"
                     )
-                record_candidates = (parts[9], records[index])
+                record_candidates = (match.group(1), records[index])
                 index += 1  # The following NUL record is the original path.
             elif prefix == b"u":
-                parts = record.split(b" ", 10)
-                if len(parts) != 11:
+                match = PORCELAIN_V2_UNMERGED_RE.fullmatch(record)
+                if match is None:
                     raise HarnessError(
                         "doctor snapshot: malformed unmerged worktree status record"
                     )
-                record_candidates = (parts[10],)
+                record_candidates = (match.group(1),)
             elif prefix == b"?":
                 if not record.startswith(b"? "):
                     raise HarnessError(
@@ -199,25 +233,50 @@ class DoctorGitSnapshot:
                     )
                 record_candidates = (record[2:],)
             elif prefix in (b"#", b"!"):
-                continue
+                raise HarnessError(
+                    "doctor snapshot: unexpected worktree status record type"
+                )
             else:
                 raise HarnessError(
                     "doctor snapshot: unknown worktree status record type"
                 )
             for candidate in record_candidates:
+                decoded_candidate = os.fsdecode(candidate)
                 if (
                     not candidate
+                    or b"\\" in candidate
                     or candidate.startswith(b"/")
                     or any(
                         component in (b"", b".", b"..")
                         for component in candidate.split(b"/")
                     )
+                    or not is_repository_relative(decoded_candidate)
                 ):
                     raise HarnessError(
                         "doctor snapshot: unsafe worktree status path"
                     )
                 candidates.add(candidate)
         return tuple(sorted(candidates))
+
+    @staticmethod
+    def _validate_index_flags(raw: bytes) -> None:
+        if raw and not raw.endswith(b"\0"):
+            raise HarnessError("doctor snapshot: unterminated Git index flags")
+        records = raw.split(b"\0")[:-1] if raw else []
+        for record in records:
+            if (
+                len(record) < 3
+                or record[1:2] != b" "
+                or not record[2:]
+            ):
+                raise HarnessError("doctor snapshot: malformed Git index flags")
+            tag = record[:1]
+            if tag == b"S" or (b"a" <= tag <= b"z"):
+                raise HarnessError(
+                    "doctor snapshot: hidden Git index flag is not allowed"
+                )
+            if tag not in b"HMRCK?":
+                raise HarnessError("doctor snapshot: malformed Git index flags")
 
     @staticmethod
     def _race_stat(stat_result: os.stat_result) -> tuple[int, int, int, int, int, int]:
@@ -236,6 +295,10 @@ class DoctorGitSnapshot:
         raw_path: bytes,
     ) -> tuple[bytes, str, int, int, bytes]:
         decoded_path = os.fsdecode(raw_path)
+        if b"\\" in raw_path or not is_repository_relative(decoded_path):
+            raise HarnessError(
+                "doctor snapshot: unsafe worktree status path"
+            )
         candidate = ROOT.joinpath(*decoded_path.split("/"))
         try:
             before = os.lstat(candidate)
@@ -396,6 +459,24 @@ class DoctorGitSnapshot:
             index.returncode == 0 and index.stdout == self.index_bytes,
             "doctor snapshot: Git index changed during validation",
         )
+        index_flags = git_bytes("ls-files", "-v", "-z", check=False)
+        try:
+            if index_flags.returncode != 0:
+                detail = index_flags.stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                ).strip()
+                raise HarnessError(
+                    f"doctor snapshot: cannot read Git index flags: {detail}"
+                )
+            self._validate_index_flags(index_flags.stdout)
+        except HarnessError as exc:
+            audit.error(str(exc))
+        else:
+            audit.require(
+                index_flags.stdout == self.index_flags_bytes,
+                "doctor snapshot: Git index flags changed during validation",
+            )
         try:
             worktree_bytes, worktree_fingerprint = self._capture_worktree()
         except HarnessError as exc:
