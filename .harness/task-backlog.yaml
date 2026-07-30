@@ -209,6 +209,12 @@ resolutions:
     decidedBy: repository-owner
     decidedAt: "2026-07-31"
     replacementTask: TASK-0046
+  TASK-0041:
+    state: SUPERSEDED
+    reason: TASK-0040 已由 TASK-0046 替代；由 TASK-0047 在新后继链上承接相同 snapshot receipt 与 Evidence 范围。
+    decidedBy: repository-owner
+    decidedAt: "2026-07-31"
+    replacementTask: TASK-0047
 tasks:
   TASK-0012:
     title: PLANNED 队列、Backlog 和 Harness 治理
