@@ -154,6 +154,10 @@ PROJECT_STATE_READY_MUTABLE_FIELDS = {
 TASK_LEDGER_PATH = ".harness/task-ledger.yaml"
 TASK_BACKLOG_PATH = ".harness/task-backlog.yaml"
 PROJECT_STATE_PATH = ".harness/project-state.yaml"
+TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
+TASK_DELIVERY_POLICY_CANONICAL_HASH = (
+    "d7403d37d4fcf8264e7cc1b8df7d2dbfba195eeb020f51f9f5c43f3b2060c17f"
+)
 PLANNING_CONTRACT_HASH_ALGORITHM = "SHA256_CANONICAL_JSON_V1"
 PLANNED_CARD_FIELDS = {
     "taskId",
@@ -5645,10 +5649,19 @@ def validate_skills(
         if path_is_file:
             try:
                 metadata = parse_skill_metadata(path)
-                extension = metadata.get("metadata")
-                extension = extension if isinstance(extension, dict) else {}
-                declared_id = extension.get("id", metadata.get("id", metadata.get("name")))
-                declared_version = extension.get("version", metadata.get("version", ""))
+                if skill_id == "task-delivery-flow":
+                    audit.require(
+                        set(metadata) == {"name", "description"},
+                        "Skill task-delivery-flow: frontmatter must contain only "
+                        "name and description; version belongs to the registry",
+                    )
+                    declared_id = metadata.get("name")
+                    declared_version = entry.get("version", "")
+                else:
+                    extension = metadata.get("metadata")
+                    extension = extension if isinstance(extension, dict) else {}
+                    declared_id = extension.get("id", metadata.get("id", metadata.get("name")))
+                    declared_version = extension.get("version", metadata.get("version", ""))
                 audit.require(declared_id == skill_id, f"Skill {skill_id}: frontmatter id/name mismatch")
                 audit.require(
                     str(declared_version) == str(entry.get("version", "")),
@@ -5884,6 +5897,204 @@ def validate_sources(audit: Audit, tasks: dict[str, dict[str, Any]]) -> None:
             audit.require(bool(contract.get("schemaVersion")), f"{relative(path)}: schemaVersion is required")
         except HarnessError as exc:
             audit.error(str(exc))
+
+
+def validate_task_delivery_policy(audit: Audit) -> None:
+    policy = load_yaml(ROOT / TASK_DELIVERY_POLICY_PATH)
+    audit.require(
+        set(policy)
+        == {
+            "schemaVersion",
+            "policyId",
+            "canonicalLifecycleSource",
+            "taskSource",
+            "skill",
+            "modes",
+            "complexityGate",
+            "budgets",
+            "validation",
+            "review",
+            "candidateIdentity",
+            "followUpTasks",
+        },
+        "task-delivery-policy: root fields do not match the frozen machine contract",
+    )
+    audit.require(
+        policy.get("schemaVersion") == 1
+        and policy.get("policyId") == "task-delivery"
+        and policy.get("canonicalLifecycleSource") == ".harness/task-lifecycle.yaml"
+        and policy.get("taskSource") == TASK_BACKLOG_PATH
+        and policy.get("skill")
+        == {
+            "id": "task-delivery-flow",
+            "registry": ".harness/skills.yaml",
+        },
+        "task-delivery-policy: identity, lifecycle, Backlog or Skill source drifted",
+    )
+    modes = policy.get("modes")
+    audit.require(
+        isinstance(modes, dict) and set(modes) == {"single-card", "longline"},
+        "task-delivery-policy: modes must be exactly single-card and longline",
+    )
+    lifecycle = load_yaml(ROOT / ".harness/task-lifecycle.yaml")
+    single_card = modes.get("single-card") if isinstance(modes, dict) else {}
+    single_card = single_card if isinstance(single_card, dict) else {}
+    happy_path = single_card.get("happyPath")
+    transitions = lifecycle.get("transitions")
+    transitions = transitions if isinstance(transitions, dict) else {}
+    if isinstance(happy_path, list):
+        for source, target in zip(happy_path, happy_path[1:]):
+            audit.require(
+                target in transitions.get(source, []),
+                f"task-delivery-policy: happyPath edge {source} -> {target} "
+                "is not in the canonical lifecycle",
+            )
+    else:
+        audit.error("task-delivery-policy: single-card happyPath must be a list")
+    audit.require(
+        canonical_json_sha256(policy) == TASK_DELIVERY_POLICY_CANONICAL_HASH,
+        "task-delivery-policy: canonical contract hash drifted; update the C4 "
+        "validator and tests in the same authorized change",
+    )
+
+    sources = load_yaml(ROOT / ".harness/sources-of-truth.yaml").get("sources")
+    audit.require(
+        isinstance(sources, dict)
+        and sources.get("taskDeliveryPolicy") == TASK_DELIVERY_POLICY_PATH,
+        "task-delivery-policy: sources-of-truth must register the unique policy",
+    )
+    registry = load_yaml(ROOT / ".harness/skills.yaml").get("skills")
+    delivery_skills = (
+        [
+            entry
+            for entry in registry
+            if isinstance(entry, dict) and entry.get("id") == "task-delivery-flow"
+        ]
+        if isinstance(registry, list)
+        else []
+    )
+    audit.require(
+        delivery_skills
+        == [
+            {
+                "id": "task-delivery-flow",
+                "version": "1.0.0",
+                "path": "skills/task-delivery-flow/SKILL.md",
+            }
+        ],
+        "task-delivery-policy: task-delivery-flow must be registered exactly once "
+        "at version 1.0.0",
+    )
+    invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
+    delivery_invariants = (
+        [
+            invariant
+            for invariant in invariants
+            if isinstance(invariant, dict) and invariant.get("id") == "INV-HARNESS-007"
+        ]
+        if isinstance(invariants, list)
+        else []
+    )
+    audit.require(
+        delivery_invariants
+        == [
+            {
+                "id": "INV-HARNESS-007",
+                "statement": (
+                    "single-card and longline delivery follow one registered machine "
+                    "policy with bounded review exact candidate identity exact-SHA "
+                    "validation and fail-closed dependency release"
+                ),
+                "enforcement": [
+                    "task_delivery_policy",
+                    "harness_doctor",
+                    "harness_tests",
+                    "repository_skill",
+                ],
+            }
+        ],
+        "task-delivery-policy: INV-HARNESS-007 projection drifted",
+    )
+
+    expected_follow_ups = {
+        "idlePlanningCheckpointCore": "TASK-0043",
+        "idlePlanningCheckpointConsumers": "TASK-0044",
+        "harnessPerformance": "TASK-0045",
+        "pathAwareCi": "TASK-0046",
+        "snapshotReceipt": "TASK-0047",
+    }
+    audit.require(
+        policy.get("followUpTasks") == expected_follow_ups,
+        "task-delivery-policy: follow-up task projection drifted",
+    )
+    backlog = load_yaml(ROOT / TASK_BACKLOG_PATH)
+    entries = backlog.get("tasks")
+    entries = entries if isinstance(entries, dict) else {}
+    expected_dependencies = {
+        "TASK-0043": ["TASK-0042"],
+        "TASK-0044": ["TASK-0043"],
+        "TASK-0045": ["TASK-0044"],
+        "TASK-0046": ["TASK-0045"],
+        "TASK-0047": ["TASK-0046"],
+    }
+    for task_id, dependencies in expected_dependencies.items():
+        entry = entries.get(task_id)
+        audit.require(
+            isinstance(entry, dict) and entry.get("dependencies") == dependencies,
+            f"task-delivery-policy: {task_id} successor dependency drifted",
+        )
+    execution_order = backlog.get("executionOrder")
+    successor_order: list[Any] | None = None
+    if (
+        isinstance(execution_order, list)
+        and "TASK-0041" in execution_order
+        and "TASK-0013" in execution_order
+    ):
+        successor_order = execution_order[
+            execution_order.index("TASK-0041") + 1 : execution_order.index("TASK-0013")
+        ]
+    audit.require(
+        successor_order
+        == ["TASK-0043", "TASK-0044", "TASK-0045", "TASK-0046", "TASK-0047"],
+        "task-delivery-policy: successor execution order must be between "
+        "TASK-0041 and TASK-0013",
+    )
+    resolutions = backlog.get("resolutions")
+    resolutions = resolutions if isinstance(resolutions, dict) else {}
+    for old_task, replacement in {
+        "TASK-0039": "TASK-0045",
+        "TASK-0040": "TASK-0046",
+        "TASK-0041": "TASK-0047",
+    }.items():
+        resolution = resolutions.get(old_task)
+        audit.require(
+            isinstance(resolution, dict)
+            and resolution.get("state") == "SUPERSEDED"
+            and resolution.get("replacementTask") == replacement,
+            f"task-delivery-policy: {old_task} must be SUPERSEDED by {replacement}",
+        )
+
+    agents_text = read_repository_text(ROOT / "AGENTS.md")
+    for required_reference in (
+        TASK_DELIVERY_POLICY_PATH,
+        "skills/task-delivery-flow/SKILL.md",
+    ):
+        audit.require(
+            required_reference in agents_text,
+            f"task-delivery-policy: AGENTS.md misses {required_reference}",
+        )
+    for duplicated_field in (
+        "targetWallMinutes",
+        "hardFuseWallMinutes",
+        "candidateDeadlineMinutes",
+        "maximumFixBatches",
+        "requiredInputs:",
+    ):
+        audit.require(
+            duplicated_field not in agents_text,
+            "task-delivery-policy: AGENTS.md duplicates machine strategy field "
+            f"{duplicated_field}",
+        )
 
 
 def validate_harness_runtime(audit: Audit) -> None:
@@ -7531,6 +7742,7 @@ def main() -> int:
                 with timed_phase("skills sources and entrypoints"):
                     skills, protected_rules = validate_skills(audit, tasks)
                     validate_sources(audit, tasks)
+                    validate_task_delivery_policy(audit)
                     validate_harness_runtime(audit)
                     validate_entrypoints(audit)
                     validate_commands(audit)

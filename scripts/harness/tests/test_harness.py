@@ -94,6 +94,7 @@ from doctor import (  # noqa: E402
     planned_card_render_projection,
     validate_skills,
     validate_sources,
+    validate_task_delivery_policy,
     validate_tasks,
     validate_task_authorization_history,
     validate_task_backlog_data,
@@ -1390,6 +1391,35 @@ class ContextTests(unittest.TestCase):
         self.assertTrue(any("riskClass must be one of" in error for error in audit.errors), audit.errors)
 
 
+class DeliveryPolicyTests(unittest.TestCase):
+    def test_policy_registry_skill_and_entrypoint_projection(self) -> None:
+        audit = Audit()
+        validate_task_delivery_policy(audit)
+        validate_entrypoints(audit)
+        validate_sources(audit, {})
+        validate_skills(audit, {})
+        self.assertEqual([], audit.errors)
+
+    def test_policy_validator_rejects_contract_drift(self) -> None:
+        policy_path = ROOT / ".harness/task-delivery-policy.yaml"
+        drifted = copy.deepcopy(load_yaml(policy_path))
+        drifted["budgets"]["targetWallMinutes"] = 61
+        real_load_yaml = doctor.load_yaml
+
+        def load_with_drift(path: Path) -> dict[str, object]:
+            if Path(path) == policy_path:
+                return drifted
+            return real_load_yaml(path)
+
+        audit = Audit()
+        with patch.object(doctor, "load_yaml", side_effect=load_with_drift):
+            validate_task_delivery_policy(audit)
+        self.assertTrue(
+            any("canonical contract hash drifted" in error for error in audit.errors),
+            audit.errors,
+        )
+
+
 class BacklogTests(unittest.TestCase):
     EXPECTED_TITLES = {
         "TASK-0012": "PLANNED 队列、Backlog 和 Harness 治理",
@@ -1422,6 +1452,11 @@ class BacklogTests(unittest.TestCase):
         "TASK-0039": "Harness 阶段计时与跨文件系统性能引擎",
         "TASK-0040": "Harness 路径感知 CI 与包装器平台策略",
         "TASK-0041": "Harness 内容寻址快照复用与 Evidence 门禁",
+        "TASK-0043": "Idle planning checkpoint 核心父边校验",
+        "TASK-0044": "Idle planning checkpoint 四消费者接线",
+        "TASK-0045": "Harness 阶段计时与跨文件系统性能引擎替代",
+        "TASK-0046": "Harness 路径感知 CI 与包装器平台策略替代",
+        "TASK-0047": "Harness 内容寻址快照复用与 Evidence 门禁替代",
     }
 
     def load_inputs(
@@ -1534,6 +1569,11 @@ class BacklogTests(unittest.TestCase):
             "TASK-0039",
             "TASK-0040",
             "TASK-0041",
+            "TASK-0043",
+            "TASK-0044",
+            "TASK-0045",
+            "TASK-0046",
+            "TASK-0047",
             *[f"TASK-{value:04d}" for value in range(13, 37)],
         ]
         self.assertEqual(expected_ids, backlog["executionOrder"])
@@ -1544,39 +1584,47 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(28, projection["plannedCount"])
-        expected_next = (
-            None
-            if tasks["TASK-0037"]["state"] in {*lifecycle["activeStates"], "DRAFT"}
-            else "TASK-0038"
+        self.assertEqual(29, projection["plannedCount"])
+        repository_busy = any(
+            task["state"] in {*lifecycle["activeStates"], "DRAFT"}
+            for task in tasks.values()
         )
+        expected_next = None if repository_busy else "TASK-0043"
         self.assertEqual(expected_next, projection["nextPromotable"])
-        self.assertNotIn("TASK-0037", backlog["resolutions"])
+        self.assertEqual(
+            {
+                "TASK-0039": "TASK-0045",
+                "TASK-0040": "TASK-0046",
+                "TASK-0041": "TASK-0047",
+            },
+            {
+                task_id: resolution["replacementTask"]
+                for task_id, resolution in backlog["resolutions"].items()
+            },
+        )
         self.assertEqual(["TASK-0012"], backlog["tasks"]["TASK-0038"]["dependencies"])
         self.assertEqual(["TASK-0038"], backlog["tasks"]["TASK-0039"]["dependencies"])
         self.assertEqual(["TASK-0039"], backlog["tasks"]["TASK-0040"]["dependencies"])
         self.assertEqual(["TASK-0040"], backlog["tasks"]["TASK-0041"]["dependencies"])
+        self.assertEqual(["TASK-0042"], backlog["tasks"]["TASK-0043"]["dependencies"])
+        self.assertEqual(["TASK-0043"], backlog["tasks"]["TASK-0044"]["dependencies"])
+        self.assertEqual(["TASK-0044"], backlog["tasks"]["TASK-0045"]["dependencies"])
+        self.assertEqual(["TASK-0045"], backlog["tasks"]["TASK-0046"]["dependencies"])
+        self.assertEqual(["TASK-0046"], backlog["tasks"]["TASK-0047"]["dependencies"])
         self.assertEqual(["TASK-0012"], backlog["tasks"]["TASK-0013"]["dependencies"])
 
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0037"]["state"] = "REJECTED"
-        terminal_tasks["TASK-0037"]["resolutionReason"] = (
-            "静态范围无法在硬预算内安全闭环，转由四张永久替代卡严格串行推进。"
-        )
+        terminal_tasks["TASK-0042"]["state"] = "ACCEPTED"
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
             lifecycle,
         )
         self.assertTrue(terminal_projection["repositoryIdle"])
-        self.assertEqual(28, terminal_projection["plannedCount"])
-        self.assertEqual("TASK-0038", terminal_projection["nextPromotable"])
+        self.assertEqual(29, terminal_projection["plannedCount"])
+        self.assertEqual("TASK-0043", terminal_projection["nextPromotable"])
         self.assertIn(
-            "DEPENDENCY:TASK-0038:PLANNED",
-            terminal_projection["blockers"]["TASK-0039"],
-        )
-        self.assertIn(
-            "WAITING_FOR_ORDER:TASK-0038",
+            "WAITING_FOR_ORDER:TASK-0043",
             terminal_projection["blockers"]["TASK-0013"],
         )
 
@@ -3024,7 +3072,6 @@ class BacklogTests(unittest.TestCase):
     ) -> None:
         backlog, _, lifecycle, _ = self.load_inputs()
         task_path = str(backlog["tasks"]["TASK-0013"]["taskCard"])
-        good_card = (ROOT / task_path).read_bytes()
 
         def run_fixture(*, attack: bool) -> list[str]:
             with tempfile.TemporaryDirectory() as directory:
@@ -3043,8 +3090,14 @@ class BacklogTests(unittest.TestCase):
                 backlog_path = repository / ".harness/task-backlog.yaml"
                 lifecycle_path = repository / ".harness/task-lifecycle.yaml"
                 backlog_path.parent.mkdir(parents=True)
+                fixture_backlog = copy.deepcopy(backlog)
+                fixture_backlog["resolutions"] = {}
                 backlog_path.write_text(
-                    yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+                    yaml.safe_dump(
+                        fixture_backlog,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    ),
                     encoding="utf-8",
                 )
                 baseline_lifecycle = copy.deepcopy(lifecycle)
@@ -3057,11 +3110,37 @@ class BacklogTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                for entry in backlog["tasks"].values():
+                for task_id, entry in backlog["tasks"].items():
                     source = ROOT / str(entry["taskCard"])
                     target = repository / str(entry["taskCard"])
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(source.read_bytes())
+                    source_text = source.read_text(encoding="utf-8")
+                    if task_id == backlog["bootstrapTask"]:
+                        target.write_text(source_text, encoding="utf-8")
+                        continue
+                    metadata_match = TASK_BLOCK_RE.search(source_text)
+                    if metadata_match is None:
+                        raise AssertionError(f"{task_id}: fixture task YAML is missing")
+                    planned_metadata = {
+                        "taskId": task_id,
+                        "state": "PLANNED",
+                        "owner": "repository-owner",
+                        "planningBacklog": ".harness/task-backlog.yaml",
+                        "planningContractHash": canonical_json_sha256(entry),
+                        "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+                    }
+                    planned_yaml = yaml.safe_dump(
+                        planned_metadata,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    ).rstrip()
+                    target.write_text(
+                        source_text[: metadata_match.start(1)]
+                        + planned_yaml
+                        + source_text[metadata_match.end(1) :],
+                        encoding="utf-8",
+                    )
+                fixture_good_card = (repository / task_path).read_bytes()
 
                 def commit(message: str) -> str:
                     subprocess.run(["git", "add", "-A"], cwd=repository, check=True)
@@ -3095,14 +3174,14 @@ class BacklogTests(unittest.TestCase):
                 commit("introduce immutable history policy")
                 if attack:
                     (repository / task_path).write_bytes(
-                        good_card.replace(
+                        fixture_good_card.replace(
                             b"# TASK-0013",
                             b"# TASK-0013-CORRUPTED",
                             1,
                         )
                     )
                     commit("corrupt planning card")
-                    (repository / task_path).write_bytes(good_card)
+                    (repository / task_path).write_bytes(fixture_good_card)
                     restored = commit("restore planning card")
                     policy_lifecycle["rules"]["backlogHistoryPolicy"][
                         "activationCommit"
@@ -3136,7 +3215,7 @@ class BacklogTests(unittest.TestCase):
                     )
                     validate_task_backlog_history(
                         audit,
-                        backlog,
+                        fixture_backlog,
                         current_lifecycle,
                     )
                 return audit.errors
@@ -4434,16 +4513,49 @@ class ValidationFlowTests(unittest.TestCase):
 
     def test_agent_rules_define_snapshot_reuse_and_low_frequency_polling(self) -> None:
         instructions = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("完整 HEAD SHA、Git Index/候选树", instructions)
-        self.assertIn("所有显式与隐式命令输入均可证明不变", instructions)
-        self.assertIn("不是 Evidence 中精确命令的隐式别名", instructions)
-        self.assertIn(
-            "python scripts/harness/precheck.py --task TASK-ID",
-            instructions,
+        policy = load_yaml(ROOT / ".harness/task-delivery-policy.yaml")
+        skill = (ROOT / "skills/task-delivery-flow/SKILL.md").read_text(
+            encoding="utf-8"
         )
-        self.assertIn("默认约 60 秒", instructions)
-        self.assertIn("轮询只观察状态，绝不能触发第二次验证", instructions)
-        self.assertIn("不得新增 `REUSED` PASS", instructions)
+        self.assertIn(".harness/task-delivery-policy.yaml", instructions)
+        self.assertIn("skills/task-delivery-flow/SKILL.md", instructions)
+        self.assertNotIn("targetWallMinutes", instructions)
+        self.assertNotIn("candidateDeadlineMinutes", instructions)
+        self.assertEqual(
+            [
+                "HEAD_SHA",
+                "INDEX_TREE",
+                "WORKTREE",
+                "UNTRACKED_CANDIDATE",
+                "EXACT_COMMAND",
+                "OPERATING_SYSTEM",
+                "INTERPRETER",
+                "TOOLCHAIN",
+                "DEPENDENCIES",
+                "ENVIRONMENT",
+                "GIT_CONFIG",
+                "EXTERNAL_SERVICES",
+                "DATA_STATE",
+                "TASK_AUTHORIZATION",
+                "CONTEXT",
+                "COMMAND_REGISTRY",
+            ],
+            policy["candidateIdentity"]["requiredInputs"],
+        )
+        self.assertEqual(
+            "LOW_FREQUENCY_STATUS_ONLY",
+            policy["validation"]["longRunningCommand"]["polling"],
+        )
+        self.assertTrue(
+            policy["validation"]["longRunningCommand"]["duplicateExecutionForbidden"]
+        )
+        self.assertEqual("PASS", policy["candidateIdentity"]["acceptedResult"])
+        self.assertEqual(
+            ["FAIL", "CANCELLED", "TIMEOUT", "NOT_RUN"],
+            policy["candidateIdentity"]["nonPassResults"],
+        )
+        self.assertIn("only one long command process", skill)
+        self.assertIn("Unknown or changed identity", skill)
 
     def test_task_template_requires_exact_precheck_argv_evidence(self) -> None:
         template = (ROOT / "docs/tasks/task-card-template.md").read_text(
