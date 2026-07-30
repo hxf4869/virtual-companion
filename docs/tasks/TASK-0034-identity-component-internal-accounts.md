@@ -5,9 +5,11 @@ taskId: TASK-0034
 state: PLANNED
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
-planningContractHash: fe4366dec2647c81fc50dcf6f62f99e45183b3598c9f213377cba607d4faba8c
+planningContractHash: 97d1811077869765bf3dab340f350e477d3033283fec180c1dd33498457f8346
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
+
+> 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
 
 ## 目标
 

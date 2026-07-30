@@ -157,12 +157,28 @@ BACKLOG_TASK_FIELDS = {
     "acceptanceCriteria",
     "promotionConditions",
 }
+BACKLOG_PROMOTION_CONDITION_FIELDS = {
+    "requiresRepositoryIdle",
+    "requiresAcceptedDependencies",
+    "requiresApprovedDecisionGates",
+    "requiresFirstByExecutionOrder",
+}
 BACKLOG_GATE_FIELDS = {
     "kind",
     "status",
     "requiredFor",
     "requiredDecisions",
     "approval",
+}
+BACKLOG_GATE_APPROVAL_FIELDS = {
+    "approvedBy",
+    "approvedAt",
+    "evidence",
+    "decisionEvidence",
+}
+BACKLOG_GATE_DECISION_EVIDENCE_FIELDS = {
+    "value",
+    "evidence",
 }
 BACKLOG_RESOLUTION_FIELDS = {
     "state",
@@ -171,6 +187,11 @@ BACKLOG_RESOLUTION_FIELDS = {
     "decidedAt",
     "replacementTask",
 }
+PLANNED_CARD_NON_NORMATIVE_NOTICE = (
+    "> 规划正文仅为非规范的人类可读渲染；唯一机器真源是 "
+    "`.harness/task-backlog.yaml` 中本 Task ID 的静态合同，"
+    "并由 `planningContractHash` 完整绑定。"
+)
 TASK_LEDGER_FIELDS = {
     "state",
     "contractVersion",
@@ -1503,6 +1524,8 @@ def validate_ready_project_state_checkpoint(
     task: dict[str, Any],
     authorization_commit: str,
     checkpoint_paths: set[str],
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
 ) -> None:
     task_id = str(task.get("taskId", ""))
     task_path = str(task.get("_path", ""))
@@ -1573,6 +1596,13 @@ def validate_ready_project_state_checkpoint(
         if not isinstance(parent_task, dict):
             parent_task = {}
     validate_ready_parent_projection(audit, task_id, parent_state, parent_task)
+    if task.get("planningBacklog") == TASK_BACKLOG_PATH:
+        validate_backlog_draft_promotion_at_base(
+            audit,
+            task,
+            tasks,
+            lifecycle,
+        )
     direct_paths = set(changed_paths_between(parent_commit, authorization_commit))
     allowed_direct_paths = {
         task_path,
@@ -1872,7 +1902,21 @@ def validate_tasks(
                 f"{task.get('state')!r}",
             )
             validate_planned_task_metadata(audit, task_id, task)
+            try:
+                planned_text = read_repository_text(ROOT / path)
+                audit.require(
+                    PLANNED_CARD_NON_NORMATIVE_NOTICE in planned_text,
+                    f"{path}: PLANNED card must declare its body as a "
+                    "non-normative Backlog rendering",
+                )
+            except (OSError, UnicodeError) as exc:
+                audit.error(f"{path}: cannot read PLANNED card body: {exc}")
             continue
+        audit.require(
+            task.get("state") != "SUPERSEDED",
+            f"{path}: SUPERSEDED is reserved for planning-only Backlog cards; "
+            "an execution task must close as ACCEPTED or REJECTED",
+        )
         missing = sorted(required - task.keys())
         audit.require(not missing, f"{path}: missing task fields: {missing}")
         audit.require(bool(TASK_ID_RE.fullmatch(task_id)), f"{path}: invalid taskId {task_id!r}")
@@ -2032,6 +2076,8 @@ def validate_tasks(
                     task,
                     authorization_commit,
                     checkpoint_paths,
+                    tasks,
+                    lifecycle,
                 )
                 context_path = str(task.get("contextLock", ""))
                 authorized_context = git_object(authorization_commit, context_path)
@@ -2067,6 +2113,30 @@ def validate_tasks(
                 )
             except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
                 audit.error(f"{path}: cannot verify authorization checkpoint: {exc}")
+
+
+def validate_pending_draft_limit(
+    audit: Audit,
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
+) -> list[str]:
+    draft_tasks = sorted(
+        task_id
+        for task_id, task in tasks.items()
+        if task.get("state") == "DRAFT"
+    )
+    maximum_pending_drafts = int(
+        (lifecycle.get("rules") or {}).get(
+            "maximumPendingDraftTasks",
+            1,
+        )
+    )
+    audit.require(
+        len(draft_tasks) <= maximum_pending_drafts,
+        "task lifecycle: multiple pending DRAFT tasks are not allowed: "
+        f"{draft_tasks}",
+    )
+    return draft_tasks
 
 
 def validate_ledger_history(
@@ -3173,6 +3243,20 @@ def validate_task_backlog_history(
     introductions: set[str] = set()
     snapshots: dict[str, dict[str, Any]] = {}
 
+    def contracts_are_frozen(commit: str, backlog: dict[str, Any]) -> bool:
+        bootstrap_task = str(backlog.get("bootstrapTask", ""))
+        try:
+            ledger = yaml_at_commit(commit, TASK_LEDGER_PATH)
+        except HarnessError:
+            return False
+        entries = ledger.get("tasks")
+        return (
+            isinstance(entries, dict)
+            and isinstance(entries.get(bootstrap_task), dict)
+            and entries[bootstrap_task].get("state")
+            in {"ACCEPTED", "REJECTED"}
+        )
+
     def snapshot(commit: str) -> dict[str, Any] | None:
         if commit in snapshots:
             return snapshots[commit]
@@ -3222,7 +3306,10 @@ def validate_task_backlog_history(
                 f"task-backlog: {TASK_BACKLOG_PATH} was deleted on edge "
                 f"{parent}..{commit}",
             )
-            if child is not None:
+            if (
+                child is not None
+                and contracts_are_frozen(parent, parent_value)
+            ):
                 validate_backlog_history_edge(
                     audit,
                     parent_value,
@@ -3235,12 +3322,201 @@ def validate_task_backlog_history(
         f"{sorted(introductions)}",
     )
     head = snapshot("HEAD")
-    if head is not None:
+    if head is not None and contracts_are_frozen("HEAD", head):
         validate_backlog_history_edge(
             audit,
             head,
             current,
             "HEAD..WORKTREE",
+        )
+
+
+def derive_backlog_promotion_projection(
+    backlog: dict[str, Any],
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
+    *,
+    draft_candidate: str | None = None,
+) -> dict[str, Any]:
+    entries = backlog.get("tasks")
+    entries = entries if isinstance(entries, dict) else {}
+    execution_order = backlog.get("executionOrder")
+    execution_order = (
+        [str(item) for item in execution_order]
+        if isinstance(execution_order, list)
+        else []
+    )
+    gates = backlog.get("decisionGates")
+    gates = gates if isinstance(gates, dict) else {}
+    resolutions = backlog.get("resolutions")
+    resolutions = resolutions if isinstance(resolutions, dict) else {}
+    active_states = set(str(item) for item in lifecycle.get("activeStates", []))
+    repository_idle = not any(
+        task_id != draft_candidate
+        and (
+            task.get("state") in active_states
+            or task.get("state") == "DRAFT"
+        )
+        for task_id, task in tasks.items()
+    )
+
+    blockers: dict[str, list[str]] = {}
+    promotable: list[str] = []
+    planned_count = 0
+    for task_id in execution_order:
+        task = tasks.get(task_id)
+        state = str(task.get("state", "")) if task is not None else "MISSING"
+        is_candidate = state == "PLANNED" or (
+            draft_candidate == task_id and state == "DRAFT"
+        )
+        if not is_candidate:
+            continue
+        if state == "PLANNED":
+            planned_count += 1
+        entry = entries.get(task_id)
+        entry = entry if isinstance(entry, dict) else {}
+        conditions = entry.get("promotionConditions")
+        conditions = conditions if isinstance(conditions, dict) else {}
+        task_blockers: list[str] = []
+        if task_id in resolutions:
+            resolution = resolutions[task_id]
+            task_blockers.append(
+                f"RESOLVED:{resolution.get('state') if isinstance(resolution, dict) else 'INVALID'}"
+            )
+        if conditions.get("requiresAcceptedDependencies") is True:
+            dependencies = entry.get("dependencies")
+            dependencies = dependencies if isinstance(dependencies, list) else []
+            for dependency in dependencies:
+                dependency_id = str(dependency)
+                dependency_task = tasks.get(dependency_id)
+                dependency_state = (
+                    str(dependency_task.get("state", "MISSING"))
+                    if dependency_task is not None
+                    else "MISSING"
+                )
+                if dependency_state != "ACCEPTED":
+                    task_blockers.append(
+                        f"DEPENDENCY:{dependency_id}:{dependency_state}"
+                    )
+        if conditions.get("requiresApprovedDecisionGates") is True:
+            task_gates = entry.get("decisionGates")
+            task_gates = task_gates if isinstance(task_gates, list) else []
+            for gate_value in task_gates:
+                gate_id = str(gate_value)
+                gate = gates.get(gate_id)
+                gate_status = (
+                    str(gate.get("status", "MISSING"))
+                    if isinstance(gate, dict)
+                    else "MISSING"
+                )
+                if gate_status != "APPROVED":
+                    task_blockers.append(
+                        f"DECISION_GATE:{gate_id}:{gate_status}"
+                    )
+        if (
+            conditions.get("requiresRepositoryIdle") is True
+            and not repository_idle
+        ):
+            task_blockers.append("REPOSITORY_NOT_IDLE")
+        blockers[task_id] = task_blockers
+        if not task_blockers:
+            promotable.append(task_id)
+
+    next_promotable = promotable[0] if promotable else None
+    for task_id in promotable[1:]:
+        entry = entries.get(task_id)
+        conditions = (
+            entry.get("promotionConditions")
+            if isinstance(entry, dict)
+            else None
+        )
+        if (
+            isinstance(conditions, dict)
+            and conditions.get("requiresFirstByExecutionOrder") is True
+        ):
+            blockers[task_id].append(
+                f"WAITING_FOR_ORDER:{next_promotable}"
+            )
+
+    return {
+        "plannedCount": planned_count,
+        "nextPromotable": next_promotable,
+        "blockers": blockers,
+        "repositoryIdle": repository_idle,
+    }
+
+
+def task_snapshot_at_commit(
+    audit: Audit,
+    commit: str,
+    tasks: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    snapshot: dict[str, dict[str, Any]] = {}
+    for task_id, task in tasks.items():
+        path = str(task.get("_path", ""))
+        if not is_repository_relative(path):
+            continue
+        try:
+            entry = git_tree_entry(commit, path)
+            if entry is None:
+                continue
+            audit.require(
+                entry[:2] == ("100644", "blob"),
+                f"{task_id}: historical task card at {commit} must be a regular "
+                "100644 blob",
+            )
+            metadata = task_metadata_at_commit(commit, path)
+            metadata["_path"] = path
+            snapshot[task_id] = metadata
+        except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(
+                f"{task_id}: cannot load task snapshot at {commit}: {exc}"
+            )
+    return snapshot
+
+
+def validate_backlog_draft_promotion_at_base(
+    audit: Audit,
+    task: dict[str, Any],
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
+) -> None:
+    task_id = str(task.get("taskId", ""))
+    base_commit = str(task.get("baseCommit", ""))
+    try:
+        backlog = yaml_at_commit(base_commit, TASK_BACKLOG_PATH)
+        state = yaml_at_commit(base_commit, PROJECT_STATE_PATH)
+        base_tasks = task_snapshot_at_commit(audit, base_commit, tasks)
+        planned = base_tasks.get(task_id)
+        audit.require(
+            planned is not None and planned.get("state") == "PLANNED",
+            f"{task_id}: backlog-managed DRAFT must be PLANNED at Base Commit",
+        )
+        projection = validate_task_backlog_data(
+            audit,
+            backlog,
+            base_tasks,
+            lifecycle,
+            state,
+        )
+        blockers = projection.get("blockers")
+        blockers = blockers if isinstance(blockers, dict) else {}
+        candidate_blockers = blockers.get(task_id)
+        candidate_blockers = (
+            candidate_blockers
+            if isinstance(candidate_blockers, list)
+            else ["MISSING_FROM_PROMOTION_PROJECTION"]
+        )
+        audit.require(
+            projection.get("nextPromotable") == task_id
+            and not candidate_blockers,
+            f"{task_id}: DRAFT promotion bypasses Backlog order, dependencies or "
+            f"decision gates at Base Commit; next={projection.get('nextPromotable')!r}, "
+            f"blockers={candidate_blockers}",
+        )
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+        audit.error(
+            f"{task_id}: cannot reconstruct Backlog promotion at Base Commit: {exc}"
         )
 
 
@@ -3317,6 +3593,11 @@ def validate_task_backlog_data(
         "task-backlog: PLANNED must not consume activeTask",
     )
     audit.require(
+        lifecycle_rules.get("plannedRequiresBacklogEntry") is True,
+        "task-backlog: lifecycle must require every PLANNED card to belong "
+        "to the canonical Backlog",
+    )
+    audit.require(
         rules.get("maximumPendingDraftTasks")
         == lifecycle_rules.get("maximumPendingDraftTasks")
         == 1,
@@ -3355,6 +3636,15 @@ def validate_task_backlog_data(
         == {"DRAFT", "REJECTED", "SUPERSEDED"},
         "task-backlog: PLANNED must support DRAFT promotion and preserved "
         "REJECTED/SUPERSEDED planning resolution",
+    )
+    audit.require(
+        all(
+            "SUPERSEDED" not in set(str(item) for item in targets)
+            for source, targets in transitions.items()
+            if source != "PLANNED" and isinstance(targets, list)
+        ),
+        "task-backlog: SUPERSEDED must be reachable only from planning-only "
+        "PLANNED cards",
     )
     audit.require(
         set(lifecycle_rules.get("planningTerminalStates", []))
@@ -3522,6 +3812,29 @@ def validate_task_backlog_data(
         task_id: index
         for index, task_id in enumerate(execution_order)
     }
+    backlog_bound_task_ids = {
+        task_id
+        for task_id, task in tasks.items()
+        if task.get("planningBacklog") == TASK_BACKLOG_PATH
+    }
+    unregistered_backlog_tasks = sorted(
+        backlog_bound_task_ids - set(entries)
+    )
+    audit.require(
+        not unregistered_backlog_tasks,
+        "task-backlog: every PLANNED or promoted Backlog-bound card must have "
+        f"exactly one canonical entry; unregistered={unregistered_backlog_tasks}",
+    )
+    planning_only_task_ids = {
+        task_id
+        for task_id, task in tasks.items()
+        if is_planning_only_task(task)
+    }
+    audit.require(
+        planning_only_task_ids <= set(entries),
+        "task-backlog: planning-only cards exist outside the canonical Backlog: "
+        f"{sorted(planning_only_task_ids - set(entries))}",
+    )
 
     gates = backlog.get("decisionGates")
     audit.require(
@@ -3558,7 +3871,7 @@ def validate_task_backlog_data(
             raw_gate.get("requiredFor"),
         )
         gate_requirements[str(gate_id)] = set(required_for)
-        validate_nonblank_string_list(
+        required_decisions = validate_nonblank_string_list(
             audit,
             f"{label}.requiredDecisions",
             raw_gate.get("requiredDecisions"),
@@ -3572,13 +3885,14 @@ def validate_task_backlog_data(
         else:
             audit.require(
                 isinstance(approval, dict)
-                and set(approval) == {"approvedBy", "approvedAt", "evidence"},
-                f"{label}: decided gate requires canonical approval evidence",
+                and set(approval) == BACKLOG_GATE_APPROVAL_FIELDS,
+                f"{label}: decided gate requires Owner evidence for every "
+                "required decision",
             )
             if isinstance(approval, dict):
                 audit.require(
-                    is_canonical_identity(approval.get("approvedBy")),
-                    f"{label}.approval.approvedBy must be canonical",
+                    approval.get("approvedBy") == "repository-owner",
+                    f"{label}.approval.approvedBy must be repository-owner",
                 )
                 audit.require(
                     is_valid_approval_timestamp(approval.get("approvedAt")),
@@ -3589,6 +3903,33 @@ def validate_task_backlog_data(
                     f"{label}.approval.evidence",
                     approval.get("evidence"),
                 )
+                decision_evidence = approval.get("decisionEvidence")
+                audit.require(
+                    isinstance(decision_evidence, dict)
+                    and set(decision_evidence) == set(required_decisions),
+                    f"{label}.approval.decisionEvidence must cover every "
+                    "requiredDecision exactly",
+                )
+                if isinstance(decision_evidence, dict):
+                    for decision in required_decisions:
+                        decision_record = decision_evidence.get(decision)
+                        audit.require(
+                            isinstance(decision_record, dict)
+                            and set(decision_record)
+                            == BACKLOG_GATE_DECISION_EVIDENCE_FIELDS,
+                            f"{label}.approval.decisionEvidence[{decision!r}] "
+                            "must record value and evidence",
+                        )
+                        if isinstance(decision_record, dict):
+                            for field in sorted(
+                                BACKLOG_GATE_DECISION_EVIDENCE_FIELDS
+                            ):
+                                validate_nonblank_text(
+                                    audit,
+                                    f"{label}.approval.decisionEvidence"
+                                    f"[{decision!r}].{field}",
+                                    decision_record.get(field),
+                                )
 
     titles: set[str] = set()
     dependencies_by_task: dict[str, list[str]] = {}
@@ -3690,12 +4031,26 @@ def validate_task_backlog_data(
                 f"{label}.scope.out",
                 scope.get("out"),
             )
-        for field in ("forbidden", "acceptanceCriteria", "promotionConditions"):
+        for field in ("forbidden", "acceptanceCriteria"):
             validate_nonblank_string_list(
                 audit,
                 f"{label}.{field}",
                 raw_entry.get(field),
             )
+        promotion_conditions = raw_entry.get("promotionConditions")
+        audit.require(
+            isinstance(promotion_conditions, dict)
+            and set(promotion_conditions)
+            == BACKLOG_PROMOTION_CONDITION_FIELDS,
+            f"{label}.promotionConditions must be the executable condition "
+            f"object {sorted(BACKLOG_PROMOTION_CONDITION_FIELDS)}",
+        )
+        if isinstance(promotion_conditions, dict):
+            for field in sorted(BACKLOG_PROMOTION_CONDITION_FIELDS):
+                audit.require(
+                    promotion_conditions.get(field) is True,
+                    f"{label}.promotionConditions.{field} must be true",
+                )
 
         if discovered is None:
             continue
@@ -3848,55 +4203,13 @@ def validate_task_backlog_data(
             "resolution exactly",
         )
 
-    repository_idle = not any(
-        task.get("state") in active_states or task.get("state") == "DRAFT"
-        for task in tasks.values()
+    projection = derive_backlog_promotion_projection(
+        backlog,
+        tasks,
+        lifecycle,
     )
-    blockers: dict[str, list[str]] = {}
-    promotable: list[str] = []
-    planned_count = 0
-    for task_id in execution_order:
-        task = tasks.get(task_id)
-        if task is None or task.get("state") != "PLANNED":
-            continue
-        planned_count += 1
-        task_blockers: list[str] = []
-        if task_id in resolutions:
-            resolution = resolutions[task_id]
-            task_blockers.append(f"RESOLVED:{resolution.get('state')}")
-        for dependency in dependencies_by_task.get(task_id, []):
-            dependency_task = tasks.get(dependency)
-            dependency_state = (
-                str(dependency_task.get("state", "MISSING"))
-                if dependency_task is not None
-                else "MISSING"
-            )
-            if dependency_state != "ACCEPTED":
-                task_blockers.append(
-                    f"DEPENDENCY:{dependency}:{dependency_state}"
-                )
-        for gate_id in gates_by_task.get(task_id, []):
-            gate = gates.get(gate_id)
-            gate_status = (
-                str(gate.get("status", "MISSING"))
-                if isinstance(gate, dict)
-                else "MISSING"
-            )
-            if gate_status != "APPROVED":
-                task_blockers.append(
-                    f"DECISION_GATE:{gate_id}:{gate_status}"
-                )
-        if not repository_idle:
-            task_blockers.append("REPOSITORY_NOT_IDLE")
-        blockers[task_id] = task_blockers
-        if not task_blockers:
-            promotable.append(task_id)
-    next_promotable = promotable[0] if promotable else None
-    for task_id in promotable[1:]:
-        blockers[task_id].append(
-            f"WAITING_FOR_ORDER:{next_promotable}"
-        )
-
+    repository_idle = bool(projection.get("repositoryIdle"))
+    next_promotable = projection.get("nextPromotable")
     if repository_idle and next_promotable:
         audit.require(
             next_promotable in str(state.get("nextAction", "")),
@@ -3904,10 +4217,54 @@ def validate_task_backlog_data(
             f"{next_promotable}",
         )
 
+    backlog_drafts = sorted(
+        task_id
+        for task_id, task in tasks.items()
+        if task.get("state") == "DRAFT"
+        and task.get("planningBacklog") == TASK_BACKLOG_PATH
+    )
+    audit.require(
+        len(backlog_drafts) <= 1,
+        "task-backlog: multiple Backlog-managed DRAFT promotions are forbidden: "
+        f"{backlog_drafts}",
+    )
+    draft_promotions: dict[str, dict[str, Any]] = {}
+    for draft_task_id in backlog_drafts:
+        draft_projection = derive_backlog_promotion_projection(
+            backlog,
+            tasks,
+            lifecycle,
+            draft_candidate=draft_task_id,
+        )
+        draft_promotions[draft_task_id] = draft_projection
+        draft_blockers = draft_projection.get("blockers")
+        draft_blockers = (
+            draft_blockers.get(draft_task_id)
+            if isinstance(draft_blockers, dict)
+            else None
+        )
+        draft_blockers = (
+            draft_blockers
+            if isinstance(draft_blockers, list)
+            else ["MISSING_FROM_PROMOTION_PROJECTION"]
+        )
+        audit.require(
+            draft_projection.get("nextPromotable") == draft_task_id
+            and not draft_blockers,
+            f"task-backlog: DRAFT {draft_task_id} bypasses execution order, "
+            "dependencies, repository-idle or hard decision gates; "
+            f"next={draft_projection.get('nextPromotable')!r}, "
+            f"blockers={draft_blockers}",
+        )
+        audit.require(
+            draft_task_id in str(state.get("nextAction", "")),
+            f"project-state.nextAction at DRAFT promotion must identify "
+            f"{draft_task_id}",
+        )
+
     return {
-        "plannedCount": planned_count,
-        "nextPromotable": next_promotable,
-        "blockers": blockers,
+        **projection,
+        "draftPromotions": draft_promotions,
         "executionOrder": execution_order,
         "criticalPath": critical_path,
     }
@@ -4536,8 +4893,10 @@ def validate_evidence_and_handoffs(
     )
     lifecycle_states = set(str(item) for item in lifecycle.get("states", []))
     audit.require(
-        handoff_states == lifecycle_states - {"PLANNED", "DRAFT"},
-        "handoff schema states drift from executable lifecycle states",
+        handoff_states
+        == lifecycle_states - {"PLANNED", "DRAFT", "SUPERSEDED"},
+        "handoff schema states drift from executable lifecycle states; "
+        "planning-only SUPERSEDED must not create a Handoff",
     )
     handoffs: dict[str, dict[str, Any]] = {}
     for path in sorted(repository_glob(ROOT / "docs/handoffs", "TASK-*.json")):
@@ -5475,6 +5834,8 @@ def validate_draft_checkpoint(
     audit: Audit,
     task: dict[str, Any],
     last_terminal_task: dict[str, Any] | None,
+    tasks: dict[str, dict[str, Any]],
+    lifecycle: dict[str, Any],
 ) -> None:
     task_id = str(task.get("taskId", ""))
     task_path = str(task.get("_path", ""))
@@ -5517,6 +5878,12 @@ def validate_draft_checkpoint(
                     f"{task_id}: PLANNED contract binding changed during DRAFT "
                     f"promotion: {field}",
                 )
+            validate_backlog_draft_promotion_at_base(
+                audit,
+                task,
+                tasks,
+                lifecycle,
+            )
         except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
             audit.error(
                 f"{task_id}: cannot validate PLANNED to DRAFT promotion: {exc}"
@@ -5835,20 +6202,10 @@ def main() -> int:
                     validate_entrypoints(audit)
                     validate_commands(audit)
 
-                draft_tasks = sorted(
-                    task_id
-                    for task_id, task in tasks.items()
-                    if task.get("state") == "DRAFT"
-                )
-                maximum_pending_drafts = int(
-                    (lifecycle.get("rules") or {}).get(
-                        "maximumPendingDraftTasks",
-                        1,
-                    )
-                )
-                audit.require(
-                    len(draft_tasks) <= maximum_pending_drafts,
-                    f"task lifecycle: multiple pending DRAFT tasks are not allowed: {draft_tasks}",
+                draft_tasks = validate_pending_draft_limit(
+                    audit,
+                    tasks,
+                    lifecycle,
                 )
                 pending_draft = draft_tasks[0] if len(draft_tasks) == 1 else None
 
@@ -5880,6 +6237,8 @@ def main() -> int:
                                 audit,
                                 selected_task,
                                 tasks.get(last_terminal_task),
+                                tasks,
+                                lifecycle,
                             )
                         validate_diff_scope(
                             audit,

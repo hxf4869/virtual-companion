@@ -1,7 +1,7 @@
 # PLANNED 卡模板
 
 Backlog 中预建的任务先使用以下最小机器投影。`.harness/task-backlog.yaml` 是目标、范围、禁止项、依赖、验收、
-决策闸门、执行顺序和晋级条件的唯一机器真源；卡片正文只做可读投影。PLANNED 不占
+决策闸门、执行顺序和晋级条件的唯一机器真源；卡片正文是非规范的人类可读渲染，不参与治理决策。PLANNED 不占
 `project-state.activeTask`、不可执行，也不得创建 Context Lock 或提前冻结动态证据。
 
 ```yaml
@@ -13,11 +13,14 @@ planningContractHash: ""
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
 
-PLANNED 正文必须包含“目标、范围内、明确禁止、依赖与决策闸门、验收、晋级规则”六节，并与
-Backlog 静态规划合同一致。PLANNED 取消或替代时保留原卡和 Backlog ID，把卡片 `state` 原子改为
+每张 PLANNED 卡的正文必须包含以下固定声明；正文可帮助阅读，但冲突时只接受 Hash 绑定的 Backlog 条目：
+
+> 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
+
+PLANNED 取消或替代时保留原卡和 Backlog ID，把卡片 `state` 原子改为
 REJECTED/SUPERSEDED，并向 Backlog 的 append-only `resolutions` 登记相同状态、非空原因和决策证据；该规划终态
-不伪造 Base、Context、命令、Evidence 或 Ledger。已经进入 DRAFT 或后续状态的任务按正常执行终态
-Evidence/Ledger 闭环。两种情况都不得复用编号。
+不伪造 Base、Context、命令、Evidence 或 Ledger。SUPERSEDED 只允许从 PLANNED 进入；已经进入 DRAFT 或后续状态的任务只以
+ACCEPTED/REJECTED 正常执行终态完成 Evidence/Ledger 闭环。两种情况都不得复用编号。
 
 # DRAFT 及后续状态模板
 

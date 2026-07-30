@@ -38,6 +38,7 @@ from doctor import (  # noqa: E402
     canonical_json_sha256,
     changed_skill_tree_ids,
     current_regular_file_bytes,
+    derive_backlog_promotion_projection,
     effective_protected_rules,
     first_existing_zed_instruction_path,
     is_review_evidence_path,
@@ -55,6 +56,8 @@ from doctor import (  # noqa: E402
     validate_authorized_task_presence,
     validate_active_task_base_freshness,
     validate_backlog_history_edge,
+    validate_backlog_resolution_commit,
+    validate_backlog_draft_promotion_at_base,
     validate_frozen_artifact_bytes,
     validate_command_registry,
     validate_check_artifact,
@@ -68,6 +71,7 @@ from doctor import (  # noqa: E402
     validate_ledger_edge,
     validate_nonblank_text,
     validate_portable_path_collisions,
+    validate_pending_draft_limit,
     validate_project_state,
     validate_project_state_mutation_policy,
     validate_required_command_coverage,
@@ -79,6 +83,7 @@ from doctor import (  # noqa: E402
     validate_tasks,
     validate_task_authorization_history,
     validate_task_backlog_data,
+    validate_task_backlog,
     validate_task_ledger_entries,
     validate_terminal_commit_requirement,
     validate_terminal_history_dominance,
@@ -1344,6 +1349,294 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(24, projection["plannedCount"])
         self.assertIsNone(projection["nextPromotable"])
 
+    def test_backlog_missing_file_fails_closed(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        with patch.object(
+            doctor,
+            "load_yaml",
+            side_effect=HarnessError(".harness/task-backlog.yaml: missing"),
+        ):
+            with self.assertRaisesRegex(HarnessError, "task-backlog.yaml"):
+                validate_task_backlog(
+                    Audit(),
+                    tasks,
+                    lifecycle,
+                    state,
+                )
+
+    def test_backlog_rejects_duplicate_order_and_invalid_critical_path(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        tampered = copy.deepcopy(backlog)
+        tampered["executionOrder"].append("TASK-0013")
+        tampered["criticalPath"].remove("TASK-0017")
+        audit = Audit()
+        validate_task_backlog_data(
+            audit,
+            tampered,
+            tasks,
+            lifecycle,
+            state,
+        )
+        messages = "\n".join(audit.errors)
+        self.assertIn("executionOrder must contain every task exactly once", messages)
+        self.assertIn("criticalPath edge", messages)
+        self.assertIn("not a longest dependency path", messages)
+
+    def test_backlog_rejects_unregistered_planned_card(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        with_extra = copy.deepcopy(tasks)
+        rogue = copy.deepcopy(tasks["TASK-0013"])
+        rogue["taskId"] = "TASK-9999"
+        with_extra["TASK-9999"] = rogue
+
+        task_audit = Audit()
+        validate_tasks(task_audit, {"TASK-9999": rogue}, lifecycle)
+        self.assertEqual([], task_audit.errors)
+
+        backlog_audit = Audit()
+        validate_task_backlog_data(
+            backlog_audit,
+            backlog,
+            with_extra,
+            lifecycle,
+            state,
+        )
+        self.assertTrue(
+            any("unregistered=['TASK-9999']" in error for error in backlog_audit.errors),
+            backlog_audit.errors,
+        )
+
+    def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
+        backlog, tasks, lifecycle, _ = self.load_inputs()
+        active_projection = derive_backlog_promotion_projection(
+            backlog,
+            tasks,
+            lifecycle,
+        )
+        self.assertIn(
+            "REPOSITORY_NOT_IDLE",
+            active_projection["blockers"]["TASK-0013"],
+        )
+
+        ordered_tasks = copy.deepcopy(tasks)
+        ordered_tasks["TASK-0012"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0013"]["state"] = "ACCEPTED"
+        ordered_projection = derive_backlog_promotion_projection(
+            backlog,
+            ordered_tasks,
+            lifecycle,
+        )
+        self.assertEqual("TASK-0014", ordered_projection["nextPromotable"])
+        self.assertIn(
+            "WAITING_FOR_ORDER:TASK-0014",
+            ordered_projection["blockers"]["TASK-0033"],
+        )
+
+    def test_backlog_draft_cannot_bypass_pending_hard_gate(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        bypass = copy.deepcopy(tasks)
+        for task_id in backlog["executionOrder"]:
+            if task_id == "TASK-0034":
+                break
+            bypass[task_id]["state"] = "ACCEPTED"
+        bypass["TASK-0034"]["state"] = "DRAFT"
+        idle_state = copy.deepcopy(state)
+        idle_state["activeTask"] = None
+        idle_state["activeTaskCard"] = None
+        idle_state["nextAction"] = "将 TASK-0034 晋级为唯一 DRAFT"
+
+        audit = Audit()
+        validate_task_backlog_data(
+            audit,
+            backlog,
+            bypass,
+            lifecycle,
+            idle_state,
+        )
+        messages = "\n".join(audit.errors)
+        self.assertIn("DRAFT TASK-0034 bypasses", messages)
+        self.assertIn(
+            "DECISION_GATE:GATE-IDENTITY-PROVIDER-SESSION:PENDING",
+            messages,
+        )
+
+    def test_backlog_draft_reconstructs_base_git_snapshot(self) -> None:
+        backlog, tasks, lifecycle, _ = self.load_inputs()
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            subprocess.run(
+                ["git", "config", "user.name", "Harness Test"],
+                cwd=repository,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "harness@example.invalid"],
+                cwd=repository,
+                check=True,
+            )
+            harness_dir = repository / ".harness"
+            harness_dir.mkdir(parents=True)
+            (harness_dir / "task-backlog.yaml").write_text(
+                (ROOT / ".harness/task-backlog.yaml").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (harness_dir / "project-state.yaml").write_text(
+                "schemaVersion: 1\n"
+                "phase: TECHNICAL_ALPHA\n"
+                "activeTask: null\n"
+                "activeTaskCard: null\n"
+                "nextAction: 将 TASK-0034 晋级为唯一 DRAFT\n",
+                encoding="utf-8",
+            )
+            task_paths: dict[str, dict[str, object]] = {}
+            for task_id, entry in backlog["tasks"].items():
+                relative_path = entry["taskCard"]
+                target = repository / relative_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                text = (ROOT / relative_path).read_text(encoding="utf-8")
+                if task_id == "TASK-0012":
+                    text = text.replace("state: IN_PROGRESS", "state: ACCEPTED", 1)
+                elif task_id < "TASK-0034":
+                    text = text.replace("state: PLANNED", "state: ACCEPTED", 1)
+                target.write_text(text, encoding="utf-8")
+                task_paths[task_id] = {"_path": relative_path}
+            subprocess.run(["git", "add", "--", "."], cwd=repository, check=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "base"],
+                cwd=repository,
+                check=True,
+            )
+            base_commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repository,
+                text=True,
+                stdout=subprocess.PIPE,
+                check=True,
+            ).stdout.strip()
+            candidate = copy.deepcopy(tasks["TASK-0034"])
+            candidate["state"] = "DRAFT"
+            candidate["baseCommit"] = base_commit
+            task_paths["TASK-0034"] = candidate
+            audit = Audit()
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                validate_backlog_draft_promotion_at_base(
+                    audit,
+                    candidate,
+                    task_paths,
+                    lifecycle,
+                )
+            messages = "\n".join(audit.errors)
+            self.assertIn("DRAFT promotion bypasses Backlog", messages)
+            self.assertIn(
+                "DECISION_GATE:GATE-IDENTITY-PROVIDER-SESSION:PENDING",
+                messages,
+            )
+
+    def test_hard_gate_requires_owner_and_each_decision_evidence(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        tampered = copy.deepcopy(backlog)
+        gate = tampered["decisionGates"]["GATE-IDENTITY-PROVIDER-SESSION"]
+        gate["status"] = "APPROVED"
+        gate["approval"] = {
+            "approvedBy": "agent",
+            "approvedAt": "2026-08-01",
+            "evidence": "ok",
+            "decisionEvidence": {
+                decision: {"value": "ok", "evidence": "ok"}
+                for decision in gate["requiredDecisions"][:-1]
+            },
+        }
+        audit = Audit()
+        validate_task_backlog_data(
+            audit,
+            tampered,
+            tasks,
+            lifecycle,
+            state,
+        )
+        messages = "\n".join(audit.errors)
+        self.assertIn("approvedBy must be repository-owner", messages)
+        self.assertIn("must cover every requiredDecision exactly", messages)
+
+        gate["approval"]["approvedBy"] = "repository-owner"
+        gate["approval"]["decisionEvidence"] = {
+            decision: {
+                "value": f"Owner-approved value for {decision}",
+                "evidence": f"Owner evidence for {decision}",
+            }
+            for decision in gate["requiredDecisions"]
+        }
+        valid = Audit()
+        validate_task_backlog_data(
+            valid,
+            tampered,
+            tasks,
+            lifecycle,
+            state,
+        )
+        self.assertEqual([], valid.errors)
+
+    def test_multiple_pending_drafts_fail_closed(self) -> None:
+        _, tasks, lifecycle, _ = self.load_inputs()
+        multiple = copy.deepcopy(tasks)
+        multiple["TASK-0013"]["state"] = "DRAFT"
+        multiple["TASK-0014"]["state"] = "DRAFT"
+        audit = Audit()
+        self.assertEqual(
+            ["TASK-0013", "TASK-0014"],
+            validate_pending_draft_limit(audit, multiple, lifecycle),
+        )
+        self.assertTrue(
+            any("multiple pending DRAFT" in error for error in audit.errors),
+            audit.errors,
+        )
+
+    def test_resolution_introduction_must_atomically_update_planned_card(self) -> None:
+        backlog, _, _, _ = self.load_inputs()
+        resolved = copy.deepcopy(backlog)
+        resolved["resolutions"]["TASK-0013"] = {
+            "state": "REJECTED",
+            "reason": "Owner cancelled the planned capability",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "task_metadata_at_commit",
+            return_value={"state": "PLANNED"},
+        ):
+            validate_backlog_resolution_commit(
+                audit,
+                "a" * 40,
+                resolved,
+                {"TASK-0013"},
+            )
+        self.assertTrue(
+            any("must atomically update its planning card" in error for error in audit.errors),
+            audit.errors,
+        )
+
+    def test_planned_body_declares_non_normative_backlog_projection(self) -> None:
+        _, tasks, lifecycle, _ = self.load_inputs()
+        planned = copy.deepcopy(tasks["TASK-0013"])
+        with patch.object(
+            doctor,
+            "read_repository_text",
+            return_value="# TASK-0013：tampered\n",
+        ):
+            audit = Audit()
+            validate_tasks(audit, {"TASK-0013": planned}, lifecycle)
+        self.assertTrue(
+            any("non-normative Backlog rendering" in error for error in audit.errors),
+            audit.errors,
+        )
+
     def test_planned_cards_bind_backlog_without_dynamic_evidence(self) -> None:
         backlog, tasks, _, _ = self.load_inputs()
         forbidden_dynamic = set(
@@ -1539,7 +1832,31 @@ class BacklogTests(unittest.TestCase):
             ["DRAFT", "REJECTED", "SUPERSEDED"],
             lifecycle["transitions"]["PLANNED"],
         )
+        for source, targets in lifecycle["transitions"].items():
+            if source != "PLANNED":
+                self.assertNotIn("SUPERSEDED", targets)
         self.assertFalse(lifecycle["rules"]["planningTerminalConsumesTaskLedger"])
+        handoff_schema = json.loads(
+            (ROOT / "docs/schemas/handoff.schema.json").read_text(encoding="utf-8")
+        )
+        self.assertNotIn(
+            "SUPERSEDED",
+            handoff_schema["properties"]["state"]["enum"],
+        )
+
+    def test_execution_task_cannot_use_planning_only_superseded(self) -> None:
+        _, _, lifecycle, _ = self.load_inputs()
+        execution = {
+            "_path": "docs/tasks/TASK-9999.md",
+            "taskId": "TASK-9999",
+            "state": "SUPERSEDED",
+        }
+        audit = Audit()
+        validate_tasks(audit, {"TASK-9999": execution}, lifecycle)
+        self.assertTrue(
+            any("SUPERSEDED is reserved for planning-only" in error for error in audit.errors),
+            audit.errors,
+        )
 
     def test_planned_task_cannot_be_selected_for_execution(self) -> None:
         _, tasks, _, _ = self.load_inputs()

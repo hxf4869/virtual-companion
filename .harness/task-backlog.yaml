@@ -179,8 +179,10 @@ tasks:
       - TASK-0012 至 TASK-0036 的 25 个编号、名称和规划合同完整受控
       - 独立 Reviewer、跨平台检查和精确实现 CI 全部通过
     promotionConditions:
-      - Owner 已批准 C4 Harness 变更
-      - TASK-0011 已 ACCEPTED 且仓库处于空闲终态边界
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0013:
     title: Provider Registry 与供应商中立准入模型
     taskCard: docs/tasks/TASK-0013-provider-registry-admission-model.md
@@ -202,8 +204,10 @@ tasks:
       - 供应商中立登记、禁用和能力匹配均有失败关闭测试
       - 业务模块不依赖供应商 SDK、模型名或 Key
     promotionConditions:
-      - TASK-0012 已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0014:
     title: 授权快照与 Execution Authorization Guard
     taskCard: docs/tasks/TASK-0014-execution-authorization-guard.md
@@ -225,8 +229,10 @@ tasks:
       - 所有外部 attempt 路径强制绑定双快照
       - 撤销、收窄、区域或合同失效均取消并释放额度
     promotionConditions:
-      - TASK-0013 已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0015:
     title: PostgreSQL、Flyway、复合所有权和 FORCE RLS
     taskCard: docs/tasks/TASK-0015-postgresql-flyway-force-rls.md
@@ -248,8 +254,10 @@ tasks:
       - 跨用户、跨关系、跨会话和缺上下文访问失败关闭
       - 一次性 PostgreSQL 18/pgvector 容器使用合成数据并完整清理
     promotionConditions:
-      - TASK-0014 已 ACCEPTED
-      - 在 DRAFT 动态锁定镜像版本、摘要、临时端口和清理命令
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0016:
     title: Worker Claim、Lease、Fence 与过期写拒绝
     taskCard: docs/tasks/TASK-0016-worker-claim-lease-fence.md
@@ -271,8 +279,10 @@ tasks:
       - 过期 lease、错误 token、旧 fence 和缺失上下文均零写入
       - 协调器只读取不透明任务元数据
     promotionConditions:
-      - TASK-0015 已 ACCEPTED
-      - 数据库测试资源按该任务动态锁定
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0017:
     title: Conversation/Generation 持久化与幂等接收
     taskCard: docs/tasks/TASK-0017-conversation-generation-persistence.md
@@ -294,8 +304,10 @@ tasks:
       - 重复接收只返回同一 generationId 且不重复创建消息
       - 所有状态与所有权约束具有数据库和集成测试
     promotionConditions:
-      - TASK-0015 已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0018:
     title: Finalization、Usage/Quota 结算与 Outbox 原子事务
     taskCard: docs/tasks/TASK-0018-finalization-usage-quota-outbox.md
@@ -319,8 +331,10 @@ tasks:
       - 故障注入证明原子提交或完整回滚
       - Provider EOS 绝不直接完成 Generation
     promotionConditions:
-      - TASK-0014、TASK-0016 和 TASK-0017 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0019:
     title: ContextPlan、人格结构、LISTEN/DISCUSS
     taskCard: docs/tasks/TASK-0019-context-plan-persona-listen-discuss.md
@@ -343,8 +357,10 @@ tasks:
       - Context 顺序、预算、来源和模式选择可确定性复测
       - 人格结构不包含供应商专属字段
     promotionConditions:
-      - TASK-0013 和 TASK-0017 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0020:
     title: 输入、增量输出和最终输出安全流水线
     taskCard: docs/tasks/TASK-0020-safety-pipeline.md
@@ -367,8 +383,10 @@ tasks:
       - 所有 classifier failure outcome 均失败关闭
       - final review 失败时不存在 chat.completed
     promotionConditions:
-      - TASK-0014 和 TASK-0019 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0021:
     title: 持久化 Fetch-SSE、续传、Gap/Reset/Snapshot
     taskCard: docs/tasks/TASK-0021-fetch-sse-resume-gap-reset-snapshot.md
@@ -391,8 +409,10 @@ tasks:
       - 断线、过期窗口、epoch 变化和越权恢复均有合同测试
       - H5 只推进最后连续序号
     promotionConditions:
-      - TASK-0018 和 TASK-0020 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0022:
     title: Fake/Failure 后端离线端到端纵切
     taskCard: docs/tasks/TASK-0022-fake-failure-offline-e2e-slice.md
@@ -416,8 +436,10 @@ tasks:
       - Fake 成功与 Failure 故障矩阵端到端可重复
       - 零真实外发、零真实数据且所有终态唯一
     promotionConditions:
-      - TASK-0016、TASK-0019 和 TASK-0021 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0023:
     title: OpenAPI 生成、Client 生成与漂移检查基线
     taskCard: docs/tasks/TASK-0023-openapi-client-generation-drift.md
@@ -439,8 +461,10 @@ tasks:
       - 同输入生成字节稳定且漂移失败关闭
       - Java 与 TypeScript 消费同一 OpenAPI 真源
     promotionConditions:
-      - TASK-0022 已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0024:
     title: Relationship 与唯一活跃 Companion
     taskCard: docs/tasks/TASK-0024-relationship-active-companion.md
@@ -463,8 +487,10 @@ tasks:
       - 并发创建仍最多一个活跃 Companion
       - 越权查询统一 NOT_FOUND_OR_FORBIDDEN
     promotionConditions:
-      - TASK-0015 和 TASK-0023 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0025:
     title: Chat、Generation、History API
     taskCard: docs/tasks/TASK-0025-chat-generation-history-api.md
@@ -488,8 +514,10 @@ tasks:
       - OpenAPI 合同、实现和生成 Client 无漂移
       - 幂等、取消、分页和越权测试全部通过
     promotionConditions:
-      - TASK-0021、TASK-0023 和 TASK-0024 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0026:
     title: H5 离线聊天、流式显示与恢复
     taskCard: docs/tasks/TASK-0026-h5-offline-chat-stream-recovery.md
@@ -511,8 +539,10 @@ tasks:
       - 离线成功、断线、Gap、Reset、取消和失败场景可自动复测
       - 客户端不伪造缺失 delta
     promotionConditions:
-      - TASK-0025 已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0027:
     title: Canonical Memory 持久化与所有权隔离
     taskCard: docs/tasks/TASK-0027-canonical-memory-persistence.md
@@ -535,8 +565,10 @@ tasks:
       - Canonical Memory 只有确认路径可创建有效记录
       - 跨用户、跨关系和缺上下文均失败关闭
     promotionConditions:
-      - TASK-0016 和 TASK-0024 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0028:
     title: 记忆候选、确认、修改、删除与来源 API
     taskCard: docs/tasks/TASK-0028-memory-candidate-management-api.md
@@ -560,8 +592,10 @@ tasks:
       - 所有模型提取候选必须明确确认
       - 确认、修改、删除、重复请求和越权均有合同测试
     promotionConditions:
-      - TASK-0020、TASK-0025 和 TASK-0027 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0029:
     title: 跨会话召回、Context 注入与删除墓碑
     taskCard: docs/tasks/TASK-0029-memory-recall-context-tombstone.md
@@ -584,8 +618,10 @@ tasks:
       - 删除前后召回、墓碑和索引重建具有确定性测试
       - 跨会话只注入当前 Owner/Relationship 的已确认记忆
     promotionConditions:
-      - TASK-0019 和 TASK-0028 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0030:
     title: H5 记忆管理界面
     taskCard: docs/tasks/TASK-0030-h5-memory-management.md
@@ -608,8 +644,10 @@ tasks:
       - 关键交互和越权/失败状态可自动复测
       - 来源、状态和删除结果与 API 真源一致
     promotionConditions:
-      - TASK-0026 和 TASK-0029 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0031:
     title: 模拟权益、Service Class 与确定性路由
     taskCard: docs/tasks/TASK-0031-entitlement-service-class-routing.md
@@ -633,8 +671,10 @@ tasks:
       - 相同输入产生相同路由和可审计 decisionNo
       - 无合格部署时明确 NO_ELIGIBLE_DEPLOYMENT
     promotionConditions:
-      - TASK-0013、TASK-0018 和 TASK-0022 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0032:
     title: 最小 ZERO_LLM、额度释放与全故障恢复
     taskCard: docs/tasks/TASK-0032-zero-llm-quota-failure-recovery.md
@@ -658,8 +698,10 @@ tasks:
       - 超时、取消、无容量和全故障均正确释放或结算额度
       - 恢复路径保持稳定 generationId 和唯一终态
     promotionConditions:
-      - TASK-0020、TASK-0021 和 TASK-0031 均已 ACCEPTED
-      - 当前无 DRAFT 或 active task
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0033:
     title: Anthropic Messages 离线 HTTP/SSE 合同
     taskCard: docs/tasks/TASK-0033-anthropic-messages-offline-contract.md
@@ -682,8 +724,10 @@ tasks:
       - model-protocol-contract 的两个主协议均通过本地 mock-server
       - 单请求、loopback、脱敏和失败关闭边界完整自动化
     promotionConditions:
-      - TASK-0011 和 TASK-0013 均已 ACCEPTED
-      - 在执行顺序中位于 TASK-0032 之后
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0034:
     title: 成熟身份组件与内部测试账号接入（硬决策闸门）
     taskCard: docs/tasks/TASK-0034-identity-component-internal-accounts.md
@@ -707,8 +751,10 @@ tasks:
       - 外部身份、owner_user_id 与认证会话映射失败关闭
       - 内部测试账号不开放公开注册且敏感数据不进日志、URL 或模型
     promotionConditions:
-      - TASK-0025 和 TASK-0026 均已 ACCEPTED
-      - GATE-IDENTITY-PROVIDER-SESSION 已由 Owner APPROVED 并记录证据
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0035:
     title: 单一获批真实模型供应商受控接入（硬决策闸门）
     taskCard: docs/tasks/TASK-0035-approved-live-model-provider.md
@@ -735,8 +781,10 @@ tasks:
       - 仅获批部署可外发且凭据不进入仓库、日志或业务类型
       - 真实外发故障、撤销、区域、合同和安全失败全部关闭
     promotionConditions:
-      - TASK-0020、TASK-0030、TASK-0032、TASK-0033 和 TASK-0034 均已 ACCEPTED
-      - GATE-LIVE-MODEL-PROVIDER 已由 Owner APPROVED 并记录全部决策证据
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
   TASK-0036:
     title: Technical Alpha 隔离、安全、记忆、故障与指标总验收
     taskCard: docs/tasks/TASK-0036-technical-alpha-acceptance.md
@@ -762,5 +810,7 @@ tasks:
       - 所有依赖的终态 Evidence 可追溯且总验收矩阵真实通过
       - Technical Alpha 禁止能力保持关闭，P0/P1/P2 全部闭环
     promotionConditions:
-      - TASK-0026、TASK-0030、TASK-0032、TASK-0034 和 TASK-0035 均已 ACCEPTED
-      - 任一依赖或其硬闸门未满足时保持 PLANNED/BLOCKED
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true

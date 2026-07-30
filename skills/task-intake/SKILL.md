@@ -34,7 +34,7 @@ metadata:
 
 1. 读取 `AGENTS.md`、项目状态、生命周期和相关机器真源。
 2. 确认不存在另一个活动任务；若存在，判断请求是否属于该任务，否则停止并交由 Owner 排序。
-3. 若任务已在 `.harness/task-backlog.yaml` 中登记为 PLANNED，先验证它是按执行顺序首个满足全部 ACCEPTED 依赖和 APPROVED 硬决策闸门的任务；PLANNED 卡只绑定 Backlog 静态规划合同 Hash，不得包含 Base、授权 Commit、Context、精确命令或 Skill 版本，也不占 `activeTask`、不得执行。
+3. 若任务已在 `.harness/task-backlog.yaml` 中登记为 PLANNED，先从最新终态 Base 快照验证它是按执行顺序首个满足全部 ACCEPTED 依赖和 APPROVED 硬决策闸门的任务；硬闸门只接受 `repository-owner`，且 `decisionEvidence` 必须逐项覆盖 `requiredDecisions`，每项同时记录非空 `value` 与 `evidence`。PLANNED 卡只绑定 Backlog 静态规划合同 Hash，正文是非规范渲染；不得包含 Base、授权 Commit、Context、精确命令或 Skill 版本，也不占 `activeTask`、不得执行。
 4. 以最后一个终态提交作为新任务唯一 `baseCommit`，不得先提交其他变更再把它们包含进 Base；创建或晋级唯一 DRAFT 任务卡，保持 Backlog 锁定的目标、范围、禁止项、依赖、验收和决策闸门不变，并补齐失败行为、停止条件和前向修复策略。
 5. 以当前 Base Commit 的仓库相对路径内容生成 Context Lock；外部资料先归档或只记录 provenance，不写入可复验路径。
 6. 解析受保护路径：`requiredSkillVersions` 固定 Base Commit 中实际执行的版本；若任务升级 Skill，另在 `targetSkillVersions` 声明交付版本；同时列出人工批准和独立复核要求。
@@ -46,8 +46,8 @@ metadata:
    `doctor.py --task TASK-ID`。通过后才允许实施者转为 IN_PROGRESS。
 10. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。
-    该规划终态不进入执行 Task Ledger。已进入 DRAFT 的任务在
-    ACCEPTED/REJECTED/SUPERSEDED 时，以单父提交原子更新任务卡、项目状态并把本任务追加到 `.harness/task-ledger.yaml`；同时加入 Evidence Pack 与 Handoff。REJECTED/SUPERSEDED 必须保留非空原因，Backlog 条目和永久 ID 不得删除或复用。历史条目和其绑定的任务卡、
+    该规划终态不进入执行 Task Ledger；其中 SUPERSEDED 只允许从 PLANNED 进入。已进入 DRAFT 的任务只能在
+    ACCEPTED/REJECTED 时，以单父提交原子更新任务卡、项目状态并把本任务追加到 `.harness/task-ledger.yaml`；同时加入 Evidence Pack 与 Handoff。已执行任务被替代时以 REJECTED 保留原因，并为替代方案分配新的永久 ID；Backlog 条目和永久 ID 不得删除或复用。历史条目和其绑定的任务卡、
    Evidence、Handoff 不可删除或改写。提交前完整暂存候选快照，并用 `doctor.py --task TASK-ID --pre-closure` 检查候选闭包；正式
    Doctor/Precheck 只接受已经形成真实 Git 提交的终态。
 
