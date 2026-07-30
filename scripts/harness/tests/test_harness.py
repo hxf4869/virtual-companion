@@ -602,6 +602,24 @@ class GitHistoryPolicyTests(unittest.TestCase):
                 audit.errors,
             )
 
+    def test_doctor_snapshot_validates_both_rename_or_copy_paths(self) -> None:
+        oid = b"0" * 40
+        record = (
+            b"2 R. N... 100644 100644 100644 "
+            + oid
+            + b" "
+            + oid
+            + b" R100 target.txt\0source.txt\0"
+        )
+        self.assertEqual(
+            (b"source.txt", b"target.txt"),
+            doctor.DoctorGitSnapshot._status_candidate_paths(record),
+        )
+        with self.assertRaisesRegex(HarnessError, "unsafe worktree status path"):
+            doctor.DoctorGitSnapshot._status_candidate_paths(
+                record.replace(b"source.txt", b"../source.txt")
+            )
+
     def test_doctor_snapshot_cache_does_not_cross_scopes_or_repositories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -176,14 +176,14 @@ class DoctorGitSnapshot:
                     raise HarnessError(
                         "doctor snapshot: malformed ordinary worktree status record"
                     )
-                candidate = parts[8]
+                record_candidates = (parts[8],)
             elif prefix == b"2":
                 parts = record.split(b" ", 9)
                 if len(parts) != 10 or index >= len(records) or not records[index]:
                     raise HarnessError(
                         "doctor snapshot: malformed rename worktree status record"
                     )
-                candidate = parts[9]
+                record_candidates = (parts[9], records[index])
                 index += 1  # The following NUL record is the original path.
             elif prefix == b"u":
                 parts = record.split(b" ", 10)
@@ -191,31 +191,32 @@ class DoctorGitSnapshot:
                     raise HarnessError(
                         "doctor snapshot: malformed unmerged worktree status record"
                     )
-                candidate = parts[10]
+                record_candidates = (parts[10],)
             elif prefix == b"?":
                 if not record.startswith(b"? "):
                     raise HarnessError(
                         "doctor snapshot: malformed untracked worktree status record"
                     )
-                candidate = record[2:]
+                record_candidates = (record[2:],)
             elif prefix in (b"#", b"!"):
                 continue
             else:
                 raise HarnessError(
                     "doctor snapshot: unknown worktree status record type"
                 )
-            if (
-                not candidate
-                or candidate.startswith(b"/")
-                or any(
-                    component in (b"", b".", b"..")
-                    for component in candidate.split(b"/")
-                )
-            ):
-                raise HarnessError(
-                    "doctor snapshot: unsafe worktree status path"
-                )
-            candidates.add(candidate)
+            for candidate in record_candidates:
+                if (
+                    not candidate
+                    or candidate.startswith(b"/")
+                    or any(
+                        component in (b"", b".", b"..")
+                        for component in candidate.split(b"/")
+                    )
+                ):
+                    raise HarnessError(
+                        "doctor snapshot: unsafe worktree status path"
+                    )
+                candidates.add(candidate)
         return tuple(sorted(candidates))
 
     @staticmethod
