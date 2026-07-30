@@ -35,10 +35,13 @@ from check_beta_gate import (  # noqa: E402
 from check_paid_features import PRUNED_DIRS, discover_files  # noqa: E402
 from doctor import (  # noqa: E402
     Audit,
+    canonical_exact_repo_path,
     canonical_json_sha256,
     changed_skill_tree_ids,
     current_regular_file_bytes,
     derive_backlog_promotion_projection,
+    effective_task_write_allowlist,
+    effective_task_write_scope,
     effective_protected_rules,
     first_existing_zed_instruction_path,
     is_review_evidence_path,
@@ -47,7 +50,9 @@ from doctor import (  # noqa: E402
     project_state_ready_projection,
     repository_index_paths,
     select_task_for_diff_scope,
+    sha256_text,
     task_authorization_projection,
+    task_acceptance_clauses,
     unique_json_object,
     validate_diff_scope,
     validate_draft_base_anchor,
@@ -56,6 +61,9 @@ from doctor import (  # noqa: E402
     validate_authorized_task_presence,
     validate_active_task_base_freshness,
     validate_backlog_history_edge,
+    validate_backlog_authorization_amendments,
+    validate_backlog_authorization_amendment_edge,
+    validate_backlog_card_history_edge,
     validate_backlog_resolution_commit,
     validate_backlog_draft_promotion_at_base,
     validate_frozen_artifact_bytes,
@@ -78,15 +86,22 @@ from doctor import (  # noqa: E402
     validate_ready_context_lock_bytes,
     validate_ready_parent_projection,
     validate_reviewer_identity_fields,
+    validate_scope_amendment_edge,
+    validate_scope_amendments,
+    validate_uncommitted_scope_amendments,
+    validate_authorization_amendment_contract,
+    planned_card_render_projection,
     validate_skills,
     validate_sources,
     validate_tasks,
     validate_task_authorization_history,
     validate_task_backlog_data,
     validate_task_backlog,
+    validate_task_backlog_history,
     validate_task_ledger_entries,
     validate_terminal_commit_requirement,
     validate_terminal_history_dominance,
+    validate_amendment_introduction,
 )
 from harness_common import (  # noqa: E402
     HarnessError,
@@ -380,6 +395,95 @@ class GitHistoryPolicyTests(unittest.TestCase):
                 )
             self.assertTrue(
                 any("outside the authorizationCommit ancestry" in error for error in audit.errors)
+            )
+
+    def test_merge_parent_cannot_gain_retroactive_scope_amendment(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            task_path = repository / "docs/tasks/TASK-9999-policy.md"
+            backlog_path = repository / ".harness/task-backlog.yaml"
+            task_path.parent.mkdir(parents=True, exist_ok=True)
+            backlog_path.parent.mkdir(parents=True, exist_ok=True)
+            backlog_path.write_text("schemaVersion: 1\n", encoding="utf-8")
+
+            def write_task(state: str, amendments: list[dict[str, object]]) -> None:
+                metadata = {
+                    "taskId": "TASK-9999",
+                    "state": state,
+                    "owner": "repository-owner",
+                    "writeAllowlist": [
+                        "docs/tasks/TASK-9999-policy.md",
+                    ],
+                    "forbiddenPaths": [],
+                    "scopeAmendments": amendments,
+                }
+                task_path.write_text(
+                    "# TASK-9999：Policy fixture\n\n"
+                    "```yaml\n"
+                    + yaml.safe_dump(
+                        metadata,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    )
+                    + "```\n\n"
+                    "## 验收标准\n\n"
+                    "1. Original authorization remains immutable.\n",
+                    encoding="utf-8",
+                )
+
+            write_task("DRAFT", [])
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            base = self._git(repository, "rev-parse", "HEAD")
+
+            self._git(repository, "checkout", "-qb", "side")
+            (repository / "outside.txt").write_text("changed first\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "side changes outside path")
+
+            self._git(repository, "checkout", "-qb", "mainline", base)
+            write_task("READY", [])
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "ready")
+            authorization = self._git(repository, "rev-parse", "HEAD")
+            authorized_text = task_path.read_text(encoding="utf-8")
+
+            self._git(repository, "merge", "--no-ff", "--no-commit", "side")
+            write_task(
+                "READY",
+                [
+                    {
+                        "amendmentId": "task-9999-owner-outside",
+                        "approvedBy": "repository-owner",
+                        "approvedAt": "2026-07-30",
+                        "evidence": "Owner evidence",
+                        "reason": "Attempted retroactive grant",
+                        "addedWriteAllowlist": ["outside.txt"],
+                        "acceptanceAdditions": ["audit note only"],
+                    }
+                ],
+            )
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "merge with amendment")
+
+            audit = Audit()
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                validate_task_authorization_history(
+                    audit,
+                    "TASK-9999",
+                    "docs/tasks/TASK-9999-policy.md",
+                    base,
+                    authorization,
+                    authorized_text,
+                )
+            messages = "\n".join(audit.errors)
+            self.assertIn("single-parent atomic governance commit", messages)
+            self.assertIn(
+                "cannot retroactively authorize earlier change to outside.txt",
+                messages,
             )
 
     def test_historical_alternate_task_path_is_rejected(self) -> None:
@@ -1309,6 +1413,7 @@ class BacklogTests(unittest.TestCase):
         "TASK-0034": "成熟身份组件与内部测试账号接入（硬决策闸门）",
         "TASK-0035": "单一获批真实模型供应商受控接入（硬决策闸门）",
         "TASK-0036": "Technical Alpha 隔离、安全、记忆、故障与指标总验收",
+        "TASK-0037": "Harness 性能基线、分层验证与快照复用",
     }
 
     def load_inputs(
@@ -1326,6 +1431,83 @@ class BacklogTests(unittest.TestCase):
             load_yaml(ROOT / ".harness/project-state.yaml"),
         )
 
+    @staticmethod
+    def card_bytes(
+        entry: dict[str, object],
+        metadata: dict[str, object],
+        *,
+        transform: object | None = None,
+    ) -> bytes:
+        text = (ROOT / str(entry["taskCard"])).read_text(encoding="utf-8")
+        match = TASK_BLOCK_RE.search(text)
+        assert match is not None
+        block = yaml.safe_dump(
+            metadata,
+            allow_unicode=True,
+            sort_keys=False,
+            width=120,
+        ).rstrip()
+        rendered = text[: match.start()] + f"```yaml\n{block}\n```" + text[match.end() :]
+        if callable(transform):
+            rendered = transform(rendered)
+        return rendered.encode("utf-8")
+
+    @staticmethod
+    def owner_amendment_contract(
+        task: dict[str, object],
+        *,
+        parent_commit: str = "a" * 40,
+    ) -> tuple[dict[str, object], str]:
+        authorized_text = doctor.git_object(
+            str(task["authorizationCommit"]),
+            str(task["_path"]),
+        ).decode("utf-8")
+        clauses = task_acceptance_clauses(authorized_text, str(task["taskId"]))
+        replacements = [
+            (
+                "TASK-0012-ACCEPTANCE-001",
+                "正式 Backlog 保留 TASK-0012～TASK-0036 全部原永久 ID 与产品语义，并追加 "
+                "TASK-0037，共 26 个永久 ID；不得改号、复用或删除原卡。",
+            ),
+            (
+                "TASK-0012-ACCEPTANCE-004",
+                "TASK-0012 ACCEPTED 后第一张可晋级为 TASK-0037；TASK-0037 "
+                "ACCEPTED 后再按原 DAG 推进 TASK-0013。",
+            ),
+        ]
+        contract: dict[str, object] = {
+            "schemaVersion": 1,
+            "taskId": "TASK-0012",
+            "amendmentType": "OWNER_CLAUSE_REPLACEMENT",
+            "approvedBy": "repository-owner",
+            "approvedAt": "2026-07-30",
+            "evidence": "Owner explicitly replaced exactly two acceptance clauses",
+            "reason": "Add TASK-0037 without weakening any other authorization",
+            "authorizedParentCommit": parent_commit,
+            "baseAuthorizationProjectionHash": sha256_text(
+                task_authorization_projection(authorized_text)
+            ),
+            "scopeGrantAmendmentId": None,
+            "addedWriteAllowlist": [
+                "docs/tasks/TASK-0037-harness-performance-layered-validation.md"
+            ],
+            "replacements": [
+                {
+                    "supersedes": {
+                        "clauseId": clause_id,
+                        "statement": clauses[clause_id],
+                        "statementHash": sha256_text(clauses[clause_id]),
+                    },
+                    "replacement": {
+                        "statement": replacement,
+                        "statementHash": sha256_text(replacement),
+                    },
+                }
+                for clause_id, replacement in replacements
+            ],
+        }
+        return contract, authorized_text
+
     def test_backlog_registers_exact_technical_alpha_baseline(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         audit = Audit()
@@ -1337,7 +1519,11 @@ class BacklogTests(unittest.TestCase):
             state,
         )
         self.assertEqual([], audit.errors)
-        expected_ids = [f"TASK-{value:04d}" for value in range(12, 37)]
+        expected_ids = [
+            "TASK-0012",
+            "TASK-0037",
+            *[f"TASK-{value:04d}" for value in range(13, 37)],
+        ]
         self.assertEqual(expected_ids, backlog["executionOrder"])
         self.assertEqual(
             self.EXPECTED_TITLES,
@@ -1346,8 +1532,52 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(24, projection["plannedCount"])
+        self.assertEqual(25, projection["plannedCount"])
         self.assertIsNone(projection["nextPromotable"])
+
+    def test_task0012_owner_amendment_replaces_exactly_two_clauses(self) -> None:
+        backlog, tasks, _, _ = self.load_inputs()
+        amendment_id = "task-0012-owner-formalize-task-0037"
+        contract = backlog["authorizationAmendments"][amendment_id]
+        task = tasks["TASK-0012"]
+        authorized_text = doctor.git_object(
+            str(task["authorizationCommit"]),
+            str(task["_path"]),
+        ).decode("utf-8")
+        current_text = (ROOT / str(task["_path"])).read_text(encoding="utf-8")
+        self.assertEqual(
+            task_authorization_projection(authorized_text),
+            task_authorization_projection(current_text),
+        )
+        self.assertEqual(
+            {
+                "TASK-0012-ACCEPTANCE-001",
+                "TASK-0012-ACCEPTANCE-004",
+            },
+            {
+                record["supersedes"]["clauseId"]
+                for record in contract["replacements"]
+            },
+        )
+        self.assertEqual(
+            ["docs/tasks/TASK-0037-harness-performance-layered-validation.md"],
+            contract["addedWriteAllowlist"],
+        )
+        self.assertEqual(
+            "TASK-0012 至 TASK-0036 的 25 个编号、名称和规划合同完整受控",
+            backlog["tasks"]["TASK-0012"]["acceptanceCriteria"][0],
+        )
+        audit = Audit()
+        validate_authorization_amendment_contract(
+            audit,
+            "TASK-0012 amendment",
+            amendment_id,
+            contract,
+            task,
+            authorized_text=authorized_text,
+            seen_path_keys={},
+        )
+        self.assertEqual([], audit.errors)
 
     def test_backlog_missing_file_fails_closed(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
@@ -1420,6 +1650,26 @@ class BacklogTests(unittest.TestCase):
 
         ordered_tasks = copy.deepcopy(tasks)
         ordered_tasks["TASK-0012"]["state"] = "ACCEPTED"
+        first_projection = derive_backlog_promotion_projection(
+            backlog,
+            ordered_tasks,
+            lifecycle,
+        )
+        self.assertEqual("TASK-0037", first_projection["nextPromotable"])
+        self.assertIn(
+            "WAITING_FOR_ORDER:TASK-0037",
+            first_projection["blockers"]["TASK-0013"],
+        )
+        ordered_tasks["TASK-0037"]["state"] = "ACCEPTED"
+        after_governance_projection = derive_backlog_promotion_projection(
+            backlog,
+            ordered_tasks,
+            lifecycle,
+        )
+        self.assertEqual(
+            "TASK-0013",
+            after_governance_projection["nextPromotable"],
+        )
         ordered_tasks["TASK-0013"]["state"] = "ACCEPTED"
         ordered_projection = derive_backlog_promotion_projection(
             backlog,
@@ -1607,11 +1857,28 @@ class BacklogTests(unittest.TestCase):
             "replacementTask": None,
         }
         resolved["resolutions"]["TASK-0013"] = resolution
+        entry = resolved["tasks"]["TASK-0013"]
+        planned = {
+            "taskId": "TASK-0013",
+            "state": "PLANNED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
         audit = Audit()
         with patch.object(
             doctor,
             "task_metadata_at_commit",
-            return_value={"state": "PLANNED"},
+            return_value=planned,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "e" * 40),
+        ), patch.object(
+            doctor,
+            "git_object",
+            return_value=self.card_bytes(entry, planned),
         ):
             validate_backlog_resolution_commit(
                 audit,
@@ -1619,11 +1886,78 @@ class BacklogTests(unittest.TestCase):
                 "b" * 40,
                 parent,
                 resolved,
-            )
+        )
         self.assertTrue(
-            any("must atomically update its planning card" in error for error in audit.errors),
+            any("planning card state must remain REJECTED" in error for error in audit.errors),
             audit.errors,
         )
+
+    def test_atomic_resolution_and_immutable_terminal_projection_pass(self) -> None:
+        backlog, _, _, _ = self.load_inputs()
+        parent = copy.deepcopy(backlog)
+        resolved = copy.deepcopy(backlog)
+        entry = resolved["tasks"]["TASK-0013"]
+        resolution = {
+            "state": "REJECTED",
+            "reason": "Owner cancelled the planned capability",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        resolved["resolutions"]["TASK-0013"] = resolution
+        parent_commit = "a" * 40
+        child_commit = "b" * 40
+        stable_commit = "c" * 40
+        shared = {
+            "taskId": "TASK-0013",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
+        planned = {**shared, "state": "PLANNED"}
+        terminal = {
+            **shared,
+            "state": "REJECTED",
+            "planningResolution": resolution,
+        }
+
+        def metadata_at_commit(commit: str, _path: str) -> dict[str, object]:
+            return planned if commit == parent_commit else terminal
+
+        def card_at_commit(commit: str, _path: str) -> bytes:
+            metadata = planned if commit == parent_commit else terminal
+            return self.card_bytes(entry, metadata)
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "task_metadata_at_commit",
+            side_effect=metadata_at_commit,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "e" * 40),
+        ), patch.object(
+            doctor,
+            "git_object",
+            side_effect=card_at_commit,
+        ):
+            validate_backlog_resolution_commit(
+                audit,
+                parent_commit,
+                child_commit,
+                parent,
+                resolved,
+            )
+            validate_backlog_resolution_commit(
+                audit,
+                child_commit,
+                stable_commit,
+                resolved,
+                resolved,
+            )
+        self.assertEqual([], audit.errors)
 
     def test_resolution_split_across_two_commits_fails_closed(self) -> None:
         backlog, _, _, _ = self.load_inputs()
@@ -1637,19 +1971,35 @@ class BacklogTests(unittest.TestCase):
             "replacementTask": None,
         }
         resolved["resolutions"]["TASK-0013"] = resolution
+        entry = resolved["tasks"]["TASK-0013"]
+        terminal = {
+            "taskId": "TASK-0013",
+            "state": "REJECTED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+            "planningResolution": resolution,
+        }
         parent_commit = "a" * 40
         child_commit = "b" * 40
 
         def metadata_at_commit(commit: str, _path: str) -> dict[str, object]:
-            if commit == parent_commit:
-                return {"state": "REJECTED", "planningResolution": resolution}
-            return {"state": "REJECTED", "planningResolution": resolution}
+            return terminal
 
         audit = Audit()
         with patch.object(
             doctor,
             "task_metadata_at_commit",
             side_effect=metadata_at_commit,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "e" * 40),
+        ), patch.object(
+            doctor,
+            "git_object",
+            return_value=self.card_bytes(entry, terminal),
         ):
             validate_backlog_resolution_commit(
                 audit,
@@ -1660,7 +2010,7 @@ class BacklogTests(unittest.TestCase):
             )
         self.assertTrue(
             any(
-                "requires the parent planning card to remain PLANNED"
+                "planning card state must remain PLANNED"
                 in error
                 for error in audit.errors
             ),
@@ -1684,14 +2034,40 @@ class BacklogTests(unittest.TestCase):
 
         def metadata_at_commit(commit: str, _path: str) -> dict[str, object]:
             if commit == corrupt_commit:
-                return {"state": "PLANNED"}
-            return {"state": "REJECTED", "planningResolution": resolution}
+                return {
+                    **terminal,
+                    "owner": "temporary-owner",
+                    "baseCommit": "d" * 40,
+                }
+            return terminal
+
+        def card_at_commit(commit: str, _path: str) -> bytes:
+            return self.card_bytes(entry, metadata_at_commit(commit, _path))
+
+        entry = resolved["tasks"]["TASK-0013"]
+        terminal = {
+            "taskId": "TASK-0013",
+            "state": "REJECTED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+            "planningResolution": resolution,
+        }
 
         audit = Audit()
         with patch.object(
             doctor,
             "task_metadata_at_commit",
             side_effect=metadata_at_commit,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "e" * 40),
+        ), patch.object(
+            doctor,
+            "git_object",
+            side_effect=card_at_commit,
         ):
             validate_backlog_resolution_commit(
                 audit,
@@ -1709,7 +2085,749 @@ class BacklogTests(unittest.TestCase):
             )
         self.assertTrue(
             any(
-                f"must atomically update its planning card at {corrupt_commit}"
+                f"metadata must remain immutable on edge {good_commit}..{corrupt_commit}"
+                in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+    def test_resolved_card_mode_cannot_be_corrupted_then_restored(self) -> None:
+        backlog, _, _, _ = self.load_inputs()
+        resolution = {
+            "state": "REJECTED",
+            "reason": "Owner cancelled the planned capability",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        resolved = copy.deepcopy(backlog)
+        resolved["resolutions"]["TASK-0013"] = resolution
+        entry = resolved["tasks"]["TASK-0013"]
+        terminal = {
+            "taskId": "TASK-0013",
+            "state": "REJECTED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+            "planningResolution": resolution,
+        }
+        good_commit = "a" * 40
+        corrupt_commit = "b" * 40
+        restored_commit = "c" * 40
+
+        def tree_entry(commit: str, _path: str) -> tuple[str, str, str]:
+            mode = "120000" if commit == corrupt_commit else "100644"
+            return (mode, "blob", "e" * 40)
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "task_metadata_at_commit",
+            return_value=terminal,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            side_effect=tree_entry,
+        ), patch.object(
+            doctor,
+            "git_object",
+            return_value=self.card_bytes(entry, terminal),
+        ):
+            validate_backlog_resolution_commit(
+                audit,
+                good_commit,
+                corrupt_commit,
+                resolved,
+                resolved,
+            )
+            validate_backlog_resolution_commit(
+                audit,
+                corrupt_commit,
+                restored_commit,
+                resolved,
+                resolved,
+            )
+        self.assertTrue(
+            any(
+                f"regular 100644 blob at {corrupt_commit}" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+    def test_resolved_card_render_projection_cannot_be_corrupted_then_restored(
+        self,
+    ) -> None:
+        backlog, _, _, _ = self.load_inputs()
+        resolution = {
+            "state": "REJECTED",
+            "reason": "Owner cancelled the planned capability",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        resolved = copy.deepcopy(backlog)
+        resolved["resolutions"]["TASK-0013"] = resolution
+        entry = resolved["tasks"]["TASK-0013"]
+        terminal = {
+            "taskId": "TASK-0013",
+            "state": "REJECTED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+            "planningResolution": resolution,
+        }
+        good_commit = "a" * 40
+        corrupt_commit = "b" * 40
+        restored_commit = "c" * 40
+        transforms = {
+            "title": lambda text: text.replace(
+                "# TASK-0013：Provider Registry 与供应商中立准入模型",
+                "# TASK-0013：corrupt",
+                1,
+            ),
+            "notice": lambda text: text.replace(
+                doctor.PLANNED_CARD_NON_NORMATIVE_NOTICE,
+                "",
+                1,
+            ),
+            "section": lambda text: text.replace("## 目标", "## 篡改目标", 1),
+        }
+        for name, transform in transforms.items():
+            with self.subTest(name=name):
+                def card_at_commit(commit: str, _path: str) -> bytes:
+                    selected = transform if commit == corrupt_commit else None
+                    return self.card_bytes(entry, terminal, transform=selected)
+
+                audit = Audit()
+                with patch.object(
+                    doctor,
+                    "git_tree_entry",
+                    return_value=("100644", "blob", "e" * 40),
+                ), patch.object(
+                    doctor,
+                    "git_object",
+                    side_effect=card_at_commit,
+                ):
+                    validate_backlog_resolution_commit(
+                        audit,
+                        good_commit,
+                        corrupt_commit,
+                        resolved,
+                        resolved,
+                    )
+                    validate_backlog_resolution_commit(
+                        audit,
+                        corrupt_commit,
+                        restored_commit,
+                        resolved,
+                        resolved,
+                    )
+                self.assertTrue(audit.errors, name)
+                self.assertTrue(
+                    any(
+                        "planning card heading" in error
+                        or "fixed Backlog projection" in error
+                        or "six-section projection" in error
+                        for error in audit.errors
+                    ),
+                    audit.errors,
+                )
+
+    def test_introduced_planned_card_requires_complete_render_projection(self) -> None:
+        backlog, _, lifecycle, _ = self.load_inputs()
+        parent = copy.deepcopy(backlog)
+        parent["tasks"].pop("TASK-0037")
+        entry = backlog["tasks"]["TASK-0037"]
+        metadata = {
+            "taskId": "TASK-0037",
+            "state": "PLANNED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
+        invalid_card = self.card_bytes(
+            entry,
+            metadata,
+            transform=lambda text: text.replace(
+                doctor.PLANNED_CARD_NON_NORMATIVE_NOTICE,
+                "",
+                1,
+            ),
+        )
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "e" * 40),
+        ), patch.object(
+            doctor,
+            "git_object",
+            return_value=invalid_card,
+        ):
+            validate_backlog_card_history_edge(
+                audit,
+                "a" * 40,
+                "b" * 40,
+                parent,
+                backlog,
+                lifecycle,
+            )
+        self.assertTrue(
+            any("fixed Backlog projection" in error for error in audit.errors),
+            audit.errors,
+        )
+
+    def test_owner_scope_amendment_is_controlled_and_append_only(self) -> None:
+        _, tasks, _, _ = self.load_inputs()
+        task = copy.deepcopy(tasks["TASK-0012"])
+        audit = Audit()
+        added = validate_scope_amendments(audit, "TASK-0012", task)
+        self.assertEqual([], audit.errors)
+        self.assertEqual(
+            ["docs/tasks/TASK-0037-harness-performance-layered-validation.md"],
+            added,
+        )
+        self.assertIn(
+            "docs/tasks/TASK-0037-harness-performance-layered-validation.md",
+            effective_task_write_allowlist(task),
+        )
+
+        parent: list[object] = []
+        child = copy.deepcopy(task["scopeAmendments"])
+        valid_edge = Audit()
+        validate_scope_amendment_edge(valid_edge, parent, child, "parent..child")
+        self.assertEqual([], valid_edge.errors)
+
+        rewritten = copy.deepcopy(child)
+        rewritten[0]["reason"] = "rewritten"
+        invalid_edge = Audit()
+        validate_scope_amendment_edge(
+            invalid_edge,
+            child,
+            rewritten,
+            "child..rewritten",
+        )
+        self.assertTrue(
+            any("append-only and immutable" in error for error in invalid_edge.errors),
+            invalid_edge.errors,
+        )
+
+        invalid_task = copy.deepcopy(task)
+        invalid_task["scopeAmendments"][0]["contract"]["approvedBy"] = (
+            "implementation-agent"
+        )
+        invalid_task["scopeAmendments"][0]["contract"]["addedWriteAllowlist"] = [
+            "docs/tasks/**"
+        ]
+        invalid = Audit()
+        validate_scope_amendments(invalid, "TASK-0012", invalid_task)
+        messages = "\n".join(invalid.errors)
+        self.assertIn("must be the repository-owner task owner", messages)
+        self.assertIn("must be one canonical repository-relative POSIX path", messages)
+
+        legacy_task = copy.deepcopy(task)
+        legacy_task["scopeAmendments"] = [
+            {
+                "amendmentId": "retired-legacy-grant",
+                "approvedBy": "repository-owner",
+                "approvedAt": "2026-07-30",
+                "evidence": "historical audit record",
+                "reason": "must not authorize current writes",
+                "addedWriteAllowlist": ["docs/tasks/TASK-9999.md"],
+                "acceptanceAdditions": ["historical note"],
+            }
+        ]
+        legacy = Audit()
+        self.assertEqual(
+            [],
+            validate_scope_amendments(legacy, "TASK-0012", legacy_task),
+        )
+        self.assertTrue(
+            any("cannot grant write authority" in error for error in legacy.errors),
+            legacy.errors,
+        )
+
+    def test_amendment_paths_reject_aliases_and_remain_exact_not_globs(self) -> None:
+        aliases = [
+            "./docs/tasks/TASK-9999.md",
+            r"docs\tasks\TASK-9999.md",
+            "docs//tasks/TASK-9999.md",
+            "docs/tasks/../tasks/TASK-9999.md",
+            "docs/tasks/TASK-9999.md/",
+            "docs/tasks/Cafe\u0301.md",
+        ]
+        for alias in aliases:
+            self.assertIsNone(canonical_exact_repo_path(alias), alias)
+        self.assertEqual(
+            "docs/tasks/TASK-9999.md",
+            canonical_exact_repo_path("docs/tasks/TASK-9999.md"),
+        )
+
+        _, tasks, _, _ = self.load_inputs()
+        task = copy.deepcopy(tasks["TASK-0012"])
+        patterns, exact_paths = effective_task_write_scope(task)
+        self.assertIn(
+            "docs/tasks/TASK-0037-harness-performance-layered-validation.md",
+            exact_paths,
+        )
+        self.assertNotIn(
+            "docs/tasks/task-0037-harness-performance-layered-validation.md",
+            exact_paths,
+        )
+        self.assertFalse(
+            any(
+                glob_matches(
+                    "docs/tasks/TASK-9999-unrelated.md",
+                    pattern,
+                )
+                for pattern in exact_paths
+            )
+        )
+        self.assertTrue(patterns)
+
+    def test_strong_owner_amendment_binds_exact_authorized_clauses(self) -> None:
+        _, tasks, _, _ = self.load_inputs()
+        task = copy.deepcopy(tasks["TASK-0012"])
+        contract, authorized_text = self.owner_amendment_contract(task)
+        amendment_id = "task-0012-owner-formalize-task-0037"
+        audit = Audit()
+        validate_authorization_amendment_contract(
+            audit,
+            "fixture",
+            amendment_id,
+            contract,
+            task,
+            authorized_text=authorized_text,
+            seen_path_keys={},
+        )
+        self.assertEqual([], audit.errors)
+
+        tampered = copy.deepcopy(contract)
+        tampered["replacements"][0]["supersedes"]["statement"] = "rewritten"
+        invalid = Audit()
+        validate_authorization_amendment_contract(
+            invalid,
+            "fixture",
+            amendment_id,
+            tampered,
+            task,
+            authorized_text=authorized_text,
+            seen_path_keys={},
+        )
+        messages = "\n".join(invalid.errors)
+        self.assertIn("statementHash is invalid", messages)
+        self.assertIn("must match the authorized clause exactly", messages)
+
+    def test_strong_amendment_atomically_grants_only_its_exact_new_paths(self) -> None:
+        _, tasks, _, _ = self.load_inputs()
+        task = copy.deepcopy(tasks["TASK-0012"])
+        parent_commit = "a" * 40
+        commit = "b" * 40
+        contract, _ = self.owner_amendment_contract(
+            task,
+            parent_commit=parent_commit,
+        )
+        amendment_id = "task-0012-owner-formalize-task-0037"
+        amendment = {
+            "schemaVersion": 2,
+            "amendmentId": amendment_id,
+            "contractSource": ".harness/task-backlog.yaml",
+            "contractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+            "contractHash": canonical_json_sha256(contract),
+            "contract": contract,
+        }
+        exact_paths = {
+            str(task["_path"]),
+            ".harness/task-backlog.yaml",
+            "docs/tasks/TASK-0037-harness-performance-layered-validation.md",
+        }
+
+        def backlog_amendments(revision: str) -> dict[str, object]:
+            return {} if revision == parent_commit else {amendment_id: contract}
+
+        valid = Audit()
+        with patch.object(
+            doctor,
+            "changed_paths_across_history",
+            return_value=[],
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "c" * 40),
+        ), patch.object(
+            doctor,
+            "backlog_authorization_amendments_at",
+            side_effect=backlog_amendments,
+        ), patch.object(
+            doctor,
+            "changed_paths_between",
+            return_value=sorted(exact_paths),
+        ):
+            validate_amendment_introduction(
+                valid,
+                "TASK-0012",
+                str(task["_path"]),
+                str(task["baseCommit"]),
+                parent_commit,
+                commit,
+                [parent_commit],
+                amendment,
+            )
+        self.assertEqual([], valid.errors)
+
+        extra = Audit()
+        with patch.object(
+            doctor,
+            "changed_paths_across_history",
+            return_value=[],
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "c" * 40),
+        ), patch.object(
+            doctor,
+            "backlog_authorization_amendments_at",
+            side_effect=backlog_amendments,
+        ), patch.object(
+            doctor,
+            "changed_paths_between",
+            return_value=sorted({*exact_paths, "scripts/harness/doctor.py"}),
+        ):
+            validate_amendment_introduction(
+                extra,
+                "TASK-0012",
+                str(task["_path"]),
+                str(task["baseCommit"]),
+                parent_commit,
+                commit,
+                [parent_commit],
+                amendment,
+            )
+        self.assertTrue(
+            any("must change exactly" in error for error in extra.errors),
+            extra.errors,
+        )
+
+    def test_backlog_amendment_and_task_projection_are_bidirectional(self) -> None:
+        _, tasks, _, _ = self.load_inputs()
+        projected_tasks = copy.deepcopy(tasks)
+        task = projected_tasks["TASK-0012"]
+        amendment_id = "task-0012-owner-formalize-task-0037"
+        contract, authorized_text = self.owner_amendment_contract(task)
+        projection = {
+            "schemaVersion": 2,
+            "amendmentId": amendment_id,
+            "contractSource": ".harness/task-backlog.yaml",
+            "contractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+            "contractHash": canonical_json_sha256(contract),
+            "contract": contract,
+        }
+        task["scopeAmendments"] = [
+            item
+            for item in task["scopeAmendments"]
+            if not (
+                isinstance(item, dict)
+                and item.get("amendmentId") == amendment_id
+            )
+        ]
+        task["scopeAmendments"].append(projection)
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "git_object",
+            return_value=authorized_text.encode("utf-8"),
+        ):
+            validate_backlog_authorization_amendments(
+                audit,
+                {amendment_id: contract},
+                projected_tasks,
+            )
+        self.assertEqual([], audit.errors)
+
+        missing = Audit()
+        validate_backlog_authorization_amendments(missing, {}, projected_tasks)
+        self.assertTrue(
+            any("exact bidirectional membership" in error for error in missing.errors),
+            missing.errors,
+        )
+
+    def test_uncommitted_amendment_and_history_rewrite_fail_closed(self) -> None:
+        _, tasks, _, _ = self.load_inputs()
+        committed = copy.deepcopy(tasks["TASK-0012"]["scopeAmendments"])
+        current = copy.deepcopy(committed)
+        current.append({"amendmentId": "uncommitted"})
+        worktree = Audit()
+        validate_uncommitted_scope_amendments(
+            worktree,
+            committed,
+            current,
+            "HEAD..WORKTREE",
+        )
+        self.assertTrue(
+            any("must already exist in a single-parent Git commit" in error for error in worktree.errors),
+            worktree.errors,
+        )
+
+        parent = {
+            "authorizationAmendments": {
+                "owner-amendment": {"schemaVersion": 1, "reason": "original"}
+            }
+        }
+        corrupt = copy.deepcopy(parent)
+        corrupt["authorizationAmendments"]["owner-amendment"]["reason"] = "corrupt"
+        restored = copy.deepcopy(parent)
+        history = Audit()
+        validate_backlog_authorization_amendment_edge(
+            history,
+            parent,
+            corrupt,
+            "good..corrupt",
+        )
+        validate_backlog_authorization_amendment_edge(
+            history,
+            corrupt,
+            restored,
+            "corrupt..restored",
+        )
+        self.assertTrue(
+            any("removed or rewritten" in error for error in history.errors),
+            history.errors,
+        )
+
+    def test_full_history_scans_introduction_and_preterminal_corrupt_restore(
+        self,
+    ) -> None:
+        backlog, _, lifecycle, _ = self.load_inputs()
+        task_id = "TASK-0013"
+        task_path = str(backlog["tasks"][task_id]["taskCard"])
+        card_paths = {
+            str(entry["taskCard"])
+            for entry in backlog["tasks"].values()
+            if isinstance(entry, dict)
+        }
+        card_bytes = {
+            path: (ROOT / path).read_bytes()
+            for path in card_paths
+            if (ROOT / path).is_file()
+        }
+        good_card = card_bytes[task_path]
+        corrupt_card = good_card.replace(
+            f"# {task_id}：".encode("utf-8"),
+            f"# {task_id}：被篡改-".encode("utf-8"),
+            1,
+        )
+        commits = ("a" * 40, "b" * 40, "c" * 40)
+
+        def tree_entry(revision: str, path: str) -> tuple[str, str, str] | None:
+            if path == ".harness/task-backlog.yaml":
+                return ("100644", "blob", "d" * 40)
+            if path not in card_paths:
+                return None
+            blob = "e" * 40
+            if path == task_path and revision == commits[1]:
+                blob = "f" * 40
+            return ("100644", "blob", blob)
+
+        def object_bytes(revision: str, path: str) -> bytes:
+            if path == task_path and revision == commits[1]:
+                return corrupt_card
+            return card_bytes[path]
+
+        def yaml_snapshot(revision: str, path: str) -> dict[str, object]:
+            if path == ".harness/task-backlog.yaml":
+                return copy.deepcopy(backlog)
+            return {"tasks": {}}
+
+        activation = str(
+            lifecycle["rules"]["backlogHistoryPolicy"]["activationCommit"]
+        )
+        graph = "\n".join(
+            (
+                f"{commits[0]} {activation}",
+                f"{commits[1]} {commits[0]}",
+                f"{commits[2]} {commits[1]}",
+            )
+        )
+
+        def git_history(*args: str, **_: object) -> subprocess.CompletedProcess[str]:
+            stdout = "" if args[0] == "merge-base" else graph
+            return subprocess.CompletedProcess(
+                args=["git", *args],
+                returncode=0,
+                stdout=stdout,
+                stderr="",
+            )
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "git_text",
+            side_effect=git_history,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            side_effect=tree_entry,
+        ), patch.object(
+            doctor,
+            "git_object",
+            side_effect=object_bytes,
+        ), patch.object(
+            doctor,
+            "yaml_at_commit",
+            side_effect=yaml_snapshot,
+        ):
+            validate_task_backlog_history(audit, backlog, lifecycle)
+        self.assertTrue(
+            any(
+                "planning card heading" in error
+                or "six-section projection changed" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+    def test_unresolved_planned_card_metadata_cannot_be_corrupted_then_restored(
+        self,
+    ) -> None:
+        backlog, _, lifecycle, _ = self.load_inputs()
+        entry = backlog["tasks"]["TASK-0013"]
+        task_path = entry["taskCard"]
+        planned = {
+            "taskId": "TASK-0013",
+            "state": "PLANNED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
+        good_commit = "a" * 40
+        corrupt_commit = "b" * 40
+        restored_commit = "c" * 40
+
+        def metadata_at_commit(commit: str, _path: str) -> dict[str, object]:
+            if commit == corrupt_commit:
+                return {
+                    **planned,
+                    "owner": "temporary-owner",
+                    "baseCommit": "d" * 40,
+                }
+            return planned
+
+        def tree_entry(commit: str, path: str) -> tuple[str, str, str]:
+            oid = commit if path == task_path else "e" * 40
+            return ("100644", "blob", oid)
+
+        def card_at_commit(commit: str, _path: str) -> bytes:
+            return self.card_bytes(entry, metadata_at_commit(commit, _path))
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "task_metadata_at_commit",
+            side_effect=metadata_at_commit,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            side_effect=tree_entry,
+        ), patch.object(
+            doctor,
+            "git_object",
+            side_effect=card_at_commit,
+        ):
+            validate_backlog_card_history_edge(
+                audit,
+                good_commit,
+                corrupt_commit,
+                backlog,
+                backlog,
+                lifecycle,
+            )
+            validate_backlog_card_history_edge(
+                audit,
+                corrupt_commit,
+                restored_commit,
+                backlog,
+                backlog,
+                lifecycle,
+            )
+        self.assertTrue(
+            any(
+                f"metadata must remain immutable on edge {good_commit}..{corrupt_commit}"
+                in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+    def test_backlog_card_cannot_draft_then_restore_to_planned(self) -> None:
+        backlog, _, lifecycle, _ = self.load_inputs()
+        entry = backlog["tasks"]["TASK-0013"]
+        task_path = entry["taskCard"]
+        planned = {
+            "taskId": "TASK-0013",
+            "state": "PLANNED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
+        draft = {
+            **planned,
+            "state": "DRAFT",
+            "baseCommit": "a" * 40,
+        }
+        good_commit = "a" * 40
+        draft_commit = "b" * 40
+        restored_commit = "c" * 40
+
+        def metadata_at_commit(commit: str, _path: str) -> dict[str, object]:
+            return draft if commit == draft_commit else planned
+
+        def tree_entry(commit: str, path: str) -> tuple[str, str, str]:
+            oid = commit if path == task_path else "e" * 40
+            return ("100644", "blob", oid)
+
+        def card_at_commit(commit: str, _path: str) -> bytes:
+            return self.card_bytes(entry, metadata_at_commit(commit, _path))
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "task_metadata_at_commit",
+            side_effect=metadata_at_commit,
+        ), patch.object(
+            doctor,
+            "git_tree_entry",
+            side_effect=tree_entry,
+        ), patch.object(
+            doctor,
+            "git_object",
+            side_effect=card_at_commit,
+        ):
+            validate_backlog_card_history_edge(
+                audit,
+                good_commit,
+                draft_commit,
+                backlog,
+                backlog,
+                lifecycle,
+            )
+            validate_backlog_card_history_edge(
+                audit,
+                draft_commit,
+                restored_commit,
+                backlog,
+                backlog,
+                lifecycle,
+            )
+        self.assertTrue(
+            any(
+                "invalid card state edge TASK-0013 DRAFT -> PLANNED"
                 in error
                 for error in audit.errors
             ),
@@ -1772,7 +2890,7 @@ class BacklogTests(unittest.TestCase):
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
-        idle_state["nextAction"] = "将 TASK-0013 晋级为唯一 DRAFT"
+        idle_state["nextAction"] = "将 TASK-0037 晋级为唯一 DRAFT"
         audit = Audit()
         projection = validate_task_backlog_data(
             audit,
@@ -1782,7 +2900,11 @@ class BacklogTests(unittest.TestCase):
             idle_state,
         )
         self.assertEqual([], audit.errors)
-        self.assertEqual("TASK-0013", projection["nextPromotable"])
+        self.assertEqual("TASK-0037", projection["nextPromotable"])
+        self.assertIn(
+            "WAITING_FOR_ORDER:TASK-0037",
+            projection["blockers"]["TASK-0013"],
+        )
         self.assertIn(
             "DECISION_GATE:GATE-IDENTITY-PROVIDER-SESSION:PENDING",
             projection["blockers"]["TASK-0034"],
