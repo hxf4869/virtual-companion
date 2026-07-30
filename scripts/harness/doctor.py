@@ -4383,13 +4383,87 @@ def validate_backlog_card_history_edge(
             )
 
 
+def derive_immutable_backlog_history_policy(
+    audit: Audit,
+    current_lifecycle: dict[str, Any],
+) -> dict[str, Any]:
+    history = git_text(
+        "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
+        "HEAD",
+    ).stdout.splitlines()
+    snapshots: dict[str, dict[str, Any] | None] = {}
+    introductions: list[tuple[str, dict[str, Any]]] = []
+
+    def snapshot(commit: str) -> dict[str, Any] | None:
+        if commit in snapshots:
+            return snapshots[commit]
+        if git_tree_entry(commit, ".harness/task-lifecycle.yaml") is None:
+            snapshots[commit] = None
+            return None
+        lifecycle = yaml_at_commit(commit, ".harness/task-lifecycle.yaml")
+        rules = lifecycle.get("rules")
+        raw = rules.get("backlogHistoryPolicy") if isinstance(rules, dict) else None
+        value = dict(raw) if isinstance(raw, dict) else None
+        snapshots[commit] = value
+        return value
+
+    for graph_line in history:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
+        parents = tokens[1:]
+        child = snapshot(commit)
+        parent_values = [(parent, snapshot(parent)) for parent in parents]
+        inherited = [value for _, value in parent_values if value is not None]
+        if child is None:
+            for parent, parent_value in parent_values:
+                audit.require(
+                    parent_value is None,
+                    "task-backlog: backlogHistoryPolicy was deleted on edge "
+                    f"{parent}..{commit}",
+                )
+            continue
+        if not inherited:
+            audit.require(
+                len(parents) == 1,
+                "task-backlog: backlogHistoryPolicy must be introduced by one "
+                f"single-parent commit; commit={commit}",
+            )
+            introductions.append((commit, child))
+        for parent, parent_value in parent_values:
+            if parent_value is not None:
+                audit.require(
+                    child == parent_value,
+                    "task-backlog: backlogHistoryPolicy is append-only and immutable "
+                    f"on edge {parent}..{commit}",
+                )
+
+    audit.require(
+        len(introductions) == 1,
+        "task-backlog: backlogHistoryPolicy must have exactly one historical "
+        f"introduction; introductions={[commit for commit, _ in introductions]}",
+    )
+    introduced = introductions[0][1] if len(introductions) == 1 else {}
+    rules = current_lifecycle.get("rules")
+    current = rules.get("backlogHistoryPolicy") if isinstance(rules, dict) else None
+    audit.require(
+        current == introduced,
+        "task-backlog: HEAD..WORKTREE backlogHistoryPolicy must equal its first "
+        "committed projection",
+    )
+    return introduced
+
+
 def validate_task_backlog_history(
     audit: Audit,
     current: dict[str, Any],
     lifecycle: dict[str, Any],
 ) -> None:
-    rules = lifecycle.get("rules")
-    policy = rules.get("backlogHistoryPolicy") if isinstance(rules, dict) else None
+    policy = derive_immutable_backlog_history_policy(audit, lifecycle)
     audit.require(
         isinstance(policy, dict)
         and set(policy) == {"activationCommit", "mode"},

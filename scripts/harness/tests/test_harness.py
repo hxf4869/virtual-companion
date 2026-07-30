@@ -40,6 +40,7 @@ from doctor import (  # noqa: E402
     changed_skill_tree_ids,
     current_regular_file_bytes,
     derive_backlog_promotion_projection,
+    derive_immutable_backlog_history_policy,
     effective_task_write_allowlist,
     effective_task_write_scope,
     effective_protected_rules,
@@ -2689,6 +2690,143 @@ class BacklogTests(unittest.TestCase):
                 for error in audit.errors
             ),
             audit.errors,
+        )
+
+    def test_real_git_history_rejects_corrupt_restore_and_moved_activation(
+        self,
+    ) -> None:
+        backlog, _, lifecycle, _ = self.load_inputs()
+        task_path = str(backlog["tasks"]["TASK-0013"]["taskCard"])
+        good_card = (ROOT / task_path).read_bytes()
+
+        def run_fixture(*, attack: bool) -> list[str]:
+            with tempfile.TemporaryDirectory() as directory:
+                repository = Path(directory)
+                subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+                subprocess.run(
+                    ["git", "config", "user.name", "Harness Test"],
+                    cwd=repository,
+                    check=True,
+                )
+                subprocess.run(
+                    ["git", "config", "user.email", "harness@example.invalid"],
+                    cwd=repository,
+                    check=True,
+                )
+                backlog_path = repository / ".harness/task-backlog.yaml"
+                lifecycle_path = repository / ".harness/task-lifecycle.yaml"
+                backlog_path.parent.mkdir(parents=True)
+                backlog_path.write_text(
+                    yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+                    encoding="utf-8",
+                )
+                baseline_lifecycle = copy.deepcopy(lifecycle)
+                baseline_lifecycle["rules"].pop("backlogHistoryPolicy")
+                lifecycle_path.write_text(
+                    yaml.safe_dump(
+                        baseline_lifecycle,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    ),
+                    encoding="utf-8",
+                )
+                for entry in backlog["tasks"].values():
+                    source = ROOT / str(entry["taskCard"])
+                    target = repository / str(entry["taskCard"])
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(source.read_bytes())
+
+                def commit(message: str) -> str:
+                    subprocess.run(["git", "add", "-A"], cwd=repository, check=True)
+                    subprocess.run(
+                        ["git", "commit", "-qm", message],
+                        cwd=repository,
+                        check=True,
+                    )
+                    return subprocess.run(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=repository,
+                        check=True,
+                        text=True,
+                        encoding="utf-8",
+                        stdout=subprocess.PIPE,
+                    ).stdout.strip()
+
+                activation = commit("published baseline")
+                policy_lifecycle = copy.deepcopy(lifecycle)
+                policy_lifecycle["rules"]["backlogHistoryPolicy"][
+                    "activationCommit"
+                ] = activation
+                lifecycle_path.write_text(
+                    yaml.safe_dump(
+                        policy_lifecycle,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    ),
+                    encoding="utf-8",
+                )
+                commit("introduce immutable history policy")
+                if attack:
+                    (repository / task_path).write_bytes(
+                        good_card.replace(
+                            b"# TASK-0013",
+                            b"# TASK-0013-CORRUPTED",
+                            1,
+                        )
+                    )
+                    commit("corrupt planning card")
+                    (repository / task_path).write_bytes(good_card)
+                    restored = commit("restore planning card")
+                    policy_lifecycle["rules"]["backlogHistoryPolicy"][
+                        "activationCommit"
+                    ] = restored
+                    lifecycle_path.write_text(
+                        yaml.safe_dump(
+                            policy_lifecycle,
+                            allow_unicode=True,
+                            sort_keys=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    commit("move activation after restored corruption")
+
+                current_lifecycle = yaml.safe_load(
+                    lifecycle_path.read_text(encoding="utf-8")
+                )
+                audit = Audit()
+                with patch.object(
+                    harness_common,
+                    "ROOT",
+                    repository,
+                ), patch.object(
+                    doctor,
+                    "ROOT",
+                    repository,
+                ):
+                    derive_immutable_backlog_history_policy(
+                        audit,
+                        current_lifecycle,
+                    )
+                    validate_task_backlog_history(
+                        audit,
+                        backlog,
+                        current_lifecycle,
+                    )
+                return audit.errors
+
+        self.assertEqual([], run_fixture(attack=False))
+        attack_errors = run_fixture(attack=True)
+        self.assertTrue(
+            any("append-only and immutable" in error for error in attack_errors),
+            attack_errors,
+        )
+        self.assertTrue(
+            any(
+                "planning card heading" in error
+                or "six-section projection changed" in error
+                for error in attack_errors
+            ),
+            attack_errors,
         )
 
     def test_unresolved_planned_card_metadata_cannot_be_corrupted_then_restored(
