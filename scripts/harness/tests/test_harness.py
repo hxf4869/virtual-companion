@@ -483,7 +483,8 @@ class GitHistoryPolicyTests(unittest.TestCase):
             messages = "\n".join(audit.errors)
             self.assertIn("single-parent atomic governance commit", messages)
             self.assertIn(
-                "cannot retroactively authorize earlier change to outside.txt",
+                "retired legacy scope amendment is an immutable audit record only "
+                "and cannot grant write authority",
                 messages,
             )
 
