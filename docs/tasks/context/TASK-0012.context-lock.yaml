@@ -1,0 +1,91 @@
+schemaVersion: 1
+taskId: TASK-0012
+baseCommit: b65caf309d4fb740b20648ee74c7b764537582c9
+contextFingerprint: 880dfd135a84e1d1c826edeb7b7c783c657696a7a8a9182761604292467b87aa
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+  - path: .github/workflows/ci.yml
+    sha256: 5aff27c23ecc888f93714a1bfb87199b14cdd1b29f304816cb5459c659d5d2a6
+  - path: .harness/agent-entrypoints.yaml
+    sha256: 6015704ca1a815558c268e60f7aa6e1a713aa759a63fdfc491b1cd31d6da1358
+  - path: .harness/commands.yaml
+    sha256: 841c95a55496e4cb01c42cc5c071ba99fe7cfaeed16b75e0d82f708eab33666a
+  - path: .harness/invariants.yaml
+    sha256: c537c042cc12ab692b39e1a3ca90673200425c86b6e69495a3f75d1c70a6de5e
+  - path: .harness/license-policy.yaml
+    sha256: c13ce6bb1a0806f6ea4d47685386df6c7064b66b02173e496d47ec7468478205
+  - path: .harness/project-state.yaml
+    sha256: cac23be654d88c7d0a40c4d0ddc25d689310ca934e7f3d8d3e484e287439f3cc
+  - path: .harness/protected-paths.yaml
+    sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+  - path: .harness/skills.yaml
+    sha256: 691d8c0fef5df189db956d713cc8ae1bd3dd45831192afdd3d55a11f6b3032f5
+  - path: .harness/sources-of-truth.yaml
+    sha256: c2aee425a5bb92d93acbc4fe63c433b955cb7c16b1edbf7fe74c7ed92795d09b
+  - path: .harness/task-ledger.yaml
+    sha256: d70544d25b48d2f182874f70695ad4c7d81e9d655d9c4a02e03d53c310cb9193
+  - path: .harness/task-lifecycle.yaml
+    sha256: 038f946cde2c0dd084f92701647aca5f71131c3fc39d7b1252054afd33146b42
+  - path: .harness/tools.lock.yaml
+    sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+  - path: AGENTS.md
+    sha256: 01d061accda6ef07e2df08fa9b5ed35533d2ef5e25e7055134e93de1828e5f74
+  - path: docs/architecture/repository-structure.md
+    sha256: 2b6229812ee79f136fe680079969c54688e84c3455b4f6394713f6b61e572927
+  - path: docs/decisions/0003-portable-agent-harness.md
+    sha256: f65fe34fa6d0ef493b021e1ba55c7cd9229f90edad51f453fca7bfbad2ec9e5c
+  - path: docs/engineering/agent-onboarding.md
+    sha256: 7c9572216b5d7d3c6d970921d86687c6348e69172b928d68c3a3cd3e0015fd6d
+  - path: docs/evidence/TASK-0011/evidence-pack.json
+    sha256: c125d7b4b1bfcdfe79ce646af9d53adb696658d6c8cc5c5b071f474f3fdc39af
+  - path: docs/handoffs/TASK-0011.json
+    sha256: 1f8d1febfa5b2d14917fc4419ab63c529b97a0827dfd6b67579ce91c3b5a888c
+  - path: docs/schemas/evidence-pack.schema.json
+    sha256: d50159828cc17690d93ff133526daabce9adaa23c341ef9b14229619be0598fd
+  - path: docs/schemas/handoff.schema.json
+    sha256: 9bef3af45274bc9c19dab0999f32a030a9fd05fa8e72a645ff1637b84db50cd3
+  - path: docs/tasks/task-card-template.md
+    sha256: ec7d24342efe741be6e5f8dc9012c866c6e096bd9a36985db699e4e91709568d
+  - path: scripts/harness/doctor.py
+    sha256: 4bfbfc990570da16da17a98bf7f6646dde4db00214a1a7a0db623c801ddea7da
+  - path: scripts/harness/harness_common.py
+    sha256: 00bfe627e1707cd849cd1c4adc536d581cad444dbf7a0c95734c97ece365e8c4
+  - path: scripts/harness/precheck.ps1
+    sha256: aafb76cc11e367890baf6e82e0dadfed841318bd5ed64ce2bd99202b99c2c835
+  - path: scripts/harness/precheck.py
+    sha256: 11b00a8d1f6882a05212127a13ea6489ea754c5e8edb60903e034ddfa9e46895
+  - path: scripts/harness/precheck.sh
+    sha256: c559c8c677aea011ed16e2e276ab8517e69ca11051d508b8b0db82ca81520192
+  - path: scripts/harness/tests/test_harness.py
+    sha256: 93cc648fed0230b4f9dd0a29dc5bdc568b9b046e93b4475ffa40736a6d79f953
+  - path: skills/harness-change/SKILL.md
+    sha256: 8c23d27c60427179f59f65abadd1905e36f01faae8c9ad03b1150f55d5ee1b87
+  - path: skills/task-intake/SKILL.md
+    sha256: 43cae37c291a7b0d0b5dd88a9b1db0f3ea46661885fd98d657c98a61dd478e4c
+  - path: specs/catalog/model-protocols.yaml
+    sha256: dd5d45b1118baf560591f8f29434a365467cfdd943c539fe0f407d6a8f66c0ab
+  - path: specs/catalog/product-scope.yaml
+    sha256: dc8fe7f8a00d4c177a8ce2230376b9738d9da2fd51cbc04de40fae2f6ce1f65b
+  - path: specs/contracts/authorization-contract.yaml
+    sha256: 64cf6f37928d7cf81cefaeda9d3ab9b08243160a8538055952c2cff2cdbad887
+  - path: specs/contracts/beta-gate-contract.yaml
+    sha256: e81547102b7c1fa0a0c453fba9a98bece5caf93f08299e142d3460fe8b36aad3
+  - path: specs/contracts/database-ownership-contract.yaml
+    sha256: fa2ca370c1cc21165ac408e746cd4022f76d4a56e24816bae2acc1441f711ba6
+  - path: specs/contracts/finalization-contract.yaml
+    sha256: 29e89887d05a393bf945d3e446831096663c722911fe4feedaeaa3194945a4af
+  - path: specs/contracts/generation-contract.yaml
+    sha256: d91afb5d594982430d83bbb5dcf68dc65fdb4254a844768903749fcac442a32c
+  - path: specs/contracts/identity-session-boundary-contract.yaml
+    sha256: 8c93f5e06628b1b41531030aaaddd941497a1e07de65dd0acd93b5de3074df54
+  - path: specs/contracts/license-cost-boundary-contract.yaml
+    sha256: f9d3510e23a039398bad483fb777482aa0d24ee727e69c069faa4935d1ac8c49
+  - path: specs/contracts/model-protocol-contract.yaml
+    sha256: 7b77a389339119adc2f1321c862857962cc00918a213dae0d0400de78e7b7676
+  - path: specs/contracts/realtime-contract.yaml
+    sha256: 18e4f6fde9404768f73c211185e6f7b206eaa148d2c1d2ea87fa781661250670
+  - path: specs/contracts/safety-fail-closed-contract.yaml
+    sha256: 04fa5025373d640545d3a2d835b7413bd0dabd3f0e12391b08d3c1c0023c1904
+  - path: specs/contracts/worker-lease-contract.yaml
+    sha256: b5113bf8704439b1f6d408927edf66120892ede9a0508bcd84bc29bc782875e3
