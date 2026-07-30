@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0040
-state: PLANNED
+state: SUPERSEDED
+planningResolution:
+  state: SUPERSEDED
+  reason: TASK-0039 已由 TASK-0045 替代；由 TASK-0046 在新后继链上承接相同路径感知 CI 与包装器范围。
+  decidedBy: repository-owner
+  decidedAt: "2026-07-31"
+  replacementTask: TASK-0046
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
 planningContractHash: 0c2f6e9ac7f950515b5913d4c65780788e0951f2b12e4e2d04ace7851347ae5f

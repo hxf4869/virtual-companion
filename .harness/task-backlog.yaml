@@ -203,6 +203,12 @@ resolutions:
     decidedBy: repository-owner
     decidedAt: "2026-07-31"
     replacementTask: TASK-0045
+  TASK-0040:
+    state: SUPERSEDED
+    reason: TASK-0039 已由 TASK-0045 替代；由 TASK-0046 在新后继链上承接相同路径感知 CI 与包装器范围。
+    decidedBy: repository-owner
+    decidedAt: "2026-07-31"
+    replacementTask: TASK-0046
 tasks:
   TASK-0012:
     title: PLANNED 队列、Backlog 和 Harness 治理
