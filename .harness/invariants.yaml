@@ -51,6 +51,3 @@ invariants:
   - id: INV-HARNESS-006
     statement: the Technical Alpha backlog permanently reserves task IDs and is the only machine authority for PLANNED order dependencies critical path decision gates promotion conditions and explicit Owner clause-replacement contracts while each hash-bound planning card preserves its complete six-section projection
     enforcement: [task_backlog, harness_doctor, task_lifecycle, harness_tests, git_parent_edge_history, independent_review]
-  - id: INV-HARNESS-007
-    statement: single-card and longline delivery follow one registered machine policy with bounded review exact candidate identity exact-SHA validation and fail-closed dependency release
-    enforcement: [task_delivery_policy, harness_doctor, harness_tests, repository_skill]

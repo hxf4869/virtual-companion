@@ -21,7 +21,6 @@ sources:
   licensePolicy: .harness/license-policy.yaml
   protectedPaths: .harness/protected-paths.yaml
   invariants: .harness/invariants.yaml
-  taskDeliveryPolicy: .harness/task-delivery-policy.yaml
   betaDutyRoster: ops/beta-duty-roster.yaml
   evidenceSchema: docs/schemas/evidence-pack.schema.json
   handoffSchema: docs/schemas/handoff.schema.json
