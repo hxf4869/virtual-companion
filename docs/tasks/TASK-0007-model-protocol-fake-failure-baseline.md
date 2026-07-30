@@ -118,7 +118,12 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 用户明确要求继续按需求清单和功能计划自主完成所有无需其决策的任务；本任务只实现机器真源已要求的供应商中立端口与本地 Fake/Failure 基线，不选择真实供应商、凭据、商业路由或公开能力
 independentReview: required
-reviewers: []
+reviewers:
+  - id: codex-task0007-model-protocol-reviewer
+    kind: model-protocol-boundary
+    verdict: PASS
+    reviewedCommit: 10ac4d35aa29bebe5c6f13c444423602380e2074
+    evidencePath: docs/evidence/TASK-0007/review-model-protocol.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0007
   - python scripts/harness/catalog_tool.py validate
