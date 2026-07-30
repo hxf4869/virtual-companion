@@ -22,9 +22,11 @@
     <modules>
         <module>service/platform/catalog</module>
         <module>service/modules/modelruntime</module>
+        <module>service/modules/conversation</module>
         <module>service/adapters/model-fake</module>
         <module>service/adapters/model-failure</module>
         <module>service/tests/model-protocol-contract-tests</module>
+        <module>service/tests/generation-contract-tests</module>
         <module>service/apps/runtime</module>
     </modules>
 
