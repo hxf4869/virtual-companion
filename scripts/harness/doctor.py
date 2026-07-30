@@ -10,6 +10,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 import time
 import unicodedata
@@ -198,6 +199,8 @@ class DoctorGitSnapshot:
             os.fsdecode(entry[0]): entry
             for entry in worktree_fingerprint
         }
+        self._current_file_cache: dict[str, tuple[bytes, int, int]] = {}
+        self._current_blob_oids: dict[str, str] = {}
         self.ledger_introductions: dict[str, set[str]] | None = None
 
     @staticmethod
@@ -333,6 +336,23 @@ class DoctorGitSnapshot:
             stat_result.st_ctime_ns,
         )
 
+    @staticmethod
+    def _same_file_identity(
+        left: tuple[int, int, int, int, int, int],
+        right: tuple[int, int, int, int, int, int],
+    ) -> bool:
+        return (
+            left[0],
+            left[1],
+            left[3],
+            left[4],
+        ) == (
+            right[0],
+            right[1],
+            right[3],
+            right[4],
+        )
+
     @classmethod
     def _candidate_fingerprint(
         cls,
@@ -428,7 +448,10 @@ class DoctorGitSnapshot:
         if (
             cls._race_stat(after) != expected
             or cls._race_stat(opened_after) != cls._race_stat(opened_before)
-            or cls._race_stat(opened_before)[:-1] != expected[:-1]
+            or not cls._same_file_identity(
+                cls._race_stat(opened_before),
+                expected,
+            )
             or cls._parent_states(decoded_path) != parents_before
         ):
             raise HarnessError(
@@ -471,7 +494,7 @@ class DoctorGitSnapshot:
             path = raw_path.decode(
                 "utf-8",
                 errors="surrogateescape",
-            ).replace("\\", "/")
+            )
             entries.setdefault(path, []).append((parts[0], parts[1], parts[2]))
         return entries
 
@@ -524,15 +547,27 @@ class DoctorGitSnapshot:
         return records[0][0], records[0][1]
 
     @staticmethod
-    def _blob_oid(content: bytes, oid_length: int) -> str:
-        payload = f"blob {len(content)}\0".encode("ascii") + content
-        if oid_length == 40:
-            return hashlib.sha1(payload).hexdigest()
-        if oid_length == 64:
-            return hashlib.sha256(payload).hexdigest()
-        raise HarnessError(
-            f"doctor snapshot: unsupported Git object ID length {oid_length}"
+    def _filtered_blob_oid(path: str, content: bytes) -> str:
+        result = subprocess.run(
+            [
+                "git",
+                "hash-object",
+                f"--path={normalize_repo_path(path)}",
+                "--stdin",
+            ],
+            cwd=ROOT,
+            input=content,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
+        value = result.stdout.decode("ascii", errors="replace").strip()
+        if result.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40,64}", value):
+            detail = result.stderr.decode("utf-8", errors="replace").strip()
+            raise HarnessError(
+                f"doctor snapshot: cannot hash current file {path}: {detail}"
+            )
+        return value
 
     def current_file_paths(self) -> set[str]:
         paths = {
@@ -565,6 +600,9 @@ class DoctorGitSnapshot:
 
     def read_current_file(self, path: Path) -> tuple[bytes, int, int]:
         normalized = self._repository_relative_path(path)
+        cached = self._current_file_cache.get(normalized)
+        if cached is not None:
+            return cached
         raw_path = os.fsencode(normalized)
         expected = self._candidate_fingerprints.get(normalized)
         current, content = self._read_candidate(
@@ -587,11 +625,24 @@ class DoctorGitSnapshot:
                 raise HarnessError(
                     f"doctor snapshot: current path is not a regular Git blob: {normalized}"
                 )
-            if self._blob_oid(content, len(oid)) != oid:
+            filtered_oid = self._filtered_blob_oid(normalized, content)
+            if filtered_oid != oid:
                 raise HarnessError(
                     f"doctor snapshot: tracked file changed before read: {normalized}"
                 )
-        return content, current[2], current[3]
+            self._current_blob_oids[normalized] = filtered_oid
+        result = (content, current[2], current[3])
+        self._current_file_cache[normalized] = result
+        return result
+
+    def current_blob_oid(self, path: Path) -> str:
+        normalized = self._repository_relative_path(path)
+        content, _, _ = self.read_current_file(path)
+        oid = self._current_blob_oids.get(normalized)
+        if oid is None:
+            oid = self._filtered_blob_oid(normalized, content)
+            self._current_blob_oids[normalized] = oid
+        return oid
 
     def read_current_bytes(self, path: Path) -> bytes:
         return self.read_current_file(path)[0]
@@ -3685,10 +3736,9 @@ def git_index_entry(path: str) -> tuple[str, str] | None:
 def git_worktree_blob_oid(path: str) -> str | None:
     snapshot = _ACTIVE_GIT_SNAPSHOT
     if snapshot is not None:
-        content = snapshot.read_current_bytes(
+        return snapshot.current_blob_oid(
             ROOT / normalize_repo_path(path)
         )
-        return snapshot._blob_oid(content, len(snapshot.head))
     result = git_text(
         "hash-object",
         f"--path={normalize_repo_path(path)}",

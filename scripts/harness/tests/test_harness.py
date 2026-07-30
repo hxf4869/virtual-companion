@@ -789,6 +789,68 @@ class GitHistoryPolicyTests(unittest.TestCase):
 
                 self.assertEqual([], audit.errors)
 
+    def test_doctor_snapshot_reuses_first_validated_file_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            expected = fixture.read_bytes()
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    first = harness_common.read_repository_bytes(fixture)
+                    fixture.write_bytes(b"transient-malicious")
+                    second = harness_common.read_repository_bytes(fixture)
+                    fixture.write_bytes(expected)
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            self.assertEqual(expected, first)
+            self.assertEqual(first, second)
+            self.assertEqual([], audit.errors)
+
+    def test_doctor_snapshot_applies_git_filters_to_clean_file_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            self._git(repository, "config", "core.autocrlf", "true")
+            (repository / ".gitattributes").write_text(
+                "*.cmd text eol=crlf\n",
+                encoding="utf-8",
+            )
+            fixture = repository / "fixture.cmd"
+            fixture.write_bytes(b"@echo off\r\n")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            index_oid = self._git(repository, "rev-parse", ":fixture.cmd")
+            raw_oid = self._git(
+                repository,
+                "hash-object",
+                "--no-filters",
+                "fixture.cmd",
+            )
+            self.assertNotEqual(index_oid, raw_oid)
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    content = harness_common.read_repository_bytes(fixture)
+                    self.assertEqual(
+                        index_oid,
+                        snapshot.current_blob_oid(fixture),
+                    )
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            self.assertEqual(b"@echo off\r\n", content)
+            self.assertEqual([], audit.errors)
+
     def test_doctor_snapshot_freezes_repository_glob_path_set(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repository = self._repository(directory)
@@ -813,6 +875,17 @@ class GitHistoryPolicyTests(unittest.TestCase):
                     transient.unlink()
 
             self.assertEqual([original], discovered)
+
+    def test_doctor_snapshot_preserves_literal_backslash_index_path(self) -> None:
+        raw = b"100644 " + b"0" * 40 + b" 0\tfoo\\bar.txt\0"
+        entries = doctor.DoctorGitSnapshot._parse_index(raw)
+        self.assertEqual(["foo\\bar.txt"], list(entries))
+        audit = Audit()
+        validate_portable_path_collisions(audit, "fixture", list(entries))
+        self.assertTrue(
+            any("non-portable backslash" in error for error in audit.errors),
+            audit.errors,
+        )
 
     def test_doctor_snapshot_rejects_regular_reparse_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
