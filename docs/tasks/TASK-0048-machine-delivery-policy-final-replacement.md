@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0048
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:

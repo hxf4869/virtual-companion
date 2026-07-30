@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0048
+activeTaskCard: docs/tasks/TASK-0048-machine-delivery-policy-final-replacement.md
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0042
 lastTerminalHandoff: docs/handoffs/TASK-0042.json
-nextAction: 协调任务须先创建新的永久替代任务与后继链；机器当前首个可晋级 Backlog 任务为 TASK-0013，但治理缺口修复前不得晋级
+nextAction: 执行 TASK-0048 机器交付策略最终替代与后继链重建
 capabilityGates:
   businessImplementation:
     state: BLOCKED
