@@ -1321,6 +1321,7 @@ class ContextTests(unittest.TestCase):
     def test_ready_authorization_fields_cannot_be_widened(self) -> None:
         tasks = discover_tasks()
         tasks["TASK-0002"] = dict(tasks["TASK-0002"], owner="tampered-owner")
+        tasks = {"TASK-0002": tasks["TASK-0002"]}
         audit = Audit()
         validate_tasks(audit, tasks, load_yaml(ROOT / ".harness/task-lifecycle.yaml"))
         self.assertTrue(
@@ -1338,7 +1339,7 @@ class ContextTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             check=True,
         ).stdout.strip()
-        tasks["TASK-0002"] = task
+        tasks = {"TASK-0002": task}
         audit = Audit()
         validate_tasks(audit, tasks, load_yaml(ROOT / ".harness/task-lifecycle.yaml"))
         self.assertTrue(
@@ -1383,6 +1384,7 @@ class ContextTests(unittest.TestCase):
     def test_invalid_risk_class_is_rejected_globally(self) -> None:
         tasks = discover_tasks()
         tasks["TASK-0002"] = dict(tasks["TASK-0002"], riskClass="critical")
+        tasks = {"TASK-0002": tasks["TASK-0002"]}
         audit = Audit()
         validate_tasks(audit, tasks, load_yaml(ROOT / ".harness/task-lifecycle.yaml"))
         self.assertTrue(any("riskClass must be one of" in error for error in audit.errors), audit.errors)
