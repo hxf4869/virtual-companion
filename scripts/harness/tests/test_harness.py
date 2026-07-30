@@ -6,6 +6,7 @@ from datetime import datetime
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -639,6 +640,10 @@ class GitHistoryPolicyTests(unittest.TestCase):
         malformed_variants = (
             record.rstrip(b"\0"),
             record.replace(b"R100", b"R101"),
+            record.replace(b"R100", b"R01"),
+            record.replace(b"R.", b"ZZ"),
+            record.replace(b"N...", b"XXXX"),
+            record.replace(b"100644", b"777777"),
             b"# branch.oid " + oid + b"\0",
             b"! ignored.txt\0",
             record.replace(b"source.txt\0", b"source.txt\0\0"),
@@ -700,6 +705,144 @@ class GitHistoryPolicyTests(unittest.TestCase):
                 audit.errors,
             )
 
+    def test_doctor_snapshot_rejects_fsmonitor_valid_flags(self) -> None:
+        with self.assertRaisesRegex(HarnessError, "fsmonitor-valid"):
+            doctor.DoctorGitSnapshot._validate_fsmonitor_flags(
+                b"h fixture.txt\0"
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            original_git_bytes = doctor.git_bytes
+            fsmonitor_calls = 0
+
+            def changing_fsmonitor(
+                *args: str,
+                check: bool = True,
+            ) -> subprocess.CompletedProcess[bytes]:
+                nonlocal fsmonitor_calls
+                result = original_git_bytes(*args, check=check)
+                if tuple(args[:3]) == ("ls-files", "-f", "-z"):
+                    fsmonitor_calls += 1
+                    if fsmonitor_calls > 1 and result.stdout:
+                        return subprocess.CompletedProcess(
+                            args=result.args,
+                            returncode=0,
+                            stdout=b"h" + result.stdout[1:],
+                            stderr=result.stderr,
+                        )
+                return result
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+                patch.object(
+                    doctor,
+                    "git_bytes",
+                    side_effect=changing_fsmonitor,
+                ),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            self.assertTrue(
+                any("fsmonitor-valid" in error for error in audit.errors),
+                audit.errors,
+            )
+
+    def test_doctor_snapshot_rejects_transient_clean_and_dirty_reads(self) -> None:
+        for initially_dirty in (False, True):
+            with (
+                self.subTest(initially_dirty=initially_dirty),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                repository = self._repository(directory)
+                fixture = repository / "fixture.txt"
+                fixture.write_text("base\n", encoding="utf-8")
+                self._git(repository, "add", ".")
+                self._git(repository, "commit", "-qm", "base")
+                expected = "dirty-a\n" if initially_dirty else "base\n"
+                if initially_dirty:
+                    fixture.write_text(expected, encoding="utf-8")
+
+                with (
+                    patch.object(harness_common, "ROOT", repository),
+                    patch.object(doctor, "ROOT", repository),
+                ):
+                    with doctor.doctor_git_snapshot() as snapshot:
+                        fixture.write_text(
+                            "transient-malicious\n",
+                            encoding="utf-8",
+                        )
+                        with self.assertRaisesRegex(
+                            HarnessError,
+                            "file changed before read",
+                        ):
+                            harness_common.read_repository_text(fixture)
+                        fixture.write_text(expected, encoding="utf-8")
+                        audit = Audit()
+                        snapshot.verify_unchanged(audit)
+
+                self.assertEqual([], audit.errors)
+
+    def test_doctor_snapshot_freezes_repository_glob_path_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            task_dir = repository / "docs/tasks"
+            task_dir.mkdir(parents=True)
+            original = task_dir / "TASK-0001-original.md"
+            original.write_text("original\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot():
+                    transient = task_dir / "TASK-9999-transient.md"
+                    transient.write_text("transient\n", encoding="utf-8")
+                    discovered = harness_common.repository_glob(
+                        task_dir,
+                        "*.md",
+                    )
+                    transient.unlink()
+
+            self.assertEqual([original], discovered)
+
+    def test_doctor_snapshot_rejects_regular_reparse_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            fixture.write_text("dirty\n", encoding="utf-8")
+            original_lstat = doctor.os.lstat
+
+            class ReparseMetadata:
+                st_mode = stat.S_IFREG | 0o644
+                st_file_attributes = 0x400
+
+            def reparse_lstat(path: os.PathLike[str] | str) -> os.stat_result:
+                if Path(path) == fixture:
+                    return ReparseMetadata()  # type: ignore[return-value]
+                return original_lstat(path)
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+                patch.object(doctor.os, "lstat", side_effect=reparse_lstat),
+                self.assertRaisesRegex(HarnessError, "non-reparse"),
+            ):
+                with doctor.doctor_git_snapshot():
+                    pass
+            self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
     def test_doctor_snapshot_cache_does_not_cross_scopes_or_repositories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -744,6 +887,8 @@ class GitHistoryPolicyTests(unittest.TestCase):
             self.assertEqual(3, len(blob_calls), calls)
             self.assertEqual([b"first\n", b"first\n", b"second\n"], values)
             self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+            self.assertIsNone(harness_common._REPOSITORY_BYTES_READER)
+            self.assertIsNone(harness_common._REPOSITORY_GLOBBER)
 
     def test_doctor_snapshot_clears_scope_after_exception(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1856,9 +2001,23 @@ class ValidationFlowTests(unittest.TestCase):
     def test_agent_rules_define_snapshot_reuse_and_low_frequency_polling(self) -> None:
         instructions = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("完整 HEAD SHA、Git Index/候选树", instructions)
+        self.assertIn("所有显式与隐式命令输入均可证明不变", instructions)
+        self.assertIn("不是 Evidence 中精确命令的隐式别名", instructions)
+        self.assertIn(
+            "python scripts/harness/precheck.py --task TASK-ID",
+            instructions,
+        )
         self.assertIn("默认约 60 秒", instructions)
         self.assertIn("轮询只观察状态，绝不能触发第二次验证", instructions)
         self.assertIn("不得新增 `REUSED` PASS", instructions)
+
+    def test_task_template_requires_exact_precheck_argv_evidence(self) -> None:
+        template = (ROOT / "docs/tasks/task-card-template.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("冻结的精确 canonical Precheck 命令", template)
+        self.assertIn("包装器不是该 Python 命令的 Evidence 别名", template)
+        self.assertIn("同一条 `git diff --check` 只执行一次", template)
 
 
 class IntegrationTests(unittest.TestCase):

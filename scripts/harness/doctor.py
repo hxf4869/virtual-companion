@@ -23,7 +23,7 @@ from harness_common import (
     CONTEXT_ALGORITHM,
     ROOT,
     HarnessError,
-    changed_paths,
+    changed_paths as git_changed_paths,
     configure_utf8_stdio,
     discover_tasks,
     git_bytes,
@@ -34,7 +34,11 @@ from harness_common import (
     load_yaml,
     normalize_repo_path,
     parse_skill_metadata,
+    read_repository_bytes,
+    read_repository_text,
     relative,
+    repository_glob,
+    repository_read_snapshot,
     sha256_file,
     SKILL_FRONTMATTER_RE,
     strict_yaml_load,
@@ -120,20 +124,30 @@ CANONICAL_PRECHECK_COMMANDS = {
     "betaRosterGate": ["scripts/harness/check_beta_gate.py"],
 }
 PORCELAIN_V2_ORDINARY_RE = re.compile(
-    rb"^1 [^ \0]{2} [^ \0]{4} [0-7]{6} [0-7]{6} [0-7]{6} "
+    rb"^1 [.MTADRCU]{2} (?:N\.\.\.|S[.C][.M][.U]) "
+    rb"(?:000000|100644|100755|120000|160000) "
+    rb"(?:000000|100644|100755|120000|160000) "
+    rb"(?:000000|100644|100755|120000|160000) "
     rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
     rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) (.+)$",
     re.DOTALL,
 )
 PORCELAIN_V2_RENAME_RE = re.compile(
-    rb"^2 [^ \0]{2} [^ \0]{4} [0-7]{6} [0-7]{6} [0-7]{6} "
+    rb"^2 [.MTADRCU]{2} (?:N\.\.\.|S[.C][.M][.U]) "
+    rb"(?:000000|100644|100755|120000|160000) "
+    rb"(?:000000|100644|100755|120000|160000) "
+    rb"(?:000000|100644|100755|120000|160000) "
     rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
     rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
-    rb"[RC](?:100|[0-9]{1,2}) (.+)$",
+    rb"[RC](?:100|[1-9]?[0-9]) (.+)$",
     re.DOTALL,
 )
 PORCELAIN_V2_UNMERGED_RE = re.compile(
-    rb"^u [^ \0]{2} [^ \0]{4} [0-7]{6} [0-7]{6} [0-7]{6} [0-7]{6} "
+    rb"^u (?:DD|AU|UD|UA|DU|AA|UU) (?:N\.\.\.|S[.C][.M][.U]) "
+    rb"(?:000000|100644|100755|120000|160000) "
+    rb"(?:000000|100644|100755|120000|160000) "
+    rb"(?:000000|100644|100755|120000|160000) "
+    rb"(?:000000|100644|100755|120000|160000) "
     rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
     rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) "
     rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) (.+)$",
@@ -159,16 +173,31 @@ class DoctorGitSnapshot:
                 f"doctor snapshot: cannot read Git index flags: {detail}"
             )
         self._validate_index_flags(index_flags.stdout)
+        fsmonitor_flags = git_bytes("ls-files", "-f", "-z", check=False)
+        if fsmonitor_flags.returncode != 0:
+            detail = fsmonitor_flags.stderr.decode(
+                "utf-8",
+                errors="replace",
+            ).strip()
+            raise HarnessError(
+                f"doctor snapshot: cannot read Git fsmonitor flags: {detail}"
+            )
+        self._validate_fsmonitor_flags(fsmonitor_flags.stdout)
         worktree_bytes, worktree_fingerprint = self._capture_worktree()
 
         self.head = head.stdout.strip()
         self.index_bytes = index.stdout
         self.index_flags_bytes = index_flags.stdout
+        self.fsmonitor_flags_bytes = fsmonitor_flags.stdout
         self.worktree_bytes = worktree_bytes
         self.worktree_fingerprint = worktree_fingerprint
         self._trees: dict[str, dict[str, tuple[str, str, str]]] = {}
         self._blobs: dict[str, bytes] = {}
         self._index_entries = self._parse_index(index.stdout)
+        self._candidate_fingerprints = {
+            os.fsdecode(entry[0]): entry
+            for entry in worktree_fingerprint
+        }
         self.ledger_introductions: dict[str, set[str]] | None = None
 
     @staticmethod
@@ -259,10 +288,11 @@ class DoctorGitSnapshot:
         return tuple(sorted(candidates))
 
     @staticmethod
-    def _validate_index_flags(raw: bytes) -> None:
+    def _index_flag_records(raw: bytes) -> list[tuple[bytes, bytes]]:
         if raw and not raw.endswith(b"\0"):
             raise HarnessError("doctor snapshot: unterminated Git index flags")
         records = raw.split(b"\0")[:-1] if raw else []
+        parsed: list[tuple[bytes, bytes]] = []
         for record in records:
             if (
                 len(record) < 3
@@ -271,12 +301,26 @@ class DoctorGitSnapshot:
             ):
                 raise HarnessError("doctor snapshot: malformed Git index flags")
             tag = record[:1]
+            if tag.upper() not in b"HSMRCK?":
+                raise HarnessError("doctor snapshot: malformed Git index flags")
+            parsed.append((tag, record[2:]))
+        return parsed
+
+    @classmethod
+    def _validate_index_flags(cls, raw: bytes) -> None:
+        for tag, _ in cls._index_flag_records(raw):
             if tag == b"S" or (b"a" <= tag <= b"z"):
                 raise HarnessError(
                     "doctor snapshot: hidden Git index flag is not allowed"
                 )
-            if tag not in b"HMRCK?":
-                raise HarnessError("doctor snapshot: malformed Git index flags")
+
+    @classmethod
+    def _validate_fsmonitor_flags(cls, raw: bytes) -> None:
+        for tag, _ in cls._index_flag_records(raw):
+            if b"a" <= tag <= b"z":
+                raise HarnessError(
+                    "doctor snapshot: Git fsmonitor-valid flag is not allowed"
+                )
 
     @staticmethod
     def _race_stat(stat_result: os.stat_result) -> tuple[int, int, int, int, int, int]:
@@ -294,16 +338,59 @@ class DoctorGitSnapshot:
         cls,
         raw_path: bytes,
     ) -> tuple[bytes, str, int, int, bytes]:
+        fingerprint, _ = cls._read_candidate(raw_path, retain_content=False)
+        return fingerprint
+
+    @classmethod
+    def _parent_states(
+        cls,
+        decoded_path: str,
+    ) -> tuple[tuple[str, tuple[int, int, int, int, int, int]], ...]:
+        states: list[tuple[str, tuple[int, int, int, int, int, int]]] = []
+        current = ROOT
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        for component in decoded_path.split("/")[:-1]:
+            current /= component
+            try:
+                metadata = os.lstat(current)
+            except OSError as exc:
+                raise HarnessError(
+                    f"doctor snapshot: cannot inspect worktree parent {current}: {exc}"
+                ) from exc
+            attributes = int(getattr(metadata, "st_file_attributes", 0))
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or bool(attributes & reparse_flag)
+            ):
+                raise HarnessError(
+                    f"doctor snapshot: worktree parent must be a regular directory: {current}"
+                )
+            states.append((str(current), cls._race_stat(metadata)))
+        return tuple(states)
+
+    @classmethod
+    def _read_candidate(
+        cls,
+        raw_path: bytes,
+        *,
+        retain_content: bool,
+    ) -> tuple[tuple[bytes, str, int, int, bytes], bytes | None]:
         decoded_path = os.fsdecode(raw_path)
         if b"\\" in raw_path or not is_repository_relative(decoded_path):
             raise HarnessError(
                 "doctor snapshot: unsafe worktree status path"
             )
         candidate = ROOT.joinpath(*decoded_path.split("/"))
+        parents_before = cls._parent_states(decoded_path)
         try:
             before = os.lstat(candidate)
         except FileNotFoundError:
-            return raw_path, "missing", 0, 0, b""
+            if cls._parent_states(decoded_path) != parents_before:
+                raise HarnessError(
+                    f"doctor snapshot: worktree parent changed while reading: {decoded_path!r}"
+                )
+            return (raw_path, "missing", 0, 0, b""), None
         except OSError as exc:
             raise HarnessError(
                 f"doctor snapshot: cannot inspect worktree candidate {decoded_path!r}: {exc}"
@@ -311,32 +398,26 @@ class DoctorGitSnapshot:
 
         attributes = int(getattr(before, "st_file_attributes", 0))
         mode = int(before.st_mode)
-        if stat.S_ISLNK(mode):
-            try:
-                target = os.fsencode(os.readlink(candidate))
-                after = os.lstat(candidate)
-            except OSError as exc:
-                raise HarnessError(
-                    f"doctor snapshot: cannot read worktree symlink {decoded_path!r}: {exc}"
-                ) from exc
-            if cls._race_stat(before) != cls._race_stat(after):
-                raise HarnessError(
-                    f"doctor snapshot: worktree candidate changed while reading: {decoded_path!r}"
-                )
-            digest = hashlib.sha256(target).digest()
-            return raw_path, "symlink", mode, attributes, digest
-
-        if not stat.S_ISREG(mode):
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        if (
+            not stat.S_ISREG(mode)
+            or stat.S_ISLNK(mode)
+            or bool(attributes & reparse_flag)
+        ):
             raise HarnessError(
-                f"doctor snapshot: unsupported worktree candidate type: {decoded_path!r}"
+                f"doctor snapshot: worktree candidate must be a regular non-reparse file: "
+                f"{decoded_path!r}"
             )
 
         digest = hashlib.sha256()
+        content = bytearray() if retain_content else None
         try:
             with candidate.open("rb") as stream:
                 opened_before = os.fstat(stream.fileno())
                 while chunk := stream.read(1024 * 1024):
                     digest.update(chunk)
+                    if content is not None:
+                        content.extend(chunk)
                 opened_after = os.fstat(stream.fileno())
             after = os.lstat(candidate)
         except OSError as exc:
@@ -348,11 +429,15 @@ class DoctorGitSnapshot:
             cls._race_stat(after) != expected
             or cls._race_stat(opened_after) != cls._race_stat(opened_before)
             or cls._race_stat(opened_before)[:-1] != expected[:-1]
+            or cls._parent_states(decoded_path) != parents_before
         ):
             raise HarnessError(
                 f"doctor snapshot: worktree candidate changed while reading: {decoded_path!r}"
             )
-        return raw_path, "file", mode, attributes, digest.digest()
+        return (
+            (raw_path, "file", mode, attributes, digest.digest()),
+            bytes(content) if content is not None else None,
+        )
 
     @classmethod
     def _capture_worktree(
@@ -438,6 +523,147 @@ class DoctorGitSnapshot:
             return None
         return records[0][0], records[0][1]
 
+    @staticmethod
+    def _blob_oid(content: bytes, oid_length: int) -> str:
+        payload = f"blob {len(content)}\0".encode("ascii") + content
+        if oid_length == 40:
+            return hashlib.sha1(payload).hexdigest()
+        if oid_length == 64:
+            return hashlib.sha256(payload).hexdigest()
+        raise HarnessError(
+            f"doctor snapshot: unsupported Git object ID length {oid_length}"
+        )
+
+    def current_file_paths(self) -> set[str]:
+        paths = {
+            path
+            for path, records in self._index_entries.items()
+            if len(records) == 1
+            and records[0][2] == "0"
+            and records[0][0] in ("100644", "100755")
+        }
+        for path, fingerprint in self._candidate_fingerprints.items():
+            if fingerprint[1] == "missing":
+                paths.discard(path)
+            elif fingerprint[1] == "file":
+                paths.add(path)
+        return paths
+
+    @staticmethod
+    def _repository_relative_path(path: Path) -> str:
+        try:
+            value = path.relative_to(ROOT).as_posix()
+        except ValueError as exc:
+            raise HarnessError(
+                f"doctor snapshot: path is outside repository: {path}"
+            ) from exc
+        if not is_repository_relative(value):
+            raise HarnessError(
+                f"doctor snapshot: unsafe repository read path: {value!r}"
+            )
+        return normalize_repo_path(value)
+
+    def read_current_file(self, path: Path) -> tuple[bytes, int, int]:
+        normalized = self._repository_relative_path(path)
+        raw_path = os.fsencode(normalized)
+        expected = self._candidate_fingerprints.get(normalized)
+        current, content = self._read_candidate(
+            raw_path,
+            retain_content=True,
+        )
+        if content is None:
+            raise FileNotFoundError(normalized)
+        if expected is not None:
+            if current != expected:
+                raise HarnessError(
+                    f"doctor snapshot: current file changed before read: {normalized}"
+                )
+        else:
+            index_entry = self.index_entry(normalized)
+            if index_entry is None:
+                raise FileNotFoundError(normalized)
+            mode, oid = index_entry
+            if mode not in ("100644", "100755"):
+                raise HarnessError(
+                    f"doctor snapshot: current path is not a regular Git blob: {normalized}"
+                )
+            if self._blob_oid(content, len(oid)) != oid:
+                raise HarnessError(
+                    f"doctor snapshot: tracked file changed before read: {normalized}"
+                )
+        return content, current[2], current[3]
+
+    def read_current_bytes(self, path: Path) -> bytes:
+        return self.read_current_file(path)[0]
+
+    def current_path_is_file(self, path: Path) -> bool:
+        normalized = self._repository_relative_path(path)
+        return normalized in self.current_file_paths()
+
+    def current_path_exists(self, path: Path) -> bool:
+        normalized = self._repository_relative_path(path)
+        paths = self.current_file_paths()
+        return normalized in paths or any(
+            candidate.startswith(f"{normalized.rstrip('/')}/")
+            for candidate in paths
+        )
+
+    def glob_current(self, root: Path, pattern: str) -> list[Path]:
+        prefix = self._repository_relative_path(root).rstrip("/")
+        result: list[Path] = []
+        for path in self.current_file_paths():
+            if not path.startswith(f"{prefix}/"):
+                continue
+            relative_path = path[len(prefix) + 1:]
+            if glob_matches(relative_path, pattern):
+                result.append(ROOT / path)
+        return sorted(result)
+
+    def changed_paths(self, base_commit: str) -> list[str]:
+        ancestor = git_text(
+            "merge-base",
+            "--is-ancestor",
+            base_commit,
+            self.head,
+            check=False,
+        )
+        if ancestor.returncode != 0:
+            raise HarnessError(
+                f"baseCommit {base_commit} is not an ancestor of HEAD"
+            )
+        baseline = self.tree_entries(base_commit)
+        paths = set(baseline) | set(self._index_entries)
+        changed: set[str] = set()
+        for path in paths:
+            baseline_entry = baseline.get(path)
+            records = self._index_entries.get(path, [])
+            index_entry = (
+                (
+                    records[0][0],
+                    "commit" if records[0][0] == "160000" else "blob",
+                    records[0][1],
+                )
+                if len(records) == 1 and records[0][2] == "0"
+                else None
+            )
+            if baseline_entry != index_entry:
+                changed.add(path)
+        changed.update(self._candidate_fingerprints)
+        return sorted(changed)
+
+    def index_matches_tree(self, commit: str) -> bool:
+        tree = self.tree_entries(commit)
+        paths = set(tree) | set(self._index_entries)
+        for path in paths:
+            records = self._index_entries.get(path, [])
+            index_entry = None
+            if len(records) == 1 and records[0][2] == "0":
+                object_type = "commit" if records[0][0] == "160000" else "blob"
+                index_entry = (records[0][0], object_type, records[0][1])
+            if tree.get(path) != index_entry:
+                return False
+        return True
+
     def blob(self, oid: str) -> bytes:
         if oid in self._blobs:
             return self._blobs[oid]
@@ -477,6 +703,24 @@ class DoctorGitSnapshot:
                 index_flags.stdout == self.index_flags_bytes,
                 "doctor snapshot: Git index flags changed during validation",
             )
+        fsmonitor_flags = git_bytes("ls-files", "-f", "-z", check=False)
+        try:
+            if fsmonitor_flags.returncode != 0:
+                detail = fsmonitor_flags.stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                ).strip()
+                raise HarnessError(
+                    f"doctor snapshot: cannot read Git fsmonitor flags: {detail}"
+                )
+            self._validate_fsmonitor_flags(fsmonitor_flags.stdout)
+        except HarnessError as exc:
+            audit.error(str(exc))
+        else:
+            audit.require(
+                fsmonitor_flags.stdout == self.fsmonitor_flags_bytes,
+                "doctor snapshot: Git fsmonitor flags changed during validation",
+            )
         try:
             worktree_bytes, worktree_fingerprint = self._capture_worktree()
         except HarnessError as exc:
@@ -500,7 +744,11 @@ def doctor_git_snapshot() -> Iterator[DoctorGitSnapshot]:
     snapshot = DoctorGitSnapshot()
     _ACTIVE_GIT_SNAPSHOT = snapshot
     try:
-        yield snapshot
+        with repository_read_snapshot(
+            snapshot.read_current_bytes,
+            snapshot.glob_current,
+        ):
+            yield snapshot
     finally:
         _ACTIVE_GIT_SNAPSHOT = None
 
@@ -516,6 +764,33 @@ def git_object(commit: str, path: str) -> bytes:
                 raise HarnessError(f"cannot read {path} at {commit}: path is not a blob")
             return snapshot.blob(entry[2])
     return read_git_object(commit, path)
+
+
+def changed_paths(base_commit: str) -> list[str]:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    return (
+        snapshot.changed_paths(base_commit)
+        if snapshot is not None
+        else git_changed_paths(base_commit)
+    )
+
+
+def current_path_is_file(path: Path) -> bool:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    return (
+        snapshot.current_path_is_file(path)
+        if snapshot is not None
+        else path.is_file()
+    )
+
+
+def current_path_exists(path: Path) -> bool:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    return (
+        snapshot.current_path_exists(path)
+        if snapshot is not None
+        else path.exists()
+    )
 
 
 @contextmanager
@@ -571,10 +846,10 @@ def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def load_json(path: Path, audit: Audit) -> dict[str, Any] | None:
     try:
         data = json.loads(
-            path.read_text(encoding="utf-8"),
+            read_repository_text(path),
             object_pairs_hook=unique_json_object,
         )
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         audit.error(f"{relative(path)}: cannot load JSON: {exc}")
         return None
     if not isinstance(data, dict):
@@ -1489,7 +1764,7 @@ def validate_tasks(
             try:
                 raw = git_object(authorization_commit, path)
                 authorized_text = raw.decode("utf-8")
-                current_text = (ROOT / path).read_text(encoding="utf-8")
+                current_text = read_repository_text(ROOT / path)
                 match = TASK_BLOCK_RE.search(authorized_text)
                 audit.require(bool(match), f"{path}: authorization checkpoint has no task YAML")
                 authorized = strict_yaml_load(match.group(1)) if match else {}
@@ -1564,7 +1839,9 @@ def validate_tasks(
                 )
                 context_path = str(task.get("contextLock", ""))
                 authorized_context = git_object(authorization_commit, context_path)
-                current_context = (ROOT / normalize_repo_path(context_path)).read_bytes()
+                current_context = read_repository_bytes(
+                    ROOT / normalize_repo_path(context_path)
+                )
                 validate_ready_context_lock_bytes(
                     audit,
                     path,
@@ -1965,7 +2242,7 @@ def canonical_terminal_commit(
 ) -> str | None:
     task_id = str(task.get("taskId", ""))
     ledger_path = ROOT / TASK_LEDGER_PATH
-    if ledger_path.is_file():
+    if current_path_is_file(ledger_path):
         ledger = load_yaml(ledger_path)
         entries = ledger.get("tasks")
         entry = entries.get(task_id) if isinstance(entries, dict) else None
@@ -2176,7 +2453,7 @@ def validate_task_ledger_entries(
             audit.require(is_repository_relative(path), f"{label}: {field} must be repository-relative")
             if is_repository_relative(path):
                 audit.require(
-                    (ROOT / normalize_repo_path(path)).is_file(),
+                    current_path_is_file(ROOT / normalize_repo_path(path)),
                     f"{label}: missing {path}",
                 )
     for task_id, task in tasks.items():
@@ -2434,7 +2711,10 @@ def validate_project_state(
         "project-state: lastAcceptedHandoff must match lastAcceptedTask",
     )
     if is_repository_relative(handoff_value):
-        audit.require((ROOT / handoff_value).is_file(), f"project-state: missing {handoff_value}")
+        audit.require(
+            current_path_is_file(ROOT / handoff_value),
+            f"project-state: missing {handoff_value}",
+        )
     last_terminal = str(state.get("lastTerminalTask", ""))
     audit.require(last_terminal in tasks, f"project-state: unknown lastTerminalTask {last_terminal!r}")
     if last_terminal in tasks:
@@ -2455,7 +2735,10 @@ def validate_project_state(
         "project-state: lastTerminalHandoff must match lastTerminalTask",
     )
     if is_repository_relative(terminal_handoff):
-        audit.require((ROOT / terminal_handoff).is_file(), f"project-state: missing {terminal_handoff}")
+        audit.require(
+            current_path_is_file(ROOT / terminal_handoff),
+            f"project-state: missing {terminal_handoff}",
+        )
     validate_nonblank_text(audit, "project-state: nextAction", state.get("nextAction"))
     gates = state.get("capabilityGates")
     audit.require(isinstance(gates, dict) and bool(gates), "project-state: capabilityGates are required")
@@ -2491,8 +2774,14 @@ def validate_project_state(
         if task.get("state") in terminal_states:
             handoff_path = ROOT / f"docs/handoffs/{task_id}.json"
             evidence_path = ROOT / f"docs/evidence/{task_id}/evidence-pack.json"
-            audit.require(handoff_path.is_file(), f"{task_id}: terminal task is missing handoff")
-            audit.require(evidence_path.is_file(), f"{task_id}: terminal task is missing evidence pack")
+            audit.require(
+                current_path_is_file(handoff_path),
+                f"{task_id}: terminal task is missing handoff",
+            )
+            audit.require(
+                current_path_is_file(evidence_path),
+                f"{task_id}: terminal task is missing evidence pack",
+            )
     return declared_id
 
 
@@ -2516,8 +2805,9 @@ def validate_skills(
         skill_path = str(entry.get("path", ""))
         audit.require(is_repository_relative(skill_path), f"Skill {skill_id}: path must be repository-relative")
         path = ROOT / normalize_repo_path(skill_path)
-        audit.require(path.is_file(), f"Skill {skill_id}: missing {skill_path}")
-        if path.is_file():
+        path_is_file = current_path_is_file(path)
+        audit.require(path_is_file, f"Skill {skill_id}: missing {skill_path}")
+        if path_is_file:
             try:
                 metadata = parse_skill_metadata(path)
                 extension = metadata.get("metadata")
@@ -2654,7 +2944,9 @@ def validate_skills(
                         current_content = (
                             git_object(delivery_commit, current_path)
                             if delivery_commit
-                            else (ROOT / normalize_repo_path(current_path)).read_bytes()
+                            else read_repository_bytes(
+                                ROOT / normalize_repo_path(current_path)
+                            )
                         )
                         if baseline_content != current_content:
                             changed_skill_ids.add(skill_id)
@@ -2716,7 +3008,10 @@ def validate_sources(audit: Audit, tasks: dict[str, dict[str, Any]]) -> None:
             path = str(value)
             audit.require(is_repository_relative(path), f"source {source_id}: path must be repository-relative")
             if is_repository_relative(path):
-                audit.require((ROOT / normalize_repo_path(path)).exists(), f"source {source_id}: missing {path}")
+                audit.require(
+                    current_path_exists(ROOT / normalize_repo_path(path)),
+                    f"source {source_id}: missing {path}",
+                )
     invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
     audit.require(isinstance(invariants, list), ".harness/invariants.yaml: invariants must be a list")
     invariant_ids: set[str] = set()
@@ -2740,7 +3035,7 @@ def validate_sources(audit: Audit, tasks: dict[str, dict[str, Any]]) -> None:
             audit.require(is_repository_relative(path), f"{task_id}: source of truth must be relative: {path}")
             if is_repository_relative(path):
                 audit.require(
-                    (ROOT / normalize_repo_path(path)).is_file(),
+                    current_path_is_file(ROOT / normalize_repo_path(path)),
                     f"{task_id}: source of truth does not exist: {path}",
                 )
         for invariant_id in task.get("requiredInvariants", []):
@@ -2748,7 +3043,7 @@ def validate_sources(audit: Audit, tasks: dict[str, dict[str, Any]]) -> None:
                 str(invariant_id) in invariant_ids,
                 f"{task_id}: unknown required invariant {invariant_id}",
             )
-    for path in sorted((ROOT / "specs/contracts").glob("*.yaml")):
+    for path in sorted(repository_glob(ROOT / "specs/contracts", "*.yaml")):
         try:
             contract = load_yaml(path)
             audit.require(bool(contract.get("schemaVersion")), f"{relative(path)}: schemaVersion is required")
@@ -2802,7 +3097,7 @@ def first_existing_zed_instruction_path() -> str | None:
         (
             candidate
             for candidate in ZED_PROJECT_INSTRUCTION_PRIORITY
-            if (ROOT / normalize_repo_path(candidate)).is_file()
+            if current_path_is_file(ROOT / normalize_repo_path(candidate))
         ),
         None,
     )
@@ -2813,9 +3108,14 @@ def validate_entrypoints(audit: Audit) -> None:
     canonical = str(config.get("canonicalInstructions", ""))
     audit.require(canonical == "AGENTS.md", "agent-entrypoints: canonicalInstructions must be AGENTS.md")
     canonical_path = ROOT / canonical
-    audit.require(canonical_path.is_file(), "agent-entrypoints: AGENTS.md is missing")
-    if canonical_path.is_file():
-        nonblank = [line for line in canonical_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    canonical_is_file = current_path_is_file(canonical_path)
+    audit.require(canonical_is_file, "agent-entrypoints: AGENTS.md is missing")
+    if canonical_is_file:
+        nonblank = [
+            line
+            for line in read_repository_text(canonical_path).splitlines()
+            if line.strip()
+        ]
         audit.require(len(nonblank) <= 160, "AGENTS.md is too large; move explanations to onboarding docs")
     clients = config.get("clients")
     audit.require(isinstance(clients, dict), "agent-entrypoints: clients must be an object")
@@ -2841,7 +3141,8 @@ def validate_entrypoints(audit: Audit) -> None:
         path_value = str(client.get("instructionPath", ""))
         audit.require(is_repository_relative(path_value), f"agent-entrypoints: {client_id} path is invalid")
         path = ROOT / normalize_repo_path(path_value)
-        audit.require(path.is_file(), f"agent-entrypoints: {client_id} missing {path_value}")
+        path_is_file = current_path_is_file(path)
+        audit.require(path_is_file, f"agent-entrypoints: {client_id} missing {path_value}")
         mode = client.get("mode")
         audit.require(mode in allowed_modes, f"agent-entrypoints: {client_id} has invalid mode {mode}")
         if mode == "NATIVE_DISCOVERY":
@@ -2854,13 +3155,13 @@ def validate_entrypoints(audit: Audit) -> None:
             bool(re.fullmatch(r"[0-9a-f]{64}", expected_hash)),
             f"agent-entrypoints: {client_id} contentSha256 is required",
         )
-        if path.is_file() and re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+        if path_is_file and re.fullmatch(r"[0-9a-f]{64}", expected_hash):
             audit.require(
                 sha256_file(path) == expected_hash,
                 f"agent-entrypoints: {client_id} instruction content drifted",
             )
-        if path.is_file() and mode in ("THIN_IMPORT", "THIN_REFERENCE"):
-            text = path.read_text(encoding="utf-8")
+        if path_is_file and mode in ("THIN_IMPORT", "THIN_REFERENCE"):
+            text = read_repository_text(path)
             reference = str(client.get("requiredReference", ""))
             audit.require(reference in text, f"agent-entrypoints: {client_id} adapter misses {reference}")
             nonblank = [line for line in text.splitlines() if line.strip()]
@@ -2939,9 +3240,9 @@ def validate_entrypoints(audit: Audit) -> None:
             "instructions are unavailable",
         )
         copilot_adapter = ROOT / "CLAUDE.md"
-        if copilot_adapter.is_file():
+        if current_path_is_file(copilot_adapter):
             audit.require(
-                "blocked" in copilot_adapter.read_text(encoding="utf-8").casefold(),
+                "blocked" in read_repository_text(copilot_adapter).casefold(),
                 "agent-entrypoints: shared Copilot CLI adapter must state its "
                 "fail-closed behavior",
             )
@@ -2966,7 +3267,10 @@ def validate_command_registry(audit: Audit, config: dict[str, Any]) -> None:
     )
     audit.require(is_repository_relative(runner), "commands: runner must be repository-relative")
     if is_repository_relative(runner):
-        audit.require((ROOT / runner).is_file(), f"commands: missing runner {runner}")
+        audit.require(
+            current_path_is_file(ROOT / runner),
+            f"commands: missing runner {runner}",
+        )
     commands = config.get("commands")
     profiles = config.get("profiles")
     audit.require(isinstance(commands, dict), "commands: commands must be an object")
@@ -2991,7 +3295,10 @@ def validate_command_registry(audit: Audit, config: dict[str, Any]) -> None:
             script = str(argv[0])
             audit.require(is_repository_relative(script), f"commands: {command_id} script must be relative")
             if is_repository_relative(script):
-                audit.require((ROOT / script).is_file(), f"commands: {command_id} missing {script}")
+                audit.require(
+                    current_path_is_file(ROOT / script),
+                    f"commands: {command_id} missing {script}",
+                )
     for command_id, expected_argv in CANONICAL_PRECHECK_COMMANDS.items():
         command = commands.get(command_id)
         audit.require(isinstance(command, dict), f"commands: missing canonical command {command_id}")
@@ -3011,9 +3318,13 @@ def validate_commands(audit: Audit) -> None:
     validate_command_registry(audit, load_yaml(ROOT / ".harness/commands.yaml"))
     for wrapper in ("scripts/harness/precheck.sh", "scripts/harness/precheck.ps1"):
         path = ROOT / wrapper
-        audit.require(path.is_file(), f"commands: missing wrapper {wrapper}")
-        if path.is_file():
-            audit.require("precheck.py" in path.read_text(encoding="utf-8"), f"{wrapper}: must call precheck.py")
+        path_is_file = current_path_is_file(path)
+        audit.require(path_is_file, f"commands: missing wrapper {wrapper}")
+        if path_is_file:
+            audit.require(
+                "precheck.py" in read_repository_text(path),
+                f"{wrapper}: must call precheck.py",
+            )
 
 
 def validate_check_artifact(
@@ -3080,7 +3391,7 @@ def validate_evidence_and_handoffs(
     lifecycle_states = set(str(item) for item in lifecycle.get("states", []))
     audit.require(handoff_states == lifecycle_states - {"DRAFT"}, "handoff schema states drift from lifecycle")
     handoffs: dict[str, dict[str, Any]] = {}
-    for path in sorted((ROOT / "docs/handoffs").glob("TASK-*.json")):
+    for path in sorted(repository_glob(ROOT / "docs/handoffs", "TASK-*.json")):
         data = load_json(path, audit)
         if not data:
             continue
@@ -3098,11 +3409,19 @@ def validate_evidence_and_handoffs(
         evidence_path = str(data.get("evidencePath", ""))
         audit.require(is_repository_relative(evidence_path), f"{relative(path)}: evidencePath must be relative")
         if is_repository_relative(evidence_path):
-            audit.require((ROOT / evidence_path).is_file(), f"{relative(path)}: evidencePath does not exist")
+            audit.require(
+                current_path_is_file(ROOT / evidence_path),
+                f"{relative(path)}: evidencePath does not exist",
+            )
         handoffs[task_id] = data
 
     evidence_packs: dict[str, dict[str, Any]] = {}
-    for path in sorted((ROOT / "docs/evidence").glob("TASK-*/evidence-pack.json")):
+    for path in sorted(
+        repository_glob(
+            ROOT / "docs/evidence",
+            "TASK-*/evidence-pack.json",
+        )
+    ):
         data = load_json(path, audit)
         if not data:
             continue
@@ -3218,16 +3537,21 @@ def validate_idle_terminal_history(
         task_id,
         changed_paths(terminal_commit),
     )
-    index = git_text(
-        "diff",
-        "--cached",
-        "--quiet",
-        terminal_commit,
-        "--",
-        check=False,
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    index_unchanged = (
+        snapshot.index_matches_tree(terminal_commit)
+        if snapshot is not None
+        else git_text(
+            "diff",
+            "--cached",
+            "--quiet",
+            terminal_commit,
+            "--",
+            check=False,
+        ).returncode == 0
     )
     audit.require(
-        index.returncode == 0,
+        index_unchanged,
         f"{task_id}: index changed after terminal commit without a new task",
     )
 
@@ -3255,6 +3579,28 @@ def current_regular_file_bytes(
     label: str,
     path: Path,
 ) -> bytes | None:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    if snapshot is not None:
+        try:
+            content, mode, file_attributes = snapshot.read_current_file(path)
+        except (HarnessError, OSError) as exc:
+            audit.error(f"{label}: cannot read current file: {exc}")
+            return None
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        regular = (
+            stat.S_ISREG(mode)
+            and not stat.S_ISLNK(mode)
+            and not bool(file_attributes & reparse_flag)
+            and (
+                not git_core_filemode_enabled()
+                or stat.S_IMODE(mode) & 0o111 == 0
+            )
+        )
+        audit.require(
+            regular,
+            f"{label}: must be a regular non-reparse file",
+        )
+        return content if regular else None
     try:
         metadata = path.lstat()
     except OSError as exc:
@@ -3337,6 +3683,12 @@ def git_index_entry(path: str) -> tuple[str, str] | None:
 
 
 def git_worktree_blob_oid(path: str) -> str | None:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    if snapshot is not None:
+        content = snapshot.read_current_bytes(
+            ROOT / normalize_repo_path(path)
+        )
+        return snapshot._blob_oid(content, len(snapshot.head))
     result = git_text(
         "hash-object",
         f"--path={normalize_repo_path(path)}",
@@ -3356,19 +3708,31 @@ def validate_current_index_snapshot(
     for path in paths:
         repository_path = ROOT / normalize_repo_path(path)
         index_entry = git_index_entry(path)
-        if not os.path.lexists(repository_path):
+        if not current_path_is_file(repository_path):
             audit.require(
                 index_entry is None,
                 f"{task_id}: staged snapshot and worktree disagree on missing path: {path}",
             )
             continue
         try:
-            metadata = repository_path.lstat()
+            snapshot = _ACTIVE_GIT_SNAPSHOT
+            if snapshot is not None:
+                _, mode, file_attributes = snapshot.read_current_file(
+                    repository_path
+                )
+            else:
+                metadata = repository_path.lstat()
+                mode = metadata.st_mode
+                file_attributes = getattr(
+                    metadata,
+                    "st_file_attributes",
+                    0,
+                )
             reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
             regular = (
-                stat.S_ISREG(metadata.st_mode)
-                and not stat.S_ISLNK(metadata.st_mode)
-                and not bool(getattr(metadata, "st_file_attributes", 0) & reparse_flag)
+                stat.S_ISREG(mode)
+                and not stat.S_ISLNK(mode)
+                and not bool(file_attributes & reparse_flag)
             )
             audit.require(
                 regular,
@@ -3385,7 +3749,7 @@ def validate_current_index_snapshot(
                 and index_entry[1] == worktree_oid,
                 f"{task_id}: staged snapshot and worktree content disagree: {path}",
             )
-        except OSError as exc:
+        except (HarnessError, OSError) as exc:
             audit.error(f"{task_id}: cannot inspect changed path {path}: {exc}")
 
 
@@ -3492,6 +3856,14 @@ def validate_frozen_repository_artifact(
 
 
 def current_repository_tree_entries(prefix: str) -> dict[str, Path]:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    normalized_prefix = normalize_repo_path(prefix).rstrip("/")
+    if snapshot is not None:
+        return {
+            path: ROOT / path
+            for path in snapshot.current_file_paths()
+            if path.startswith(f"{normalized_prefix}/")
+        }
     root = ROOT / normalize_repo_path(prefix)
     entries: dict[str, Path] = {}
     if not root.exists():
@@ -3566,6 +3938,9 @@ def repository_paths_at_commit(commit: str) -> list[str]:
 
 
 def repository_index_paths() -> list[str]:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    if snapshot is not None:
+        return sorted(snapshot._index_entries)
     result = git_bytes("ls-files", "-z")
     return sorted(
         value.decode("utf-8", errors="surrogateescape")
@@ -3878,7 +4253,11 @@ def validate_versioned_terminal_evidence(
             )
             if is_repository_relative(review_path):
                 review_file = ROOT / review_path
-                audit.require(review_file.is_file(), f"{label}.evidencePath does not exist")
+                review_is_file = current_path_is_file(review_file)
+                audit.require(
+                    review_is_file,
+                    f"{label}.evidencePath does not exist",
+                )
                 if terminal_commit:
                     validate_frozen_repository_artifact(
                         audit,
@@ -3886,9 +4265,9 @@ def validate_versioned_terminal_evidence(
                         terminal_commit,
                         review_path,
                     )
-                if review_file.is_file():
+                if review_is_file:
                     try:
-                        review_text = review_file.read_text(encoding="utf-8")
+                        review_text = read_repository_text(review_file)
                         match = TASK_BLOCK_RE.search(review_text)
                         audit.require(bool(match), f"{label}.evidencePath lacks fenced YAML metadata")
                         review_data = strict_yaml_load(match.group(1)) if match else {}

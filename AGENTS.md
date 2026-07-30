@@ -45,17 +45,15 @@
 
 ## 验证与交接
 
-从仓库根目录运行统一入口：
+普通任务从仓库根目录执行任务卡冻结的精确 canonical 命令，默认是：
 
 ```text
-Windows: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1
-macOS/Linux/WSL: bash scripts/harness/precheck.sh
-通用: python3 scripts/harness/precheck.py
+python scripts/harness/precheck.py --task TASK-ID
 ```
 
-执行任务卡中未被统一入口覆盖的 `requiredCommands`、受影响模块测试和 `git diff --check`。任务卡不得把 canonical precheck 已包含的 Doctor、Catalog、付费依赖或 Beta Gate 再列为同一终态快照上的独立全量命令；只有任务本身修改 Harness、包装器或平台可移植性时，才要求多个本地平台入口完整复验。每条检查必须记录 `PASS`、`FAIL` 或 `NOT_RUN`、真实退出码、验证提交和产物哈希或无产物理由。C3/C4 任务需要独立 Reviewer。
+PowerShell 的 `scripts/harness/precheck.ps1` 和 POSIX 的 `scripts/harness/precheck.sh` 只是 Python 发现包装器，不是 Evidence 中精确命令的隐式别名。只有任务卡在授权前把实际包装器 argv 列入 `requiredCommands` 时才能用它替代 Python argv，并按实际命令记录 Evidence；Harness、包装器或平台可移植性任务可以显式要求多个入口。执行任务卡中未被 canonical precheck 覆盖的其余 `requiredCommands` 和受影响模块测试；`git diff --check` 若已列在任务卡中只执行一次。任务卡不得把 canonical precheck 已包含的 Doctor、Catalog、付费依赖或 Beta Gate 再列为同一终态快照上的独立全量命令。每条检查必须记录 `PASS`、`FAIL` 或 `NOT_RUN`、真实退出码、验证提交和产物哈希或无产物理由。C3/C4 任务需要独立 Reviewer。
 
-验证结果只能在以下要素全部不变时用于避免额外调度：完整 HEAD SHA、Git Index/候选树、工作树与未跟踪候选、精确命令、操作系统、解释器/工具链、依赖环境、任务授权、Context 和命令注册表。复用只表示“不再次启动相同检查”，Evidence 仍保留该快照上首次真实执行的唯一结果；不得新增 `REUSED` PASS、复制其他环境结果或把失败、超时、取消、`NOT_RUN` 当作通过。任一要素变化后相关结果立即失效。
+验证结果只能在所有显式与隐式命令输入均可证明不变时用于避免额外调度，至少包括完整 HEAD SHA、Git Index/候选树、工作树与未跟踪候选、精确命令、操作系统、解释器/工具链、依赖、环境变量、本地 Git 配置、外部服务与数据状态、任务授权、Context 和命令注册表；任一输入无法证明不变就必须重跑。复用只表示“不再次启动相同检查”，Evidence 仍保留该快照上首次真实执行的唯一结果；不得新增 `REUSED` PASS、复制其他环境结果或把失败、超时、取消、`NOT_RUN` 当作通过。
 
 提交前的 `doctor.py --pre-closure` 与终态真实提交后的 canonical precheck 属于不同生命周期快照，必须分别执行。会话恢复的 `doctor.py --summary` 在同一会话且仓库状态未变化时不重复。
 

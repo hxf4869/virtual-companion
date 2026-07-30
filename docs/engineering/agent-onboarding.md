@@ -81,13 +81,13 @@ GitHub Copilot 各产品形态支持的指令类型不同，必须以
 | macOS/Linux/WSL | `bash scripts/harness/precheck.sh` |
 | 已知 Python 解释器 | `<python> scripts/harness/precheck.py` |
 
-PowerShell 和 Shell 文件只负责发现 Python；命令列表来自 `.harness/commands.yaml`，由 `precheck.py` 使用 `sys.executable` 执行。CI 也必须调用该入口。
+PowerShell 和 Shell 文件只负责发现 Python；命令列表来自 `.harness/commands.yaml`，由 `precheck.py` 使用 `sys.executable` 执行。它们不是任务卡精确命令的 Evidence 别名：普通任务执行任务卡默认冻结的 `python scripts/harness/precheck.py --task TASK-ID`；只有任务卡在授权前明确列出包装器 argv 时，才执行并记录该包装器。CI 仍按工作流声明的入口执行。
 
 ## 验证调度与长命令
 
-- 普通任务在当前平台运行一个 canonical precheck；CI 负责不同 OS 的独立环境验证。只有 Harness、包装器或可移植性变更才在本机完整运行多个平台入口。
+- 普通任务只运行任务卡冻结的那条精确 canonical precheck；CI 负责不同 OS 的独立环境验证。只有 Harness、包装器或可移植性变更才在任务卡中显式要求多个本地平台入口。
 - canonical precheck 已覆盖 Doctor、Catalog validate/drift、付费依赖与 Beta Gate；同一终态快照不再单独重复这些全量命令。
-- `pre-closure` Doctor 与终态提交后 Precheck 绑定不同快照，均须保留。HEAD、Index、工作树、命令、环境、授权或 Context 任一变化后，之前结果失效。
+- `pre-closure` Doctor 与终态提交后 Precheck 绑定不同快照，均须保留。只有所有显式与隐式输入（包括 HEAD、Index、工作树、精确命令、环境变量、本地 Git 配置、外部服务和数据状态、授权与 Context）均可证明不变时才能避免重跑；否则之前结果失效。
 - 已有真实 PASS 只用于避免再次调度相同命令，不生成 `REUSED` Evidence，也不能替代任务卡要求的唯一最终结果。
 - 长命令只等待原运行会话，相邻轮询默认约 60 秒；不并行执行 `ps`、状态查询或重复日志抓取，不因静默重启验证。状态更新以新输出、阶段变化、失败和完成为准。
 

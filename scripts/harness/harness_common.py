@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import fnmatch
 import functools
 import hashlib
@@ -7,7 +8,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator
 
 import yaml
 
@@ -17,10 +18,43 @@ CONTEXT_ALGORITHM = "SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1"
 TASK_BLOCK_RE = re.compile(r"```yaml\r?\n(.*?)\r?\n```", re.DOTALL)
 SKILL_FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---", re.DOTALL)
 WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
+_REPOSITORY_BYTES_READER: Callable[[Path], bytes] | None = None
+_REPOSITORY_GLOBBER: Callable[[Path, str], list[Path]] | None = None
 
 
 class HarnessError(RuntimeError):
     pass
+
+
+@contextmanager
+def repository_read_snapshot(
+    bytes_reader: Callable[[Path], bytes],
+    globber: Callable[[Path, str], list[Path]],
+) -> Iterator[None]:
+    global _REPOSITORY_BYTES_READER, _REPOSITORY_GLOBBER
+    if _REPOSITORY_BYTES_READER is not None or _REPOSITORY_GLOBBER is not None:
+        raise HarnessError("repository read snapshot: nested scopes are not allowed")
+    _REPOSITORY_BYTES_READER = bytes_reader
+    _REPOSITORY_GLOBBER = globber
+    try:
+        yield
+    finally:
+        _REPOSITORY_BYTES_READER = None
+        _REPOSITORY_GLOBBER = None
+
+
+def read_repository_bytes(path: Path) -> bytes:
+    reader = _REPOSITORY_BYTES_READER
+    return reader(path) if reader is not None else path.read_bytes()
+
+
+def read_repository_text(path: Path) -> str:
+    return read_repository_bytes(path).decode("utf-8")
+
+
+def repository_glob(root: Path, pattern: str) -> list[Path]:
+    globber = _REPOSITORY_GLOBBER
+    return globber(root, pattern) if globber is not None else list(root.glob(pattern))
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -67,8 +101,8 @@ def configure_utf8_stdio() -> None:
 
 def load_yaml(path: Path) -> dict[str, Any]:
     try:
-        data = strict_yaml_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
+        data = strict_yaml_load(read_repository_bytes(path))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise HarnessError(f"{relative(path)}: cannot load YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise HarnessError(f"{relative(path)}: YAML root must be an object")
@@ -129,8 +163,8 @@ def glob_matches(path: str, pattern: str) -> bool:
 
 def parse_task_card(path: Path) -> dict[str, Any]:
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+        text = read_repository_text(path)
+    except (OSError, UnicodeError) as exc:
         raise HarnessError(f"{relative(path)}: cannot read task card: {exc}") from exc
     match = TASK_BLOCK_RE.search(text)
     if not match:
@@ -152,7 +186,7 @@ def task_id_from_filename(path: Path) -> str | None:
 
 def discover_tasks() -> dict[str, dict[str, Any]]:
     tasks: dict[str, dict[str, Any]] = {}
-    for path in sorted(TASK_DIR.glob("*.md")):
+    for path in sorted(repository_glob(TASK_DIR, "*.md")):
         if not re.fullmatch(r"TASK-[0-9]{4,}.*\.md", path.name):
             continue
         task = parse_task_card(path)
@@ -173,8 +207,8 @@ def discover_tasks() -> dict[str, dict[str, Any]]:
 
 def parse_skill_metadata(path: Path) -> dict[str, Any]:
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+        text = read_repository_text(path)
+    except (OSError, UnicodeError) as exc:
         raise HarnessError(f"{relative(path)}: cannot read Skill: {exc}") from exc
     match = SKILL_FRONTMATTER_RE.search(text)
     if not match:
@@ -341,4 +375,4 @@ def changed_paths(base_commit: str) -> list[str]:
 
 
 def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_repository_bytes(path)).hexdigest()

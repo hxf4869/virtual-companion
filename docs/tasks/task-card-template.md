@@ -51,7 +51,7 @@ requiredCommands:
 该授权提交完整 SHA 写入 `authorizationCommit`。任务历史必须完全从 `baseCommit` 后分叉，不得并入 Base 之前的旧支线；所有历史父边发生过的路径都计入
 Diff Scope，即使之后恢复。终态提交必须是单父提交，并原子更新任务卡、项目状态、Task Ledger、Evidence Pack 和 Handoff，
 不得改写历史条目。正式检查前须暂存完整候选快照，Index 与工作树不一致时检查失败；
-提交前用 `doctor.py --task TASK-ID --pre-closure` 复验，提交后必须用 canonical Precheck 验证真实提交；Precheck 已包含正式 Doctor，不得在同一终态快照上再默认列 standalone Doctor。只有任务特有且未被 Precheck 覆盖的检查才加入 `requiredCommands`。
+提交前用 `doctor.py --task TASK-ID --pre-closure` 复验，提交后必须执行任务卡中冻结的精确 canonical Precheck 命令验证真实提交；Precheck 已包含正式 Doctor，不得在同一终态快照上再默认列 standalone Doctor。PowerShell/POSIX 包装器不是该 Python 命令的 Evidence 别名，只有在授权前把实际包装器 argv 写入 `requiredCommands` 才能执行并据实记录。只有任务特有且未被 Precheck 覆盖的检查才加入 `requiredCommands`。
 
 ## API / 事件 / 数据契约
 
@@ -67,7 +67,7 @@ Diff Scope，即使之后恢复。终态提交必须是单父提交，并原子�
 
 ## 必跑检查
 
-以 YAML `requiredCommands` 为准；每条命令记录状态、退出码、验证提交、产物哈希或无产物理由。任务卡不得重复列出 canonical Precheck 已覆盖的子命令，也不得要求普通业务任务同时运行多个本地平台的完整 Precheck。
+以 YAML `requiredCommands` 的精确 argv 为准；每条命令记录状态、退出码、验证提交、产物哈希或无产物理由，同一条 `git diff --check` 只执行一次。任务卡不得重复列出 canonical Precheck 已覆盖的子命令，也不得要求普通业务任务同时运行多个本地平台的完整 Precheck。
 
 ## 回滚或前向修复
 
