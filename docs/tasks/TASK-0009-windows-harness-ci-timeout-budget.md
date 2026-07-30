@@ -108,7 +108,12 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 用户此前明确“允许修复 CI”；本任务只前向修复已由两次精确 SHA 运行证明的 Windows Harness 总作业时间预算不足，不删除、跳过或放宽任何检查
 independentReview: required
-reviewers: []
+reviewers:
+  - id: codex-task0009-ci-reviewer
+    kind: ci-harness-timeout-budget
+    verdict: PASS
+    reviewedCommit: a178e8fb6c3ba05e4c06469fc83f9c553d97ec65
+    evidencePath: docs/evidence/TASK-0009/review-ci-harness-timeout.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0009
   - python scripts/harness/catalog_tool.py validate
