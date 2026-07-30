@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0010
-activeTaskCard: docs/tasks/TASK-0010-harness-validation-flow-performance.md
-lastAcceptedTask: TASK-0009
-lastAcceptedHandoff: docs/handoffs/TASK-0009.json
-lastTerminalTask: TASK-0009
-lastTerminalHandoff: docs/handoffs/TASK-0009.json
-nextAction: 优化 Harness 验证调度、长命令可观察性和 Doctor 全量扫描性能
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0010
+lastAcceptedHandoff: docs/handoffs/TASK-0010.json
+lastTerminalTask: TASK-0010
+lastTerminalHandoff: docs/handoffs/TASK-0010.json
+nextAction: 创建 OpenAI Chat Completions 离线 HTTP/SSE Adapter 合同任务
 capabilityGates:
   businessImplementation:
     state: BLOCKED

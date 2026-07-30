@@ -1,0 +1,37 @@
+{
+  "taskId": "TASK-0010",
+  "state": "ACCEPTED",
+  "baseCommit": "5b459750b545afe399755ebb40f03b78dcc6d29c",
+  "headCommit": "8b85930b08c083a4af3c343430a0ee07e5ca54ed",
+  "evidencePath": "docs/evidence/TASK-0010/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-task0010-harness-reviewer",
+      "kind": "harness-validation-performance",
+      "verdict": "PASS",
+      "reviewedCommit": "8b85930b08c083a4af3c343430a0ee07e5ca54ed",
+      "evidencePath": "docs/evidence/TASK-0010/review-harness-validation-performance.md"
+    }
+  ],
+  "completed": [
+    "普通任务模板只保留一次最终 canonical precheck，不再额外重复它已覆盖的 Doctor；任务显式冻结的跨平台入口仍逐条真实执行",
+    "结果复用仅用于调度，绑定完整 Git、命令、工具链、环境和外部输入快照，禁止生成或改写 Evidence PASS",
+    "Doctor 以单次运行的 Tree、Blob、Index、历史和已验证文件缓存替代重复全量 Git 查询，仓库变化或异常继续 fail closed",
+    "Doctor 输出阶段耗时，precheck 输出逐命令退出码和耗时，长命令默认约 60 秒低频轮询",
+    "Windows Doctor 两次样本中位数 104.150 秒，较 342 秒基线降低约 69.5%，检查数由 25,155 增至 26,894",
+    "完整 98 项 Harness、本机 Python/PowerShell/WSL precheck 和精确实现 SHA 的 GitHub 五作业全部成功",
+    "独立 Reviewer 绑定精确实现 Commit/Tree 给出 PASS，P0/P1/P2 均为 0"
+  ],
+  "remaining": [
+    "下一轮创建 OpenAI Chat Completions 离线 HTTP/SSE Adapter 与本地 mock-server 合同任务",
+    "其后单独实现 Anthropic Messages 离线 Adapter，不与 OpenAI 或 Runtime 接线合并",
+    "实现 Execution Authorization Guard 后才可讨论真实 Runtime 外发",
+    "真实 Provider、模型、凭据、区域、合同准入、Beta、注册、支付和安全政策继续等待 Owner 决策"
+  ],
+  "knownRisks": [
+    "WSL2 从 /mnt/g 访问仓库的 canonical precheck 本次为 266.954 秒，仍明显慢于 Windows Python 入口约 103 秒；两者语义一致，后续若继续优化应单独诊断跨文件系统开销",
+    "已通过结果只有在所有显式和隐式输入都能证明未变化时才可避免重复调度；无法证明时仍必须重新执行",
+    "GitHub CI 仍会按现有 workflow 在每次 main push 上执行完整测试；本任务未修改 CI 触发条件或薄包装"
+  ],
+  "nextAction": "创建 OpenAI Chat Completions 离线 HTTP/SSE Adapter 合同任务"
+}

@@ -54,3 +54,9 @@ tasks:
     taskCard: docs/tasks/TASK-0009-windows-harness-ci-timeout-budget.md
     evidence: docs/evidence/TASK-0009/evidence-pack.json
     handoff: docs/handoffs/TASK-0009.json
+  TASK-0010:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0010-harness-validation-flow-performance.md
+    evidence: docs/evidence/TASK-0010/evidence-pack.json
+    handoff: docs/handoffs/TASK-0010.json
