@@ -2,6 +2,7 @@ schemaVersion: 1
 sources:
   projectState: .harness/project-state.yaml
   taskLedger: .harness/task-ledger.yaml
+  taskBacklog: .harness/task-backlog.yaml
   taskLifecycle: .harness/task-lifecycle.yaml
   agentEntrypoints: .harness/agent-entrypoints.yaml
   commandRegistry: .harness/commands.yaml

@@ -6,7 +6,7 @@
 
 ```text
 AGENTS.md
-  -> .harness/project-state.yaml + append-only task-ledger.yaml
+  -> .harness/project-state.yaml + append-only task-ledger.yaml + task-backlog.yaml
   -> active task + Context Lock
   -> .harness/skills.yaml -> exact SKILL.md
   -> protected paths + diff scope
@@ -46,7 +46,8 @@ GitHub Copilot 各产品形态支持的指令类型不同，必须以
    python3 scripts/harness/doctor.py --summary
    ```
 
-3. 根据摘要读取 `.harness/project-state.yaml`、`.harness/task-ledger.yaml`、活动任务、Context Lock 和精确 Skill。
+3. 根据摘要读取 `.harness/project-state.yaml`、`.harness/task-ledger.yaml`、`.harness/task-backlog.yaml`、
+   活动任务、Context Lock 和精确 Skill。
 4. 用任务卡回答以下问题，回答不出来就停止写入：
 
    - 用户可观察目标是什么？
@@ -62,10 +63,16 @@ GitHub Copilot 各产品形态支持的指令类型不同，必须以
 
 ## 状态和责任
 
-`DRAFT -> READY -> IN_PROGRESS -> IN_REVIEW -> ACCEPTED` 是正常路径；`BLOCKED` 和 `REJECTED` 用于明确失败或缺条件。精确迁移见 `.harness/task-lifecycle.yaml`。
+`PLANNED -> DRAFT -> READY -> IN_PROGRESS -> IN_REVIEW -> ACCEPTED` 是正常路径；`BLOCKED`、
+`REJECTED` 和 `SUPERSEDED` 用于明确缺条件、拒绝或替代。可以有多个 PLANNED，但最多一个 DRAFT 和一个活动任务；
+PLANNED 不占 `activeTask`、不可执行。精确迁移见 `.harness/task-lifecycle.yaml`。
+PLANNED 在产生动态执行证据前被取消或替代时，原卡与 Backlog `resolutions` 必须在同一治理提交进入一致的
+REJECTED/SUPERSEDED 规划终态；该记录不伪造 Context、命令、Evidence 或执行 Task Ledger。已经进入 DRAFT 的任务仍按
+普通终态闭环。
 
 - `project-state.yaml`：现在在哪里、最后完成什么、唯一下一动作和能力门禁；
 - `task-ledger.yaml`：所有终态任务及其不可改写审计产物的持久索引；
+- `task-backlog.yaml`：Technical Alpha 的永久 Task ID、执行顺序、依赖 DAG、关键路径、硬决策闸门和晋级条件；
 - 任务卡：本次为什么做、允许做什么和验收；
 - Context Lock：决策基于哪个 Base Commit 的哪些输入；
 - Skill：高风险变更必须遵守的操作过程；
@@ -94,6 +101,8 @@ PowerShell 和 Shell 文件只负责发现 Python；命令列表来自 `.harness
 ## 失败时怎么做
 
 - `no active task`：只读分析，或用 `task-intake` 创建并批准 READY 任务；
+- `PLANNED`：先按 Backlog 解析依赖、顺序和硬决策闸门；不满足时保持 PLANNED/BLOCKED，满足时才基于
+  最新 main 晋级为唯一 DRAFT 并生成动态 Context；
 - `pending DRAFT`：只允许任务卡和 Context Lock；READY 时必须与 `project-state` 活动投影原子提交；
 - `context mismatch`：输入或 Base Commit 已变化，重新 intake，禁止改哈希凑通过；
 - `outside writeAllowlist`：回到任务边界，不能反向扩大白名单包住已有越界修改；

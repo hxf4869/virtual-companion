@@ -1,4 +1,25 @@
-# TASK-XXXX：标题
+# PLANNED 卡模板
+
+Backlog 中预建的任务先使用以下最小机器投影。`.harness/task-backlog.yaml` 是目标、范围、禁止项、依赖、验收、
+决策闸门、执行顺序和晋级条件的唯一机器真源；卡片正文只做可读投影。PLANNED 不占
+`project-state.activeTask`、不可执行，也不得创建 Context Lock 或提前冻结动态证据。
+
+```yaml
+taskId: TASK-XXXX
+state: PLANNED
+owner: repository-owner
+planningBacklog: .harness/task-backlog.yaml
+planningContractHash: ""
+planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
+```
+
+PLANNED 正文必须包含“目标、范围内、明确禁止、依赖与决策闸门、验收、晋级规则”六节，并与
+Backlog 静态规划合同一致。PLANNED 取消或替代时保留原卡和 Backlog ID，把卡片 `state` 原子改为
+REJECTED/SUPERSEDED，并向 Backlog 的 append-only `resolutions` 登记相同状态、非空原因和决策证据；该规划终态
+不伪造 Base、Context、命令、Evidence 或 Ledger。已经进入 DRAFT 或后续状态的任务按正常执行终态
+Evidence/Ledger 闭环。两种情况都不得复用编号。
+
+# DRAFT 及后续状态模板
 
 ```yaml
 taskId: TASK-XXXX
@@ -10,6 +31,9 @@ requiredSkills:
 requiredSkillVersions:
   task-intake: X.Y.Z
 targetSkillVersions: {}
+planningBacklog: .harness/task-backlog.yaml
+planningContractHash: ""
+planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 baseCommit: ""
 authorizationCommit: ""
 contextFingerprint: ""
@@ -46,7 +70,9 @@ requiredCommands:
 
 所有 Context Lock 输入必须使用 Base Commit 中的仓库相对路径。外部资料只记录 provenance；需要参与复验时先归档到仓库。
 
-完整 DRAFT 检查点只能包含任务卡和 Context Lock。Owner 批准后，将任务置为 READY，并在同一授权提交中仅同步
+Backlog 管理的任务只有在其全部依赖 ACCEPTED、硬决策闸门 APPROVED、仓库空闲且它是执行顺序中首个可晋级任务时，
+才能把 PLANNED 卡晋级为唯一 DRAFT。晋级不得改变 Backlog 锁定的静态规划合同；此时才基于最新 main 补齐
+Base、Context、白名单、精确命令和 Skill 版本。完整 DRAFT 检查点只能包含任务卡和 Context Lock。Owner 批准后，将任务置为 READY，并在同一授权提交中仅同步
 `.harness/project-state.yaml` 的 `activeTask`、`activeTaskCard`、`nextAction`、`updatedAt`；随后用一个仅修改任务卡的提交把
 该授权提交完整 SHA 写入 `authorizationCommit`。任务历史必须完全从 `baseCommit` 后分叉，不得并入 Base 之前的旧支线；所有历史父边发生过的路径都计入
 Diff Scope，即使之后恢复。终态提交必须是单父提交，并原子更新任务卡、项目状态、Task Ledger、Evidence Pack 和 Handoff，

@@ -1,0 +1,766 @@
+schemaVersion: 1
+backlogId: technical-alpha
+phase: TECHNICAL_ALPHA
+bootstrapTask: TASK-0012
+planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
+authority:
+  owns:
+    - executionOrder
+    - dependencies
+    - criticalPath
+    - decisionGates
+    - promotionConditions
+  taskCardsAreHashBoundProjections: true
+rules:
+  plannedState: PLANNED
+  plannedConsumesActiveTask: false
+  maximumPendingDraftTasks: 1
+  maximumActiveTasks: 1
+  idPolicy: PERMANENT_NEVER_REUSE
+  cancellationStates:
+    - REJECTED
+    - SUPERSEDED
+  cancellationReasonRequired: true
+  plannedResolutionRegistry: resolutions
+  promotion:
+    from: PLANNED
+    to: DRAFT
+    selection: FIRST_PROMOTABLE_BY_EXECUTION_ORDER
+    requiresRepositoryIdle: true
+    requiresAllDependenciesAccepted: true
+    requiresAllDecisionGatesApproved: true
+    dynamicEvidenceBoundAt: DRAFT
+    forbiddenDynamicFieldsWhilePlanned:
+      - baseCommit
+      - authorizationCommit
+      - contextFingerprint
+      - contextLock
+      - contextFingerprintAlgorithm
+      - requiredSkills
+      - requiredSkillVersions
+      - targetSkillVersions
+      - requiredCommands
+      - humanApprovals
+      - reviewers
+      - readAllowlist
+      - writeAllowlist
+      - forbiddenPaths
+      - sourcesOfTruth
+      - requiredInvariants
+technicalAlphaBoundary:
+  forbiddenCapabilities:
+    - PUBLIC_REGISTRATION
+    - REAL_PAYMENT
+    - ROMANCE_MODE
+    - VOICE
+    - IMAGE
+    - WEBSOCKET
+    - PROACTIVE_MESSAGES
+    - MULTI_ROLE
+    - SECOND_LIVE_PROVIDER
+    - BETA
+  outboundPolicy:
+    beforeTask: TASK-0035
+    allowed:
+      - FAKE
+      - FAILURE
+      - SYNTHETIC_RECORDS
+      - LOOPBACK_127_0_0_1
+    realProviderAccess: FORBIDDEN
+    realCredentialRead: FORBIDDEN
+  liveProviderLimit: 1
+testPolicies:
+  java:
+    distribution: Temurin
+    versionSource: .harness/tools.lock.yaml
+    localValidationHomeRequired: true
+    modifySystemJava: false
+  database:
+    firstApplicableTask: TASK-0015
+    runtime: WSL2_DOCKER
+    engine: POSTGRESQL_18_WITH_PGVECTOR
+    data: SYNTHETIC_ONLY
+    network: TEMPORARY_PORT_ONLY
+    storage: TEMPORARY_VOLUME_ONLY
+    cleanupRequired: true
+    forbiddenExistingServices:
+      - MYSQL
+      - REDIS
+      - RABBITMQ
+      - KINGBASE
+    imageVersionAndDigestBoundAtTaskDraft: true
+executionOrder:
+  - TASK-0012
+  - TASK-0013
+  - TASK-0014
+  - TASK-0015
+  - TASK-0016
+  - TASK-0017
+  - TASK-0018
+  - TASK-0019
+  - TASK-0020
+  - TASK-0021
+  - TASK-0022
+  - TASK-0023
+  - TASK-0024
+  - TASK-0025
+  - TASK-0026
+  - TASK-0027
+  - TASK-0028
+  - TASK-0029
+  - TASK-0030
+  - TASK-0031
+  - TASK-0032
+  - TASK-0033
+  - TASK-0034
+  - TASK-0035
+  - TASK-0036
+criticalPath:
+  - TASK-0012
+  - TASK-0013
+  - TASK-0014
+  - TASK-0015
+  - TASK-0017
+  - TASK-0019
+  - TASK-0020
+  - TASK-0021
+  - TASK-0022
+  - TASK-0023
+  - TASK-0024
+  - TASK-0025
+  - TASK-0028
+  - TASK-0029
+  - TASK-0030
+  - TASK-0035
+  - TASK-0036
+decisionGates:
+  GATE-IDENTITY-PROVIDER-SESSION:
+    kind: HARD_OWNER_DECISION
+    status: PENDING
+    requiredFor:
+      - TASK-0034
+    requiredDecisions:
+      - 成熟身份供应商与部署方式
+      - Technical Alpha 登录渠道、账号供给和首次登录映射
+      - Cookie 或 Bearer 架构及会话 TTL、刷新、撤销和设备策略
+    approval: null
+  GATE-LIVE-MODEL-PROVIDER:
+    kind: HARD_OWNER_DECISION
+    status: PENDING
+    requiredFor:
+      - TASK-0035
+    requiredDecisions:
+      - 唯一真实模型供应商与具体模型
+      - 凭据来源、保管和轮换方式
+      - 数据处理区域与供应商合同
+      - 获批 Persona 内容
+      - Technical Alpha 安全政策和外发边界
+    approval: null
+resolutions: {}
+tasks:
+  TASK-0012:
+    title: PLANNED 队列、Backlog 和 Harness 治理
+    taskCard: docs/tasks/TASK-0012-planned-backlog-harness-governance.md
+    dependencies:
+      - TASK-0011
+    decisionGates: []
+    objective: 建立 Technical Alpha 唯一机器 Backlog、PLANNED 生命周期和失败关闭 Harness。
+    scope:
+      in:
+        - Backlog、DAG、关键路径、晋级条件、永久 ID 和 PLANNED 卡
+        - Sources of Truth、Invariants、Doctor、Precheck、测试和恢复文档
+      out:
+        - 后续任务业务实现
+        - 数据库、真实外发和 Beta
+    forbidden:
+      - 多张 DRAFT 冒充规划队列
+      - 第二套任务、ADR 或规划系统
+    acceptanceCriteria:
+      - TASK-0012 至 TASK-0036 的 25 个编号、名称和规划合同完整受控
+      - 独立 Reviewer、跨平台检查和精确实现 CI 全部通过
+    promotionConditions:
+      - Owner 已批准 C4 Harness 变更
+      - TASK-0011 已 ACCEPTED 且仓库处于空闲终态边界
+  TASK-0013:
+    title: Provider Registry 与供应商中立准入模型
+    taskCard: docs/tasks/TASK-0013-provider-registry-admission-model.md
+    dependencies:
+      - TASK-0012
+    decisionGates: []
+    objective: 建立供应商中立的 Provider、协议、部署、区域、合同与能力准入模型，不接真实供应商。
+    scope:
+      in:
+        - Provider Registry 核心端口、准入状态和不可变部署标识
+        - Fake、Failure 与离线协议 Adapter 的登记边界
+      out:
+        - 真实凭据、真实模型调用和供应商选择
+        - 业务层供应商 SDK 类型
+    forbidden:
+      - 猜测默认供应商、模型、区域或合同
+      - 把 Adapter 配置当作业务真源
+    acceptanceCriteria:
+      - 供应商中立登记、禁用和能力匹配均有失败关闭测试
+      - 业务模块不依赖供应商 SDK、模型名或 Key
+    promotionConditions:
+      - TASK-0012 已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0014:
+    title: 授权快照与 Execution Authorization Guard
+    taskCard: docs/tasks/TASK-0014-execution-authorization-guard.md
+    dependencies:
+      - TASK-0013
+    decisionGates: []
+    objective: 实现请求时与执行时授权快照及统一外发 Guard，撤销或收窄后零外发。
+    scope:
+      in:
+        - requested 与 execution authorization snapshot 领域模型
+        - Provider、区域、合同、用途和数据类别执行前复核
+      out:
+        - 真实 Provider 接线
+        - 身份供应商和登录实现
+    forbidden:
+      - 复用已撤销授权执行待处理工作
+      - Guard 失败后降级为真实外发
+    acceptanceCriteria:
+      - 所有外部 attempt 路径强制绑定双快照
+      - 撤销、收窄、区域或合同失效均取消并释放额度
+    promotionConditions:
+      - TASK-0013 已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0015:
+    title: PostgreSQL、Flyway、复合所有权和 FORCE RLS
+    taskCard: docs/tasks/TASK-0015-postgresql-flyway-force-rls.md
+    dependencies:
+      - TASK-0014
+    decisionGates: []
+    objective: 建立 PostgreSQL 18、Flyway、复合所有权外键、最小权限角色和 FORCE RLS 基线。
+    scope:
+      in:
+        - 用户域核心表、授权快照和 Provider Registry 持久化骨架
+        - owner_user_id 复合约束、FORCE RLS 和跨租户失败测试
+      out:
+        - 生产数据库、真实数据和长期容器
+        - 修改现有本机数据服务
+    forbidden:
+      - API 或 Worker 使用 BYPASSRLS
+      - 连接 MySQL、Redis、RabbitMQ 或 Kingbase
+    acceptanceCriteria:
+      - 跨用户、跨关系、跨会话和缺上下文访问失败关闭
+      - 一次性 PostgreSQL 18/pgvector 容器使用合成数据并完整清理
+    promotionConditions:
+      - TASK-0014 已 ACCEPTED
+      - 在 DRAFT 动态锁定镜像版本、摘要、临时端口和清理命令
+  TASK-0016:
+    title: Worker Claim、Lease、Fence 与过期写拒绝
+    taskCard: docs/tasks/TASK-0016-worker-claim-lease-fence.md
+    dependencies:
+      - TASK-0015
+    decisionGates: []
+    objective: 实现不透明 Claim、Lease、Fence、SET LOCAL 租户上下文和所有迟到写拒绝。
+    scope:
+      in:
+        - claim_work_items 与 app_begin_job_context
+        - 续租、完成、失败、取消和 stale fence 拒绝
+      out:
+        - 外部队列成为租户授权边界
+        - 真实模型或真实用户数据
+    forbidden:
+      - Worker 跨租户扫描
+      - 迟到 Worker 写结果、Usage、消息、事件或记忆任务
+    acceptanceCriteria:
+      - 过期 lease、错误 token、旧 fence 和缺失上下文均零写入
+      - 协调器只读取不透明任务元数据
+    promotionConditions:
+      - TASK-0015 已 ACCEPTED
+      - 数据库测试资源按该任务动态锁定
+  TASK-0017:
+    title: Conversation/Generation 持久化与幂等接收
+    taskCard: docs/tasks/TASK-0017-conversation-generation-persistence.md
+    dependencies:
+      - TASK-0015
+    decisionGates: []
+    objective: 持久化 Conversation、Message 与 Generation，并保证一个逻辑请求对应稳定 generationId。
+    scope:
+      in:
+        - Conversation、Message、Generation 复合所有权模型
+        - 幂等请求键、稳定 generationId 和状态迁移
+      out:
+        - 最终化事务、SSE 和 H5
+        - 真实模型外发
+    forbidden:
+      - 重试或降级更换 generationId
+      - 客户端 owner 声明成为所有权真源
+    acceptanceCriteria:
+      - 重复接收只返回同一 generationId 且不重复创建消息
+      - 所有状态与所有权约束具有数据库和集成测试
+    promotionConditions:
+      - TASK-0015 已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0018:
+    title: Finalization、Usage/Quota 结算与 Outbox 原子事务
+    taskCard: docs/tasks/TASK-0018-finalization-usage-quota-outbox.md
+    dependencies:
+      - TASK-0014
+      - TASK-0016
+      - TASK-0017
+    decisionGates: []
+    objective: 在单一事务中完成最终消息、安全结果、Generation 终态、Usage/Quota、事件与 Outbox。
+    scope:
+      in:
+        - finalize_generation 事务和唯一最终消息
+        - Usage/Quota 结算或释放及持久 Outbox
+      out:
+        - 实时发布实现
+        - 真实计费和支付
+    forbidden:
+      - commit 前发布 chat.completed
+      - 持久化重试触发第二次模型调用
+    acceptanceCriteria:
+      - 故障注入证明原子提交或完整回滚
+      - Provider EOS 绝不直接完成 Generation
+    promotionConditions:
+      - TASK-0014、TASK-0016 和 TASK-0017 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0019:
+    title: ContextPlan、人格结构、LISTEN/DISCUSS
+    taskCard: docs/tasks/TASK-0019-context-plan-persona-listen-discuss.md
+    dependencies:
+      - TASK-0013
+      - TASK-0017
+    decisionGates: []
+    objective: 建立供应商中立 ContextPlan、结构化人格和 LISTEN/DISCUSS 交互意图。
+    scope:
+      in:
+        - ContextPlan 结构、来源标记和预算
+        - gentle-listener 人格骨架及 LISTEN/DISCUSS 确定性选择
+      out:
+        - 最终真实 Persona 内容审批
+        - Canonical Memory 自动写入
+    forbidden:
+      - 把 Provider session 当作记忆真源
+      - 模型输出直接成为 Canonical Memory
+    acceptanceCriteria:
+      - Context 顺序、预算、来源和模式选择可确定性复测
+      - 人格结构不包含供应商专属字段
+    promotionConditions:
+      - TASK-0013 和 TASK-0017 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0020:
+    title: 输入、增量输出和最终输出安全流水线
+    taskCard: docs/tasks/TASK-0020-safety-pipeline.md
+    dependencies:
+      - TASK-0014
+      - TASK-0019
+    decisionGates: []
+    objective: 实现输入、增量输出和最终输出的确定性优先、失败关闭安全流水线。
+    scope:
+      in:
+        - 硬规则、分类信号、增量暂停和最终复核
+        - ZERO_LLM 或确定性安全替代
+      out:
+        - Beta 安全运营
+        - 猜测未获批 Alpha 安全政策
+    forbidden:
+      - 分类器降低硬规则风险
+      - 超时、低置信或冲突时放行自由文本
+    acceptanceCriteria:
+      - 所有 classifier failure outcome 均失败关闭
+      - final review 失败时不存在 chat.completed
+    promotionConditions:
+      - TASK-0014 和 TASK-0019 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0021:
+    title: 持久化 Fetch-SSE、续传、Gap/Reset/Snapshot
+    taskCard: docs/tasks/TASK-0021-fetch-sse-resume-gap-reset-snapshot.md
+    dependencies:
+      - TASK-0018
+      - TASK-0020
+    decisionGates: []
+    objective: 以 PostgreSQL 持久事件支撑 Fetch-SSE、续传、Gap、Reset 和 Snapshot 恢复。
+    scope:
+      in:
+        - 短期单次 Ticket、epoch、eventSeq 和 Last-Event-ID
+        - terminal snapshot、gap/reset 和连续 cursor
+      out:
+        - WebSocket
+        - 长期凭据进入 URL 或实时参数
+    forbidden:
+      - 客户端伪造缺失 delta
+      - 未提交终态事件对外发布
+    acceptanceCriteria:
+      - 断线、过期窗口、epoch 变化和越权恢复均有合同测试
+      - H5 只推进最后连续序号
+    promotionConditions:
+      - TASK-0018 和 TASK-0020 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0022:
+    title: Fake/Failure 后端离线端到端纵切
+    taskCard: docs/tasks/TASK-0022-fake-failure-offline-e2e-slice.md
+    dependencies:
+      - TASK-0016
+      - TASK-0019
+      - TASK-0021
+    decisionGates: []
+    objective: 用 Fake、Failure 和合成数据贯通接收、授权、Worker、安全、最终化与恢复。
+    scope:
+      in:
+        - 完整离线成功、失败、取消、超时和恢复纵切
+        - 127.0.0.1 或进程内合成测试
+      out:
+        - 真实 Provider、真实 Key 和公网外发
+        - H5 产品界面
+    forbidden:
+      - 测试读取真实凭据
+      - 失败时绕过 Guard、安全或 Fence
+    acceptanceCriteria:
+      - Fake 成功与 Failure 故障矩阵端到端可重复
+      - 零真实外发、零真实数据且所有终态唯一
+    promotionConditions:
+      - TASK-0016、TASK-0019 和 TASK-0021 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0023:
+    title: OpenAPI 生成、Client 生成与漂移检查基线
+    taskCard: docs/tasks/TASK-0023-openapi-client-generation-drift.md
+    dependencies:
+      - TASK-0022
+    decisionGates: []
+    objective: 建立 OpenAPI 唯一契约、Java 接口与 TypeScript Client 的确定性生成和漂移门禁。
+    scope:
+      in:
+        - OpenAPI 源、生成器锁定和 CI 漂移检查
+        - 错误包络与所有权隐藏语义
+      out:
+        - 手写覆盖生成 Client
+        - 公开注册或 Beta API
+    forbidden:
+      - 实现代码反向覆盖 OpenAPI
+      - 手改生成物
+    acceptanceCriteria:
+      - 同输入生成字节稳定且漂移失败关闭
+      - Java 与 TypeScript 消费同一 OpenAPI 真源
+    promotionConditions:
+      - TASK-0022 已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0024:
+    title: Relationship 与唯一活跃 Companion
+    taskCard: docs/tasks/TASK-0024-relationship-active-companion.md
+    dependencies:
+      - TASK-0015
+      - TASK-0023
+    decisionGates: []
+    objective: 实现 Relationship 所有权和每个用户唯一活跃 Companion 的 Alpha 约束。
+    scope:
+      in:
+        - Relationship 生命周期与 activeCompanionLimit=1
+        - 复合所有权数据库和 API 契约
+      out:
+        - 多角色、多活跃 Companion 和恋爱模式
+        - 真实身份供应商
+    forbidden:
+      - 跨 Owner 关系引用
+      - 绕过唯一活跃 Companion 约束
+    acceptanceCriteria:
+      - 并发创建仍最多一个活跃 Companion
+      - 越权查询统一 NOT_FOUND_OR_FORBIDDEN
+    promotionConditions:
+      - TASK-0015 和 TASK-0023 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0025:
+    title: Chat、Generation、History API
+    taskCard: docs/tasks/TASK-0025-chat-generation-history-api.md
+    dependencies:
+      - TASK-0021
+      - TASK-0023
+      - TASK-0024
+    decisionGates: []
+    objective: 以生成契约提供 Chat 接收、Generation 状态和历史读取 API。
+    scope:
+      in:
+        - 幂等发送、取消、Generation snapshot 和分页历史
+        - 服务端所有权谓词与统一错误语义
+      out:
+        - 公开注册、真实账号和真实 Provider
+        - WebSocket 或主动消息
+    forbidden:
+      - 客户端 owner_user_id 成为授权依据
+      - 历史 API 暴露跨用户资源存在性
+    acceptanceCriteria:
+      - OpenAPI 合同、实现和生成 Client 无漂移
+      - 幂等、取消、分页和越权测试全部通过
+    promotionConditions:
+      - TASK-0021、TASK-0023 和 TASK-0024 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0026:
+    title: H5 离线聊天、流式显示与恢复
+    taskCard: docs/tasks/TASK-0026-h5-offline-chat-stream-recovery.md
+    dependencies:
+      - TASK-0025
+    decisionGates: []
+    objective: 用离线后端实现 H5 聊天、增量显示、断线恢复和安全终态呈现。
+    scope:
+      in:
+        - Fetch-SSE、连续 cursor、gap/reset/snapshot UI
+        - 发送幂等、取消和终态替换
+      out:
+        - WebSocket、语音、图片和主动消息
+        - 长期 Token 存 localStorage
+    forbidden:
+      - Gap 后继续拼接草稿
+      - 在 URL、query 或本地存储暴露长期凭据
+    acceptanceCriteria:
+      - 离线成功、断线、Gap、Reset、取消和失败场景可自动复测
+      - 客户端不伪造缺失 delta
+    promotionConditions:
+      - TASK-0025 已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0027:
+    title: Canonical Memory 持久化与所有权隔离
+    taskCard: docs/tasks/TASK-0027-canonical-memory-persistence.md
+    dependencies:
+      - TASK-0016
+      - TASK-0024
+    decisionGates: []
+    objective: 建立 PostgreSQL Canonical Memory、证据来源、作用域和复合所有权隔离。
+    scope:
+      in:
+        - SESSION 与 RELATIONSHIP Memory 持久模型
+        - FORCE RLS、证据链和删除状态
+      out:
+        - 模型自动确认记忆
+        - ACCOUNT_PRIVATE 或 ACCOUNT_SHARED Alpha 启用
+    forbidden:
+      - 模型输出直接写 Canonical Memory
+      - 跨 Relationship 读取或引用
+    acceptanceCriteria:
+      - Canonical Memory 只有确认路径可创建有效记录
+      - 跨用户、跨关系和缺上下文均失败关闭
+    promotionConditions:
+      - TASK-0016 和 TASK-0024 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0028:
+    title: 记忆候选、确认、修改、删除与来源 API
+    taskCard: docs/tasks/TASK-0028-memory-candidate-management-api.md
+    dependencies:
+      - TASK-0020
+      - TASK-0025
+      - TASK-0027
+    decisionGates: []
+    objective: 提供记忆候选、用户确认、修改、删除和来源追溯 API。
+    scope:
+      in:
+        - 候选生命周期、确认门禁和来源 Evidence
+        - 用户编辑、删除和幂等 API
+      out:
+        - 无确认自动写入
+        - 跨账号共享记忆
+    forbidden:
+      - 安全失败的候选进入 Canonical Memory
+      - 删除后仍作为有效记忆返回
+    acceptanceCriteria:
+      - 所有模型提取候选必须明确确认
+      - 确认、修改、删除、重复请求和越权均有合同测试
+    promotionConditions:
+      - TASK-0020、TASK-0025 和 TASK-0027 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0029:
+    title: 跨会话召回、Context 注入与删除墓碑
+    taskCard: docs/tasks/TASK-0029-memory-recall-context-tombstone.md
+    dependencies:
+      - TASK-0019
+      - TASK-0028
+    decisionGates: []
+    objective: 实现跨 Conversation 召回、ContextPlan 注入和删除墓碑过滤。
+    scope:
+      in:
+        - RELATIONSHIP 作用域召回、来源和预算
+        - tombstone、重建索引和删除传播
+      out:
+        - 未确认候选召回
+        - 第二租户、第二 Relationship 或账号共享
+    forbidden:
+      - 删除数据通过向量或缓存复活
+      - 召回绕过 ContextPlan 来源与预算
+    acceptanceCriteria:
+      - 删除前后召回、墓碑和索引重建具有确定性测试
+      - 跨会话只注入当前 Owner/Relationship 的已确认记忆
+    promotionConditions:
+      - TASK-0019 和 TASK-0028 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0030:
+    title: H5 记忆管理界面
+    taskCard: docs/tasks/TASK-0030-h5-memory-management.md
+    dependencies:
+      - TASK-0026
+      - TASK-0029
+    decisionGates: []
+    objective: 提供 H5 记忆候选确认、来源查看、编辑和删除界面。
+    scope:
+      in:
+        - Pending candidate、Canonical Memory 和来源展示
+        - 确认、编辑、删除与错误恢复
+      out:
+        - 账号共享记忆和自动确认
+        - 语音或图片记忆
+    forbidden:
+      - UI 把未确认候选展示为已保存事实
+      - 删除失败时乐观伪装成功
+    acceptanceCriteria:
+      - 关键交互和越权/失败状态可自动复测
+      - 来源、状态和删除结果与 API 真源一致
+    promotionConditions:
+      - TASK-0026 和 TASK-0029 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0031:
+    title: 模拟权益、Service Class 与确定性路由
+    taskCard: docs/tasks/TASK-0031-entitlement-service-class-routing.md
+    dependencies:
+      - TASK-0013
+      - TASK-0018
+      - TASK-0022
+    decisionGates: []
+    objective: 用模拟权益建立 Service Class、额度预留和供应商中立确定性路由。
+    scope:
+      in:
+        - 合成 entitlement、quota reservation 和路由决策
+        - Fake/Failure/ZERO_LLM 候选与服务降级
+      out:
+        - 真实支付、真实订阅和真实 Provider
+        - 非确定性隐藏 fallback
+    forbidden:
+      - 支付状态成为本任务前置
+      - 路由绕过 Provider Registry 或 Execution Authorization Guard
+    acceptanceCriteria:
+      - 相同输入产生相同路由和可审计 decisionNo
+      - 无合格部署时明确 NO_ELIGIBLE_DEPLOYMENT
+    promotionConditions:
+      - TASK-0013、TASK-0018 和 TASK-0022 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0032:
+    title: 最小 ZERO_LLM、额度释放与全故障恢复
+    taskCard: docs/tasks/TASK-0032-zero-llm-quota-failure-recovery.md
+    dependencies:
+      - TASK-0020
+      - TASK-0021
+      - TASK-0031
+    decisionGates: []
+    objective: 实现最小 ZERO_LLM、安全确定性响应、额度释放和全 Provider 故障恢复。
+    scope:
+      in:
+        - ZERO_LLM 无 provider_attempt 路径
+        - 额度释放、失败终态和恢复事件
+      out:
+        - 真实模型和付费权益
+        - 绕过最终安全复核
+    forbidden:
+      - ZERO_LLM 创建 Provider Attempt
+      - 全故障时输出未经审查自由文本
+    acceptanceCriteria:
+      - 超时、取消、无容量和全故障均正确释放或结算额度
+      - 恢复路径保持稳定 generationId 和唯一终态
+    promotionConditions:
+      - TASK-0020、TASK-0021 和 TASK-0031 均已 ACCEPTED
+      - 当前无 DRAFT 或 active task
+  TASK-0033:
+    title: Anthropic Messages 离线 HTTP/SSE 合同
+    taskCard: docs/tasks/TASK-0033-anthropic-messages-offline-contract.md
+    dependencies:
+      - TASK-0011
+      - TASK-0013
+    decisionGates: []
+    objective: 以 127.0.0.1 mock-server 实现 Anthropic Messages 非流与 SSE 离线 Adapter 合同。
+    scope:
+      in:
+        - /v1/messages 请求、流事件、Usage、Stop Reason 和结构化能力
+        - 429、5xx、三段超时、取消、Malformed Event 和 Late Fence
+      out:
+        - 真实 Anthropic 凭据、公网调用和 Runtime 接线
+        - OpenAI Responses API
+    forbidden:
+      - 读取真实 Key 或访问真实供应商
+      - Adapter 内置重试、路由或业务状态真源
+    acceptanceCriteria:
+      - model-protocol-contract 的两个主协议均通过本地 mock-server
+      - 单请求、loopback、脱敏和失败关闭边界完整自动化
+    promotionConditions:
+      - TASK-0011 和 TASK-0013 均已 ACCEPTED
+      - 在执行顺序中位于 TASK-0032 之后
+  TASK-0034:
+    title: 成熟身份组件与内部测试账号接入（硬决策闸门）
+    taskCard: docs/tasks/TASK-0034-identity-component-internal-accounts.md
+    dependencies:
+      - TASK-0025
+      - TASK-0026
+    decisionGates:
+      - GATE-IDENTITY-PROVIDER-SESSION
+    objective: 在 Owner 批准供应商、登录渠道和会话策略后接入成熟身份组件与内部测试账号。
+    scope:
+      in:
+        - 供应商中立身份端口、服务端验证映射和内部账号供给
+        - H5 凭据、CSRF、Origin、会话撤销和审计
+      out:
+        - 公开注册、共享固定生产身份和自研认证核心
+        - 未获批的 IdP、渠道或会话默认值
+    forbidden:
+      - 客户端 owner_user_id 或开发 Header 成为身份真源
+      - 决策闸门 PENDING 时晋级
+    acceptanceCriteria:
+      - 外部身份、owner_user_id 与认证会话映射失败关闭
+      - 内部测试账号不开放公开注册且敏感数据不进日志、URL 或模型
+    promotionConditions:
+      - TASK-0025 和 TASK-0026 均已 ACCEPTED
+      - GATE-IDENTITY-PROVIDER-SESSION 已由 Owner APPROVED 并记录证据
+  TASK-0035:
+    title: 单一获批真实模型供应商受控接入（硬决策闸门）
+    taskCard: docs/tasks/TASK-0035-approved-live-model-provider.md
+    dependencies:
+      - TASK-0020
+      - TASK-0030
+      - TASK-0032
+      - TASK-0033
+      - TASK-0034
+    decisionGates:
+      - GATE-LIVE-MODEL-PROVIDER
+    objective: 在全部 Owner 决策获批后受控接入唯一真实模型部署，并保持所有 Guard 与安全边界。
+    scope:
+      in:
+        - 单一获批 Provider/Model/Region/Contract/Credential 接线
+        - Alpha Persona、安全政策、审计、配额和故障隔离
+      out:
+        - 第二真实供应商、Beta、公开注册和真实支付
+        - 未获批模型、区域、合同或 Persona
+    forbidden:
+      - 猜测任何闸门决策或读取未授权 Key
+      - 绕过 Registry、Authorization Guard、安全流水线或 Quota
+    acceptanceCriteria:
+      - 仅获批部署可外发且凭据不进入仓库、日志或业务类型
+      - 真实外发故障、撤销、区域、合同和安全失败全部关闭
+    promotionConditions:
+      - TASK-0020、TASK-0030、TASK-0032、TASK-0033 和 TASK-0034 均已 ACCEPTED
+      - GATE-LIVE-MODEL-PROVIDER 已由 Owner APPROVED 并记录全部决策证据
+  TASK-0036:
+    title: Technical Alpha 隔离、安全、记忆、故障与指标总验收
+    taskCard: docs/tasks/TASK-0036-technical-alpha-acceptance.md
+    dependencies:
+      - TASK-0026
+      - TASK-0030
+      - TASK-0032
+      - TASK-0034
+      - TASK-0035
+    decisionGates: []
+    objective: 对 Technical Alpha 的租户隔离、安全、记忆、恢复、协议和指标进行总验收。
+    scope:
+      in:
+        - 跨租户、授权撤销、安全失败、记忆删除和故障恢复矩阵
+        - 指标、审计、性能基线和 Alpha 发布证据
+      out:
+        - Beta、公开注册、真实支付和 Technical Alpha 之外能力
+        - 伪造未满足的供应商或身份闸门
+    forbidden:
+      - 依赖或硬闸门未满足时宣称 Alpha 完成
+      - 用 NOT_RUN、失败或合成 PASS 替代真实验收
+    acceptanceCriteria:
+      - 所有依赖的终态 Evidence 可追溯且总验收矩阵真实通过
+      - Technical Alpha 禁止能力保持关闭，P0/P1/P2 全部闭环
+    promotionConditions:
+      - TASK-0026、TASK-0030、TASK-0032、TASK-0034 和 TASK-0035 均已 ACCEPTED
+      - 任一依赖或其硬闸门未满足时保持 PLANNED/BLOCKED

@@ -5,7 +5,7 @@
   "required": ["taskId", "state", "baseCommit", "headCommit", "evidencePath", "completed", "remaining", "knownRisks", "nextAction"],
   "properties": {
     "taskId": {"type": "string"},
-    "state": {"enum": ["READY", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "ACCEPTED", "REJECTED"]},
+    "state": {"enum": ["READY", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "ACCEPTED", "REJECTED", "SUPERSEDED"]},
     "baseCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "headCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "evidencePath": {"type": "string"},

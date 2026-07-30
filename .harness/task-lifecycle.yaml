@@ -1,5 +1,6 @@
-schemaVersion: 1
+schemaVersion: 2
 states:
+  - PLANNED
   - DRAFT
   - READY
   - IN_PROGRESS
@@ -7,6 +8,7 @@ states:
   - IN_REVIEW
   - ACCEPTED
   - REJECTED
+  - SUPERSEDED
 activeStates:
   - READY
   - IN_PROGRESS
@@ -15,16 +17,26 @@ activeStates:
 terminalStates:
   - ACCEPTED
   - REJECTED
+  - SUPERSEDED
 transitions:
-  DRAFT: [READY, REJECTED]
-  READY: [IN_PROGRESS, BLOCKED, REJECTED]
-  IN_PROGRESS: [BLOCKED, IN_REVIEW, REJECTED]
-  BLOCKED: [READY, IN_PROGRESS, REJECTED]
-  IN_REVIEW: [IN_PROGRESS, BLOCKED, ACCEPTED, REJECTED]
+  PLANNED: [DRAFT, REJECTED, SUPERSEDED]
+  DRAFT: [READY, REJECTED, SUPERSEDED]
+  READY: [IN_PROGRESS, BLOCKED, REJECTED, SUPERSEDED]
+  IN_PROGRESS: [BLOCKED, IN_REVIEW, REJECTED, SUPERSEDED]
+  BLOCKED: [READY, IN_PROGRESS, REJECTED, SUPERSEDED]
+  IN_REVIEW: [IN_PROGRESS, BLOCKED, ACCEPTED, REJECTED, SUPERSEDED]
   ACCEPTED: []
   REJECTED: []
+  SUPERSEDED: []
 rules:
   maximumActiveTasks: 1
+  maximumPendingDraftTasks: 1
+  plannedConsumesActiveTask: false
+  plannedRequiresBacklogEntry: true
+  plannedDynamicEvidenceForbidden: true
+  planningTerminalStates: [REJECTED, SUPERSEDED]
+  planningTerminalRequiresBacklogResolution: true
+  planningTerminalConsumesTaskLedger: false
   readyRequiresOwnerApproval: true
   terminalRequiresEvidenceAndHandoff: true
   c3AndC4RequireIndependentReview: true

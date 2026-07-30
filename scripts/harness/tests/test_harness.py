@@ -35,6 +35,7 @@ from check_beta_gate import (  # noqa: E402
 from check_paid_features import PRUNED_DIRS, discover_files  # noqa: E402
 from doctor import (  # noqa: E402
     Audit,
+    canonical_json_sha256,
     changed_skill_tree_ids,
     current_regular_file_bytes,
     effective_protected_rules,
@@ -44,6 +45,7 @@ from doctor import (  # noqa: E402
     project_state_closure_projection,
     project_state_ready_projection,
     repository_index_paths,
+    select_task_for_diff_scope,
     task_authorization_projection,
     unique_json_object,
     validate_diff_scope,
@@ -52,6 +54,7 @@ from doctor import (  # noqa: E402
     validate_authorized_task_history,
     validate_authorized_task_presence,
     validate_active_task_base_freshness,
+    validate_backlog_history_edge,
     validate_frozen_artifact_bytes,
     validate_command_registry,
     validate_check_artifact,
@@ -75,6 +78,7 @@ from doctor import (  # noqa: E402
     validate_sources,
     validate_tasks,
     validate_task_authorization_history,
+    validate_task_backlog_data,
     validate_task_ledger_entries,
     validate_terminal_commit_requirement,
     validate_terminal_history_dominance,
@@ -1182,6 +1186,8 @@ class ContextTests(unittest.TestCase):
 
     def test_all_context_locks_are_reproducible(self) -> None:
         for task in discover_tasks().values():
+            if task.get("state") == "PLANNED":
+                continue
             self.assertEqual([], verify_context_lock(task), task["taskId"])
 
     def test_context_fingerprint_tampering_is_rejected(self) -> None:
@@ -1269,6 +1275,291 @@ class ContextTests(unittest.TestCase):
         audit = Audit()
         validate_tasks(audit, tasks, load_yaml(ROOT / ".harness/task-lifecycle.yaml"))
         self.assertTrue(any("riskClass must be one of" in error for error in audit.errors), audit.errors)
+
+
+class BacklogTests(unittest.TestCase):
+    EXPECTED_TITLES = {
+        "TASK-0012": "PLANNED 队列、Backlog 和 Harness 治理",
+        "TASK-0013": "Provider Registry 与供应商中立准入模型",
+        "TASK-0014": "授权快照与 Execution Authorization Guard",
+        "TASK-0015": "PostgreSQL、Flyway、复合所有权和 FORCE RLS",
+        "TASK-0016": "Worker Claim、Lease、Fence 与过期写拒绝",
+        "TASK-0017": "Conversation/Generation 持久化与幂等接收",
+        "TASK-0018": "Finalization、Usage/Quota 结算与 Outbox 原子事务",
+        "TASK-0019": "ContextPlan、人格结构、LISTEN/DISCUSS",
+        "TASK-0020": "输入、增量输出和最终输出安全流水线",
+        "TASK-0021": "持久化 Fetch-SSE、续传、Gap/Reset/Snapshot",
+        "TASK-0022": "Fake/Failure 后端离线端到端纵切",
+        "TASK-0023": "OpenAPI 生成、Client 生成与漂移检查基线",
+        "TASK-0024": "Relationship 与唯一活跃 Companion",
+        "TASK-0025": "Chat、Generation、History API",
+        "TASK-0026": "H5 离线聊天、流式显示与恢复",
+        "TASK-0027": "Canonical Memory 持久化与所有权隔离",
+        "TASK-0028": "记忆候选、确认、修改、删除与来源 API",
+        "TASK-0029": "跨会话召回、Context 注入与删除墓碑",
+        "TASK-0030": "H5 记忆管理界面",
+        "TASK-0031": "模拟权益、Service Class 与确定性路由",
+        "TASK-0032": "最小 ZERO_LLM、额度释放与全故障恢复",
+        "TASK-0033": "Anthropic Messages 离线 HTTP/SSE 合同",
+        "TASK-0034": "成熟身份组件与内部测试账号接入（硬决策闸门）",
+        "TASK-0035": "单一获批真实模型供应商受控接入（硬决策闸门）",
+        "TASK-0036": "Technical Alpha 隔离、安全、记忆、故障与指标总验收",
+    }
+
+    def load_inputs(
+        self,
+    ) -> tuple[
+        dict[str, object],
+        dict[str, dict[str, object]],
+        dict[str, object],
+        dict[str, object],
+    ]:
+        return (
+            load_yaml(ROOT / ".harness/task-backlog.yaml"),
+            discover_tasks(),
+            load_yaml(ROOT / ".harness/task-lifecycle.yaml"),
+            load_yaml(ROOT / ".harness/project-state.yaml"),
+        )
+
+    def test_backlog_registers_exact_technical_alpha_baseline(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        audit = Audit()
+        projection = validate_task_backlog_data(
+            audit,
+            backlog,
+            tasks,
+            lifecycle,
+            state,
+        )
+        self.assertEqual([], audit.errors)
+        expected_ids = [f"TASK-{value:04d}" for value in range(12, 37)]
+        self.assertEqual(expected_ids, backlog["executionOrder"])
+        self.assertEqual(
+            self.EXPECTED_TITLES,
+            {
+                task_id: entry["title"]
+                for task_id, entry in backlog["tasks"].items()
+            },
+        )
+        self.assertEqual(24, projection["plannedCount"])
+        self.assertIsNone(projection["nextPromotable"])
+
+    def test_planned_cards_bind_backlog_without_dynamic_evidence(self) -> None:
+        backlog, tasks, _, _ = self.load_inputs()
+        forbidden_dynamic = set(
+            backlog["rules"]["promotion"]["forbiddenDynamicFieldsWhilePlanned"]
+        )
+        for task_id in backlog["executionOrder"][1:]:
+            task = tasks[task_id]
+            self.assertEqual("PLANNED", task["state"])
+            self.assertEqual(
+                canonical_json_sha256(backlog["tasks"][task_id]),
+                task["planningContractHash"],
+            )
+            self.assertFalse(
+                forbidden_dynamic & set(task),
+                (task_id, forbidden_dynamic & set(task)),
+            )
+
+    def test_backlog_rejects_dependency_order_cycle_and_card_hash_drift(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        tampered = copy.deepcopy(backlog)
+        tampered["tasks"]["TASK-0013"]["dependencies"] = ["TASK-0014"]
+        tampered["tasks"]["TASK-0014"]["objective"] = "rewritten"
+        audit = Audit()
+        validate_task_backlog_data(
+            audit,
+            tampered,
+            tasks,
+            lifecycle,
+            state,
+        )
+        messages = "\n".join(audit.errors)
+        self.assertIn("must precede the task in executionOrder", messages)
+        self.assertIn("PLANNED card hash drifts", messages)
+
+    def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        terminal_tasks = copy.deepcopy(tasks)
+        terminal_tasks["TASK-0012"]["state"] = "ACCEPTED"
+        idle_state = copy.deepcopy(state)
+        idle_state["activeTask"] = None
+        idle_state["activeTaskCard"] = None
+        idle_state["nextAction"] = "将 TASK-0013 晋级为唯一 DRAFT"
+        audit = Audit()
+        projection = validate_task_backlog_data(
+            audit,
+            backlog,
+            terminal_tasks,
+            lifecycle,
+            idle_state,
+        )
+        self.assertEqual([], audit.errors)
+        self.assertEqual("TASK-0013", projection["nextPromotable"])
+        self.assertIn(
+            "DECISION_GATE:GATE-IDENTITY-PROVIDER-SESSION:PENDING",
+            projection["blockers"]["TASK-0034"],
+        )
+        self.assertIn(
+            "DECISION_GATE:GATE-LIVE-MODEL-PROVIDER:PENDING",
+            projection["blockers"]["TASK-0035"],
+        )
+        self.assertTrue(
+            any(
+                blocker.startswith("DEPENDENCY:")
+                for blocker in projection["blockers"]["TASK-0036"]
+            )
+        )
+
+    def test_backlog_history_preserves_ids_contracts_and_resolutions(self) -> None:
+        backlog, _, _, _ = self.load_inputs()
+        child = copy.deepcopy(backlog)
+        child["tasks"].pop("TASK-0013")
+        child["executionOrder"].remove("TASK-0013")
+        audit = Audit()
+        validate_backlog_history_edge(audit, backlog, child, "parent..child")
+        self.assertTrue(
+            any(
+                "permanent planning contract TASK-0013 was removed" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+        appended = copy.deepcopy(backlog)
+        appended["resolutions"]["TASK-0013"] = {
+            "state": "REJECTED",
+            "reason": "Owner cancelled the planned capability",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            backlog,
+            appended,
+            "parent..child",
+        )
+        self.assertEqual([], audit.errors)
+
+    def test_backlog_resolution_requires_reason_and_new_id_for_replacement(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        tampered = copy.deepcopy(backlog)
+        tampered["resolutions"]["TASK-0013"] = {
+            "state": "SUPERSEDED",
+            "reason": " ",
+            "decidedBy": "Repository Owner",
+            "decidedAt": "not-a-date",
+            "replacementTask": "TASK-0013",
+        }
+        audit = Audit()
+        validate_task_backlog_data(
+            audit,
+            tampered,
+            tasks,
+            lifecycle,
+            state,
+        )
+        messages = "\n".join(audit.errors)
+        self.assertIn("reason: must be a non-blank string", messages)
+        self.assertIn("decidedBy must be canonical", messages)
+        self.assertIn("decidedAt must be ISO-8601", messages)
+        self.assertIn("requires a distinct permanently reserved replacementTask", messages)
+
+    def test_planning_terminal_card_is_atomic_and_does_not_consume_task_ledger(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        resolved_backlog = copy.deepcopy(backlog)
+        resolved_tasks = copy.deepcopy(tasks)
+        resolution = {
+            "state": "SUPERSEDED",
+            "reason": "Owner replaced the planned capability with a new permanent ID",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": "TASK-0014",
+        }
+        resolved_backlog["resolutions"]["TASK-0013"] = resolution
+        resolved_tasks["TASK-0013"]["state"] = "SUPERSEDED"
+        resolved_tasks["TASK-0013"]["planningResolution"] = resolution
+
+        audit = Audit()
+        validate_task_backlog_data(
+            audit,
+            resolved_backlog,
+            resolved_tasks,
+            lifecycle,
+            state,
+        )
+        self.assertEqual([], audit.errors)
+
+        ledger = load_yaml(ROOT / ".harness/task-ledger.yaml")
+        audit = Audit()
+        validate_task_ledger_entries(
+            audit,
+            ledger["tasks"],
+            resolved_tasks,
+            set(lifecycle["terminalStates"]),
+        )
+        self.assertEqual([], audit.errors)
+
+        audit = Audit()
+        validate_project_state(
+            audit,
+            state,
+            lifecycle,
+            resolved_tasks,
+        )
+        self.assertEqual([], audit.errors)
+
+    def test_planned_task_metadata_rejects_any_dynamic_field(self) -> None:
+        _, tasks, lifecycle, _ = self.load_inputs()
+        planned = copy.deepcopy(tasks["TASK-0013"])
+        planned["baseCommit"] = "a" * 40
+        audit = Audit()
+        validate_tasks(
+            audit,
+            {"TASK-0013": planned},
+            lifecycle,
+        )
+        self.assertTrue(
+            any(
+                "dynamic execution evidence is forbidden" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+    def test_lifecycle_keeps_planned_outside_active_states(self) -> None:
+        lifecycle = load_yaml(ROOT / ".harness/task-lifecycle.yaml")
+        self.assertIn("PLANNED", lifecycle["states"])
+        self.assertNotIn("PLANNED", lifecycle["activeStates"])
+        self.assertEqual(1, lifecycle["rules"]["maximumPendingDraftTasks"])
+        self.assertFalse(lifecycle["rules"]["plannedConsumesActiveTask"])
+        self.assertEqual(
+            ["DRAFT", "REJECTED", "SUPERSEDED"],
+            lifecycle["transitions"]["PLANNED"],
+        )
+        self.assertFalse(lifecycle["rules"]["planningTerminalConsumesTaskLedger"])
+
+    def test_planned_task_cannot_be_selected_for_execution(self) -> None:
+        _, tasks, _, _ = self.load_inputs()
+        audit = Audit()
+        selected = select_task_for_diff_scope(
+            audit,
+            "TASK-0013",
+            "TASK-0012",
+            None,
+            "TASK-0011",
+            tasks,
+        )
+        self.assertEqual("TASK-0012", selected)
+        self.assertTrue(
+            any(
+                "TASK-0013 is planning-only PLANNED and cannot be executed" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
 
 
 class StateTests(unittest.TestCase):
@@ -1986,9 +2277,15 @@ class ValidationFlowTests(unittest.TestCase):
 
     def test_task_template_uses_one_canonical_precheck_without_duplicate_doctor(self) -> None:
         template = (ROOT / "docs/tasks/task-card-template.md").read_text(encoding="utf-8")
-        match = TASK_BLOCK_RE.search(template)
-        self.assertIsNotNone(match)
-        metadata = strict_yaml_load(match.group(1))
+        metadata_blocks = [
+            strict_yaml_load(match.group(1))
+            for match in TASK_BLOCK_RE.finditer(template)
+        ]
+        metadata = next(
+            block
+            for block in metadata_blocks
+            if isinstance(block, dict) and "requiredCommands" in block
+        )
         commands = metadata["requiredCommands"]
 
         self.assertEqual(

@@ -1,7 +1,7 @@
 schemaVersion: 2
 skills:
   - id: task-intake
-    version: 1.1.0
+    version: 1.2.0
     path: skills/task-intake/SKILL.md
   - id: catalog-change
     version: 1.0.0

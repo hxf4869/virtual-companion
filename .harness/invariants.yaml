@@ -48,3 +48,6 @@ invariants:
   - id: INV-HARNESS-005
     statement: evidence never converts an unexecuted or failed check into PASS
     enforcement: [evidence_schema, harness_doctor, independent_review]
+  - id: INV-HARNESS-006
+    statement: the Technical Alpha backlog permanently reserves task IDs and is the only machine authority for PLANNED order dependencies critical path decision gates and promotion conditions
+    enforcement: [task_backlog, harness_doctor, task_lifecycle, harness_tests, independent_review]

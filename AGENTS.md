@@ -4,7 +4,8 @@
 
 ## 每次会话的恢复顺序
 
-1. 从仓库根目录开始，读取 `.harness/project-state.yaml` 和 append-only `.harness/task-ledger.yaml`。
+1. 从仓库根目录开始，读取 `.harness/project-state.yaml`、append-only `.harness/task-ledger.yaml` 和
+   `.harness/task-backlog.yaml`；Backlog 是 PLANNED 执行顺序、依赖、关键路径、决策闸门和晋级条件的唯一机器真源。
 2. 读取 `.harness/sources-of-truth.yaml`、`.harness/invariants.yaml`、`.harness/protected-paths.yaml` 和 `.harness/task-lifecycle.yaml`。
 3. 运行 `python scripts/harness/doctor.py --summary`；若系统只有 `python3`，使用 `python3`。
 4. 读取 `activeTask` 对应任务卡及其 Context Lock；没有活动任务时只能做只读分析或通过 `task-intake` 创建任务，不能实施变更。
@@ -14,6 +15,8 @@
 ## 权威边界
 
 - “是否允许改、可改哪里、这次验收什么”由当前 READY/IN_PROGRESS 任务授权。
+- “后续做什么、先后依赖、哪些决策阻断晋级”由 `.harness/task-backlog.yaml` 授权；PLANNED 卡只是其
+  Hash 绑定投影，不能成为第二真源。
 - 产品语义、状态码、契约、不变量、保护规则和项目状态以 `.harness/**`、`specs/catalog/**`、`specs/contracts/**` 等机器真源为准。
 - 长期设计理由以 Accepted ADR 为准；当前实现事实由代码、测试和锁文件证明。
 - README、架构说明和历史方案只负责解释，不能覆盖上述事实。
@@ -24,6 +27,13 @@
 ## 任务与变更规则
 
 - 业务或仓库变更必须有且只有一个活动任务；合法状态和迁移见 `.harness/task-lifecycle.yaml`。
+- 可以有多个 PLANNED，但最多一个待处理 DRAFT、最多一个活动任务。PLANNED 不占
+  `project-state.activeTask`、不可执行，也不得提前冻结 Base、授权 Commit、Context、精确命令或 Skill 版本。
+- PLANNED 只有在全部依赖 ACCEPTED、硬决策闸门 APPROVED、仓库空闲且按 Backlog 顺序成为首个可晋级任务时，
+  才能基于当时最新 main 补齐动态证据并成为唯一 DRAFT。
+- Backlog 中预建 Task ID 永久占用且不得复用；PLANNED 取消或替代必须保留原卡、Backlog 条目，并向
+  append-only `resolutions` 原子登记与原卡一致的 REJECTED/SUPERSEDED 状态、原因和决策证据，不伪造动态
+  Evidence/Ledger；已进入 DRAFT 的任务按正常执行终态闭环。
 - 原始需求先经 `task-intake` 收口为 DRAFT；Owner 批准范围、风险和验收后，任务与项目活动状态必须在同一授权提交进入 READY。
 - 开工前验证 Base Commit、Context Fingerprint、写入白名单、禁止路径、所需 Skill 和审批，再转为 IN_PROGRESS。
 - 只能修改任务 `writeAllowlist` 内文件；`forbiddenPaths` 永远优先。
