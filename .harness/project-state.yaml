@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0037
-activeTaskCard: docs/tasks/TASK-0037-harness-performance-layered-validation.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0012
-lastTerminalHandoff: docs/handoffs/TASK-0012.json
-nextAction: 执行 TASK-0037：修复执行态 REJECTED 分类并登记四张永久替代卡，随后以 REJECTED 闭环
+lastTerminalTask: TASK-0037
+lastTerminalHandoff: docs/handoffs/TASK-0037.json
+nextAction: 在新的可见 Codex 任务中将 TASK-0038 晋级为唯一 DRAFT；不得在 TASK-0037 可见任务继续实现
 capabilityGates:
   businessImplementation:
     state: BLOCKED

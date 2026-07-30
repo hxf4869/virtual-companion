@@ -1,0 +1,115 @@
+{
+  "taskId": "TASK-0037",
+  "baseCommit": "46562b5df9485c575453d2dd9bde3261d8697b16",
+  "headCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd",
+  "contextFingerprint": "0d0c6a692055145bfedf7f5c8b5ec1d91f58127a9a9f10cd0ac43f44a39ebbf0",
+  "reviewers": [
+    {
+      "id": "task-0037-r2-terminal-ledger-fixture",
+      "kind": "terminal-ledger-fixture-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd",
+      "evidencePath": "docs/evidence/TASK-0037/review-r2-terminal-ledger-fixture.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0037",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确最终候选完成其唯一一次 candidate canonical：Doctor 53,671 checks PASS，Catalog validate/drift、paid-feature 与 beta-roster gate 全部 PASS，5/5 命令通过，总墙钟 191.158 秒。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_history_classifies_execution_rejected_and_planning_terminal_edges scripts.harness.tests.test_harness.BacklogTests.test_backlog_history_rejects_classification_reversals scripts.harness.tests.test_harness.BacklogTests.test_planning_terminal_rejects_dynamic_fields_or_missing_resolution scripts.harness.tests.test_harness.EnforcementTests.test_execution_rejected_requires_ledger_evidence_and_handoff scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planning_terminal_card_is_atomic_and_does_not_consume_task_ledger",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "最终候选的 8 项冻结矩阵全部 PASS，unittest 7.682 秒、进程总墙钟 7.881 秒；覆盖执行/规划终态分类、三类反转、动态制品门禁、四卡静态关系以及显式 active/terminal/Git-parent/Ledger fixture。",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "最终候选提交前及精确暂存快照均完成 git diff --check，退出码 0；候选工作树与 index 随后保持干净。",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd"
+    },
+    {
+      "command": "independent R1 complete matrix plus R2 delta-only review",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "fork_turns=none 独立 Reviewer 对父候选完成一次完整 R1，并对最终单文件 fixture delta 完成一次 R2；两轮均 P0/P1/P2 none，未重复测试或 canonical。",
+      "environment": "Independent read-only reviewer",
+      "verifiedCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd"
+    },
+    {
+      "command": "controlled failed-history recovery verification",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "66d4de43f13d391bcf84ad7ddad070fc31eace4f5842796d44d241aeac4e5050",
+      "reason": "第三份 bundle 与 backup ref 保存原失败终态 3f7fe306；bundle verify PASS，CAS 恢复后的新 main 精确从 origin/main 46562b5 重建，旧失败历史不是新 main 祖先。",
+      "environment": "Windows PowerShell, Git, local recovery storage",
+      "verifiedCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd"
+    }
+  ],
+  "artifacts": {
+    "implementationCommit": "c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd",
+    "implementationTree": "32b617152f54c684602f5d8ad7d0b83974080210",
+    "backlogPermanentIdCount": 30,
+    "plannedCardCountAfterTerminal": 28,
+    "nextPromotionCandidate": "TASK-0038",
+    "replacementSequence": [
+      "TASK-0038",
+      "TASK-0039",
+      "TASK-0040",
+      "TASK-0041"
+    ],
+    "reviewVerdict": "PASS",
+    "candidateCanonical": {
+      "doctorChecks": 53671,
+      "elapsedSeconds": 191.158
+    },
+    "supersededCandidate": {
+      "commit": "87971740bcff617bef9a9f3388902686496f8607",
+      "tree": "c56bfac152bdb842dd13c7c2de1ce24c8646c869",
+      "canonicalElapsedSeconds": 209.126,
+      "usedAsFinalPass": false,
+      "reason": "真实终态负例仍隐式读取 Ledger，已由最终候选的显式 fixture delta 取代。"
+    },
+    "recoveryBundles": [
+      {
+        "backupRef": "refs/task-backups/TASK-0037-pre-rebuild-20260731-033259",
+        "path": "G:/ai/hxf/.task-backups/TASK-0037-pre-rebuild-20260731-033259.bundle",
+        "sha256": "d37915fa4051340e620c9b6ca189bcf1d6326c35670ee4237f524fab9e42d07c",
+        "verified": true
+      },
+      {
+        "backupRef": "refs/task-backups/TASK-0037-pre-terminal-rebuild-20260731-034740",
+        "path": "G:/ai/hxf/.task-backups/TASK-0037-pre-terminal-rebuild-20260731-034740.bundle",
+        "sha256": "5a49b887ab350b84e58130a54d165fcc6c06e3f75a62665e1f62f64cc6c2da5e",
+        "verified": true
+      },
+      {
+        "backupRef": "refs/task-backups/TASK-0037-failed-terminal-20260731-040549",
+        "path": "G:/ai/hxf/.task-backups/TASK-0037-failed-terminal-20260731-040549.bundle",
+        "sha256": "66d4de43f13d391bcf84ad7ddad070fc31eace4f5842796d44d241aeac4e5050",
+        "verified": true,
+        "oldHead": "3f7fe306ece42a714d1e12ee25f19f329460270b"
+      },
+      {
+        "backupRef": "refs/task-backups/TASK-0037-pre-terminal-fixture-rebuild-20260731-045128",
+        "path": "G:/ai/hxf/.task-backups/TASK-0037-pre-terminal-fixture-rebuild-20260731-045128.bundle",
+        "sha256": "f60c4f32a6e86d1c8191d5f1332c737c1b05387e96d75da4e703988e7bb22332",
+        "verified": true,
+        "oldHead": "deab575ee8a741e68b7a3d4ce2d3c056ee4212cb"
+      }
+    ]
+  }
+}

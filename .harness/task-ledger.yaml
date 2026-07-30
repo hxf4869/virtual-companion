@@ -72,3 +72,9 @@ tasks:
     taskCard: docs/tasks/TASK-0012-planned-backlog-harness-governance.md
     evidence: docs/evidence/TASK-0012/evidence-pack.json
     handoff: docs/handoffs/TASK-0012.json
+  TASK-0037:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0037-harness-performance-layered-validation.md
+    evidence: docs/evidence/TASK-0037/evidence-pack.json
+    handoff: docs/handoffs/TASK-0037.json

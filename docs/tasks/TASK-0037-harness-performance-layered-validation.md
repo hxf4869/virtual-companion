@@ -2,7 +2,8 @@
 
 ```yaml
 taskId: TASK-0037
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: TASK-0037 原静态范围无法在单卡硬预算内安全交付；本次仅闭环执行态 REJECTED 分类缺口、显式 fixture 与四张永久替代卡，R1 完整矩阵与 R2 终态 fixture delta 对最终候选均闭环 PASS，剩余范围按 TASK-0038→TASK-0039→TASK-0040→TASK-0041 严格串行推进。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -109,7 +110,12 @@ humanApprovals:
     approvedAt: "2026-07-31"
     evidence: Owner 明确授权 TASK-0037 立即进行纯技术拆分与本次 Harness 自举修复；仅修执行态 REJECTED 被误判为 planning-only、显式 lifecycle fixture、四张永久替代卡及唯一测试投影，禁止扩展到 idle planning checkpoint、AGENTS、Skill、CI、Schema、业务、Catalog 或 Contract。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0037-r2-terminal-ledger-fixture
+    kind: terminal-ledger-fixture-delta-review
+    verdict: PASS
+    reviewedCommit: c99481c783f514bb3b3ca8a69d9c7a2d7a36d4bd
+    evidencePath: docs/evidence/TASK-0037/review-r2-terminal-ledger-fixture.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0037
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_history_classifies_execution_rejected_and_planning_terminal_edges scripts.harness.tests.test_harness.BacklogTests.test_backlog_history_rejects_classification_reversals scripts.harness.tests.test_harness.BacklogTests.test_planning_terminal_rejects_dynamic_fields_or_missing_resolution scripts.harness.tests.test_harness.EnforcementTests.test_execution_rejected_requires_ledger_evidence_and_handoff scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planning_terminal_card_is_atomic_and_does_not_consume_task_ledger
