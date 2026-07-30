@@ -53,7 +53,13 @@ macOS/Linux/WSL: bash scripts/harness/precheck.sh
 通用: python3 scripts/harness/precheck.py
 ```
 
-另外执行任务卡 `requiredCommands`、受影响模块测试和 `git diff --check`。每条检查必须记录 `PASS`、`FAIL` 或 `NOT_RUN`、真实退出码、验证提交和产物哈希或无产物理由。C3/C4 任务需要独立 Reviewer。
+执行任务卡中未被统一入口覆盖的 `requiredCommands`、受影响模块测试和 `git diff --check`。任务卡不得把 canonical precheck 已包含的 Doctor、Catalog、付费依赖或 Beta Gate 再列为同一终态快照上的独立全量命令；只有任务本身修改 Harness、包装器或平台可移植性时，才要求多个本地平台入口完整复验。每条检查必须记录 `PASS`、`FAIL` 或 `NOT_RUN`、真实退出码、验证提交和产物哈希或无产物理由。C3/C4 任务需要独立 Reviewer。
+
+验证结果只能在以下要素全部不变时用于避免额外调度：完整 HEAD SHA、Git Index/候选树、工作树与未跟踪候选、精确命令、操作系统、解释器/工具链、依赖环境、任务授权、Context 和命令注册表。复用只表示“不再次启动相同检查”，Evidence 仍保留该快照上首次真实执行的唯一结果；不得新增 `REUSED` PASS、复制其他环境结果或把失败、超时、取消、`NOT_RUN` 当作通过。任一要素变化后相关结果立即失效。
+
+提交前的 `doctor.py --pre-closure` 与终态真实提交后的 canonical precheck 属于不同生命周期快照，必须分别执行。会话恢复的 `doctor.py --summary` 在同一会话且仓库状态未变化时不重复。
+
+长命令返回运行会话后，只等待同一会话，不得因静默重新启动命令。相邻状态轮询使用客户端允许的最长安全等待，默认约 60 秒；禁止同时追加 `status`、`ps` 或重复日志抓取。只在出现新输出、阶段变化、失败、完成或用户主动询问时重点播报；客户端要求心跳时保持一句话。轮询只观察状态，绝不能触发第二次验证。
 
 结束时用单父原子提交更新机器状态和任务卡，把终态任务追加到 `.harness/task-ledger.yaml`，并生成 `docs/evidence/TASK-ID/evidence-pack.json` 和
 `docs/handoffs/TASK-ID.json`。Ledger 历史条目及其绑定的任务卡、完整 Evidence 目录和 Handoff 不可删除、改写、

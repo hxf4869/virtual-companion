@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import time
 from typing import Any
 
 from harness_common import ROOT, HarnessError, configure_utf8_stdio, load_yaml
@@ -51,7 +52,15 @@ def main() -> int:
                 raise HarnessError(f"profile references unknown command: {command_id}")
             argv = command_argv(command, args.task)
             print(f"\n== {command_id}: {command.get('description', '')}", flush=True)
+            started = time.perf_counter()
             result = subprocess.run(argv, cwd=ROOT, check=False)
+            elapsed = time.perf_counter() - started
+            status = "PASS" if result.returncode == 0 else "FAIL"
+            print(
+                f"== {command_id}: {status} "
+                f"(exit={result.returncode}, elapsed={elapsed:.3f}s)",
+                flush=True,
+            )
             if result.returncode != 0:
                 failures.append((str(command_id), result.returncode))
         if failures:

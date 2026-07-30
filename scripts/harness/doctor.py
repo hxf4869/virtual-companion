@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import date, datetime
 import functools
 import json
@@ -9,9 +10,10 @@ import os
 import re
 import stat
 import sys
+import time
 import unicodedata
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -24,7 +26,7 @@ from harness_common import (
     configure_utf8_stdio,
     discover_tasks,
     git_bytes,
-    git_object,
+    git_object as read_git_object,
     git_text,
     glob_matches,
     is_repository_relative,
@@ -116,6 +118,188 @@ CANONICAL_PRECHECK_COMMANDS = {
     "paidFeatureCheck": ["scripts/harness/check_paid_features.py"],
     "betaRosterGate": ["scripts/harness/check_beta_gate.py"],
 }
+
+
+class DoctorGitSnapshot:
+    """Run-scoped immutable Git reads with end-of-run stability checks."""
+
+    def __init__(self) -> None:
+        head = git_text("rev-parse", "HEAD", check=False)
+        if head.returncode != 0 or not FULL_COMMIT_RE.fullmatch(head.stdout.strip()):
+            raise HarnessError("doctor snapshot: cannot resolve a full HEAD commit")
+        index = git_bytes("ls-files", "--stage", "-z", check=False)
+        if index.returncode != 0:
+            detail = index.stderr.decode("utf-8", errors="replace").strip()
+            raise HarnessError(f"doctor snapshot: cannot read Git index: {detail}")
+        worktree = git_bytes(
+            "status",
+            "--porcelain=v2",
+            "--untracked-files=all",
+            "-z",
+            check=False,
+        )
+        if worktree.returncode != 0:
+            detail = worktree.stderr.decode("utf-8", errors="replace").strip()
+            raise HarnessError(f"doctor snapshot: cannot read worktree status: {detail}")
+
+        self.head = head.stdout.strip()
+        self.index_bytes = index.stdout
+        self.worktree_bytes = worktree.stdout
+        self._trees: dict[str, dict[str, tuple[str, str, str]]] = {}
+        self._blobs: dict[str, bytes] = {}
+        self._index_entries = self._parse_index(index.stdout)
+        self.ledger_introductions: dict[str, set[str]] | None = None
+
+    @staticmethod
+    def _parse_index(raw: bytes) -> dict[str, list[tuple[str, str, str]]]:
+        entries: dict[str, list[tuple[str, str, str]]] = {}
+        for record in raw.split(b"\0"):
+            if not record:
+                continue
+            if b"\t" not in record:
+                raise HarnessError("doctor snapshot: malformed Git index record")
+            header, raw_path = record.split(b"\t", 1)
+            parts = header.decode("ascii", errors="strict").split()
+            if len(parts) != 3:
+                raise HarnessError("doctor snapshot: malformed Git index header")
+            path = raw_path.decode(
+                "utf-8",
+                errors="surrogateescape",
+            ).replace("\\", "/")
+            entries.setdefault(path, []).append((parts[0], parts[1], parts[2]))
+        return entries
+
+    def resolve_commit(self, commit: str) -> str | None:
+        if commit == "HEAD":
+            return self.head
+        return commit if FULL_COMMIT_RE.fullmatch(commit) else None
+
+    def tree_entries(self, commit: str) -> dict[str, tuple[str, str, str]]:
+        resolved = self.resolve_commit(commit)
+        if resolved is None:
+            raise HarnessError(
+                f"doctor snapshot: immutable tree requires a full commit, got {commit!r}"
+            )
+        if resolved in self._trees:
+            return self._trees[resolved]
+        result = git_bytes("ls-tree", "-r", "-z", resolved, check=False)
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="replace").strip()
+            raise HarnessError(
+                f"doctor snapshot: cannot read tree {resolved}: {detail}"
+            )
+        entries: dict[str, tuple[str, str, str]] = {}
+        for record in result.stdout.split(b"\0"):
+            if not record:
+                continue
+            if b"\t" not in record:
+                raise HarnessError(
+                    f"doctor snapshot: malformed tree record at {resolved}"
+                )
+            header, raw_path = record.split(b"\t", 1)
+            parts = header.decode("ascii", errors="strict").split()
+            if len(parts) != 3:
+                raise HarnessError(
+                    f"doctor snapshot: malformed tree header at {resolved}"
+                )
+            path = raw_path.decode("utf-8", errors="surrogateescape")
+            if path in entries:
+                raise HarnessError(
+                    f"doctor snapshot: duplicate tree path at {resolved}: {path}"
+                )
+            entries[path] = (parts[0], parts[1], parts[2])
+        self._trees[resolved] = entries
+        return entries
+
+    def index_entry(self, path: str) -> tuple[str, str] | None:
+        records = self._index_entries.get(normalize_repo_path(path), [])
+        if len(records) != 1 or records[0][2] != "0":
+            return None
+        return records[0][0], records[0][1]
+
+    def blob(self, oid: str) -> bytes:
+        if oid in self._blobs:
+            return self._blobs[oid]
+        result = git_bytes("cat-file", "blob", oid, check=False)
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="replace").strip()
+            raise HarnessError(f"doctor snapshot: cannot read blob {oid}: {detail}")
+        self._blobs[oid] = result.stdout
+        return result.stdout
+
+    def verify_unchanged(self, audit: "Audit") -> None:
+        head = git_text("rev-parse", "HEAD", check=False)
+        audit.require(
+            head.returncode == 0 and head.stdout.strip() == self.head,
+            "doctor snapshot: HEAD changed during validation",
+        )
+        index = git_bytes("ls-files", "--stage", "-z", check=False)
+        audit.require(
+            index.returncode == 0 and index.stdout == self.index_bytes,
+            "doctor snapshot: Git index changed during validation",
+        )
+        worktree = git_bytes(
+            "status",
+            "--porcelain=v2",
+            "--untracked-files=all",
+            "-z",
+            check=False,
+        )
+        audit.require(
+            worktree.returncode == 0 and worktree.stdout == self.worktree_bytes,
+            "doctor snapshot: worktree changed during validation",
+        )
+
+
+_ACTIVE_GIT_SNAPSHOT: DoctorGitSnapshot | None = None
+
+
+@contextmanager
+def doctor_git_snapshot() -> Iterator[DoctorGitSnapshot]:
+    global _ACTIVE_GIT_SNAPSHOT
+    if _ACTIVE_GIT_SNAPSHOT is not None:
+        raise HarnessError("doctor snapshot: nested validation scopes are not allowed")
+    snapshot = DoctorGitSnapshot()
+    _ACTIVE_GIT_SNAPSHOT = snapshot
+    try:
+        yield snapshot
+    finally:
+        _ACTIVE_GIT_SNAPSHOT = None
+
+
+def git_object(commit: str, path: str) -> bytes:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    normalized_path = normalize_repo_path(path)
+    if snapshot is not None:
+        resolved = snapshot.resolve_commit(commit)
+        if resolved is not None:
+            entry = snapshot.tree_entries(resolved).get(normalized_path)
+            if entry is None or entry[1] != "blob":
+                raise HarnessError(f"cannot read {path} at {commit}: path is not a blob")
+            return snapshot.blob(entry[2])
+    return read_git_object(commit, path)
+
+
+@contextmanager
+def timed_phase(label: str) -> Iterator[None]:
+    started = time.perf_counter()
+    print(f"Harness doctor: START {label}", file=sys.stderr, flush=True)
+    try:
+        yield
+    except Exception:
+        elapsed = time.perf_counter() - started
+        print(
+            f"Harness doctor: ERROR {label} ({elapsed:.3f}s)",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise
+    elapsed = time.perf_counter() - started
+    print(
+        f"Harness doctor: DONE {label} ({elapsed:.3f}s)",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 class Audit:
@@ -1491,13 +1675,8 @@ def validate_ledger_bound_artifacts(
 
 
 def ledger_entries_at_commit(commit: str) -> dict[str, Any]:
-    exists = git_text(
-        "cat-file",
-        "-e",
-        f"{commit}:{TASK_LEDGER_PATH}",
-        check=False,
-    )
-    if exists.returncode != 0:
+    entry = git_tree_entry(commit, TASK_LEDGER_PATH)
+    if entry is None or entry[1] != "blob":
         return {}
     ledger = yaml_at_commit(commit, TASK_LEDGER_PATH)
     if set(ledger) != {"schemaVersion", "tasks"}:
@@ -1508,6 +1687,12 @@ def ledger_entries_at_commit(commit: str) -> dict[str, Any]:
 
 
 def ledger_introduction_commits_for_task(task_id: str) -> set[str]:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    if (
+        snapshot is not None
+        and snapshot.ledger_introductions is not None
+    ):
+        return set(snapshot.ledger_introductions.get(task_id, set()))
     introductions: set[str] = set()
     history = git_text(
         "rev-list",
@@ -1563,6 +1748,14 @@ def validate_active_task_base_freshness(
     current_entries: dict[str, Any] | None = None,
     introductions: dict[str, set[str]] | None = None,
 ) -> None:
+    active_states = set(str(item) for item in lifecycle.get("activeStates", []))
+    active_tasks = {
+        task_id: task
+        for task_id, task in tasks.items()
+        if task.get("state") in active_states
+    }
+    if not active_tasks:
+        return
     if current_entries is None:
         ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
         raw_entries = ledger.get("tasks")
@@ -1573,10 +1766,7 @@ def validate_active_task_base_freshness(
             for task_id, entry in current_entries.items()
             if isinstance(entry, dict) and entry.get("contractVersion") == 2
         }
-    active_states = set(str(item) for item in lifecycle.get("activeStates", []))
-    for task_id, task in tasks.items():
-        if task.get("state") not in active_states:
-            continue
+    for task_id, task in active_tasks.items():
         stale_boundaries = intervening_terminal_boundaries(
             str(task.get("baseCommit", "")),
             "HEAD",
@@ -1777,6 +1967,11 @@ def validate_task_ledger(
     terminal_states = set(str(item) for item in lifecycle.get("terminalStates", []))
     validate_task_ledger_entries(audit, entries, tasks, terminal_states)
     introductions = validate_ledger_parent_edges(audit, entries)
+    if _ACTIVE_GIT_SNAPSHOT is not None:
+        _ACTIVE_GIT_SNAPSHOT.ledger_introductions = {
+            task_id: set(commits)
+            for task_id, commits in introductions.items()
+        }
     validate_ledger_bound_artifacts(
         audit,
         entries,
@@ -1864,14 +2059,11 @@ def validate_authorized_task_history(
     historical_non_draft_paths: dict[str, set[str]] = {}
     commits = git_text("rev-list", "--reverse", "HEAD").stdout.splitlines()
     for commit in commits:
-        paths = git_text(
-            "ls-tree",
-            "-r",
-            "--name-only",
-            commit.strip(),
-            "--",
-            "docs/tasks",
-        ).stdout.splitlines()
+        paths = [
+            path
+            for path in repository_paths_at_commit(commit.strip())
+            if path.startswith("docs/tasks/")
+        ]
         snapshot_paths: dict[str, str] = {}
         for path in paths:
             normalized = normalize_repo_path(path)
@@ -2855,12 +3047,16 @@ def current_regular_file_bytes(
 
 
 def git_tree_entry(commit: str, path: str) -> tuple[str, str, str] | None:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    normalized_path = normalize_repo_path(path)
+    if snapshot is not None and snapshot.resolve_commit(commit) is not None:
+        return snapshot.tree_entries(commit).get(normalized_path)
     result = git_bytes(
         "ls-tree",
         "-z",
         commit,
         "--",
-        normalize_repo_path(path),
+        normalized_path,
         check=False,
     )
     if result.returncode != 0 or not result.stdout:
@@ -2871,12 +3067,15 @@ def git_tree_entry(commit: str, path: str) -> tuple[str, str, str] | None:
     header, raw_path = records[0].split(b"\t", 1)
     parts = header.decode("ascii", errors="replace").split()
     listed_path = raw_path.decode("utf-8", errors="surrogateescape").replace("\\", "/")
-    if len(parts) != 3 or listed_path != normalize_repo_path(path):
+    if len(parts) != 3 or listed_path != normalized_path:
         return None
     return parts[0], parts[1], parts[2]
 
 
 def git_index_entry(path: str) -> tuple[str, str] | None:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    if snapshot is not None:
+        return snapshot.index_entry(path)
     result = git_bytes(
         "ls-files",
         "--stage",
@@ -3111,6 +3310,9 @@ def validate_portable_path_collisions(
 
 
 def repository_paths_at_commit(commit: str) -> list[str]:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    if snapshot is not None and snapshot.resolve_commit(commit) is not None:
+        return sorted(snapshot.tree_entries(commit))
     result = git_bytes(
         "ls-tree",
         "-r",
@@ -3163,13 +3365,22 @@ def validate_current_regular_tree(
 
 
 def git_repository_tree_entries(commit: str, prefix: str) -> dict[str, tuple[str, str, str]]:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
+    normalized_prefix = normalize_repo_path(prefix).rstrip("/")
+    if snapshot is not None and snapshot.resolve_commit(commit) is not None:
+        return {
+            path.replace("\\", "/"): entry
+            for path, entry in snapshot.tree_entries(commit).items()
+            if path.replace("\\", "/") == normalized_prefix
+            or path.replace("\\", "/").startswith(f"{normalized_prefix}/")
+        }
     result = git_bytes(
         "ls-tree",
         "-r",
         "-z",
         commit,
         "--",
-        normalize_repo_path(prefix),
+        normalized_prefix,
     )
     entries: dict[str, tuple[str, str, str]] = {}
     for record in result.stdout.split(b"\0"):
@@ -3746,70 +3957,98 @@ def main() -> int:
     args = parser.parse_args()
     audit = Audit()
     try:
-        lifecycle = load_yaml(ROOT / ".harness/task-lifecycle.yaml")
-        state = load_yaml(ROOT / ".harness/project-state.yaml")
-        tasks = discover_tasks()
-        validate_tasks(audit, tasks, lifecycle)
-        validate_authorized_task_history(audit, tasks)
-        validate_task_base_handoff_anchors(audit, tasks, lifecycle)
-        validate_task_ledger(
-            audit,
-            tasks,
-            lifecycle,
-            allow_uncommitted_terminal=args.pre_closure,
-        )
-        validate_active_task_base_freshness(audit, tasks, lifecycle)
-        active_task = validate_project_state(audit, state, lifecycle, tasks)
-        skills, protected_rules = validate_skills(audit, tasks)
-        validate_sources(audit, tasks)
-        validate_harness_runtime(audit)
-        validate_entrypoints(audit)
-        validate_commands(audit)
-        draft_tasks = sorted(
-            task_id for task_id, task in tasks.items() if task.get("state") == "DRAFT"
-        )
-        audit.require(
-            len(draft_tasks) <= 1,
-            f"task lifecycle: multiple pending DRAFT tasks are not allowed: {draft_tasks}",
-        )
-        pending_draft = draft_tasks[0] if len(draft_tasks) == 1 else None
-        validate_evidence_and_handoffs(
-            audit,
-            tasks,
-            lifecycle,
-            protected_rules,
-            allow_pending_draft=pending_draft is not None,
-        )
+        with doctor_git_snapshot() as snapshot:
+            try:
+                with timed_phase("load project and tasks"):
+                    lifecycle = load_yaml(ROOT / ".harness/task-lifecycle.yaml")
+                    state = load_yaml(ROOT / ".harness/project-state.yaml")
+                    tasks = discover_tasks()
+                    validate_tasks(audit, tasks, lifecycle)
 
-        last_terminal_task = str(state.get("lastTerminalTask", ""))
-        if args.task and active_task and args.task != active_task:
-            audit.error(
-                f"explicit task {args.task} cannot replace activeTask {active_task} for diff-scope validation"
-            )
-        if args.task and not active_task and args.task != (pending_draft or last_terminal_task):
-            audit.error(
-                f"explicit task {args.task} cannot replace selected task "
-                f"{pending_draft or last_terminal_task} when no task is active"
-            )
-        selected_task_id = active_task or pending_draft or last_terminal_task
-        if selected_task_id not in tasks:
-            audit.error(f"selected task does not exist: {selected_task_id}")
-        else:
-            selected_task = tasks[selected_task_id]
-            if selected_task.get("state") == "DRAFT":
-                validate_draft_checkpoint(
-                    audit,
-                    selected_task,
-                    tasks.get(last_terminal_task),
+                with timed_phase("authorized task history"):
+                    validate_authorized_task_history(audit, tasks)
+
+                with timed_phase("task ledger history"):
+                    validate_task_ledger(
+                        audit,
+                        tasks,
+                        lifecycle,
+                        allow_uncommitted_terminal=args.pre_closure,
+                    )
+
+                with timed_phase("task boundaries and project state"):
+                    validate_task_base_handoff_anchors(audit, tasks, lifecycle)
+                    validate_active_task_base_freshness(audit, tasks, lifecycle)
+                    active_task = validate_project_state(audit, state, lifecycle, tasks)
+
+                with timed_phase("skills sources and entrypoints"):
+                    skills, protected_rules = validate_skills(audit, tasks)
+                    validate_sources(audit, tasks)
+                    validate_harness_runtime(audit)
+                    validate_entrypoints(audit)
+                    validate_commands(audit)
+
+                draft_tasks = sorted(
+                    task_id
+                    for task_id, task in tasks.items()
+                    if task.get("state") == "DRAFT"
                 )
-            validate_diff_scope(
-                audit,
-                selected_task,
-                skills,
-                effective_protected_rules(audit, selected_task, protected_rules),
-            )
-        if args.summary:
-            print_summary(state, tasks)
+                audit.require(
+                    len(draft_tasks) <= 1,
+                    f"task lifecycle: multiple pending DRAFT tasks are not allowed: {draft_tasks}",
+                )
+                pending_draft = draft_tasks[0] if len(draft_tasks) == 1 else None
+
+                with timed_phase("evidence and handoffs"):
+                    validate_evidence_and_handoffs(
+                        audit,
+                        tasks,
+                        lifecycle,
+                        protected_rules,
+                        allow_pending_draft=pending_draft is not None,
+                    )
+
+                with timed_phase("selected task diff scope"):
+                    last_terminal_task = str(state.get("lastTerminalTask", ""))
+                    if args.task and active_task and args.task != active_task:
+                        audit.error(
+                            f"explicit task {args.task} cannot replace activeTask "
+                            f"{active_task} for diff-scope validation"
+                        )
+                    if (
+                        args.task
+                        and not active_task
+                        and args.task != (pending_draft or last_terminal_task)
+                    ):
+                        audit.error(
+                            f"explicit task {args.task} cannot replace selected task "
+                            f"{pending_draft or last_terminal_task} when no task is active"
+                        )
+                    selected_task_id = active_task or pending_draft or last_terminal_task
+                    if selected_task_id not in tasks:
+                        audit.error(f"selected task does not exist: {selected_task_id}")
+                    else:
+                        selected_task = tasks[selected_task_id]
+                        if selected_task.get("state") == "DRAFT":
+                            validate_draft_checkpoint(
+                                audit,
+                                selected_task,
+                                tasks.get(last_terminal_task),
+                            )
+                        validate_diff_scope(
+                            audit,
+                            selected_task,
+                            skills,
+                            effective_protected_rules(
+                                audit,
+                                selected_task,
+                                protected_rules,
+                            ),
+                        )
+                if args.summary:
+                    print_summary(state, tasks)
+            finally:
+                snapshot.verify_unchanged(audit)
     except HarnessError as exc:
         audit.error(str(exc))
     except Exception as exc:  # fail closed with a concise diagnostic

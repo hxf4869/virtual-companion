@@ -24,6 +24,7 @@ import catalog_tool  # noqa: E402
 import check_beta_gate  # noqa: E402
 import doctor  # noqa: E402
 import harness_common  # noqa: E402
+import precheck  # noqa: E402
 from check_beta_gate import (  # noqa: E402
     canonical_secret_reference,
     is_secret_reference,
@@ -84,6 +85,7 @@ from harness_common import (  # noqa: E402
     load_yaml,
     normalize_repo_path,
     strict_yaml_load,
+    TASK_BLOCK_RE,
     task_id_from_filename,
     verify_context_lock,
 )
@@ -472,6 +474,64 @@ class GitHistoryPolicyTests(unittest.TestCase):
             self.assertTrue(
                 any("unauthorized Git mode" in error for error in audit.errors)
             )
+
+    def test_doctor_snapshot_caches_commit_tree_and_blob_within_one_run(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "one.txt").write_text("same\n", encoding="utf-8")
+            (repository / "two.txt").write_text("same\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            head = self._git(repository, "rev-parse", "HEAD")
+            original_git_bytes = doctor.git_bytes
+            calls: list[tuple[str, ...]] = []
+
+            def counting_git_bytes(
+                *args: str,
+                check: bool = True,
+            ) -> subprocess.CompletedProcess[bytes]:
+                calls.append(tuple(args))
+                return original_git_bytes(*args, check=check)
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+                patch.object(doctor, "git_bytes", side_effect=counting_git_bytes),
+            ):
+                with doctor.doctor_git_snapshot():
+                    self.assertIsNotNone(doctor.git_tree_entry(head, "one.txt"))
+                    self.assertIsNotNone(doctor.git_tree_entry(head, "two.txt"))
+                    self.assertEqual(b"same\n", doctor.git_object(head, "one.txt"))
+                    self.assertEqual(b"same\n", doctor.git_object(head, "two.txt"))
+
+            tree_calls = [call for call in calls if call[:3] == ("ls-tree", "-r", "-z")]
+            blob_calls = [call for call in calls if call[:2] == ("cat-file", "blob")]
+            self.assertEqual(1, len(tree_calls), calls)
+            self.assertEqual(1, len(blob_calls), calls)
+            self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_doctor_snapshot_fails_closed_when_index_or_worktree_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    fixture.write_text("changed\n", encoding="utf-8")
+                    self._git(repository, "add", "fixture.txt")
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            messages = "\n".join(audit.errors)
+            self.assertIn("Git index changed during validation", messages)
+            self.assertIn("worktree changed during validation", messages)
+            self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
 
     def test_serial_terminal_chain_excludes_exact_predecessor_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1350,6 +1410,88 @@ class CiWorkflowTests(unittest.TestCase):
             ],
             [step["name"] for step in harness["steps"]],
         )
+
+
+class ValidationFlowTests(unittest.TestCase):
+    def test_no_active_task_skips_terminal_introduction_recomputation(self) -> None:
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "ledger_introduction_commits_for_task",
+            side_effect=AssertionError("ledger history should not be recomputed"),
+        ):
+            validate_active_task_base_freshness(
+                audit,
+                {"TASK-0001": {"state": "ACCEPTED"}},
+                {"activeStates": ["READY", "IN_PROGRESS", "IN_REVIEW"]},
+            )
+        self.assertEqual([], audit.errors)
+
+    def test_task_template_uses_one_canonical_precheck_without_duplicate_doctor(self) -> None:
+        template = (ROOT / "docs/tasks/task-card-template.md").read_text(encoding="utf-8")
+        match = TASK_BLOCK_RE.search(template)
+        self.assertIsNotNone(match)
+        metadata = strict_yaml_load(match.group(1))
+        commands = metadata["requiredCommands"]
+
+        self.assertEqual(
+            [
+                "python scripts/harness/precheck.py --task TASK-XXXX",
+                "git diff --check",
+            ],
+            commands,
+        )
+        self.assertFalse(any("doctor.py" in command for command in commands))
+        self.assertEqual(1, sum("precheck.py" in command for command in commands))
+
+    def test_precheck_profile_keeps_each_canonical_gate_exactly_once(self) -> None:
+        config = load_yaml(ROOT / ".harness/commands.yaml")
+        self.assertEqual(
+            [
+                "doctor",
+                "catalogValidate",
+                "catalogDrift",
+                "paidFeatureCheck",
+                "betaRosterGate",
+            ],
+            config["profiles"]["precheck"],
+        )
+        self.assertEqual(
+            len(config["profiles"]["precheck"]),
+            len(set(config["profiles"]["precheck"])),
+        )
+
+    def test_precheck_reports_command_exit_and_elapsed_time(self) -> None:
+        config = {
+            "commands": {
+                "fixture": {
+                    "description": "fixture command",
+                    "argv": ["scripts/harness/doctor.py"],
+                }
+            },
+            "profiles": {"precheck": ["fixture"]},
+        }
+        completed = subprocess.CompletedProcess(
+            args=["fixture"],
+            returncode=0,
+        )
+        output = io.StringIO()
+        with (
+            patch.object(precheck, "load_yaml", return_value=config),
+            patch.object(precheck.subprocess, "run", return_value=completed),
+            patch.object(sys, "argv", ["precheck.py"]),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(0, precheck.main())
+
+        self.assertIn("fixture: PASS (exit=0, elapsed=", output.getvalue())
+
+    def test_agent_rules_define_snapshot_reuse_and_low_frequency_polling(self) -> None:
+        instructions = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("完整 HEAD SHA、Git Index/候选树", instructions)
+        self.assertIn("默认约 60 秒", instructions)
+        self.assertIn("轮询只观察状态，绝不能触发第二次验证", instructions)
+        self.assertIn("不得新增 `REUSED` PASS", instructions)
 
 
 class IntegrationTests(unittest.TestCase):

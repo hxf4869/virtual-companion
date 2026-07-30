@@ -5,12 +5,12 @@ clients:
   codex:
     instructionPath: AGENTS.md
     mode: NATIVE_DISCOVERY
-    contentSha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
+    contentSha256: b825359ec2402a1340c7811d7791210648c8242b09239d52b8d9db69d757b21a
   zed:
     instructionPath: AGENTS.md
     mode: NATIVE_DISCOVERY
     discoverySemantics: FIRST_MATCH
-    contentSha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
+    contentSha256: b825359ec2402a1340c7811d7791210648c8242b09239d52b8d9db69d757b21a
   claudeCode:
     instructionPath: CLAUDE.md
     mode: THIN_IMPORT
@@ -25,7 +25,7 @@ clients:
     appliesWhen: COPILOT_CLI_AGENT_INSTRUCTIONS_SUPPORTED
     supportMatrix: https://docs.github.com/en/copilot/reference/custom-instructions-support
     documentation: https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions
-    contentSha256: b1b5a12bf352a68ef571015f34268e88c97caf396a994560c4a1588ed77f2885
+    contentSha256: b825359ec2402a1340c7811d7791210648c8242b09239d52b8d9db69d757b21a
   githubCopilotCliClaudeImport:
     clientScope: GITHUB_COPILOT_CLI
     instructionPath: CLAUDE.md

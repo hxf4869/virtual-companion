@@ -83,6 +83,14 @@ GitHub Copilot 各产品形态支持的指令类型不同，必须以
 
 PowerShell 和 Shell 文件只负责发现 Python；命令列表来自 `.harness/commands.yaml`，由 `precheck.py` 使用 `sys.executable` 执行。CI 也必须调用该入口。
 
+## 验证调度与长命令
+
+- 普通任务在当前平台运行一个 canonical precheck；CI 负责不同 OS 的独立环境验证。只有 Harness、包装器或可移植性变更才在本机完整运行多个平台入口。
+- canonical precheck 已覆盖 Doctor、Catalog validate/drift、付费依赖与 Beta Gate；同一终态快照不再单独重复这些全量命令。
+- `pre-closure` Doctor 与终态提交后 Precheck 绑定不同快照，均须保留。HEAD、Index、工作树、命令、环境、授权或 Context 任一变化后，之前结果失效。
+- 已有真实 PASS 只用于避免再次调度相同命令，不生成 `REUSED` Evidence，也不能替代任务卡要求的唯一最终结果。
+- 长命令只等待原运行会话，相邻轮询默认约 60 秒；不并行执行 `ps`、状态查询或重复日志抓取，不因静默重启验证。状态更新以新输出、阶段变化、失败和完成为准。
+
 ## 失败时怎么做
 
 - `no active task`：只读分析，或用 `task-intake` 创建并批准 READY 任务；
