@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0038
+activeTaskCard: docs/tasks/TASK-0038-task-delivery-policy-skill-entrypoint.md
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0037
 lastTerminalHandoff: docs/handoffs/TASK-0037.json
-nextAction: 在新的可见 Codex 任务中将 TASK-0038 晋级为唯一 DRAFT；不得在 TASK-0037 可见任务继续实现
+nextAction: 执行 TASK-0038：交付机器策略、双模式 Skill、薄入口与 idle planning checkpoint 后完成独立复核和精确 SHA CI
 capabilityGates:
   businessImplementation:
     state: BLOCKED
