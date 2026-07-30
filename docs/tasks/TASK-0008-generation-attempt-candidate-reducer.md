@@ -126,7 +126,12 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 用户明确要求继续按需求清单和功能计划自主完成所有无需其决策的任务；本任务只实现机器真源已冻结的 Generation 归约与隔离内核，不选择重试、路由、胜出策略、数据库、API、真实模型或安全政策
 independentReview: required
-reviewers: []
+reviewers:
+  - id: codex-task0008-generation-reducer-reviewer
+    kind: generation-reducer-boundary
+    verdict: PASS
+    reviewedCommit: e0057cdec700fb730b48c66907c94429f2672c2b
+    evidencePath: docs/evidence/TASK-0008/review-generation-reducer.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0008
   - python scripts/harness/catalog_tool.py validate
