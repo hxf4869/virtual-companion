@@ -141,7 +141,12 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 用户明确要求在新会话自主建立 OpenAI Chat Completions /v1/chat/completions 离线 HTTP/SSE Adapter 与 127.0.0.1 本地 mock-server 合同基线，并明确排除 Anthropic、Responses API、Runtime 接线、真实网络、凭据、区域、合同、Beta、支付和安全政策决策
 independentReview: required
-reviewers: []
+reviewers:
+  - id: codex-task0011-openai-chat-completions-reviewer
+    kind: openai-chat-completions-offline-contract
+    verdict: PASS
+    reviewedCommit: e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7
+    evidencePath: docs/evidence/TASK-0011/review-openai-chat-completions-offline-contract.md
 requiredCommands:
   - .\mvnw.cmd --batch-mode --no-transfer-progress -pl service/tests/openai-chat-completions-contract-tests -am verify
   - .\mvnw.cmd --batch-mode --no-transfer-progress verify
