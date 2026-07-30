@@ -9,9 +9,11 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.adapter;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.binding;
@@ -22,6 +24,7 @@ import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSuppor
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.textRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.usageChunk;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -204,6 +207,52 @@ class OpenAiChatCompletionsTimeoutCancellationContractTest {
                 release.countDown();
             }
         }
+    }
+
+    @Test
+    void interrupted_next_delivers_cancelled_once_then_fresh_thread_gets_empty()
+            throws Exception {
+        var session = adapter(
+                new NeverCompletingHttpClient(),
+                URI.create("http://127.0.0.1:9/v1/chat/completions")
+        ).open(textRequest(true, "interrupt"));
+        var enteredNext = new CountDownLatch(1);
+        var interruptedResult =
+                new AtomicReference<Optional<ModelProtocolEvent>>();
+        var interruptedConsumer = Thread.ofPlatform().start(() -> {
+            enteredNext.countDown();
+            interruptedResult.set(session.next());
+        });
+
+        assertTrue(enteredNext.await(5, TimeUnit.SECONDS));
+        interruptedConsumer.interrupt();
+        interruptedConsumer.join(5_000);
+        assertFalse(
+                interruptedConsumer.isAlive(),
+                "interrupted next() must return the cancellation terminal"
+        );
+        var cancelled = assertInstanceOf(
+                ModelProtocolEvent.AttemptCancelled.class,
+                interruptedResult.get().orElseThrow()
+        );
+        assertEquals(binding(), cancelled.binding());
+        assertEquals(0, cancelled.sequence());
+
+        var afterTerminal = new AtomicReference<Optional<ModelProtocolEvent>>();
+        var freshConsumer = Thread.ofPlatform().start(
+                () -> afterTerminal.set(session.next())
+        );
+        freshConsumer.join(1_000);
+        var completedWithoutBlocking = !freshConsumer.isAlive();
+        if (!completedWithoutBlocking) {
+            freshConsumer.interrupt();
+        }
+
+        assertTrue(
+                completedWithoutBlocking,
+                "next() after an interrupted terminal delivery must not block"
+        );
+        assertTrue(afterTerminal.get().isEmpty());
     }
 
     @Test

@@ -14,6 +14,7 @@ import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSuppor
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.done;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.drain;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.sse;
+import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.structuredRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.textRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.usageChunk;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -143,6 +144,59 @@ class OpenAiChatCompletionsFailureContractTest {
     }
 
     @Test
+    void trailing_json_tokens_fail_closed_without_eos() throws Exception {
+        var trailingRoot = "{\"extra\":true}";
+        var structuredWithTrailingRoot = "{\"answer\":\"ok\"}" + trailingRoot;
+        var scenarios = List.of(
+                new TrailingTokenCase(
+                        "application/json",
+                        completion("content", "stop", 1, 1) + trailingRoot,
+                        textRequest(false, "trailing non-stream")
+                ),
+                new TrailingTokenCase(
+                        "text/event-stream",
+                        sse(choiceChunk("content", null) + trailingRoot)
+                                + sse(choiceChunk(null, "stop"))
+                                + sse(usageChunk(1, 1))
+                                + done(),
+                        textRequest(true, "trailing stream event")
+                ),
+                new TrailingTokenCase(
+                        "application/json",
+                        completion(structuredWithTrailingRoot, "stop", 1, 1),
+                        structuredRequest(false, "trailing structured non-stream")
+                ),
+                new TrailingTokenCase(
+                        "text/event-stream",
+                        sse(choiceChunk(structuredWithTrailingRoot, null))
+                                + sse(choiceChunk(null, "stop"))
+                                + sse(usageChunk(1, 1))
+                                + done(),
+                        structuredRequest(true, "trailing structured stream")
+                )
+        );
+
+        for (var scenario : scenarios) {
+            try (var server = new MockOpenAiServer(MockOpenAiServer.fixed(
+                    200,
+                    scenario.contentType,
+                    scenario.body
+            ))) {
+                var client = new CountingHttpClient();
+                var events = drain(adapter(client, server.endpoint()).open(
+                        scenario.request
+                ));
+
+                assertInstanceOf(AdapterFailure.MalformedResponse.class, onlyFailure(events));
+                assertTrue(events.stream()
+                        .noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+                assertEquals(1, server.requestCount());
+                assertEquals(1, client.asynchronousCalls());
+            }
+        }
+    }
+
+    @Test
     void non_429_4xx_is_body_free_malformed_failure_without_retry()
             throws Exception {
         var secretResponse = "provider-body-must-not-cross-boundary";
@@ -195,5 +249,12 @@ class OpenAiChatCompletionsFailureContractTest {
     }
 
     private record ResponseCase(String contentType, String body) {
+    }
+
+    private record TrailingTokenCase(
+            String contentType,
+            String body,
+            com.virtualcompanion.modelruntime.contract.ModelProtocolRequest request
+    ) {
     }
 }

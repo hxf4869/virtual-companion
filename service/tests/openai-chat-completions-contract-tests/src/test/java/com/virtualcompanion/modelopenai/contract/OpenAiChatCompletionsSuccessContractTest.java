@@ -82,7 +82,7 @@ class OpenAiChatCompletionsSuccessContractTest {
 
             var captured = server.awaitRequest();
             assertEquals("POST", captured.method());
-            assertEquals("/v1/chat/completions", captured.uri().getPath());
+            assertEquals("/v1/chat/completions", captured.uri().getRawPath());
             assertEquals(null, captured.uri().getQuery());
             assertTrue(captured.loopback());
             assertEquals("application/json", captured.firstHeader("Content-Type"));

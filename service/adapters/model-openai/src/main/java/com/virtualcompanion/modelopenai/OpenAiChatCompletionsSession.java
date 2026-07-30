@@ -92,8 +92,14 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             cancel();
-            var cancelled = events.poll();
-            return Optional.ofNullable(cancelled);
+            return deliver(events.poll());
+        }
+        return deliver(event);
+    }
+
+    private Optional<ModelProtocolEvent> deliver(ModelProtocolEvent event) {
+        if (event == null) {
+            return Optional.empty();
         }
         if (event.terminal()) {
             synchronized (stateLock) {

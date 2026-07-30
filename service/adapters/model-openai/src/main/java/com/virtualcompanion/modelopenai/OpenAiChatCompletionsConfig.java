@@ -54,7 +54,7 @@ public final class OpenAiChatCompletionsConfig {
         if (value.getHost() == null || value.getHost().isBlank()) {
             throw new IllegalArgumentException("endpoint must include a host");
         }
-        if (!CHAT_COMPLETIONS_PATH.equals(value.getPath())) {
+        if (!CHAT_COMPLETIONS_PATH.equals(value.getRawPath())) {
             throw new IllegalArgumentException(
                     "endpoint path must be " + CHAT_COMPLETIONS_PATH
             );
@@ -72,7 +72,7 @@ public final class OpenAiChatCompletionsConfig {
     private static String requireSecret(String value) {
         value = requireNonBlank(value, "bearerToken");
         if (value.chars().anyMatch(character ->
-                character == '\r' || character == '\n' || Character.isISOControl(character))) {
+                character > 0xFF || Character.isISOControl(character))) {
             throw new IllegalArgumentException("bearerToken contains an invalid character");
         }
         return value;

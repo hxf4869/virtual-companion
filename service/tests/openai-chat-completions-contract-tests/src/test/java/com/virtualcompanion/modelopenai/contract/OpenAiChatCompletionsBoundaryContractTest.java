@@ -110,6 +110,14 @@ class OpenAiChatCompletionsBoundaryContractTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new OpenAiChatCompletionsConfig(
+                        URI.create("http://127.0.0.1/%76%31/chat/completions"),
+                        TOKEN,
+                        MODEL
+                )
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new OpenAiChatCompletionsConfig(
                         URI.create("http://user@127.0.0.1/v1/chat/completions"),
                         TOKEN,
                         MODEL
@@ -131,6 +139,29 @@ class OpenAiChatCompletionsBoundaryContractTest {
                         MODEL
                 )
         );
+    }
+
+    @Test
+    void config_rejects_unicode_header_token_without_leak_or_network() {
+        var invalidToken = "synthetic-token-密钥-🙂";
+        var client = new NeverCompletingHttpClient();
+
+        var failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    var config = new OpenAiChatCompletionsConfig(
+                            URI.create("http://127.0.0.1:9/v1/chat/completions"),
+                            invalidToken,
+                            MODEL
+                    );
+                    new OpenAiChatCompletionsAdapter(client, config)
+                            .open(textRequest(false, "must stay offline"));
+                }
+        );
+
+        assertFalse(failure.toString().contains(invalidToken));
+        assertFalse(failure.toString().contains("密钥"));
+        assertEquals(0, client.calls());
     }
 
     @Test

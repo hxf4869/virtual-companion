@@ -5,6 +5,7 @@ import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -22,7 +23,9 @@ final class OpenAiChatCompletionsCodec {
     private static final String COMPLETION_OBJECT = "chat.completion";
     private static final String CHUNK_OBJECT = "chat.completion.chunk";
 
-    private final JsonMapper jsonMapper = JsonMapper.builder().build();
+    private final JsonMapper jsonMapper = JsonMapper.builder()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .build();
 
     String encodeRequest(ModelProtocolRequest request, String model)
             throws OpenAiCodecException {
