@@ -5,6 +5,7 @@ import argparse
 from contextlib import contextmanager
 from datetime import date, datetime
 import functools
+import hashlib
 import json
 import os
 import re
@@ -131,24 +132,180 @@ class DoctorGitSnapshot:
         if index.returncode != 0:
             detail = index.stderr.decode("utf-8", errors="replace").strip()
             raise HarnessError(f"doctor snapshot: cannot read Git index: {detail}")
-        worktree = git_bytes(
+        worktree_bytes, worktree_fingerprint = self._capture_worktree()
+
+        self.head = head.stdout.strip()
+        self.index_bytes = index.stdout
+        self.worktree_bytes = worktree_bytes
+        self.worktree_fingerprint = worktree_fingerprint
+        self._trees: dict[str, dict[str, tuple[str, str, str]]] = {}
+        self._blobs: dict[str, bytes] = {}
+        self._index_entries = self._parse_index(index.stdout)
+        self.ledger_introductions: dict[str, set[str]] | None = None
+
+    @staticmethod
+    def _worktree_status() -> bytes:
+        result = git_bytes(
             "status",
             "--porcelain=v2",
             "--untracked-files=all",
             "-z",
             check=False,
         )
-        if worktree.returncode != 0:
-            detail = worktree.stderr.decode("utf-8", errors="replace").strip()
-            raise HarnessError(f"doctor snapshot: cannot read worktree status: {detail}")
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="replace").strip()
+            raise HarnessError(
+                f"doctor snapshot: cannot read worktree status: {detail}"
+            )
+        return result.stdout
 
-        self.head = head.stdout.strip()
-        self.index_bytes = index.stdout
-        self.worktree_bytes = worktree.stdout
-        self._trees: dict[str, dict[str, tuple[str, str, str]]] = {}
-        self._blobs: dict[str, bytes] = {}
-        self._index_entries = self._parse_index(index.stdout)
-        self.ledger_introductions: dict[str, set[str]] | None = None
+    @staticmethod
+    def _status_candidate_paths(raw: bytes) -> tuple[bytes, ...]:
+        records = raw.split(b"\0")
+        candidates: set[bytes] = set()
+        index = 0
+        while index < len(records):
+            record = records[index]
+            index += 1
+            if not record:
+                continue
+            prefix = record[:1]
+            if prefix == b"1":
+                parts = record.split(b" ", 8)
+                if len(parts) != 9:
+                    raise HarnessError(
+                        "doctor snapshot: malformed ordinary worktree status record"
+                    )
+                candidate = parts[8]
+            elif prefix == b"2":
+                parts = record.split(b" ", 9)
+                if len(parts) != 10 or index >= len(records) or not records[index]:
+                    raise HarnessError(
+                        "doctor snapshot: malformed rename worktree status record"
+                    )
+                candidate = parts[9]
+                index += 1  # The following NUL record is the original path.
+            elif prefix == b"u":
+                parts = record.split(b" ", 10)
+                if len(parts) != 11:
+                    raise HarnessError(
+                        "doctor snapshot: malformed unmerged worktree status record"
+                    )
+                candidate = parts[10]
+            elif prefix == b"?":
+                if not record.startswith(b"? "):
+                    raise HarnessError(
+                        "doctor snapshot: malformed untracked worktree status record"
+                    )
+                candidate = record[2:]
+            elif prefix in (b"#", b"!"):
+                continue
+            else:
+                raise HarnessError(
+                    "doctor snapshot: unknown worktree status record type"
+                )
+            if (
+                not candidate
+                or candidate.startswith(b"/")
+                or any(
+                    component in (b"", b".", b"..")
+                    for component in candidate.split(b"/")
+                )
+            ):
+                raise HarnessError(
+                    "doctor snapshot: unsafe worktree status path"
+                )
+            candidates.add(candidate)
+        return tuple(sorted(candidates))
+
+    @staticmethod
+    def _race_stat(stat_result: os.stat_result) -> tuple[int, int, int, int, int, int]:
+        return (
+            stat_result.st_dev,
+            stat_result.st_ino,
+            stat_result.st_mode,
+            stat_result.st_size,
+            stat_result.st_mtime_ns,
+            stat_result.st_ctime_ns,
+        )
+
+    @classmethod
+    def _candidate_fingerprint(
+        cls,
+        raw_path: bytes,
+    ) -> tuple[bytes, str, int, int, bytes]:
+        decoded_path = os.fsdecode(raw_path)
+        candidate = ROOT.joinpath(*decoded_path.split("/"))
+        try:
+            before = os.lstat(candidate)
+        except FileNotFoundError:
+            return raw_path, "missing", 0, 0, b""
+        except OSError as exc:
+            raise HarnessError(
+                f"doctor snapshot: cannot inspect worktree candidate {decoded_path!r}: {exc}"
+            ) from exc
+
+        attributes = int(getattr(before, "st_file_attributes", 0))
+        mode = int(before.st_mode)
+        if stat.S_ISLNK(mode):
+            try:
+                target = os.fsencode(os.readlink(candidate))
+                after = os.lstat(candidate)
+            except OSError as exc:
+                raise HarnessError(
+                    f"doctor snapshot: cannot read worktree symlink {decoded_path!r}: {exc}"
+                ) from exc
+            if cls._race_stat(before) != cls._race_stat(after):
+                raise HarnessError(
+                    f"doctor snapshot: worktree candidate changed while reading: {decoded_path!r}"
+                )
+            digest = hashlib.sha256(target).digest()
+            return raw_path, "symlink", mode, attributes, digest
+
+        if not stat.S_ISREG(mode):
+            raise HarnessError(
+                f"doctor snapshot: unsupported worktree candidate type: {decoded_path!r}"
+            )
+
+        digest = hashlib.sha256()
+        try:
+            with candidate.open("rb") as stream:
+                opened_before = os.fstat(stream.fileno())
+                while chunk := stream.read(1024 * 1024):
+                    digest.update(chunk)
+                opened_after = os.fstat(stream.fileno())
+            after = os.lstat(candidate)
+        except OSError as exc:
+            raise HarnessError(
+                f"doctor snapshot: cannot read worktree candidate {decoded_path!r}: {exc}"
+            ) from exc
+        expected = cls._race_stat(before)
+        if (
+            cls._race_stat(after) != expected
+            or cls._race_stat(opened_after) != cls._race_stat(opened_before)
+            or cls._race_stat(opened_before)[:-1] != expected[:-1]
+        ):
+            raise HarnessError(
+                f"doctor snapshot: worktree candidate changed while reading: {decoded_path!r}"
+            )
+        return raw_path, "file", mode, attributes, digest.digest()
+
+    @classmethod
+    def _capture_worktree(
+        cls,
+    ) -> tuple[bytes, tuple[tuple[bytes, str, int, int, bytes], ...]]:
+        status_before = cls._worktree_status()
+        candidates = cls._status_candidate_paths(status_before)
+        fingerprint = tuple(
+            cls._candidate_fingerprint(path)
+            for path in candidates
+        )
+        status_after = cls._worktree_status()
+        if status_after != status_before:
+            raise HarnessError(
+                "doctor snapshot: worktree changed while capturing validation snapshot"
+            )
+        return status_before, fingerprint
 
     @staticmethod
     def _parse_index(raw: bytes) -> dict[str, list[tuple[str, str, str]]]:
@@ -238,17 +395,16 @@ class DoctorGitSnapshot:
             index.returncode == 0 and index.stdout == self.index_bytes,
             "doctor snapshot: Git index changed during validation",
         )
-        worktree = git_bytes(
-            "status",
-            "--porcelain=v2",
-            "--untracked-files=all",
-            "-z",
-            check=False,
-        )
-        audit.require(
-            worktree.returncode == 0 and worktree.stdout == self.worktree_bytes,
-            "doctor snapshot: worktree changed during validation",
-        )
+        try:
+            worktree_bytes, worktree_fingerprint = self._capture_worktree()
+        except HarnessError as exc:
+            audit.error(str(exc))
+        else:
+            audit.require(
+                worktree_bytes == self.worktree_bytes
+                and worktree_fingerprint == self.worktree_fingerprint,
+                "doctor snapshot: worktree changed during validation",
+            )
 
 
 _ACTIVE_GIT_SNAPSHOT: DoctorGitSnapshot | None = None

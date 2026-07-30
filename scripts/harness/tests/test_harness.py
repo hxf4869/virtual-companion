@@ -79,6 +79,7 @@ from doctor import (  # noqa: E402
     validate_terminal_history_dominance,
 )
 from harness_common import (  # noqa: E402
+    HarnessError,
     discover_tasks,
     glob_matches,
     is_repository_relative,
@@ -532,6 +533,246 @@ class GitHistoryPolicyTests(unittest.TestCase):
             self.assertIn("Git index changed during validation", messages)
             self.assertIn("worktree changed during validation", messages)
             self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_doctor_snapshot_fails_closed_when_head_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    self._git(repository, "commit", "--allow-empty", "-qm", "new head")
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            self.assertIn(
+                "doctor snapshot: HEAD changed during validation",
+                audit.errors,
+            )
+            self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_doctor_snapshot_binds_dirty_tracked_candidate_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            fixture.write_text("dirty-a\n", encoding="utf-8")
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    fixture.write_text("dirty-b\n", encoding="utf-8")
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            self.assertIn(
+                "doctor snapshot: worktree changed during validation",
+                audit.errors,
+            )
+
+    def test_doctor_snapshot_binds_untracked_candidate_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "tracked.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            candidate = repository / "candidate.txt"
+            candidate.write_text("untracked-a\n", encoding="utf-8")
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    candidate.write_text("untracked-b\n", encoding="utf-8")
+                    audit = Audit()
+                    snapshot.verify_unchanged(audit)
+
+            self.assertIn(
+                "doctor snapshot: worktree changed during validation",
+                audit.errors,
+            )
+
+    def test_doctor_snapshot_cache_does_not_cross_scopes_or_repositories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first_path = root / "first"
+            second_path = root / "second"
+            first_path.mkdir()
+            second_path.mkdir()
+            first = self._repository(str(first_path))
+            second = self._repository(str(second_path))
+            for repository, content in (
+                (first, "first\n"),
+                (second, "second\n"),
+            ):
+                (repository / "fixture.txt").write_text(content, encoding="utf-8")
+                self._git(repository, "add", ".")
+                self._git(repository, "commit", "-qm", "base")
+
+            original_git_bytes = doctor.git_bytes
+            calls: list[tuple[str, ...]] = []
+
+            def counting_git_bytes(
+                *args: str,
+                check: bool = True,
+            ) -> subprocess.CompletedProcess[bytes]:
+                calls.append(tuple(args))
+                return original_git_bytes(*args, check=check)
+
+            values: list[bytes] = []
+            for repository in (first, first, second):
+                head = self._git(repository, "rev-parse", "HEAD")
+                with (
+                    patch.object(harness_common, "ROOT", repository),
+                    patch.object(doctor, "ROOT", repository),
+                    patch.object(doctor, "git_bytes", side_effect=counting_git_bytes),
+                ):
+                    with doctor.doctor_git_snapshot():
+                        values.append(doctor.git_object(head, "fixture.txt"))
+
+            tree_calls = [call for call in calls if call[:3] == ("ls-tree", "-r", "-z")]
+            blob_calls = [call for call in calls if call[:2] == ("cat-file", "blob")]
+            self.assertEqual(3, len(tree_calls), calls)
+            self.assertEqual(3, len(blob_calls), calls)
+            self.assertEqual([b"first\n", b"first\n", b"second\n"], values)
+            self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_doctor_snapshot_clears_scope_after_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+                self.assertRaisesRegex(RuntimeError, "fixture failure"),
+            ):
+                with doctor.doctor_git_snapshot():
+                    raise RuntimeError("fixture failure")
+
+            self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_doctor_snapshot_fails_closed_on_tree_and_blob_git_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            head = self._git(repository, "rev-parse", "HEAD")
+            original_git_bytes = doctor.git_bytes
+
+            for failing_prefix in (
+                ("ls-tree", "-r", "-z"),
+                ("cat-file", "blob"),
+            ):
+                def failing_git_bytes(
+                    *args: str,
+                    check: bool = True,
+                    prefix: tuple[str, ...] = failing_prefix,
+                ) -> subprocess.CompletedProcess[bytes]:
+                    if tuple(args[:len(prefix)]) == prefix:
+                        return subprocess.CompletedProcess(
+                            args=["git", *args],
+                            returncode=1,
+                            stdout=b"",
+                            stderr=b"fixture git failure",
+                        )
+                    return original_git_bytes(*args, check=check)
+
+                with (
+                    self.subTest(failing_prefix=failing_prefix),
+                    patch.object(harness_common, "ROOT", repository),
+                    patch.object(doctor, "ROOT", repository),
+                    patch.object(doctor, "git_bytes", side_effect=failing_git_bytes),
+                    self.assertRaisesRegex(HarnessError, "fixture git failure"),
+                ):
+                    with doctor.doctor_git_snapshot():
+                        doctor.git_object(head, "fixture.txt")
+                self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_doctor_snapshot_rejects_malformed_index_and_tree_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            head = self._git(repository, "rev-parse", "HEAD")
+            original_git_bytes = doctor.git_bytes
+
+            def malformed_index(
+                *args: str,
+                check: bool = True,
+            ) -> subprocess.CompletedProcess[bytes]:
+                if tuple(args[:3]) == ("ls-files", "--stage", "-z"):
+                    return subprocess.CompletedProcess(
+                        args=["git", *args],
+                        returncode=0,
+                        stdout=b"malformed-index\0",
+                        stderr=b"",
+                    )
+                return original_git_bytes(*args, check=check)
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+                patch.object(doctor, "git_bytes", side_effect=malformed_index),
+                self.assertRaisesRegex(HarnessError, "malformed Git index"),
+            ):
+                with doctor.doctor_git_snapshot():
+                    pass
+
+            def malformed_tree(
+                *args: str,
+                check: bool = True,
+            ) -> subprocess.CompletedProcess[bytes]:
+                if tuple(args[:3]) == ("ls-tree", "-r", "-z"):
+                    return subprocess.CompletedProcess(
+                        args=["git", *args],
+                        returncode=0,
+                        stdout=b"malformed-tree\0",
+                        stderr=b"",
+                    )
+                return original_git_bytes(*args, check=check)
+
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+                patch.object(doctor, "git_bytes", side_effect=malformed_tree),
+                self.assertRaisesRegex(HarnessError, "malformed tree record"),
+            ):
+                with doctor.doctor_git_snapshot():
+                    doctor.git_object(head, "fixture.txt")
+            self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
+
+    def test_timed_phase_reports_normal_and_exception_completion(self) -> None:
+        output = io.StringIO()
+        with redirect_stderr(output):
+            with doctor.timed_phase("normal"):
+                pass
+        self.assertIn("Harness doctor: START normal", output.getvalue())
+        self.assertIn("Harness doctor: DONE normal", output.getvalue())
+
+        output = io.StringIO()
+        with (
+            redirect_stderr(output),
+            self.assertRaisesRegex(RuntimeError, "fixture failure"),
+        ):
+            with doctor.timed_phase("failure"):
+                raise RuntimeError("fixture failure")
+        self.assertIn("Harness doctor: START failure", output.getvalue())
+        self.assertIn("Harness doctor: ERROR failure", output.getvalue())
 
     def test_serial_terminal_chain_excludes_exact_predecessor_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1485,6 +1726,34 @@ class ValidationFlowTests(unittest.TestCase):
             self.assertEqual(0, precheck.main())
 
         self.assertIn("fixture: PASS (exit=0, elapsed=", output.getvalue())
+
+    def test_precheck_reports_failure_exit_and_elapsed_time(self) -> None:
+        config = {
+            "commands": {
+                "fixture": {
+                    "description": "fixture command",
+                    "argv": ["scripts/harness/doctor.py"],
+                }
+            },
+            "profiles": {"precheck": ["fixture"]},
+        }
+        completed = subprocess.CompletedProcess(
+            args=["fixture"],
+            returncode=7,
+        )
+        output = io.StringIO()
+        errors = io.StringIO()
+        with (
+            patch.object(precheck, "load_yaml", return_value=config),
+            patch.object(precheck.subprocess, "run", return_value=completed),
+            patch.object(sys, "argv", ["precheck.py"]),
+            redirect_stdout(output),
+            redirect_stderr(errors),
+        ):
+            self.assertEqual(1, precheck.main())
+
+        self.assertIn("fixture: FAIL (exit=7, elapsed=", output.getvalue())
+        self.assertIn("FAIL: fixture exited 7", errors.getvalue())
 
     def test_agent_rules_define_snapshot_reuse_and_low_frequency_polling(self) -> None:
         instructions = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
