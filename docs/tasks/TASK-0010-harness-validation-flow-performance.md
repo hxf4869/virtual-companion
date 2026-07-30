@@ -112,7 +112,12 @@ humanApprovals:
     approvedAt: 2026-07-30
     evidence: 用户明确要求优化过重的全量扫描流程，保留必跑检查但不额外重复已经通过的全量扫描，并降低长命令轮询频率
 independentReview: required
-reviewers: []
+reviewers:
+  - id: codex-task0010-harness-reviewer
+    kind: harness-validation-performance
+    verdict: PASS
+    reviewedCommit: 8b85930b08c083a4af3c343430a0ee07e5ca54ed
+    evidencePath: docs/evidence/TASK-0010/review-harness-validation-performance.md
 requiredCommands:
   - python scripts/harness/doctor.py --task TASK-0010
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
