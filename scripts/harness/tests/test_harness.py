@@ -1418,6 +1418,10 @@ class BacklogTests(unittest.TestCase):
         "TASK-0035": "单一获批真实模型供应商受控接入（硬决策闸门）",
         "TASK-0036": "Technical Alpha 隔离、安全、记忆、故障与指标总验收",
         "TASK-0037": "Harness 性能基线、分层验证与快照复用",
+        "TASK-0038": "任务交付执行策略、双模式 Skill 与 AGENTS 入口",
+        "TASK-0039": "Harness 阶段计时与跨文件系统性能引擎",
+        "TASK-0040": "Harness 路径感知 CI 与包装器平台策略",
+        "TASK-0041": "Harness 内容寻址快照复用与 Evidence 门禁",
     }
 
     def load_inputs(
@@ -1526,6 +1530,10 @@ class BacklogTests(unittest.TestCase):
         expected_ids = [
             "TASK-0012",
             "TASK-0037",
+            "TASK-0038",
+            "TASK-0039",
+            "TASK-0040",
+            "TASK-0041",
             *[f"TASK-{value:04d}" for value in range(13, 37)],
         ]
         self.assertEqual(expected_ids, backlog["executionOrder"])
@@ -1536,8 +1544,41 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(25, projection["plannedCount"])
-        self.assertIsNone(projection["nextPromotable"])
+        self.assertEqual(28, projection["plannedCount"])
+        expected_next = (
+            None
+            if tasks["TASK-0037"]["state"] in {*lifecycle["activeStates"], "DRAFT"}
+            else "TASK-0038"
+        )
+        self.assertEqual(expected_next, projection["nextPromotable"])
+        self.assertNotIn("TASK-0037", backlog["resolutions"])
+        self.assertEqual(["TASK-0012"], backlog["tasks"]["TASK-0038"]["dependencies"])
+        self.assertEqual(["TASK-0038"], backlog["tasks"]["TASK-0039"]["dependencies"])
+        self.assertEqual(["TASK-0039"], backlog["tasks"]["TASK-0040"]["dependencies"])
+        self.assertEqual(["TASK-0040"], backlog["tasks"]["TASK-0041"]["dependencies"])
+        self.assertEqual(["TASK-0012"], backlog["tasks"]["TASK-0013"]["dependencies"])
+
+        terminal_tasks = copy.deepcopy(tasks)
+        terminal_tasks["TASK-0037"]["state"] = "REJECTED"
+        terminal_tasks["TASK-0037"]["resolutionReason"] = (
+            "静态范围无法在硬预算内安全闭环，转由四张永久替代卡严格串行推进。"
+        )
+        terminal_projection = derive_backlog_promotion_projection(
+            backlog,
+            terminal_tasks,
+            lifecycle,
+        )
+        self.assertTrue(terminal_projection["repositoryIdle"])
+        self.assertEqual(28, terminal_projection["plannedCount"])
+        self.assertEqual("TASK-0038", terminal_projection["nextPromotable"])
+        self.assertIn(
+            "DEPENDENCY:TASK-0038:PLANNED",
+            terminal_projection["blockers"]["TASK-0039"],
+        )
+        self.assertIn(
+            "WAITING_FOR_ORDER:TASK-0038",
+            terminal_projection["blockers"]["TASK-0013"],
+        )
 
     def test_task0012_owner_amendment_replaces_exactly_two_clauses(self) -> None:
         backlog, tasks, _, _ = self.load_inputs()
@@ -1642,9 +1683,11 @@ class BacklogTests(unittest.TestCase):
 
     def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
         backlog, tasks, lifecycle, _ = self.load_inputs()
+        active_tasks = copy.deepcopy(tasks)
+        active_tasks["TASK-0037"]["state"] = "IN_PROGRESS"
         active_projection = derive_backlog_promotion_projection(
             backlog,
-            tasks,
+            active_tasks,
             lifecycle,
         )
         self.assertIn(
@@ -1654,6 +1697,7 @@ class BacklogTests(unittest.TestCase):
 
         ordered_tasks = copy.deepcopy(tasks)
         ordered_tasks["TASK-0012"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0037"]["state"] = "PLANNED"
         first_projection = derive_backlog_promotion_projection(
             backlog,
             ordered_tasks,
@@ -1664,7 +1708,19 @@ class BacklogTests(unittest.TestCase):
             "WAITING_FOR_ORDER:TASK-0037",
             first_projection["blockers"]["TASK-0013"],
         )
-        ordered_tasks["TASK-0037"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0037"]["state"] = "REJECTED"
+        for task_id in ("TASK-0038", "TASK-0039", "TASK-0040", "TASK-0041"):
+            replacement_projection = derive_backlog_promotion_projection(
+                backlog,
+                ordered_tasks,
+                lifecycle,
+            )
+            self.assertEqual(task_id, replacement_projection["nextPromotable"])
+            self.assertIn(
+                f"WAITING_FOR_ORDER:{task_id}",
+                replacement_projection["blockers"]["TASK-0013"],
+            )
+            ordered_tasks[task_id]["state"] = "ACCEPTED"
         after_governance_projection = derive_backlog_promotion_projection(
             backlog,
             ordered_tasks,
@@ -2284,6 +2340,274 @@ class BacklogTests(unittest.TestCase):
         self.assertTrue(
             any("fixed Backlog projection" in error for error in audit.errors),
             audit.errors,
+        )
+
+    def test_backlog_history_classifies_execution_rejected_and_planning_terminal_edges(
+        self,
+    ) -> None:
+        backlog, tasks, lifecycle, _ = self.load_inputs()
+
+        def run_edge(
+            task_id: str,
+            parent_metadata: dict[str, object],
+            child_metadata: dict[str, object],
+            parent_backlog: dict[str, object],
+            child_backlog: dict[str, object],
+        ) -> Audit:
+            entry = child_backlog["tasks"][task_id]
+            task_path = str(entry["taskCard"])
+            parent_commit = "a" * 40
+            child_commit = "b" * 40
+
+            def tree_entry(commit: str, path: str) -> tuple[str, str, str]:
+                oid = commit if path == task_path else "e" * 40
+                return ("100644", "blob", oid)
+
+            def card_at_commit(commit: str, _path: str) -> bytes:
+                metadata = (
+                    parent_metadata if commit == parent_commit else child_metadata
+                )
+                return self.card_bytes(entry, metadata)
+
+            audit = Audit()
+            with patch.object(
+                doctor,
+                "git_tree_entry",
+                side_effect=tree_entry,
+            ), patch.object(
+                doctor,
+                "git_object",
+                side_effect=card_at_commit,
+            ):
+                validate_backlog_card_history_edge(
+                    audit,
+                    parent_commit,
+                    child_commit,
+                    parent_backlog,
+                    child_backlog,
+                    lifecycle,
+                )
+            return audit
+
+        execution_parent = {
+            key: value
+            for key, value in tasks["TASK-0037"].items()
+            if key != "_path"
+        }
+        execution_parent["state"] = "IN_REVIEW"
+        execution_child = copy.deepcopy(execution_parent)
+        execution_child["state"] = "REJECTED"
+        execution_child["resolutionReason"] = (
+            "执行态任务在评审后失败关闭，并保留完整动态证据。"
+        )
+        execution_audit = run_edge(
+            "TASK-0037",
+            execution_parent,
+            execution_child,
+            backlog,
+            backlog,
+        )
+        self.assertEqual([], execution_audit.errors)
+
+        planned = {
+            key: value
+            for key, value in tasks["TASK-0013"].items()
+            if key != "_path"
+        }
+        for terminal_state in ("REJECTED", "SUPERSEDED"):
+            with self.subTest(terminal_state=terminal_state):
+                resolution = {
+                    "state": terminal_state,
+                    "reason": "Owner resolved the planning-only card atomically.",
+                    "decidedBy": "repository-owner",
+                    "decidedAt": "2026-08-01",
+                    "replacementTask": (
+                        "TASK-0014" if terminal_state == "SUPERSEDED" else None
+                    ),
+                }
+                resolved_backlog = copy.deepcopy(backlog)
+                resolved_backlog["resolutions"]["TASK-0013"] = resolution
+                terminal = {
+                    **planned,
+                    "state": terminal_state,
+                    "planningResolution": resolution,
+                }
+                planning_audit = run_edge(
+                    "TASK-0013",
+                    planned,
+                    terminal,
+                    backlog,
+                    resolved_backlog,
+                )
+                self.assertEqual([], planning_audit.errors)
+
+    def test_backlog_history_rejects_classification_reversals(self) -> None:
+        backlog, tasks, lifecycle, _ = self.load_inputs()
+
+        def run_edge(
+            task_id: str,
+            parent_metadata: dict[str, object],
+            child_metadata: dict[str, object],
+            child_backlog: dict[str, object] | None = None,
+        ) -> Audit:
+            selected_child = child_backlog or backlog
+            entry = selected_child["tasks"][task_id]
+            task_path = str(entry["taskCard"])
+            parent_commit = "c" * 40
+            child_commit = "d" * 40
+
+            def tree_entry(commit: str, path: str) -> tuple[str, str, str]:
+                oid = commit if path == task_path else "e" * 40
+                return ("100644", "blob", oid)
+
+            def card_at_commit(commit: str, _path: str) -> bytes:
+                metadata = (
+                    parent_metadata if commit == parent_commit else child_metadata
+                )
+                return self.card_bytes(entry, metadata)
+
+            audit = Audit()
+            with patch.object(
+                doctor,
+                "git_tree_entry",
+                side_effect=tree_entry,
+            ), patch.object(
+                doctor,
+                "git_object",
+                side_effect=card_at_commit,
+            ):
+                validate_backlog_card_history_edge(
+                    audit,
+                    parent_commit,
+                    child_commit,
+                    backlog,
+                    selected_child,
+                    lifecycle,
+                )
+            return audit
+
+        planned = {
+            key: value
+            for key, value in tasks["TASK-0013"].items()
+            if key != "_path"
+        }
+        pseudo_execution = {
+            **planned,
+            "state": "REJECTED",
+            "baseCommit": "a" * 40,
+        }
+        planned_to_execution = run_edge(
+            "TASK-0013",
+            planned,
+            pseudo_execution,
+        )
+        self.assertTrue(
+            any(
+                "invalid planning/execution classification edge" in error
+                for error in planned_to_execution.errors
+            ),
+            planned_to_execution.errors,
+        )
+
+        execution_parent = {
+            key: value
+            for key, value in tasks["TASK-0037"].items()
+            if key != "_path"
+        }
+        execution_parent["state"] = "IN_REVIEW"
+        planning_resolution = {
+            "state": "REJECTED",
+            "reason": "Invalid attempt to erase execution history.",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        pseudo_planning = {
+            "taskId": "TASK-0037",
+            "state": "REJECTED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(
+                backlog["tasks"]["TASK-0037"]
+            ),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+            "planningResolution": planning_resolution,
+        }
+        resolved_backlog = copy.deepcopy(backlog)
+        resolved_backlog["resolutions"]["TASK-0037"] = planning_resolution
+        execution_to_planning = run_edge(
+            "TASK-0037",
+            execution_parent,
+            pseudo_planning,
+            resolved_backlog,
+        )
+        self.assertTrue(
+            any(
+                "invalid planning/execution classification edge" in error
+                for error in execution_to_planning.errors
+            ),
+            execution_to_planning.errors,
+        )
+
+        execution_superseded = copy.deepcopy(execution_parent)
+        execution_superseded["state"] = "SUPERSEDED"
+        superseded_audit = run_edge(
+            "TASK-0037",
+            execution_parent,
+            execution_superseded,
+        )
+        self.assertTrue(
+            any(
+                "execution card TASK-0037 cannot transition to SUPERSEDED"
+                in error
+                for error in superseded_audit.errors
+            ),
+            superseded_audit.errors,
+        )
+
+    def test_planning_terminal_rejects_dynamic_fields_or_missing_resolution(
+        self,
+    ) -> None:
+        _, tasks, lifecycle, _ = self.load_inputs()
+        planned = copy.deepcopy(tasks["TASK-0013"])
+
+        missing_resolution = copy.deepcopy(planned)
+        missing_resolution["state"] = "REJECTED"
+        missing_audit = Audit()
+        validate_tasks(
+            missing_audit,
+            {"TASK-0013": missing_resolution},
+            lifecycle,
+        )
+        self.assertTrue(
+            any(
+                "planning terminal state requires planningResolution" in error
+                for error in missing_audit.errors
+            ),
+            missing_audit.errors,
+        )
+
+        dynamic = copy.deepcopy(missing_resolution)
+        dynamic["planningResolution"] = {
+            "state": "REJECTED",
+            "reason": "Owner resolved the planning-only card.",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-01",
+            "replacementTask": None,
+        }
+        dynamic["evidence"] = "docs/evidence/TASK-0013/evidence-pack.json"
+        dynamic_audit = Audit()
+        validate_tasks(
+            dynamic_audit,
+            {"TASK-0013": dynamic},
+            lifecycle,
+        )
+        self.assertTrue(
+            any(
+                "dynamic execution evidence is forbidden" in error
+                for error in dynamic_audit.errors
+            ),
+            dynamic_audit.errors,
         )
 
     def test_owner_scope_amendment_is_controlled_and_append_only(self) -> None:
@@ -2995,8 +3319,10 @@ class BacklogTests(unittest.TestCase):
         forbidden_dynamic = set(
             backlog["rules"]["promotion"]["forbiddenDynamicFieldsWhilePlanned"]
         )
-        for task_id in backlog["executionOrder"][1:]:
+        for task_id in backlog["executionOrder"]:
             task = tasks[task_id]
+            if task["state"] != "PLANNED":
+                continue
             self.assertEqual("PLANNED", task["state"])
             self.assertEqual(
                 canonical_json_sha256(backlog["tasks"][task_id]),
@@ -3028,10 +3354,14 @@ class BacklogTests(unittest.TestCase):
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
         terminal_tasks["TASK-0012"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0037"]["state"] = "REJECTED"
+        terminal_tasks["TASK-0037"]["resolutionReason"] = (
+            "静态范围无法在硬预算内安全闭环，转由四张永久替代卡严格串行推进。"
+        )
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
-        idle_state["nextAction"] = "将 TASK-0037 晋级为唯一 DRAFT"
+        idle_state["nextAction"] = "将 TASK-0038 晋级为唯一 DRAFT"
         audit = Audit()
         projection = validate_task_backlog_data(
             audit,
@@ -3041,9 +3371,9 @@ class BacklogTests(unittest.TestCase):
             idle_state,
         )
         self.assertEqual([], audit.errors)
-        self.assertEqual("TASK-0037", projection["nextPromotable"])
+        self.assertEqual("TASK-0038", projection["nextPromotable"])
         self.assertIn(
-            "WAITING_FOR_ORDER:TASK-0037",
+            "WAITING_FOR_ORDER:TASK-0038",
             projection["blockers"]["TASK-0013"],
         )
         self.assertIn(
@@ -3346,6 +3676,64 @@ class StateTests(unittest.TestCase):
 
 
 class EnforcementTests(unittest.TestCase):
+    def test_execution_rejected_requires_ledger_evidence_and_handoff(self) -> None:
+        tasks = copy.deepcopy(discover_tasks())
+        lifecycle = load_yaml(ROOT / ".harness/task-lifecycle.yaml")
+        state = copy.deepcopy(load_yaml(ROOT / ".harness/project-state.yaml"))
+        tasks["TASK-0037"]["state"] = "REJECTED"
+        tasks["TASK-0037"]["resolutionReason"] = (
+            "执行态任务失败关闭，必须保留 Ledger、Evidence 与 Handoff。"
+        )
+
+        ledger = load_yaml(ROOT / ".harness/task-ledger.yaml")
+        ledger_audit = Audit()
+        validate_task_ledger_entries(
+            ledger_audit,
+            ledger["tasks"],
+            tasks,
+            set(lifecycle["terminalStates"]),
+        )
+        self.assertTrue(
+            any(
+                "terminal task TASK-0037 is not registered" in error
+                for error in ledger_audit.errors
+            ),
+            ledger_audit.errors,
+        )
+
+        state["activeTask"] = None
+        state["activeTaskCard"] = None
+        state["lastTerminalTask"] = "TASK-0037"
+        state["lastTerminalHandoff"] = "docs/handoffs/TASK-0037.json"
+        state["nextAction"] = "将 TASK-0038 晋级为唯一 DRAFT"
+        missing_paths = {
+            str(ROOT / "docs/handoffs/TASK-0037.json"),
+            str(ROOT / "docs/evidence/TASK-0037/evidence-pack.json"),
+        }
+
+        def path_is_file(path: Path) -> bool:
+            return str(path) not in missing_paths
+
+        state_audit = Audit()
+        with patch.object(
+            doctor,
+            "derive_latest_task_in_states",
+            side_effect=["TASK-0012", "TASK-0037"],
+        ), patch.object(
+            doctor,
+            "current_path_is_file",
+            side_effect=path_is_file,
+        ):
+            validate_project_state(
+                state_audit,
+                state,
+                lifecycle,
+                tasks,
+            )
+        messages = "\n".join(state_audit.errors)
+        self.assertIn("TASK-0037: terminal task is missing handoff", messages)
+        self.assertIn("TASK-0037: terminal task is missing evidence pack", messages)
+
     def test_draft_base_cannot_launder_post_terminal_changes(self) -> None:
         audit = Audit()
         validate_draft_base_anchor(

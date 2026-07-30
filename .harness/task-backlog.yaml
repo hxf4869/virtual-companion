@@ -93,6 +93,10 @@ testPolicies:
 executionOrder:
   - TASK-0012
   - TASK-0037
+  - TASK-0038
+  - TASK-0039
+  - TASK-0040
+  - TASK-0041
   - TASK-0013
   - TASK-0014
   - TASK-0015
@@ -240,6 +244,130 @@ tasks:
       - 普通业务卡只冻结一个 canonical precheck 与受影响模块测试，跨平台全量仅用于 Harness 或可移植性变更
       - 终态全量和 CI 仍绑定精确实现 SHA，快照复用具有完整输入身份、命中原因和审计记录
       - 具体版本、动态命令和最终性能阈值只在 TASK-0037 晋级唯一 DRAFT 时基于最新 main 冻结
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0038:
+    title: 任务交付执行策略、双模式 Skill 与 AGENTS 入口
+    taskCard: docs/tasks/TASK-0038-task-delivery-policy-skill-entrypoint.md
+    dependencies:
+      - TASK-0012
+    decisionGates: []
+    objective: 建立适用于单卡和长线严格串行协调的唯一机器交付策略、可复用操作规程与薄文档入口。
+    scope:
+      in:
+        - 在 Harness 唯一机器策略中约束验证层级、风险分级 Reviewer、阶段预算、熔断、候选身份和长线串行条件
+        - 注册双模式 task-delivery-flow Skill，并让 AGENTS 仅保留硬约束与机器策略、Skill 入口
+        - 接入 Sources、Invariants、Doctor 和定向测试，并修复 idle planning checkpoint 与 planning-only resolution 的自举组合缺口
+      out:
+        - Harness 阶段计时、Git/history/fixture 与 NTFS/WSL 性能引擎
+        - 路径感知 CI、包装器平台策略和内容寻址快照复用
+        - Technical Alpha 产品功能、Provider、数据库、API、H5、身份或模型外发
+    forbidden:
+      - 只写说明文档或另建平行计划系统
+      - 在 AGENTS 中复制机器策略或 Skill 正文
+      - 用删测、skip、放宽失败关闭或无界 Reviewer 循环换取时延
+    acceptanceCriteria:
+      - 唯一机器策略被 Sources、Invariants、Doctor 和定向测试失败关闭地约束，并覆盖单卡与长线严格串行模式
+      - task-delivery-flow Skill 通过仓库注册和 Skill 校验，AGENTS 只提供可审计薄入口
+      - 规划态自举组合可端到端覆盖 idle checkpoint、planning-only resolution 与后续合法晋级
+      - 具体 Skill 版本、动态命令和时间阈值只在本卡晋级唯一 DRAFT 时冻结
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0039:
+    title: Harness 阶段计时与跨文件系统性能引擎
+    taskCard: docs/tasks/TASK-0039-harness-timing-cross-filesystem-performance.md
+    dependencies:
+      - TASK-0038
+    decisionGates: []
+    objective: 在语义等价和失败关闭不变的前提下，建立可审计慢项指标并缩短 Harness 在 Windows NTFS 与 WSL 跨盘场景的执行关键路径。
+    scope:
+      in:
+        - 阶段计时、慢项报告以及 Git 命令和缓存命中指标
+        - Context Lock 历史读取接入统一 snapshot，commit graph 与 ancestry 使用单次运行级缓存
+        - Ledger 按 blob 内容寻址解析，并批量优化 Git/history/fixture 访问
+        - Windows NTFS 与 WSL 临时本地文件系统的同环境前后性能对比
+      out:
+        - 路径感知 CI、包装器参考平台矩阵和 workflow 触发策略
+        - 跨检查或跨提交的快照结果复用与 Evidence 复用门禁
+        - Technical Alpha 产品功能或业务实现
+    forbidden:
+      - 通过增大 timeout、删除测试、增加 skip 或放宽失败关闭制造性能提升
+      - 将易失的热点计数、精确命令、工具版本或最终性能阈值冻结在 PLANNED 卡
+      - 用缓存掩盖 Git、历史、fixture 或 Ledger 输入变化
+    acceptanceCriteria:
+      - 阶段、Git 命令与缓存慢项可审计，优化前后在同一环境可复验
+      - 统一 snapshot、运行级 ancestry 缓存和内容寻址 Ledger 解析保持历史不可变与失败关闭语义
+      - Windows NTFS 与 WSL 本地临时文件系统均有代表性验证，测试删除数为零且 skip 不增加
+      - 具体工具版本、动态命令和性能阈值只在本卡晋级唯一 DRAFT 后按实测冻结
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0040:
+    title: Harness 路径感知 CI 与包装器平台策略
+    taskCard: docs/tasks/TASK-0040-harness-path-aware-ci-wrapper-strategy.md
+    dependencies:
+      - TASK-0039
+    decisionGates: []
+    objective: 让 CI 始终产生确定终态，并在 job 内按失败关闭的路径分类选择普通卡 smoke 与参考平台全量验证。
+    scope:
+      in:
+        - workflow 始终触发并在 job 内执行失败关闭的路径分类
+        - 未知或无法分类路径回退全量验证
+        - Ubuntu 参考平台对精确 SHA 必跑全量 Harness
+        - 普通业务卡在 Windows 与 macOS 只运行包装器 smoke，Harness 或可移植性变更升级完整矩阵
+      out:
+        - Harness 本地阶段计时、Git/history/fixture 与跨文件系统性能引擎
+        - 内容寻址 snapshot receipt、结果复用和 Evidence 门禁
+        - 产品构建、部署或发布策略
+    forbidden:
+      - 使用 workflow trigger paths 让 required check 长期 pending
+      - 让未知路径静默跳过全量验证
+      - 跳过 Ubuntu 参考平台精确 SHA 全量验证或把 smoke 冒充全量 PASS
+    acceptanceCriteria:
+      - 所有受治理提交都会触发 workflow 并得到可判定的 required check 终态
+      - job 内分类失败时全量验证，未知路径有失败关闭测试
+      - Ubuntu 精确 SHA 全量与 Windows、macOS 普通卡 wrapper smoke 的职责边界被机器测试约束
+      - Harness 或可移植性变更能够确定性升级参考平台矩阵
+    promotionConditions:
+      requiresRepositoryIdle: true
+      requiresAcceptedDependencies: true
+      requiresApprovedDecisionGates: true
+      requiresFirstByExecutionOrder: true
+  TASK-0041:
+    title: Harness 内容寻址快照复用与 Evidence 门禁
+    taskCard: docs/tasks/TASK-0041-harness-snapshot-receipt-evidence-gate.md
+    dependencies:
+      - TASK-0040
+    decisionGates: []
+    objective: 以完整输入身份和可审计 receipt 约束同一调度上下文内的结果复用，同时保持终态 exact-SHA CI 不可跨 SHA 复用。
+    scope:
+      in:
+        - 定义覆盖代码、任务合同、工具链、环境、外部状态和命令身份的完整 manifest
+        - 仅允许在同一 job 或会话调度决定中对完整 manifest 相同的 PASS 结果生成内容寻址 snapshot receipt
+        - 将复用命中原因、来源、输入身份和验证状态接入 Evidence 门禁
+        - 明确 pre-closure 与真实提交 HEAD 是不同身份，终态 exact-SHA CI 始终绑定当前实现 SHA
+      out:
+        - Harness 阶段计时、Git/history/fixture 与 NTFS/WSL 性能引擎
+        - 路径感知 CI 分类和包装器平台矩阵
+        - 跨 job、跨会话或跨提交的通用远端缓存服务
+    forbidden:
+      - 跨 SHA 复用终态 exact-SHA CI
+      - 在 manifest 不完整、字段未知或输入无法证明相同时复用
+      - 把失败、超时、取消或 NOT_RUN 复用为 PASS
+      - 在 pre-closure 与真实提交 HEAD 之间互相复用结果
+    acceptanceCriteria:
+      - snapshot receipt 严格内容寻址并绑定完整 manifest，缺失、未知或不一致输入均失败关闭
+      - 复用只发生于同一 job 或会话的调度决定且仅接受可验证 PASS
+      - Evidence 可审计命中来源、原因、输入身份和结果状态，失败、超时、取消与 NOT_RUN 永不命中
+      - 终态 exact-SHA CI 对当前实现 SHA 真实运行且不能由其他 SHA、pre-closure 或历史 receipt 替代
     promotionConditions:
       requiresRepositoryIdle: true
       requiresAcceptedDependencies: true

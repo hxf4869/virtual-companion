@@ -4307,6 +4307,8 @@ def validate_backlog_card_history_edge(
             continue
         parent_state = str(parent_metadata.get("state", ""))
         child_state = str(child_metadata.get("state", ""))
+        parent_planning_only = is_planning_only_task(parent_metadata)
+        child_planning_only = is_planning_only_task(child_metadata)
         if child_state != parent_state:
             allowed = transitions.get(parent_state, [])
             audit.require(
@@ -4314,9 +4316,24 @@ def validate_backlog_card_history_edge(
                 f"task-backlog: invalid card state edge {task_id} "
                 f"{parent_state} -> {child_state} at {parent_commit}..{commit}",
             )
+        if parent_planning_only != child_planning_only:
+            audit.require(
+                parent_planning_only
+                and parent_state == "PLANNED"
+                and not child_planning_only
+                and child_state == "DRAFT",
+                f"task-backlog: invalid planning/execution classification edge "
+                f"{task_id} {parent_state} -> {child_state} at "
+                f"{parent_commit}..{commit}",
+            )
+        audit.require(
+            child_state != "SUPERSEDED" or child_planning_only,
+            f"task-backlog: execution card {task_id} cannot transition to "
+            f"SUPERSEDED at {parent_commit}..{commit}",
+        )
         parent_render: dict[str, Any] | None = None
         child_render: dict[str, Any] | None = None
-        if parent_state == "PLANNED":
+        if parent_planning_only and parent_state == "PLANNED":
             parent_render = validate_backlog_planning_card_snapshot(
                 audit,
                 f"task-backlog: card {task_id} parent {parent_commit}",
@@ -4328,7 +4345,7 @@ def validate_backlog_card_history_edge(
                 None,
                 parent_text,
             )
-        elif parent_state in PLANNING_TERMINAL_STATES:
+        elif parent_planning_only and parent_state in PLANNING_TERMINAL_STATES:
             parent_resolution = parent_resolutions.get(task_id)
             parent_render = validate_backlog_planning_card_snapshot(
                 audit,
@@ -4341,7 +4358,7 @@ def validate_backlog_card_history_edge(
                 parent_resolution if isinstance(parent_resolution, dict) else None,
                 parent_text,
             )
-        if child_state == "PLANNED":
+        if child_planning_only and child_state == "PLANNED":
             child_render = validate_backlog_planning_card_snapshot(
                 audit,
                 f"task-backlog: card {task_id} child {commit}",
@@ -4359,7 +4376,7 @@ def validate_backlog_card_history_edge(
                 f"task-backlog: unresolved PLANNED card {task_id} metadata must "
                 f"remain immutable on edge {parent_commit}..{commit}",
             )
-        elif child_state in PLANNING_TERMINAL_STATES:
+        elif child_planning_only and child_state in PLANNING_TERMINAL_STATES:
             child_resolution = child_resolutions.get(task_id)
             child_render = validate_backlog_planning_card_snapshot(
                 audit,
@@ -4373,7 +4390,9 @@ def validate_backlog_card_history_edge(
                 child_text,
             )
         if (
-            parent_state in {"PLANNED", *PLANNING_TERMINAL_STATES}
+            parent_planning_only
+            and child_planning_only
+            and parent_state in {"PLANNED", *PLANNING_TERMINAL_STATES}
             and child_state in {"PLANNED", *PLANNING_TERMINAL_STATES}
         ):
             audit.require(
