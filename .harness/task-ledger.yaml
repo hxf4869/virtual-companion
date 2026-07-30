@@ -60,3 +60,9 @@ tasks:
     taskCard: docs/tasks/TASK-0010-harness-validation-flow-performance.md
     evidence: docs/evidence/TASK-0010/evidence-pack.json
     handoff: docs/handoffs/TASK-0010.json
+  TASK-0011:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0011-openai-chat-completions-offline-adapter.md
+    evidence: docs/evidence/TASK-0011/evidence-pack.json
+    handoff: docs/handoffs/TASK-0011.json

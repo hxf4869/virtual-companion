@@ -1,0 +1,38 @@
+{
+  "taskId": "TASK-0011",
+  "state": "ACCEPTED",
+  "baseCommit": "b18dd0dc83a360be014b7b8f322cd42bc6c89e38",
+  "headCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7",
+  "evidencePath": "docs/evidence/TASK-0011/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-task0011-openai-chat-completions-reviewer",
+      "kind": "openai-chat-completions-offline-contract",
+      "verdict": "PASS",
+      "reviewedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7",
+      "evidencePath": "docs/evidence/TASK-0011/review-openai-chat-completions-offline-contract.md"
+    }
+  ],
+  "completed": [
+    "新增 model-openai 与独立合同测试模块，根 POM 只登记这两个模块，Runtime classpath 保持未接线",
+    "实现固定 POST /v1/chat/completions 的非流 JSON 与 SSE Adapter，请求携带模型、messages、Bearer Header、stream/include_usage 和结构化 response_format",
+    "每个合法 ExternalAttemptBinding Session 恰好一次 sendAsync，redirect 禁用且无重试、路由或 fallback；非法 Binding 与结构化 schema 零网络失败关闭",
+    "实现 Connect、First Token、Total 三段超时、幂等取消、唯一终态、连续 sequence、完整 Binding 与迟到字节/回调 fence",
+    "实现严格 Content-Type、单 choice/index 0、finish reason、Usage、DONE 与结构化聚合规则，并拒绝尾随 JSON token、非法 SSE、多 choices 和缺 Usage/DONE",
+    "25 项离线合同测试覆盖机器真源 14 项及 raw path、Header/Body、单请求、loopback、脱敏和失败关闭边界",
+    "固定 JDK 25 的目标/全仓 Maven、98 项 Harness、Python/PowerShell/WSL precheck、git diff 与精确实现 SHA 五作业 CI 全部通过",
+    "独立 Reviewer 绑定精确 Commit/Tree 复核通过，四项审查发现均已前向修复，最终 P0/P1/P2 均为 0"
+  ],
+  "remaining": [
+    "下一任务单独建立 Anthropic Messages 离线 HTTP/SSE Adapter 与本地 mock-server 合同基线",
+    "在任何真实 Runtime 外发前单独实现并验收 Execution Authorization Guard、Provider Registry 与受控接线",
+    "OpenAI Responses API 保持独立范围，不与 Chat Completions 或 Anthropic Adapter 合并",
+    "真实 Provider、模型、凭据、区域、合同、Alpha live、Beta、注册、支付和安全政策继续等待 Owner 决策"
+  ],
+  "knownRisks": [
+    "本任务只证明 JDK loopback mock 合同，不证明真实 OpenAI 供应商互操作、配额、代理、DNS、TLS、区域或合同准入",
+    "Adapter 故意未接入 Runtime，因此当前产品路径不会调用该实现；后续接线必须重新审计授权、路由、重试、成本和终态边界",
+    "最小 SSE decoder 与 Chat Completions 字段锁定当前合同；供应商协议演进或新增 event 字段需要独立受控变更"
+  ],
+  "nextAction": "创建 Anthropic Messages 离线 HTTP/SSE Adapter 合同任务"
+}

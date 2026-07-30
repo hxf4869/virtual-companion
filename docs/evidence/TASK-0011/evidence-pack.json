@@ -1,0 +1,169 @@
+{
+  "taskId": "TASK-0011",
+  "baseCommit": "b18dd0dc83a360be014b7b8f322cd42bc6c89e38",
+  "headCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7",
+  "contextFingerprint": "c5b803c6b702c856528fbc97e218f85e86f4808f87201164fde24cfe6ad2c741",
+  "reviewers": [
+    {
+      "id": "codex-task0011-openai-chat-completions-reviewer",
+      "kind": "openai-chat-completions-offline-contract",
+      "verdict": "PASS",
+      "reviewedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7",
+      "evidencePath": "docs/evidence/TASK-0011/review-openai-chat-completions-offline-contract.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": ".\\mvnw.cmd --batch-mode --no-transfer-progress -pl service/tests/openai-chat-completions-contract-tests -am verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "固定 JDK 25 下目标 Reactor 通过；OpenAI 合同模块 25 项、Catalog 2 项、modelruntime 7 项均成功，Maven 总耗时 6.891 秒。",
+      "environment": "Windows PowerShell, Temurin JDK 25.0.4+7, Maven Wrapper 3.9.16",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": ".\\mvnw.cmd --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "全仓 11 模块 Reactor BUILD SUCCESS，共 132 项测试通过，Maven 总耗时 18.219 秒；空测试 JAR 与既有 Mockito 动态 Agent 提示均为非阻断警告。",
+      "environment": "Windows PowerShell, Temurin JDK 25.0.4+7, Maven Wrapper 3.9.16",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "完整 Harness 共 98 项通过，按 Windows 条件跳过 1 项，测试耗时 657.389 秒；该测试不生成持久产物。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0011",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "统一 Python 入口的 Doctor、Catalog validate/drift、付费依赖和 Beta roster 5/5 真实通过；Doctor 31,481 项，耗时 140.662 秒。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1 -Task TASK-0011",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Windows PowerShell 包装入口调用同一 Python precheck，5/5 命令真实通过；Doctor 31,481 项，耗时 143.660 秒。",
+      "environment": "Windows PowerShell 5.1, Python 3.12",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -- bash scripts/harness/precheck.sh --task TASK-0011",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "WSL2 POSIX 包装入口调用同一 Python precheck，5/5 命令真实通过；Doctor 31,481 项，耗时 349.644 秒。",
+      "environment": "WSL2 Ubuntu-24.04, Python 3.12",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现提交与工作区无空白错误；该检查不生成持久产物。",
+      "environment": "Windows PowerShell, Git",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "offline OpenAI Chat Completions machine-truth contract matrix",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "25 项离线合同测试覆盖机器真源 14 项：non_stream_success、sse_stream_success、unicode_and_long_text、usage_mapping、finish_or_stop_reason_mapping、429_mapping、5xx_mapping、connect_timeout、first_token_timeout、total_timeout、malformed_event、cancellation、late_token_fence、structured_output_when_claimed。",
+      "environment": "JDK HttpServer bound to 127.0.0.1:0 with synthetic data",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "single-request loopback and redaction boundary audit",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "请求 method/raw path/Header/Body、单次 sendAsync、零 redirect/retry/fallback、非法 Binding 零调用、非法 Content-Type/JSON/SSE、多 choices、缺 Usage/DONE、尾随 JSON、Unicode Token 脱敏和零真实外发均有自动断言。",
+      "environment": "Windows loopback JDK HttpServer and injected counting HttpClient",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "independent OpenAI Chat Completions offline contract review",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "未参与实现的 Reviewer 从精确 Git Object 复核完整 diff、HTTP/SSE、超时、取消、终态和脱敏边界；四项审查发现均已修复并有回归测试，最终 P0/P1/P2 均为 0。",
+      "environment": "Independent reviewer, exact Git Commit and Tree",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "GitHub Actions ci run 30528958907",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现 SHA 的 Backend、Frontend、Harness Ubuntu、Windows、macOS 五个作业全部 success；运行地址 https://github.com/hxf4869/virtual-companion/actions/runs/30528958907。",
+      "environment": "GitHub-hosted Ubuntu, Windows and macOS runners",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "real OpenAI provider, model, credential, region, contract, Runtime outbound, and alpha-live interoperability",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "用户明确要求跳过；本任务只使用合成 Token、合成模型和 127.0.0.1 mock-server，不选择真实供应商、凭据、区域或合同，不接入 Runtime，也不进行公网外发或 Alpha live。",
+      "environment": "Not applicable",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "Anthropic Messages, OpenAI Responses API, and Runtime wiring",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "三项均为任务明确范围外；未修改 Anthropic Adapter、Responses API、Runtime app、Conversation、Catalog、Contract 或 modelruntime。",
+      "environment": "Not applicable",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    },
+    {
+      "command": "Beta, registration, payment, and safety-policy decisions",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "这些事项需要 Owner 与外部政策决策；Technical Alpha gate 保持 CLOSED/FORBIDDEN，本任务未做 Beta、注册、支付或安全政策变更。",
+      "environment": "Not applicable",
+      "verifiedCommit": "e0efe4ae304f2fc43dfd9cc5799c51ee63dd23f7"
+    }
+  ],
+  "artifacts": {
+    "implementationTree": "99a7ef802f6167aa11dc43a2f0653a0f4528b074",
+    "openAiContractTestCount": 25,
+    "fullMavenTestCount": 132,
+    "fullHarnessTestCount": 98,
+    "fullHarnessSkippedCount": 1,
+    "fullHarnessTestDurationSeconds": 657.389,
+    "canonicalDoctorCheckCount": 31481,
+    "githubActionsRunId": "30528958907",
+    "githubActionsUrl": "https://github.com/hxf4869/virtual-companion/actions/runs/30528958907",
+    "githubActionsRunDurationSeconds": 885,
+    "githubActionsJobs": {
+      "Backend": "success",
+      "Frontend": "success",
+      "Harness (ubuntu-latest)": "success",
+      "Harness (windows-latest)": "success",
+      "Harness (macos-latest)": "success"
+    },
+    "githubActionsJobIds": {
+      "Backend": "90826457500",
+      "Frontend": "90826457380",
+      "Harness (ubuntu-latest)": "90826457554",
+      "Harness (windows-latest)": "90826457477",
+      "Harness (macos-latest)": "90826457480"
+    }
+  }
+}
