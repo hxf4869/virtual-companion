@@ -75,6 +75,12 @@ validation:
     - CLOSURE
   ordinaryCard:
     canonicalPythonPrecheckCount: 1
+    canonicalPythonArgv:
+      - python
+      - scripts/harness/precheck.py
+      - --task
+      - TASK-ID
+    wrapperEvidenceAlias: false
     affectedModuleTestsRequired: true
     diffCheckCount: 1
     duplicateCanonicalSubcommandsForbidden: true
@@ -84,6 +90,11 @@ validation:
   longRunningCommand:
     singleProcess: true
     polling: LOW_FREQUENCY_STATUS_ONLY
+    defaultPollingIntervalSeconds: 60
+    statusObservationOnly: true
+    parallelStatusCommandForbidden: true
+    parallelProcessInspectionCommandForbidden: true
+    repeatedLogFetchForbidden: true
     duplicateExecutionForbidden: true
 review:
   conditionalRiskClasses:
@@ -134,8 +145,10 @@ candidateIdentity:
     - TASK_AUTHORIZATION
     - CONTEXT
     - COMMAND_REGISTRY
+  reuseRequiresAllInputsUnchanged: true
   unknownOrChanged: RERUN_REQUIRED
   acceptedResult: PASS
+  reusedPassStatusForbidden: true
   nonPassResults:
     - FAIL
     - CANCELLED

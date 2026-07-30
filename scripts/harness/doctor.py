@@ -156,7 +156,7 @@ TASK_BACKLOG_PATH = ".harness/task-backlog.yaml"
 PROJECT_STATE_PATH = ".harness/project-state.yaml"
 TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
 TASK_DELIVERY_POLICY_CANONICAL_HASH = (
-    "d7403d37d4fcf8264e7cc1b8df7d2dbfba195eeb020f51f9f5c43f3b2060c17f"
+    "5c2bf68e8ec84503980f13c72c55b380fb3bee466b2a5c3f9913952574cda67c"
 )
 PLANNING_CONTRACT_HASH_ALGORITHM = "SHA256_CANONICAL_JSON_V1"
 PLANNED_CARD_FIELDS = {
@@ -5961,7 +5961,16 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     audit.require(
         isinstance(sources, dict)
         and sources.get("taskDeliveryPolicy") == TASK_DELIVERY_POLICY_PATH,
-        "task-delivery-policy: sources-of-truth must register the unique policy",
+        "task-delivery-policy: sources-of-truth must register taskDeliveryPolicy",
+    )
+    audit.require(
+        isinstance(sources, dict)
+        and sum(
+            value == TASK_DELIVERY_POLICY_PATH for value in sources.values()
+        )
+        == 1,
+        "task-delivery-policy: sources-of-truth must register the policy path "
+        "exactly once",
     )
     registry = load_yaml(ROOT / ".harness/skills.yaml").get("skills")
     delivery_skills = (

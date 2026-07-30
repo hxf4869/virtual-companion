@@ -26,16 +26,19 @@ description: Execute one governed repository task or coordinate a strictly seria
 4. Enter IN_PROGRESS and run only the current `validation.sequence` stage.
    Iteration uses the bounded targeted checks; it does not consume canonical or
    exact-SHA CI.
-5. Stage the exact candidate, record its Commit and Tree, and account for every
+5. For an ordinary card, use `python scripts/harness/precheck.py --task
+   TASK-ID` as the canonical command. A wrapper is not an Evidence alias unless
+   its exact argv was frozen by the task.
+6. Stage the exact candidate, record its Commit and Tree, and account for every
    `candidateIdentity.requiredInputs` item. Unknown or changed identity follows
    `unknownOrChanged`; it never inherits PASS.
-6. Apply the policy's risk and protected-rule review requirements. R1 covers
+7. Apply the policy's risk and protected-rule review requirements. R1 covers
    the complete matrix. If blocking findings exist, use at most the allowed
    repair batch and limit R2 to finding closure, delta, adjacent risk, and new
    P0/P1.
-7. After Reviewer PASS, run the candidate canonical once and require exact-SHA
+8. After Reviewer PASS, run the candidate canonical once and require exact-SHA
    CI for the same implementation SHA.
-8. Produce Evidence and Handoff, stage the closure exactly, run pre-closure,
+9. Produce Evidence and Handoff, stage the closure exactly, run pre-closure,
    create the single-parent terminal commit, push, and reverify remote state.
 
 ## Run a longline
@@ -54,7 +57,11 @@ description: Execute one governed repository task or coordinate a strictly seria
 
 ## Preserve validation and review integrity
 
-- Run only one long command process and poll that process at low frequency.
+- Run only one long command process. Poll that same process about every 60
+  seconds by default. Do not add parallel `status` or `ps` commands or repeat
+  log fetches; polling observes status only and never triggers another check.
+- Reuse means not dispatching an identical check again. Preserve its one real
+  result and never invent a `REUSED` PASS.
 - Keep failure, cancellation, timeout, and NOT_RUN as non-PASS.
 - Do not present another SHA, platform, execution, or pre-closure result as the
   current exact-SHA PASS.

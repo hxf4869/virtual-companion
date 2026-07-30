@@ -1402,6 +1402,7 @@ class DeliveryPolicyTests(unittest.TestCase):
 
     def test_policy_validator_rejects_contract_drift(self) -> None:
         policy_path = ROOT / ".harness/task-delivery-policy.yaml"
+        sources_path = ROOT / ".harness/sources-of-truth.yaml"
         drifted = copy.deepcopy(load_yaml(policy_path))
         drifted["budgets"]["targetWallMinutes"] = 61
         real_load_yaml = doctor.load_yaml
@@ -1416,6 +1417,28 @@ class DeliveryPolicyTests(unittest.TestCase):
             validate_task_delivery_policy(audit)
         self.assertTrue(
             any("canonical contract hash drifted" in error for error in audit.errors),
+            audit.errors,
+        )
+
+        duplicated_sources = copy.deepcopy(load_yaml(sources_path))
+        duplicated_sources["sources"]["taskDeliveryPolicyAlias"] = (
+            ".harness/task-delivery-policy.yaml"
+        )
+
+        def load_with_duplicate_source(path: Path) -> dict[str, object]:
+            if Path(path) == sources_path:
+                return duplicated_sources
+            return real_load_yaml(path)
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "load_yaml",
+            side_effect=load_with_duplicate_source,
+        ):
+            validate_task_delivery_policy(audit)
+        self.assertTrue(
+            any("policy path exactly once" in error for error in audit.errors),
             audit.errors,
         )
 
@@ -3070,8 +3093,60 @@ class BacklogTests(unittest.TestCase):
     def test_real_git_history_rejects_corrupt_restore_and_moved_activation(
         self,
     ) -> None:
-        backlog, _, lifecycle, _ = self.load_inputs()
-        task_path = str(backlog["tasks"]["TASK-0013"]["taskCard"])
+        task_id = "TASK-9001"
+        task_path = "docs/tasks/TASK-9001-synthetic-planning-fixture.md"
+        task_entry = {
+            "title": "Synthetic Planning Fixture",
+            "taskCard": task_path,
+            "dependencies": [],
+            "decisionGates": [],
+            "promotionConditions": {
+                "requiresRepositoryIdle": True,
+                "requiresAcceptedDependencies": True,
+                "requiresApprovedDecisionGates": True,
+                "requiresFirstByExecutionOrder": True,
+            },
+        }
+        fixture_backlog = {
+            "schemaVersion": 1,
+            "bootstrapTask": "TASK-9000",
+            "tasks": {task_id: task_entry},
+            "executionOrder": [task_id],
+            "criticalPath": [],
+            "decisionGates": {},
+            "resolutions": {},
+            "authorizationAmendments": {},
+        }
+        planned_metadata = {
+            "taskId": task_id,
+            "state": "PLANNED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(task_entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
+        planned_yaml = yaml.safe_dump(
+            planned_metadata,
+            allow_unicode=True,
+            sort_keys=False,
+        ).rstrip()
+        fixture_card = (
+            f"# {task_id}：{task_entry['title']}\n\n"
+            f"```yaml\n{planned_yaml}\n```\n\n"
+            f"{doctor.PLANNED_CARD_NON_NORMATIVE_NOTICE}\n\n"
+            "## Objective\n\nSynthetic objective.\n\n"
+            "## Scope\n\nSynthetic scope.\n\n"
+            "## Dependencies\n\nNo dependencies.\n\n"
+            "## Decision Gates\n\nNo decision gates.\n\n"
+            "## Promotion Conditions\n\nSynthetic promotion conditions.\n\n"
+            "## Acceptance Criteria\n\nSynthetic acceptance criteria.\n"
+        )
+        baseline_lifecycle = {
+            "transitions": {
+                "PLANNED": ["DRAFT", "REJECTED", "SUPERSEDED"],
+            },
+            "rules": {},
+        }
 
         def run_fixture(*, attack: bool) -> list[str]:
             with tempfile.TemporaryDirectory() as directory:
@@ -3090,8 +3165,6 @@ class BacklogTests(unittest.TestCase):
                 backlog_path = repository / ".harness/task-backlog.yaml"
                 lifecycle_path = repository / ".harness/task-lifecycle.yaml"
                 backlog_path.parent.mkdir(parents=True)
-                fixture_backlog = copy.deepcopy(backlog)
-                fixture_backlog["resolutions"] = {}
                 backlog_path.write_text(
                     yaml.safe_dump(
                         fixture_backlog,
@@ -3100,8 +3173,6 @@ class BacklogTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                baseline_lifecycle = copy.deepcopy(lifecycle)
-                baseline_lifecycle["rules"].pop("backlogHistoryPolicy")
                 lifecycle_path.write_text(
                     yaml.safe_dump(
                         baseline_lifecycle,
@@ -3110,36 +3181,9 @@ class BacklogTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-                for task_id, entry in backlog["tasks"].items():
-                    source = ROOT / str(entry["taskCard"])
-                    target = repository / str(entry["taskCard"])
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    source_text = source.read_text(encoding="utf-8")
-                    if task_id == backlog["bootstrapTask"]:
-                        target.write_text(source_text, encoding="utf-8")
-                        continue
-                    metadata_match = TASK_BLOCK_RE.search(source_text)
-                    if metadata_match is None:
-                        raise AssertionError(f"{task_id}: fixture task YAML is missing")
-                    planned_metadata = {
-                        "taskId": task_id,
-                        "state": "PLANNED",
-                        "owner": "repository-owner",
-                        "planningBacklog": ".harness/task-backlog.yaml",
-                        "planningContractHash": canonical_json_sha256(entry),
-                        "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
-                    }
-                    planned_yaml = yaml.safe_dump(
-                        planned_metadata,
-                        allow_unicode=True,
-                        sort_keys=False,
-                    ).rstrip()
-                    target.write_text(
-                        source_text[: metadata_match.start(1)]
-                        + planned_yaml
-                        + source_text[metadata_match.end(1) :],
-                        encoding="utf-8",
-                    )
+                card_path = repository / task_path
+                card_path.parent.mkdir(parents=True, exist_ok=True)
+                card_path.write_text(fixture_card, encoding="utf-8")
                 fixture_good_card = (repository / task_path).read_bytes()
 
                 def commit(message: str) -> str:
@@ -3159,10 +3203,11 @@ class BacklogTests(unittest.TestCase):
                     ).stdout.strip()
 
                 activation = commit("published baseline")
-                policy_lifecycle = copy.deepcopy(lifecycle)
-                policy_lifecycle["rules"]["backlogHistoryPolicy"][
-                    "activationCommit"
-                ] = activation
+                policy_lifecycle = copy.deepcopy(baseline_lifecycle)
+                policy_lifecycle["rules"]["backlogHistoryPolicy"] = {
+                    "activationCommit": activation,
+                    "mode": "VALIDATE_ACTIVATION_SNAPSHOT_THEN_ALL_PARENT_EDGES",
+                }
                 lifecycle_path.write_text(
                     yaml.safe_dump(
                         policy_lifecycle,
@@ -3175,8 +3220,8 @@ class BacklogTests(unittest.TestCase):
                 if attack:
                     (repository / task_path).write_bytes(
                         fixture_good_card.replace(
-                            b"# TASK-0013",
-                            b"# TASK-0013-CORRUPTED",
+                            b"# TASK-9001",
+                            b"# TASK-9001-CORRUPTED",
                             1,
                         )
                     )
@@ -4546,8 +4591,48 @@ class ValidationFlowTests(unittest.TestCase):
             "LOW_FREQUENCY_STATUS_ONLY",
             policy["validation"]["longRunningCommand"]["polling"],
         )
+        self.assertEqual(
+            [
+                "python",
+                "scripts/harness/precheck.py",
+                "--task",
+                "TASK-ID",
+            ],
+            policy["validation"]["ordinaryCard"]["canonicalPythonArgv"],
+        )
+        self.assertFalse(
+            policy["validation"]["ordinaryCard"]["wrapperEvidenceAlias"]
+        )
+        self.assertEqual(
+            60,
+            policy["validation"]["longRunningCommand"][
+                "defaultPollingIntervalSeconds"
+            ],
+        )
+        self.assertTrue(
+            policy["validation"]["longRunningCommand"]["statusObservationOnly"]
+        )
+        self.assertTrue(
+            policy["validation"]["longRunningCommand"][
+                "parallelStatusCommandForbidden"
+            ]
+        )
+        self.assertTrue(
+            policy["validation"]["longRunningCommand"][
+                "parallelProcessInspectionCommandForbidden"
+            ]
+        )
+        self.assertTrue(
+            policy["validation"]["longRunningCommand"]["repeatedLogFetchForbidden"]
+        )
         self.assertTrue(
             policy["validation"]["longRunningCommand"]["duplicateExecutionForbidden"]
+        )
+        self.assertTrue(
+            policy["candidateIdentity"]["reuseRequiresAllInputsUnchanged"]
+        )
+        self.assertTrue(
+            policy["candidateIdentity"]["reusedPassStatusForbidden"]
         )
         self.assertEqual("PASS", policy["candidateIdentity"]["acceptedResult"])
         self.assertEqual(
@@ -4555,6 +4640,11 @@ class ValidationFlowTests(unittest.TestCase):
             policy["candidateIdentity"]["nonPassResults"],
         )
         self.assertIn("only one long command process", skill)
+        self.assertIn("about every 60", skill)
+        self.assertIn("parallel `status` or `ps` commands", skill)
+        self.assertIn("polling observes status only", skill)
+        self.assertIn("never invent a `REUSED` PASS", skill)
+        self.assertIn("wrapper is not an Evidence alias", skill)
         self.assertIn("Unknown or changed identity", skill)
 
     def test_task_template_requires_exact_precheck_argv_evidence(self) -> None:
