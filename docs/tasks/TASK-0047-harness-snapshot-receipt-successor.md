@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0047
-state: PLANNED
+state: SUPERSEDED
+planningResolution:
+  state: SUPERSEDED
+  reason: TASK-0046 已由 TASK-0052 替代；由 TASK-0053 在新后继链上承接相同 snapshot receipt 与 Evidence 范围。
+  decidedBy: repository-owner
+  decidedAt: "2026-07-31"
+  replacementTask: TASK-0053
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
 planningContractHash: 980cfe6249d82932dd1c249ad8309ef3981c7d5d4019c73a951c145634ef52e5
