@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0042
+activeTaskCard: docs/tasks/TASK-0042-machine-delivery-policy-skill-thin-entrypoint.md
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0038
 lastTerminalHandoff: docs/handoffs/TASK-0038.json
-nextAction: 协调任务须在 idle 状态以新永久 ID 登记拆分与下游替代链；完成前不得晋级当前首个可晋级 TASK-0013
+nextAction: 执行 TASK-0042：交付机器策略、双模式 Skill、薄入口、最小 CI-unblock fixture 与 Backlog 后继链后完成独立复核和精确 SHA CI
 capabilityGates:
   businessImplementation:
     state: BLOCKED
