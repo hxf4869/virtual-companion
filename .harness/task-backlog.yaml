@@ -196,7 +196,13 @@ authorizationAmendments:
         replacement:
           statement: TASK-0012 ACCEPTED 后第一张可晋级为 TASK-0037；TASK-0037 ACCEPTED 后再按原 DAG 推进 TASK-0013。
           statementHash: 99f1ce4576652caa72db70cce3714c64771922b34a0ea921e6c3931c7a304e53
-resolutions: {}
+resolutions:
+  TASK-0039:
+    state: SUPERSEDED
+    reason: TASK-0038 已执行态 REJECTED，原依赖链不可晋级；由 TASK-0045 在 TASK-0044 后承接相同性能治理范围。
+    decidedBy: repository-owner
+    decidedAt: "2026-07-31"
+    replacementTask: TASK-0045
 tasks:
   TASK-0012:
     title: PLANNED 队列、Backlog 和 Harness 治理

@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0039
-state: PLANNED
+state: SUPERSEDED
+planningResolution:
+  state: SUPERSEDED
+  reason: TASK-0038 已执行态 REJECTED，原依赖链不可晋级；由 TASK-0045 在 TASK-0044 后承接相同性能治理范围。
+  decidedBy: repository-owner
+  decidedAt: "2026-07-31"
+  replacementTask: TASK-0045
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
 planningContractHash: 3073500f85d1be8297a52ee620368b5372eb89dd73fc09c128366e3bdbe06ccc
