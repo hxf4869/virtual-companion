@@ -36,3 +36,9 @@ tasks:
     taskCard: docs/tasks/TASK-0006-harness-latest-task-fixture.md
     evidence: docs/evidence/TASK-0006/evidence-pack.json
     handoff: docs/handoffs/TASK-0006.json
+  TASK-0007:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0007-model-protocol-fake-failure-baseline.md
+    evidence: docs/evidence/TASK-0007/evidence-pack.json
+    handoff: docs/handoffs/TASK-0007.json

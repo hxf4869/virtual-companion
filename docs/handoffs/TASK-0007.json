@@ -1,0 +1,36 @@
+{
+  "taskId": "TASK-0007",
+  "state": "ACCEPTED",
+  "baseCommit": "cbcffad9e0fa7311baa3cf9ba91d0cef86336881",
+  "headCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074",
+  "evidencePath": "docs/evidence/TASK-0007/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "codex-task0007-model-protocol-reviewer",
+      "kind": "model-protocol-boundary",
+      "verdict": "PASS",
+      "reviewedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074",
+      "evidencePath": "docs/evidence/TASK-0007/review-model-protocol.md"
+    }
+  ],
+  "completed": [
+    "新增供应商中立 ModelProtocolAdapter、Session、完整 Binding、归一化事件/失败和 Fence Gate",
+    "新增无网络、无时间和随机依赖的确定性 Fake 与九类 Failure Adapter",
+    "集中合同测试覆盖成功、归一化流、Unicode 长文本、Usage、StopReason、结构化能力、失败、取消、迟到事件和不拼接边界",
+    "Fake/Failure 只接受确定性来源 Binding，不创建或冒充外部 provider_attempt",
+    "目标 37 项、全仓 73 项 Maven 测试、Doctor、Catalog、三套 precheck 与 GitHub 五平台作业全部通过",
+    "无实现上下文的独立 Reviewer 绑定精确实现提交和 Git Tree 给出 PASS"
+  ],
+  "remaining": [
+    "创建 Generation Attempt/Candidate 事件归约与隔离合同基线，消费 Fake/Failure 但不接数据库或 Runtime API",
+    "分别实现 OpenAI Chat Completions 与 Anthropic Messages 的离线 Adapter 和本地 mock-server HTTP/SSE 合同",
+    "真实 Provider、模型、凭据、区域、合同准入、Runtime 接线和 alpha live deployment 仍等待 Owner 决策",
+    "真实用户 Beta、公开注册、真实支付和安全政策内容继续保持关闭"
+  ],
+  "knownRisks": [
+    "Fake 的流式事件只证明内部归一化顺序，不证明任何 SSE framing 或主协议符合性",
+    "新增 Adapter 尚未接入 Runtime，也没有数据库 provider_attempt、授权撤回或最终化事务",
+    "宿主默认 Java 仍为 8；仓库 Enforcer 要求使用项目固定 JDK 25，错误 JDK 会被构建明确拒绝"
+  ],
+  "nextAction": "创建 Generation Attempt/Candidate 事件归约与隔离合同基线任务"
+}

@@ -1,0 +1,148 @@
+{
+  "taskId": "TASK-0007",
+  "baseCommit": "cbcffad9e0fa7311baa3cf9ba91d0cef86336881",
+  "headCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074",
+  "contextFingerprint": "6d7502efc0da1217389df6d472f6b89fe1f57f1c7de754357e782aa4c8e087a4",
+  "reviewers": [
+    {
+      "id": "codex-task0007-model-protocol-reviewer",
+      "kind": "model-protocol-boundary",
+      "verdict": "PASS",
+      "reviewedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074",
+      "evidencePath": "docs/evidence/TASK-0007/review-model-protocol.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0007",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现快照完成 14474 项授权、Context、Skill、路径与契约检查。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "python scripts/harness/catalog_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Catalog 唯一机器真源结构有效。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "python scripts/harness/catalog_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "生成物与 Catalog 无漂移。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": ".\\mvnw.cmd --batch-mode --no-transfer-progress -pl service/tests/model-protocol-contract-tests -am verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "项目固定 JDK 25 下 Catalog 2 项、modelruntime 7 项、集中合同 28 项，共 37 项通过；首次继承宿主 Java 8 时被 Enforcer 正确拒绝，未误报为代码失败。",
+      "environment": "Windows PowerShell, Temurin JDK 25.0.4, Maven Wrapper 3.9.16",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": ".\\mvnw.cmd --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "全仓 Reactor 编译成功，共 73 项测试通过；测试模块空生产 JAR 与既有 Mockito 动态 Agent 提示均为非阻断警告。",
+      "environment": "Windows PowerShell, Temurin JDK 25.0.4, Maven Wrapper 3.9.16",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0007",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "统一 Python 入口的 Doctor、Catalog、付费依赖和 Beta roster 共 5 项通过；Beta Gate 保持 CLOSED。",
+      "environment": "Windows PowerShell, Python 3.12",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness/precheck.ps1 -Task TASK-0007",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Windows PowerShell 包装入口执行统一 precheck，5 项命令全部通过。",
+      "environment": "Windows PowerShell 5.1, Python 3.12",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -- bash scripts/harness/precheck.sh --task TASK-0007",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "WSL2 POSIX 包装入口执行统一 precheck，5 项命令全部通过。",
+      "environment": "WSL2 Ubuntu-24.04, Python 3.12",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "精确实现提交无空白错误。",
+      "environment": "Windows PowerShell, Git",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "production Java supplier/network/clock/random/thread boundary scan",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "modelruntime、model-fake、model-failure 主代码无供应商、凭据、网络、文件、时钟、随机数或线程 API 泄漏。",
+      "environment": "Windows PowerShell",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "GitHub Actions ci run 30500719542",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "同一 head SHA 的 Backend、Frontend、Ubuntu、Windows、macOS 五个作业全部 success；运行地址 https://github.com/hxf4869/virtual-companion/actions/runs/30500719542。",
+      "environment": "GitHub-hosted Ubuntu, Windows and macOS runners",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "OPENAI_CHAT_COMPLETIONS and ANTHROPIC_MESSAGES local mock-server contracts",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "本任务只建立 Fake/Failure 内部归一化基线，不实现两类主协议 HTTP/SSE Adapter；不得用 Fake 流替代 offlineContractRequirement。",
+      "environment": "Not applicable",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    },
+    {
+      "command": "approved live model deployment",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "没有真实 Provider、模型、凭据、区域、合同准入或网络调用；alphaLiveRequirement 仍等待 Owner 决策。",
+      "environment": "Not applicable",
+      "verifiedCommit": "10ac4d35aa29bebe5c6f13c444423602380e2074"
+    }
+  ],
+  "artifacts": {
+    "implementationTree": "9c1fd4f4e21bbc0397ad81710bdc14a4fa1b6d0b",
+    "targetedTestCount": 37,
+    "fullTestCount": 73,
+    "githubActionsRunId": "30500719542",
+    "githubActionsUrl": "https://github.com/hxf4869/virtual-companion/actions/runs/30500719542",
+    "githubActionsJobs": {
+      "Backend": "success",
+      "Frontend": "success",
+      "Harness (ubuntu-latest)": "success",
+      "Harness (windows-latest)": "success",
+      "Harness (macos-latest)": "success"
+    }
+  }
+}
