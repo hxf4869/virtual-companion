@@ -159,6 +159,40 @@ humanApprovals:
     approvedBy: repository-owner
     approvedAt: 2026-07-30
     evidence: Owner 明确授权 TASK-0012 建立 Technical Alpha 多任务 PLANNED 队列、唯一 Backlog 真源、生命周期与 Harness 门禁，并要求完整 C4 独立复核和闭环
+scopeAmendments:
+  - schemaVersion: 2
+    amendmentId: task-0012-owner-formalize-task-0037
+    contractSource: .harness/task-backlog.yaml
+    contractHashAlgorithm: SHA256_CANONICAL_JSON_V1
+    contractHash: 578711b359e96a35a4e1e7570f2ad5e0696bcecc688ad00ce96a2df8dc0d1dc1
+    contract:
+      schemaVersion: 1
+      taskId: TASK-0012
+      amendmentType: OWNER_CLAUSE_REPLACEMENT
+      approvedBy: repository-owner
+      approvedAt: "2026-07-30"
+      evidence: Owner 针对 TASK-0012 无限检查与 Reviewer 循环作出有界设计重设，明确只替代验收条款 001 与 004，并授权 TASK-0037 排序
+      reason: 保留 TASK-0012 至 TASK-0036 的全部原永久 ID、产品语义和未列授权，仅追加性能治理卡并调整两步晋级顺序
+      authorizedParentCommit: 2a55335e695c8fc5434c0dbc867288842c804e74
+      baseAuthorizationProjectionHash: 4bdee3003a92a5620e2c31f8eabb2e03df43895c39e24363ed6dd8275fb6da9e
+      scopeGrantAmendmentId: null
+      addedWriteAllowlist:
+        - docs/tasks/TASK-0037-harness-performance-layered-validation.md
+      replacements:
+        - supersedes:
+            clauseId: TASK-0012-ACCEPTANCE-001
+            statement: "`.harness/task-backlog.yaml` 恰好登记 TASK-0012～TASK-0036 的 25 个永久编号和规定名称；执行顺序唯一，依赖全部可解析且无环，声明的关键路径是连续依赖链并终止于 TASK-0036。"
+            statementHash: f64d2a376461f6e807c0ad11b22ea70397abfb444a3c863b678883d887891f8d
+          replacement:
+            statement: 正式 Backlog 保留 TASK-0012～TASK-0036 全部原永久 ID 与产品语义，并追加 TASK-0037，共 26 个永久 ID；不得改号、复用或删除原卡。
+            statementHash: 55de9d39eab9f34d0e21f8359f3a49e23c6ebcd86aff67f1a884583a7322ea06
+        - supersedes:
+            clauseId: TASK-0012-ACCEPTANCE-004
+            statement: Backlog 的晋级解析同时执行依赖、执行顺序和硬决策闸门；最终快照中下一张可晋级卡为 TASK-0013，TASK-0034/0035 因硬闸门保持不可晋级，TASK-0036 因依赖保持 PLANNED/BLOCKED。
+            statementHash: 44d1f19c2c523a2ae0823bc9ca832e20768788dc5b73da95f05d40464558e0fc
+          replacement:
+            statement: TASK-0012 ACCEPTED 后第一张可晋级为 TASK-0037；TASK-0037 ACCEPTED 后再按原 DAG 推进 TASK-0013。
+            statementHash: 99f1ce4576652caa72db70cce3714c64771922b34a0ea921e6c3931c7a304e53
 independentReview: required
 reviewers: []
 requiredCommands:
