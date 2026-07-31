@@ -60,13 +60,19 @@ description: Execute one governed repository task or coordinate a strictly seria
 ## Preserve validation and review integrity
 
 - For every Doctor, candidate canonical, or pre-closure command expected to
-  exceed 60 seconds, start a persistent session or PTY before launching it. An
-  outer tool yield or timeout may yield control only; it must preserve the same
-  process, stdout, and real exit code. Never start a duplicate process, add
-  parallel `status` or `ps` checks, or fetch the same log again. If transport
-  loses the exit code, record `NOT_RUN` or `UNKNOWN`, never PASS.
-- Poll that same process about every 60 seconds by default. Polling observes
-  status only and never triggers another check.
+  exceed 60 seconds, prefer a direct persistent session or PTY from launch.
+  If that tool surface is unavailable on Windows, first run a no-side-effect
+  exit-7 smoke, then launch exactly once through
+  `scripts/harness/durable_command.ps1 -Mode Launch -RequestPath <absolute-json>`.
+  The helper requires PowerShell 7 and exact JSON argv; PowerShell 5.1 and
+  unsupported platforms never fall back silently.
+- With durable transport, poll only whether `receipt.json` exists about every
+  60 seconds. Do not inspect PID/process/status or tail logs. After atomic
+  publication, read the receipt and complete stdout/stderr once. A missing,
+  invalid, or identity-mismatched receipt is `UNKNOWN`, never PASS, and the
+  command is not repeated.
+- The helper's receipt is transport evidence only. The real inner exit code and
+  complete output determine the registered command result.
 - Reuse means not dispatching an identical check again. Preserve its one real
   result and never invent a `REUSED` PASS.
 - Keep failure, cancellation, timeout, and NOT_RUN as non-PASS.

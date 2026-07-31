@@ -110,7 +110,28 @@ validation:
   longRunningCommand:
     singleProcess: true
     expectedDurationThresholdSeconds: 60
-    persistentSessionOrPtyFromStart: true
+    transportPriority:
+      - DIRECT_PERSISTENT_SESSION_OR_PTY
+      - DURABLE_ATOMIC_RECEIPT
+    directPersistentSessionOrPtyPreferred: true
+    durableAtomicReceipt:
+      commandRegistryId: durableCommand
+      helper: scripts/harness/durable_command.ps1
+      platform: WINDOWS_ONLY
+      powershellMinimumMajor: 7
+      powershell51FallbackForbidden: true
+      encodedCommandEncoding: UTF16LE
+      hiddenWindowRequired: true
+      smokePassRequiredBeforeExpensiveLaunch: true
+      exactArgumentArrayRequired: true
+      stringCommandLineAssemblyForbidden: true
+      concurrentStdoutStderrDrainRequired: true
+      realInnerExitCodeRequired: true
+      outputFlushAndCloseBeforeReceipt: true
+      sameDirectoryAtomicMoveRequired: true
+      uniqueSystemTempDirectoryRequired: true
+      missingOrInvalidReceiptResult: UNKNOWN
+      unsupportedPlatformBehavior: DIRECT_OR_FAIL
     appliesTo:
       - DOCTOR
       - CANDIDATE_CANONICAL
@@ -118,15 +139,17 @@ validation:
     preserve:
       - SAME_PROCESS
       - STDOUT
+      - STDERR
       - REAL_EXIT_CODE
     outerYieldOrTimeoutBehavior: YIELD_CONTROL_ONLY
     lostExitCodeStatuses:
       - NOT_RUN
       - UNKNOWN
     passWithLostExitCodeForbidden: true
-    polling: LOW_FREQUENCY_STATUS_ONLY
+    polling: LOW_FREQUENCY_RECEIPT_EXISTENCE_ONLY
     defaultPollingIntervalSeconds: 60
-    statusObservationOnly: true
+    receiptReadOnceAfterPublication: true
+    pidProcessStatusAndLogPollingForbidden: true
     parallelStatusCommandForbidden: true
     parallelProcessInspectionCommandForbidden: true
     repeatedLogFetchForbidden: true

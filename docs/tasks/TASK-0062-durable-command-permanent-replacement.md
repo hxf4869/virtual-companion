@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0062
-state: IN_PROGRESS
+state: IN_REVIEW
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -285,7 +285,7 @@ PASS。
 ## 停止条件
 
 - 墙钟 20 分钟仍无法完成 readiness；
-- 墙钟 35 分钟仍无通过 runner 自测、历史/Hash/Skill/Policy/Doctor/负例和 diff
+- 墙钟 45 分钟仍无通过 runner 自测、历史/Hash/Skill/Policy/Doctor/负例和 diff
   短矩阵的精确候选 Commit/Tree；
 - R2 出现新结构性 P0/P1，或需要 R3、第二批实现修复；
 - candidate canonical 或 exact-SHA CI 无法在 90 分钟硬熔断前安全闭环；

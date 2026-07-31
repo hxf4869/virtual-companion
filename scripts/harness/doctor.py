@@ -156,10 +156,13 @@ TASK_BACKLOG_PATH = ".harness/task-backlog.yaml"
 PROJECT_STATE_PATH = ".harness/project-state.yaml"
 TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
 TASK_DELIVERY_POLICY_CANONICAL_HASH = (
-    "0f2e4ac962563cdacd85270dd14e453e719fa958b5ab53b9b864b888fb32577a"
+    "4f017adf76dc197ebdfdc5c08adaf69c89725e89319ad91c5f07eb10f5cbc7a6"
 )
 TASK_DELIVERY_SKILL_CANONICAL_HASH = (
-    "c9df017793c5e13ed130209e380a5f254d94d29fbbd902d2d93bec0271009409"
+    "16883be843edddf2adaac94d60a77a4214687d3a56fd98b2d7881ba7c613d724"
+)
+DURABLE_COMMAND_CANONICAL_HASH = (
+    "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180"
 )
 TASK_0060_BASE_COMMIT = "dedcc579617a5356198ac42e17de58f8e8f880f5"
 TASK_0060_AUTHORIZATION_COMMIT = "e50aafe927b3655b6642e3ecd6c0012362bda856"
@@ -205,6 +208,26 @@ TASK_0061_PLANNING_REPAIRS = {
         "newDependencies": ["TASK-0061"],
     },
 }
+TASK_0062_BASE_COMMIT = "8579df81a3b453b26bf297ddb6bf4ef48efa8393"
+TASK_0062_AUTHORIZATION_COMMIT = "174c6180c15d9c6b6e56198974029acf3865419e"
+TASK_0062_CARD_PATH = (
+    "docs/tasks/TASK-0062-durable-command-permanent-replacement.md"
+)
+TASK_0062_PLANNING_REPAIRS = {
+    "TASK-0055": {
+        "oldTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "newTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "oldDependencies": ["TASK-0061"],
+        "newDependencies": ["TASK-0062"],
+    },
+}
+LEGACY_RESULT_UNRECOVERABLE_REASON = (
+    "The only candidate canonical used the coordinator-approved durable-receipt "
+    "mode. Wrapper PID 45460 and all children were later confirmed absent while "
+    "receipt.json was absent. No stdout/stderr was read, no inner exit code is "
+    "inferred, and the command was not rerun; result is "
+    "FAIL/RESULT_UNRECOVERABLE."
+)
 PLANNING_CONTRACT_HASH_ALGORITHM = "SHA256_CANONICAL_JSON_V1"
 PLANNED_CARD_FIELDS = {
     "taskId",
@@ -3919,6 +3942,13 @@ def task0061_planning_repair_projection(
     return planning_repair_projection(parent, child, TASK_0061_PLANNING_REPAIRS)
 
 
+def task0062_planning_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    return planning_repair_projection(parent, child, TASK_0062_PLANNING_REPAIRS)
+
+
 def task0060_planning_repair_authorized(
     parent_commit: str,
     commit: str,
@@ -4031,6 +4061,86 @@ def task0061_planning_repair_authorized(
     )
 
 
+def task0062_planning_repair_authorized(
+    parent_commit: str,
+    commit: str,
+) -> bool:
+    if not (
+        FULL_COMMIT_RE.fullmatch(parent_commit)
+        and FULL_COMMIT_RE.fullmatch(commit)
+    ):
+        return False
+    try:
+        parent_text = git_object(parent_commit, TASK_0062_CARD_PATH).decode("utf-8")
+        child_text = git_object(commit, TASK_0062_CARD_PATH).decode("utf-8")
+        parent_task = task_metadata_from_text(
+            parent_text,
+            f"TASK-0062 planning repair parent {parent_commit}",
+        )
+        child_task = task_metadata_from_text(
+            child_text,
+            f"TASK-0062 planning repair child {commit}",
+        )
+    except (HarnessError, UnicodeError, yaml.YAMLError):
+        return False
+    approval = any(
+        isinstance(item, dict)
+        and item.get("scope") == "harness-change"
+        and item.get("approvedBy") == "repository-owner"
+        and isinstance(item.get("evidence"), str)
+        and "TASK-0061" in item["evidence"]
+        and "TASK-0062" in item["evidence"]
+        for item in child_task.get("humanApprovals", [])
+    )
+    authorization_ancestor = (
+        git_text(
+            "merge-base",
+            "--is-ancestor",
+            TASK_0062_AUTHORIZATION_COMMIT,
+            parent_commit,
+            check=False,
+        ).returncode
+        == 0
+    )
+    return (
+        parent_task == child_task
+        and child_task.get("taskId") == "TASK-0062"
+        and child_task.get("state") == "IN_PROGRESS"
+        and child_task.get("riskClass") == "C4"
+        and child_task.get("baseCommit") == TASK_0062_BASE_COMMIT
+        and child_task.get("authorizationCommit")
+        == TASK_0062_AUTHORIZATION_COMMIT
+        and child_task.get("requiredSkillVersions")
+        == {"task-intake": "1.2.0", "harness-change": "1.1.0"}
+        and approval
+        and authorization_ancestor
+    )
+
+
+def authorization_amendment_authority_bootstrap_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    parent_authority = parent.get("authority")
+    child_authority = child.get("authority")
+    parent_amendments = parent.get("authorizationAmendments")
+    child_amendments = child.get("authorizationAmendments")
+    if not isinstance(parent_authority, dict) or not isinstance(child_authority, dict):
+        return False
+    parent_owns = parent_authority.get("owns")
+    if (
+        not isinstance(parent_owns, list)
+        or "authorizationAmendments" in parent_owns
+        or parent_amendments != {}
+        or not isinstance(child_amendments, dict)
+        or not child_amendments
+    ):
+        return False
+    expected = dict(parent_authority)
+    expected["owns"] = [*parent_owns, "authorizationAmendments"]
+    return child_authority == expected
+
+
 def validate_backlog_history_edge(
     audit: Audit,
     parent: dict[str, Any],
@@ -4040,9 +4150,16 @@ def validate_backlog_history_edge(
     parent_snapshot_exists: bool = True,
     allow_task0060_repair: bool = False,
     allow_task0061_repair: bool = False,
+    allow_task0062_repair: bool = False,
 ) -> None:
     if parent_snapshot_exists:
+        authority_bootstrap = authorization_amendment_authority_bootstrap_projection(
+            parent,
+            child,
+        )
         for field in sorted(BACKLOG_IMMUTABLE_ROOT_FIELDS):
+            if field == "authority" and authority_bootstrap:
+                continue
             audit.require(
                 child.get(field) == parent.get(field),
                 f"task-backlog: immutable root field {field} was rewritten on edge "
@@ -4054,6 +4171,8 @@ def validate_backlog_history_edge(
         allowed_repair_tasks.update(TASK_0060_PLANNING_REPAIRS)
     if allow_task0061_repair and task0061_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0061_PLANNING_REPAIRS)
+    if allow_task0062_repair and task0062_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0062_PLANNING_REPAIRS)
 
     parent_tasks = parent.get("tasks")
     child_tasks = child.get("tasks")
@@ -4464,6 +4583,7 @@ def validate_backlog_card_history_edge(
     *,
     allow_task0060_repair: bool = False,
     allow_task0061_repair: bool = False,
+    allow_task0062_repair: bool = False,
 ) -> None:
     parent_entries = parent.get("tasks")
     child_entries = child.get("tasks")
@@ -4484,6 +4604,8 @@ def validate_backlog_card_history_edge(
         allowed_repair_tasks.update(TASK_0060_PLANNING_REPAIRS)
     if allow_task0061_repair and task0061_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0061_PLANNING_REPAIRS)
+    if allow_task0062_repair and task0062_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0062_PLANNING_REPAIRS)
     for task_id in sorted(set(parent_entries) | set(child_entries)):
         parent_entry = parent_entries.get(task_id)
         child_entry = child_entries.get(task_id)
@@ -4784,6 +4906,7 @@ def validate_task_backlog_history(
     introductions: set[str] = set()
     task0060_repair_edges: set[tuple[str, str]] = set()
     task0061_repair_edges: set[tuple[str, str]] = set()
+    task0062_repair_edges: set[tuple[str, str]] = set()
     snapshots: dict[str, dict[str, Any]] = {}
 
     def snapshot(commit: str) -> dict[str, Any] | None:
@@ -4879,6 +5002,16 @@ def validate_task_backlog_history(
                 )
                 if task0061_repair_authorized_edge:
                     task0061_repair_edges.add((parent, commit))
+                task0062_repair_projection = task0062_planning_repair_projection(
+                    parent_value,
+                    child,
+                )
+                task0062_repair_authorized_edge = (
+                    task0062_repair_projection
+                    and task0062_planning_repair_authorized(parent, commit)
+                )
+                if task0062_repair_authorized_edge:
+                    task0062_repair_edges.add((parent, commit))
                 validate_backlog_card_history_edge(
                     audit,
                     parent,
@@ -4888,6 +5021,7 @@ def validate_task_backlog_history(
                     lifecycle,
                     allow_task0060_repair=task0060_repair_authorized_edge,
                     allow_task0061_repair=task0061_repair_authorized_edge,
+                    allow_task0062_repair=task0062_repair_authorized_edge,
                 )
                 validate_backlog_history_edge(
                     audit,
@@ -4896,6 +5030,7 @@ def validate_task_backlog_history(
                     f"{parent}..{commit}",
                     allow_task0060_repair=task0060_repair_authorized_edge,
                     allow_task0061_repair=task0061_repair_authorized_edge,
+                    allow_task0062_repair=task0062_repair_authorized_edge,
                 )
     audit.require(
         len(introductions) <= 1,
@@ -4913,6 +5048,11 @@ def validate_task_backlog_history(
                 task_id == "TASK-0055"
                 and current_tasks[task_id].get("dependencies")
                 == TASK_0061_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
+                or (
+                    task_id == "TASK-0055"
+                    and current_tasks[task_id].get("dependencies")
+                    == TASK_0062_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
+                )
             )
         )
         for task_id, repair in TASK_0060_PLANNING_REPAIRS.items()
@@ -4925,14 +5065,31 @@ def validate_task_backlog_history(
     task0061_repair_applied = all(
         isinstance(current_tasks.get(task_id), dict)
         and current_tasks[task_id].get("title") == repair["newTitle"]
-        and current_tasks[task_id].get("dependencies")
-        == repair["newDependencies"]
+        and (
+            current_tasks[task_id].get("dependencies") == repair["newDependencies"]
+            or (
+                task_id == "TASK-0055"
+                and current_tasks[task_id].get("dependencies")
+                == TASK_0062_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
+            )
+        )
         for task_id, repair in TASK_0061_PLANNING_REPAIRS.items()
     )
     audit.require(
         len(task0061_repair_edges) == (1 if task0061_repair_applied else 0),
         "task-backlog: TASK-0061 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0061_repair_edges)}",
+    )
+    task0062_repair_applied = all(
+        isinstance(current_tasks.get(task_id), dict)
+        and current_tasks[task_id].get("title") == repair["newTitle"]
+        and current_tasks[task_id].get("dependencies") == repair["newDependencies"]
+        for task_id, repair in TASK_0062_PLANNING_REPAIRS.items()
+    )
+    audit.require(
+        len(task0062_repair_edges) == (1 if task0062_repair_applied else 0),
+        "task-backlog: TASK-0062 replacement repair must be one exact, authorized, "
+        f"atomic parent edge; observed={sorted(task0062_repair_edges)}",
     )
     head = snapshot("HEAD")
     if head is not None:
@@ -6303,15 +6460,39 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     expected_long_running = {
         "singleProcess": True,
         "expectedDurationThresholdSeconds": 60,
-        "persistentSessionOrPtyFromStart": True,
+        "transportPriority": [
+            "DIRECT_PERSISTENT_SESSION_OR_PTY",
+            "DURABLE_ATOMIC_RECEIPT",
+        ],
+        "directPersistentSessionOrPtyPreferred": True,
+        "durableAtomicReceipt": {
+            "commandRegistryId": "durableCommand",
+            "helper": "scripts/harness/durable_command.ps1",
+            "platform": "WINDOWS_ONLY",
+            "powershellMinimumMajor": 7,
+            "powershell51FallbackForbidden": True,
+            "encodedCommandEncoding": "UTF16LE",
+            "hiddenWindowRequired": True,
+            "smokePassRequiredBeforeExpensiveLaunch": True,
+            "exactArgumentArrayRequired": True,
+            "stringCommandLineAssemblyForbidden": True,
+            "concurrentStdoutStderrDrainRequired": True,
+            "realInnerExitCodeRequired": True,
+            "outputFlushAndCloseBeforeReceipt": True,
+            "sameDirectoryAtomicMoveRequired": True,
+            "uniqueSystemTempDirectoryRequired": True,
+            "missingOrInvalidReceiptResult": "UNKNOWN",
+            "unsupportedPlatformBehavior": "DIRECT_OR_FAIL",
+        },
         "appliesTo": ["DOCTOR", "CANDIDATE_CANONICAL", "PRE_CLOSURE"],
-        "preserve": ["SAME_PROCESS", "STDOUT", "REAL_EXIT_CODE"],
+        "preserve": ["SAME_PROCESS", "STDOUT", "STDERR", "REAL_EXIT_CODE"],
         "outerYieldOrTimeoutBehavior": "YIELD_CONTROL_ONLY",
         "lostExitCodeStatuses": ["NOT_RUN", "UNKNOWN"],
         "passWithLostExitCodeForbidden": True,
-        "polling": "LOW_FREQUENCY_STATUS_ONLY",
+        "polling": "LOW_FREQUENCY_RECEIPT_EXISTENCE_ONLY",
         "defaultPollingIntervalSeconds": 60,
-        "statusObservationOnly": True,
+        "receiptReadOnceAfterPublication": True,
+        "pidProcessStatusAndLogPollingForbidden": True,
         "parallelStatusCommandForbidden": True,
         "parallelProcessInspectionCommandForbidden": True,
         "repeatedLogFetchForbidden": True,
@@ -6353,6 +6534,26 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         "task-delivery-policy: sources-of-truth must register the policy path "
         "exactly once",
     )
+    audit.require(
+        isinstance(sources, dict)
+        and sources.get("durableCommandRunner")
+        == "scripts/harness/durable_command.ps1",
+        "task-delivery-policy: sources-of-truth must register durableCommandRunner",
+    )
+    commands = load_yaml(ROOT / ".harness/commands.yaml").get("commands")
+    durable_command = commands.get("durableCommand") if isinstance(commands, dict) else None
+    audit.require(
+        durable_command
+        == {
+            "description": (
+                "Launch one Windows PowerShell 7 command with an atomic durable receipt"
+            ),
+            "argv": ["scripts/harness/durable_command.ps1"],
+            "interpreter": "POWERSHELL_7_WINDOWS",
+            "profileEligible": False,
+        },
+        "task-delivery-policy: durableCommand registry projection drifted",
+    )
     registry = load_yaml(ROOT / ".harness/skills.yaml").get("skills")
     delivery_skills = (
         [
@@ -6368,19 +6569,20 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         == [
             {
                 "id": "task-delivery-flow",
-                "version": "1.1.0",
+                "version": "1.2.0",
                 "path": "skills/task-delivery-flow/SKILL.md",
             }
         ],
         "task-delivery-policy: task-delivery-flow must be registered exactly once "
-        "at version 1.1.0",
+        "at version 1.2.0",
     )
     invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
     delivery_invariants = (
         [
             invariant
             for invariant in invariants
-            if isinstance(invariant, dict) and invariant.get("id") == "INV-HARNESS-007"
+            if isinstance(invariant, dict)
+            and invariant.get("id") in {"INV-HARNESS-007", "INV-HARNESS-008"}
         ]
         if isinstance(invariants, list)
         else []
@@ -6401,9 +6603,23 @@ def validate_task_delivery_policy(audit: Audit) -> None:
                     "harness_tests",
                     "repository_skill",
                 ],
-            }
+            },
+            {
+                "id": "INV-HARNESS-008",
+                "statement": (
+                    "long commands use a direct persistent session or a preflighted "
+                    "Windows PowerShell 7 durable atomic receipt with exact argv "
+                    "concurrent output draining real exit code and no duplicate execution"
+                ),
+                "enforcement": [
+                    "task_delivery_policy",
+                    "durable_command_runner",
+                    "harness_doctor",
+                    "harness_tests",
+                ],
+            },
         ],
-        "task-delivery-policy: INV-HARNESS-007 projection drifted",
+        "task-delivery-policy: delivery invariant projection drifted",
     )
 
     expected_follow_ups = {
@@ -6421,7 +6637,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     entries = backlog.get("tasks")
     entries = entries if isinstance(entries, dict) else {}
     expected_dependencies = {
-        "TASK-0055": ["TASK-0061"],
+        "TASK-0055": ["TASK-0062"],
         "TASK-0056": ["TASK-0055"],
         "TASK-0057": ["TASK-0056"],
         "TASK-0058": ["TASK-0057"],
@@ -6522,6 +6738,12 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         sha256_file(skill_path) == TASK_DELIVERY_SKILL_CANONICAL_HASH,
         "task-delivery-policy: task-delivery-flow Skill canonical content hash drifted",
     )
+    durable_path = ROOT / "scripts/harness/durable_command.ps1"
+    audit.require(
+        current_path_is_file(durable_path)
+        and sha256_file(durable_path) == DURABLE_COMMAND_CANONICAL_HASH,
+        "task-delivery-policy: durable command helper canonical content hash drifted",
+    )
 
     def normalized_skill_section(heading: str) -> str:
         matches = list(
@@ -6539,16 +6761,23 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     expected_validation_bullets = [
         (
             "For every Doctor, candidate canonical, or pre-closure command expected "
-            "to exceed 60 seconds, start a persistent session or PTY before launching "
-            "it. An outer tool yield or timeout may yield control only; it must "
-            "preserve the same process, stdout, and real exit code. Never start a "
-            "duplicate process, add parallel `status` or `ps` checks, or fetch the "
-            "same log again. If transport loses the exit code, record `NOT_RUN` or "
-            "`UNKNOWN`, never PASS."
+            "to exceed 60 seconds, prefer a direct persistent session or PTY from "
+            "launch. If that tool surface is unavailable on Windows, first run a "
+            "no-side-effect exit-7 smoke, then launch exactly once through "
+            "`scripts/harness/durable_command.ps1 -Mode Launch -RequestPath "
+            "<absolute-json>`. The helper requires PowerShell 7 and exact JSON argv; "
+            "PowerShell 5.1 and unsupported platforms never fall back silently."
         ),
         (
-            "Poll that same process about every 60 seconds by default. Polling "
-            "observes status only and never triggers another check."
+            "With durable transport, poll only whether `receipt.json` exists about "
+            "every 60 seconds. Do not inspect PID/process/status or tail logs. After "
+            "atomic publication, read the receipt and complete stdout/stderr once. A "
+            "missing, invalid, or identity-mismatched receipt is `UNKNOWN`, never "
+            "PASS, and the command is not repeated."
+        ),
+        (
+            "The helper's receipt is transport evidence only. The real inner exit "
+            "code and complete output determine the registered command result."
         ),
         (
             "Reuse means not dispatching an identical check again. Preserve its one "
@@ -6937,8 +7166,18 @@ def validate_evidence_check(audit: Audit, label: str, check: dict[str, Any]) -> 
     if status == "PASS":
         audit.require(exit_code == 0, f"{label}: PASS requires exitCode 0")
     elif status == "FAIL":
+        legacy_result_unrecoverable = (
+            exit_code is None
+            and check.get("artifactHash") is None
+            and reason == LEGACY_RESULT_UNRECOVERABLE_REASON
+            and check.get("command")
+            == "python scripts/harness/precheck.py --task TASK-0061"
+            and check.get("verifiedCommit")
+            == "b42140480aa47613800efe878ec5924d88dfbafe"
+        )
         audit.require(
-            isinstance(exit_code, int) and exit_code != 0,
+            legacy_result_unrecoverable
+            or (isinstance(exit_code, int) and exit_code != 0),
             f"{label}: FAIL requires non-zero exitCode",
         )
     elif status == "NOT_RUN":

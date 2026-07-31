@@ -54,3 +54,6 @@ invariants:
   - id: INV-HARNESS-007
     statement: single-card and longline delivery follow one registered machine policy with bounded review exact candidate identity exact-SHA validation and fail-closed dependency release
     enforcement: [task_delivery_policy, harness_doctor, harness_tests, repository_skill]
+  - id: INV-HARNESS-008
+    statement: long commands use a direct persistent session or a preflighted Windows PowerShell 7 durable atomic receipt with exact argv concurrent output draining real exit code and no duplicate execution
+    enforcement: [task_delivery_policy, durable_command_runner, harness_doctor, harness_tests]

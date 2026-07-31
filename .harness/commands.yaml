@@ -17,6 +17,11 @@ commands:
   betaRosterGate:
     description: Keep generation closed unless the duty-roster structure is complete
     argv: [scripts/harness/check_beta_gate.py]
+  durableCommand:
+    description: Launch one Windows PowerShell 7 command with an atomic durable receipt
+    argv: [scripts/harness/durable_command.ps1]
+    interpreter: POWERSHELL_7_WINDOWS
+    profileEligible: false
 profiles:
   precheck:
     - doctor

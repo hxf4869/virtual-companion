@@ -6,10 +6,12 @@ from datetime import datetime
 import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -1392,6 +1394,129 @@ class ContextTests(unittest.TestCase):
         self.assertTrue(any("riskClass must be one of" in error for error in audit.errors), audit.errors)
 
 
+class DurableCommandTests(unittest.TestCase):
+    def test_atomic_receipt_exact_argv_dual_stream_and_exit_seven(self) -> None:
+        helper = ROOT / "scripts/harness/durable_command.ps1"
+        text = helper.read_text(encoding="utf-8")
+        self.assertIn("#requires -Version 7.0", text)
+        self.assertIn("DURABLE_ATOMIC_RECEIPT is Windows-only", text)
+        self.assertIn("ArgumentList.Add", text)
+        self.assertIn("CopyToAsync", text)
+        self.assertIn("[IO.File]::Move", text)
+        if os.name != "nt":
+            return
+        pwsh = shutil.which("pwsh")
+        self.assertIsNotNone(pwsh)
+        with tempfile.TemporaryDirectory(prefix="durable command ") as raw:
+            root = Path(raw)
+            cwd = root / "working directory with spaces"
+            cwd.mkdir()
+            executable = root / "python executable with spaces.exe"
+            shutil.copy2(sys.executable, executable)
+            inner = root / "inner script with spaces.py"
+            inner.write_text(
+                "import os,sys\n"
+                "assert sys.argv[1] == 'argument with spaces'\n"
+                "assert os.getcwd() == sys.argv[2]\n"
+                "for i in range(2048):\n"
+                " print(f'OUT-{i:04d}')\n"
+                " print(f'ERR-{i:04d}', file=sys.stderr)\n"
+                "print('STDOUT-FINAL')\n"
+                "print('STDERR-FINAL', file=sys.stderr)\n"
+                "raise SystemExit(7)\n",
+                encoding="utf-8",
+            )
+            request = root / "request.json"
+            request.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "executable": str(executable),
+                        "argv": [str(inner), "argument with spaces", str(cwd)],
+                        "workingDirectory": str(cwd),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            launched = subprocess.run(
+                [
+                    str(pwsh),
+                    "-NoProfile",
+                    "-File",
+                    str(helper),
+                    "-Mode",
+                    "Launch",
+                    "-RequestPath",
+                    str(request),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            descriptor = json.loads(launched.stdout)
+            receipt_path = Path(descriptor["receiptPath"])
+            deadline = time.monotonic() + 15
+            while not receipt_path.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(receipt_path.exists())
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            stdout = Path(receipt["stdoutPath"]).read_text(encoding="utf-8")
+            stderr = Path(receipt["stderrPath"]).read_text(encoding="utf-8")
+            self.assertEqual(7, receipt["exitCode"])
+            self.assertEqual("COMPLETED", receipt["status"])
+            self.assertIn("STDOUT-FINAL", stdout)
+            self.assertIn("STDERR-FINAL", stderr)
+            self.assertEqual(
+                len(Path(receipt["stdoutPath"]).read_bytes()),
+                receipt["stdoutBytes"],
+            )
+            self.assertEqual(
+                len(Path(receipt["stderrPath"]).read_bytes()),
+                receipt["stderrBytes"],
+            )
+            self.assertFalse(Path(str(receipt_path) + ".tmp").exists())
+
+    def test_missing_and_invalid_config_fail_closed_without_receipt(self) -> None:
+        helper = ROOT / "scripts/harness/durable_command.ps1"
+        if os.name != "nt":
+            self.assertIn(
+                "use a direct persistent session or PTY",
+                helper.read_text(encoding="utf-8"),
+            )
+            return
+        pwsh = shutil.which("pwsh")
+        self.assertIsNotNone(pwsh)
+        with tempfile.TemporaryDirectory(prefix="durable invalid ") as raw:
+            root = Path(raw)
+            missing = root / "missing.json"
+            result = subprocess.run(
+                [str(pwsh), "-NoProfile", "-File", str(helper), "-Mode", "Worker",
+                 "-ConfigPath", str(missing)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+            invalid = root / "config.json"
+            invalid.write_text('{"schemaVersion":1}', encoding="utf-8")
+            result = subprocess.run(
+                [str(pwsh), "-NoProfile", "-File", str(helper), "-Mode", "Worker",
+                 "-ConfigPath", str(invalid)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertFalse((root / "receipt.json").exists())
+            powershell = shutil.which("powershell")
+            self.assertIsNotNone(powershell)
+            result = subprocess.run(
+                [str(powershell), "-NoProfile", "-File", str(helper), "-Mode", "Worker",
+                 "-ConfigPath", str(missing)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+
+
 class DeliveryPolicyTests(unittest.TestCase):
     def test_policy_registry_skill_and_entrypoint_projection(self) -> None:
         audit = Audit()
@@ -1495,7 +1620,7 @@ class DeliveryPolicyTests(unittest.TestCase):
         real_load_yaml = doctor.load_yaml
         drifted = copy.deepcopy(load_yaml(policy_path))
         drifted["validation"]["longRunningCommand"][
-            "persistentSessionOrPtyFromStart"
+            "directPersistentSessionOrPtyPreferred"
         ] = False
 
         def load_with_drift(path: Path) -> dict[str, object]:
@@ -1517,13 +1642,13 @@ class DeliveryPolicyTests(unittest.TestCase):
         skill_text = skill_path.read_text(encoding="utf-8")
         drifted_skills = [
             skill_text.replace(
-                "real exit code.",
-                "reported exit code.",
+                "real inner exit code",
+                "reported inner exit code",
                 1,
             ),
             skill_text.replace(
-                "never PASS.",
-                "never PASS unless transport is unavailable.",
+                "`UNKNOWN`, never PASS",
+                "`UNKNOWN`, PASS when transport is unavailable",
                 1,
             ),
         ]
@@ -1845,7 +1970,7 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0050"], backlog["tasks"]["TASK-0051"]["dependencies"])
         self.assertEqual(["TASK-0051"], backlog["tasks"]["TASK-0052"]["dependencies"])
         self.assertEqual(["TASK-0052"], backlog["tasks"]["TASK-0053"]["dependencies"])
-        self.assertEqual(["TASK-0061"], backlog["tasks"]["TASK-0055"]["dependencies"])
+        self.assertEqual(["TASK-0062"], backlog["tasks"]["TASK-0055"]["dependencies"])
         self.assertEqual(["TASK-0055"], backlog["tasks"]["TASK-0056"]["dependencies"])
         self.assertEqual(["TASK-0056"], backlog["tasks"]["TASK-0057"]["dependencies"])
         self.assertEqual(["TASK-0057"], backlog["tasks"]["TASK-0058"]["dependencies"])
@@ -1854,7 +1979,7 @@ class BacklogTests(unittest.TestCase):
 
         terminal_tasks = copy.deepcopy(tasks)
         self.assertEqual("REJECTED", terminal_tasks["TASK-0054"]["state"])
-        terminal_tasks["TASK-0061"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0062"]["state"] = "ACCEPTED"
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
@@ -1930,6 +2055,30 @@ class BacklogTests(unittest.TestCase):
             restore_edge.errors,
         )
 
+    def test_task0012_owner_amendment_history_edge_is_exact_and_atomic(self) -> None:
+        child, _, _, _ = self.load_inputs()
+        parent = copy.deepcopy(child)
+        parent["authority"]["owns"].remove("authorizationAmendments")
+        parent["authorizationAmendments"] = {}
+        audit = Audit()
+        validate_backlog_history_edge(audit, parent, child, "parent..bootstrap")
+        self.assertEqual([], audit.errors)
+
+        corrupted = copy.deepcopy(child)
+        corrupted["authority"]["owns"].append("uncontrolledRoot")
+        corrupt = Audit()
+        validate_backlog_history_edge(corrupt, child, corrupted, "child..corrupt")
+        self.assertTrue(
+            any("immutable root field authority" in error for error in corrupt.errors),
+            corrupt.errors,
+        )
+        restored = Audit()
+        validate_backlog_history_edge(restored, corrupted, child, "corrupt..restored")
+        self.assertTrue(
+            any("immutable root field authority" in error for error in restored.errors),
+            restored.errors,
+        )
+
     def test_task0060_planning_repair_is_exact_and_atomic(self) -> None:
         current, tasks, _, _ = self.load_inputs()
         child = copy.deepcopy(current)
@@ -1998,7 +2147,9 @@ class BacklogTests(unittest.TestCase):
         )
 
     def test_task0061_replacement_is_exact_and_atomic(self) -> None:
-        child, tasks, _, _ = self.load_inputs()
+        current, _, _, _ = self.load_inputs()
+        child = copy.deepcopy(current)
+        child["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0061"]
         parent = copy.deepcopy(child)
         parent["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0060"]
 
@@ -2046,14 +2197,40 @@ class BacklogTests(unittest.TestCase):
                     doctor.task0061_planning_repair_projection(parent, variant)
                 )
 
+    def test_task0062_replacement_is_exact_and_atomic(self) -> None:
+        child, tasks, _, _ = self.load_inputs()
+        parent = copy.deepcopy(child)
+        parent["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0061"]
+        self.assertTrue(doctor.task0062_planning_repair_projection(parent, child))
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0062_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+        unauthorized = Audit()
+        validate_backlog_history_edge(unauthorized, parent, child, "parent..child")
+        self.assertTrue(
+            any("TASK-0055" in error for error in unauthorized.errors),
+            unauthorized.errors,
+        )
+        wrong = copy.deepcopy(child)
+        wrong["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0060"]
+        self.assertFalse(doctor.task0062_planning_repair_projection(parent, wrong))
+        expanded = copy.deepcopy(child)
+        expanded["tasks"]["TASK-0056"]["objective"] = "scope expanded"
+        self.assertFalse(doctor.task0062_planning_repair_projection(parent, expanded))
         task0055_text = (
             ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])
         ).read_text(encoding="utf-8")
         self.assertIn(
-            "依赖：永久替代已 REJECTED TASK-0060 的 standalone TASK-0061",
+            "依赖：永久替代已 REJECTED TASK-0061 的 standalone TASK-0062",
             task0055_text,
         )
-        self.assertIn("TASK-0061 必须 ACCEPTED", task0055_text)
+        self.assertIn("TASK-0062 必须 ACCEPTED", task0055_text)
         for task_id in ("TASK-0055", "TASK-0057", "TASK-0058", "TASK-0059"):
             self.assertEqual(
                 canonical_json_sha256(child["tasks"][task_id]),
@@ -2061,13 +2238,11 @@ class BacklogTests(unittest.TestCase):
             )
         for path in (
             ".github/workflows/ci.yml",
-            ".harness/task-delivery-policy.yaml",
             "AGENTS.md",
             "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
-            "skills/task-delivery-flow/SKILL.md",
         ):
             self.assertEqual(
-                doctor.git_tree_entry(doctor.TASK_0061_BASE_COMMIT, path),
+                doctor.git_tree_entry(doctor.TASK_0062_BASE_COMMIT, path),
                 doctor.git_tree_entry("HEAD", path),
                 path,
             )
@@ -3888,7 +4063,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0061"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0062"]["state"] = "ACCEPTED"
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
@@ -4995,7 +5170,7 @@ class ValidationFlowTests(unittest.TestCase):
             policy["candidateIdentity"]["requiredInputs"],
         )
         self.assertEqual(
-            "LOW_FREQUENCY_STATUS_ONLY",
+            "LOW_FREQUENCY_RECEIPT_EXISTENCE_ONLY",
             policy["validation"]["longRunningCommand"]["polling"],
         )
         self.assertEqual(
@@ -5017,7 +5192,9 @@ class ValidationFlowTests(unittest.TestCase):
             ],
         )
         self.assertTrue(
-            policy["validation"]["longRunningCommand"]["statusObservationOnly"]
+            policy["validation"]["longRunningCommand"][
+                "receiptReadOnceAfterPublication"
+            ]
         )
         self.assertTrue(
             policy["validation"]["longRunningCommand"][
@@ -5043,7 +5220,7 @@ class ValidationFlowTests(unittest.TestCase):
         )
         self.assertEqual("PASS", policy["candidateIdentity"]["acceptedResult"])
         self.assertEqual(
-            ["FAIL", "CANCELLED", "TIMEOUT", "NOT_RUN"],
+            ["FAIL", "CANCELLED", "TIMEOUT", "NOT_RUN", "UNKNOWN"],
             policy["candidateIdentity"]["nonPassResults"],
         )
         self.assertEqual(
@@ -5061,10 +5238,10 @@ class ValidationFlowTests(unittest.TestCase):
                 "blocksDependencyDescendantsOnly"
             ]
         )
-        self.assertIn("only one long command process", skill)
-        self.assertIn("about every 60", skill)
-        self.assertIn("parallel `status` or `ps` commands", skill)
-        self.assertIn("polling observes status only", skill)
+        self.assertIn("launch exactly once", skill)
+        self.assertIn("about every 60", " ".join(skill.split()))
+        self.assertIn("Do not inspect PID/process/status or tail logs", skill)
+        self.assertIn("read the receipt and complete stdout/stderr once", skill)
         self.assertIn("never invent a `REUSED` PASS", skill)
         self.assertIn(
             "A wrapper is never an Evidence, receipt,\n   or PASS alias.",
@@ -5115,9 +5292,16 @@ class IntegrationTests(unittest.TestCase):
     def test_command_registry_is_consumed_without_shell_commands(self) -> None:
         config = load_yaml(ROOT / ".harness/commands.yaml")
         self.assertEqual("scripts/harness/precheck.py", config["runner"])
-        for command in config["commands"].values():
+        for command_id, command in config["commands"].items():
             self.assertIsInstance(command["argv"], list)
-            self.assertTrue(command["argv"][0].endswith(".py"))
+            if command_id == "durableCommand":
+                self.assertEqual(
+                    ["scripts/harness/durable_command.ps1"],
+                    command["argv"],
+                )
+                self.assertFalse(command["profileEligible"])
+            else:
+                self.assertTrue(command["argv"][0].endswith(".py"))
 
     def test_doctor_accepts_current_task(self) -> None:
         result = subprocess.run(
