@@ -1,11 +1,11 @@
-# TASK-0059：Harness 内容寻址快照复用与 Evidence 门禁
+# TASK-0059：Harness 内容寻址快照复用与 Evidence 门禁永久后继
 
 ```yaml
 taskId: TASK-0059
 state: PLANNED
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
-planningContractHash: 95a3b7ae41bf571979ddf35097e3e28be20a6d0de8f4e409550524d812d7a68b
+planningContractHash: a2c4f939b0476b4322838f348f6972a8d56847e914d4a19f8f9566e937fe450b
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
 

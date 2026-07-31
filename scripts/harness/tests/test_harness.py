@@ -1661,11 +1661,11 @@ class BacklogTests(unittest.TestCase):
         "TASK-0051": "Harness 阶段计时与跨文件系统性能引擎最终替代",
         "TASK-0052": "Harness 路径感知 CI 与包装器平台策略最终替代",
         "TASK-0053": "Harness 内容寻址快照复用与 Evidence 门禁最终替代",
-        "TASK-0055": "Idle planning checkpoint 核心父边校验",
+        "TASK-0055": "Idle planning checkpoint 核心父边校验永久后继",
         "TASK-0056": "Idle planning checkpoint 四消费者接线与 CI 闭环",
-        "TASK-0057": "Harness 阶段计时与跨文件系统性能引擎",
-        "TASK-0058": "Harness 路径感知 CI 与包装器平台策略",
-        "TASK-0059": "Harness 内容寻址快照复用与 Evidence 门禁",
+        "TASK-0057": "Harness 阶段计时与跨文件系统性能引擎永久后继",
+        "TASK-0058": "Harness 路径感知 CI 与包装器平台策略永久后继",
+        "TASK-0059": "Harness 内容寻址快照复用与 Evidence 门禁永久后继",
     }
 
     def load_inputs(
@@ -1845,7 +1845,7 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0050"], backlog["tasks"]["TASK-0051"]["dependencies"])
         self.assertEqual(["TASK-0051"], backlog["tasks"]["TASK-0052"]["dependencies"])
         self.assertEqual(["TASK-0052"], backlog["tasks"]["TASK-0053"]["dependencies"])
-        self.assertEqual(["TASK-0054"], backlog["tasks"]["TASK-0055"]["dependencies"])
+        self.assertEqual(["TASK-0060"], backlog["tasks"]["TASK-0055"]["dependencies"])
         self.assertEqual(["TASK-0055"], backlog["tasks"]["TASK-0056"]["dependencies"])
         self.assertEqual(["TASK-0056"], backlog["tasks"]["TASK-0057"]["dependencies"])
         self.assertEqual(["TASK-0057"], backlog["tasks"]["TASK-0058"]["dependencies"])
@@ -1853,7 +1853,8 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0012"], backlog["tasks"]["TASK-0013"]["dependencies"])
 
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0054"]["state"] = "ACCEPTED"
+        self.assertEqual("REJECTED", terminal_tasks["TASK-0054"]["state"])
+        terminal_tasks["TASK-0060"]["state"] = "ACCEPTED"
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
@@ -1865,6 +1866,73 @@ class BacklogTests(unittest.TestCase):
         self.assertIn(
             "WAITING_FOR_ORDER:TASK-0055",
             terminal_projection["blockers"]["TASK-0013"],
+        )
+
+    def test_task0060_planning_repair_is_exact_and_atomic(self) -> None:
+        child, tasks, _, _ = self.load_inputs()
+        parent = copy.deepcopy(child)
+        for task_id, repair in doctor.TASK_0060_PLANNING_REPAIRS.items():
+            parent["tasks"][task_id]["title"] = repair["oldTitle"]
+            parent["tasks"][task_id]["dependencies"] = repair["oldDependencies"]
+
+        self.assertTrue(
+            doctor.task0060_planning_repair_projection(parent, child)
+        )
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0060_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+
+        unauthorized = Audit()
+        validate_backlog_history_edge(
+            unauthorized,
+            parent,
+            child,
+            "parent..child",
+        )
+        self.assertEqual(
+            set(doctor.TASK_0060_PLANNING_REPAIRS),
+            {
+                task_id
+                for task_id in doctor.TASK_0060_PLANNING_REPAIRS
+                if any(task_id in error for error in unauthorized.errors)
+            },
+        )
+
+        variants = []
+        missing_title = copy.deepcopy(child)
+        missing_title["tasks"]["TASK-0059"]["title"] = (
+            doctor.TASK_0060_PLANNING_REPAIRS["TASK-0059"]["oldTitle"]
+        )
+        variants.append(missing_title)
+        wrong_dependency = copy.deepcopy(child)
+        wrong_dependency["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0054"]
+        variants.append(wrong_dependency)
+        expanded_contract = copy.deepcopy(child)
+        expanded_contract["tasks"]["TASK-0056"]["objective"] = "scope expanded"
+        variants.append(expanded_contract)
+        wrong_title = copy.deepcopy(child)
+        wrong_title["tasks"]["TASK-0057"]["title"] += " extra"
+        variants.append(wrong_title)
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.assertFalse(
+                    doctor.task0060_planning_repair_projection(parent, variant)
+                )
+
+        task0055_text = (
+            ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])
+        ).read_text(encoding="utf-8")
+        self.assertIn("依赖：永久替代 TASK-0054 的 standalone TASK-0060", task0055_text)
+        self.assertIn("TASK-0060 必须 ACCEPTED", task0055_text)
+        self.assertEqual(
+            canonical_json_sha256(child["tasks"]["TASK-0056"]),
+            tasks["TASK-0056"]["planningContractHash"],
         )
 
     def test_task0012_owner_amendment_replaces_exactly_two_clauses(self) -> None:
@@ -1971,7 +2039,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
         backlog, tasks, lifecycle, _ = self.load_inputs()
         active_tasks = copy.deepcopy(tasks)
-        active_tasks["TASK-0054"]["state"] = "IN_PROGRESS"
+        active_tasks["TASK-0060"]["state"] = "IN_PROGRESS"
         active_projection = derive_backlog_promotion_projection(
             backlog,
             active_tasks,
@@ -1983,7 +2051,7 @@ class BacklogTests(unittest.TestCase):
         )
 
         ordered_tasks = copy.deepcopy(tasks)
-        ordered_tasks["TASK-0054"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0060"]["state"] = "ACCEPTED"
         for task_id in ("TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
@@ -3683,7 +3751,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0054"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0060"]["state"] = "ACCEPTED"
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None

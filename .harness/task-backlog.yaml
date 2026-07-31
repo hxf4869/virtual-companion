@@ -775,10 +775,10 @@ tasks:
       requiresApprovedDecisionGates: true
       requiresFirstByExecutionOrder: true
   TASK-0055:
-    title: Idle planning checkpoint 核心父边校验
+    title: Idle planning checkpoint 核心父边校验永久后继
     taskCard: docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md
     dependencies:
-      - TASK-0054
+      - TASK-0060
     decisionGates: []
     objective: 承接被 TASK-0048 REJECTED 阻断的 TASK-0049，建立 idle planning checkpoint 的唯一 Git parent-edge 派生与失败关闭核心，不接入执行消费者。
     scope:
@@ -836,7 +836,7 @@ tasks:
       requiresApprovedDecisionGates: true
       requiresFirstByExecutionOrder: true
   TASK-0057:
-    title: Harness 阶段计时与跨文件系统性能引擎
+    title: Harness 阶段计时与跨文件系统性能引擎永久后继
     taskCard: docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md
     dependencies:
       - TASK-0056
@@ -867,7 +867,7 @@ tasks:
       requiresApprovedDecisionGates: true
       requiresFirstByExecutionOrder: true
   TASK-0058:
-    title: Harness 路径感知 CI 与包装器平台策略
+    title: Harness 路径感知 CI 与包装器平台策略永久后继
     taskCard: docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md
     dependencies:
       - TASK-0057
@@ -898,7 +898,7 @@ tasks:
       requiresApprovedDecisionGates: true
       requiresFirstByExecutionOrder: true
   TASK-0059:
-    title: Harness 内容寻址快照复用与 Evidence 门禁
+    title: Harness 内容寻址快照复用与 Evidence 门禁永久后继
     taskCard: docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md
     dependencies:
       - TASK-0058

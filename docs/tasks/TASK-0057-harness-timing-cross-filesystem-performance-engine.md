@@ -1,11 +1,11 @@
-# TASK-0057：Harness 阶段计时与跨文件系统性能引擎
+# TASK-0057：Harness 阶段计时与跨文件系统性能引擎永久后继
 
 ```yaml
 taskId: TASK-0057
 state: PLANNED
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
-planningContractHash: 2ec1dfab388fc02092d90ac4bff323db3e1e163855ca912b27e4fcca1d646ae0
+planningContractHash: 9a15881aec6ad58bf01b198b54a8fed8d053f6933b6dd8c18634265672e4cdb1
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
 

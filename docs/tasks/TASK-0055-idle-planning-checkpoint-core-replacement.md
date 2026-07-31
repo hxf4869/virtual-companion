@@ -1,11 +1,11 @@
-# TASK-0055：Idle planning checkpoint 核心父边校验
+# TASK-0055：Idle planning checkpoint 核心父边校验永久后继
 
 ```yaml
 taskId: TASK-0055
 state: PLANNED
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
-planningContractHash: 11bbbfda8c0015c63c8763e7a9c6f47dc24343a014e50a3f2b24a586c0e27abf
+planningContractHash: ce864415924b5536dfb080da615142c07471989465785d92d7b80a918ba7d23f
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
 
@@ -27,7 +27,7 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 
 ## 依赖与决策闸门
 
-- 依赖：standalone TASK-0054；
+- 依赖：永久替代 TASK-0054 的 standalone TASK-0060；
 - 无新增硬决策闸门。
 
 ## 验收
@@ -37,4 +37,4 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 
 ## 晋级规则
 
-TASK-0054 必须 ACCEPTED，仓库必须空闲，且本卡是执行顺序中首个可晋级任务。
+TASK-0060 必须 ACCEPTED，仓库必须空闲，且本卡是执行顺序中首个可晋级任务。

@@ -1,11 +1,11 @@
-# TASK-0058：Harness 路径感知 CI 与包装器平台策略
+# TASK-0058：Harness 路径感知 CI 与包装器平台策略永久后继
 
 ```yaml
 taskId: TASK-0058
 state: PLANNED
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
-planningContractHash: c51fbd3fcaf7d37e9adacac6e740696ac7a92de8d2e6d9dc865673c7db6d56ce
+planningContractHash: ee6f1ffc6f19985b4b961a73a42614727bbbf9a460b265972438619640b4a112
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
 
