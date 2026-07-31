@@ -1919,11 +1919,42 @@ class BacklogTests(unittest.TestCase):
         wrong_title = copy.deepcopy(child)
         wrong_title["tasks"]["TASK-0057"]["title"] += " extra"
         variants.append(wrong_title)
+        root_contract_rewrite = copy.deepcopy(child)
+        root_contract_rewrite["rules"]["idPolicy"] = "REUSABLE"
+        variants.append(root_contract_rewrite)
         for variant in variants:
             with self.subTest(variant=variant):
                 self.assertFalse(
                     doctor.task0060_planning_repair_projection(parent, variant)
                 )
+
+        corrupted = copy.deepcopy(child)
+        corrupted["rules"]["idPolicy"] = "REUSABLE"
+        corrupt_edge = Audit()
+        validate_backlog_history_edge(
+            corrupt_edge,
+            parent,
+            corrupted,
+            "parent..corrupted",
+            allow_task0060_repair=True,
+        )
+        self.assertIn(
+            "task-backlog: immutable root field rules was rewritten on edge "
+            "parent..corrupted",
+            corrupt_edge.errors,
+        )
+        restore_edge = Audit()
+        validate_backlog_history_edge(
+            restore_edge,
+            corrupted,
+            child,
+            "corrupted..restored",
+        )
+        self.assertIn(
+            "task-backlog: immutable root field rules was rewritten on edge "
+            "corrupted..restored",
+            restore_edge.errors,
+        )
 
         task0055_text = (
             ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])

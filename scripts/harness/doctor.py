@@ -220,6 +220,17 @@ BACKLOG_ROOT_FIELDS = {
     "resolutions",
     "tasks",
 }
+BACKLOG_IMMUTABLE_ROOT_FIELDS = {
+    "schemaVersion",
+    "backlogId",
+    "phase",
+    "bootstrapTask",
+    "planningContractHashAlgorithm",
+    "authority",
+    "rules",
+    "technicalAlphaBoundary",
+    "testPolicies",
+}
 BACKLOG_TASK_FIELDS = {
     "title",
     "taskCard",
@@ -3844,6 +3855,14 @@ def task0060_planning_repair_projection(
     parent: dict[str, Any],
     child: dict[str, Any],
 ) -> bool:
+    if set(parent) != set(child):
+        return False
+    if any(
+        child.get(field) != value
+        for field, value in parent.items()
+        if field != "tasks"
+    ):
+        return False
     parent_tasks = parent.get("tasks")
     child_tasks = child.get("tasks")
     if not isinstance(parent_tasks, dict) or not isinstance(child_tasks, dict):
@@ -3936,6 +3955,13 @@ def validate_backlog_history_edge(
     *,
     allow_task0060_repair: bool = False,
 ) -> None:
+    for field in sorted(BACKLOG_IMMUTABLE_ROOT_FIELDS):
+        audit.require(
+            child.get(field) == parent.get(field),
+            f"task-backlog: immutable root field {field} was rewritten on edge "
+            f"{edge_label}",
+        )
+
     parent_tasks = parent.get("tasks")
     child_tasks = child.get("tasks")
     audit.require(
