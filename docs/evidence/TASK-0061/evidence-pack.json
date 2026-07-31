@@ -1,0 +1,197 @@
+{
+  "taskId": "TASK-0061",
+  "baseCommit": "7fd8ede3047d67999a7821114f1febcb572553a2",
+  "headCommit": "b42140480aa47613800efe878ec5924d88dfbafe",
+  "contextFingerprint": "0a1943032e77318d90236d9f1071d786d47e123ab6929c3017240309e27de359",
+  "reviewers": [
+    {
+      "id": "task-0061-independent-reviewer-r1",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "PASS",
+      "reviewedCommit": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "evidencePath": "docs/evidence/TASK-0061/review-r1.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0061",
+      "status": "FAIL",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The only candidate canonical used the coordinator-approved durable-receipt mode. Wrapper PID 45460 and all children were later confirmed absent while receipt.json was absent. No stdout/stderr was read, no inner exit code is inferred, and the command was not rerun; result is FAIL/RESULT_UNRECOVERABLE.",
+      "environment": "Windows PowerShell durable receipt mode, local aiCoding Python 3.12.9",
+      "verifiedCommit": "b42140480aa47613800efe878ec5924d88dfbafe"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_activation_introduction_skips_immutable_root_comparison scripts.harness.tests.test_harness.BacklogTests.test_backlog_clean_real_parent_history_edge_passes scripts.harness.tests.test_harness.BacklogTests.test_backlog_real_parent_root_corruption_and_restore_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0061_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planned_cards_bind_backlog_without_dynamic_evidence",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The frozen eight-test matrix passed 8/8 on the exact candidate in 3.306 seconds.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "b42140480aa47613800efe878ec5924d88dfbafe"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The one frozen diff check passed on the exact candidate in 0.044 seconds.",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "b42140480aa47613800efe878ec5924d88dfbafe"
+    },
+    {
+      "command": "GitHub Actions exact-SHA ci for TASK-0061",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The candidate was not pushed and CI was not dispatched because the unique candidate canonical result was unrecoverable and therefore FAIL.",
+      "environment": "GitHub Actions not dispatched",
+      "verifiedCommit": "b42140480aa47613800efe878ec5924d88dfbafe"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0061 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "A no-side-effect exit-7 smoke of the replacement config-driven try/finally durable wrapper failed to create its atomic receipt. Per the coordinator contract, pre-closure was not launched and is recorded as NOT_RUN/INFRA_UNAVAILABLE.",
+      "environment": "Windows PowerShell durable receipt mode unavailable",
+      "verifiedCommit": "b42140480aa47613800efe878ec5924d88dfbafe"
+    }
+  ],
+  "artifacts": {
+    "draftDoctor": {
+      "status": "NOT_RUN",
+      "executions": 0,
+      "reason": "Base inherited the R2-proven activation false-positive; the DRAFT checkpoint records NOT_RUN/INHERITED_KNOWN_FAILURE and does not claim PASS."
+    },
+    "readyDoctor": {
+      "status": "NOT_RUN",
+      "executions": 0,
+      "reason": "Base inherited the same known activation failure; the READY checkpoint records NOT_RUN/INHERITED_KNOWN_FAILURE and does not claim PASS."
+    },
+    "reviewCandidate": {
+      "commit": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "tree": "95c46c593a51452df59cd4b269ce740f310b676b",
+      "candidateDeadlineMinutes": 35,
+      "candidateDeadlineStatus": "MET"
+    },
+    "shortMatrix": {
+      "commit": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "tree": "95c46c593a51452df59cd4b269ce740f310b676b",
+      "tests": {
+        "status": "PASS",
+        "count": 8,
+        "elapsedSeconds": 3.306,
+        "exitCode": 0
+      },
+      "diffCheck": {
+        "status": "PASS",
+        "elapsedSeconds": 0.044,
+        "exitCode": 0
+      }
+    },
+    "review": {
+      "r1Verdict": "PASS",
+      "r1ReviewedCommit": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "r1ReviewedTree": "95c46c593a51452df59cd4b269ce740f310b676b",
+      "r1P0": 0,
+      "r1P1": 0,
+      "r1P2": 0,
+      "r1P3": 0,
+      "repairBatchesUsed": 0,
+      "r2Status": "NOT_REQUIRED"
+    },
+    "planningRepair": {
+      "retainedHistoricalEdge": "TASK-0054 -> TASK-0060",
+      "replacementEdge": "TASK-0060 -> TASK-0061",
+      "successorDependency": "TASK-0055 -> TASK-0061",
+      "strictChain": [
+        "TASK-0055",
+        "TASK-0056",
+        "TASK-0057",
+        "TASK-0058",
+        "TASK-0059"
+      ],
+      "task0056BaseBlobUnchanged": true,
+      "fourPlanningHashesConsistent": true,
+      "permanentTitlesPreflight": "PASS",
+      "nextPromotableWhenAccepted": "TASK-0055"
+    },
+    "candidateIdentity": {
+      "headSha": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "indexTree": "95c46c593a51452df59cd4b269ce740f310b676b",
+      "worktreeClean": true,
+      "operatingSystem": "Microsoft Windows 10.0.26200",
+      "interpreter": "Python 3.12.9",
+      "git": "2.28.0.windows.1",
+      "requirementsSha256": "15a0b1ad3059f055847bf367d43a7d3c138b791d2bf67d8b6a53f982edda1dd3",
+      "externalServices": "NONE",
+      "dataState": "repository metadata and synthetic fixtures only"
+    },
+    "candidateCanonical": {
+      "status": "FAIL",
+      "reasonCode": "RESULT_UNRECOVERABLE",
+      "commit": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "tree": "95c46c593a51452df59cd4b269ce740f310b676b",
+      "durableDirectory": "SYSTEM_TEMP/TASK-0061-9d0179a31dcf/canonical",
+      "wrapperPid": 45460,
+      "processAndChildrenAbsent": true,
+      "receiptAbsent": true,
+      "stdoutRead": false,
+      "stderrRead": false,
+      "innerExitCode": null,
+      "rerun": false
+    },
+    "durableReceiptAdaptation": {
+      "execCommandPtyExposed": false,
+      "coordinatorAuthorizedEquivalentMode": true,
+      "canonicalReceiptRecovered": false,
+      "replacementWrapperSmoke": {
+        "command": "no-side-effect PowerShell stdout/stderr then exit 7",
+        "expectedInnerExitCode": 7,
+        "receiptRecovered": false,
+        "status": "FAIL"
+      },
+      "preClosure": "NOT_RUN/INFRA_UNAVAILABLE"
+    },
+    "exactShaCi": {
+      "status": "NOT_RUN",
+      "headSha": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "runId": null,
+      "jobs": {
+        "Backend": "NOT_RUN",
+        "Frontend": "NOT_RUN",
+        "Harness (ubuntu-latest)": "NOT_RUN",
+        "Harness (windows-latest)": "NOT_RUN",
+        "Harness (macos-latest)": "NOT_RUN"
+      }
+    },
+    "preClosure": {
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "reasonCode": "INFRA_UNAVAILABLE",
+      "executions": 0,
+      "wrapperSmokeFailed": true
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T10:57:03+08:00",
+      "implementationAndValidationStoppedAt": "2026-07-31T11:49:30+08:00",
+      "activeElapsedMinutes": 52.45,
+      "targetMinutes": 60,
+      "hardFuseMinutes": 90,
+      "hardFuseStatus": "NOT_TRIGGERED"
+    },
+    "closureOnlyOverrun": {
+      "used": false,
+      "durationMinutes": 0,
+      "rootCause": null,
+      "forbiddenActionsObserved": false
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so that commit and tree cannot self-reference their own hashes. The exact terminal commit/tree are captured after commit and push in the completion report."
+    }
+  }
+}

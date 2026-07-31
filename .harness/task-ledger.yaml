@@ -108,3 +108,9 @@ tasks:
     taskCard: docs/tasks/TASK-0060-permanent-adoption-retained-machine-delivery.md
     evidence: docs/evidence/TASK-0060/evidence-pack.json
     handoff: docs/handoffs/TASK-0060.json
+  TASK-0061:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0061-backlog-activation-history-permanent-replacement.md
+    evidence: docs/evidence/TASK-0061/evidence-pack.json
+    handoff: docs/handoffs/TASK-0061.json

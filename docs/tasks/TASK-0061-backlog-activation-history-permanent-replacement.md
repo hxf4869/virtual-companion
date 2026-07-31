@@ -2,7 +2,16 @@
 
 ```yaml
 taskId: TASK-0061
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  独立 R1 对候选 b421404 / Tree 95c46c5 给出 PASS，短矩阵 8/8 与
+  git diff --check 均通过；但唯一 candidate canonical 的 durable receipt
+  子进程 PID 45460 已退出且无子进程，receipt 始终未生成。按协调 watchdog
+  证据，该结果不可恢复，stdout/stderr 未读取且 canonical 未重跑，终态记为
+  FAIL/RESULT_UNRECOVERABLE。随后新的 config 驱动 try/finally wrapper 用
+  无副作用 exit-7 命令执行一次 receipt-smoke，仍未生成 receipt，因此唯一
+  pre-closure 按合同保持 NOT_RUN/INFRA_UNAVAILABLE，exact-SHA CI 未启动，
+  本卡真实 REJECTED，不伪造 canonical、CI 或 pre-closure PASS。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -131,7 +140,12 @@ humanApprovals:
       TASK-0061，并完成定向测试、独立 Reviewer、唯一 canonical、同 SHA 五项
       CI 与终态 Evidence/Handoff。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0061-independent-reviewer-r1
+    kind: independent-complete-matrix-review
+    verdict: PASS
+    reviewedCommit: b42140480aa47613800efe878ec5924d88dfbafe
+    evidencePath: docs/evidence/TASK-0061/review-r1.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0061
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_activation_introduction_skips_immutable_root_comparison scripts.harness.tests.test_harness.BacklogTests.test_backlog_clean_real_parent_history_edge_passes scripts.harness.tests.test_harness.BacklogTests.test_backlog_real_parent_root_corruption_and_restore_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0061_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planned_cards_bind_backlog_without_dynamic_evidence

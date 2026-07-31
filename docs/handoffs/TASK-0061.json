@@ -1,0 +1,37 @@
+{
+  "taskId": "TASK-0061",
+  "state": "REJECTED",
+  "baseCommit": "7fd8ede3047d67999a7821114f1febcb572553a2",
+  "headCommit": "b42140480aa47613800efe878ec5924d88dfbafe",
+  "evidencePath": "docs/evidence/TASK-0061/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0061-independent-reviewer-r1",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "PASS",
+      "reviewedCommit": "b42140480aa47613800efe878ec5924d88dfbafe",
+      "evidencePath": "docs/evidence/TASK-0061/review-r1.md"
+    }
+  ],
+  "completed": [
+    "Corrected immutable-root history comparison so only a real parent Backlog snapshot triggers the nine root-field comparisons; activation introduction retains every other history check.",
+    "Added exact activation, clean-history, real-parent corruption, next-edge restoration, TASK-0060 retention, and TASK-0061 replacement regression coverage.",
+    "Atomically reconnected TASK-0055 from REJECTED TASK-0060 to TASK-0061 with its planning hash and six-section projection while preserving the four permanent titles and strict TASK-0055 through TASK-0059 chain.",
+    "Froze candidate b42140480aa47613800efe878ec5924d88dfbafe / Tree 95c46c593a51452df59cd4b269ce740f310b676b; the exact eight-test matrix and diff check passed.",
+    "Independent fork_turns=none R1 returned PASS with P0/P1/P2/P3 all zero and no repair batch or R2."
+  ],
+  "remaining": [
+    "The unique candidate canonical result is unrecoverable: PID 45460 and its children are absent, receipt.json is absent, stdout/stderr were not read, and no inner exit code is inferred.",
+    "A replacement config-driven try/finally wrapper failed its one no-side-effect exit-7 receipt smoke, so pre-closure was not launched and is NOT_RUN/INFRA_UNAVAILABLE.",
+    "The candidate was not pushed independently and no exact-SHA Backend, Frontend, Ubuntu, Windows, or macOS CI was dispatched.",
+    "A new permanent standalone replacement task must recover a proven durable command receipt path, rerun its own canonical and CI, and independently adopt the retained activation fix before TASK-0055 can advance.",
+    "TASK-0055 depends on REJECTED TASK-0061 and must not be promoted; TASK-0013 remains held despite being the parsed independent Backlog candidate."
+  ],
+  "knownRisks": [
+    "The retained implementation passed its short matrix and independent static R1, but it has no recoverable candidate canonical, pre-closure, or exact-SHA CI result and therefore is not ACCEPTED.",
+    "The original canonical stdout/stderr in system TEMP are intentionally unread because no atomic receipt exists; they cannot be used to infer PASS or an exit code.",
+    "The durable wrapper transport remains unavailable after one isolated exit-7 smoke failure; future work must fix the receipt mechanism before launching an expensive command.",
+    "No second canonical, pre-closure, CI, product module, provider, credential, database, identity, Beta, or external model work was performed."
+  ],
+  "nextAction": "创建 TASK-0061 的永久替代任务；TASK-0055 依赖已 REJECTED 的 TASK-0061 不得晋级，TASK-0013 虽为 Backlog 解析候选也暂不得晋级"
+}
