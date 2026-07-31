@@ -2,7 +2,15 @@
 
 ```yaml
 taskId: TASK-0063
-state: IN_PROGRESS
+state: REJECTED
+resolutionReason: >-
+  Owner 以 GitHub 账单截图确认本周期 Actions 2,000/2,000 分钟已耗尽，
+  付费预算为 0 美元且 Stop usage 已启用，额度到 2026-08-01 才重置；
+  exact-SHA 五平台 CI 不可能在本卡 90 分钟硬熔断内闭环。依据冻结停止条件，
+  本卡在 25.78 分钟立即停止实现，未运行 targeted、candidate、Reviewer、
+  canonical 或 CI。保留快照 e6b087740c9b524419979ad0136fc0b33f325f96
+  仅含未验证的 TASK-0062 精确历史隔离半成品，不是候选或 PASS；TASK-0012
+  真实 bootstrap、TASK-0055 原子重接和全部负例仍未实现，故按事实 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:

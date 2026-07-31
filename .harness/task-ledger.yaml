@@ -120,3 +120,9 @@ tasks:
     taskCard: docs/tasks/TASK-0062-durable-command-permanent-replacement.md
     evidence: docs/evidence/TASK-0062/evidence-pack.json
     handoff: docs/handoffs/TASK-0062.json
+  TASK-0063:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0063-authorization-history-greenline-recovery.md
+    evidence: docs/evidence/TASK-0063/evidence-pack.json
+    handoff: docs/handoffs/TASK-0063.json

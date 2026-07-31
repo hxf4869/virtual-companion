@@ -1,0 +1,28 @@
+{
+  "taskId": "TASK-0063",
+  "state": "REJECTED",
+  "baseCommit": "a328a02c72e5cfb7bc784e7a083caaaf8cffe08c",
+  "headCommit": "e6b087740c9b524419979ad0136fc0b33f325f96",
+  "evidencePath": "docs/evidence/TASK-0063/evidence-pack.json",
+  "reviewers": [],
+  "completed": [
+    "Fetched and verified the exact clean Base, read the registered governance sources, and froze a complete TASK-0063 DRAFT and Context Lock before READY.",
+    "Verified the registered durable helper in system TEMP with PowerShell 7.6.3, space-bearing executable/argv/cwd, dual 2,049-line streams, real exit 7, and atomic receipt publication.",
+    "Completed DRAFT, READY authorization, authorization binding, and IN_PROGRESS lifecycle commits without changing the READY-frozen authorization projection.",
+    "Retained a clearly marked incomplete, unverified, non-candidate snapshot e6b087740c9b524419979ad0136fc0b33f325f96 containing only the partial TASK-0062 exact rejected-projection isolation.",
+    "Recorded Owner-supplied billing evidence that GitHub Actions 2,000/2,000 included minutes were exhausted with USD 0 paid budget, Stop usage enabled, and reset only on 2026-08-01.",
+    "Ran the sole durable REJECTED pre-closure once: real exit 1 after 787.840 seconds and 190,505 checks, with the unimplemented bootstrap error plus the expected missing-reviewer errors; it was not rerun."
+  ],
+  "remaining": [
+    "No frozen targeted matrix, git diff check, candidate, independent R1/R2, candidate canonical, or exact-SHA CI was run; no PASS is claimed.",
+    "The real TASK-0012 missing-field authorizationAmendments bootstrap and its corrupt/restore negatives remain unimplemented.",
+    "TASK-0055 was not rewired and still depends on REJECTED TASK-0062; TASK-0055 through TASK-0059 and TASK-0013 must not be promoted.",
+    "After Actions capability is restored, create a fresh permanent replacement rather than modifying or reusing TASK-0063 history."
+  ],
+  "knownRisks": [
+    "The retained doctor.py snapshot is incomplete and unvalidated; it must not be adopted as a candidate or PASS without a new authorized task and full tests.",
+    "The external quota prevents the five-platform exact-SHA gate from running inside this task's 90-minute fuse.",
+    "This C4 task was ordered to stop before independent review; the single REJECTED pre-closure therefore reported the machine policy's missing-reviewer failures and the retained bootstrap Base failure."
+  ],
+  "nextAction": "等待 Actions 额度恢复并先固化 CI 费用/触发治理，再创建 TASK-0063 的全新永久替代；TASK-0055 或 TASK-0013 不得晋级"
+}

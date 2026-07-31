@@ -1,0 +1,203 @@
+{
+  "taskId": "TASK-0063",
+  "baseCommit": "a328a02c72e5cfb7bc784e7a083caaaf8cffe08c",
+  "headCommit": "e6b087740c9b524419979ad0136fc0b33f325f96",
+  "contextFingerprint": "b32f01cb9e04a2985398190422b5302f4eef2bbcc7f3ef653e3dc137b44e3dbb",
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0063",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "QUOTA_EXHAUSTED stop condition fired before candidate canonical: Owner-supplied billing evidence shows GitHub Actions 2,000/2,000 included minutes consumed, USD 0 paid budget with Stop usage, and reset only on 2026-08-01. This is not PASS.",
+      "environment": "Windows PowerShell 7; canonical was not launched",
+      "verifiedCommit": "e6b087740c9b524419979ad0136fc0b33f325f96"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.DurableCommandTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_real_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_activation_introduction_skips_immutable_root_comparison scripts.harness.tests.test_harness.BacklogTests.test_backlog_clean_real_parent_history_edge_passes scripts.harness.tests.test_harness.BacklogTests.test_backlog_real_parent_root_corruption_and_restore_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0061_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0062_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0063_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planned_cards_bind_backlog_without_dynamic_evidence scripts.harness.tests.test_harness.ValidationFlowTests.test_agent_rules_define_snapshot_reuse_and_low_frequency_polling scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner ordered an immediate stop when the frozen exact-SHA CI stop condition became certain. No targeted execution was launched and no result is represented as PASS.",
+      "environment": "Windows PowerShell 7; targeted matrix was not launched",
+      "verifiedCommit": "e6b087740c9b524419979ad0136fc0b33f325f96"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The task stopped before candidate verification. No diff-check result is claimed.",
+      "environment": "Git 2.28.0.windows.1; command was not launched",
+      "verifiedCommit": "e6b087740c9b524419979ad0136fc0b33f325f96"
+    },
+    {
+      "command": "GitHub Actions exact-SHA ci for TASK-0063",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "QUOTA_EXHAUSTED: Owner-supplied GitHub billing screenshot shows 2,000/2,000 Actions minutes consumed, USD 0 paid budget, Stop usage enabled, and reset on 2026-08-01. No workflow was dispatched or retried; NOT_RUN is not PASS.",
+      "environment": "GitHub Actions; dispatch deliberately not attempted",
+      "verifiedCommit": "e6b087740c9b524419979ad0136fc0b33f325f96"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0063 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "07977038ed1d35db620358d8cdcee93b7463f94ecb97a423e95433a091d636bc",
+      "reason": "The sole durable REJECTED pre-closure completed once with real inner exit 1 after 787.840 seconds and 190,505 checks. It reported the still-unimplemented real authorizationAmendments bootstrap edge and the expected missing structured independent reviewer errors caused by the Owner-ordered stop before review. It was not rerun.",
+      "environment": "Windows PowerShell 7 durable atomic receipt; Python 3.12.9",
+      "verifiedCommit": "e6b087740c9b524419979ad0136fc0b33f325f96"
+    }
+  ],
+  "artifacts": {
+    "baseline": {
+      "headCommit": "a328a02c72e5cfb7bc784e7a083caaaf8cffe08c",
+      "tree": "5f3be68be769945b9485e29545f740d7dc0f6054",
+      "originMain": "a328a02c72e5cfb7bc784e7a083caaaf8cffe08c",
+      "ahead": 0,
+      "behind": 0,
+      "worktreeClean": true
+    },
+    "transportPreflight": {
+      "status": "PASS",
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "powershellVersion": "7.6.3",
+      "innerExitCode": 7,
+      "stdoutLineCount": 2049,
+      "stderrLineCount": 2049,
+      "spaceExecutableArgumentAndWorkingDirectory": true,
+      "receiptAbsentAtLaunchReturn": true,
+      "receiptTemporaryAbsentAfterPublish": true,
+      "stdoutSha256": "91b1dd75453763d8d7b3e37ba57aaf19edbbfa136e4ce8e5d0ceda5adecb97a2",
+      "stderrSha256": "28b7ff9198f281d31fa83829f90133575a7bf166d529962f712043929238237e",
+      "candidatePassAlias": false
+    },
+    "lifecycle": {
+      "draftCommit": "0f1ff2af7f1baffa29fe0fd172bd2d2172d8ea25",
+      "readyAuthorizationCommit": "52ee83bd609a3817b6a0dc098abe3b39328f6bd7",
+      "authorizationBindingCommit": "9120a8db6966765dd56640946b8c459d7334fd33",
+      "inProgressCommit": "9338f7b2d42c83b16149a806e5e1a60d08488c30",
+      "readyElapsedMinutes": 17.62,
+      "frozenAuthorizationProjectionSha256": "36f689d66e447b0b724ad7a87d9e9395937844447e355590cc6c86cda8c04c89"
+    },
+    "externalStop": {
+      "status": "QUOTA_EXHAUSTED",
+      "evidenceKind": "OWNER_SUPPLIED_GITHUB_BILLING_SCREENSHOT",
+      "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+      "recordedAt": "2026-07-31T13:28:49.8419448+08:00",
+      "includedMinutesUsed": 2000,
+      "includedMinutesLimit": 2000,
+      "paidBudgetUsd": 0,
+      "stopUsageEnabled": true,
+      "resetDate": "2026-08-01",
+      "recoverableWithinHardFuse": false,
+      "apiDispatchAttempted": false,
+      "workflowRunId": null
+    },
+    "retainedImplementationSnapshot": {
+      "status": "INCOMPLETE_UNVERIFIED_NOT_CANDIDATE",
+      "commit": "e6b087740c9b524419979ad0136fc0b33f325f96",
+      "tree": "709bfb3ced41d67974fb1fb7ffb852c66003651b",
+      "changedPaths": [
+        "scripts/harness/doctor.py"
+      ],
+      "completed": [
+        "Added exact constants and a fail-closed binding helper for the known TASK-0062 rejected authorization projection.",
+        "Connected the narrow TASK-0062 isolation predicate to current and per-commit authorization projection validation."
+      ],
+      "notCompleted": [
+        "The real missing-field authorizationAmendments bootstrap edge.",
+        "TASK-0055 atomic dependency rewire from TASK-0062 to TASK-0063.",
+        "Required positive and fail-closed negative tests."
+      ],
+      "validation": "NOT_RUN"
+    },
+    "targeted": {
+      "status": "NOT_RUN",
+      "executions": 0,
+      "reasonCode": "QUOTA_EXHAUSTED_STOP"
+    },
+    "candidate": {
+      "status": "NOT_CREATED",
+      "commit": null,
+      "tree": null
+    },
+    "review": {
+      "r1Status": "NOT_RUN",
+      "r2Status": "NOT_RUN",
+      "reviewRoundsUsed": 0,
+      "fixBatchesUsed": 0
+    },
+    "candidateCanonical": {
+      "status": "NOT_RUN",
+      "executions": 0,
+      "reasonCode": "NO_CANDIDATE_QUOTA_EXHAUSTED"
+    },
+    "exactShaCi": {
+      "status": "NOT_RUN",
+      "reasonCode": "QUOTA_EXHAUSTED",
+      "headSha": null,
+      "runId": null,
+      "dispatchAttempts": 0,
+      "jobs": {
+        "Backend": "NOT_RUN",
+        "Frontend": "NOT_RUN",
+        "Harness (ubuntu-latest)": "NOT_RUN",
+        "Harness (windows-latest)": "NOT_RUN",
+        "Harness (macos-latest)": "NOT_RUN"
+      }
+    },
+    "preClosure": {
+      "status": "FAIL",
+      "executions": 1,
+      "exitCode": 1,
+      "startedAt": "2026-07-31T13:30:36.9803938+08:00",
+      "completedAt": "2026-07-31T13:43:44.8201460+08:00",
+      "elapsedSeconds": 787.840,
+      "checks": 190505,
+      "errors": 4,
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrBytes": 1167,
+      "stderrSha256": "5fe1dcae06efbeaac44c30722fde1ed6ddbc28d77b757fc943096269cf01f01c",
+      "receiptBytes": 940,
+      "receiptSha256": "07977038ed1d35db620358d8cdcee93b7463f94ecb97a423e95433a091d636bc",
+      "configBytes": 600,
+      "configSha256": "88ce8eff49a58178c5234b4e84ef247839e38e065fc891d1fd6a9605a724ba36",
+      "receiptTemporaryAbsent": true,
+      "rerun": false,
+      "errorsObserved": [
+        "The real TASK-0012 authorizationAmendments bootstrap parent edge remains rejected as an immutable authority rewrite.",
+        "TASK-0063 terminal C4 state lacks structured independent reviewers because Owner ordered stop before Reviewer.",
+        "TASK-0063 terminal high-risk evidence lacks reviewers because Owner ordered stop before Reviewer.",
+        "The terminal C4 structured-reviewer requirement is reported again by selected-task diff-scope validation."
+      ]
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T13:03:02.8460000+08:00",
+      "implementationStoppedAt": "2026-07-31T13:28:49.8419448+08:00",
+      "implementationElapsedMinutes": 25.78,
+      "preClosureCompletedAt": "2026-07-31T13:43:44.8201460+08:00",
+      "preClosureCompletedElapsedMinutes": 40.70,
+      "closureSnapshotAt": "2026-07-31T13:44:39.1548366+08:00",
+      "totalElapsedMinutesAtClosureSnapshot": 41.61,
+      "targetWallOverrunMinutesAtClosureSnapshot": 0,
+      "targetMinutes": 60,
+      "hardFuseMinutes": 90,
+      "hardFuseStatus": "NOT_TRIGGERED"
+    },
+    "closureOnlyOverrun": {
+      "used": false,
+      "durationMinutes": 0,
+      "rootCause": "The external quota stop was identified and closure completed before both the 60-minute target and 90-minute hard fuse.",
+      "forbiddenActionsObserved": false
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so it cannot self-reference that commit or tree."
+    }
+  }
+}

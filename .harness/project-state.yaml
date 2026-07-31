@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0063
-activeTaskCard: docs/tasks/TASK-0063-authorization-history-greenline-recovery.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0062
-lastTerminalHandoff: docs/handoffs/TASK-0062.json
-nextAction: 执行 TASK-0063 授权历史绿线恢复；不得晋级 TASK-0055 或 TASK-0013
+lastTerminalTask: TASK-0063
+lastTerminalHandoff: docs/handoffs/TASK-0063.json
+nextAction: 等待 Actions 额度恢复并先固化 CI 费用/触发治理，再创建 TASK-0063 的全新永久替代；TASK-0055 或 TASK-0013 不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED
