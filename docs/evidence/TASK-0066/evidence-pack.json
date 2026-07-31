@@ -1,0 +1,264 @@
+{
+  "taskId": "TASK-0066",
+  "baseCommit": "9bdf716a85c874bbf8df9e72fb9533b524682365",
+  "headCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+  "contextFingerprint": "cdd1931fbcde572690ab1a927eb5f0b9eef66dc8ecbbcc0239459bb3e28e527d",
+  "reviewers": [
+    {
+      "id": "task-0066-independent-reviewer-r1",
+      "kind": "independent-static-directional-review",
+      "verdict": "PASS",
+      "reviewedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+      "evidencePath": "docs/evidence/TASK-0066/review-r1.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.CiExecutionPolicyTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_real_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0063_terminal_missing_reviewer_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0064_replacement_authority_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0066_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The final candidate-bound targeted matrix passed all 16 tests in 41.153 seconds. An earlier non-final run exposed and caused correction of the stale TASK-0055 delivery-policy dependency; only this final result covers the Evidence headCommit contents.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; Temurin JAVA_HOME G:\\ai\\hxf\\.tools\\temurin-25.0.4+7\\jdk-25.0.4+7; cwd G:\\ai\\hxf\\virtual-companion",
+      "verifiedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The final candidate input delta produced no whitespace errors in 0.065 seconds and no persistent output artifact.",
+      "environment": "Windows-NT-10.0.26200; Git 2.28.0.windows.1; cwd G:\\ai\\hxf\\virtual-companion",
+      "verifiedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0066",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "5e27c275fccf933ec8c886a7c5a20c659e2168efa642e2750f5a07066f827373",
+      "reason": "The sole Windows exact-candidate execution completed in about 35m17s with real inner exit 0: 163 tests passed with one skip, Doctor passed 215,963 checks, and all six profile commands passed.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; PowerShell 7.6.3 durable atomic receipt; Git 2.28.0.windows.1; PyYAML 6.0.3; tzdata 2026.3; Asia/Shanghai; cwd G:\\ai\\hxf\\virtual-companion",
+      "verifiedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0066",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "1b82e6d6ee7092ea52809bc917c629dbc5c44ea856a36d7e71186474b5ae9da9",
+      "reason": "The sole WSL Ubuntu exact-candidate execution completed in 602.185 seconds with real inner exit 1. DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection and IntegrationTests.test_doctor_accepts_current_task failed because .gitattributes exports *.ps1 as CRLF: scripts/harness/durable_command.ps1 changed from the 8,819-byte LF blob with expected SHA-256 fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180 to a 9,055-byte archive entry with 236 CRLF pairs and actual SHA-256 85e5697d0aa546f55c1bfe7cdbf8af1b56317098a150c8d13d63df9f045a6027. It was not fixed or rerun.",
+      "environment": "Ubuntu-24.04 / Linux 6.6.87.2-microsoft-standard-WSL2 x86_64; Python 3.12.3; Bash 5.2.21(1)-release; Git 2.43.0; PyYAML 6.0.1; C.UTF-8; Asia/Shanghai; isolated /tmp git archive candidate",
+      "verifiedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0066",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_QUOTA: OWNER_SUPPLIED_QUOTA_EXHAUSTED records 2,000/2,000 included minutes used, USD 0 paid budget, Stop usage enabled, reset date 2026-08-01, and dispatch=0. No workflow dispatch or probe occurred; this is not PASS.",
+      "environment": "GitHub Actions; deliberately not dispatched",
+      "verifiedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "channel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+    "candidateTree": "28c95c0337cf35e36c930b30fd61636e31a6f61e",
+    "cleanSnapshot": {
+      "candidateCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+      "candidateTree": "28c95c0337cf35e36c930b30fd61636e31a6f61e",
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "results": [
+      {
+        "platform": "windows",
+        "status": "PASS",
+        "taskId": "TASK-0066",
+        "candidateCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+        "candidateTree": "28c95c0337cf35e36c930b30fd61636e31a6f61e",
+        "cleanWorktree": true,
+        "cleanIndex": true,
+        "argv": [
+          "python",
+          "scripts/harness/precheck.py",
+          "--profile",
+          "harnessPortabilityLocal",
+          "--task",
+          "TASK-0066"
+        ],
+        "cwd": "G:\\ai\\hxf\\virtual-companion",
+        "operatingSystem": "Windows-NT-10.0.26200",
+        "interpreter": "Python 3.12.9",
+        "toolchain": {
+          "powershell": "7.6.3",
+          "git": "2.28.0.windows.1"
+        },
+        "dependencies": {
+          "PyYAML": "6.0.3",
+          "tzdata": "2026.3"
+        },
+        "environment": {
+          "timezone": "Asia/Shanghai",
+          "transport": "DURABLE_ATOMIC_RECEIPT"
+        },
+        "stdoutSha256": "ad439b6212d86f2071ff3ed0d629df95dab9e8aa5e6cc9de253ec7f07e6e2463",
+        "stderrSha256": "2f979faa84b11c81585be865eabaecbec9ed6d560870cbd98ef99b93221e0914",
+        "receiptSha256": "5e27c275fccf933ec8c886a7c5a20c659e2168efa642e2750f5a07066f827373",
+        "exitCode": 0,
+        "startedAt": "2026-07-31T16:24:28+08:00",
+        "completedAt": "2026-07-31T16:59:45+08:00",
+        "elapsedSeconds": 2117,
+        "executions": 1,
+        "rerun": false
+      },
+      {
+        "platform": "wslUbuntu",
+        "status": "FAIL",
+        "taskId": "TASK-0066",
+        "candidateCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+        "candidateTree": "28c95c0337cf35e36c930b30fd61636e31a6f61e",
+        "cleanWorktree": true,
+        "cleanIndex": true,
+        "argv": [
+          "bash",
+          "scripts/harness/precheck.sh",
+          "--profile",
+          "harnessPortabilityLocal",
+          "--task",
+          "TASK-0066"
+        ],
+        "cwd": "/tmp/task0066-wsl-7sCoHOho/repo",
+        "operatingSystem": "Ubuntu-24.04 / Linux 6.6.87.2-microsoft-standard-WSL2 x86_64",
+        "interpreter": "Python 3.12.3",
+        "toolchain": {
+          "bash": "5.2.21(1)-release",
+          "git": "2.43.0"
+        },
+        "dependencies": {
+          "PyYAML": "6.0.1",
+          "timezoneData": "SYSTEM:/usr/share/zoneinfo/Asia/Shanghai"
+        },
+        "environment": {
+          "timezone": "Asia/Shanghai",
+          "locale": "C.UTF-8",
+          "isolation": "GIT_ARCHIVE_EXACT_CANDIDATE_TO_WSL_MKTEMP"
+        },
+        "stdoutSha256": "f5635eb8be28721af2a83d26c77363495abca27820a0d9eeb3188dfb13b3431e",
+        "stderrSha256": "d2c772c9a2f08f67afb15020419db6c46589364bc11333a2c056855a6de0cef4",
+        "receiptSha256": "1b82e6d6ee7092ea52809bc917c629dbc5c44ea856a36d7e71186474b5ae9da9",
+        "exitCode": 1,
+        "startedAt": "2026-07-31T17:04:48.259897738+08:00",
+        "completedAt": "2026-07-31T17:14:50.444725097+08:00",
+        "elapsedSeconds": 602.185,
+        "executions": 1,
+        "rerun": false
+      }
+    ],
+    "notCovered": [],
+    "deferred": [
+      {
+        "platform": "macos",
+        "status": "DEFERRED_NOT_CLAIMED",
+        "residualRisk": "No controlled macOS behavior, filesystem semantics, shell behavior, or toolchain compatibility was observed; no macOS PASS is claimed.",
+        "followUpCondition": "Run the same READY-frozen exact-tree profile on a controlled macOS host when one becomes available."
+      }
+    ],
+    "remote": {
+      "platform": "githubActions",
+      "status": "NOT_RUN_QUOTA",
+      "reasonType": "OWNER_SUPPLIED_QUOTA_EXHAUSTED",
+      "includedMinutes": 2000,
+      "usedMinutes": 2000,
+      "paidBudgetUsd": 0,
+      "stopUsageEnabled": true,
+      "resetDate": "2026-08-01",
+      "dispatchCount": 0
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "implementationCandidateCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+      "implementationCandidateTree": "28c95c0337cf35e36c930b30fd61636e31a6f61e",
+      "implementationPathsChangedAfterCandidate": [],
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "commit": "9bdf716a85c874bbf8df9e72fb9533b524682365",
+      "tree": "57718eefe312c5048e8a334f96bbd22506b4315d",
+      "originMain": "9bdf716a85c874bbf8df9e72fb9533b524682365",
+      "ahead": 0,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "lifecycle": {
+      "draftCommit": "df686d88c082dbc79dfd46c6b3504f98ef78b6dd",
+      "readyAuthorizationCommit": "d8bb788a3fa62bf5d4b2aea0c7d86e3fb6687ead",
+      "authorizationBindingCommit": "5f517110dcc5e29b62d94b93d4ba699a06304a1b",
+      "inProgressCommit": "9bff0007714c2d134003806b0d4cddc2f8bfe9c8",
+      "inReviewCandidateCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d"
+    },
+    "transportPreflight": {
+      "status": "PASS",
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "innerExitCode": 7,
+      "receiptSha256": "47d4022ddcd2d1db5e6ba56baf022cb2e87286b4b51f50c733b0ef7dac8d4122",
+      "candidatePassAlias": false
+    },
+    "recoveryInput": {
+      "retainedImplementationCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+      "retainedImplementationTree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+      "windowsFailureReceiptSha256": "e1864721b9c9b0e740af78ff89f23288d59c3551084735118a358c537fddcf9f",
+      "windowsFailureStdoutSha256": "97262dedd0430e2eb20d3f463321a93e8242b5024457a68a3042246a222e2b6d",
+      "windowsFailureStderrSha256": "7b7f2998a285c97531c75b21479ed588c672ffc2b760802ef105b8ce44de70b0"
+    },
+    "review": {
+      "status": "PASS",
+      "p0": 0,
+      "p1": 0,
+      "p2": 0,
+      "p3": 0,
+      "reviewedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+      "roundsUsed": 1
+    },
+    "stopCondition": {
+      "status": "FIRED",
+      "reasonCode": "WSL_REQUIRED_LOCAL_VALIDATION_FAILED",
+      "implementationStopped": true,
+      "reviewStopped": true,
+      "furtherCandidateValidationStopped": true
+    },
+    "archiveLineEndingEvidence": {
+      "attributesRule": "*.ps1 text eol=crlf",
+      "candidateBlob": {
+        "bytes": 8819,
+        "lf": 236,
+        "crlf": 0,
+        "sha256": "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180"
+      },
+      "gitArchiveEntry": {
+        "bytes": 9055,
+        "lf": 236,
+        "crlf": 236,
+        "sha256": "85e5697d0aa546f55c1bfe7cdbf8af1b56317098a150c8d13d63df9f045a6027"
+      }
+    },
+    "numberingAndBacklog": {
+      "idPolicy": "PERMANENT_NEVER_REUSE",
+      "task0065": "Reserved for GitHub explicit dispatch and quota-scheduling governance",
+      "nextPermanentReplacementId": "TASK-0067",
+      "task0055State": "PLANNED",
+      "task0055Dependencies": [
+        "TASK-0066"
+      ],
+      "task0055Promotion": "BLOCKED_BY_REJECTED_DEPENDENCY",
+      "task0013Promotion": "HELD"
+    }
+  }
+}

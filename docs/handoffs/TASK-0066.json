@@ -1,0 +1,91 @@
+{
+  "taskId": "TASK-0066",
+  "state": "REJECTED",
+  "baseCommit": "9bdf716a85c874bbf8df9e72fb9533b524682365",
+  "headCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+  "evidencePath": "docs/evidence/TASK-0066/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0066-independent-reviewer-r1",
+      "kind": "independent-static-directional-review",
+      "verdict": "PASS",
+      "reviewedCommit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+      "evidencePath": "docs/evidence/TASK-0066/review-r1.md"
+    }
+  ],
+  "completed": [
+    "Forward-repaired the exact TASK-0064 historical repair authority and isolated the fixed TASK-0063 REJECTED missing-reviewer terminal without rewriting either task.",
+    "Atomically rewired TASK-0055 from TASK-0064 to TASK-0066, recomputed its six-section planningContractHash, and preserved the TASK-0055 through TASK-0059 chain.",
+    "The final targeted matrix passed 16 tests, git diff --check passed, and independent R1 found no P0/P1/P2/P3 on candidate 46ba60fda712ec88a1a6156682a3e63fa787348d.",
+    "The sole Windows exact-candidate HARNESS_PORTABILITY_LOCAL execution passed 163 tests with one skip, Doctor 215,963 checks, and all six profile commands.",
+    "The sole WSL exact-candidate execution completed with real inner exit 1; its complete receipt and output hashes are preserved without rerun.",
+    "macOS is DEFERRED_NOT_CLAIMED and GitHub Actions is NOT_RUN_QUOTA with dispatch=0."
+  ],
+  "remaining": [
+    "WSL is FAIL, not PASS: .gitattributes exports scripts/harness/durable_command.ps1 with CRLF in git archive, so its actual SHA-256 85e5697d0aa546f55c1bfe7cdbf8af1b56317098a150c8d13d63df9f045a6027 does not match the frozen expected SHA-256 fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180.",
+    "TASK-0055 remains PLANNED and fail-closed because its sole dependency TASK-0066 is REJECTED; TASK-0013 must not be promoted.",
+    "Create fresh permanent replacement TASK-0067 without reopening or rewriting TASK-0066; TASK-0065 remains reserved for remote dispatch/quota scheduling governance."
+  ],
+  "knownRisks": [
+    "The retained implementation candidate passed Windows and static review but did not establish cross-platform local fallback portability.",
+    "No macOS runtime behavior was observed, and no macOS PASS is claimed.",
+    "GitHub Actions was not dispatched; NOT_RUN_QUOTA is not CI PASS.",
+    "The terminal metadata-only commit must contain [skip ci] and does not validate or repair the failed WSL candidate."
+  ],
+  "recoveryInput": {
+    "replacementTaskId": "TASK-0067",
+    "retainedCandidate": {
+      "commit": "46ba60fda712ec88a1a6156682a3e63fa787348d",
+      "tree": "28c95c0337cf35e36c930b30fd61636e31a6f61e",
+      "windowsStatus": "PASS",
+      "wslStatus": "FAIL"
+    },
+    "failedTests": [
+      "scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection",
+      "scripts.harness.tests.test_harness.IntegrationTests.test_doctor_accepts_current_task"
+    ],
+    "failureMessage": "task-delivery-policy: durable command helper canonical content hash drifted",
+    "hashBoundary": {
+      "path": "scripts/harness/durable_command.ps1",
+      "expectedSha256": "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180",
+      "actualGitArchiveSha256": "85e5697d0aa546f55c1bfe7cdbf8af1b56317098a150c8d13d63df9f045a6027",
+      "candidateBlob": {
+        "bytes": 8819,
+        "lf": 236,
+        "crlf": 0
+      },
+      "gitArchiveEntry": {
+        "bytes": 9055,
+        "lf": 236,
+        "crlf": 236
+      },
+      "causeEvidence": ".gitattributes declares *.ps1 text eol=crlf; git archive applies that export conversion although the candidate Blob and current Windows working tree are LF-only. The Doctor constant therefore binds one byte representation while the WSL archive validates another."
+    },
+    "governedPaths": [
+      ".gitattributes",
+      ".harness/sources-of-truth.yaml#durableCommandRunner",
+      ".harness/invariants.yaml#INV-HARNESS-008",
+      ".harness/invariants.yaml#INV-HARNESS-009",
+      ".harness/commands.yaml#durableCommand",
+      ".harness/task-delivery-policy.yaml#validationStrategy.durableAtomicReceipt",
+      "scripts/harness/doctor.py#DURABLE_COMMAND_CANONICAL_HASH",
+      "scripts/harness/doctor.py#validate_task_delivery_policy",
+      "scripts/harness/tests/test_harness.py#DeliveryPolicyTests",
+      "skills/task-delivery-flow/SKILL.md#Preserve-validation-and-review-integrity"
+    ],
+    "receiptHashes": {
+      "task0064WindowsFailure": "e1864721b9c9b0e740af78ff89f23288d59c3551084735118a358c537fddcf9f",
+      "task0066WindowsPass": "5e27c275fccf933ec8c886a7c5a20c659e2168efa642e2750f5a07066f827373",
+      "task0066WslFailure": "1b82e6d6ee7092ea52809bc917c629dbc5c44ea856a36d7e71186474b5ae9da9"
+    },
+    "minimumValidationMatrix": [
+      "Add direct positive and corruption negatives proving the chosen canonical byte domain is identical for the Git Blob, Windows checkout, and git-archive extraction without weakening the hash gate.",
+      "Run DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection and IntegrationTests.test_doctor_accepts_current_task on the frozen Windows candidate.",
+      "After independent review, run one Windows HARNESS_PORTABILITY_LOCAL exact-candidate canonical.",
+      "Only after Windows PASS, run one WSL Ubuntu git-archive exact-candidate HARNESS_PORTABILITY_LOCAL canonical and require both previously failing tests plus Doctor to PASS.",
+      "Keep macOS DEFERRED_NOT_CLAIMED and GitHub Actions NOT_RUN_QUOTA with dispatch=0; do not reuse TASK-0066 results across Commit or Tree."
+    ],
+    "authorizationBoundary": "TASK-0067 needs fresh exact-Base Owner authorization. Do not reopen TASK-0066, reuse its one-time recovery authority, modify TASK-0065, or promote TASK-0055/TASK-0013."
+  },
+  "nextAction": "TASK-0066 因 WSL exact-candidate canonical 真实失败而 REJECTED；下一永久恢复编号为 TASK-0067，TASK-0065 保留远端调度治理，TASK-0055 或 TASK-0013 不得晋级"
+}

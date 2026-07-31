@@ -132,3 +132,9 @@ tasks:
     taskCard: docs/tasks/TASK-0064-local-exact-tree-validation-fallback.md
     evidence: docs/evidence/TASK-0064/evidence-pack.json
     handoff: docs/handoffs/TASK-0064.json
+  TASK-0066:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0066-local-fallback-recovery-permanent-replacement.md
+    evidence: docs/evidence/TASK-0066/evidence-pack.json
+    handoff: docs/handoffs/TASK-0066.json

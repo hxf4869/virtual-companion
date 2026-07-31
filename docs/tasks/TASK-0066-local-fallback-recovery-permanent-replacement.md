@@ -2,7 +2,24 @@
 
 ```yaml
 taskId: TASK-0066
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  独立 R1 对候选 46ba60fda712ec88a1a6156682a3e63fa787348d
+  （Tree 28c95c0337cf35e36c930b30fd61636e31a6f61e）给出 PASS，
+  最终 targeted matrix 16 项与 git diff --check 通过；同一候选的唯一
+  Windows HARNESS_PORTABILITY_LOCAL 在约 35 分 17 秒后 inner exit=0，
+  163 tests（1 skip）、Doctor 215963 checks 和全部 6 个 profile 命令 PASS。
+  但随后唯一一次 WSL Ubuntu exact-candidate POSIX canonical 在 602.185 秒后
+  inner exit=1：`.gitattributes` 的 `*.ps1 text eol=crlf` 使 `git archive`
+  中 scripts/harness/durable_command.ps1 由候选 Blob 的 8819 字节/236 个 LF
+  变为 9055 字节/236 个 CRLF，实际 SHA-256
+  85e5697d0aa546f55c1bfe7cdbf8af1b56317098a150c8d13d63df9f045a6027，
+  不匹配 Doctor 冻结的
+  fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180，
+  导致 Harness tests 2 项失败且 Doctor 报 1 项错误。按冻结停止条件不修复、
+  不重跑、不伪造 PASS；
+  macOS 保持 DEFERRED_NOT_CLAIMED，GitHub Actions 保持 NOT_RUN_QUOTA、
+  dispatch=0，故本卡按事实 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -229,7 +246,12 @@ humanApprovals:
       target 80、hard fuse 110 分钟。该证据不得泛化、复用、伪造 PASS、付费、
       公开仓库、添加 self-hosted runner、读取凭据或触发真实外发。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0066-independent-reviewer-r1
+    kind: independent-static-directional-review
+    verdict: PASS
+    reviewedCommit: 46ba60fda712ec88a1a6156682a3e63fa787348d
+    evidencePath: docs/evidence/TASK-0066/review-r1.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.CiExecutionPolicyTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_real_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0063_terminal_missing_reviewer_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0064_replacement_authority_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0066_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands
   - git diff --check

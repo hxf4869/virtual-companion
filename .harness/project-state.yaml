@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0066
-activeTaskCard: docs/tasks/TASK-0066-local-fallback-recovery-permanent-replacement.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0064
-lastTerminalHandoff: docs/handoffs/TASK-0064.json
-nextAction: 对 TASK-0066 精确候选执行独立 Reviewer 与本地 Windows/WSL 验收；禁止触发 GitHub Actions，TASK-0055 或 TASK-0013 不得晋级
+lastTerminalTask: TASK-0066
+lastTerminalHandoff: docs/handoffs/TASK-0066.json
+nextAction: TASK-0066 因 WSL exact-candidate canonical 真实失败而 REJECTED；下一永久恢复编号为 TASK-0067，TASK-0065 保留远端调度治理，TASK-0055 或 TASK-0013 不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED
