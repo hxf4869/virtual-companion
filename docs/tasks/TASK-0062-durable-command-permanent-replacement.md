@@ -2,7 +2,15 @@
 
 ```yaml
 taskId: TASK-0062
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  候选 7163dd7f529fc00352b322e6f7b53201e43b6ad2 的 transport、机器真源、
+  两项 Base 前向修复和规划替代链通过 19 项定向矩阵；但独立 R1 复现 READY
+  授权提交后的任务正文把候选截止从 35 改为 45，违反逐提交不可追溯的授权投影
+  合同。R1 以 P1 FAIL 禁止 canonical。该非法历史不能由后续恢复文字或追溯
+  amendment 修复，故本卡按事实 REJECTED，不运行 canonical 或 CI。
+  唯一 REJECTED pre-closure 另确认 TASK-0012 bootstrap 对真实父快照“根字段
+  缺失”形态仍误判为 authority rewrite；该项也留给新的永久替代任务。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -145,7 +153,12 @@ humanApprovals:
       helper、task-delivery-flow 1.2.0、Doctor 与失败关闭测试；完成独立 Reviewer、
       唯一 candidate canonical、同 SHA 五项 CI 和终态闭环。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0062-independent-reviewer-r1
+    kind: independent-complete-matrix-review
+    verdict: FAIL
+    reviewedCommit: 7163dd7f529fc00352b322e6f7b53201e43b6ad2
+    evidencePath: docs/evidence/TASK-0062/review-r1.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0062
   - python -m unittest scripts.harness.tests.test_harness.DurableCommandTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_backlog_activation_introduction_skips_immutable_root_comparison scripts.harness.tests.test_harness.BacklogTests.test_backlog_clean_real_parent_history_edge_passes scripts.harness.tests.test_harness.BacklogTests.test_backlog_real_parent_root_corruption_and_restore_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0061_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0062_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planned_cards_bind_backlog_without_dynamic_evidence scripts.harness.tests.test_harness.ValidationFlowTests.test_agent_rules_define_snapshot_reuse_and_low_frequency_polling scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands

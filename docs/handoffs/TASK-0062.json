@@ -1,0 +1,38 @@
+{
+  "taskId": "TASK-0062",
+  "state": "REJECTED",
+  "baseCommit": "8579df81a3b453b26bf297ddb6bf4ef48efa8393",
+  "headCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+  "evidencePath": "docs/evidence/TASK-0062/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0062-independent-reviewer-r1",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+      "evidencePath": "docs/evidence/TASK-0062/review-r1.md"
+    }
+  ],
+  "completed": [
+    "Verified the durable atomic receipt architecture before expensive work with a no-side-effect exit-7 TEMP smoke.",
+    "Implemented and registered the PowerShell 7 helper, task-delivery policy, task-delivery-flow 1.2.0, Command/Source/Invariant projections, full-file Doctor hashes and fail-closed tests.",
+    "Added the controlled authorizationAmendments authority bootstrap and exact immutable TASK-0061 RESULT_UNRECOVERABLE compatibility without relaxing ordinary FAIL.",
+    "Atomically reconnected TASK-0055 from REJECTED TASK-0061 to TASK-0062 while preserving the strict TASK-0055 through TASK-0059 chain and planning hashes.",
+    "The frozen pre-candidate matrix passed 19/19 and independent fork_turns=none R1 completed against candidate 7163dd7f."
+  ],
+  "remaining": [
+    "R1 found one P1: candidate history changed the READY-frozen task body from a 35-minute to a 45-minute stop condition without a prior strongly typed atomic amendment.",
+    "The authorization-history violation cannot be repaired by restoring text or adding a retroactive amendment because every Git parent edge is validated.",
+    "The sole durable pre-closure also showed that the TASK-0012 bootstrap test modeled an empty authorizationAmendments object while the real parent omits the root field; the retained implementation still reports that historical authority edge.",
+    "Candidate canonical and exact-SHA Backend, Frontend, Ubuntu, Windows and macOS CI were not run because R1 explicitly prohibited them.",
+    "A new permanent standalone replacement must adopt the retained implementation from Base, preserve the durable helper and historical repairs, and create a fresh authorization chain.",
+    "TASK-0055 depends on REJECTED TASK-0062 and must not be promoted; TASK-0013 remains held."
+  ],
+  "knownRisks": [
+    "The retained implementation has positive runner smoke, targeted tests and static review, but it is not ACCEPTED and has no candidate canonical or exact-SHA CI.",
+    "The targeted bootstrap fixture did not match the real historical missing-field parent shape; the next replacement must cover both the exact real edge and corrupt/restore negatives.",
+    "TASK-0055 now points at a REJECTED dependency and therefore remains fail-closed until another permanent replacement is ACCEPTED.",
+    "No product module, provider, credential, database, identity, Persona, security policy, Beta or external model work was performed."
+  ],
+  "nextAction": "创建 TASK-0062 的永久替代任务；TASK-0055 依赖已 REJECTED 的 TASK-0062 不得晋级，TASK-0013 虽为 Backlog 解析候选也暂不得晋级"
+}

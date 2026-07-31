@@ -1,0 +1,215 @@
+{
+  "taskId": "TASK-0062",
+  "baseCommit": "8579df81a3b453b26bf297ddb6bf4ef48efa8393",
+  "headCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+  "contextFingerprint": "7d346b97b56310e916a50f19ae2265cb09385ba7fa7f07b4e4f72dcad888af97",
+  "reviewers": [
+    {
+      "id": "task-0062-independent-reviewer-r1",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+      "evidencePath": "docs/evidence/TASK-0062/review-r1.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0062",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Independent R1 returned FAIL with one P1 authorization-history violation and explicitly prohibited candidate canonical.",
+      "environment": "Windows PowerShell 7 durable transport; canonical not launched",
+      "verifiedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.DurableCommandTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_backlog_activation_introduction_skips_immutable_root_comparison scripts.harness.tests.test_harness.BacklogTests.test_backlog_clean_real_parent_history_edge_passes scripts.harness.tests.test_harness.BacklogTests.test_backlog_real_parent_root_corruption_and_restore_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0061_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0062_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planned_cards_bind_backlog_without_dynamic_evidence scripts.harness.tests.test_harness.ValidationFlowTests.test_agent_rules_define_snapshot_reuse_and_low_frequency_polling scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The frozen implementation snapshot passed 19/19 in 15.262 seconds immediately before the state-only IN_REVIEW commit. It was not rerun on candidate 7163dd7f, so no exact-head PASS is claimed; R1 then found the authorization-history P1.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The implementation snapshot passed diff check immediately before the state-only candidate commit, but it was not rerun on exact candidate 7163dd7f and therefore is not represented as an exact-head PASS.",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2"
+    },
+    {
+      "command": "GitHub Actions exact-SHA ci for TASK-0062",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The candidate was not pushed for CI and no run was dispatched because independent R1 failed before canonical.",
+      "environment": "GitHub Actions not dispatched",
+      "verifiedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0062 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "The sole staged REJECTED pre-closure completed through the registered durable helper with real inner exit 1 after 771.936 seconds. It reported the current authorization projection violation, the same violation on candidate commit 7163dd7f, and an authority-bootstrap mismatch because the real historical parent omits authorizationAmendments instead of containing an empty object. The command was not rerun.",
+      "environment": "Windows PowerShell 7 durable transport",
+      "verifiedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2"
+    }
+  ],
+  "artifacts": {
+    "transportPreflight": {
+      "status": "PASS",
+      "kind": "NO_SIDE_EFFECT_EXIT_7_SMOKE",
+      "startProcessReturnedMilliseconds": 1606,
+      "receiptAbsentAtReturn": true,
+      "innerExitCode": 7,
+      "stdoutLineCount": 2051,
+      "stderrLineCount": 2050,
+      "stdoutFinalMarker": true,
+      "stderrFinalMarker": true,
+      "spaceExecutableArgumentAndWorkingDirectory": true,
+      "receiptTemporaryAbsentAfterPublish": true,
+      "candidatePassAlias": false
+    },
+    "draftDoctor": {
+      "status": "FAIL",
+      "executions": 1,
+      "exitCode": 1,
+      "completedAt": "2026-07-31T04:22:04.6174325Z",
+      "checks": 162553,
+      "errors": 2,
+      "stdoutBytes": 666,
+      "stdoutSha256": "f25bf61bb6cdc384ff93ff38e6bbbec5867b779150b21dd452a6b83547650f87",
+      "stderrBytes": 1043,
+      "stderrSha256": "d1f9a9f986c91629c32a1614c6e1a0e7d013d4c35b7ff675d8f970182579834b",
+      "receiptSha256": "4d196b216d8b173cf51c05e7931df11379c76e6e20b79ed99e0f0f678c2e4608",
+      "elapsedSeconds": 704.446,
+      "errorsObserved": [
+        "TASK-0012 authorizationAmendments authority bootstrap was treated as an immutable-root rewrite.",
+        "Immutable TASK-0061 RESULT_UNRECOVERABLE evidence was rejected for its unavailable exit code."
+      ]
+    },
+    "readyDoctor": {
+      "status": "NOT_RUN",
+      "executions": 0,
+      "reasonCode": "DEDUPLICATED_KNOWN_FAILURE",
+      "reason": "Owner directed that the same known Base failures not consume another approximately twelve-minute execution; this is not PASS."
+    },
+    "reviewCandidate": {
+      "commit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+      "tree": "0fe73cc0c739121fdcc4cc6e2c636002ad0bb941",
+      "candidateDeadlineMinutes": 45,
+      "candidateElapsedMinutes": 38.42,
+      "candidateDeadlineStatus": "MET"
+    },
+    "runnerVerification": {
+      "status": "PASS",
+      "positiveSmoke": "space executable/argv/cwd, dual 2048-line streams, final markers, exit 7, output sizes and atomic receipt",
+      "negativeSmoke": "missing config, wrong config and PowerShell 5.1 all fail closed without receipt",
+      "unsupportedPlatform": "DIRECT_PERSISTENT_SESSION_OR_PTY_OR_EXPLICIT_FAIL"
+    },
+    "shortMatrix": {
+      "status": "PASS_PRE_CANDIDATE_ONLY",
+      "tests": 19,
+      "elapsedSeconds": 15.262,
+      "exitCode": 0,
+      "diffCheck": "PASS",
+      "exactCandidatePassClaimed": false
+    },
+    "review": {
+      "r1Verdict": "FAIL",
+      "r1ReviewedCommit": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+      "r1ReviewedTree": "0fe73cc0c739121fdcc4cc6e2c636002ad0bb941",
+      "r1P0": 0,
+      "r1P1": 1,
+      "r1P2": 0,
+      "r1P3": 0,
+      "repairBatchesUsed": 0,
+      "r2Status": "NOT_ALLOWED_UNREPAIRABLE_HISTORY"
+    },
+    "planningRepair": {
+      "retainedHistoricalChain": "TASK-0054 -> TASK-0060 -> TASK-0061",
+      "replacementEdge": "TASK-0061 -> TASK-0062",
+      "successorDependency": "TASK-0055 -> TASK-0062",
+      "strictChain": ["TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"],
+      "task0056BaseBlobUnchanged": true,
+      "fourPlanningHashesConsistent": true
+    },
+    "candidateCanonical": {
+      "status": "NOT_RUN",
+      "reasonCode": "REVIEWER_FAIL"
+    },
+    "exactShaCi": {
+      "status": "NOT_RUN",
+      "headSha": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+      "runId": null,
+      "jobs": {
+        "Backend": "NOT_RUN",
+        "Frontend": "NOT_RUN",
+        "Harness (ubuntu-latest)": "NOT_RUN",
+        "Harness (windows-latest)": "NOT_RUN",
+        "Harness (macos-latest)": "NOT_RUN"
+      }
+    },
+    "preClosure": {
+      "status": "FAIL",
+      "executions": 1,
+      "exitCode": 1,
+      "startedAt": "2026-07-31T04:44:50.7050499Z",
+      "completedAt": "2026-07-31T04:57:42.6414879Z",
+      "elapsedSeconds": 771.936,
+      "checks": 177563,
+      "errors": 3,
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrBytes": 1192,
+      "stderrSha256": "839f8115aad54bbef7cbda0fa557cd8613fb425a0aed3692d0286fa37d01f2e7",
+      "configSha256": "61684d6a729971dfa01dd1e04b4e5573949380db90b9b195ffb95765e3995966",
+      "receiptTemporaryAbsent": true,
+      "rerun": false,
+      "errorsObserved": [
+        "Current TASK-0062 title/body or immutable metadata differs from the READY checkpoint.",
+        "TASK-0062 authorization projection changed in candidate commit 7163dd7f.",
+        "The real TASK-0012 amendment bootstrap parent omits authorizationAmendments, so the empty-object-only projection still rejects the historical authority edge."
+      ]
+    },
+    "candidateIdentity": {
+      "headSha": "7163dd7f529fc00352b322e6f7b53201e43b6ad2",
+      "indexTree": "0fe73cc0c739121fdcc4cc6e2c636002ad0bb941",
+      "worktreeClean": true,
+      "operatingSystem": "Microsoft Windows NT 10.0.26200.0",
+      "interpreter": "Python 3.12.9",
+      "git": "2.28.0.windows.1",
+      "requirementsSha256": "15a0b1ad3059f055847bf367d43a7d3c138b791d2bf67d8b6a53f982edda1dd3",
+      "coreFilemode": false,
+      "coreAutocrlf": true,
+      "externalServices": "NONE",
+      "dataState": "repository metadata and synthetic fixtures only"
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T11:57:35.3740000+08:00",
+      "implementationAndValidationStoppedAt": "2026-07-31T12:42:52.1345200+08:00",
+      "activeElapsedMinutes": 45.28,
+      "closureSnapshotAt": "2026-07-31T12:58:26.9928497+08:00",
+      "totalElapsedMinutesAtClosureSnapshot": 60.86,
+      "targetWallOverrunMinutesAtClosureSnapshot": 0.86,
+      "targetMinutes": 60,
+      "hardFuseMinutes": 90,
+      "hardFuseStatus": "NOT_TRIGGERED"
+    },
+    "closureOnlyOverrun": {
+      "used": false,
+      "durationMinutes": 0,
+      "rootCause": "The 90-minute hard fuse was not reached; the 60-minute target was exceeded only while awaiting the single already-running pre-closure receipt.",
+      "forbiddenActionsObserved": false
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so that commit and tree cannot self-reference their own hashes. Exact terminal identity is reported after commit and push."
+    }
+  }
+}
