@@ -1845,7 +1845,7 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0050"], backlog["tasks"]["TASK-0051"]["dependencies"])
         self.assertEqual(["TASK-0051"], backlog["tasks"]["TASK-0052"]["dependencies"])
         self.assertEqual(["TASK-0052"], backlog["tasks"]["TASK-0053"]["dependencies"])
-        self.assertEqual(["TASK-0060"], backlog["tasks"]["TASK-0055"]["dependencies"])
+        self.assertEqual(["TASK-0061"], backlog["tasks"]["TASK-0055"]["dependencies"])
         self.assertEqual(["TASK-0055"], backlog["tasks"]["TASK-0056"]["dependencies"])
         self.assertEqual(["TASK-0056"], backlog["tasks"]["TASK-0057"]["dependencies"])
         self.assertEqual(["TASK-0057"], backlog["tasks"]["TASK-0058"]["dependencies"])
@@ -1854,7 +1854,7 @@ class BacklogTests(unittest.TestCase):
 
         terminal_tasks = copy.deepcopy(tasks)
         self.assertEqual("REJECTED", terminal_tasks["TASK-0054"]["state"])
-        terminal_tasks["TASK-0060"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0061"]["state"] = "ACCEPTED"
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
@@ -1868,8 +1868,72 @@ class BacklogTests(unittest.TestCase):
             terminal_projection["blockers"]["TASK-0013"],
         )
 
+    def test_backlog_activation_introduction_skips_immutable_root_comparison(
+        self,
+    ) -> None:
+        child, _, _, _ = self.load_inputs()
+        empty_backlog = {
+            "tasks": {},
+            "executionOrder": [],
+            "criticalPath": [],
+            "decisionGates": {},
+            "resolutions": {},
+            "authorizationAmendments": {},
+        }
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            empty_backlog,
+            child,
+            "<absent>..activation",
+            parent_snapshot_exists=False,
+        )
+        self.assertEqual([], audit.errors)
+
+    def test_backlog_clean_real_parent_history_edge_passes(self) -> None:
+        parent, _, _, _ = self.load_inputs()
+        child = copy.deepcopy(parent)
+        audit = Audit()
+        validate_backlog_history_edge(audit, parent, child, "parent..child")
+        self.assertEqual([], audit.errors)
+
+    def test_backlog_real_parent_root_corruption_and_restore_fail_closed(
+        self,
+    ) -> None:
+        parent, _, _, _ = self.load_inputs()
+        corrupted = copy.deepcopy(parent)
+        corrupted["rules"]["idPolicy"] = "REUSABLE"
+
+        corrupt_edge = Audit()
+        validate_backlog_history_edge(
+            corrupt_edge,
+            parent,
+            corrupted,
+            "parent..corrupted",
+        )
+        self.assertIn(
+            "task-backlog: immutable root field rules was rewritten on edge "
+            "parent..corrupted",
+            corrupt_edge.errors,
+        )
+
+        restore_edge = Audit()
+        validate_backlog_history_edge(
+            restore_edge,
+            corrupted,
+            parent,
+            "corrupted..restored",
+        )
+        self.assertIn(
+            "task-backlog: immutable root field rules was rewritten on edge "
+            "corrupted..restored",
+            restore_edge.errors,
+        )
+
     def test_task0060_planning_repair_is_exact_and_atomic(self) -> None:
-        child, tasks, _, _ = self.load_inputs()
+        current, tasks, _, _ = self.load_inputs()
+        child = copy.deepcopy(current)
+        child["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0060"]
         parent = copy.deepcopy(child)
         for task_id, repair in doctor.TASK_0060_PLANNING_REPAIRS.items():
             parent["tasks"][task_id]["title"] = repair["oldTitle"]
@@ -1928,43 +1992,85 @@ class BacklogTests(unittest.TestCase):
                     doctor.task0060_planning_repair_projection(parent, variant)
                 )
 
-        corrupted = copy.deepcopy(child)
-        corrupted["rules"]["idPolicy"] = "REUSABLE"
-        corrupt_edge = Audit()
-        validate_backlog_history_edge(
-            corrupt_edge,
-            parent,
-            corrupted,
-            "parent..corrupted",
-            allow_task0060_repair=True,
-        )
-        self.assertIn(
-            "task-backlog: immutable root field rules was rewritten on edge "
-            "parent..corrupted",
-            corrupt_edge.errors,
-        )
-        restore_edge = Audit()
-        validate_backlog_history_edge(
-            restore_edge,
-            corrupted,
-            child,
-            "corrupted..restored",
-        )
-        self.assertIn(
-            "task-backlog: immutable root field rules was rewritten on edge "
-            "corrupted..restored",
-            restore_edge.errors,
-        )
-
-        task0055_text = (
-            ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])
-        ).read_text(encoding="utf-8")
-        self.assertIn("依赖：永久替代 TASK-0054 的 standalone TASK-0060", task0055_text)
-        self.assertIn("TASK-0060 必须 ACCEPTED", task0055_text)
         self.assertEqual(
             canonical_json_sha256(child["tasks"]["TASK-0056"]),
             tasks["TASK-0056"]["planningContractHash"],
         )
+
+    def test_task0061_replacement_is_exact_and_atomic(self) -> None:
+        child, tasks, _, _ = self.load_inputs()
+        parent = copy.deepcopy(child)
+        parent["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0060"]
+
+        self.assertTrue(
+            doctor.task0061_planning_repair_projection(parent, child)
+        )
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0061_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+
+        unauthorized = Audit()
+        validate_backlog_history_edge(
+            unauthorized,
+            parent,
+            child,
+            "parent..child",
+        )
+        self.assertTrue(
+            any("TASK-0055" in error for error in unauthorized.errors),
+            unauthorized.errors,
+        )
+
+        variants = []
+        wrong_dependency = copy.deepcopy(child)
+        wrong_dependency["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0060"]
+        variants.append(wrong_dependency)
+        wrong_title = copy.deepcopy(child)
+        wrong_title["tasks"]["TASK-0055"]["title"] += " extra"
+        variants.append(wrong_title)
+        expanded_contract = copy.deepcopy(child)
+        expanded_contract["tasks"]["TASK-0056"]["objective"] = "scope expanded"
+        variants.append(expanded_contract)
+        root_contract_rewrite = copy.deepcopy(child)
+        root_contract_rewrite["rules"]["idPolicy"] = "REUSABLE"
+        variants.append(root_contract_rewrite)
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.assertFalse(
+                    doctor.task0061_planning_repair_projection(parent, variant)
+                )
+
+        task0055_text = (
+            ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "依赖：永久替代已 REJECTED TASK-0060 的 standalone TASK-0061",
+            task0055_text,
+        )
+        self.assertIn("TASK-0061 必须 ACCEPTED", task0055_text)
+        for task_id in ("TASK-0055", "TASK-0057", "TASK-0058", "TASK-0059"):
+            self.assertEqual(
+                canonical_json_sha256(child["tasks"][task_id]),
+                tasks[task_id]["planningContractHash"],
+            )
+        for path in (
+            ".github/workflows/ci.yml",
+            ".harness/task-delivery-policy.yaml",
+            "AGENTS.md",
+            "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
+            "skills/task-delivery-flow/SKILL.md",
+        ):
+            self.assertEqual(
+                doctor.git_tree_entry(doctor.TASK_0061_BASE_COMMIT, path),
+                doctor.git_tree_entry("HEAD", path),
+                path,
+            )
 
     def test_task0012_owner_amendment_replaces_exactly_two_clauses(self) -> None:
         backlog, tasks, _, _ = self.load_inputs()
@@ -2070,7 +2176,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
         backlog, tasks, lifecycle, _ = self.load_inputs()
         active_tasks = copy.deepcopy(tasks)
-        active_tasks["TASK-0060"]["state"] = "IN_PROGRESS"
+        active_tasks["TASK-0061"]["state"] = "IN_PROGRESS"
         active_projection = derive_backlog_promotion_projection(
             backlog,
             active_tasks,
@@ -2082,7 +2188,7 @@ class BacklogTests(unittest.TestCase):
         )
 
         ordered_tasks = copy.deepcopy(tasks)
-        ordered_tasks["TASK-0060"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0061"]["state"] = "ACCEPTED"
         for task_id in ("TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
@@ -3782,7 +3888,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0060"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0061"]["state"] = "ACCEPTED"
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
