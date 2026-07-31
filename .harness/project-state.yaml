@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0066
+activeTaskCard: docs/tasks/TASK-0066-local-fallback-recovery-permanent-replacement.md
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0064
 lastTerminalHandoff: docs/handoffs/TASK-0064.json
-nextAction: TASK-0064 已因 Windows exact-candidate canonical 真实失败而 REJECTED；继续长线并创建永久替代 TASK-0066，TASK-0065 保留给远端显式调度治理，TASK-0055 或 TASK-0013 不得晋级
+nextAction: 执行 TASK-0066 本地精确树恢复永久替代；禁止触发 GitHub Actions，TASK-0055 或 TASK-0013 不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED
