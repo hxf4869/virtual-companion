@@ -1,0 +1,186 @@
+{
+  "taskId": "TASK-0060",
+  "baseCommit": "dedcc579617a5356198ac42e17de58f8e8f880f5",
+  "headCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+  "contextFingerprint": "effb3bf858f8eb7018260a1c36340d04aa0e4162b5ea4f455a8ac357ec8e5ff3",
+  "reviewers": [
+    {
+      "id": "task-0060-independent-reviewer-r2",
+      "kind": "independent-delta-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+      "evidencePath": "docs/evidence/TASK-0060/review-r2.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0060",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Candidate canonical was not run because the independent R2 review returned FAIL with one P1 and explicitly prohibited entry to canonical.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_dependency_order_cycle_and_card_hash_drift scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_backlog_history_preserves_ids_contracts_and_resolutions",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The exact argv passed 6/6 tests in 2.632 seconds on repair commit 4e364323d39491728678ef475a6bb36d389483af immediately before the isolated IN_REVIEW state commit. It was not rerun on headCommit c2744be, and R2 statically identified an activation regression outside this short matrix, so TASK-0060 does not claim an exact-head PASS.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "git diff --check exited 0 in 0.046 seconds on repair commit 4e364323d39491728678ef475a6bb36d389483af before the isolated IN_REVIEW state commit. It was not rerun on headCommit c2744be, so TASK-0060 does not claim an exact-head PASS.",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2"
+    },
+    {
+      "command": "GitHub Actions exact-SHA ci for TASK-0060",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No candidate was pushed and no run was dispatched because R2 failed before canonical. There are no TASK-0060 exact-SHA Backend, Frontend, Ubuntu, Windows, or macOS job results.",
+      "environment": "GitHub Actions not dispatched",
+      "verifiedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0060 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 124,
+      "artifactHash": null,
+      "reason": "The one mandatory REJECTED pre-closure was started once against the exact staged terminal snapshot. The command wrapper returned outer exit 124 after 6.594 seconds but left the original Python PID 37740 running; that same PID was polled without restart until it exited at 2026-07-31T10:53:07.4838376+08:00. The lost outer handle made the Doctor stdout and inner exit code unrecoverable, so this evidence records the real outer failure and does not infer a Doctor exit code or error count.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2"
+    }
+  ],
+  "artifacts": {
+    "draftDoctor": {
+      "status": "NOT_RUN",
+      "executions": 0,
+      "reason": "Base itself had the four known permanent-title conflicts inherited from REJECTED TASK-0054; no DRAFT Doctor PASS is claimed."
+    },
+    "readyDoctor": {
+      "status": "NOT_RUN",
+      "executions": 0,
+      "reason": "Base itself had the four known permanent-title conflicts inherited from REJECTED TASK-0054; no READY Doctor PASS is claimed."
+    },
+    "initialReviewCandidate": {
+      "commit": "0cabbbf26db096d6baad78b128b3167b38f2c38d",
+      "tree": "3b8a1b2999a6e7005adec000f31e5a3ccbd37cbb",
+      "candidateDeadlineStatus": "MET"
+    },
+    "repairBatch": {
+      "stateRollbackCommit": "59b7c2d832af9692563d4c5cc6ceb595b6615ef0",
+      "implementationCommit": "4e364323d39491728678ef475a6bb36d389483af",
+      "implementationTree": "b821a5038ff4769a136586e7b4de8d5c14cbc2e2",
+      "stateReturnCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+      "batchesUsed": 1,
+      "maximumBatches": 1
+    },
+    "reviewCandidate": {
+      "commit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+      "tree": "0ed6d6d7c220b1e2ae75b365601686b67ba3190b"
+    },
+    "review": {
+      "r1Verdict": "FAIL",
+      "r1ReviewedCommit": "0cabbbf26db096d6baad78b128b3167b38f2c38d",
+      "r1ReviewedTree": "3b8a1b2999a6e7005adec000f31e5a3ccbd37cbb",
+      "r1P0": 0,
+      "r1P1": 1,
+      "r2Verdict": "FAIL",
+      "r2ReviewedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+      "r2ReviewedTree": "0ed6d6d7c220b1e2ae75b365601686b67ba3190b",
+      "r2P0": 0,
+      "r2P1": 1,
+      "r2P2": 0,
+      "r2P3": 0
+    },
+    "planningRepair": {
+      "replacementEdge": "TASK-0054 -> TASK-0060",
+      "successorDependency": "TASK-0055 -> TASK-0060",
+      "strictChain": ["TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"],
+      "task0056Unchanged": true,
+      "permanentTitlesPreflight": "PASS"
+    },
+    "postRepairShortMatrix": {
+      "executionCommit": "4e364323d39491728678ef475a6bb36d389483af",
+      "executionTree": "b821a5038ff4769a136586e7b4de8d5c14cbc2e2",
+      "tests": {
+        "status": "PASS",
+        "count": 6,
+        "elapsedSeconds": 2.632,
+        "exitCode": 0
+      },
+      "diffCheck": {
+        "status": "PASS",
+        "elapsedSeconds": 0.046,
+        "exitCode": 0
+      },
+      "limitation": "The matrix did not cover the activation introduction fixture identified by R2 and is not an exact-head PASS."
+    },
+    "candidateCanonical": {
+      "commit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+      "tree": "0ed6d6d7c220b1e2ae75b365601686b67ba3190b",
+      "status": "NOT_RUN",
+      "reason": "R2 FAIL prohibited entry to canonical."
+    },
+    "exactShaCi": {
+      "status": "NOT_RUN",
+      "headSha": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+      "runId": null,
+      "jobs": {
+        "Backend": "NOT_RUN",
+        "Frontend": "NOT_RUN",
+        "Harness (ubuntu-latest)": "NOT_RUN",
+        "Harness (windows-latest)": "NOT_RUN",
+        "Harness (macos-latest)": "NOT_RUN"
+      }
+    },
+    "preClosure": {
+      "status": "FAIL",
+      "exitCode": 124,
+      "innerExitCode": null,
+      "startedAt": "2026-07-31T10:46:52+08:00",
+      "endedAt": "2026-07-31T10:53:07.4838376+08:00",
+      "elapsedSeconds": 375.484,
+      "checks": null,
+      "persistentSessionFromStart": false,
+      "duplicateRuns": 0,
+      "errors": [
+        "The outer command wrapper timed out with exit 124 and lost the stdout handle while the original Python process continued.",
+        "The original PID exited without a recoverable Doctor exit code, stdout transcript, or check count; none are inferred."
+      ],
+      "postRunClosureOnlyDelta": [
+        "record the real outer timeout, original PID lifetime, and unrecoverable inner result in Evidence and Handoff"
+      ],
+      "rerun": false
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T10:07:14.7372189+08:00",
+      "implementationAndValidationStoppedAt": "2026-07-31T10:44:10.0000000+08:00",
+      "activeElapsedMinutes": 36.92,
+      "candidateDeadlineMinutes": 45,
+      "candidateDeadlineStatus": "MET",
+      "hardFuseMinutes": 90,
+      "hardFuseBoundary": "2026-07-31T11:37:14.7372189+08:00",
+      "hardFuseStatus": "NOT_TRIGGERED"
+    },
+    "closureOnlyOverrun": {
+      "used": false,
+      "durationMinutes": 0,
+      "rootCause": null,
+      "forbiddenActionsObserved": false
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so that commit and tree cannot self-reference their own hashes. The exact terminal commit/tree are captured after commit and push in the completion report."
+    }
+  }
+}

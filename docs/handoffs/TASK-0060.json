@@ -1,0 +1,38 @@
+{
+  "taskId": "TASK-0060",
+  "state": "REJECTED",
+  "baseCommit": "dedcc579617a5356198ac42e17de58f8e8f880f5",
+  "headCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+  "evidencePath": "docs/evidence/TASK-0060/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0060-independent-reviewer-r2",
+      "kind": "independent-delta-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "c2744bef6375f39451e15ad8118a1f11b75289a2",
+      "evidencePath": "docs/evidence/TASK-0060/review-r2.md"
+    }
+  ],
+  "completed": [
+    "Preflighted four permanently unique titles and synchronized TASK-0055, TASK-0057, TASK-0058, and TASK-0059 card/backlog hashes and projections.",
+    "Reconnected TASK-0055 from REJECTED TASK-0054 to TASK-0060 while preserving the strict TASK-0055 through TASK-0059 successor chain and leaving TASK-0056 byte-identical.",
+    "Recorded and constrained the permanent TASK-0054 to TASK-0060 replacement edge without rewriting the retained policy, Skill, entrypoint, workflow, Sources, or Invariants.",
+    "Ran one independent R1, one repair batch, and the same Reviewer's R2; preserved both FAIL verdicts and exact candidate identities.",
+    "The post-repair six-test short matrix and diff check passed on the repair commit, with their exact-head limitation recorded."
+  ],
+  "remaining": [
+    "R2 found that the new nine-field immutable-root comparison incorrectly applies to the Backlog activation introduction edge and would produce nine false rewrite errors.",
+    "A new permanent standalone replacement task must make immutable-root comparison apply only to real parent snapshots while preserving R1's corrupt/restore closure and add activation regression coverage.",
+    "Candidate canonical and exact-SHA GitHub Actions were not run because R2 failed and the task contract prohibited a second repair batch, R3, and canonical after Reviewer FAIL.",
+    "The sole pre-closure attempt ended with outer wrapper exit 124; the original Python process continued and exited, but its stdout, Doctor exit code, and check count were unrecoverable and the command was not rerun.",
+    "TASK-0055 depends on REJECTED TASK-0060 and must not be promoted; TASK-0013 is the parsed Backlog candidate but remains held pending the permanent replacement."
+  ],
+  "knownRisks": [
+    "The four title and dependency projections remain in Git history, but TASK-0060 did not independently adopt them because its final Reviewer verdict is FAIL.",
+    "The short matrix passed only on the repair commit immediately before the state-only review commit and did not cover the activation introduction fixture.",
+    "The retained Doctor change will make a full canonical fail until a separately authorized permanent replacement task corrects the introduction-edge semantics.",
+    "The pre-closure observability contract was not met because the command was launched without a recoverable persistent outer session; Evidence preserves the outer exit 124 and does not infer the missing inner result.",
+    "No second implementation fix batch, R3, candidate canonical, CI dispatch, business module, provider, credential, database, identity, Beta, or external model work was performed."
+  ],
+  "nextAction": "创建 TASK-0060 的永久替代任务；TASK-0055 依赖已 REJECTED 的 TASK-0060 不得晋级，TASK-0013 虽为 Backlog 解析候选也暂不得晋级"
+}

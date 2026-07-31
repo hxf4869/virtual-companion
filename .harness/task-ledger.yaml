@@ -102,3 +102,9 @@ tasks:
     taskCard: docs/tasks/TASK-0054-adopt-machine-delivery-policy-cross-platform-ci.md
     evidence: docs/evidence/TASK-0054/evidence-pack.json
     handoff: docs/handoffs/TASK-0054.json
+  TASK-0060:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0060-permanent-adoption-retained-machine-delivery.md
+    evidence: docs/evidence/TASK-0060/evidence-pack.json
+    handoff: docs/handoffs/TASK-0060.json

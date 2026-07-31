@@ -2,7 +2,16 @@
 
 ```yaml
 taskId: TASK-0060
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  TASK-0060 已完成四个永久标题重命名、规划 Hash/投影同步、TASK-0055 对
+  TASK-0060 的依赖重接及 TASK-0054 到 TASK-0060 的永久替代门禁。R1 对候选
+  0cabbbf 发现根级静态合同可在修复边篡改并于下一边恢复的 P1；唯一修复批次
+  增加根对象精确投影、九个根字段历史不可变校验和 corrupt/restore 负例，关闭了
+  R1 finding。R2 随后对精确候选 c2744be 发现新增 P1：九字段校验无条件应用于
+  Backlog 首次 activation 的无父快照引入边，会稳定产生九个伪错误。任务合同禁止
+  第二修复批、R3 及 Reviewer FAIL 后运行 canonical/CI，因此本卡真实 REJECTED，
+  不伪造 candidate canonical、五作业 CI、pre-closure 或 ACCEPTED PASS。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -131,7 +140,12 @@ humanApprovals:
       0058、0059 的永久标题冲突、把 TASK-0055 依赖从 REJECTED TASK-0054 重接到
       TASK-0060，并补充所需的规划 Hash、投影、精确失败关闭门禁、定向测试与独立 Reviewer。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0060-independent-reviewer-r2
+    kind: independent-delta-review
+    verdict: FAIL
+    reviewedCommit: c2744bef6375f39451e15ad8118a1f11b75289a2
+    evidencePath: docs/evidence/TASK-0060/review-r2.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0060
   - python -m unittest scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_dependency_order_cycle_and_card_hash_drift scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_backlog_history_preserves_ids_contracts_and_resolutions
