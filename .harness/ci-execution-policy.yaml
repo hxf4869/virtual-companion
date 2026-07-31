@@ -207,6 +207,47 @@ task0064Bootstrap:
   ownerEvidence: >-
     不能因为 GitHub Actions 额度不够就不走了，肯定需要备用方案，例如本地跑或者不跑。
   generalizedSelfDowngradeForbidden: true
+task0066Recovery:
+  oneTimeOnly: true
+  taskId: TASK-0066
+  replacementOfRejectedTask: TASK-0064
+  baseCommit: 9bdf716a85c874bbf8df9e72fb9533b524682365
+  baseTree: 57718eefe312c5048e8a334f96bbd22506b4315d
+  authorizationCommit: d8bb788a3fa62bf5d4b2aea0c7d86e3fb6687ead
+  channel: LOCAL_EXACT_TREE_FALLBACK
+  profile: HARNESS_PORTABILITY_LOCAL
+  deliveryBudgets:
+    candidateDeadlineMinutes: 25
+    targetWallMinutes: 80
+    hardFuseWallMinutes: 110
+    maximumFixBatches: 1
+    maximumReviewRounds: 2
+  requiredOutcomes:
+    windows: PASS
+    wslUbuntu: PASS
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: NOT_RUN_QUOTA
+  remoteUnavailableEvidence:
+    type: OWNER_SUPPLIED_QUOTA_EXHAUSTED
+    includedMinutes: 2000
+    usedMinutes: 2000
+    paidBudgetUsd: 0
+    stopUsageEnabled: true
+    resetDate: "2026-08-01"
+    dispatchCount: 0
+  recoveryInput:
+    retainedImplementationCommit: e28d147351f944a440faef6ff6e38a3d72649459
+    retainedImplementationTree: c73bb8c8f706353d750e09a8a9faf8d43c966bec
+    windowsFailureReceiptSha256: e1864721b9c9b0e740af78ff89f23288d59c3551084735118a358c537fddcf9f
+    windowsFailureStdoutSha256: 97262dedd0430e2eb20d3f463321a93e8242b5024457a68a3042246a222e2b6d
+    windowsFailureStderrSha256: 7b7f2998a285c97531c75b21479ed588c672ffc2b760802ef105b8ce44de70b0
+    doctorErrorCount: 6
+    task0063TerminalCommit: 8af24aba6225104833b4d5845a77bbe7e513eed7
+    task0063TerminalTree: f3d330153dfc85e537256c6301c525f8ec27e6cc
+  ownerEvidence: >-
+    GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
+  generalizedSelfDowngradeForbidden: true
+  reusableByOtherTask: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

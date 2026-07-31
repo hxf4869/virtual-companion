@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0064
 lastTerminalHandoff: docs/handoffs/TASK-0064.json
-nextAction: 执行 TASK-0066 本地精确树恢复永久替代；禁止触发 GitHub Actions，TASK-0055 或 TASK-0013 不得晋级
+nextAction: 对 TASK-0066 精确候选执行独立 Reviewer 与本地 Windows/WSL 验收；禁止触发 GitHub Actions，TASK-0055 或 TASK-0013 不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED

@@ -778,7 +778,7 @@ tasks:
     title: Idle planning checkpoint 核心父边校验永久后继
     taskCard: docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md
     dependencies:
-      - TASK-0064
+      - TASK-0066
     decisionGates: []
     objective: 承接被 TASK-0048 REJECTED 阻断的 TASK-0049，建立 idle planning checkpoint 的唯一 Git parent-edge 派生与失败关闭核心，不接入执行消费者。
     scope:
