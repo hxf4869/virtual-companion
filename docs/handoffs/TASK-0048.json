@@ -1,0 +1,37 @@
+{
+  "taskId": "TASK-0048",
+  "state": "REJECTED",
+  "baseCommit": "fb40cf5f71879f2a10affced0081aa0debaae99c",
+  "headCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1",
+  "evidencePath": "docs/evidence/TASK-0048/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0048-independent-reviewer-r2-ci-delta",
+      "kind": "independent-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1",
+      "evidencePath": "docs/evidence/TASK-0048/review-r2.md"
+    }
+  ],
+  "completed": [
+    "Delivered the unique machine delivery policy, task-delivery-flow 1.0.0 Skill, thin AGENTS entrypoint and Hash projections, registries, Doctor, and focused tests.",
+    "Closed the wrapper alias residual unconditionally and added exact negative tests for conditional suffix and alias drift.",
+    "Registered TASK-0049 through TASK-0053 and atomically SUPERSEDED TASK-0043 through TASK-0047 over five independent parent edges.",
+    "R1 found one Sources alias P1; R2 and final authorized CI-delta static review passed with no new P0/P1.",
+    "Final local targeted argv, four CI fixture failures, Windows Skill validator, and git diff check passed.",
+    "Replacement exact-SHA CI passed Backend, Frontend, Ubuntu Harness, and macOS Harness before the hard-budget safe stop."
+  ],
+  "remaining": [
+    "The replacement exact-SHA run did not obtain five-job PASS: Windows Harness was cancelled while still running the full unittest stage.",
+    "Mandatory REJECTED pre-closure ran, but two tool transports discarded the child exit code; no verifiable pre-closure PASS exists and no third run is permitted.",
+    "Create a new permanent standalone replacement task and rebuild the first dependency edge; TASK-0049 depends on REJECTED TASK-0048 and must not be promoted.",
+    "Do not reuse TASK-0048 Reviewer, local PASS, or partial CI as a future task's final Evidence."
+  ],
+  "knownRisks": [
+    "The final candidate remains in Git history and four replacement CI jobs passed, but neither fact satisfies the five-job ACCEPTED gate.",
+    "Closure-only work exceeded the 90-minute boundary solely to record the lost pre-closure result, create and push the mandatory REJECTED terminal commit, and verify 0/0 clean.",
+    "TASK-0049 through TASK-0053 remain durable PLANNED history; their current dependency chain is blocked at TASK-0048.",
+    "No idle checkpoint core, four consumers, performance engine, path-aware CI, snapshot receipt, business module, provider, database, or Beta work was implemented."
+  ],
+  "nextAction": "协调任务须创建新的永久替代任务；TASK-0049 依赖已 REJECTED 的 TASK-0048，不得晋级"
+}

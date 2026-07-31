@@ -2,7 +2,17 @@
 
 ```yaml
 taskId: TASK-0048
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  机器策略、Skill、薄 AGENTS、Doctor/tests、fixture 与后继链均已实现，R1 唯一 Sources alias
+  finding 经修复后由 R2 和最终 CI-delta 静态复核 PASS；本地定向、Skill、diff 与一次 candidate
+  canonical 均 PASS。首次 exact-SHA CI 的三个 Harness jobs 暴露四个旧 fixture 投影失败；唯一
+  前向 fixture 修复后，替代 CI 已有 Backend、Frontend、Ubuntu Harness、macOS Harness PASS，
+  但 Windows Harness 在 90 分钟硬熔断前仍停留于完整单测阶段，后续还需 canonical 与
+  pre-closure。继续等待预计必然越界，因此在 77.5 分钟主动取消替代 run 并真实 REJECTED，
+  不伪造五作业 PASS、pre-closure PASS、ACCEPTED 或 TASK-0049 可晋级。首次 pre-closure
+  误用 60 秒工具截断导致退出码丢失，唯一捕获重试也由外层超时丢失退出码；90 分钟后的动作
+  仅限 mandatory REJECTED closure 提交、推送与 0/0 核验。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -142,7 +152,12 @@ humanApprovals:
     approvedAt: "2026-07-31"
     evidence: Owner 明确批准 standalone TASK-0048 的 C4 Harness、Skill、AGENTS、最小 real-Git baseline fixture CI-unblock、TASK-0049 至 TASK-0053 后继链登记、TASK-0043 至 TASK-0047 五条独立 SUPERSEDED 规划边以及独立 Reviewer。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0048-independent-reviewer-r2-ci-delta
+    kind: independent-delta-review
+    verdict: PASS
+    reviewedCommit: 4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1
+    evidencePath: docs/evidence/TASK-0048/review-r2.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0048
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_wrapper_alias_drift

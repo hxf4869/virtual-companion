@@ -1,0 +1,158 @@
+{
+  "taskId": "TASK-0048",
+  "baseCommit": "fb40cf5f71879f2a10affced0081aa0debaae99c",
+  "headCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1",
+  "contextFingerprint": "e795ca05afce1301c65a65198a025ea6f4ddac3b5567a16ef8dc4c0496e5e1d5",
+  "reviewers": [
+    {
+      "id": "task-0048-independent-reviewer-r2-ci-delta",
+      "kind": "independent-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1",
+      "evidencePath": "docs/evidence/TASK-0048/review-r2.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0048",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Local candidate b4de67f ran the exact Python canonical once: 5/5 commands PASS, Doctor 92,122 checks, 344.824 seconds. Final candidate 4761fce changed only repository-state test fixtures; its exact-SHA Ubuntu and macOS jobs each ran the actual POSIX wrapper argv, whose subprocess executed the Python canonical successfully. Wrapper argv is recorded as an actual command, never as an Evidence, receipt, or PASS alias.",
+      "environment": "Windows PowerShell local aiCoding Python 3.12.9; GitHub Ubuntu/macOS Python 3.12",
+      "verifiedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_wrapper_alias_drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Exact final candidate argv passed 4/4 tests in 4.025 seconds.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1"
+    },
+    {
+      "command": "python C:/Users/k/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/task-delivery-flow",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Windows quick_validate reported Skill is valid on the clean final candidate.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Exact final candidate clean worktree completed git diff --check with exit code 0.",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1"
+    },
+    {
+      "command": "four exact first-CI fixture failures",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Context Lock reproducibility, idle ordering, atomic resolution, and next-task/gate projection all passed on the final fixture delta: 4/4 in 14.349 seconds.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1"
+    },
+    {
+      "command": "GitHub Actions ci run 30593566212",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Replacement exact-SHA run was cancelled at 77.5 minutes to preserve the absolute 90-minute contract. Backend, Frontend, Ubuntu Harness, and macOS Harness were success; Windows Harness remained in the full unittest stage and still required canonical plus local pre-closure. Five-job PASS was therefore not claimed.",
+      "environment": "GitHub-hosted Ubuntu, Windows, and macOS runners",
+      "verifiedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0048 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No verifiable PASS was captured. The first mandatory REJECTED pre-closure process outlived an incorrectly configured 60-second tool timeout and later exited after 249 seconds, but its stdout and exit code were lost. One controlled output-capture retry was allowed; its outer 300-second timeout also orphaned the same child process, which exited at 08:49:03 without a recoverable exit code. No third run was started and PASS is not claimed.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1"
+    }
+  ],
+  "artifacts": {
+    "initialImplementationCandidate": {
+      "commit": "ba455b3dc4eb4ecbcdc67566c5e4ce40bcabbde0",
+      "tree": "2ebed21ecffa255d8a238ce96c0a51ab2d0f532f",
+      "frozenElapsedMinutes": 26.9
+    },
+    "finalCandidate": {
+      "commit": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1",
+      "tree": "8235c704d48fe4dc4d1873c8ab7daa6f195c56fb"
+    },
+    "review": {
+      "r1Verdict": "FAIL",
+      "r1P0": 0,
+      "r1P1": 1,
+      "r2Verdict": "PASS",
+      "r2NewP0": 0,
+      "r2NewP1": 0,
+      "ciDeltaVerdict": "PASS"
+    },
+    "backlogRegistration": {
+      "commit": "4c4c46316e76b7cfe34b01aa001acb682428393b",
+      "newChain": ["TASK-0049", "TASK-0050", "TASK-0051", "TASK-0052", "TASK-0053"],
+      "dependencies": ["TASK-0048", "TASK-0049", "TASK-0050", "TASK-0051", "TASK-0052"]
+    },
+    "supersededPlanningEdges": {
+      "TASK-0043": {"replacement": "TASK-0049", "commit": "1db76071da6a8cf561ab2fd4ad47eea6650dccad"},
+      "TASK-0044": {"replacement": "TASK-0050", "commit": "0db0520a3468d684785cd370da6243ac27f1269d"},
+      "TASK-0045": {"replacement": "TASK-0051", "commit": "537344da55ed3b6e9f6fa85b36db358b0ffc3615"},
+      "TASK-0046": {"replacement": "TASK-0052", "commit": "109fd3d3f0fc3c1b475ac962b2c9cb1f2721058b"},
+      "TASK-0047": {"replacement": "TASK-0053", "commit": "06dcef0c4e9cf11127f4c283f8a6500df4a4860f"}
+    },
+    "firstExactShaCi": {
+      "runId": "30592693647",
+      "headSha": "b4de67f522e259a0eb00c0ab7baf5e41dfbfdb15",
+      "conclusion": "failure",
+      "jobs": {
+        "Backend": {"id": "91038216427", "conclusion": "success"},
+        "Frontend": {"id": "91038216480", "conclusion": "success"},
+        "Harness (ubuntu-latest)": {"id": "91038216458", "conclusion": "failure"},
+        "Harness (macos-latest)": {"id": "91038216499", "conclusion": "failure"},
+        "Harness (windows-latest)": {"id": "91038216474", "conclusion": "failure"}
+      }
+    },
+    "replacementExactShaCi": {
+      "runId": "30593566212",
+      "url": "https://github.com/hxf4869/virtual-companion/actions/runs/30593566212",
+      "headSha": "4761fcee31f632f9e45d9d7e871b2f95e0ce9ae1",
+      "conclusion": "cancelled",
+      "jobs": {
+        "Backend": {"id": "91040902423", "conclusion": "success"},
+        "Frontend": {"id": "91040902347", "conclusion": "success"},
+        "Harness (ubuntu-latest)": {"id": "91040902424", "conclusion": "success"},
+        "Harness (macos-latest)": {"id": "91040902416", "conclusion": "success"},
+        "Harness (windows-latest)": {"id": "91040902389", "conclusion": "cancelled"}
+      }
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T07:19:42.1913799+08:00",
+      "safeStopAt": "2026-07-31T08:37:43.1276579+08:00",
+      "safeStopElapsedMinutes": 77.5,
+      "candidateDeadlineMinutes": 45,
+      "candidateDeadlineStatus": "MET_AT_26.9_MINUTES",
+      "hardFuseMinutes": 90,
+      "hardFuseStatus": "TRIGGERED_CLOSURE_ONLY"
+    },
+    "closureOnlyOverrun": {
+      "authorizedBoundary": "2026-07-31T08:49:42.1913799+08:00",
+      "allowedActions": [
+        "record the pre-closure transport failure",
+        "create the mandatory REJECTED terminal commit",
+        "push terminal main",
+        "verify local/origin 0/0 and clean"
+      ],
+      "forbiddenActionsObserved": false,
+      "implementationStoppedAt": "2026-07-31T08:37:43.1276579+08:00",
+      "rootCause": "The first long pre-closure command was incorrectly launched through a 60-second tool timeout. Its continuing Windows child process later exited, but the transport had already discarded stdout and exit code. The single capture retry hit its own outer timeout and produced the same unobservable child-exit condition. Closure continued only to avoid leaving activeTask or a half-closed repository."
+    }
+  }
+}
