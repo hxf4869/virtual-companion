@@ -221,6 +221,67 @@ TASK_0062_PLANNING_REPAIRS = {
         "newDependencies": ["TASK-0062"],
     },
 }
+TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT = (
+    "7163dd7f529fc00352b322e6f7b53201e43b6ad2"
+)
+TASK_0062_VIOLATION_PARENT_COMMIT = "10ac9f96f8e566137a3f446bb59abdc42d64fc45"
+TASK_0062_TERMINAL_COMMIT = "a328a02c72e5cfb7bc784e7a083caaaf8cffe08c"
+TASK_0062_AUTHORIZED_PROJECTION_SHA256 = (
+    "09ad0b20460224da488d4b7d3cbc32f3178aafda6215f53d38b3943691c05f5e"
+)
+TASK_0062_REJECTED_PROJECTION_SHA256 = (
+    "6646218d220980e6d0fe0aaee03a81f17ba2fc57d69308dcb003aba8d50dd0e3"
+)
+TASK_0062_AUTHORIZED_STOP_FRAGMENT = (
+    "- 墙钟 35 分钟仍无通过 runner 自测、历史/Hash/Skill/Policy/Doctor/负例和 diff\n"
+    "  短矩阵的精确候选 Commit/Tree；"
+)
+TASK_0062_REJECTED_STOP_FRAGMENT = (
+    "- 墙钟 45 分钟仍无通过 runner 自测、历史/Hash/Skill/Policy/Doctor/负例和 diff\n"
+    "  短矩阵的精确候选 Commit/Tree；"
+)
+TASK_0062_TERMINAL_ARTIFACT_SHA256 = {
+    TASK_0062_CARD_PATH: (
+        "05361d87d1f714709ec44aa36a9a9a663f8fdffce4eb38a9d45c3442ee7c026a"
+    ),
+    "docs/evidence/TASK-0062/evidence-pack.json": (
+        "2743fa5a6811b665fe1f7886e239ff9ffe6baa54b77b7551958b526f7221e23f"
+    ),
+    "docs/evidence/TASK-0062/review-r1.md": (
+        "6912f809d9e2e0f54a9a8535e68530b693ec41b6588613ac33639e43a690d668"
+    ),
+    "docs/handoffs/TASK-0062.json": (
+        "4118884005a1b88c90c425cb3fd69686bc45c59b11c8c10beede88ffb70faea3"
+    ),
+}
+TASK_0063_BASE_COMMIT = "a328a02c72e5cfb7bc784e7a083caaaf8cffe08c"
+TASK_0063_AUTHORIZATION_COMMIT = "52ee83bd609a3817b6a0dc098abe3b39328f6bd7"
+TASK_0063_CARD_PATH = (
+    "docs/tasks/TASK-0063-authorization-history-greenline-recovery.md"
+)
+TASK_0063_PLANNING_REPAIRS = {
+    "TASK-0055": {
+        "oldTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "newTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "oldDependencies": ["TASK-0062"],
+        "newDependencies": ["TASK-0063"],
+    },
+}
+AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT = (
+    "2a55335e695c8fc5434c0dbc867288842c804e74"
+)
+AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT = (
+    "1b9eafd46649b76ab1a1b4e93f8cba8feaa7d6ad"
+)
+AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_AUTHORITY_SHA256 = (
+    "d6ff11b355cb8bdb90e624bea6b16a8f989833d47e4b92e173bd46448a73456b"
+)
+AUTHORIZATION_AMENDMENT_BOOTSTRAP_CHILD_AUTHORITY_SHA256 = (
+    "ec6c83ceba55f3754e0277d31bacda3615c59fea90ef36ca300aee113a572088"
+)
+AUTHORIZATION_AMENDMENT_BOOTSTRAP_CHILD_AMENDMENTS_SHA256 = (
+    "e9789d0b6bac22b33b8d2298bf0e61aeaa74dd5ed7a44b8d1360badafe551298"
+)
 LEGACY_RESULT_UNRECOVERABLE_REASON = (
     "The only candidate canonical used the coordinator-approved durable-receipt "
     "mode. Wrapper PID 45460 and all children were later confirmed absent while "
@@ -1218,6 +1279,161 @@ def task_authorization_projection(text: str) -> str:
         metadata.pop(field, None)
     canonical = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=True, width=120).rstrip()
     return normalized[: match.start()] + f"```yaml\n{canonical}\n```" + normalized[match.end() :]
+
+
+def task0062_rejected_projection_is_exact(
+    authorized_text: str,
+    rejected_text: str,
+) -> bool:
+    try:
+        authorized_projection = task_authorization_projection(authorized_text)
+        rejected_projection = task_authorization_projection(rejected_text)
+    except (HarnessError, UnicodeError, yaml.YAMLError):
+        return False
+    return (
+        hashlib.sha256(authorized_projection.encode("utf-8")).hexdigest()
+        == TASK_0062_AUTHORIZED_PROJECTION_SHA256
+        and hashlib.sha256(rejected_projection.encode("utf-8")).hexdigest()
+        == TASK_0062_REJECTED_PROJECTION_SHA256
+        and authorized_projection.count(TASK_0062_AUTHORIZED_STOP_FRAGMENT) == 1
+        and TASK_0062_REJECTED_STOP_FRAGMENT not in authorized_projection
+        and rejected_projection
+        == authorized_projection.replace(
+            TASK_0062_AUTHORIZED_STOP_FRAGMENT,
+            TASK_0062_REJECTED_STOP_FRAGMENT,
+            1,
+        )
+    )
+
+
+def task0062_rejected_authorization_history_isolated(
+    task_id: str,
+    task_path: str,
+    task: dict[str, Any],
+    authorized_text: str,
+    current_text: str,
+) -> bool:
+    if (
+        task_id != "TASK-0062"
+        or task_path != TASK_0062_CARD_PATH
+        or task.get("_path") != TASK_0062_CARD_PATH
+        or task.get("taskId") != "TASK-0062"
+        or task.get("state") != "REJECTED"
+        or task.get("baseCommit") != TASK_0062_BASE_COMMIT
+        or task.get("authorizationCommit") != TASK_0062_AUTHORIZATION_COMMIT
+        or not task0062_rejected_projection_is_exact(authorized_text, current_text)
+    ):
+        return False
+    try:
+        current_metadata = task_metadata_from_text(
+            current_text,
+            "TASK-0062 rejected isolation current card",
+        )
+        if {
+            key: value
+            for key, value in task.items()
+            if key != "_path"
+        } != current_metadata:
+            return False
+        authorization_text = git_object(
+            TASK_0062_AUTHORIZATION_COMMIT,
+            TASK_0062_CARD_PATH,
+        ).decode("utf-8")
+        parent_text = git_object(
+            TASK_0062_VIOLATION_PARENT_COMMIT,
+            TASK_0062_CARD_PATH,
+        ).decode("utf-8")
+        violation_text = git_object(
+            TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT,
+            TASK_0062_CARD_PATH,
+        ).decode("utf-8")
+        if (
+            authorization_text != authorized_text
+            or task_authorization_projection(parent_text)
+            != task_authorization_projection(authorized_text)
+            or not task0062_rejected_projection_is_exact(
+                authorized_text,
+                violation_text,
+            )
+        ):
+            return False
+        graph = git_text(
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT,
+        ).stdout.split()
+        if graph != [
+            TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT,
+            TASK_0062_VIOLATION_PARENT_COMMIT,
+        ]:
+            return False
+        ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
+        entries = ledger.get("tasks")
+        expected_ledger_entry = {
+            "state": "REJECTED",
+            "contractVersion": 2,
+            "taskCard": TASK_0062_CARD_PATH,
+            "evidence": "docs/evidence/TASK-0062/evidence-pack.json",
+            "handoff": "docs/handoffs/TASK-0062.json",
+        }
+        if (
+            not isinstance(entries, dict)
+            or entries.get("TASK-0062") != expected_ledger_entry
+            or canonical_terminal_commit(
+                task,
+                {"ACCEPTED", "REJECTED"},
+            )
+            != TASK_0062_TERMINAL_COMMIT
+        ):
+            return False
+        evidence = json.loads(
+            read_repository_text(
+                ROOT / "docs/evidence/TASK-0062/evidence-pack.json"
+            )
+        )
+        handoff = json.loads(
+            read_repository_text(ROOT / "docs/handoffs/TASK-0062.json")
+        )
+        expected_reviewer = {
+            "id": "task-0062-independent-reviewer-r1",
+            "kind": "independent-complete-matrix-review",
+            "verdict": "FAIL",
+            "reviewedCommit": TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT,
+            "evidencePath": "docs/evidence/TASK-0062/review-r1.md",
+        }
+        if (
+            evidence.get("taskId") != "TASK-0062"
+            or evidence.get("baseCommit") != TASK_0062_BASE_COMMIT
+            or evidence.get("headCommit")
+            != TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT
+            or evidence.get("reviewers") != [expected_reviewer]
+            or handoff.get("taskId") != "TASK-0062"
+            or handoff.get("state") != "REJECTED"
+            or handoff.get("baseCommit") != TASK_0062_BASE_COMMIT
+            or handoff.get("headCommit")
+            != TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT
+            or handoff.get("evidencePath")
+            != "docs/evidence/TASK-0062/evidence-pack.json"
+            or handoff.get("reviewers") != [expected_reviewer]
+        ):
+            return False
+        for path, expected_hash in TASK_0062_TERMINAL_ARTIFACT_SHA256.items():
+            if (
+                hashlib.sha256(read_repository_bytes(ROOT / path)).hexdigest()
+                != expected_hash
+            ):
+                return False
+    except (
+        HarnessError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+    ):
+        return False
+    return True
 
 
 def project_state_closure_projection(state: dict[str, Any]) -> dict[str, Any]:
@@ -2336,6 +2552,7 @@ def validate_task_authorization_history(
     authorization_commit: str,
     authorized_text: str,
     enforce_dominance: bool = True,
+    allow_task0062_rejected_projection: bool = False,
 ) -> None:
     expected_projection = task_authorization_projection(authorized_text)
     authorized_metadata = task_metadata_from_text(
@@ -2362,8 +2579,26 @@ def validate_task_authorization_history(
                 f"in commit {commit}",
             )
             historical_text = git_object(commit, task_path).decode("utf-8")
+            historical_projection = task_authorization_projection(historical_text)
+            rejected_projection_allowed = (
+                allow_task0062_rejected_projection
+                and task_id == "TASK-0062"
+                and git_text(
+                    "merge-base",
+                    "--is-ancestor",
+                    TASK_0062_FIRST_AUTHORIZATION_VIOLATION_COMMIT,
+                    commit,
+                    check=False,
+                ).returncode
+                == 0
+                and task0062_rejected_projection_is_exact(
+                    authorized_text,
+                    historical_text,
+                )
+            )
             audit.require(
-                task_authorization_projection(historical_text) == expected_projection,
+                historical_projection == expected_projection
+                or rejected_projection_allowed,
                 f"{task_id}: authorization projection changed in commit {commit}",
             )
             historical_metadata = task_metadata_from_text(
@@ -2809,9 +3044,19 @@ def validate_tasks(
                             for item in approvals
                         )
                         audit.require(owner_approved, f"{path}: READY checkpoint lacks Owner approval evidence")
+                task0062_rejected_projection_isolated = (
+                    task0062_rejected_authorization_history_isolated(
+                        task_id,
+                        path,
+                        task,
+                        authorized_text,
+                        current_text,
+                    )
+                )
                 audit.require(
                     task_authorization_projection(current_text)
-                    == task_authorization_projection(authorized_text),
+                    == task_authorization_projection(authorized_text)
+                    or task0062_rejected_projection_isolated,
                     f"{path}: task title/body or immutable metadata changed after READY checkpoint",
                 )
                 validate_task_authorization_history(
@@ -2822,6 +3067,9 @@ def validate_tasks(
                     authorization_commit,
                     authorized_text,
                     enforce_dominance=not is_legacy_harness_bootstrap(task),
+                    allow_task0062_rejected_projection=(
+                        task0062_rejected_projection_isolated
+                    ),
                 )
                 changed = git_bytes(
                     "diff",
