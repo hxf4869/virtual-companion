@@ -1565,6 +1565,32 @@ class CiExecutionPolicyTests(unittest.TestCase):
         wrong_recovery_authority["task0066Recovery"]["authorizationCommit"] = "e" * 40
         variants.append(wrong_recovery_authority)
 
+        generalized_byte_recovery = copy.deepcopy(load_yaml(policy_path))
+        generalized_byte_recovery["task0067Recovery"]["reusableByOtherTask"] = True
+        variants.append(generalized_byte_recovery)
+
+        wrong_byte_recovery_base = copy.deepcopy(load_yaml(policy_path))
+        wrong_byte_recovery_base["task0067Recovery"]["baseCommit"] = "d" * 40
+        variants.append(wrong_byte_recovery_base)
+
+        wrong_byte_recovery_authority = copy.deepcopy(load_yaml(policy_path))
+        wrong_byte_recovery_authority["task0067Recovery"][
+            "authorizationCommit"
+        ] = "c" * 40
+        variants.append(wrong_byte_recovery_authority)
+
+        wrong_byte_recovery_receipt = copy.deepcopy(load_yaml(policy_path))
+        wrong_byte_recovery_receipt["task0067Recovery"]["recoveryInput"][
+            "task0066WslFailureReceiptSha256"
+        ] = "b" * 64
+        variants.append(wrong_byte_recovery_receipt)
+
+        wrong_byte_recovery_attribute = copy.deepcopy(load_yaml(policy_path))
+        wrong_byte_recovery_attribute["task0067Recovery"]["recoveryInput"][
+            "pathOverride"
+        ] = "*.ps1 text eol=lf"
+        variants.append(wrong_byte_recovery_attribute)
+
         for variant in variants:
             with self.subTest(variant=variant):
                 def load_with_variant(path: Path) -> dict[str, object]:
@@ -1819,6 +1845,61 @@ class DeliveryPolicyTests(unittest.TestCase):
         validate_sources(audit, {})
         validate_skills(audit, {})
         self.assertEqual([], audit.errors)
+
+    def test_durable_command_canonical_byte_domain_is_exact_and_fail_closed(
+        self,
+    ) -> None:
+        attributes_text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        self.assertEqual(1, attributes_text.count("*.ps1 text eol=crlf"))
+        self.assertEqual(
+            1,
+            attributes_text.count(
+                "scripts/harness/durable_command.ps1 text eol=lf"
+            ),
+        )
+        current = Audit()
+        doctor.validate_current_durable_command_byte_domain(current)
+        self.assertEqual([], current.errors)
+
+        canonical = (
+            ROOT / doctor.DURABLE_COMMAND_CANONICAL_PATH
+        ).read_bytes()
+        positive = Audit()
+        doctor.validate_durable_command_byte_domain(
+            positive,
+            git_blob=canonical,
+            windows_checkout=canonical,
+            git_archive_entry=canonical,
+            effective_attributes={"text": "set", "eol": "lf"},
+        )
+        self.assertEqual([], positive.errors)
+
+        variants = {
+            "crlf_archive": {
+                "git_archive_entry": canonical.replace(b"\n", b"\r\n"),
+            },
+            "non_newline_content_corruption": {
+                "git_archive_entry": b"!" + canonical[1:],
+            },
+            "wrong_attribute": {
+                "effective_attributes": {"text": "set", "eol": "crlf"},
+            },
+            "wrong_expected_hash": {
+                "expected_sha256": "0" * 64,
+            },
+        }
+        for label, override in variants.items():
+            arguments = {
+                "git_blob": canonical,
+                "windows_checkout": canonical,
+                "git_archive_entry": canonical,
+                "effective_attributes": {"text": "set", "eol": "lf"},
+            }
+            arguments.update(override)
+            audit = Audit()
+            with self.subTest(label=label):
+                doctor.validate_durable_command_byte_domain(audit, **arguments)
+                self.assertTrue(audit.errors)
 
     def test_policy_validator_rejects_contract_drift(self) -> None:
         policy_path = ROOT / ".harness/task-delivery-policy.yaml"
@@ -2264,7 +2345,7 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0050"], backlog["tasks"]["TASK-0051"]["dependencies"])
         self.assertEqual(["TASK-0051"], backlog["tasks"]["TASK-0052"]["dependencies"])
         self.assertEqual(["TASK-0052"], backlog["tasks"]["TASK-0053"]["dependencies"])
-        self.assertEqual(["TASK-0066"], backlog["tasks"]["TASK-0055"]["dependencies"])
+        self.assertEqual(["TASK-0067"], backlog["tasks"]["TASK-0055"]["dependencies"])
         self.assertEqual(["TASK-0055"], backlog["tasks"]["TASK-0056"]["dependencies"])
         self.assertEqual(["TASK-0056"], backlog["tasks"]["TASK-0057"]["dependencies"])
         self.assertEqual(["TASK-0057"], backlog["tasks"]["TASK-0058"]["dependencies"])
@@ -2273,7 +2354,7 @@ class BacklogTests(unittest.TestCase):
 
         terminal_tasks = copy.deepcopy(tasks)
         self.assertEqual("REJECTED", terminal_tasks["TASK-0054"]["state"])
-        terminal_tasks["TASK-0066"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0067"]["state"] = "ACCEPTED"
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
@@ -2877,6 +2958,8 @@ class BacklogTests(unittest.TestCase):
 
     def test_task0066_replacement_is_exact_and_atomic(self) -> None:
         child, tasks, _, _ = self.load_inputs()
+        child = copy.deepcopy(child)
+        child["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0066"]
         parent = copy.deepcopy(child)
         parent["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0064"]
         self.assertTrue(doctor.task0066_planning_repair_projection(parent, child))
@@ -2931,15 +3014,24 @@ class BacklogTests(unittest.TestCase):
             doctor.task0066_planning_repair_authorized("0" * 40, "1" * 40)
         )
 
-        task0055_text = (
-            ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])
-        ).read_text(encoding="utf-8")
+        task0055_text = doctor.git_object(
+            "46ba60fda712ec88a1a6156682a3e63fa787348d",
+            str(child["tasks"]["TASK-0055"]["taskCard"]),
+        ).decode("utf-8")
         self.assertIn(
             "依赖：永久替代已 REJECTED TASK-0064 的 standalone TASK-0066",
             task0055_text,
         )
         self.assertIn("TASK-0066 必须 ACCEPTED", task0055_text)
-        for task_id in ("TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
+        task0055_metadata = doctor.task_metadata_from_text(
+            task0055_text,
+            "TASK-0066 frozen TASK-0055 planning card",
+        )
+        self.assertEqual(
+            canonical_json_sha256(child["tasks"]["TASK-0055"]),
+            task0055_metadata["planningContractHash"],
+        )
+        for task_id in ("TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             self.assertEqual(
                 canonical_json_sha256(child["tasks"][task_id]),
                 tasks[task_id]["planningContractHash"],
@@ -2954,6 +3046,130 @@ class BacklogTests(unittest.TestCase):
         ):
             self.assertEqual(
                 doctor.git_object(doctor.TASK_0066_BASE_COMMIT, path),
+                (ROOT / path).read_bytes(),
+                path,
+            )
+
+    def test_task0067_replacement_is_exact_and_atomic(self) -> None:
+        child, tasks, _, _ = self.load_inputs()
+        parent = copy.deepcopy(child)
+        parent["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0066"]
+        self.assertTrue(doctor.task0067_planning_repair_projection(parent, child))
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0067_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+        unauthorized = Audit()
+        validate_backlog_history_edge(unauthorized, parent, child, "parent..child")
+        self.assertTrue(
+            any("TASK-0055" in error for error in unauthorized.errors),
+            unauthorized.errors,
+        )
+
+        wrong_dependency = copy.deepcopy(child)
+        wrong_dependency["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0066"]
+        self.assertFalse(
+            doctor.task0067_planning_repair_projection(parent, wrong_dependency)
+        )
+        expanded = copy.deepcopy(child)
+        expanded["tasks"]["TASK-0056"]["objective"] = "scope expanded"
+        self.assertFalse(doctor.task0067_planning_repair_projection(parent, expanded))
+        self.assertFalse(doctor.task0067_planning_repair_projection(child, parent))
+
+        task0067 = discover_tasks()["TASK-0067"]
+        self.assertTrue(doctor.task0067_repair_approvals_are_exact(task0067))
+        wrong_scope = copy.deepcopy(task0067)
+        wrong_scope["humanApprovals"][1]["scope"] = "wrong-authority"
+        self.assertFalse(doctor.task0067_repair_approvals_are_exact(wrong_scope))
+        wrong_base = copy.deepcopy(task0067)
+        wrong_base["humanApprovals"][1]["evidence"] = wrong_base[
+            "humanApprovals"
+        ][1]["evidence"].replace(doctor.TASK_0067_BASE_COMMIT, "f" * 40)
+        self.assertFalse(doctor.task0067_repair_approvals_are_exact(wrong_base))
+        wrong_tree = copy.deepcopy(task0067)
+        wrong_tree["humanApprovals"][1]["evidence"] = wrong_tree[
+            "humanApprovals"
+        ][1]["evidence"].replace(doctor.TASK_0067_BASE_TREE, "e" * 40)
+        self.assertFalse(doctor.task0067_repair_approvals_are_exact(wrong_tree))
+        extra_approval = copy.deepcopy(task0067)
+        extra_approval["humanApprovals"].append(
+            {
+                "scope": "task-0067-canonical-byte-domain-recovery",
+                "approvedBy": "repository-owner",
+                "approvedAt": "2026-07-31",
+                "evidence": "not reusable",
+            }
+        )
+        self.assertFalse(
+            doctor.task0067_repair_approvals_are_exact(extra_approval)
+        )
+        self.assertFalse(
+            doctor.task0067_planning_repair_authorized("0" * 40, "1" * 40)
+        )
+
+        authorized_edges = []
+        commits = subprocess.check_output(
+            [
+                "git",
+                "log",
+                "--format=%H",
+                "--",
+                ".harness/task-backlog.yaml",
+            ],
+            cwd=ROOT,
+            text=True,
+        ).splitlines()
+        for commit in commits:
+            graph = subprocess.check_output(
+                ["git", "rev-list", "--parents", "-n", "1", commit],
+                cwd=ROOT,
+                text=True,
+            ).split()
+            if len(graph) == 2 and doctor.task0067_planning_repair_authorized(
+                graph[1],
+                graph[0],
+            ):
+                authorized_edges.append((graph[1], graph[0]))
+        self.assertEqual(1, len(authorized_edges), authorized_edges)
+
+        task0055_text = (
+            ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "依赖：永久替代已 REJECTED TASK-0066 的 standalone TASK-0067",
+            task0055_text,
+        )
+        self.assertIn("TASK-0067 必须 ACCEPTED", task0055_text)
+        for task_id in (
+            "TASK-0055",
+            "TASK-0056",
+            "TASK-0057",
+            "TASK-0058",
+            "TASK-0059",
+        ):
+            self.assertEqual(
+                canonical_json_sha256(child["tasks"][task_id]),
+                tasks[task_id]["planningContractHash"],
+            )
+        for path in (
+            ".github/workflows/ci.yml",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
+            "docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md",
+            "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
+            "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
+            "docs/tasks/TASK-0066-local-fallback-recovery-permanent-replacement.md",
+            "docs/evidence/TASK-0066/evidence-pack.json",
+            "docs/handoffs/TASK-0066.json",
+        ):
+            self.assertEqual(
+                doctor.git_object(doctor.TASK_0067_BASE_COMMIT, path),
                 (ROOT / path).read_bytes(),
                 path,
             )
@@ -3082,10 +3298,10 @@ class BacklogTests(unittest.TestCase):
         )
         self.assertIsNone(before_replacement_acceptance["nextPromotable"])
         self.assertIn(
-            f"DEPENDENCY:TASK-0066:{ordered_tasks['TASK-0066']['state']}",
+            f"DEPENDENCY:TASK-0067:{ordered_tasks['TASK-0067']['state']}",
             before_replacement_acceptance["blockers"]["TASK-0055"],
         )
-        ordered_tasks["TASK-0066"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0067"]["state"] = "ACCEPTED"
         for task_id in ("TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
@@ -4785,7 +5001,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0066"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0067"]["state"] = "ACCEPTED"
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None

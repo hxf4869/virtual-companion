@@ -248,6 +248,61 @@ task0066Recovery:
     GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
   generalizedSelfDowngradeForbidden: true
   reusableByOtherTask: false
+task0067Recovery:
+  oneTimeOnly: true
+  taskId: TASK-0067
+  replacementOfRejectedTask: TASK-0066
+  baseCommit: b48984d1fbb61f809711f936066610576ad9426f
+  baseTree: f660c9e1823285ac98d7c8824a519405f23db72c
+  authorizationCommit: 35b93065dd760ffb698e315c703de7987e00165a
+  channel: LOCAL_EXACT_TREE_FALLBACK
+  profile: HARNESS_PORTABILITY_LOCAL
+  deliveryBudgets:
+    candidateDeadlineMinutes: 20
+    targetWallMinutes: 85
+    hardFuseWallMinutes: 105
+    maximumFixBatches: 1
+    maximumReviewRounds: 2
+  requiredOutcomes:
+    windows: PASS
+    wslUbuntu: PASS
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: NOT_RUN_QUOTA
+  remoteUnavailableEvidence:
+    type: OWNER_SUPPLIED_QUOTA_EXHAUSTED
+    includedMinutes: 2000
+    usedMinutes: 2000
+    paidBudgetUsd: 0
+    stopUsageEnabled: true
+    resetDate: "2026-08-01"
+    dispatchCount: 0
+  recoveryInput:
+    retainedImplementationCommit: 46ba60fda712ec88a1a6156682a3e63fa787348d
+    retainedImplementationTree: 28c95c0337cf35e36c930b30fd61636e31a6f61e
+    task0064WindowsFailureReceiptSha256: e1864721b9c9b0e740af78ff89f23288d59c3551084735118a358c537fddcf9f
+    task0066WindowsPassReceiptSha256: 5e27c275fccf933ec8c886a7c5a20c659e2168efa642e2750f5a07066f827373
+    task0066WslFailureReceiptSha256: 1b82e6d6ee7092ea52809bc917c629dbc5c44ea856a36d7e71186474b5ae9da9
+    failedTests:
+      - DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection
+      - IntegrationTests.test_doctor_accepts_current_task
+    failureMessage: "task-delivery-policy: durable command helper canonical content hash drifted"
+    canonicalPath: scripts/harness/durable_command.ps1
+    generalAttribute: "*.ps1 text eol=crlf"
+    pathOverride: "scripts/harness/durable_command.ps1 text eol=lf"
+    gitBlob:
+      bytes: 8819
+      lf: 236
+      crlf: 0
+      sha256: fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180
+    failedGitArchive:
+      bytes: 9055
+      lf: 236
+      crlf: 236
+      sha256: 85e5697d0aa546f55c1bfe7cdbf8af1b56317098a150c8d13d63df9f045a6027
+  ownerEvidence: >-
+    GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
+  generalizedSelfDowngradeForbidden: true
+  reusableByOtherTask: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true
