@@ -1,0 +1,305 @@
+{
+  "taskId": "TASK-0067",
+  "baseCommit": "b48984d1fbb61f809711f936066610576ad9426f",
+  "headCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+  "contextFingerprint": "5e11c9bb792efa7fe26440771283b5ba33f4ddaf5a931b95a3f92e35580792de",
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_policy_is_registered_and_fail_closed scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_policy_rejects_unknown_quota_downgrade_and_false_platform_pass scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_durable_command_canonical_byte_domain_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0067_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.IntegrationTests.test_doctor_accepts_current_task",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN/NOT_OBSERVED: the original visible task ended in SYSTEM_ERROR_UNRECOVERABLE without a repository-verifiable complete receipt, stdout/stderr transcript, or real exit code for the frozen targeted matrix. At the 20-minute candidate deadline the stop condition fired; the matrix was not rerun, and neither PASS nor FAIL is claimed.",
+      "environment": "Windows host observation only; exact test environment and execution result are unavailable",
+      "verifiedCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN/NOT_OBSERVED: no repository-verifiable complete receipt or real exit code survived the original SYSTEM_ERROR_UNRECOVERABLE. It was not rerun after the candidate deadline stop condition, and neither PASS nor FAIL is claimed.",
+      "environment": "Windows host observation only; exact Git execution result is unavailable",
+      "verifiedCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0067",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: the 20-minute candidate deadline fired before a provable targeted PASS, so Windows exact-tree validation was forbidden and was not dispatched.",
+      "environment": "Windows exact-tree channel; deliberately not run after stop condition",
+      "verifiedCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0067",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: WSL exact-tree validation was sequenced after targeted, Reviewer, and Windows PASS; those prerequisites were not met, so it was not dispatched.",
+      "environment": "Ubuntu-24.04 WSL exact-tree channel; deliberately not run after stop condition",
+      "verifiedCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0067 candidate 627ab81c664fccc97c00473b852c5da7a39a00bb",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: the frozen sequence required a provable targeted PASS before independent R1; the candidate deadline fired without that evidence, so no Reviewer was started and no verdict is claimed.",
+      "environment": "Independent fork_turns=none Reviewer; deliberately not started",
+      "verifiedCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0067",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: no controlled macOS environment was available and no macOS PASS is claimed.",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0067",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_QUOTA: OWNER_SUPPLIED_QUOTA_EXHAUSTED records 2,000/2,000 included minutes used, USD 0 paid budget, Stop usage enabled, reset date 2026-08-01, and dispatch=0. No workflow dispatch or probe occurred; this is not PASS.",
+      "environment": "GitHub Actions; deliberately not dispatched",
+      "verifiedCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "channel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+    "candidateTree": "3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824",
+    "cleanSnapshot": {
+      "candidateCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+      "candidateTree": "3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824",
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "results": [
+      {
+        "platform": "windows",
+        "status": "NOT_RUN",
+        "reasonCode": "NOT_RUN_DUE_STOP_CONDITION",
+        "taskId": "TASK-0067",
+        "candidateCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+        "candidateTree": "3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824",
+        "executions": 0
+      },
+      {
+        "platform": "wslUbuntu",
+        "status": "NOT_RUN",
+        "reasonCode": "NOT_RUN_DUE_STOP_CONDITION",
+        "taskId": "TASK-0067",
+        "candidateCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+        "candidateTree": "3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824",
+        "executions": 0
+      }
+    ],
+    "notCovered": [],
+    "deferred": [
+      {
+        "platform": "macos",
+        "status": "DEFERRED_NOT_CLAIMED",
+        "residualRisk": "No controlled macOS behavior, filesystem semantics, shell behavior, or toolchain compatibility was observed; no macOS PASS is claimed.",
+        "followUpCondition": "Run the same freshly frozen exact-tree profile on a controlled macOS host under the future permanent replacement task when one becomes available."
+      }
+    ],
+    "remote": {
+      "platform": "githubActions",
+      "status": "NOT_RUN_QUOTA",
+      "reasonType": "OWNER_SUPPLIED_QUOTA_EXHAUSTED",
+      "includedMinutes": 2000,
+      "usedMinutes": 2000,
+      "paidBudgetUsd": 0,
+      "stopUsageEnabled": true,
+      "resetDate": "2026-08-01",
+      "dispatchCount": 0
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "implementationCandidateCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+      "implementationCandidateTree": "3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824",
+      "implementationPathsChangedAfterCandidate": [],
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "commit": "b48984d1fbb61f809711f936066610576ad9426f",
+      "tree": "f660c9e1823285ac98d7c8824a519405f23db72c",
+      "originMain": "b48984d1fbb61f809711f936066610576ad9426f",
+      "ahead": 0,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "lifecycle": {
+      "draftCommit": "6a6b62474256b13e05eb1299c10b1e5b5f0df3a3",
+      "readyAuthorizationCommit": "35b93065dd760ffb698e315c703de7987e00165a",
+      "authorizationBindingCommit": "4eb6c19f801e90e7487e4c4760e59d27f7e173ac",
+      "inProgressCommit": "a7ffd4fac83655910a9109e70500001974aca08a",
+      "inReviewCandidateCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb"
+    },
+    "candidate": {
+      "commit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+      "tree": "3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824",
+      "state": "IN_REVIEW",
+      "worktreeClean": true,
+      "indexClean": true,
+      "retainedForFutureRecoveryInputOnly": true,
+      "validationStatus": "NON_PASS"
+    },
+    "transportPreflight": {
+      "status": "PASS",
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "timing": "BEFORE_DRAFT",
+      "innerExitCode": 7,
+      "elapsedSeconds": 4.155,
+      "candidatePassAlias": false,
+      "receiptHashAvailableToClosureRecovery": false
+    },
+    "attributeArchiveProbe": {
+      "status": "PASS",
+      "timing": "BEFORE_DRAFT",
+      "path": "scripts/harness/durable_command.ps1",
+      "generalAttribute": "*.ps1 text eol=crlf",
+      "pathOverride": "scripts/harness/durable_command.ps1 text eol=lf",
+      "gitBlob": {
+        "bytes": 8819,
+        "lf": 236,
+        "crlf": 0,
+        "sha256": "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180"
+      },
+      "windowsCheckout": {
+        "bytes": 8819,
+        "lf": 236,
+        "crlf": 0,
+        "sha256": "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180"
+      },
+      "gitArchiveEntry": {
+        "bytes": 8819,
+        "lf": 236,
+        "crlf": 0,
+        "sha256": "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180"
+      },
+      "scope": "Pre-DRAFT byte-domain probe only; not a targeted, Reviewer, canonical, or exact-tree PASS alias."
+    },
+    "targetedMatrix": {
+      "status": "UNKNOWN",
+      "observation": "NOT_OBSERVED",
+      "receiptAvailable": false,
+      "completeStdoutAvailable": false,
+      "completeStderrAvailable": false,
+      "exitCode": null,
+      "passClaimed": false,
+      "failClaimed": false,
+      "rerun": false
+    },
+    "review": {
+      "status": "NOT_RUN_DUE_STOP_CONDITION",
+      "roundsUsed": 0,
+      "verdict": null
+    },
+    "stopCondition": {
+      "status": "FIRED",
+      "reasonCode": "CANDIDATE_DEADLINE_WITHOUT_PROVABLE_TARGETED_PASS",
+      "implementationStopped": true,
+      "fixesStopped": true,
+      "reviewStopped": true,
+      "windowsValidationStopped": true,
+      "wslValidationStopped": true,
+      "githubDispatchStopped": true
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T17:38:46+08:00",
+      "candidateCommittedAt": "2026-07-31T17:56:55+08:00",
+      "candidateElapsedSeconds": 1089,
+      "candidateElapsed": "18m09s",
+      "candidateDeadlineMinutes": 20,
+      "deadlineBoundary": "2026-07-31T17:58:46+08:00",
+      "candidateToStopSeconds": 111,
+      "candidateToStop": "1m51s",
+      "stopConditionFiredAt": "2026-07-31T17:58:46+08:00",
+      "activeElapsedSecondsAtStop": 1200,
+      "candidateDeadlineStatus": "FIRED_BEFORE_PROVABLE_TARGETED_PASS",
+      "futureMinimumCandidateDeadlineMinutes": 25,
+      "budgetRule": "At least the observed 20-minute incomplete-candidate upper bound multiplied by 1.25."
+    },
+    "systemErrorRecovery": {
+      "classification": "SYSTEM_ERROR_UNRECOVERABLE",
+      "diagnosticUnavailable": true,
+      "rootCauseInferred": false,
+      "observations": [
+        {
+          "scope": "original-visible-task-initial-turn",
+          "startedAt": "2026-07-31T17:38:46+08:00",
+          "completedAt": "2026-07-31T18:02:03+08:00",
+          "threadStatusType": "systemError",
+          "turnError": null,
+          "lastObservableEvidence": "deadline/REJECTED commentary and fileChange marker",
+          "finalAnswerPresent": false,
+          "receiptAvailable": false,
+          "exitCodeAvailable": false
+        },
+        {
+          "scope": "original-thread-minimal-closure-recovery-1",
+          "startedAt": "2026-07-31T18:02:29+08:00",
+          "completedAt": "2026-07-31T18:03:42+08:00",
+          "threadStatusType": "systemError",
+          "turnError": null,
+          "latestAssistantMessage": null,
+          "latestToolMarker": null,
+          "receiptAvailable": false,
+          "exitCodeAvailable": false
+        },
+        {
+          "scope": "original-thread-minimal-closure-recovery-2",
+          "startedAt": "2026-07-31T18:03:57+08:00",
+          "completedAt": "2026-07-31T18:03:59+08:00",
+          "threadStatusType": "systemError",
+          "turnError": null,
+          "latestAssistantMessage": null,
+          "latestToolMarker": null,
+          "receiptAvailable": false,
+          "exitCodeAvailable": false
+        },
+        {
+          "scope": "new-visible-recovery-task",
+          "startedAt": "2026-07-31T18:04:33+08:00",
+          "completedAt": "2026-07-31T18:04:44+08:00",
+          "threadStatusType": "systemError",
+          "turnError": null,
+          "latestAssistantMessage": null,
+          "latestToolMarker": null,
+          "receiptAvailable": false,
+          "exitCodeAvailable": false
+        }
+      ]
+    },
+    "numberingAndBacklog": {
+      "idPolicy": "PERMANENT_NEVER_REUSE",
+      "task0065": "Reserved for GitHub explicit dispatch and quota-scheduling governance",
+      "nextPermanentReplacementId": "TASK-0068",
+      "task0055State": "PLANNED",
+      "task0055Dependencies": [
+        "TASK-0067"
+      ],
+      "task0055Promotion": "BLOCKED_BY_REJECTED_DEPENDENCY",
+      "task0013Promotion": "HELD"
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so that commit and tree cannot self-reference their own hashes. The sole pre-closure receipt and exact terminal commit/tree are reported after execution, commit, push, and remote verification."
+    }
+  }
+}

@@ -2,7 +2,23 @@
 
 ```yaml
 taskId: TASK-0067
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  本卡从 2026-07-31 17:38:46 +08:00 开始，候选
+  627ab81c664fccc97c00473b852c5da7a39a00bb（Tree
+  3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824）于 17:56:55 形成，
+  实测耗时 18 分 09 秒；但 task-specific candidateDeadlineMinutes=20
+  的停止边界 17:58:46 到达时，冻结 targeted matrix 没有仓库内可验证的
+  完整 receipt、stdout/stderr 或真实退出码，只能记为
+  UNKNOWN/NOT_OBSERVED，不能声称 PASS 或 FAIL。按冻结停止条件立即停止
+  Reviewer、Windows/WSL exact-tree 与 GitHub；Reviewer、Windows 和 WSL
+  均为 NOT_RUN_DUE_STOP_CONDITION，macOS 为 DEFERRED_NOT_CLAIMED，
+  GitHub Actions 为 NOT_RUN_QUOTA、dispatch=0。原可见任务及三次恢复尝试
+  共留下四次 SYSTEM_ERROR_UNRECOVERABLE，平台均未提供错误文本、receipt
+  或 exit，不能推断根因。保留候选实现、DRAFT 前 canonical 字节域 probe
+  PASS 与 exit-7 transport smoke PASS，但它们都不是 targeted、Reviewer
+  或 exact-tree PASS；故本卡按事实 REJECTED，不修复、不重跑、不晋级
+  TASK-0055。
 owner: repository-owner
 riskClass: C4
 requiredSkills:

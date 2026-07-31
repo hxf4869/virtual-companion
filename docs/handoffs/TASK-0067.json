@@ -1,0 +1,95 @@
+{
+  "taskId": "TASK-0067",
+  "state": "REJECTED",
+  "baseCommit": "b48984d1fbb61f809711f936066610576ad9426f",
+  "headCommit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+  "evidencePath": "docs/evidence/TASK-0067/evidence-pack.json",
+  "reviewers": [],
+  "completed": [
+    "Retained implementation candidate 627ab81c664fccc97c00473b852c5da7a39a00bb / Tree 3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824 without post-candidate implementation edits.",
+    "Preserved the pre-DRAFT byte-domain probe PASS: the path-level LF override produced identical Git Blob, Windows checkout, and git-archive bytes at 8,819 bytes, 236 LF, 0 CRLF, SHA-256 fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180.",
+    "Preserved the no-repository-side-effect exit-7 durable transport smoke PASS with real inner exit 7 in 4.155 seconds; it is not a candidate validation alias.",
+    "Measured 17:38:46 to candidate commit 17:56:55 as 18m09s, then 1m51s to the 17:58:46 candidate deadline stop boundary; total active time at stop was exactly 20m.",
+    "Stopped implementation, fixes, Reviewer, Windows/WSL exact-tree validation, and GitHub dispatch when the candidate deadline fired without a repository-verifiable targeted receipt/exit.",
+    "Recorded all four SYSTEM_ERROR_UNRECOVERABLE observations with diagnosticUnavailable=true and without inferring a root cause.",
+    "Kept macOS DEFERRED_NOT_CLAIMED and GitHub Actions NOT_RUN_QUOTA with dispatch=0."
+  ],
+  "remaining": [
+    "The frozen targeted matrix and git diff --check are UNKNOWN/NOT_OBSERVED: no complete repository-verifiable receipt, stdout/stderr transcript, or real exit code survived, so neither PASS nor FAIL is claimed.",
+    "Independent Reviewer R1, Windows exact-tree, and WSL exact-tree are NOT_RUN_DUE_STOP_CONDITION; no verdict or platform PASS exists for TASK-0067.",
+    "TASK-0055 remains PLANNED and fail-closed because its sole dependency TASK-0067 is REJECTED; TASK-0013 must not be promoted.",
+    "Create fresh permanent replacement TASK-0068 without reopening or rewriting TASK-0067; TASK-0065 remains reserved for remote dispatch/quota scheduling governance.",
+    "TASK-0068 must rerun one freshly frozen targeted matrix, then the required independent review and Windows/WSL exact-tree sequence; no TASK-0067 non-PASS result may be reused as PASS."
+  ],
+  "knownRisks": [
+    "The retained implementation candidate may be useful recovery input, but its correctness and portability remain unproven because targeted, Reviewer, Windows, and WSL produced no PASS.",
+    "No controlled macOS runtime behavior was observed, and no macOS PASS is claimed.",
+    "GitHub Actions was not dispatched; NOT_RUN_QUOTA is not CI PASS.",
+    "The platform supplied no error text, receipt, or exit for any SYSTEM_ERROR_UNRECOVERABLE observation; diagnosticUnavailable=true and no root cause is inferred.",
+    "A future candidateDeadlineMinutes must be at least 25 minutes, derived from the observed 20-minute incomplete-candidate upper bound multiplied by 1.25; this is a minimum planning input, not a guarantee of PASS.",
+    "The terminal metadata-only commit must contain [skip ci], does not validate the implementation candidate, and cannot release TASK-0055."
+  ],
+  "recoveryInput": {
+    "replacementTaskId": "TASK-0068",
+    "retainedCandidate": {
+      "commit": "627ab81c664fccc97c00473b852c5da7a39a00bb",
+      "tree": "3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824",
+      "targetedStatus": "UNKNOWN_NOT_OBSERVED",
+      "reviewerStatus": "NOT_RUN_DUE_STOP_CONDITION",
+      "windowsStatus": "NOT_RUN_DUE_STOP_CONDITION",
+      "wslStatus": "NOT_RUN_DUE_STOP_CONDITION"
+    },
+    "observedTiming": {
+      "startedAt": "2026-07-31T17:38:46+08:00",
+      "candidateCommittedAt": "2026-07-31T17:56:55+08:00",
+      "candidateElapsedSeconds": 1089,
+      "candidateDeadlineBoundary": "2026-07-31T17:58:46+08:00",
+      "candidateToStopSeconds": 111,
+      "activeElapsedSecondsAtStop": 1200,
+      "futureMinimumCandidateDeadlineMinutes": 25,
+      "multiplier": 1.25
+    },
+    "byteDomainEvidence": {
+      "path": "scripts/harness/durable_command.ps1",
+      "generalAttribute": "*.ps1 text eol=crlf",
+      "pathOverride": "scripts/harness/durable_command.ps1 text eol=lf",
+      "bytes": 8819,
+      "lf": 236,
+      "crlf": 0,
+      "sha256": "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180",
+      "domains": [
+        "GIT_BLOB",
+        "WINDOWS_CHECKOUT",
+        "GIT_ARCHIVE_ENTRY"
+      ],
+      "status": "PASS_BEFORE_DRAFT_ONLY"
+    },
+    "transportSmoke": {
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "status": "PASS_BEFORE_DRAFT_ONLY",
+      "innerExitCode": 7,
+      "elapsedSeconds": 4.155
+    },
+    "systemErrorEvidence": {
+      "classification": "SYSTEM_ERROR_UNRECOVERABLE",
+      "diagnosticUnavailable": true,
+      "rootCauseInferred": false,
+      "observedIntervals": [
+        "original initial turn: completed 2026-07-31T18:02:03+08:00; thread systemError; turn.error null; no final_answer",
+        "same-thread recovery 1: 2026-07-31T18:02:29+08:00 to 2026-07-31T18:03:42+08:00; systemError; no assistant/tool marker",
+        "same-thread recovery 2: 2026-07-31T18:03:57+08:00 to 2026-07-31T18:03:59+08:00; systemError; no assistant/tool marker",
+        "new visible recovery task: 2026-07-31T18:04:33+08:00 to 2026-07-31T18:04:44+08:00; systemError; no assistant/tool marker"
+      ]
+    },
+    "minimumValidationMatrix": [
+      "Run the exact frozen targeted unit-test argv once and preserve a complete receipt/stdout/stderr/real exit; UNKNOWN or missing transport evidence is non-PASS.",
+      "Run git diff --check once on the same frozen candidate and preserve its real exit.",
+      "Only after a provable targeted PASS, run the required independent fork_turns=none R1 on that exact candidate identity.",
+      "Only after Reviewer PASS, run one Windows HARNESS_PORTABILITY_LOCAL exact-tree validation.",
+      "Only after Windows PASS, run one WSL Ubuntu git-archive HARNESS_PORTABILITY_LOCAL exact-tree validation.",
+      "Keep macOS DEFERRED_NOT_CLAIMED and GitHub Actions NOT_RUN_QUOTA with dispatch=0 unless a separately authorized machine contract changes those facts."
+    ],
+    "authorizationBoundary": "TASK-0068 needs a fresh exact-Base Owner authorization and a candidateDeadlineMinutes of at least 25. Do not reopen TASK-0067, modify TASK-0065, reuse TASK-0067 non-PASS results, or promote TASK-0055/TASK-0013."
+  },
+  "nextAction": "TASK-0067 因 candidate deadline 停止条件 REJECTED；保持 TASK-0055 依赖 TASK-0067 且不晋级，TASK-0065 保留；唯一下一动作是以不少于 25 分钟 candidateDeadlineMinutes 创建永久替代 TASK-0068，并重新执行唯一冻结 matrix"
+}

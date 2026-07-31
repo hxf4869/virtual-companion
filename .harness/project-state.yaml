@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0067
-activeTaskCard: docs/tasks/TASK-0067-durable-command-canonical-byte-domain-recovery.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0066
-lastTerminalHandoff: docs/handoffs/TASK-0066.json
-nextAction: TASK-0067 候选已进入 IN_REVIEW；完成冻结 targeted matrix 与独立 R1 后，依次运行 Windows/WSL exact-tree 验证
+lastTerminalTask: TASK-0067
+lastTerminalHandoff: docs/handoffs/TASK-0067.json
+nextAction: TASK-0067 因 candidate deadline 停止条件 REJECTED；保持 TASK-0055 依赖 TASK-0067 且不晋级，TASK-0065 保留；唯一下一动作是以不少于 25 分钟 candidateDeadlineMinutes 创建永久替代 TASK-0068，并重新执行唯一冻结 matrix
 capabilityGates:
   businessImplementation:
     state: BLOCKED
