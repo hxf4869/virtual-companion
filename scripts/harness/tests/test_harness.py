@@ -46,6 +46,7 @@ from doctor import (  # noqa: E402
     effective_protected_rules,
     first_existing_zed_instruction_path,
     is_review_evidence_path,
+    is_planning_only_task,
     intervening_terminal_boundaries,
     project_state_closure_projection,
     project_state_ready_projection,
@@ -1298,7 +1299,7 @@ class ContextTests(unittest.TestCase):
 
     def test_all_context_locks_are_reproducible(self) -> None:
         for task in discover_tasks().values():
-            if task.get("state") == "PLANNED":
+            if is_planning_only_task(task):
                 continue
             self.assertEqual([], verify_context_lock(task), task["taskId"])
 
@@ -1821,7 +1822,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
         backlog, tasks, lifecycle, _ = self.load_inputs()
         active_tasks = copy.deepcopy(tasks)
-        active_tasks["TASK-0037"]["state"] = "IN_PROGRESS"
+        active_tasks["TASK-0048"]["state"] = "IN_PROGRESS"
         active_projection = derive_backlog_promotion_projection(
             backlog,
             active_tasks,
@@ -1833,20 +1834,8 @@ class BacklogTests(unittest.TestCase):
         )
 
         ordered_tasks = copy.deepcopy(tasks)
-        ordered_tasks["TASK-0012"]["state"] = "ACCEPTED"
-        ordered_tasks["TASK-0037"]["state"] = "PLANNED"
-        first_projection = derive_backlog_promotion_projection(
-            backlog,
-            ordered_tasks,
-            lifecycle,
-        )
-        self.assertEqual("TASK-0037", first_projection["nextPromotable"])
-        self.assertIn(
-            "WAITING_FOR_ORDER:TASK-0037",
-            first_projection["blockers"]["TASK-0013"],
-        )
-        ordered_tasks["TASK-0037"]["state"] = "REJECTED"
-        for task_id in ("TASK-0038", "TASK-0039", "TASK-0040", "TASK-0041"):
+        ordered_tasks["TASK-0048"]["state"] = "ACCEPTED"
+        for task_id in ("TASK-0049", "TASK-0050", "TASK-0051", "TASK-0052", "TASK-0053"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
                 ordered_tasks,
@@ -2093,6 +2082,8 @@ class BacklogTests(unittest.TestCase):
         backlog, _, _, _ = self.load_inputs()
         parent = copy.deepcopy(backlog)
         resolved = copy.deepcopy(backlog)
+        parent["resolutions"] = {}
+        resolved["resolutions"] = {}
         entry = resolved["tasks"]["TASK-0013"]
         resolution = {
             "state": "REJECTED",
@@ -3543,15 +3534,11 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0012"]["state"] = "ACCEPTED"
-        terminal_tasks["TASK-0037"]["state"] = "REJECTED"
-        terminal_tasks["TASK-0037"]["resolutionReason"] = (
-            "静态范围无法在硬预算内安全闭环，转由四张永久替代卡严格串行推进。"
-        )
+        terminal_tasks["TASK-0048"]["state"] = "ACCEPTED"
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
-        idle_state["nextAction"] = "将 TASK-0038 晋级为唯一 DRAFT"
+        idle_state["nextAction"] = "将 TASK-0049 晋级为唯一 DRAFT"
         audit = Audit()
         projection = validate_task_backlog_data(
             audit,
@@ -3561,9 +3548,9 @@ class BacklogTests(unittest.TestCase):
             idle_state,
         )
         self.assertEqual([], audit.errors)
-        self.assertEqual("TASK-0038", projection["nextPromotable"])
+        self.assertEqual("TASK-0049", projection["nextPromotable"])
         self.assertIn(
-            "WAITING_FOR_ORDER:TASK-0038",
+            "WAITING_FOR_ORDER:TASK-0049",
             projection["blockers"]["TASK-0013"],
         )
         self.assertIn(
