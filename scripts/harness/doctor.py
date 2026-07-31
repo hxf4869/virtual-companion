@@ -8051,6 +8051,46 @@ def validate_task0064_local_fallback_evidence(
             "TASK-0064",
         ],
     }
+    expected_identity = {
+        "windows": {
+            "operatingSystem": "Windows-NT-10.0.26200",
+            "interpreter": "Python 3.12.9",
+            "toolchain": {
+                "powershell": "7.6.3",
+                "git": "2.28.0.windows.1",
+            },
+            "dependencies": {
+                "PyYAML": "6.0.3",
+                "tzdata": "2026.3",
+            },
+            "environment": {
+                "timezone": "Asia/Shanghai",
+                "transport": "DURABLE_ATOMIC_RECEIPT",
+            },
+        },
+        "wslUbuntu": {
+            "operatingSystem": (
+                "Ubuntu-24.04 / Linux "
+                "6.6.87.2-microsoft-standard-WSL2 x86_64"
+            ),
+            "interpreter": "Python 3.12.3",
+            "toolchain": {
+                "bash": "5.2.21(1)-release",
+                "git": "2.43.0",
+            },
+            "dependencies": {
+                "PyYAML": "6.0.1",
+                "timezoneData": (
+                    "SYSTEM:/usr/share/zoneinfo/Asia/Shanghai"
+                ),
+            },
+            "environment": {
+                "timezone": "Asia/Shanghai",
+                "locale": "C.UTF-8",
+                "isolation": "GIT_ARCHIVE_EXACT_CANDIDATE_TO_WSL_MKTEMP",
+            },
+        },
+    }
     results = record.get("results")
     audit.require(
         isinstance(results, list) and len(results) == 2,
@@ -8105,16 +8145,21 @@ def validate_task0064_local_fallback_evidence(
             and result.get("cleanWorktree") is True
             and result.get("cleanIndex") is True
             and result.get("argv") == argv
+            and result.get("operatingSystem")
+            == expected_identity[platform]["operatingSystem"]
+            and result.get("interpreter")
+            == expected_identity[platform]["interpreter"]
+            and result.get("toolchain")
+            == expected_identity[platform]["toolchain"]
+            and result.get("dependencies")
+            == expected_identity[platform]["dependencies"]
+            and result.get("environment")
+            == expected_identity[platform]["environment"]
             and result.get("exitCode") == 0,
             f"{label} does not bind a real PASS to the candidate",
         )
         for field in ("cwd", "operatingSystem", "interpreter", "startedAt", "completedAt"):
             validate_nonblank_text(audit, f"{label}.{field}", result.get(field))
-        for field in ("toolchain", "dependencies", "environment"):
-            audit.require(
-                isinstance(result.get(field), dict) and bool(result.get(field)),
-                f"{label}.{field} must be a non-empty object",
-            )
         for field in ("stdoutSha256", "stderrSha256", "receiptSha256"):
             audit.require(
                 bool(re.fullmatch(r"[0-9a-f]{64}", str(result.get(field, "")))),
@@ -8161,6 +8206,40 @@ def validate_task0064_local_fallback_evidence(
         and metadata_only.get("commitMarker") == "[skip ci]"
         and metadata_only.get("representsCiPass") is False,
         "TASK-0064: terminal metadata-only evidence drifted",
+    )
+
+
+def validate_task0064_terminal_commit_marker(
+    audit: Audit,
+    task_id: str,
+    terminal_commit: str,
+    evidence: dict[str, Any],
+) -> None:
+    if task_id != "TASK-0064":
+        return
+    metadata_only = evidence.get("validationChannels", {}).get(
+        "terminalMetadataOnly",
+        {},
+    )
+    marker = (
+        metadata_only.get("commitMarker")
+        if isinstance(metadata_only, dict)
+        else None
+    )
+    audit.require(
+        marker == "[skip ci]",
+        "TASK-0064: terminal metadata-only Evidence marker must be [skip ci]",
+    )
+    message = git_text(
+        "show",
+        "-s",
+        "--format=%B",
+        terminal_commit,
+        check=False,
+    )
+    audit.require(
+        message.returncode == 0 and "[skip ci]" in message.stdout,
+        "TASK-0064: real terminal commit message must contain [skip ci]",
     )
 
 
@@ -8898,6 +8977,12 @@ def validate_versioned_terminal_evidence(
     try:
         terminal_commit = canonical_terminal_commit(task, terminal_states)
         if terminal_commit:
+            validate_task0064_terminal_commit_marker(
+                audit,
+                task_id,
+                terminal_commit,
+                evidence,
+            )
             boundary_state = strict_yaml_load(
                 git_object(terminal_commit, ".harness/project-state.yaml")
             )

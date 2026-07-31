@@ -100,6 +100,7 @@ from doctor import (  # noqa: E402
     validate_sources,
     validate_task_delivery_policy,
     validate_task0064_local_fallback_evidence,
+    validate_task0064_terminal_commit_marker,
     validate_tasks,
     validate_task_authorization_history,
     validate_task_backlog_data,
@@ -1583,6 +1584,49 @@ class CiExecutionPolicyTests(unittest.TestCase):
         ).strip()
         task = {"taskId": "TASK-0064"}
 
+        identities = {
+            "windows": {
+                "operatingSystem": "Windows-NT-10.0.26200",
+                "interpreter": "Python 3.12.9",
+                "toolchain": {
+                    "powershell": "7.6.3",
+                    "git": "2.28.0.windows.1",
+                },
+                "dependencies": {
+                    "PyYAML": "6.0.3",
+                    "tzdata": "2026.3",
+                },
+                "environment": {
+                    "timezone": "Asia/Shanghai",
+                    "transport": "DURABLE_ATOMIC_RECEIPT",
+                },
+            },
+            "wslUbuntu": {
+                "operatingSystem": (
+                    "Ubuntu-24.04 / Linux "
+                    "6.6.87.2-microsoft-standard-WSL2 x86_64"
+                ),
+                "interpreter": "Python 3.12.3",
+                "toolchain": {
+                    "bash": "5.2.21(1)-release",
+                    "git": "2.43.0",
+                },
+                "dependencies": {
+                    "PyYAML": "6.0.1",
+                    "timezoneData": (
+                        "SYSTEM:/usr/share/zoneinfo/Asia/Shanghai"
+                    ),
+                },
+                "environment": {
+                    "timezone": "Asia/Shanghai",
+                    "locale": "C.UTF-8",
+                    "isolation": (
+                        "GIT_ARCHIVE_EXACT_CANDIDATE_TO_WSL_MKTEMP"
+                    ),
+                },
+            },
+        }
+
         def result(platform: str, argv: list[str]) -> dict[str, object]:
             return {
                 "platform": platform,
@@ -1594,11 +1638,7 @@ class CiExecutionPolicyTests(unittest.TestCase):
                 "cleanIndex": True,
                 "argv": argv,
                 "cwd": "exact-candidate",
-                "operatingSystem": platform,
-                "interpreter": "python-3.12",
-                "toolchain": {"python": "3.12"},
-                "dependencies": {"PyYAML": "6.0"},
-                "environment": {"timezone": "Asia/Shanghai"},
+                **identities[platform],
                 "stdoutSha256": "a" * 64,
                 "stderrSha256": "b" * 64,
                 "receiptSha256": "c" * 64,
@@ -1686,6 +1726,16 @@ class CiExecutionPolicyTests(unittest.TestCase):
             "candidateCommit"
         ] = "e" * 40
         variants.append(reused_commit)
+        wrong_toolchain = copy.deepcopy(evidence)
+        wrong_toolchain["validationChannels"]["results"][0]["toolchain"][
+            "powershell"
+        ] = "5.1"
+        variants.append(wrong_toolchain)
+        wrong_kernel = copy.deepcopy(evidence)
+        wrong_kernel["validationChannels"]["results"][1][
+            "operatingSystem"
+        ] = "Ubuntu-24.04 / Linux wrong x86_64"
+        variants.append(wrong_kernel)
         dispatched = copy.deepcopy(evidence)
         dispatched["validationChannels"]["remote"]["dispatchCount"] = 1
         variants.append(dispatched)
@@ -1694,6 +1744,59 @@ class CiExecutionPolicyTests(unittest.TestCase):
                 audit = Audit()
                 validate_task0064_local_fallback_evidence(audit, task, variant)
                 self.assertTrue(audit.errors)
+
+    def test_terminal_metadata_only_checks_real_commit_message(self) -> None:
+        evidence = {
+            "validationChannels": {
+                "terminalMetadataOnly": {
+                    "commitMarker": "[skip ci]",
+                }
+            }
+        }
+        success = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="治理：关闭 TASK-0064 [skip ci]\n",
+            stderr="",
+        )
+        audit = Audit()
+        with patch.object(doctor, "git_text", return_value=success):
+            validate_task0064_terminal_commit_marker(
+                audit,
+                "TASK-0064",
+                "a" * 40,
+                evidence,
+            )
+        self.assertEqual([], audit.errors)
+
+        failures = [
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="治理：关闭 TASK-0064\n",
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=1,
+                stdout="",
+                stderr="missing",
+            ),
+        ]
+        for failure in failures:
+            with self.subTest(failure=failure):
+                audit = Audit()
+                with patch.object(doctor, "git_text", return_value=failure):
+                    validate_task0064_terminal_commit_marker(
+                        audit,
+                        "TASK-0064",
+                        "a" * 40,
+                        evidence,
+                    )
+                self.assertTrue(
+                    any("real terminal commit message" in error for error in audit.errors),
+                    audit.errors,
+                )
 
 
 class DeliveryPolicyTests(unittest.TestCase):
