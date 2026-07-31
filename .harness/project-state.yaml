@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0064
+activeTaskCard: docs/tasks/TASK-0064-local-exact-tree-validation-fallback.md
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0063
 lastTerminalHandoff: docs/handoffs/TASK-0063.json
-nextAction: 等待 Actions 额度恢复并先固化 CI 费用/触发治理，再创建 TASK-0063 的全新永久替代；TASK-0055 或 TASK-0013 不得晋级
+nextAction: 执行 TASK-0064 的本地精确树验证备用通道与交付绿线恢复；禁止触发 GitHub Actions，TASK-0055 或 TASK-0013 不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED
