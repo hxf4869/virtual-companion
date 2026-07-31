@@ -207,6 +207,12 @@ authorizationAmendments:
           statement: TASK-0012 ACCEPTED 后第一张可晋级为 TASK-0037；TASK-0037 ACCEPTED 后再按原 DAG 推进 TASK-0013。
           statementHash: 99f1ce4576652caa72db70cce3714c64771922b34a0ea921e6c3931c7a304e53
 resolutions:
+  TASK-0053:
+    state: SUPERSEDED
+    reason: TASK-0052 已由 TASK-0058 替代；由 TASK-0059 在新后继链上承接相同 snapshot receipt 与 Evidence 范围。
+    decidedBy: repository-owner
+    decidedAt: "2026-07-31"
+    replacementTask: TASK-0059
   TASK-0052:
     state: SUPERSEDED
     reason: TASK-0051 已由 TASK-0057 替代；由 TASK-0058 在新后继链上承接相同路径感知 CI 与包装器范围。
