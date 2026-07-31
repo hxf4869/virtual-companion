@@ -1,6 +1,6 @@
 ---
 name: task-delivery-flow
-description: Execute one governed repository task or coordinate a strictly serial Backlog longline. Use for task intake, candidate freeze, bounded independent review, exact-SHA validation, atomic closure, or advancing fresh visible cards only after the previous card is remotely verified.
+description: Execute one governed repository task or coordinate a strictly serial Backlog longline. Use for task intake, candidate freeze, bounded independent review, exact-tree channel validation, atomic closure, or advancing fresh visible cards only after the previous card is verified.
 ---
 
 # Task Delivery Flow
@@ -10,8 +10,10 @@ description: Execute one governed repository task or coordinate a strictly seria
 1. Read `AGENTS.md`, project state, Task Ledger, Backlog, the current task card,
    and its Context Lock.
 2. Resolve this Skill from `.harness/skills.yaml`.
-3. Read `.harness/task-delivery-policy.yaml`. Treat its modes, thresholds,
-   sequence, candidate identity, and failure semantics as authoritative.
+3. Read `.harness/task-delivery-policy.yaml` and its single
+   `.harness/ci-execution-policy.yaml` validation-channel source. Treat their
+   modes, thresholds, frozen profiles, candidate identity, and failure
+   semantics as authoritative.
 4. Treat `.harness/task-lifecycle.yaml` as the only lifecycle source. The
    policy's `happyPath` is a delivery route, not another state machine.
 5. Stop as BLOCKED if the policy, mode, task authority, or required field is
@@ -25,7 +27,7 @@ description: Execute one governed repository task or coordinate a strictly seria
 3. Read every Skill and approval required by the task and protected-path rules.
 4. Enter IN_PROGRESS and run only the current `validation.sequence` stage.
    Iteration uses the bounded targeted checks; it does not consume canonical or
-   exact-SHA CI.
+   exact-tree validation channel.
 5. For an ordinary card, use `python scripts/harness/precheck.py --task
    TASK-ID` as the canonical command. A wrapper is never an Evidence, receipt,
    or PASS alias. A task that freezes wrapper argv executes and records that
@@ -38,8 +40,11 @@ description: Execute one governed repository task or coordinate a strictly seria
    the complete matrix. If blocking findings exist, use at most the allowed
    repair batch and limit R2 to finding closure, delta, adjacent risk, and new
    P0/P1.
-8. After Reviewer PASS, run the candidate canonical once and require exact-SHA
-   CI for the same implementation SHA.
+8. After Reviewer PASS, run the candidate canonical once and use the READY-
+   frozen exact-tree validation channel. Remote exact-SHA is the default.
+   A local fallback requires the policy's strong typed unavailability and
+   Owner authorization, and its PASS is limited to recorded platforms,
+   toolchains, and commands.
 9. Produce Evidence and Handoff, stage the closure exactly, run pre-closure,
    create the single-parent terminal commit, push, and reverify remote state.
 
@@ -51,7 +56,8 @@ description: Execute one governed repository task or coordinate a strictly seria
    complete `single-card` flow.
 3. Before a normal dependent card starts, satisfy every
    `modes.longline.nextCardRequires` item. The predecessor must be ACCEPTED,
-   pushed, handed off, remotely reverified, and backed by exact-SHA CI.
+   pushed, handed off, remotely reverified, and backed by the required exact-
+   tree validation channel.
 4. Never release a normal dependency from REJECTED or SUPERSEDED.
 5. An evidenced BLOCKED card blocks only its dependency descendants. Continue
    another independent promotable card. Pause only when no card is promotable
@@ -75,9 +81,16 @@ description: Execute one governed repository task or coordinate a strictly seria
   complete output determine the registered command result.
 - Reuse means not dispatching an identical check again. Preserve its one real
   result and never invent a `REUSED` PASS.
-- Keep failure, cancellation, timeout, and NOT_RUN as non-PASS.
-- Do not present another SHA, platform, execution, or pre-closure result as the
-  current exact-SHA PASS.
+- Keep failure, cancellation, timeout, NOT_RUN, UNKNOWN, and
+  DEFERRED_NOT_CLAIMED as non-PASS.
+- Do not present another Commit, Tree, platform, execution, or pre-closure
+  result as the current exact-tree PASS.
+- Freeze the validation profile before READY. Never downgrade it from results.
+  A local result binds clean Commit and Tree, exact argv, OS, interpreter,
+  toolchain, dependencies, environment, output hashes, and receipt hash.
+- Use TERMINAL_METADATA_ONLY only after a verified implementation candidate or
+  for REJECTED closure. Require an unchanged implementation-tree projection
+  and `[skip ci]`; it never represents CI PASS.
 - Keep C1/C2 review conditional unless the task or a protected rule requires
   more. Keep C3/C4 independent review mandatory.
 - Leave idle checkpoint core, its four consumers, performance work, path-aware
@@ -103,5 +116,6 @@ description: Execute one governed repository task or coordinate a strictly seria
 - [ ] Base, Context, approval, write scope, and protected rules are valid.
 - [ ] Candidate Commit, Tree, and complete identity are recorded.
 - [ ] R1 and any allowed R2 are tied to the candidate and delta.
-- [ ] Canonical and five CI jobs bind the exact implementation SHA.
+- [ ] Canonical and the frozen exact-tree channel bind the implementation
+      Commit and Tree; NOT_RUN/deferred coverage remains explicit.
 - [ ] Pre-closure, terminal commit, Handoff, push, and remote state are verified.

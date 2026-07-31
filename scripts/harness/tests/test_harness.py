@@ -74,6 +74,7 @@ from doctor import (  # noqa: E402
     validate_command_registry,
     validate_check_artifact,
     validate_changed_path_modes,
+    validate_ci_execution_policy,
     validate_evidence_check,
     validate_entrypoints,
     validate_idle_terminal_paths,
@@ -98,6 +99,7 @@ from doctor import (  # noqa: E402
     validate_skills,
     validate_sources,
     validate_task_delivery_policy,
+    validate_task0064_local_fallback_evidence,
     validate_tasks,
     validate_task_authorization_history,
     validate_task_backlog_data,
@@ -1517,6 +1519,183 @@ class DurableCommandTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
 
 
+class CiExecutionPolicyTests(unittest.TestCase):
+    def test_policy_is_registered_and_fail_closed(self) -> None:
+        audit = Audit()
+        validate_ci_execution_policy(audit)
+        self.assertEqual([], audit.errors)
+
+    def test_policy_rejects_unknown_quota_downgrade_and_false_platform_pass(
+        self,
+    ) -> None:
+        policy_path = ROOT / ".harness/ci-execution-policy.yaml"
+        real_load_yaml = doctor.load_yaml
+        variants = []
+
+        unknown_quota = copy.deepcopy(load_yaml(policy_path))
+        unknown_quota["channels"]["PRIMARY_REMOTE_EXACT_SHA"][
+            "unavailableEvidence"
+        ]["unknownQuotaBehavior"] = "SKIP"
+        variants.append(unknown_quota)
+
+        result_downgrade = copy.deepcopy(load_yaml(policy_path))
+        result_downgrade["rules"]["resultBasedProfileDowngradeForbidden"] = False
+        variants.append(result_downgrade)
+
+        false_macos_pass = copy.deepcopy(load_yaml(policy_path))
+        false_macos_pass["profiles"]["HARNESS_PORTABILITY_LOCAL"]["platforms"][
+            "macos"
+        ]["unavailableStatus"] = "PASS"
+        variants.append(false_macos_pass)
+
+        generalized_bootstrap = copy.deepcopy(load_yaml(policy_path))
+        generalized_bootstrap["task0064Bootstrap"]["oneTimeOnly"] = False
+        variants.append(generalized_bootstrap)
+
+        for variant in variants:
+            with self.subTest(variant=variant):
+                def load_with_variant(path: Path) -> dict[str, object]:
+                    if Path(path) == policy_path:
+                        return variant
+                    return real_load_yaml(path)
+
+                audit = Audit()
+                with patch.object(
+                    doctor,
+                    "load_yaml",
+                    side_effect=load_with_variant,
+                ):
+                    validate_ci_execution_policy(audit)
+                self.assertTrue(audit.errors)
+
+    def test_task0064_evidence_requires_exact_candidate_and_bounded_coverage(
+        self,
+    ) -> None:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        tree = subprocess.check_output(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        task = {"taskId": "TASK-0064"}
+
+        def result(platform: str, argv: list[str]) -> dict[str, object]:
+            return {
+                "platform": platform,
+                "status": "PASS",
+                "taskId": "TASK-0064",
+                "candidateCommit": commit,
+                "candidateTree": tree,
+                "cleanWorktree": True,
+                "cleanIndex": True,
+                "argv": argv,
+                "cwd": "exact-candidate",
+                "operatingSystem": platform,
+                "interpreter": "python-3.12",
+                "toolchain": {"python": "3.12"},
+                "dependencies": {"PyYAML": "6.0"},
+                "environment": {"timezone": "Asia/Shanghai"},
+                "stdoutSha256": "a" * 64,
+                "stderrSha256": "b" * 64,
+                "receiptSha256": "c" * 64,
+                "exitCode": 0,
+                "startedAt": "2026-07-31T00:00:00Z",
+                "completedAt": "2026-07-31T00:01:00Z",
+            }
+
+        windows_argv = [
+            "python",
+            "scripts/harness/precheck.py",
+            "--profile",
+            "harnessPortabilityLocal",
+            "--task",
+            "TASK-0064",
+        ]
+        wsl_argv = [
+            "bash",
+            "scripts/harness/precheck.sh",
+            "--profile",
+            "harnessPortabilityLocal",
+            "--task",
+            "TASK-0064",
+        ]
+        evidence = {
+            "headCommit": commit,
+            "validationChannels": {
+                "policySource": ".harness/ci-execution-policy.yaml",
+                "channel": "LOCAL_EXACT_TREE_FALLBACK",
+                "profile": "HARNESS_PORTABILITY_LOCAL",
+                "candidateCommit": commit,
+                "candidateTree": tree,
+                "cleanSnapshot": {
+                    "candidateCommit": commit,
+                    "candidateTree": tree,
+                    "worktreeClean": True,
+                    "indexClean": True,
+                },
+                "results": [
+                    result("windows", windows_argv),
+                    result("wslUbuntu", wsl_argv),
+                ],
+                "notCovered": [],
+                "deferred": [
+                    {
+                        "platform": "macos",
+                        "status": "DEFERRED_NOT_CLAIMED",
+                        "residualRisk": "No controlled macOS host is available.",
+                        "followUpCondition": "Rerun on an exact-tree macOS host.",
+                    }
+                ],
+                "remote": {
+                    "platform": "githubActions",
+                    "status": "NOT_RUN",
+                    "reasonType": "OWNER_SUPPLIED_QUOTA_EXHAUSTED",
+                    "includedMinutes": 2000,
+                    "usedMinutes": 2000,
+                    "paidBudgetUsd": 0,
+                    "stopUsageEnabled": True,
+                    "resetDate": "2026-08-01",
+                    "dispatchCount": 0,
+                },
+                "terminalMetadataOnly": {
+                    "profile": "TERMINAL_METADATA_ONLY",
+                    "implementationCandidateCommit": commit,
+                    "implementationCandidateTree": tree,
+                    "commitMarker": "[skip ci]",
+                    "representsCiPass": False,
+                },
+            },
+        }
+        audit = Audit()
+        validate_task0064_local_fallback_evidence(audit, task, evidence)
+        self.assertEqual([], audit.errors)
+
+        variants = []
+        false_deferred = copy.deepcopy(evidence)
+        false_deferred["validationChannels"]["deferred"][0]["status"] = "PASS"
+        variants.append(false_deferred)
+        wrong_tree = copy.deepcopy(evidence)
+        wrong_tree["validationChannels"]["candidateTree"] = "d" * 40
+        variants.append(wrong_tree)
+        reused_commit = copy.deepcopy(evidence)
+        reused_commit["validationChannels"]["results"][0][
+            "candidateCommit"
+        ] = "e" * 40
+        variants.append(reused_commit)
+        dispatched = copy.deepcopy(evidence)
+        dispatched["validationChannels"]["remote"]["dispatchCount"] = 1
+        variants.append(dispatched)
+        for variant in variants:
+            with self.subTest(variant=variant):
+                audit = Audit()
+                validate_task0064_local_fallback_evidence(audit, task, variant)
+                self.assertTrue(audit.errors)
+
+
 class DeliveryPolicyTests(unittest.TestCase):
     def test_policy_registry_skill_and_entrypoint_projection(self) -> None:
         audit = Audit()
@@ -1970,7 +2149,7 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0050"], backlog["tasks"]["TASK-0051"]["dependencies"])
         self.assertEqual(["TASK-0051"], backlog["tasks"]["TASK-0052"]["dependencies"])
         self.assertEqual(["TASK-0052"], backlog["tasks"]["TASK-0053"]["dependencies"])
-        self.assertEqual(["TASK-0062"], backlog["tasks"]["TASK-0055"]["dependencies"])
+        self.assertEqual(["TASK-0064"], backlog["tasks"]["TASK-0055"]["dependencies"])
         self.assertEqual(["TASK-0055"], backlog["tasks"]["TASK-0056"]["dependencies"])
         self.assertEqual(["TASK-0056"], backlog["tasks"]["TASK-0057"]["dependencies"])
         self.assertEqual(["TASK-0057"], backlog["tasks"]["TASK-0058"]["dependencies"])
@@ -1979,7 +2158,7 @@ class BacklogTests(unittest.TestCase):
 
         terminal_tasks = copy.deepcopy(tasks)
         self.assertEqual("REJECTED", terminal_tasks["TASK-0054"]["state"])
-        terminal_tasks["TASK-0062"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0064"]["state"] = "ACCEPTED"
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
@@ -2055,25 +2234,112 @@ class BacklogTests(unittest.TestCase):
             restore_edge.errors,
         )
 
-    def test_task0012_owner_amendment_history_edge_is_exact_and_atomic(self) -> None:
-        child, _, _, _ = self.load_inputs()
-        parent = copy.deepcopy(child)
-        parent["authority"]["owns"].remove("authorizationAmendments")
-        parent["authorizationAmendments"] = {}
+    def test_task0012_owner_amendment_real_history_edge_is_exact_and_atomic(
+        self,
+    ) -> None:
+        parent = doctor.yaml_at_commit(
+            doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT,
+            doctor.TASK_BACKLOG_PATH,
+        )
+        child = doctor.yaml_at_commit(
+            doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT,
+            doctor.TASK_BACKLOG_PATH,
+        )
+        self.assertNotIn("authorizationAmendments", parent)
         audit = Audit()
-        validate_backlog_history_edge(audit, parent, child, "parent..bootstrap")
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            (
+                f"{doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT}.."
+                f"{doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT}"
+            ),
+            parent_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT,
+            child_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT,
+        )
         self.assertEqual([], audit.errors)
+
+        strict_empty_parent = copy.deepcopy(parent)
+        strict_empty_parent["authorizationAmendments"] = {}
+        self.assertTrue(
+            doctor.authorization_amendment_authority_bootstrap_projection(
+                strict_empty_parent,
+                child,
+                parent_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT,
+                child_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT,
+            )
+        )
+
+        parent_variants = []
+        for invalid in (None, [], {"unexpected": {}}):
+            variant = copy.deepcopy(parent)
+            variant["authorizationAmendments"] = invalid
+            parent_variants.append(variant)
+        for variant in parent_variants:
+            with self.subTest(parent_variant=variant):
+                self.assertFalse(
+                    doctor.authorization_amendment_authority_bootstrap_projection(
+                        variant,
+                        child,
+                        parent_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT,
+                        child_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT,
+                    )
+                )
+
+        child_variants = []
+        wrong_owns = copy.deepcopy(child)
+        wrong_owns["authority"]["owns"][-1] = "wrong"
+        child_variants.append(wrong_owns)
+        extra_authority = copy.deepcopy(child)
+        extra_authority["authority"]["extra"] = True
+        child_variants.append(extra_authority)
+        extra_amendment = copy.deepcopy(child)
+        extra_amendment["authorizationAmendments"]["extra"] = {}
+        child_variants.append(extra_amendment)
+        for variant in child_variants:
+            with self.subTest(child_variant=variant):
+                self.assertFalse(
+                    doctor.authorization_amendment_authority_bootstrap_projection(
+                        parent,
+                        variant,
+                        parent_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT,
+                        child_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT,
+                    )
+                )
+        self.assertFalse(
+            doctor.authorization_amendment_authority_bootstrap_projection(
+                parent,
+                child,
+                parent_commit="a" * 40,
+                child_commit="b" * 40,
+            )
+        )
 
         corrupted = copy.deepcopy(child)
         corrupted["authority"]["owns"].append("uncontrolledRoot")
         corrupt = Audit()
-        validate_backlog_history_edge(corrupt, child, corrupted, "child..corrupt")
+        validate_backlog_history_edge(
+            corrupt,
+            child,
+            corrupted,
+            "child..corrupt",
+            parent_commit=doctor.AUTHORIZATION_AMENDMENT_BOOTSTRAP_COMMIT,
+            child_commit="c" * 40,
+        )
         self.assertTrue(
             any("immutable root field authority" in error for error in corrupt.errors),
             corrupt.errors,
         )
         restored = Audit()
-        validate_backlog_history_edge(restored, corrupted, child, "corrupt..restored")
+        validate_backlog_history_edge(
+            restored,
+            corrupted,
+            child,
+            "corrupt..restored",
+            parent_commit="c" * 40,
+            child_commit="d" * 40,
+        )
         self.assertTrue(
             any("immutable root field authority" in error for error in restored.errors),
             restored.errors,
@@ -2146,6 +2412,119 @@ class BacklogTests(unittest.TestCase):
             tasks["TASK-0056"]["planningContractHash"],
         )
 
+    def test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed(
+        self,
+    ) -> None:
+        task = discover_tasks()["TASK-0062"]
+        authorized_text = doctor.git_object(
+            doctor.TASK_0062_AUTHORIZATION_COMMIT,
+            doctor.TASK_0062_CARD_PATH,
+        ).decode("utf-8")
+        current_text = (
+            ROOT / doctor.TASK_0062_CARD_PATH
+        ).read_text(encoding="utf-8")
+        self.assertTrue(
+            doctor.task0062_rejected_authorization_history_isolated(
+                "TASK-0062",
+                doctor.TASK_0062_CARD_PATH,
+                task,
+                authorized_text,
+                current_text,
+            )
+        )
+
+        metadata_variants = []
+        for field, value in (
+            ("taskId", "TASK-0063"),
+            ("state", "ACCEPTED"),
+            ("authorizationCommit", "f" * 40),
+            ("baseCommit", "e" * 40),
+        ):
+            variant = copy.deepcopy(task)
+            variant[field] = value
+            metadata_variants.append(variant)
+        for variant in metadata_variants:
+            with self.subTest(variant=variant):
+                self.assertFalse(
+                    doctor.task0062_rejected_authorization_history_isolated(
+                        "TASK-0062",
+                        doctor.TASK_0062_CARD_PATH,
+                        variant,
+                        authorized_text,
+                        current_text,
+                    )
+                )
+        self.assertFalse(
+            doctor.task0062_rejected_authorization_history_isolated(
+                "TASK-0062",
+                "docs/tasks/wrong.md",
+                task,
+                authorized_text,
+                current_text,
+            )
+        )
+        self.assertFalse(
+            doctor.task0062_rejected_authorization_history_isolated(
+                "TASK-0062",
+                doctor.TASK_0062_CARD_PATH,
+                task,
+                authorized_text.replace("35 分钟", "34 分钟", 1),
+                current_text,
+            )
+        )
+        self.assertFalse(
+            doctor.task0062_rejected_authorization_history_isolated(
+                "TASK-0062",
+                doctor.TASK_0062_CARD_PATH,
+                task,
+                authorized_text,
+                current_text.replace("45 分钟", "46 分钟", 1),
+            )
+        )
+
+        real_load_yaml = doctor.load_yaml
+        ledger_path = ROOT / doctor.TASK_LEDGER_PATH
+        drifted_ledger = copy.deepcopy(load_yaml(ledger_path))
+        drifted_ledger["tasks"]["TASK-0062"]["state"] = "ACCEPTED"
+
+        def load_with_ledger_drift(path: Path) -> dict[str, object]:
+            if Path(path) == ledger_path:
+                return drifted_ledger
+            return real_load_yaml(path)
+
+        with patch.object(doctor, "load_yaml", side_effect=load_with_ledger_drift):
+            self.assertFalse(
+                doctor.task0062_rejected_authorization_history_isolated(
+                    "TASK-0062",
+                    doctor.TASK_0062_CARD_PATH,
+                    task,
+                    authorized_text,
+                    current_text,
+                )
+            )
+
+        target = ROOT / "docs/evidence/TASK-0062/review-r1.md"
+        real_read_bytes = doctor.read_repository_bytes
+
+        def read_with_artifact_drift(path: Path) -> bytes:
+            content = real_read_bytes(path)
+            return content + b"\ncorrupt" if Path(path) == target else content
+
+        with patch.object(
+            doctor,
+            "read_repository_bytes",
+            side_effect=read_with_artifact_drift,
+        ):
+            self.assertFalse(
+                doctor.task0062_rejected_authorization_history_isolated(
+                    "TASK-0062",
+                    doctor.TASK_0062_CARD_PATH,
+                    task,
+                    authorized_text,
+                    current_text,
+                )
+            )
+
     def test_task0061_replacement_is_exact_and_atomic(self) -> None:
         current, _, _, _ = self.load_inputs()
         child = copy.deepcopy(current)
@@ -2198,7 +2577,9 @@ class BacklogTests(unittest.TestCase):
                 )
 
     def test_task0062_replacement_is_exact_and_atomic(self) -> None:
-        child, tasks, _, _ = self.load_inputs()
+        current, tasks, _, _ = self.load_inputs()
+        child = copy.deepcopy(current)
+        child["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0062"]
         parent = copy.deepcopy(child)
         parent["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0061"]
         self.assertTrue(doctor.task0062_planning_repair_projection(parent, child))
@@ -2223,15 +2604,56 @@ class BacklogTests(unittest.TestCase):
         expanded = copy.deepcopy(child)
         expanded["tasks"]["TASK-0056"]["objective"] = "scope expanded"
         self.assertFalse(doctor.task0062_planning_repair_projection(parent, expanded))
+        for task_id in ("TASK-0057", "TASK-0058", "TASK-0059"):
+            self.assertEqual(
+                canonical_json_sha256(current["tasks"][task_id]),
+                tasks[task_id]["planningContractHash"],
+            )
+
+    def test_task0064_replacement_is_exact_and_atomic(self) -> None:
+        child, tasks, _, _ = self.load_inputs()
+        parent = copy.deepcopy(child)
+        parent["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0062"]
+        self.assertTrue(doctor.task0064_planning_repair_projection(parent, child))
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0064_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+        unauthorized = Audit()
+        validate_backlog_history_edge(unauthorized, parent, child, "parent..child")
+        self.assertTrue(
+            any("TASK-0055" in error for error in unauthorized.errors),
+            unauthorized.errors,
+        )
+        variants = []
+        wrong_dependency = copy.deepcopy(child)
+        wrong_dependency["tasks"]["TASK-0055"]["dependencies"] = ["TASK-0063"]
+        variants.append(wrong_dependency)
+        wrong_title = copy.deepcopy(child)
+        wrong_title["tasks"]["TASK-0055"]["title"] += " extra"
+        variants.append(wrong_title)
+        expanded = copy.deepcopy(child)
+        expanded["tasks"]["TASK-0056"]["objective"] = "scope expanded"
+        variants.append(expanded)
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.assertFalse(
+                    doctor.task0064_planning_repair_projection(parent, variant)
+                )
         task0055_text = (
             ROOT / str(child["tasks"]["TASK-0055"]["taskCard"])
         ).read_text(encoding="utf-8")
         self.assertIn(
-            "依赖：永久替代已 REJECTED TASK-0061 的 standalone TASK-0062",
+            "依赖：永久替代已 REJECTED TASK-0063 的 standalone TASK-0064",
             task0055_text,
         )
-        self.assertIn("TASK-0062 必须 ACCEPTED", task0055_text)
-        for task_id in ("TASK-0055", "TASK-0057", "TASK-0058", "TASK-0059"):
+        self.assertIn("TASK-0064 必须 ACCEPTED", task0055_text)
+        for task_id in ("TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             self.assertEqual(
                 canonical_json_sha256(child["tasks"][task_id]),
                 tasks[task_id]["planningContractHash"],
@@ -2240,10 +2662,13 @@ class BacklogTests(unittest.TestCase):
             ".github/workflows/ci.yml",
             "AGENTS.md",
             "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
+            "docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md",
+            "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
+            "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
         ):
             self.assertEqual(
-                doctor.git_tree_entry(doctor.TASK_0062_BASE_COMMIT, path),
-                doctor.git_tree_entry("HEAD", path),
+                doctor.git_object(doctor.TASK_0064_BASE_COMMIT, path),
+                (ROOT / path).read_bytes(),
                 path,
             )
 
@@ -4063,7 +4488,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0062"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0064"]["state"] = "ACCEPTED"
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
@@ -5229,7 +5654,7 @@ class ValidationFlowTests(unittest.TestCase):
                 "PUSHED",
                 "HANDOFF_COMPLETE",
                 "REMOTE_REVERIFIED",
-                "EXACT_SHA_CI_REVERIFIED",
+                "EXACT_TREE_VALIDATION_REVERIFIED",
             ],
             policy["modes"]["longline"]["nextCardRequires"],
         )

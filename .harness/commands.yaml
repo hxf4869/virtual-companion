@@ -22,8 +22,18 @@ commands:
     argv: [scripts/harness/durable_command.ps1]
     interpreter: POWERSHELL_7_WINDOWS
     profileEligible: false
+  harnessTests:
+    description: Run the complete portable Harness unit and integration test suite
+    argv: [scripts/harness/tests/test_harness.py]
 profiles:
   precheck:
+    - doctor
+    - catalogValidate
+    - catalogDrift
+    - paidFeatureCheck
+    - betaRosterGate
+  harnessPortabilityLocal:
+    - harnessTests
     - doctor
     - catalogValidate
     - catalogDrift

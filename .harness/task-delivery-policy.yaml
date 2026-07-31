@@ -2,6 +2,7 @@ schemaVersion: 1
 policyId: task-delivery
 canonicalLifecycleSource: .harness/task-lifecycle.yaml
 taskSource: .harness/task-backlog.yaml
+ciExecutionPolicy: .harness/ci-execution-policy.yaml
 skill:
   id: task-delivery-flow
   registry: .harness/skills.yaml
@@ -32,7 +33,7 @@ modes:
       - PUSHED
       - HANDOFF_COMPLETE
       - REMOTE_REVERIFIED
-      - EXACT_SHA_CI_REVERIFIED
+      - EXACT_TREE_VALIDATION_REVERIFIED
     terminalStatesThatDoNotReleaseDependencies:
       - REJECTED
       - SUPERSEDED
@@ -91,7 +92,7 @@ validation:
     - CANDIDATE_COMMIT_TREE
     - REVIEWER
     - CANDIDATE_CANONICAL
-    - EXACT_SHA_CI
+    - EXACT_TREE_VALIDATION_CHANNEL
     - CLOSURE
   ordinaryCard:
     canonicalPythonPrecheckCount: 1
@@ -107,6 +108,17 @@ validation:
   fullPlatformWrappersFor:
     - HARNESS
     - PORTABILITY
+  exactTreeValidation:
+    policySource: .harness/ci-execution-policy.yaml
+    channels:
+      - PRIMARY_REMOTE_EXACT_SHA
+      - LOCAL_EXACT_TREE_FALLBACK
+    defaultChannel: PRIMARY_REMOTE_EXACT_SHA
+    fallbackRequiresReadyFrozenProfile: true
+    resultBasedDowngradeForbidden: true
+    unknownRemoteAvailabilityCannotSkip: true
+    terminalMetadataOnlyProfile: TERMINAL_METADATA_ONLY
+    notRunOrDeferredNeverPass: true
   longRunningCommand:
     singleProcess: true
     expectedDurationThresholdSeconds: 60
@@ -214,6 +226,7 @@ candidateIdentity:
     - NOT_RUN
     - UNKNOWN
   exactShaCiCrossShaReuse: false
+  exactTreeChannelCrossCommitOrTreeReuse: false
 followUpTasks:
   idlePlanningCheckpointCore: TASK-0055
   idlePlanningCheckpointConsumers: TASK-0056

@@ -22,6 +22,7 @@ sources:
   protectedPaths: .harness/protected-paths.yaml
   invariants: .harness/invariants.yaml
   taskDeliveryPolicy: .harness/task-delivery-policy.yaml
+  ciExecutionPolicy: .harness/ci-execution-policy.yaml
   durableCommandRunner: scripts/harness/durable_command.ps1
   betaDutyRoster: ops/beta-duty-roster.yaml
   evidenceSchema: docs/schemas/evidence-pack.schema.json

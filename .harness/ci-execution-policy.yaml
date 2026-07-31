@@ -1,0 +1,215 @@
+schemaVersion: 1
+policyId: ci-execution
+taskDeliveryPolicy: .harness/task-delivery-policy.yaml
+defaultChannel: PRIMARY_REMOTE_EXACT_SHA
+channels:
+  PRIMARY_REMOTE_EXACT_SHA:
+    kind: REMOTE_EXACT_SHA
+    exactCommitRequired: true
+    exactTreeRequired: true
+    unavailableEvidence:
+      requiredType: STRONG_TYPED
+      allowedTypes:
+        OWNER_SUPPLIED_QUOTA_EXHAUSTED:
+          requiredFields:
+            - includedMinutes
+            - usedMinutes
+            - paidBudgetUsd
+            - stopUsageEnabled
+            - resetDate
+            - dispatchCount
+          constraints:
+            usedMustEqualIncluded: true
+            paidBudgetUsdMustEqual: 0
+            stopUsageEnabledMustEqual: true
+            dispatchCountMustEqual: 0
+      unknownQuotaBehavior: REMOTE_VALIDATION_REQUIRED
+  LOCAL_EXACT_TREE_FALLBACK:
+    kind: LOCAL_EXACT_TREE
+    activationRequires:
+      - PROFILE_FROZEN_AT_READY
+      - STRONG_TYPED_REMOTE_UNAVAILABLE_EVIDENCE
+      - OWNER_AUTHORIZED_SCOPE
+    exactCommitRequired: true
+    exactTreeRequired: true
+    cleanWorktreeRequired: true
+    cleanIndexRequired: true
+    candidateInputChange: RERUN_REQUIRED
+    crossCommitOrTreeReuseForbidden: true
+    passClaimLimitedToRecordedCoverage: true
+    resultRecordRequiredFields:
+      - taskId
+      - candidateCommit
+      - candidateTree
+      - cleanWorktree
+      - cleanIndex
+      - argv
+      - cwd
+      - operatingSystem
+      - interpreter
+      - toolchain
+      - dependencies
+      - environment
+      - stdoutSha256
+      - stderrSha256
+      - receiptSha256
+      - exitCode
+      - startedAt
+      - completedAt
+    nonPassStatuses:
+      - FAIL
+      - CANCELLED
+      - TIMEOUT
+      - NOT_RUN
+      - UNKNOWN
+      - DEFERRED_NOT_CLAIMED
+    uncoveredPlatformsField: notCovered
+    deferredPlatformsField: deferred
+profiles:
+  HARNESS_PORTABILITY_LOCAL:
+    affectedPaths:
+      - .harness/**
+      - scripts/harness/**
+      - skills/**
+      - AGENTS.md
+      - CLAUDE.md
+    commandRegistryProfile: harnessPortabilityLocal
+    platforms:
+      windows:
+        required: true
+        argv:
+          - python
+          - scripts/harness/precheck.py
+          - --profile
+          - harnessPortabilityLocal
+          - --task
+          - TASK-ID
+        versionSources:
+          - .harness/tools.lock.yaml
+          - requirements-harness.txt
+      wslUbuntu:
+        required: true
+        distribution: Ubuntu-24.04
+        isolation: GIT_ARCHIVE_EXACT_CANDIDATE_TO_WSL_MKTEMP
+        argv:
+          - bash
+          - scripts/harness/precheck.sh
+          - --profile
+          - harnessPortabilityLocal
+          - --task
+          - TASK-ID
+        versionSources:
+          - .harness/tools.lock.yaml
+          - requirements-harness.txt
+      macos:
+        required: false
+        unavailableStatus: DEFERRED_NOT_CLAIMED
+        residualRiskRequired: true
+        followUpConditionRequired: true
+  BACKEND_LOCAL:
+    affectedPaths:
+      - pom.xml
+      - mvnw
+      - .mvn/**
+      - service/**
+    affectedModulesOnly: true
+    harnessGates:
+      - WINDOWS
+      - LINUX
+    argvTemplate:
+      - ./mvnw
+      - --batch-mode
+      - --no-transfer-progress
+      - -pl
+      - AFFECTED_MODULES
+      - -am
+      - verify
+    versionSources:
+      - pom.xml
+      - .harness/tools.lock.yaml
+      - .github/workflows/ci.yml
+    windowsJavaHome: G:/ai/hxf/.tools/temurin-25.0.4+7/jdk-25.0.4+7
+    modifySystemJava: false
+  FRONTEND_LOCAL:
+    affectedPaths:
+      - frontend/**
+    affectedModulesOnly: true
+    harnessGates:
+      - WINDOWS
+      - LINUX
+    argv:
+      - pnpm
+      - --dir
+      - frontend
+      - install
+      - --frozen-lockfile
+      - AND
+      - pnpm
+      - --dir
+      - frontend
+      - build
+    nodeVersion: "22"
+    pnpmVersion: 11.9.0
+    versionSources:
+      - frontend/package.json
+      - frontend/pnpm-lock.yaml
+      - .github/workflows/ci.yml
+  FULL_STACK_LOCAL:
+    affectedPaths:
+      - pom.xml
+      - mvnw
+      - .mvn/**
+      - service/**
+      - frontend/**
+    affectedModulesOnly: true
+    composeProfiles:
+      - BACKEND_LOCAL
+      - FRONTEND_LOCAL
+    harnessGates:
+      - WINDOWS
+      - LINUX
+  TERMINAL_METADATA_ONLY:
+    allowedWhen:
+      - VERIFIED_IMPLEMENTATION_CANDIDATE_CLOSURE
+      - REJECTED_CLOSURE
+    allowedPaths:
+      - .harness/project-state.yaml
+      - .harness/task-ledger.yaml
+      - docs/tasks/TASK-ID-*.md
+      - docs/evidence/TASK-ID/**
+      - docs/handoffs/TASK-ID.json
+    implementationTreeProjectionMustMatchVerifiedCandidate: true
+    commitMarker: "[skip ci]"
+    externalCiTriggered: false
+    representsCiPass: false
+    dependencyReleaseRequiresImplementationValidation: true
+task0064Bootstrap:
+  oneTimeOnly: true
+  taskId: TASK-0064
+  replacementOfRejectedTask: TASK-0063
+  baseCommit: 8af24aba6225104833b4d5845a77bbe7e513eed7
+  authorizationCommit: 135453c30d34ad98d4424fa577757635e4fcf22d
+  channel: LOCAL_EXACT_TREE_FALLBACK
+  profile: HARNESS_PORTABILITY_LOCAL
+  requiredOutcomes:
+    windows: PASS
+    wslUbuntu: PASS
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: NOT_RUN
+  remoteUnavailableEvidence:
+    type: OWNER_SUPPLIED_QUOTA_EXHAUSTED
+    includedMinutes: 2000
+    usedMinutes: 2000
+    paidBudgetUsd: 0
+    stopUsageEnabled: true
+    resetDate: "2026-08-01"
+    dispatchCount: 0
+  ownerEvidence: >-
+    不能因为 GitHub Actions 额度不够就不走了，肯定需要备用方案，例如本地跑或者不跑。
+  generalizedSelfDowngradeForbidden: true
+rules:
+  profileMustBeFrozenBeforeReady: true
+  resultBasedProfileDowngradeForbidden: true
+  unknownRemoteAvailabilityCannotSkip: true
+  notRunOrDeferredNeverPass: true
+  githubDispatchOwnedByFollowUpTask: TASK-0065
