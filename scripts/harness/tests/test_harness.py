@@ -1515,32 +1515,42 @@ class DeliveryPolicyTests(unittest.TestCase):
         )
 
         skill_text = skill_path.read_text(encoding="utf-8")
-        drifted_skill = skill_text.replace(
-            "real exit code.",
-            "reported exit code.",
-            1,
-        )
+        drifted_skills = [
+            skill_text.replace(
+                "real exit code.",
+                "reported exit code.",
+                1,
+            ),
+            skill_text.replace(
+                "never PASS.",
+                "never PASS unless transport is unavailable.",
+                1,
+            ),
+        ]
         real_read_repository_text = doctor.read_repository_text
 
-        def read_with_drift(path: Path) -> str:
-            if Path(path) == skill_path:
-                return drifted_skill
-            return real_read_repository_text(path)
+        for drifted_skill in drifted_skills:
+            with self.subTest(drifted_skill=drifted_skill):
 
-        audit = Audit()
-        with patch.object(
-            doctor,
-            "read_repository_text",
-            side_effect=read_with_drift,
-        ):
-            validate_task_delivery_policy(audit)
-        self.assertTrue(
-            any(
-                "Skill long-command observability contract drifted" in error
-                for error in audit.errors
-            ),
-            audit.errors,
-        )
+                def read_with_drift(path: Path) -> str:
+                    if Path(path) == skill_path:
+                        return drifted_skill
+                    return real_read_repository_text(path)
+
+                audit = Audit()
+                with patch.object(
+                    doctor,
+                    "read_repository_text",
+                    side_effect=read_with_drift,
+                ):
+                    validate_task_delivery_policy(audit)
+                self.assertTrue(
+                    any(
+                        "Skill validation-integrity section drifted" in error
+                        for error in audit.errors
+                    ),
+                    audit.errors,
+                )
 
     def test_policy_validator_rejects_hard_fuse_closure_drift(self) -> None:
         policy_path = ROOT / ".harness/task-delivery-policy.yaml"
@@ -1568,32 +1578,45 @@ class DeliveryPolicyTests(unittest.TestCase):
         )
 
         skill_text = skill_path.read_text(encoding="utf-8")
-        drifted_skill = skill_text.replace(
-            "perform no implementation",
-            "perform implementation",
-            1,
-        )
+        drifted_skills = [
+            skill_text.replace(
+                "perform no implementation",
+                "perform implementation",
+                1,
+            ),
+            skill_text.replace(
+                "\n## Evidence checklist",
+                (
+                    "\n- Implementation may resume during closure-only overrun."
+                    "\n\n## Evidence checklist"
+                ),
+                1,
+            ),
+        ]
         real_read_repository_text = doctor.read_repository_text
 
-        def read_with_drift(path: Path) -> str:
-            if Path(path) == skill_path:
-                return drifted_skill
-            return real_read_repository_text(path)
+        for drifted_skill in drifted_skills:
+            with self.subTest(drifted_skill=drifted_skill):
 
-        audit = Audit()
-        with patch.object(
-            doctor,
-            "read_repository_text",
-            side_effect=read_with_drift,
-        ):
-            validate_task_delivery_policy(audit)
-        self.assertTrue(
-            any(
-                "Skill hard-fuse closure-only contract drifted" in error
-                for error in audit.errors
-            ),
-            audit.errors,
-        )
+                def read_with_drift(path: Path) -> str:
+                    if Path(path) == skill_path:
+                        return drifted_skill
+                    return real_read_repository_text(path)
+
+                audit = Audit()
+                with patch.object(
+                    doctor,
+                    "read_repository_text",
+                    side_effect=read_with_drift,
+                ):
+                    validate_task_delivery_policy(audit)
+                self.assertTrue(
+                    any(
+                        "Skill hard-fuse section drifted" in error
+                        for error in audit.errors
+                    ),
+                    audit.errors,
+                )
 
 
 class BacklogTests(unittest.TestCase):

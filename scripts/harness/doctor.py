@@ -158,6 +158,9 @@ TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
 TASK_DELIVERY_POLICY_CANONICAL_HASH = (
     "0f2e4ac962563cdacd85270dd14e453e719fa958b5ab53b9b864b888fb32577a"
 )
+TASK_DELIVERY_SKILL_CANONICAL_HASH = (
+    "c9df017793c5e13ed130209e380a5f254d94d29fbbd902d2d93bec0271009409"
+)
 PLANNING_CONTRACT_HASH_ALGORITHM = "SHA256_CANONICAL_JSON_V1"
 PLANNED_CARD_FIELDS = {
     "taskId",
@@ -6204,30 +6207,90 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         skill_text.isascii(),
         "task-delivery-policy: task-delivery-flow Skill must remain ASCII",
     )
-    normalized_skill = " ".join(skill_text.split())
-    expected_long_observability = (
-        "For every Doctor, candidate canonical, or pre-closure command expected to "
-        "exceed 60 seconds, start a persistent session or PTY before launching it. "
-        "An outer tool yield or timeout may yield control only; it must preserve the "
-        "same process, stdout, and real exit code. Never start a duplicate process, "
-        "add parallel `status` or `ps` checks, or fetch the same log again. If "
-        "transport loses the exit code, record `NOT_RUN` or `UNKNOWN`, never PASS."
+    audit.require(
+        sha256_file(skill_path) == TASK_DELIVERY_SKILL_CANONICAL_HASH,
+        "task-delivery-policy: task-delivery-flow Skill canonical content hash drifted",
+    )
+
+    def normalized_skill_section(heading: str) -> str:
+        matches = list(
+            re.finditer(
+                rf"(?ms)^## {re.escape(heading)}\s*\n(?P<body>.*?)(?=^## |\Z)",
+                skill_text,
+            )
+        )
+        audit.require(
+            len(matches) == 1,
+            f"task-delivery-policy: Skill section {heading!r} must occur exactly once",
+        )
+        return " ".join(matches[0].group("body").split()) if len(matches) == 1 else ""
+
+    expected_validation_bullets = [
+        (
+            "For every Doctor, candidate canonical, or pre-closure command expected "
+            "to exceed 60 seconds, start a persistent session or PTY before launching "
+            "it. An outer tool yield or timeout may yield control only; it must "
+            "preserve the same process, stdout, and real exit code. Never start a "
+            "duplicate process, add parallel `status` or `ps` checks, or fetch the "
+            "same log again. If transport loses the exit code, record `NOT_RUN` or "
+            "`UNKNOWN`, never PASS."
+        ),
+        (
+            "Poll that same process about every 60 seconds by default. Polling "
+            "observes status only and never triggers another check."
+        ),
+        (
+            "Reuse means not dispatching an identical check again. Preserve its one "
+            "real result and never invent a `REUSED` PASS."
+        ),
+        "Keep failure, cancellation, timeout, and NOT_RUN as non-PASS.",
+        (
+            "Do not present another SHA, platform, execution, or pre-closure result "
+            "as the current exact-SHA PASS."
+        ),
+        (
+            "Keep C1/C2 review conditional unless the task or a protected rule "
+            "requires more. Keep C3/C4 independent review mandatory."
+        ),
+        (
+            "Leave idle checkpoint core, its four consumers, performance work, "
+            "path-aware CI, and snapshot receipts to the follow-up tasks registered "
+            "by the policy."
+        ),
+    ]
+    expected_validation_section = " ".join(
+        f"- {bullet}" for bullet in expected_validation_bullets
     )
     audit.require(
-        expected_long_observability in normalized_skill,
-        "task-delivery-policy: Skill long-command observability contract drifted",
+        normalized_skill_section("Preserve validation and review integrity")
+        == expected_validation_section,
+        "task-delivery-policy: Skill validation-integrity section drifted",
     )
-    expected_hard_fuse_skill = (
-        "At `hardFuseWallMinutes`, stop implementation, fixes, Reviewer work, "
-        "canonical validation, and CI. If the repository is still active or "
-        "half-closed, allow only a minimal closure-only overrun for Evidence/Handoff, "
-        "pre-closure, the terminal commit, push, and remote `0/0` verification. Record "
-        "overrun duration and root cause separately, and perform no implementation "
-        "during the overrun."
+    expected_fail_closed_bullets = [
+        (
+            "Stop promotion on Context, approval, Skill, allowlist, candidate "
+            "identity, Reviewer, canonical, CI, or remote verification failure."
+        ),
+        (
+            "At `hardFuseWallMinutes`, stop implementation, fixes, Reviewer work, "
+            "canonical validation, and CI. If the repository is still active or "
+            "half-closed, allow only a minimal closure-only overrun for "
+            "Evidence/Handoff, pre-closure, the terminal commit, push, and remote "
+            "`0/0` verification. Record overrun duration and root cause separately, "
+            "and perform no implementation during the overrun."
+        ),
+        "Stop at every other policy budget, round, or structural-finding fuse.",
+        (
+            "Do not start a third review, add an unbounded fix loop, delete tests, "
+            "add skips, expand timeouts, or weaken policy for the current task."
+        ),
+    ]
+    expected_fail_closed_section = " ".join(
+        f"- {bullet}" for bullet in expected_fail_closed_bullets
     )
     audit.require(
-        expected_hard_fuse_skill in normalized_skill,
-        "task-delivery-policy: Skill hard-fuse closure-only contract drifted",
+        normalized_skill_section("Fail closed") == expected_fail_closed_section,
+        "task-delivery-policy: Skill hard-fuse section drifted",
     )
     wrapper_item_match = re.search(
         r"(?ms)^## Run a single card\s+.*?^5\. (?P<body>.*?)(?=^6\. )",
