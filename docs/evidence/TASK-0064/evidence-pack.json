@@ -1,0 +1,398 @@
+{
+  "taskId": "TASK-0064",
+  "baseCommit": "8af24aba6225104833b4d5845a77bbe7e513eed7",
+  "headCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+  "contextFingerprint": "8c9de692a0a5555a62f9a9302ae12a0b2666d87dec17df287b2eb2e83b46e166",
+  "reviewers": [
+    {
+      "id": "task-0064-independent-reviewer-r1-r2",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "PASS",
+      "reviewedCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+      "evidencePath": "docs/evidence/TASK-0064/review-r1-r2.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.CiExecutionPolicyTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_real_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0064_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The final frozen targeted matrix passed 13 tests in 33.580 seconds on the exact implementation contents later committed as the Evidence headCommit; no persistent output artifact was created.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; cwd G:\\ai\\hxf\\virtual-companion",
+      "verifiedCommit": "e28d147351f944a440faef6ff6e38a3d72649459"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The final implementation delta had no whitespace errors; the command produced no persistent artifact.",
+      "environment": "Windows-NT-10.0.26200; Git 2.28.0.windows.1; cwd G:\\ai\\hxf\\virtual-companion",
+      "verifiedCommit": "e28d147351f944a440faef6ff6e38a3d72649459"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0064",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "e1864721b9c9b0e740af78ff89f23288d59c3551084735118a358c537fddcf9f",
+      "reason": "The one allowed Windows exact-candidate execution completed after 31 minutes 38 seconds with real inner exit 1. The three canonical error layers were overall local profile FAIL, Harness tests FAIL with two failures, and Doctor FAIL with six errors. This result is not PASS and was not rerun.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; PowerShell 7.6.3 durable atomic receipt; Git 2.28.0.windows.1; PyYAML 6.0.3; tzdata 2026.3; Asia/Shanghai; cwd G:\\ai\\hxf\\virtual-companion",
+      "verifiedCommit": "e28d147351f944a440faef6ff6e38a3d72649459"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0064",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: Windows required validation failed after the single fix batch and R2 had already been consumed. The frozen task requires fail-closed termination and forbids further validation; no WSL result or PASS is claimed.",
+      "environment": "Ubuntu-24.04 exact-tree isolation was not created or launched",
+      "verifiedCommit": "e28d147351f944a440faef6ff6e38a3d72649459"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0064",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_QUOTA: OWNER_SUPPLIED_QUOTA_EXHAUSTED records 2,000/2,000 included minutes used, USD 0 paid budget, Stop usage enabled, reset date 2026-08-01, and dispatch=0. No workflow dispatch, probe, or retry occurred; this is not PASS.",
+      "environment": "GitHub Actions; deliberately not dispatched",
+      "verifiedCommit": "e28d147351f944a440faef6ff6e38a3d72649459"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0064 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "7dad7999468f8ec69c05ae4fbb1cdea5b3f1c1625e96033148103eaf6a8b636c",
+      "reason": "The sole durable REJECTED pre-closure completed in 14m54.578s with 205,871 checks and seven errors: the six already-recorded Backlog/TASK-0063 canonical errors plus one closure-only Handoff nextAction text mismatch. The latter was aligned after receipt publication; the pre-closure was not rerun and remains truthfully FAIL.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; PowerShell 7.6.3 durable atomic receipt; cwd G:\\ai\\hxf\\virtual-companion",
+      "verifiedCommit": "e28d147351f944a440faef6ff6e38a3d72649459"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "channel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+    "candidateTree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+    "cleanSnapshot": {
+      "candidateCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+      "candidateTree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "results": [
+      {
+        "platform": "windows",
+        "status": "FAIL",
+        "taskId": "TASK-0064",
+        "candidateCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+        "candidateTree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+        "cleanWorktree": true,
+        "cleanIndex": true,
+        "argv": [
+          "python",
+          "scripts/harness/precheck.py",
+          "--profile",
+          "harnessPortabilityLocal",
+          "--task",
+          "TASK-0064"
+        ],
+        "launchedExecutable": "C:\\Users\\k\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "cwd": "G:\\ai\\hxf\\virtual-companion",
+        "operatingSystem": "Windows-NT-10.0.26200",
+        "interpreter": "Python 3.12.9",
+        "toolchain": {
+          "powershell": "7.6.3",
+          "git": "2.28.0.windows.1"
+        },
+        "dependencies": {
+          "PyYAML": "6.0.3",
+          "tzdata": "2026.3"
+        },
+        "environment": {
+          "timezone": "Asia/Shanghai",
+          "transport": "DURABLE_ATOMIC_RECEIPT"
+        },
+        "stdoutSha256": "97262dedd0430e2eb20d3f463321a93e8242b5024457a68a3042246a222e2b6d",
+        "stderrSha256": "7b7f2998a285c97531c75b21479ed588c672ffc2b760802ef105b8ce44de70b0",
+        "receiptSha256": "e1864721b9c9b0e740af78ff89f23288d59c3551084735118a358c537fddcf9f",
+        "configSha256": "744578e10ecc6e51fff976112153b3a4ecb609074a741e71e6542ed5977f3c34",
+        "stdoutBytes": 985,
+        "stderrBytes": 4676,
+        "exitCode": 1,
+        "startedAt": "2026-07-31T14:42:22.8670908+08:00",
+        "completedAt": "2026-07-31T15:14:00.8740196+08:00",
+        "elapsedSeconds": 1898.007,
+        "elapsedHuman": "31m38s",
+        "durableRunDirectory": "C:\\Users\\k\\AppData\\Local\\Temp\\virtual-companion-durable-959d14afe85346d3a177d274d667ae2e",
+        "receiptTemporaryAbsentAfterPublish": true,
+        "executions": 1,
+        "rerun": false,
+        "canonicalErrorLayers": [
+          {
+            "layer": "LOCAL_PROFILE",
+            "status": "FAIL",
+            "exitCode": 1,
+            "summary": "HARNESS_PORTABILITY_LOCAL completed with aggregate exit 1."
+          },
+          {
+            "layer": "HARNESS_TESTS",
+            "status": "FAIL",
+            "exitCode": 1,
+            "elapsedSeconds": 1100.114,
+            "testsRun": 161,
+            "failures": 2,
+            "skipped": 1,
+            "errors": [
+              "BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers expected TASK-0055 but observed None.",
+              "The integration Doctor pass/corruption test failed because Doctor returned six governance errors."
+            ]
+          },
+          {
+            "layer": "DOCTOR",
+            "status": "FAIL",
+            "exitCode": 1,
+            "elapsedSeconds": 796.720,
+            "errorCount": 6,
+            "errors": [
+              "Unresolved PLANNED TASK-0055 metadata changed on the candidate edge.",
+              "TASK-0055 planning-card title, fixed notice, or six-section projection changed on the candidate edge.",
+              "The permanent TASK-0055 planning contract was removed or rewritten.",
+              "TASK-0064 replacement repair was not observed (observed=[]).",
+              "TASK-0063 terminal C4 task requires structured independent reviewers.",
+              "TASK-0063 terminal high-risk task requires reviewers."
+            ]
+          }
+        ],
+        "passingSubcommands": [
+          {
+            "name": "catalogValidate",
+            "status": "PASS",
+            "elapsedSeconds": 0.204
+          },
+          {
+            "name": "catalogDrift",
+            "status": "PASS",
+            "elapsedSeconds": 0.428
+          },
+          {
+            "name": "paidFeatureCheck",
+            "status": "PASS",
+            "elapsedSeconds": 0.216
+          },
+          {
+            "name": "betaRosterGate",
+            "status": "PASS",
+            "elapsedSeconds": 0.167
+          }
+        ]
+      },
+      {
+        "platform": "wslUbuntu",
+        "status": "NOT_RUN",
+        "reasonType": "NOT_RUN_DUE_STOP_CONDITION",
+        "reason": "Windows required candidate validation failed after the maximum fix batch and review rounds were consumed; the frozen fail-closed stop condition prohibited WSL launch.",
+        "taskId": "TASK-0064",
+        "candidateCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+        "candidateTree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+        "cleanWorktree": true,
+        "cleanIndex": true,
+        "argv": [
+          "bash",
+          "scripts/harness/precheck.sh",
+          "--profile",
+          "harnessPortabilityLocal",
+          "--task",
+          "TASK-0064"
+        ],
+        "cwd": "NOT_CREATED",
+        "operatingSystem": "NOT_OBSERVED",
+        "interpreter": "NOT_OBSERVED",
+        "toolchain": {},
+        "dependencies": {},
+        "environment": {
+          "isolation": "NOT_CREATED"
+        },
+        "stdoutSha256": null,
+        "stderrSha256": null,
+        "receiptSha256": null,
+        "exitCode": null,
+        "startedAt": "NOT_RUN",
+        "completedAt": "NOT_RUN",
+        "executions": 0
+      }
+    ],
+    "notCovered": [
+      "wslUbuntu"
+    ],
+    "deferred": [
+      {
+        "platform": "macos",
+        "status": "DEFERRED_NOT_CLAIMED",
+        "residualRisk": "No macOS behavior, filesystem semantics, shell behavior, or toolchain compatibility was observed; no macOS PASS is claimed.",
+        "followUpCondition": "Run the same READY-frozen exact-tree HARNESS_PORTABILITY_LOCAL profile in a controlled macOS environment when one becomes available."
+      }
+    ],
+    "remote": {
+      "platform": "githubActions",
+      "status": "NOT_RUN",
+      "reasonType": "OWNER_SUPPLIED_QUOTA_EXHAUSTED",
+      "includedMinutes": 2000,
+      "usedMinutes": 2000,
+      "paidBudgetUsd": 0,
+      "stopUsageEnabled": true,
+      "resetDate": "2026-08-01",
+      "dispatchCount": 0
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "implementationCandidateCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+      "implementationCandidateTree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+      "implementationPathsChangedAfterCandidate": [],
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "commit": "8af24aba6225104833b4d5845a77bbe7e513eed7",
+      "tree": "f3d330153dfc85e537256c6301c525f8ec27e6cc",
+      "originMain": "8af24aba6225104833b4d5845a77bbe7e513eed7",
+      "ahead": 0,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "lifecycle": {
+      "draftCommit": "8232b07",
+      "readyAuthorizationCommit": "135453c30d34ad98d4424fa577757635e4fcf22d",
+      "authorizationBindingCommit": "9a9de48",
+      "inProgressCommit": "5408cc56548919e2f727ae451c1e84d727fcbc72",
+      "inReviewCandidateCommit": "57915f9a45564418be3e814bb9dda776ec9a8ee8"
+    },
+    "candidateHistory": {
+      "r1Candidate": {
+        "commit": "57915f9a45564418be3e814bb9dda776ec9a8ee8",
+        "tree": "00581c044813ceb9a14de0e67df580564772d562"
+      },
+      "finalCandidate": {
+        "commit": "e28d147351f944a440faef6ff6e38a3d72649459",
+        "tree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+        "worktreeCleanBeforeValidation": true,
+        "indexCleanBeforeValidation": true
+      }
+    },
+    "review": {
+      "r1": {
+        "status": "FAIL",
+        "p0": 0,
+        "p1": 2,
+        "reviewedCommit": "57915f9a45564418be3e814bb9dda776ec9a8ee8"
+      },
+      "fixBatchesUsed": 1,
+      "maximumFixBatches": 1,
+      "r2": {
+        "status": "PASS",
+        "closedR1P1": 2,
+        "newP0": 0,
+        "newP1": 0,
+        "reviewedCommit": "e28d147351f944a440faef6ff6e38a3d72649459"
+      },
+      "reviewRoundsUsed": 2,
+      "maximumReviewRounds": 2,
+      "secondReviewerStarted": false
+    },
+    "transportPreflight": {
+      "status": "PASS",
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "innerExitCode": 7,
+      "stdoutSha256": "50e63089c27a03b8531d093543dead82dcfb73478f419097eab772ef749545ab",
+      "stderrSha256": "dce446339eb34d8ac0e9b6cb6eb85ab0b1de902b2fd83742d12d1729b3e00802",
+      "receiptSha256": "6b50615630e0a230bb3c41c814a95a1327f783cfc5b57343ad9aee8233b77730",
+      "candidatePassAlias": false
+    },
+    "stopCondition": {
+      "status": "FIRED",
+      "reasonCode": "WINDOWS_REQUIRED_LOCAL_VALIDATION_FAILED_AFTER_MAXIMUM_FIX_BATCH",
+      "implementationStopped": true,
+      "reviewStopped": true,
+      "furtherValidationStopped": true,
+      "wslStatus": "NOT_RUN_DUE_STOP_CONDITION"
+    },
+    "preClosure": {
+      "status": "FAIL",
+      "executions": 1,
+      "rerun": false,
+      "exitCode": 1,
+      "startedAt": "2026-07-31T07:22:09.6011318+00:00",
+      "completedAt": "2026-07-31T07:37:04.1790881+00:00",
+      "elapsedSeconds": 894.578,
+      "elapsedHuman": "14m54.578s",
+      "checks": 205871,
+      "errors": 7,
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrBytes": 1667,
+      "stderrSha256": "d044506f132a4663a04d4b15006165dbba88dca6a6d35bfa8cf6e6ac03ae59b8",
+      "receiptBytes": 940,
+      "receiptSha256": "7dad7999468f8ec69c05ae4fbb1cdea5b3f1c1625e96033148103eaf6a8b636c",
+      "configSha256": "b932b928067950dc03356c2b2b8a3f432c9b23625af98b14635f53782864c467",
+      "receiptTemporaryAbsent": true,
+      "errorsObserved": [
+        "TASK-0055 unresolved PLANNED metadata changed on edge 5408cc56548919e2f727ae451c1e84d727fcbc72..57915f9a45564418be3e814bb9dda776ec9a8ee8.",
+        "TASK-0055 title, fixed notice, or six-section projection changed on the same edge.",
+        "The permanent TASK-0055 planning contract was removed or rewritten on the same edge.",
+        "TASK-0064 replacement repair must be one exact authorized atomic parent edge; observed=[].",
+        "TASK-0063 terminal C4 task requires structured independent reviewers.",
+        "TASK-0063 terminal high-risk task requires reviewers.",
+        "TASK-0064 Handoff nextAction disagreed with terminal project-state; the closure-only text was aligned after this sole receipt and was not revalidated."
+      ]
+    },
+    "closureOnlyOverrun": {
+      "used": true,
+      "implementationOrValidationAfterStop": false,
+      "actionsAfterStop": [
+        "Evidence and Handoff",
+        "one pre-closure",
+        "terminal metadata-only commit",
+        "push and remote synchronization checks"
+      ],
+      "reason": "The Windows exact-candidate run consumed 31m38s and fired the frozen stop condition. All subsequent work is closure-only; no additional implementation, review, candidate validation, WSL run, or remote CI was performed."
+    },
+    "numberingAndBacklog": {
+      "idPolicy": "PERMANENT_NEVER_REUSE",
+      "backlogTaskCount": 45,
+      "executionOrderCount": 45,
+      "backlogResolutionCount": 13,
+      "highestBacklogTaskNumber": "TASK-0059",
+      "ledgerExecutionIdsConsumed": [
+        "TASK-0060",
+        "TASK-0061",
+        "TASK-0062",
+        "TASK-0063",
+        "TASK-0064"
+      ],
+      "task0065": {
+        "registeredInBacklog": false,
+        "registeredInLedger": false,
+        "cardExists": false,
+        "reservedBy": ".harness/ci-execution-policy.yaml",
+        "reservedPurpose": "GitHub workflow dispatch and quota scheduling follow-up"
+      },
+      "nextPermanentReplacementId": "TASK-0066",
+      "task0055State": "PLANNED",
+      "task0055Dependencies": [
+        "TASK-0064"
+      ],
+      "task0055Promotion": "BLOCKED_BY_REJECTED_DEPENDENCY",
+      "task0013Promotion": "HELD"
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so it cannot self-reference that commit or tree."
+    }
+  }
+}

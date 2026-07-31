@@ -2,7 +2,18 @@
 
 ```yaml
 taskId: TASK-0064
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  独立 R2 已确认候选 e28d147351f944a440faef6ff6e38a3d72649459
+  （Tree c73bb8c8f706353d750e09a8a9faf8d43c966bec）关闭 R1 的两项
+  P1，且冻结 targeted 13 项和 git diff --check 通过；但随后唯一一次
+  Windows exact-candidate HARNESS_PORTABILITY_LOCAL 真实运行在 31 分 38 秒后
+  inner exit=1。三层 canonical 错误为 local profile 总体 FAIL、Harness tests
+  2 项失败，以及 Doctor 6 项失败。唯一修复批次与 R2 已用完，触发冻结的
+  fail-closed 停止条件；WSL 因此记 NOT_RUN_DUE_STOP_CONDITION，macOS 仍为
+  DEFERRED_NOT_CLAIMED，GitHub Actions 因 2,000/2,000、0 美元 Stop usage
+  记 NOT_RUN_QUOTA 且 dispatch=0。保留实现候选，但不把任何失败、未运行或
+  deferred 结果表示为 PASS，故本卡按事实 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -219,7 +230,12 @@ humanApprovals:
       Stop usage 不运行且 dispatch=0。该证据不形成当前或后续任务可随意降低
       验证的泛化规则。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0064-independent-reviewer-r1-r2
+    kind: independent-complete-matrix-review
+    verdict: PASS
+    reviewedCommit: e28d147351f944a440faef6ff6e38a3d72649459
+    evidencePath: docs/evidence/TASK-0064/review-r1-r2.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.CiExecutionPolicyTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_real_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0064_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands
   - git diff --check

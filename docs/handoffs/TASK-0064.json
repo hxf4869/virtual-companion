@@ -1,0 +1,74 @@
+{
+  "taskId": "TASK-0064",
+  "state": "REJECTED",
+  "baseCommit": "8af24aba6225104833b4d5845a77bbe7e513eed7",
+  "headCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+  "evidencePath": "docs/evidence/TASK-0064/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0064-independent-reviewer-r1-r2",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "PASS",
+      "reviewedCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+      "evidencePath": "docs/evidence/TASK-0064/review-r1-r2.md"
+    }
+  ],
+  "completed": [
+    "Added the minimal declarative .harness/ci-execution-policy.yaml and connected it to Sources, Invariants, Commands, task-delivery-policy, task-delivery-flow 1.3.0, Doctor, and tests without changing .github/workflows/** or TASK-0058.",
+    "Completed the exact TASK-0062 REJECTED authorization-projection isolation, the real missing-or-empty authorizationAmendments bootstrap edge with fail-closed negatives, and the TASK-0063 to TASK-0064 replacement projection while preserving frozen TASK-0062/TASK-0063 artifacts.",
+    "Reconnected TASK-0055's sole dependency to TASK-0064, updated its six-section hash-bound projection, and preserved the strict TASK-0055 through TASK-0059 chain.",
+    "The final frozen targeted matrix passed 13 tests, git diff --check passed, and bounded independent R2 closed both R1 P1 findings with no new P0/P1.",
+    "Retained implementation candidate e28d147351f944a440faef6ff6e38a3d72649459 with Tree c73bb8c8f706353d750e09a8a9faf8d43c966bec.",
+    "Ran Windows exact-candidate HARNESS_PORTABILITY_LOCAL exactly once through the durable receipt helper; it completed in 31m38s with real inner exit 1 and was not rerun.",
+    "Recorded macOS as DEFERRED_NOT_CLAIMED and GitHub Actions as NOT_RUN_QUOTA with 2,000/2,000 minutes, USD 0 budget, Stop usage, reset 2026-08-01, and dispatch=0.",
+    "Ran the sole durable REJECTED pre-closure once: it completed in 14m54.578s with real inner exit 1, 205,871 checks, and seven errors; it was not rerun."
+  ],
+  "remaining": [
+    "Windows local canonical is FAIL, not PASS: the three recorded error layers are overall local profile exit 1, Harness tests with two failures, and Doctor with six errors.",
+    "WSL Ubuntu is NOT_RUN_DUE_STOP_CONDITION because the required Windows run failed after the single fix batch and R2 were consumed; no WSL PASS is claimed.",
+    "TASK-0055 remains PLANNED with the sole dependency TASK-0064, which is REJECTED, so TASK-0055 and TASK-0013 must not be promoted.",
+    "Create a fresh permanent replacement TASK-0066; do not rewrite, reopen, or present TASK-0064 as accepted."
+  ],
+  "knownRisks": [
+    "The retained implementation passed targeted tests and independent static review but failed the full Windows canonical; it is not an accepted validation fallback.",
+    "No WSL or macOS runtime behavior was observed. macOS remains DEFERRED_NOT_CLAIMED and WSL remains NOT_RUN_DUE_STOP_CONDITION.",
+    "GitHub Actions was not dispatched because Owner-supplied quota evidence is 2,000/2,000 with no paid budget. NOT_RUN_QUOTA is not CI PASS.",
+    "The terminal metadata-only commit changes only closure artifacts and must contain [skip ci]; it does not validate the implementation candidate."
+  ],
+  "recoveryInput": {
+    "replacementTaskId": "TASK-0066",
+    "baseRequirement": "Fetch origin/main after the TASK-0064 terminal [skip ci] push; require main==origin/main, ahead/behind 0/0, clean index/worktree, activeTask=null, lastTerminalTask=TASK-0064, and use that exact terminal commit/tree as the new Base. The terminal SHA cannot be embedded in the Handoff that it contains.",
+    "retainedImplementationCommit": "e28d147351f944a440faef6ff6e38a3d72649459",
+    "retainedImplementationTree": "c73bb8c8f706353d750e09a8a9faf8d43c966bec",
+    "windowsFailureReceiptSha256": "e1864721b9c9b0e740af78ff89f23288d59c3551084735118a358c537fddcf9f",
+    "windowsFailureStdoutSha256": "97262dedd0430e2eb20d3f463321a93e8242b5024457a68a3042246a222e2b6d",
+    "windowsFailureStderrSha256": "7b7f2998a285c97531c75b21479ed588c672ffc2b760802ef105b8ce44de70b0",
+    "exactFailuresToRepair": [
+      "BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers expected TASK-0055 but observed None.",
+      "The integration Doctor test failed because the candidate edge reported six governance errors.",
+      "Doctor reported TASK-0055 metadata/card/planning-contract edge drift, no observed TASK-0064 replacement repair, and two TASK-0063 missing-reviewer errors."
+    ],
+    "requiredPlanningRepair": "Atomically rewire TASK-0055's sole dependency from REJECTED TASK-0064 to the new replacement only after the replacement contract is authorized; recompute its six-section planningContractHash and preserve TASK-0055 -> TASK-0056 -> TASK-0057 -> TASK-0058 -> TASK-0059.",
+    "authorizationBoundary": "TASK-0064's one-time bootstrap authorization is exhausted and cannot be generalized or reused. The new task requires a fresh strongly typed Owner authorization tied to its exact Base and validation profile.",
+    "validationBoundary": "Rerun the frozen targeted matrix, independent review under the new task, then one Windows and one WSL exact-candidate canonical. Do not reuse TASK-0064's FAIL/NOT_RUN results across Commit or Tree."
+  },
+  "backlogAndNumbering": {
+    "idPolicy": "PERMANENT_NEVER_REUSE",
+    "backlogTasks": 45,
+    "executionOrderEntries": 45,
+    "backlogResolutions": 13,
+    "highestBacklogTaskId": "TASK-0059",
+    "consumedLedgerIds": [
+      "TASK-0060",
+      "TASK-0061",
+      "TASK-0062",
+      "TASK-0063",
+      "TASK-0064"
+    ],
+    "task0065": "Not yet a Backlog task, ledger entry, or card; explicitly reserved by .harness/ci-execution-policy.yaml for the GitHub dispatch/quota-scheduling follow-up.",
+    "nextPermanentReplacementId": "TASK-0066",
+    "task0055Dependency": "TASK-0064 (REJECTED, therefore fail-closed)",
+    "longLineStatus": "CONTINUE_WITH_FRESH_TASK; TASK-0064 REJECTED does not pause the governed long line."
+  },
+  "nextAction": "TASK-0064 已因 Windows exact-candidate canonical 真实失败而 REJECTED；继续长线并创建永久替代 TASK-0066，TASK-0065 保留给远端显式调度治理，TASK-0055 或 TASK-0013 不得晋级"
+}
