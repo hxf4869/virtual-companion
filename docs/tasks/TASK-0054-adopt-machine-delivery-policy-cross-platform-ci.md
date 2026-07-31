@@ -14,7 +14,7 @@ requiredSkillVersions:
 targetSkillVersions:
   task-delivery-flow: 1.1.0
 baseCommit: 4f1fb21c6e9858bd51e137d82985a14c9b7585a5
-authorizationCommit: ""
+authorizationCommit: c9c080a02274502f5269c2ba070ed26249ec18c8
 contextFingerprint: 51374f9d4273a96494c45b806eb60cbe2b5687050f5f9c50ee34ee2a6ddbc3a4
 contextLock: docs/tasks/context/TASK-0054.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
