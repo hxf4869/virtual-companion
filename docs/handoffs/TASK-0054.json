@@ -1,0 +1,38 @@
+{
+  "taskId": "TASK-0054",
+  "state": "REJECTED",
+  "baseCommit": "4f1fb21c6e9858bd51e137d82985a14c9b7585a5",
+  "headCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+  "evidencePath": "docs/evidence/TASK-0054/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0054-independent-reviewer-r2",
+      "kind": "independent-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+      "evidencePath": "docs/evidence/TASK-0054/review-r2.md"
+    }
+  ],
+  "completed": [
+    "Independently adopted the nine retained machine-delivery implementation paths without treating TASK-0048 evidence as TASK-0054 PASS.",
+    "Added exact policy and Skill semantics for persistent long-command observability and the 90-minute hard fuse with minimal closure-only overrun.",
+    "Added fail-closed Doctor projections and negative tests, including exact Skill content and exact critical-section checks after R1 found one substring-bypass P1.",
+    "Registered TASK-0055 through TASK-0059 and atomically SUPERSEDED TASK-0049 through TASK-0053 over five independent single-parent planning edges.",
+    "R2 passed the exact review candidate with no P0, P1, P2, or P3 findings."
+  ],
+  "remaining": [
+    "The only candidate canonical failed because four new planning-card titles conflict with permanently reserved titles.",
+    "The mandatory pre-closure returned five errors: the same four title conflicts plus a nextAction projection error; closure metadata now names TASK-0013 as the parsed candidate while explicitly holding it for a future replacement task.",
+    "No TASK-0054 exact-SHA GitHub Actions run was started because canonical did not pass.",
+    "A new permanent standalone replacement task must correct the reserved-title conflicts and independently rebuild validation, review, canonical, and exact-SHA CI evidence.",
+    "TASK-0055 depends on REJECTED TASK-0054 and must not be promoted."
+  ],
+  "knownRisks": [
+    "The implementation remains in Git history, but R2 PASS and parent-snapshot short checks do not replace the failed exact-candidate canonical.",
+    "TASK-0055, TASK-0057, TASK-0058, and TASK-0059 currently trigger permanent title-reservation errors until a separately authorized replacement task resolves them.",
+    "The one pre-closure ran against the immediately preceding exact staged closure snapshot and returned exit 1; the post-run delta only records its real result and corrects nextAction metadata, and pre-closure was not repeated.",
+    "No second implementation fix batch, R3, repeated canonical, or CI was permitted after the task's single repair batch had already closed R1.",
+    "No idle checkpoint core, four consumers, performance engine, path-aware CI, snapshot receipt, business module, provider, database, identity, Beta, or external model work was implemented."
+  ],
+  "nextAction": "创建 TASK-0054 的永久替代任务；TASK-0055 依赖已 REJECTED 的 TASK-0054 不得晋级，TASK-0013 虽为 Backlog 解析候选也暂不得晋级"
+}

@@ -2,7 +2,16 @@
 
 ```yaml
 taskId: TASK-0054
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  TASK-0054 已独立采纳九条机器交付路径，新增长命令可观察性与 90 分钟硬熔断
+  closure-only 语义，登记 TASK-0055 至 TASK-0059 并以五条独立单父规划边
+  SUPERSEDED TASK-0049 至 TASK-0053。R1 唯一 Skill 正文子串校验 P1 经唯一修复批次
+  关闭，R2 对精确候选 6d40835 PASS。唯一 candidate canonical 随后以真实 exit 1
+  结束：完整 Doctor 在 121,531 checks 中发现 TASK-0055、TASK-0057、TASK-0058、
+  TASK-0059 的标题触发永久保留冲突。因唯一修复批次已消耗，合同禁止第二批修复、
+  R3、重复 canonical 或 CI；本卡因此真实 REJECTED，不伪造 canonical、五作业 CI、
+  pre-closure 或 ACCEPTED PASS。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -141,7 +150,12 @@ humanApprovals:
     approvedAt: "2026-07-31"
     evidence: Owner 明确批准 standalone TASK-0054 的 C4 Harness、Skill、薄 AGENTS 独立采纳，两条机器执行规则，TASK-0055 至 TASK-0059 后继链登记，TASK-0049 至 TASK-0053 五条独立 SUPERSEDED 规划边及独立 Reviewer。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0054-independent-reviewer-r2
+    kind: independent-delta-review
+    verdict: PASS
+    reviewedCommit: 6d40835ca0ea505e5ab59e12f9c851881a273879
+    evidencePath: docs/evidence/TASK-0054/review-r2.md
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0054
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_wrapper_alias_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_long_command_observability_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_hard_fuse_closure_drift

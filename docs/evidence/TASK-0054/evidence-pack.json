@@ -1,0 +1,193 @@
+{
+  "taskId": "TASK-0054",
+  "baseCommit": "4f1fb21c6e9858bd51e137d82985a14c9b7585a5",
+  "headCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+  "contextFingerprint": "51374f9d4273a96494c45b806eb60cbe2b5687050f5f9c50ee34ee2a6ddbc3a4",
+  "reviewers": [
+    {
+      "id": "task-0054-independent-reviewer-r2",
+      "kind": "independent-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+      "evidencePath": "docs/evidence/TASK-0054/review-r2.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0054",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "The one permitted exact-candidate canonical ran in one persistent session from 2026-07-31T09:43:24.2878561+08:00 through 2026-07-31T09:51:56.8082150+08:00. It preserved stdout and the real exit code, completed all five wrapper commands in 512.520 seconds, and failed because Doctor reported four permanent-title reservation errors after 121,531 checks.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_real_git_history_rejects_corrupt_restore_and_moved_activation scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_contract_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_wrapper_alias_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_long_command_observability_drift scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_validator_rejects_hard_fuse_closure_drift",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The exact argv passed 6/6 tests in 5.791 seconds on implementation commit d2309c8 immediately before the isolated IN_REVIEW state commit. It was not rerun on headCommit 6d40835, so TASK-0054 does not claim an exact-head PASS.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879"
+    },
+    {
+      "command": "python C:/Users/k/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/task-delivery-flow",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "quick_validate reported Skill is valid in 0.095 seconds on implementation commit d2309c8. It was not rerun on headCommit 6d40835, so TASK-0054 does not claim an exact-head PASS.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "git diff --check exited 0 in 0.057 seconds on implementation commit d2309c8 before the isolated IN_REVIEW state commit. It was not rerun on headCommit 6d40835, so TASK-0054 does not claim an exact-head PASS.",
+      "environment": "Windows PowerShell, Git 2.28.0.windows.1",
+      "verifiedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879"
+    },
+    {
+      "command": "GitHub Actions exact-SHA ci for TASK-0054",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No run was dispatched because the mandatory candidate canonical failed. There are no TASK-0054 exact-SHA Backend, Frontend, Ubuntu, Windows, or macOS job PASS results.",
+      "environment": "GitHub Actions not dispatched",
+      "verifiedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0054 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "The one mandatory REJECTED pre-closure ran in a persistent session from 2026-07-31T09:54:48.8254338+08:00 through 2026-07-31T10:02:33.7628402+08:00. It preserved stdout and the real exit code, completed 125,094 checks in 464.937 seconds, and returned exit 1 with the four known permanent-title errors plus a nextAction projection error. It was not repeated; the post-run closure-only delta records this result and makes nextAction name TASK-0013 while holding it for a future replacement task.",
+      "environment": "Windows PowerShell, local aiCoding Python 3.12.9",
+      "verifiedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879"
+    }
+  ],
+  "artifacts": {
+    "draftDoctor": {
+      "status": "PASS",
+      "exitCode": 0,
+      "checks": 100955,
+      "elapsedSeconds": 427.508
+    },
+    "readyDoctor": {
+      "status": "PASS",
+      "exitCode": 0,
+      "checks": 103285,
+      "elapsedSeconds": 431.092
+    },
+    "initialImplementationCandidate": {
+      "commit": "39097c4878bf024a8d2c86529ae72cd1bd15d9b5",
+      "tree": "7a753e2f77e0f37ac1f39c3043ad895541a1939a",
+      "candidateDeadlineStatus": "MET"
+    },
+    "finalImplementation": {
+      "commit": "d2309c8a2405f25871b112293dd85a6d681b279f",
+      "tree": "e56f2862197d48c63374c253c9abfa54c9dedf34"
+    },
+    "reviewCandidate": {
+      "commit": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+      "tree": "dbb95f3ffbf03175f0f271e73317a05a56265211"
+    },
+    "review": {
+      "r1Verdict": "FAIL",
+      "r1ReviewedCommit": "f43971d336dd973d3deb5455e2bc4c5c5e9dc0ad",
+      "r1ReviewedTree": "8cda2c7e253b4fecd9d742bdbe9fb391beb142ac",
+      "r1P0": 0,
+      "r1P1": 1,
+      "r2Verdict": "PASS",
+      "r2ReviewedCommit": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+      "r2ReviewedTree": "dbb95f3ffbf03175f0f271e73317a05a56265211",
+      "r2P0": 0,
+      "r2P1": 0,
+      "r2P2": 0,
+      "r2P3": 0
+    },
+    "backlogRegistration": {
+      "commit": "827cc6a1d43bfa7bbd2a679a9732b15597c8b1f9",
+      "newChain": ["TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"],
+      "dependencies": ["TASK-0054", "TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058"]
+    },
+    "supersededPlanningEdges": {
+      "TASK-0049": {"replacement": "TASK-0055", "commit": "7402df49bde47ddbd8c0f00f5ba1bb441853d0f1"},
+      "TASK-0050": {"replacement": "TASK-0056", "commit": "8013ea1108073503fde84308d1ee969b662dd4a6"},
+      "TASK-0051": {"replacement": "TASK-0057", "commit": "bb6b00074213f8f0022efcfb5f773dd19a95630d"},
+      "TASK-0052": {"replacement": "TASK-0058", "commit": "60e5f0315d323a40d51df090028a36b246754b51"},
+      "TASK-0053": {"replacement": "TASK-0059", "commit": "d4fb41839d814ff0abbea41fb7656976b3ebda8d"}
+    },
+    "candidateCanonical": {
+      "commit": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+      "tree": "dbb95f3ffbf03175f0f271e73317a05a56265211",
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 121531,
+      "elapsedSeconds": 512.520,
+      "errors": [
+        "task-backlog.tasks.TASK-0055: task title is already permanently reserved",
+        "task-backlog.tasks.TASK-0057: task title is already permanently reserved",
+        "task-backlog.tasks.TASK-0058: task title is already permanently reserved",
+        "task-backlog.tasks.TASK-0059: task title is already permanently reserved"
+      ]
+    },
+    "exactShaCi": {
+      "status": "NOT_RUN",
+      "headSha": "6d40835ca0ea505e5ab59e12f9c851881a273879",
+      "runId": null,
+      "jobs": {
+        "Backend": "NOT_RUN",
+        "Frontend": "NOT_RUN",
+        "Harness (ubuntu-latest)": "NOT_RUN",
+        "Harness (windows-latest)": "NOT_RUN",
+        "Harness (macos-latest)": "NOT_RUN"
+      }
+    },
+    "preClosure": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "startedAt": "2026-07-31T09:54:48.8254338+08:00",
+      "endedAt": "2026-07-31T10:02:33.7628402+08:00",
+      "elapsedSeconds": 464.937,
+      "checks": 125094,
+      "persistentSessionFromStart": true,
+      "duplicateRuns": 0,
+      "errors": [
+        "task-backlog.tasks.TASK-0055: task title is already permanently reserved",
+        "task-backlog.tasks.TASK-0057: task title is already permanently reserved",
+        "task-backlog.tasks.TASK-0058: task title is already permanently reserved",
+        "task-backlog.tasks.TASK-0059: task title is already permanently reserved",
+        "project-state.nextAction must identify Backlog next promotable task TASK-0013"
+      ],
+      "postRunClosureOnlyDelta": [
+        "record the real pre-closure result in Evidence and Handoff",
+        "make project-state and Handoff nextAction identify TASK-0013 as parsed but held"
+      ],
+      "rerun": false
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T08:53:19.7160000+08:00",
+      "implementationAndValidationStoppedAt": "2026-07-31T09:51:56.8082150+08:00",
+      "activeElapsedMinutes": 58.62,
+      "candidateDeadlineMinutes": 45,
+      "candidateDeadlineStatus": "MET",
+      "hardFuseMinutes": 90,
+      "hardFuseBoundary": "2026-07-31T10:23:19.7160000+08:00",
+      "hardFuseStatus": "NOT_TRIGGERED"
+    },
+    "closureOnlyOverrun": {
+      "used": false,
+      "durationMinutes": 0,
+      "rootCause": null,
+      "forbiddenActionsObserved": false
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so that commit and tree cannot self-reference their own hashes. The exact terminal commit/tree are captured after commit and push in the completion report."
+    }
+  }
+}

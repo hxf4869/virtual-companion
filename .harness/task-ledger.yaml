@@ -96,3 +96,9 @@ tasks:
     taskCard: docs/tasks/TASK-0048-machine-delivery-policy-final-replacement.md
     evidence: docs/evidence/TASK-0048/evidence-pack.json
     handoff: docs/handoffs/TASK-0048.json
+  TASK-0054:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0054-adopt-machine-delivery-policy-cross-platform-ci.md
+    evidence: docs/evidence/TASK-0054/evidence-pack.json
+    handoff: docs/handoffs/TASK-0054.json

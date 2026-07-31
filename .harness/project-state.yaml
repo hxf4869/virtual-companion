@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0054
-activeTaskCard: docs/tasks/TASK-0054-adopt-machine-delivery-policy-cross-platform-ci.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0048
-lastTerminalHandoff: docs/handoffs/TASK-0048.json
-nextAction: 执行 TASK-0054：独立采纳机器交付策略并闭环精确 SHA 跨平台 CI
+lastTerminalTask: TASK-0054
+lastTerminalHandoff: docs/handoffs/TASK-0054.json
+nextAction: 创建 TASK-0054 的永久替代任务；TASK-0055 依赖已 REJECTED 的 TASK-0054 不得晋级，TASK-0013 虽为 Backlog 解析候选也暂不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED
