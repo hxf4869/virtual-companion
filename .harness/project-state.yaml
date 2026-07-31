@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0067
+activeTaskCard: docs/tasks/TASK-0067-durable-command-canonical-byte-domain-recovery.md
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0066
 lastTerminalHandoff: docs/handoffs/TASK-0066.json
-nextAction: TASK-0066 因 WSL exact-candidate canonical 真实失败而 REJECTED；下一永久恢复编号为 TASK-0067，TASK-0065 保留远端调度治理，TASK-0055 或 TASK-0013 不得晋级
+nextAction: TASK-0067 已获 READY 授权；绑定 authorization commit 后进入 IN_PROGRESS，前向修复 durable helper canonical 字节域并保持 TASK-0055/TASK-0013 不晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED
