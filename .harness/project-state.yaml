@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0063
+activeTaskCard: docs/tasks/TASK-0063-authorization-history-greenline-recovery.md
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
 lastTerminalTask: TASK-0062
 lastTerminalHandoff: docs/handoffs/TASK-0062.json
-nextAction: 创建 TASK-0062 的永久替代任务；TASK-0055 依赖已 REJECTED 的 TASK-0062 不得晋级，TASK-0013 虽为 Backlog 解析候选也暂不得晋级
+nextAction: 执行 TASK-0063 授权历史绿线恢复；不得晋级 TASK-0055 或 TASK-0013
 capabilityGates:
   businessImplementation:
     state: BLOCKED
