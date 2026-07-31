@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0062
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -148,7 +148,7 @@ independentReview: required
 reviewers: []
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0062
-  - python -m unittest scripts.harness.tests.test_harness.DurableCommandTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_backlog_activation_introduction_skips_immutable_root_comparison scripts.harness.tests.test_harness.BacklogTests.test_backlog_clean_real_parent_history_edge_passes scripts.harness.tests.test_harness.BacklogTests.test_backlog_real_parent_root_corruption_and_restore_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0061_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0062_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planned_cards_bind_backlog_without_dynamic_evidence scripts.harness.tests.test_harness.ValidationFlowTests.test_agent_rules_define_snapshot_reuse_and_low_frequency_polling scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands
+  - python -m unittest scripts.harness.tests.test_harness.DurableCommandTests scripts.harness.tests.test_harness.DeliveryPolicyTests scripts.harness.tests.test_harness.BacklogTests.test_backlog_activation_introduction_skips_immutable_root_comparison scripts.harness.tests.test_harness.BacklogTests.test_backlog_clean_real_parent_history_edge_passes scripts.harness.tests.test_harness.BacklogTests.test_backlog_real_parent_root_corruption_and_restore_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0012_owner_amendment_history_edge_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0060_planning_repair_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0061_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0062_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_planned_cards_bind_backlog_without_dynamic_evidence scripts.harness.tests.test_harness.ValidationFlowTests.test_agent_rules_define_snapshot_reuse_and_low_frequency_polling scripts.harness.tests.test_harness.IntegrationTests.test_command_registry_is_consumed_without_shell_commands
   - git diff --check
 ```
 
@@ -163,6 +163,10 @@ canonical 与替代 smoke 都没有原子 receipt，真实 inner exit 无法恢�
 
 - 保留 TASK-0061 已通过 R1 的 activation introduction、真实父边 corruption/
   restore、四个永久唯一标题和完整规划 Hash 修复，不重写产品或历史修复算法；
+- 对 Base Doctor 新暴露的 TASK-0012 强类型 Owner amendment 引入边，按
+  `authorizationAmendments` 受控可变根的单次 bootstrap 合同校验 `authority.owns`
+  的精确追加；不得按 Commit SHA 开宽泛例外，其他真实父边的 `authority`
+  corruption/restore 继续失败关闭；
 - 保留 `TASK-0054 -> TASK-0060 -> TASK-0061` 历史，新增唯一
   `TASK-0061 -> TASK-0062` 永久替代边，并将 TASK-0055 唯一依赖原子改为
   TASK-0062；
@@ -198,9 +202,15 @@ canonical 与替代 smoke 都没有原子 receipt，真实 inner exit 无法恢�
 - 正式修改前的系统 TEMP exit-7 transport smoke 已独立通过：外层
   UTF-16LE EncodedCommand、隐藏窗口、worker config、ArgumentList、并发双流、
   真实 exit 7、输出关闭、Flush(true) 与同目录 File.Move 均已取证；
-- Base 没有已注册的 durable helper，DRAFT/READY 若不适合启动昂贵命令，必须
-  如实记录 `NOT_RUN/INHERITED_INFRA_FAILURE`，不得复用旧 PASS；候选必须使用
-  新注册 helper 得到自己的 canonical。
+- Base 没有已注册的 durable helper；DRAFT Doctor 的失败已由原子 receipt 完整
+  回收，READY 对同一已知失败快照如实记录
+  `NOT_RUN/DEDUPLICATED_KNOWN_FAILURE`（不是 PASS），不得复用旧 PASS；候选必须
+  使用新注册 helper 得到自己的 canonical。
+- 本卡 DRAFT Doctor 由已通过 smoke 的 TEMP transport 真实执行并以原子 receipt
+  回收 `exit=1`；它暴露了两个 Base 继承失败：TASK-0012 Owner amendment 引入
+  `authority.owns` 的历史边被误判，以及 TASK-0061 不可恢复结果使用
+  `FAIL + RESULT_UNRECOVERABLE + null exitCode` 与旧 Doctor 语义冲突。READY
+  不重复消耗该已知 Base 快照；候选必须以前向代码和测试消除两项失败。
 
 ## API / 事件 / 数据契约
 
@@ -245,6 +255,10 @@ config、stdout、stderr 与 receipt 只位于唯一系统 TEMP 目录，取证�
   PASS 时可用；非 Windows 只能 direct 或明确失败，缺 receipt 永远非 PASS；
 - Skill 以 1.2.0 精确注册并给出可执行 helper 入口；Commands、Sources、
   Invariants、Doctor 和测试形成唯一投影，完整文件 Hash/结构校验阻止追加相反例外；
+- TASK-0012 Owner amendment 的唯一受控根 bootstrap 引入边通过，任何其他
+  authority 根字段 corruption 及下一边 restoration 仍失败；只兼容不可改写的
+  遗留 `FAIL + RESULT_UNRECOVERABLE + null exitCode + null artifactHash` 投影，
+  普通 FAIL 仍必须有非零整数退出码，PASS 仍只允许 exit 0；
 - activation introduction 与 clean history PASS；真实父边 corruption 和下一边
   restoration 均失败关闭；
 - `TASK-0054 -> TASK-0060 -> TASK-0061 -> TASK-0062` 历史唯一且精确；
