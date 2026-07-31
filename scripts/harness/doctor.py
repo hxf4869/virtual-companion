@@ -156,7 +156,7 @@ TASK_BACKLOG_PATH = ".harness/task-backlog.yaml"
 PROJECT_STATE_PATH = ".harness/project-state.yaml"
 TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
 TASK_DELIVERY_POLICY_CANONICAL_HASH = (
-    "cb9c09b087f0f3a0662a45b17df700a1088417354689eb20b088d8686ebf9d0a"
+    "0f2e4ac962563cdacd85270dd14e453e719fa958b5ab53b9b864b888fb32577a"
 )
 PLANNING_CONTRACT_HASH_ALGORITHM = "SHA256_CANONICAL_JSON_V1"
 PLANNED_CARD_FIELDS = {
@@ -5955,6 +5955,67 @@ def validate_task_delivery_policy(audit: Audit) -> None:
             )
     else:
         audit.error("task-delivery-policy: single-card happyPath must be a list")
+    budgets = policy.get("budgets")
+    budgets = budgets if isinstance(budgets, dict) else {}
+    expected_hard_fuse = {
+        "stopImmediately": [
+            "IMPLEMENTATION",
+            "FIXES",
+            "REVIEWER",
+            "CANDIDATE_CANONICAL",
+            "CI",
+        ],
+        "mandatoryTerminalClosure": {
+            "activeOrHalfClosedRepositoryMustClose": True,
+            "closureOnlyOverrunAllowed": True,
+            "allowedActions": [
+                "EVIDENCE_HANDOFF",
+                "PRE_CLOSURE",
+                "TERMINAL_COMMIT",
+                "PUSH",
+                "REMOTE_ZERO_ZERO",
+            ],
+            "recordSeparately": ["DURATION", "ROOT_CAUSE"],
+            "implementationForbidden": True,
+        },
+    }
+    audit.require(
+        budgets.get("hardFuseWallMinutes") == 90
+        and budgets.get("hardFuse") == expected_hard_fuse,
+        "task-delivery-policy: 90-minute hard-fuse and closure-only contract drifted",
+    )
+    validation = policy.get("validation")
+    validation = validation if isinstance(validation, dict) else {}
+    expected_long_running = {
+        "singleProcess": True,
+        "expectedDurationThresholdSeconds": 60,
+        "persistentSessionOrPtyFromStart": True,
+        "appliesTo": ["DOCTOR", "CANDIDATE_CANONICAL", "PRE_CLOSURE"],
+        "preserve": ["SAME_PROCESS", "STDOUT", "REAL_EXIT_CODE"],
+        "outerYieldOrTimeoutBehavior": "YIELD_CONTROL_ONLY",
+        "lostExitCodeStatuses": ["NOT_RUN", "UNKNOWN"],
+        "passWithLostExitCodeForbidden": True,
+        "polling": "LOW_FREQUENCY_STATUS_ONLY",
+        "defaultPollingIntervalSeconds": 60,
+        "statusObservationOnly": True,
+        "parallelStatusCommandForbidden": True,
+        "parallelProcessInspectionCommandForbidden": True,
+        "repeatedLogFetchForbidden": True,
+        "duplicateExecutionForbidden": True,
+    }
+    audit.require(
+        validation.get("longRunningCommand") == expected_long_running,
+        "task-delivery-policy: long-command observability contract drifted",
+    )
+    candidate_identity = policy.get("candidateIdentity")
+    candidate_identity = (
+        candidate_identity if isinstance(candidate_identity, dict) else {}
+    )
+    audit.require(
+        candidate_identity.get("nonPassResults")
+        == ["FAIL", "CANCELLED", "TIMEOUT", "NOT_RUN", "UNKNOWN"],
+        "task-delivery-policy: UNKNOWN and lost exit codes must remain non-PASS",
+    )
     audit.require(
         canonical_json_sha256(policy) == TASK_DELIVERY_POLICY_CANONICAL_HASH,
         "task-delivery-policy: canonical contract hash drifted; update the C4 "
@@ -5993,12 +6054,12 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         == [
             {
                 "id": "task-delivery-flow",
-                "version": "1.0.0",
+                "version": "1.1.0",
                 "path": "skills/task-delivery-flow/SKILL.md",
             }
         ],
         "task-delivery-policy: task-delivery-flow must be registered exactly once "
-        "at version 1.0.0",
+        "at version 1.1.0",
     )
     invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
     delivery_invariants = (
@@ -6032,11 +6093,11 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     )
 
     expected_follow_ups = {
-        "idlePlanningCheckpointCore": "TASK-0049",
-        "idlePlanningCheckpointConsumers": "TASK-0050",
-        "harnessPerformance": "TASK-0051",
-        "pathAwareCi": "TASK-0052",
-        "snapshotReceipt": "TASK-0053",
+        "idlePlanningCheckpointCore": "TASK-0055",
+        "idlePlanningCheckpointConsumers": "TASK-0056",
+        "harnessPerformance": "TASK-0057",
+        "pathAwareCi": "TASK-0058",
+        "snapshotReceipt": "TASK-0059",
     }
     audit.require(
         policy.get("followUpTasks") == expected_follow_ups,
@@ -6046,11 +6107,11 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     entries = backlog.get("tasks")
     entries = entries if isinstance(entries, dict) else {}
     expected_dependencies = {
-        "TASK-0049": ["TASK-0048"],
-        "TASK-0050": ["TASK-0049"],
-        "TASK-0051": ["TASK-0050"],
-        "TASK-0052": ["TASK-0051"],
-        "TASK-0053": ["TASK-0052"],
+        "TASK-0055": ["TASK-0054"],
+        "TASK-0056": ["TASK-0055"],
+        "TASK-0057": ["TASK-0056"],
+        "TASK-0058": ["TASK-0057"],
+        "TASK-0059": ["TASK-0058"],
     }
     for task_id, dependencies in expected_dependencies.items():
         entry = entries.get(task_id)
@@ -6081,6 +6142,11 @@ def validate_task_delivery_policy(audit: Audit) -> None:
             "TASK-0051",
             "TASK-0052",
             "TASK-0053",
+            "TASK-0055",
+            "TASK-0056",
+            "TASK-0057",
+            "TASK-0058",
+            "TASK-0059",
         ],
         "task-delivery-policy: replacement execution order must follow the blocked "
         "chain and precede TASK-0013",
@@ -6096,6 +6162,11 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         "TASK-0045": "TASK-0051",
         "TASK-0046": "TASK-0052",
         "TASK-0047": "TASK-0053",
+        "TASK-0049": "TASK-0055",
+        "TASK-0050": "TASK-0056",
+        "TASK-0051": "TASK-0057",
+        "TASK-0052": "TASK-0058",
+        "TASK-0053": "TASK-0059",
     }.items():
         resolution = resolutions.get(old_task)
         audit.require(
@@ -6132,6 +6203,31 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     audit.require(
         skill_text.isascii(),
         "task-delivery-policy: task-delivery-flow Skill must remain ASCII",
+    )
+    normalized_skill = " ".join(skill_text.split())
+    expected_long_observability = (
+        "For every Doctor, candidate canonical, or pre-closure command expected to "
+        "exceed 60 seconds, start a persistent session or PTY before launching it. "
+        "An outer tool yield or timeout may yield control only; it must preserve the "
+        "same process, stdout, and real exit code. Never start a duplicate process, "
+        "add parallel `status` or `ps` checks, or fetch the same log again. If "
+        "transport loses the exit code, record `NOT_RUN` or `UNKNOWN`, never PASS."
+    )
+    audit.require(
+        expected_long_observability in normalized_skill,
+        "task-delivery-policy: Skill long-command observability contract drifted",
+    )
+    expected_hard_fuse_skill = (
+        "At `hardFuseWallMinutes`, stop implementation, fixes, Reviewer work, "
+        "canonical validation, and CI. If the repository is still active or "
+        "half-closed, allow only a minimal closure-only overrun for Evidence/Handoff, "
+        "pre-closure, the terminal commit, push, and remote `0/0` verification. Record "
+        "overrun duration and root cause separately, and perform no implementation "
+        "during the overrun."
+    )
+    audit.require(
+        expected_hard_fuse_skill in normalized_skill,
+        "task-delivery-policy: Skill hard-fuse closure-only contract drifted",
     )
     wrapper_item_match = re.search(
         r"(?ms)^## Run a single card\s+.*?^5\. (?P<body>.*?)(?=^6\. )",

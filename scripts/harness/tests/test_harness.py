@@ -1489,6 +1489,112 @@ class DeliveryPolicyTests(unittest.TestCase):
                     audit.errors,
                 )
 
+    def test_policy_validator_rejects_long_command_observability_drift(self) -> None:
+        policy_path = ROOT / ".harness/task-delivery-policy.yaml"
+        skill_path = ROOT / "skills/task-delivery-flow/SKILL.md"
+        real_load_yaml = doctor.load_yaml
+        drifted = copy.deepcopy(load_yaml(policy_path))
+        drifted["validation"]["longRunningCommand"][
+            "persistentSessionOrPtyFromStart"
+        ] = False
+
+        def load_with_drift(path: Path) -> dict[str, object]:
+            if Path(path) == policy_path:
+                return drifted
+            return real_load_yaml(path)
+
+        audit = Audit()
+        with patch.object(doctor, "load_yaml", side_effect=load_with_drift):
+            validate_task_delivery_policy(audit)
+        self.assertTrue(
+            any(
+                "long-command observability contract drifted" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+        skill_text = skill_path.read_text(encoding="utf-8")
+        drifted_skill = skill_text.replace(
+            "real exit code.",
+            "reported exit code.",
+            1,
+        )
+        real_read_repository_text = doctor.read_repository_text
+
+        def read_with_drift(path: Path) -> str:
+            if Path(path) == skill_path:
+                return drifted_skill
+            return real_read_repository_text(path)
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "read_repository_text",
+            side_effect=read_with_drift,
+        ):
+            validate_task_delivery_policy(audit)
+        self.assertTrue(
+            any(
+                "Skill long-command observability contract drifted" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+    def test_policy_validator_rejects_hard_fuse_closure_drift(self) -> None:
+        policy_path = ROOT / ".harness/task-delivery-policy.yaml"
+        skill_path = ROOT / "skills/task-delivery-flow/SKILL.md"
+        real_load_yaml = doctor.load_yaml
+        drifted = copy.deepcopy(load_yaml(policy_path))
+        drifted["budgets"]["hardFuse"]["mandatoryTerminalClosure"][
+            "allowedActions"
+        ].append("IMPLEMENTATION")
+
+        def load_with_drift(path: Path) -> dict[str, object]:
+            if Path(path) == policy_path:
+                return drifted
+            return real_load_yaml(path)
+
+        audit = Audit()
+        with patch.object(doctor, "load_yaml", side_effect=load_with_drift):
+            validate_task_delivery_policy(audit)
+        self.assertTrue(
+            any(
+                "90-minute hard-fuse and closure-only contract drifted" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
+        skill_text = skill_path.read_text(encoding="utf-8")
+        drifted_skill = skill_text.replace(
+            "perform no implementation",
+            "perform implementation",
+            1,
+        )
+        real_read_repository_text = doctor.read_repository_text
+
+        def read_with_drift(path: Path) -> str:
+            if Path(path) == skill_path:
+                return drifted_skill
+            return real_read_repository_text(path)
+
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "read_repository_text",
+            side_effect=read_with_drift,
+        ):
+            validate_task_delivery_policy(audit)
+        self.assertTrue(
+            any(
+                "Skill hard-fuse closure-only contract drifted" in error
+                for error in audit.errors
+            ),
+            audit.errors,
+        )
+
 
 class BacklogTests(unittest.TestCase):
     EXPECTED_TITLES = {
@@ -1532,6 +1638,11 @@ class BacklogTests(unittest.TestCase):
         "TASK-0051": "Harness 阶段计时与跨文件系统性能引擎最终替代",
         "TASK-0052": "Harness 路径感知 CI 与包装器平台策略最终替代",
         "TASK-0053": "Harness 内容寻址快照复用与 Evidence 门禁最终替代",
+        "TASK-0055": "Idle planning checkpoint 核心父边校验",
+        "TASK-0056": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+        "TASK-0057": "Harness 阶段计时与跨文件系统性能引擎",
+        "TASK-0058": "Harness 路径感知 CI 与包装器平台策略",
+        "TASK-0059": "Harness 内容寻址快照复用与 Evidence 门禁",
     }
 
     def load_inputs(
@@ -1654,6 +1765,11 @@ class BacklogTests(unittest.TestCase):
             "TASK-0051",
             "TASK-0052",
             "TASK-0053",
+            "TASK-0055",
+            "TASK-0056",
+            "TASK-0057",
+            "TASK-0058",
+            "TASK-0059",
             *[f"TASK-{value:04d}" for value in range(13, 37)],
         ]
         self.assertEqual(expected_ids, backlog["executionOrder"])
@@ -1669,7 +1785,7 @@ class BacklogTests(unittest.TestCase):
             task["state"] in {*lifecycle["activeStates"], "DRAFT"}
             for task in tasks.values()
         )
-        expected_next = None if repository_busy else "TASK-0049"
+        expected_next = None if repository_busy else "TASK-0055"
         self.assertEqual(expected_next, projection["nextPromotable"])
         self.assertEqual(
             {
@@ -1681,6 +1797,11 @@ class BacklogTests(unittest.TestCase):
                 "TASK-0045": "TASK-0051",
                 "TASK-0046": "TASK-0052",
                 "TASK-0047": "TASK-0053",
+                "TASK-0049": "TASK-0055",
+                "TASK-0050": "TASK-0056",
+                "TASK-0051": "TASK-0057",
+                "TASK-0052": "TASK-0058",
+                "TASK-0053": "TASK-0059",
             },
             {
                 task_id: resolution["replacementTask"]
@@ -1701,10 +1822,15 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0050"], backlog["tasks"]["TASK-0051"]["dependencies"])
         self.assertEqual(["TASK-0051"], backlog["tasks"]["TASK-0052"]["dependencies"])
         self.assertEqual(["TASK-0052"], backlog["tasks"]["TASK-0053"]["dependencies"])
+        self.assertEqual(["TASK-0054"], backlog["tasks"]["TASK-0055"]["dependencies"])
+        self.assertEqual(["TASK-0055"], backlog["tasks"]["TASK-0056"]["dependencies"])
+        self.assertEqual(["TASK-0056"], backlog["tasks"]["TASK-0057"]["dependencies"])
+        self.assertEqual(["TASK-0057"], backlog["tasks"]["TASK-0058"]["dependencies"])
+        self.assertEqual(["TASK-0058"], backlog["tasks"]["TASK-0059"]["dependencies"])
         self.assertEqual(["TASK-0012"], backlog["tasks"]["TASK-0013"]["dependencies"])
 
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0048"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0054"]["state"] = "ACCEPTED"
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
@@ -1712,9 +1838,9 @@ class BacklogTests(unittest.TestCase):
         )
         self.assertTrue(terminal_projection["repositoryIdle"])
         self.assertEqual(29, terminal_projection["plannedCount"])
-        self.assertEqual("TASK-0049", terminal_projection["nextPromotable"])
+        self.assertEqual("TASK-0055", terminal_projection["nextPromotable"])
         self.assertIn(
-            "WAITING_FOR_ORDER:TASK-0049",
+            "WAITING_FOR_ORDER:TASK-0055",
             terminal_projection["blockers"]["TASK-0013"],
         )
 
@@ -1822,7 +1948,7 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
         backlog, tasks, lifecycle, _ = self.load_inputs()
         active_tasks = copy.deepcopy(tasks)
-        active_tasks["TASK-0048"]["state"] = "IN_PROGRESS"
+        active_tasks["TASK-0054"]["state"] = "IN_PROGRESS"
         active_projection = derive_backlog_promotion_projection(
             backlog,
             active_tasks,
@@ -1834,8 +1960,8 @@ class BacklogTests(unittest.TestCase):
         )
 
         ordered_tasks = copy.deepcopy(tasks)
-        ordered_tasks["TASK-0048"]["state"] = "ACCEPTED"
-        for task_id in ("TASK-0049", "TASK-0050", "TASK-0051", "TASK-0052", "TASK-0053"):
+        ordered_tasks["TASK-0054"]["state"] = "ACCEPTED"
+        for task_id in ("TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
                 ordered_tasks,
@@ -3534,11 +3660,11 @@ class BacklogTests(unittest.TestCase):
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
         terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0048"]["state"] = "ACCEPTED"
+        terminal_tasks["TASK-0054"]["state"] = "ACCEPTED"
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
-        idle_state["nextAction"] = "将 TASK-0049 晋级为唯一 DRAFT"
+        idle_state["nextAction"] = "将 TASK-0055 晋级为唯一 DRAFT"
         audit = Audit()
         projection = validate_task_backlog_data(
             audit,
@@ -3548,9 +3674,9 @@ class BacklogTests(unittest.TestCase):
             idle_state,
         )
         self.assertEqual([], audit.errors)
-        self.assertEqual("TASK-0049", projection["nextPromotable"])
+        self.assertEqual("TASK-0055", projection["nextPromotable"])
         self.assertIn(
-            "WAITING_FOR_ORDER:TASK-0049",
+            "WAITING_FOR_ORDER:TASK-0055",
             projection["blockers"]["TASK-0013"],
         )
         self.assertIn(

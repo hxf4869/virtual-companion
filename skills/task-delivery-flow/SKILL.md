@@ -59,9 +59,14 @@ description: Execute one governed repository task or coordinate a strictly seria
 
 ## Preserve validation and review integrity
 
-- Run only one long command process. Poll that same process about every 60
-  seconds by default. Do not add parallel `status` or `ps` commands or repeat
-  log fetches; polling observes status only and never triggers another check.
+- For every Doctor, candidate canonical, or pre-closure command expected to
+  exceed 60 seconds, start a persistent session or PTY before launching it. An
+  outer tool yield or timeout may yield control only; it must preserve the same
+  process, stdout, and real exit code. Never start a duplicate process, add
+  parallel `status` or `ps` checks, or fetch the same log again. If transport
+  loses the exit code, record `NOT_RUN` or `UNKNOWN`, never PASS.
+- Poll that same process about every 60 seconds by default. Polling observes
+  status only and never triggers another check.
 - Reuse means not dispatching an identical check again. Preserve its one real
   result and never invent a `REUSED` PASS.
 - Keep failure, cancellation, timeout, and NOT_RUN as non-PASS.
@@ -76,7 +81,13 @@ description: Execute one governed repository task or coordinate a strictly seria
 
 - Stop promotion on Context, approval, Skill, allowlist, candidate identity,
   Reviewer, canonical, CI, or remote verification failure.
-- Stop at the policy budget, round, or structural-finding fuse.
+- At `hardFuseWallMinutes`, stop implementation, fixes, Reviewer work,
+  canonical validation, and CI. If the repository is still active or
+  half-closed, allow only a minimal closure-only overrun for Evidence/Handoff,
+  pre-closure, the terminal commit, push, and remote `0/0` verification. Record
+  overrun duration and root cause separately, and perform no implementation
+  during the overrun.
+- Stop at every other policy budget, round, or structural-finding fuse.
 - Do not start a third review, add an unbounded fix loop, delete tests, add
   skips, expand timeouts, or weaken policy for the current task.
 

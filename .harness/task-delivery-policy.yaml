@@ -65,6 +65,26 @@ budgets:
   stopOnR2NewStructural:
     - P0
     - P1
+  hardFuse:
+    stopImmediately:
+      - IMPLEMENTATION
+      - FIXES
+      - REVIEWER
+      - CANDIDATE_CANONICAL
+      - CI
+    mandatoryTerminalClosure:
+      activeOrHalfClosedRepositoryMustClose: true
+      closureOnlyOverrunAllowed: true
+      allowedActions:
+        - EVIDENCE_HANDOFF
+        - PRE_CLOSURE
+        - TERMINAL_COMMIT
+        - PUSH
+        - REMOTE_ZERO_ZERO
+      recordSeparately:
+        - DURATION
+        - ROOT_CAUSE
+      implementationForbidden: true
 validation:
   sequence:
     - TARGETED
@@ -89,6 +109,21 @@ validation:
     - PORTABILITY
   longRunningCommand:
     singleProcess: true
+    expectedDurationThresholdSeconds: 60
+    persistentSessionOrPtyFromStart: true
+    appliesTo:
+      - DOCTOR
+      - CANDIDATE_CANONICAL
+      - PRE_CLOSURE
+    preserve:
+      - SAME_PROCESS
+      - STDOUT
+      - REAL_EXIT_CODE
+    outerYieldOrTimeoutBehavior: YIELD_CONTROL_ONLY
+    lostExitCodeStatuses:
+      - NOT_RUN
+      - UNKNOWN
+    passWithLostExitCodeForbidden: true
     polling: LOW_FREQUENCY_STATUS_ONLY
     defaultPollingIntervalSeconds: 60
     statusObservationOnly: true
@@ -154,10 +189,11 @@ candidateIdentity:
     - CANCELLED
     - TIMEOUT
     - NOT_RUN
+    - UNKNOWN
   exactShaCiCrossShaReuse: false
 followUpTasks:
-  idlePlanningCheckpointCore: TASK-0049
-  idlePlanningCheckpointConsumers: TASK-0050
-  harnessPerformance: TASK-0051
-  pathAwareCi: TASK-0052
-  snapshotReceipt: TASK-0053
+  idlePlanningCheckpointCore: TASK-0055
+  idlePlanningCheckpointConsumers: TASK-0056
+  harnessPerformance: TASK-0057
+  pathAwareCi: TASK-0058
+  snapshotReceipt: TASK-0059
