@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260801-READY-GREENLINE-01",
+  "kind": "OWNER_AUTHORIZED_OUT_OF_BAND_MAINTENANCE",
+  "harnessTask": false,
+  "taskId": null,
+  "reservedTaskIds": [],
+  "ownerAuthorization": {
+    "approvedBy": "repository-owner",
+    "approvedAt": "2026-08-01",
+    "exactQuote": "授权一次性 break-glass 热修",
+    "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+    "oneTimeOnly": true,
+    "reusable": false
+  },
+  "base": {
+    "branch": "main",
+    "commit": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+    "tree": "e83e352a9805e84e1996115924a33686fdd79d1e",
+    "originMain": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+    "ahead": 0,
+    "behind": 0,
+    "worktreeClean": true,
+    "indexClean": true,
+    "activeTask": null
+  },
+  "objective": "修复 Base Backlog DRAFT promotion 重建误读当前 READY 或 terminal task card 的确定性 READY 前失败，使历史验证只消费同一 Base commit 的 task-card path、mode、blob oid 与 bytes。",
+  "allowedPaths": [
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+    "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/**",
+    "docs/handoffs/OWNER-MAINT-20260801-READY-GREENLINE-01.json"
+  ],
+  "forbidden": [
+    "修改或弱化 .harness/task-delivery-policy.yaml、.harness/task-lifecycle.yaml、.harness/skills.yaml 或 READY/Doctor 门禁",
+    "新增通用 bypass、Owner override 框架、可复用异常或平行计划系统",
+    "修改 .harness/task-backlog.yaml、TASK-0055、TASK-0056、TASK-0070 或 TASK-0071 内容",
+    "创建、预留或占用 TASK-0071",
+    "伪造 DRAFT、READY、IN_PROGRESS、IN_REVIEW、ACCEPTED 或普通 TASK acceptance",
+    "修改产品、Provider、凭据、真实外发、安全、身份、Persona、数据库或 Beta 能力",
+    "dispatch、重跑或轮询 GitHub Actions",
+    "把 UNKNOWN、NOT_RUN、失败或历史 PASS 改写为当前 PASS"
+  ],
+  "validationBoundary": {
+    "reviewer": "independent fork_turns=none, R1 and at most one repair batch plus R2, no R3",
+    "windows": "one exact candidate local validation after Reviewer PASS",
+    "wsl": "one git-archive exact candidate Tree validation after Reviewer PASS",
+    "githubActions": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "ordinaryPreClosure": "NOT_APPLICABLE unless a legal non-TASK maintenance command exists; no TASK ID may be fabricated"
+  },
+  "nextActionConstraint": "协调任务在绿线复核后创建正常 TASK-0071，作为 TASK-0055 原始 parent-edge core 的普通治理替代卡；本维护不得创建或预留 TASK-0071。"
+}

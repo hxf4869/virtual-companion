@@ -545,6 +545,13 @@ PLANNED_CARD_NON_NORMATIVE_NOTICE = (
     "`.harness/task-backlog.yaml` 中本 Task ID 的静态合同，"
     "并由 `planningContractHash` 完整绑定。"
 )
+HISTORICAL_TASK_CARD_SNAPSHOT_FIELDS = {
+    "path",
+    "mode",
+    "objectType",
+    "oid",
+    "content",
+}
 TASK_LEDGER_FIELDS = {
     "state",
     "contractVersion",
@@ -6669,33 +6676,163 @@ def derive_backlog_promotion_projection(
     }
 
 
-def task_snapshot_at_commit(
+def git_blob_oid_for_content(content: bytes, oid_length: int) -> str | None:
+    if oid_length == 40:
+        digest = hashlib.sha1()
+    elif oid_length == 64:
+        digest = hashlib.sha256()
+    else:
+        return None
+    digest.update(f"blob {len(content)}\0".encode("ascii"))
+    digest.update(content)
+    return digest.hexdigest()
+
+
+def historical_task_card_text(
+    audit: Audit,
+    label: str,
+    path: str,
+    task_card_snapshot: dict[str, dict[str, Any]],
+) -> str | None:
+    record = task_card_snapshot.get(path)
+    audit.require(
+        isinstance(record, dict),
+        f"{label}: historical task-card snapshot is missing exact path {path!r}",
+    )
+    if not isinstance(record, dict):
+        return None
+    audit.require(
+        set(record) == HISTORICAL_TASK_CARD_SNAPSHOT_FIELDS,
+        f"{label}: historical task-card snapshot fields must be exactly "
+        f"{sorted(HISTORICAL_TASK_CARD_SNAPSHOT_FIELDS)}",
+    )
+    path_matches = record.get("path") == path
+    mode_matches = record.get("mode") == "100644"
+    type_matches = record.get("objectType") == "blob"
+    oid = record.get("oid")
+    oid_valid = isinstance(oid, str) and bool(
+        re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", oid)
+    )
+    content = record.get("content")
+    content_valid = isinstance(content, bytes)
+    audit.require(
+        path_matches,
+        f"{label}: historical task-card snapshot path must remain exactly {path!r}",
+    )
+    audit.require(
+        mode_matches and type_matches,
+        f"{label}: historical task card must be a regular 100644 blob",
+    )
+    audit.require(
+        oid_valid,
+        f"{label}: historical task-card blob oid is invalid",
+    )
+    audit.require(
+        content_valid,
+        f"{label}: historical task-card blob is unreadable",
+    )
+    if not (
+        set(record) == HISTORICAL_TASK_CARD_SNAPSHOT_FIELDS
+        and path_matches
+        and mode_matches
+        and type_matches
+        and oid_valid
+        and content_valid
+    ):
+        return None
+    assert isinstance(oid, str)
+    assert isinstance(content, bytes)
+    actual_oid = git_blob_oid_for_content(content, len(oid))
+    audit.require(
+        actual_oid == oid,
+        f"{label}: historical task-card content does not match its blob oid",
+    )
+    if actual_oid != oid:
+        return None
+    try:
+        return content.decode("utf-8")
+    except UnicodeError as exc:
+        audit.error(f"{label}: historical task-card blob is not UTF-8: {exc}")
+        return None
+
+
+def task_card_snapshot_at_commit(
     audit: Audit,
     commit: str,
-    tasks: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    snapshot: dict[str, dict[str, Any]] = {}
-    for task_id, task in tasks.items():
-        path = str(task.get("_path", ""))
+    backlog: dict[str, Any],
+    known_tasks: dict[str, dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    tasks: dict[str, dict[str, Any]] = {}
+    task_card_snapshot: dict[str, dict[str, Any]] = {}
+    entries = backlog.get("tasks")
+    if not isinstance(entries, dict):
+        return tasks, task_card_snapshot
+    for task_id, raw_entry in entries.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        path = str(raw_entry.get("taskCard", ""))
+        if not is_repository_relative(path):
+            continue
+        tree_entry = git_tree_entry(commit, path)
+        if tree_entry is None:
+            continue
+        mode, object_type, oid = tree_entry
+        content: bytes | None = None
+        try:
+            if object_type == "blob":
+                content = git_object(commit, path)
+        except (HarnessError, OSError):
+            pass
+        task_card_snapshot[path] = {
+            "path": path,
+            "mode": mode,
+            "objectType": object_type,
+            "oid": oid,
+            "content": content,
+        }
+        if not isinstance(content, bytes):
+            continue
+        try:
+            text = content.decode("utf-8")
+            metadata = task_metadata_from_text(
+                text,
+                f"task-backlog.tasks.{task_id} at {commit}",
+            )
+        except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(
+                f"{task_id}: cannot load historical task card at {commit}: {exc}"
+            )
+            continue
+        audit.require(
+            metadata.get("taskId") == task_id,
+            f"task-backlog.tasks.{task_id}: historical task-card taskId must "
+            f"remain {task_id}",
+        )
+        metadata["_path"] = path
+        tasks[str(task_id)] = metadata
+    for task_id, known_task in known_tasks.items():
+        if task_id in entries:
+            continue
+        path = str(known_task.get("_path", ""))
         if not is_repository_relative(path):
             continue
         try:
-            entry = git_tree_entry(commit, path)
-            if entry is None:
+            tree_entry = git_tree_entry(commit, path)
+            if tree_entry is None:
                 continue
             audit.require(
-                entry[:2] == ("100644", "blob"),
+                tree_entry[:2] == ("100644", "blob"),
                 f"{task_id}: historical task card at {commit} must be a regular "
                 "100644 blob",
             )
             metadata = task_metadata_at_commit(commit, path)
             metadata["_path"] = path
-            snapshot[task_id] = metadata
+            tasks[task_id] = metadata
         except (HarnessError, UnicodeError, yaml.YAMLError) as exc:
             audit.error(
                 f"{task_id}: cannot load task snapshot at {commit}: {exc}"
             )
-    return snapshot
+    return tasks, task_card_snapshot
 
 
 def validate_backlog_draft_promotion_at_base(
@@ -6709,7 +6846,12 @@ def validate_backlog_draft_promotion_at_base(
     try:
         backlog = yaml_at_commit(base_commit, TASK_BACKLOG_PATH)
         state = yaml_at_commit(base_commit, PROJECT_STATE_PATH)
-        base_tasks = task_snapshot_at_commit(audit, base_commit, tasks)
+        base_tasks, task_card_snapshot = task_card_snapshot_at_commit(
+            audit,
+            base_commit,
+            backlog,
+            tasks,
+        )
         planned = base_tasks.get(task_id)
         audit.require(
             planned is not None and planned.get("state") == "PLANNED",
@@ -6721,6 +6863,7 @@ def validate_backlog_draft_promotion_at_base(
             base_tasks,
             lifecycle,
             state,
+            task_card_snapshot=task_card_snapshot,
         )
         blockers = projection.get("blockers")
         blockers = blockers if isinstance(blockers, dict) else {}
@@ -6749,6 +6892,8 @@ def validate_task_backlog_data(
     tasks: dict[str, dict[str, Any]],
     lifecycle: dict[str, Any],
     state: dict[str, Any],
+    *,
+    task_card_snapshot: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     audit.require(
         set(backlog) == BACKLOG_ROOT_FIELDS,
@@ -7032,6 +7177,25 @@ def validate_task_backlog_data(
     entries = backlog.get("tasks")
     audit.require(isinstance(entries, dict), "task-backlog: tasks must be an object")
     entries = entries if isinstance(entries, dict) else {}
+    historical_task_cards = task_card_snapshot is not None
+    if historical_task_cards:
+        audit.require(
+            isinstance(task_card_snapshot, dict),
+            "task-backlog: historical task-card snapshot must be an object",
+        )
+        task_card_snapshot = (
+            task_card_snapshot if isinstance(task_card_snapshot, dict) else {}
+        )
+        expected_task_card_paths = {
+            str(entry.get("taskCard", ""))
+            for entry in entries.values()
+            if isinstance(entry, dict)
+        }
+        audit.require(
+            set(task_card_snapshot) == expected_task_card_paths,
+            "task-backlog: historical task-card snapshot paths must exactly match "
+            "the same-commit Backlog taskCard paths",
+        )
     validate_backlog_authorization_amendments(
         audit,
         backlog.get("authorizationAmendments"),
@@ -7205,19 +7369,51 @@ def validate_task_backlog_data(
         )
         discovered = tasks.get(str(task_id))
         audit.require(discovered is not None, f"{label}: task card is missing")
+        if historical_task_cards and discovered is not None:
+            audit.require(
+                discovered.get("taskId") == task_id,
+                f"{label}: historical task-card taskId must remain {task_id}",
+            )
         if discovered is not None:
             audit.require(
                 discovered.get("_path") == task_card,
                 f"{label}: taskCard disagrees with discovered card",
             )
-            try:
-                heading = f"# {task_id}：{title}\n"
+        try:
+            heading = f"# {task_id}：{title}\n"
+            if historical_task_cards:
+                assert isinstance(task_card_snapshot, dict)
+                card_text = historical_task_card_text(
+                    audit,
+                    label,
+                    task_card,
+                    task_card_snapshot,
+                )
+            else:
                 card_text = read_repository_text(ROOT / task_card)
+            if card_text is not None:
                 audit.require(
                     card_text.startswith(heading),
                     f"{label}: task card heading must preserve the reserved ID/title",
                 )
-                if is_planning_only_task(discovered):
+                if historical_task_cards:
+                    historical_metadata = task_metadata_from_text(card_text, label)
+                    audit.require(
+                        historical_metadata.get("taskId") == task_id,
+                        f"{label}: historical task-card taskId must remain {task_id}",
+                    )
+                    if discovered is not None:
+                        audit.require(
+                            historical_metadata
+                            == {
+                                key: value
+                                for key, value in discovered.items()
+                                if key != "_path"
+                            },
+                            f"{label}: historical task-card metadata disagrees with "
+                            "the same-commit task snapshot",
+                        )
+                if discovered is not None and is_planning_only_task(discovered):
                     planned_card_render_projection(
                         audit,
                         label,
@@ -7225,8 +7421,8 @@ def validate_task_backlog_data(
                         raw_entry,
                         card_text,
                     )
-            except (OSError, UnicodeError) as exc:
-                audit.error(f"{label}: cannot read task card heading: {exc}")
+        except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+            audit.error(f"{label}: cannot read task card heading: {exc}")
 
         dependencies = validate_nonblank_string_list(
             audit,

@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260801-READY-GREENLINE-01",
+  "stage": "PRE_REVIEW",
+  "recordedAt": "2026-08-01T21:07:00+08:00",
+  "baseVerification": {
+    "fetchPruneExitCode": 0,
+    "branch": "main",
+    "head": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+    "tree": "e83e352a9805e84e1996115924a33686fdd79d1e",
+    "originMain": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+    "ahead": 0,
+    "behind": 0,
+    "statusEntries": 0,
+    "activeTask": null
+  },
+  "registeredSkillsRead": [
+    {
+      "id": "task-delivery-flow",
+      "version": "1.3.0",
+      "path": "skills/task-delivery-flow/SKILL.md"
+    },
+    {
+      "id": "task-intake",
+      "version": "1.2.0",
+      "path": "skills/task-intake/SKILL.md"
+    },
+    {
+      "id": "harness-change",
+      "version": "1.1.0",
+      "path": "skills/harness-change/SKILL.md"
+    }
+  ],
+  "maintenanceConventionSearch": {
+    "existingOwnerMaintenanceConventionFound": false,
+    "fallbackRecordName": "OWNER-MAINT-20260801-READY-GREENLINE-01",
+    "taskLedgerOrBacklogEntryCreated": false
+  },
+  "historicalEvidenceReverified": {
+    "task0055BaseSummary": {
+      "status": "PASS",
+      "exitCode": 0,
+      "checks": 262941,
+      "receiptSha256": "929e04544a6f9d488e478707ecc3ed648e0fb3fa458ba2e06d3dbe3029eba7d3"
+    },
+    "task0055ReadyDoctor": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 271800,
+      "receiptSha256": "6d598ed05f100fda8ea89a2116cd224039d3177a5708390dbb4b32c191a33ced",
+      "errorCount": 3
+    },
+    "task0055Terminal": "e8fa6dfa2f7b724d4b84e31fc7690da1776bd64a",
+    "task0070BaseSummary": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 277325,
+      "receiptSha256": "60d65dcdce1b0ec5ccb4572df6e8d0d0ddce8dd486ace8ab79b57e08a235b7ca",
+      "errorCount": 3
+    },
+    "task0070ReadyDoctor": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 282672,
+      "receiptSha256": "23a2ccf91ba55703a50a8610b8590e961faa31e0cc0ebaef2016dd3ef41b14f4",
+      "errorCount": 3
+    },
+    "task0070InvalidInProgressHistory": "fe1fb728241d216221d09f29bce2baf8d7e16f69",
+    "task0070Terminal": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+    "sharedErrors": [
+      "task-backlog.tasks.TASK-0055: planning card must contain exactly six normative sections",
+      "task-backlog.tasks.TASK-0055: planning card must contain exactly the fixed Backlog projection notice and no unbound preamble",
+      "task-backlog.tasks.TASK-0055: fixed Backlog projection notice must appear exactly once"
+    ]
+  },
+  "transportSmoke": {
+    "status": "PASS",
+    "innerExitCode": 7,
+    "receiptPath": "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-receipt.json",
+    "receiptSha256": "34e559a789710064fdbabe25ad6762255d4ffbbf1d6684d5bbde3b10959d35b2",
+    "stdoutPath": "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-stdout.base64",
+    "stdoutEncoding": "base64",
+    "stdoutSha256": "d49f362209d92d51cbef283be5a38ee3347799abaf2ea93119a0d2c114dd47f6",
+    "stderrPath": "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-stderr.base64",
+    "stderrEncoding": "base64",
+    "stderrSha256": "1753aae8c6bd353f24f19477a9942f981faa168768f96934a8debec83e5afe2d",
+    "candidatePassAlias": false
+  },
+  "task0055ExactReproduction": {
+    "call": "validate_backlog_draft_promotion_at_base(Audit(), discover_tasks()['TASK-0055'], discover_tasks(), load_yaml('.harness/task-lifecycle.yaml'))",
+    "beforeFix": {
+      "wrapperExitCode": 0,
+      "errorCount": 3,
+      "errorsMatchHistoricalReadyDoctor": true
+    },
+    "afterFix": {
+      "wrapperExitCode": 0,
+      "errorCount": 0
+    }
+  },
+  "targetedValidation": {
+    "status": "PASS",
+    "exitCode": 0,
+    "testsRun": 14,
+    "elapsedSeconds": 37.955,
+    "unittestElapsedSeconds": 37.366,
+    "precedingInvocationError": {
+      "exitCode": 1,
+      "reason": "PowerShell received a Bash line-continuation backslash as a unittest module name",
+      "candidateTestsExecuted": 0,
+      "candidateFailureClaimed": false
+    },
+    "testIds": [
+      "BacklogTests.test_backlog_registers_exact_technical_alpha_baseline",
+      "BacklogTests.test_base_promotion_uses_same_commit_planning_card_blob",
+      "BacklogTests.test_base_promotion_card_blob_failures_are_closed",
+      "BacklogTests.test_base_promotion_current_worktree_cannot_change_result",
+      "BacklogTests.test_current_backlog_validation_remains_worktree_bound_and_fail_closed",
+      "BacklogTests.test_backlog_card_wrong_path_then_restore_stays_failed",
+      "BacklogTests.test_backlog_draft_cannot_bypass_pending_hard_gate",
+      "BacklogTests.test_backlog_draft_reconstructs_base_git_snapshot",
+      "BacklogTests.test_backlog_rejects_duplicate_order_and_invalid_critical_path",
+      "BacklogTests.test_hard_gate_requires_owner_and_each_decision_evidence",
+      "BacklogTests.test_backlog_rejects_dependency_order_cycle_and_card_hash_drift",
+      "BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers",
+      "BacklogTests.test_backlog_resolution_requires_reason_and_new_id_for_replacement",
+      "BacklogTests.test_planning_terminal_card_is_atomic_and_does_not_consume_task_ledger"
+    ],
+    "negativeCoverage": [
+      "historical entry missing",
+      "historical path mismatch",
+      "mode not 100644",
+      "unreadable content",
+      "blob oid/content mismatch",
+      "invalid UTF-8",
+      "wrong taskId",
+      "projection notice drift",
+      "static planning contract drift",
+      "current worktree mutation isolation",
+      "ordinary current snapshot remains worktree-bound and fail-closed",
+      "wrong path followed by restore remains rejected",
+      "dependency/order/hard decision gates remain fail-closed"
+    ]
+  },
+  "implementationPaths": [
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py"
+  ],
+  "governancePaths": [
+    "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/**"
+  ],
+  "githubActions": {
+    "status": "UNKNOWN_NOT_RUN",
+    "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+    "dispatchCount": 0,
+    "passClaimed": false
+  }
+}

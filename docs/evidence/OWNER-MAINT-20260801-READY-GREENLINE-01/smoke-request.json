@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "executable": "D:\\powershell\\7\\pwsh.exe",
+  "argv": [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "[Console]::Out.WriteLine(\"OWNER_MAINT_READY_GREENLINE_SMOKE_STDOUT\"); [Console]::Error.WriteLine(\"OWNER_MAINT_READY_GREENLINE_SMOKE_STDERR\"); exit 7"
+  ],
+  "workingDirectory": "G:\\ai\\hxf\\virtual-companion"
+}

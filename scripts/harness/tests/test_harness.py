@@ -2382,13 +2382,14 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(29, projection["plannedCount"])
-        repository_busy = any(
-            task["state"] in {*lifecycle["activeStates"], "DRAFT"}
-            for task in tasks.values()
+        self.assertEqual(28, projection["plannedCount"])
+        self.assertTrue(projection["repositoryIdle"])
+        self.assertIsNone(projection["nextPromotable"])
+        self.assertEqual("TASK-0056", projection["executionOrderFrontier"])
+        self.assertIn(
+            "DEPENDENCY:TASK-0055:REJECTED",
+            projection["frontierBlockers"],
         )
-        expected_next = None if repository_busy else "TASK-0055"
-        self.assertEqual(expected_next, projection["nextPromotable"])
         self.assertEqual(
             {
                 "TASK-0039": "TASK-0045",
@@ -2434,6 +2435,13 @@ class BacklogTests(unittest.TestCase):
         terminal_tasks = copy.deepcopy(tasks)
         self.assertEqual("REJECTED", terminal_tasks["TASK-0054"]["state"])
         terminal_tasks["TASK-0069"]["state"] = "ACCEPTED"
+        task0055 = tasks["TASK-0055"]
+        planned_task0055 = doctor.task_metadata_at_commit(
+            str(task0055["baseCommit"]),
+            str(task0055["_path"]),
+        )
+        planned_task0055["_path"] = task0055["_path"]
+        terminal_tasks["TASK-0055"] = planned_task0055
         terminal_projection = derive_backlog_promotion_projection(
             backlog,
             terminal_tasks,
@@ -3596,6 +3604,259 @@ class BacklogTests(unittest.TestCase):
         self.assertIn(
             "DECISION_GATE:GATE-IDENTITY-PROVIDER-SESSION:PENDING",
             messages,
+        )
+
+    def task0055_base_snapshot(
+        self,
+    ) -> tuple[
+        dict[str, object],
+        dict[str, dict[str, object]],
+        dict[str, object],
+        dict[str, object],
+        dict[str, dict[str, object]],
+        dict[str, dict[str, object]],
+    ]:
+        _, known_tasks, lifecycle, _ = self.load_inputs()
+        task = known_tasks["TASK-0055"]
+        base_commit = str(task["baseCommit"])
+        backlog = doctor.yaml_at_commit(base_commit, doctor.TASK_BACKLOG_PATH)
+        state = doctor.yaml_at_commit(base_commit, doctor.PROJECT_STATE_PATH)
+        audit = Audit()
+        base_tasks, task_card_snapshot = doctor.task_card_snapshot_at_commit(
+            audit,
+            base_commit,
+            backlog,
+            known_tasks,
+        )
+        self.assertEqual([], audit.errors)
+        return (
+            backlog,
+            base_tasks,
+            lifecycle,
+            state,
+            task_card_snapshot,
+            known_tasks,
+        )
+
+    def test_base_promotion_uses_same_commit_planning_card_blob(self) -> None:
+        _, tasks, lifecycle, _ = self.load_inputs()
+        current_task = tasks["TASK-0055"]
+        current_text = (ROOT / str(current_task["_path"])).read_text(encoding="utf-8")
+        self.assertEqual("REJECTED", current_task["state"])
+        self.assertGreater(current_text.count("\n## "), 6)
+
+        audit = Audit()
+        validate_backlog_draft_promotion_at_base(
+            audit,
+            current_task,
+            tasks,
+            lifecycle,
+        )
+        self.assertEqual([], audit.errors)
+
+    def test_base_promotion_card_blob_failures_are_closed(self) -> None:
+        (
+            backlog,
+            base_tasks,
+            lifecycle,
+            state,
+            task_card_snapshot,
+            _,
+        ) = self.task0055_base_snapshot()
+        task_id = "TASK-0055"
+        task_path = str(backlog["tasks"][task_id]["taskCard"])
+        original_record = task_card_snapshot[task_path]
+        original_content = original_record["content"]
+        original_oid = str(original_record["oid"])
+        self.assertIsInstance(original_content, bytes)
+        assert isinstance(original_content, bytes)
+
+        def with_content(content: bytes) -> dict[str, dict[str, object]]:
+            candidate = copy.deepcopy(task_card_snapshot)
+            candidate[task_path]["content"] = content
+            candidate[task_path]["oid"] = doctor.git_blob_oid_for_content(
+                content,
+                len(original_oid),
+            )
+            return candidate
+
+        cases: dict[str, tuple[dict[str, dict[str, object]], str]] = {}
+
+        missing = copy.deepcopy(task_card_snapshot)
+        missing.pop(task_path)
+        cases["missing"] = (missing, "snapshot paths must exactly match")
+
+        wrong_path = copy.deepcopy(task_card_snapshot)
+        wrong_path[task_path]["path"] = f"{task_path}.wrong"
+        cases["wrong_path"] = (
+            wrong_path,
+            "snapshot path must remain exactly",
+        )
+
+        wrong_mode = copy.deepcopy(task_card_snapshot)
+        wrong_mode[task_path]["mode"] = "100755"
+        cases["wrong_mode"] = (wrong_mode, "regular 100644 blob")
+
+        unreadable = copy.deepcopy(task_card_snapshot)
+        unreadable[task_path]["content"] = None
+        cases["unreadable"] = (unreadable, "blob is unreadable")
+
+        oid_mismatch = copy.deepcopy(task_card_snapshot)
+        oid_mismatch[task_path]["content"] = original_content + b"\n"
+        cases["oid_mismatch"] = (
+            oid_mismatch,
+            "content does not match its blob oid",
+        )
+
+        cases["invalid_utf8"] = (
+            with_content(b"\xff\xfe"),
+            "blob is not UTF-8",
+        )
+
+        wrong_task_id_content = original_content.replace(
+            b"taskId: TASK-0055",
+            b"taskId: TASK-9999",
+            1,
+        )
+        cases["wrong_task_id"] = (
+            with_content(wrong_task_id_content),
+            "taskId must remain TASK-0055",
+        )
+
+        notice_drift_content = original_content.replace(
+            doctor.PLANNED_CARD_NON_NORMATIVE_NOTICE.encode("utf-8"),
+            "已漂移的非规范声明".encode("utf-8"),
+            1,
+        )
+        cases["notice_drift"] = (
+            with_content(notice_drift_content),
+            "fixed Backlog projection",
+        )
+
+        contract_hash = str(base_tasks[task_id]["planningContractHash"])
+        contract_drift_content = original_content.replace(
+            contract_hash.encode("ascii"),
+            ("0" * 64).encode("ascii"),
+            1,
+        )
+        cases["static_contract_drift"] = (
+            with_content(contract_drift_content),
+            "metadata disagrees with the same-commit task snapshot",
+        )
+
+        for name, (candidate_snapshot, expected_error) in cases.items():
+            with self.subTest(name=name):
+                audit = Audit()
+                validate_task_backlog_data(
+                    audit,
+                    backlog,
+                    base_tasks,
+                    lifecycle,
+                    state,
+                    task_card_snapshot=candidate_snapshot,
+                )
+                self.assertTrue(
+                    any(expected_error in error for error in audit.errors),
+                    audit.errors,
+                )
+
+    def test_base_promotion_current_worktree_cannot_change_result(self) -> None:
+        _, tasks, lifecycle, _ = self.load_inputs()
+        with patch.object(
+            doctor,
+            "read_repository_text",
+            side_effect=AssertionError(
+                "historical promotion must not read the current worktree"
+            ),
+        ) as current_reader:
+            audit = Audit()
+            validate_backlog_draft_promotion_at_base(
+                audit,
+                tasks["TASK-0055"],
+                tasks,
+                lifecycle,
+            )
+        self.assertEqual([], audit.errors)
+        current_reader.assert_not_called()
+
+    def test_current_backlog_validation_remains_worktree_bound_and_fail_closed(
+        self,
+    ) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        baseline = Audit()
+        validate_task_backlog_data(
+            baseline,
+            backlog,
+            tasks,
+            lifecycle,
+            state,
+        )
+        self.assertEqual([], baseline.errors)
+
+        target_path = ROOT / str(backlog["tasks"]["TASK-0013"]["taskCard"])
+        original_reader = doctor.read_repository_text
+
+        def tampered_reader(path: Path) -> str:
+            text = original_reader(path)
+            if path == target_path:
+                return text.replace(
+                    doctor.PLANNED_CARD_NON_NORMATIVE_NOTICE,
+                    "已漂移的非规范声明",
+                    1,
+                )
+            return text
+
+        with patch.object(
+            doctor,
+            "read_repository_text",
+            side_effect=tampered_reader,
+        ):
+            audit = Audit()
+            validate_task_backlog_data(
+                audit,
+                backlog,
+                tasks,
+                lifecycle,
+                state,
+            )
+        self.assertTrue(
+            any("fixed Backlog projection" in error for error in audit.errors),
+            audit.errors,
+        )
+
+    def test_backlog_card_wrong_path_then_restore_stays_failed(self) -> None:
+        backlog, _, lifecycle, _ = self.load_inputs()
+        corrupt = copy.deepcopy(backlog)
+        corrupt["tasks"]["TASK-0013"]["taskCard"] = (
+            "docs/tasks/TASK-0013-wrong-path.md"
+        )
+        restored = copy.deepcopy(backlog)
+        audit = Audit()
+        with patch.object(
+            doctor,
+            "git_tree_entry",
+            return_value=("100644", "blob", "e" * 40),
+        ):
+            validate_backlog_card_history_edge(
+                audit,
+                "a" * 40,
+                "b" * 40,
+                backlog,
+                corrupt,
+                lifecycle,
+            )
+            validate_backlog_card_history_edge(
+                audit,
+                "b" * 40,
+                "c" * 40,
+                corrupt,
+                restored,
+                lifecycle,
+            )
+        self.assertGreaterEqual(
+            sum("path changed on edge" in error for error in audit.errors),
+            2,
+            audit.errors,
         )
 
     def test_backlog_draft_reconstructs_base_git_snapshot(self) -> None:
@@ -5234,9 +5495,14 @@ class BacklogTests(unittest.TestCase):
         self.assertIn("PLANNED card hash drifts", messages)
 
     def test_backlog_derives_next_task_and_hard_gate_blockers(self) -> None:
-        backlog, tasks, lifecycle, state = self.load_inputs()
-        terminal_tasks = copy.deepcopy(tasks)
-        terminal_tasks["TASK-0069"]["state"] = "ACCEPTED"
+        (
+            backlog,
+            terminal_tasks,
+            lifecycle,
+            state,
+            task_card_snapshot,
+            _,
+        ) = self.task0055_base_snapshot()
         idle_state = copy.deepcopy(state)
         idle_state["activeTask"] = None
         idle_state["activeTaskCard"] = None
@@ -5248,6 +5514,7 @@ class BacklogTests(unittest.TestCase):
             terminal_tasks,
             lifecycle,
             idle_state,
+            task_card_snapshot=task_card_snapshot,
         )
         self.assertEqual([], audit.errors)
         self.assertEqual("TASK-0055", projection["nextPromotable"])
