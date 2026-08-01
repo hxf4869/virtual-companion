@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0070
+activeTaskCard: docs/tasks/TASK-0070-backlog-draft-promotion-base-card-snapshot-recovery.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0055
 lastTerminalHandoff: docs/handoffs/TASK-0055.json
-nextAction: TASK-0055 因 READY Doctor 的 Base planning-card 投影冲突而 REJECTED；协调器须从 DAG 选择新的永久替代卡，TASK-0056 与 TASK-0013 均不得晋级
+nextAction: 执行 TASK-0070：恢复 Backlog DRAFT promotion 的 Base task-card snapshot，并永久预留 TASK-0071
 capabilityGates:
   businessImplementation:
     state: BLOCKED
