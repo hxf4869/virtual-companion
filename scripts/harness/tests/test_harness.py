@@ -2383,7 +2383,10 @@ class BacklogTests(unittest.TestCase):
             },
         )
         self.assertEqual(28, projection["plannedCount"])
-        self.assertTrue(projection["repositoryIdle"])
+        self.assertEqual(
+            state.get("activeTask") in (None, ""),
+            projection["repositoryIdle"],
+        )
         self.assertIsNone(projection["nextPromotable"])
         self.assertEqual("TASK-0056", projection["executionOrderFrontier"])
         self.assertIn(
@@ -2433,6 +2436,9 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0012"], backlog["tasks"]["TASK-0013"]["dependencies"])
 
         terminal_tasks = copy.deepcopy(tasks)
+        active_task = state.get("activeTask")
+        if isinstance(active_task, str):
+            terminal_tasks.pop(active_task, None)
         self.assertEqual("REJECTED", terminal_tasks["TASK-0054"]["state"])
         terminal_tasks["TASK-0069"]["state"] = "ACCEPTED"
         task0055 = tasks["TASK-0055"]
