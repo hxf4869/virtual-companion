@@ -7639,7 +7639,22 @@ def validate_skills(
                         raise HarnessError(f"{skill_path}: baseline Skill frontmatter must be an object")
                     extension = baseline.get("metadata")
                     extension = extension if isinstance(extension, dict) else {}
-                    baseline_version = extension.get("version", baseline.get("version", ""))
+                    baseline_registry = skill_registry_at_commit(
+                        str(task.get("baseCommit", ""))
+                    )
+                    baseline_entry = baseline_registry.get(skill_id)
+                    if (
+                        not isinstance(baseline_entry, dict)
+                        or baseline_entry.get("path") != skill_path
+                    ):
+                        raise HarnessError(
+                            f"{skill_id}: Base Commit Skill registry binding is missing "
+                            "or points at a different path"
+                        )
+                    baseline_version = extension.get(
+                        "version",
+                        baseline_entry.get("version", ""),
+                    )
                     audit.require(
                         str(versions.get(skill_id, "")) == str(baseline_version),
                         f"{task_id}: required Skill {skill_id} is not pinned to its Base Commit version",
