@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0055
+activeTaskCard: docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0069
 lastTerminalHandoff: docs/handoffs/TASK-0069.json
-nextAction: 将 TASK-0055 晋级为唯一 DRAFT；TASK-0013 继续等待 TASK-0055 至 TASK-0059 严格串行闭环
+nextAction: 执行 TASK-0055，交付 idle planning checkpoint 唯一 parent-edge 核心、冻结矩阵与独立 Reviewer；TASK-0056 和 TASK-0013 均不得提前晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED
