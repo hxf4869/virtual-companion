@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0072
+activeTaskCard: docs/tasks/TASK-0072-exact-self-bootstrap-ratification.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0070
 lastTerminalHandoff: docs/handoffs/TASK-0070.json
-nextAction: TASK-0070 因 READY Doctor machine gate 失败而 REJECTED；协调器须选择新的合法后继，TASK-0071 未创建，TASK-0056 与 TASK-0013 均不得晋级
+nextAction: 运行 TASK-0072 READY Doctor；仅在真实 PASS 后进入 IN_PROGRESS
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: 2026-08-01
+updatedAt: 2026-08-02
