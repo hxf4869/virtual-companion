@@ -2,7 +2,17 @@
 
 ```yaml
 taskId: TASK-0070
-state: IN_PROGRESS
+state: REJECTED
+resolutionReason: >-
+  唯一 READY Doctor 在授权绑定提交 9a7976de5a47d36f646f4f40137e105dd5ef0a01
+  上以 inner exit 1、282672 checks 真实失败，且只复现 TASK-0055 已知的三项
+  planning-card rendering 错误。task-intake 1.2.0 第 46 行明确要求 READY
+  Doctor 通过后才允许转为 IN_PROGRESS；现有 machine truth 中没有适用于
+  TASK-0070 的 one-time READY-gate 豁免。提交
+  fe1fb728241d216221d09f29bce2baf8d7e16f69 曾错误地仅凭任务卡自然语言进入
+  IN_PROGRESS，但未发生任何实现写入；协调校验后立即停止。本卡以失败关闭，
+  不创建 TASK-0071、不改接 TASK-0056，也不声称 READY Doctor、候选、Reviewer、
+  Windows、WSL、macOS 或 GitHub Actions PASS。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -237,7 +247,17 @@ humanApprovals:
       UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0；只对
       TASK-0070 最终 clean Commit/Tree 各执行一次 Windows 与 WSL 本地验证。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0070-independent-rejected-closure-reviewer-r1
+    kind: independent-rejected-closure-review
+    verdict: PASS
+    reviewedCommit: 9a7976de5a47d36f646f4f40137e105dd5ef0a01
+    evidencePath: docs/evidence/TASK-0070/review-r1.md
+  - id: task-0070-independent-rejected-closure-reviewer-r2
+    kind: independent-rejected-closure-delta-review
+    verdict: PASS
+    reviewedCommit: 9a7976de5a47d36f646f4f40137e105dd5ef0a01
+    evidencePath: docs/evidence/TASK-0070/review-r2.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_uses_same_commit_planning_card_blob scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_card_blob_failures_are_closed scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_current_worktree_cannot_change_result scripts.harness.tests.test_harness.BacklogTests.test_task0070_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_cannot_bypass_pending_hard_gate scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_reconstructs_base_git_snapshot scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_task0070_remote_unknown_local_recovery_is_exact_and_fail_closed scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection
   - git diff --check

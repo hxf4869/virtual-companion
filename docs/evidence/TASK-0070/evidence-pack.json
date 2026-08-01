@@ -1,0 +1,257 @@
+{
+  "taskId": "TASK-0070",
+  "baseCommit": "e8fa6dfa2f7b724d4b84e31fc7690da1776bd64a",
+  "headCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+  "contextFingerprint": "c47e72707a7d63a2a1143a0bb338e79ef347f1da8e2cc9fa6cc99d59f370bb47",
+  "reviewers": [
+    {
+      "id": "task-0070-independent-rejected-closure-reviewer-r1",
+      "kind": "independent-rejected-closure-review",
+      "verdict": "PASS",
+      "reviewedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+      "evidencePath": "docs/evidence/TASK-0070/review-r1.md"
+    },
+    {
+      "id": "task-0070-independent-rejected-closure-reviewer-r2",
+      "kind": "independent-rejected-closure-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+      "evidencePath": "docs/evidence/TASK-0070/review-r2.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0070",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "23a2ccf91ba55703a50a8610b8590e961faa31e0cc0ebaef2016dd3ef41b14f4",
+      "reason": "The sole READY Doctor completed with exactly the three known TASK-0055 planning-card rendering errors. task-intake 1.2.0 requires this Doctor to pass before IN_PROGRESS, and no machine-authorized TASK-0070 READY-gate exception exists.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; PowerShell 7.6.3 durable transport",
+      "verifiedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_uses_same_commit_planning_card_blob scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_card_blob_failures_are_closed scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_current_worktree_cannot_change_result scripts.harness.tests.test_harness.BacklogTests.test_task0070_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_cannot_bypass_pending_hard_gate scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_reconstructs_base_git_snapshot scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_task0070_remote_unknown_local_recovery_is_exact_and_fail_closed scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No authorized implementation candidate exists because the READY Doctor failed.",
+      "environment": "Windows; implementation prohibited by the READY authorization gate",
+      "verifiedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No implementation candidate was created; closure staging is not represented as implementation-candidate diff PASS.",
+      "environment": "Windows; no frozen implementation candidate",
+      "verifiedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0070",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Windows exact-tree validation was not run because no reviewed implementation candidate exists.",
+      "environment": "Windows-NT-10.0.26200; no implementation candidate",
+      "verifiedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0070",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "WSL exact-tree validation was not run because no reviewed implementation candidate exists.",
+      "environment": "Ubuntu-24.04 WSL2; no implementation candidate",
+      "verifiedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01"
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0070",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: no controlled macOS environment was available and no macOS PASS is claimed.",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0070",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED: current quota was not verified, dispatch count remained 0, and no GitHub Actions PASS is claimed.",
+      "environment": "GitHub Actions; deliberately not dispatched",
+      "verifiedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "NOT_CREATED_READY_DOCTOR_FAIL",
+    "windows": "NOT_RUN_DUE_READY_GATE",
+    "wslUbuntu": "NOT_RUN_DUE_READY_GATE",
+    "macos": "DEFERRED_NOT_CLAIMED",
+    "remote": {
+      "platform": "githubActions",
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "commit": "e8fa6dfa2f7b724d4b84e31fc7690da1776bd64a",
+      "tree": "7d30f9a4ec094fe2a6f5fc6e926d7d50f00672a4",
+      "originMain": "e8fa6dfa2f7b724d4b84e31fc7690da1776bd64a",
+      "ahead": 0,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "lifecycle": {
+      "draftCommit": "40c9671cd96110fcbc14fb4b67b956aa102c7155",
+      "readyAuthorizationCommit": "69bbaa54c2d20419f7be3dca0b702cd4e406b832",
+      "authorizationBindingCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+      "invalidInProgressCommit": "fe1fb728241d216221d09f29bce2baf8d7e16f69",
+      "invalidInProgressTree": "5929ef6711875113fcadb826ace230f2edf8f73b",
+      "reviewCandidateCommit": null
+    },
+    "transportPreflight": {
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "status": "PASS",
+      "innerExitCode": 7,
+      "receiptSha256": "fd90ab2b206c35927746282d8051b2f35320252df1d5fc73c6806d3fdde6593c",
+      "candidatePassAlias": false
+    },
+    "baseDoctor": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 277325,
+      "receiptSha256": "60d65dcdce1b0ec5ccb4572df6e8d0d0ddce8dd486ace8ab79b57e08a235b7ca",
+      "errors": [
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly six normative sections",
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly the fixed Backlog projection notice and no unbound preamble",
+        "task-backlog.tasks.TASK-0055: fixed Backlog projection notice must appear exactly once"
+      ],
+      "candidatePassAlias": false
+    },
+    "readyDoctor": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 282672,
+      "startedAt": "2026-08-01T11:23:37.3459752Z",
+      "completedAt": "2026-08-01T11:39:00.2655748Z",
+      "elapsedSeconds": 922.92,
+      "receiptSha256": "23a2ccf91ba55703a50a8610b8590e961faa31e0cc0ebaef2016dd3ef41b14f4",
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "4f502fb3d065c8e799f4dd159ff267163cb76cec1fd4311d742f25558732395a",
+      "errors": [
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly six normative sections",
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly the fixed Backlog projection notice and no unbound preamble",
+        "task-backlog.tasks.TASK-0055: fixed Backlog projection notice must appear exactly once"
+      ],
+      "candidatePassAlias": false
+    },
+    "blocker": {
+      "classification": "READY_AUTHORIZATION_GATE_FAIL_NO_MACHINE_EXCEPTION",
+      "machineAuthority": "skills/task-intake/SKILL.md:46",
+      "machineRule": "doctor.py --task TASK-ID must pass before the implementer may transition to IN_PROGRESS",
+      "existingOneTimeRecoveryScope": "CI/local exact-tree fallback only; no TASK-0070 READY Doctor exception exists",
+      "invalidTransitionCommit": "fe1fb728241d216221d09f29bce2baf8d7e16f69",
+      "invalidTransitionCause": "The transition relied on task-card natural language instead of an existing machine-authorized exception.",
+      "implementationStarted": false,
+      "implementationPathsChanged": [],
+      "repairBatchesUsed": 0
+    },
+    "review": {
+      "implementationCandidate": {
+        "status": "NOT_RUN_DUE_READY_GATE",
+        "roundsUsed": 0,
+        "reviewCandidateCommit": null,
+        "r2Status": "NOT_APPLICABLE"
+      },
+      "rejectedClosure": {
+        "status": "PASS",
+        "roundsUsed": 2,
+        "reviewedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+        "reviewedTree": "b1a0f4d0b0bb22d829378b61befc9f32ebe2a40f",
+        "r1": {
+          "verdict": "PASS",
+          "p0": 0,
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "evidencePath": "docs/evidence/TASK-0070/review-r1.md"
+        },
+        "repairBatchesUsed": 1,
+        "r2": {
+          "verdict": "PASS",
+          "p0": 0,
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "preClosureFindingClosure": "CLOSED",
+          "evidencePath": "docs/evidence/TASK-0070/review-r2.md"
+        },
+        "scope": "REJECTED_CLOSURE_SAFETY_ONLY",
+        "r2Status": "PASS_FINAL_ROUND",
+        "r3Status": "PROHIBITED_NOT_RUN"
+      }
+    },
+    "preClosureRequest": {
+      "path": "docs/evidence/TASK-0070/pre-closure-request.json",
+      "argv": [
+        "scripts/harness/doctor.py",
+        "--task",
+        "TASK-0070",
+        "--pre-closure"
+      ],
+      "executionLimit": 1,
+      "status": "COMPLETED_FAIL",
+      "resultBinding": "The sole durable result is preserved as FAIL. A mechanical closure metadata correction and R2 delta review do not change it to PASS and the command is not rerun."
+    },
+    "preClosureResult": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 288059,
+      "startedAt": "2026-08-01T11:55:46.9304888Z",
+      "completedAt": "2026-08-01T12:10:53.6622886Z",
+      "elapsedSeconds": 906.732,
+      "receiptSha256": "f23703961c6059e8e9c7406a3fd9e04e550c1f04ae183fa2db1f4525c89cd61e",
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "0725be7db898d7c73ad318d82fcdf20c287a64aead6ad89fde6e822bd6392f13",
+      "errors": [
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly six normative sections",
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly the fixed Backlog projection notice and no unbound preamble",
+        "task-backlog.tasks.TASK-0055: fixed Backlog projection notice must appear exactly once",
+        "TASK-0070: Handoff nextAction disagrees with terminal project-state"
+      ],
+      "postResultCorrection": "Removed the single extra word 永久 from Handoff nextAction so it exactly matches Project State.",
+      "rerun": false,
+      "candidatePassAlias": false
+    },
+    "wallClock": {
+      "startedAt": "2026-08-01T19:02:50.2112334+08:00",
+      "candidateDeadlineMinutes": 45,
+      "candidateStatus": "NOT_CREATED_READY_GATE_FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "hardFuseStatusAtClosureFreeze": "NOT_TRIGGERED"
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so the commit and tree cannot self-reference. Exact terminal identity and pre-closure receipt are reported after execution, commit, push, and remote verification."
+    }
+  }
+}

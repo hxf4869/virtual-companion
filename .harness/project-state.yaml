@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0070
-activeTaskCard: docs/tasks/TASK-0070-backlog-draft-promotion-base-card-snapshot-recovery.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0055
-lastTerminalHandoff: docs/handoffs/TASK-0055.json
-nextAction: 执行 TASK-0070：恢复 Backlog DRAFT promotion 的 Base task-card snapshot，并永久预留 TASK-0071
+lastTerminalTask: TASK-0070
+lastTerminalHandoff: docs/handoffs/TASK-0070.json
+nextAction: TASK-0070 因 READY Doctor machine gate 失败而 REJECTED；协调器须选择新的合法后继，TASK-0071 未创建，TASK-0056 与 TASK-0013 均不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED

@@ -1,0 +1,46 @@
+{
+  "taskId": "TASK-0070",
+  "state": "REJECTED",
+  "baseCommit": "e8fa6dfa2f7b724d4b84e31fc7690da1776bd64a",
+  "headCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+  "evidencePath": "docs/evidence/TASK-0070/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0070-independent-rejected-closure-reviewer-r1",
+      "kind": "independent-rejected-closure-review",
+      "verdict": "PASS",
+      "reviewedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+      "evidencePath": "docs/evidence/TASK-0070/review-r1.md"
+    },
+    {
+      "id": "task-0070-independent-rejected-closure-reviewer-r2",
+      "kind": "independent-rejected-closure-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "9a7976de5a47d36f646f4f40137e105dd5ef0a01",
+      "evidencePath": "docs/evidence/TASK-0070/review-r2.md"
+    }
+  ],
+  "completed": [
+    "实时 fetch 并确认 Base、Tree、main==origin/main、0/0、clean、activeTask=null，完整读取仓库规则、三个注册 Skill、machine truth、TASK-0055/TASK-0069 证据与相关调用链。",
+    "durable transport smoke 真实返回 inner exit 7；Base summary 与唯一 READY Doctor 均真实 exit 1，且只复现 TASK-0055 已知三项 planning-card rendering 错误。",
+    "以单父提交完成 DRAFT、READY 授权与 authorizationCommit 绑定；未把 Base、TASK-0055 或 TASK-0069 的历史结果继承为本卡 PASS。",
+    "曾错误地仅凭任务卡自然语言在 fe1fb728241d216221d09f29bce2baf8d7e16f69 转为 IN_PROGRESS；协调校验后确认 task-intake 1.2.0 要求 READY Doctor PASS，machine truth 不存在 TASK-0070 豁免，因而立即停止。",
+    "错误 IN_PROGRESS 边后没有发生任何 Harness、测试、Backlog、TASK-0056、TASK-0071、产品或 workflow 写入；本闭包只登记 REJECTED 元数据与证据。",
+    "无历史独立 R1 以 P0=0、P1=0、P2=0、P3=0 给出 closure-only PASS；该结论不代表实现候选或任何验证平台 PASS。",
+    "唯一 pre-closure 通过持久化会话真实完成，inner exit 1、288059 checks、4 errors；其中三项为 TASK-0055 已知错误，新增一项 Handoff nextAction 字符级不一致已用唯一闭包修正批次纠正，pre-closure 未重跑且不声称 PASS。",
+    "同一 Reviewer 的 R2 delta 以 P0=0、P1=0、P2=0、P3=0 确认字符级修正 CLOSED；这是第二且最后一轮，R3=PROHIBITED_NOT_RUN。"
+  ],
+  "remaining": [
+    "Base task-card snapshot consumer 修复与全部正负测试均未实现；TASK-0055 三项 READY 错误仍然存在。",
+    "TASK-0071 未创建或永久预留，TASK-0056 依赖/frontier 未改接；TASK-0055 保持 REJECTED，TASK-0056 与 TASK-0013 均不得晋级。",
+    "协调器必须选择新的永久恢复卡，并先在 machine truth 中建立合法、精确、不可泛化的自举机制，或用能够取得 READY Doctor PASS 的合法路径闭环。",
+    "Windows、WSL、macOS 和 GitHub Actions 均无本卡实现候选 PASS；GitHub 保持 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0。"
+  ],
+  "knownRisks": [
+    "Git 历史永久保留一次未获 machine gate 授权的 READY→IN_PROGRESS 边；Evidence 明确记录该边，不能删除、重写或把它解释为授权。",
+    "当前 Base promotion 缺陷仍会让正常恢复卡的 READY Doctor 失败；仅在任务卡中声明 direct-DRAFT 例外不能替代 machine authority。",
+    "终态提交仅是 TERMINAL_METADATA_ONLY REJECTED closure，必须带 [skip ci]，不代表实现候选、Reviewer、canonical、平台或远端 PASS。",
+    "唯一 pre-closure 对修正前快照真实 FAIL；机械修正与同 Reviewer R2 不能把该运行改称 PASS，也不能替代一次新的执行。"
+  ],
+  "nextAction": "TASK-0070 因 READY Doctor machine gate 失败而 REJECTED；协调器须选择新的合法后继，TASK-0071 未创建，TASK-0056 与 TASK-0013 均不得晋级"
+}
