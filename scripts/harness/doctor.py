@@ -165,7 +165,7 @@ TASK_DELIVERY_SKILL_CANONICAL_HASH = (
     "a536e858170cbfe32552e01e2c791f990060df4c97c972bf0b183aae3f25a70e"
 )
 CI_EXECUTION_POLICY_CANONICAL_HASH = (
-    "2db553bc772310a733c8009ca8a40b45af8cc8f12160eb42a2f30a7d563b87b6"
+    "8f18596eec3d74d46b0b6383804d91a292c3e6d3cb60a488ea855fa545804039"
 )
 DURABLE_COMMAND_CANONICAL_PATH = "scripts/harness/durable_command.ps1"
 DURABLE_COMMAND_CANONICAL_HASH = (
@@ -348,6 +348,96 @@ TASK_0067_PLANNING_REPAIRS = {
         "newDependencies": ["TASK-0067"],
     },
 }
+TASK_0067_TERMINAL_COMMIT = "0be905ab953975476802a5f1e0eef68b978635d2"
+TASK_0067_TERMINAL_TREE = "d0aeef9857e0fd2b366bebe7162bb282d94ec830"
+TASK_0067_AUTHORIZATION_TREE = "fc99ef39bc4a522bd54feafa439c186bdbfe3170"
+TASK_0067_AUTHORIZATION_PROJECTION_SHA256 = (
+    "829a02358049f221b330e610f12cfe849d0faccb13434122214078dd5390b356"
+)
+TASK_0067_TERMINAL_ARTIFACT_SHA256 = {
+    TASK_0067_CARD_PATH: (
+        "14852dec672ced04bc06a2f751e437ff89de80a31177d23ffdb9a5fff3f56582"
+    ),
+    "docs/evidence/TASK-0067/evidence-pack.json": (
+        "7d7141e536a3f30f32f48b160659ee15367ae2f6d21a8b51f22a40bd74789565"
+    ),
+    "docs/handoffs/TASK-0067.json": (
+        "26abb1bb4b58fcf753cf3f2c45fbb2d5429abe5cfee6f7cab01ced5cbd36b18c"
+    ),
+}
+TASK_0068_BASE_COMMIT = "0be905ab953975476802a5f1e0eef68b978635d2"
+TASK_0068_BASE_TREE = "d0aeef9857e0fd2b366bebe7162bb282d94ec830"
+TASK_0068_AUTHORIZATION_COMMIT = "31c4937fbe576c2ada3682ab2269006b824bea82"
+TASK_0068_AUTHORIZATION_TREE = "7421f5e37350648e98c2076a63495b5d2fe7d7da"
+TASK_0068_AUTHORIZATION_PROJECTION_SHA256 = (
+    "59d04be84d2d4f8483169ca4b217a9c5c594781a38f1c6348f34372f50b505db"
+)
+TASK_0068_AUTHORITY_SHA256 = (
+    "648b6608b0f5ddb2c6292cd578ddd2883e50f627674e81cbc07f0091547f5bac"
+)
+TASK_0068_CARD_PATH = (
+    "docs/tasks/TASK-0068-harness-portability-acceptance-recovery.md"
+)
+TASK_0068_PLANNING_REPAIR_PARENT_COMMIT = (
+    "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+)
+TASK_0068_PLANNING_REPAIR_COMMIT = "20193286d7bb566d2e433d80811f582572df61da"
+TASK_0068_PLANNING_REPAIRS = {
+    "TASK-0055": {
+        "oldTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "newTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "oldDependencies": ["TASK-0067"],
+        "newDependencies": ["TASK-0068"],
+    },
+}
+TASK_0068_TERMINAL_COMMIT = TASK_0068_PLANNING_REPAIR_COMMIT
+TASK_0068_TERMINAL_TREE = "7413d1554167d951c226ab24ca5dde2eb9616970"
+TASK_0068_TERMINAL_ARTIFACT_SHA256 = {
+    TASK_0068_CARD_PATH: (
+        "256e18f8bd019a9c1de776d35791a563f487341835a3ff10bb709c96740f8523"
+    ),
+    "docs/evidence/TASK-0068/evidence-pack.json": (
+        "9f040bce7290ff252d144574cdd286c984eb44f9d6fae3c71862cae6eea0dc86"
+    ),
+    "docs/evidence/TASK-0068/pre-closure-request.json": (
+        "ddbe88b9b0893832bbf4731aa55a059a987489157abb23b8e98e849e65dbab74"
+    ),
+    "docs/handoffs/TASK-0068.json": (
+        "a6cc5c4ca0f97a6fc49d0dfdda87d54b74411ae53dc9ed8e047ca543a80c71de"
+    ),
+}
+TASK_0068_RETAINED_RECOVERY_PATHS = (
+    CI_EXECUTION_POLICY_PATH,
+    TASK_BACKLOG_PATH,
+    "docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md",
+)
+TASK_0069_BASE_COMMIT = "20193286d7bb566d2e433d80811f582572df61da"
+TASK_0069_BASE_TREE = "7413d1554167d951c226ab24ca5dde2eb9616970"
+TASK_0069_AUTHORIZATION_COMMIT = "56a31d55f0bdeb5ab71446d5a21b042015b290ca"
+TASK_0069_AUTHORITY_SHA256 = (
+    "89825f2842d4e47eb7eb941b4e2b724598c5bfb0450c4d07a7598ea0a48877bb"
+)
+TASK_0069_CARD_PATH = (
+    "docs/tasks/TASK-0069-harness-portability-local-history-recovery.md"
+)
+TASK_0069_PLANNING_REPAIRS = {
+    "TASK-0055": {
+        "oldTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "newTitle": "Idle planning checkpoint 核心父边校验永久后继",
+        "oldDependencies": ["TASK-0068"],
+        "newDependencies": ["TASK-0069"],
+    },
+}
+TASK_0055_REPLACEMENT_DEPENDENCY_CHAIN = (
+    "TASK-0060",
+    "TASK-0061",
+    "TASK-0062",
+    "TASK-0064",
+    "TASK-0066",
+    "TASK-0067",
+    "TASK-0068",
+    "TASK-0069",
+)
 AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT = (
     "2a55335e695c8fc5434c0dbc867288842c804e74"
 )
@@ -1642,6 +1732,248 @@ def task0063_terminal_missing_reviewer_isolated(task: dict[str, Any]) -> bool:
     ):
         return False
     return True
+
+
+def task0067_terminal_missing_reviewer_isolated(task: dict[str, Any]) -> bool:
+    if (
+        task.get("_path") != TASK_0067_CARD_PATH
+        or task.get("taskId") != "TASK-0067"
+        or task.get("state") != "REJECTED"
+        or task.get("riskClass") != "C4"
+        or task.get("baseCommit") != TASK_0067_BASE_COMMIT
+        or task.get("authorizationCommit") != TASK_0067_AUTHORIZATION_COMMIT
+        or task.get("requiredSkillVersions")
+        != {"task-intake": "1.2.0", "harness-change": "1.1.0"}
+        or task.get("reviewers") != []
+        or task.get("independentReview") != "required"
+    ):
+        return False
+    try:
+        current_text = read_repository_text(ROOT / TASK_0067_CARD_PATH)
+        ready_text = git_object(
+            TASK_0067_AUTHORIZATION_COMMIT,
+            TASK_0067_CARD_PATH,
+        ).decode("utf-8")
+        current_metadata = task_metadata_from_text(
+            current_text,
+            "TASK-0067 terminal missing-reviewer isolation",
+        )
+        ready_metadata = task_metadata_from_text(
+            ready_text,
+            "TASK-0067 READY authority",
+        )
+        if (
+            {key: value for key, value in task.items() if key != "_path"}
+            != current_metadata
+            or ready_metadata.get("state") != "READY"
+            or hashlib.sha256(
+                task_authorization_projection(ready_text).encode("utf-8")
+            ).hexdigest()
+            != TASK_0067_AUTHORIZATION_PROJECTION_SHA256
+            or hashlib.sha256(
+                task_authorization_projection(current_text).encode("utf-8")
+            ).hexdigest()
+            != TASK_0067_AUTHORIZATION_PROJECTION_SHA256
+            or canonical_json_sha256(ready_metadata.get("humanApprovals"))
+            != TASK_0067_AUTHORITY_SHA256
+            or git_text(
+                "rev-parse",
+                f"{TASK_0067_AUTHORIZATION_COMMIT}^{{tree}}",
+            ).stdout.strip()
+            != TASK_0067_AUTHORIZATION_TREE
+            or git_text(
+                "rev-parse",
+                f"{TASK_0067_TERMINAL_COMMIT}^{{tree}}",
+            ).stdout.strip()
+            != TASK_0067_TERMINAL_TREE
+        ):
+            return False
+        terminal_state = yaml_at_commit(
+            TASK_0067_TERMINAL_COMMIT,
+            PROJECT_STATE_PATH,
+        )
+        terminal_ledger = yaml_at_commit(
+            TASK_0067_TERMINAL_COMMIT,
+            TASK_LEDGER_PATH,
+        )
+        if (
+            terminal_state.get("activeTask") is not None
+            or terminal_state.get("lastTerminalTask") != "TASK-0067"
+            or terminal_ledger.get("tasks", {}).get("TASK-0067")
+            != {
+                "state": "REJECTED",
+                "contractVersion": 2,
+                "taskCard": TASK_0067_CARD_PATH,
+                "evidence": "docs/evidence/TASK-0067/evidence-pack.json",
+                "handoff": "docs/handoffs/TASK-0067.json",
+            }
+        ):
+            return False
+        for path, expected_hash in TASK_0067_TERMINAL_ARTIFACT_SHA256.items():
+            current_bytes = read_repository_bytes(ROOT / path)
+            terminal_bytes = git_object(TASK_0067_TERMINAL_COMMIT, path)
+            if (
+                current_bytes != terminal_bytes
+                or hashlib.sha256(current_bytes).hexdigest() != expected_hash
+            ):
+                return False
+        evidence = json.loads(
+            read_repository_text(ROOT / "docs/evidence/TASK-0067/evidence-pack.json")
+        )
+        handoff = json.loads(
+            read_repository_text(ROOT / "docs/handoffs/TASK-0067.json")
+        )
+        wall_clock = evidence.get("artifacts", {}).get("wallClock", {})
+        system_error = evidence.get("artifacts", {}).get("systemErrorRecovery", {})
+        return (
+            evidence.get("taskId") == "TASK-0067"
+            and evidence.get("baseCommit") == TASK_0067_BASE_COMMIT
+            and evidence.get("headCommit")
+            == "627ab81c664fccc97c00473b852c5da7a39a00bb"
+            and evidence.get("reviewers") == []
+            and wall_clock.get("candidateDeadlineMinutes") == 20
+            and wall_clock.get("candidateDeadlineStatus")
+            == "FIRED_BEFORE_PROVABLE_TARGETED_PASS"
+            and system_error.get("classification") == "SYSTEM_ERROR_UNRECOVERABLE"
+            and system_error.get("diagnosticUnavailable") is True
+            and system_error.get("rootCauseInferred") is False
+            and handoff.get("taskId") == "TASK-0067"
+            and handoff.get("state") == "REJECTED"
+            and handoff.get("headCommit")
+            == "627ab81c664fccc97c00473b852c5da7a39a00bb"
+            and handoff.get("reviewers") == []
+        )
+    except (
+        HarnessError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+    ):
+        return False
+
+
+def task0068_terminal_missing_reviewer_isolated(task: dict[str, Any]) -> bool:
+    if (
+        task.get("_path") != TASK_0068_CARD_PATH
+        or task.get("taskId") != "TASK-0068"
+        or task.get("state") != "REJECTED"
+        or task.get("riskClass") != "C4"
+        or task.get("baseCommit") != TASK_0068_BASE_COMMIT
+        or task.get("authorizationCommit") != TASK_0068_AUTHORIZATION_COMMIT
+        or task.get("requiredSkillVersions")
+        != {"task-intake": "1.2.0", "harness-change": "1.1.0"}
+        or task.get("reviewers") != []
+        or task.get("independentReview") != "required"
+    ):
+        return False
+    try:
+        current_text = read_repository_text(ROOT / TASK_0068_CARD_PATH)
+        ready_text = git_object(
+            TASK_0068_AUTHORIZATION_COMMIT,
+            TASK_0068_CARD_PATH,
+        ).decode("utf-8")
+        current_metadata = task_metadata_from_text(
+            current_text,
+            "TASK-0068 terminal missing-reviewer isolation",
+        )
+        ready_metadata = task_metadata_from_text(
+            ready_text,
+            "TASK-0068 READY authority",
+        )
+        if (
+            {key: value for key, value in task.items() if key != "_path"}
+            != current_metadata
+            or ready_metadata.get("state") != "READY"
+            or hashlib.sha256(
+                task_authorization_projection(ready_text).encode("utf-8")
+            ).hexdigest()
+            != TASK_0068_AUTHORIZATION_PROJECTION_SHA256
+            or hashlib.sha256(
+                task_authorization_projection(current_text).encode("utf-8")
+            ).hexdigest()
+            != TASK_0068_AUTHORIZATION_PROJECTION_SHA256
+            or canonical_json_sha256(ready_metadata.get("humanApprovals"))
+            != TASK_0068_AUTHORITY_SHA256
+            or git_text(
+                "rev-parse",
+                f"{TASK_0068_AUTHORIZATION_COMMIT}^{{tree}}",
+            ).stdout.strip()
+            != TASK_0068_AUTHORIZATION_TREE
+            or git_text(
+                "rev-parse",
+                f"{TASK_0068_TERMINAL_COMMIT}^{{tree}}",
+            ).stdout.strip()
+            != TASK_0068_TERMINAL_TREE
+        ):
+            return False
+        terminal_state = yaml_at_commit(
+            TASK_0068_TERMINAL_COMMIT,
+            PROJECT_STATE_PATH,
+        )
+        terminal_ledger = yaml_at_commit(
+            TASK_0068_TERMINAL_COMMIT,
+            TASK_LEDGER_PATH,
+        )
+        if (
+            terminal_state.get("activeTask") is not None
+            or terminal_state.get("lastTerminalTask") != "TASK-0068"
+            or terminal_ledger.get("tasks", {}).get("TASK-0068")
+            != {
+                "state": "REJECTED",
+                "contractVersion": 2,
+                "taskCard": TASK_0068_CARD_PATH,
+                "evidence": "docs/evidence/TASK-0068/evidence-pack.json",
+                "handoff": "docs/handoffs/TASK-0068.json",
+            }
+        ):
+            return False
+        for path, expected_hash in TASK_0068_TERMINAL_ARTIFACT_SHA256.items():
+            current_bytes = read_repository_bytes(ROOT / path)
+            terminal_bytes = git_object(TASK_0068_TERMINAL_COMMIT, path)
+            if (
+                current_bytes != terminal_bytes
+                or hashlib.sha256(current_bytes).hexdigest() != expected_hash
+            ):
+                return False
+        evidence = json.loads(
+            read_repository_text(ROOT / "docs/evidence/TASK-0068/evidence-pack.json")
+        )
+        handoff = json.loads(
+            read_repository_text(ROOT / "docs/handoffs/TASK-0068.json")
+        )
+        artifacts = evidence.get("artifacts", {})
+        wall_clock = artifacts.get("wallClock", {})
+        system_error = artifacts.get("systemErrorRecovery", {})
+        retained = artifacts.get("retainedInterruptedWorktree", {})
+        return (
+            evidence.get("taskId") == "TASK-0068"
+            and evidence.get("baseCommit") == TASK_0068_BASE_COMMIT
+            and evidence.get("headCommit")
+            == TASK_0068_PLANNING_REPAIR_PARENT_COMMIT
+            and evidence.get("reviewers") == []
+            and wall_clock.get("candidateDeadlineMinutes") == 35
+            and wall_clock.get("hardFuseWallMinutes") == 125
+            and system_error.get("classification") == "SYSTEM_ERROR_UNRECOVERABLE"
+            and system_error.get("diagnosticUnavailable") is True
+            and system_error.get("rootCauseInferred") is False
+            and system_error.get("budgetPauseInferred") is False
+            and retained.get("candidateFrozen") is False
+            and retained.get("validationClaimed") is False
+            and handoff.get("taskId") == "TASK-0068"
+            and handoff.get("state") == "REJECTED"
+            and handoff.get("headCommit")
+            == TASK_0068_PLANNING_REPAIR_PARENT_COMMIT
+            and handoff.get("reviewers") == []
+        )
+    except (
+        HarnessError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+    ):
+        return False
 
 
 def project_state_closure_projection(state: dict[str, Any]) -> dict[str, Any]:
@@ -3663,6 +3995,11 @@ def validate_ledger_bound_artifacts(
                     f"docs/evidence/{task_id}/**",
                     str(entry.get("handoff", "")),
                 )
+                if (
+                    task_id == "TASK-0068"
+                    and task0068_terminal_missing_reviewer_isolated(task)
+                ):
+                    allowed_terminal_patterns += TASK_0068_RETAINED_RECOVERY_PATHS
                 unauthorized_terminal_paths = [
                     path
                     for path in terminal_paths
@@ -4426,6 +4763,50 @@ def task0067_planning_repair_projection(
     return planning_repair_projection(parent, child, TASK_0067_PLANNING_REPAIRS)
 
 
+def task0068_planning_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    return planning_repair_projection(parent, child, TASK_0068_PLANNING_REPAIRS)
+
+
+def task0069_planning_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    return planning_repair_projection(parent, child, TASK_0069_PLANNING_REPAIRS)
+
+
+def planning_repair_is_retained(
+    current_tasks: dict[str, Any],
+    repairs: dict[str, dict[str, Any]],
+) -> bool:
+    for task_id, repair in repairs.items():
+        current = current_tasks.get(task_id)
+        if (
+            not isinstance(current, dict)
+            or current.get("title") != repair["newTitle"]
+        ):
+            return False
+        current_dependencies = current.get("dependencies")
+        if current_dependencies == repair["newDependencies"]:
+            continue
+        if task_id != "TASK-0055" or not isinstance(current_dependencies, list):
+            return False
+        try:
+            repair_index = TASK_0055_REPLACEMENT_DEPENDENCY_CHAIN.index(
+                repair["newDependencies"][0]
+            )
+            current_index = TASK_0055_REPLACEMENT_DEPENDENCY_CHAIN.index(
+                current_dependencies[0]
+            )
+        except (IndexError, ValueError):
+            return False
+        if len(current_dependencies) != 1 or current_index < repair_index:
+            return False
+    return True
+
+
 def task0060_planning_repair_authorized(
     parent_commit: str,
     commit: str,
@@ -4767,7 +5148,6 @@ def task0067_repair_approvals_are_exact(task: dict[str, Any]) -> bool:
         and item.get("scope") == "harness-change"
         and item.get("approvedBy") == "repository-owner"
         and isinstance(item.get("evidence"), str)
-        and "TASK-0066" in item["evidence"]
         and "TASK-0067" in item["evidence"]
         and DURABLE_COMMAND_CANONICAL_PATH in item["evidence"]
         for item in approvals
@@ -4846,6 +5226,193 @@ def task0067_planning_repair_authorized(
     )
 
 
+def task0068_repair_approvals_are_exact(task: dict[str, Any]) -> bool:
+    approvals = task.get("humanApprovals")
+    if (
+        not isinstance(approvals, list)
+        or canonical_json_sha256(approvals) != TASK_0068_AUTHORITY_SHA256
+    ):
+        return False
+    harness_approval = any(
+        isinstance(item, dict)
+        and item.get("scope") == "harness-change"
+        and item.get("approvedBy") == "repository-owner"
+        and isinstance(item.get("evidence"), str)
+        and "TASK-0067" in item["evidence"]
+        and "TASK-0068" in item["evidence"]
+        for item in approvals
+    )
+    recovery_approval = any(
+        isinstance(item, dict)
+        and item.get("scope")
+        == "task-0068-harness-portability-acceptance-recovery"
+        and item.get("approvedBy") == "repository-owner"
+        and isinstance(item.get("evidence"), str)
+        and "TASK-0068" in item["evidence"]
+        and TASK_0068_BASE_COMMIT in item["evidence"]
+        and TASK_0068_BASE_TREE in item["evidence"]
+        and "HARNESS_PORTABILITY_LOCAL" in item["evidence"]
+        for item in approvals
+    )
+    return harness_approval and recovery_approval
+
+
+def task0068_planning_repair_authorized(
+    parent_commit: str,
+    commit: str,
+) -> bool:
+    if (
+        parent_commit != TASK_0068_PLANNING_REPAIR_PARENT_COMMIT
+        or commit != TASK_0068_PLANNING_REPAIR_COMMIT
+    ):
+        return False
+    try:
+        parent_text = git_object(parent_commit, TASK_0068_CARD_PATH).decode("utf-8")
+        child_text = git_object(commit, TASK_0068_CARD_PATH).decode("utf-8")
+        parent_task = task_metadata_from_text(
+            parent_text,
+            f"TASK-0068 planning repair parent {parent_commit}",
+        )
+        child_task = task_metadata_from_text(
+            child_text,
+            f"TASK-0068 planning repair child {commit}",
+        )
+    except (HarnessError, UnicodeError, yaml.YAMLError):
+        return False
+    parent_graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        commit,
+        check=False,
+    )
+    authorization_ancestor = (
+        git_text(
+            "merge-base",
+            "--is-ancestor",
+            TASK_0068_AUTHORIZATION_COMMIT,
+            parent_commit,
+            check=False,
+        ).returncode
+        == 0
+    )
+    return (
+        parent_graph.returncode == 0
+        and parent_graph.stdout.split() == [commit, parent_commit]
+        and task_authorization_projection(parent_text)
+        == task_authorization_projection(child_text)
+        and parent_task.get("state") == "IN_PROGRESS"
+        and child_task.get("taskId") == "TASK-0068"
+        and child_task.get("state") == "REJECTED"
+        and child_task.get("riskClass") == "C4"
+        and child_task.get("baseCommit") == TASK_0068_BASE_COMMIT
+        and child_task.get("authorizationCommit")
+        == TASK_0068_AUTHORIZATION_COMMIT
+        and child_task.get("requiredSkillVersions")
+        == {"task-intake": "1.2.0", "harness-change": "1.1.0"}
+        and child_task.get("targetSkillVersions") == {}
+        and task0068_repair_approvals_are_exact(child_task)
+        and authorization_ancestor
+    )
+
+
+def task0069_repair_approvals_are_exact(task: dict[str, Any]) -> bool:
+    approvals = task.get("humanApprovals")
+    if (
+        not isinstance(approvals, list)
+        or canonical_json_sha256(approvals) != TASK_0069_AUTHORITY_SHA256
+    ):
+        return False
+    harness_approval = any(
+        isinstance(item, dict)
+        and item.get("scope") == "harness-change"
+        and item.get("approvedBy") == "repository-owner"
+        and isinstance(item.get("evidence"), str)
+        and "TASK-0069" in item["evidence"]
+        and "TASK-0067/0068" in item["evidence"]
+        for item in approvals
+    )
+    recovery_approval = any(
+        isinstance(item, dict)
+        and item.get("scope")
+        == "task-0069-harness-portability-local-history-recovery"
+        and item.get("approvedBy") == "repository-owner"
+        and isinstance(item.get("evidence"), str)
+        and "TASK-0069" in item["evidence"]
+        and TASK_0069_BASE_COMMIT in item["evidence"]
+        and TASK_0069_BASE_TREE in item["evidence"]
+        and "HARNESS_PORTABILITY_LOCAL" in item["evidence"]
+        and "UNKNOWN_NOT_RUN" in item["evidence"]
+        for item in approvals
+    )
+    return harness_approval and recovery_approval
+
+
+def task0069_planning_repair_authorized(
+    parent_commit: str,
+    commit: str,
+) -> bool:
+    if not (
+        FULL_COMMIT_RE.fullmatch(parent_commit)
+        and FULL_COMMIT_RE.fullmatch(commit)
+    ):
+        return False
+    try:
+        parent_text = git_object(parent_commit, TASK_0069_CARD_PATH).decode("utf-8")
+        child_text = git_object(commit, TASK_0069_CARD_PATH).decode("utf-8")
+        parent_task = task_metadata_from_text(
+            parent_text,
+            f"TASK-0069 planning repair parent {parent_commit}",
+        )
+        child_task = task_metadata_from_text(
+            child_text,
+            f"TASK-0069 planning repair child {commit}",
+        )
+    except (HarnessError, UnicodeError, yaml.YAMLError):
+        return False
+    authorization_ancestor = (
+        git_text(
+            "merge-base",
+            "--is-ancestor",
+            TASK_0069_AUTHORIZATION_COMMIT,
+            parent_commit,
+            check=False,
+        ).returncode
+        == 0
+    )
+    parent_graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        commit,
+        check=False,
+    )
+    return (
+        parent_graph.returncode == 0
+        and parent_graph.stdout.split() == [commit, parent_commit]
+        and task_authorization_projection(parent_text)
+        == task_authorization_projection(child_text)
+        and parent_task.get("state") == "IN_PROGRESS"
+        and child_task.get("taskId") == "TASK-0069"
+        and child_task.get("state") == "IN_REVIEW"
+        and child_task.get("riskClass") == "C4"
+        and child_task.get("baseCommit") == TASK_0069_BASE_COMMIT
+        and child_task.get("authorizationCommit")
+        == TASK_0069_AUTHORIZATION_COMMIT
+        and child_task.get("requiredSkillVersions")
+        == {
+            "task-delivery-flow": "1.3.0",
+            "task-intake": "1.2.0",
+            "harness-change": "1.1.0",
+        }
+        and child_task.get("targetSkillVersions") == {}
+        and task0069_repair_approvals_are_exact(child_task)
+        and authorization_ancestor
+    )
+
+
 def authorization_amendment_authority_bootstrap_projection(
     parent: dict[str, Any],
     child: dict[str, Any],
@@ -4898,6 +5465,8 @@ def validate_backlog_history_edge(
     allow_task0064_repair: bool = False,
     allow_task0066_repair: bool = False,
     allow_task0067_repair: bool = False,
+    allow_task0068_repair: bool = False,
+    allow_task0069_repair: bool = False,
     parent_commit: str | None = None,
     child_commit: str | None = None,
 ) -> None:
@@ -4930,6 +5499,10 @@ def validate_backlog_history_edge(
         allowed_repair_tasks.update(TASK_0066_PLANNING_REPAIRS)
     if allow_task0067_repair and task0067_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0067_PLANNING_REPAIRS)
+    if allow_task0068_repair and task0068_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0068_PLANNING_REPAIRS)
+    if allow_task0069_repair and task0069_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0069_PLANNING_REPAIRS)
 
     parent_tasks = parent.get("tasks")
     child_tasks = child.get("tasks")
@@ -5344,6 +5917,8 @@ def validate_backlog_card_history_edge(
     allow_task0064_repair: bool = False,
     allow_task0066_repair: bool = False,
     allow_task0067_repair: bool = False,
+    allow_task0068_repair: bool = False,
+    allow_task0069_repair: bool = False,
 ) -> None:
     parent_entries = parent.get("tasks")
     child_entries = child.get("tasks")
@@ -5372,6 +5947,10 @@ def validate_backlog_card_history_edge(
         allowed_repair_tasks.update(TASK_0066_PLANNING_REPAIRS)
     if allow_task0067_repair and task0067_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0067_PLANNING_REPAIRS)
+    if allow_task0068_repair and task0068_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0068_PLANNING_REPAIRS)
+    if allow_task0069_repair and task0069_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0069_PLANNING_REPAIRS)
     for task_id in sorted(set(parent_entries) | set(child_entries)):
         parent_entry = parent_entries.get(task_id)
         child_entry = child_entries.get(task_id)
@@ -5676,6 +6255,8 @@ def validate_task_backlog_history(
     task0064_repair_edges: set[tuple[str, str]] = set()
     task0066_repair_edges: set[tuple[str, str]] = set()
     task0067_repair_edges: set[tuple[str, str]] = set()
+    task0068_repair_edges: set[tuple[str, str]] = set()
+    task0069_repair_edges: set[tuple[str, str]] = set()
     snapshots: dict[str, dict[str, Any]] = {}
 
     def snapshot(commit: str) -> dict[str, Any] | None:
@@ -5811,6 +6392,26 @@ def validate_task_backlog_history(
                 )
                 if task0067_repair_authorized_edge:
                     task0067_repair_edges.add((parent, commit))
+                task0068_repair_projection = task0068_planning_repair_projection(
+                    parent_value,
+                    child,
+                )
+                task0068_repair_authorized_edge = (
+                    task0068_repair_projection
+                    and task0068_planning_repair_authorized(parent, commit)
+                )
+                if task0068_repair_authorized_edge:
+                    task0068_repair_edges.add((parent, commit))
+                task0069_repair_projection = task0069_planning_repair_projection(
+                    parent_value,
+                    child,
+                )
+                task0069_repair_authorized_edge = (
+                    task0069_repair_projection
+                    and task0069_planning_repair_authorized(parent, commit)
+                )
+                if task0069_repair_authorized_edge:
+                    task0069_repair_edges.add((parent, commit))
                 validate_backlog_card_history_edge(
                     audit,
                     parent,
@@ -5824,6 +6425,8 @@ def validate_task_backlog_history(
                     allow_task0064_repair=task0064_repair_authorized_edge,
                     allow_task0066_repair=task0066_repair_authorized_edge,
                     allow_task0067_repair=task0067_repair_authorized_edge,
+                    allow_task0068_repair=task0068_repair_authorized_edge,
+                    allow_task0069_repair=task0069_repair_authorized_edge,
                 )
                 validate_backlog_history_edge(
                     audit,
@@ -5836,6 +6439,8 @@ def validate_task_backlog_history(
                     allow_task0064_repair=task0064_repair_authorized_edge,
                     allow_task0066_repair=task0066_repair_authorized_edge,
                     allow_task0067_repair=task0067_repair_authorized_edge,
+                    allow_task0068_repair=task0068_repair_authorized_edge,
+                    allow_task0069_repair=task0069_repair_authorized_edge,
                     parent_commit=parent,
                     child_commit=commit,
                 )
@@ -5846,156 +6451,77 @@ def validate_task_backlog_history(
     )
     current_tasks = current.get("tasks")
     current_tasks = current_tasks if isinstance(current_tasks, dict) else {}
-    task0060_repair_retained = all(
-        isinstance(current_tasks.get(task_id), dict)
-        and current_tasks[task_id].get("title") == repair["newTitle"]
-        and (
-            current_tasks[task_id].get("dependencies") == repair["newDependencies"]
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0061_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-                or (
-                    task_id == "TASK-0055"
-                    and current_tasks[task_id].get("dependencies")
-                    == TASK_0062_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-                )
-                or (
-                    task_id == "TASK-0055"
-                    and current_tasks[task_id].get("dependencies")
-                    == TASK_0064_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-                )
-                or (
-                    task_id == "TASK-0055"
-                    and current_tasks[task_id].get("dependencies")
-                    == TASK_0066_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-                )
-                or (
-                    task_id == "TASK-0055"
-                    and current_tasks[task_id].get("dependencies")
-                    == TASK_0067_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-                )
-            )
-        )
-        for task_id, repair in TASK_0060_PLANNING_REPAIRS.items()
+    task0060_repair_retained = planning_repair_is_retained(
+        current_tasks,
+        TASK_0060_PLANNING_REPAIRS,
     )
     audit.require(
         len(task0060_repair_edges) == (1 if task0060_repair_retained else 0),
         "task-backlog: TASK-0060 planning repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0060_repair_edges)}",
     )
-    task0061_repair_applied = all(
-        isinstance(current_tasks.get(task_id), dict)
-        and current_tasks[task_id].get("title") == repair["newTitle"]
-        and (
-            current_tasks[task_id].get("dependencies") == repair["newDependencies"]
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0062_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0064_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0066_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0067_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-        )
-        for task_id, repair in TASK_0061_PLANNING_REPAIRS.items()
+    task0061_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0061_PLANNING_REPAIRS,
     )
     audit.require(
         len(task0061_repair_edges) == (1 if task0061_repair_applied else 0),
         "task-backlog: TASK-0061 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0061_repair_edges)}",
     )
-    task0062_repair_applied = all(
-        isinstance(current_tasks.get(task_id), dict)
-        and current_tasks[task_id].get("title") == repair["newTitle"]
-        and (
-            current_tasks[task_id].get("dependencies") == repair["newDependencies"]
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0064_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0066_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0067_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-        )
-        for task_id, repair in TASK_0062_PLANNING_REPAIRS.items()
+    task0062_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0062_PLANNING_REPAIRS,
     )
     audit.require(
         len(task0062_repair_edges) == (1 if task0062_repair_applied else 0),
         "task-backlog: TASK-0062 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0062_repair_edges)}",
     )
-    task0064_repair_applied = all(
-        isinstance(current_tasks.get(task_id), dict)
-        and current_tasks[task_id].get("title") == repair["newTitle"]
-        and (
-            current_tasks[task_id].get("dependencies") == repair["newDependencies"]
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0066_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0067_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-        )
-        for task_id, repair in TASK_0064_PLANNING_REPAIRS.items()
+    task0064_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0064_PLANNING_REPAIRS,
     )
     audit.require(
         len(task0064_repair_edges) == (1 if task0064_repair_applied else 0),
         "task-backlog: TASK-0064 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0064_repair_edges)}",
     )
-    task0066_repair_applied = all(
-        isinstance(current_tasks.get(task_id), dict)
-        and current_tasks[task_id].get("title") == repair["newTitle"]
-        and (
-            current_tasks[task_id].get("dependencies") == repair["newDependencies"]
-            or (
-                task_id == "TASK-0055"
-                and current_tasks[task_id].get("dependencies")
-                == TASK_0067_PLANNING_REPAIRS["TASK-0055"]["newDependencies"]
-            )
-        )
-        for task_id, repair in TASK_0066_PLANNING_REPAIRS.items()
+    task0066_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0066_PLANNING_REPAIRS,
     )
     audit.require(
         len(task0066_repair_edges) == (1 if task0066_repair_applied else 0),
         "task-backlog: TASK-0066 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0066_repair_edges)}",
     )
-    task0067_repair_applied = all(
-        isinstance(current_tasks.get(task_id), dict)
-        and current_tasks[task_id].get("title") == repair["newTitle"]
-        and current_tasks[task_id].get("dependencies") == repair["newDependencies"]
-        for task_id, repair in TASK_0067_PLANNING_REPAIRS.items()
+    task0067_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0067_PLANNING_REPAIRS,
     )
     audit.require(
         len(task0067_repair_edges) == (1 if task0067_repair_applied else 0),
         "task-backlog: TASK-0067 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0067_repair_edges)}",
+    )
+    task0068_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0068_PLANNING_REPAIRS,
+    )
+    audit.require(
+        len(task0068_repair_edges) == (1 if task0068_repair_applied else 0),
+        "task-backlog: TASK-0068 replacement repair must be one exact, authorized, "
+        f"atomic parent edge; observed={sorted(task0068_repair_edges)}",
+    )
+    task0069_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0069_PLANNING_REPAIRS,
+    )
+    audit.require(
+        len(task0069_repair_edges) == (1 if task0069_repair_applied else 0),
+        "task-backlog: TASK-0069 replacement repair must be one exact, authorized, "
+        f"atomic parent edge; observed={sorted(task0069_repair_edges)}",
     )
     head = snapshot("HEAD")
     if head is not None:
@@ -6045,7 +6571,7 @@ def derive_backlog_promotion_projection(
     )
 
     blockers: dict[str, list[str]] = {}
-    promotable: list[str] = []
+    execution_order_frontier: str | None = None
     planned_count = 0
     for task_id in execution_order:
         task = tasks.get(task_id)
@@ -6057,6 +6583,8 @@ def derive_backlog_promotion_projection(
             continue
         if state == "PLANNED":
             planned_count += 1
+        if execution_order_frontier is None:
+            execution_order_frontier = task_id
         entry = entries.get(task_id)
         entry = entry if isinstance(entry, dict) else {}
         conditions = entry.get("promotionConditions")
@@ -6103,11 +6631,15 @@ def derive_backlog_promotion_projection(
         ):
             task_blockers.append("REPOSITORY_NOT_IDLE")
         blockers[task_id] = task_blockers
-        if not task_blockers:
-            promotable.append(task_id)
-
-    next_promotable = promotable[0] if promotable else None
-    for task_id in promotable[1:]:
+    next_promotable = (
+        execution_order_frontier
+        if execution_order_frontier is not None
+        and not blockers.get(execution_order_frontier)
+        else None
+    )
+    for task_id in blockers:
+        if task_id == execution_order_frontier:
+            continue
         entry = entries.get(task_id)
         conditions = (
             entry.get("promotionConditions")
@@ -6117,14 +6649,21 @@ def derive_backlog_promotion_projection(
         if (
             isinstance(conditions, dict)
             and conditions.get("requiresFirstByExecutionOrder") is True
+            and execution_order_frontier is not None
         ):
             blockers[task_id].append(
-                f"WAITING_FOR_ORDER:{next_promotable}"
+                f"WAITING_FOR_ORDER:{execution_order_frontier}"
             )
 
     return {
         "plannedCount": planned_count,
         "nextPromotable": next_promotable,
+        "executionOrderFrontier": execution_order_frontier,
+        "frontierBlockers": (
+            blockers.get(execution_order_frontier, [])
+            if execution_order_frontier is not None
+            else []
+        ),
         "blockers": blockers,
         "repositoryIdle": repository_idle,
     }
@@ -7294,6 +7833,8 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "task0064Bootstrap",
             "task0066Recovery",
             "task0067Recovery",
+            "task0068Recovery",
+            "task0069Recovery",
             "rules",
         },
         "ci-execution-policy: root fields do not match the frozen machine contract",
@@ -7683,6 +8224,135 @@ def validate_ci_execution_policy(audit: Audit) -> None:
         and task0067_recovery.get("generalizedSelfDowngradeForbidden") is True
         and task0067_recovery.get("reusableByOtherTask") is False,
         "ci-execution-policy: TASK-0067 one-time byte-domain recovery binding drifted",
+    )
+    task0068_recovery = policy.get("task0068Recovery")
+    audit.require(
+        isinstance(task0068_recovery, dict)
+        and task0068_recovery.get("oneTimeOnly") is True
+        and task0068_recovery.get("taskId") == "TASK-0068"
+        and task0068_recovery.get("replacementOfRejectedTask") == "TASK-0067"
+        and task0068_recovery.get("baseCommit") == TASK_0068_BASE_COMMIT
+        and task0068_recovery.get("baseTree") == TASK_0068_BASE_TREE
+        and task0068_recovery.get("authorizationCommit")
+        == TASK_0068_AUTHORIZATION_COMMIT
+        and task0068_recovery.get("channel") == "LOCAL_EXACT_TREE_FALLBACK"
+        and task0068_recovery.get("profile") == "HARNESS_PORTABILITY_LOCAL"
+        and task0068_recovery.get("deliveryBudgets")
+        == {
+            "candidateDeadlineMinutes": 35,
+            "targetWallMinutes": 105,
+            "hardFuseWallMinutes": 125,
+            "maximumFixBatches": 1,
+            "maximumReviewRounds": 2,
+        }
+        and task0068_recovery.get("requiredOutcomes", {}).get("githubActions")
+        == "NOT_RUN_QUOTA"
+        and task0068_recovery.get("recoveryInput", {}).get(
+            "task0067TerminalCommit"
+        )
+        == TASK_0067_TERMINAL_COMMIT
+        and task0068_recovery.get("recoveryInput", {}).get(
+            "task0067TerminalTree"
+        )
+        == TASK_0067_TERMINAL_TREE
+        and task0068_recovery.get("generalizedSelfDowngradeForbidden") is True
+        and task0068_recovery.get("reusableByOtherTask") is False,
+        "ci-execution-policy: TASK-0068 one-time recovery binding drifted",
+    )
+    task0069_recovery = policy.get("task0069Recovery")
+    audit.require(
+        isinstance(task0069_recovery, dict)
+        and task0069_recovery.get("oneTimeOnly") is True
+        and task0069_recovery.get("taskId") == "TASK-0069"
+        and task0069_recovery.get("replacementOfRejectedTask") == "TASK-0068"
+        and task0069_recovery.get("baseCommit") == TASK_0069_BASE_COMMIT
+        and task0069_recovery.get("baseTree") == TASK_0069_BASE_TREE
+        and task0069_recovery.get("authorizationCommit")
+        == TASK_0069_AUTHORIZATION_COMMIT
+        and task0069_recovery.get("channel") == "LOCAL_EXACT_TREE_FALLBACK"
+        and task0069_recovery.get("profile") == "HARNESS_PORTABILITY_LOCAL"
+        and task0069_recovery.get("deliveryBudgets")
+        == {
+            "candidateDeadlineMinutes": 45,
+            "targetWallMinutes": 115,
+            "hardFuseWallMinutes": 150,
+            "maximumFixBatches": 1,
+            "maximumReviewRounds": 2,
+        }
+        and task0069_recovery.get("requiredOutcomes")
+        == {
+            "windows": "PASS",
+            "wslUbuntu": "PASS",
+            "macos": "DEFERRED_NOT_CLAIMED",
+            "githubActions": "UNKNOWN_NOT_RUN",
+        }
+        and task0069_recovery.get("remoteAvailabilityEvidence")
+        == {
+            "type": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+            "status": "UNKNOWN_NOT_RUN",
+            "priorResetDate": "2026-08-01",
+            "billingProbeStatus": "HTTP_404_UNVERIFIABLE",
+            "currentQuotaVerified": False,
+            "dispatchCount": 0,
+            "passClaimed": False,
+        }
+        and task0069_recovery.get("localFallbackActivation")
+        == {
+            "scope": "TASK_0069_ONLY",
+            "ownerAuthorized": True,
+            "remoteStatusMustRemainNonPass": True,
+            "globalUnknownQuotaBehaviorUnchanged": True,
+        }
+        and task0069_recovery.get("recoveryInput")
+        == {
+            "retainedImplementationCommit": (
+                "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+            ),
+            "retainedImplementationTree": (
+                "5e160c07de7ab81a03c5007c7d3c10895a53bfa5"
+            ),
+            "retainedFiles": {
+                ".harness/ci-execution-policy.yaml": (
+                    "70de802d950fc329d8517b6772d1a73439038555ecb408a7f99f43a4d24cb281"
+                ),
+                ".harness/task-backlog.yaml": (
+                    "a82eab59828d2c4f8b2009a3263b47cce0a62f8b3ddbe87bbe6d164e79b50a66"
+                ),
+                "docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md": (
+                    "1b449462ad10989256987b7d26315812c4dcb2929c6ce7568633dec76f9c4394"
+                ),
+            },
+            "task0068PreClosureReceiptSha256": (
+                "35766ac55593211942c99419a98ed0d01ea71199f8c1a73442622a0c867c82a4"
+            ),
+            "task0068PreClosureStdoutSha256": (
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            ),
+            "task0068PreClosureStderrSha256": (
+                "d3992cef13e7ea6e1836f192457ee5b1b41cc8793583afdf3637703d11dcf4ba"
+            ),
+            "task0068PreClosureExitCode": 1,
+            "task0068PreClosureErrorCount": 20,
+            "task0068PreClosureChecks": 245221,
+            "currentBaseDoctorReceiptSha256": (
+                "faaa8229e21faefc74d1ce43bba3480db02607a93f78006cd5a168cae04c850f"
+            ),
+            "currentBaseDoctorExitCode": 1,
+            "currentBaseDoctorErrorCount": 23,
+            "currentBaseDoctorChecks": 247053,
+            "canonicalPath": DURABLE_COMMAND_CANONICAL_PATH,
+            "canonicalBytes": DURABLE_COMMAND_CANONICAL_BYTES,
+            "canonicalLf": DURABLE_COMMAND_CANONICAL_LF,
+            "canonicalCrlf": DURABLE_COMMAND_CANONICAL_CRLF,
+            "canonicalSha256": DURABLE_COMMAND_CANONICAL_HASH,
+            "task0068TerminalCommit": TASK_0068_TERMINAL_COMMIT,
+            "task0068TerminalTree": TASK_0068_TERMINAL_TREE,
+        }
+        and task0069_recovery.get("ownerEvidence")
+        == "GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。"
+        and task0069_recovery.get("generalizedSelfDowngradeForbidden") is True
+        and task0069_recovery.get("reusableByOtherTask") is False,
+        "ci-execution-policy: TASK-0069 one-time local recovery binding drifted",
     )
     rules = policy.get("rules")
     audit.require(
@@ -8205,7 +8875,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     entries = backlog.get("tasks")
     entries = entries if isinstance(entries, dict) else {}
     expected_dependencies = {
-        "TASK-0055": ["TASK-0067"],
+        "TASK-0055": ["TASK-0069"],
         "TASK-0056": ["TASK-0055"],
         "TASK-0057": ["TASK-0056"],
         "TASK-0058": ["TASK-0057"],
@@ -9890,12 +10560,14 @@ def validate_versioned_terminal_evidence(
 
     reviewers = task.get("reviewers")
     reviewers = reviewers if isinstance(reviewers, list) else []
-    exact_task0063_rejected_without_review = (
+    exact_rejected_without_review = (
         task0063_terminal_missing_reviewer_isolated(task)
+        or task0067_terminal_missing_reviewer_isolated(task)
+        or task0068_terminal_missing_reviewer_isolated(task)
     )
     if str(task.get("riskClass")) in ("C3", "C4"):
         audit.require(
-            bool(reviewers) or exact_task0063_rejected_without_review,
+            bool(reviewers) or exact_rejected_without_review,
             f"{task_id}: terminal high-risk task requires reviewers",
         )
         reviewer_ids: set[str] = set()
@@ -9976,6 +10648,8 @@ def validate_versioned_terminal_evidence(
         f"docs/evidence/{task_id}/**",
         f"docs/handoffs/{task_id}.json",
     )
+    if task_id == "TASK-0068" and task0068_terminal_missing_reviewer_isolated(task):
+        allowed_closure += TASK_0068_RETAINED_RECOVERY_PATHS
     for path in closure_paths:
         audit.require(
             any(glob_matches(path, pattern) for pattern in allowed_closure),
@@ -10253,7 +10927,9 @@ def validate_diff_scope(
                     bool(reviewers)
                     and all(isinstance(item, dict) for item in reviewers)
                 )
-                or task0063_terminal_missing_reviewer_isolated(task),
+                or task0063_terminal_missing_reviewer_isolated(task)
+                or task0067_terminal_missing_reviewer_isolated(task)
+                or task0068_terminal_missing_reviewer_isolated(task),
                 f"{task_id}: terminal {risk} task requires structured independent reviewers",
             )
     audit.require(bool(changed), f"{task_id}: no changed files found from baseCommit")
@@ -10314,6 +10990,12 @@ def print_summary(
         print(
             f"Backlog: {backlog_projection.get('plannedCount', 0)} PLANNED | "
             f"Next promotable: {next_promotable}"
+        )
+        frontier = backlog_projection.get("executionOrderFrontier") or "NONE"
+        frontier_blockers = backlog_projection.get("frontierBlockers") or []
+        print(
+            f"Execution-order frontier: {frontier} | "
+            f"Blocked by: {', '.join(frontier_blockers) or 'NONE'}"
         )
     gates = state.get("capabilityGates") or {}
     for gate_id, gate in gates.items():

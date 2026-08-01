@@ -358,6 +358,67 @@ task0068Recovery:
     GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
   generalizedSelfDowngradeForbidden: true
   reusableByOtherTask: false
+task0069Recovery:
+  oneTimeOnly: true
+  taskId: TASK-0069
+  replacementOfRejectedTask: TASK-0068
+  baseCommit: 20193286d7bb566d2e433d80811f582572df61da
+  baseTree: 7413d1554167d951c226ab24ca5dde2eb9616970
+  authorizationCommit: 56a31d55f0bdeb5ab71446d5a21b042015b290ca
+  channel: LOCAL_EXACT_TREE_FALLBACK
+  profile: HARNESS_PORTABILITY_LOCAL
+  deliveryBudgets:
+    candidateDeadlineMinutes: 45
+    targetWallMinutes: 115
+    hardFuseWallMinutes: 150
+    maximumFixBatches: 1
+    maximumReviewRounds: 2
+  requiredOutcomes:
+    windows: PASS
+    wslUbuntu: PASS
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: UNKNOWN_NOT_RUN
+  remoteAvailabilityEvidence:
+    type: OWNER_QUOTA_EVIDENCE_EXPIRED
+    status: UNKNOWN_NOT_RUN
+    priorResetDate: "2026-08-01"
+    billingProbeStatus: HTTP_404_UNVERIFIABLE
+    currentQuotaVerified: false
+    dispatchCount: 0
+    passClaimed: false
+  localFallbackActivation:
+    scope: TASK_0069_ONLY
+    ownerAuthorized: true
+    remoteStatusMustRemainNonPass: true
+    globalUnknownQuotaBehaviorUnchanged: true
+  recoveryInput:
+    retainedImplementationCommit: 101a3c7b5e711b3fcea049a60a8ed332149c4cc9
+    retainedImplementationTree: 5e160c07de7ab81a03c5007c7d3c10895a53bfa5
+    retainedFiles:
+      .harness/ci-execution-policy.yaml: 70de802d950fc329d8517b6772d1a73439038555ecb408a7f99f43a4d24cb281
+      .harness/task-backlog.yaml: a82eab59828d2c4f8b2009a3263b47cce0a62f8b3ddbe87bbe6d164e79b50a66
+      docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md: 1b449462ad10989256987b7d26315812c4dcb2929c6ce7568633dec76f9c4394
+    task0068PreClosureReceiptSha256: 35766ac55593211942c99419a98ed0d01ea71199f8c1a73442622a0c867c82a4
+    task0068PreClosureStdoutSha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    task0068PreClosureStderrSha256: d3992cef13e7ea6e1836f192457ee5b1b41cc8793583afdf3637703d11dcf4ba
+    task0068PreClosureExitCode: 1
+    task0068PreClosureErrorCount: 20
+    task0068PreClosureChecks: 245221
+    currentBaseDoctorReceiptSha256: faaa8229e21faefc74d1ce43bba3480db02607a93f78006cd5a168cae04c850f
+    currentBaseDoctorExitCode: 1
+    currentBaseDoctorErrorCount: 23
+    currentBaseDoctorChecks: 247053
+    canonicalPath: scripts/harness/durable_command.ps1
+    canonicalBytes: 8819
+    canonicalLf: 236
+    canonicalCrlf: 0
+    canonicalSha256: fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180
+    task0068TerminalCommit: 20193286d7bb566d2e433d80811f582572df61da
+    task0068TerminalTree: 7413d1554167d951c226ab24ca5dde2eb9616970
+  ownerEvidence: >-
+    GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
+  generalizedSelfDowngradeForbidden: true
+  reusableByOtherTask: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

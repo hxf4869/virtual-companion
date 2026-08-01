@@ -5,7 +5,7 @@ taskId: TASK-0055
 state: PLANNED
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
-planningContractHash: 2523114f3aafb985a2fa760944b282a10bcf3a4c4253709af1edd5f645720dca
+planningContractHash: ea273f129aa1d46f30d21ebd0ed0626066086ef009b9c4496f30389b3fa01e74
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
 
@@ -27,7 +27,7 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 
 ## 依赖与决策闸门
 
-- 依赖：永久替代已 REJECTED TASK-0067 的 standalone TASK-0068；
+- 依赖：永久替代已 REJECTED TASK-0068 的 standalone TASK-0069；
 - 无新增硬决策闸门。
 
 ## 验收
@@ -37,4 +37,4 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 
 ## 晋级规则
 
-TASK-0068 必须 ACCEPTED，仓库必须空闲，且本卡是执行顺序中首个可晋级任务。
+TASK-0069 必须 ACCEPTED，仓库必须空闲，且本卡是执行顺序中首个可晋级任务。
