@@ -1,0 +1,38 @@
+{
+  "taskId": "TASK-0069",
+  "state": "ACCEPTED",
+  "baseCommit": "20193286d7bb566d2e433d80811f582572df61da",
+  "headCommit": "42577d3a1aa3b840c32dd73889ed4f20b3d2edd9",
+  "evidencePath": "docs/evidence/TASK-0069/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0069-independent-reviewer-r1",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "PASS",
+      "reviewedCommit": "42577d3a1aa3b840c32dd73889ed4f20b3d2edd9",
+      "evidencePath": "docs/evidence/TASK-0069/review-r1.md"
+    }
+  ],
+  "completed": [
+    "将 TASK-0068 pre-closure 的 20 errors 和 Base 的 23 errors 映射到五个最小根因，并以 12 项冻结 targeted matrix 全部关闭。",
+    "精确隔离 TASK-0067 与 TASK-0068 缺少 Reviewer 的真实 REJECTED 终态；其他 C3/C4 Reviewer 要求保持失败关闭。",
+    "精确修复 TASK-0067/TASK-0068 planning repair 与 TASK-0069 一次性 Owner recovery，不泛化历史例外。",
+    "将 TASK-0055 唯一依赖原子重接到 TASK-0069，六节 planning hash 一致，并让 execution-order frontier 在依赖未接受时停在 blocked TASK-0055。",
+    "验证 durable helper Git Blob、Windows checkout 与 Git archive 均为 8819 bytes、236 LF、0 CRLF 和同一固定 SHA-256，五类负例均失败关闭。",
+    "最终候选 targeted matrix、唯一 diff check、独立 fork_turns=none Reviewer R1、Windows 与 WSL HARNESS_PORTABILITY_LOCAL 均真实 PASS。",
+    "GitHub Actions 保持 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0；macOS 保持 DEFERRED_NOT_CLAIMED。"
+  ],
+  "remaining": [
+    "仅在后续新任务明确授权后，将 TASK-0055 晋级为唯一 DRAFT；本卡未实现 TASK-0055。",
+    "TASK-0013 继续等待 TASK-0055 至 TASK-0059 严格串行闭环，不得因 idle 投影跳过 execution-order frontier。",
+    "通用 GitHub 远端额度与调度状态机继续保留给 TASK-0065；当前额度在本卡中仍不可验证。",
+    "受控 macOS exact-tree 验证未运行；如未来获得环境，必须以新鲜授权和冻结身份执行，不能继承本卡 Windows/WSL PASS。"
+  ],
+  "knownRisks": [
+    "本卡只证明 Windows-NT-10.0.26200 与 Ubuntu-24.04 WSL2 上的精确候选行为，不证明 macOS。",
+    "GitHub billing 只读探针返回 HTTP 404，当前额度状态为 UNKNOWN；没有 workflow dispatch，也没有 GitHub Actions PASS。",
+    "终态提交只包含任务卡、Project State、Ledger、Evidence 与 Handoff 元数据并带 [skip ci]；它不改变已验证实现树，也不代表远端 CI PASS。",
+    "未修改 workflow、durable helper 本体、TASK-0058、产品代码、Provider、凭据、数据库、身份、Persona、安全政策或 Beta。"
+  ],
+  "nextAction": "将 TASK-0055 晋级为唯一 DRAFT；TASK-0013 继续等待 TASK-0055 至 TASK-0059 严格串行闭环"
+}

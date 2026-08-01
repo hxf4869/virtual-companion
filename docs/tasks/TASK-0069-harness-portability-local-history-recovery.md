@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0069
-state: IN_REVIEW
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -241,7 +241,12 @@ humanApprovals:
       不得泛化、复用、伪造 PASS、购买额度、改预算、公开仓库、添加 self-hosted
       runner、扩大 gh 权限、读取凭据或触发真实外发。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0069-independent-reviewer-r1
+    kind: independent-complete-matrix-review
+    verdict: PASS
+    reviewedCommit: 42577d3a1aa3b840c32dd73889ed4f20b3d2edd9
+    evidencePath: docs/evidence/TASK-0069/review-r1.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_policy_is_registered_and_fail_closed scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_policy_rejects_unknown_quota_downgrade_and_false_platform_pass scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_task0069_remote_unknown_local_recovery_is_exact_and_fail_closed scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_durable_command_canonical_byte_domain_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0067_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0067_terminal_missing_reviewer_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0068_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0068_terminal_missing_reviewer_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0069_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.IntegrationTests.test_doctor_accepts_current_task
   - git diff --check

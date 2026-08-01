@@ -150,3 +150,9 @@ tasks:
     taskCard: docs/tasks/TASK-0068-harness-portability-acceptance-recovery.md
     evidence: docs/evidence/TASK-0068/evidence-pack.json
     handoff: docs/handoffs/TASK-0068.json
+  TASK-0069:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0069-harness-portability-local-history-recovery.md
+    evidence: docs/evidence/TASK-0069/evidence-pack.json
+    handoff: docs/handoffs/TASK-0069.json

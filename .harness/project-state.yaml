@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0069
-activeTaskCard: docs/tasks/TASK-0069-harness-portability-local-history-recovery.md
-lastAcceptedTask: TASK-0012
-lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0068
-lastTerminalHandoff: docs/handoffs/TASK-0068.json
-nextAction: 执行 TASK-0069，完成冻结 targeted matrix、独立 Reviewer 与 Windows/WSL HARNESS_PORTABILITY_LOCAL 精确树验收；TASK-0055 与 TASK-0013 均不得提前晋级
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0069
+lastAcceptedHandoff: docs/handoffs/TASK-0069.json
+lastTerminalTask: TASK-0069
+lastTerminalHandoff: docs/handoffs/TASK-0069.json
+nextAction: 将 TASK-0055 晋级为唯一 DRAFT；TASK-0013 继续等待 TASK-0055 至 TASK-0059 严格串行闭环
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: 2026-07-31
+updatedAt: 2026-08-01
