@@ -1,0 +1,239 @@
+{
+  "taskId": "TASK-0055",
+  "baseCommit": "c904d65783f0854e482dcf77f59d0f5066410845",
+  "headCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+  "contextFingerprint": "4cf6a616da896d26bf54c46bdc40f65f6eee71a67ca37b5016208ef375222a7f",
+  "reviewers": [
+    {
+      "id": "task-0055-independent-rejected-closure-reviewer-r1",
+      "kind": "independent-rejected-closure-review",
+      "verdict": "PASS",
+      "reviewedCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+      "evidencePath": "docs/evidence/TASK-0055/review-r1.md"
+    },
+    {
+      "id": "task-0055-independent-rejected-closure-reviewer-r2",
+      "kind": "independent-rejected-closure-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+      "evidencePath": "docs/evidence/TASK-0055/review-r2.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0055",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "6d598ed05f100fda8ea89a2116cd224039d3177a5708390dbb4b32c191a33ced",
+      "reason": "The sole READY Doctor completed with three errors after 860.261 seconds and 271800 checks. All three errors reject the current READY dynamic card as a planning-only six-section rendering during Base promotion reconstruction; implementation is forbidden after this authorization gate failure.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; PowerShell 7.6.3 durable transport",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "READY Doctor failed before IN_PROGRESS, so no implementation or targeted matrix exists.",
+      "environment": "Windows; execution prohibited by the READY authorization gate",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No implementation candidate was created; DRAFT and READY staging checks are not represented as final-candidate diff PASS.",
+      "environment": "Windows; no frozen implementation candidate",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0055",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Candidate canonical is forbidden because the READY Doctor failed and the task never entered IN_PROGRESS or IN_REVIEW.",
+      "environment": "Windows; no implementation candidate",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0055",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Windows exact-tree fallback was not run because no reviewed implementation candidate exists.",
+      "environment": "Windows-NT-10.0.26200; no implementation candidate",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0055",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "WSL exact-tree fallback was not run because no reviewed implementation candidate exists.",
+      "environment": "Ubuntu-24.04 WSL2; no implementation candidate",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0055",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: no controlled macOS environment was available and no macOS PASS is claimed.",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0055",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED: current quota was not verified, dispatch count remained 0, and no GitHub Actions PASS is claimed.",
+      "environment": "GitHub Actions; deliberately not dispatched",
+      "verifiedCommit": "ee33ce6220104b5402223eca35108ca9deebc857"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "NOT_CREATED_READY_DOCTOR_FAIL",
+    "windows": "NOT_RUN_DUE_READY_GATE",
+    "wslUbuntu": "NOT_RUN_DUE_READY_GATE",
+    "macos": "DEFERRED_NOT_CLAIMED",
+    "remote": {
+      "platform": "githubActions",
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "commit": "c904d65783f0854e482dcf77f59d0f5066410845",
+      "tree": "900865deaf2150ee20d9da87e5dc8661fd3c5ed7",
+      "originMain": "c904d65783f0854e482dcf77f59d0f5066410845",
+      "ahead": 0,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "lifecycle": {
+      "draftCommit": "b695f7af4bb90af58d02a12ccff9741804a5e1c3",
+      "readyAuthorizationCommit": "60dc7238409d2cb5c3bf40f90298c5dc71c0e44c",
+      "authorizationBindingCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+      "inProgressCommit": null,
+      "reviewCandidateCommit": null
+    },
+    "transportPreflight": {
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "status": "PASS",
+      "innerExitCode": 7,
+      "receiptSha256": "c904d35b41f1e5eb1fa1246adfecbaee3dc46eb13ea114962a226509511637b6",
+      "candidatePassAlias": false
+    },
+    "baseDoctor": {
+      "status": "PASS",
+      "exitCode": 0,
+      "checks": 262941,
+      "startedAt": "2026-08-01T09:38:23.1070079Z",
+      "completedAt": "2026-08-01T09:52:38.2837877Z",
+      "receiptSha256": "929e04544a6f9d488e478707ecc3ed648e0fb3fa458ba2e06d3dbe3029eba7d3",
+      "stdoutSha256": "249b0468eac0aef44545477d8a6d0dba378e379a4b8003b9a5f6630beec4b52b",
+      "stderrSha256": "4b607593ad608ab299240e7575e910786e728b17679bfd39830790ef94ee3cac"
+    },
+    "readyDoctor": {
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 271800,
+      "elapsedSeconds": 860.261,
+      "startedAt": "2026-08-01T09:59:33.7062233Z",
+      "completedAt": "2026-08-01T10:13:53.9675968Z",
+      "receiptSha256": "6d598ed05f100fda8ea89a2116cd224039d3177a5708390dbb4b32c191a33ced",
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "8d363ec9e20fecfda1e01b8d28e74450cda98cee1eb14b152e1f1df73cd7a3ff",
+      "errors": [
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly six normative sections",
+        "task-backlog.tasks.TASK-0055: planning card must contain exactly the fixed Backlog projection notice and no unbound preamble",
+        "task-backlog.tasks.TASK-0055: fixed Backlog projection notice must appear exactly once"
+      ]
+    },
+    "blocker": {
+      "classification": "READY_AUTHORIZATION_GATE_FAIL",
+      "cause": "Base promotion reconstruction supplies the historical PLANNED metadata snapshot to validate_task_backlog_data, while its rendering check reads the current READY task-card text instead of the Base commit card bytes.",
+      "authorizedRepairAvailable": false,
+      "reason": "Changing the DRAFT consumer is explicitly out of scope and the acceptance contract requires all four consumers to remain unchanged. Reformatting the current card would rewrite the frozen READY authorization projection.",
+      "implementationStarted": false,
+      "implementationPathsChanged": [],
+      "repairBatchesUsed": 0
+    },
+    "review": {
+      "implementationCandidate": {
+        "status": "NOT_RUN_DUE_READY_GATE",
+        "roundsUsed": 0,
+        "reviewCandidateCommit": null,
+        "r2Status": "NOT_APPLICABLE"
+      },
+      "rejectedClosure": {
+        "status": "PASS",
+        "roundsUsed": 2,
+        "reviewedCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+        "reviewedTree": "6b9fa732506f0263a78bd535c729aadbce24ca87",
+        "r1": {
+          "verdict": "PASS",
+          "p0": 0,
+          "p1": 0,
+          "p2": 2,
+          "p3": 0,
+          "evidencePath": "docs/evidence/TASK-0055/review-r1.md"
+        },
+        "repairBatchesUsed": 1,
+        "r2": {
+          "verdict": "PASS",
+          "p0": 0,
+          "p1": 0,
+          "p2": 0,
+          "p3": 0,
+          "r1P2Closed": 2,
+          "evidencePath": "docs/evidence/TASK-0055/review-r2.md"
+        },
+        "scope": "REJECTED_CLOSURE_SAFETY_ONLY",
+        "r3Status": "PROHIBITED_NOT_RUN"
+      }
+    },
+    "preClosureRequest": {
+      "path": "docs/evidence/TASK-0055/pre-closure-request.json",
+      "argv": [
+        "scripts/harness/doctor.py",
+        "--task",
+        "TASK-0055",
+        "--pre-closure"
+      ],
+      "executionLimit": 1,
+      "status": "REQUEST_FROZEN",
+      "resultBinding": "The durable receipt is produced after this immutable REJECTED closure pack is staged and is reported without rewriting the closure snapshot."
+    },
+    "wallClock": {
+      "startedAt": "2026-08-01T17:58:22+08:00",
+      "candidateDeadlineMinutes": 45,
+      "candidateStatus": "NOT_CREATED_READY_GATE_FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "hardFuseStatusAtClosureFreeze": "NOT_TRIGGERED"
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so the commit and tree cannot self-reference. Exact terminal identity and pre-closure receipt are reported after execution, commit, push, and remote verification."
+    }
+  }
+}

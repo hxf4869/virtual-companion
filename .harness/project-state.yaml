@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0055
-activeTaskCard: docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0069
-lastTerminalHandoff: docs/handoffs/TASK-0069.json
-nextAction: 执行 TASK-0055，交付 idle planning checkpoint 唯一 parent-edge 核心、冻结矩阵与独立 Reviewer；TASK-0056 和 TASK-0013 均不得提前晋级
+lastTerminalTask: TASK-0055
+lastTerminalHandoff: docs/handoffs/TASK-0055.json
+nextAction: TASK-0055 因 READY Doctor 的 Base planning-card 投影冲突而 REJECTED；协调器须从 DAG 选择新的永久替代卡，TASK-0056 与 TASK-0013 均不得晋级
 capabilityGates:
   businessImplementation:
     state: BLOCKED

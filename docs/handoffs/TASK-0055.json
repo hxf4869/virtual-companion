@@ -1,0 +1,45 @@
+{
+  "taskId": "TASK-0055",
+  "state": "REJECTED",
+  "baseCommit": "c904d65783f0854e482dcf77f59d0f5066410845",
+  "headCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+  "evidencePath": "docs/evidence/TASK-0055/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task-0055-independent-rejected-closure-reviewer-r1",
+      "kind": "independent-rejected-closure-review",
+      "verdict": "PASS",
+      "reviewedCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+      "evidencePath": "docs/evidence/TASK-0055/review-r1.md"
+    },
+    {
+      "id": "task-0055-independent-rejected-closure-reviewer-r2",
+      "kind": "independent-rejected-closure-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "ee33ce6220104b5402223eca35108ca9deebc857",
+      "evidencePath": "docs/evidence/TASK-0055/review-r2.md"
+    }
+  ],
+  "completed": [
+    "实时 fetch 并确认 Base、Tree、main==origin/main、0/0、clean、activeTask=null 与 TASK-0055 唯一可晋级前沿。",
+    "完整冻结 TASK-0055 静态合同、Context Lock、C4 Skill/审批、默认 45/60/90 分钟预算与本卡精确本地验证计划。",
+    "以单父提交完成 DRAFT、READY 授权和 authorizationCommit 绑定；未修改 Backlog、policy、workflow 或产品路径。",
+    "Base Doctor summary 真实 PASS 262941 checks；唯一 READY Doctor 真实 FAIL 271800 checks，并保存完整 durable receipt、stdout/stderr 哈希和三项精确错误。",
+    "在实现前识别到修复必须改动明确范围外的 DRAFT 消费者，因而未写 Doctor/tests、未启动实现候选 Reviewer/canonical/平台验证，也未把 TASK-0069 PASS 继承到本卡。",
+    "独立 R1 只读复核失败闭包并以 P0=0、P1=0、P2=2 给出 closure-only PASS；两个 P2 已按其机械建议修正，该结论不代表实现候选或平台 PASS。",
+    "同一 Reviewer 的 R2 delta 确认 R1 两个 P2 均 CLOSED，且新增 P0/P1/P2/P3 均为 0；R2 是第二且最后一轮 closure-only review。",
+    "唯一 pre-closure 通过持久化会话真实完成，inner exit 1、275363 checks、8 errors；未重跑，也未把结果改称 PASS。"
+  ],
+  "remaining": [
+    "Idle planning checkpoint parent-edge 核心与四组 real-Git 矩阵均未实现；TASK-0055 不可作为 TASK-0056 的 ACCEPTED 依赖。",
+    "协调器必须分配新的永久替代任务，不得重开或复用 REJECTED TASK-0055；新授权需先消除 Base PLANNED card bytes 与当前动态 card rendering 的投影冲突。",
+    "TASK-0056 继续被 REJECTED 依赖阻断，TASK-0013 继续等待 TASK-0055 至 TASK-0059 的有效永久后继严格串行闭环。",
+    "GitHub Actions 保持 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0；实现候选 Reviewer、Windows、WSL 与 macOS 均无本卡 PASS，唯一 Reviewer PASS 只覆盖 REJECTED closure safety。"
+  ],
+  "knownRisks": [
+    "当前阻断发生在 READY 授权门，任何越过该门实现核心都会违反 task-intake 与失败关闭不变量。",
+    "把当前 13 节动态任务卡重排成 PLANNED 六节投影会改写已冻结 authorization projection；修改 validate_backlog_draft_promotion_at_base 又违反本卡四消费者不改的明确合同。",
+    "终态提交只包含任务卡、Project State、Ledger、Evidence 与 Handoff，并带 [skip ci]；它不包含实现、不会触发 workflow，也不代表任何候选或平台 PASS。"
+  ],
+  "nextAction": "TASK-0055 因 READY Doctor 的 Base planning-card 投影冲突而 REJECTED；协调器须从 DAG 选择新的永久替代卡，TASK-0056 与 TASK-0013 均不得晋级"
+}

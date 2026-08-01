@@ -156,3 +156,9 @@ tasks:
     taskCard: docs/tasks/TASK-0069-harness-portability-local-history-recovery.md
     evidence: docs/evidence/TASK-0069/evidence-pack.json
     handoff: docs/handoffs/TASK-0069.json
+  TASK-0055:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md
+    evidence: docs/evidence/TASK-0055/evidence-pack.json
+    handoff: docs/handoffs/TASK-0055.json

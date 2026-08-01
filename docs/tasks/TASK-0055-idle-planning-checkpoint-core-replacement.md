@@ -2,7 +2,16 @@
 
 ```yaml
 taskId: TASK-0055
-state: READY
+state: REJECTED
+resolutionReason: >-
+  READY Doctor 在精确授权绑定提交 ee33ce6220104b5402223eca35108ca9deebc857
+  上以 inner exit 1 真实失败：Backlog DRAFT promotion 的 Base 重建把当前 READY
+  动态任务卡正文送入 planning-only 六节投影校验，产生恰好 3 个错误。修复需要
+  改动本卡明确范围外且验收要求字节行为不变的 DRAFT 消费者；重排当前任务卡正文
+  又会改写已冻结 READY authorization projection。本卡因此在实现前失败关闭，
+  未修改 Doctor/tests、未进入 IN_PROGRESS/IN_REVIEW、未运行实现候选 Reviewer、
+  candidate canonical、Windows/WSL 或远端 workflow；仅运行终态失败闭包 Reviewer，
+  且未复用 TASK-0069 PASS。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -239,7 +248,17 @@ humanApprovals:
       UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0；只对本卡冻结
       Commit/Tree 执行 Windows 与 WSL 本地验证，历史 TASK-0069 PASS 不得复用。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task-0055-independent-rejected-closure-reviewer-r1
+    kind: independent-rejected-closure-review
+    verdict: PASS
+    reviewedCommit: ee33ce6220104b5402223eca35108ca9deebc857
+    evidencePath: docs/evidence/TASK-0055/review-r1.md
+  - id: task-0055-independent-rejected-closure-reviewer-r2
+    kind: independent-rejected-closure-delta-review
+    verdict: PASS
+    reviewedCommit: ee33ce6220104b5402223eca35108ca9deebc857
+    evidencePath: docs/evidence/TASK-0055/review-r2.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error
   - git diff --check
