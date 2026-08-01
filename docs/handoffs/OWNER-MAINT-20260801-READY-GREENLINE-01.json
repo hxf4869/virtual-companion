@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260801-READY-GREENLINE-01",
+  "kind": "OWNER_AUTHORIZED_OUT_OF_BAND_MAINTENANCE_HANDOFF",
+  "harnessTask": false,
+  "taskId": null,
+  "status": "SAFE_EXIT_LOCAL_VALIDATION_FAILED",
+  "baseCommit": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+  "baseTree": "e83e352a9805e84e1996115924a33686fdd79d1e",
+  "localCandidateCommit": "9725e74019b7a102ff8e848beec466bac7044987",
+  "localCandidateTree": "cf89d92a6dc311ee99ca2d2e394df11b05c9e174",
+  "candidatePushed": false,
+  "originMain": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+  "review": {
+    "firstReviewerAttempt": "INCOMPLETE_TIMEBOX",
+    "replacementR1": "PASS",
+    "p0": 0,
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "repairBatchesUsed": 0,
+    "r2": "NOT_REQUIRED"
+  },
+  "targetedTests": {
+    "status": "PASS",
+    "exitCode": 0,
+    "tests": 14,
+    "task0055BeforeErrors": 3,
+    "task0055AfterErrors": 0
+  },
+  "windowsExactCandidate": {
+    "status": "FAIL",
+    "exitCode": 1,
+    "checks": 292911,
+    "errors": 11,
+    "receiptSha256": "0208228211925eda2d4a094fd32cb3af1339730a79a5577bb38ad064aee88012"
+  },
+  "wslExactTree": {
+    "status": "NOT_RUN_AFTER_WINDOWS_FAILURE",
+    "exitCode": null,
+    "receiptSha256": null
+  },
+  "githubActions": {
+    "status": "UNKNOWN_NOT_RUN",
+    "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+    "dispatchCount": 0,
+    "passClaimed": false
+  },
+  "ordinaryPreClosure": "NOT_APPLICABLE_NO_LEGAL_TASK_ID",
+  "terminalCommit": null,
+  "terminalTree": null,
+  "postPushAhead": null,
+  "postPushBehind": null,
+  "postPushClean": null,
+  "greenlineRestored": false,
+  "authorizationConsumed": true,
+  "authorizationReusable": false,
+  "nextAction": "Do not create or reserve TASK-0071. A coordinator may request a fresh, explicit Owner decision for a separately scoped recovery of the ordinary terminal-history guard; only after a verified greenline may the coordinator create normal TASK-0071 as the TASK-0055 replacement.",
+  "evidencePath": "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/windows-validation-failure.json"
+}
