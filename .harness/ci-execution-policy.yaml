@@ -303,6 +303,61 @@ task0067Recovery:
     GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
   generalizedSelfDowngradeForbidden: true
   reusableByOtherTask: false
+task0068Recovery:
+  oneTimeOnly: true
+  taskId: TASK-0068
+  replacementOfRejectedTask: TASK-0067
+  baseCommit: 0be905ab953975476802a5f1e0eef68b978635d2
+  baseTree: d0aeef9857e0fd2b366bebe7162bb282d94ec830
+  authorizationCommit: 31c4937fbe576c2ada3682ab2269006b824bea82
+  channel: LOCAL_EXACT_TREE_FALLBACK
+  profile: HARNESS_PORTABILITY_LOCAL
+  deliveryBudgets:
+    candidateDeadlineMinutes: 35
+    targetWallMinutes: 105
+    hardFuseWallMinutes: 125
+    maximumFixBatches: 1
+    maximumReviewRounds: 2
+  requiredOutcomes:
+    windows: PASS
+    wslUbuntu: PASS
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: NOT_RUN_QUOTA
+  remoteUnavailableEvidence:
+    type: OWNER_SUPPLIED_QUOTA_EXHAUSTED
+    includedMinutes: 2000
+    usedMinutes: 2000
+    paidBudgetUsd: 0
+    stopUsageEnabled: true
+    resetDate: "2026-08-01"
+    dispatchCount: 0
+  recoveryInput:
+    retainedImplementationCommit: 627ab81c664fccc97c00473b852c5da7a39a00bb
+    retainedImplementationTree: 3cc7b5481d2e7a1e8dd8a04216b8b6f47584d824
+    task0067TargetedStatus: UNKNOWN_NOT_OBSERVED
+    task0067ReviewerStatus: NOT_RUN_DUE_STOP_CONDITION
+    task0067WindowsStatus: NOT_RUN_DUE_STOP_CONDITION
+    task0067WslStatus: NOT_RUN_DUE_STOP_CONDITION
+    task0067PreClosureReceiptSha256: 53d3de966de5e51386e400fc7228f10bd9b6789c5cdaff2be3d0729b2165b0c8
+    task0067PreClosureStdoutSha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    task0067PreClosureStderrSha256: 929d9af08353946696f2f9d1b3fb86c7511f27ef0c45b08c77af16531bb40134
+    task0067PreClosureExitCode: 1
+    task0067PreClosureErrorCount: 8
+    task0067PreClosureChecks: 233193
+    task0067SystemErrorClassification: SYSTEM_ERROR_UNRECOVERABLE
+    task0067DiagnosticUnavailable: true
+    task0067RootCauseInferred: false
+    canonicalPath: scripts/harness/durable_command.ps1
+    canonicalBytes: 8819
+    canonicalLf: 236
+    canonicalCrlf: 0
+    canonicalSha256: fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180
+    task0067TerminalCommit: 0be905ab953975476802a5f1e0eef68b978635d2
+    task0067TerminalTree: d0aeef9857e0fd2b366bebe7162bb282d94ec830
+  ownerEvidence: >-
+    GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
+  generalizedSelfDowngradeForbidden: true
+  reusableByOtherTask: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

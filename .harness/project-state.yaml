@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0068
-activeTaskCard: docs/tasks/TASK-0068-harness-portability-acceptance-recovery.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0012
 lastAcceptedHandoff: docs/handoffs/TASK-0012.json
-lastTerminalTask: TASK-0067
-lastTerminalHandoff: docs/handoffs/TASK-0067.json
-nextAction: 执行 TASK-0068 冻结 targeted matrix、独立 Reviewer 与 Windows/WSL HARNESS_PORTABILITY_LOCAL 精确树验收
+lastTerminalTask: TASK-0068
+lastTerminalHandoff: docs/handoffs/TASK-0068.json
+nextAction: TASK-0068 因 candidate deadline 与 hard fuse 已触发而 REJECTED；TASK-0055 继续被 REJECTED 依赖阻断且 TASK-0013 不晋级；唯一下一动作是创建永久替代 TASK-0069 并从新 Base 重新冻结计时与完整验收
 capabilityGates:
   businessImplementation:
     state: BLOCKED

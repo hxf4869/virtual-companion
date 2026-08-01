@@ -1,0 +1,77 @@
+{
+  "taskId": "TASK-0068",
+  "state": "REJECTED",
+  "baseCommit": "0be905ab953975476802a5f1e0eef68b978635d2",
+  "headCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+  "evidencePath": "docs/evidence/TASK-0068/evidence-pack.json",
+  "reviewers": [],
+  "completed": [
+    "Preserved the completed DRAFT, READY, authorization binding, and IN_PROGRESS lifecycle commits through 101a3c7b5e711b3fcea049a60a8ed332149c4cc9 / Tree 5e160c07de7ab81a03c5007c7d3c10895a53bfa5.",
+    "Preserved the pre-DRAFT no-side-effect exit-7 durable transport smoke receipt cc3617be45c3acd8a2200132a7d81f75108ceae6790a05c234c8c617db3a12d1; it is not a candidate validation alias.",
+    "Read the frozen task card, Context Lock, AGENTS.md, task-delivery-flow, task-intake, harness-change, delivery policy, CI policy, lifecycle, registry, project state, ledger, Git history, and inherited worktree diff.",
+    "Established from machine truth that systemError does not pause candidateDeadlineMinutes or hardFuseWallMinutes.",
+    "Detected at 2026-08-01T14:25:31.157+08:00 that the 2026-07-31T19:13:42 candidate deadline and 2026-07-31T20:43:42 hard fuse had both fired.",
+    "Stopped implementation, targeted validation, Reviewer, candidate canonical, Windows/WSL exact-tree validation, and GitHub dispatch.",
+    "Retained the inherited three-file interrupted worktree unchanged and recorded exact SHA-256 values; no frozen Candidate Commit/Tree or validation claim is attached to it.",
+    "Kept macOS DEFERRED_NOT_CLAIMED and GitHub Actions NOT_RUN_QUOTA with dispatch=0."
+  ],
+  "remaining": [
+    "The frozen targeted matrix was NOT_RUN_DUE_STOP_CONDITION and has no receipt, stdout/stderr, exit code, PASS, or FAIL.",
+    "The required frozen git diff --check was not run. A late read-only continuation diagnostic returned exit 0 on an expired uncommitted snapshot, but it is not a candidate PASS and has no durable receipt.",
+    "Independent Reviewer R1, Windows exact-tree, WSL exact-tree, and candidate canonical are NOT_RUN_DUE_STOP_CONDITION.",
+    "The three retained files are historical recovery input only; their TASK-0068 recovery contract, TASK-0055 dependency rewrite, and planningContractHash were not validated.",
+    "TASK-0055 remains PLANNED and fail-closed because its sole dependency TASK-0068 is REJECTED; TASK-0013 must not be promoted.",
+    "Create fresh permanent replacement TASK-0069 without reopening or rewriting TASK-0068; TASK-0065 remains reserved for remote dispatch/quota scheduling governance."
+  ],
+  "knownRisks": [
+    "No TASK-0068 implementation Candidate Commit/Tree exists, so the retained interrupted worktree cannot release any dependency or serve as PASS evidence.",
+    "No independent Reviewer verdict, Windows PASS, WSL PASS, canonical PASS, or controlled macOS observation exists.",
+    "GitHub Actions was not dispatched; NOT_RUN_QUOTA is not CI PASS.",
+    "The original visible task ended in systemError without diagnostics. No platform root cause and no budget pause are inferred.",
+    "The hard-fuse overrun existed before this recovery resumed. Closure-only handling preserves but does not validate the inherited three-file worktree.",
+    "The [skip ci] terminal commit is a REJECTED closure and does not represent CI or exact-tree PASS."
+  ],
+  "recoveryInput": {
+    "replacementTaskId": "TASK-0069",
+    "lastCommittedActivity": {
+      "commit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+      "tree": "5e160c07de7ab81a03c5007c7d3c10895a53bfa5",
+      "state": "IN_PROGRESS"
+    },
+    "retainedInterruptedWorktree": {
+      "status": "NON_PASS",
+      "candidateFrozen": false,
+      "files": [
+        {
+          "path": ".harness/ci-execution-policy.yaml",
+          "sha256": "70de802d950fc329d8517b6772d1a73439038555ecb408a7f99f43a4d24cb281"
+        },
+        {
+          "path": ".harness/task-backlog.yaml",
+          "sha256": "a82eab59828d2c4f8b2009a3263b47cce0a62f8b3ddbe87bbe6d164e79b50a66"
+        },
+        {
+          "path": "docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md",
+          "sha256": "1b449462ad10989256987b7d26315812c4dcb2929c6ce7568633dec76f9c4394"
+        }
+      ]
+    },
+    "budgetEvidence": {
+      "startedAt": "2026-07-31T18:38:42+08:00",
+      "candidateDeadlineBoundary": "2026-07-31T19:13:42+08:00",
+      "hardFuseBoundary": "2026-07-31T20:43:42+08:00",
+      "stopObservedAt": "2026-08-01T14:25:31.157+08:00",
+      "systemErrorPausesBudget": false
+    },
+    "minimumValidationMatrix": [
+      "Start TASK-0069 from a fresh terminal Base and freeze explicit budget clock semantics before READY.",
+      "Reconcile the retained three-file work against machine truth before adding the missing Doctor and unit-test changes.",
+      "Run exactly one newly frozen targeted matrix and diff check with a complete atomic receipt.",
+      "Only after targeted PASS, run the required independent fork_turns=none Reviewer on the exact frozen candidate.",
+      "Only after Reviewer PASS, run one Windows and then one WSL Ubuntu git-archive HARNESS_PORTABILITY_LOCAL exact-tree validation.",
+      "Keep macOS DEFERRED_NOT_CLAIMED and GitHub Actions NOT_RUN_QUOTA with dispatch=0 unless a separately authorized machine contract changes those facts."
+    ],
+    "authorizationBoundary": "TASK-0069 requires a fresh exact-Base Owner authorization. Do not reopen TASK-0068, modify TASK-0065, reuse any TASK-0068 non-PASS observation, or promote TASK-0055/TASK-0013."
+  },
+  "nextAction": "TASK-0068 因 candidate deadline 与 hard fuse 已触发而 REJECTED；TASK-0055 继续被 REJECTED 依赖阻断且 TASK-0013 不晋级；唯一下一动作是创建永久替代 TASK-0069 并从新 Base 重新冻结计时与完整验收"
+}

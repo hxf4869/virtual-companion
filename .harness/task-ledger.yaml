@@ -144,3 +144,9 @@ tasks:
     taskCard: docs/tasks/TASK-0067-durable-command-canonical-byte-domain-recovery.md
     evidence: docs/evidence/TASK-0067/evidence-pack.json
     handoff: docs/handoffs/TASK-0067.json
+  TASK-0068:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0068-harness-portability-acceptance-recovery.md
+    evidence: docs/evidence/TASK-0068/evidence-pack.json
+    handoff: docs/handoffs/TASK-0068.json

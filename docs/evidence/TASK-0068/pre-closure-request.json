@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "executable": "C:\\Users\\k\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "argv": [
+    "scripts/harness/doctor.py",
+    "--task",
+    "TASK-0068",
+    "--pre-closure"
+  ],
+  "workingDirectory": "G:\\ai\\hxf\\virtual-companion"
+}

@@ -2,7 +2,20 @@
 
 ```yaml
 taskId: TASK-0068
-state: IN_PROGRESS
+state: REJECTED
+resolutionReason: >-
+  本卡冻结 candidate 计时从 2026-07-31 18:38:42 +08:00 开始；
+  candidateDeadlineMinutes=35 的边界为 19:13:42，hardFuseWallMinutes=125
+  的边界为 20:43:42。恢复执行于 2026-08-01 14:25:31 +08:00 只读复核时
+  才重新观察到仓库，分别已超出 69,109 秒和 63,709 秒。任务卡、
+  task-delivery-flow Skill 与机器策略均没有 systemError 暂停计时例外，
+  因此不得自行忽略 deadline。冻结 targeted matrix、独立 Reviewer、
+  Windows/WSL exact-tree 和 candidate canonical 均未运行，不能声称 PASS；
+  macOS 保持 DEFERRED_NOT_CLAIMED，GitHub Actions 保持 NOT_RUN_QUOTA、
+  dispatch=0。保留中断时已有的三文件未验证 worktree 工作，精确记录其
+  SHA-256，但它没有形成冻结 Candidate Commit/Tree，不能释放 TASK-0055；
+  hard-fuse 恢复后只执行 Evidence/Handoff、一次 pre-closure、终态提交、
+  push 与 remote 0/0 收口，故本卡按事实 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:

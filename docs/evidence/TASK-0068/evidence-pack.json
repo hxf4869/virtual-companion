@@ -1,0 +1,305 @@
+{
+  "taskId": "TASK-0068",
+  "baseCommit": "0be905ab953975476802a5f1e0eef68b978635d2",
+  "headCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+  "contextFingerprint": "b1a452ee281211a2276aad246917c8e6d8953575cfbe2dfa76f7f64d09a6a01d",
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_policy_is_registered_and_fail_closed scripts.harness.tests.test_harness.CiExecutionPolicyTests.test_policy_rejects_unknown_quota_downgrade_and_false_platform_pass scripts.harness.tests.test_harness.DeliveryPolicyTests.test_policy_registry_skill_and_entrypoint_projection scripts.harness.tests.test_harness.DeliveryPolicyTests.test_durable_command_canonical_byte_domain_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0067_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_task0067_terminal_missing_reviewer_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_task0068_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.IntegrationTests.test_doctor_accepts_current_task",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: the 35-minute candidate deadline and 125-minute hard fuse had both fired before the resumed task observed the repository. No frozen targeted execution, durable receipt, complete output, or real exit exists, so no PASS or FAIL is claimed.",
+      "environment": "Windows; deliberately not run after the frozen budget stop conditions",
+      "verifiedCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AS_FROZEN_CANDIDATE_CHECK: a late read-only continuation diagnostic returned exit 0 at 2026-08-01T14:25:31+08:00, but it ran after both budget fuses on an uncommitted, non-frozen snapshot and without the required atomic receipt. It is recorded separately and is not a candidate PASS.",
+      "environment": "Windows late closure diagnostic only; no frozen candidate identity",
+      "verifiedCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0068 frozen candidate",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: no targeted PASS or frozen Candidate Commit/Tree existed before the candidate deadline; the hard fuse also forbids starting Reviewer work.",
+      "environment": "Independent fork_turns=none Reviewer; deliberately not started",
+      "verifiedCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0068",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: Windows exact-tree validation requires targeted and Reviewer PASS on a frozen clean Candidate Commit/Tree; none existed before the budget fuses.",
+      "environment": "Windows exact-tree channel; deliberately not dispatched",
+      "verifiedCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0068",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_DUE_STOP_CONDITION: WSL exact-tree validation is sequenced after targeted, Reviewer, and Windows PASS; those prerequisites were absent and the hard fuse forbids dispatch.",
+      "environment": "Ubuntu-24.04 WSL exact-tree channel; deliberately not dispatched",
+      "verifiedCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0068",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: no controlled macOS environment was available and no macOS PASS is claimed.",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0068",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_QUOTA: OWNER_SUPPLIED_QUOTA_EXHAUSTED records 2,000/2,000 included minutes used, USD 0 paid budget, Stop usage enabled, reset date 2026-08-01, and dispatch=0. No workflow dispatch or probe occurred; this is not PASS.",
+      "environment": "GitHub Actions; deliberately not dispatched",
+      "verifiedCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "channel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "NOT_FORMED",
+    "candidateCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+    "candidateTree": "5e160c07de7ab81a03c5007c7d3c10895a53bfa5",
+    "candidateIdentityUse": "LAST_COMMITTED_ACTIVITY_ANCHOR_ONLY",
+    "cleanSnapshot": {
+      "candidateCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+      "candidateTree": "5e160c07de7ab81a03c5007c7d3c10895a53bfa5",
+      "worktreeClean": false,
+      "indexClean": true
+    },
+    "results": [
+      {
+        "platform": "windows",
+        "status": "NOT_RUN",
+        "reasonCode": "NOT_RUN_DUE_STOP_CONDITION",
+        "taskId": "TASK-0068",
+        "candidateCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+        "candidateTree": "5e160c07de7ab81a03c5007c7d3c10895a53bfa5",
+        "executions": 0
+      },
+      {
+        "platform": "wslUbuntu",
+        "status": "NOT_RUN",
+        "reasonCode": "NOT_RUN_DUE_STOP_CONDITION",
+        "taskId": "TASK-0068",
+        "candidateCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+        "candidateTree": "5e160c07de7ab81a03c5007c7d3c10895a53bfa5",
+        "executions": 0
+      }
+    ],
+    "notCovered": [],
+    "deferred": [
+      {
+        "platform": "macos",
+        "status": "DEFERRED_NOT_CLAIMED",
+        "residualRisk": "No controlled macOS behavior, filesystem semantics, shell behavior, or toolchain compatibility was observed; no macOS PASS is claimed.",
+        "followUpCondition": "Run the same freshly frozen exact-tree profile on a controlled macOS host under TASK-0069 when one becomes available."
+      }
+    ],
+    "remote": {
+      "platform": "githubActions",
+      "status": "NOT_RUN_QUOTA",
+      "reasonType": "OWNER_SUPPLIED_QUOTA_EXHAUSTED",
+      "includedMinutes": 2000,
+      "usedMinutes": 2000,
+      "paidBudgetUsd": 0,
+      "stopUsageEnabled": true,
+      "resetDate": "2026-08-01",
+      "dispatchCount": 0
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "profileConformance": "NOT_CLAIMED",
+      "reason": "The inherited interrupted worktree contains three pre-existing non-terminal-metadata paths. They are retained without further implementation to avoid discarding work, but no verified implementation candidate exists.",
+      "lastCommittedActivityCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+      "lastCommittedActivityTree": "5e160c07de7ab81a03c5007c7d3c10895a53bfa5",
+      "implementationPathsChangedAfterLastCommittedActivity": [
+        ".harness/ci-execution-policy.yaml",
+        ".harness/task-backlog.yaml",
+        "docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md"
+      ],
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "commit": "0be905ab953975476802a5f1e0eef68b978635d2",
+      "tree": "d0aeef9857e0fd2b366bebe7162bb282d94ec830",
+      "originMain": "0be905ab953975476802a5f1e0eef68b978635d2",
+      "ahead": 0,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "lifecycle": {
+      "draftCommit": "c8ab501ff17be921a459df8fa8b25d6a99e86e3b",
+      "readyAuthorizationCommit": "31c4937fbe576c2ada3682ab2269006b824bea82",
+      "authorizationBindingCommit": "3361ea4da6f757124a83dcb3af42bfd70bbfe5a2",
+      "inProgressCommit": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+      "inReviewCandidateCommit": null
+    },
+    "transportPreflight": {
+      "status": "PASS",
+      "kind": "NO_REPOSITORY_SIDE_EFFECT_EXIT_7_SMOKE",
+      "timing": "BEFORE_DRAFT",
+      "innerExitCode": 7,
+      "receiptSha256": "cc3617be45c3acd8a2200132a7d81f75108ceae6790a05c234c8c617db3a12d1",
+      "candidatePassAlias": false
+    },
+    "preClosureRequest": {
+      "path": "docs/evidence/TASK-0068/pre-closure-request.json",
+      "argv": [
+        "scripts/harness/doctor.py",
+        "--task",
+        "TASK-0068",
+        "--pre-closure"
+      ],
+      "executionLimit": 1,
+      "resultBinding": "The atomic receipt is produced after this immutable Evidence pack is staged and therefore is reported after execution without rewriting the staged closure snapshot."
+    },
+    "retainedInterruptedWorktree": {
+      "status": "NON_PASS",
+      "candidateFrozen": false,
+      "candidateCommit": null,
+      "candidateTree": null,
+      "observedAgainstHead": "101a3c7b5e711b3fcea049a60a8ed332149c4cc9",
+      "observedAgainstTree": "5e160c07de7ab81a03c5007c7d3c10895a53bfa5",
+      "files": [
+        {
+          "path": ".harness/ci-execution-policy.yaml",
+          "sha256": "70de802d950fc329d8517b6772d1a73439038555ecb408a7f99f43a4d24cb281"
+        },
+        {
+          "path": ".harness/task-backlog.yaml",
+          "sha256": "a82eab59828d2c4f8b2009a3263b47cce0a62f8b3ddbe87bbe6d164e79b50a66"
+        },
+        {
+          "path": "docs/tasks/TASK-0055-idle-planning-checkpoint-core-replacement.md",
+          "sha256": "1b449462ad10989256987b7d26315812c4dcb2929c6ce7568633dec76f9c4394"
+        }
+      ],
+      "implementationEditsAfterResume": false,
+      "validationClaimed": false,
+      "dependencyReleaseClaimed": false
+    },
+    "lateReadOnlyDiffCheck": {
+      "observedAt": "2026-08-01T14:25:31+08:00",
+      "exitCode": 0,
+      "frozenCandidateCheck": false,
+      "durableReceiptAvailable": false,
+      "candidatePassAlias": false
+    },
+    "targetedMatrix": {
+      "status": "NOT_RUN_DUE_STOP_CONDITION",
+      "executions": 0,
+      "receiptAvailable": false,
+      "completeStdoutAvailable": false,
+      "completeStderrAvailable": false,
+      "exitCode": null,
+      "passClaimed": false,
+      "failClaimed": false
+    },
+    "review": {
+      "status": "NOT_RUN_DUE_STOP_CONDITION",
+      "roundsUsed": 0,
+      "verdict": null
+    },
+    "stopCondition": {
+      "status": "FIRED",
+      "reasonCodes": [
+        "CANDIDATE_DEADLINE_WITHOUT_FROZEN_TARGETED_PASS",
+        "HARD_FUSE_REACHED"
+      ],
+      "systemErrorPausesBudget": false,
+      "pauseAuthorizationFound": false,
+      "implementationStopped": true,
+      "fixesStopped": true,
+      "reviewStopped": true,
+      "candidateCanonicalStopped": true,
+      "windowsValidationStopped": true,
+      "wslValidationStopped": true,
+      "githubDispatchStopped": true
+    },
+    "wallClock": {
+      "startedAt": "2026-07-31T18:38:42+08:00",
+      "candidateDeadlineMinutes": 35,
+      "candidateDeadlineBoundary": "2026-07-31T19:13:42+08:00",
+      "hardFuseWallMinutes": 125,
+      "hardFuseBoundary": "2026-07-31T20:43:42+08:00",
+      "stopObservedAt": "2026-08-01T14:25:31.157+08:00",
+      "elapsedSecondsAtObservation": 71209,
+      "candidateDeadlineOverrunSecondsAtObservation": 69109,
+      "hardFuseOverrunSecondsAtObservation": 63709
+    },
+    "closureOnlyOverrun": {
+      "allowedBy": ".harness/task-delivery-policy.yaml budgets.hardFuse.mandatoryTerminalClosure",
+      "implementationForbidden": true,
+      "preExistingInterruptedWorktreeRetained": true,
+      "allowedActionsOnly": [
+        "EVIDENCE_HANDOFF",
+        "PRE_CLOSURE",
+        "TERMINAL_COMMIT",
+        "PUSH",
+        "REMOTE_ZERO_ZERO"
+      ],
+      "rootCause": "The repository was not resumed for terminal handling until the next calendar day. A prior visible TASK-0068 task ended in systemError with no diagnostic, but no causal platform root cause or budget pause is inferred."
+    },
+    "systemErrorRecovery": {
+      "classification": "SYSTEM_ERROR_UNRECOVERABLE",
+      "diagnosticUnavailable": true,
+      "rootCauseInferred": false,
+      "budgetPauseInferred": false,
+      "observations": [
+        {
+          "scope": "original-visible-task",
+          "approximateStart": "2026-07-31T18:34:00+08:00",
+          "observedDurationSeconds": 7,
+          "threadStatusType": "systemError",
+          "turnError": null,
+          "exactExternalTimeAvailable": false
+        },
+        {
+          "scope": "resumed-closure",
+          "observedAt": "2026-08-01T14:25:31.157+08:00",
+          "source": "coordinator-read-only-handoff-and-repository",
+          "preExistingUncommittedFiles": 3
+        }
+      ]
+    },
+    "numberingAndBacklog": {
+      "idPolicy": "PERMANENT_NEVER_REUSE",
+      "task0065": "Reserved for GitHub explicit dispatch and quota-scheduling governance",
+      "nextPermanentReplacementId": "TASK-0069",
+      "task0055State": "PLANNED",
+      "task0055Dependencies": [
+        "TASK-0068"
+      ],
+      "task0055Promotion": "BLOCKED_BY_REJECTED_DEPENDENCY",
+      "task0013Promotion": "HELD"
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so that commit and tree cannot self-reference their own hashes. The sole pre-closure receipt and exact terminal commit/tree are reported after execution, commit, push, and remote verification."
+    }
+  }
+}
