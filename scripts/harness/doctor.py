@@ -162,11 +162,21 @@ TASK_DELIVERY_POLICY_CANONICAL_HASH = (
     "a36a09e3fb238eb61af9981fc3ac725e0da92ded0f579afe08f56ec35b485498"
 )
 TASK_DELIVERY_SKILL_CANONICAL_HASH = (
-    "a536e858170cbfe32552e01e2c791f990060df4c97c972bf0b183aae3f25a70e"
+    "3e9025eeb270e808c20a222dc829daec2a252f1e59d96c3e46382fd64477e360"
 )
 CI_EXECUTION_POLICY_CANONICAL_HASH = (
-    "8f18596eec3d74d46b0b6383804d91a292c3e6d3cb60a488ea855fa545804039"
+    "84201ace45b433b6c08b9a935c4126f00370693001d124cb3f39700f6a6111d0"
 )
+TASK_0072_BOOTSTRAP_RECORD_ID = "OWNER-MAINT-20260801-READY-GREENLINE-01"
+TASK_0072_BOOTSTRAP_TASK_ID = "TASK-0072"
+TASK_0072_SOURCE_TERMINAL_COMMIT = "a737f22362185ed47e81ecabef5c17b22fb52e18"
+TASK_0072_SOURCE_TERMINAL_TREE = "e83e352a9805e84e1996115924a33686fdd79d1e"
+TASK_0072_RETAINED_BASE_COMMIT = "9725e74019b7a102ff8e848beec466bac7044987"
+TASK_0072_RETAINED_BASE_TREE = "cf89d92a6dc311ee99ca2d2e394df11b05c9e174"
+TASK_0072_MAINTENANCE_HANDOFF_COMMIT = (
+    "60b09ec198a0c37b2345576d3cc593bfbe887bd5"
+)
+TASK_0072_MAINTENANCE_HANDOFF_TREE = "dceb360cbd14d9112b241e5889b0498c05df317f"
 DURABLE_COMMAND_CANONICAL_PATH = "scripts/harness/durable_command.ps1"
 DURABLE_COMMAND_CANONICAL_HASH = (
     "fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180"
@@ -3292,6 +3302,153 @@ def canonical_json_sha256(value: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def task0072_policy_projection(policy: dict[str, Any]) -> dict[str, Any]:
+    projection = json.loads(json.dumps(policy, ensure_ascii=False))
+    try:
+        doctor_identity = projection["task0072SelfBootstrap"]["boundary"]["files"][
+            "doctor"
+        ]
+        doctor_identity["blobOid"] = "<BOUNDARY_DOCTOR_BLOB_OID>"
+        doctor_identity["sha256"] = "<BOUNDARY_DOCTOR_SHA256>"
+    except (KeyError, TypeError):
+        pass
+    return projection
+
+
+def validate_task0072_self_bootstrap_record(
+    audit: Audit,
+    policy: dict[str, Any],
+) -> dict[str, Any] | None:
+    record = policy.get("task0072SelfBootstrap")
+    audit.require(
+        isinstance(record, dict),
+        "TASK-0072 self-bootstrap: machine record is missing or not an object",
+    )
+    if not isinstance(record, dict):
+        return None
+    audit.require(
+        set(record)
+        == {
+            "schemaVersion",
+            "recordId",
+            "decisionId",
+            "kind",
+            "targetTask",
+            "sourceThreadId",
+            "authorization",
+            "sourceTerminal",
+            "retainedChain",
+            "boundary",
+            "activation",
+            "consumption",
+            "validationChannel",
+            "forbiddenInterfaces",
+        },
+        "TASK-0072 self-bootstrap: record fields do not match the exact schema",
+    )
+    audit.require(
+        record.get("schemaVersion") == 1
+        and record.get("recordId") == TASK_0072_BOOTSTRAP_RECORD_ID
+        and record.get("decisionId") == "TASK-0072-SELF-BOOTSTRAP-20260802"
+        and record.get("kind")
+        == "OWNER_AUTHORIZED_EXACT_ONE_TIME_SELF_BOOTSTRAP"
+        and record.get("targetTask") == TASK_0072_BOOTSTRAP_TASK_ID
+        and record.get("sourceThreadId")
+        == "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+        "TASK-0072 self-bootstrap: record identity drifted",
+    )
+    audit.require(
+        record.get("sourceTerminal")
+        == {
+            "taskId": "TASK-0070",
+            "state": "REJECTED",
+            "commit": TASK_0072_SOURCE_TERMINAL_COMMIT,
+            "tree": TASK_0072_SOURCE_TERMINAL_TREE,
+        },
+        "TASK-0072 self-bootstrap: source terminal binding drifted",
+    )
+    boundary = record.get("boundary")
+    audit.require(
+        isinstance(boundary, dict)
+        and set(boundary)
+        == {
+            "directParentCommit",
+            "directParentTree",
+            "singleParentRequired",
+            "changedPaths",
+            "requiredMode",
+            "requiredType",
+            "policyContentBinding",
+            "files",
+        }
+        and boundary.get("directParentCommit")
+        == TASK_0072_MAINTENANCE_HANDOFF_COMMIT
+        and boundary.get("directParentTree")
+        == TASK_0072_MAINTENANCE_HANDOFF_TREE
+        and boundary.get("singleParentRequired") is True
+        and boundary.get("requiredMode") == "100644"
+        and boundary.get("requiredType") == "blob"
+        and boundary.get("policyContentBinding")
+        == "CANONICAL_JSON_REDACT_BOUNDARY_DOCTOR_IDENTITY",
+        "TASK-0072 self-bootstrap: boundary contract drifted",
+    )
+    audit.require(
+        record.get("activation")
+        == {
+            "draftBaseTask": TASK_0072_BOOTSTRAP_TASK_ID,
+            "ledgerAbsenceRequired": True,
+            "copiedRecordForbidden": True,
+            "extraCommitOrPathForbidden": True,
+        },
+        "TASK-0072 self-bootstrap: activation contract drifted",
+    )
+    audit.require(
+        record.get("consumption")
+        == {
+            "consumedByTask": TASK_0072_BOOTSTRAP_TASK_ID,
+            "consumedWhenLedgerRegistered": True,
+            "inertAfterTerminal": True,
+            "reusableByOtherTask": False,
+        },
+        "TASK-0072 self-bootstrap: consumption contract drifted",
+    )
+    audit.require(
+        record.get("validationChannel")
+        == {
+            "channel": "LOCAL_EXACT_TREE_FALLBACK",
+            "profile": "HARNESS_PORTABILITY_LOCAL",
+            "windows": "PASS_REQUIRED",
+            "wslUbuntu": "PASS_REQUIRED",
+            "macos": "DEFERRED_NOT_CLAIMED",
+            "githubActions": "UNKNOWN_NOT_RUN",
+            "githubReasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+            "dispatchCount": 0,
+            "passClaimed": False,
+        },
+        "TASK-0072 self-bootstrap: validation channel binding drifted",
+    )
+    audit.require(
+        record.get("forbiddenInterfaces")
+        == {
+            "cliFlag": False,
+            "environmentVariable": False,
+            "gitNote": False,
+            "gitReplace": False,
+            "gitGraft": False,
+            "historyRewrite": False,
+            "configurableAllowlist": False,
+            "generalizedOverride": False,
+        },
+        "TASK-0072 self-bootstrap: forbidden-interface contract drifted",
+    )
+    audit.require(
+        canonical_json_sha256(task0072_policy_projection(policy))
+        == CI_EXECUTION_POLICY_CANONICAL_HASH,
+        "ci-execution-policy: TASK-0072 projected canonical contract hash drifted",
+    )
+    return record
+
+
 def is_planning_only_task(task: dict[str, Any]) -> bool:
     state = str(task.get("state", ""))
     if state == "PLANNED":
@@ -4391,6 +4548,9 @@ def validate_task_base_handoff_anchors(
                 audit.error(f"{task_id}: cannot verify legacy bootstrap boundary: {exc}")
             continue
         base_commit = str(task.get("baseCommit", ""))
+        if task_id == TASK_0072_BOOTSTRAP_TASK_ID:
+            validate_task0072_self_bootstrap_boundary(audit, base_commit)
+            continue
         try:
             base_state = yaml_at_commit(base_commit, PROJECT_STATE_PATH)
             previous_task_id = str(base_state.get("lastTerminalTask", ""))
@@ -8046,6 +8206,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "task0067Recovery",
             "task0068Recovery",
             "task0069Recovery",
+            "task0072SelfBootstrap",
             "rules",
         },
         "ci-execution-policy: root fields do not match the frozen machine contract",
@@ -8619,10 +8780,35 @@ def validate_ci_execution_policy(audit: Audit) -> None:
         except OSError as exc:
             audit.error(f"ci-execution-policy: cannot read TASK-0063 anchor {path}: {exc}")
     audit.require(
-        canonical_json_sha256(policy) == CI_EXECUTION_POLICY_CANONICAL_HASH,
+        canonical_json_sha256(task0072_policy_projection(policy))
+        == CI_EXECUTION_POLICY_CANONICAL_HASH,
         "ci-execution-policy: canonical contract hash drifted; update the C4 "
         "validator and tests in the same authorized change",
     )
+    record = validate_task0072_self_bootstrap_record(audit, policy)
+    if isinstance(record, dict):
+        boundary = record.get("boundary")
+        files = boundary.get("files") if isinstance(boundary, dict) else {}
+        doctor_identity = files.get("doctor") if isinstance(files, dict) else {}
+        doctor_path = (
+            str(doctor_identity.get("path", ""))
+            if isinstance(doctor_identity, dict)
+            else ""
+        )
+        try:
+            audit.require(
+                doctor_path == "scripts/harness/doctor.py"
+                and hashlib.sha256(
+                    read_repository_bytes(ROOT / doctor_path)
+                ).hexdigest()
+                == doctor_identity.get("sha256"),
+                "ci-execution-policy: TASK-0072 Doctor content binding drifted",
+            )
+        except OSError as exc:
+            audit.error(
+                "ci-execution-policy: cannot read TASK-0072 bound Doctor: "
+                f"{exc}"
+            )
 
 
 def durable_command_byte_metrics(content: bytes) -> dict[str, Any]:
@@ -9002,12 +9188,12 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         == [
             {
                 "id": "task-delivery-flow",
-                "version": "1.3.0",
+                "version": "1.3.1",
                 "path": "skills/task-delivery-flow/SKILL.md",
             }
         ],
         "task-delivery-policy: task-delivery-flow must be registered exactly once "
-        "at version 1.3.0",
+        "at version 1.3.1",
     )
     invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
     delivery_invariants = (
@@ -10060,6 +10246,244 @@ def validate_required_command_coverage(
             )
 
 
+def task0072_bootstrap_boundary_candidate(commit: str) -> bool:
+    if not FULL_COMMIT_RE.fullmatch(commit):
+        return False
+    parent_result = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        commit,
+        check=False,
+    )
+    return (
+        parent_result.returncode == 0
+        and parent_result.stdout.split()
+        == [commit, TASK_0072_MAINTENANCE_HANDOFF_COMMIT]
+    )
+
+
+def task0072_bootstrap_consumed() -> bool:
+    try:
+        ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError):
+        return True
+    entries = ledger.get("tasks")
+    return not isinstance(entries, dict) or TASK_0072_BOOTSTRAP_TASK_ID in entries
+
+
+def validate_task0072_self_bootstrap_boundary(
+    audit: Audit,
+    boundary_commit: str,
+) -> bool:
+    initial_errors = len(audit.errors)
+    audit.require(
+        bool(FULL_COMMIT_RE.fullmatch(boundary_commit)),
+        "TASK-0072 self-bootstrap: boundary must be a full Git commit",
+    )
+    if not FULL_COMMIT_RE.fullmatch(boundary_commit):
+        return False
+    try:
+        policy = yaml_at_commit(boundary_commit, CI_EXECUTION_POLICY_PATH)
+        record = validate_task0072_self_bootstrap_record(audit, policy)
+        if record is None:
+            return False
+        audit.require(
+            task0072_bootstrap_boundary_candidate(boundary_commit),
+            "TASK-0072 self-bootstrap: boundary must be the direct single-parent "
+            "child of the exact maintenance handoff",
+        )
+        graph = git_text(
+            "rev-list",
+            "--reverse",
+            "--ancestry-path",
+            f"{TASK_0072_SOURCE_TERMINAL_COMMIT}..{boundary_commit}",
+        ).stdout.splitlines()
+        audit.require(
+            graph
+            == [
+                TASK_0072_RETAINED_BASE_COMMIT,
+                TASK_0072_MAINTENANCE_HANDOFF_COMMIT,
+                boundary_commit,
+            ],
+            "TASK-0072 self-bootstrap: retained ancestry contains an extra, missing, "
+            "or reordered commit",
+        )
+        retained_chain = record.get("retainedChain")
+        audit.require(
+            isinstance(retained_chain, list) and len(retained_chain) == 2,
+            "TASK-0072 self-bootstrap: retainedChain must contain exactly two edges",
+        )
+        if isinstance(retained_chain, list):
+            expected_chain = [
+                (
+                    TASK_0072_RETAINED_BASE_COMMIT,
+                    TASK_0072_RETAINED_BASE_TREE,
+                    TASK_0072_SOURCE_TERMINAL_COMMIT,
+                ),
+                (
+                    TASK_0072_MAINTENANCE_HANDOFF_COMMIT,
+                    TASK_0072_MAINTENANCE_HANDOFF_TREE,
+                    TASK_0072_RETAINED_BASE_COMMIT,
+                ),
+            ]
+            for index, expected in enumerate(expected_chain):
+                if index >= len(retained_chain):
+                    break
+                item = retained_chain[index]
+                label = f"TASK-0072 self-bootstrap: retainedChain[{index}]"
+                audit.require(
+                    isinstance(item, dict)
+                    and set(item) == {"commit", "tree", "parent", "changedFiles"},
+                    f"{label} fields do not match the exact schema",
+                )
+                if not isinstance(item, dict):
+                    continue
+                commit, tree, parent = expected
+                audit.require(
+                    item.get("commit") == commit
+                    and item.get("tree") == tree
+                    and item.get("parent") == parent,
+                    f"{label} commit/tree/parent binding drifted",
+                )
+                parent_graph = git_text(
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    commit,
+                ).stdout.split()
+                audit.require(
+                    parent_graph == [commit, parent],
+                    f"{label} is not the exact single-parent edge",
+                )
+                actual_tree = git_text("show", "-s", "--format=%T", commit).stdout.strip()
+                audit.require(actual_tree == tree, f"{label} tree drifted")
+                files = item.get("changedFiles")
+                files = files if isinstance(files, dict) else {}
+                actual_paths = changed_paths_between(parent, commit)
+                audit.require(
+                    actual_paths == sorted(files),
+                    f"{label} changed path set drifted",
+                )
+                for path, identity in files.items():
+                    audit.require(
+                        isinstance(identity, dict)
+                        and set(identity) == {"mode", "type", "blobOid", "sha256"},
+                        f"{label} file identity schema drifted: {path}",
+                    )
+                    if not isinstance(identity, dict):
+                        continue
+                    entry = git_tree_entry(commit, path)
+                    audit.require(
+                        entry
+                        == (
+                            identity.get("mode"),
+                            identity.get("type"),
+                            identity.get("blobOid"),
+                        ),
+                        f"{label} Git blob identity drifted: {path}",
+                    )
+                    audit.require(
+                        hashlib.sha256(git_object(commit, path)).hexdigest()
+                        == identity.get("sha256"),
+                        f"{label} content hash drifted: {path}",
+                    )
+
+        boundary = record.get("boundary")
+        boundary = boundary if isinstance(boundary, dict) else {}
+        expected_paths = boundary.get("changedPaths")
+        expected_paths = expected_paths if isinstance(expected_paths, list) else []
+        audit.require(
+            expected_paths == sorted(expected_paths)
+            and len(expected_paths) == len(set(expected_paths)),
+            "TASK-0072 self-bootstrap: boundary changedPaths must be sorted and unique",
+        )
+        audit.require(
+            changed_paths_between(
+                TASK_0072_MAINTENANCE_HANDOFF_COMMIT,
+                boundary_commit,
+            )
+            == expected_paths,
+            "TASK-0072 self-bootstrap: boundary contains an extra or missing path",
+        )
+        files = boundary.get("files")
+        files = files if isinstance(files, dict) else {}
+        audit.require(
+            set(files) == {"doctor", "exactFiles"},
+            "TASK-0072 self-bootstrap: boundary file binding schema drifted",
+        )
+        doctor_identity = files.get("doctor")
+        doctor_identity = doctor_identity if isinstance(doctor_identity, dict) else {}
+        exact_files = files.get("exactFiles")
+        exact_files = exact_files if isinstance(exact_files, dict) else {}
+        policy_path = CI_EXECUTION_POLICY_PATH
+        doctor_path = str(doctor_identity.get("path", ""))
+        audit.require(
+            set(exact_files) == set(expected_paths) - {policy_path, doctor_path},
+            "TASK-0072 self-bootstrap: exact boundary file set drifted",
+        )
+        for path in expected_paths:
+            entry = git_tree_entry(boundary_commit, path)
+            audit.require(
+                entry is not None
+                and entry[:2]
+                == (boundary.get("requiredMode"), boundary.get("requiredType")),
+                f"TASK-0072 self-bootstrap: boundary mode/type drifted: {path}",
+            )
+        doctor_entry = git_tree_entry(boundary_commit, doctor_path)
+        audit.require(
+            set(doctor_identity) == {"path", "blobOid", "sha256"}
+            and doctor_entry is not None
+            and doctor_entry[2] == doctor_identity.get("blobOid")
+            and hashlib.sha256(git_object(boundary_commit, doctor_path)).hexdigest()
+            == doctor_identity.get("sha256"),
+            "TASK-0072 self-bootstrap: Doctor blob/content binding drifted",
+        )
+        for path, identity in exact_files.items():
+            audit.require(
+                isinstance(identity, dict)
+                and set(identity) == {"blobOid", "sha256"},
+                f"TASK-0072 self-bootstrap: exact file identity schema drifted: {path}",
+            )
+            if not isinstance(identity, dict):
+                continue
+            entry = git_tree_entry(boundary_commit, path)
+            audit.require(
+                entry is not None
+                and entry[2] == identity.get("blobOid")
+                and hashlib.sha256(git_object(boundary_commit, path)).hexdigest()
+                == identity.get("sha256"),
+                f"TASK-0072 self-bootstrap: exact file blob/content drifted: {path}",
+            )
+        authorization = record.get("authorization")
+        authorization = authorization if isinstance(authorization, dict) else {}
+        authorization_path = str(authorization.get("path", ""))
+        audit.require(
+            set(authorization) == {"path", "sha256"}
+            and authorization_path in exact_files
+            and authorization.get("sha256")
+            == exact_files.get(authorization_path, {}).get("sha256"),
+            "TASK-0072 self-bootstrap: Owner authorization binding drifted",
+        )
+        task_paths = repository_paths_at_commit(boundary_commit)
+        audit.require(
+            not any(
+                path.startswith("docs/tasks/TASK-0072")
+                or path.startswith("docs/tasks/context/TASK-0072")
+                or path.startswith("docs/evidence/TASK-0072/")
+                or path == "docs/handoffs/TASK-0072.json"
+                for path in task_paths
+            ),
+            "TASK-0072 self-bootstrap: boundary must precede every TASK-0072 "
+            "lifecycle artifact",
+        )
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+        audit.error(f"TASK-0072 self-bootstrap: cannot verify exact boundary: {exc}")
+    return len(audit.errors) == initial_errors
+
+
 def validate_idle_terminal_paths(audit: Audit, task_id: str, paths: list[str]) -> None:
     audit.require(
         not paths,
@@ -10073,24 +10497,31 @@ def validate_idle_terminal_history(
     terminal_commit: str,
 ) -> None:
     head_commit = git_text("rev-parse", "HEAD").stdout.strip()
+    effective_terminal = terminal_commit
+    if (
+        task_id == "TASK-0070"
+        and task0072_bootstrap_boundary_candidate(head_commit)
+        and validate_task0072_self_bootstrap_boundary(audit, head_commit)
+    ):
+        effective_terminal = head_commit
     audit.require(
-        head_commit == terminal_commit,
+        head_commit == effective_terminal,
         f"{task_id}: HEAD advanced after terminal commit without a new DRAFT or active task",
     )
     validate_idle_terminal_paths(
         audit,
         task_id,
-        changed_paths(terminal_commit),
+        changed_paths(effective_terminal),
     )
     snapshot = _ACTIVE_GIT_SNAPSHOT
     index_unchanged = (
-        snapshot.index_matches_tree(terminal_commit)
+        snapshot.index_matches_tree(effective_terminal)
         if snapshot is not None
         else git_text(
             "diff",
             "--cached",
             "--quiet",
-            terminal_commit,
+            effective_terminal,
             "--",
             check=False,
         ).returncode == 0
@@ -10874,6 +11305,17 @@ def validate_draft_base_anchor(
     base_commit: str,
     terminal_commit: str | None,
 ) -> None:
+    if task_id == TASK_0072_BOOTSTRAP_TASK_ID:
+        audit.require(
+            terminal_commit == TASK_0072_SOURCE_TERMINAL_COMMIT,
+            "TASK-0072 self-bootstrap: DRAFT source terminal boundary drifted",
+        )
+        audit.require(
+            not task0072_bootstrap_consumed(),
+            "TASK-0072 self-bootstrap: DRAFT anchor is already consumed by Task Ledger",
+        )
+        validate_task0072_self_bootstrap_boundary(audit, base_commit)
+        return
     audit.require(
         terminal_commit is not None and base_commit == terminal_commit,
         f"{task_id}: DRAFT baseCommit must equal the last terminal boundary commit",
@@ -11285,6 +11727,13 @@ def main() -> int:
 
                 with timed_phase("selected task diff scope"):
                     last_terminal_task = str(state.get("lastTerminalTask", ""))
+                    head_commit = git_text("rev-parse", "HEAD").stdout.strip()
+                    task0072_idle_boundary = (
+                        not active_task
+                        and not pending_draft
+                        and last_terminal_task == "TASK-0070"
+                        and task0072_bootstrap_boundary_candidate(head_commit)
+                    )
                     selected_task_id = select_task_for_diff_scope(
                         audit,
                         args.task,
@@ -11305,16 +11754,17 @@ def main() -> int:
                                 tasks,
                                 lifecycle,
                             )
-                        validate_diff_scope(
-                            audit,
-                            selected_task,
-                            skills,
-                            effective_protected_rules(
+                        if not task0072_idle_boundary:
+                            validate_diff_scope(
                                 audit,
                                 selected_task,
-                                protected_rules,
-                            ),
-                        )
+                                skills,
+                                effective_protected_rules(
+                                    audit,
+                                    selected_task,
+                                    protected_rules,
+                                ),
+                            )
                 if args.summary:
                     print_summary(state, tasks, backlog_projection)
             finally:

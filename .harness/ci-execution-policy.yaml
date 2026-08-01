@@ -419,6 +419,184 @@ task0069Recovery:
     GitHub Actions 免费分钟耗尽不能让长线停下，必须有备用方案，例如本地跑或者不跑。
   generalizedSelfDowngradeForbidden: true
   reusableByOtherTask: false
+task0072SelfBootstrap:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260801-READY-GREENLINE-01
+  decisionId: TASK-0072-SELF-BOOTSTRAP-20260802
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_SELF_BOOTSTRAP
+  targetTask: TASK-0072
+  sourceThreadId: 019fb2c1-8104-73b1-81dc-ee8bcfce6f63
+  authorization:
+    path: docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/task-0072-self-bootstrap-authorization.json
+    sha256: 28bee6151de91cbd997c808a21105bc2cfa8413d4a96278018474c4c6ff575b1
+  sourceTerminal:
+    taskId: TASK-0070
+    state: REJECTED
+    commit: a737f22362185ed47e81ecabef5c17b22fb52e18
+    tree: e83e352a9805e84e1996115924a33686fdd79d1e
+  retainedChain:
+    - commit: 9725e74019b7a102ff8e848beec466bac7044987
+      tree: cf89d92a6dc311ee99ca2d2e394df11b05c9e174
+      parent: a737f22362185ed47e81ecabef5c17b22fb52e18
+      changedFiles:
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/authorization.json:
+          mode: "100644"
+          type: blob
+          blobOid: 7b0028c911ca287616bf77431a7224678c7a3243
+          sha256: e09f584deca6a084971872857781427e8e7ca897dfe6e39c1235996faabe296b
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/pre-review-evidence.json:
+          mode: "100644"
+          type: blob
+          blobOid: f8698a0e0c5faf6335e974d4f04410be214f534b
+          sha256: b8ebff300970947f8b35a1548750dfd2915499d82331ca91e298484573144e3b
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-receipt.json:
+          mode: "100644"
+          type: blob
+          blobOid: cdc723a539aa99b8886a141b6a7ec886d4cf4691
+          sha256: 34e559a789710064fdbabe25ad6762255d4ffbbf1d6684d5bbde3b10959d35b2
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-request.json:
+          mode: "100644"
+          type: blob
+          blobOid: bc4c0b70738b02e21356b9ab48dadc711096dc36
+          sha256: 00ccee2314e1c73bb77a901f547ec0240efe388025aa1f598b86070422895547
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-stderr.base64:
+          mode: "100644"
+          type: blob
+          blobOid: 436aea41e12cc839c979b7292b1ebf9b183382d7
+          sha256: d7e281c838e8092c701b09ac26b6b340ce04f8cf7d884f9925d9583b62951392
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-stderr.txt:
+          mode: "100644"
+          type: blob
+          blobOid: 90e1cb60436841b7f31ceadc21e048ea3f585d63
+          sha256: f20cc8e57d7ac55355431e94147078e2134e29c92ef8deeb036cd41421014fe6
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-stdout.base64:
+          mode: "100644"
+          type: blob
+          blobOid: 7bd0cdeb02547c9b358489d69f82c15fd0ed8bd6
+          sha256: 3a71993d116e3e7d65e263da7b95a5d1ac993d14b4bd62a2cdbb44e55baa78a1
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/smoke-stdout.txt:
+          mode: "100644"
+          type: blob
+          blobOid: 50e20bdb4704c11740d6588d46b9bfee44f2e49a
+          sha256: 4a6d84baabce066a6c0a5ee60b6f241ec0ab645cf1b1598247cfea7a4be5549f
+        scripts/harness/doctor.py:
+          mode: "100644"
+          type: blob
+          blobOid: 73fb1daa178e9833d1a2bd250eb7ac8017233ed9
+          sha256: 300dac68707c26b3e6d3b18075389743059aac4034eaa799b459f679f3e175c2
+        scripts/harness/tests/test_harness.py:
+          mode: "100644"
+          type: blob
+          blobOid: 64036184c8577949079d1333f5c53765ee37ecfe
+          sha256: ab9bae340bb437c8751c3d46d3dbef1376fa80841a82a02fd73cefe9deda5347
+    - commit: 60b09ec198a0c37b2345576d3cc593bfbe887bd5
+      tree: dceb360cbd14d9112b241e5889b0498c05df317f
+      parent: 9725e74019b7a102ff8e848beec466bac7044987
+      changedFiles:
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/review-r1.md:
+          mode: "100644"
+          type: blob
+          blobOid: 28f608fee5481ef249e8bbd3dea69f43b14cc8fb
+          sha256: 4b9dd963d19568ce15cd1425b3cc99cd2ce58fff45e8aa26b7b61d2788f4d072
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/windows-receipt.json:
+          mode: "100644"
+          type: blob
+          blobOid: 2a3cbfe3c79527cfa0d79e97922df5f28fc48096
+          sha256: 0208228211925eda2d4a094fd32cb3af1339730a79a5577bb38ad064aee88012
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/windows-request.json:
+          mode: "100644"
+          type: blob
+          blobOid: bc56f0142a250d90a70cf8613e14f7cdc6dd9598
+          sha256: eb6cbdb97e6b66428d2f45d17f0ec8d9a015229e08176dc745fde169f7a5c9b5
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/windows-stderr.base64:
+          mode: "100644"
+          type: blob
+          blobOid: d8e31a7cee2b68800d7ffa71f79dfc9f2d435d18
+          sha256: 81bf078db5daf8fd4d5f4bf09f438aa5bd57f83f87c296db587cfd484252d922
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/windows-stdout.base64:
+          mode: "100644"
+          type: blob
+          blobOid: 22a607efc5f7fad094138beb405813d1dfb77fc5
+          sha256: a1143b78e2075b0981fb950a0d000c5fb62edfed4b7d3c564c8ba80cb32ba284
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/windows-validation-failure.json:
+          mode: "100644"
+          type: blob
+          blobOid: c3f304e77609d82b1dc223a7622cac6ebdacacef
+          sha256: 1ddf05a71d22a0e4191f0a2e711b6cfcd9fcc193a738b1b0669212d22a176198
+        docs/handoffs/OWNER-MAINT-20260801-READY-GREENLINE-01.json:
+          mode: "100644"
+          type: blob
+          blobOid: f05c4698c818ecdf79aa9f3206955a367fa0bac5
+          sha256: e345719b9c214ec16b4b52fea4be33b9dd2b4787c6a14cae7678f36dd8c6bf63
+  boundary:
+    directParentCommit: 60b09ec198a0c37b2345576d3cc593bfbe887bd5
+    directParentTree: dceb360cbd14d9112b241e5889b0498c05df317f
+    singleParentRequired: true
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - .harness/skills.yaml
+      - docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/task-0072-self-bootstrap-authorization.json
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      - skills/harness-change/SKILL.md
+      - skills/task-delivery-flow/SKILL.md
+      - skills/task-intake/SKILL.md
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_BOUNDARY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: 6c934cc3006f6135ba4ad6584c3689aac3b5d6b6
+        sha256: 8cb547e12d73b266071a56586ad9b9e73a3e977907d457414815373032cfb8c1
+      exactFiles:
+        .harness/skills.yaml:
+          blobOid: 8d14ddcd023eefca0dc1de9eec63e289e5ef3fe0
+          sha256: e2af2c72faa73cba89e1f510dda59f4fb6a0f686ddb1676dab3ddbc233713d77
+        docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/task-0072-self-bootstrap-authorization.json:
+          blobOid: 5919f7a40fff03343a64c48fe823de76261380ce
+          sha256: 28bee6151de91cbd997c808a21105bc2cfa8413d4a96278018474c4c6ff575b1
+        scripts/harness/tests/test_harness.py:
+          blobOid: 0d677e1241025036479a9514ad384aa75b8412da
+          sha256: dc9ae907260be91068cff1b21643c579c08f2399321cbaa89c84adfe3ce12340
+        skills/harness-change/SKILL.md:
+          blobOid: e015430a13ceee8a43029222c12c3b887c476141
+          sha256: 6ea4db2a7ec63c7a718b891189a1d0ff94c31e5b06797552d5995931fe814e73
+        skills/task-delivery-flow/SKILL.md:
+          blobOid: 74bf078655bffa31c4952862be914e2801d21e82
+          sha256: 3e9025eeb270e808c20a222dc829daec2a252f1e59d96c3e46382fd64477e360
+        skills/task-intake/SKILL.md:
+          blobOid: 20cdfc0d612dea7b5ef982ecaa7bd33342c167da
+          sha256: 49da36ddb2b43fca10d24e1a1d7f1ba351c375c812ef0d276b568924ecb2bcd1
+  activation:
+    draftBaseTask: TASK-0072
+    ledgerAbsenceRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0072
+    consumedWhenLedgerRegistered: true
+    inertAfterTerminal: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: HARNESS_PORTABILITY_LOCAL
+    windows: PASS_REQUIRED
+    wslUbuntu: PASS_REQUIRED
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: UNKNOWN_NOT_RUN
+    githubReasonType: OWNER_QUOTA_EVIDENCE_EXPIRED
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    generalizedOverride: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

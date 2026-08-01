@@ -3,7 +3,7 @@ name: harness-change
 description: 修改 Agent 规则、Harness 配置、治理脚本、受保护路径、Skill、任务模板、证据 Schema 或 CI 门禁时使用。
 metadata:
   id: harness-change
-  version: 1.1.0
+  version: 1.1.1
   riskClass: C4
 ---
 
@@ -18,6 +18,11 @@ metadata:
 - READY 任务明确列出 `harness-change`、精确版本、C4 风险和人工批准；
 - Base Commit、Context Fingerprint、读写范围、禁止路径、验收和前向修复策略完整；
 - 任务要求独立 Reviewer，且 Harness 变更与业务变更隔离。
+- `OWNER-MAINT-20260801-READY-GREENLINE-01` 仅授权 TASK-0072 的精确自举
+  boundary 在 READY 前写入本 Skill、Doctor、目标测试和登记的机器真源；它不授权
+  第二条记录、可配置白名单、环境变量、CLI flag、历史重写或任何通用 override。
+  boundary 必须是 `60b09ec198a0c37b2345576d3cc593bfbe887bd5` 的单父直接子提交，
+  且 TASK-0072 进入 Task Ledger 后该入口只能作为不可变历史验证，不能再次放行写入。
 
 ## Procedure
 

@@ -6699,6 +6699,146 @@ class ValidationFlowTests(unittest.TestCase):
         self.assertIn("同一条 `git diff --check` 只执行一次", template)
 
 
+class Task0072SelfBootstrapTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+
+    def test_exact_machine_record_is_accepted(self) -> None:
+        audit = Audit()
+        record = doctor.validate_task0072_self_bootstrap_record(audit, self.policy)
+        self.assertIsInstance(record, dict)
+        self.assertEqual([], audit.errors)
+
+    def test_machine_record_mutations_fail_closed(self) -> None:
+        def remove_record_id(policy: dict[str, object]) -> None:
+            policy["task0072SelfBootstrap"].pop("recordId")
+
+        def add_record_field(policy: dict[str, object]) -> None:
+            policy["task0072SelfBootstrap"]["override"] = True
+
+        def copy_record(policy: dict[str, object]) -> None:
+            policy["task0072SelfBootstrapCopy"] = copy.deepcopy(
+                policy["task0072SelfBootstrap"]
+            )
+
+        mutations = {
+            "missing_field": remove_record_id,
+            "extra_field": add_record_field,
+            "copied_record": copy_record,
+            "other_task": lambda value: value["task0072SelfBootstrap"].__setitem__(
+                "targetTask", "TASK-9999"
+            ),
+            "wrong_commit": lambda value: value["task0072SelfBootstrap"][
+                "retainedChain"
+            ][0].__setitem__("commit", "0" * 40),
+            "wrong_tree": lambda value: value["task0072SelfBootstrap"][
+                "sourceTerminal"
+            ].__setitem__("tree", "0" * 40),
+            "extra_path": lambda value: value["task0072SelfBootstrap"]["boundary"][
+                "changedPaths"
+            ].append("README.md"),
+            "wrong_mode": lambda value: value["task0072SelfBootstrap"][
+                "retainedChain"
+            ][0]["changedFiles"][
+                "scripts/harness/doctor.py"
+            ].__setitem__("mode", "100755"),
+            "wrong_blob": lambda value: value["task0072SelfBootstrap"][
+                "retainedChain"
+            ][0]["changedFiles"][
+                "scripts/harness/doctor.py"
+            ].__setitem__("blobOid", "0" * 40),
+            "wrong_content_hash": lambda value: value["task0072SelfBootstrap"][
+                "retainedChain"
+            ][0]["changedFiles"][
+                "scripts/harness/doctor.py"
+            ].__setitem__("sha256", "0" * 64),
+            "reusable": lambda value: value["task0072SelfBootstrap"][
+                "consumption"
+            ].__setitem__("reusableByOtherTask", True),
+            "cli_interface": lambda value: value["task0072SelfBootstrap"][
+                "forbiddenInterfaces"
+            ].__setitem__("cliFlag", True),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                policy = copy.deepcopy(self.policy)
+                mutate(policy)
+                audit = Audit()
+                doctor.validate_task0072_self_bootstrap_record(audit, policy)
+                self.assertTrue(audit.errors, label)
+
+    def test_boundary_candidate_requires_exact_single_parent(self) -> None:
+        boundary = "b" * 40
+        exact = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                f"{boundary} "
+                f"{doctor.TASK_0072_MAINTENANCE_HANDOFF_COMMIT}\n"
+            ),
+            stderr="",
+        )
+        with patch.object(doctor, "git_text", return_value=exact):
+            self.assertTrue(doctor.task0072_bootstrap_boundary_candidate(boundary))
+        wrong_parent = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=f"{boundary} {'c' * 40}\n",
+            stderr="",
+        )
+        with patch.object(doctor, "git_text", return_value=wrong_parent):
+            self.assertFalse(doctor.task0072_bootstrap_boundary_candidate(boundary))
+        extra_parent = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                f"{boundary} {doctor.TASK_0072_MAINTENANCE_HANDOFF_COMMIT} "
+                f"{'d' * 40}\n"
+            ),
+            stderr="",
+        )
+        with patch.object(doctor, "git_text", return_value=extra_parent):
+            self.assertFalse(doctor.task0072_bootstrap_boundary_candidate(boundary))
+
+    def test_draft_anchor_is_task_exact_and_consumed_once(self) -> None:
+        boundary = "b" * 40
+        consumed = Audit()
+        with patch.object(
+            doctor,
+            "task0072_bootstrap_consumed",
+            return_value=True,
+        ), patch.object(
+            doctor,
+            "validate_task0072_self_bootstrap_boundary",
+            return_value=True,
+        ):
+            validate_draft_base_anchor(
+                consumed,
+                "TASK-0072",
+                boundary,
+                doctor.TASK_0072_SOURCE_TERMINAL_COMMIT,
+            )
+        self.assertTrue(
+            any("already consumed" in error for error in consumed.errors),
+            consumed.errors,
+        )
+
+        other_task = Audit()
+        validate_draft_base_anchor(
+            other_task,
+            "TASK-9999",
+            boundary,
+            doctor.TASK_0072_SOURCE_TERMINAL_COMMIT,
+        )
+        self.assertTrue(
+            any(
+                "must equal the last terminal boundary" in error
+                for error in other_task.errors
+            ),
+            other_task.errors,
+        )
+
+
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
     def test_posix_wrapper_falls_back_from_old_python3(self) -> None:

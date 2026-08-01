@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260801-READY-GREENLINE-01",
+  "decisionId": "TASK-0072-SELF-BOOTSTRAP-20260802",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_SELF_BOOTSTRAP",
+  "targetTask": "TASK-0072",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-02",
+  "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+  "exactAuthorization": "授权 TASK-0072 精确自举：允许仅针对 a737f223→9725e740→60b09ec 链和 TASK-0072，增加一次性 machine-recognized maintenance boundary/DRAFT anchor；仅修改必要 Doctor、测试、机器真源及 Skill，禁止泛化或复用。通过独立 Reviewer、canonical Windows/WSL 后完整走 TASK-0072 生命周期；TASK-0071 保留。",
+  "overridesPriorRestrictionOnlyFor": "TASK-0072 exact self-bootstrap of the a737f223->9725e740->60b09ec chain",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalBreakGlassAuthorized": false,
+  "historyRewriteAuthorized": false
+}

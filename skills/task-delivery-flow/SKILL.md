@@ -48,6 +48,23 @@ description: Execute one governed repository task or coordinate a strictly seria
 9. Produce Evidence and Handoff, stage the closure exactly, run pre-closure,
    create the single-parent terminal commit, push, and reverify remote state.
 
+## TASK-0072 exact one-time self-bootstrap
+
+- The only maintenance boundary exception is record
+  `OWNER-MAINT-20260801-READY-GREENLINE-01` for `TASK-0072`.
+- Accept it only when the machine policy and Doctor bind the exact single-parent
+  chain `a737f223` -> `9725e740` -> `60b09ec` -> boundary, including every
+  commit, tree, changed path, Git mode/type, blob identity, and content hash.
+- The boundary must directly parent the TASK-0072 DRAFT. After that DRAFT,
+  ordinary READY, IN_PROGRESS, IN_REVIEW, and terminal checkpoint rules apply.
+- Any other task, a copied record, a second consumption, an extra commit or
+  path, or any changed field fails closed. Once TASK-0072 is in the
+  Task Ledger, the anchor is consumed and inert except for verifying its
+  immutable historical provenance.
+- This is not a break-glass mechanism. No environment variable, CLI flag,
+  Git note, replace, graft, history rewrite, configurable allowlist, or
+  generalized override is authorized.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from

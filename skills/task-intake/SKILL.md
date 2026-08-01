@@ -3,7 +3,7 @@ name: task-intake
 description: 将需要修改仓库的原始需求收口为可审计的 DRAFT/READY 任务；在没有活动任务、需要明确范围、风险、Context Lock、验收或审批时使用。
 metadata:
   id: task-intake
-  version: 1.2.0
+  version: 1.2.1
   riskClass: C1
 ---
 
@@ -36,6 +36,14 @@ metadata:
 2. 确认不存在另一个活动任务；若存在，判断请求是否属于该任务，否则停止并交由 Owner 排序。
 3. 若任务已在 `.harness/task-backlog.yaml` 中登记为 PLANNED，先从最新终态 Base 快照验证它是按执行顺序首个满足全部 ACCEPTED 依赖和 APPROVED 硬决策闸门的任务；硬闸门只接受 `repository-owner`，且 `decisionEvidence` 必须逐项覆盖 `requiredDecisions`，每项同时记录非空 `value` 与 `evidence`。PLANNED 卡只绑定 Backlog 静态规划合同 Hash，正文是非规范渲染；不得包含 Base、授权 Commit、Context、精确命令或 Skill 版本，也不占 `activeTask`、不得执行。
 4. 以最后一个终态提交作为新任务唯一 `baseCommit`，不得先提交其他变更再把它们包含进 Base；创建或晋级唯一 DRAFT 任务卡，保持 Backlog 锁定的目标、范围、禁止项、依赖、验收和决策闸门不变，并补齐失败行为、停止条件和前向修复策略。
+   唯一例外是机器真源中 `recordId=OWNER-MAINT-20260801-READY-GREENLINE-01` 的
+   TASK-0072 精确一次性自举：只有 Doctor 完整验证
+   `a737f22362185ed47e81ecabef5c17b22fb52e18` →
+   `9725e74019b7a102ff8e848beec466bac7044987` →
+   `60b09ec198a0c37b2345576d3cc593bfbe887bd5` →
+   单父 maintenance boundary 的提交、Tree、逐文件 blob/mode/content 绑定后，
+   TASK-0072 的 DRAFT 才能把该 boundary 作为 `baseCommit`。Task Ledger 中一旦出现
+   TASK-0072，该 DRAFT anchor 即已消费；任何其他任务均不得使用或复制它。
 5. 以当前 Base Commit 的仓库相对路径内容生成 Context Lock；外部资料先归档或只记录 provenance，不写入可复验路径。
 6. 解析受保护路径：`requiredSkillVersions` 固定 Base Commit 中实际执行的版本；若任务升级 Skill，另在 `targetSkillVersions` 声明交付版本；同时列出人工批准和独立复核要求。
 7. 需要持久保存 DRAFT 时，只提交字段完整的任务卡与 Context Lock，保持 `project-state.activeTask` 为空；Doctor 不接受同一检查点中的其他路径。
