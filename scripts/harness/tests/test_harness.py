@@ -2701,6 +2701,31 @@ class BacklogTests(unittest.TestCase):
             tasks["TASK-0056"]["planningContractHash"],
         )
 
+    def test_task0071_replacement_is_exact_and_atomic(self) -> None:
+        current, tasks, _, _ = self.load_inputs()
+        child = copy.deepcopy(current)
+        parent = copy.deepcopy(child)
+        parent["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0055"]
+        self.assertTrue(doctor.task0071_planning_repair_projection(parent, child))
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0071_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+        expanded = copy.deepcopy(child)
+        expanded["tasks"]["TASK-0056"]["objective"] += " expanded"
+        self.assertFalse(
+            doctor.task0071_planning_repair_projection(parent, expanded)
+        )
+        self.assertEqual(
+            canonical_json_sha256(child["tasks"]["TASK-0056"]),
+            tasks["TASK-0056"]["planningContractHash"],
+        )
+
     def test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed(
         self,
     ) -> None:
@@ -3509,8 +3534,21 @@ class BacklogTests(unittest.TestCase):
 
     def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
         backlog, tasks, lifecycle, _ = self.load_inputs()
+        historical_tasks = copy.deepcopy(tasks)
+        historical_tasks.pop("TASK-0071", None)
+        historical_tasks["TASK-0069"]["state"] = "ACCEPTED"
+        historical_tasks["TASK-0055"]["state"] = "PLANNED"
+        historical_projection = derive_backlog_promotion_projection(
+            backlog,
+            historical_tasks,
+            lifecycle,
+        )
+        self.assertEqual("TASK-0055", historical_projection["nextPromotable"])
+
         active_tasks = copy.deepcopy(tasks)
-        active_tasks["TASK-0069"]["state"] = "IN_PROGRESS"
+        active_tasks["TASK-0069"]["state"] = "ACCEPTED"
+        active_tasks["TASK-0055"]["state"] = "REJECTED"
+        active_tasks["TASK-0071"]["state"] = "IN_PROGRESS"
         active_projection = derive_backlog_promotion_projection(
             backlog,
             active_tasks,
@@ -3518,7 +3556,7 @@ class BacklogTests(unittest.TestCase):
         )
         self.assertIsNone(active_projection["nextPromotable"])
         self.assertEqual(
-            "TASK-0055",
+            "TASK-0056",
             active_projection["executionOrderFrontier"],
         )
         self.assertIn(
@@ -3531,7 +3569,9 @@ class BacklogTests(unittest.TestCase):
         )
 
         ordered_tasks = copy.deepcopy(tasks)
-        ordered_tasks["TASK-0069"]["state"] = "REJECTED"
+        ordered_tasks["TASK-0069"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0055"]["state"] = "REJECTED"
+        ordered_tasks["TASK-0071"]["state"] = "REJECTED"
         before_replacement_acceptance = derive_backlog_promotion_projection(
             backlog,
             ordered_tasks,
@@ -3539,19 +3579,19 @@ class BacklogTests(unittest.TestCase):
         )
         self.assertIsNone(before_replacement_acceptance["nextPromotable"])
         self.assertEqual(
-            "TASK-0055",
+            "TASK-0056",
             before_replacement_acceptance["executionOrderFrontier"],
         )
         self.assertIn(
-            "DEPENDENCY:TASK-0069:REJECTED",
-            before_replacement_acceptance["blockers"]["TASK-0055"],
+            "DEPENDENCY:TASK-0071:REJECTED",
+            before_replacement_acceptance["blockers"]["TASK-0056"],
         )
         self.assertIn(
-            "WAITING_FOR_ORDER:TASK-0055",
+            "WAITING_FOR_ORDER:TASK-0056",
             before_replacement_acceptance["blockers"]["TASK-0013"],
         )
-        ordered_tasks["TASK-0069"]["state"] = "ACCEPTED"
-        for task_id in ("TASK-0055", "TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
+        ordered_tasks["TASK-0071"]["state"] = "ACCEPTED"
+        for task_id in ("TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
                 ordered_tasks,
@@ -5716,6 +5756,381 @@ class BacklogTests(unittest.TestCase):
             ),
             audit.errors,
         )
+
+
+class IdlePlanningCheckpointTests(unittest.TestCase):
+    TASK_IDS = ("TASK-1001", "TASK-1002", "TASK-1003")
+
+    @staticmethod
+    def git(repository: Path, *args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repository,
+            check=True,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+        ).stdout.strip()
+
+    @staticmethod
+    def entry(task_id: str) -> dict[str, object]:
+        return {
+            "title": f"Fixture {task_id}",
+            "taskCard": f"docs/tasks/{task_id}-fixture.md",
+            "dependencies": [],
+            "decisionGates": [],
+            "objective": f"Resolve {task_id}",
+            "scope": {"in": ["fixture"], "out": ["production"]},
+            "forbidden": ["extra paths"],
+            "acceptanceCriteria": ["atomic resolution"],
+            "promotionConditions": {
+                "requiresRepositoryIdle": True,
+                "requiresAcceptedDependencies": True,
+                "requiresApprovedDecisionGates": True,
+                "requiresFirstByExecutionOrder": True,
+            },
+        }
+
+    @staticmethod
+    def metadata(
+        task_id: str,
+        entry: dict[str, object],
+        resolution: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        value: dict[str, object] = {
+            "taskId": task_id,
+            "state": resolution["state"] if resolution else "PLANNED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
+        if resolution is not None:
+            value["planningResolution"] = resolution
+        return value
+
+    @classmethod
+    def write_card(
+        cls,
+        repository: Path,
+        task_id: str,
+        entry: dict[str, object],
+        resolution: dict[str, object] | None = None,
+        *,
+        metadata_task_id: str | None = None,
+    ) -> None:
+        metadata = cls.metadata(metadata_task_id or task_id, entry, resolution)
+        block = yaml.safe_dump(
+            metadata,
+            allow_unicode=True,
+            sort_keys=False,
+            width=120,
+        ).rstrip()
+        sections = "\n\n".join(
+            f"## {heading}\n\nfixture"
+            for heading in ("目标", "范围内", "明确禁止", "依赖与决策闸门", "验收", "晋级规则")
+        )
+        path = repository / str(entry["taskCard"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"# {task_id}：{entry['title']}\n\n```yaml\n{block}\n```\n\n"
+            f"{doctor.PLANNED_CARD_NON_NORMATIVE_NOTICE}\n\n{sections}\n",
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def initialize(cls, repository: Path, *, initial_next: str | None = None) -> str:
+        cls.git(repository, "init", "-q")
+        cls.git(repository, "config", "user.name", "Harness Test")
+        cls.git(repository, "config", "user.email", "harness@example.invalid")
+        entries = {task_id: cls.entry(task_id) for task_id in cls.TASK_IDS}
+        backlog = {
+            "executionOrder": list(cls.TASK_IDS),
+            "criticalPath": [],
+            "decisionGates": {},
+            "resolutions": {},
+            "tasks": entries,
+        }
+        harness = repository / ".harness"
+        harness.mkdir()
+        (harness / "task-backlog.yaml").write_text(
+            yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        lifecycle = {
+            "activeStates": ["DRAFT", "READY", "IN_PROGRESS", "IN_REVIEW"],
+            "transitions": {
+                "PLANNED": ["REJECTED", "SUPERSEDED"],
+                "REJECTED": [],
+                "SUPERSEDED": [],
+            },
+        }
+        (harness / "task-lifecycle.yaml").write_text(
+            yaml.safe_dump(lifecycle, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        state = {
+            "activeTask": None,
+            "activeTaskCard": None,
+            "lastAcceptedTask": "TASK-0999",
+            "lastAcceptedHandoff": "docs/handoffs/TASK-0999.json",
+            "lastTerminalTask": "TASK-0999",
+            "lastTerminalHandoff": "docs/handoffs/TASK-0999.json",
+            "nextAction": initial_next or "将 TASK-1001 晋级为唯一 DRAFT",
+        }
+        (harness / "project-state.yaml").write_text(
+            yaml.safe_dump(state, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        for task_id, entry in entries.items():
+            cls.write_card(repository, task_id, entry)
+        cls.git(repository, "add", "--", ".")
+        cls.git(repository, "commit", "-qm", "terminal")
+        return cls.git(repository, "rev-parse", "HEAD")
+
+    @classmethod
+    def resolve(
+        cls,
+        repository: Path,
+        task_id: str,
+        state: str,
+        *,
+        replacement: str | None = None,
+        next_action: str | None = None,
+        extra_path: bool = False,
+        metadata_task_id: str | None = None,
+    ) -> str:
+        backlog_path = repository / ".harness/task-backlog.yaml"
+        backlog = yaml.safe_load(backlog_path.read_text(encoding="utf-8"))
+        resolution = {
+            "state": state,
+            "reason": f"Resolve {task_id}",
+            "decidedBy": "repository-owner",
+            "decidedAt": "2026-08-02",
+            "replacementTask": replacement,
+        }
+        backlog["resolutions"][task_id] = resolution
+        backlog_path.write_text(
+            yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        cls.write_card(
+            repository,
+            task_id,
+            backlog["tasks"][task_id],
+            resolution,
+            metadata_task_id=metadata_task_id,
+        )
+        if next_action is not None:
+            state_path = repository / ".harness/project-state.yaml"
+            project = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+            project["nextAction"] = next_action
+            state_path.write_text(
+                yaml.safe_dump(project, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+        if extra_path:
+            (repository / "extra.txt").write_text("extra\n", encoding="utf-8")
+        cls.git(repository, "add", "--", ".")
+        cls.git(repository, "commit", "-qm", f"resolve {task_id}")
+        return cls.git(repository, "rev-parse", "HEAD")
+
+    @staticmethod
+    def derive(repository: Path, terminal: str, target: str) -> tuple[str | None, Audit]:
+        audit = Audit()
+        with patch.object(harness_common, "ROOT", repository), patch.object(
+            doctor,
+            "ROOT",
+            repository,
+        ):
+            result = doctor.derive_idle_planning_checkpoint(audit, terminal, target)
+        return result, audit
+
+    def test_accepts_no_tail_and_serial_rejected_superseded_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(repository)
+            no_tail, audit = self.derive(repository, terminal, terminal)
+            self.assertEqual(terminal, no_tail, audit.errors)
+            first = self.resolve(
+                repository,
+                "TASK-1001",
+                "REJECTED",
+                next_action="将 TASK-1002 晋级为唯一 DRAFT",
+            )
+            target = self.resolve(
+                repository,
+                "TASK-1002",
+                "SUPERSEDED",
+                replacement="TASK-1003",
+                next_action="将 TASK-1003 晋级为唯一 DRAFT",
+            )
+            result, audit = self.derive(repository, terminal, target)
+            self.assertEqual(target, result, audit.errors)
+            self.assertNotEqual(first, terminal)
+
+    def test_accepts_optional_next_action_and_no_promotable_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(
+                repository,
+                initial_next="将 TASK-1002 晋级为唯一 DRAFT",
+            )
+            first = self.resolve(repository, "TASK-1001", "REJECTED")
+            self.assertNotIn(
+                ".harness/project-state.yaml",
+                self.git(repository, "diff", "--name-only", f"{terminal}..{first}"),
+            )
+            self.resolve(
+                repository,
+                "TASK-1002",
+                "REJECTED",
+                next_action="将 TASK-1003 晋级为唯一 DRAFT",
+            )
+            target = self.resolve(
+                repository,
+                "TASK-1003",
+                "REJECTED",
+                next_action=doctor.IDLE_PLANNING_PAUSE_NEXT_ACTION,
+            )
+            result, audit = self.derive(repository, terminal, target)
+            self.assertEqual(target, result, audit.errors)
+
+    def test_rejects_merge_empty_split_multiple_and_extra_paths(self) -> None:
+        for scenario in ("empty", "split", "multiple", "extra", "merge"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                repository = Path(directory)
+                terminal = self.initialize(repository)
+                if scenario == "empty":
+                    self.git(repository, "commit", "--allow-empty", "-qm", "empty")
+                elif scenario == "split":
+                    backlog_path = repository / ".harness/task-backlog.yaml"
+                    backlog = yaml.safe_load(backlog_path.read_text(encoding="utf-8"))
+                    backlog["resolutions"]["TASK-1001"] = {
+                        "state": "REJECTED",
+                        "reason": "split",
+                        "decidedBy": "repository-owner",
+                        "decidedAt": "2026-08-02",
+                        "replacementTask": None,
+                    }
+                    backlog_path.write_text(
+                        yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    self.git(repository, "add", "--", ".")
+                    self.git(repository, "commit", "-qm", "split backlog")
+                    self.write_card(
+                        repository,
+                        "TASK-1001",
+                        backlog["tasks"]["TASK-1001"],
+                        backlog["resolutions"]["TASK-1001"],
+                    )
+                    self.git(repository, "add", "--", ".")
+                    self.git(repository, "commit", "-qm", "split card")
+                elif scenario == "multiple":
+                    self.resolve(
+                        repository,
+                        "TASK-1001",
+                        "REJECTED",
+                        next_action="将 TASK-1002 晋级为唯一 DRAFT",
+                    )
+                    backlog_path = repository / ".harness/task-backlog.yaml"
+                    backlog = yaml.safe_load(backlog_path.read_text(encoding="utf-8"))
+                    resolution = {
+                        "state": "REJECTED",
+                        "reason": "second",
+                        "decidedBy": "repository-owner",
+                        "decidedAt": "2026-08-02",
+                        "replacementTask": None,
+                    }
+                    backlog["resolutions"]["TASK-1002"] = resolution
+                    backlog_path.write_text(
+                        yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    self.write_card(
+                        repository,
+                        "TASK-1002",
+                        backlog["tasks"]["TASK-1002"],
+                        resolution,
+                    )
+                    self.git(repository, "add", "--", ".")
+                    self.git(repository, "commit", "--amend", "-qm", "multiple")
+                elif scenario == "extra":
+                    self.resolve(
+                        repository,
+                        "TASK-1001",
+                        "REJECTED",
+                        next_action="将 TASK-1002 晋级为唯一 DRAFT",
+                        extra_path=True,
+                    )
+                else:
+                    self.git(repository, "checkout", "-qb", "side")
+                    (repository / "side.txt").write_text("side\n", encoding="utf-8")
+                    self.git(repository, "add", "--", ".")
+                    self.git(repository, "commit", "-qm", "side")
+                    self.git(repository, "checkout", "-q", "master")
+                    self.resolve(
+                        repository,
+                        "TASK-1001",
+                        "REJECTED",
+                        next_action="将 TASK-1002 晋级为唯一 DRAFT",
+                    )
+                    self.git(repository, "merge", "--no-ff", "-qm", "merge", "side")
+                target = self.git(repository, "rev-parse", "HEAD")
+                result, audit = self.derive(repository, terminal, target)
+                self.assertIsNone(result)
+                self.assertTrue(audit.errors)
+
+    def test_rejects_mode_contract_task_mismatch_and_restore_after_error(self) -> None:
+        for scenario in ("mode-restore", "contract-restore", "task-mismatch"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                repository = Path(directory)
+                terminal = self.initialize(repository)
+                if scenario == "mode-restore":
+                    path = "docs/tasks/TASK-1001-fixture.md"
+                    self.git(repository, "update-index", "--chmod=+x", "--", path)
+                    self.git(repository, "commit", "-qm", "mode corrupt")
+                    self.git(repository, "update-index", "--chmod=-x", "--", path)
+                    self.git(repository, "commit", "-qm", "mode restore")
+                    self.resolve(
+                        repository,
+                        "TASK-1001",
+                        "REJECTED",
+                        next_action="将 TASK-1002 晋级为唯一 DRAFT",
+                    )
+                elif scenario == "contract-restore":
+                    path = repository / ".harness/task-backlog.yaml"
+                    original = path.read_text(encoding="utf-8")
+                    backlog = yaml.safe_load(original)
+                    backlog["tasks"]["TASK-1001"]["objective"] = "drift"
+                    path.write_text(
+                        yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    self.git(repository, "add", "--", ".")
+                    self.git(repository, "commit", "-qm", "contract corrupt")
+                    path.write_text(original, encoding="utf-8")
+                    self.git(repository, "add", "--", ".")
+                    self.git(repository, "commit", "-qm", "contract restore")
+                    self.resolve(
+                        repository,
+                        "TASK-1001",
+                        "REJECTED",
+                        next_action="将 TASK-1002 晋级为唯一 DRAFT",
+                    )
+                else:
+                    self.resolve(
+                        repository,
+                        "TASK-1001",
+                        "REJECTED",
+                        next_action="将 TASK-1002 晋级为唯一 DRAFT",
+                        metadata_task_id="TASK-1002",
+                    )
+                target = self.git(repository, "rev-parse", "HEAD")
+                result, audit = self.derive(repository, terminal, target)
+                self.assertIsNone(result)
+                self.assertTrue(audit.errors)
 
 
 class StateTests(unittest.TestCase):

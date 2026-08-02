@@ -448,6 +448,32 @@ TASK_0055_REPLACEMENT_DEPENDENCY_CHAIN = (
     "TASK-0068",
     "TASK-0069",
 )
+TASK_0071_BASE_COMMIT = "f9556808dc12ad14a67cb08cb570efb0281fc172"
+TASK_0071_AUTHORIZATION_COMMIT = "6f2fb4678089d4a0deb3be4896345807254ecfd4"
+TASK_0071_AUTHORITY_SHA256 = (
+    "75746def79eee2f3660daebdc5de34e59133bc303460e9f7395e94f8c0335ea7"
+)
+TASK_0071_CARD_PATH = (
+    "docs/tasks/TASK-0071-idle-planning-checkpoint-core-replacement.md"
+)
+TASK_0071_PLANNING_REPAIRS = {
+    "TASK-0056": {
+        "oldTitle": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+        "newTitle": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+        "oldDependencies": ["TASK-0055"],
+        "newDependencies": ["TASK-0071"],
+    },
+}
+TASK_0071_PLANNING_REPAIR_PATHS = {
+    ".harness/project-state.yaml",
+    ".harness/task-backlog.yaml",
+    ".harness/task-delivery-policy.yaml",
+    "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
+    TASK_0071_CARD_PATH,
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+}
+IDLE_PLANNING_PAUSE_NEXT_ACTION = "等待 Owner 决策：当前无可晋级任务"
 AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT = (
     "2a55335e695c8fc5434c0dbc867288842c804e74"
 )
@@ -4944,6 +4970,13 @@ def task0069_planning_repair_projection(
     return planning_repair_projection(parent, child, TASK_0069_PLANNING_REPAIRS)
 
 
+def task0071_planning_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    return planning_repair_projection(parent, child, TASK_0071_PLANNING_REPAIRS)
+
+
 def planning_repair_is_retained(
     current_tasks: dict[str, Any],
     repairs: dict[str, dict[str, Any]],
@@ -5580,6 +5613,93 @@ def task0069_planning_repair_authorized(
     )
 
 
+def task0071_repair_approvals_are_exact(task: dict[str, Any]) -> bool:
+    approvals = task.get("humanApprovals")
+    return (
+        isinstance(approvals, list)
+        and canonical_json_sha256(approvals) == TASK_0071_AUTHORITY_SHA256
+        and any(
+            isinstance(item, dict)
+            and item.get("scope") == "harness-change"
+            and item.get("approvedBy") == "repository-owner"
+            and "TASK-0071" in str(item.get("evidence", ""))
+            for item in approvals
+        )
+        and any(
+            isinstance(item, dict)
+            and item.get("scope")
+            == "task-0071-parent-edge-core-recovery"
+            and item.get("approvedBy") == "repository-owner"
+            and TASK_0071_BASE_COMMIT in str(item.get("evidence", ""))
+            and "TASK-0055" in str(item.get("evidence", ""))
+            and "TASK-0056" in str(item.get("evidence", ""))
+            for item in approvals
+        )
+    )
+
+
+def task0071_planning_repair_authorized(
+    parent_commit: str,
+    commit: str,
+) -> bool:
+    if not (
+        FULL_COMMIT_RE.fullmatch(parent_commit)
+        and FULL_COMMIT_RE.fullmatch(commit)
+    ):
+        return False
+    try:
+        parent_text = git_object(parent_commit, TASK_0071_CARD_PATH).decode("utf-8")
+        child_text = git_object(commit, TASK_0071_CARD_PATH).decode("utf-8")
+        parent_task = task_metadata_from_text(
+            parent_text,
+            f"TASK-0071 planning repair parent {parent_commit}",
+        )
+        child_task = task_metadata_from_text(
+            child_text,
+            f"TASK-0071 planning repair child {commit}",
+        )
+        paths = set(changed_paths_between(parent_commit, commit))
+    except (HarnessError, UnicodeError, yaml.YAMLError):
+        return False
+    graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        commit,
+        check=False,
+    )
+    authorization_ancestor = git_text(
+        "merge-base",
+        "--is-ancestor",
+        TASK_0071_AUTHORIZATION_COMMIT,
+        parent_commit,
+        check=False,
+    )
+    return (
+        graph.returncode == 0
+        and graph.stdout.split() == [commit, parent_commit]
+        and authorization_ancestor.returncode == 0
+        and paths == TASK_0071_PLANNING_REPAIR_PATHS
+        and task_authorization_projection(parent_text)
+        == task_authorization_projection(child_text)
+        and parent_task.get("taskId") == child_task.get("taskId") == "TASK-0071"
+        and parent_task.get("state") == "IN_PROGRESS"
+        and child_task.get("state") == "IN_REVIEW"
+        and child_task.get("riskClass") == "C4"
+        and child_task.get("baseCommit") == TASK_0071_BASE_COMMIT
+        and child_task.get("authorizationCommit") == TASK_0071_AUTHORIZATION_COMMIT
+        and child_task.get("requiredSkillVersions")
+        == {
+            "task-delivery-flow": "1.3.1",
+            "task-intake": "1.2.1",
+            "harness-change": "1.1.1",
+        }
+        and child_task.get("targetSkillVersions") == {}
+        and task0071_repair_approvals_are_exact(child_task)
+    )
+
+
 def authorization_amendment_authority_bootstrap_projection(
     parent: dict[str, Any],
     child: dict[str, Any],
@@ -5634,6 +5754,7 @@ def validate_backlog_history_edge(
     allow_task0067_repair: bool = False,
     allow_task0068_repair: bool = False,
     allow_task0069_repair: bool = False,
+    allow_task0071_repair: bool = False,
     parent_commit: str | None = None,
     child_commit: str | None = None,
 ) -> None:
@@ -5670,6 +5791,8 @@ def validate_backlog_history_edge(
         allowed_repair_tasks.update(TASK_0068_PLANNING_REPAIRS)
     if allow_task0069_repair and task0069_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0069_PLANNING_REPAIRS)
+    if allow_task0071_repair and task0071_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0071_PLANNING_REPAIRS)
 
     parent_tasks = parent.get("tasks")
     child_tasks = child.get("tasks")
@@ -6086,6 +6209,7 @@ def validate_backlog_card_history_edge(
     allow_task0067_repair: bool = False,
     allow_task0068_repair: bool = False,
     allow_task0069_repair: bool = False,
+    allow_task0071_repair: bool = False,
 ) -> None:
     parent_entries = parent.get("tasks")
     child_entries = child.get("tasks")
@@ -6118,6 +6242,8 @@ def validate_backlog_card_history_edge(
         allowed_repair_tasks.update(TASK_0068_PLANNING_REPAIRS)
     if allow_task0069_repair and task0069_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0069_PLANNING_REPAIRS)
+    if allow_task0071_repair and task0071_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0071_PLANNING_REPAIRS)
     for task_id in sorted(set(parent_entries) | set(child_entries)):
         parent_entry = parent_entries.get(task_id)
         child_entry = child_entries.get(task_id)
@@ -6424,6 +6550,7 @@ def validate_task_backlog_history(
     task0067_repair_edges: set[tuple[str, str]] = set()
     task0068_repair_edges: set[tuple[str, str]] = set()
     task0069_repair_edges: set[tuple[str, str]] = set()
+    task0071_repair_edges: set[tuple[str, str]] = set()
     snapshots: dict[str, dict[str, Any]] = {}
 
     def snapshot(commit: str) -> dict[str, Any] | None:
@@ -6579,6 +6706,16 @@ def validate_task_backlog_history(
                 )
                 if task0069_repair_authorized_edge:
                     task0069_repair_edges.add((parent, commit))
+                task0071_repair_projection = task0071_planning_repair_projection(
+                    parent_value,
+                    child,
+                )
+                task0071_repair_authorized_edge = (
+                    task0071_repair_projection
+                    and task0071_planning_repair_authorized(parent, commit)
+                )
+                if task0071_repair_authorized_edge:
+                    task0071_repair_edges.add((parent, commit))
                 validate_backlog_card_history_edge(
                     audit,
                     parent,
@@ -6594,6 +6731,7 @@ def validate_task_backlog_history(
                     allow_task0067_repair=task0067_repair_authorized_edge,
                     allow_task0068_repair=task0068_repair_authorized_edge,
                     allow_task0069_repair=task0069_repair_authorized_edge,
+                    allow_task0071_repair=task0071_repair_authorized_edge,
                 )
                 validate_backlog_history_edge(
                     audit,
@@ -6608,6 +6746,7 @@ def validate_task_backlog_history(
                     allow_task0067_repair=task0067_repair_authorized_edge,
                     allow_task0068_repair=task0068_repair_authorized_edge,
                     allow_task0069_repair=task0069_repair_authorized_edge,
+                    allow_task0071_repair=task0071_repair_authorized_edge,
                     parent_commit=parent,
                     child_commit=commit,
                 )
@@ -6689,6 +6828,15 @@ def validate_task_backlog_history(
         len(task0069_repair_edges) == (1 if task0069_repair_applied else 0),
         "task-backlog: TASK-0069 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0069_repair_edges)}",
+    )
+    task0071_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0071_PLANNING_REPAIRS,
+    )
+    audit.require(
+        len(task0071_repair_edges) == (1 if task0071_repair_applied else 0),
+        "task-backlog: TASK-0071 replacement repair must be one exact, authorized, "
+        f"atomic parent edge; observed={sorted(task0071_repair_edges)}",
     )
     head = snapshot("HEAD")
     if head is not None:
@@ -6834,6 +6982,243 @@ def derive_backlog_promotion_projection(
         "blockers": blockers,
         "repositoryIdle": repository_idle,
     }
+
+
+def _task_metadata_snapshot_at_commit(commit: str) -> dict[str, dict[str, Any]]:
+    tasks: dict[str, dict[str, Any]] = {}
+    for path in repository_paths_at_commit(commit):
+        if not (
+            path.startswith("docs/tasks/TASK-")
+            and path.endswith(".md")
+            and "/context/" not in path
+        ):
+            continue
+        try:
+            metadata = task_metadata_from_text(
+                git_object(commit, path).decode("utf-8"),
+                f"idle planning checkpoint {commit}:{path}",
+            )
+        except (HarnessError, UnicodeError, yaml.YAMLError):
+            continue
+        task_id = str(metadata.get("taskId", ""))
+        if TASK_ID_RE.fullmatch(task_id):
+            tasks[task_id] = {**metadata, "_path": path}
+    return tasks
+
+
+def _require_regular_git_blob(
+    audit: Audit,
+    commit: str,
+    path: str,
+    label: str,
+) -> None:
+    audit.require(
+        git_tree_entry(commit, path) is not None
+        and git_tree_entry(commit, path)[:2] == ("100644", "blob"),
+        f"{label}: {path} must be a regular 100644 blob at {commit}",
+    )
+
+
+def derive_idle_planning_checkpoint(
+    audit: Audit,
+    terminal_commit: str,
+    target_commit: str,
+) -> str | None:
+    initial_errors = len(audit.errors)
+    label = "idle planning checkpoint"
+    if not (
+        FULL_COMMIT_RE.fullmatch(terminal_commit)
+        and FULL_COMMIT_RE.fullmatch(target_commit)
+    ):
+        audit.error(f"{label}: terminal and target must be full Git commit SHAs")
+        return None
+    try:
+        for commit in (terminal_commit, target_commit):
+            audit.require(
+                git_text("cat-file", "-e", f"{commit}^{{commit}}", check=False).returncode
+                == 0,
+                f"{label}: commit does not exist: {commit}",
+            )
+        ancestry = git_text(
+            "merge-base",
+            "--is-ancestor",
+            terminal_commit,
+            target_commit,
+            check=False,
+        )
+        audit.require(
+            ancestry.returncode == 0,
+            f"{label}: terminal must be an ancestor of target",
+        )
+        terminal_state = yaml_at_commit(terminal_commit, PROJECT_STATE_PATH)
+        _require_regular_git_blob(
+            audit,
+            terminal_commit,
+            PROJECT_STATE_PATH,
+            label,
+        )
+        audit.require(
+            terminal_state.get("activeTask") is None
+            and terminal_state.get("activeTaskCard") is None,
+            f"{label}: canonical terminal project-state must be idle",
+        )
+        if terminal_commit == target_commit:
+            return terminal_commit if len(audit.errors) == initial_errors else None
+        graph = git_text(
+            "rev-list",
+            "--parents",
+            "--topo-order",
+            "--reverse",
+            "--ancestry-path",
+            f"{terminal_commit}..{target_commit}",
+        ).stdout.splitlines()
+        expected_parent = terminal_commit
+        for line in graph:
+            tokens = line.split()
+            if not tokens:
+                continue
+            commit, parents = tokens[0], tokens[1:]
+            audit.require(
+                parents == [expected_parent],
+                f"{label}: every tail commit must have the previous checkpoint as "
+                f"its single parent; commit={commit}",
+            )
+            paths = changed_paths_between(expected_parent, commit)
+            audit.require(bool(paths), f"{label}: empty commits are forbidden: {commit}")
+            parent_backlog = yaml_at_commit(expected_parent, TASK_BACKLOG_PATH)
+            child_backlog = yaml_at_commit(commit, TASK_BACKLOG_PATH)
+            parent_state = yaml_at_commit(expected_parent, PROJECT_STATE_PATH)
+            child_state = yaml_at_commit(commit, PROJECT_STATE_PATH)
+            lifecycle = yaml_at_commit(commit, ".harness/task-lifecycle.yaml")
+            parent_resolutions = parent_backlog.get("resolutions")
+            child_resolutions = child_backlog.get("resolutions")
+            parent_resolutions = (
+                parent_resolutions if isinstance(parent_resolutions, dict) else {}
+            )
+            child_resolutions = (
+                child_resolutions if isinstance(child_resolutions, dict) else {}
+            )
+            added = sorted(set(child_resolutions) - set(parent_resolutions))
+            audit.require(
+                len(added) == 1,
+                f"{label}: each edge must add exactly one planning resolution; "
+                f"edge={expected_parent}..{commit}, added={added}",
+            )
+            task_id = added[0] if len(added) == 1 else ""
+            entries = child_backlog.get("tasks")
+            parent_entries = parent_backlog.get("tasks")
+            entry = entries.get(task_id) if isinstance(entries, dict) else None
+            parent_entry = (
+                parent_entries.get(task_id)
+                if isinstance(parent_entries, dict)
+                else None
+            )
+            task_path = str(entry.get("taskCard", "")) if isinstance(entry, dict) else ""
+            expected_paths = {TASK_BACKLOG_PATH, task_path}
+            static_parent_state = dict(parent_state)
+            static_child_state = dict(child_state)
+            static_parent_state.pop("nextAction", None)
+            static_child_state.pop("nextAction", None)
+            state_changed = parent_state != child_state
+            if state_changed:
+                expected_paths.add(PROJECT_STATE_PATH)
+            audit.require(
+                set(paths) == expected_paths,
+                f"{label}: resolution edge changed non-atomic or extra paths; "
+                f"edge={expected_parent}..{commit}, paths={paths}",
+            )
+            audit.require(
+                static_parent_state == static_child_state
+                and child_state.get("activeTask") is None
+                and child_state.get("activeTaskCard") is None,
+                f"{label}: project-state may only change nextAction while idle",
+            )
+            for blob_commit in (expected_parent, commit):
+                for path in (TASK_BACKLOG_PATH, PROJECT_STATE_PATH, task_path):
+                    _require_regular_git_blob(audit, blob_commit, path, label)
+            resolution = child_resolutions.get(task_id)
+            audit.require(
+                isinstance(resolution, dict)
+                and set(resolution) == BACKLOG_RESOLUTION_FIELDS
+                and resolution.get("state") in PLANNING_TERMINAL_STATES,
+                f"{label}: resolution {task_id} is not a canonical planning terminal",
+            )
+            if isinstance(resolution, dict):
+                replacement = resolution.get("replacementTask")
+                audit.require(
+                    (resolution.get("state") == "REJECTED" and replacement is None)
+                    or (
+                        resolution.get("state") == "SUPERSEDED"
+                        and isinstance(replacement, str)
+                        and replacement != task_id
+                        and isinstance(entries, dict)
+                        and replacement in entries
+                    ),
+                    f"{label}: resolution {task_id} replacementTask is invalid",
+                )
+            audit.require(
+                isinstance(parent_entry, dict) and parent_entry == entry,
+                f"{label}: resolved task static contract drifted: {task_id}",
+            )
+            validate_backlog_resolution_commit(
+                audit,
+                expected_parent,
+                commit,
+                parent_backlog,
+                child_backlog,
+            )
+            validate_backlog_card_history_edge(
+                audit,
+                expected_parent,
+                commit,
+                parent_backlog,
+                child_backlog,
+                lifecycle,
+            )
+            validate_backlog_history_edge(
+                audit,
+                parent_backlog,
+                child_backlog,
+                f"{expected_parent}..{commit}",
+                parent_commit=expected_parent,
+                child_commit=commit,
+            )
+            tasks = _task_metadata_snapshot_at_commit(commit)
+            projection = derive_backlog_promotion_projection(
+                child_backlog,
+                tasks,
+                lifecycle,
+            )
+            next_promotable = projection.get("nextPromotable")
+            next_action = str(child_state.get("nextAction", ""))
+            if next_promotable is None:
+                audit.require(
+                    next_action == IDLE_PLANNING_PAUSE_NEXT_ACTION,
+                    f"{label}: no-promotable state requires deterministic pause nextAction",
+                )
+            else:
+                mentioned = set(re.findall(r"TASK-[0-9]{4,}", next_action))
+                audit.require(
+                    mentioned == {next_promotable},
+                    f"{label}: nextAction must identify only next promotable "
+                    f"{next_promotable}",
+                )
+                if (
+                    isinstance(resolution, dict)
+                    and resolution.get("state") == "SUPERSEDED"
+                ):
+                    audit.require(
+                        resolution.get("replacementTask") == next_promotable,
+                        f"{label}: SUPERSEDED replacement must equal next promotable",
+                    )
+            expected_parent = commit
+        audit.require(
+            bool(graph) and expected_parent == target_commit,
+            f"{label}: history tail must end exactly at target",
+        )
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+        audit.error(f"{label}: cannot validate explicit Git history: {exc}")
+    return target_commit if len(audit.errors) == initial_errors else None
 
 
 def git_blob_oid_for_content(content: bytes, oid_length: int) -> str | None:
@@ -9258,7 +9643,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     )
 
     expected_follow_ups = {
-        "idlePlanningCheckpointCore": "TASK-0055",
+        "idlePlanningCheckpointCore": "TASK-0071",
         "idlePlanningCheckpointConsumers": "TASK-0056",
         "harnessPerformance": "TASK-0057",
         "pathAwareCi": "TASK-0058",
@@ -9273,7 +9658,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     entries = entries if isinstance(entries, dict) else {}
     expected_dependencies = {
         "TASK-0055": ["TASK-0069"],
-        "TASK-0056": ["TASK-0055"],
+        "TASK-0056": ["TASK-0071"],
         "TASK-0057": ["TASK-0056"],
         "TASK-0058": ["TASK-0057"],
         "TASK-0059": ["TASK-0058"],

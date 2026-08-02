@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0072
 lastTerminalHandoff: docs/handoffs/TASK-0072.json
-nextAction: 实现 TASK-0071 idle planning checkpoint parent-edge 核心与精确 planning repair
+nextAction: 评审并验证 TASK-0071 idle planning checkpoint parent-edge 候选
 capabilityGates:
   businessImplementation:
     state: BLOCKED
