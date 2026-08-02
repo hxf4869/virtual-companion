@@ -2,7 +2,18 @@
 
 ```yaml
 taskId: TASK-0073
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  TASK-0073 从 DRAFT 提交 6e9704faf5820261484f00f14320f4e4d1d7d939
+  的 2026-08-02 11:31:13 +08:00 起计时，45 分钟 candidate deadline
+  于 12:16:13 到达；冻结候选 11e6fb12f77486787ef71627e84f34ee069e72bd
+  直到 12:18:43 才提交，12/12 目标矩阵又在其后完成，因此未在 deadline
+  前形成通过目标矩阵的精确候选。唯一独立 R1 随后在 8 分钟 Reviewer
+  预算内没有产出终态，熔断时仍为 running，原生结果为 UNKNOWN；
+  为满足终态 Schema，其未完成的 Reviewer gate 记录为 FAIL，但不声称
+  Reviewer 给出了内容结论。60 分钟目标预算随后也已到达，故 candidate
+  canonical、Windows 与 WSL 均未启动；terminal closure pre-closure
+  仅按 closure-only 合同在完整暂存后执行，本卡按策略 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -271,7 +282,12 @@ humanApprovals:
       TASK-0073 Commit/Tree 各运行一次 Windows 与 WSL exact-tree，
       Windows 非零则 WSL 不启动。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0073_reviewer_r1
+    kind: independent-budget-fused-review
+    verdict: FAIL
+    reviewedCommit: 11e6fb12f77486787ef71627e84f34ee069e72bd
+    evidencePath: docs/evidence/TASK-0073/review-r1.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_exact_machine_record_is_accepted scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_machine_record_mutations_fail_closed scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_boundary_requires_exact_single_parent_and_paths scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_consumed_record_is_inert_and_not_reusable scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_task0072_historical_doctor_binding_allows_current_evolution scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_task0072_historical_doctor_binding_fails_closed scripts.harness.tests.test_harness.BacklogTests.test_task0073_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error
   - git diff --check

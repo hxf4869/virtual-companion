@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0073
-activeTaskCard: docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0071
-lastTerminalHandoff: docs/handoffs/TASK-0071.json
-nextAction: 独立评审 TASK-0073 冻结 candidate；Reviewer 不得参与实现或运行昂贵全套测试
+lastTerminalTask: TASK-0073
+lastTerminalHandoff: docs/handoffs/TASK-0073.json
+nextAction: 等待 Owner 创建新的永久恢复卡；TASK-0056 继续被 REJECTED TASK-0073 阻断，历史不得改写
 capabilityGates:
   businessImplementation:
     state: BLOCKED

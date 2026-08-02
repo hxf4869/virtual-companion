@@ -1,0 +1,243 @@
+{
+  "taskId": "TASK-0073",
+  "baseCommit": "ee0757a8749a0ccab53553785b92abb865e4373b",
+  "headCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+  "contextFingerprint": "6c11c7530ee0c0012eaebf48a09ce785febdcc7b074fb45548736e94058feb27",
+  "reviewers": [
+    {
+      "id": "task0073_reviewer_r1",
+      "kind": "independent-budget-fused-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+      "evidencePath": "docs/evidence/TASK-0073/review-r1.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_exact_machine_record_is_accepted scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_machine_record_mutations_fail_closed scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_boundary_requires_exact_single_parent_and_paths scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_consumed_record_is_inert_and_not_reusable scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_task0072_historical_doctor_binding_allows_current_evolution scripts.harness.tests.test_harness.Task0073PreReadyMaintenanceTests.test_task0072_historical_doctor_binding_fails_closed scripts.harness.tests.test_harness.BacklogTests.test_task0073_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "冻结候选上的完整廉价目标矩阵真实 12/12 PASS，unittest 用时 33.456 秒；但它在 45 分钟 candidate deadline 之后完成，不能解除预算熔断或晋级。",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; clean candidate 11e6fb12/36e22afc",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "最终 7 路径 staged Candidate diff check 无输出并真实 exit 0；相同 staged bytes 随后形成冻结候选，但该 PASS 不覆盖 Reviewer 或预算。",
+      "environment": "Windows PowerShell 7.6.3; Git 2.28.0.windows.1",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0073",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_REVIEWER_AND_BUDGET_FUSE: Reviewer 没有 PASS，且 45 分钟 candidate deadline 与 60 分钟目标预算均已到达；candidate canonical 未启动。",
+      "environment": "Windows; deliberately not launched",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0073",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_REVIEWER_AND_BUDGET_FUSE: Windows exact-tree 必须晚于 Reviewer 与 candidate canonical PASS，前置条件均不成立。",
+      "environment": "Windows-NT-10.0.26200; deliberately not launched",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0073",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_REVIEWER_AND_BUDGET_FUSE: WSL git-archive exact-tree 必须晚于 Windows PASS，Windows 未启动。",
+      "environment": "Ubuntu-24.04 WSL2; deliberately not launched",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0073 frozen candidate",
+      "status": "FAIL",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "BUDGET_FUSED_WITHOUT_TERMINAL_OUTPUT: 唯一 fork_turns=none Reviewer 到 8 分钟预算仍为 running，未返回终态；原生结果是 UNKNOWN/NOT_PASS，终态 Schema 中映射为 Reviewer gate FAIL。",
+      "environment": "independent subagent task0073_reviewer_r1; read-only; interrupted at budget",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0073",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: 本机没有受控 macOS 环境，不声称 macOS PASS。",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0073",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED: 未验证当前额度，dispatch=0，未重跑或轮询，不声称 GitHub Actions PASS。",
+      "environment": "GitHub Actions; deliberately not dispatched or polled",
+      "verifiedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "FROZEN_TARGETED_PASS_REVIEWER_BUDGET_FAIL",
+    "candidateCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+    "candidateTree": "36e22afcc810cca0630e159568d2acf03845441d",
+    "candidateCanonical": "NOT_RUN_AFTER_REVIEWER_AND_BUDGET_FUSE",
+    "windows": "NOT_RUN_AFTER_REVIEWER_AND_BUDGET_FUSE",
+    "wslUbuntu": "NOT_RUN_AFTER_WINDOWS_NOT_RUN",
+    "macos": "DEFERRED_NOT_CLAIMED",
+    "remote": {
+      "platform": "githubActions",
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "implementationCandidateCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+      "implementationCandidateTree": "36e22afcc810cca0630e159568d2acf03845441d",
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "receipts": {
+    "readySmoke": {
+      "path": "docs/evidence/TASK-0073/ready-smoke-receipt.json",
+      "receiptSha256": "05c319d4f08ee7bda080048747589bd0145615ad091b9447985f206dd1de0ae3",
+      "exitCode": 7,
+      "stdoutSha256": "7efbc7a5f6c6801ece6fcccef22cad01a1d40f09c57596599fdd549a79981255",
+      "stderrSha256": "4773db5c756f6fdc649269acfeb748c73aa2af5572f31147292deb712bde8ae0"
+    },
+    "readyDoctor": {
+      "path": "docs/evidence/TASK-0073/ready-doctor-receipt.json",
+      "receiptSha256": "683cc097da625f353dc57bba7f197675cf58e54d574da899307e633f416dcaf9",
+      "status": "PASS",
+      "exitCode": 0,
+      "checks": 337589,
+      "startedAt": "2026-08-02T03:48:53.5719789Z",
+      "completedAt": "2026-08-02T04:09:08.2923298Z",
+      "stdoutSha256": "8f201cb16931fb630b27b78f03a862ae991f494798d7eace335eca76d6744304",
+      "stderrSha256": "97bd6de7305619771b92401cf8555ccc1337ab7b42703eb0c3779330981214c9"
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "commit": "ee0757a8749a0ccab53553785b92abb865e4373b",
+      "tree": "880fac1735d4f33a99269c3eded1b52e88812b7c",
+      "originMainAtStart": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+      "ahead": 17,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true
+    },
+    "lifecycle": {
+      "draftCommit": "6e9704faf5820261484f00f14320f4e4d1d7d939",
+      "draftTree": "7177ffc2888130cee9934c081e2c99e559d5f362",
+      "maintenanceCommit": "b1c37678ab773eca150bdbb273ddafa5d14b781f",
+      "maintenanceTree": "6d0c9f5852313219af370ba411dd192afafd0f73",
+      "readyAuthorizationCommit": "595e5a47903336fc74133e482e89c2291ddfa63e",
+      "authorizationBindingCommit": "ad427addb57196f77a62cfcabc572ee0fc439405",
+      "inProgressCommit": "d6fbee26442a997b96648eea472f98ecba1a5412",
+      "reviewCandidateCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+      "reviewCandidateTree": "36e22afcc810cca0630e159568d2acf03845441d"
+    },
+    "maintenance": {
+      "recordId": "OWNER-MAINT-20260802-TASK-0073-PRE-READY-01",
+      "directParent": "6e9704faf5820261484f00f14320f4e4d1d7d939",
+      "changedPathCount": 8,
+      "positiveNegativeTests": "6/6 PASS",
+      "taskDeliveryPolicyCanonicalBeforeRepair": "b1091d59b30918ce22c2dfa910884c7fe63827386171e579c7679d0bb62d1e3a",
+      "task0072HistoricalBoundaryCommit": "d83baca18211c464cebdc7082308e90b2d5d18f0",
+      "task0072HistoricalDoctorBlob": "6c934cc3006f6135ba4ad6584c3689aac3b5d6b6",
+      "task0072HistoricalDoctorSha256": "8cb547e12d73b266071a56586ad9b9e73a3e977907d457414815373032cfb8c1"
+    },
+    "implementation": {
+      "parentCommit": "d6fbee26442a997b96648eea472f98ecba1a5412",
+      "candidateCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+      "candidateTree": "36e22afcc810cca0630e159568d2acf03845441d",
+      "changedPathCount": 7,
+      "task0056DependencyBefore": "TASK-0071",
+      "task0056DependencyAfter": "TASK-0073",
+      "deliveryPolicyCoreBefore": "TASK-0071",
+      "deliveryPolicyCoreAfter": "TASK-0073",
+      "taskDeliveryPolicyCanonicalAfterRepair": "c5e0c9856ac3fd35b8cfd390fedbdd11645fc63f9e0d525e5a78aa005ef4227d",
+      "task0056PlanningContractHash": "4444bceb0a68f725db68f4277f74f033fec17843157aec6e86e32544545c62d1",
+      "parentEdgeCoreReimplemented": false,
+      "historicalPassReused": false,
+      "repairBatchesUsed": 0
+    },
+    "review": {
+      "status": "FAIL_BUDGET_FUSED",
+      "roundsStarted": 1,
+      "roundsCompleted": 0,
+      "nativeResult": "UNKNOWN",
+      "schemaVerdict": "FAIL",
+      "terminalOutputReceived": false,
+      "previousAgentStatusAtInterrupt": "running",
+      "reviewerId": "task0073_reviewer_r1",
+      "budgetMinutes": 8,
+      "fixBatchRequested": false,
+      "r2Status": "NOT_STARTED",
+      "r3Status": "PROHIBITED_NOT_RUN"
+    },
+    "stopConditions": {
+      "status": "FIRED",
+      "reasonCodes": [
+        "CANDIDATE_DEADLINE_WITHOUT_FROZEN_TARGETED_PASS",
+        "REVIEWER_BUDGET_WITHOUT_TERMINAL_VERDICT",
+        "TARGET_WALL_BUDGET_REACHED"
+      ],
+      "candidateDeadlineBoundary": "2026-08-02T12:16:13+08:00",
+      "candidateCommitAt": "2026-08-02T12:18:43+08:00",
+      "candidateDeadlineOverrunSecondsAtCommit": 150,
+      "targetWallBoundary": "2026-08-02T12:31:13+08:00",
+      "hardFuseBoundary": "2026-08-02T13:01:13+08:00",
+      "implementationStopped": true,
+      "fixesStopped": true,
+      "reviewStopped": true,
+      "candidateCanonicalStopped": true,
+      "windowsValidationStopped": true,
+      "wslValidationStopped": true,
+      "preClosureStoppedBySequence": false
+    },
+    "preClosureRequest": {
+      "path": "docs/evidence/TASK-0073/pre-closure-request.json",
+      "argv": [
+        "scripts/harness/doctor.py",
+        "--task",
+        "TASK-0073",
+        "--pre-closure"
+      ],
+      "executionLimit": 1,
+      "statusAtClosureFreeze": "PENDING_SINGLE_EXECUTION",
+      "resultBinding": "完整 closure staging 冻结后只执行一次；atomic receipt、完整 stdout/stderr 与真实 exit 在执行后读取，不回写冻结输入，避免使 pre-closure 结果失去输入绑定。"
+    },
+    "remoteAtClosurePreparation": {
+      "originMain": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+      "localAhead": 23,
+      "localBehind": 0,
+      "pushAuthorized": false,
+      "knownFailureChainMustNotPush": true
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "Evidence 与 Handoff 由 terminal commit 自身包含，不能自引用；终态提交后只做本地 SHA/Tree、clean、activeTask 与 ahead/behind 复核，不推送已知失败链。"
+    }
+  }
+}

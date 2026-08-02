@@ -1,0 +1,37 @@
+{
+  "taskId": "TASK-0073",
+  "state": "REJECTED",
+  "baseCommit": "ee0757a8749a0ccab53553785b92abb865e4373b",
+  "headCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+  "evidencePath": "docs/evidence/TASK-0073/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task0073_reviewer_r1",
+      "kind": "independent-budget-fused-review",
+      "verdict": "FAIL",
+      "reviewedCommit": "11e6fb12f77486787ef71627e84f34ee069e72bd",
+      "evidencePath": "docs/evidence/TASK-0073/review-r1.md"
+    }
+  ],
+  "completed": [
+    "以 ee0757a8749a0ccab53553785b92abb865e4373b 为 Base 建立普通 TASK-0073 DRAFT 6e9704faf5820261484f00f14320f4e4d1d7d939，并以唯一直接单父 maintenance b1c37678ab773eca150bdbb273ddafa5d14b781f 精确登记 8 路径一次性机器记录。",
+    "maintenance 修复 task-delivery-policy canonical 绑定，并把已消费 TASK-0072 记录固定到 d83baca18211c464cebdc7082308e90b2d5d18f0 的 Doctor blob 6c934cc3 / SHA-256 8cb547e1；6 个正反例全部 PASS。",
+    "普通 READY 授权 595e5a47903336fc74133e482e89c2291ddfa63e 与单卡绑定 ad427addb57196f77a62cfcabc572ee0fc439405 后，exit-7 smoke 与唯一 READY Doctor 均有 durable atomic receipt；Doctor 真实 exit 0、337589 checks。",
+    "冻结候选 11e6fb12f77486787ef71627e84f34ee069e72bd / Tree 36e22afcc810cca0630e159568d2acf03845441d 为 d6fbee26442a997b96648eea472f98ecba1a5412 的直接单父 7 路径边；TASK-0056 Card/Backlog 与 delivery policy core 从 REJECTED TASK-0071 精确迁移到 TASK-0073，TASK-0055/0071/0072 保持 REJECTED。",
+    "冻结目标矩阵真实 12/12 PASS、33.456 秒，最终 Candidate diff check 真实 exit 0；这些结果不继承 TASK-0071 历史 PASS，也不代表 Reviewer/canonical/平台 PASS。",
+    "候选提交与目标矩阵晚于 45 分钟 candidate deadline；唯一 fork_turns=none Reviewer 到 8 分钟预算仍无终态并被中断，原生结果 UNKNOWN、Reviewer gate 记为 FAIL；60 分钟目标预算随后到达。"
+  ],
+  "remaining": [
+    "Reviewer 没有 PASS；candidate canonical、Windows HARNESS_PORTABILITY_LOCAL 与 WSL Ubuntu-24.04 git-archive exact-tree 均未启动，全部为 NOT_RUN。终态 closure 按机器合同完整暂存后执行唯一 pre-closure，结果不回写冻结输入。",
+    "TASK-0056 当前精确依赖 TASK-0073，而 TASK-0073 已 REJECTED，因此执行前沿继续被失败依赖阻断；不得释放 TASK-0056。",
+    "Owner 必须创建新的永久恢复卡处理失败依赖；不得重开、洗白或改写 TASK-0055、TASK-0071、TASK-0072、TASK-0073 历史。",
+    "已知失败链不得推送；origin/main 继续保持 a737f22362185ed47e81ecabef5c17b22fb52e18。"
+  ],
+  "knownRisks": [
+    "本地 main 保留一条目标矩阵通过但 Reviewer 未完成且超出 candidate/target 预算的前向实现链；它不是可接受或可推送候选。",
+    "Reviewer 的 Schema verdict FAIL 只映射预算内未完成的 gate；Reviewer 没有返回内容 findings，原生结果仍为 UNKNOWN。",
+    "macOS 为 DEFERRED_NOT_CLAIMED；GitHub Actions 固定 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0 / passClaimed=false。",
+    "终态提交仅是 TERMINAL_METADATA_ONLY REJECTED closure，必须带 [skip ci]，不代表 canonical、Windows、WSL、macOS 或远端 PASS。"
+  ],
+  "nextAction": "等待 Owner 创建新的永久恢复卡；TASK-0056 继续被 REJECTED TASK-0073 阻断，历史不得改写"
+}
