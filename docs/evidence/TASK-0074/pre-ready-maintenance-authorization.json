@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260802-TASK-0074-PRE-READY-01",
+  "decisionId": "TASK-0074-EXACT-DELIVERY-FLOW-RECOVERY-20260802",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0074",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-02",
+  "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+  "baseCommit": "65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94",
+  "draftCommit": "f72e61d0f97261b32a24101c7bbf4b87cb1bee3f",
+  "exactAuthorization": "授权 TASK-0074 精确一次性交付流程恢复：以 65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94 为 Base，允许唯一 machine-recognized pre-READY maintenance commit：精确隔离 TASK-0073 终态中已绑定 Commit/Tree/Blob 的 Reviewer UNKNOWN 历史记录；为未来 Evidence 增加明确的 TIMEOUT/UNKNOWN 非 PASS 语义；将 DRAFT→READY 与 IN_PROGRESS 后执行预算分开计时，Reviewer 上限固定为 15 分钟；允许同一精确候选上的完整 canonical 与 Windows exact-tree 合并为一次不删测、不降级的证据门禁，WSL 仍独立执行。禁止修改历史产物、通用 override、复用或绕过。普通 READY Doctor PASS 后才能实施，并将 TASK-0056 依赖迁移至 TASK-0074，完整执行独立 Reviewer、合并门禁、WSL、pre-closure 与安全推送。",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false
+}

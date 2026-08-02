@@ -8,6 +8,7 @@
     "baseCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "headCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "contextFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "deliveryTiming": {"$ref": "#/$defs/deliveryTiming"},
     "reviewers": {
       "type": "array",
       "items": {
@@ -16,10 +17,20 @@
         "properties": {
           "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
           "kind": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
-          "verdict": {"enum": ["PASS", "FAIL"]},
+          "verdict": {"enum": ["PASS", "FAIL", "TIMEOUT", "UNKNOWN"]},
           "reviewedCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-          "evidencePath": {"type": "string", "minLength": 1}
-        }
+          "evidencePath": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "candidateTree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "budget": {"$ref": "#/$defs/nonPassBudget"},
+          "interruption": {"$ref": "#/$defs/interruptionObservation"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"verdict": {"enum": ["TIMEOUT", "UNKNOWN"]}}, "required": ["verdict"]},
+            "then": {"required": ["reason", "candidateTree", "budget", "interruption"]}
+          }
+        ]
       }
     },
     "checks": {
@@ -29,7 +40,7 @@
         "required": ["command", "status", "exitCode", "artifactHash", "reason"],
         "properties": {
           "command": {"type": "string"},
-          "status": {"enum": ["PASS", "FAIL", "NOT_RUN"]},
+          "status": {"enum": ["PASS", "FAIL", "TIMEOUT", "UNKNOWN", "NOT_RUN"]},
           "exitCode": {"type": ["integer", "null"]},
           "artifactHash": {
             "type": ["string", "null"],
@@ -37,8 +48,100 @@
           },
           "reason": {"type": ["string", "null"]},
           "environment": {"type": "string", "minLength": 1},
-          "verifiedCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+          "verifiedCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "candidateCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "candidateTree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "budget": {"$ref": "#/$defs/nonPassBudget"},
+          "interruption": {"$ref": "#/$defs/interruptionObservation"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["TIMEOUT", "UNKNOWN"]}}, "required": ["status"]},
+            "then": {
+              "required": ["candidateCommit", "candidateTree", "budget", "interruption"],
+              "properties": {
+                "exitCode": {"type": "null"},
+                "artifactHash": {"type": "null"},
+                "reason": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "nonPassBudget": {
+      "type": "object",
+      "required": ["maximumMinutes", "elapsedSeconds", "hardLimitReached"],
+      "additionalProperties": false,
+      "properties": {
+        "maximumMinutes": {"type": "integer", "minimum": 1},
+        "elapsedSeconds": {"type": "number", "minimum": 0},
+        "hardLimitReached": {"type": "boolean"}
+      }
+    },
+    "interruptionObservation": {
+      "type": "object",
+      "required": ["terminalOutputReceived", "observedStatus", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "terminalOutputReceived": {"type": "boolean"},
+        "observedStatus": {"type": "string", "minLength": 1},
+        "action": {"type": "string", "minLength": 1}
+      }
+    },
+    "deliveryTiming": {
+      "type": "object",
+      "required": ["overallElapsed", "intakeActivation", "candidateExecution"],
+      "additionalProperties": false,
+      "properties": {
+        "overallElapsed": {
+          "type": "object",
+          "required": ["anchor", "anchorCommit", "startedAt", "endedAt", "elapsedSeconds", "reanchored"],
+          "additionalProperties": false,
+          "properties": {
+            "anchor": {"const": "DRAFT_COMMIT"},
+            "anchorCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "startedAt": {"type": "string", "minLength": 1},
+            "endedAt": {"type": "string", "minLength": 1},
+            "elapsedSeconds": {"type": "number", "minimum": 0},
+            "reanchored": {"const": false}
+          }
+        },
+        "intakeActivation": {
+          "$ref": "#/$defs/deliveryPhase"
+        },
+        "candidateExecution": {
+          "allOf": [
+            {"$ref": "#/$defs/deliveryPhase"},
+            {
+              "required": ["readyDoctorPassAt", "inProgressCommit"],
+              "properties": {
+                "readyDoctorPassAt": {"type": "string", "minLength": 1},
+                "inProgressCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+              }
+            }
+          ]
         }
+      }
+    },
+    "deliveryPhase": {
+      "type": "object",
+      "required": ["anchor", "anchorCommit", "startedAt", "endedAt", "elapsedSeconds", "outcome", "targetWallMinutes", "hardFuseWallMinutes", "closureOnlyOverrunSeconds"],
+      "properties": {
+        "anchor": {"type": "string", "minLength": 1},
+        "anchorCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "startedAt": {"type": "string", "minLength": 1},
+        "endedAt": {"type": "string", "minLength": 1},
+        "elapsedSeconds": {"type": "number", "minimum": 0},
+        "outcome": {"enum": ["PASS", "FAIL", "TIMEOUT", "UNKNOWN"]},
+        "targetWallMinutes": {"type": "integer", "minimum": 1},
+        "hardFuseWallMinutes": {"type": "integer", "minimum": 1},
+        "candidateDeadlineMinutes": {"type": "integer", "minimum": 1},
+        "closureOnlyOverrunSeconds": {"type": "number", "minimum": 0},
+        "readyDoctorPassAt": {"type": "string", "minLength": 1},
+        "inProgressCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
       }
     }
   }

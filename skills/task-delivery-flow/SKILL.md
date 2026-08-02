@@ -85,6 +85,36 @@ description: Execute one governed repository task or coordinate a strictly seria
   flag, Git note, replace, graft, history rewrite, configurable allowlist, or
   generalized override is authorized.
 
+## TASK-0074 exact one-time delivery-flow recovery
+
+- The only TASK-0074 pre-READY maintenance record is
+  `OWNER-MAINT-20260802-TASK-0074-PRE-READY-01`. Accept exactly one direct
+  single-parent child of the frozen TASK-0074 DRAFT and bind its Base, DRAFT,
+  derived Commit and Tree, frozen path set, mode/type/blob/content identities,
+  and exact Owner authorization.
+- Quarantine only the fixed TASK-0073 terminal Commit and Tree, Evidence and
+  Review blobs and hashes, and exact Reviewer command/reason/native-UNKNOWN
+  tuple as immutable historical non-PASS. A copied tuple, changed identity, or
+  second record fails closed and never changes TASK-0073 from REJECTED.
+- Future Evidence and Handoff may use strongly typed `TIMEOUT` or `UNKNOWN`.
+  They require null exit/artifact, a truthful reason, candidate Commit and
+  Tree, budget, and interruption observation. `FAIL` still requires a real
+  non-zero exit code, and `PASS` still requires a real terminal success.
+- Record overall elapsed time without reanchoring. Time DRAFT through the READY
+  Doctor terminal result separately from candidate execution, which starts
+  only after both READY Doctor PASS and the IN_PROGRESS commit. Closure-only
+  overrun never permits implementation.
+- The only combined gate is TASK-0074 with the READY-frozen
+  `HARNESS_PORTABILITY_LOCAL` profile. On one clean candidate and one Windows
+  durable receipt, execute the complete profile and every canonical subcommand
+  exactly once; this satisfies candidate canonical and Windows exact-tree.
+  It is not an alias, cache, or skip. WSL remains an independent later run,
+  ordinary cards retain independent canonical, and results cannot downgrade
+  the profile.
+- Use one `fork_turns=none` Reviewer with a 15-minute maximum. Missing terminal
+  output is `TIMEOUT` or `UNKNOWN`, not an invented `FAIL`; stop later gates.
+  Ordinary READY authorization and a real READY Doctor PASS remain mandatory.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from
@@ -120,6 +150,9 @@ description: Execute one governed repository task or coordinate a strictly seria
   result and never invent a `REUSED` PASS.
 - Keep failure, cancellation, timeout, NOT_RUN, UNKNOWN, and
   DEFERRED_NOT_CLAIMED as non-PASS.
+- Record strongly typed TIMEOUT/UNKNOWN with candidate Commit and Tree, budget,
+  interruption observation, and truthful reason. Never use FAIL to stand in
+  for missing Reviewer or command output.
 - Do not present another Commit, Tree, platform, execution, or pre-closure
   result as the current exact-tree PASS.
 - Freeze the validation profile before READY. Never downgrade it from results.

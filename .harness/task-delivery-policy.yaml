@@ -56,6 +56,7 @@ complexityGate:
     terminalCheckMinutesGreaterThan: 20
     estimatedWallMinutesGreaterThan: 90
 budgets:
+  schemaVersion: 2
   targetWallMinutes: 60
   hardFuseWallMinutes: 90
   candidateDeadlineMinutes: 45
@@ -63,6 +64,31 @@ budgets:
   maximumFixBatches: 1
   maximumReviewRounds: 2
   thirdReviewForbidden: true
+  timingContract:
+    overallElapsed:
+      anchor: DRAFT_COMMIT
+      terminal: TERMINAL_COMMIT
+      recordingRequired: true
+      resetOrReanchorForbidden: true
+    intakeActivation:
+      anchor: DRAFT_COMMIT
+      terminal: READY_DOCTOR_TERMINAL
+      targetWallMinutes: 60
+      hardFuseWallMinutes: 90
+      timeoutStatus: TIMEOUT
+      closureOnlyOverrun: true
+    candidateExecution:
+      requiredAnchorEvents:
+        - READY_DOCTOR_PASS
+        - IN_PROGRESS_COMMIT
+      anchorSelection: LATER_OF_REQUIRED_EVENTS
+      candidateDeadlineMinutes: 45
+      targetWallMinutes: 60
+      hardFuseWallMinutes: 90
+      timeoutStatus: TIMEOUT
+      closureOnlyOverrun: true
+    taskBindings:
+      - TASK-0074
   stopOnR2NewStructural:
     - P0
     - P1
@@ -105,6 +131,34 @@ validation:
     affectedModuleTestsRequired: true
     diffCheckCount: 1
     duplicateCanonicalSubcommandsForbidden: true
+  task0074HarnessPortabilityCombinedGate:
+    taskId: TASK-0074
+    eligibleProfile: HARNESS_PORTABILITY_LOCAL
+    readyFrozenProfileRequired: true
+    sameCleanCandidateCommitAndTreeRequired: true
+    windowsDurableReceiptCount: 1
+    satisfies:
+      - CANDIDATE_CANONICAL
+      - WINDOWS_EXACT_TREE
+    commandRegistryProfile: harnessPortabilityLocal
+    exactCommandIds:
+      - harnessTests
+      - doctor
+      - catalogValidate
+      - catalogDrift
+      - paidFeatureCheck
+      - betaRosterGate
+    canonicalCommandIds:
+      - doctor
+      - catalogValidate
+      - catalogDrift
+      - paidFeatureCheck
+      - betaRosterGate
+    eachCommandExactlyOnce: true
+    wrapperAliasCacheSkipForbidden: true
+    wslStillIndependent: true
+    ordinaryCardsRemainIndependentCanonical: true
+    resultBasedProfileDowngradeForbidden: true
   fullPlatformWrappersFor:
     - HARNESS
     - PORTABILITY
@@ -175,6 +229,10 @@ review:
     - C4
   protectedRuleRequirementsApply: true
   independentForkTurns: none
+  maximumMinutes: 15
+  missingTerminalStatuses:
+    - TIMEOUT
+    - UNKNOWN
   r1:
     scope:
       - COMPLETE_MATRIX
@@ -225,6 +283,33 @@ candidateIdentity:
     - TIMEOUT
     - NOT_RUN
     - UNKNOWN
+  evidenceResultContract:
+    PASS:
+      exitCode: ZERO
+      terminalResultRequired: true
+    FAIL:
+      exitCode: NON_ZERO_INTEGER
+      terminalResultRequired: true
+    TIMEOUT:
+      exitCode: null
+      artifactHash: null
+      requiredFields:
+        - reason
+        - candidateCommit
+        - candidateTree
+        - budget
+        - interruption
+      passClaimed: false
+    UNKNOWN:
+      exitCode: null
+      artifactHash: null
+      requiredFields:
+        - reason
+        - candidateCommit
+        - candidateTree
+        - budget
+        - interruption
+      passClaimed: false
   exactShaCiCrossShaReuse: false
   exactTreeChannelCrossCommitOrTreeReuse: false
 followUpTasks:

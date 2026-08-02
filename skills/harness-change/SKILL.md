@@ -3,7 +3,7 @@ name: harness-change
 description: 修改 Agent 规则、Harness 配置、治理脚本、受保护路径、Skill、任务模板、证据 Schema 或 CI 门禁时使用。
 metadata:
   id: harness-change
-  version: 1.1.2
+  version: 1.1.3
   riskClass: C4
 ---
 
@@ -31,6 +31,16 @@ metadata:
   实现。其他 Task、第二条记录、第二次消费、额外提交/路径、通用 override、
   环境变量、CLI flag、Git note/replace/graft、历史改写和可配置 allowlist
   均未授权。
+- `OWNER-MAINT-20260802-TASK-0074-PRE-READY-01` 仅授权以
+  `65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94` 为 Base、在 TASK-0074
+  DRAFT 的一个直接单父子提交中修改卡片冻结的 11 个路径：精确隔离
+  TASK-0073 terminal Commit/Tree 上固定 Evidence/Review Blob/SHA 与
+  Reviewer 原生 UNKNOWN 元组；为未来 Evidence/Handoff 登记 TIMEOUT/UNKNOWN
+  强类型非 PASS；登记不可重锚的总时长、DRAFT→READY 与 IN_PROGRESS 后候选
+  执行两阶段预算；固定 Reviewer 15 分钟上限；登记 TASK-0074 专用 Windows
+  canonical/exact-tree 合并门禁且 WSL 仍独立。历史产物、其他 Task、第二条
+  记录/消费、额外提交/路径、通用 override 和所有禁止接口均未授权；普通
+  READY Doctor 真实 PASS 前不得实施。
 
 ## Procedure
 

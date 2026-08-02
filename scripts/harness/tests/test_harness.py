@@ -2799,6 +2799,62 @@ class BacklogTests(unittest.TestCase):
             tasks["TASK-0056"]["planningContractHash"],
         )
 
+    def test_task0074_replacement_is_exact_and_atomic(self) -> None:
+        parent, _, _, _ = self.load_inputs()
+        child = copy.deepcopy(parent)
+        child["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0074"]
+        self.assertTrue(doctor.task0074_planning_repair_projection(parent, child))
+
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0074_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+
+        unauthorized = Audit()
+        validate_backlog_history_edge(
+            unauthorized,
+            parent,
+            child,
+            "parent..child",
+        )
+        self.assertTrue(
+            any("TASK-0056" in error for error in unauthorized.errors),
+            unauthorized.errors,
+        )
+        expanded = copy.deepcopy(child)
+        expanded["tasks"]["TASK-0056"]["objective"] += " expanded"
+        self.assertFalse(
+            doctor.task0074_planning_repair_projection(parent, expanded)
+        )
+        wrong_dependency = copy.deepcopy(child)
+        wrong_dependency["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0072"]
+        self.assertFalse(
+            doctor.task0074_planning_repair_projection(parent, wrong_dependency)
+        )
+
+        parent_policy = load_yaml(ROOT / doctor.TASK_DELIVERY_POLICY_PATH)
+        child_policy = copy.deepcopy(parent_policy)
+        child_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0074"
+        self.assertTrue(
+            doctor.task0074_delivery_policy_repair_projection(
+                parent_policy,
+                child_policy,
+            )
+        )
+        expanded_policy = copy.deepcopy(child_policy)
+        expanded_policy["followUpTasks"]["snapshotReceipt"] = "TASK-0074"
+        self.assertFalse(
+            doctor.task0074_delivery_policy_repair_projection(
+                parent_policy,
+                expanded_policy,
+            )
+        )
+
     def test_task0062_rejected_authorization_projection_isolation_is_exact_and_fail_closed(
         self,
     ) -> None:
@@ -7597,6 +7653,387 @@ class Task0073PreReadyMaintenanceTests(unittest.TestCase):
                 self.policy,
             )
         self.assertTrue(history_audit.errors)
+
+
+class Task0074PreReadyMaintenanceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        self.boundary = doctor.task0074_pre_ready_maintenance_commit(head)
+
+    def test_exact_machine_record_is_accepted(self) -> None:
+        self.assertIsNotNone(self.boundary)
+        audit = Audit()
+        record = doctor.validate_task0074_pre_ready_maintenance_record(
+            audit,
+            self.policy,
+        )
+        self.assertIsInstance(record, dict)
+        self.assertEqual([], audit.errors)
+        boundary_audit = Audit()
+        self.assertTrue(
+            doctor.validate_task0074_pre_ready_maintenance_boundary(
+                boundary_audit,
+                str(self.boundary),
+            ),
+            boundary_audit.errors,
+        )
+        self.assertEqual([], boundary_audit.errors)
+
+    def test_machine_record_mutations_fail_closed(self) -> None:
+        def remove_record_id(policy: dict[str, object]) -> None:
+            policy["task0074PreReadyMaintenance"].pop("recordId")
+
+        def add_record_field(policy: dict[str, object]) -> None:
+            policy["task0074PreReadyMaintenance"]["override"] = True
+
+        def copy_record(policy: dict[str, object]) -> None:
+            policy["task0074PreReadyMaintenanceCopy"] = copy.deepcopy(
+                policy["task0074PreReadyMaintenance"]
+            )
+
+        mutations = {
+            "missing_field": remove_record_id,
+            "extra_field": add_record_field,
+            "copied_record": copy_record,
+            "other_task": lambda value: value[
+                "task0074PreReadyMaintenance"
+            ].__setitem__("targetTask", "TASK-9999"),
+            "wrong_base": lambda value: value["task0074PreReadyMaintenance"][
+                "base"
+            ].__setitem__("commit", "0" * 40),
+            "wrong_draft": lambda value: value["task0074PreReadyMaintenance"][
+                "draft"
+            ].__setitem__("commit", "0" * 40),
+            "extra_path": lambda value: value["task0074PreReadyMaintenance"][
+                "boundary"
+            ]["changedPaths"].append("README.md"),
+            "wrong_parent": lambda value: value["task0074PreReadyMaintenance"][
+                "boundary"
+            ].__setitem__("directParentCommit", "0" * 40),
+            "reusable": lambda value: value["task0074PreReadyMaintenance"][
+                "consumption"
+            ].__setitem__("reusableByOtherTask", True),
+            "cli_interface": lambda value: value["task0074PreReadyMaintenance"][
+                "forbiddenInterfaces"
+            ].__setitem__("cliFlag", True),
+            "second_record": lambda value: value.__setitem__(
+                "task0074PreReadyMaintenanceSecond",
+                copy.deepcopy(value["task0074PreReadyMaintenance"]),
+            ),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                policy = copy.deepcopy(self.policy)
+                mutate(policy)
+                audit = Audit()
+                doctor.validate_task0074_pre_ready_maintenance_record(
+                    audit,
+                    policy,
+                )
+                self.assertTrue(audit.errors, label)
+
+
+class Task0074HistoricalQuarantineTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        self.record = self.policy["task0074PreReadyMaintenance"]
+
+    def test_exact_task0073_unknown_tuple_is_quarantined(self) -> None:
+        audit = Audit()
+        doctor.validate_task0073_historical_unknown_quarantine(
+            audit,
+            self.record,
+        )
+        self.assertEqual([], audit.errors)
+        exact = Audit()
+        validate_evidence_check(
+            exact,
+            "docs/evidence/TASK-0073/evidence-pack.json checks[5]",
+            copy.deepcopy(doctor.TASK_0073_HISTORICAL_UNKNOWN_CHECK),
+        )
+        self.assertEqual([], exact.errors)
+
+    def test_identity_or_tuple_mutations_fail_closed(self) -> None:
+        for field, value in (
+            ("terminalCommit", "0" * 40),
+            ("terminalTree", "0" * 40),
+            ("passClaimed", True),
+        ):
+            with self.subTest(field=field):
+                record = copy.deepcopy(self.record)
+                record["historicalQuarantine"][field] = value
+                audit = Audit()
+                doctor.validate_task0073_historical_unknown_quarantine(
+                    audit,
+                    record,
+                )
+                self.assertTrue(audit.errors)
+
+        copied = copy.deepcopy(doctor.TASK_0073_HISTORICAL_UNKNOWN_CHECK)
+        copied_audit = Audit()
+        validate_evidence_check(
+            copied_audit,
+            "docs/evidence/TASK-9999/evidence-pack.json checks[5]",
+            copied,
+        )
+        self.assertTrue(
+            any("FAIL requires non-zero exitCode" in item for item in copied_audit.errors),
+            copied_audit.errors,
+        )
+        changed = copy.deepcopy(doctor.TASK_0073_HISTORICAL_UNKNOWN_CHECK)
+        changed["reason"] += " changed"
+        changed_audit = Audit()
+        validate_evidence_check(
+            changed_audit,
+            "docs/evidence/TASK-0073/evidence-pack.json checks[5]",
+            changed,
+        )
+        self.assertTrue(
+            any("FAIL requires non-zero exitCode" in item for item in changed_audit.errors),
+            changed_audit.errors,
+        )
+
+
+class Task0074EvidenceSemanticsTests(unittest.TestCase):
+    @staticmethod
+    def typed_nonpass(status: str) -> dict[str, object]:
+        return {
+            "command": "Independent Reviewer R1 for TASK-0074 frozen candidate",
+            "status": status,
+            "exitCode": None,
+            "artifactHash": None,
+            "reason": "Reviewer did not return terminal output.",
+            "environment": "independent reviewer; read-only",
+            "verifiedCommit": "1" * 40,
+            "candidateCommit": "1" * 40,
+            "candidateTree": "2" * 40,
+            "budget": {
+                "maximumMinutes": 15,
+                "elapsedSeconds": 900,
+                "hardLimitReached": status == "TIMEOUT",
+            },
+            "interruption": {
+                "terminalOutputReceived": False,
+                "observedStatus": "running",
+                "action": "interrupted-at-budget",
+            },
+        }
+
+    def test_timeout_unknown_fail_and_pass_are_strongly_typed(self) -> None:
+        for status, exit_code in (("PASS", 0), ("FAIL", 7)):
+            with self.subTest(status=status):
+                audit = Audit()
+                validate_evidence_check(
+                    audit,
+                    "fixture",
+                    {
+                        "status": status,
+                        "exitCode": exit_code,
+                        "artifactHash": "a" * 64,
+                        "reason": None,
+                    },
+                )
+                self.assertEqual([], audit.errors)
+        for status in ("TIMEOUT", "UNKNOWN"):
+            with self.subTest(status=status):
+                audit = Audit()
+                validate_evidence_check(
+                    audit,
+                    "fixture",
+                    self.typed_nonpass(status),
+                )
+                self.assertEqual([], audit.errors)
+
+        invented_fail = Audit()
+        validate_evidence_check(
+            invented_fail,
+            "fixture",
+            {
+                "status": "FAIL",
+                "exitCode": None,
+                "artifactHash": None,
+                "reason": "missing output",
+            },
+        )
+        self.assertTrue(
+            any("FAIL requires non-zero exitCode" in item for item in invented_fail.errors)
+        )
+
+        schema = json.loads(
+            (ROOT / "docs/schemas/evidence-pack.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        fixture = {
+            "taskId": "TASK-9999",
+            "baseCommit": "0" * 40,
+            "headCommit": "1" * 40,
+            "contextFingerprint": "2" * 64,
+            "checks": [self.typed_nonpass("TIMEOUT")],
+        }
+        schema_audit = Audit()
+        validate_json_schema(schema_audit, fixture, schema, "fixture")
+        self.assertEqual([], schema_audit.errors)
+        handoff_schema = json.loads(
+            (ROOT / "docs/schemas/handoff.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        handoff_audit = Audit()
+        validate_json_schema(
+            handoff_audit,
+            {
+                "taskId": "TASK-9999",
+                "state": "REJECTED",
+                "baseCommit": "0" * 40,
+                "headCommit": "1" * 40,
+                "evidencePath": "docs/evidence/TASK-9999/evidence-pack.json",
+                "reviewers": [
+                    {
+                        "id": "reviewer-r1",
+                        "kind": "independent-review",
+                        "verdict": "UNKNOWN",
+                        "reviewedCommit": "1" * 40,
+                        "evidencePath": "docs/evidence/TASK-9999/review-r1.md",
+                        "reason": "No terminal output.",
+                        "candidateTree": "2" * 40,
+                        "budget": {
+                            "maximumMinutes": 15,
+                            "elapsedSeconds": 899,
+                            "hardLimitReached": False,
+                        },
+                        "interruption": {
+                            "terminalOutputReceived": False,
+                            "observedStatus": "running",
+                            "action": "interrupted-at-budget",
+                        },
+                    }
+                ],
+                "completed": [],
+                "remaining": [],
+                "knownRisks": ["Reviewer terminal output unavailable."],
+                "nextAction": "Close as REJECTED.",
+            },
+            handoff_schema,
+            "handoff",
+        )
+        self.assertEqual([], handoff_audit.errors)
+
+    def test_nonpass_requires_candidate_budget_and_interruption(self) -> None:
+        mutations = {
+            "candidate": lambda item: item.pop("candidateCommit"),
+            "tree": lambda item: item.__setitem__("candidateTree", "bad"),
+            "budget": lambda item: item.pop("budget"),
+            "negative_elapsed": lambda item: item["budget"].__setitem__(
+                "elapsedSeconds",
+                -1,
+            ),
+            "interruption": lambda item: item.pop("interruption"),
+            "terminal_output": lambda item: item["interruption"].__setitem__(
+                "terminalOutputReceived",
+                True,
+            ),
+            "timeout_without_limit": lambda item: item["budget"].__setitem__(
+                "hardLimitReached",
+                False,
+            ),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                item = self.typed_nonpass("TIMEOUT")
+                mutate(item)
+                audit = Audit()
+                validate_evidence_check(audit, "fixture", item)
+                self.assertTrue(audit.errors, label)
+
+
+class Task0074DeliveryContractTests(unittest.TestCase):
+    def test_two_stage_budget_anchors_are_exact(self) -> None:
+        policy = load_yaml(ROOT / ".harness/task-delivery-policy.yaml")
+        timing = policy["budgets"]["timingContract"]
+        self.assertEqual("DRAFT_COMMIT", timing["overallElapsed"]["anchor"])
+        self.assertTrue(timing["overallElapsed"]["resetOrReanchorForbidden"])
+        self.assertEqual(
+            "READY_DOCTOR_TERMINAL",
+            timing["intakeActivation"]["terminal"],
+        )
+        self.assertEqual(
+            ["READY_DOCTOR_PASS", "IN_PROGRESS_COMMIT"],
+            timing["candidateExecution"]["requiredAnchorEvents"],
+        )
+        self.assertEqual(
+            "LATER_OF_REQUIRED_EVENTS",
+            timing["candidateExecution"]["anchorSelection"],
+        )
+        self.assertEqual(["TASK-0074"], timing["taskBindings"])
+        self.assertEqual(15, policy["review"]["maximumMinutes"])
+        audit = Audit()
+        doctor.validate_task0074_card_recovery_contract(audit)
+        self.assertEqual([], audit.errors)
+
+    def test_combined_windows_gate_is_complete_once_and_candidate_bound(self) -> None:
+        policy = load_yaml(ROOT / ".harness/task-delivery-policy.yaml")
+        ci_policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        commands = load_yaml(ROOT / ".harness/commands.yaml")
+        gate = policy["validation"]["task0074HarnessPortabilityCombinedGate"]
+        ci_gate = ci_policy["profiles"]["HARNESS_PORTABILITY_LOCAL"][
+            "task0074CombinedGate"
+        ]
+        exact_ids = commands["profiles"]["harnessPortabilityLocal"]
+        self.assertEqual(exact_ids, gate["exactCommandIds"])
+        self.assertEqual(exact_ids, ci_gate["exactCommandIds"])
+        self.assertEqual(len(exact_ids), len(set(exact_ids)))
+        self.assertEqual(
+            ["doctor", "catalogValidate", "catalogDrift", "paidFeatureCheck", "betaRosterGate"],
+            gate["canonicalCommandIds"],
+        )
+        self.assertEqual(1, gate["windowsDurableReceiptCount"])
+        self.assertTrue(gate["sameCleanCandidateCommitAndTreeRequired"])
+        self.assertTrue(gate["eachCommandExactlyOnce"])
+        self.assertTrue(gate["wrapperAliasCacheSkipForbidden"])
+        self.assertTrue(gate["wslStillIndependent"])
+        self.assertTrue(gate["ordinaryCardsRemainIndependentCanonical"])
+
+        stdout = "".join(
+            (
+                f"\n== {command_id}: fixture\n"
+                f"== {command_id}: PASS (exit=0, elapsed=0.001s)\n"
+            )
+            for command_id in exact_ids
+        ) + "\nHarness precheck: PASS (6 commands)\n"
+        stdout_audit = Audit()
+        doctor.validate_task0074_profile_stdout(
+            stdout_audit,
+            "fixture",
+            stdout,
+        )
+        self.assertEqual([], stdout_audit.errors)
+        duplicate_stdout = Audit()
+        doctor.validate_task0074_profile_stdout(
+            duplicate_stdout,
+            "fixture",
+            stdout.replace(
+                "== doctor: fixture\n",
+                "== doctor: fixture\n== doctor: fixture\n",
+            ),
+        )
+        self.assertTrue(duplicate_stdout.errors)
+
+        duplicate = copy.deepcopy(gate)
+        duplicate["exactCommandIds"].append("doctor")
+        self.assertNotEqual(exact_ids, duplicate["exactCommandIds"])
+        skipped = copy.deepcopy(gate)
+        skipped["exactCommandIds"].remove("catalogDrift")
+        self.assertNotEqual(exact_ids, skipped["exactCommandIds"])
 
 
 class IntegrationTests(unittest.TestCase):

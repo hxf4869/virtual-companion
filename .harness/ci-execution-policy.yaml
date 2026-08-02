@@ -74,6 +74,31 @@ profiles:
       - AGENTS.md
       - CLAUDE.md
     commandRegistryProfile: harnessPortabilityLocal
+    task0074CombinedGate:
+      taskId: TASK-0074
+      sameCleanCandidateCommitAndTreeRequired: true
+      windowsDurableReceiptCount: 1
+      satisfies:
+        - CANDIDATE_CANONICAL
+        - WINDOWS_EXACT_TREE
+      exactCommandIds:
+        - harnessTests
+        - doctor
+        - catalogValidate
+        - catalogDrift
+        - paidFeatureCheck
+        - betaRosterGate
+      canonicalCommandIds:
+        - doctor
+        - catalogValidate
+        - catalogDrift
+        - paidFeatureCheck
+        - betaRosterGate
+      eachCommandExactlyOnce: true
+      wrapperAliasCacheSkipForbidden: true
+      wslStillIndependent: true
+      ordinaryCardsRemainIndependentCanonical: true
+      resultBasedProfileDowngradeForbidden: true
     platforms:
       windows:
         required: true
@@ -683,6 +708,159 @@ task0073PreReadyMaintenance:
     profile: HARNESS_PORTABILITY_LOCAL
     windows: PASS_REQUIRED
     wslUbuntu: PASS_REQUIRED
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: UNKNOWN_NOT_RUN
+    githubReasonType: OWNER_QUOTA_EVIDENCE_EXPIRED
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    generalizedOverride: false
+task0074PreReadyMaintenance:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260802-TASK-0074-PRE-READY-01
+  decisionId: TASK-0074-EXACT-DELIVERY-FLOW-RECOVERY-20260802
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE
+  targetTask: TASK-0074
+  sourceThreadId: 019fb2c1-8104-73b1-81dc-ee8bcfce6f63
+  authorization:
+    path: docs/evidence/TASK-0074/pre-ready-maintenance-authorization.json
+    sha256: 8d7da144612eea4b52346abceb0499d2f0be4aa5a65b0ea1dc2043e65a90dccf
+  base:
+    commit: 65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94
+    tree: 5649336f93a8efdecdf0b7213966808e4bd629ed
+    lastTerminalTask: TASK-0073
+    lastTerminalState: REJECTED
+  draft:
+    commit: f72e61d0f97261b32a24101c7bbf4b87cb1bee3f
+    tree: ce10e9970ba28747f67223ac1c5ebb55c4245c93
+    parent: 65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94
+    changedFiles:
+      docs/tasks/TASK-0074-exact-delivery-flow-recovery.md:
+        mode: "100644"
+        type: blob
+        blobOid: 91df1a03d6ea3a47e99218f4129596dbd84cec5e
+        sha256: 0c365af5d05cd3054d8c9f0e9dc90740c5aafbc56af935432533cfbbd015793f
+      docs/tasks/context/TASK-0074.context-lock.yaml:
+        mode: "100644"
+        type: blob
+        blobOid: be5dae0a701a4413e7abd97ce455dbfcef392afa
+        sha256: 18a6b58707b965052920d1659483b6d869fc594ac4c1cd1429747298d11b0141
+  boundary:
+    directParentCommit: f72e61d0f97261b32a24101c7bbf4b87cb1bee3f
+    directParentTree: ce10e9970ba28747f67223ac1c5ebb55c4245c93
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - .harness/skills.yaml
+      - .harness/task-delivery-policy.yaml
+      - docs/evidence/TASK-0074/pre-ready-maintenance-authorization.json
+      - docs/schemas/evidence-pack.schema.json
+      - docs/schemas/handoff.schema.json
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      - skills/harness-change/SKILL.md
+      - skills/task-delivery-flow/SKILL.md
+      - skills/task-intake/SKILL.md
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0074_BOUNDARY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: 3be74114199f684b571cd4531cc45d3dfea5bfb5
+        sha256: f9d53af34a21b390a2370fc5c3054a79bc1a4d15777b3e94e79b5a9a74c87127
+      exactFiles:
+        .harness/skills.yaml:
+          blobOid: 6cef732bba49b3e9b48794a74347d5fc92e69d2d
+          sha256: 5c04a1ac1a6206eb1d1009da008cbf544412b77ccd405f484148c25cad23cde9
+        .harness/task-delivery-policy.yaml:
+          blobOid: 30a9c8010fa43583ca46d6cdf27b132495c80452
+          sha256: f3fbf6a954602472b894f02bb148cdeb5699df27aeb472f33a8f0263d9c7b17f
+        docs/evidence/TASK-0074/pre-ready-maintenance-authorization.json:
+          blobOid: 50fdad04309aca55a53c246b55f9b479cea33892
+          sha256: 8d7da144612eea4b52346abceb0499d2f0be4aa5a65b0ea1dc2043e65a90dccf
+        docs/schemas/evidence-pack.schema.json:
+          blobOid: 53b1974bd0ad49f37dce87c57736ce789af02313
+          sha256: ce3ed6591f8ce724a0361aca0f8215647b564245d2dc6f2235543b5a625176c0
+        docs/schemas/handoff.schema.json:
+          blobOid: ab0d51da4edcdd6216827356d9c641476114cfa4
+          sha256: f13bb26da97c4b27a89bc3b8c88e2b87c92da5475770f64fcb3bd19b33c6414b
+        scripts/harness/tests/test_harness.py:
+          blobOid: 386649d35d77771794ba6c0dcb32824970759217
+          sha256: c2b3259013bad9459d294f808e1344b2a7bab4160d9cc9d6f1a4db6c8414549b
+        skills/harness-change/SKILL.md:
+          blobOid: 20eb98f99e796085a269ca127bb54293d7c9d05f
+          sha256: 53b8dce167ebe0ded5cc573e0792ee19658e02c94433521038f232fe98645de0
+        skills/task-delivery-flow/SKILL.md:
+          blobOid: 7e69fd84ce5b4d72cfbcf81f6e18900479a1bb69
+          sha256: af0c3b1bdebe1a4835f81ea5ec0c36708e311c6ab22d59f5afc14e2f1bb1d193
+        skills/task-intake/SKILL.md:
+          blobOid: 3f4b5993789d69ee55ab72a91911b7239ec7bae8
+          sha256: 3fb428c3c3eb10ea2b5f74cc0c6ad9270e1ed9f7255d3039bb10215cef9c7f31
+  historicalQuarantine:
+    taskId: TASK-0073
+    terminalState: REJECTED
+    terminalCommit: 65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94
+    terminalTree: 5649336f93a8efdecdf0b7213966808e4bd629ed
+    passClaimed: false
+    evidence:
+      path: docs/evidence/TASK-0073/evidence-pack.json
+      mode: "100644"
+      type: blob
+      blobOid: 6b123197348ad1391fd4953f5ce6741d0b616ad7
+      sha256: 22dc47792bb08227709c6c67b9e7d47490604a7ac567182acd1ff642d4a06221
+      checkIndex: 5
+    review:
+      path: docs/evidence/TASK-0073/review-r1.md
+      mode: "100644"
+      type: blob
+      blobOid: 22326ae61ea43ba86565bb96b4c2fd78c68bbecf
+      sha256: c92fa49e6d996fd9221ba884c3f6b6acb4feab16a7869c58da8287dd356913c5
+    reviewerTuple:
+      command: Independent Reviewer R1 for TASK-0073 frozen candidate
+      nativeResult: UNKNOWN
+      storedStatus: FAIL
+      exitCode: null
+      artifactHash: null
+      candidateCommit: 11e6fb12f77486787ef71627e84f34ee069e72bd
+      candidateTree: 36e22afcc810cca0630e159568d2acf03845441d
+      reason: "BUDGET_FUSED_WITHOUT_TERMINAL_OUTPUT: 唯一 fork_turns=none Reviewer 到 8 分钟预算仍为 running，未返回终态；原生结果是 UNKNOWN/NOT_PASS，终态 Schema 中映射为 Reviewer gate FAIL。"
+      environment: independent subagent task0073_reviewer_r1; read-only; interrupted at budget
+    immutableHistoricalNonPass: true
+    copiedOrMutatedTupleFailsClosed: true
+  deliveryContract:
+    evidenceStatuses:
+      - TIMEOUT
+      - UNKNOWN
+    failRequiresNonZeroExitCode: true
+    nullExitRequiresCandidateBudgetAndInterruption: true
+    timingContract: DRAFT_TO_READY_AND_IN_PROGRESS_TO_CANDIDATE_SEPARATE
+    reviewerMaximumMinutes: 15
+    combinedGate: TASK0074_HARNESS_PORTABILITY_WINDOWS_ONLY
+    wslIndependent: true
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0074
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: HARNESS_PORTABILITY_LOCAL
+    windows: COMBINED_CANONICAL_AND_EXACT_TREE_PASS_REQUIRED
+    wslUbuntu: INDEPENDENT_PASS_REQUIRED
     macos: DEFERRED_NOT_CLAIMED
     githubActions: UNKNOWN_NOT_RUN
     githubReasonType: OWNER_QUOTA_EVIDENCE_EXPIRED
