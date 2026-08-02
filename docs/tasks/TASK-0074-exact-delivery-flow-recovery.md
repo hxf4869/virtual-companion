@@ -18,7 +18,7 @@ targetSkillVersions:
   task-intake: 1.2.3
   harness-change: 1.1.3
 baseCommit: 65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94
-authorizationCommit: ""
+authorizationCommit: 4ce915c16e3fa4a87a09537882fdc520dc4172f3
 contextFingerprint: 76dbcd2ec93b37a9c52bbb99f5f40d94243f8309c6be1f7a34e96c17cd56af48
 contextLock: docs/tasks/context/TASK-0074.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
