@@ -1,0 +1,38 @@
+{
+  "taskId": "TASK-0071",
+  "state": "REJECTED",
+  "baseCommit": "f9556808dc12ad14a67cb08cb570efb0281fc172",
+  "headCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6",
+  "evidencePath": "docs/evidence/TASK-0071/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task0071_reviewer_r2",
+      "kind": "independent-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6",
+      "evidencePath": "docs/evidence/TASK-0071/review-r2.md"
+    }
+  ],
+  "completed": [
+    "直接 recovery DRAFT 7d18e3e8704954a023075c12b931f74ab8eed1a8 / Tree 046a2f357623dcff0907ff0dfbf28ff958758760 以 f9556808 为唯一父；READY 6f2fb467 / Tree a0ff36f3 与绑定 191d011 / Tree 2f243df1 后，唯一 READY Doctor exit 0、318622 checks。",
+    "IN_PROGRESS 16f359d / Tree d144761e 后冻结首候选 b2a266dc / Tree 9526a94e；TASK-0056 Card/Backlog 依赖由 TASK-0055 精确迁移为 TASK-0071，TASK-0055 保持 REJECTED、TASK-0049 保持 SUPERSEDED。",
+    "R1 对 b2a266dc 为 FAIL，报告 repositoryIdle P1 与当前工作区 fixture P2；唯一修复批 834353846a2e505d1b6d8b7daffd120ccac822b6 / Tree 0d9f1627 关闭两项，唯一 R2 PASS。",
+    "最终候选目标矩阵 6/6 PASS，git diff --check PASS；核心保持未接 DRAFT、Base-Handoff、idle terminal 与 terminal Diff Scope 四消费者。",
+    "唯一 candidate canonical durable receipt 真实 exit 1：task-delivery-policy canonical contract hash 与 TASK-0072 Doctor content binding 漂移；未修复、未重跑。",
+    "唯一 pre-closure receipt 26cd7d43fb100bb99db02acab8f2f28c18b85afde7f22422e6ad969e9cd12a9b 真实 exit 1、328140 checks，重现相同两项漂移且无新增闭包错误；READY smoke/Doctor receipts 分别为 1961574f50abe1294c701264556b935fd4fb9871fa34a465e74a8688f511ab9e/de5d983a207eb750ee9ac3d4aef9160fdfb74a426a6532214a9e4767c31ecc0b，candidate canonical receipt 为 7a329559d6805943e5fae23fb439b0aa0f6e761927423d93db6e807947074be0。",
+    "GitHub Actions 保持 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0；历史 TASK-0072 Windows FAIL 与本卡 canonical FAIL 均未洗白。"
+  ],
+  "remaining": [
+    "candidate canonical 非零后未启动 Windows harnessPortabilityLocal，也未启动 WSL git-archive exact-tree；两者均为 NOT_RUN，不是 PASS。",
+    "TASK-0056 当前精确依赖 TASK-0071，而 TASK-0071 已 REJECTED，因此执行前沿被失败依赖阻断。",
+    "Owner 需创建全新永久恢复卡并在新授权单父边中处理 TASK-0071 的失败依赖；不得重开 TASK-0055、TASK-0071 或复用其编号。",
+    "当前失败链不得推送到 origin/main；origin/main 仍停留在 a737f223，直到未来全绿恢复卡形成可用前向 main。"
+  ],
+  "knownRisks": [
+    "本地 main 保留 TASK-0072 与 TASK-0071 的真实失败历史；这不是已验证可推送候选。",
+    "R2 PASS 只覆盖一次修复 delta；不覆盖随后失败的 candidate canonical，更不代表 Windows、WSL、macOS 或远端 PASS。",
+    "macOS 未运行；GitHub quota 不可验证且没有 dispatch。",
+    "终态提交只包含 REJECTED closure 元数据并带 [skip ci]，不会把实现或历史失败标记为成功。"
+  ],
+  "nextAction": "等待 Owner 为 TASK-0071 创建全新恢复卡；TASK-0056 继续被失败依赖阻断"
+}

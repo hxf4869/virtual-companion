@@ -1,0 +1,131 @@
+{
+  "taskId": "TASK-0071",
+  "baseCommit": "f9556808dc12ad14a67cb08cb570efb0281fc172",
+  "headCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6",
+  "contextFingerprint": "5073873a8d83d7657f38e52a92adae1a7e93d6404c8ef1c4aeabd5540be18116",
+  "reviewers": [
+    {
+      "id": "task0071_reviewer_r2",
+      "kind": "independent-delta-review",
+      "verdict": "PASS",
+      "reviewedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6",
+      "evidencePath": "docs/evidence/TASK-0071/review-r2.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.BacklogTests.test_task0071_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "唯一最终候选目标矩阵在 clean Commit/Tree 上 6/6 PASS，unittest 32.011 秒；覆盖 projection、精确 planning repair、合法串行边以及全部冻结失败关闭类别。",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; exact clean candidate",
+      "verifiedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "最终候选 diff check 为空并真实 exit 0；Reviewer R2 也独立核对 delta。",
+      "environment": "Windows PowerShell 7.6.3; Git 2.28.0.windows.1",
+      "verifiedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0071",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "3bb0523defe6b377c3fd7bd4e9996aae12152ae0bd5fa173c167feb54c15a087",
+      "reason": "唯一 candidate canonical 通过 durable atomic receipt 完成，真实 exit 1。Doctor 报 task-delivery-policy canonical contract hash drifted 与 ci-execution-policy TASK-0072 Doctor content binding drifted；其他四个 canonical 子命令 PASS。stderr SHA-256=ad1236db968ad990cbcdb623296114aeb4b7900d75653f400fcbedf5a5b59199。",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; durable receipt virtual-companion-durable-a691f3b094c147c3a588c00ad6078961",
+      "verifiedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0071",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_CANDIDATE_CANONICAL_FAILURE：协议要求 canonical 非零后停止，不启动 Windows exact-tree profile。",
+      "environment": "Windows-NT-10.0.26200; deliberately not launched",
+      "verifiedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0071",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_CANDIDATE_CANONICAL_FAILURE：Windows profile 未获 PASS，WSL git-archive exact-tree 不得启动。",
+      "environment": "Ubuntu-24.04 WSL2; deliberately not launched",
+      "verifiedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0071",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED：current quota 未验证，dispatch=0，未声称 GitHub Actions PASS。",
+      "environment": "GitHub Actions; deliberately not dispatched or polled",
+      "verifiedCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "FROZEN_REVIEWED_CANONICAL_FAILED",
+    "candidateCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6",
+    "candidateTree": "0d9f1627ad2458149b05be2e9217ed705238025d",
+    "candidateCanonical": "FAIL",
+    "windows": "NOT_RUN_AFTER_CANDIDATE_CANONICAL_FAILURE",
+    "wslUbuntu": "NOT_RUN_AFTER_CANDIDATE_CANONICAL_FAILURE",
+    "macos": "DEFERRED_NOT_CLAIMED",
+    "remote": {
+      "platform": "githubActions",
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "implementationCandidateCommit": "834353846a2e505d1b6d8b7daffd120ccac822b6",
+      "implementationCandidateTree": "0d9f1627ad2458149b05be2e9217ed705238025d",
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "receipts": {
+    "readySmoke": {
+      "runDirectory": "virtual-companion-durable-1b14f7435ae3451f884699cd4717d530",
+      "receiptSha256": "1961574f50abe1294c701264556b935fd4fb9871fa34a465e74a8688f511ab9e",
+      "exitCode": 7
+    },
+    "readyDoctor": {
+      "runDirectory": "virtual-companion-durable-9dbe3ffb00044e6087437d1c60b0009a",
+      "receiptSha256": "de5d983a207eb750ee9ac3d4aef9160fdfb74a426a6532214a9e4767c31ecc0b",
+      "exitCode": 0
+    },
+    "candidateCanonical": {
+      "runDirectory": "virtual-companion-durable-a691f3b094c147c3a588c00ad6078961",
+      "receiptSha256": "7a329559d6805943e5fae23fb439b0aa0f6e761927423d93db6e807947074be0",
+      "exitCode": 1
+    },
+    "preClosure": {
+      "runDirectory": "virtual-companion-durable-e4d1a425e2fb46c2a059c323657e5b36",
+      "receiptSha256": "26cd7d43fb100bb99db02acab8f2f28c18b85afde7f22422e6ad969e9cd12a9b",
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "ef0f01b857d1c97cbe74ac2a89ff43e65c20a6dd5f84311f408e6bda675af82f",
+      "exitCode": 1,
+      "checks": 328140,
+      "reason": "与 candidate canonical 相同的两项机器合同漂移；没有新增 closure 错误，未重跑。"
+    }
+  },
+  "historicalFailuresRetained": [
+    "TASK-0072 Windows canonical exit 1 remains historical FAIL and was not reused.",
+    "TASK-0071 R1 was FAIL; R2 closed only its P1/P2 delta and did not predict the later canonical result.",
+    "TASK-0071 candidate canonical exit 1 remains the terminal gate result and is not converted to PASS."
+  ]
+}

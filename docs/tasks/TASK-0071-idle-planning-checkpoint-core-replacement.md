@@ -2,7 +2,12 @@
 
 ```yaml
 taskId: TASK-0071
-state: IN_REVIEW
+state: REJECTED
+resolutionReason: >-
+  精确候选 834353846a2e505d1b6d8b7daffd120ccac822b6 的唯一 candidate
+  canonical 真实 exit 1。Doctor 报告 task-delivery-policy canonical contract
+  hash 与 TASK-0072 Doctor content binding 两项漂移；一次集中修复批与唯一 R2
+  已用尽，因此未再修复或重跑，Windows/WSL exact-tree 均未启动。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -252,7 +257,12 @@ humanApprovals:
       Reviewer PASS 后只对同一 TASK-0071 Commit/Tree 各执行一次
       Windows 与 WSL exact-tree，Windows 非零即停止。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0071_reviewer_r2
+    kind: independent-delta-review
+    verdict: PASS
+    reviewedCommit: 834353846a2e505d1b6d8b7daffd120ccac822b6
+    evidencePath: docs/evidence/TASK-0071/review-r2.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers scripts.harness.tests.test_harness.BacklogTests.test_task0071_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error
   - git diff --check

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0071
-activeTaskCard: docs/tasks/TASK-0071-idle-planning-checkpoint-core-replacement.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0072
-lastTerminalHandoff: docs/handoffs/TASK-0072.json
-nextAction: 评审并验证 TASK-0071 idle planning checkpoint parent-edge 候选
+lastTerminalTask: TASK-0071
+lastTerminalHandoff: docs/handoffs/TASK-0071.json
+nextAction: 等待 Owner 为 TASK-0071 创建全新恢复卡；TASK-0056 继续被失败依赖阻断
 capabilityGates:
   businessImplementation:
     state: BLOCKED

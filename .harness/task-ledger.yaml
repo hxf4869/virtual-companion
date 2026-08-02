@@ -174,3 +174,9 @@ tasks:
     taskCard: docs/tasks/TASK-0072-exact-self-bootstrap-ratification.md
     evidence: docs/evidence/TASK-0072/evidence-pack.json
     handoff: docs/handoffs/TASK-0072.json
+  TASK-0071:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0071-idle-planning-checkpoint-core-replacement.md
+    evidence: docs/evidence/TASK-0071/evidence-pack.json
+    handoff: docs/handoffs/TASK-0071.json
