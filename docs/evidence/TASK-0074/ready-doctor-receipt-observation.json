@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "DURABLE_ATOMIC_RECEIPT_READ_ONCE_OBSERVATION",
+  "sourceReceiptSha256": "452da45a1aa70d1892d68e2200404ce438132a26fc828a10325ba9e79a068239",
+  "sourceStdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "sourceStderrSha256": "34f4935a31c500674f328e9cced164d9e140d39275798f3999a3f36d6ff06fa5",
+  "repositoryStderrProjection": {
+    "path": "docs/evidence/TASK-0074/ready-doctor-stderr.txt",
+    "sha256": "0248f0194772d3ad92d24cca764498fd3e2a5ca7845535d0094eecfa7776ff35",
+    "bytes": 1508,
+    "encoding": "UTF-8",
+    "lineEnding": "LF",
+    "sourceLineEnding": "CRLF",
+    "sourceBytes": 1528,
+    "normalization": "CRLF_TO_REPOSITORY_LF",
+    "sourceSha256ReproducedByCrLfRehydration": true
+  },
+  "receipt": {
+    "failure": null,
+    "schemaVersion": 1,
+    "exitCode": 1,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "34f4935a31c500674f328e9cced164d9e140d39275798f3999a3f36d6ff06fa5",
+    "argv": [
+      "scripts/harness/doctor.py",
+      "--task",
+      "TASK-0074"
+    ],
+    "completedAt": "2026-08-02T16:13:11.4884325+00:00",
+    "startedAt": "2026-08-02T15:50:41.4558340+00:00",
+    "configSha256": "8e9dded3b3f6ef714c496feb090dcdaa3c3d4428984ba8f5dda127c82743dc47",
+    "status": "COMPLETED",
+    "stderrBytes": 1528,
+    "executable": "C:\\Users\\k\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "stdoutBytes": 0,
+    "transport": "DURABLE_ATOMIC_RECEIPT",
+    "workingDirectory": "G:\\ai\\hxf\\virtual-companion"
+  },
+  "readContract": {
+    "receiptPublished": true,
+    "receiptStdoutStderrReadCount": 1,
+    "rawFilesRecopiedAfterRead": false,
+    "duplicateExecution": false
+  }
+}

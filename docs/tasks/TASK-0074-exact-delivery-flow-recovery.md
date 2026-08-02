@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0074
-state: READY
+state: REJECTED
+resolutionReason: >-
+  TASK-0074 以 65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94 为 Base，
+  于 2026-08-02 23:23:11 +08:00 创建 DRAFT f72e61d0f97261b32a24101c7bbf4b87cb1bee3f，
+  唯一 pre-READY maintenance f337d2a267e0b96360ae74d50e053c41864a934f
+  与普通 READY 授权 4ce915c16e3fa4a87a09537882fdc520dc4172f3 /
+  绑定 e8af6bad56e1f04b493c6f6ffdc43ae348917ffe 均按单父链形成。
+  唯一 READY Doctor 从 2026-08-02 23:50:41 +08:00 运行到
+  2026-08-03 00:13:11 +08:00，durable atomic receipt 真实 exit 1 /
+  355421 checks：TASK-0074 maintenance 未把 TASK-0073 maintenance 的历史
+  CI-policy projection 与 planning-repair Policy hash 从当前合同演进中精确隔离，
+  产生 5 个错误。按硬停合同，不得进入 IN_PROGRESS 或创建第二条 maintenance；
+  candidate、Reviewer、Windows 合并门禁与 WSL 均未启动，本卡诚实 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -382,7 +394,22 @@ humanApprovals:
       TASK-0074 Commit/Tree 启动一次 Windows 合并门禁，Windows PASS 后
       才启动一次 WSL exact-tree。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0074_reviewer_not_started
+    kind: independent-review-gate-not-started
+    verdict: UNKNOWN
+    reviewedCommit: e8af6bad56e1f04b493c6f6ffdc43ae348917ffe
+    evidencePath: docs/evidence/TASK-0074/review-r1.md
+    reason: READY_DOCTOR_FAIL_BEFORE_CANDIDATE_FREEZE; independent Reviewer was not launched.
+    candidateTree: 7ae388057b965159db6a7a627aff2ad43b7eec41
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 0
+      hardLimitReached: false
+    interruption:
+      terminalOutputReceived: false
+      observedStatus: NOT_STARTED
+      action: NOT_LAUNCHED_AFTER_READY_DOCTOR_FAIL
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.Task0074PreReadyMaintenanceTests.test_exact_machine_record_is_accepted scripts.harness.tests.test_harness.Task0074PreReadyMaintenanceTests.test_machine_record_mutations_fail_closed scripts.harness.tests.test_harness.Task0074HistoricalQuarantineTests.test_exact_task0073_unknown_tuple_is_quarantined scripts.harness.tests.test_harness.Task0074HistoricalQuarantineTests.test_identity_or_tuple_mutations_fail_closed scripts.harness.tests.test_harness.Task0074EvidenceSemanticsTests.test_timeout_unknown_fail_and_pass_are_strongly_typed scripts.harness.tests.test_harness.Task0074EvidenceSemanticsTests.test_nonpass_requires_candidate_budget_and_interruption scripts.harness.tests.test_harness.Task0074DeliveryContractTests.test_two_stage_budget_anchors_are_exact scripts.harness.tests.test_harness.Task0074DeliveryContractTests.test_combined_windows_gate_is_complete_once_and_candidate_bound scripts.harness.tests.test_harness.BacklogTests.test_task0074_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error
   - git diff --check

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0074
-activeTaskCard: docs/tasks/TASK-0074-exact-delivery-flow-recovery.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0073
-lastTerminalHandoff: docs/handoffs/TASK-0073.json
-nextAction: 执行 TASK-0074 普通 READY Doctor；真实 PASS 后才可进入 IN_PROGRESS
+lastTerminalTask: TASK-0074
+lastTerminalHandoff: docs/handoffs/TASK-0074.json
+nextAction: 等待 Owner 创建新的永久恢复卡；TASK-0056 继续被 REJECTED TASK-0073 阻断，TASK-0074 失败链不得推送或复用
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: 2026-08-02
+updatedAt: 2026-08-03

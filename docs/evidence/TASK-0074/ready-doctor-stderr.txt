@@ -1,0 +1,20 @@
+Harness doctor: START load project and tasks
+Harness doctor: DONE load project and tasks (881.725s)
+Harness doctor: START authorized task history
+Harness doctor: DONE authorized task history (29.457s)
+Harness doctor: START task ledger history
+Harness doctor: DONE task ledger history (362.558s)
+Harness doctor: START task boundaries and project state
+Harness doctor: DONE task boundaries and project state (32.153s)
+Harness doctor: START skills sources and entrypoints
+Harness doctor: DONE skills sources and entrypoints (3.960s)
+Harness doctor: START evidence and handoffs
+Harness doctor: DONE evidence and handoffs (38.948s)
+Harness doctor: START selected task diff scope
+Harness doctor: DONE selected task diff scope (0.543s)
+ERROR: TASK-0073 pre-READY maintenance: CI policy canonical binding drifted
+ERROR: task-backlog: unresolved PLANNED card TASK-0056 metadata must remain immutable on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd
+ERROR: task-backlog: planning card TASK-0056 title, fixed notice and six-section projection changed on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd
+ERROR: task-backlog: permanent planning contract TASK-0056 was removed or rewritten on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd
+ERROR: task-backlog: TASK-0073 replacement repair must be one exact, authorized, atomic parent edge; observed=[]
+Harness doctor: FAIL (5 errors, 355421 checks)

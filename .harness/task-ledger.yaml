@@ -186,3 +186,9 @@ tasks:
     taskCard: docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md
     evidence: docs/evidence/TASK-0073/evidence-pack.json
     handoff: docs/handoffs/TASK-0073.json
+  TASK-0074:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0074-exact-delivery-flow-recovery.md
+    evidence: docs/evidence/TASK-0074/evidence-pack.json
+    handoff: docs/handoffs/TASK-0074.json

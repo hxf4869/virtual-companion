@@ -1,0 +1,83 @@
+{
+  "taskId": "TASK-0074",
+  "state": "REJECTED",
+  "baseCommit": "65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94",
+  "headCommit": "e8af6bad56e1f04b493c6f6ffdc43ae348917ffe",
+  "evidencePath": "docs/evidence/TASK-0074/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f72e61d0f97261b32a24101c7bbf4b87cb1bee3f",
+      "startedAt": "2026-08-02T23:23:11+08:00",
+      "endedAt": "2026-08-03T00:17:43.0250781+08:00",
+      "elapsedSeconds": 3272.025,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f72e61d0f97261b32a24101c7bbf4b87cb1bee3f",
+      "startedAt": "2026-08-02T23:23:11+08:00",
+      "endedAt": "2026-08-03T00:13:11.4884325+08:00",
+      "elapsedSeconds": 3000.488,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "NOT_STARTED_READY_DOCTOR_FAIL",
+      "anchorCommit": null,
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": 0,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": null,
+      "inProgressCommit": null,
+      "reason": "READY Doctor did not PASS, so no candidate execution anchor exists."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0074_reviewer_not_started",
+      "kind": "independent-review-gate-not-started",
+      "verdict": "UNKNOWN",
+      "reviewedCommit": "e8af6bad56e1f04b493c6f6ffdc43ae348917ffe",
+      "evidencePath": "docs/evidence/TASK-0074/review-r1.md",
+      "reason": "READY_DOCTOR_FAIL_BEFORE_CANDIDATE_FREEZE; independent Reviewer was not launched.",
+      "candidateTree": "7ae388057b965159db6a7a627aff2ad43b7eec41",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 0,
+        "hardLimitReached": false
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "NOT_STARTED",
+        "action": "NOT_LAUNCHED_AFTER_READY_DOCTOR_FAIL"
+      }
+    }
+  ],
+  "completed": [
+    "从精确 Base 创建 DRAFT f72e61d0 与 Context Lock，42 个 Base 文件对象和 1 条 Owner provenance 指纹复算一致。",
+    "唯一直接单父 maintenance f337d2a2 只包含冻结的 11 条路径；record、Commit/Tree、逐文件身份与 TASK-0073 固定 Evidence/Review Blob 正负例在提交后 4/4 PASS。",
+    "普通 READY 授权 4ce915c1 与卡片单独绑定 e8af6bad 形成单父链；activeTask 原子激活。",
+    "唯一 READY Doctor 使用已 smoke 的 durable atomic runner，receipt 已发布并只读取一次；真实 exit 1、355421 checks、5 errors。"
+  ],
+  "remaining": [
+    "READY Doctor 未 PASS，因此没有 IN_PROGRESS、实现候选、自绑定矩阵、git diff --check、独立 Reviewer、Windows 合并门禁或 WSL exact-tree PASS。",
+    "TASK-0056 Card/Backlog dependency 与 delivery-policy core 没有迁移，仍精确依赖 REJECTED TASK-0073。",
+    "TASK-0074 maintenance 的新 timing Schema 没有合法的 pre-IN_PROGRESS NOT_STARTED candidate 表达；本终态保留 null anchor，不伪造 READY PASS 或 IN_PROGRESS Commit。",
+    "已知失败链不推送；origin/main 继续保持 a737f22362185ed47e81ecabef5c17b22fb52e18。"
+  ],
+  "knownRisks": [
+    "TASK-0073 历史 maintenance CI-policy canonical 与 planning-repair 当前 Policy hash 耦合仍未被完整隔离；需要新的永久恢复卡和新的 machine-recognized 授权，不能复用本卡 record。",
+    "Reviewer gate 是 UNKNOWN/NOT_STARTED，不是内容评审结论；没有 P0/P1/P2/AC/invariant PASS。",
+    "macOS 为 DEFERRED_NOT_CLAIMED；GitHub Actions 为 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0 / passClaimed=false。",
+    "终态仅为 TERMINAL_METADATA_ONLY REJECTED closure，必须带 [skip ci]，不代表 canonical、Windows、WSL、macOS 或远端 PASS。"
+  ],
+  "nextAction": "等待 Owner 创建新的永久恢复卡，精确修复 TASK-0073 历史 Policy projection 隔离和 pre-IN_PROGRESS timing 非 PASS 表达；不得修改历史或推送本失败链"
+}
