@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0073
+activeTaskCard: docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0071
 lastTerminalHandoff: docs/handoffs/TASK-0071.json
-nextAction: 等待 Owner 为 TASK-0071 创建全新恢复卡；TASK-0056 继续被失败依赖阻断
+nextAction: 执行 TASK-0073 普通 READY Doctor；真实 PASS 后才可进入 IN_PROGRESS
 capabilityGates:
   businessImplementation:
     state: BLOCKED
