@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0072
-state: IN_REVIEW
+state: REJECTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -216,7 +216,12 @@ humanApprovals:
       OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0，不 dispatch、不重跑、不轮询；
       Reviewer PASS 后只运行一次 Windows 与一次 WSL exact Commit/Tree。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0072_reviewer_r1
+    kind: independent-complete-matrix-review
+    verdict: PASS
+    reviewedCommit: 5db76f78e19bc993ed95ca74116b466a096a8ea8
+    evidencePath: docs/evidence/TASK-0072/review-r1.md
 requiredCommands:
   - python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_uses_same_commit_planning_card_blob scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_card_blob_failures_are_closed scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_current_worktree_cannot_change_result scripts.harness.tests.test_harness.BacklogTests.test_current_backlog_validation_remains_worktree_bound_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_backlog_card_wrong_path_then_restore_stays_failed scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_cannot_bypass_pending_hard_gate scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_reconstructs_base_git_snapshot scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_duplicate_order_and_invalid_critical_path scripts.harness.tests.test_harness.BacklogTests.test_hard_gate_requires_owner_and_each_decision_evidence scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_dependency_order_cycle_and_card_hash_drift scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_backlog_resolution_requires_reason_and_new_id_for_replacement scripts.harness.tests.test_harness.BacklogTests.test_planning_terminal_card_is_atomic_and_does_not_consume_task_ledger
   - git diff --check

@@ -168,3 +168,9 @@ tasks:
     taskCard: docs/tasks/TASK-0070-backlog-draft-promotion-base-card-snapshot-recovery.md
     evidence: docs/evidence/TASK-0070/evidence-pack.json
     handoff: docs/handoffs/TASK-0070.json
+  TASK-0072:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0072-exact-self-bootstrap-ratification.md
+    evidence: docs/evidence/TASK-0072/evidence-pack.json
+    handoff: docs/handoffs/TASK-0072.json

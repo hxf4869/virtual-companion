@@ -1,0 +1,39 @@
+{
+  "taskId": "TASK-0072",
+  "state": "REJECTED",
+  "baseCommit": "d83baca18211c464cebdc7082308e90b2d5d18f0",
+  "headCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+  "evidencePath": "docs/evidence/TASK-0072/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task0072_reviewer_r1",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "PASS",
+      "reviewedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+      "evidencePath": "docs/evidence/TASK-0072/review-r1.md"
+    }
+  ],
+  "completed": [
+    "在精确 a737f223→9725e740→60b09ec 链上创建直接单父 bootstrap boundary d83baca18211c464cebdc7082308e90b2d5d18f0 / Tree 80ae86080731e76e4f793923f70682aae8d12361；102 项机器绑定 PASS，全部专用负例失败关闭。",
+    "以 boundary 为一次性 DRAFT anchor 完成 DRAFT 2158030c7dc2ee84896afe820dcd29052210dfe9 / Tree b7f22adb14ed00e5107c422327a5f9725c6fa6c1；唯一 DRAFT Doctor exit 0、298390 checks、1209.693s。",
+    "完成 READY 授权 df51721d6c75abb8d55994db789a14cca362bdad / Tree 02fa7d3c0d153c5fba195348f2c8d6dcebe8a5dd 与绑定 884812b76046439c457761c2cfb3eee19124a166 / Tree ed18997017d6cea9cf3d5aa9ea01f823900c3b8e；唯一 READY Doctor exit 0、301896 checks、1111.615s。",
+    "在 IN_PROGRESS 后执行本卡当前 14 项目标测试；首次 13/14 FAIL，使用唯一修复批次后最终候选 14/14 PASS。修复只隔离测试 fixture 的 active task，未修改生产 Harness。",
+    "冻结并进入 IN_REVIEW：5db76f78e19bc993ed95ca74116b466a096a8ea8 / Tree e490793cd65418e96be177d1925946a293aa9cd2；独立 fork_turns=none Reviewer R1 为 PASS，P0/P1/P2 均为 0。",
+    "唯一候选 git diff --check exit 0、0.057s；唯一 Windows canonical 使用 durable atomic receipt，真实 exit 1、2410.594s。179 tests 中 1 个失败、1 个 Windows skip；Doctor 独立部分仍 PASS 307233 checks。",
+    "Windows 失败后按协议停止：WSL exact-tree、macOS 与 GitHub Actions 均未运行；GitHub 固定 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0，不声称远端 PASS。",
+    "TASK-0072 写入 Task Ledger 后一次性 authorization/boundary anchor 已 consumed 且不可复用；未创建、预留或登记 TASK-0071，Backlog 未修改。"
+  ],
+  "remaining": [
+    "Windows 完整 Harness 套件仍有一个失败：BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers 实际 nextPromotable 为 TASK-0055，而测试期望 TASK-0056。",
+    "唯一修复批次已经用完；不得为 TASK-0072 启动第二批修复、R2 或 R3，不得重跑同一候选 Windows canonical，也不得补跑 WSL。",
+    "协调器创建全新正常 TASK-0071 后，继续原 TASK-0055 parent-edge core；本执行任务不得自行创建 TASK-0071。",
+    "受控 macOS exact-tree 与 GitHub Actions 当前均无 PASS；远端额度仍不可验证。"
+  ],
+  "knownRisks": [
+    "本地链包含已知 Windows canonical FAIL，因此整条 TASK-0072 链不得推送到 origin/main。",
+    "9725e740 的 14 项 PASS 与 60b09ec 的 Windows Doctor exit 1 / 11 errors / 292911 checks 均为不可改写的历史事实，均未被复用为本候选 PASS。",
+    "Reviewer PASS 只覆盖冻结实现候选和一次性机制，不覆盖随后发现的 Windows 完整套件失败，也不代表平台、pre-closure 或远端 PASS。",
+    "终态提交只允许 REJECTED closure 元数据并带 [skip ci]；不会修改 Backlog、workflow、durable helper、产品、服务、数据库或 TASK-0071。"
+  ],
+  "nextAction": "协调器创建全新正常 TASK-0071，继续原 TASK-0055 parent-edge core；TASK-0072 已因 Windows canonical 失败而 REJECTED，执行任务不得自行创建 TASK-0071"
+}

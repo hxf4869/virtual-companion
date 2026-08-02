@@ -1,0 +1,372 @@
+{
+  "taskId": "TASK-0072",
+  "baseCommit": "d83baca18211c464cebdc7082308e90b2d5d18f0",
+  "headCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+  "contextFingerprint": "e9d37c734399b2b4129970866acf8f83077f2fbce16c4a290a1de8808a72c436",
+  "reviewers": [
+    {
+      "id": "task0072_reviewer_r1",
+      "kind": "independent-complete-matrix-review",
+      "verdict": "PASS",
+      "reviewedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+      "evidencePath": "docs/evidence/TASK-0072/review-r1.md"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_uses_same_commit_planning_card_blob scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_card_blob_failures_are_closed scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_current_worktree_cannot_change_result scripts.harness.tests.test_harness.BacklogTests.test_current_backlog_validation_remains_worktree_bound_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_backlog_card_wrong_path_then_restore_stays_failed scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_cannot_bypass_pending_hard_gate scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_reconstructs_base_git_snapshot scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_duplicate_order_and_invalid_critical_path scripts.harness.tests.test_harness.BacklogTests.test_hard_gate_requires_owner_and_each_decision_evidence scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_dependency_order_cycle_and_card_hash_drift scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_backlog_resolution_requires_reason_and_new_id_for_replacement scripts.harness.tests.test_harness.BacklogTests.test_planning_terminal_card_is_atomic_and_does_not_consume_task_ledger",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "bd48d533de2730483160d1e4e5d895f25df4d2a25f30695bd0c924058c6272ab",
+      "reason": "The sole final-candidate targeted matrix passed 14/14 in 38.530 seconds (unittest 38.354 seconds). The artifact hash binds the canonical result tuple recorded under artifacts.targetedMatrix.finalCandidate.",
+      "environment": "Windows-11-10.0.26200-SP0; Python 3.12.9; exact clean reviewed candidate",
+      "verifiedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The unique primary final-candidate diff check completed with empty output in 0.057 seconds; the independent Reviewer also checked the candidate separately.",
+      "environment": "Windows PowerShell 7.6.3; Git 2.28.0.windows.1; exact clean reviewed candidate",
+      "verifiedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0072",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "519b2d4629443d2f621262debb2a8dd7a9e50e46f7aaf63b78601adab610ab0c",
+      "reason": "The only Windows exact-candidate execution completed in 2410.594 seconds. The complete Harness suite ran 179 tests with one failure and one Windows skip; test_backlog_projection_exposes_idle_order_and_repository_blockers observed TASK-0055 where the test expected TASK-0056. The Doctor subcommand itself passed 307233 checks.",
+      "environment": "Windows-11-10.0.26200-SP0; Python 3.12.9; PowerShell 7.6.3; Git 2.28.0.windows.1; PyYAML 6.0.3; tzdata 2026.3",
+      "verifiedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0072",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_WINDOWS_FAILURE: the authorized protocol requires stopping on a non-zero platform gate; no WSL run or PASS is claimed.",
+      "environment": "Ubuntu-24.04 WSL2; deliberately not launched after Windows gate failure",
+      "verifiedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8"
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0072",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: no controlled macOS environment was available and no macOS PASS is claimed.",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0072",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED: current quota was not verified, dispatch count remained 0, and no GitHub Actions PASS is claimed.",
+      "environment": "GitHub Actions; deliberately not dispatched or polled",
+      "verifiedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "FROZEN_REVIEWED_WINDOWS_FAILED",
+    "candidateCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+    "candidateTree": "e490793cd65418e96be177d1925946a293aa9cd2",
+    "windows": "FAIL",
+    "wslUbuntu": "NOT_RUN_AFTER_WINDOWS_FAILURE",
+    "macos": "DEFERRED_NOT_CLAIMED",
+    "remote": {
+      "platform": "githubActions",
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "closureType": "REJECTED_CLOSURE",
+      "implementationCandidateCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+      "implementationCandidateTree": "e490793cd65418e96be177d1925946a293aa9cd2",
+      "commitMarker": "[skip ci]",
+      "externalCiTriggered": false,
+      "representsCiPass": false
+    }
+  },
+  "artifacts": {
+    "initialState": {
+      "head": "60b09ec198a0c37b2345576d3cc593bfbe887bd5",
+      "tree": "dceb360cbd14d9112b241e5889b0498c05df317f",
+      "originMain": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+      "ahead": 2,
+      "behind": 0,
+      "worktreeClean": true,
+      "indexClean": true,
+      "activeTask": null,
+      "lastTerminalTask": "TASK-0070"
+    },
+    "lifecycle": {
+      "sourceTerminal": {
+        "commit": "a737f22362185ed47e81ecabef5c17b22fb52e18",
+        "tree": "e83e352a9805e84e1996115924a33686fdd79d1e",
+        "parent": "fe1fb728241d216221d09f29bce2baf8d7e16f69"
+      },
+      "retainedImplementation": {
+        "commit": "9725e74019b7a102ff8e848beec466bac7044987",
+        "tree": "cf89d92a6dc311ee99ca2d2e394df11b05c9e174",
+        "parent": "a737f22362185ed47e81ecabef5c17b22fb52e18"
+      },
+      "maintenanceHandoff": {
+        "commit": "60b09ec198a0c37b2345576d3cc593bfbe887bd5",
+        "tree": "dceb360cbd14d9112b241e5889b0498c05df317f",
+        "parent": "9725e74019b7a102ff8e848beec466bac7044987"
+      },
+      "bootstrapBoundary": {
+        "commit": "d83baca18211c464cebdc7082308e90b2d5d18f0",
+        "tree": "80ae86080731e76e4f793923f70682aae8d12361",
+        "parent": "60b09ec198a0c37b2345576d3cc593bfbe887bd5"
+      },
+      "draft": {
+        "commit": "2158030c7dc2ee84896afe820dcd29052210dfe9",
+        "tree": "b7f22adb14ed00e5107c422327a5f9725c6fa6c1",
+        "parent": "d83baca18211c464cebdc7082308e90b2d5d18f0"
+      },
+      "readyAuthorization": {
+        "commit": "df51721d6c75abb8d55994db789a14cca362bdad",
+        "tree": "02fa7d3c0d153c5fba195348f2c8d6dcebe8a5dd",
+        "parent": "2158030c7dc2ee84896afe820dcd29052210dfe9"
+      },
+      "readyBinding": {
+        "commit": "884812b76046439c457761c2cfb3eee19124a166",
+        "tree": "ed18997017d6cea9cf3d5aa9ea01f823900c3b8e",
+        "parent": "df51721d6c75abb8d55994db789a14cca362bdad"
+      },
+      "inProgress": {
+        "commit": "4b8c34df242f33f9d4afbca5653028ae87ff8b9d",
+        "tree": "f6c1c578a50cd8bc5aefaf6f47c3896829c4ce1e",
+        "parent": "884812b76046439c457761c2cfb3eee19124a166"
+      },
+      "repair": {
+        "commit": "73b60d01d6c549aa5fc1db2b61e8d874dd36cead",
+        "tree": "46013573e142c258a3f75f81b096015dd88ab718",
+        "parent": "4b8c34df242f33f9d4afbca5653028ae87ff8b9d"
+      },
+      "inReview": {
+        "commit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+        "tree": "e490793cd65418e96be177d1925946a293aa9cd2",
+        "parent": "73b60d01d6c549aa5fc1db2b61e8d874dd36cead"
+      },
+      "terminal": {
+        "commit": null,
+        "tree": null
+      }
+    },
+    "bootstrap": {
+      "recordId": "OWNER-MAINT-20260801-READY-GREENLINE-01",
+      "authorizationPath": "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/task-0072-self-bootstrap-authorization.json",
+      "authorizationSha256": "28bee6151de91cbd997c808a21105bc2cfa8413d4a96278018474c4c6ff575b1",
+      "boundaryChecks": 102,
+      "boundaryStatus": "PASS",
+      "machineRecordPositive": "PASS",
+      "machineRecordNegativeMutations": [
+        "missing field",
+        "extra field",
+        "copied record",
+        "other task",
+        "wrong commit",
+        "wrong tree",
+        "extra path",
+        "wrong mode",
+        "wrong blob",
+        "wrong content hash",
+        "reusable marker",
+        "CLI interface"
+      ],
+      "specializedNegativeTests": "PASS_4_OF_4",
+      "consumptionCondition": "TASK-0072 is present in .harness/task-ledger.yaml",
+      "consumedInClosureSnapshot": true,
+      "reusable": false,
+      "generalBypassPresent": false
+    },
+    "historicalFacts": {
+      "retainedImplementationTests": {
+        "commit": "9725e74019b7a102ff8e848beec466bac7044987",
+        "status": "PASS",
+        "tests": 14,
+        "historicalOnly": true,
+        "reusedAsCurrentPass": false
+      },
+      "maintenanceWindowsDoctor": {
+        "commit": "60b09ec198a0c37b2345576d3cc593bfbe887bd5",
+        "status": "FAIL",
+        "exitCode": 1,
+        "checks": 292911,
+        "errors": 11,
+        "receiptSha256": "0208228211925eda2d4a094fd32cb3af1339730a79a5577bb38ad064aee88012",
+        "washedToPass": false
+      }
+    },
+    "draftDoctor": {
+      "status": "PASS",
+      "candidateCommit": "2158030c7dc2ee84896afe820dcd29052210dfe9",
+      "candidateTree": "b7f22adb14ed00e5107c422327a5f9725c6fa6c1",
+      "exitCode": 0,
+      "checks": 298390,
+      "elapsedSeconds": 1209.693,
+      "receiptPath": "docs/evidence/TASK-0072/draft-doctor-receipt.json",
+      "receiptSha256": "0f8e0be343837760083e0e23de88958345b9566cc336c299f1a26fa9eecbe05f",
+      "stdoutPath": "docs/evidence/TASK-0072/draft-doctor-stdout.base64",
+      "stdoutEncoding": "base64",
+      "stdoutSha256": "a0ee751f5dd815dff212825b179811f6ac356ed07489622dc8c8013f613ab485",
+      "stderrPath": "docs/evidence/TASK-0072/draft-doctor-stderr.base64",
+      "stderrEncoding": "base64",
+      "stderrSha256": "18788b502daf63ba0364661c183a753fa489340ad9af6174498f3929cb15d364",
+      "originalElevenErrorsPresent": false
+    },
+    "readyDoctor": {
+      "status": "PASS",
+      "candidateCommit": "884812b76046439c457761c2cfb3eee19124a166",
+      "candidateTree": "ed18997017d6cea9cf3d5aa9ea01f823900c3b8e",
+      "exitCode": 0,
+      "checks": 301896,
+      "elapsedSeconds": 1111.615,
+      "receiptPath": "docs/evidence/TASK-0072/ready-doctor-receipt.json",
+      "receiptSha256": "ccebb73a1346eac38827dc3bf2630854a19f296b0be971f819e5c283aa24bb31",
+      "stdoutPath": "docs/evidence/TASK-0072/ready-doctor-stdout.base64",
+      "stdoutEncoding": "base64",
+      "stdoutSha256": "44d8bbc31c76a283918f3072fb863dc53e8ae20b0d59cac761e3af0efd499d66",
+      "stderrPath": "docs/evidence/TASK-0072/ready-doctor-stderr.base64",
+      "stderrEncoding": "base64",
+      "stderrSha256": "e8bdea102548e398e13a92d09f421e053b012c6b7ec2ec04308f62b737d5a436",
+      "task0055ReadyErrorsPresent": false
+    },
+    "targetedMatrix": {
+      "firstExecution": {
+        "commit": "4b8c34df242f33f9d4afbca5653028ae87ff8b9d",
+        "tree": "f6c1c578a50cd8bc5aefaf6f47c3896829c4ce1e",
+        "status": "FAIL",
+        "testsPassed": 13,
+        "testsTotal": 14,
+        "elapsedSeconds": 38.442,
+        "failure": "BacklogTests.test_backlog_registers_exact_technical_alpha_baseline"
+      },
+      "repair": {
+        "commit": "73b60d01d6c549aa5fc1db2b61e8d874dd36cead",
+        "tree": "46013573e142c258a3f75f81b096015dd88ab718",
+        "batchesUsed": 1,
+        "batchesAllowed": 1,
+        "implementationHarnessChanged": false
+      },
+      "postRepair": {
+        "commit": "73b60d01d6c549aa5fc1db2b61e8d874dd36cead",
+        "status": "PASS",
+        "testsPassed": 14,
+        "testsTotal": 14,
+        "elapsedSeconds": 38.853
+      },
+      "finalCandidate": {
+        "schemaVersion": 1,
+        "taskId": "TASK-0072",
+        "candidateCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+        "candidateTree": "e490793cd65418e96be177d1925946a293aa9cd2",
+        "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_backlog_registers_exact_technical_alpha_baseline scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_uses_same_commit_planning_card_blob scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_card_blob_failures_are_closed scripts.harness.tests.test_harness.BacklogTests.test_base_promotion_current_worktree_cannot_change_result scripts.harness.tests.test_harness.BacklogTests.test_current_backlog_validation_remains_worktree_bound_and_fail_closed scripts.harness.tests.test_harness.BacklogTests.test_backlog_card_wrong_path_then_restore_stays_failed scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_cannot_bypass_pending_hard_gate scripts.harness.tests.test_harness.BacklogTests.test_backlog_draft_reconstructs_base_git_snapshot scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_duplicate_order_and_invalid_critical_path scripts.harness.tests.test_harness.BacklogTests.test_hard_gate_requires_owner_and_each_decision_evidence scripts.harness.tests.test_harness.BacklogTests.test_backlog_rejects_dependency_order_cycle_and_card_hash_drift scripts.harness.tests.test_harness.BacklogTests.test_backlog_derives_next_task_and_hard_gate_blockers scripts.harness.tests.test_harness.BacklogTests.test_backlog_resolution_requires_reason_and_new_id_for_replacement scripts.harness.tests.test_harness.BacklogTests.test_planning_terminal_card_is_atomic_and_does_not_consume_task_ledger",
+        "status": "PASS",
+        "exitCode": 0,
+        "testsPassed": 14,
+        "testsTotal": 14,
+        "elapsedSeconds": 38.53,
+        "unittestElapsedSeconds": 38.354,
+        "resultTupleSha256": "bd48d533de2730483160d1e4e5d895f25df4d2a25f30695bd0c924058c6272ab"
+      }
+    },
+    "review": {
+      "status": "PASS",
+      "reviewerId": "task0072_reviewer_r1",
+      "agentPath": "/root/task0072_reviewer_r1",
+      "reviewedCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+      "reviewedTree": "e490793cd65418e96be177d1925946a293aa9cd2",
+      "p0": 0,
+      "p1": 0,
+      "p2": 0,
+      "r2Status": "NOT_NEEDED",
+      "r3Status": "PROHIBITED_NOT_RUN"
+    },
+    "windowsExactCandidate": {
+      "status": "FAIL",
+      "candidateCommit": "5db76f78e19bc993ed95ca74116b466a096a8ea8",
+      "candidateTree": "e490793cd65418e96be177d1925946a293aa9cd2",
+      "worktreeCleanAtLaunch": true,
+      "indexCleanAtLaunch": true,
+      "executions": 1,
+      "innerExitCode": 1,
+      "startedAt": "2026-08-01T23:23:24.2536836+00:00",
+      "completedAt": "2026-08-02T00:03:34.8474709+00:00",
+      "elapsedSeconds": 2410.594,
+      "receiptPath": "docs/evidence/TASK-0072/windows-receipt.json",
+      "receiptSha256": "519b2d4629443d2f621262debb2a8dd7a9e50e46f7aaf63b78601adab610ab0c",
+      "stdoutPath": "docs/evidence/TASK-0072/windows-stdout.base64",
+      "stdoutEncoding": "base64",
+      "stdoutSha256": "3a1d7c6b9ea8680006e187d79942adad3d5b35eb5ffc5a0cceb958f063d05dab",
+      "stderrPath": "docs/evidence/TASK-0072/windows-stderr.base64",
+      "stderrEncoding": "base64",
+      "stderrSha256": "a38d15db5fbfec8fd01857141d47b445bf8453a4bdbe6a1f363a64174cd35732",
+      "harnessTests": {
+        "status": "FAIL",
+        "exitCode": 1,
+        "testsRun": 179,
+        "failures": 1,
+        "skips": 1,
+        "elapsedSeconds": 1379.708,
+        "failure": "BacklogTests.test_backlog_projection_exposes_idle_order_and_repository_blockers",
+        "actual": "TASK-0055",
+        "expected": "TASK-0056"
+      },
+      "doctor": {
+        "status": "PASS",
+        "exitCode": 0,
+        "checks": 307233,
+        "elapsedSeconds": 1029.802
+      }
+    },
+    "platformStop": {
+      "wslStatus": "NOT_RUN_AFTER_WINDOWS_FAILURE",
+      "macosStatus": "DEFERRED_NOT_CLAIMED",
+      "sameCandidateWindowsRerun": false,
+      "secondRepairBatchStarted": false,
+      "r2Started": false,
+      "r3Started": false
+    },
+    "githubActions": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "task0071": {
+      "trackedTaskCardPaths": 0,
+      "ledgerEntries": 0,
+      "backlogEntries": 0,
+      "createdOrReserved": false
+    },
+    "preClosureRequest": {
+      "path": "docs/evidence/TASK-0072/pre-closure-request.json",
+      "argv": [
+        "scripts/harness/doctor.py",
+        "--task",
+        "TASK-0072",
+        "--pre-closure"
+      ],
+      "executionLimit": 1,
+      "status": "REQUEST_FROZEN",
+      "resultBinding": "The atomic receipt is produced after this immutable REJECTED closure snapshot is staged and is reported externally without rewriting the snapshot."
+    },
+    "terminalClosureBinding": {
+      "commit": null,
+      "tree": null,
+      "reason": "The immutable Evidence pack is contained by the terminal commit, so that commit, tree, and the pre-closure receipt cannot self-reference their own hashes. Exact terminal identity and the sole pre-closure result are reported after execution and commit; the failed chain is not pushed."
+    }
+  }
+}

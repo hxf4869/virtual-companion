@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0072
-activeTaskCard: docs/tasks/TASK-0072-exact-self-bootstrap-ratification.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0070
-lastTerminalHandoff: docs/handoffs/TASK-0070.json
-nextAction: 运行 TASK-0072 READY Doctor；仅在真实 PASS 后进入 IN_PROGRESS
+lastTerminalTask: TASK-0072
+lastTerminalHandoff: docs/handoffs/TASK-0072.json
+nextAction: 协调器创建全新正常 TASK-0071，继续原 TASK-0055 parent-edge core；TASK-0072 已因 Windows canonical 失败而 REJECTED，执行任务不得自行创建 TASK-0071
 capabilityGates:
   businessImplementation:
     state: BLOCKED
