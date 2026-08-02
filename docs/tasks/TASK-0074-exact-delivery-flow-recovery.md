@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0074
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -368,7 +368,7 @@ requiredInvariants:
   - INV-HARNESS-008
   - INV-HARNESS-009
 humanApprovals:
-  - scope: task-0074-exact-one-time-delivery-flow-recovery
+  - scope: harness-change
     approvedBy: repository-owner
     approvedAt: "2026-08-02"
     sourceThreadId: 019fb2c1-8104-73b1-81dc-ee8bcfce6f63
