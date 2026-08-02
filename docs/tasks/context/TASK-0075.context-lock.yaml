@@ -1,0 +1,115 @@
+schemaVersion: 1
+taskId: TASK-0075
+baseCommit: d41c9f82e69107cf1ecf0cb2c100d39f436faab7
+contextFingerprint: deb8e20ac0a38638366ba310a46ce59299e2514bb16b23387ba1ded7a39a396d
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+  - path: .gitattributes
+    sha256: 98ef74cab7df7ea0cc4c4ed35a9fcdfadf085c657dcb4231e9f6dfef25c6faac
+  - path: AGENTS.md
+    sha256: 8c04d7dc1af1a04ccd9e3fab64b9a071e1a3f143610a08367e8cfce3e91d390c
+  - path: .harness/ci-execution-policy.yaml
+    sha256: 3c67c84603085c7f2dce52e192ca23a1e566a51ac9d6fd53193e391f688ceab9
+  - path: .harness/commands.yaml
+    sha256: 35af171f3c83fdbe0adc691789b14f16fff297475046e9d88e91c115a66df720
+  - path: .harness/invariants.yaml
+    sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+  - path: .harness/project-state.yaml
+    sha256: ac7ef8306257e2d0d29b33caeb15c0251baafa511e4a78fb6a443e072a976064
+  - path: .harness/protected-paths.yaml
+    sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+  - path: .harness/skills.yaml
+    sha256: 5c04a1ac1a6206eb1d1009da008cbf544412b77ccd405f484148c25cad23cde9
+  - path: .harness/sources-of-truth.yaml
+    sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+  - path: .harness/task-backlog.yaml
+    sha256: 3bab01c47b4bfdc712ee5c0c95386bd9c4304e1ca641582e55aa1cc60fb25c53
+  - path: .harness/task-delivery-policy.yaml
+    sha256: f3fbf6a954602472b894f02bb148cdeb5699df27aeb472f33a8f0263d9c7b17f
+  - path: .harness/task-ledger.yaml
+    sha256: b112cd04ba6edbc61ca0ebd66fce830a34a4c55b6992090cfcfb8bc8be3e438c
+  - path: .harness/task-lifecycle.yaml
+    sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+  - path: .harness/tools.lock.yaml
+    sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+  - path: docs/evidence/TASK-0073/evidence-pack.json
+    sha256: 22dc47792bb08227709c6c67b9e7d47490604a7ac567182acd1ff642d4a06221
+  - path: docs/evidence/TASK-0073/pre-ready-maintenance-authorization.json
+    sha256: 34785dbebc0bcf18029c9457519efc42c0890cf1839cfa285733a181c3513f5e
+  - path: docs/evidence/TASK-0073/review-r1.md
+    sha256: c92fa49e6d996fd9221ba884c3f6b6acb4feab16a7869c58da8287dd356913c5
+  - path: docs/evidence/TASK-0074/evidence-pack.json
+    sha256: 1a9191feca82cec0d59ba4101ac843a90654f0919830cac4c34c97be44b7fa66
+  - path: docs/evidence/TASK-0074/pre-closure-request.json
+    sha256: 6db54c8643e9e0a8996f62cb279021cc84f43f8ead416a4eebfa7833d703f341
+  - path: docs/evidence/TASK-0074/pre-ready-maintenance-authorization.json
+    sha256: 8d7da144612eea4b52346abceb0499d2f0be4aa5a65b0ea1dc2043e65a90dccf
+  - path: docs/evidence/TASK-0074/ready-doctor-receipt-observation.json
+    sha256: 8f576d23bb7e953d2e38429a84be3b548dd747760e5f96c63010df134d684a4d
+  - path: docs/evidence/TASK-0074/ready-doctor-request.json
+    sha256: 1e744f8ed90baa045b878009bcb0efc28bb68a7f861efa21f0f9f720fafffcb2
+  - path: docs/evidence/TASK-0074/ready-doctor-stderr.txt
+    sha256: 0248f0194772d3ad92d24cca764498fd3e2a5ca7845535d0094eecfa7776ff35
+  - path: docs/evidence/TASK-0074/review-r1.md
+    sha256: 28fce52edfa1bde1b503cac09b6f4fa890044e4addff81aa6ce1f03ffa42e77c
+  - path: docs/handoffs/TASK-0073.json
+    sha256: b370a85059eadc6e3d1264e707155427d42c15b652e136cc2f6a247027d0a20c
+  - path: docs/handoffs/TASK-0074.json
+    sha256: 5493fd4b1be8d0c1f15ed439d66712c8d704aa277d92d383c8ef6878219711ac
+  - path: docs/schemas/evidence-pack.schema.json
+    sha256: ce3ed6591f8ce724a0361aca0f8215647b564245d2dc6f2235543b5a625176c0
+  - path: docs/schemas/handoff.schema.json
+    sha256: f13bb26da97c4b27a89bc3b8c88e2b87c92da5475770f64fcb3bd19b33c6414b
+  - path: docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md
+    sha256: dbd4a824149c9b678039c1a8ccebaf22c4764b88e02564259d0849631390a970
+  - path: docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md
+    sha256: 302c4ffd1a5cceaffed8a6a90590edf9dd85c3b29f795ac3df22ed1a872c03f7
+  - path: docs/tasks/TASK-0074-exact-delivery-flow-recovery.md
+    sha256: ac18f2f42d267f9a8de3e3e2a4f6e5ad50ffdc7869ed46afbb0409596f6d688e
+  - path: docs/tasks/context/TASK-0073.context-lock.yaml
+    sha256: d464a9777a112231bff649b7e947c44090b9c0cd98502ac1fb13edfadce79412
+  - path: docs/tasks/context/TASK-0074.context-lock.yaml
+    sha256: 18a6b58707b965052920d1659483b6d869fc594ac4c1cd1429747298d11b0141
+  - path: docs/tasks/task-card-template.md
+    sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+  - path: requirements-harness.txt
+    sha256: 15a0b1ad3059a055847bf367d43a7d3c138b791d2bf67d8b6a53f982edda1dd3
+  - path: scripts/harness/catalog_tool.py
+    sha256: b3b24a4d5a28848754545e05c622e1476f5a049253882665d1f7b58f35adb29f
+  - path: scripts/harness/check_beta_gate.py
+    sha256: e60270b5f1e57c62f7d5199e220dfb986cdc3b10e06553c756e1cd23fe87fefb
+  - path: scripts/harness/check_paid_features.py
+    sha256: 234b79cdc26f6dcb6c9830e28c4ecf3398d08d01f0a9eb7ada7546e591210a20
+  - path: scripts/harness/doctor.py
+    sha256: f9d53af34a21b390a2370fc5c3054a79bc1a4d15777b3e94e79b5a9a74c87127
+  - path: scripts/harness/durable_command.ps1
+    sha256: fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180
+  - path: scripts/harness/harness_common.py
+    sha256: 00bfe627e1707cd849cd1c4adc536d581cad444dbf7a0c95734c97ece365e8c4
+  - path: scripts/harness/precheck.py
+    sha256: 11b00a8d1f6882a05212127a13ea6489ea754c5e8edb60903e034ddfa9e46895
+  - path: scripts/harness/precheck.ps1
+    sha256: aafb76cc11e367890baf6e82e0dadfed841318bd5ed64ce2bd99202b99c2c835
+  - path: scripts/harness/precheck.sh
+    sha256: c559c8c677aea011ed16e2e276ab8517e69ca11051d508b8b0db82ca81520192
+  - path: scripts/harness/tests/test_harness.py
+    sha256: c2b3259013bad9459d294f808e1344b2a7bab4160d9cc9d6f1a4db6c8414549b
+  - path: skills/harness-change/SKILL.md
+    sha256: 53b8dce167ebe0ded5cc573e0792ee19658e02c94433521038f232fe98645de0
+  - path: skills/task-delivery-flow/SKILL.md
+    sha256: af0c3b1bdebe1a4835f81ea5ec0c36708e311c6ab22d59f5afc14e2f1bb1d193
+  - path: skills/task-intake/SKILL.md
+    sha256: 3fb428c3c3eb10ea2b5f74cc0c6ad9270e1ed9f7255d3039bb10215cef9c7f31
+  - path: owner-authorization/TASK-0075/plan
+    provenanceOnly: true
+    sha256: f306819445526cb13d94ff60d8d869217dc2ada1d3e112fc7d445c453c29061b
+  - path: owner-authorization/TASK-0075/acceptance
+    provenanceOnly: true
+    sha256: d868923ed133755b76c1a11126006bc39d1789eea090ef1ed6d9dd0401bf7287
+  - path: pre-draft-observation/TASK-0075/doctor-summary-receipt
+    provenanceOnly: true
+    sha256: fae370a663c27b37ab0f6cd23556122ae5481cea7a269e1848cb820c3f2ad4cf
+  - path: historical-observation/TASK-0074/pre-closure-receipt
+    provenanceOnly: true
+    sha256: 0ffa4c92034214f024bfbe438a0bc54fbe3ddd0180fd21595d44c260f1efc86c
