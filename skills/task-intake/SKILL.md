@@ -3,7 +3,7 @@ name: task-intake
 description: 将需要修改仓库的原始需求收口为可审计的 DRAFT/READY 任务；在没有活动任务、需要明确范围、风险、Context Lock、验收或审批时使用。
 metadata:
   id: task-intake
-  version: 1.2.1
+  version: 1.2.2
   riskClass: C1
 ---
 
@@ -52,6 +52,15 @@ metadata:
    `.harness/project-state.yaml`，且项目状态的阶段、能力门禁和历史指针必须与 Base Commit 一致。
 9. 用后续仅修改任务卡的提交，把 READY 授权提交的完整 Git SHA 写入 `authorizationCommit`；运行
    `doctor.py --task TASK-ID`。通过后才允许实施者转为 IN_PROGRESS。
+   TASK-0073 的唯一精确例外发生在普通 DRAFT 提交之后、READY 授权之前：
+   只有机器真源中 `recordId=OWNER-MAINT-20260802-TASK-0073-PRE-READY-01`
+   的直接单父 maintenance 边可写入记录冻结的 Doctor、目标测试、机器策略、
+   Skill 注册与三份精确 Skill 及 Owner 授权证据。Doctor 必须验证 Base
+   `ee0757a8749a0ccab53553785b92abb865e4373b`、DRAFT parent、唯一边、
+   Commit/Tree、逐路径 mode/type/blob/content 和一次性消费；普通 READY
+   Doctor 真实 PASS 前仍不得进入 IN_PROGRESS。该记录不适用于其他 Task，
+   不允许第二次消费、额外提交/路径、环境变量、CLI flag、Git note/replace/graft、
+   历史改写、可配置 allowlist 或通用 override。
 10. READY 后确需 Owner 修订时，不重写授权提交或放宽原合同：先在 `.harness/task-backlog.yaml` 建立强类型 amendment 合同，并在任务卡 `scopeAmendments` 保存完整 Hash 绑定投影。合同逐项记录 `supersedes` 原条款稳定 ID/原文 Hash 与 `replacement` 原文/Hash；未列条款仍受原授权投影约束。新增写路径只能是规范 POSIX 精确路径，不能是 glob；amendment 必须由 `repository-owner` 批准、append-only，并在只改 Backlog 与任务卡的单父原子治理提交中先落入 Git 历史，未提交 worktree/index 不得自授权。
 11. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。

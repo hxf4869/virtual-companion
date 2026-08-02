@@ -3,7 +3,7 @@ name: harness-change
 description: 修改 Agent 规则、Harness 配置、治理脚本、受保护路径、Skill、任务模板、证据 Schema 或 CI 门禁时使用。
 metadata:
   id: harness-change
-  version: 1.1.1
+  version: 1.1.2
   riskClass: C4
 ---
 
@@ -23,6 +23,14 @@ metadata:
   第二条记录、可配置白名单、环境变量、CLI flag、历史重写或任何通用 override。
   boundary 必须是 `60b09ec198a0c37b2345576d3cc593bfbe887bd5` 的单父直接子提交，
   且 TASK-0072 进入 Task Ledger 后该入口只能作为不可变历史验证，不能再次放行写入。
+- `OWNER-MAINT-20260802-TASK-0073-PRE-READY-01` 仅授权以
+  `ee0757a8749a0ccab53553785b92abb865e4373b` 为 Base、在 TASK-0073 普通
+  DRAFT 直接子提交之后创建一个单父 pre-READY maintenance commit，精确修复
+  task-delivery-policy canonical hash 与 TASK-0072 历史 boundary Doctor
+  绑定。它只能修改机器记录冻结的 8 个路径；普通 READY Doctor PASS 后才能
+  实现。其他 Task、第二条记录、第二次消费、额外提交/路径、通用 override、
+  环境变量、CLI flag、Git note/replace/graft、历史改写和可配置 allowlist
+  均未授权。
 
 ## Procedure
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
+import hashlib
 import io
 import json
 import os
@@ -7308,6 +7309,221 @@ class Task0072SelfBootstrapTests(unittest.TestCase):
             ),
             other_task.errors,
         )
+
+
+class Task0073PreReadyMaintenanceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        self.boundary = doctor.task0073_pre_ready_maintenance_commit(head)
+
+    def test_exact_machine_record_is_accepted(self) -> None:
+        self.assertIsNotNone(self.boundary)
+        audit = Audit()
+        record = doctor.validate_task0073_pre_ready_maintenance_record(
+            audit,
+            self.policy,
+        )
+        self.assertIsInstance(record, dict)
+        self.assertEqual([], audit.errors)
+        boundary_audit = Audit()
+        self.assertTrue(
+            doctor.validate_task0073_pre_ready_maintenance_boundary(
+                boundary_audit,
+                str(self.boundary),
+            ),
+            boundary_audit.errors,
+        )
+        self.assertEqual([], boundary_audit.errors)
+
+    def test_machine_record_mutations_fail_closed(self) -> None:
+        def remove_record_id(policy: dict[str, object]) -> None:
+            policy["task0073PreReadyMaintenance"].pop("recordId")
+
+        def add_record_field(policy: dict[str, object]) -> None:
+            policy["task0073PreReadyMaintenance"]["override"] = True
+
+        def copy_record(policy: dict[str, object]) -> None:
+            policy["task0073PreReadyMaintenanceCopy"] = copy.deepcopy(
+                policy["task0073PreReadyMaintenance"]
+            )
+
+        mutations = {
+            "missing_field": remove_record_id,
+            "extra_field": add_record_field,
+            "copied_record": copy_record,
+            "other_task": lambda value: value[
+                "task0073PreReadyMaintenance"
+            ].__setitem__("targetTask", "TASK-9999"),
+            "wrong_base": lambda value: value["task0073PreReadyMaintenance"][
+                "base"
+            ].__setitem__("commit", "0" * 40),
+            "wrong_draft": lambda value: value["task0073PreReadyMaintenance"][
+                "draft"
+            ].__setitem__("commit", "0" * 40),
+            "extra_path": lambda value: value["task0073PreReadyMaintenance"][
+                "boundary"
+            ]["changedPaths"].append("README.md"),
+            "wrong_parent": lambda value: value["task0073PreReadyMaintenance"][
+                "boundary"
+            ].__setitem__("directParentCommit", "0" * 40),
+            "reusable": lambda value: value["task0073PreReadyMaintenance"][
+                "consumption"
+            ].__setitem__("reusableByOtherTask", True),
+            "cli_interface": lambda value: value["task0073PreReadyMaintenance"][
+                "forbiddenInterfaces"
+            ].__setitem__("cliFlag", True),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                policy = copy.deepcopy(self.policy)
+                mutate(policy)
+                audit = Audit()
+                doctor.validate_task0073_pre_ready_maintenance_record(
+                    audit,
+                    policy,
+                )
+                self.assertTrue(audit.errors, label)
+
+    def test_boundary_requires_exact_single_parent_and_paths(self) -> None:
+        self.assertIsNotNone(self.boundary)
+        self.assertTrue(
+            doctor.task0073_pre_ready_maintenance_boundary_candidate(
+                str(self.boundary)
+            )
+        )
+        self.assertFalse(
+            doctor.task0073_pre_ready_maintenance_boundary_candidate(
+                doctor.TASK_0073_DRAFT_COMMIT
+            )
+        )
+        wrong_commit = Audit()
+        self.assertFalse(
+            doctor.validate_task0073_pre_ready_maintenance_boundary(
+                wrong_commit,
+                doctor.TASK_0073_DRAFT_COMMIT,
+            )
+        )
+        self.assertTrue(wrong_commit.errors)
+
+        original_changed_paths = doctor.changed_paths_between
+
+        def add_boundary_path(parent: str, child: str) -> list[str]:
+            paths = original_changed_paths(parent, child)
+            if (
+                parent == doctor.TASK_0073_DRAFT_COMMIT
+                and child == self.boundary
+            ):
+                return sorted([*paths, "README.md"])
+            return paths
+
+        tampered = Audit()
+        with patch.object(
+            doctor,
+            "changed_paths_between",
+            side_effect=add_boundary_path,
+        ):
+            self.assertFalse(
+                doctor.validate_task0073_pre_ready_maintenance_boundary(
+                    tampered,
+                    str(self.boundary),
+                )
+            )
+        self.assertTrue(
+            any("extra or missing path" in error for error in tampered.errors),
+            tampered.errors,
+        )
+
+    def test_consumed_record_is_inert_and_not_reusable(self) -> None:
+        draft = {
+            "taskId": "TASK-0073",
+            "state": "DRAFT",
+            "authorizationCommit": "",
+        }
+        ledger = {"tasks": {}}
+        self.assertFalse(
+            doctor.task0073_pre_ready_maintenance_consumed(draft, ledger)
+        )
+        ready = {**draft, "state": "READY"}
+        self.assertTrue(
+            doctor.task0073_pre_ready_maintenance_consumed(ready, ledger)
+        )
+        bound = {**draft, "authorizationCommit": "a" * 40}
+        self.assertTrue(
+            doctor.task0073_pre_ready_maintenance_consumed(bound, ledger)
+        )
+        self.assertTrue(
+            doctor.task0073_pre_ready_maintenance_consumed(
+                draft,
+                {"tasks": {"TASK-0073": {}}},
+            )
+        )
+        self.assertTrue(
+            doctor.task0073_pre_ready_maintenance_consumed(
+                {**draft, "taskId": "TASK-9999"},
+                ledger,
+            )
+        )
+
+    def test_task0072_historical_doctor_binding_allows_current_evolution(
+        self,
+    ) -> None:
+        current_hash = hashlib.sha256(
+            (ROOT / "scripts/harness/doctor.py").read_bytes()
+        ).hexdigest()
+        self.assertNotEqual(
+            doctor.TASK_0072_BOUNDARY_DOCTOR_SHA256,
+            current_hash,
+        )
+        audit = Audit()
+        doctor.validate_task0072_historical_doctor_binding(audit, self.policy)
+        self.assertEqual([], audit.errors)
+
+    def test_task0072_historical_doctor_binding_fails_closed(self) -> None:
+        wrong_record = copy.deepcopy(self.policy)
+        wrong_record["task0072SelfBootstrap"]["boundary"]["files"]["doctor"][
+            "sha256"
+        ] = "0" * 64
+        record_audit = Audit()
+        doctor.validate_task0072_historical_doctor_binding(
+            record_audit,
+            wrong_record,
+        )
+        self.assertTrue(record_audit.errors)
+
+        original_tree_entry = doctor.git_tree_entry
+
+        def wrong_historical_blob(
+            commit: str,
+            path: str,
+        ) -> tuple[str, str, str] | None:
+            entry = original_tree_entry(commit, path)
+            if (
+                commit == doctor.TASK_0072_BOUNDARY_COMMIT
+                and path == "scripts/harness/doctor.py"
+            ):
+                return ("100644", "blob", "0" * 40)
+            return entry
+
+        history_audit = Audit()
+        with patch.object(
+            doctor,
+            "git_tree_entry",
+            side_effect=wrong_historical_blob,
+        ):
+            doctor.validate_task0072_historical_doctor_binding(
+                history_audit,
+                self.policy,
+            )
+        self.assertTrue(history_audit.errors)
 
 
 class IntegrationTests(unittest.TestCase):

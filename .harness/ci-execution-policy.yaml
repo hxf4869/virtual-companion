@@ -597,6 +597,106 @@ task0072SelfBootstrap:
     historyRewrite: false
     configurableAllowlist: false
     generalizedOverride: false
+task0073PreReadyMaintenance:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260802-TASK-0073-PRE-READY-01
+  decisionId: TASK-0073-PRE-READY-GREENLINE-20260802
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE
+  targetTask: TASK-0073
+  sourceThreadId: 019fb2c1-8104-73b1-81dc-ee8bcfce6f63
+  authorization:
+    path: docs/evidence/TASK-0073/pre-ready-maintenance-authorization.json
+    sha256: 34785dbebc0bcf18029c9457519efc42c0890cf1839cfa285733a181c3513f5e
+  base:
+    commit: ee0757a8749a0ccab53553785b92abb865e4373b
+    tree: 880fac1735d4f33a99269c3eded1b52e88812b7c
+    lastTerminalTask: TASK-0071
+    lastTerminalState: REJECTED
+  draft:
+    commit: 6e9704faf5820261484f00f14320f4e4d1d7d939
+    tree: 7177ffc2888130cee9934c081e2c99e559d5f362
+    parent: ee0757a8749a0ccab53553785b92abb865e4373b
+    changedFiles:
+      docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md:
+        mode: "100644"
+        type: blob
+        blobOid: d463756e652f1df87a29d3e546b81543090211ad
+        sha256: b3e2c403e365a0865c7769653ebf3b47fb05b6b1afb6a98238d0087c51024313
+      docs/tasks/context/TASK-0073.context-lock.yaml:
+        mode: "100644"
+        type: blob
+        blobOid: 59bb9f53bf46a35664fd30a698ed0e032c627119
+        sha256: d464a9777a112231bff649b7e947c44090b9c0cd98502ac1fb13edfadce79412
+  boundary:
+    directParentCommit: 6e9704faf5820261484f00f14320f4e4d1d7d939
+    directParentTree: 7177ffc2888130cee9934c081e2c99e559d5f362
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - .harness/skills.yaml
+      - docs/evidence/TASK-0073/pre-ready-maintenance-authorization.json
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      - skills/harness-change/SKILL.md
+      - skills/task-delivery-flow/SKILL.md
+      - skills/task-intake/SKILL.md
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0073_BOUNDARY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: 076cfc34d791ee9cea4fed635c099deb2179b8d3
+        sha256: 1f3d88b81aa5d755b8c9b881ec2e9807527cbe367fb9d2b53d14258d106a8b50
+      exactFiles:
+        .harness/skills.yaml:
+          blobOid: f93bc3b06f293e658b73a9655f354cef3f9a8563
+          sha256: c3390afe4f66f64e8e24f8e5208a9ace82a3ebde6087a86857a39f6b5a60b059
+        docs/evidence/TASK-0073/pre-ready-maintenance-authorization.json:
+          blobOid: 0b4147651ec6bf6a9efa4545a9ed2a7db9e5821f
+          sha256: 34785dbebc0bcf18029c9457519efc42c0890cf1839cfa285733a181c3513f5e
+        scripts/harness/tests/test_harness.py:
+          blobOid: 044f33dcc1fe6e043c23956edeaeca7c24407bd2
+          sha256: 065adb6a39e83fea555fd1485d8639edf6aba07ce8ae1e244985f5659c5a6038
+        skills/harness-change/SKILL.md:
+          blobOid: 673fe5901c7321de9ae0dc220eccd37be1a876bf
+          sha256: 72513b4bd43acae6f8bb4f88c924c7d0ef46e5f206984da1f673d2f1dc7dec0c
+        skills/task-delivery-flow/SKILL.md:
+          blobOid: ee90c74df50acf3798b40a68c096c2e2558c2e48
+          sha256: ab3e90e70da89a93c5a422db414abf1483f5177ca2bee82443363a38bee2466f
+        skills/task-intake/SKILL.md:
+          blobOid: e16979dfdab5b2870614c641dff0a7117a245979
+          sha256: 34cf0710fee93d286e6b6d962899b4646117fb112a50c4de515793f288c9f594
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0073
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: HARNESS_PORTABILITY_LOCAL
+    windows: PASS_REQUIRED
+    wslUbuntu: PASS_REQUIRED
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: UNKNOWN_NOT_RUN
+    githubReasonType: OWNER_QUOTA_EVIDENCE_EXPIRED
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    generalizedOverride: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

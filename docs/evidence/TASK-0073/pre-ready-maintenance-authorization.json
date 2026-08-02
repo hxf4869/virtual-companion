@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260802-TASK-0073-PRE-READY-01",
+  "decisionId": "TASK-0073-PRE-READY-GREENLINE-20260802",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0073",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-02",
+  "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+  "baseCommit": "ee0757a8749a0ccab53553785b92abb865e4373b",
+  "draftCommit": "6e9704faf5820261484f00f14320f4e4d1d7d939",
+  "exactAuthorization": "授权 TASK-0073 精确一次性 pre-READY 绿线恢复：以 ee0757a8749a0ccab53553785b92abb865e4373b 为 Base，允许唯一 machine-recognized maintenance commit 修复上述策略哈希和 TASK-0072 历史 boundary 绑定；禁止通用 override、复用或绕过。之后必须由普通 READY Doctor PASS 才能实现，并完整执行独立 Reviewer、canonical、Windows/WSL、pre-closure 与安全推送。",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false
+}

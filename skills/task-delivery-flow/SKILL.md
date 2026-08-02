@@ -65,6 +65,26 @@ description: Execute one governed repository task or coordinate a strictly seria
   Git note, replace, graft, history rewrite, configurable allowlist, or
   generalized override is authorized.
 
+## TASK-0073 exact one-time pre-READY maintenance
+
+- The only post-DRAFT, pre-READY maintenance record is
+  `OWNER-MAINT-20260802-TASK-0073-PRE-READY-01` for `TASK-0073`.
+- Accept exactly one direct single-parent child of the frozen TASK-0073 DRAFT.
+  Bind Base, DRAFT parent, the derived boundary Commit and Tree, every changed
+  path, Git mode/type, blob identity, content hash, and exact Owner evidence.
+- The boundary may only repair the task-delivery-policy canonical hash, make
+  the consumed TASK-0072 record validate its immutable historical Doctor blob,
+  and register the exact policy, tests, and Skill contract needed for that
+  bootstrap. Ordinary READY authorization and a real READY Doctor PASS remain
+  mandatory before implementation.
+- Any other task, copied record, second consumption, extra commit or path,
+  current-worktree substitution for the TASK-0072 historical blob, or changed
+  identity fails closed. After READY authorization, the record is inert except
+  for immutable provenance validation.
+- This is not a general maintenance interface. No environment variable, CLI
+  flag, Git note, replace, graft, history rewrite, configurable allowlist, or
+  generalized override is authorized.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from
