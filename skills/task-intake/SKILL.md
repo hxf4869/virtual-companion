@@ -3,7 +3,7 @@ name: task-intake
 description: 将需要修改仓库的原始需求收口为可审计的 DRAFT/READY 任务；在没有活动任务、需要明确范围、风险、Context Lock、验收或审批时使用。
 metadata:
   id: task-intake
-  version: 1.2.3
+  version: 1.2.4
   riskClass: C1
 ---
 
@@ -71,6 +71,18 @@ metadata:
    普通 READY Doctor 前登记 TIMEOUT/UNKNOWN 强类型非 PASS、双阶段预算、
    Reviewer 15 分钟上限和 TASK-0074 专用 Windows 合并门禁；它不授权通用
    override、历史产物修改、额外路径/提交或任何禁止接口。
+   TASK-0075 的唯一精确例外只接受
+   `recordId=OWNER-MAINT-20260803-TASK-0075-PRE-READY-01`，且只能在
+   `d41c9f82e69107cf1ecf0cb2c100d39f436faab7` 的普通 DRAFT
+   `2289d7a243d8a7658d11036afe6d338e0868cc8e` 后形成一个直接单父、
+   11 路径 maintenance 边。Doctor 必须从 TASK-0073/0074 各自历史提交的
+   Policy/Blob 验证固定对象，不得用当前 Policy 重判；必须精确隔离 TASK-0074
+   的不可变 REJECTED 终态和 10 条错误 tuple。未来 `candidateExecution`
+   `NOT_STARTED` 只允许 READY Doctor 非 PASS 且从未 READY PASS、
+   IN_PROGRESS 或冻结候选时使用；未来终态 Handoff 与 project-state 的
+   `nextAction` 必须逐字一致。Owner 的完整授权计划与“按计划用 goal
+   继续下去”必须共同绑定；任一身份漂移、第二条记录、额外路径、历史修改、
+   通配写路径或通用 override 均失败关闭。
 10. READY 后确需 Owner 修订时，不重写授权提交或放宽原合同：先在 `.harness/task-backlog.yaml` 建立强类型 amendment 合同，并在任务卡 `scopeAmendments` 保存完整 Hash 绑定投影。合同逐项记录 `supersedes` 原条款稳定 ID/原文 Hash 与 `replacement` 原文/Hash；未列条款仍受原授权投影约束。新增写路径只能是规范 POSIX 精确路径，不能是 glob；amendment 必须由 `repository-owner` 批准、append-only，并在只改 Backlog 与任务卡的单父原子治理提交中先落入 Git 历史，未提交 worktree/index 不得自授权。
 11. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。

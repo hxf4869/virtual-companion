@@ -99,6 +99,31 @@ profiles:
       wslStillIndependent: true
       ordinaryCardsRemainIndependentCanonical: true
       resultBasedProfileDowngradeForbidden: true
+    task0075CombinedGate:
+      taskId: TASK-0075
+      sameCleanCandidateCommitAndTreeRequired: true
+      windowsDurableReceiptCount: 1
+      satisfies:
+        - CANDIDATE_CANONICAL
+        - WINDOWS_EXACT_TREE
+      exactCommandIds:
+        - harnessTests
+        - doctor
+        - catalogValidate
+        - catalogDrift
+        - paidFeatureCheck
+        - betaRosterGate
+      canonicalCommandIds:
+        - doctor
+        - catalogValidate
+        - catalogDrift
+        - paidFeatureCheck
+        - betaRosterGate
+      eachCommandExactlyOnce: true
+      wrapperAliasCacheSkipForbidden: true
+      wslStillIndependent: true
+      ordinaryCardsRemainIndependentCanonical: true
+      resultBasedProfileDowngradeForbidden: true
     platforms:
       windows:
         required: true
@@ -875,6 +900,345 @@ task0074PreReadyMaintenance:
     historyRewrite: false
     configurableAllowlist: false
     generalizedOverride: false
+task0075PreReadyMaintenance:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260803-TASK-0075-PRE-READY-01
+  decisionId: TASK-0075-PERMANENT-DELIVERY-FLOW-RECOVERY-20260803
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE
+  targetTask: TASK-0075
+  sourceThreadId: 019fb2c1-8104-73b1-81dc-ee8bcfce6f63
+  authorization:
+    path: docs/evidence/TASK-0075/pre-ready-maintenance-authorization.json
+    sha256: 14bdfb4edcaaa4ae4d1de30b0c087b9dde42e35a8c1cc28ef84be9d3900d3af2
+  base:
+    commit: d41c9f82e69107cf1ecf0cb2c100d39f436faab7
+    tree: dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e
+    lastTerminalTask: TASK-0074
+    lastTerminalState: REJECTED
+  draft:
+    commit: 2289d7a243d8a7658d11036afe6d338e0868cc8e
+    tree: 33ce1ae7814a09be6da68e892d5334acfc2daa15
+    parent: d41c9f82e69107cf1ecf0cb2c100d39f436faab7
+    changedFiles:
+      docs/tasks/TASK-0075-permanent-delivery-flow-recovery.md:
+        mode: '100644'
+        type: blob
+        blobOid: 5c63d1569a9595c8efc6d973e6acaa7121f05bba
+        sha256: df19495997bd40dfbfb77afa2d539f36ae06d9476a6df6b8504cca46a7c3196f
+      docs/tasks/context/TASK-0075.context-lock.yaml:
+        mode: '100644'
+        type: blob
+        blobOid: 49026070a047bdaf34d16e644f925a7b546b2bde
+        sha256: 300800822a1f1dfdab953f19d6f794824f75544deaa1f8b55a6f9bfc05618fb3
+  boundary:
+    directParentCommit: 2289d7a243d8a7658d11036afe6d338e0868cc8e
+    directParentTree: 33ce1ae7814a09be6da68e892d5334acfc2daa15
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+    - .harness/ci-execution-policy.yaml
+    - .harness/skills.yaml
+    - .harness/task-delivery-policy.yaml
+    - docs/evidence/TASK-0075/pre-ready-maintenance-authorization.json
+    - docs/schemas/evidence-pack.schema.json
+    - docs/schemas/handoff.schema.json
+    - scripts/harness/doctor.py
+    - scripts/harness/tests/test_harness.py
+    - skills/harness-change/SKILL.md
+    - skills/task-delivery-flow/SKILL.md
+    - skills/task-intake/SKILL.md
+    requiredMode: '100644'
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0075_BOUNDARY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: 661efc8ec5b161522de01eedaa30f4747d06284f
+        sha256: f702d4fa04d045ddfc9722c6c30d834a7760308a801f20c267d759d2ffb89f69
+      exactFiles:
+        .harness/skills.yaml:
+          blobOid: 8deebb53ec5d7c16e90006159c278bb157b8f455
+          sha256: 67b2366f4f28e7eb5041912f518748049594c9535502806ae707ca596c6da037
+        .harness/task-delivery-policy.yaml:
+          blobOid: d444af39aa64c9f78ca9a855a5f5bab4291ea634
+          sha256: 3b8660b121d79cec7e6320c2ac285edaae722523ab753dfaedce7780f7b561ed
+        docs/evidence/TASK-0075/pre-ready-maintenance-authorization.json:
+          blobOid: 783f06c7f3baa76f97e6d7ef7dd57cf7dd602e4d
+          sha256: 14bdfb4edcaaa4ae4d1de30b0c087b9dde42e35a8c1cc28ef84be9d3900d3af2
+        docs/schemas/evidence-pack.schema.json:
+          blobOid: 08fe6bbe74921ef3447cb351f2d6833acc8e0bfe
+          sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+        docs/schemas/handoff.schema.json:
+          blobOid: 7f794e729a3c15f21cf551316a44b13101588ff9
+          sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+        scripts/harness/tests/test_harness.py:
+          blobOid: 8a50b62283d3ff6fd8f8197d0430525cf9615ed0
+          sha256: 848fd14a599568fb69e926796989695314b1605085b34ae16d1c4f6bdbfb3462
+        skills/harness-change/SKILL.md:
+          blobOid: 3565f95887f50348472cbcbd1dbb677e2a44a971
+          sha256: ec891ff36b91605afedf1025e7c18974c53e0e168bd105f98eb94cf04e076194
+        skills/task-delivery-flow/SKILL.md:
+          blobOid: ca209201455d8583278d3f400bcdd01ae9319ffb
+          sha256: 00f397c6cdbf4631d4e69ed1845740c4f51c856236b1e67f7028a759fa7477d6
+        skills/task-intake/SKILL.md:
+          blobOid: 5297d0b5b44d83e5f7e40095e5911183f3bced2b
+          sha256: 8b4f6dfe156035075f1b88b02b2a875e9e5f0a5c6c6aa1e95d7c28f56c2a705d
+  historicalProjection:
+    task0073CiPolicy:
+      commit: b1c37678ab773eca150bdbb273ddafa5d14b781f
+      tree: 6d0c9f5852313219af370ba411dd192afafd0f73
+      path: .harness/ci-execution-policy.yaml
+      mode: '100644'
+      type: blob
+      blobOid: 9efc2356531f515b3bfc758044863bfe8c998eca
+      sha256: 9b393744d334248e0dec492cca2e9370f3cbab5f69d9ea6e27608ab1cd9ac77e
+      canonicalProjectionSha256: 3a253a215a88d4b9bd987d7dd2cbf0b2400f93fbd7086b071eb511f81f9cf8a1
+      interpretation: HISTORICAL_COMMIT_OWN_POLICY_BLOB_ONLY
+    task0074CiPolicy:
+      commit: f337d2a267e0b96360ae74d50e053c41864a934f
+      tree: 655facbf704b88632aed89586d46933c99b170d2
+      path: .harness/ci-execution-policy.yaml
+      mode: '100644'
+      type: blob
+      blobOid: 3ee4f383ef7700e997745a910420f1cb435b5eae
+      sha256: 3c67c84603085c7f2dce52e192ca23a1e566a51ac9d6fd53193e391f688ceab9
+      canonicalProjectionSha256: 6e6e19d312152b66f4074791b2a6fcf18d560de8c5eace3066122e5ecbcd5b4e
+      interpretation: HISTORICAL_COMMIT_OWN_POLICY_BLOB_ONLY
+    task0073PlanningEdge:
+      parentCommit: d6fbee26442a997b96648eea472f98ecba1a5412
+      parentTree: a9014d6d779f55d712db93f6f88bb5f4804ef315
+      childCommit: 11e6fb12f77486787ef71627e84f34ee069e72bd
+      childTree: 36e22afcc810cca0630e159568d2acf03845441d
+      changedPaths:
+      - .harness/project-state.yaml
+      - .harness/task-backlog.yaml
+      - .harness/task-delivery-policy.yaml
+      - docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md
+      - docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      files:
+        .harness/project-state.yaml:
+          parent:
+            mode: '100644'
+            type: blob
+            blobOid: 1ca583aef1f178c90cafc1242306a9dbc0426152
+            sha256: 42d4e85928b8a774ea6643322f766b202dfad742c400a63eccdcba94edadc6c2
+          child:
+            mode: '100644'
+            type: blob
+            blobOid: 5f7ab72da978c2b75978e9d608343e2bfe305eb2
+            sha256: 1030e44caa692e2e6b21b6dd7c8f777353d82570e812e42f2eb20a09fc70b36d
+        .harness/task-backlog.yaml:
+          parent:
+            mode: '100644'
+            type: blob
+            blobOid: d33e08cb92c0c16a68d28898d02fee030a4e5445
+            sha256: 8339334272a7ae583dd524b02fb609141725e4343c7a36e59c7b42795c01b47c
+          child:
+            mode: '100644'
+            type: blob
+            blobOid: b2275775e7a5092576820ea290fd515cba9834a1
+            sha256: 3bab01c47b4bfdc712ee5c0c95386bd9c4304e1ca641582e55aa1cc60fb25c53
+        .harness/task-delivery-policy.yaml:
+          parent:
+            mode: '100644'
+            type: blob
+            blobOid: 6b83448be53cc7c4ab0c50dee73182f9436cd615
+            sha256: 8e861b4e378c8713079749e9b19941fa866226e7617b052f13e2bb7cf10e12d7
+          child:
+            mode: '100644'
+            type: blob
+            blobOid: 5c1c1f84fd5af3870e0827a17593cc276e860b76
+            sha256: 75525760cac3a628647c7b86ef63373f3d3c7fdada22ee61257b190e9d08a419
+        docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md:
+          parent:
+            mode: '100644'
+            type: blob
+            blobOid: 03cd7f89ff75f843d5a445eb1041562cac875b1c
+            sha256: 1669d642f0f14feda8dde681460349824d5ef6019353998e7c9dde9fc45a8a2d
+          child:
+            mode: '100644'
+            type: blob
+            blobOid: ef2da1458d8447f6668d20bd4c322539f0d57109
+            sha256: dbd4a824149c9b678039c1a8ccebaf22c4764b88e02564259d0849631390a970
+        docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md:
+          parent:
+            mode: '100644'
+            type: blob
+            blobOid: 1d4e613e83f6f9071e599777c3223956678582da
+            sha256: afa700bf965d18cb1ae7fa0a8a1859a95607d7803e47a9ab3cb4813d4eb78d63
+          child:
+            mode: '100644'
+            type: blob
+            blobOid: cb32c381f133f43359dac9f68492e388e55e6391
+            sha256: 7438a8233e8cf34d16d984f95d037c623d5283326714d902a375c7c3f9983801
+        scripts/harness/doctor.py:
+          parent:
+            mode: '100644'
+            type: blob
+            blobOid: 076cfc34d791ee9cea4fed635c099deb2179b8d3
+            sha256: 1f3d88b81aa5d755b8c9b881ec2e9807527cbe367fb9d2b53d14258d106a8b50
+          child:
+            mode: '100644'
+            type: blob
+            blobOid: 95d739c60de73714c52b58c9ec3f571892e82314
+            sha256: 2032039d399512e12e0d02858f3e74d3ce430e6411f31fd54b7dd2f6757aa650
+        scripts/harness/tests/test_harness.py:
+          parent:
+            mode: '100644'
+            type: blob
+            blobOid: 044f33dcc1fe6e043c23956edeaeca7c24407bd2
+            sha256: 065adb6a39e83fea555fd1485d8639edf6aba07ce8ae1e244985f5659c5a6038
+          child:
+            mode: '100644'
+            type: blob
+            blobOid: 3018f226b69a0cdee510ac3f94b9e76ec25d62f4
+            sha256: a92e55212aba056955a9164f5045504535127785b569e501fc80fa0d78d2ec01
+      parentDeliveryPolicyCanonicalSha256: b1091d59b30918ce22c2dfa910884c7fe63827386171e579c7679d0bb62d1e3a
+      childDeliveryPolicyCanonicalSha256: c5e0c9856ac3fd35b8cfd390fedbdd11645fc63f9e0d525e5a78aa005ef4227d
+      interpretation: PARENT_AND_CHILD_COMMIT_OWN_OBJECTS_ONLY
+    currentPolicyReinterpretationForbidden: true
+  historicalQuarantine:
+    taskId: TASK-0074
+    terminalState: REJECTED
+    terminalCommit: d41c9f82e69107cf1ecf0cb2c100d39f436faab7
+    terminalTree: dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e
+    terminalParent: e8af6bad56e1f04b493c6f6ffdc43ae348917ffe
+    passClaimed: false
+    artifacts:
+      evidence:
+        path: docs/evidence/TASK-0074/evidence-pack.json
+        mode: '100644'
+        type: blob
+        blobOid: cbb75f8d5f573684df8284c014ce4507f9b7c3d2
+        sha256: 1a9191feca82cec0d59ba4101ac843a90654f0919830cac4c34c97be44b7fa66
+      review:
+        path: docs/evidence/TASK-0074/review-r1.md
+        mode: '100644'
+        type: blob
+        blobOid: 714382dff8ed430d80fd8456713b0411aa31c06e
+        sha256: 28fce52edfa1bde1b503cac09b6f4fa890044e4addff81aa6ce1f03ffa42e77c
+      handoff:
+        path: docs/handoffs/TASK-0074.json
+        mode: '100644'
+        type: blob
+        blobOid: 140aecbbd8c6663f68b4a4b9fb6b256389d5d154
+        sha256: 5493fd4b1be8d0c1f15ed439d66712c8d704aa277d92d383c8ef6878219711ac
+      card:
+        path: docs/tasks/TASK-0074-exact-delivery-flow-recovery.md
+        mode: '100644'
+        type: blob
+        blobOid: c1b1d5c9e188442522eb8769e7c67e0b5f47de1f
+        sha256: ac18f2f42d267f9a8de3e3e2a4f6e5ad50ffdc7869ed46afbb0409596f6d688e
+      context:
+        path: docs/tasks/context/TASK-0074.context-lock.yaml
+        mode: '100644'
+        type: blob
+        blobOid: be5dae0a701a4413e7abd97ce455dbfcef392afa
+        sha256: 18a6b58707b965052920d1659483b6d869fc594ac4c1cd1429747298d11b0141
+    readyDoctor:
+      status: FAIL
+      exitCode: 1
+      checks: 355421
+      errorCount: 5
+      receiptSha256: 452da45a1aa70d1892d68e2200404ce438132a26fc828a10325ba9e79a068239
+      errors:
+      - 'ERROR: TASK-0073 pre-READY maintenance: CI policy canonical binding drifted'
+      - 'ERROR: task-backlog: unresolved PLANNED card TASK-0056 metadata must remain immutable on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd'
+      - 'ERROR: task-backlog: planning card TASK-0056 title, fixed notice and six-section projection changed on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd'
+      - 'ERROR: task-backlog: permanent planning contract TASK-0056 was removed or rewritten on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd'
+      - 'ERROR: task-backlog: TASK-0073 replacement repair must be one exact, authorized, atomic parent edge; observed=[]'
+      passClaimed: false
+    preClosure:
+      status: FAIL
+      exitCode: 1
+      checks: 359792
+      errorCount: 10
+      receiptSha256: 0ffa4c92034214f024bfbe438a0bc54fbe3ddd0180fd21595d44c260f1efc86c
+      errors:
+      - 'ERROR: TASK-0073 pre-READY maintenance: CI policy canonical binding drifted'
+      - 'ERROR: task-backlog: unresolved PLANNED card TASK-0056 metadata must remain immutable on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd'
+      - 'ERROR: task-backlog: planning card TASK-0056 title, fixed notice and six-section projection changed on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd'
+      - 'ERROR: task-backlog: permanent planning contract TASK-0056 was removed or rewritten on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd'
+      - 'ERROR: task-backlog: TASK-0073 replacement repair must be one exact, authorized, atomic parent edge; observed=[]'
+      - 'ERROR: TASK-0074: Handoff nextAction disagrees with terminal project-state'
+      - 'ERROR: TASK-0074 delivery timing: candidate execution anchor or budget drifted'
+      - 'ERROR: TASK-0074 delivery timing.candidateExecution.startedAt: must be a non-blank string'
+      - 'ERROR: TASK-0074 delivery timing.candidateExecution.endedAt: must be a non-blank string'
+      - 'ERROR: TASK-0074 delivery timing.candidateExecution.readyDoctorPassAt: must be a non-blank string'
+      passClaimed: false
+    historicalHandoffNextAction: 等待 Owner 创建新的永久恢复卡，精确修复 TASK-0073 历史 Policy projection 隔离和 pre-IN_PROGRESS timing 非 PASS 表达；不得修改历史或推送本失败链
+    historicalProjectStateNextAction: 等待 Owner 创建新的永久恢复卡；TASK-0056 继续被 REJECTED TASK-0073 阻断，TASK-0074 失败链不得推送或复用
+    historicalMismatchOnly: true
+    immutableHistoricalNonPass: true
+    copiedMutatedOrSecondRecordFailsClosed: true
+  deliveryContract:
+    candidateExecutionNotStarted:
+      outcome: NOT_STARTED
+      eligibleOnlyWhen:
+        readyDoctorOutcome: NON_PASS
+        readyDoctorPassExists: false
+        inProgressCommitExists: false
+        candidateFreezeExists: false
+      anchor: NOT_STARTED_READY_DOCTOR_NON_PASS
+      anchorCommit: null
+      startedAt: null
+      endedAt: null
+      readyDoctorPassAt: null
+      inProgressCommit: null
+      elapsedSeconds: 0
+      closureOnlyOverrunSeconds: 0
+      reasonRequired: true
+      reanchored: false
+      passClaimed: false
+    existingCandidateOutcomes:
+    - PASS
+    - FAIL
+    - TIMEOUT
+    - UNKNOWN
+    existingStrongTypingUnchanged: true
+    failRequiresNonZeroExitCode: true
+    reviewerMaximumMinutes: 15
+    terminalNextAction:
+      handoffEqualsProjectState: true
+      comparison: BYTE_FOR_BYTE_STRING_EQUALITY
+      sameTerminalCommitRequired: true
+      task0074HistoricalMismatchOnlyExactQuarantine: true
+    combinedGate: TASK0075_HARNESS_PORTABILITY_WINDOWS_ONLY
+    wslIndependent: true
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0075
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: HARNESS_PORTABILITY_LOCAL
+    windows: COMBINED_CANONICAL_AND_EXACT_TREE_PASS_REQUIRED
+    wslUbuntu: INDEPENDENT_PASS_REQUIRED
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: UNKNOWN_NOT_RUN
+    githubReasonType: OWNER_QUOTA_EVIDENCE_EXPIRED
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    wildcardWritePath: false
+    generalizedOverride: false
+    branchOrWorktree: false
+    githubActionsDispatch: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

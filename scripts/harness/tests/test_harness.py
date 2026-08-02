@@ -2837,6 +2837,70 @@ class BacklogTests(unittest.TestCase):
             doctor.task0074_planning_repair_projection(parent, wrong_dependency)
         )
 
+    def test_task0075_replacement_is_exact_and_atomic(self) -> None:
+        current, tasks, _, _ = self.load_inputs()
+        child = copy.deepcopy(current)
+        child["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0075"]
+        parent = copy.deepcopy(child)
+        parent["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0073"]
+        self.assertTrue(doctor.task0075_planning_repair_projection(parent, child))
+
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0075_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+
+        unauthorized = Audit()
+        validate_backlog_history_edge(
+            unauthorized,
+            parent,
+            child,
+            "parent..child",
+        )
+        self.assertTrue(
+            any("TASK-0056" in error for error in unauthorized.errors),
+            unauthorized.errors,
+        )
+        expanded = copy.deepcopy(child)
+        expanded["tasks"]["TASK-0056"]["objective"] += " expanded"
+        self.assertFalse(
+            doctor.task0075_planning_repair_projection(parent, expanded)
+        )
+        wrong_dependency = copy.deepcopy(child)
+        wrong_dependency["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0074"]
+        self.assertFalse(
+            doctor.task0075_planning_repair_projection(parent, wrong_dependency)
+        )
+
+        child_policy = load_yaml(ROOT / doctor.TASK_DELIVERY_POLICY_PATH)
+        child_policy = copy.deepcopy(child_policy)
+        child_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0075"
+        parent_policy = copy.deepcopy(child_policy)
+        parent_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0073"
+        self.assertTrue(
+            doctor.task0075_delivery_policy_repair_projection(
+                parent_policy,
+                child_policy,
+            )
+        )
+        expanded_policy = copy.deepcopy(child_policy)
+        expanded_policy["followUpTasks"]["snapshotReceipt"] = "TASK-0075"
+        self.assertFalse(
+            doctor.task0075_delivery_policy_repair_projection(
+                parent_policy,
+                expanded_policy,
+            )
+        )
+        self.assertEqual(
+            canonical_json_sha256(child["tasks"]["TASK-0056"]),
+            tasks["TASK-0056"]["planningContractHash"],
+        )
+
         parent_policy = load_yaml(ROOT / doctor.TASK_DELIVERY_POLICY_PATH)
         child_policy = copy.deepcopy(parent_policy)
         child_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0074"
@@ -7974,7 +8038,7 @@ class Task0074DeliveryContractTests(unittest.TestCase):
             "LATER_OF_REQUIRED_EVENTS",
             timing["candidateExecution"]["anchorSelection"],
         )
-        self.assertEqual(["TASK-0074"], timing["taskBindings"])
+        self.assertEqual(["TASK-0074", "TASK-0075"], timing["taskBindings"])
         self.assertEqual(15, policy["review"]["maximumMinutes"])
         audit = Audit()
         doctor.validate_task0074_card_recovery_contract(audit)
@@ -8034,6 +8098,431 @@ class Task0074DeliveryContractTests(unittest.TestCase):
         skipped = copy.deepcopy(gate)
         skipped["exactCommandIds"].remove("catalogDrift")
         self.assertNotEqual(exact_ids, skipped["exactCommandIds"])
+
+
+class Task0075PreReadyMaintenanceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        self.boundary = doctor.task0075_pre_ready_maintenance_commit(head)
+
+    def test_exact_machine_record_is_accepted(self) -> None:
+        self.assertIsNotNone(self.boundary)
+        audit = Audit()
+        record = doctor.validate_task0075_pre_ready_maintenance_record(
+            audit,
+            self.policy,
+        )
+        self.assertIsInstance(record, dict)
+        self.assertEqual([], audit.errors)
+        boundary_audit = Audit()
+        self.assertTrue(
+            doctor.validate_task0075_pre_ready_maintenance_boundary(
+                boundary_audit,
+                str(self.boundary),
+            ),
+            boundary_audit.errors,
+        )
+        self.assertEqual([], boundary_audit.errors)
+
+    def test_machine_record_mutations_fail_closed(self) -> None:
+        def remove_record_id(policy: dict[str, object]) -> None:
+            policy["task0075PreReadyMaintenance"].pop("recordId")
+
+        def add_record_field(policy: dict[str, object]) -> None:
+            policy["task0075PreReadyMaintenance"]["override"] = True
+
+        def copy_record(policy: dict[str, object]) -> None:
+            policy["task0075PreReadyMaintenanceCopy"] = copy.deepcopy(
+                policy["task0075PreReadyMaintenance"]
+            )
+
+        mutations = {
+            "missing_field": remove_record_id,
+            "extra_field": add_record_field,
+            "copied_record": copy_record,
+            "other_task": lambda value: value[
+                "task0075PreReadyMaintenance"
+            ].__setitem__("targetTask", "TASK-9999"),
+            "wrong_base": lambda value: value["task0075PreReadyMaintenance"][
+                "base"
+            ].__setitem__("commit", "0" * 40),
+            "wrong_draft": lambda value: value["task0075PreReadyMaintenance"][
+                "draft"
+            ].__setitem__("commit", "0" * 40),
+            "extra_path": lambda value: value["task0075PreReadyMaintenance"][
+                "boundary"
+            ]["changedPaths"].append("README.md"),
+            "wrong_parent": lambda value: value["task0075PreReadyMaintenance"][
+                "boundary"
+            ].__setitem__("directParentCommit", "0" * 40),
+            "reusable": lambda value: value["task0075PreReadyMaintenance"][
+                "consumption"
+            ].__setitem__("reusableByOtherTask", True),
+            "cli_interface": lambda value: value["task0075PreReadyMaintenance"][
+                "forbiddenInterfaces"
+            ].__setitem__("cliFlag", True),
+            "wildcard_path": lambda value: value["task0075PreReadyMaintenance"][
+                "forbiddenInterfaces"
+            ].__setitem__("wildcardWritePath", True),
+            "dispatch": lambda value: value["task0075PreReadyMaintenance"][
+                "forbiddenInterfaces"
+            ].__setitem__("githubActionsDispatch", True),
+            "second_record": lambda value: value.__setitem__(
+                "task0075PreReadyMaintenanceSecond",
+                copy.deepcopy(value["task0075PreReadyMaintenance"]),
+            ),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                policy = copy.deepcopy(self.policy)
+                mutate(policy)
+                audit = Audit()
+                doctor.validate_task0075_pre_ready_maintenance_record(
+                    audit,
+                    policy,
+                )
+                self.assertTrue(audit.errors, label)
+
+
+class Task0075HistoricalProjectionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        self.record = self.policy["task0075PreReadyMaintenance"]
+
+    def test_task0073_ci_policy_uses_historical_snapshot(self) -> None:
+        historical = doctor.yaml_at_commit(
+            doctor.TASK_0073_MAINTENANCE_COMMIT,
+            doctor.CI_EXECUTION_POLICY_PATH,
+        )
+        self.assertEqual(
+            doctor.TASK_0073_CI_POLICY_PROJECTION_HASH,
+            canonical_json_sha256(
+                doctor.ci_execution_policy_projection(historical)
+            ),
+        )
+        self.assertNotEqual(
+            doctor.TASK_0073_CI_POLICY_PROJECTION_HASH,
+            canonical_json_sha256(
+                doctor.ci_execution_policy_projection(self.policy)
+            ),
+        )
+        audit = Audit()
+        doctor.validate_task0075_historical_objects(audit, self.record)
+        self.assertEqual([], audit.errors)
+
+        mutated = copy.deepcopy(self.record)
+        mutated["historicalProjection"]["task0073CiPolicy"][
+            "canonicalProjectionSha256"
+        ] = "0" * 64
+        mutation_audit = Audit()
+        doctor.validate_task0075_historical_objects(mutation_audit, mutated)
+        self.assertTrue(mutation_audit.errors)
+
+    def test_planning_edge_uses_historical_objects(self) -> None:
+        self.assertTrue(
+            doctor.task0073_historical_planning_edge_objects_match(
+                doctor.TASK_0073_PLANNING_PARENT_COMMIT,
+                doctor.TASK_0073_PLANNING_CHILD_COMMIT,
+            )
+        )
+        parent_policy = doctor.yaml_at_commit(
+            doctor.TASK_0073_PLANNING_PARENT_COMMIT,
+            doctor.TASK_DELIVERY_POLICY_PATH,
+        )
+        child_policy = doctor.yaml_at_commit(
+            doctor.TASK_0073_PLANNING_CHILD_COMMIT,
+            doctor.TASK_DELIVERY_POLICY_PATH,
+        )
+        self.assertEqual(
+            doctor.TASK_0073_PRE_REPAIR_DELIVERY_POLICY_CANONICAL_HASH,
+            canonical_json_sha256(parent_policy),
+        )
+        self.assertEqual(
+            doctor.TASK_0073_PLANNING_CHILD_DELIVERY_POLICY_CANONICAL_HASH,
+            canonical_json_sha256(child_policy),
+        )
+
+        mutated = copy.deepcopy(self.record)
+        first_path = mutated["historicalProjection"]["task0073PlanningEdge"][
+            "changedPaths"
+        ][0]
+        mutated["historicalProjection"]["task0073PlanningEdge"]["files"][
+            first_path
+        ]["child"]["sha256"] = "0" * 64
+        audit = Audit()
+        doctor.validate_task0075_historical_objects(audit, mutated)
+        self.assertTrue(audit.errors)
+
+
+class Task0075HistoricalQuarantineTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        self.record = self.policy["task0075PreReadyMaintenance"]
+
+    def test_exact_task0074_terminal_tuple_is_quarantined(self) -> None:
+        self.assertTrue(doctor.task0074_exact_historical_quarantine_matches())
+        audit = Audit()
+        doctor.validate_task0075_historical_objects(audit, self.record)
+        self.assertEqual([], audit.errors)
+
+    def test_identity_or_tuple_mutations_fail_closed(self) -> None:
+        mutations = {
+            "terminal_commit": lambda value: value["historicalQuarantine"].__setitem__(
+                "terminalCommit",
+                "0" * 40,
+            ),
+            "evidence_sha": lambda value: value["historicalQuarantine"][
+                "artifacts"
+            ]["evidence"].__setitem__("sha256", "0" * 64),
+            "ready_error": lambda value: value["historicalQuarantine"][
+                "readyDoctor"
+            ]["errors"].append("ERROR: invented"),
+            "preclosure_receipt": lambda value: value["historicalQuarantine"][
+                "preClosure"
+            ].__setitem__("receiptSha256", "0" * 64),
+            "pass_claim": lambda value: value["historicalQuarantine"].__setitem__(
+                "passClaimed",
+                True,
+            ),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                policy = copy.deepcopy(self.policy)
+                mutate(policy["task0075PreReadyMaintenance"])
+                audit = Audit()
+                doctor.validate_task0075_pre_ready_maintenance_record(
+                    audit,
+                    policy,
+                )
+                self.assertTrue(audit.errors, label)
+
+        copied = copy.deepcopy(self.policy)
+        copied["task0075PreReadyMaintenanceCopy"] = copy.deepcopy(self.record)
+        copy_audit = Audit()
+        doctor.validate_task0075_pre_ready_maintenance_record(
+            copy_audit,
+            copied,
+        )
+        self.assertTrue(copy_audit.errors)
+
+
+class Task0075DeliveryTimingTests(unittest.TestCase):
+    @staticmethod
+    def not_started() -> dict[str, object]:
+        return {
+            "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+            "anchorCommit": None,
+            "startedAt": None,
+            "endedAt": None,
+            "elapsedSeconds": 0,
+            "outcome": "NOT_STARTED",
+            "targetWallMinutes": 60,
+            "hardFuseWallMinutes": 90,
+            "candidateDeadlineMinutes": 45,
+            "closureOnlyOverrunSeconds": 0,
+            "readyDoctorPassAt": None,
+            "inProgressCommit": None,
+            "reason": "READY Doctor returned a strongly typed non-PASS result.",
+            "reanchored": False,
+        }
+
+    def test_not_started_is_strict_and_fail_closed(self) -> None:
+        exact = self.not_started()
+        self.assertTrue(
+            doctor.task0075_not_started_candidate_execution_matches(exact)
+        )
+        for schema_name in (
+            "evidence-pack.schema.json",
+            "handoff.schema.json",
+        ):
+            with self.subTest(schema=schema_name):
+                schema = json.loads(
+                    (ROOT / "docs/schemas" / schema_name).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                audit = Audit()
+                validate_json_schema(
+                    audit,
+                    exact,
+                    schema["$defs"]["candidateExecutionNotStarted"],
+                    "candidateExecution",
+                )
+                self.assertEqual([], audit.errors)
+
+        mutations = {
+            "started_outcome": lambda value: value.__setitem__("outcome", "FAIL"),
+            "commit": lambda value: value.__setitem__("anchorCommit", "0" * 40),
+            "started_at": lambda value: value.__setitem__("startedAt", "now"),
+            "elapsed": lambda value: value.__setitem__("elapsedSeconds", 1),
+            "reason": lambda value: value.__setitem__("reason", " "),
+            "reanchored": lambda value: value.__setitem__("reanchored", True),
+            "extra": lambda value: value.__setitem__("passClaimed", False),
+            "missing": lambda value: value.pop("inProgressCommit"),
+        }
+        schema = json.loads(
+            (ROOT / "docs/schemas/evidence-pack.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )["$defs"]["candidateExecutionNotStarted"]
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                value = self.not_started()
+                mutate(value)
+                self.assertFalse(
+                    doctor.task0075_not_started_candidate_execution_matches(
+                        value
+                    )
+                )
+                audit = Audit()
+                validate_json_schema(
+                    audit,
+                    value,
+                    schema,
+                    "candidateExecution",
+                )
+                self.assertTrue(audit.errors, label)
+
+    def test_existing_statuses_remain_strongly_typed(self) -> None:
+        schema = json.loads(
+            (ROOT / "docs/schemas/evidence-pack.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )["$defs"]["candidateExecutionStarted"]
+        for outcome in ("PASS", "FAIL", "TIMEOUT", "UNKNOWN"):
+            with self.subTest(outcome=outcome):
+                candidate = {
+                    "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+                    "anchorCommit": "1" * 40,
+                    "startedAt": "2026-08-03T00:00:00+00:00",
+                    "endedAt": "2026-08-03T00:00:01+00:00",
+                    "elapsedSeconds": 1,
+                    "outcome": outcome,
+                    "targetWallMinutes": 60,
+                    "hardFuseWallMinutes": 90,
+                    "candidateDeadlineMinutes": 45,
+                    "closureOnlyOverrunSeconds": 0,
+                    "readyDoctorPassAt": "2026-08-03T00:00:00+00:00",
+                    "inProgressCommit": "1" * 40,
+                }
+                audit = Audit()
+                validate_json_schema(
+                    audit,
+                    candidate,
+                    schema,
+                    "candidateExecution",
+                )
+                self.assertEqual([], audit.errors)
+
+        for status, exit_code in (("PASS", 0), ("FAIL", 7)):
+            with self.subTest(status=status):
+                audit = Audit()
+                validate_evidence_check(
+                    audit,
+                    "fixture",
+                    {
+                        "status": status,
+                        "exitCode": exit_code,
+                        "artifactHash": "a" * 64,
+                        "reason": None,
+                    },
+                )
+                self.assertEqual([], audit.errors)
+        invented_fail = Audit()
+        validate_evidence_check(
+            invented_fail,
+            "fixture",
+            {
+                "status": "FAIL",
+                "exitCode": None,
+                "artifactHash": None,
+                "reason": "missing process result",
+            },
+        )
+        self.assertTrue(
+            any(
+                "FAIL requires non-zero exitCode" in item
+                for item in invented_fail.errors
+            )
+        )
+
+
+class Task0075HandoffProjectionTests(unittest.TestCase):
+    def test_terminal_next_action_must_match(self) -> None:
+        task = {"taskId": "TASK-0075", "state": "REJECTED"}
+        handoff = {"nextAction": "same terminal action"}
+        state = {"nextAction": "same terminal action"}
+        audit = Audit()
+        doctor.validate_terminal_handoff_next_action(
+            audit,
+            "TASK-0075",
+            task,
+            handoff,
+            state,
+        )
+        self.assertEqual([], audit.errors)
+
+        mismatch = Audit()
+        doctor.validate_terminal_handoff_next_action(
+            mismatch,
+            "TASK-0075",
+            task,
+            {"nextAction": "handoff action"},
+            {"nextAction": "project state action"},
+        )
+        self.assertTrue(mismatch.errors)
+
+    def test_task0074_exact_historical_mismatch_isolated(self) -> None:
+        contract = doctor.task0075_historical_quarantine_contract()
+        handoff = {
+            "nextAction": contract["historicalHandoffNextAction"],
+        }
+        state = {
+            "nextAction": contract["historicalProjectStateNextAction"],
+        }
+        with patch.object(
+            doctor,
+            "task0074_exact_historical_quarantine_matches",
+            return_value=True,
+        ):
+            exact = Audit()
+            doctor.validate_terminal_handoff_next_action(
+                exact,
+                "TASK-0074",
+                {"taskId": "TASK-0074", "state": "REJECTED"},
+                handoff,
+                state,
+            )
+            self.assertEqual([], exact.errors)
+
+            mutated = Audit()
+            doctor.validate_terminal_handoff_next_action(
+                mutated,
+                "TASK-0074",
+                {"taskId": "TASK-0074", "state": "REJECTED"},
+                {"nextAction": handoff["nextAction"] + " changed"},
+                state,
+            )
+            self.assertTrue(mutated.errors)
+
+            copied = Audit()
+            doctor.validate_terminal_handoff_next_action(
+                copied,
+                "TASK-0075",
+                {"taskId": "TASK-0075", "state": "REJECTED"},
+                handoff,
+                state,
+            )
+            self.assertTrue(copied.errors)
 
 
 class IntegrationTests(unittest.TestCase):

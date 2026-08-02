@@ -87,8 +87,27 @@ budgets:
       hardFuseWallMinutes: 90
       timeoutStatus: TIMEOUT
       closureOnlyOverrun: true
+      notStarted:
+        outcome: NOT_STARTED
+        eligibleOnlyWhen:
+          readyDoctorOutcome: NON_PASS
+          readyDoctorPassExists: false
+          inProgressCommitExists: false
+          candidateFreezeExists: false
+        anchor: NOT_STARTED_READY_DOCTOR_NON_PASS
+        anchorCommit: null
+        startedAt: null
+        endedAt: null
+        readyDoctorPassAt: null
+        inProgressCommit: null
+        elapsedSeconds: 0
+        closureOnlyOverrunSeconds: 0
+        reasonRequired: true
+        reanchored: false
+        passClaimed: false
     taskBindings:
       - TASK-0074
+      - TASK-0075
   stopOnR2NewStructural:
     - P0
     - P1
@@ -133,6 +152,34 @@ validation:
     duplicateCanonicalSubcommandsForbidden: true
   task0074HarnessPortabilityCombinedGate:
     taskId: TASK-0074
+    eligibleProfile: HARNESS_PORTABILITY_LOCAL
+    readyFrozenProfileRequired: true
+    sameCleanCandidateCommitAndTreeRequired: true
+    windowsDurableReceiptCount: 1
+    satisfies:
+      - CANDIDATE_CANONICAL
+      - WINDOWS_EXACT_TREE
+    commandRegistryProfile: harnessPortabilityLocal
+    exactCommandIds:
+      - harnessTests
+      - doctor
+      - catalogValidate
+      - catalogDrift
+      - paidFeatureCheck
+      - betaRosterGate
+    canonicalCommandIds:
+      - doctor
+      - catalogValidate
+      - catalogDrift
+      - paidFeatureCheck
+      - betaRosterGate
+    eachCommandExactlyOnce: true
+    wrapperAliasCacheSkipForbidden: true
+    wslStillIndependent: true
+    ordinaryCardsRemainIndependentCanonical: true
+    resultBasedProfileDowngradeForbidden: true
+  task0075HarnessPortabilityCombinedGate:
+    taskId: TASK-0075
     eligibleProfile: HARNESS_PORTABILITY_LOCAL
     readyFrozenProfileRequired: true
     sameCleanCandidateCommitAndTreeRequired: true
@@ -283,6 +330,16 @@ candidateIdentity:
     - TIMEOUT
     - NOT_RUN
     - UNKNOWN
+  preCandidateResultContract:
+    NOT_STARTED:
+      eligibleOnlyAfterReadyDoctorNonPass: true
+      readyDoctorPassForbidden: true
+      inProgressCommitForbidden: true
+      candidateFreezeForbidden: true
+      candidateAndTimeAnchors: null
+      elapsedSeconds: 0
+      reasonRequired: true
+      passClaimed: false
   evidenceResultContract:
     PASS:
       exitCode: ZERO

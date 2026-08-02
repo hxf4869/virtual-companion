@@ -115,6 +115,43 @@ description: Execute one governed repository task or coordinate a strictly seria
   output is `TIMEOUT` or `UNKNOWN`, not an invented `FAIL`; stop later gates.
   Ordinary READY authorization and a real READY Doctor PASS remain mandatory.
 
+## TASK-0075 exact permanent delivery-flow recovery
+
+- The only TASK-0075 pre-READY maintenance record is
+  `OWNER-MAINT-20260803-TASK-0075-PRE-READY-01`. Accept exactly one direct
+  single-parent child of DRAFT
+  `2289d7a243d8a7658d11036afe6d338e0868cc8e`, with the frozen 11 exact
+  paths and derived Commit/Tree plus per-path mode/type/blob/content identity.
+  Bind both the complete Owner authorization plan and the separate acceptance
+  `exactOwnerAcceptance` statement in the bound authorization payload.
+- Validate TASK-0073 historical CI projection only from maintenance commit
+  `b1c37678ab773eca150bdbb273ddafa5d14b781f` and its own Policy Blob.
+  Validate planning repair only from the exact historical parent edge
+  `d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd`
+  and the objects stored in those two commits. Current Policy must never
+  reinterpret either historical contract.
+- Quarantine only TASK-0074 terminal commit
+  `d41c9f82e69107cf1ecf0cb2c100d39f436faab7`, its exact Tree, five bound
+  artifacts, failed READY/pre-closure receipts, and exact ten-error tuple.
+  TASK-0074 remains REJECTED; copied, changed, or second records fail closed.
+- Future `candidateExecution` may be `NOT_STARTED` only after a non-PASS READY
+  Doctor and only when READY never passed and no IN_PROGRESS commit or
+  candidate freeze exists. Its candidate/time anchors are null,
+  `elapsedSeconds=0`, `closureOnlyOverrunSeconds=0`, reason is nonblank, and
+  reanchoring is forbidden. It is non-PASS, not FAIL/TIMEOUT/UNKNOWN/PASS.
+  Existing PASS/FAIL/TIMEOUT/UNKNOWN candidate identity, budget, terminal
+  result, and exit-code rules remain unchanged.
+- A future terminal Handoff `nextAction` must equal the same terminal
+  project-state value byte-for-byte. Only the exact immutable TASK-0074
+  historical mismatch is quarantined.
+- After an ordinary READY Doctor PASS, migrate TASK-0056 Card, Backlog
+  dependency, and delivery-policy core atomically to TASK-0075. Then use one
+  read-only `fork_turns=none` Reviewer with a 15-minute maximum, one complete
+  Windows combined canonical/exact-tree durable gate, and one subsequent
+  independent Ubuntu-24.04 exact-tree run on the same clean candidate.
+  Remote remains `UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED /
+  dispatch=0 / passClaimed=false`.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from

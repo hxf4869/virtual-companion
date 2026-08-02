@@ -80,17 +80,51 @@
         },
         "intakeActivation": {"$ref": "#/$defs/deliveryPhase"},
         "candidateExecution": {
-          "allOf": [
-            {"$ref": "#/$defs/deliveryPhase"},
-            {
-              "required": ["readyDoctorPassAt", "inProgressCommit"],
-              "properties": {
-                "readyDoctorPassAt": {"type": "string", "minLength": 1},
-                "inProgressCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
-              }
-            }
+          "oneOf": [
+            {"$ref": "#/$defs/candidateExecutionStarted"},
+            {"$ref": "#/$defs/candidateExecutionNotStarted"}
           ]
         }
+      }
+    },
+    "candidateExecutionStarted": {
+      "type": "object",
+      "required": ["anchor", "anchorCommit", "startedAt", "endedAt", "elapsedSeconds", "outcome", "targetWallMinutes", "hardFuseWallMinutes", "candidateDeadlineMinutes", "closureOnlyOverrunSeconds", "readyDoctorPassAt", "inProgressCommit"],
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {"const": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT"},
+        "anchorCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "startedAt": {"type": "string", "minLength": 1},
+        "endedAt": {"type": "string", "minLength": 1},
+        "elapsedSeconds": {"type": "number", "minimum": 0},
+        "outcome": {"enum": ["PASS", "FAIL", "TIMEOUT", "UNKNOWN"]},
+        "targetWallMinutes": {"const": 60},
+        "hardFuseWallMinutes": {"const": 90},
+        "candidateDeadlineMinutes": {"const": 45},
+        "closureOnlyOverrunSeconds": {"type": "number", "minimum": 0},
+        "readyDoctorPassAt": {"type": "string", "minLength": 1},
+        "inProgressCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "candidateExecutionNotStarted": {
+      "type": "object",
+      "required": ["anchor", "anchorCommit", "startedAt", "endedAt", "elapsedSeconds", "outcome", "targetWallMinutes", "hardFuseWallMinutes", "candidateDeadlineMinutes", "closureOnlyOverrunSeconds", "readyDoctorPassAt", "inProgressCommit", "reason", "reanchored"],
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {"const": "NOT_STARTED_READY_DOCTOR_NON_PASS"},
+        "anchorCommit": {"type": "null"},
+        "startedAt": {"type": "null"},
+        "endedAt": {"type": "null"},
+        "elapsedSeconds": {"const": 0},
+        "outcome": {"const": "NOT_STARTED"},
+        "targetWallMinutes": {"const": 60},
+        "hardFuseWallMinutes": {"const": 90},
+        "candidateDeadlineMinutes": {"const": 45},
+        "closureOnlyOverrunSeconds": {"const": 0},
+        "readyDoctorPassAt": {"type": "null"},
+        "inProgressCommit": {"type": "null"},
+        "reason": {"type": "string", "minLength": 1},
+        "reanchored": {"const": false}
       }
     },
     "deliveryPhase": {

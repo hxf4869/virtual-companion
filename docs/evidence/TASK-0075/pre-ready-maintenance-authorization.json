@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260803-TASK-0075-PRE-READY-01",
+  "decisionId": "TASK-0075-PERMANENT-DELIVERY-FLOW-RECOVERY-20260803",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0075",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-03",
+  "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+  "baseCommit": "d41c9f82e69107cf1ecf0cb2c100d39f436faab7",
+  "baseTree": "dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e",
+  "draftCommit": "2289d7a243d8a7658d11036afe6d338e0868cc8e",
+  "draftTree": "33ce1ae7814a09be6da68e892d5334acfc2daa15",
+  "exactAuthorizationPlan": "授权 TASK-0075 精确永久恢复：以 `d41c9f82e69107cf1ecf0cb2c100d39f436faab7` / Tree `dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e` 为 Base，创建前重新 fetch 并确认 main、clean、远端无分叉及 TASK-0075 未占用。允许唯一 machine-recognized pre-READY maintenance commit：精确绑定并隔离 TASK-0073 历史 CI-policy projection、固定父边 `d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd`，以及 TASK-0074 终态中已绑定 Commit/Tree/Blob 的 5 条 timing/Handoff 错误；Doctor 必须使用历史提交自身的 Policy/Blob 验证历史对象，不得用当前 Policy 重新解释。为未来 timing Schema 增加严格 `NOT_STARTED` 分支，仅允许 READY Doctor 非 PASS 且从未进入 IN_PROGRESS 时使用，允许候选及时间锚为 null、`elapsedSeconds=0`、原因非空；现有 PASS/FAIL/TIMEOUT/UNKNOWN 约束保持不变。未来 Handoff `nextAction` 必须与 terminal project-state 精确一致；TASK-0073/0074 历史制品不得修改。普通 READY Doctor PASS 后，才允许将 TASK-0056 Card/Backlog dependency 与 delivery-policy core 原子迁移至 TASK-0075，并完整执行 15 分钟独立 Reviewer、合并 Windows 门禁、独立 WSL、pre-closure 与安全推送。禁止通配路径、可配置 allowlist、历史改写、通用 override、记录复用、分支/worktree、GitHub Actions dispatch 或任何绕过。",
+  "exactOwnerAcceptance": "按计划用 goal 继续下去",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false,
+  "remoteDispatchAuthorized": false
+}

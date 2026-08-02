@@ -159,12 +159,18 @@ PROJECT_STATE_PATH = ".harness/project-state.yaml"
 TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
 CI_EXECUTION_POLICY_PATH = ".harness/ci-execution-policy.yaml"
 TASK_DELIVERY_POLICY_CANONICAL_HASH = (
-    "55e2d9fab1a3d4ab79ab2cc720ee537f4c953ebb5b9903f80323b93e3516a62c"
+    "58c354fa2c6d20b82d696793c806c2f320011e9b0ef88d58b8535f745a5ebf9d"
 )
 TASK_DELIVERY_SKILL_CANONICAL_HASH = (
-    "af0c3b1bdebe1a4835f81ea5ec0c36708e311c6ab22d59f5afc14e2f1bb1d193"
+    "00f397c6cdbf4631d4e69ed1845740c4f51c856236b1e67f7028a759fa7477d6"
 )
 CI_EXECUTION_POLICY_CANONICAL_HASH = (
+    "fc6622dfad6fba0aa15d3af403faedc28ee69b0ff93f89fd1886953d2b1ce8eb"
+)
+TASK_0073_CI_POLICY_PROJECTION_HASH = (
+    "3a253a215a88d4b9bd987d7dd2cbf0b2400f93fbd7086b071eb511f81f9cf8a1"
+)
+TASK_0074_CI_POLICY_PROJECTION_HASH = (
     "6e6e19d312152b66f4074791b2a6fcf18d560de8c5eace3066122e5ecbcd5b4e"
 )
 TASK_0072_BOOTSTRAP_RECORD_ID = "OWNER-MAINT-20260801-READY-GREENLINE-01"
@@ -254,6 +260,211 @@ TASK_0074_PRE_READY_MAINTENANCE_PATHS = {
     "skills/task-delivery-flow/SKILL.md",
     "skills/task-intake/SKILL.md",
 }
+TASK_0075_MAINTENANCE_RECORD_ID = (
+    "OWNER-MAINT-20260803-TASK-0075-PRE-READY-01"
+)
+TASK_0075_TASK_ID = "TASK-0075"
+TASK_0075_BASE_COMMIT = "d41c9f82e69107cf1ecf0cb2c100d39f436faab7"
+TASK_0075_BASE_TREE = "dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e"
+TASK_0075_DRAFT_COMMIT = "2289d7a243d8a7658d11036afe6d338e0868cc8e"
+TASK_0075_DRAFT_TREE = "33ce1ae7814a09be6da68e892d5334acfc2daa15"
+TASK_0075_CARD_PATH = "docs/tasks/TASK-0075-permanent-delivery-flow-recovery.md"
+TASK_0075_CONTEXT_PATH = "docs/tasks/context/TASK-0075.context-lock.yaml"
+TASK_0075_MAINTENANCE_AUTHORIZATION_PATH = (
+    "docs/evidence/TASK-0075/pre-ready-maintenance-authorization.json"
+)
+TASK_0075_EXACT_OWNER_AUTHORIZATION = "授权 TASK-0075 精确永久恢复：以 `d41c9f82e69107cf1ecf0cb2c100d39f436faab7` / Tree `dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e` 为 Base，创建前重新 fetch 并确认 main、clean、远端无分叉及 TASK-0075 未占用。允许唯一 machine-recognized pre-READY maintenance commit：精确绑定并隔离 TASK-0073 历史 CI-policy projection、固定父边 `d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd`，以及 TASK-0074 终态中已绑定 Commit/Tree/Blob 的 5 条 timing/Handoff 错误；Doctor 必须使用历史提交自身的 Policy/Blob 验证历史对象，不得用当前 Policy 重新解释。为未来 timing Schema 增加严格 `NOT_STARTED` 分支，仅允许 READY Doctor 非 PASS 且从未进入 IN_PROGRESS 时使用，允许候选及时间锚为 null、`elapsedSeconds=0`、原因非空；现有 PASS/FAIL/TIMEOUT/UNKNOWN 约束保持不变。未来 Handoff `nextAction` 必须与 terminal project-state 精确一致；TASK-0073/0074 历史制品不得修改。普通 READY Doctor PASS 后，才允许将 TASK-0056 Card/Backlog dependency 与 delivery-policy core 原子迁移至 TASK-0075，并完整执行 15 分钟独立 Reviewer、合并 Windows 门禁、独立 WSL、pre-closure 与安全推送。禁止通配路径、可配置 allowlist、历史改写、通用 override、记录复用、分支/worktree、GitHub Actions dispatch 或任何绕过。"
+TASK_0075_EXACT_OWNER_ACCEPTANCE = "按计划用 goal 继续下去"
+TASK_0075_PRE_READY_MAINTENANCE_PATHS = {
+    ".harness/ci-execution-policy.yaml",
+    ".harness/skills.yaml",
+    ".harness/task-delivery-policy.yaml",
+    "docs/evidence/TASK-0075/pre-ready-maintenance-authorization.json",
+    "docs/schemas/evidence-pack.schema.json",
+    "docs/schemas/handoff.schema.json",
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+    "skills/harness-change/SKILL.md",
+    "skills/task-delivery-flow/SKILL.md",
+    "skills/task-intake/SKILL.md",
+}
+TASK_0073_MAINTENANCE_COMMIT = "b1c37678ab773eca150bdbb273ddafa5d14b781f"
+TASK_0073_MAINTENANCE_TREE = "6d0c9f5852313219af370ba411dd192afafd0f73"
+TASK_0073_MAINTENANCE_CI_POLICY_BLOB = "9efc2356531f515b3bfc758044863bfe8c998eca"
+TASK_0073_MAINTENANCE_CI_POLICY_SHA256 = (
+    "9b393744d334248e0dec492cca2e9370f3cbab5f69d9ea6e27608ab1cd9ac77e"
+)
+TASK_0074_MAINTENANCE_COMMIT = "f337d2a267e0b96360ae74d50e053c41864a934f"
+TASK_0074_MAINTENANCE_TREE = "655facbf704b88632aed89586d46933c99b170d2"
+TASK_0074_MAINTENANCE_CI_POLICY_BLOB = "3ee4f383ef7700e997745a910420f1cb435b5eae"
+TASK_0074_MAINTENANCE_CI_POLICY_SHA256 = (
+    "3c67c84603085c7f2dce52e192ca23a1e566a51ac9d6fd53193e391f688ceab9"
+)
+TASK_0073_PLANNING_PARENT_COMMIT = "d6fbee26442a997b96648eea472f98ecba1a5412"
+TASK_0073_PLANNING_PARENT_TREE = "a9014d6d779f55d712db93f6f88bb5f4804ef315"
+TASK_0073_PLANNING_CHILD_COMMIT = "11e6fb12f77486787ef71627e84f34ee069e72bd"
+TASK_0073_PLANNING_CHILD_TREE = "36e22afcc810cca0630e159568d2acf03845441d"
+TASK_0073_PLANNING_CHILD_DELIVERY_POLICY_CANONICAL_HASH = (
+    "c5e0c9856ac3fd35b8cfd390fedbdd11645fc63f9e0d525e5a78aa005ef4227d"
+)
+TASK_0073_PLANNING_EDGE_IDENTITIES = {
+    ".harness/project-state.yaml": {
+        "parent": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "1ca583aef1f178c90cafc1242306a9dbc0426152",
+            "sha256": "42d4e85928b8a774ea6643322f766b202dfad742c400a63eccdcba94edadc6c2",
+        },
+        "child": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "5f7ab72da978c2b75978e9d608343e2bfe305eb2",
+            "sha256": "1030e44caa692e2e6b21b6dd7c8f777353d82570e812e42f2eb20a09fc70b36d",
+        },
+    },
+    ".harness/task-backlog.yaml": {
+        "parent": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "d33e08cb92c0c16a68d28898d02fee030a4e5445",
+            "sha256": "8339334272a7ae583dd524b02fb609141725e4343c7a36e59c7b42795c01b47c",
+        },
+        "child": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "b2275775e7a5092576820ea290fd515cba9834a1",
+            "sha256": "3bab01c47b4bfdc712ee5c0c95386bd9c4304e1ca641582e55aa1cc60fb25c53",
+        },
+    },
+    ".harness/task-delivery-policy.yaml": {
+        "parent": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "6b83448be53cc7c4ab0c50dee73182f9436cd615",
+            "sha256": "8e861b4e378c8713079749e9b19941fa866226e7617b052f13e2bb7cf10e12d7",
+        },
+        "child": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "5c1c1f84fd5af3870e0827a17593cc276e860b76",
+            "sha256": "75525760cac3a628647c7b86ef63373f3d3c7fdada22ee61257b190e9d08a419",
+        },
+    },
+    "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md": {
+        "parent": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "03cd7f89ff75f843d5a445eb1041562cac875b1c",
+            "sha256": "1669d642f0f14feda8dde681460349824d5ef6019353998e7c9dde9fc45a8a2d",
+        },
+        "child": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "ef2da1458d8447f6668d20bd4c322539f0d57109",
+            "sha256": "dbd4a824149c9b678039c1a8ccebaf22c4764b88e02564259d0849631390a970",
+        },
+    },
+    "docs/tasks/TASK-0073-pre-ready-greenline-parent-edge-recovery.md": {
+        "parent": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "1d4e613e83f6f9071e599777c3223956678582da",
+            "sha256": "afa700bf965d18cb1ae7fa0a8a1859a95607d7803e47a9ab3cb4813d4eb78d63",
+        },
+        "child": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "cb32c381f133f43359dac9f68492e388e55e6391",
+            "sha256": "7438a8233e8cf34d16d984f95d037c623d5283326714d902a375c7c3f9983801",
+        },
+    },
+    "scripts/harness/doctor.py": {
+        "parent": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "076cfc34d791ee9cea4fed635c099deb2179b8d3",
+            "sha256": "1f3d88b81aa5d755b8c9b881ec2e9807527cbe367fb9d2b53d14258d106a8b50",
+        },
+        "child": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "95d739c60de73714c52b58c9ec3f571892e82314",
+            "sha256": "2032039d399512e12e0d02858f3e74d3ce430e6411f31fd54b7dd2f6757aa650",
+        },
+    },
+    "scripts/harness/tests/test_harness.py": {
+        "parent": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "044f33dcc1fe6e043c23956edeaeca7c24407bd2",
+            "sha256": "065adb6a39e83fea555fd1485d8639edf6aba07ce8ae1e244985f5659c5a6038",
+        },
+        "child": {
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": "3018f226b69a0cdee510ac3f94b9e76ec25d62f4",
+            "sha256": "a92e55212aba056955a9164f5045504535127785b569e501fc80fa0d78d2ec01",
+        },
+    },
+}
+TASK_0074_TERMINAL_COMMIT = "d41c9f82e69107cf1ecf0cb2c100d39f436faab7"
+TASK_0074_TERMINAL_TREE = "dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e"
+TASK_0074_TERMINAL_PARENT = "e8af6bad56e1f04b493c6f6ffdc43ae348917ffe"
+TASK_0074_TERMINAL_ARTIFACTS = {
+    "evidence": {
+        "path": "docs/evidence/TASK-0074/evidence-pack.json",
+        "mode": "100644",
+        "type": "blob",
+        "blobOid": "cbb75f8d5f573684df8284c014ce4507f9b7c3d2",
+        "sha256": "1a9191feca82cec0d59ba4101ac843a90654f0919830cac4c34c97be44b7fa66",
+    },
+    "review": {
+        "path": "docs/evidence/TASK-0074/review-r1.md",
+        "mode": "100644",
+        "type": "blob",
+        "blobOid": "714382dff8ed430d80fd8456713b0411aa31c06e",
+        "sha256": "28fce52edfa1bde1b503cac09b6f4fa890044e4addff81aa6ce1f03ffa42e77c",
+    },
+    "handoff": {
+        "path": "docs/handoffs/TASK-0074.json",
+        "mode": "100644",
+        "type": "blob",
+        "blobOid": "140aecbbd8c6663f68b4a4b9fb6b256389d5d154",
+        "sha256": "5493fd4b1be8d0c1f15ed439d66712c8d704aa277d92d383c8ef6878219711ac",
+    },
+    "card": {
+        "path": "docs/tasks/TASK-0074-exact-delivery-flow-recovery.md",
+        "mode": "100644",
+        "type": "blob",
+        "blobOid": "c1b1d5c9e188442522eb8769e7c67e0b5f47de1f",
+        "sha256": "ac18f2f42d267f9a8de3e3e2a4f6e5ad50ffdc7869ed46afbb0409596f6d688e",
+    },
+    "context": {
+        "path": "docs/tasks/context/TASK-0074.context-lock.yaml",
+        "mode": "100644",
+        "type": "blob",
+        "blobOid": "be5dae0a701a4413e7abd97ce455dbfcef392afa",
+        "sha256": "18a6b58707b965052920d1659483b6d869fc594ac4c1cd1429747298d11b0141",
+    },
+}
+TASK_0074_READY_DOCTOR_RECEIPT_SHA256 = (
+    "452da45a1aa70d1892d68e2200404ce438132a26fc828a10325ba9e79a068239"
+)
+TASK_0074_PRE_CLOSURE_RECEIPT_SHA256 = (
+    "0ffa4c92034214f024bfbe438a0bc54fbe3ddd0180fd21595d44c260f1efc86c"
+)
+TASK_0074_EXACT_HISTORICAL_ERRORS = (
+    "ERROR: TASK-0073 pre-READY maintenance: CI policy canonical binding drifted",
+    "ERROR: task-backlog: unresolved PLANNED card TASK-0056 metadata must remain immutable on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd",
+    "ERROR: task-backlog: planning card TASK-0056 title, fixed notice and six-section projection changed on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd",
+    "ERROR: task-backlog: permanent planning contract TASK-0056 was removed or rewritten on edge d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd",
+    "ERROR: task-backlog: TASK-0073 replacement repair must be one exact, authorized, atomic parent edge; observed=[]",
+    "ERROR: TASK-0074: Handoff nextAction disagrees with terminal project-state",
+    "ERROR: TASK-0074 delivery timing: candidate execution anchor or budget drifted",
+    "ERROR: TASK-0074 delivery timing.candidateExecution.startedAt: must be a non-blank string",
+    "ERROR: TASK-0074 delivery timing.candidateExecution.endedAt: must be a non-blank string",
+    "ERROR: TASK-0074 delivery timing.candidateExecution.readyDoctorPassAt: must be a non-blank string",
+)
 TASK_0073_TERMINAL_COMMIT = "65fbb6e8f3e40ab7b5aa4b0daa7e6a679f977a94"
 TASK_0073_TERMINAL_TREE = "5649336f93a8efdecdf0b7213966808e4bd629ed"
 TASK_0073_TERMINAL_EVIDENCE_PATH = "docs/evidence/TASK-0073/evidence-pack.json"
@@ -627,6 +838,14 @@ TASK_0074_PLANNING_REPAIRS = {
         "newTitle": "Idle planning checkpoint 四消费者接线与 CI 闭环",
         "oldDependencies": ["TASK-0073"],
         "newDependencies": ["TASK-0074"],
+    },
+}
+TASK_0075_PLANNING_REPAIRS = {
+    "TASK-0056": {
+        "oldTitle": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+        "newTitle": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+        "oldDependencies": ["TASK-0073"],
+        "newDependencies": ["TASK-0075"],
     },
 }
 IDLE_PLANNING_PAUSE_NEXT_ACTION = "等待 Owner 决策：当前无可晋级任务"
@@ -2666,6 +2885,14 @@ def validate_ready_project_state_checkpoint(
             "single-parent maintenance boundary",
         )
         validate_task0074_pre_ready_maintenance_boundary(audit, parent_commit)
+    elif task_id == TASK_0075_TASK_ID:
+        audit.require(
+            parent_commit != authorization_commit
+            and task0075_pre_ready_maintenance_boundary_candidate(parent_commit),
+            "TASK-0075 pre-READY maintenance: READY parent must be the exact "
+            "single-parent maintenance boundary",
+        )
+        validate_task0075_pre_ready_maintenance_boundary(audit, parent_commit)
     else:
         validate_history_path_allowlist(
             audit,
@@ -3507,6 +3734,7 @@ def ci_execution_policy_projection(policy: dict[str, Any]) -> dict[str, Any]:
         "task0072SelfBootstrap",
         "task0073PreReadyMaintenance",
         "task0074PreReadyMaintenance",
+        "task0075PreReadyMaintenance",
     ):
         try:
             doctor_identity = projection[record_name]["boundary"]["files"]["doctor"]
@@ -4042,6 +4270,573 @@ def validate_task0074_pre_ready_maintenance_record(
     return record
 
 
+def task0075_historical_projection_contract() -> dict[str, Any]:
+    return {
+        "task0073CiPolicy": {
+            "commit": TASK_0073_MAINTENANCE_COMMIT,
+            "tree": TASK_0073_MAINTENANCE_TREE,
+            "path": CI_EXECUTION_POLICY_PATH,
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": TASK_0073_MAINTENANCE_CI_POLICY_BLOB,
+            "sha256": TASK_0073_MAINTENANCE_CI_POLICY_SHA256,
+            "canonicalProjectionSha256": TASK_0073_CI_POLICY_PROJECTION_HASH,
+            "interpretation": "HISTORICAL_COMMIT_OWN_POLICY_BLOB_ONLY",
+        },
+        "task0074CiPolicy": {
+            "commit": TASK_0074_MAINTENANCE_COMMIT,
+            "tree": TASK_0074_MAINTENANCE_TREE,
+            "path": CI_EXECUTION_POLICY_PATH,
+            "mode": "100644",
+            "type": "blob",
+            "blobOid": TASK_0074_MAINTENANCE_CI_POLICY_BLOB,
+            "sha256": TASK_0074_MAINTENANCE_CI_POLICY_SHA256,
+            "canonicalProjectionSha256": TASK_0074_CI_POLICY_PROJECTION_HASH,
+            "interpretation": "HISTORICAL_COMMIT_OWN_POLICY_BLOB_ONLY",
+        },
+        "task0073PlanningEdge": {
+            "parentCommit": TASK_0073_PLANNING_PARENT_COMMIT,
+            "parentTree": TASK_0073_PLANNING_PARENT_TREE,
+            "childCommit": TASK_0073_PLANNING_CHILD_COMMIT,
+            "childTree": TASK_0073_PLANNING_CHILD_TREE,
+            "changedPaths": sorted(TASK_0073_PLANNING_EDGE_IDENTITIES),
+            "files": TASK_0073_PLANNING_EDGE_IDENTITIES,
+            "parentDeliveryPolicyCanonicalSha256": (
+                TASK_0073_PRE_REPAIR_DELIVERY_POLICY_CANONICAL_HASH
+            ),
+            "childDeliveryPolicyCanonicalSha256": (
+                TASK_0073_PLANNING_CHILD_DELIVERY_POLICY_CANONICAL_HASH
+            ),
+            "interpretation": "PARENT_AND_CHILD_COMMIT_OWN_OBJECTS_ONLY",
+        },
+        "currentPolicyReinterpretationForbidden": True,
+    }
+
+
+def task0075_historical_quarantine_contract() -> dict[str, Any]:
+    return {
+        "taskId": TASK_0074_TASK_ID,
+        "terminalState": "REJECTED",
+        "terminalCommit": TASK_0074_TERMINAL_COMMIT,
+        "terminalTree": TASK_0074_TERMINAL_TREE,
+        "terminalParent": TASK_0074_TERMINAL_PARENT,
+        "passClaimed": False,
+        "artifacts": TASK_0074_TERMINAL_ARTIFACTS,
+        "readyDoctor": {
+            "status": "FAIL",
+            "exitCode": 1,
+            "checks": 355421,
+            "errorCount": 5,
+            "receiptSha256": TASK_0074_READY_DOCTOR_RECEIPT_SHA256,
+            "errors": list(TASK_0074_EXACT_HISTORICAL_ERRORS[:5]),
+            "passClaimed": False,
+        },
+        "preClosure": {
+            "status": "FAIL",
+            "exitCode": 1,
+            "checks": 359792,
+            "errorCount": 10,
+            "receiptSha256": TASK_0074_PRE_CLOSURE_RECEIPT_SHA256,
+            "errors": list(TASK_0074_EXACT_HISTORICAL_ERRORS),
+            "passClaimed": False,
+        },
+        "historicalHandoffNextAction": (
+            "等待 Owner 创建新的永久恢复卡，精确修复 TASK-0073 历史 Policy "
+            "projection 隔离和 pre-IN_PROGRESS timing 非 PASS 表达；不得修改"
+            "历史或推送本失败链"
+        ),
+        "historicalProjectStateNextAction": (
+            "等待 Owner 创建新的永久恢复卡；TASK-0056 继续被 REJECTED "
+            "TASK-0073 阻断，TASK-0074 失败链不得推送或复用"
+        ),
+        "historicalMismatchOnly": True,
+        "immutableHistoricalNonPass": True,
+        "copiedMutatedOrSecondRecordFailsClosed": True,
+    }
+
+
+def task0075_delivery_contract() -> dict[str, Any]:
+    return {
+        "candidateExecutionNotStarted": {
+            "outcome": "NOT_STARTED",
+            "eligibleOnlyWhen": {
+                "readyDoctorOutcome": "NON_PASS",
+                "readyDoctorPassExists": False,
+                "inProgressCommitExists": False,
+                "candidateFreezeExists": False,
+            },
+            "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+            "anchorCommit": None,
+            "startedAt": None,
+            "endedAt": None,
+            "readyDoctorPassAt": None,
+            "inProgressCommit": None,
+            "elapsedSeconds": 0,
+            "closureOnlyOverrunSeconds": 0,
+            "reasonRequired": True,
+            "reanchored": False,
+            "passClaimed": False,
+        },
+        "existingCandidateOutcomes": ["PASS", "FAIL", "TIMEOUT", "UNKNOWN"],
+        "existingStrongTypingUnchanged": True,
+        "failRequiresNonZeroExitCode": True,
+        "reviewerMaximumMinutes": 15,
+        "terminalNextAction": {
+            "handoffEqualsProjectState": True,
+            "comparison": "BYTE_FOR_BYTE_STRING_EQUALITY",
+            "sameTerminalCommitRequired": True,
+            "task0074HistoricalMismatchOnlyExactQuarantine": True,
+        },
+        "combinedGate": "TASK0075_HARNESS_PORTABILITY_WINDOWS_ONLY",
+        "wslIndependent": True,
+    }
+
+
+def task0075_not_started_candidate_execution_matches(
+    candidate: Any,
+) -> bool:
+    expected_fields = {
+        "anchor",
+        "anchorCommit",
+        "startedAt",
+        "endedAt",
+        "elapsedSeconds",
+        "outcome",
+        "targetWallMinutes",
+        "hardFuseWallMinutes",
+        "candidateDeadlineMinutes",
+        "closureOnlyOverrunSeconds",
+        "readyDoctorPassAt",
+        "inProgressCommit",
+        "reason",
+        "reanchored",
+    }
+    return (
+        isinstance(candidate, dict)
+        and set(candidate) == expected_fields
+        and candidate.get("outcome") == "NOT_STARTED"
+        and candidate.get("anchor") == "NOT_STARTED_READY_DOCTOR_NON_PASS"
+        and candidate.get("anchorCommit") is None
+        and candidate.get("startedAt") is None
+        and candidate.get("endedAt") is None
+        and candidate.get("readyDoctorPassAt") is None
+        and candidate.get("inProgressCommit") is None
+        and candidate.get("elapsedSeconds") == 0
+        and candidate.get("targetWallMinutes") == 60
+        and candidate.get("hardFuseWallMinutes") == 90
+        and candidate.get("candidateDeadlineMinutes") == 45
+        and candidate.get("closureOnlyOverrunSeconds") == 0
+        and isinstance(candidate.get("reason"), str)
+        and bool(candidate.get("reason", "").strip())
+        and candidate.get("reanchored") is False
+    )
+
+
+def validate_task0075_pre_ready_maintenance_record(
+    audit: Audit,
+    policy: dict[str, Any],
+) -> dict[str, Any] | None:
+    record = policy.get("task0075PreReadyMaintenance")
+    label = "TASK-0075 pre-READY maintenance"
+    audit.require(
+        isinstance(record, dict),
+        f"{label}: machine record is missing or not an object",
+    )
+    if not isinstance(record, dict):
+        return None
+    audit.require(
+        set(record)
+        == {
+            "schemaVersion",
+            "recordId",
+            "decisionId",
+            "kind",
+            "targetTask",
+            "sourceThreadId",
+            "authorization",
+            "base",
+            "draft",
+            "boundary",
+            "historicalProjection",
+            "historicalQuarantine",
+            "deliveryContract",
+            "activation",
+            "consumption",
+            "validationChannel",
+            "forbiddenInterfaces",
+        },
+        f"{label}: record fields do not match the exact schema",
+    )
+    audit.require(
+        record.get("schemaVersion") == 1
+        and record.get("recordId") == TASK_0075_MAINTENANCE_RECORD_ID
+        and record.get("decisionId")
+        == "TASK-0075-PERMANENT-DELIVERY-FLOW-RECOVERY-20260803"
+        and record.get("kind")
+        == "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE"
+        and record.get("targetTask") == TASK_0075_TASK_ID
+        and record.get("sourceThreadId")
+        == "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+        f"{label}: record identity drifted",
+    )
+    audit.require(
+        record.get("base")
+        == {
+            "commit": TASK_0075_BASE_COMMIT,
+            "tree": TASK_0075_BASE_TREE,
+            "lastTerminalTask": TASK_0074_TASK_ID,
+            "lastTerminalState": "REJECTED",
+        },
+        f"{label}: Base binding drifted",
+    )
+    authorization = record.get("authorization")
+    audit.require(
+        isinstance(authorization, dict)
+        and set(authorization) == {"path", "sha256"}
+        and authorization.get("path") == TASK_0075_MAINTENANCE_AUTHORIZATION_PATH
+        and bool(
+            re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(authorization.get("sha256", "")),
+            )
+        ),
+        f"{label}: Owner authorization binding drifted",
+    )
+    draft = record.get("draft")
+    audit.require(
+        isinstance(draft, dict)
+        and set(draft) == {"commit", "tree", "parent", "changedFiles"}
+        and draft.get("commit") == TASK_0075_DRAFT_COMMIT
+        and draft.get("tree") == TASK_0075_DRAFT_TREE
+        and draft.get("parent") == TASK_0075_BASE_COMMIT,
+        f"{label}: DRAFT binding drifted",
+    )
+    boundary = record.get("boundary")
+    audit.require(
+        isinstance(boundary, dict)
+        and set(boundary)
+        == {
+            "directParentCommit",
+            "directParentTree",
+            "singleParentRequired",
+            "identityBinding",
+            "changedPaths",
+            "requiredMode",
+            "requiredType",
+            "policyContentBinding",
+            "files",
+        }
+        and boundary.get("directParentCommit") == TASK_0075_DRAFT_COMMIT
+        and boundary.get("directParentTree") == TASK_0075_DRAFT_TREE
+        and boundary.get("singleParentRequired") is True
+        and boundary.get("identityBinding")
+        == "COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT"
+        and boundary.get("requiredMode") == "100644"
+        and boundary.get("requiredType") == "blob"
+        and boundary.get("policyContentBinding")
+        == "CANONICAL_JSON_REDACT_TASK0075_BOUNDARY_DOCTOR_IDENTITY",
+        f"{label}: boundary contract drifted",
+    )
+    audit.require(
+        isinstance(boundary, dict)
+        and boundary.get("changedPaths")
+        == sorted(TASK_0075_PRE_READY_MAINTENANCE_PATHS),
+        f"{label}: changed path contract drifted",
+    )
+    audit.require(
+        record.get("historicalProjection")
+        == task0075_historical_projection_contract(),
+        f"{label}: historical projection contract drifted",
+    )
+    audit.require(
+        record.get("historicalQuarantine")
+        == task0075_historical_quarantine_contract(),
+        f"{label}: TASK-0074 historical quarantine contract drifted",
+    )
+    audit.require(
+        record.get("deliveryContract") == task0075_delivery_contract(),
+        f"{label}: future delivery contract drifted",
+    )
+    audit.require(
+        record.get("activation")
+        == {
+            "allowedState": "DRAFT",
+            "readyDoctorPassRequired": True,
+            "copiedRecordForbidden": True,
+            "extraCommitOrPathForbidden": True,
+        },
+        f"{label}: activation contract drifted",
+    )
+    audit.require(
+        record.get("consumption")
+        == {
+            "consumedByTask": TASK_0075_TASK_ID,
+            "consumedWhen": "READY_AUTHORIZATION_COMMITTED",
+            "inertAfterConsumption": True,
+            "reusableByOtherTask": False,
+        },
+        f"{label}: consumption contract drifted",
+    )
+    audit.require(
+        record.get("validationChannel")
+        == {
+            "channel": "LOCAL_EXACT_TREE_FALLBACK",
+            "profile": "HARNESS_PORTABILITY_LOCAL",
+            "windows": "COMBINED_CANONICAL_AND_EXACT_TREE_PASS_REQUIRED",
+            "wslUbuntu": "INDEPENDENT_PASS_REQUIRED",
+            "macos": "DEFERRED_NOT_CLAIMED",
+            "githubActions": "UNKNOWN_NOT_RUN",
+            "githubReasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+            "dispatchCount": 0,
+            "passClaimed": False,
+        },
+        f"{label}: validation channel binding drifted",
+    )
+    audit.require(
+        record.get("forbiddenInterfaces")
+        == {
+            "cliFlag": False,
+            "environmentVariable": False,
+            "gitNote": False,
+            "gitReplace": False,
+            "gitGraft": False,
+            "historyRewrite": False,
+            "configurableAllowlist": False,
+            "wildcardWritePath": False,
+            "generalizedOverride": False,
+            "branchOrWorktree": False,
+            "githubActionsDispatch": False,
+        },
+        f"{label}: forbidden-interface contract drifted",
+    )
+    audit.require(
+        not any(
+            key != "task0075PreReadyMaintenance" and value == record
+            for key, value in policy.items()
+        )
+        and not any(
+            key != "task0075PreReadyMaintenance"
+            and isinstance(value, dict)
+            and value.get("historicalQuarantine")
+            == task0075_historical_quarantine_contract()
+            for key, value in policy.items()
+        ),
+        f"{label}: copied machine record or quarantine is forbidden",
+    )
+    return record
+
+
+def task0074_exact_historical_quarantine_matches() -> bool:
+    try:
+        graph = git_text(
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            TASK_0074_TERMINAL_COMMIT,
+            check=False,
+        )
+        tree = git_text(
+            "show",
+            "-s",
+            "--format=%T",
+            TASK_0074_TERMINAL_COMMIT,
+            check=False,
+        ).stdout.strip()
+        terminal_task = task_metadata_at_commit(
+            TASK_0074_TERMINAL_COMMIT,
+            TASK_0074_CARD_PATH,
+        )
+        terminal_state = yaml_at_commit(
+            TASK_0074_TERMINAL_COMMIT,
+            PROJECT_STATE_PATH,
+        )
+        terminal_ledger = yaml_at_commit(
+            TASK_0074_TERMINAL_COMMIT,
+            TASK_LEDGER_PATH,
+        )
+        evidence = json.loads(
+            git_object(
+                TASK_0074_TERMINAL_COMMIT,
+                TASK_0074_TERMINAL_ARTIFACTS["evidence"]["path"],
+            ).decode("utf-8")
+        )
+        handoff = json.loads(
+            git_object(
+                TASK_0074_TERMINAL_COMMIT,
+                TASK_0074_TERMINAL_ARTIFACTS["handoff"]["path"],
+            ).decode("utf-8")
+        )
+    except (
+        HarnessError,
+        json.JSONDecodeError,
+        OSError,
+        UnicodeError,
+        yaml.YAMLError,
+    ):
+        return False
+    if not (
+        graph.returncode == 0
+        and graph.stdout.split()
+        == [TASK_0074_TERMINAL_COMMIT, TASK_0074_TERMINAL_PARENT]
+        and tree == TASK_0074_TERMINAL_TREE
+        and terminal_task.get("taskId") == TASK_0074_TASK_ID
+        and terminal_task.get("state") == "REJECTED"
+        and terminal_state.get("lastTerminalTask") == TASK_0074_TASK_ID
+        and terminal_state.get("nextAction")
+        == task0075_historical_quarantine_contract()[
+            "historicalProjectStateNextAction"
+        ]
+        and terminal_ledger.get("tasks", {}).get(TASK_0074_TASK_ID, {}).get(
+            "state"
+        )
+        == "REJECTED"
+        and evidence.get("taskId") == TASK_0074_TASK_ID
+        and evidence.get("headCommit") == TASK_0074_TERMINAL_PARENT
+        and handoff.get("taskId") == TASK_0074_TASK_ID
+        and handoff.get("state") == "REJECTED"
+        and handoff.get("nextAction")
+        == task0075_historical_quarantine_contract()["historicalHandoffNextAction"]
+    ):
+        return False
+    checks = evidence.get("checks")
+    if not (
+        isinstance(checks, list)
+        and len(checks) > 2
+        and checks[2].get("status") == "FAIL"
+        and checks[2].get("exitCode") == 1
+        and checks[2].get("artifactHash")
+        == TASK_0074_READY_DOCTOR_RECEIPT_SHA256
+    ):
+        return False
+    for identity in TASK_0074_TERMINAL_ARTIFACTS.values():
+        path = str(identity["path"])
+        if not historical_git_object_identity_matches(
+            TASK_0074_TERMINAL_COMMIT,
+            path,
+            identity,
+        ):
+            return False
+        current = ROOT / normalize_repo_path(path)
+        if (
+            not current_path_is_file(current)
+            or hashlib.sha256(read_repository_bytes(current)).hexdigest()
+            != identity["sha256"]
+        ):
+            return False
+    return True
+
+
+def validate_task0075_historical_objects(
+    audit: Audit,
+    record: dict[str, Any],
+) -> None:
+    label = "TASK-0075 immutable historical projection and quarantine"
+    audit.require(
+        record.get("historicalProjection")
+        == task0075_historical_projection_contract()
+        and record.get("historicalQuarantine")
+        == task0075_historical_quarantine_contract(),
+        f"{label}: machine record drifted",
+    )
+    try:
+        for (
+            commit,
+            tree,
+            parent,
+            blob_oid,
+            blob_sha,
+            projection_sha,
+            policy_label,
+        ) in (
+            (
+                TASK_0073_MAINTENANCE_COMMIT,
+                TASK_0073_MAINTENANCE_TREE,
+                TASK_0073_DRAFT_COMMIT,
+                TASK_0073_MAINTENANCE_CI_POLICY_BLOB,
+                TASK_0073_MAINTENANCE_CI_POLICY_SHA256,
+                TASK_0073_CI_POLICY_PROJECTION_HASH,
+                "TASK-0073",
+            ),
+            (
+                TASK_0074_MAINTENANCE_COMMIT,
+                TASK_0074_MAINTENANCE_TREE,
+                TASK_0074_DRAFT_COMMIT,
+                TASK_0074_MAINTENANCE_CI_POLICY_BLOB,
+                TASK_0074_MAINTENANCE_CI_POLICY_SHA256,
+                TASK_0074_CI_POLICY_PROJECTION_HASH,
+                "TASK-0074",
+            ),
+        ):
+            graph = git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                commit,
+                check=False,
+            )
+            actual_tree = git_text(
+                "show",
+                "-s",
+                "--format=%T",
+                commit,
+                check=False,
+            ).stdout.strip()
+            policy_identity = {
+                "mode": "100644",
+                "type": "blob",
+                "blobOid": blob_oid,
+                "sha256": blob_sha,
+            }
+            historical_policy = yaml_at_commit(commit, CI_EXECUTION_POLICY_PATH)
+            audit.require(
+                graph.returncode == 0
+                and graph.stdout.split() == [commit, parent]
+                and actual_tree == tree
+                and historical_git_object_identity_matches(
+                    commit,
+                    CI_EXECUTION_POLICY_PATH,
+                    policy_identity,
+                )
+                and canonical_json_sha256(
+                    ci_execution_policy_projection(historical_policy)
+                )
+                == projection_sha,
+                f"{label}: {policy_label} historical Policy snapshot drifted",
+            )
+        parent_policy = yaml_at_commit(
+            TASK_0073_PLANNING_PARENT_COMMIT,
+            TASK_DELIVERY_POLICY_PATH,
+        )
+        child_policy = yaml_at_commit(
+            TASK_0073_PLANNING_CHILD_COMMIT,
+            TASK_DELIVERY_POLICY_PATH,
+        )
+        audit.require(
+            task0073_historical_planning_edge_objects_match(
+                TASK_0073_PLANNING_PARENT_COMMIT,
+                TASK_0073_PLANNING_CHILD_COMMIT,
+            )
+            and canonical_json_sha256(parent_policy)
+            == TASK_0073_PRE_REPAIR_DELIVERY_POLICY_CANONICAL_HASH
+            and canonical_json_sha256(child_policy)
+            == TASK_0073_PLANNING_CHILD_DELIVERY_POLICY_CANONICAL_HASH,
+            f"{label}: TASK-0073 fixed planning parent edge drifted",
+        )
+        audit.require(
+            task0074_exact_historical_quarantine_matches(),
+            f"{label}: TASK-0074 terminal Commit/Tree/artifact tuple drifted",
+        )
+    except (
+        HarnessError,
+        OSError,
+        UnicodeError,
+        yaml.YAMLError,
+    ) as exc:
+        audit.error(f"{label}: cannot verify exact historical objects: {exc}")
+
+
 def validate_task0073_historical_unknown_quarantine(
     audit: Audit,
     task0074_record: dict[str, Any],
@@ -4173,6 +4968,25 @@ def validate_task0074_delivery_timing_evidence(
     handoff: dict[str, Any],
 ) -> None:
     label = "TASK-0074 delivery timing"
+    if task.get("state") == "REJECTED" and task0074_exact_historical_quarantine_matches():
+        try:
+            historical_evidence = json.loads(
+                git_object(
+                    TASK_0074_TERMINAL_COMMIT,
+                    TASK_0074_TERMINAL_ARTIFACTS["evidence"]["path"],
+                ).decode("utf-8")
+            )
+            historical_handoff = json.loads(
+                git_object(
+                    TASK_0074_TERMINAL_COMMIT,
+                    TASK_0074_TERMINAL_ARTIFACTS["handoff"]["path"],
+                ).decode("utf-8")
+            )
+        except (HarnessError, json.JSONDecodeError, UnicodeError):
+            historical_evidence = {}
+            historical_handoff = {}
+        if evidence == historical_evidence and handoff == historical_handoff:
+            return
     timing = evidence.get("deliveryTiming")
     audit.require(
         isinstance(timing, dict)
@@ -4314,6 +5128,208 @@ def validate_task0074_delivery_timing_evidence(
         )
 
 
+def validate_task0075_delivery_timing_evidence(
+    audit: Audit,
+    task: dict[str, Any],
+    evidence: dict[str, Any],
+    handoff: dict[str, Any],
+) -> None:
+    label = "TASK-0075 delivery timing"
+    timing = evidence.get("deliveryTiming")
+    audit.require(
+        isinstance(timing, dict)
+        and set(timing)
+        == {"overallElapsed", "intakeActivation", "candidateExecution"},
+        f"{label}: Evidence must contain the exact three timing records",
+    )
+    if not isinstance(timing, dict):
+        return
+    audit.require(
+        handoff.get("deliveryTiming") == timing,
+        f"{label}: Handoff timing must equal Evidence",
+    )
+    overall = timing.get("overallElapsed")
+    intake = timing.get("intakeActivation")
+    candidate = timing.get("candidateExecution")
+    overall = overall if isinstance(overall, dict) else {}
+    intake = intake if isinstance(intake, dict) else {}
+    candidate = candidate if isinstance(candidate, dict) else {}
+    draft_started = git_text(
+        "show",
+        "-s",
+        "--format=%cI",
+        TASK_0075_DRAFT_COMMIT,
+        check=False,
+    ).stdout.strip()
+    audit.require(
+        overall.get("anchor") == "DRAFT_COMMIT"
+        and overall.get("anchorCommit") == TASK_0075_DRAFT_COMMIT
+        and overall.get("startedAt") == draft_started
+        and overall.get("reanchored") is False,
+        f"{label}: overall DRAFT anchor drifted or was reanchored",
+    )
+    audit.require(
+        intake.get("anchor") == "DRAFT_COMMIT"
+        and intake.get("anchorCommit") == TASK_0075_DRAFT_COMMIT
+        and intake.get("startedAt") == draft_started
+        and intake.get("targetWallMinutes") == 60
+        and intake.get("hardFuseWallMinutes") == 90
+        and intake.get("outcome") in {"PASS", "FAIL", "TIMEOUT", "UNKNOWN"}
+        and isinstance(intake.get("closureOnlyOverrunSeconds"), (int, float))
+        and intake.get("closureOnlyOverrunSeconds") >= 0,
+        f"{label}: intake/activation contract drifted",
+    )
+    overall_start = evidence_timestamp(
+        audit,
+        f"{label}.overallElapsed.startedAt",
+        overall.get("startedAt"),
+    )
+    overall_end = evidence_timestamp(
+        audit,
+        f"{label}.overallElapsed.endedAt",
+        overall.get("endedAt"),
+    )
+    intake_end = evidence_timestamp(
+        audit,
+        f"{label}.intakeActivation.endedAt",
+        intake.get("endedAt"),
+    )
+    if overall_start and overall_end:
+        actual = (overall_end - overall_start).total_seconds()
+        audit.require(
+            actual >= 0
+            and isinstance(overall.get("elapsedSeconds"), (int, float))
+            and abs(float(overall.get("elapsedSeconds")) - actual) <= 2,
+            f"{label}: overall elapsed duration is not truthful",
+        )
+    if overall_start and intake_end:
+        actual = (intake_end - overall_start).total_seconds()
+        audit.require(
+            actual >= 0
+            and isinstance(intake.get("elapsedSeconds"), (int, float))
+            and abs(float(intake.get("elapsedSeconds")) - actual) <= 2,
+            f"{label}: intake/activation elapsed duration is not truthful",
+        )
+
+    if candidate.get("outcome") == "NOT_STARTED":
+        audit.require(
+            task0075_not_started_candidate_execution_matches(candidate),
+            f"{label}: strict NOT_STARTED field contract drifted",
+        )
+        ready_command = (
+            f"python scripts/harness/doctor.py --task {TASK_0075_TASK_ID}"
+        )
+        checks = evidence.get("checks")
+        ready_checks = (
+            [
+                check
+                for check in checks
+                if isinstance(check, dict)
+                and check.get("command") == ready_command
+            ]
+            if isinstance(checks, list)
+            else []
+        )
+        try:
+            in_progress = first_task_state_commit_from_base(
+                task,
+                {"IN_PROGRESS", "IN_REVIEW", "ACCEPTED"},
+            )
+        except (HarnessError, UnicodeError, yaml.YAMLError):
+            in_progress = ("INVALID", {})
+        channels = evidence.get("validationChannels")
+        channels = channels if isinstance(channels, dict) else {}
+        ready_status = (
+            ready_checks[0].get("status") if len(ready_checks) == 1 else None
+        )
+        ready_exit_code = (
+            ready_checks[0].get("exitCode") if len(ready_checks) == 1 else None
+        )
+        ready_non_pass_is_strongly_typed = (
+            ready_status == "FAIL"
+            and isinstance(ready_exit_code, int)
+            and not isinstance(ready_exit_code, bool)
+            and ready_exit_code != 0
+        ) or (
+            ready_status in {"TIMEOUT", "UNKNOWN"}
+            and ready_exit_code is None
+        )
+        audit.require(
+            task.get("state") == "REJECTED"
+            and len(ready_checks) == 1
+            and ready_non_pass_is_strongly_typed
+            and in_progress is None
+            and channels.get("candidateCommit") is None
+            and channels.get("candidateTree") is None
+            and channels.get("passClaimed") is False,
+            f"{label}: NOT_STARTED requires READY Doctor non-PASS and no "
+            "READY PASS, IN_PROGRESS commit, or candidate freeze",
+        )
+        return
+
+    in_progress_commit = str(candidate.get("inProgressCommit", ""))
+    in_progress_started = (
+        git_text(
+            "show",
+            "-s",
+            "--format=%cI",
+            in_progress_commit,
+            check=False,
+        ).stdout.strip()
+        if FULL_COMMIT_RE.fullmatch(in_progress_commit)
+        else ""
+    )
+    audit.require(
+        candidate.get("anchor") == "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT"
+        and candidate.get("anchorCommit") == in_progress_commit
+        and bool(FULL_COMMIT_RE.fullmatch(in_progress_commit))
+        and candidate.get("startedAt") == in_progress_started
+        and candidate.get("candidateDeadlineMinutes") == 45
+        and candidate.get("targetWallMinutes") == 60
+        and candidate.get("hardFuseWallMinutes") == 90
+        and candidate.get("outcome") in {"PASS", "FAIL", "TIMEOUT", "UNKNOWN"}
+        and isinstance(candidate.get("closureOnlyOverrunSeconds"), (int, float))
+        and candidate.get("closureOnlyOverrunSeconds") >= 0,
+        f"{label}: started candidate execution anchor, budget, or outcome drifted",
+    )
+    candidate_start = evidence_timestamp(
+        audit,
+        f"{label}.candidateExecution.startedAt",
+        candidate.get("startedAt"),
+    )
+    candidate_end = evidence_timestamp(
+        audit,
+        f"{label}.candidateExecution.endedAt",
+        candidate.get("endedAt"),
+    )
+    ready_pass_at = evidence_timestamp(
+        audit,
+        f"{label}.candidateExecution.readyDoctorPassAt",
+        candidate.get("readyDoctorPassAt"),
+    )
+    if candidate_start and candidate_end:
+        actual = (candidate_end - candidate_start).total_seconds()
+        audit.require(
+            actual >= 0
+            and isinstance(candidate.get("elapsedSeconds"), (int, float))
+            and abs(float(candidate.get("elapsedSeconds")) - actual) <= 2,
+            f"{label}: candidate execution elapsed duration is not truthful",
+        )
+    if ready_pass_at and candidate_start:
+        audit.require(
+            candidate_start >= ready_pass_at,
+            f"{label}: candidate budget started before READY Doctor PASS",
+        )
+    if task.get("state") == "ACCEPTED":
+        audit.require(
+            intake.get("outcome") == "PASS"
+            and candidate.get("outcome") == "PASS"
+            and intake.get("closureOnlyOverrunSeconds") == 0
+            and candidate.get("closureOnlyOverrunSeconds") == 0,
+            f"{label}: ACCEPTED requires both phases to PASS without overrun",
+        )
+
+
 def validate_task0074_profile_stdout(
     audit: Audit,
     label: str,
@@ -4352,8 +5368,9 @@ def validate_task0074_combined_gate_evidence(
     audit: Audit,
     task: dict[str, Any],
     evidence: dict[str, Any],
+    task_id: str = TASK_0074_TASK_ID,
 ) -> None:
-    label = "TASK-0074 exact-tree validation"
+    label = f"{task_id} exact-tree validation"
     record = evidence.get("validationChannels")
     audit.require(
         isinstance(record, dict),
@@ -4425,7 +5442,7 @@ def validate_task0074_combined_gate_evidence(
             "--profile",
             "harnessPortabilityLocal",
             "--task",
-            TASK_0074_TASK_ID,
+            task_id,
         ]
         and windows.get("exactCommandIds") == expected_ids
         and windows.get("canonicalCommandIds") == canonical_ids
@@ -4480,7 +5497,7 @@ def validate_task0074_combined_gate_evidence(
                 "--profile",
                 "harnessPortabilityLocal",
                 "--task",
-                TASK_0074_TASK_ID,
+                task_id,
             ]
             and receipt.get("stdoutSha256") == windows.get("stdoutSha256")
             and receipt.get("stderrSha256") == windows.get("stderrSha256")
@@ -4508,7 +5525,7 @@ def validate_task0074_combined_gate_evidence(
             "--profile",
             "harnessPortabilityLocal",
             "--task",
-            TASK_0074_TASK_ID,
+            task_id,
         ]
         and wsl.get("startedAfterWindowsPass") is True
         and wsl.get("exitCode") == 0,
@@ -4968,6 +5985,8 @@ def validate_tasks(
                     allowed_checkpoint_paths |= TASK_0073_PRE_READY_MAINTENANCE_PATHS
                 if task_id == TASK_0074_TASK_ID:
                     allowed_checkpoint_paths |= TASK_0074_PRE_READY_MAINTENANCE_PATHS
+                if task_id == TASK_0075_TASK_ID:
+                    allowed_checkpoint_paths |= TASK_0075_PRE_READY_MAINTENANCE_PATHS
                 audit.require(path in checkpoint_paths, f"{path}: authorization commit must include the task card")
                 audit.require(
                     checkpoint_paths <= allowed_checkpoint_paths,
@@ -6139,6 +7158,13 @@ def task0074_planning_repair_projection(
     return planning_repair_projection(parent, child, TASK_0074_PLANNING_REPAIRS)
 
 
+def task0075_planning_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    return planning_repair_projection(parent, child, TASK_0075_PLANNING_REPAIRS)
+
+
 def task0073_delivery_policy_repair_projection(
     parent: dict[str, Any],
     child: dict[str, Any],
@@ -6170,6 +7196,23 @@ def task0074_delivery_policy_repair_projection(
     ):
         return False
     follow_ups["idlePlanningCheckpointCore"] = "TASK-0074"
+    return child == expected
+
+
+def task0075_delivery_policy_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    if not isinstance(parent, dict) or not isinstance(child, dict):
+        return False
+    expected = json.loads(json.dumps(parent, ensure_ascii=False))
+    follow_ups = expected.get("followUpTasks")
+    if (
+        not isinstance(follow_ups, dict)
+        or follow_ups.get("idlePlanningCheckpointCore") != "TASK-0073"
+    ):
+        return False
+    follow_ups["idlePlanningCheckpointCore"] = "TASK-0075"
     return child == expected
 
 
@@ -6928,6 +7971,85 @@ def task0073_repair_approvals_are_exact(task: dict[str, Any]) -> bool:
     return all(value in forward for value in ("TASK-0056", "TASK-0071", "TASK-0073"))
 
 
+def historical_git_object_identity_matches(
+    commit: str,
+    path: str,
+    expected: dict[str, Any],
+) -> bool:
+    try:
+        entry = git_tree_entry(commit, path)
+        content = git_object(commit, path)
+    except HarnessError:
+        return False
+    return (
+        entry
+        == (
+            expected.get("mode"),
+            expected.get("type"),
+            expected.get("blobOid"),
+        )
+        and hashlib.sha256(content).hexdigest() == expected.get("sha256")
+    )
+
+
+def task0073_historical_planning_edge_objects_match(
+    parent_commit: str,
+    child_commit: str,
+) -> bool:
+    if (
+        parent_commit != TASK_0073_PLANNING_PARENT_COMMIT
+        or child_commit != TASK_0073_PLANNING_CHILD_COMMIT
+    ):
+        return False
+    try:
+        graph = git_text(
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            child_commit,
+            check=False,
+        )
+        parent_tree = git_text(
+            "show",
+            "-s",
+            "--format=%T",
+            parent_commit,
+            check=False,
+        ).stdout.strip()
+        child_tree = git_text(
+            "show",
+            "-s",
+            "--format=%T",
+            child_commit,
+            check=False,
+        ).stdout.strip()
+        paths = changed_paths_between(parent_commit, child_commit)
+    except HarnessError:
+        return False
+    if not (
+        graph.returncode == 0
+        and graph.stdout.split() == [child_commit, parent_commit]
+        and parent_tree == TASK_0073_PLANNING_PARENT_TREE
+        and child_tree == TASK_0073_PLANNING_CHILD_TREE
+        and paths == sorted(TASK_0073_PLANNING_EDGE_IDENTITIES)
+    ):
+        return False
+    return all(
+        historical_git_object_identity_matches(
+            parent_commit,
+            path,
+            identities["parent"],
+        )
+        and historical_git_object_identity_matches(
+            child_commit,
+            path,
+            identities["child"],
+        )
+        for path, identities in TASK_0073_PLANNING_EDGE_IDENTITIES.items()
+    )
+
+
 def task0073_planning_repair_authorized(
     parent_commit: str,
     commit: str,
@@ -6975,6 +8097,7 @@ def task0073_planning_repair_authorized(
     return (
         graph.returncode == 0
         and graph.stdout.split() == [commit, parent_commit]
+        and task0073_historical_planning_edge_objects_match(parent_commit, commit)
         and authorization_ancestor.returncode == 0
         and paths == TASK_0073_PLANNING_REPAIR_PATHS
         and task0073_planning_repair_projection(parent_backlog, child_backlog)
@@ -6982,7 +8105,7 @@ def task0073_planning_repair_authorized(
         and canonical_json_sha256(parent_policy)
         == TASK_0073_PRE_REPAIR_DELIVERY_POLICY_CANONICAL_HASH
         and canonical_json_sha256(child_policy)
-        == TASK_DELIVERY_POLICY_CANONICAL_HASH
+        == TASK_0073_PLANNING_CHILD_DELIVERY_POLICY_CANONICAL_HASH
         and task_authorization_projection(parent_text)
         == task_authorization_projection(child_text)
         and parent_task.get("taskId") == child_task.get("taskId") == TASK_0073_TASK_ID
@@ -7073,6 +8196,7 @@ def validate_backlog_history_edge(
     allow_task0071_repair: bool = False,
     allow_task0073_repair: bool = False,
     allow_task0074_repair: bool = False,
+    allow_task0075_repair: bool = False,
     parent_commit: str | None = None,
     child_commit: str | None = None,
 ) -> None:
@@ -7115,6 +8239,8 @@ def validate_backlog_history_edge(
         allowed_repair_tasks.update(TASK_0073_PLANNING_REPAIRS)
     if allow_task0074_repair and task0074_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0074_PLANNING_REPAIRS)
+    if allow_task0075_repair and task0075_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0075_PLANNING_REPAIRS)
 
     parent_tasks = parent.get("tasks")
     child_tasks = child.get("tasks")
@@ -7534,6 +8660,7 @@ def validate_backlog_card_history_edge(
     allow_task0071_repair: bool = False,
     allow_task0073_repair: bool = False,
     allow_task0074_repair: bool = False,
+    allow_task0075_repair: bool = False,
 ) -> None:
     parent_entries = parent.get("tasks")
     child_entries = child.get("tasks")
@@ -7572,6 +8699,8 @@ def validate_backlog_card_history_edge(
         allowed_repair_tasks.update(TASK_0073_PLANNING_REPAIRS)
     if allow_task0074_repair and task0074_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0074_PLANNING_REPAIRS)
+    if allow_task0075_repair and task0075_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0075_PLANNING_REPAIRS)
     for task_id in sorted(set(parent_entries) | set(child_entries)):
         parent_entry = parent_entries.get(task_id)
         child_entry = child_entries.get(task_id)
@@ -9976,6 +11105,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "task0072SelfBootstrap",
             "task0073PreReadyMaintenance",
             "task0074PreReadyMaintenance",
+            "task0075PreReadyMaintenance",
             "rules",
         },
         "ci-execution-policy: root fields do not match the frozen machine contract",
@@ -10162,6 +11292,36 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "resultBasedProfileDowngradeForbidden": True,
         },
         "ci-execution-policy: TASK-0074 combined Windows gate contract drifted",
+    )
+    audit.require(
+        harness_profile.get("task0075CombinedGate")
+        == {
+            "taskId": TASK_0075_TASK_ID,
+            "sameCleanCandidateCommitAndTreeRequired": True,
+            "windowsDurableReceiptCount": 1,
+            "satisfies": ["CANDIDATE_CANONICAL", "WINDOWS_EXACT_TREE"],
+            "exactCommandIds": [
+                "harnessTests",
+                "doctor",
+                "catalogValidate",
+                "catalogDrift",
+                "paidFeatureCheck",
+                "betaRosterGate",
+            ],
+            "canonicalCommandIds": [
+                "doctor",
+                "catalogValidate",
+                "catalogDrift",
+                "paidFeatureCheck",
+                "betaRosterGate",
+            ],
+            "eachCommandExactlyOnce": True,
+            "wrapperAliasCacheSkipForbidden": True,
+            "wslStillIndependent": True,
+            "ordinaryCardsRemainIndependentCanonical": True,
+            "resultBasedProfileDowngradeForbidden": True,
+        },
+        "ci-execution-policy: TASK-0075 combined Windows gate contract drifted",
     )
     backend = profiles.get("BACKEND_LOCAL")
     frontend = profiles.get("FRONTEND_LOCAL")
@@ -10591,6 +11751,9 @@ def validate_ci_execution_policy(audit: Audit) -> None:
     task0074_record = validate_task0074_pre_ready_maintenance_record(audit, policy)
     if isinstance(task0074_record, dict):
         validate_task0073_historical_unknown_quarantine(audit, task0074_record)
+    task0075_record = validate_task0075_pre_ready_maintenance_record(audit, policy)
+    if isinstance(task0075_record, dict):
+        validate_task0075_historical_objects(audit, task0075_record)
 
 
 def durable_command_byte_metrics(content: bytes) -> dict[str, Any]:
@@ -10826,6 +11989,190 @@ def validate_task0074_card_recovery_contract(audit: Audit) -> None:
     )
 
 
+def validate_task0075_card_recovery_contract(audit: Audit) -> None:
+    label = "TASK-0075 permanent delivery-flow recovery card"
+    try:
+        task = task_metadata_from_text(
+            read_repository_text(ROOT / TASK_0075_CARD_PATH),
+            TASK_0075_CARD_PATH,
+        )
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+        audit.error(f"{label}: cannot read exact task card: {exc}")
+        return
+    budgets = task.get("deliveryBudgets")
+    budgets = budgets if isinstance(budgets, dict) else {}
+    audit.require(
+        task.get("taskId") == TASK_0075_TASK_ID
+        and task.get("baseCommit") == TASK_0075_BASE_COMMIT
+        and task.get("contextLock") == TASK_0075_CONTEXT_PATH
+        and task.get("contextFingerprint")
+        == "deb8e20ac0a38638366ba310a46ce59299e2514bb16b23387ba1ded7a39a396d"
+        and task.get("requiredSkillVersions")
+        == {
+            "task-delivery-flow": "1.3.3",
+            "task-intake": "1.2.3",
+            "harness-change": "1.1.3",
+        }
+        and task.get("targetSkillVersions")
+        == {
+            "task-delivery-flow": "1.3.4",
+            "task-intake": "1.2.4",
+            "harness-change": "1.1.4",
+        },
+        f"{label}: identity, Context, or Skill binding drifted",
+    )
+    audit.require(
+        budgets.get("schemaVersion") == 2
+        and budgets.get("overallElapsed")
+        == {
+            "anchor": "DRAFT_COMMIT",
+            "terminal": "TERMINAL_COMMIT",
+            "recordingRequired": True,
+            "resetOrReanchorForbidden": True,
+        }
+        and budgets.get("intakeActivation")
+        == {
+            "anchor": "DRAFT_COMMIT",
+            "terminal": "READY_DOCTOR_TERMINAL",
+            "targetWallMinutes": 60,
+            "hardFuseWallMinutes": 90,
+            "timeoutStatus": "TIMEOUT",
+            "closureOnlyOverrun": True,
+        }
+        and budgets.get("candidateExecution")
+        == {
+            "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+            "notStartedOutcome": "NOT_STARTED",
+            "notStartedEligibility": {
+                "readyDoctorNonPassRequired": True,
+                "readyDoctorPassForbidden": True,
+                "inProgressCommitForbidden": True,
+                "candidateFreezeForbidden": True,
+            },
+            "candidateDeadlineMinutes": 45,
+            "targetWallMinutes": 60,
+            "hardFuseWallMinutes": 90,
+            "timeoutStatus": "TIMEOUT",
+            "closureOnlyOverrun": True,
+        }
+        and budgets.get("reviewer")
+        == {
+            "maximumMinutes": 15,
+            "timeoutStatus": "TIMEOUT",
+            "missingTerminalStatus": "UNKNOWN",
+        },
+        f"{label}: two-stage timing and NOT_STARTED anchors drifted",
+    )
+    maintenance = task.get("preReadyMaintenancePlan")
+    maintenance = maintenance if isinstance(maintenance, dict) else {}
+    audit.require(
+        maintenance.get("recordId") == TASK_0075_MAINTENANCE_RECORD_ID
+        and maintenance.get("recordPath")
+        == TASK_0075_MAINTENANCE_AUTHORIZATION_PATH
+        and maintenance.get("pathSetFrozenAtDraft") is True
+        and maintenance.get("additionsOrRemovalsForbidden") is True
+        and isinstance(maintenance.get("exactPaths"), list)
+        and maintenance.get("exactPaths")
+        == sorted(TASK_0075_PRE_READY_MAINTENANCE_PATHS),
+        f"{label}: frozen maintenance path set drifted",
+    )
+    historical = task.get("historicalRecovery")
+    historical = historical if isinstance(historical, dict) else {}
+    task0073_policy = historical.get("task0073CiPolicy")
+    task0073_policy = (
+        task0073_policy if isinstance(task0073_policy, dict) else {}
+    )
+    planning_edge = historical.get("task0073PlanningEdge")
+    planning_edge = planning_edge if isinstance(planning_edge, dict) else {}
+    quarantine = historical.get("task0074TerminalQuarantine")
+    quarantine = quarantine if isinstance(quarantine, dict) else {}
+    audit.require(
+        task0073_policy.get("maintenanceCommit") == TASK_0073_MAINTENANCE_COMMIT
+        and task0073_policy.get("maintenanceTree") == TASK_0073_MAINTENANCE_TREE
+        and task0073_policy.get("blob") == TASK_0073_MAINTENANCE_CI_POLICY_BLOB
+        and task0073_policy.get("sha256")
+        == TASK_0073_MAINTENANCE_CI_POLICY_SHA256
+        and task0073_policy.get("canonicalProjectionSha256")
+        == TASK_0073_CI_POLICY_PROJECTION_HASH
+        and planning_edge.get("parentCommit")
+        == TASK_0073_PLANNING_PARENT_COMMIT
+        and planning_edge.get("parentTree") == TASK_0073_PLANNING_PARENT_TREE
+        and planning_edge.get("childCommit") == TASK_0073_PLANNING_CHILD_COMMIT
+        and planning_edge.get("childTree") == TASK_0073_PLANNING_CHILD_TREE
+        and planning_edge.get("exactChangedPaths")
+        == sorted(TASK_0073_PLANNING_EDGE_IDENTITIES)
+        and quarantine.get("terminalCommit") == TASK_0074_TERMINAL_COMMIT
+        and quarantine.get("terminalTree") == TASK_0074_TERMINAL_TREE
+        and quarantine.get("preClosure", {}).get("receiptSha256")
+        == TASK_0074_PRE_CLOSURE_RECEIPT_SHA256
+        and quarantine.get("preClosure", {}).get("exactErrors")
+        == list(TASK_0074_EXACT_HISTORICAL_ERRORS),
+        f"{label}: frozen historical projection or quarantine drifted",
+    )
+    validation = task.get("validationPlan")
+    validation = validation if isinstance(validation, dict) else {}
+    windows = validation.get("windows")
+    windows = windows if isinstance(windows, dict) else {}
+    audit.require(
+        validation.get("profile") == "HARNESS_PORTABILITY_LOCAL"
+        and windows.get("kind")
+        == "COMBINED_CANDIDATE_CANONICAL_AND_WINDOWS_EXACT_TREE"
+        and windows.get("argv")
+        == (
+            "python scripts/harness/precheck.py --profile "
+            "harnessPortabilityLocal --task TASK-0075"
+        )
+        and windows.get("durableReceiptRequired") is True
+        and windows.get("eachCanonicalSubcommandExactlyOnce") is True
+        and windows.get("aliasCacheOrSkipForbidden") is True
+        and validation.get("wsl", {}).get("startsOnlyAfterWindowsPass") is True
+        and validation.get("remote")
+        == {
+            "outcome": "UNKNOWN_NOT_RUN",
+            "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+            "currentQuotaVerified": False,
+            "dispatchCount": 0,
+            "passClaimed": False,
+        },
+        f"{label}: local exact-tree fallback contract drifted",
+    )
+    approvals = task.get("humanApprovals")
+    approvals = approvals if isinstance(approvals, list) else []
+    audit.require(
+        len(approvals) == 3
+        and approvals[0].get("scope") == "harness-change"
+        and approvals[0].get("sourceThreadId")
+        == "019fb2c1-8104-73b1-81dc-ee8bcfce6f63"
+        and approvals[0].get("evidence") == TASK_0075_EXACT_OWNER_AUTHORIZATION
+        and approvals[1].get("scope") == "task-0075-owner-acceptance"
+        and approvals[1].get("sourceThreadId")
+        == "019fb2c1-8104-73b1-81dc-ee8bcfce6f63"
+        and approvals[1].get("evidence") == TASK_0075_EXACT_OWNER_ACCEPTANCE,
+        f"{label}: exact two-part Owner provenance drifted",
+    )
+    write_allowlist = task.get("writeAllowlist")
+    write_allowlist = write_allowlist if isinstance(write_allowlist, list) else []
+    audit.require(
+        len(write_allowlist) == len(set(write_allowlist))
+        and all(
+            is_repository_relative(str(path))
+            and "*" not in str(path)
+            and "?" not in str(path)
+            for path in write_allowlist
+        ),
+        f"{label}: write allowlist must be exact, unique, and wildcard-free",
+    )
+    candidate = task.get("candidateFreeze")
+    candidate = candidate if isinstance(candidate, dict) else {}
+    if task.get("state") in {"DRAFT", "READY"}:
+        audit.require(
+            candidate.get("frozen") is False
+            and candidate.get("commit") is None
+            and candidate.get("tree") is None,
+            f"{label}: candidate cannot be frozen before IN_PROGRESS",
+        )
+
+
 def validate_task_delivery_policy(audit: Audit) -> None:
     policy = load_yaml(ROOT / TASK_DELIVERY_POLICY_PATH)
     audit.require(
@@ -10951,8 +12298,28 @@ def validate_task_delivery_policy(audit: Audit) -> None:
                 "hardFuseWallMinutes": 90,
                 "timeoutStatus": "TIMEOUT",
                 "closureOnlyOverrun": True,
+                "notStarted": {
+                    "outcome": "NOT_STARTED",
+                    "eligibleOnlyWhen": {
+                        "readyDoctorOutcome": "NON_PASS",
+                        "readyDoctorPassExists": False,
+                        "inProgressCommitExists": False,
+                        "candidateFreezeExists": False,
+                    },
+                    "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+                    "anchorCommit": None,
+                    "startedAt": None,
+                    "endedAt": None,
+                    "readyDoctorPassAt": None,
+                    "inProgressCommit": None,
+                    "elapsedSeconds": 0,
+                    "closureOnlyOverrunSeconds": 0,
+                    "reasonRequired": True,
+                    "reanchored": False,
+                    "passClaimed": False,
+                },
             },
-            "taskBindings": [TASK_0074_TASK_ID],
+            "taskBindings": [TASK_0074_TASK_ID, TASK_0075_TASK_ID],
         },
         "task-delivery-policy: two-stage auditable timing contract drifted",
     )
@@ -11062,6 +12429,39 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         },
         "task-delivery-policy: TASK-0074 combined gate contract drifted",
     )
+    audit.require(
+        validation.get("task0075HarnessPortabilityCombinedGate")
+        == {
+            "taskId": TASK_0075_TASK_ID,
+            "eligibleProfile": "HARNESS_PORTABILITY_LOCAL",
+            "readyFrozenProfileRequired": True,
+            "sameCleanCandidateCommitAndTreeRequired": True,
+            "windowsDurableReceiptCount": 1,
+            "satisfies": ["CANDIDATE_CANONICAL", "WINDOWS_EXACT_TREE"],
+            "commandRegistryProfile": "harnessPortabilityLocal",
+            "exactCommandIds": [
+                "harnessTests",
+                "doctor",
+                "catalogValidate",
+                "catalogDrift",
+                "paidFeatureCheck",
+                "betaRosterGate",
+            ],
+            "canonicalCommandIds": [
+                "doctor",
+                "catalogValidate",
+                "catalogDrift",
+                "paidFeatureCheck",
+                "betaRosterGate",
+            ],
+            "eachCommandExactlyOnce": True,
+            "wrapperAliasCacheSkipForbidden": True,
+            "wslStillIndependent": True,
+            "ordinaryCardsRemainIndependentCanonical": True,
+            "resultBasedProfileDowngradeForbidden": True,
+        },
+        "task-delivery-policy: TASK-0075 combined gate contract drifted",
+    )
     review = policy.get("review")
     review = review if isinstance(review, dict) else {}
     audit.require(
@@ -11078,6 +12478,22 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         candidate_identity.get("nonPassResults")
         == ["FAIL", "CANCELLED", "TIMEOUT", "NOT_RUN", "UNKNOWN"],
         "task-delivery-policy: UNKNOWN and lost exit codes must remain non-PASS",
+    )
+    audit.require(
+        candidate_identity.get("preCandidateResultContract")
+        == {
+            "NOT_STARTED": {
+                "eligibleOnlyAfterReadyDoctorNonPass": True,
+                "readyDoctorPassForbidden": True,
+                "inProgressCommitForbidden": True,
+                "candidateFreezeForbidden": True,
+                "candidateAndTimeAnchors": None,
+                "elapsedSeconds": 0,
+                "reasonRequired": True,
+                "passClaimed": False,
+            }
+        },
+        "task-delivery-policy: strict pre-candidate NOT_STARTED contract drifted",
     )
     audit.require(
         candidate_identity.get("exactTreeChannelCrossCommitOrTreeReuse") is False,
@@ -11127,6 +12543,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         "validator and tests in the same authorized change",
     )
     validate_task0074_card_recovery_contract(audit)
+    validate_task0075_card_recovery_contract(audit)
 
     sources = load_yaml(ROOT / ".harness/sources-of-truth.yaml").get("sources")
     audit.require(
@@ -11180,12 +12597,12 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         == [
             {
                 "id": "task-delivery-flow",
-                "version": "1.3.3",
+                "version": "1.3.4",
                 "path": "skills/task-delivery-flow/SKILL.md",
             }
         ],
         "task-delivery-policy: task-delivery-flow must be registered exactly once "
-        "at version 1.3.3",
+        "at version 1.3.4",
     )
     invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
     delivery_invariants = (
@@ -12239,7 +13656,22 @@ def validate_evidence_and_handoffs(
         data = load_json(path, audit)
         if not data:
             continue
-        validate_json_schema(audit, data, handoff_schema, relative(path))
+        exact_task0074_handoff_quarantine = False
+        if (
+            relative(path) == TASK_0074_TERMINAL_ARTIFACTS["handoff"]["path"]
+            and task0074_exact_historical_quarantine_matches()
+        ):
+            try:
+                exact_task0074_handoff_quarantine = data == json.loads(
+                    git_object(
+                        TASK_0074_TERMINAL_COMMIT,
+                        TASK_0074_TERMINAL_ARTIFACTS["handoff"]["path"],
+                    ).decode("utf-8")
+                )
+            except (HarnessError, json.JSONDecodeError, UnicodeError):
+                exact_task0074_handoff_quarantine = False
+        if not exact_task0074_handoff_quarantine:
+            validate_json_schema(audit, data, handoff_schema, relative(path))
         validate_nonblank_text(audit, f"{relative(path)}.nextAction", data.get("nextAction"))
         task_id = str(data.get("taskId", ""))
         audit.require(task_id in tasks, f"{relative(path)}: unknown taskId {task_id}")
@@ -12269,7 +13701,22 @@ def validate_evidence_and_handoffs(
         data = load_json(path, audit)
         if not data:
             continue
-        validate_json_schema(audit, data, evidence_schema, relative(path))
+        exact_task0074_evidence_quarantine = False
+        if (
+            relative(path) == TASK_0074_TERMINAL_ARTIFACTS["evidence"]["path"]
+            and task0074_exact_historical_quarantine_matches()
+        ):
+            try:
+                exact_task0074_evidence_quarantine = data == json.loads(
+                    git_object(
+                        TASK_0074_TERMINAL_COMMIT,
+                        TASK_0074_TERMINAL_ARTIFACTS["evidence"]["path"],
+                    ).decode("utf-8")
+                )
+            except (HarnessError, json.JSONDecodeError, UnicodeError):
+                exact_task0074_evidence_quarantine = False
+        if not exact_task0074_evidence_quarantine:
+            validate_json_schema(audit, data, evidence_schema, relative(path))
         task_id = str(data.get("taskId", ""))
         directory_task_id = path.parent.name
         audit.require(task_id == directory_task_id, f"{relative(path)}: directory and taskId disagree")
@@ -12350,6 +13797,19 @@ def validate_evidence_and_handoffs(
                 audit,
                 task,
                 evidence,
+            )
+        if task_id == TASK_0075_TASK_ID:
+            validate_task0075_delivery_timing_evidence(
+                audit,
+                task,
+                evidence,
+                handoff,
+            )
+            validate_task0074_combined_gate_evidence(
+                audit,
+                task,
+                evidence,
+                TASK_0075_TASK_ID,
             )
 
 
@@ -12631,7 +14091,7 @@ def validate_task0073_pre_ready_maintenance_boundary(
             )
         audit.require(
             canonical_json_sha256(ci_execution_policy_projection(policy))
-            == CI_EXECUTION_POLICY_CANONICAL_HASH,
+            == TASK_0073_CI_POLICY_PROJECTION_HASH,
             "TASK-0073 pre-READY maintenance: CI policy canonical binding drifted",
         )
 
@@ -12952,7 +14412,7 @@ def validate_task0074_pre_ready_maintenance_boundary(
             )
         audit.require(
             canonical_json_sha256(ci_execution_policy_projection(policy))
-            == CI_EXECUTION_POLICY_CANONICAL_HASH,
+            == TASK_0074_CI_POLICY_PROJECTION_HASH,
             f"{label}: CI policy canonical binding drifted",
         )
 
@@ -13007,6 +14467,330 @@ def validate_task0074_pre_ready_maintenance_boundary(
         )
         audit.require(
             not task0074_pre_ready_maintenance_consumed(
+                boundary_task,
+                boundary_ledger,
+            ),
+            f"{label}: boundary record was already consumed",
+        )
+    except (
+        HarnessError,
+        json.JSONDecodeError,
+        OSError,
+        UnicodeError,
+        yaml.YAMLError,
+    ) as exc:
+        audit.error(f"{label}: cannot verify exact boundary: {exc}")
+    return len(audit.errors) == initial_errors
+
+
+def task0075_pre_ready_maintenance_boundary_candidate(commit: str) -> bool:
+    if not FULL_COMMIT_RE.fullmatch(commit):
+        return False
+    parent_result = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        commit,
+        check=False,
+    )
+    return (
+        parent_result.returncode == 0
+        and parent_result.stdout.split() == [commit, TASK_0075_DRAFT_COMMIT]
+    )
+
+
+def task0075_pre_ready_maintenance_commit(target_commit: str) -> str | None:
+    if not FULL_COMMIT_RE.fullmatch(target_commit):
+        return None
+    ancestry = git_text(
+        "merge-base",
+        "--is-ancestor",
+        TASK_0075_DRAFT_COMMIT,
+        target_commit,
+        check=False,
+    )
+    if ancestry.returncode != 0:
+        return None
+    path = git_text(
+        "rev-list",
+        "--reverse",
+        "--ancestry-path",
+        f"{TASK_0075_DRAFT_COMMIT}..{target_commit}",
+        check=False,
+    )
+    if path.returncode != 0:
+        return None
+    commits = path.stdout.splitlines()
+    if not commits:
+        return None
+    candidate = commits[0].strip()
+    return (
+        candidate
+        if task0075_pre_ready_maintenance_boundary_candidate(candidate)
+        else None
+    )
+
+
+def task0075_pre_ready_maintenance_consumed(
+    task: dict[str, Any] | None = None,
+    ledger: dict[str, Any] | None = None,
+) -> bool:
+    try:
+        if task is None:
+            task = task_metadata_from_text(
+                read_repository_text(ROOT / TASK_0075_CARD_PATH),
+                TASK_0075_CARD_PATH,
+            )
+        if ledger is None:
+            ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError):
+        return True
+    if (
+        not isinstance(task, dict)
+        or task.get("taskId") != TASK_0075_TASK_ID
+        or task.get("state") != "DRAFT"
+        or task.get("authorizationCommit") not in (None, "")
+        or not isinstance(ledger, dict)
+    ):
+        return True
+    entries = ledger.get("tasks")
+    return not isinstance(entries, dict) or TASK_0075_TASK_ID in entries
+
+
+def validate_task0075_pre_ready_maintenance_boundary(
+    audit: Audit,
+    boundary_commit: str,
+) -> bool:
+    initial_errors = len(audit.errors)
+    label = "TASK-0075 pre-READY maintenance"
+    audit.require(
+        bool(FULL_COMMIT_RE.fullmatch(boundary_commit)),
+        f"{label}: boundary must be a full Git commit",
+    )
+    if not FULL_COMMIT_RE.fullmatch(boundary_commit):
+        return False
+    try:
+        policy = yaml_at_commit(boundary_commit, CI_EXECUTION_POLICY_PATH)
+        record = validate_task0075_pre_ready_maintenance_record(audit, policy)
+        if record is None:
+            return False
+        audit.require(
+            task0075_pre_ready_maintenance_boundary_candidate(boundary_commit),
+            f"{label}: boundary must be the direct single-parent child of the exact DRAFT",
+        )
+        base_tree = git_text(
+            "show",
+            "-s",
+            "--format=%T",
+            TASK_0075_BASE_COMMIT,
+        ).stdout.strip()
+        draft_graph = git_text(
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            TASK_0075_DRAFT_COMMIT,
+        ).stdout.split()
+        draft_tree = git_text(
+            "show",
+            "-s",
+            "--format=%T",
+            TASK_0075_DRAFT_COMMIT,
+        ).stdout.strip()
+        boundary_tree = git_text(
+            "show",
+            "-s",
+            "--format=%T",
+            boundary_commit,
+        ).stdout.strip()
+        graph = git_text(
+            "rev-list",
+            "--reverse",
+            "--ancestry-path",
+            f"{TASK_0075_BASE_COMMIT}..{boundary_commit}",
+        ).stdout.splitlines()
+        audit.require(
+            base_tree == TASK_0075_BASE_TREE,
+            f"{label}: Base tree drifted",
+        )
+        audit.require(
+            draft_graph == [TASK_0075_DRAFT_COMMIT, TASK_0075_BASE_COMMIT]
+            and draft_tree == TASK_0075_DRAFT_TREE,
+            f"{label}: DRAFT commit/tree/parent binding drifted",
+        )
+        audit.require(
+            graph == [TASK_0075_DRAFT_COMMIT, boundary_commit]
+            and bool(FULL_COMMIT_RE.fullmatch(boundary_tree)),
+            f"{label}: pre-READY ancestry or derived Tree drifted",
+        )
+
+        draft = record.get("draft")
+        draft = draft if isinstance(draft, dict) else {}
+        draft_files = draft.get("changedFiles")
+        draft_files = draft_files if isinstance(draft_files, dict) else {}
+        expected_draft_paths = {TASK_0075_CARD_PATH, TASK_0075_CONTEXT_PATH}
+        audit.require(
+            set(draft_files) == expected_draft_paths
+            and changed_paths_between(
+                TASK_0075_BASE_COMMIT,
+                TASK_0075_DRAFT_COMMIT,
+            )
+            == sorted(expected_draft_paths),
+            f"{label}: DRAFT path set drifted",
+        )
+        for path, identity in draft_files.items():
+            audit.require(
+                isinstance(identity, dict)
+                and set(identity) == {"mode", "type", "blobOid", "sha256"},
+                f"{label}: DRAFT identity schema drifted: {path}",
+            )
+            if not isinstance(identity, dict):
+                continue
+            entry = git_tree_entry(TASK_0075_DRAFT_COMMIT, path)
+            audit.require(
+                entry
+                == (
+                    identity.get("mode"),
+                    identity.get("type"),
+                    identity.get("blobOid"),
+                )
+                and hashlib.sha256(
+                    git_object(TASK_0075_DRAFT_COMMIT, path)
+                ).hexdigest()
+                == identity.get("sha256"),
+                f"{label}: DRAFT blob/content drifted: {path}",
+            )
+
+        boundary = record.get("boundary")
+        boundary = boundary if isinstance(boundary, dict) else {}
+        expected_paths = boundary.get("changedPaths")
+        expected_paths = expected_paths if isinstance(expected_paths, list) else []
+        audit.require(
+            expected_paths == sorted(TASK_0075_PRE_READY_MAINTENANCE_PATHS)
+            and len(expected_paths) == len(set(expected_paths)),
+            f"{label}: boundary paths must be exact, sorted, and unique",
+        )
+        audit.require(
+            changed_paths_between(TASK_0075_DRAFT_COMMIT, boundary_commit)
+            == expected_paths,
+            f"{label}: boundary contains an extra or missing path",
+        )
+        files = boundary.get("files")
+        files = files if isinstance(files, dict) else {}
+        audit.require(
+            set(files) == {"doctor", "exactFiles"},
+            f"{label}: boundary file schema drifted",
+        )
+        doctor_identity = files.get("doctor")
+        doctor_identity = (
+            doctor_identity if isinstance(doctor_identity, dict) else {}
+        )
+        exact_files = files.get("exactFiles")
+        exact_files = exact_files if isinstance(exact_files, dict) else {}
+        doctor_path = str(doctor_identity.get("path", ""))
+        audit.require(
+            set(exact_files)
+            == set(expected_paths) - {CI_EXECUTION_POLICY_PATH, doctor_path},
+            f"{label}: exact boundary file set drifted",
+        )
+        for path in expected_paths:
+            entry = git_tree_entry(boundary_commit, path)
+            audit.require(
+                entry is not None
+                and entry[:2]
+                == (boundary.get("requiredMode"), boundary.get("requiredType")),
+                f"{label}: boundary mode/type drifted: {path}",
+            )
+        doctor_entry = git_tree_entry(boundary_commit, doctor_path)
+        audit.require(
+            set(doctor_identity) == {"path", "blobOid", "sha256"}
+            and doctor_path == "scripts/harness/doctor.py"
+            and doctor_entry is not None
+            and doctor_entry[2] == doctor_identity.get("blobOid")
+            and hashlib.sha256(git_object(boundary_commit, doctor_path)).hexdigest()
+            == doctor_identity.get("sha256"),
+            f"{label}: Doctor blob/content binding drifted",
+        )
+        for path, identity in exact_files.items():
+            audit.require(
+                isinstance(identity, dict)
+                and set(identity) == {"blobOid", "sha256"},
+                f"{label}: exact file identity schema drifted: {path}",
+            )
+            if not isinstance(identity, dict):
+                continue
+            entry = git_tree_entry(boundary_commit, path)
+            audit.require(
+                entry is not None
+                and entry[2] == identity.get("blobOid")
+                and hashlib.sha256(git_object(boundary_commit, path)).hexdigest()
+                == identity.get("sha256"),
+                f"{label}: exact file blob/content drifted: {path}",
+            )
+        audit.require(
+            canonical_json_sha256(ci_execution_policy_projection(policy))
+            == CI_EXECUTION_POLICY_CANONICAL_HASH,
+            f"{label}: CI policy canonical binding drifted",
+        )
+
+        authorization = record.get("authorization")
+        authorization = authorization if isinstance(authorization, dict) else {}
+        authorization_path = str(authorization.get("path", ""))
+        audit.require(
+            authorization_path == TASK_0075_MAINTENANCE_AUTHORIZATION_PATH
+            and authorization_path in exact_files
+            and authorization.get("sha256")
+            == exact_files.get(authorization_path, {}).get("sha256"),
+            f"{label}: Owner authorization file binding drifted",
+        )
+        authorization_payload = json.loads(
+            git_object(boundary_commit, authorization_path).decode("utf-8")
+        )
+        audit.require(
+            authorization_payload
+            == {
+                "schemaVersion": 1,
+                "recordId": TASK_0075_MAINTENANCE_RECORD_ID,
+                "decisionId": (
+                    "TASK-0075-PERMANENT-DELIVERY-FLOW-RECOVERY-20260803"
+                ),
+                "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+                "targetTask": TASK_0075_TASK_ID,
+                "approvedBy": "repository-owner",
+                "approvedAt": "2026-08-03",
+                "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+                "baseCommit": TASK_0075_BASE_COMMIT,
+                "baseTree": TASK_0075_BASE_TREE,
+                "draftCommit": TASK_0075_DRAFT_COMMIT,
+                "draftTree": TASK_0075_DRAFT_TREE,
+                "exactAuthorizationPlan": TASK_0075_EXACT_OWNER_AUTHORIZATION,
+                "exactOwnerAcceptance": TASK_0075_EXACT_OWNER_ACCEPTANCE,
+                "oneTimeOnly": True,
+                "reusable": False,
+                "generalOverrideAuthorized": False,
+                "historyRewriteAuthorized": False,
+                "remoteDispatchAuthorized": False,
+            },
+            f"{label}: exact Owner authorization provenance drifted",
+        )
+        validate_task0075_historical_objects(audit, record)
+
+        boundary_task = task_metadata_at_commit(
+            boundary_commit,
+            TASK_0075_CARD_PATH,
+        )
+        boundary_ledger = yaml_at_commit(boundary_commit, TASK_LEDGER_PATH)
+        audit.require(
+            boundary_task.get("taskId") == TASK_0075_TASK_ID
+            and boundary_task.get("state") == "DRAFT"
+            and boundary_task.get("baseCommit") == TASK_0075_BASE_COMMIT
+            and boundary_task.get("authorizationCommit") in (None, "")
+            and boundary_task.get("contextLock") == TASK_0075_CONTEXT_PATH,
+            f"{label}: boundary task is not the exact unbound DRAFT",
+        )
+        audit.require(
+            not task0075_pre_ready_maintenance_consumed(
                 boundary_task,
                 boundary_ledger,
             ),
@@ -13834,6 +15618,33 @@ def validate_reviewer_identity_fields(
     return str(reviewer_id) if is_canonical_identity(reviewer_id) else None
 
 
+def validate_terminal_handoff_next_action(
+    audit: Audit,
+    task_id: str,
+    task: dict[str, Any],
+    handoff: dict[str, Any],
+    boundary_state: dict[str, Any],
+) -> None:
+    task0074_historical_next_action_isolated = (
+        task_id == TASK_0074_TASK_ID
+        and task.get("state") == "REJECTED"
+        and task0074_exact_historical_quarantine_matches()
+        and handoff.get("nextAction")
+        == task0075_historical_quarantine_contract()[
+            "historicalHandoffNextAction"
+        ]
+        and boundary_state.get("nextAction")
+        == task0075_historical_quarantine_contract()[
+            "historicalProjectStateNextAction"
+        ]
+    )
+    audit.require(
+        handoff.get("nextAction") == boundary_state.get("nextAction")
+        or task0074_historical_next_action_isolated,
+        f"{task_id}: Handoff nextAction disagrees with terminal project-state",
+    )
+
+
 def validate_versioned_terminal_evidence(
     audit: Audit,
     task_id: str,
@@ -13897,9 +15708,12 @@ def validate_versioned_terminal_evidence(
         )
         if not isinstance(reviewed_state, dict) or not isinstance(boundary_state, dict):
             raise HarnessError(".harness/project-state.yaml: compared versions must be objects")
-        audit.require(
-            handoff.get("nextAction") == boundary_state.get("nextAction"),
-            f"{task_id}: Handoff nextAction disagrees with terminal project-state",
+        validate_terminal_handoff_next_action(
+            audit,
+            task_id,
+            task,
+            handoff,
+            boundary_state,
         )
         audit.require(
             project_state_closure_projection(reviewed_state)

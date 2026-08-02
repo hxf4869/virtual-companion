@@ -41,6 +41,18 @@ metadata:
   canonical/exact-tree 合并门禁且 WSL 仍独立。历史产物、其他 Task、第二条
   记录/消费、额外提交/路径、通用 override 和所有禁止接口均未授权；普通
   READY Doctor 真实 PASS 前不得实施。
+- `OWNER-MAINT-20260803-TASK-0075-PRE-READY-01` 仅授权以
+  `d41c9f82e69107cf1ecf0cb2c100d39f436faab7` 为 Base、在冻结
+  TASK-0075 DRAFT 的一个直接单父子提交中修改精确 11 个路径。该记录必须
+  使用 TASK-0073 maintenance 自身 CI-policy Blob 与固定
+  `d6fbee26442a997b96648eea472f98ecba1a5412..11e6fb12f77486787ef71627e84f34ee069e72bd`
+  父边自身的历史对象，并只读隔离 TASK-0074 终态 Commit/Tree、5 个
+  mode/type/blob/content 制品和完整 10-error tuple。它可以为未来
+  `candidateExecution` 增加严格 `NOT_STARTED`，以及强制未来 terminal
+  Handoff/project-state `nextAction` 一致，但不得修改 TASK-0073/0074
+  历史制品或弱化 PASS/FAIL/TIMEOUT/UNKNOWN。完整 Owner 授权计划与
+  “按计划用 goal 继续下去”必须同时绑定；第二条记录、复制、额外路径、
+  通配写路径、当前 Policy 重判历史、通用 override 或任何禁止接口均未授权。
 
 ## Procedure
 
