@@ -159,7 +159,7 @@ PROJECT_STATE_PATH = ".harness/project-state.yaml"
 TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
 CI_EXECUTION_POLICY_PATH = ".harness/ci-execution-policy.yaml"
 TASK_DELIVERY_POLICY_CANONICAL_HASH = (
-    "b1091d59b30918ce22c2dfa910884c7fe63827386171e579c7679d0bb62d1e3a"
+    "c5e0c9856ac3fd35b8cfd390fedbdd11645fc63f9e0d525e5a78aa005ef4227d"
 )
 TASK_DELIVERY_SKILL_CANONICAL_HASH = (
     "ab3e90e70da89a93c5a422db414abf1483f5177ca2bee82443363a38bee2466f"
@@ -509,6 +509,30 @@ TASK_0071_PLANNING_REPAIR_PATHS = {
     ".harness/task-delivery-policy.yaml",
     "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
     TASK_0071_CARD_PATH,
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+}
+TASK_0073_AUTHORIZATION_COMMIT = "595e5a47903336fc74133e482e89c2291ddfa63e"
+TASK_0073_AUTHORITY_SHA256 = (
+    "e41983dcd43a0fa0d4e62cabbe2a3c386776536ecb21b94f30037c8bfdaeb601"
+)
+TASK_0073_PRE_REPAIR_DELIVERY_POLICY_CANONICAL_HASH = (
+    "b1091d59b30918ce22c2dfa910884c7fe63827386171e579c7679d0bb62d1e3a"
+)
+TASK_0073_PLANNING_REPAIRS = {
+    "TASK-0056": {
+        "oldTitle": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+        "newTitle": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+        "oldDependencies": ["TASK-0071"],
+        "newDependencies": ["TASK-0073"],
+    },
+}
+TASK_0073_PLANNING_REPAIR_PATHS = {
+    ".harness/project-state.yaml",
+    ".harness/task-backlog.yaml",
+    ".harness/task-delivery-policy.yaml",
+    "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
+    TASK_0073_CARD_PATH,
     "scripts/harness/doctor.py",
     "scripts/harness/tests/test_harness.py",
 }
@@ -5252,6 +5276,30 @@ def task0071_planning_repair_projection(
     return planning_repair_projection(parent, child, TASK_0071_PLANNING_REPAIRS)
 
 
+def task0073_planning_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    return planning_repair_projection(parent, child, TASK_0073_PLANNING_REPAIRS)
+
+
+def task0073_delivery_policy_repair_projection(
+    parent: dict[str, Any],
+    child: dict[str, Any],
+) -> bool:
+    if not isinstance(parent, dict) or not isinstance(child, dict):
+        return False
+    expected = json.loads(json.dumps(parent, ensure_ascii=False))
+    follow_ups = expected.get("followUpTasks")
+    if (
+        not isinstance(follow_ups, dict)
+        or follow_ups.get("idlePlanningCheckpointCore") != "TASK-0071"
+    ):
+        return False
+    follow_ups["idlePlanningCheckpointCore"] = "TASK-0073"
+    return child == expected
+
+
 def planning_repair_is_retained(
     current_tasks: dict[str, Any],
     repairs: dict[str, dict[str, Any]],
@@ -5975,6 +6023,126 @@ def task0071_planning_repair_authorized(
     )
 
 
+def task0073_repair_approvals_are_exact(task: dict[str, Any]) -> bool:
+    approvals = task.get("humanApprovals")
+    if (
+        not isinstance(approvals, list)
+        or canonical_json_sha256(approvals) != TASK_0073_AUTHORITY_SHA256
+        or len(approvals) != 4
+    ):
+        return False
+    by_scope = {
+        str(item.get("scope", "")): item
+        for item in approvals
+        if isinstance(item, dict)
+    }
+    if set(by_scope) != {
+        "harness-change",
+        "task-0073-exact-pre-ready-maintenance",
+        "task-0073-parent-edge-forward-recovery",
+        "task-0073-local-exact-tree-fallback",
+    }:
+        return False
+    if not all(
+        item.get("approvedBy") == "repository-owner"
+        and str(item.get("approvedAt")) == "2026-08-02"
+        for item in by_scope.values()
+    ):
+        return False
+    forward = str(
+        by_scope["task-0073-parent-edge-forward-recovery"].get("evidence", "")
+    )
+    return all(value in forward for value in ("TASK-0056", "TASK-0071", "TASK-0073"))
+
+
+def task0073_planning_repair_authorized(
+    parent_commit: str,
+    commit: str,
+) -> bool:
+    if not (
+        FULL_COMMIT_RE.fullmatch(parent_commit)
+        and FULL_COMMIT_RE.fullmatch(commit)
+    ):
+        return False
+    try:
+        parent_text = git_object(parent_commit, TASK_0073_CARD_PATH).decode("utf-8")
+        child_text = git_object(commit, TASK_0073_CARD_PATH).decode("utf-8")
+        parent_task = task_metadata_from_text(
+            parent_text,
+            f"TASK-0073 planning repair parent {parent_commit}",
+        )
+        child_task = task_metadata_from_text(
+            child_text,
+            f"TASK-0073 planning repair child {commit}",
+        )
+        parent_backlog = yaml_at_commit(parent_commit, TASK_BACKLOG_PATH)
+        child_backlog = yaml_at_commit(commit, TASK_BACKLOG_PATH)
+        parent_policy = yaml_at_commit(parent_commit, TASK_DELIVERY_POLICY_PATH)
+        child_policy = yaml_at_commit(commit, TASK_DELIVERY_POLICY_PATH)
+        child_state = yaml_at_commit(commit, PROJECT_STATE_PATH)
+        child_ledger = yaml_at_commit(commit, TASK_LEDGER_PATH)
+        paths = set(changed_paths_between(parent_commit, commit))
+    except (HarnessError, UnicodeError, yaml.YAMLError):
+        return False
+    graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        commit,
+        check=False,
+    )
+    authorization_ancestor = git_text(
+        "merge-base",
+        "--is-ancestor",
+        TASK_0073_AUTHORIZATION_COMMIT,
+        parent_commit,
+        check=False,
+    )
+    return (
+        graph.returncode == 0
+        and graph.stdout.split() == [commit, parent_commit]
+        and authorization_ancestor.returncode == 0
+        and paths == TASK_0073_PLANNING_REPAIR_PATHS
+        and task0073_planning_repair_projection(parent_backlog, child_backlog)
+        and task0073_delivery_policy_repair_projection(parent_policy, child_policy)
+        and canonical_json_sha256(parent_policy)
+        == TASK_0073_PRE_REPAIR_DELIVERY_POLICY_CANONICAL_HASH
+        and canonical_json_sha256(child_policy)
+        == TASK_DELIVERY_POLICY_CANONICAL_HASH
+        and task_authorization_projection(parent_text)
+        == task_authorization_projection(child_text)
+        and parent_task.get("taskId") == child_task.get("taskId") == TASK_0073_TASK_ID
+        and parent_task.get("state") == "IN_PROGRESS"
+        and child_task.get("state") == "IN_REVIEW"
+        and child_task.get("riskClass") == "C4"
+        and child_task.get("baseCommit") == TASK_0073_BASE_COMMIT
+        and child_task.get("authorizationCommit") == TASK_0073_AUTHORIZATION_COMMIT
+        and child_task.get("requiredSkillVersions")
+        == {
+            "task-delivery-flow": "1.3.1",
+            "task-intake": "1.2.1",
+            "harness-change": "1.1.1",
+        }
+        and child_task.get("targetSkillVersions")
+        == {
+            "task-delivery-flow": "1.3.2",
+            "task-intake": "1.2.2",
+            "harness-change": "1.1.2",
+        }
+        and task0073_repair_approvals_are_exact(child_task)
+        and task0073_pre_ready_maintenance_consumed(child_task, child_ledger)
+        and child_state.get("activeTask") == TASK_0073_TASK_ID
+        and child_state.get("activeTaskCard") == TASK_0073_CARD_PATH
+        and child_state.get("lastTerminalTask") == "TASK-0071"
+        and child_state.get("nextAction")
+        == (
+            "独立评审 TASK-0073 冻结 candidate；Reviewer 不得参与实现或运行"
+            "昂贵全套测试"
+        )
+    )
+
+
 def authorization_amendment_authority_bootstrap_projection(
     parent: dict[str, Any],
     child: dict[str, Any],
@@ -6030,6 +6198,7 @@ def validate_backlog_history_edge(
     allow_task0068_repair: bool = False,
     allow_task0069_repair: bool = False,
     allow_task0071_repair: bool = False,
+    allow_task0073_repair: bool = False,
     parent_commit: str | None = None,
     child_commit: str | None = None,
 ) -> None:
@@ -6068,6 +6237,8 @@ def validate_backlog_history_edge(
         allowed_repair_tasks.update(TASK_0069_PLANNING_REPAIRS)
     if allow_task0071_repair and task0071_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0071_PLANNING_REPAIRS)
+    if allow_task0073_repair and task0073_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0073_PLANNING_REPAIRS)
 
     parent_tasks = parent.get("tasks")
     child_tasks = child.get("tasks")
@@ -6485,6 +6656,7 @@ def validate_backlog_card_history_edge(
     allow_task0068_repair: bool = False,
     allow_task0069_repair: bool = False,
     allow_task0071_repair: bool = False,
+    allow_task0073_repair: bool = False,
 ) -> None:
     parent_entries = parent.get("tasks")
     child_entries = child.get("tasks")
@@ -6519,6 +6691,8 @@ def validate_backlog_card_history_edge(
         allowed_repair_tasks.update(TASK_0069_PLANNING_REPAIRS)
     if allow_task0071_repair and task0071_planning_repair_projection(parent, child):
         allowed_repair_tasks.update(TASK_0071_PLANNING_REPAIRS)
+    if allow_task0073_repair and task0073_planning_repair_projection(parent, child):
+        allowed_repair_tasks.update(TASK_0073_PLANNING_REPAIRS)
     for task_id in sorted(set(parent_entries) | set(child_entries)):
         parent_entry = parent_entries.get(task_id)
         child_entry = child_entries.get(task_id)
@@ -6826,6 +7000,7 @@ def validate_task_backlog_history(
     task0068_repair_edges: set[tuple[str, str]] = set()
     task0069_repair_edges: set[tuple[str, str]] = set()
     task0071_repair_edges: set[tuple[str, str]] = set()
+    task0073_repair_edges: set[tuple[str, str]] = set()
     snapshots: dict[str, dict[str, Any]] = {}
 
     def snapshot(commit: str) -> dict[str, Any] | None:
@@ -6991,6 +7166,16 @@ def validate_task_backlog_history(
                 )
                 if task0071_repair_authorized_edge:
                     task0071_repair_edges.add((parent, commit))
+                task0073_repair_projection = task0073_planning_repair_projection(
+                    parent_value,
+                    child,
+                )
+                task0073_repair_authorized_edge = (
+                    task0073_repair_projection
+                    and task0073_planning_repair_authorized(parent, commit)
+                )
+                if task0073_repair_authorized_edge:
+                    task0073_repair_edges.add((parent, commit))
                 validate_backlog_card_history_edge(
                     audit,
                     parent,
@@ -7007,6 +7192,7 @@ def validate_task_backlog_history(
                     allow_task0068_repair=task0068_repair_authorized_edge,
                     allow_task0069_repair=task0069_repair_authorized_edge,
                     allow_task0071_repair=task0071_repair_authorized_edge,
+                    allow_task0073_repair=task0073_repair_authorized_edge,
                 )
                 validate_backlog_history_edge(
                     audit,
@@ -7022,6 +7208,7 @@ def validate_task_backlog_history(
                     allow_task0068_repair=task0068_repair_authorized_edge,
                     allow_task0069_repair=task0069_repair_authorized_edge,
                     allow_task0071_repair=task0071_repair_authorized_edge,
+                    allow_task0073_repair=task0073_repair_authorized_edge,
                     parent_commit=parent,
                     child_commit=commit,
                 )
@@ -7108,10 +7295,20 @@ def validate_task_backlog_history(
         current_tasks,
         TASK_0071_PLANNING_REPAIRS,
     )
+    task0073_repair_applied = planning_repair_is_retained(
+        current_tasks,
+        TASK_0073_PLANNING_REPAIRS,
+    )
     audit.require(
-        len(task0071_repair_edges) == (1 if task0071_repair_applied else 0),
+        len(task0071_repair_edges)
+        == (1 if task0071_repair_applied or task0073_repair_applied else 0),
         "task-backlog: TASK-0071 replacement repair must be one exact, authorized, "
         f"atomic parent edge; observed={sorted(task0071_repair_edges)}",
+    )
+    audit.require(
+        len(task0073_repair_edges) == (1 if task0073_repair_applied else 0),
+        "task-backlog: TASK-0073 replacement repair must be one exact, authorized, "
+        f"atomic parent edge; observed={sorted(task0073_repair_edges)}",
     )
     head = snapshot("HEAD")
     if head is not None:
@@ -9930,7 +10127,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     )
 
     expected_follow_ups = {
-        "idlePlanningCheckpointCore": "TASK-0071",
+        "idlePlanningCheckpointCore": "TASK-0073",
         "idlePlanningCheckpointConsumers": "TASK-0056",
         "harnessPerformance": "TASK-0057",
         "pathAwareCi": "TASK-0058",
@@ -9945,7 +10142,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     entries = entries if isinstance(entries, dict) else {}
     expected_dependencies = {
         "TASK-0055": ["TASK-0069"],
-        "TASK-0056": ["TASK-0071"],
+        "TASK-0056": ["TASK-0073"],
         "TASK-0057": ["TASK-0056"],
         "TASK-0058": ["TASK-0057"],
         "TASK-0059": ["TASK-0058"],

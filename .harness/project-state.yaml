@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0071
 lastTerminalHandoff: docs/handoffs/TASK-0071.json
-nextAction: 实现 TASK-0073 精确 planning repair，并重新验证已保留的 parent-edge 核心
+nextAction: 独立评审 TASK-0073 冻结 candidate；Reviewer 不得参与实现或运行昂贵全套测试
 capabilityGates:
   businessImplementation:
     state: BLOCKED

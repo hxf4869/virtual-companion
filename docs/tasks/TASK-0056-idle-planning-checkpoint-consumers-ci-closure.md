@@ -5,7 +5,7 @@ taskId: TASK-0056
 state: PLANNED
 owner: repository-owner
 planningBacklog: .harness/task-backlog.yaml
-planningContractHash: ed776e1698b6d683ae942f916d71717bf7c35489a8e03311bc5512eb543cbddd
+planningContractHash: 4444bceb0a68f725db68f4277f74f033fec17843157aec6e86e32544545c62d1
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ```
 
@@ -23,11 +23,11 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 ## 明确禁止
 
 - 各消费者重复实现解析；
-- 重写 TASK-0071 核心语义，或顺带实现性能、路径感知 CI、receipt。
+- 重写 TASK-0073 核心语义，或顺带实现性能、路径感知 CI、receipt。
 
 ## 依赖与决策闸门
 
-- 依赖：TASK-0071；
+- 依赖：TASK-0073；
 - 无新增硬决策闸门。
 
 ## 验收
@@ -37,4 +37,4 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 
 ## 晋级规则
 
-TASK-0071 必须 ACCEPTED，仓库必须空闲，且本卡是执行顺序中首个可晋级任务。
+TASK-0073 必须 ACCEPTED，仓库必须空闲，且本卡是执行顺序中首个可晋级任务。

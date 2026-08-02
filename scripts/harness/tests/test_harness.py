@@ -2703,10 +2703,16 @@ class BacklogTests(unittest.TestCase):
         )
 
     def test_task0071_replacement_is_exact_and_atomic(self) -> None:
-        current, tasks, _, _ = self.load_inputs()
-        child = copy.deepcopy(current)
-        parent = copy.deepcopy(child)
-        parent["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0055"]
+        parent_commit = "16f359daba0f0cba3e4cb5a3508f35c0c25dc8a2"
+        child_commit = "b2a266dc42388f4a728f499522b01604eb5e89c6"
+        parent = doctor.yaml_at_commit(
+            parent_commit,
+            doctor.TASK_BACKLOG_PATH,
+        )
+        child = doctor.yaml_at_commit(
+            child_commit,
+            doctor.TASK_BACKLOG_PATH,
+        )
         self.assertTrue(doctor.task0071_planning_repair_projection(parent, child))
         audit = Audit()
         validate_backlog_history_edge(
@@ -2721,6 +2727,72 @@ class BacklogTests(unittest.TestCase):
         expanded["tasks"]["TASK-0056"]["objective"] += " expanded"
         self.assertFalse(
             doctor.task0071_planning_repair_projection(parent, expanded)
+        )
+        child_card = doctor.task_metadata_at_commit(
+            child_commit,
+            child["tasks"]["TASK-0056"]["taskCard"],
+        )
+        self.assertEqual(
+            canonical_json_sha256(child["tasks"]["TASK-0056"]),
+            child_card["planningContractHash"],
+        )
+
+    def test_task0073_replacement_is_exact_and_atomic(self) -> None:
+        current, tasks, _, _ = self.load_inputs()
+        child = copy.deepcopy(current)
+        parent = copy.deepcopy(child)
+        parent["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0071"]
+        self.assertTrue(doctor.task0073_planning_repair_projection(parent, child))
+
+        audit = Audit()
+        validate_backlog_history_edge(
+            audit,
+            parent,
+            child,
+            "parent..child",
+            allow_task0073_repair=True,
+        )
+        self.assertEqual([], audit.errors)
+
+        unauthorized = Audit()
+        validate_backlog_history_edge(
+            unauthorized,
+            parent,
+            child,
+            "parent..child",
+        )
+        self.assertTrue(
+            any("TASK-0056" in error for error in unauthorized.errors),
+            unauthorized.errors,
+        )
+
+        expanded = copy.deepcopy(child)
+        expanded["tasks"]["TASK-0056"]["objective"] += " expanded"
+        self.assertFalse(
+            doctor.task0073_planning_repair_projection(parent, expanded)
+        )
+        wrong_dependency = copy.deepcopy(child)
+        wrong_dependency["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0072"]
+        self.assertFalse(
+            doctor.task0073_planning_repair_projection(parent, wrong_dependency)
+        )
+
+        child_policy = load_yaml(ROOT / doctor.TASK_DELIVERY_POLICY_PATH)
+        parent_policy = copy.deepcopy(child_policy)
+        parent_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0071"
+        self.assertTrue(
+            doctor.task0073_delivery_policy_repair_projection(
+                parent_policy,
+                child_policy,
+            )
+        )
+        expanded_policy = copy.deepcopy(child_policy)
+        expanded_policy["followUpTasks"]["snapshotReceipt"] = "TASK-0073"
+        self.assertFalse(
+            doctor.task0073_delivery_policy_repair_projection(
+                parent_policy,
+                expanded_policy,
+            )
         )
         self.assertEqual(
             canonical_json_sha256(child["tasks"]["TASK-0056"]),
@@ -3543,7 +3615,7 @@ class BacklogTests(unittest.TestCase):
 
         def explicit_terminal_fixture(
             frontier: str,
-            task0071_state: str,
+            task0073_state: str,
         ) -> dict[str, dict[str, str]]:
             fixture = {
                 task_id: {"state": "ACCEPTED"}
@@ -3554,7 +3626,8 @@ class BacklogTests(unittest.TestCase):
             fixture["TASK-0049"] = {"state": "SUPERSEDED"}
             fixture["TASK-0055"] = {"state": "REJECTED"}
             fixture["TASK-0069"] = {"state": "ACCEPTED"}
-            fixture["TASK-0071"] = {"state": task0071_state}
+            fixture["TASK-0071"] = {"state": "REJECTED"}
+            fixture["TASK-0073"] = {"state": task0073_state}
             return fixture
 
         historical_tasks = explicit_terminal_fixture("TASK-0055", "REJECTED")
@@ -3598,14 +3671,14 @@ class BacklogTests(unittest.TestCase):
             before_replacement_acceptance["executionOrderFrontier"],
         )
         self.assertIn(
-            "DEPENDENCY:TASK-0071:REJECTED",
+            "DEPENDENCY:TASK-0073:REJECTED",
             before_replacement_acceptance["blockers"]["TASK-0056"],
         )
         self.assertIn(
             "WAITING_FOR_ORDER:TASK-0056",
             before_replacement_acceptance["blockers"]["TASK-0013"],
         )
-        ordered_tasks["TASK-0071"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0073"]["state"] = "ACCEPTED"
         for task_id in ("TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
