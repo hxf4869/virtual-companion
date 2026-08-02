@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0072
 lastTerminalHandoff: docs/handoffs/TASK-0072.json
-nextAction: 执行 TASK-0071 idle planning checkpoint parent-edge 核心恢复；唯一 READY Doctor PASS 后才可进入 IN_PROGRESS
+nextAction: 实现 TASK-0071 idle planning checkpoint parent-edge 核心与精确 planning repair
 capabilityGates:
   businessImplementation:
     state: BLOCKED
