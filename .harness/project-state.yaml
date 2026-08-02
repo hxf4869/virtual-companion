@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0071
+activeTaskCard: docs/tasks/TASK-0071-idle-planning-checkpoint-core-replacement.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0072
 lastTerminalHandoff: docs/handoffs/TASK-0072.json
-nextAction: 协调器创建全新正常 TASK-0071，继续原 TASK-0055 parent-edge core；TASK-0072 已因 Windows canonical 失败而 REJECTED，执行任务不得自行创建 TASK-0071
+nextAction: 执行 TASK-0071 idle planning checkpoint parent-edge 核心恢复；唯一 READY Doctor PASS 后才可进入 IN_PROGRESS
 capabilityGates:
   businessImplementation:
     state: BLOCKED
