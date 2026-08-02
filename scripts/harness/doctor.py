@@ -7062,6 +7062,20 @@ def derive_idle_planning_checkpoint(
             and terminal_state.get("activeTaskCard") is None,
             f"{label}: canonical terminal project-state must be idle",
         )
+        terminal_backlog = yaml_at_commit(terminal_commit, TASK_BACKLOG_PATH)
+        terminal_lifecycle = yaml_at_commit(
+            terminal_commit,
+            ".harness/task-lifecycle.yaml",
+        )
+        terminal_projection = derive_backlog_promotion_projection(
+            terminal_backlog,
+            _task_metadata_snapshot_at_commit(terminal_commit),
+            terminal_lifecycle,
+        )
+        audit.require(
+            terminal_projection.get("repositoryIdle") is True,
+            f"{label}: canonical terminal task-card snapshot must be repository idle",
+        )
         if terminal_commit == target_commit:
             return terminal_commit if len(audit.errors) == initial_errors else None
         graph = git_text(
@@ -7145,6 +7159,19 @@ def derive_idle_planning_checkpoint(
             )
             if isinstance(resolution, dict):
                 replacement = resolution.get("replacementTask")
+                validate_nonblank_text(
+                    audit,
+                    f"{label}: resolution {task_id}.reason",
+                    resolution.get("reason"),
+                )
+                audit.require(
+                    is_canonical_identity(resolution.get("decidedBy")),
+                    f"{label}: resolution {task_id}.decidedBy must be canonical",
+                )
+                audit.require(
+                    is_valid_approval_timestamp(resolution.get("decidedAt")),
+                    f"{label}: resolution {task_id}.decidedAt must be ISO-8601",
+                )
                 audit.require(
                     (resolution.get("state") == "REJECTED" and replacement is None)
                     or (
@@ -7188,6 +7215,10 @@ def derive_idle_planning_checkpoint(
                 child_backlog,
                 tasks,
                 lifecycle,
+            )
+            audit.require(
+                projection.get("repositoryIdle") is True,
+                f"{label}: resolution child task-card snapshot must be repository idle",
             )
             next_promotable = projection.get("nextPromotable")
             next_action = str(child_state.get("nextAction", ""))

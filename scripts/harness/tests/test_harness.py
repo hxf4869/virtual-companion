@@ -3533,11 +3533,31 @@ class BacklogTests(unittest.TestCase):
         )
 
     def test_backlog_projection_exposes_idle_order_and_repository_blockers(self) -> None:
-        backlog, tasks, lifecycle, _ = self.load_inputs()
-        historical_tasks = copy.deepcopy(tasks)
-        historical_tasks.pop("TASK-0071", None)
-        historical_tasks["TASK-0069"]["state"] = "ACCEPTED"
-        historical_tasks["TASK-0055"]["state"] = "PLANNED"
+        backlog, _, _, _ = self.load_inputs()
+        lifecycle = doctor.yaml_at_commit(
+            doctor.TASK_0071_BASE_COMMIT,
+            ".harness/task-lifecycle.yaml",
+        )
+        execution_order = backlog["executionOrder"]
+
+        def explicit_terminal_fixture(
+            frontier: str,
+            task0071_state: str,
+        ) -> dict[str, dict[str, str]]:
+            fixture = {
+                task_id: {"state": "ACCEPTED"}
+                for task_id in backlog["tasks"]
+            }
+            for task_id in execution_order[execution_order.index(frontier) :]:
+                fixture[task_id] = {"state": "PLANNED"}
+            fixture["TASK-0049"] = {"state": "SUPERSEDED"}
+            fixture["TASK-0055"] = {"state": "REJECTED"}
+            fixture["TASK-0069"] = {"state": "ACCEPTED"}
+            fixture["TASK-0071"] = {"state": task0071_state}
+            return fixture
+
+        historical_tasks = explicit_terminal_fixture("TASK-0055", "REJECTED")
+        historical_tasks["TASK-0055"] = {"state": "PLANNED"}
         historical_projection = derive_backlog_promotion_projection(
             backlog,
             historical_tasks,
@@ -3545,10 +3565,7 @@ class BacklogTests(unittest.TestCase):
         )
         self.assertEqual("TASK-0055", historical_projection["nextPromotable"])
 
-        active_tasks = copy.deepcopy(tasks)
-        active_tasks["TASK-0069"]["state"] = "ACCEPTED"
-        active_tasks["TASK-0055"]["state"] = "REJECTED"
-        active_tasks["TASK-0071"]["state"] = "IN_PROGRESS"
+        active_tasks = explicit_terminal_fixture("TASK-0056", "IN_PROGRESS")
         active_projection = derive_backlog_promotion_projection(
             backlog,
             active_tasks,
@@ -3568,10 +3585,7 @@ class BacklogTests(unittest.TestCase):
             active_projection["blockers"]["TASK-0013"],
         )
 
-        ordered_tasks = copy.deepcopy(tasks)
-        ordered_tasks["TASK-0069"]["state"] = "ACCEPTED"
-        ordered_tasks["TASK-0055"]["state"] = "REJECTED"
-        ordered_tasks["TASK-0071"]["state"] = "REJECTED"
+        ordered_tasks = explicit_terminal_fixture("TASK-0056", "REJECTED")
         before_replacement_acceptance = derive_backlog_promotion_projection(
             backlog,
             ordered_tasks,
@@ -5818,8 +5832,11 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
         resolution: dict[str, object] | None = None,
         *,
         metadata_task_id: str | None = None,
+        forced_state: str | None = None,
     ) -> None:
         metadata = cls.metadata(metadata_task_id or task_id, entry, resolution)
+        if forced_state is not None:
+            metadata["state"] = forced_state
         block = yaml.safe_dump(
             metadata,
             allow_unicode=True,
@@ -5995,6 +6012,39 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
             )
             result, audit = self.derive(repository, terminal, target)
             self.assertEqual(target, result, audit.errors)
+
+        for tail in ("no-tail", "resolution-tail"):
+            with self.subTest(repository_active=tail), tempfile.TemporaryDirectory() as directory:
+                repository = Path(directory)
+                self.initialize(repository)
+                backlog = yaml.safe_load(
+                    (repository / ".harness/task-backlog.yaml").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                self.write_card(
+                    repository,
+                    "TASK-1003",
+                    backlog["tasks"]["TASK-1003"],
+                    forced_state="IN_PROGRESS",
+                )
+                self.git(repository, "add", "--", ".")
+                self.git(repository, "commit", "-qm", "hidden active task")
+                terminal = self.git(repository, "rev-parse", "HEAD")
+                target = terminal
+                if tail == "resolution-tail":
+                    target = self.resolve(
+                        repository,
+                        "TASK-1001",
+                        "REJECTED",
+                        next_action=doctor.IDLE_PLANNING_PAUSE_NEXT_ACTION,
+                    )
+                result, audit = self.derive(repository, terminal, target)
+                self.assertIsNone(result)
+                self.assertTrue(
+                    any("repository idle" in error for error in audit.errors),
+                    audit.errors,
+                )
 
     def test_rejects_merge_empty_split_multiple_and_extra_paths(self) -> None:
         for scenario in ("empty", "split", "multiple", "extra", "merge"):
