@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "DURABLE_ATOMIC_RECEIPT_READ_ONCE_OBSERVATION",
+  "sourceReceiptSha256": "21be595fb7cb68ba442ca3f543145a6e3e05164fdc38c2015eaaa0fd9aff57f5",
+  "sourceStdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "sourceStderrSha256": "f487a84bd2c928eb3ded3a075d74c7ae08a1d420f0c6207b4e10435d43b2cc05",
+  "repositoryStderrProjection": {
+    "path": "docs/evidence/TASK-0075/ready-doctor-stderr.txt",
+    "sha256": "4640f7d6dd60f975ee5382a9af25e0c01e096c9741bfc04e48b83403e7b49d1f",
+    "bytes": 843,
+    "encoding": "UTF-8",
+    "lineEnding": "LF",
+    "sourceLineEnding": "CRLF",
+    "sourceBytes": 859,
+    "normalization": "CRLF_TO_REPOSITORY_LF",
+    "sourceSha256ReproducedByCrLfRehydration": true
+  },
+  "receipt": {
+    "stdoutBytes": 0,
+    "stdoutPath": "C:\\Users\\k\\AppData\\Local\\Temp\\virtual-companion-durable-ae8588bae0c049298078157f7688d338\\stdout.bin",
+    "stderrPath": "C:\\Users\\k\\AppData\\Local\\Temp\\virtual-companion-durable-ae8588bae0c049298078157f7688d338\\stderr.bin",
+    "schemaVersion": 1,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "status": "COMPLETED",
+    "failure": null,
+    "completedAt": "2026-08-02T20:00:27.5780229+00:00",
+    "configSha256": "5eba96906180c75a18416b353f4c2fea0873cd9ff63c3035cfbd0ae89e4c844d",
+    "exitCode": 1,
+    "stderrBytes": 859,
+    "argv": [
+      "scripts/harness/doctor.py",
+      "--task",
+      "TASK-0075"
+    ],
+    "workingDirectory": "G:\\ai\\hxf\\virtual-companion",
+    "stderrSha256": "f487a84bd2c928eb3ded3a075d74c7ae08a1d420f0c6207b4e10435d43b2cc05",
+    "startedAt": "2026-08-02T19:38:14.2635729+00:00",
+    "transport": "DURABLE_ATOMIC_RECEIPT",
+    "executable": "C:\\Users\\k\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
+  },
+  "readContract": {
+    "receiptPublished": true,
+    "receiptStdoutStderrReadCount": 1,
+    "rawFilesRecopiedAfterRead": false,
+    "duplicateExecution": false
+  }
+}

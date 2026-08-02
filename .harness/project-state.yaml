@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0075
-activeTaskCard: docs/tasks/TASK-0075-permanent-delivery-flow-recovery.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0074
-lastTerminalHandoff: docs/handoffs/TASK-0074.json
-nextAction: 执行 TASK-0075 普通 READY Doctor；真实 PASS 后才可进入 IN_PROGRESS
+lastTerminalTask: TASK-0075
+lastTerminalHandoff: docs/handoffs/TASK-0075.json
+nextAction: 等待 Owner 创建新的恢复卡修复 harness-change Skill frontmatter/registry 版本绑定；TASK-0056 继续依赖 REJECTED TASK-0073，TASK-0075 失败链不得推送或复用
 capabilityGates:
   businessImplementation:
     state: BLOCKED

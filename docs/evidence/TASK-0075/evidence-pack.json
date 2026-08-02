@@ -1,0 +1,213 @@
+{
+  "taskId": "TASK-0075",
+  "baseCommit": "d41c9f82e69107cf1ecf0cb2c100d39f436faab7",
+  "headCommit": "140895e547654d1801437488bf6cd64e87fe1b70",
+  "contextFingerprint": "deb8e20ac0a38638366ba310a46ce59299e2514bb16b23387ba1ded7a39a396d",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2289d7a243d8a7658d11036afe6d338e0868cc8e",
+      "startedAt": "2026-08-03T03:06:53+08:00",
+      "endedAt": "2026-08-03T04:03:10.3351634+08:00",
+      "elapsedSeconds": 3377.335,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2289d7a243d8a7658d11036afe6d338e0868cc8e",
+      "startedAt": "2026-08-03T03:06:53+08:00",
+      "endedAt": "2026-08-03T04:00:27.5780229+08:00",
+      "elapsedSeconds": 3214.578,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+      "anchorCommit": null,
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": 0,
+      "outcome": "NOT_STARTED",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": null,
+      "inProgressCommit": null,
+      "reason": "READY Doctor returned exit 1 before any READY PASS, IN_PROGRESS commit, or candidate freeze.",
+      "reanchored": false
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0075_reviewer_not_started",
+      "kind": "independent-review-gate-not-started",
+      "verdict": "UNKNOWN",
+      "reviewedCommit": "140895e547654d1801437488bf6cd64e87fe1b70",
+      "evidencePath": "docs/evidence/TASK-0075/review-r1.md",
+      "reason": "READY_DOCTOR_FAIL_BEFORE_CANDIDATE_FREEZE; independent Reviewer was not launched.",
+      "candidateTree": "66ddfb180de411021a826c14e3794f2a94f05037",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 0,
+        "hardLimitReached": false
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "NOT_STARTED",
+        "action": "NOT_LAUNCHED_AFTER_READY_DOCTOR_FAIL"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.Task0075PreReadyMaintenanceTests.test_exact_machine_record_is_accepted scripts.harness.tests.test_harness.Task0075PreReadyMaintenanceTests.test_machine_record_mutations_fail_closed scripts.harness.tests.test_harness.Task0075HistoricalProjectionTests.test_task0073_ci_policy_uses_historical_snapshot scripts.harness.tests.test_harness.Task0075HistoricalProjectionTests.test_planning_edge_uses_historical_objects scripts.harness.tests.test_harness.Task0075HistoricalQuarantineTests.test_exact_task0074_terminal_tuple_is_quarantined scripts.harness.tests.test_harness.Task0075HistoricalQuarantineTests.test_identity_or_tuple_mutations_fail_closed scripts.harness.tests.test_harness.Task0075DeliveryTimingTests.test_not_started_is_strict_and_fail_closed scripts.harness.tests.test_harness.Task0075DeliveryTimingTests.test_existing_statuses_remain_strongly_typed scripts.harness.tests.test_harness.Task0075HandoffProjectionTests.test_terminal_next_action_must_match scripts.harness.tests.test_harness.Task0075HandoffProjectionTests.test_task0074_exact_historical_mismatch_isolated scripts.harness.tests.test_harness.BacklogTests.test_task0075_replacement_is_exact_and_atomic scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_no_tail_and_serial_rejected_superseded_edges scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_accepts_optional_next_action_and_no_promotable_state scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_mode_contract_task_mismatch_and_restore_after_error",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_READY_DOCTOR_FAIL: no implementation candidate existed, so the single candidate-bound self-binding matrix was not launched.",
+      "environment": "Windows; deliberately not launched on a candidate",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_READY_DOCTOR_FAIL: the one candidate-bound diff check was never reached.",
+      "environment": "Windows Git; deliberately not launched",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0075",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "21be595fb7cb68ba442ca3f543145a6e3e05164fdc38c2015eaaa0fd9aff57f5",
+      "reason": "READY Doctor completed exactly once through the durable atomic runner with 369231 checks and one error: Skill harness-change: registry/frontmatter version mismatch.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; durable atomic receipt; started 2026-08-02T19:38:14.2635729+00:00; completed 2026-08-02T20:00:27.5780229+00:00",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0075",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_READY_DOCTOR_FAIL: IN_PROGRESS, candidate freeze, and Reviewer PASS prerequisites were not reached.",
+      "environment": "Windows-NT-10.0.26200; deliberately not launched",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0075",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "NOT_RUN_AFTER_WINDOWS_NOT_RUN: WSL exact-tree may start only after the Windows combined gate PASS.",
+      "environment": "Ubuntu-24.04 WSL2; deliberately not launched",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0075 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: pre-closure runs once against this complete staged snapshot; its result is consumed after atomic publication and is not written back into the frozen input.",
+      "environment": "Windows durable atomic runner; one execution reserved after staging",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0075 frozen candidate",
+      "status": "UNKNOWN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "READY_DOCTOR_FAIL_BEFORE_CANDIDATE_FREEZE: no candidate existed and the independent Reviewer was not launched.",
+      "environment": "independent Reviewer gate; no subagent created; no repository writes",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70",
+      "candidateCommit": "140895e547654d1801437488bf6cd64e87fe1b70",
+      "candidateTree": "66ddfb180de411021a826c14e3794f2a94f05037",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 0,
+        "hardLimitReached": false
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "NOT_STARTED",
+        "action": "NOT_LAUNCHED_AFTER_READY_DOCTOR_FAIL"
+      }
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0075",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: no controlled macOS exact-tree host exists and no PASS is claimed.",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0075",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED: dispatch=0, no rerun or polling, passClaimed=false.",
+      "environment": "GitHub Actions; deliberately not dispatched or polled",
+      "verifiedCommit": "140895e547654d1801437488bf6cd64e87fe1b70"
+    }
+  ],
+  "receipts": {
+    "readyDoctor": {
+      "requestPath": "docs/evidence/TASK-0075/ready-doctor-request.json",
+      "receiptPath": "docs/evidence/TASK-0075/ready-doctor-receipt.json",
+      "stderrPath": "docs/evidence/TASK-0075/ready-doctor-stderr.txt",
+      "sourceReceiptSha256": "21be595fb7cb68ba442ca3f543145a6e3e05164fdc38c2015eaaa0fd9aff57f5",
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "f487a84bd2c928eb3ded3a075d74c7ae08a1d420f0c6207b4e10435d43b2cc05",
+      "repositoryStderrProjectionSha256": "4640f7d6dd60f975ee5382a9af25e0c01e096c9741bfc04e48b83403e7b49d1f",
+      "repositoryStderrProjectionNormalization": "CRLF_TO_REPOSITORY_LF",
+      "status": "FAIL",
+      "exitCode": 1,
+      "checks": 369231,
+      "errors": [
+        "ERROR: Skill harness-change: registry/frontmatter version mismatch"
+      ],
+      "startedAt": "2026-08-02T19:38:14.2635729+00:00",
+      "completedAt": "2026-08-02T20:00:27.5780229+00:00",
+      "duplicateExecution": false
+    }
+  },
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "NOT_CREATED_READY_DOCTOR_FAIL",
+    "candidateCommit": null,
+    "candidateTree": null,
+    "passClaimed": false,
+    "windowsCombinedGate": {
+      "status": "NOT_RUN",
+      "reason": "READY Doctor did not PASS and no candidate or Reviewer PASS existed."
+    },
+    "wslUbuntu": {
+      "status": "NOT_RUN",
+      "reason": "Windows combined gate did not run or PASS."
+    },
+    "macos": {
+      "status": "DEFERRED_NOT_CLAIMED",
+      "passClaimed": false
+    },
+    "githubActions": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": false
+    }
+  }
+}

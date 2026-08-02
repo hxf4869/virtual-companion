@@ -1,0 +1,16 @@
+Harness doctor: START load project and tasks
+Harness doctor: DONE load project and tasks (869.399s)
+Harness doctor: START authorized task history
+Harness doctor: DONE authorized task history (28.654s)
+Harness doctor: START task ledger history
+Harness doctor: DONE task ledger history (360.101s)
+Harness doctor: START task boundaries and project state
+Harness doctor: DONE task boundaries and project state (30.935s)
+Harness doctor: START skills sources and entrypoints
+Harness doctor: DONE skills sources and entrypoints (4.175s)
+Harness doctor: START evidence and handoffs
+Harness doctor: DONE evidence and handoffs (38.711s)
+Harness doctor: START selected task diff scope
+Harness doctor: DONE selected task diff scope (0.527s)
+ERROR: Skill harness-change: registry/frontmatter version mismatch
+Harness doctor: FAIL (1 errors, 369231 checks)

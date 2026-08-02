@@ -2,7 +2,20 @@
 
 ```yaml
 taskId: TASK-0075
-state: READY
+state: REJECTED
+resolutionReason: >-
+  TASK-0075 以 d41c9f82e69107cf1ecf0cb2c100d39f436faab7 / Tree
+  dd7c6f7ee3c7d99b9ec8db2cfd6ceee56c37765e 为 Base，形成 DRAFT
+  2289d7a243d8a7658d11036afe6d338e0868cc8e、唯一 pre-READY maintenance
+  309204f1e1ce5982269517d469c1c93ba1761261、普通 READY 授权
+  d4b64e765b3835d389e2d8e717d6d640b442bf1f 与独立绑定
+  140895e547654d1801437488bf6cd64e87fe1b70 的单父链。唯一 READY Doctor
+  从 2026-08-03 03:38:14 +08:00 运行至 2026-08-03 04:00:27 +08:00，
+  durable atomic receipt 真实 exit 1 / 369231 checks，唯一错误为
+  `Skill harness-change: registry/frontmatter version mismatch`。按硬停合同，
+  不得修复或进入 IN_PROGRESS；候选、自绑定矩阵、git diff --check、
+  Reviewer、Windows 合并门禁与 WSL 均未启动，TASK-0056 仍依赖
+  REJECTED TASK-0073，本卡诚实 REJECTED 且不推送失败链。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -554,7 +567,22 @@ humanApprovals:
       TASK-0075 Commit/Tree 启动一次 Windows 合并门禁，Windows PASS 后
       才启动一次 Ubuntu-24.04 WSL exact-tree。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0075_reviewer_not_started
+    kind: independent-review-gate-not-started
+    verdict: UNKNOWN
+    reviewedCommit: 140895e547654d1801437488bf6cd64e87fe1b70
+    evidencePath: docs/evidence/TASK-0075/review-r1.md
+    reason: READY_DOCTOR_FAIL_BEFORE_CANDIDATE_FREEZE; independent Reviewer was not launched.
+    candidateTree: 66ddfb180de411021a826c14e3794f2a94f05037
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 0
+      hardLimitReached: false
+    interruption:
+      terminalOutputReceived: false
+      observedStatus: NOT_STARTED
+      action: NOT_LAUNCHED_AFTER_READY_DOCTOR_FAIL
 requiredCommands:
   - >-
     python -m unittest
