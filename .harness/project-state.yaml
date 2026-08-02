@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0075
+activeTaskCard: docs/tasks/TASK-0075-permanent-delivery-flow-recovery.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0074
 lastTerminalHandoff: docs/handoffs/TASK-0074.json
-nextAction: 等待 Owner 创建新的永久恢复卡；TASK-0056 继续被 REJECTED TASK-0073 阻断，TASK-0074 失败链不得推送或复用
+nextAction: 执行 TASK-0075 普通 READY Doctor；真实 PASS 后才可进入 IN_PROGRESS
 capabilityGates:
   businessImplementation:
     state: BLOCKED
