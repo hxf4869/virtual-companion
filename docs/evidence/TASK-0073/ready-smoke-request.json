@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "executable": "C:\\Users\\k\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "argv": [
+    "-c",
+    "import sys; print('TASK_0073_READY_SMOKE_STDOUT'); print('TASK_0073_READY_SMOKE_STDERR', file=sys.stderr); raise SystemExit(7)"
+  ],
+  "workingDirectory": "G:\\ai\\hxf\\virtual-companion"
+}

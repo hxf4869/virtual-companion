@@ -1,0 +1,14 @@
+Harness doctor: START load project and tasks
+Harness doctor: DONE load project and tasks (785.654s)
+Harness doctor: START authorized task history
+Harness doctor: DONE authorized task history (25.241s)
+Harness doctor: START task ledger history
+Harness doctor: DONE task ledger history (333.802s)
+Harness doctor: START task boundaries and project state
+Harness doctor: DONE task boundaries and project state (28.152s)
+Harness doctor: START skills sources and entrypoints
+Harness doctor: DONE skills sources and entrypoints (3.697s)
+Harness doctor: START evidence and handoffs
+Harness doctor: DONE evidence and handoffs (36.856s)
+Harness doctor: START selected task diff scope
+Harness doctor: DONE selected task diff scope (0.658s)

@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0071
 lastTerminalHandoff: docs/handoffs/TASK-0071.json
-nextAction: 执行 TASK-0073 普通 READY Doctor；真实 PASS 后才可进入 IN_PROGRESS
+nextAction: 实现 TASK-0073 精确 planning repair，并重新验证已保留的 parent-edge 核心
 capabilityGates:
   businessImplementation:
     state: BLOCKED
