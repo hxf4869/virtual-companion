@@ -45,24 +45,34 @@ def main() -> int:
                 print(f"{command_id}: {' '.join(command_argv(command, args.task))}")
             return 0
 
-        failures: list[tuple[str, int]] = []
-        for command_id in command_ids:
-            command = commands.get(command_id)
-            if not isinstance(command, dict):
-                raise HarnessError(f"profile references unknown command: {command_id}")
-            argv = command_argv(command, args.task)
-            print(f"\n== {command_id}: {command.get('description', '')}", flush=True)
+        import concurrent.futures as _cf
+
+        def _run_cmd(cid: str, cmd: dict[str, Any], tid: str | None) -> tuple[str, int]:
+            argv = command_argv(cmd, tid)
+            print(f"\n== {cid}: {cmd.get('description', '')}", flush=True)
             started = time.perf_counter()
             result = subprocess.run(argv, cwd=ROOT, check=False)
             elapsed = time.perf_counter() - started
             status = "PASS" if result.returncode == 0 else "FAIL"
             print(
-                f"== {command_id}: {status} "
+                f"== {cid}: {status} "
                 f"(exit={result.returncode}, elapsed={elapsed:.3f}s)",
                 flush=True,
             )
-            if result.returncode != 0:
-                failures.append((str(command_id), result.returncode))
+            return cid, result.returncode
+
+        failures: list[tuple[str, int]] = []
+        with _cf.ThreadPoolExecutor(max_workers=len(command_ids)) as pool:
+            futs = {}
+            for command_id in command_ids:
+                command = commands.get(command_id)
+                if not isinstance(command, dict):
+                    raise HarnessError(f"profile references unknown command: {command_id}")
+                futs[pool.submit(_run_cmd, command_id, command, args.task)] = command_id
+            for future in _cf.as_completed(futs):
+                cid, exit_code = future.result()
+                if exit_code != 0:
+                    failures.append((str(cid), exit_code))
         if failures:
             for command_id, exit_code in failures:
                 print(f"FAIL: {command_id} exited {exit_code}", file=sys.stderr)
