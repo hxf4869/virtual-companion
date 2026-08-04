@@ -1,0 +1,190 @@
+{
+  "taskId": "TASK-0076",
+  "baseCommit": "b0c5d351d65e847d4512db580411d84e0e549287",
+  "headCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d",
+  "contextFingerprint": "25d79d73f77fd36a5b53f67e24cddcc72005fadb6d70ebbe355ce8e1a0a241ca",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31",
+      "startedAt": "2026-08-04T13:21:47+08:00",
+      "endedAt": "2026-08-05T00:42:48+08:00",
+      "elapsedSeconds": 40861,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31",
+      "startedAt": "2026-08-04T13:21:47+08:00",
+      "endedAt": "2026-08-04T14:44:59+08:00",
+      "elapsedSeconds": 4992,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f1e4a39ee1f292a6ffd54f8f547c08cef725db4b",
+      "startedAt": "2026-08-04T14:44:59+08:00",
+      "endedAt": "2026-08-05T00:42:48+08:00",
+      "elapsedSeconds": 35869,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 30469,
+      "readyDoctorPassAt": "2026-08-04T14:44:59+08:00",
+      "inProgressCommit": "f1e4a39ee1f292a6ffd54f8f547c08cef725db4b"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0076_reviewer_not_started",
+      "kind": "independent-review-gate-not-started",
+      "verdict": "UNKNOWN",
+      "reviewedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d",
+      "evidencePath": "docs/evidence/TASK-0076/review-r1.md",
+      "reason": "CLOSURE_ONLY_AFTER_HARD_FUSE; Doctor reported 11 errors including forbidden-path violation; independent Reviewer was not launched.",
+      "candidateTree": "9dcd265f67d9425975b7e969166363c5b8040cd2",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 0,
+        "hardLimitReached": false
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "NOT_STARTED",
+        "action": "NOT_LAUNCHED_AFTER_DOCTOR_FAIL_CLOSURE_ONLY"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "CLOSURE_ONLY: implementation forbidden after hard-fuse; harness tests were not run as a candidate gate.",
+      "environment": "Windows; deliberately not launched in closure-only mode",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "CLOSURE_ONLY: diff check was not reached as a candidate gate.",
+      "environment": "Windows Git; deliberately not launched in closure-only mode",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0076",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "Doctor reported 11 errors and exit 1 on 38748 checks. Errors: (1) TASK-0056 PLANNED card hash drifts from Backlog contract; (2) TASK-0056 child f1e4a39 planning card hash mismatch; (3) TASK-0056 planning card projection changed on edge ad0e4b9..f1e4a39; (4) TASK-0056 permanent planning contract removed or rewritten; (5) TASK-0071 replacement repair parent edge unauthorized; (6) TASK-0073 replacement repair parent edge unauthorized; (7) task-delivery-policy canonical contract hash drifted; (8) task-delivery-policy follow-up task projection drifted; (9) task-delivery-policy TASK-0056 successor dependency drifted; (10) TASK-0076 changed path outside writeAllowlist: scripts/harness/precheck.py; (11) TASK-0076 changed path forbidden: scripts/harness/precheck.py.",
+      "environment": "Windows-NT-10.0.26200; Python 3.12.9; 38748 checks completed in ~34 seconds after performance optimizations",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --profile harnessPortabilityLocal --task TASK-0076",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "CLOSURE_ONLY: Windows combined gate was not run after Doctor FAIL.",
+      "environment": "Windows-NT-10.0.26200; deliberately not launched",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    },
+    {
+      "command": "bash scripts/harness/precheck.sh --profile harnessPortabilityLocal --task TASK-0076",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "CLOSURE_ONLY: WSL exact-tree may start only after the Windows combined gate PASS.",
+      "environment": "Ubuntu-24.04 WSL2; deliberately not launched",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0076 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: pre-closure runs once against this complete staged snapshot; its result is consumed after atomic publication and is not written back into the frozen input.",
+      "environment": "Windows; one execution reserved after staging",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0076 frozen candidate",
+      "status": "UNKNOWN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "CLOSURE_ONLY_AFTER_DOCTOR_FAIL: Doctor reported 11 errors including forbidden-path violation on scripts/harness/precheck.py; no candidate could be lawfully frozen and the independent Reviewer was not launched.",
+      "environment": "independent Reviewer gate; no subagent created; no repository writes",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d",
+      "candidateCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d",
+      "candidateTree": "9dcd265f67d9425975b7e969166363c5b8040cd2",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 0,
+        "hardLimitReached": false
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "NOT_STARTED",
+        "action": "NOT_LAUNCHED_AFTER_DOCTOR_FAIL_CLOSURE_ONLY"
+      }
+    },
+    {
+      "command": "macOS exact-tree validation for TASK-0076",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "DEFERRED_NOT_CLAIMED: no controlled macOS exact-tree host exists and no PASS is claimed.",
+      "environment": "macOS; no controlled host available",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    },
+    {
+      "command": "GitHub Actions exact-SHA validation for TASK-0076",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED: dispatch=0, no rerun or polling, passClaimed=false.",
+      "environment": "GitHub Actions; deliberately not dispatched or polled",
+      "verifiedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "HARNESS_PORTABILITY_LOCAL",
+    "candidateStatus": "DOCTOR_FAIL_CLOSURE_ONLY",
+    "candidateCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d",
+    "candidateTree": "9dcd265f67d9425975b7e969166363c5b8040cd2",
+    "passClaimed": false,
+    "windowsCombinedGate": {
+      "status": "NOT_RUN",
+      "reason": "Doctor did not PASS; closure-only mode prohibits candidate gates."
+    },
+    "wslUbuntu": {
+      "status": "NOT_RUN",
+      "reason": "Windows combined gate did not run or PASS."
+    },
+    "macos": {
+      "status": "DEFERRED_NOT_CLAIMED",
+      "passClaimed": false
+    },
+    "githubActions": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": false
+    }
+  }
+}

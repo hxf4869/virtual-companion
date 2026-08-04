@@ -198,3 +198,9 @@ tasks:
     taskCard: docs/tasks/TASK-0075-permanent-delivery-flow-recovery.md
     evidence: docs/evidence/TASK-0075/evidence-pack.json
     handoff: docs/handoffs/TASK-0075.json
+  TASK-0076:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0076-harness-skill-version-binding-recovery.md
+    evidence: docs/evidence/TASK-0076/evidence-pack.json
+    handoff: docs/handoffs/TASK-0076.json
