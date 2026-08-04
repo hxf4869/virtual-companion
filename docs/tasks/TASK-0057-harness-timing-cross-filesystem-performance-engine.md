@@ -85,6 +85,7 @@ preReadyMaintenancePlan:
   consumedRecordMustBecomeInert: true
   exactPaths:
     - scripts/harness/doctor.py
+    - docs/evidence/TASK-0057/pre-ready-maintenance-authorization.json
 validationPlan:
   frozenBefore: READY
   policySource: .harness/ci-execution-policy.yaml
