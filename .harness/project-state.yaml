@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0077
+activeTaskCard: docs/tasks/TASK-0077-permanent-harness-recovery-and-quarantine.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0076
 lastTerminalHandoff: docs/handoffs/TASK-0076.json
-nextAction: 等待 Owner 为 TASK-0077 候选恢复卡提供一次性精确授权；修复全部 11 个 Doctor 错误并合法承接已推送的性能优化
+nextAction: 执行 TASK-0077 候选门禁：Reviewer、Windows 合并门禁、WSL、pre-closure
 capabilityGates:
   businessImplementation:
     state: BLOCKED
