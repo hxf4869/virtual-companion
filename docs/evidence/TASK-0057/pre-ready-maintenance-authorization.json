@@ -1,0 +1,11 @@
+{
+  "recordId": "OWNER-MAINT-20260805-TASK-0057-PRE-READY-01",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "taskId": "TASK-0057",
+  "baseCommit": "2f1dd08504d9ace6e6d895bf0e5686cf7e4dbc60",
+  "exactPaths": ["scripts/harness/doctor.py"],
+  "ownerAuthorization": "用户长线执行授权覆盖 TASK-0057 pre-READY maintenance：接管 TASK-0056 ACCEPTED 后的两个 doctor.py 修复提交（state transition validation 和 performance optimization）",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "consumedRecordMustBecomeInert": true
+}
