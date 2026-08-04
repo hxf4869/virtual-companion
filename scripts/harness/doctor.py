@@ -333,6 +333,13 @@ TASK_0076_PRE_READY_MAINTENANCE_PATHS = {
     "scripts/harness/doctor.py", "scripts/harness/tests/test_harness.py",
     "skills/harness-change/SKILL.md", "skills/task-delivery-flow/SKILL.md", "skills/task-intake/SKILL.md",
 }
+TASK_0077_PRE_READY_MAINTENANCE_PATHS = {
+    ".harness/task-backlog.yaml", ".harness/task-delivery-policy.yaml", ".harness/skills.yaml",
+    "docs/evidence/TASK-0077/pre-ready-maintenance-authorization.json",
+    "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
+    "scripts/harness/doctor.py", "scripts/harness/tests/test_harness.py",
+    "skills/harness-change/SKILL.md", "skills/task-delivery-flow/SKILL.md", "skills/task-intake/SKILL.md",
+}
 TASK_0073_MAINTENANCE_COMMIT = "b1c37678ab773eca150bdbb273ddafa5d14b781f"
 TASK_0073_MAINTENANCE_TREE = "6d0c9f5852313219af370ba411dd192afafd0f73"
 TASK_0073_MAINTENANCE_CI_POLICY_BLOB = "9efc2356531f515b3bfc758044863bfe8c998eca"
@@ -2945,6 +2952,14 @@ def validate_ready_project_state_checkpoint(
     elif task_id == TASK_0076_TASK_ID:
         audit.require(parent_commit != authorization_commit and task0076_pre_ready_maintenance_boundary_candidate(parent_commit), "TASK-0076 pre-READY maintenance: READY parent must be the exact single-parent maintenance boundary")
         validate_task0076_pre_ready_maintenance_boundary(audit, parent_commit)
+    elif task_id == "TASK-0077":
+        validate_history_path_allowlist(
+            audit,
+            base_commit,
+            parent_commit,
+            draft_paths | TASK_0077_PRE_READY_MAINTENANCE_PATHS,
+            f"{task_id}: pre-READY history",
+        )
     else:
         validate_history_path_allowlist(
             audit,
@@ -6192,6 +6207,8 @@ def validate_tasks(
                     allowed_checkpoint_paths |= TASK_0075_PRE_READY_MAINTENANCE_PATHS
                 if task_id == TASK_0076_TASK_ID:
                     allowed_checkpoint_paths |= TASK_0076_PRE_READY_MAINTENANCE_PATHS
+                if task_id == "TASK-0077":
+                    allowed_checkpoint_paths |= TASK_0077_PRE_READY_MAINTENANCE_PATHS
                 audit.require(path in checkpoint_paths, f"{path}: authorization commit must include the task card")
                 audit.require(
                     checkpoint_paths <= allowed_checkpoint_paths,
