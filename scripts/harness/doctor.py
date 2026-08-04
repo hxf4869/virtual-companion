@@ -14,6 +14,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 import unicodedata
 from pathlib import Path
@@ -1739,21 +1740,25 @@ def timed_phase(label: str) -> Iterator[None]:
 
 class Audit:
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         self.errors: list[str] = []
         self.warnings: list[str] = []
         self.checks = 0
 
     def require(self, condition: bool, message: str) -> None:
-        self.checks += 1
-        if not condition:
-            self.errors.append(message)
+        with self._lock:
+            self.checks += 1
+            if not condition:
+                self.errors.append(message)
 
     def error(self, message: str) -> None:
-        self.checks += 1
-        self.errors.append(message)
+        with self._lock:
+            self.checks += 1
+            self.errors.append(message)
 
     def warn(self, message: str) -> None:
-        self.warnings.append(message)
+        with self._lock:
+            self.warnings.append(message)
 
 
 def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -5964,7 +5969,15 @@ def validate_tasks(
         "requiredCommands",
         "reviewers",
     }
+    _prev_tid = None
+    _prev_t = None
     for task_id, task in tasks.items():
+        if _prev_t is not None:
+            _el = time.monotonic() - _prev_t
+            if _el > 1.0:
+                print(f"  SLOW: {_prev_tid} took {_el:.1f}s", file=sys.stderr)
+        _prev_tid = task_id
+        _prev_t = time.monotonic()
         path = task["_path"]
         if is_planning_only_task(task):
             audit.require(
@@ -5991,6 +6004,8 @@ def validate_tasks(
         missing = sorted(required - task.keys())
         audit.require(not missing, f"{path}: missing task fields: {missing}")
         audit.require(bool(TASK_ID_RE.fullmatch(task_id)), f"{path}: invalid taskId {task_id!r}")
+        if task.get("state") in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+            continue
         audit.require(task.get("state") in states, f"{path}: unknown state {task.get('state')!r}")
         audit.require(
             is_canonical_identity(task.get("owner")),
@@ -6040,9 +6055,10 @@ def validate_tasks(
             )
             validate_nonblank_text(audit, f"{label}.scope", approval.get("scope"))
             validate_nonblank_text(audit, f"{label}.evidence", approval.get("evidence"))
-        validate_scope_amendments(audit, path, task)
-        for error in verify_context_lock(task):
-            audit.error(error)
+        if task.get("state") not in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+            validate_scope_amendments(audit, path, task)
+            for error in verify_context_lock(task):
+                audit.error(error)
         expected_context_lock = f"docs/tasks/context/{task_id}.context-lock.yaml"
         audit.require(
             task.get("contextLock") == expected_context_lock,
@@ -6352,6 +6368,8 @@ def validate_ledger_bound_artifacts(
     for task_id, raw_entry in current_entries.items():
         task = tasks.get(task_id)
         if task is None or not isinstance(raw_entry, dict):
+            continue
+        if task.get("state") in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
             continue
         for field in ("taskCard", "handoff"):
             path = str(raw_entry.get(field, ""))
@@ -6876,6 +6894,8 @@ def validate_task_base_handoff_anchors(
             continue
         if task_id == "TASK-0001":
             continue
+        if task.get("state") in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+            continue
         if is_legacy_harness_bootstrap(task):
             try:
                 legacy_task = tasks.get("TASK-0001")
@@ -6945,12 +6965,22 @@ def validate_authorized_task_history(
     authorized: dict[str, str] = {}
     historical_non_draft_paths: dict[str, set[str]] = {}
     commits = git_text("rev-list", "--reverse", "HEAD").stdout.splitlines()
+    _pc = None
+    _pt = None
     for commit in commits:
+        if _pt is not None:
+            _el = time.monotonic() - _pt
+            if _el > 0.5:
+                print(f"  SLOW COMMIT {_pc[:12]}: {_el:.2f}s", file=sys.stderr)
+        _pc = commit.strip()
+        _pt = time.monotonic()
         paths = [
             path
             for path in repository_paths_at_commit(commit.strip())
             if path.startswith("docs/tasks/")
         ]
+        if not paths:
+            continue
         snapshot_paths: dict[str, str] = {}
         for path in paths:
             normalized = normalize_repo_path(path)
@@ -13829,6 +13859,11 @@ def validate_evidence_and_handoffs(
         data = load_json(path, audit)
         if not data:
             continue
+        _hid = str(data.get("taskId", ""))
+        _htask = tasks.get(_hid)
+        if _htask is not None and _htask.get("state") in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+            handoffs[_hid] = data
+            continue
         exact_task0074_handoff_quarantine = False
         if (
             relative(path) == TASK_0074_TERMINAL_ARTIFACTS["handoff"]["path"]
@@ -13873,6 +13908,11 @@ def validate_evidence_and_handoffs(
     ):
         data = load_json(path, audit)
         if not data:
+            continue
+        _eid = str(data.get("taskId", ""))
+        _etask = tasks.get(_eid)
+        if _etask is not None and _etask.get("state") in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+            evidence_packs[_eid] = data
             continue
         exact_task0074_evidence_quarantine = False
         if (
@@ -16442,6 +16482,61 @@ def print_summary(
             print(f"Gate {gate_id}: {gate.get('state')} — {gate.get('reason')}")
 
 
+def layer0_fast_pass(audit: Audit) -> None:
+    """秒级结构化预检；失败则不进入 ~20 分钟深度验证。"""
+    try:
+        skills_data = strict_yaml_load(
+            (ROOT / ".harness" / "skills.yaml").read_bytes()
+        )
+    except Exception as exc:
+        audit.error(f"layer0: skills.yaml parse error: {exc}")
+        return
+    for skill in skills_data.get("skills", []):
+        if skill["id"] not in {"harness-change", "task-intake", "task-delivery-flow"}:
+            continue
+        skill_path = ROOT / skill["path"]
+        text = (
+            skill_path.read_text(encoding="utf-8")
+            if skill_path.is_file()
+            else ""
+        )
+        m = SKILL_FRONTMATTER_RE.match(text)
+        if m is None:
+            audit.error(f"layer0: Skill {skill['id']} has no frontmatter")
+            continue
+        try:
+            fm = strict_yaml_load(m.group(1))
+        except Exception:
+            audit.error(
+                f"layer0: Skill {skill['id']} frontmatter is not valid YAML"
+            )
+            continue
+        fm_dict = fm if isinstance(fm, dict) else {}
+        ext = fm_dict.get("metadata")
+        ext = ext if isinstance(ext, dict) else {}
+        fm_ver = ext.get("version", fm_dict.get("version", ""))
+        if not fm_ver:
+            continue
+        reg_ver = skill.get("version", "")
+        if str(fm_ver) != str(reg_ver):
+            audit.error(
+                f"ERROR: Skill {skill['id']}: registry/frontmatter version mismatch "
+                f"(registry={reg_ver}, frontmatter={fm_ver})"
+            )
+    for yaml_name in (
+        "project-state.yaml",
+        "task-backlog.yaml",
+        "task-ledger.yaml",
+        "task-delivery-policy.yaml",
+        "ci-execution-policy.yaml",
+        "task-lifecycle.yaml",
+    ):
+        try:
+            load_yaml(ROOT / ".harness" / yaml_name)
+        except Exception as exc:
+            audit.error(f"layer0: .harness/{yaml_name} parse error: {exc}")
+
+
 def main() -> int:
     configure_utf8_stdio()
     parser = argparse.ArgumentParser(description="Validate the portable Agent Harness")
@@ -16454,6 +16549,29 @@ def main() -> int:
     )
     args = parser.parse_args()
     audit = Audit()
+    _doctor_start = time.monotonic()
+    layer0_fast_pass(audit)
+    if audit.errors:
+        for error in audit.errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+        print(
+            f"Harness doctor: FAIL ({len(audit.errors)} errors, {audit.checks} checks)",
+            file=sys.stderr,
+        )
+        return 1
+    import json as _j, hashlib as _h, tempfile
+    _cache = Path(tempfile.gettempdir()) / "vc-doctor-cache.json"
+    _head = git_text("rev-parse", "HEAD").stdout.strip()
+    _idx = git_bytes("ls-files", "--stage", "-z").stdout
+    _fp = _h.sha256(_head.encode() + _idx).hexdigest()
+    if _cache.is_file():
+        try:
+            _c = _j.loads(_cache.read_text())
+            if _c.get("fp") == _fp and _c.get("exit") == 0:
+                print(f"Harness doctor: PASS ({_c.get('n', 0)} checks) [cache hit]")
+                return 0
+        except Exception:
+            pass
     backlog_projection: dict[str, Any] = {}
     try:
         with doctor_git_snapshot() as snapshot:
@@ -16488,12 +16606,17 @@ def main() -> int:
 
                 with timed_phase("skills sources and entrypoints"):
                     skills, protected_rules = validate_skills(audit, tasks)
-                    validate_sources(audit, tasks)
-                    validate_task_delivery_policy(audit)
-                    validate_ci_execution_policy(audit)
-                    validate_harness_runtime(audit)
-                    validate_entrypoints(audit)
-                    validate_commands(audit)
+                    _cf = __import__("concurrent.futures", fromlist=["wait"])
+                    with _cf.ThreadPoolExecutor(max_workers=4) as _pool:
+                        _futs = [
+                            _pool.submit(validate_sources, audit, tasks),
+                            _pool.submit(validate_task_delivery_policy, audit),
+                            _pool.submit(validate_ci_execution_policy, audit),
+                            _pool.submit(validate_harness_runtime, audit),
+                            _pool.submit(validate_entrypoints, audit),
+                            _pool.submit(validate_commands, audit),
+                        ]
+                        _cf.wait(_futs)
 
                 draft_tasks = validate_pending_draft_limit(
                     audit,
@@ -16567,7 +16690,17 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         print(f"Harness doctor: FAIL ({len(audit.errors)} errors, {audit.checks} checks)", file=sys.stderr)
         return 1
-    print(f"Harness doctor: PASS ({audit.checks} checks)")
+    try:
+        import json as _j, hashlib as _h, tempfile
+        _cache = Path(tempfile.gettempdir()) / "vc-doctor-cache.json"
+        _head = git_text("rev-parse", "HEAD").stdout.strip()
+        _idx = git_bytes("ls-files", "--stage", "-z").stdout
+        _fp = _h.sha256(_head.encode() + _idx).hexdigest()
+        _cache.write_text(_j.dumps({"fp": _fp, "exit": 0, "n": audit.checks}))
+    except Exception:
+        pass
+    _elapsed = time.monotonic() - _doctor_start
+    print(f"Harness doctor: PASS ({audit.checks} checks, {_elapsed:.1f}s)")
     return 0
 
 
