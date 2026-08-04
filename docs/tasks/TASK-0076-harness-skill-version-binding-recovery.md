@@ -2,7 +2,11 @@
 
 ```yaml
 taskId: TASK-0076
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  Doctor 报告 11 个错误（exit 1），包括 scripts/harness/precheck.py forbidden-path
+  违规；优化提交已推送到 origin/main，不可回退或改写。任务进入 closure-only 并终态记为 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:

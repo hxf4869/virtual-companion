@@ -1,0 +1,88 @@
+{
+  "taskId": "TASK-0076",
+  "state": "REJECTED",
+  "baseCommit": "b0c5d351d65e847d4512db580411d84e0e549287",
+  "headCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d",
+  "evidencePath": "docs/evidence/TASK-0076/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31",
+      "startedAt": "2026-08-04T13:21:47+08:00",
+      "endedAt": "2026-08-05T00:42:48+08:00",
+      "elapsedSeconds": 40861,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31",
+      "startedAt": "2026-08-04T13:21:47+08:00",
+      "endedAt": "2026-08-04T14:44:59+08:00",
+      "elapsedSeconds": 4992,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f1e4a39ee1f292a6ffd54f8f547c08cef725db4b",
+      "startedAt": "2026-08-04T14:44:59+08:00",
+      "endedAt": "2026-08-05T00:42:48+08:00",
+      "elapsedSeconds": 35869,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 30469,
+      "readyDoctorPassAt": "2026-08-04T14:44:59+08:00",
+      "inProgressCommit": "f1e4a39ee1f292a6ffd54f8f547c08cef725db4b"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0076_reviewer_not_started",
+      "kind": "independent-review-gate-not-started",
+      "verdict": "UNKNOWN",
+      "reviewedCommit": "8dcd298a4356d522b509ea35b3e5c4f0b7f2590d",
+      "evidencePath": "docs/evidence/TASK-0076/review-r1.md",
+      "reason": "CLOSURE_ONLY_AFTER_HARD_FUSE; Doctor reported 11 errors including forbidden-path violation; independent Reviewer was not launched.",
+      "candidateTree": "9dcd265f67d9425975b7e969166363c5b8040cd2",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 0,
+        "hardLimitReached": false
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "NOT_STARTED",
+        "action": "NOT_LAUNCHED_AFTER_DOCTOR_FAIL_CLOSURE_ONLY"
+      }
+    }
+  ],
+  "completed": [
+    "从精确 Base b0c5d35 创建 DRAFT 4069a2e 与 Context Lock；实时 main、clean、origin/main...HEAD=0/34、TASK-0076 未占用及 Owner 授权已绑定。",
+    "唯一直接单父 pre-READY maintenance 9a2bd6e 只包括冻结路径集；三个 Skill 版本绑定到 1.1.5/1.2.5/1.3.5。",
+    "READY 授权 6eadd65 与 authorizationCommit 绑定 ad0e4b9 形成单父链，activeTask 原子激活。",
+    "IN_PROGRESS 提交 f1e4a39 迁移 TASK-0056 依赖。",
+    "四个性能优化提交（e9b59ca、7b784a0、ac3018e、8dcd298）已推送到 origin/main，Doctor 从约 22 分钟降到约 34 秒。"
+  ],
+  "remaining": [
+    "Doctor 报告 11 个错误并 exit 1，TASK-0076 不能合法 ACCEPTED。",
+    "scripts/harness/precheck.py 在 TASK-0076 forbiddenPaths 中，但被优化提交 7b784a0 修改（错误 #10 和 #11）；Harness 审计 Base 后所有父边，该违规不可通过前向恢复消除。",
+    "TASK-0056 PLANNED 卡哈希漂移（错误 #1-4）；TASK-0071/0073 replacement parent edge 不合规（错误 #5-6）；task-delivery-policy 三处漂移（错误 #7-9）。",
+    "无 Reviewer、Windows 合并门禁、WSL exact-tree、macOS 或 GitHub Actions PASS。",
+    "TASK-0056 依赖仍指向 REJECTED TASK-0076，需要新的恢复卡。",
+    "四个优化提交的性能改善（Layer 0 预检、结果缓存、终态跳过、并行 runner）需要在新的授权恢复卡中被合法承接。"
+  ],
+  "knownRisks": [
+    "scripts/harness/precheck.py 的 forbidden-path 违规是结构性问题：Harness 逐父边审计意味着即使在新卡中前向恢复文件内容，违规历史仍然可见。",
+    "TASK-0056 的 Backlog contract hash drift 意味着 f1e4a39 中的 PLANNED 卡投影与 Backlog 契约不一致。",
+    "task-delivery-policy 的 canonical contract hash、follow-up task projection 和 TASK-0056 successor dependency 均已漂移，需要在同一授权变更中修复。",
+    "Reviewer gate 是 UNKNOWN/NOT_STARTED，不是内容评审结论。",
+    "终态仅为 TERMINAL_METADATA_ONLY REJECTED closure，必须带 [skip ci]，不代表 canonical、Windows、WSL、macOS 或远端 PASS。",
+    "GitHub Actions 为 UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED / dispatch=0 / passClaimed=false。",
+    "优化提交链（e9b59ca→7b784a0→ac3018e→8dcd298）已推送到 origin/main，不可回退或改写。"
+  ],
+  "nextAction": "等待 Owner 为新的恢复卡（TASK-0077 候选）提供一次性精确授权，修复全部 11 个错误并合法承接已推送的性能优化"
+}
