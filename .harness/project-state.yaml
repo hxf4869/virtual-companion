@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0056
 lastAcceptedHandoff: docs/handoffs/TASK-0056.json
 lastTerminalTask: TASK-0056
 lastTerminalHandoff: docs/handoffs/TASK-0056.json
-nextAction: TASK-0057 READY；通过 READY Doctor 后进入 IN_PROGRESS 实现阶段计时与性能优化
+nextAction: TASK-0057 IN_PROGRESS；实现 Harness 阶段计时与跨文件系统性能引擎
 capabilityGates:
   businessImplementation:
     state: BLOCKED
