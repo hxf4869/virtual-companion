@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0075
 lastTerminalHandoff: docs/handoffs/TASK-0075.json
-nextAction: 执行 TASK-0076 候选门禁
+nextAction: 执行 TASK-0076 候选门禁：Reviewer、Windows 合并门禁、WSL、pre-closure
 capabilityGates:
   businessImplementation:
     state: BLOCKED
