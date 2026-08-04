@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0056
-activeTaskCard: docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md
-lastAcceptedTask: TASK-0077
-lastAcceptedHandoff: docs/handoffs/TASK-0077.json
-lastTerminalTask: TASK-0077
-lastTerminalHandoff: docs/handoffs/TASK-0077.json
-nextAction: TASK-0056 IN_PROGRESS；实现 idle planning checkpoint 四消费者接线
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0056
+lastAcceptedHandoff: docs/handoffs/TASK-0056.json
+lastTerminalTask: TASK-0056
+lastTerminalHandoff: docs/handoffs/TASK-0056.json
+nextAction: TASK-0057 的依赖 TASK-0056 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0057 为 READY
 capabilityGates:
   businessImplementation:
     state: BLOCKED

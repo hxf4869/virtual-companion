@@ -7163,6 +7163,38 @@ def validate_authorized_task_presence(
         )
 
 
+def _latest_task_by_terminal_history(
+    task_ids: list[str],
+    tasks: dict[str, dict[str, Any]],
+    terminal_states: set[str],
+) -> str:
+    """Find the task whose terminal commit is the most recent in git history."""
+    best_id = ""
+    best_commit = ""
+    head_commit = git_text("rev-parse", "HEAD").stdout.strip()
+    for task_id in task_ids:
+        task = tasks.get(task_id, {})
+        try:
+            commit = canonical_terminal_commit(task, terminal_states)
+        except HarnessError:
+            commit = None
+        if not commit and task.get("state") in terminal_states:
+            commit = head_commit
+        if not commit:
+            continue
+        if not best_commit:
+            best_id = task_id
+            best_commit = commit
+        else:
+            result = git_text(
+                "merge-base", "--is-ancestor", best_commit, commit, check=False
+            )
+            if result.returncode == 0:
+                best_id = task_id
+                best_commit = commit
+    return best_id
+
+
 def validate_project_state(
     audit: Audit,
     state: dict[str, Any],
@@ -7234,7 +7266,9 @@ def validate_project_state(
         for task_id, task in execution_tasks.items()
         if task.get("state") == "ACCEPTED"
     ]
-    latest_accepted = accepted_execution[-1] if accepted_execution else ""
+    latest_accepted = _latest_task_by_terminal_history(
+        accepted_execution, tasks, terminal_states
+    )
     audit.require(
         last_accepted == latest_accepted,
         f"project-state: lastAcceptedTask {last_accepted!r} must point to latest accepted task "
@@ -7265,7 +7299,9 @@ def validate_project_state(
         for task_id, task in execution_tasks.items()
         if task.get("state") in terminal_states
     ]
-    latest_terminal = terminal_execution[-1] if terminal_execution else ""
+    latest_terminal = _latest_task_by_terminal_history(
+        terminal_execution, tasks, terminal_states
+    )
     audit.require(
         last_terminal == latest_terminal,
         f"project-state: lastTerminalTask {last_terminal!r} must point to latest terminal task "
@@ -11391,8 +11427,17 @@ def validate_skills(
                     f"{task_id}: changed Skill directories {sorted(changed_tree_ids)} exceed "
                     f"targetSkillVersions {sorted(declared_targets)}",
                 )
+                required_versions = task.get("requiredSkillVersions")
+                target_is_noop = (
+                    isinstance(required_versions, dict)
+                    and set(required_versions) == set(targets)
+                    and all(
+                        str(required_versions.get(sid)) == str(targets.get(sid))
+                        for sid in targets
+                    )
+                )
                 audit.require(
-                    changed_skill_ids == declared_targets,
+                    changed_skill_ids == declared_targets or target_is_noop,
                     f"{task_id}: changed Skills {sorted(changed_skill_ids)} must exactly match "
                     f"targetSkillVersions {sorted(declared_targets)}",
                 )

@@ -2390,9 +2390,9 @@ class BacklogTests(unittest.TestCase):
             state.get("activeTask") in (None, ""),
             projection["repositoryIdle"],
         )
-        self.assertEqual(None, projection["nextPromotable"])
+        self.assertEqual("TASK-0057", projection["nextPromotable"])
         self.assertEqual("TASK-0057", projection["executionOrderFrontier"])
-        self.assertEqual(['DEPENDENCY:TASK-0056:IN_PROGRESS', 'REPOSITORY_NOT_IDLE'], projection["frontierBlockers"])
+        self.assertEqual([], projection["frontierBlockers"])
         self.assertEqual(
             {
                 "TASK-0039": "TASK-0045",
