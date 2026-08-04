@@ -17,8 +17,8 @@ requiredSkillVersions:
   task-intake: "1.2.6"
   harness-change: "1.1.6"
 targetSkillVersions: {}
-baseCommit: e5250cebf6a84836d05a0b1bad6c1d4e6729e68b
-contextFingerprint: 66227761becc5bb4961aa2fc831f414c315864d3fc0c33144093f787d867f797
+baseCommit: 2f1dd08504d9ace6e6d895bf0e5686cf7e4dbc60
+contextFingerprint: 811e676e6f83aaf9bb94652c60c0b7e075ddef235f79b3f533e15f62cf599344
 contextLock: docs/tasks/context/TASK-0057.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
 deliveryMode: single-card
@@ -73,6 +73,18 @@ complexityAssessment:
   thresholdsTriggered: []
   splitRequired: false
   ownerIndivisibleAuthorization: false
+preReadyMaintenancePlan:
+  recordId: OWNER-MAINT-20260805-TASK-0057-PRE-READY-01
+  recordPath: docs/evidence/TASK-0057/pre-ready-maintenance-authorization.json
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE
+  directSingleParentFromDraftRequired: true
+  pathSetFrozenAtDraft: true
+  additionsOrRemovalsForbidden: true
+  oneTimeOnly: true
+  reusable: false
+  consumedRecordMustBecomeInert: true
+  exactPaths:
+    - scripts/harness/doctor.py
 validationPlan:
   frozenBefore: READY
   policySource: .harness/ci-execution-policy.yaml
@@ -133,6 +145,7 @@ writeAllowlist:
   - docs/tasks/context/TASK-0057.context-lock.yaml
   - docs/evidence/TASK-0057/evidence-pack.json
   - docs/evidence/TASK-0057/pre-closure-request.json
+  - docs/evidence/TASK-0057/pre-ready-maintenance-authorization.json
   - docs/evidence/TASK-0057/review-r1.md
   - docs/handoffs/TASK-0057.json
   - .harness/project-state.yaml

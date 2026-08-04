@@ -1,7 +1,7 @@
 schemaVersion: 1
 taskId: TASK-0057
-baseCommit: e5250cebf6a84836d05a0b1bad6c1d4e6729e68b
-contextFingerprint: 66227761becc5bb4961aa2fc831f414c315864d3fc0c33144093f787d867f797
+baseCommit: 2f1dd08504d9ace6e6d895bf0e5686cf7e4dbc60
+contextFingerprint: 811e676e6f83aaf9bb94652c60c0b7e075ddef235f79b3f533e15f62cf599344
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
 pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
 inputs:
@@ -58,7 +58,7 @@ inputs:
 - path: scripts/harness/check_paid_features.py
   sha256: 234b79cdc26f6dcb6c9830e28c4ecf3398d08d01f0a9eb7ada7546e591210a20
 - path: scripts/harness/doctor.py
-  sha256: b89a96c951b0d073dd6ba2dc5e56fcf3e8a28a069b86dbfadd92ee031e68419e
+  sha256: 308d7ac44ddc5c76e184f16ef0de0224581f58fbc2bd6c63618dd650d51a2a85
 - path: scripts/harness/durable_command.ps1
   sha256: fca79cb77c2391e25bbac3144eae70ff9258eba15975a1a0eef3ca756d531180
 - path: scripts/harness/harness_common.py
