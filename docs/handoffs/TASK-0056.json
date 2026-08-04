@@ -1,0 +1,26 @@
+{
+  "taskId": "TASK-0056",
+  "state": "ACCEPTED",
+  "title": "Idle planning checkpoint 四消费者接线与 CI 闭环",
+  "baseCommit": "2244ec2f63333ee76fea011a13b7960c29da8d92",
+  "candidateCommit": "7822afac32d39426bbb19c29de1eaa5ab1f11e3e",
+  "candidateTree": "d4f8873937b7e5ff5f720b4650bdaa8017f33a7d",
+  "completedItems": [
+    "Wire derive_idle_planning_checkpoint into validate_idle_terminal_history",
+    "Wire derive_idle_planning_checkpoint into validate_draft_checkpoint",
+    "Wire derive_idle_planning_checkpoint into validate_task_base_handoff_anchors",
+    "Update test expectations for IN_PROGRESS state (plannedCount, nextPromotable, frontierBlockers)",
+    "Doctor PASS: 168310 checks on Windows 11 Pro",
+    "Test suite PASS: 222 tests, 1 skipped on Windows 11 Pro",
+    "Independent review R1: PASS (no P0/P1 issues)"
+  ],
+  "remainingItems": [
+    "WSL Ubuntu-24.04 exact-tree validation (code verified compatible; initial failure was unstaged evidence file, not code issue)",
+    "TASK-0057 promotion after repository idle"
+  ],
+  "knownRisks": [
+    "Potential duplicate audit errors if multiple consumers check the same invalid planning tail (P3, non-blocking)",
+    "WSL test suite is slow (~700s) due to /mnt/g/ filesystem; no code compatibility issues found"
+  ],
+  "nextAction": "TASK-0057 的依赖 TASK-0056 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0057 为 READY"
+}
