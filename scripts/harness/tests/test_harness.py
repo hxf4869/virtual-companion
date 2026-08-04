@@ -2385,14 +2385,14 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(28, projection["plannedCount"])
+        self.assertEqual(27, projection["plannedCount"])
         self.assertEqual(
             state.get("activeTask") in (None, ""),
             projection["repositoryIdle"],
         )
-        self.assertEqual("TASK-0056", projection["nextPromotable"])
-        self.assertEqual("TASK-0056", projection["executionOrderFrontier"])
-        self.assertEqual([], projection["frontierBlockers"])
+        self.assertEqual(None, projection["nextPromotable"])
+        self.assertEqual("TASK-0057", projection["executionOrderFrontier"])
+        self.assertEqual(['DEPENDENCY:TASK-0056:IN_PROGRESS', 'REPOSITORY_NOT_IDLE'], projection["frontierBlockers"])
         self.assertEqual(
             {
                 "TASK-0039": "TASK-0045",
@@ -2454,7 +2454,7 @@ class BacklogTests(unittest.TestCase):
             lifecycle,
         )
         self.assertTrue(terminal_projection["repositoryIdle"])
-        self.assertEqual(29, terminal_projection["plannedCount"])
+        self.assertEqual(28, terminal_projection["plannedCount"])
         self.assertEqual("TASK-0055", terminal_projection["nextPromotable"])
         self.assertIn(
             "WAITING_FOR_ORDER:TASK-0055",
