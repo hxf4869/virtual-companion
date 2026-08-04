@@ -159,13 +159,16 @@ PROJECT_STATE_PATH = ".harness/project-state.yaml"
 TASK_DELIVERY_POLICY_PATH = ".harness/task-delivery-policy.yaml"
 CI_EXECUTION_POLICY_PATH = ".harness/ci-execution-policy.yaml"
 TASK_DELIVERY_POLICY_CANONICAL_HASH = (
-    "58c354fa2c6d20b82d696793c806c2f320011e9b0ef88d58b8535f745a5ebf9d"
+    "96255aceee8171f5ce9a5282df2f6a1b5c09ca9edf5dae0e5bc17e353969c92b"
 )
 TASK_DELIVERY_SKILL_CANONICAL_HASH = (
-    "00f397c6cdbf4631d4e69ed1845740c4f51c856236b1e67f7028a759fa7477d6"
+    "f9070bf05bce9b57f6c9ede3d173db85918b62c98dcd901eea326812747dbbb0"
+)
+TASK_0075_CI_POLICY_PROJECTION_HASH = (
+    "fc6622dfad6fba0aa15d3af403faedc28ee69b0ff93f89fd1886953d2b1ce8eb"
 )
 CI_EXECUTION_POLICY_CANONICAL_HASH = (
-    "fc6622dfad6fba0aa15d3af403faedc28ee69b0ff93f89fd1886953d2b1ce8eb"
+    "1db6a5e22f7801fdab4846c428950d118ed77a842498a6ff2b20e22bd2de4485"
 )
 TASK_0073_CI_POLICY_PROJECTION_HASH = (
     "3a253a215a88d4b9bd987d7dd2cbf0b2400f93fbd7086b071eb511f81f9cf8a1"
@@ -287,6 +290,21 @@ TASK_0075_PRE_READY_MAINTENANCE_PATHS = {
     "skills/harness-change/SKILL.md",
     "skills/task-delivery-flow/SKILL.md",
     "skills/task-intake/SKILL.md",
+}
+TASK_0076_MAINTENANCE_RECORD_ID = ("OWNER-MAINT-20260804-TASK-0076-PRE-READY-01")
+TASK_0076_TASK_ID = "TASK-0076"
+TASK_0076_BASE_COMMIT = "b0c5d351d65e847d4512db580411d84e0e549287"
+TASK_0076_BASE_TREE = "aacfc492f08a75e405584d21f3afc8270e42cee0"
+TASK_0076_DRAFT_COMMIT = "4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31"
+TASK_0076_DRAFT_TREE = "28c08ca3455c40292625cc4018a239d606055b90"
+TASK_0076_CARD_PATH = ("docs/tasks/TASK-0076-harness-skill-version-binding-recovery.md")
+TASK_0076_CONTEXT_PATH = "docs/tasks/context/TASK-0076.context-lock.yaml"
+TASK_0076_MAINTENANCE_AUTHORIZATION_PATH = ("docs/evidence/TASK-0076/pre-ready-maintenance-authorization.json")
+TASK_0076_PRE_READY_MAINTENANCE_PATHS = {
+    ".harness/ci-execution-policy.yaml", ".harness/skills.yaml", ".harness/task-delivery-policy.yaml",
+    "docs/evidence/TASK-0076/pre-ready-maintenance-authorization.json",
+    "scripts/harness/doctor.py", "scripts/harness/tests/test_harness.py",
+    "skills/harness-change/SKILL.md", "skills/task-delivery-flow/SKILL.md", "skills/task-intake/SKILL.md",
 }
 TASK_0073_MAINTENANCE_COMMIT = "b1c37678ab773eca150bdbb273ddafa5d14b781f"
 TASK_0073_MAINTENANCE_TREE = "6d0c9f5852313219af370ba411dd192afafd0f73"
@@ -2893,6 +2911,9 @@ def validate_ready_project_state_checkpoint(
             "single-parent maintenance boundary",
         )
         validate_task0075_pre_ready_maintenance_boundary(audit, parent_commit)
+    elif task_id == TASK_0076_TASK_ID:
+        audit.require(parent_commit != authorization_commit and task0076_pre_ready_maintenance_boundary_candidate(parent_commit), "TASK-0076 pre-READY maintenance: READY parent must be the exact single-parent maintenance boundary")
+        validate_task0076_pre_ready_maintenance_boundary(audit, parent_commit)
     else:
         validate_history_path_allowlist(
             audit,
@@ -3735,6 +3756,7 @@ def ci_execution_policy_projection(policy: dict[str, Any]) -> dict[str, Any]:
         "task0073PreReadyMaintenance",
         "task0074PreReadyMaintenance",
         "task0075PreReadyMaintenance",
+        "task0076PreReadyMaintenance",
     ):
         try:
             doctor_identity = projection[record_name]["boundary"]["files"]["doctor"]
@@ -5128,7 +5150,154 @@ def validate_task0074_delivery_timing_evidence(
         )
 
 
+
+def validate_task0076_pre_ready_maintenance_record(
+    audit: Audit,
+    policy: dict[str, Any],
+) -> dict[str, Any] | None:
+    record = policy.get("task0076PreReadyMaintenance")
+    label = "TASK-0076 pre-READY maintenance"
+    audit.require(isinstance(record, dict), f"{label}: machine record is missing or not an object")
+    if not isinstance(record, dict):
+        return None
+    audit.require(
+        set(record) == {"schemaVersion", "recordId", "decisionId", "kind", "targetTask", "sourceThreadId", "authorization", "base", "draft", "boundary", "activation", "consumption", "validationChannel", "forbiddenInterfaces"},
+        f"{label}: record fields do not match the exact schema",
+    )
+    audit.require(
+        record.get("schemaVersion") == 1
+        and record.get("recordId") == TASK_0076_MAINTENANCE_RECORD_ID
+        and record.get("decisionId") == "TASK-0076-SKILL-VERSION-BINDING-RECOVERY-20260804"
+        and record.get("kind") == "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE"
+        and record.get("targetTask") == TASK_0076_TASK_ID
+        and record.get("sourceThreadId") == "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+        f"{label}: record identity drifted",
+    )
+    audit.require(
+        record.get("base") == {"commit": TASK_0076_BASE_COMMIT, "tree": TASK_0076_BASE_TREE, "lastTerminalTask": TASK_0075_TASK_ID, "lastTerminalState": "REJECTED"},
+        f"{label}: Base binding drifted",
+    )
+    authorization = record.get("authorization")
+    audit.require(
+        isinstance(authorization, dict) and set(authorization) == {"path", "sha256"}
+        and authorization.get("path") == TASK_0076_MAINTENANCE_AUTHORIZATION_PATH
+        and bool(re.fullmatch(r"[0-9a-f]{64}", str(authorization.get("sha256", "")))),
+        f"{label}: Owner authorization binding drifted",
+    )
+    draft = record.get("draft")
+    audit.require(
+        isinstance(draft, dict) and set(draft) == {"commit", "tree", "parent", "changedFiles"}
+        and draft.get("commit") == TASK_0076_DRAFT_COMMIT
+        and draft.get("tree") == TASK_0076_DRAFT_TREE
+        and draft.get("parent") == TASK_0076_BASE_COMMIT,
+        f"{label}: DRAFT binding drifted",
+    )
+    boundary = record.get("boundary")
+    audit.require(
+        isinstance(boundary, dict) and set(boundary) == {"directParentCommit", "directParentTree", "singleParentRequired", "identityBinding", "changedPaths", "requiredMode", "requiredType", "policyContentBinding", "files"}
+        and boundary.get("directParentCommit") == TASK_0076_DRAFT_COMMIT
+        and boundary.get("directParentTree") == TASK_0076_DRAFT_TREE
+        and boundary.get("singleParentRequired") is True
+        and boundary.get("identityBinding") == "COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT"
+        and boundary.get("requiredMode") == "100644"
+        and boundary.get("requiredType") == "blob"
+        and boundary.get("policyContentBinding") == "CANONICAL_JSON_REDACT_TASK0076_BOUNDARY_DOCTOR_IDENTITY",
+        f"{label}: boundary contract drifted",
+    )
+    audit.require(
+        isinstance(boundary, dict) and boundary.get("changedPaths") == sorted(TASK_0076_PRE_READY_MAINTENANCE_PATHS),
+        f"{label}: changed path contract drifted",
+    )
+    audit.require(
+        record.get("activation") == {"allowedState": "DRAFT", "readyDoctorPassRequired": True, "copiedRecordForbidden": True, "extraCommitOrPathForbidden": True},
+        f"{label}: activation contract drifted",
+    )
+    audit.require(
+        record.get("consumption") == {"consumedByTask": TASK_0076_TASK_ID, "consumedWhen": "READY_AUTHORIZATION_COMMITTED", "inertAfterConsumption": True, "reusableByOtherTask": False},
+        f"{label}: consumption contract drifted",
+    )
+    audit.require(
+        record.get("validationChannel") == {"channel": "LOCAL_EXACT_TREE_FALLBACK", "profile": "HARNESS_PORTABILITY_LOCAL", "windows": "COMBINED_CANONICAL_AND_EXACT_TREE_PASS_REQUIRED", "wslUbuntu": "INDEPENDENT_PASS_REQUIRED", "macos": "DEFERRED_NOT_CLAIMED", "githubActions": "UNKNOWN_NOT_RUN", "githubReasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED", "dispatchCount": 0, "passClaimed": False},
+        f"{label}: validation channel binding drifted",
+    )
+    audit.require(
+        record.get("forbiddenInterfaces") == {"cliFlag": False, "environmentVariable": False, "gitNote": False, "gitReplace": False, "gitGraft": False, "historyRewrite": False, "configurableAllowlist": False, "wildcardWritePath": False, "generalizedOverride": False, "branchOrWorktree": False, "githubActionsDispatch": False},
+        f"{label}: forbidden-interface contract drifted",
+    )
+    audit.require(
+        not any(key != "task0076PreReadyMaintenance" and value == record for key, value in policy.items()),
+        f"{label}: copied machine record is forbidden",
+    )
+    return record
+
+
+def task0076_pre_ready_maintenance_boundary_candidate(commit: str) -> bool:
+    if not commit or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        return False
+    parent_result = subprocess.run(["git", "rev-list", "--parents", "-n", "1", commit], capture_output=True, text=True)
+    if parent_result.returncode != 0:
+        return False
+    parts = parent_result.stdout.split()
+    return len(parts) == 2 and parts[0] == commit and parts[1] == TASK_0076_DRAFT_COMMIT
+
+
+def validate_task0076_pre_ready_maintenance_boundary(
+    audit: Audit,
+    parent_commit: str,
+) -> None:
+    label = "TASK-0076 pre-READY maintenance"
+    audit.require(bool(parent_commit) and bool(re.fullmatch(r"[0-9a-f]{40}", parent_commit)), f"{label}: boundary must be a full Git commit")
+    if not (parent_commit and re.fullmatch(r"[0-9a-f]{40}", parent_commit)):
+        return
+    boundary_commit = parent_commit
+    audit.require(task0076_pre_ready_maintenance_boundary_candidate(boundary_commit), f"{label}: boundary must be the direct single-parent child of the frozen DRAFT")
+    if not task0076_pre_ready_maintenance_boundary_candidate(boundary_commit):
+        return
+    base_tree = git_text("show", "-s", "--format=%T", TASK_0076_BASE_COMMIT).stdout.strip()
+    audit.require(base_tree == TASK_0076_BASE_TREE, f"{label}: Base tree drifted")
+    draft_graph = git_text("rev-list", "--parents", "-n", "1", TASK_0076_DRAFT_COMMIT).stdout.split()
+    draft_tree = git_text("show", "-s", "--format=%T", TASK_0076_DRAFT_COMMIT).stdout.strip()
+    audit.require(draft_graph == [TASK_0076_DRAFT_COMMIT, TASK_0076_BASE_COMMIT] and draft_tree == TASK_0076_DRAFT_TREE, f"{label}: DRAFT binding drifted")
+    ancestry = git_text("rev-list", "--reverse", "--ancestry-path", f"{TASK_0076_BASE_COMMIT}..{boundary_commit}").stdout.splitlines()
+    audit.require(ancestry == [TASK_0076_DRAFT_COMMIT, boundary_commit], f"{label}: pre-READY ancestry contains an intervening commit")
+    draft_diff = subprocess.run(["git", "diff", "--name-only", "--no-renames", "-z", TASK_0076_BASE_COMMIT, TASK_0076_DRAFT_COMMIT], capture_output=True)
+    actual_draft_paths = {p.decode("utf-8") for p in draft_diff.stdout.split(b"\0") if p}
+    audit.require(actual_draft_paths == {TASK_0076_CARD_PATH, TASK_0076_CONTEXT_PATH}, f"{label}: DRAFT path set drifted")
+    boundary_diff = subprocess.run(["git", "diff", "--name-only", "--no-renames", "-z", TASK_0076_DRAFT_COMMIT, boundary_commit], capture_output=True)
+    actual_paths = {p.decode("utf-8") for p in boundary_diff.stdout.split(b"\0") if p}
+    audit.require(actual_paths == TASK_0076_PRE_READY_MAINTENANCE_PATHS, f"{label}: boundary paths must be exact")
+    audit.require(not (actual_paths - TASK_0076_PRE_READY_MAINTENANCE_PATHS), f"{label}: boundary contains extra path")
+    audit.require(not (TASK_0076_PRE_READY_MAINTENANCE_PATHS - actual_paths), f"{label}: boundary is missing a required path")
+    for path in sorted(TASK_0076_PRE_READY_MAINTENANCE_PATHS):
+        entry = git_tree_entry(boundary_commit, path)
+        audit.require(entry is not None, f"{label}: path {path} not found")
+        if entry is not None:
+            mode, obj_type, _ = entry
+            audit.require(mode == "100644" and obj_type == "blob", f"{label}: path {path} must be 100644 blob")
+    auth_bytes = git_object(boundary_commit, TASK_0076_MAINTENANCE_AUTHORIZATION_PATH)
+    if auth_bytes:
+        try:
+            auth_data = json.loads(auth_bytes)
+            audit.require(
+                auth_data.get("recordId") == TASK_0076_MAINTENANCE_RECORD_ID
+                and auth_data.get("targetTask") == TASK_0076_TASK_ID
+                and auth_data.get("baseCommit") == TASK_0076_BASE_COMMIT
+                and auth_data.get("baseTree") == TASK_0076_BASE_TREE
+                and auth_data.get("draftCommit") == TASK_0076_DRAFT_COMMIT
+                and auth_data.get("draftTree") == TASK_0076_DRAFT_TREE
+                and auth_data.get("oneTimeOnly") is True
+                and auth_data.get("reusable") is False
+                and auth_data.get("generalOverrideAuthorized") is False
+                and auth_data.get("historyRewriteAuthorized") is False
+                and auth_data.get("remoteDispatchAuthorized") is False,
+                f"{label}: authorization file identity drifted",
+            )
+        except (json.JSONDecodeError, AttributeError):
+            audit.error(f"{label}: authorization file is not valid JSON")
+
+
 def validate_task0075_delivery_timing_evidence(
+
     audit: Audit,
     task: dict[str, Any],
     evidence: dict[str, Any],
@@ -5987,6 +6156,8 @@ def validate_tasks(
                     allowed_checkpoint_paths |= TASK_0074_PRE_READY_MAINTENANCE_PATHS
                 if task_id == TASK_0075_TASK_ID:
                     allowed_checkpoint_paths |= TASK_0075_PRE_READY_MAINTENANCE_PATHS
+                if task_id == TASK_0076_TASK_ID:
+                    allowed_checkpoint_paths |= TASK_0076_PRE_READY_MAINTENANCE_PATHS
                 audit.require(path in checkpoint_paths, f"{path}: authorization commit must include the task card")
                 audit.require(
                     checkpoint_paths <= allowed_checkpoint_paths,
@@ -11106,6 +11277,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "task0073PreReadyMaintenance",
             "task0074PreReadyMaintenance",
             "task0075PreReadyMaintenance",
+        "task0076PreReadyMaintenance",
             "rules",
         },
         "ci-execution-policy: root fields do not match the frozen machine contract",
@@ -11748,6 +11920,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
     if isinstance(record, dict):
         validate_task0072_historical_doctor_binding(audit, policy)
     validate_task0073_pre_ready_maintenance_record(audit, policy)
+    validate_task0076_pre_ready_maintenance_record(audit, policy)
     task0074_record = validate_task0074_pre_ready_maintenance_record(audit, policy)
     if isinstance(task0074_record, dict):
         validate_task0073_historical_unknown_quarantine(audit, task0074_record)
@@ -12319,7 +12492,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
                     "passClaimed": False,
                 },
             },
-            "taskBindings": [TASK_0074_TASK_ID, TASK_0075_TASK_ID],
+            "taskBindings": [TASK_0074_TASK_ID, TASK_0075_TASK_ID, TASK_0076_TASK_ID],
         },
         "task-delivery-policy: two-stage auditable timing contract drifted",
     )
@@ -12597,12 +12770,12 @@ def validate_task_delivery_policy(audit: Audit) -> None:
         == [
             {
                 "id": "task-delivery-flow",
-                "version": "1.3.4",
+                "version": "1.3.5",
                 "path": "skills/task-delivery-flow/SKILL.md",
             }
         ],
         "task-delivery-policy: task-delivery-flow must be registered exactly once "
-        "at version 1.3.4",
+        "at version 1.3.5",
     )
     invariants = load_yaml(ROOT / ".harness/invariants.yaml").get("invariants")
     delivery_invariants = (
@@ -14730,7 +14903,7 @@ def validate_task0075_pre_ready_maintenance_boundary(
             )
         audit.require(
             canonical_json_sha256(ci_execution_policy_projection(policy))
-            == CI_EXECUTION_POLICY_CANONICAL_HASH,
+            == TASK_0075_CI_POLICY_PROJECTION_HASH,
             f"{label}: CI policy canonical binding drifted",
         )
 

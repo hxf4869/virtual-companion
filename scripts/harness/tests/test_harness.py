@@ -8524,6 +8524,19 @@ class Task0075HandoffProjectionTests(unittest.TestCase):
             )
             self.assertTrue(copied.errors)
 
+class Task0076PreReadyMaintenanceTests(unittest.TestCase):
+    def test_exact_machine_record_is_accepted(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0076_pre_ready_maintenance_record(audit, policy)
+        self.assertFalse(audit.errors)
+        self.assertIsNotNone(record)
+    def test_skill_versions(self):
+        r = load_yaml(ROOT / ".harness/skills.yaml")
+        for s in r["skills"]:
+            if s["id"]=="harness-change": self.assertEqual(s["version"],"1.1.5")
+            elif s["id"]=="task-intake": self.assertEqual(s["version"],"1.2.5")
+            elif s["id"]=="task-delivery-flow": self.assertEqual(s["version"],"1.3.5")
 
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")

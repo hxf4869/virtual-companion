@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260804-TASK-0076-PRE-READY-01",
+  "decisionId": "TASK-0076-SKILL-VERSION-BINDING-RECOVERY-20260804",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0076",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-04",
+  "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+  "baseCommit": "b0c5d351d65e847d4512db580411d84e0e549287",
+  "baseTree": "aacfc492f08a75e405584d21f3afc8270e42cee0",
+  "draftCommit": "4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31",
+  "draftTree": "28c08ca3455c40292625cc4018a239d606055b90",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false,
+  "remoteDispatchAuthorized": false
+}
