@@ -2966,11 +2966,16 @@ def validate_ready_project_state_checkpoint(
             f"{task_id}: pre-READY history",
         )
     else:
+        maintenance_plan_pre = task.get("preReadyMaintenancePlan")
+        maintenance_exact_pre: set[str] = set()
+        if isinstance(maintenance_plan_pre, dict):
+            for p in maintenance_plan_pre.get("exactPaths", []):
+                maintenance_exact_pre.add(str(p))
         validate_history_path_allowlist(
             audit,
             base_commit,
             parent_commit,
-            draft_paths,
+            draft_paths | maintenance_exact_pre,
             f"{task_id}: pre-READY history",
         )
     parent_state = yaml_at_commit(parent_commit, PROJECT_STATE_PATH)
@@ -6301,6 +6306,10 @@ def validate_tasks(
                     allowed_checkpoint_paths |= TASK_0076_PRE_READY_MAINTENANCE_PATHS
                 if task_id == "TASK-0077":
                     allowed_checkpoint_paths |= TASK_0077_PRE_READY_MAINTENANCE_PATHS
+                maintenance_plan_auth = task.get("preReadyMaintenancePlan")
+                if isinstance(maintenance_plan_auth, dict):
+                    for p in maintenance_plan_auth.get("exactPaths", []):
+                        allowed_checkpoint_paths.add(str(p))
                 audit.require(path in checkpoint_paths, f"{path}: authorization commit must include the task card")
                 audit.require(
                     checkpoint_paths <= allowed_checkpoint_paths,
