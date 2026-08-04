@@ -7169,19 +7169,33 @@ def _latest_task_by_terminal_history(
     terminal_states: set[str],
 ) -> str:
     """Find the task whose terminal commit is the most recent in git history."""
+    head_commit = git_text("rev-parse", "HEAD").stdout.strip()
     best_id = ""
     best_commit = ""
-    head_commit = git_text("rev-parse", "HEAD").stdout.strip()
     for task_id in task_ids:
         task = tasks.get(task_id, {})
-        try:
-            commit = canonical_terminal_commit(task, terminal_states)
-        except HarnessError:
-            commit = None
-        if not commit and task.get("state") in terminal_states:
-            commit = head_commit
+        if task.get("state") not in terminal_states:
+            continue
+        task_path = str(task.get("_path", ""))
+        if not task_path:
+            continue
+        log_result = git_text(
+            "log", "-1", "--format=%H", head_commit, "--", task_path, check=False
+        )
+        if log_result.returncode != 0:
+            continue
+        commit = log_result.stdout.strip()
         if not commit:
             continue
+        try:
+            committed = task_metadata_from_text(
+                git_object(commit, task_path).decode("utf-8"),
+                f"latest terminal {task_id}",
+            )
+            if committed.get("state") not in terminal_states:
+                commit = head_commit
+        except (HarnessError, UnicodeError, yaml.YAMLError):
+            commit = head_commit
         if not best_commit:
             best_id = task_id
             best_commit = commit
