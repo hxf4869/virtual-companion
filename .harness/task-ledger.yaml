@@ -204,3 +204,9 @@ tasks:
     taskCard: docs/tasks/TASK-0076-harness-skill-version-binding-recovery.md
     evidence: docs/evidence/TASK-0076/evidence-pack.json
     handoff: docs/handoffs/TASK-0076.json
+  TASK-0077:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0077-permanent-harness-recovery-and-quarantine.md
+    evidence: docs/evidence/TASK-0077/evidence-pack.json
+    handoff: docs/handoffs/TASK-0077.json

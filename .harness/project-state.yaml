@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0077
-activeTaskCard: docs/tasks/TASK-0077-permanent-harness-recovery-and-quarantine.md
-lastAcceptedTask: TASK-0069
-lastAcceptedHandoff: docs/handoffs/TASK-0069.json
-lastTerminalTask: TASK-0076
-lastTerminalHandoff: docs/handoffs/TASK-0076.json
-nextAction: 执行 TASK-0077 候选门禁：Reviewer、Windows 合并门禁、WSL、pre-closure
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0077
+lastAcceptedHandoff: docs/handoffs/TASK-0077.json
+lastTerminalTask: TASK-0077
+lastTerminalHandoff: docs/handoffs/TASK-0077.json
+nextAction: TASK-0056 的依赖 TASK-0077 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0056 为 READY
 capabilityGates:
   businessImplementation:
     state: BLOCKED
