@@ -5328,7 +5328,12 @@ class BacklogTests(unittest.TestCase):
         )
 
         def git_history(*args: str, **_: object) -> subprocess.CompletedProcess[str]:
-            stdout = "" if args[0] == "merge-base" else graph
+            if args[0] == "merge-base":
+                stdout = ""
+            elif args[0] == "log":
+                stdout = "\n".join(commits)
+            else:
+                stdout = graph
             return subprocess.CompletedProcess(
                 args=["git", *args],
                 returncode=0,
@@ -8597,5 +8602,68 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn("Harness doctor: PASS", result.stdout)
 
 
+def _run_test_class_worker(class_name: str) -> dict[str, object]:
+    """Run all tests in one TestCase class (module-level for spawn workers)."""
+    cls = globals().get(class_name)
+    if cls is None:
+        return {
+            "class": class_name, "run": 0, "failures": 0, "errors": 1,
+            "output": f"ERROR: cannot find test class {class_name}\n",
+            "failure_names": [class_name],
+        }
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromTestCase(cls)
+    stream = io.StringIO()
+    runner = unittest.TextTestRunner(verbosity=2, stream=stream)
+    result = runner.run(suite)
+    names: list[str] = []
+    for test, _tb in result.failures + result.errors:
+        names.append(str(test))
+    return {
+        "class": class_name,
+        "run": result.testsRun,
+        "failures": len(result.failures),
+        "errors": len(result.errors),
+        "output": stream.getvalue(),
+        "failure_names": names,
+    }
+
+
 if __name__ == "__main__":
-    unittest.main()
+    if os.environ.get("HARNESS_TESTS_SERIAL") == "1":
+        unittest.main()
+    else:
+        import multiprocessing as _mp
+
+        _test_class_names = sorted(
+            name
+            for name, obj in globals().items()
+            if isinstance(obj, type)
+            and issubclass(obj, unittest.TestCase)
+            and obj is not unittest.TestCase
+        )
+        _n_workers = min(_mp.cpu_count(), len(_test_class_names))
+        _ctx = _mp.get_context("spawn")
+        with _ctx.Pool(_n_workers) as _pool:
+            _results = _pool.map(_run_test_class_worker, _test_class_names)
+
+        _total_run = sum(r["run"] for r in _results)
+        _total_fail = sum(r["failures"] for r in _results)
+        _total_err = sum(r["errors"] for r in _results)
+
+        for r in sorted(_results, key=lambda x: x["class"]):
+            if r["failures"] or r["errors"]:
+                print(r["output"], end="")
+
+        print(f"\n{'=' * 70}")
+        print(
+            f"Ran {_total_run} tests across {len(_results)} classes "
+            f"with {_n_workers} workers"
+        )
+        if _total_fail or _total_err:
+            for r in _results:
+                for name in r["failure_names"]:
+                    print(f"FAIL: {name}")
+            print(f"\nFAILED (failures={_total_fail}, errors={_total_err})")
+            sys.exit(1)
+        print("OK")
