@@ -151,6 +151,10 @@ description: Execute one governed repository task or coordinate a strictly seria
   independent Ubuntu-24.04 exact-tree run on the same clean candidate.
   Remote remains `UNKNOWN_NOT_RUN / OWNER_QUOTA_EVIDENCE_EXPIRED /
   dispatch=0 / passClaimed=false`.
+## TASK-0076 skill version binding recovery
+
+- Record OWNER-MAINT-20260804-TASK-0076-PRE-READY-01, 9 paths.
+- Unify harness-change 1.1.5, task-intake 1.2.5, task-delivery-flow 1.3.5.
 
 ## Run a longline
 

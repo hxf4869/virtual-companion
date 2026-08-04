@@ -3,7 +3,7 @@ name: harness-change
 description: 修改 Agent 规则、Harness 配置、治理脚本、受保护路径、Skill、任务模板、证据 Schema 或 CI 门禁时使用。
 metadata:
   id: harness-change
-  version: 1.1.3
+  version: 1.1.5
   riskClass: C4
 ---
 
@@ -53,6 +53,7 @@ metadata:
   历史制品或弱化 PASS/FAIL/TIMEOUT/UNKNOWN。完整 Owner 授权计划与
   “按计划用 goal 继续下去”必须同时绑定；第二条记录、复制、额外路径、
   通配写路径、当前 Policy 重判历史、通用 override 或任何禁止接口均未授权。
+- `OWNER-MAINT-20260804-TASK-0076-PRE-READY-01` only authorizes 9 frozen paths.
 
 ## Procedure
 

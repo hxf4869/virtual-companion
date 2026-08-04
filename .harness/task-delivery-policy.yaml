@@ -108,6 +108,7 @@ budgets:
     taskBindings:
       - TASK-0074
       - TASK-0075
+      - TASK-0076
   stopOnR2NewStructural:
     - P0
     - P1
@@ -201,6 +202,23 @@ validation:
       - catalogDrift
       - paidFeatureCheck
       - betaRosterGate
+    eachCommandExactlyOnce: true
+    wrapperAliasCacheSkipForbidden: true
+    wslStillIndependent: true
+    ordinaryCardsRemainIndependentCanonical: true
+    resultBasedProfileDowngradeForbidden: true
+  task0076HarnessPortabilityCombinedGate:
+    taskId: TASK-0076
+    eligibleProfile: HARNESS_PORTABILITY_LOCAL
+    readyFrozenProfileRequired: true
+    sameCleanCandidateCommitAndTreeRequired: true
+    windowsDurableReceiptCount: 1
+    satisfies:
+      - CANDIDATE_CANONICAL
+      - WINDOWS_EXACT_TREE
+    commandRegistryProfile: harnessPortabilityLocal
+    exactCommandIds: [harnessTests, doctor, catalogValidate, catalogDrift, paidFeatureCheck, betaRosterGate]
+    canonicalCommandIds: [doctor, catalogValidate, catalogDrift, paidFeatureCheck, betaRosterGate]
     eachCommandExactlyOnce: true
     wrapperAliasCacheSkipForbidden: true
     wslStillIndependent: true

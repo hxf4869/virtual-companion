@@ -3,7 +3,7 @@ name: task-intake
 description: 将需要修改仓库的原始需求收口为可审计的 DRAFT/READY 任务；在没有活动任务、需要明确范围、风险、Context Lock、验收或审批时使用。
 metadata:
   id: task-intake
-  version: 1.2.4
+  version: 1.2.5
   riskClass: C1
 ---
 
@@ -83,6 +83,7 @@ metadata:
    `nextAction` 必须逐字一致。Owner 的完整授权计划与“按计划用 goal
    继续下去”必须共同绑定；任一身份漂移、第二条记录、额外路径、历史修改、
    通配写路径或通用 override 均失败关闭。
+   TASK-0076: recordId=OWNER-MAINT-20260804-TASK-0076-PRE-READY-01, 9 paths.
 10. READY 后确需 Owner 修订时，不重写授权提交或放宽原合同：先在 `.harness/task-backlog.yaml` 建立强类型 amendment 合同，并在任务卡 `scopeAmendments` 保存完整 Hash 绑定投影。合同逐项记录 `supersedes` 原条款稳定 ID/原文 Hash 与 `replacement` 原文/Hash；未列条款仍受原授权投影约束。新增写路径只能是规范 POSIX 精确路径，不能是 glob；amendment 必须由 `repository-owner` 批准、append-only，并在只改 Backlog 与任务卡的单父原子治理提交中先落入 Git 历史，未提交 worktree/index 不得自授权。
 11. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。

@@ -124,6 +124,20 @@ profiles:
       wslStillIndependent: true
       ordinaryCardsRemainIndependentCanonical: true
       resultBasedProfileDowngradeForbidden: true
+    task0076CombinedGate:
+      taskId: TASK-0076
+      sameCleanCandidateCommitAndTreeRequired: true
+      windowsDurableReceiptCount: 1
+      satisfies:
+        - CANDIDATE_CANONICAL
+        - WINDOWS_EXACT_TREE
+      exactCommandIds: [harnessTests, doctor, catalogValidate, catalogDrift, paidFeatureCheck, betaRosterGate]
+      canonicalCommandIds: [doctor, catalogValidate, catalogDrift, paidFeatureCheck, betaRosterGate]
+      eachCommandExactlyOnce: true
+      wrapperAliasCacheSkipForbidden: true
+      wslStillIndependent: true
+      ordinaryCardsRemainIndependentCanonical: true
+      resultBasedProfileDowngradeForbidden: true
     platforms:
       windows:
         required: true
@@ -1214,6 +1228,93 @@ task0075PreReadyMaintenance:
     extraCommitOrPathForbidden: true
   consumption:
     consumedByTask: TASK-0075
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: HARNESS_PORTABILITY_LOCAL
+    windows: COMBINED_CANONICAL_AND_EXACT_TREE_PASS_REQUIRED
+    wslUbuntu: INDEPENDENT_PASS_REQUIRED
+    macos: DEFERRED_NOT_CLAIMED
+    githubActions: UNKNOWN_NOT_RUN
+    githubReasonType: OWNER_QUOTA_EVIDENCE_EXPIRED
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    wildcardWritePath: false
+    generalizedOverride: false
+    branchOrWorktree: false
+    githubActionsDispatch: false
+task0076PreReadyMaintenance:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260804-TASK-0076-PRE-READY-01
+  decisionId: TASK-0076-SKILL-VERSION-BINDING-RECOVERY-20260804
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE
+  targetTask: TASK-0076
+  sourceThreadId: 019fb2c1-8104-73b1-81dc-ee8bcfce6f63
+  authorization:
+    path: docs/evidence/TASK-0076/pre-ready-maintenance-authorization.json
+    sha256: 9736ba7d867c400a08e7d1ba2460e09d9d4593ef4c473710f1b7ba5c7daa28b3
+  base:
+    commit: b0c5d351d65e847d4512db580411d84e0e549287
+    tree: aacfc492f08a75e405584d21f3afc8270e42cee0
+    lastTerminalTask: TASK-0075
+    lastTerminalState: REJECTED
+  draft:
+    commit: 4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31
+    tree: 28c08ca3455c40292625cc4018a239d606055b90
+    parent: b0c5d351d65e847d4512db580411d84e0e549287
+    changedFiles:
+      docs/tasks/TASK-0076-harness-skill-version-binding-recovery.md:
+        mode: "100644"
+        type: blob
+      docs/tasks/context/TASK-0076.context-lock.yaml:
+        mode: "100644"
+        type: blob
+  boundary:
+    directParentCommit: 4069a2ed2bcf07ca3b9c023f2985cfe091ba3d31
+    directParentTree: 28c08ca3455c40292625cc4018a239d606055b90
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - .harness/skills.yaml
+      - .harness/task-delivery-policy.yaml
+      - docs/evidence/TASK-0076/pre-ready-maintenance-authorization.json
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      - skills/harness-change/SKILL.md
+      - skills/task-delivery-flow/SKILL.md
+      - skills/task-intake/SKILL.md
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0076_BOUNDARY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+      exactFiles:
+        .harness/skills.yaml: {}
+        .harness/task-delivery-policy.yaml: {}
+        docs/evidence/TASK-0076/pre-ready-maintenance-authorization.json: {}
+        scripts/harness/tests/test_harness.py: {}
+        skills/harness-change/SKILL.md: {}
+        skills/task-delivery-flow/SKILL.md: {}
+        skills/task-intake/SKILL.md: {}
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0076
     consumedWhen: READY_AUTHORIZATION_COMMITTED
     inertAfterConsumption: true
     reusableByOtherTask: false
