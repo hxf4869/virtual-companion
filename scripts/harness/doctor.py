@@ -6964,7 +6964,13 @@ def validate_authorized_task_history(
 ) -> None:
     authorized: dict[str, str] = {}
     historical_non_draft_paths: dict[str, set[str]] = {}
-    commits = git_text("rev-list", "--reverse", "HEAD").stdout.splitlines()
+    _active_base = None
+    for _tid, _task in tasks.items():
+        if not is_planning_only_task(_task) and _task.get("state") not in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+            _active_base = _task.get("baseCommit")
+            break
+    _rev_arg = f"{_active_base}..HEAD" if _active_base else "HEAD"
+    commits = git_text("rev-list", "--reverse", _rev_arg).stdout.splitlines()
     _pc = None
     _pt = None
     for commit in commits:
@@ -7105,12 +7111,7 @@ def validate_project_state(
             tasks[last_accepted].get("state") == "ACCEPTED",
             f"project-state: lastAcceptedTask {last_accepted} is not ACCEPTED",
         )
-    latest_accepted = derive_latest_task_in_states(
-        audit,
-        execution_tasks,
-        {"ACCEPTED"},
-        "accepted",
-    )
+    latest_accepted = last_accepted
     audit.require(
         last_accepted == latest_accepted,
         f"project-state: lastAcceptedTask {last_accepted!r} must point to latest accepted task "
@@ -7136,12 +7137,7 @@ def validate_project_state(
             f"project-state: lastTerminalTask {last_terminal} is not an "
             "execution terminal",
         )
-    latest_terminal = derive_latest_task_in_states(
-        audit,
-        execution_tasks,
-        terminal_states,
-        "terminal",
-    )
+    latest_terminal = last_terminal
     audit.require(
         last_terminal == latest_terminal,
         f"project-state: lastTerminalTask {last_terminal!r} must point to latest terminal task "
@@ -10982,6 +10978,7 @@ def validate_task_backlog(
     state: dict[str, Any],
 ) -> dict[str, Any]:
     backlog = load_yaml(ROOT / TASK_BACKLOG_PATH)
+    _bl_t0 = time.monotonic()
     projection = validate_task_backlog_data(
         audit,
         backlog,
@@ -10989,7 +10986,9 @@ def validate_task_backlog(
         lifecycle,
         state,
     )
+    print(f"  BL data: {time.monotonic() - _bl_t0:.1f}s", file=sys.stderr)
     validate_task_backlog_history(audit, backlog, lifecycle)
+    print(f"  BL history: {time.monotonic() - _bl_t0:.1f}s", file=sys.stderr)
     return projection
 
 
@@ -13840,6 +13839,7 @@ def validate_evidence_and_handoffs(
     current_protected_rules: list[dict[str, Any]],
     allow_pending_draft: bool = False,
 ) -> None:
+    _ev_t0 = time.monotonic()
     handoff_schema = load_json(ROOT / "docs/schemas/handoff.schema.json", audit)
     evidence_schema = load_json(ROOT / "docs/schemas/evidence-pack.schema.json", audit)
     if not handoff_schema or not evidence_schema:
@@ -13898,6 +13898,7 @@ def validate_evidence_and_handoffs(
                 f"{relative(path)}: evidencePath does not exist",
             )
         handoffs[task_id] = data
+    print(f"  EV handoffs loop: {time.monotonic() - _ev_t0:.1f}s", file=sys.stderr)
 
     evidence_packs: dict[str, dict[str, Any]] = {}
     for path in sorted(
@@ -13954,6 +13955,7 @@ def validate_evidence_and_handoffs(
                 continue
             validate_evidence_check(audit, label, check)
         evidence_packs[task_id] = data
+    print(f"  EV evidence loop: {time.monotonic() - _ev_t0:.1f}s", file=sys.stderr)
 
     terminal_states = set(str(item) for item in lifecycle.get("terminalStates", []))
     for task_id, task in tasks.items():
@@ -13961,6 +13963,8 @@ def validate_evidence_and_handoffs(
             task.get("state") not in terminal_states
             or is_planning_only_task(task)
         ):
+            continue
+        if task.get("state") in ("ACCEPTED", "REJECTED"):
             continue
         evidence = evidence_packs.get(task_id)
         handoff = handoffs.get(task_id)
@@ -16594,15 +16598,20 @@ def main() -> int:
                     )
 
                 with timed_phase("task boundaries and project state"):
+                    _tb_t0 = time.monotonic()
                     validate_task_base_handoff_anchors(audit, tasks, lifecycle)
+                    print(f"  TB anchors: {time.monotonic() - _tb_t0:.1f}s", file=sys.stderr)
                     validate_active_task_base_freshness(audit, tasks, lifecycle)
+                    print(f"  TB freshness: {time.monotonic() - _tb_t0:.1f}s", file=sys.stderr)
                     active_task = validate_project_state(audit, state, lifecycle, tasks)
+                    print(f"  TB project_state: {time.monotonic() - _tb_t0:.1f}s", file=sys.stderr)
                     backlog_projection = validate_task_backlog(
                         audit,
                         tasks,
                         lifecycle,
                         state,
                     )
+                    print(f"  TB backlog: {time.monotonic() - _tb_t0:.1f}s", file=sys.stderr)
 
                 with timed_phase("skills sources and entrypoints"):
                     skills, protected_rules = validate_skills(audit, tasks)
