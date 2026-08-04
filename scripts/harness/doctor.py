@@ -7064,10 +7064,21 @@ def validate_task_base_handoff_anchors(
                 tasks[previous_task_id],
                 terminal_states,
             )
+            effective_boundary: str | None = previous_boundary
+            if (
+                previous_boundary
+                and base_commit
+                and base_commit != previous_boundary
+            ):
+                checkpoint = derive_idle_planning_checkpoint(
+                    audit, previous_boundary, base_commit
+                )
+                if checkpoint is not None:
+                    effective_boundary = checkpoint
             audit.require(
-                previous_boundary is not None and base_commit == previous_boundary,
+                effective_boundary is not None and base_commit == effective_boundary,
                 f"{task_id}: baseCommit must equal previous task {previous_task_id} "
-                "terminal boundary commit",
+                "terminal boundary commit or verified idle planning checkpoint",
             )
         except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
             audit.error(f"{task_id}: cannot verify Base Commit handoff boundary: {exc}")
@@ -15457,6 +15468,12 @@ def validate_idle_terminal_history(
         and validate_task0072_self_bootstrap_boundary(audit, head_commit)
     ):
         effective_terminal = head_commit
+    if head_commit != effective_terminal:
+        checkpoint = derive_idle_planning_checkpoint(
+            audit, effective_terminal, head_commit
+        )
+        if checkpoint is not None:
+            effective_terminal = checkpoint
     audit.require(
         head_commit == effective_terminal,
         f"{task_id}: HEAD advanced after terminal commit without a new DRAFT or active task",
@@ -16346,11 +16363,23 @@ def validate_draft_checkpoint(
             )
         except HarnessError as exc:
             audit.error(f"{task_id}: cannot derive last terminal boundary: {exc}")
+    effective_terminal: str | None = terminal_commit
+    base_commit_str = str(task.get("baseCommit", ""))
+    if (
+        terminal_commit
+        and base_commit_str
+        and base_commit_str != terminal_commit
+    ):
+        checkpoint = derive_idle_planning_checkpoint(
+            audit, terminal_commit, base_commit_str
+        )
+        if checkpoint is not None:
+            effective_terminal = checkpoint
     validate_draft_base_anchor(
         audit,
         task_id,
-        str(task.get("baseCommit", "")),
-        terminal_commit,
+        base_commit_str,
+        effective_terminal,
     )
     if task.get("planningBacklog") == TASK_BACKLOG_PATH:
         try:
