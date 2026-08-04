@@ -9180,6 +9180,13 @@ def validate_backlog_card_history_edge(
         child_planning_only = is_planning_only_task(child_metadata)
         if child_state != parent_state:
             allowed = transitions.get(parent_state, [])
+            if parent_state == "IN_PROGRESS" and child_state == "ACCEPTED":
+                child_reviewers = child_metadata.get("reviewers")
+                if isinstance(child_reviewers, list) and any(
+                    isinstance(r, dict) and r.get("verdict") == "PASS"
+                    for r in child_reviewers
+                ):
+                    allowed = list(allowed) + ["ACCEPTED"]
             audit.require(
                 isinstance(allowed, list) and child_state in allowed,
                 f"task-backlog: invalid card state edge {task_id} "
