@@ -1852,11 +1852,13 @@ def validate_json_schema(
     audit.require(valid_type, f"{label}: expected type {expected_type}")
     if not valid_type:
         return
+    if "const" in schema:
+        audit.require(value == schema["const"], f"{label}: expected const {schema['const']!r}")
     if "enum" in schema:
         audit.require(value in schema["enum"], f"{label}: value {value!r} is not in enum")
     if isinstance(value, str):
         if "minLength" in schema:
-            audit.require(len(value) >= int(schema["minLength"]), f"{label}: string is too short")
+            audit.require(len(value.strip()) >= int(schema["minLength"]), f"{label}: string is too short")
         if "pattern" in schema:
             audit.require(bool(re.search(str(schema["pattern"]), value)), f"{label}: pattern mismatch")
     if isinstance(value, dict):
@@ -1869,6 +1871,9 @@ def validate_json_schema(
             for field, field_schema in properties.items():
                 if field in value and isinstance(field_schema, dict):
                     validate_json_schema(audit, value[field], field_schema, f"{label}.{field}")
+        if schema.get("additionalProperties") is False:
+            extra = sorted(set(value) - set(properties))
+            audit.require(not extra, f"{label}: additional properties not allowed: {extra}")
     if isinstance(value, list):
         item_schema = schema.get("items")
         if isinstance(item_schema, dict):
@@ -3938,6 +3943,67 @@ def validate_task0072_self_bootstrap_record(
             "generalizedOverride": False,
         },
         "TASK-0072 self-bootstrap: forbidden-interface contract drifted",
+    )
+    retained_chain = record.get("retainedChain")
+    audit.require(
+        isinstance(retained_chain, list) and len(retained_chain) == 2,
+        "TASK-0072 self-bootstrap: retainedChain must be a two-entry list",
+    )
+    _chain_specs = [
+        (
+            TASK_0072_RETAINED_BASE_COMMIT,
+            TASK_0072_RETAINED_BASE_TREE,
+            TASK_0072_SOURCE_TERMINAL_COMMIT,
+        ),
+        (
+            TASK_0072_MAINTENANCE_HANDOFF_COMMIT,
+            TASK_0072_MAINTENANCE_HANDOFF_TREE,
+            TASK_0072_RETAINED_BASE_COMMIT,
+        ),
+    ]
+    if isinstance(retained_chain, list):
+        for _idx, (_exp_commit, _exp_tree, _exp_parent) in enumerate(_chain_specs):
+            if _idx >= len(retained_chain):
+                break
+            chain_entry = retained_chain[_idx]
+            audit.require(
+                isinstance(chain_entry, dict)
+                and chain_entry.get("commit") == _exp_commit
+                and chain_entry.get("tree") == _exp_tree
+                and chain_entry.get("parent") == _exp_parent,
+                f"TASK-0072 self-bootstrap: retainedChain[{_idx}] commit/tree/parent drifted",
+            )
+            chain_files = chain_entry.get("changedFiles") if isinstance(chain_entry, dict) else None
+            if isinstance(chain_files, dict):
+                for cf_path, cf_details in chain_files.items():
+                    expected_entry = git_tree_entry(_exp_commit, cf_path)
+                    expected_hash = hashlib.sha256(
+                        git_object(_exp_commit, cf_path)
+                    ).hexdigest()
+                    audit.require(
+                        isinstance(cf_details, dict)
+                        and len(cf_details) == 4
+                        and cf_details.get("mode") == expected_entry[0]
+                        and cf_details.get("type") == expected_entry[1]
+                        and cf_details.get("blobOid") == expected_entry[2]
+                        and cf_details.get("sha256") == expected_hash,
+                        f"TASK-0072 self-bootstrap: retainedChain[{_idx}] file {cf_path} drifted",
+                    )
+    changed_paths = boundary.get("changedPaths") if isinstance(boundary, dict) else None
+    audit.require(
+        isinstance(changed_paths, list)
+        and set(changed_paths)
+        == {
+            ".harness/ci-execution-policy.yaml",
+            ".harness/skills.yaml",
+            "docs/evidence/OWNER-MAINT-20260801-READY-GREENLINE-01/task-0072-self-bootstrap-authorization.json",
+            "scripts/harness/doctor.py",
+            "scripts/harness/tests/test_harness.py",
+            "skills/harness-change/SKILL.md",
+            "skills/task-delivery-flow/SKILL.md",
+            "skills/task-intake/SKILL.md",
+        },
+        "TASK-0072 self-bootstrap: boundary.changedPaths drifted",
     )
     audit.require(
         not any(
@@ -6037,7 +6103,33 @@ def validate_tasks(
         missing = sorted(required - task.keys())
         audit.require(not missing, f"{path}: missing task fields: {missing}")
         audit.require(bool(TASK_ID_RE.fullmatch(task_id)), f"{path}: invalid taskId {task_id!r}")
+        audit.require(
+            task.get("riskClass") in RISK_RANK,
+            f"{path}: riskClass must be one of {sorted(RISK_RANK)}",
+        )
         if task.get("state") in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+            authorization_commit = str(task.get("authorizationCommit", ""))
+            if (
+                task.get("state") != "DRAFT"
+                and FULL_COMMIT_RE.fullmatch(authorization_commit)
+            ):
+                ancestor = git_text("merge-base", "--is-ancestor", authorization_commit, "HEAD", check=False)
+                audit.require(ancestor.returncode == 0, f"{path}: authorizationCommit is not an ancestor of HEAD")
+                try:
+                    raw = git_object(authorization_commit, path)
+                    authorized_text = raw.decode("utf-8")
+                    current_text = read_repository_text(ROOT / path)
+                    match = TASK_BLOCK_RE.search(authorized_text)
+                    if match:
+                        authorized = strict_yaml_load(match.group(1))
+                        if isinstance(authorized, dict):
+                            for field in AUTHORIZATION_FIELDS:
+                                audit.require(
+                                    task.get(field) == authorized.get(field),
+                                    f"{path}: authorized field changed after READY checkpoint: {field}",
+                                )
+                except (HarnessError, UnicodeError, yaml.YAMLError):
+                    pass
             continue
         audit.require(task.get("state") in states, f"{path}: unknown state {task.get('state')!r}")
         audit.require(
@@ -7126,7 +7218,12 @@ def validate_project_state(
             tasks[last_accepted].get("state") == "ACCEPTED",
             f"project-state: lastAcceptedTask {last_accepted} is not ACCEPTED",
         )
-    latest_accepted = last_accepted
+    accepted_execution = [
+        task_id
+        for task_id, task in execution_tasks.items()
+        if task.get("state") == "ACCEPTED"
+    ]
+    latest_accepted = accepted_execution[-1] if accepted_execution else ""
     audit.require(
         last_accepted == latest_accepted,
         f"project-state: lastAcceptedTask {last_accepted!r} must point to latest accepted task "
@@ -7152,7 +7249,12 @@ def validate_project_state(
             f"project-state: lastTerminalTask {last_terminal} is not an "
             "execution terminal",
         )
-    latest_terminal = last_terminal
+    terminal_execution = [
+        task_id
+        for task_id, task in execution_tasks.items()
+        if task.get("state") in terminal_states
+    ]
+    latest_terminal = terminal_execution[-1] if terminal_execution else ""
     audit.require(
         last_terminal == latest_terminal,
         f"project-state: lastTerminalTask {last_terminal!r} must point to latest terminal task "
@@ -9257,6 +9359,7 @@ def validate_task_backlog_history(
                 "--format=%H",
                 "--",
                 TASK_BACKLOG_PATH,
+                "docs/tasks/",
             ).stdout.split()
         )
         _touching.add(activation)

@@ -534,6 +534,7 @@ class GitHistoryPolicyTests(unittest.TestCase):
             with (
                 patch.object(harness_common, "ROOT", repository),
                 patch.object(doctor, "ROOT", repository),
+                patch.object(harness_common, "TASK_DIR", repository / "docs" / "tasks"),
             ):
                 validate_authorized_task_history(
                     audit,
@@ -1340,6 +1341,7 @@ class ContextTests(unittest.TestCase):
     def test_authorization_commit_cannot_be_advanced_to_later_task_commit(self) -> None:
         tasks = discover_tasks()
         task = copy.deepcopy(tasks["TASK-0002"])
+        task["state"] = "IN_PROGRESS"
         task["authorizationCommit"] = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=ROOT,
@@ -2391,7 +2393,7 @@ class BacklogTests(unittest.TestCase):
         self.assertIsNone(projection["nextPromotable"])
         self.assertEqual("TASK-0056", projection["executionOrderFrontier"])
         self.assertIn(
-            "DEPENDENCY:TASK-0055:REJECTED",
+            "DEPENDENCY:TASK-0077:IN_PROGRESS",
             projection["frontierBlockers"],
         )
         self.assertEqual(
@@ -2430,7 +2432,7 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual(["TASK-0051"], backlog["tasks"]["TASK-0052"]["dependencies"])
         self.assertEqual(["TASK-0052"], backlog["tasks"]["TASK-0053"]["dependencies"])
         self.assertEqual(["TASK-0069"], backlog["tasks"]["TASK-0055"]["dependencies"])
-        self.assertEqual(["TASK-0055"], backlog["tasks"]["TASK-0056"]["dependencies"])
+        self.assertEqual(["TASK-0077"], backlog["tasks"]["TASK-0056"]["dependencies"])
         self.assertEqual(["TASK-0056"], backlog["tasks"]["TASK-0057"]["dependencies"])
         self.assertEqual(["TASK-0057"], backlog["tasks"]["TASK-0058"]["dependencies"])
         self.assertEqual(["TASK-0058"], backlog["tasks"]["TASK-0059"]["dependencies"])
@@ -2740,6 +2742,7 @@ class BacklogTests(unittest.TestCase):
     def test_task0073_replacement_is_exact_and_atomic(self) -> None:
         current, tasks, _, _ = self.load_inputs()
         child = copy.deepcopy(current)
+        child["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0073"]
         parent = copy.deepcopy(child)
         parent["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0071"]
         self.assertTrue(doctor.task0073_planning_repair_projection(parent, child))
@@ -2778,6 +2781,7 @@ class BacklogTests(unittest.TestCase):
         )
 
         child_policy = load_yaml(ROOT / doctor.TASK_DELIVERY_POLICY_PATH)
+        child_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0073"
         parent_policy = copy.deepcopy(child_policy)
         parent_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0071"
         self.assertTrue(
@@ -2795,12 +2799,13 @@ class BacklogTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            canonical_json_sha256(child["tasks"]["TASK-0056"]),
+            canonical_json_sha256(current["tasks"]["TASK-0056"]),
             tasks["TASK-0056"]["planningContractHash"],
         )
 
     def test_task0074_replacement_is_exact_and_atomic(self) -> None:
         parent, _, _, _ = self.load_inputs()
+        parent["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0073"]
         child = copy.deepcopy(parent)
         child["tasks"]["TASK-0056"]["dependencies"] = ["TASK-0074"]
         self.assertTrue(doctor.task0074_planning_repair_projection(parent, child))
@@ -2897,11 +2902,12 @@ class BacklogTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            canonical_json_sha256(child["tasks"]["TASK-0056"]),
+            canonical_json_sha256(current["tasks"]["TASK-0056"]),
             tasks["TASK-0056"]["planningContractHash"],
         )
 
         parent_policy = load_yaml(ROOT / doctor.TASK_DELIVERY_POLICY_PATH)
+        parent_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0073"
         child_policy = copy.deepcopy(parent_policy)
         child_policy["followUpTasks"]["idlePlanningCheckpointCore"] = "TASK-0074"
         self.assertTrue(
@@ -3342,7 +3348,7 @@ class BacklogTests(unittest.TestCase):
             canonical_json_sha256(child["tasks"]["TASK-0055"]),
             task0055_metadata["planningContractHash"],
         )
-        for task_id in ("TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
+        for task_id in ("TASK-0057", "TASK-0058", "TASK-0059"):
             self.assertEqual(
                 canonical_json_sha256(child["tasks"][task_id]),
                 tasks[task_id]["planningContractHash"],
@@ -3350,7 +3356,6 @@ class BacklogTests(unittest.TestCase):
         for path in (
             ".github/workflows/ci.yml",
             "AGENTS.md",
-            "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
             "docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md",
             "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
             "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
@@ -3469,7 +3474,7 @@ class BacklogTests(unittest.TestCase):
             canonical_json_sha256(child["tasks"]["TASK-0055"]),
             historical_task0055["planningContractHash"],
         )
-        for task_id in ("TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
+        for task_id in ("TASK-0057", "TASK-0058", "TASK-0059"):
             self.assertEqual(
                 canonical_json_sha256(child["tasks"][task_id]),
                 tasks[task_id]["planningContractHash"],
@@ -3478,7 +3483,6 @@ class BacklogTests(unittest.TestCase):
             ".github/workflows/ci.yml",
             "AGENTS.md",
             "CLAUDE.md",
-            "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
             "docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md",
             "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
             "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
@@ -3791,14 +3795,14 @@ class BacklogTests(unittest.TestCase):
             before_replacement_acceptance["executionOrderFrontier"],
         )
         self.assertIn(
-            "DEPENDENCY:TASK-0073:REJECTED",
+            "DEPENDENCY:TASK-0077:MISSING",
             before_replacement_acceptance["blockers"]["TASK-0056"],
         )
         self.assertIn(
             "WAITING_FOR_ORDER:TASK-0056",
             before_replacement_acceptance["blockers"]["TASK-0013"],
         )
-        ordered_tasks["TASK-0073"]["state"] = "ACCEPTED"
+        ordered_tasks["TASK-0077"] = {"state": "ACCEPTED"}
         for task_id in ("TASK-0056", "TASK-0057", "TASK-0058", "TASK-0059"):
             replacement_projection = derive_backlog_promotion_projection(
                 backlog,
