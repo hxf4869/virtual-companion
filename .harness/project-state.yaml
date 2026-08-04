@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0057
+activeTaskCard: docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md
 lastAcceptedTask: TASK-0056
 lastAcceptedHandoff: docs/handoffs/TASK-0056.json
 lastTerminalTask: TASK-0056
 lastTerminalHandoff: docs/handoffs/TASK-0056.json
-nextAction: TASK-0057 的依赖 TASK-0056 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0057 为 READY
+nextAction: TASK-0057 READY；通过 READY Doctor 后进入 IN_PROGRESS 实现阶段计时与性能优化
 capabilityGates:
   businessImplementation:
     state: BLOCKED
