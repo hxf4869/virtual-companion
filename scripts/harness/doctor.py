@@ -3760,7 +3760,7 @@ def validate_task_authorization_history(
                 continue
             try:
                 historical = task_metadata_at_commit(commit, task_path)
-                if historical.get("state") == "DRAFT":
+                if historical.get("state") in ("DRAFT", "PLANNED"):
                     continue
                 dominated = git_text(
                     "merge-base",
