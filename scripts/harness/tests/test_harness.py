@@ -8043,7 +8043,7 @@ class Task0074DeliveryContractTests(unittest.TestCase):
             "LATER_OF_REQUIRED_EVENTS",
             timing["candidateExecution"]["anchorSelection"],
         )
-        self.assertEqual(["TASK-0074", "TASK-0075"], timing["taskBindings"])
+        self.assertEqual(["TASK-0074", "TASK-0075", "TASK-0076", "TASK-0077"], timing["taskBindings"])
         self.assertEqual(15, policy["review"]["maximumMinutes"])
         audit = Audit()
         doctor.validate_task0074_card_recovery_contract(audit)
@@ -8539,9 +8539,9 @@ class Task0076PreReadyMaintenanceTests(unittest.TestCase):
     def test_skill_versions(self):
         r = load_yaml(ROOT / ".harness/skills.yaml")
         for s in r["skills"]:
-            if s["id"]=="harness-change": self.assertEqual(s["version"],"1.1.5")
-            elif s["id"]=="task-intake": self.assertEqual(s["version"],"1.2.5")
-            elif s["id"]=="task-delivery-flow": self.assertEqual(s["version"],"1.3.5")
+            if s["id"]=="harness-change": self.assertEqual(s["version"],"1.1.6")
+            elif s["id"]=="task-intake": self.assertEqual(s["version"],"1.2.6")
+            elif s["id"]=="task-delivery-flow": self.assertEqual(s["version"],"1.3.6")
 
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
