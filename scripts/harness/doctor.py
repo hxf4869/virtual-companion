@@ -9208,13 +9208,24 @@ def validate_task_backlog_history(
     task0073_repair_edges: set[tuple[str, str]] = set()
     snapshots: dict[str, dict[str, Any]] = {}
 
+    _last_entry: Any = None
+    _last_value: dict[str, Any] | None = None
+
     def snapshot(commit: str) -> dict[str, Any] | None:
+        nonlocal _last_entry, _last_value
         if commit in snapshots:
             return snapshots[commit]
-        if git_tree_entry(commit, TASK_BACKLOG_PATH) is None:
+        entry = git_tree_entry(commit, TASK_BACKLOG_PATH)
+        if entry is None:
+            snapshots[commit] = None
             return None
+        if entry == _last_entry:
+            snapshots[commit] = _last_value
+            return _last_value
         value = yaml_at_commit(commit, TASK_BACKLOG_PATH)
         snapshots[commit] = value
+        _last_entry = entry
+        _last_value = value
         return value
 
     for graph_line in history:
