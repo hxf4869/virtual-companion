@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0076
+activeTaskCard: docs/tasks/TASK-0076-harness-skill-version-binding-recovery.md
 lastAcceptedTask: TASK-0069
 lastAcceptedHandoff: docs/handoffs/TASK-0069.json
 lastTerminalTask: TASK-0075
 lastTerminalHandoff: docs/handoffs/TASK-0075.json
-nextAction: 等待 Owner 创建新的恢复卡修复 harness-change Skill frontmatter/registry 版本绑定；TASK-0056 继续依赖 REJECTED TASK-0073，TASK-0075 失败链不得推送或复用
+nextAction: 执行 TASK-0076 候选门禁
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: 2026-08-03
+updatedAt: '2026-08-04'
