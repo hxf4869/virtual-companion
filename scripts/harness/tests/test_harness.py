@@ -8667,3 +8667,115 @@ if __name__ == "__main__":
             print(f"\nFAILED (failures={_total_fail}, errors={_total_err})")
             sys.exit(1)
         print("OK")
+
+
+class Task0077QuarantineTests(unittest.TestCase):
+    """Tests for TASK-0076 historical quarantine and TASK-0077 recovery."""
+
+    def test_task0076_quarantine_constants_exist(self):
+        """Quarantine constants must be defined with exact values."""
+        self.assertTrue(hasattr(doctor, "TASK_0076_QUARANTINE_EDGE_PARENT"))
+        self.assertEqual(
+            doctor.TASK_0076_QUARANTINE_EDGE_PARENT,
+            "ad0e4b93185ea364f9039a014a950dc58791f1ce",
+        )
+        self.assertEqual(
+            doctor.TASK_0076_QUARANTINE_EDGE_CHILD,
+            "f1e4a39ee1f292a6ffd54f8f547c08cef725db4b",
+        )
+
+    def test_task0056_planning_change_edges_include_all_three(self):
+        """All three historical edges that changed TASK-0056 must be quarantined."""
+        edges = doctor.TASK_0056_PLANNING_CHANGE_EDGES
+        self.assertIn(
+            (
+                "ad0e4b93185ea364f9039a014a950dc58791f1ce",
+                "f1e4a39ee1f292a6ffd54f8f547c08cef725db4b",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "16f359daba0f0cba3e4cb5a3508f35c0c25dc8a2",
+                "b2a266dc42388f4a728f499522b01604eb5e89c6",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "d6fbee26442a997b96648eea472f98ecba1a5412",
+                "11e6fb12f77486787ef71627e84f34ee069e72bd",
+            ),
+            edges,
+        )
+
+    def test_task0056_quarantined_snapshot_commits_include_child_commits(self):
+        """Child commits of quarantined edges must be in snapshot quarantine set."""
+        commits = doctor.TASK_0056_QUARANTINED_SNAPSHOT_COMMITS
+        self.assertIn("f1e4a39ee1f292a6ffd54f8f547c08cef725db4b", commits)
+        self.assertIn("b2a266dc42388f4a728f499522b01604eb5e89c6", commits)
+        self.assertIn("11e6fb12f77486787ef71627e84f34ee069e72bd", commits)
+
+    def test_task0071_repair_authorized_for_exact_edge(self):
+        """TASK-0071 repair authorization must pass for the exact historical edge."""
+        result = doctor.task0071_planning_repair_authorized(
+            "16f359daba0f0cba3e4cb5a3508f35c0c25dc8a2",
+            "b2a266dc42388f4a728f499522b01604eb5e89c6",
+        )
+        self.assertTrue(result)
+
+    def test_task0073_repair_authorized_for_exact_edge(self):
+        """TASK-0073 repair authorization must pass for the exact historical edge."""
+        result = doctor.task0073_planning_repair_authorized(
+            "d6fbee26442a997b96648eea472f98ecba1a5412",
+            "11e6fb12f77486787ef71627e84f34ee069e72bd",
+        )
+        self.assertTrue(result)
+
+    def test_task0071_repair_rejects_wrong_parent(self):
+        """TASK-0071 repair must reject a non-matching parent commit."""
+        result = doctor.task0071_planning_repair_authorized(
+            "0000000000000000000000000000000000000001",
+            "b2a266dc42388f4a728f499522b01604eb5e89c6",
+        )
+        self.assertFalse(result)
+
+    def test_task0056_recovery_target_hash(self):
+        """TASK-0056 planning contract hash must target TASK-0077 dependency."""
+        import hashlib
+        import json
+        import yaml
+        with open(
+            ".harness/task-backlog.yaml", encoding="utf-8"
+        ) as f:
+            backlog = yaml.safe_load(f)
+        entry = backlog["tasks"]["TASK-0056"]
+        self.assertEqual(entry["dependencies"], ["TASK-0077"])
+        payload = json.dumps(
+            entry, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        actual_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        self.assertEqual(
+            actual_hash,
+            "05041efa7a07ccf92a085726ff5c1d053e9e3e5631490be10826309fec8643f3",
+        )
+
+    def test_delivery_policy_followup_points_to_task0077(self):
+        """Delivery policy follow-up must point idlePlanningCheckpointCore to TASK-0077."""
+        with open(
+            ".harness/task-delivery-policy.yaml", encoding="utf-8"
+        ) as f:
+            policy = yaml.safe_load(f)
+        self.assertEqual(
+            policy["followUpTasks"]["idlePlanningCheckpointCore"],
+            "TASK-0077",
+        )
+
+    def test_skill_versions_strictly_increased(self):
+        """All three skill registry versions must be strictly increased."""
+        with open(".harness/skills.yaml", encoding="utf-8") as f:
+            skills = yaml.safe_load(f)
+        versions = {s["id"]: s["version"] for s in skills["skills"]}
+        self.assertEqual(versions["harness-change"], "1.1.6")
+        self.assertEqual(versions["task-intake"], "1.2.6")
+        self.assertEqual(versions["task-delivery-flow"], "1.3.6")

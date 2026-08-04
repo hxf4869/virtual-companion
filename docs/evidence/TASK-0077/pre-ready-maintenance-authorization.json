@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260805-TASK-0077-PRE-READY-01",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0077",
+  "authorizedBy": "repository-owner",
+  "authorizedAt": "2026-08-05",
+  "sourceThreadId": "019fb2c1-8104-73b1-81dc-ee8bcfce6f63",
+  "directSingleParentFromDraftRequired": true,
+  "pathSetFrozenAtDraft": true,
+  "additionsOrRemovalsForbidden": true,
+  "oneTimeOnly": true,
+  "reusable": false,
+  "consumedRecordMustBecomeInert": true,
+  "exactPaths": [
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+    ".harness/task-backlog.yaml",
+    ".harness/task-delivery-policy.yaml",
+    ".harness/skills.yaml",
+    "docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md",
+    "docs/evidence/TASK-0077/pre-ready-maintenance-authorization.json",
+    "skills/harness-change/SKILL.md",
+    "skills/task-intake/SKILL.md",
+    "skills/task-delivery-flow/SKILL.md"
+  ],
+  "consumption": {
+    "consumedByTask": "TASK-0077",
+    "consumedWhen": "READY_AUTHORIZATION_COMMITTED",
+    "inertAfterConsumption": true,
+    "reusableByOtherTask": false
+  },
+  "ownerAuthorization": "授权 TASK-0077 精确一次性永久恢复：隔离 TASK-0076 固定 REJECTED 历史；修复 TASK-0056 Card/Backlog/Policy 投影；修复 TASK-0071/0073 历史 parent-edge 精确隔离；合法承接已推送的 Doctor/Precheck 性能优化；同步三个 Skill 版本至 1.1.6/1.2.6/1.3.6"
+}
