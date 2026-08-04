@@ -27,7 +27,7 @@ planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 
 ## 依赖与决策闸门
 
-- 依赖：TASK-0073；
+- 依赖：TASK-0076；
 - 无新增硬决策闸门。
 
 ## 验收

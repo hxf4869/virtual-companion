@@ -388,7 +388,7 @@ candidateIdentity:
   exactShaCiCrossShaReuse: false
   exactTreeChannelCrossCommitOrTreeReuse: false
 followUpTasks:
-  idlePlanningCheckpointCore: TASK-0073
+  idlePlanningCheckpointCore: TASK-0076
   idlePlanningCheckpointConsumers: TASK-0056
   harnessPerformance: TASK-0057
   pathAwareCi: TASK-0058
