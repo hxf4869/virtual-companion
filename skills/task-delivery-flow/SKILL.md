@@ -156,6 +156,14 @@ description: Execute one governed repository task or coordinate a strictly seria
 - Record OWNER-MAINT-20260804-TASK-0076-PRE-READY-01, 9 paths.
 - Unify harness-change 1.1.5, task-intake 1.2.5, task-delivery-flow 1.3.5.
 
+## TASK-0077 permanent harness recovery and quarantine
+
+- Record OWNER-MAINT-20260805-TASK-0077-PRE-READY-01, 10 paths.
+- Quarantine TASK-0076 REJECTED history: fixed chain, fixed forbidden edge.
+- Isolate TASK-0071/0073 historical parent edges by object identity.
+- Recover TASK-0056 dependency to TASK-0077 with synchronized hash.
+- Increase harness-change 1.1.6, task-intake 1.2.6, task-delivery-flow 1.3.6.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from

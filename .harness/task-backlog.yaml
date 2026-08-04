@@ -808,7 +808,7 @@ tasks:
     title: Idle planning checkpoint 四消费者接线与 CI 闭环
     taskCard: docs/tasks/TASK-0056-idle-planning-checkpoint-consumers-ci-closure.md
     dependencies:
-      - TASK-0076
+      - TASK-0077
     decisionGates: []
     objective: 承接被 TASK-0048 REJECTED 阻断的 TASK-0050，将已验证 checkpoint 统一接入 DRAFT、Base-Handoff、idle terminal 与 terminal Diff Scope，并闭环 exact-SHA CI。
     scope:
