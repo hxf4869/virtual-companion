@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0077
 lastAcceptedHandoff: docs/handoffs/TASK-0077.json
 lastTerminalTask: TASK-0077
 lastTerminalHandoff: docs/handoffs/TASK-0077.json
-nextAction: TASK-0056 READY；通过 READY Doctor 后进入 IN_PROGRESS 实现 checkpoint 四消费者接线
+nextAction: TASK-0056 IN_PROGRESS；实现 idle planning checkpoint 四消费者接线
 capabilityGates:
   businessImplementation:
     state: BLOCKED
