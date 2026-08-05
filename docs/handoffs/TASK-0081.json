@@ -1,0 +1,24 @@
+{
+  "taskId": "TASK-0081",
+  "state": "ACCEPTED",
+  "title": "Provider Registry 与供应商中立准入模型（永久后继）",
+  "baseCommit": "134d7247d666fea17f15568a44ca557a7f312da4",
+  "candidateCommit": "415a3737899a3f3f265e2dc4eee4775e6bc5cc13",
+  "candidateTree": "0dd180f94c653be3df95ad37bbbdf2085ef4e9a6",
+  "completedItems": [
+    "Accepted pre-landed Provider Registry (6 main + 1 test) on main",
+    "Fail-closed registration/disable/capability-match coverage present",
+    "No business-layer vendor SDK dependency",
+    "Doctor PASS 212887; 232 tests OK; R1 PASS",
+    "Fixture coupling permanently resolved by TASK-0078/0080"
+  ],
+  "remainingItems": [
+    "Java 25 CI compilation of modelruntime module (local JDK unavailable)",
+    "Continue Technical Alpha DAG: next product tasks after Provider Registry"
+  ],
+  "knownRisks": [
+    "Java unit tests not executed locally (no JDK 25); CI must compile modelruntime",
+    "Backlog still lists TASK-0013 as PLANNED nextPromotable; TASK-0081 is non-backlog successor that delivers the same capability"
+  ],
+  "nextAction": "TASK-0081 已 ACCEPTED。Provider Registry 能力已落地。继续按 Backlog DAG 推进下一张可晋级产品任务。"
+}
