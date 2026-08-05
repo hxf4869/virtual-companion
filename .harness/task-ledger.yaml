@@ -307,3 +307,10 @@ tasks:
     taskCard: docs/tasks/TASK-0087-harness-fixture-backlog-ledger-coupling.md
     evidence: docs/evidence/TASK-0087/evidence-pack.json
     handoff: docs/handoffs/TASK-0087.json
+
+  TASK-0088:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0088-persistence-providerid-import-fix.md
+    evidence: docs/evidence/TASK-0088/evidence-pack.json
+    handoff: docs/handoffs/TASK-0088.json

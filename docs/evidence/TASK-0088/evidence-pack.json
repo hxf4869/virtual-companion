@@ -1,0 +1,61 @@
+{
+  "taskId": "TASK-0088",
+  "baseCommit": "a4c6a6863bb06640bd4e9fd06253ab9b37cf284c",
+  "headCommit": "d9ff3761635ac2b2d78ac6ba333bc4283516d42e",
+  "contextFingerprint": "2abc01e0355c11e1aad98aac3055bf580eba9a60f10d26cca251d46b0faea784",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c86c026",
+      "startedAt": "2026-08-05T23:15:00+08:00",
+      "endedAt": "2026-08-05T23:45:00+08:00",
+      "elapsedSeconds": 1800,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "candidateDeadlineMinutes": 45,
+      "elapsedSeconds": 900,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "d9ff3761635ac2b2d78ac6ba333bc4283516d42e"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "d9ff3761635ac2b2d78ac6ba333bc4283516d42e"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0088",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "259073 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "d9ff3761635ac2b2d78ac6ba333bc4283516d42e"
+    },
+    {
+      "command": "docker run --rm -v /workspace -v vc-maven-cache:/root/.m2 maven:3.9-eclipse-temurin-25-alpine mvn -pl service/platform/persistence -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Temurin 25: catalog + modelruntime + persistence compile; AuthorizationSnapshotCodecTest 3/3 PASS. Fixes the JDK 25 compile break from TASK-0015's wrong ProviderId import.",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "d9ff3761635ac2b2d78ac6ba333bc4283516d42e"
+    }
+  ]
+}
