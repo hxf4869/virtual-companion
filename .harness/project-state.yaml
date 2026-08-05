@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0016
+activeTaskCard: docs/tasks/TASK-0016-worker-claim-lease-fence.md
 lastAcceptedTask: TASK-0088
 lastAcceptedHandoff: docs/handoffs/TASK-0088.json
 lastTerminalTask: TASK-0088
 lastTerminalHandoff: docs/handoffs/TASK-0088.json
-nextAction: TASK-0088 已 ACCEPTED。TASK-0015 持久化编译缺陷已修复，harness 套件与 JDK 25 编译均恢复为绿。恢复 Backlog 长线，下一张可晋级卡为 TASK-0016（Worker Claim、Lease、Fence）。
+nextAction: TASK-0016 READY：Worker Claim/Lease/Fence 与过期写拒绝；IN_PROGRESS 后实现 work_item 表、claim_work_items 与迟到写零写入。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
