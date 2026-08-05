@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0084
 lastAcceptedHandoff: docs/handoffs/TASK-0084.json
 lastTerminalTask: TASK-0084
 lastTerminalHandoff: docs/handoffs/TASK-0084.json
-nextAction: TASK-0085 READY；扩展 REJECTED 能力后继映射 TASK-0014→TASK-0084
+nextAction: TASK-0085 IN_PROGRESS；扩展 REJECTED 能力后继映射 TASK-0014→TASK-0084
 capabilityGates:
   businessImplementation:
     state: BLOCKED
