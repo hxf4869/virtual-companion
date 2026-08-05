@@ -246,3 +246,9 @@ tasks:
     taskCard: docs/tasks/TASK-0078-harness-test-fixture-promotion-isolation.md
     evidence: docs/evidence/TASK-0078/evidence-pack.json
     handoff: docs/handoffs/TASK-0078.json
+  TASK-0079:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0079-provider-registry-admission-model-successor.md
+    evidence: docs/evidence/TASK-0079/evidence-pack.json
+    handoff: docs/handoffs/TASK-0079.json

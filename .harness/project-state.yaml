@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0079
-activeTaskCard: docs/tasks/TASK-0079-provider-registry-admission-model-successor.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0078
 lastAcceptedHandoff: docs/handoffs/TASK-0078.json
-lastTerminalTask: TASK-0078
-lastTerminalHandoff: docs/handoffs/TASK-0078.json
-nextAction: TASK-0079 IN_PROGRESS；验收 Provider Registry 后继
+lastTerminalTask: TASK-0079
+lastTerminalHandoff: docs/handoffs/TASK-0079.json
+nextAction: TASK-0079 已 REJECTED（TASK-0078 fixture 硬编码 lastAccepted=TASK-0059）。需 harness-change 修复后创建 Provider Registry 后继。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

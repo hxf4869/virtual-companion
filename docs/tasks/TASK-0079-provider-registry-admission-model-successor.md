@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0079
-state: IN_PROGRESS
+state: REJECTED
+resolutionReason: >-
+  TASK-0078 fixture hard-coded lastAccepted/lastTerminal to TASK-0059, which
+  breaks project-state validation once TASK-0078 itself is ACCEPTED. TASK-0079
+  is C3 model-routing-change and cannot modify test_harness.py (C4 harness-change).
+  Reject to free the active slot for a harness-change fixture fix; registry source
+  remains on main for the next successor.
 owner: repository-owner
 riskClass: C3
 requiredSkills:
