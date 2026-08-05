@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0059
+activeTaskCard: docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md
 lastAcceptedTask: TASK-0058
 lastAcceptedHandoff: docs/handoffs/TASK-0058.json
 lastTerminalTask: TASK-0058
 lastTerminalHandoff: docs/handoffs/TASK-0058.json
-nextAction: TASK-0059 的依赖 TASK-0058 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0059 为 READY
+nextAction: TASK-0059 READY；实现 Harness 内容寻址快照复用与 Evidence 门禁
 capabilityGates:
   businessImplementation:
     state: BLOCKED
