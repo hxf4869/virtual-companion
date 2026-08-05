@@ -1,0 +1,24 @@
+{
+  "taskId": "TASK-0016",
+  "state": "ACCEPTED",
+  "title": "Worker Claim、Lease、Fence 与过期写拒绝",
+  "baseCommit": "b552b0f22f81eb61a6856f57aad8c5f0cbe3602a",
+  "candidateCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c",
+  "candidateTree": "da595e06cf0308d21558c45e44a7ede8ea527784",
+  "completedItems": [
+    "V5 migration: work_item table (FORCE RLS) + SECURITY DEFINER claim_work_items/renew/complete/fail/cancel",
+    "claim_work_items atomically claims per-tenant (no cross-tenant scan), binds vc.owner_user_id + vc.job_fence, issues opaque token",
+    "Late-write guards: expired lease / wrong token / stale fence / missing context each write zero rows (SQL tests 08-11)",
+    "Coordinator column-level payload isolation + REVOKE EXECUTE FROM PUBLIC so claim_work_items cannot leak payload (test 12)",
+    "Java WorkItemClaim + WorkItemClaimService skeleton; Docker Temurin-25 compile + test green",
+    "Doctor 269014 PASS; harness suite 233 OK; R1 P0/P2/P3 fixed then R2 PASS"
+  ],
+  "remainingItems": [
+    "Resume Backlog longline: next promotable TASK-0017 (Conversation/Generation persistence + idempotent receive), which depends on TASK-0015"
+  ],
+  "knownRisks": [
+    "begin_job_context lease/fence is the in-DB skeleton; the app-layer worker loop (claim->work->complete/renew) is a later runtime task",
+    "Java CI on main should pass (persistence compiles under Temurin 25); confirm on next remote CI run"
+  ],
+  "nextAction": "TASK-0016 已 ACCEPTED。Worker claim/lease/fence 与过期写拒绝已落地，main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0017（Conversation/Generation 持久化与幂等接收）。"
+}

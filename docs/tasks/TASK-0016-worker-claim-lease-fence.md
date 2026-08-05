@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0016
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -95,7 +95,18 @@ databasePolicy:
   portBinding: EPHEMERAL_HOST_PORT_TO_CONTAINER_5432
   volume: EPHEMERAL_TMPFS_OR_TMP_VOLUME_REMOVED_ON_CLEANUP
   frozenAt: DRAFT
-reviewers: []
+reviewers:
+  - id: task0016_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: ec634f3ca00f684eef4334b0932e7fd954e0de7c
+    evidencePath: docs/evidence/TASK-0016/review-r1.md
+    reason: R1 P0 (claim_work_items payload leak via PUBLIC EXECUTE) + P2 (vc_worker direct-write) + P3 (unused PUBLIC _claim_is_live) all fixed in ec634f3; R2 PASS no new P0/P1
+    candidateTree: da595e06cf0308d21558c45e44a7ede8ea527784
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 260
+      hardLimitReached: false
 readAllowlist:
   - .gitattributes
   - AGENTS.md

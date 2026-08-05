@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0016
-activeTaskCard: docs/tasks/TASK-0016-worker-claim-lease-fence.md
-lastAcceptedTask: TASK-0088
-lastAcceptedHandoff: docs/handoffs/TASK-0088.json
-lastTerminalTask: TASK-0088
-lastTerminalHandoff: docs/handoffs/TASK-0088.json
-nextAction: TASK-0016 READY：Worker Claim/Lease/Fence 与过期写拒绝；IN_PROGRESS 后实现 work_item 表、claim_work_items 与迟到写零写入。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0016
+lastAcceptedHandoff: docs/handoffs/TASK-0016.json
+lastTerminalTask: TASK-0016
+lastTerminalHandoff: docs/handoffs/TASK-0016.json
+nextAction: TASK-0016 已 ACCEPTED。Worker claim/lease/fence 与过期写拒绝已落地，main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0017（Conversation/Generation 持久化与幂等接收）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
