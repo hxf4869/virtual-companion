@@ -21,6 +21,7 @@
 
     <modules>
         <module>service/platform/catalog</module>
+        <module>service/platform/persistence</module>
         <module>service/modules/modelruntime</module>
         <module>service/modules/conversation</module>
         <module>service/adapters/model-fake</module>
