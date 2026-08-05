@@ -636,6 +636,72 @@ class GitHistoryPolicyTests(unittest.TestCase):
             self.assertEqual(1, len(blob_calls), calls)
             self.assertIsNone(doctor._ACTIVE_GIT_SNAPSHOT)
 
+    def test_doctor_snapshot_tracks_cache_hit_miss_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "one.txt").write_text("alpha\n", encoding="utf-8")
+            (repository / "two.txt").write_text("beta\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            head = self._git(repository, "rev-parse", "HEAD")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    self.assertIsNotNone(
+                        doctor.git_tree_entry(head, "one.txt")
+                    )
+                    self.assertEqual(
+                        b"alpha\n", doctor.git_object(head, "one.txt")
+                    )
+                    self.assertEqual(
+                        b"alpha\n", doctor.git_object(head, "one.txt")
+                    )
+                    self.assertEqual(
+                        b"beta\n", doctor.git_object(head, "two.txt")
+                    )
+                    self.assertEqual(
+                        b"beta\n", doctor.git_object(head, "two.txt")
+                    )
+                self.assertEqual(4, snapshot.tree_cache_hits)
+                self.assertEqual(1, snapshot.tree_cache_misses)
+                self.assertEqual(2, snapshot.blob_cache_hits)
+                self.assertEqual(2, snapshot.blob_cache_misses)
+
+    def test_doctor_snapshot_caches_yaml_at_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "data.yaml").write_text(
+                "key: value\n", encoding="utf-8"
+            )
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            head = self._git(repository, "rev-parse", "HEAD")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                with doctor.doctor_git_snapshot() as snapshot:
+                    result_a = snapshot.cached_yaml_at_commit(head, "data.yaml")
+                    result_b = snapshot.cached_yaml_at_commit(head, "data.yaml")
+                    self.assertEqual({"key": "value"}, result_a)
+                    self.assertIs(result_a, result_b)
+
+    def test_timed_phase_collects_auditable_timings(self) -> None:
+        doctor._PHASE_TIMINGS.clear()
+        with doctor.timed_phase("test-phase-alpha"):
+            pass
+        timings = doctor._PHASE_TIMINGS
+        self.assertTrue(
+            any(
+                label == "test-phase-alpha" and elapsed >= 0.0
+                for label, elapsed in timings
+            ),
+            timings,
+        )
+        doctor._PHASE_TIMINGS.clear()
+
     def test_doctor_snapshot_fails_closed_when_index_or_worktree_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repository = self._repository(directory)
@@ -2385,14 +2451,20 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(27, projection["plannedCount"])
+        self.assertEqual(26, projection["plannedCount"])
         self.assertEqual(
             state.get("activeTask") in (None, ""),
             projection["repositoryIdle"],
         )
-        self.assertEqual("TASK-0057", projection["nextPromotable"])
-        self.assertEqual("TASK-0057", projection["executionOrderFrontier"])
-        self.assertEqual([], projection["frontierBlockers"])
+        self.assertEqual(None, projection["nextPromotable"])
+        self.assertEqual("TASK-0058", projection["executionOrderFrontier"])
+        self.assertEqual(
+            [
+                "DEPENDENCY:TASK-0057:IN_PROGRESS",
+                "REPOSITORY_NOT_IDLE",
+            ],
+            projection["frontierBlockers"],
+        )
         self.assertEqual(
             {
                 "TASK-0039": "TASK-0045",
@@ -2454,7 +2526,7 @@ class BacklogTests(unittest.TestCase):
             lifecycle,
         )
         self.assertTrue(terminal_projection["repositoryIdle"])
-        self.assertEqual(28, terminal_projection["plannedCount"])
+        self.assertEqual(27, terminal_projection["plannedCount"])
         self.assertEqual("TASK-0055", terminal_projection["nextPromotable"])
         self.assertIn(
             "WAITING_FOR_ORDER:TASK-0055",
@@ -3353,7 +3425,6 @@ class BacklogTests(unittest.TestCase):
         for path in (
             ".github/workflows/ci.yml",
             "AGENTS.md",
-            "docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md",
             "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
             "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
         ):
@@ -3480,7 +3551,6 @@ class BacklogTests(unittest.TestCase):
             ".github/workflows/ci.yml",
             "AGENTS.md",
             "CLAUDE.md",
-            "docs/tasks/TASK-0057-harness-timing-cross-filesystem-performance-engine.md",
             "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
             "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
             "docs/tasks/TASK-0066-local-fallback-recovery-permanent-replacement.md",
