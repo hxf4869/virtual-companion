@@ -2654,6 +2654,74 @@ class BacklogTests(unittest.TestCase):
             terminal_projection["blockers"]["TASK-0013"],
         )
 
+    def test_rejected_capability_successor_satisfies_dependency(self) -> None:
+        backlog, tasks, lifecycle, state = self.load_inputs()
+        # Fixture restores TASK-0013 to PLANNED; force the live REJECTED state
+        # and inject ACCEPTED successor TASK-0081 to prove exact successor
+        # satisfaction without rewriting frozen planning contracts.
+        tasks = copy.deepcopy(tasks)
+        tasks["TASK-0013"] = {
+            "taskId": "TASK-0013",
+            "state": "REJECTED",
+            "owner": "repository-owner",
+            "riskClass": "C3",
+            "_path": "docs/tasks/TASK-0013-provider-registry-admission-model.md",
+        }
+        tasks["TASK-0081"] = {
+            "taskId": "TASK-0081",
+            "state": "ACCEPTED",
+            "owner": "repository-owner",
+            "riskClass": "C3",
+            "_path": (
+                "docs/tasks/TASK-0081-provider-registry-admission-model-successor.md"
+            ),
+        }
+        # Drop any live active task so repositoryIdle is True.
+        for task_id, task in list(tasks.items()):
+            if task_id in {"TASK-0013", "TASK-0081"}:
+                continue
+            if str(task.get("state", "")) in {
+                "READY",
+                "IN_PROGRESS",
+                "BLOCKED",
+                "IN_REVIEW",
+                "DRAFT",
+            }:
+                tasks.pop(task_id)
+        projection = derive_backlog_promotion_projection(
+            backlog,
+            tasks,
+            lifecycle,
+        )
+        self.assertTrue(projection["repositoryIdle"])
+        self.assertEqual("TASK-0014", projection["nextPromotable"])
+        self.assertEqual("TASK-0014", projection["executionOrderFrontier"])
+        self.assertEqual([], projection["frontierBlockers"])
+        self.assertNotIn(
+            "DEPENDENCY:TASK-0013:REJECTED",
+            projection["blockers"].get("TASK-0014", []),
+        )
+
+        # Without the ACCEPTED successor the REJECTED dependency still blocks.
+        tasks_no_successor = copy.deepcopy(tasks)
+        tasks_no_successor.pop("TASK-0081", None)
+        blocked = derive_backlog_promotion_projection(
+            backlog,
+            tasks_no_successor,
+            lifecycle,
+        )
+        self.assertIsNone(blocked["nextPromotable"])
+        self.assertIn(
+            "DEPENDENCY:TASK-0013:REJECTED",
+            blocked["blockers"].get("TASK-0014", []),
+        )
+
+        # Unrelated REJECTED dependencies remain blocking.
+        self.assertEqual(
+            {"TASK-0013": "TASK-0081"},
+            doctor.REJECTED_CAPABILITY_SUCCESSORS,
+        )
+
     def test_backlog_activation_introduction_skips_immutable_root_comparison(
         self,
     ) -> None:

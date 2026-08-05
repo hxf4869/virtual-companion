@@ -935,6 +935,13 @@ PLANNED_CARD_FIELDS = {
 }
 PLANNING_TERMINAL_STATES = {"REJECTED", "SUPERSEDED"}
 PLANNING_TERMINAL_CARD_FIELDS = PLANNED_CARD_FIELDS | {"planningResolution"}
+# Exact capability successors for execution-terminal REJECTED tasks.
+# Used only by backlog promotion dependency checks so a permanent ACCEPTED
+# successor can satisfy dependents without rewriting frozen criticalPath or
+# planning contracts. Keys and values are exact Task IDs; no wildcards.
+REJECTED_CAPABILITY_SUCCESSORS: dict[str, str] = {
+    "TASK-0013": "TASK-0081",
+}
 BACKLOG_ROOT_FIELDS = {
     "schemaVersion",
     "backlogId",
@@ -9887,10 +9894,25 @@ def derive_backlog_promotion_projection(
                     if dependency_task is not None
                     else "MISSING"
                 )
-                if dependency_state != "ACCEPTED":
-                    task_blockers.append(
-                        f"DEPENDENCY:{dependency_id}:{dependency_state}"
-                    )
+                if dependency_state == "ACCEPTED":
+                    continue
+                # Exact one-time capability successor: when a dependency is
+                # execution-terminal REJECTED and a permanently reserved
+                # successor is ACCEPTED, treat the capability as delivered.
+                successor_id = REJECTED_CAPABILITY_SUCCESSORS.get(dependency_id)
+                if (
+                    dependency_state == "REJECTED"
+                    and successor_id is not None
+                ):
+                    successor_task = tasks.get(successor_id)
+                    if (
+                        successor_task is not None
+                        and str(successor_task.get("state", "")) == "ACCEPTED"
+                    ):
+                        continue
+                task_blockers.append(
+                    f"DEPENDENCY:{dependency_id}:{dependency_state}"
+                )
         if conditions.get("requiresApprovedDecisionGates") is True:
             task_gates = entry.get("decisionGates")
             task_gates = task_gates if isinstance(task_gates, list) else []
