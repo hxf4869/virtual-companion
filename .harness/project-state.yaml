@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0018
-activeTaskCard: docs/tasks/TASK-0018-finalization-usage-quota-outbox.md
-lastAcceptedTask: TASK-0017
-lastAcceptedHandoff: docs/handoffs/TASK-0017.json
-lastTerminalTask: TASK-0017
-lastTerminalHandoff: docs/handoffs/TASK-0017.json
-nextAction: TASK-0018 READY：Finalization/Usage/Quota/Outbox 原子事务；IN_PROGRESS 后实现 V7 迁移（finalize_generation SECURITY DEFINER 原子事务 + generation_usage/quota_ledger_entry/realtime_event/outbox_event 复合所有权表）与 FinalizeGenerationService，并以 SQL 故障注入测试 16-18 证明原子提交或完整回滚、Provider EOS 不直接完成 Generation。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0018
+lastAcceptedHandoff: docs/handoffs/TASK-0018.json
+lastTerminalTask: TASK-0018
+lastTerminalHandoff: docs/handoffs/TASK-0018.json
+nextAction: TASK-0018 已 ACCEPTED。Finalization/Usage/Quota/Outbox 原子事务已落地（V7 finalize_generation SECURITY DEFINER 原子事务 + generation_usage/quota_ledger_entry/realtime_event/outbox_event 复合所有权表；故障注入证明原子提交或完整回滚；Provider EOS 不直接完成），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0019（ContextPlan/人格/LISTEN-DISCUSS，依赖 TASK-0013→TASK-0081、TASK-0017）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

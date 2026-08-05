@@ -1,0 +1,28 @@
+{
+  "taskId": "TASK-0018",
+  "state": "ACCEPTED",
+  "title": "Finalization、Usage/Quota 结算与 Outbox 原子事务",
+  "baseCommit": "2dfee84a9f7ceece071cd102e11e67ef5ed1e42b",
+  "headCommit": "ec95357f14497914a9a529b8c0489287ab395bc",
+  "candidateCommit": "ec95357f14497914a9a529b8c0489287ab395bc",
+  "candidateTree": "eb91bb41f6d4594bc54bc22c521daaaba77ec799",
+  "evidencePath": "docs/evidence/TASK-0018/evidence-pack.json",
+  "completed": [
+    "V7 migration: generation.assistant_message_id (FK -> message) + four composite-owned FORCE-RLS tables (generation_usage, quota_ledger_entry, realtime_event, outbox_event) + finalize_row_id_seq",
+    "finalize_generation SECURITY DEFINER atomic transaction: FINAL_REVIEW precondition (INV-GEN-003 EOS guard), marks candidate final (INV-GEN-002 partial unique), writes assistant message + Generation COMPLETED + usage + SETTLE quota + PENDING chat.completed + eligible outbox, fault hook after all writes",
+    "REVOKE EXECUTE FROM PUBLIC + GRANT vc_api only (exact signature); owner bound before writes; FORCE RLS on new tables; chat.completed/outbox stay PENDING (post-commit publish)",
+    "FinalizeGenerationService + FinalizeResult skeleton (no catalog dependency); pure unit test 5/5",
+    "SQL tests 16-18: atomic commit of all artifacts, fault-injection full rollback of all 7 writes, provider EOS cannot complete + finalize EXECUTE isolation",
+    "R1 P2-1 (composite FK ON DELETE SET NULL over NOT NULL column) fixed via PG18 column-scoped SET NULL; Doctor 280537 PASS; harness 233 OK; Docker Temurin-25 BUILD SUCCESS; R1 PASS then R2 finding-closure PASS"
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0019 (ContextPlan/persona/LISTEN-DISCUSS), deps TASK-0013->TASK-0081 (ACCEPTED) and TASK-0017 (ACCEPTED)",
+    "Post-commit realtime dispatcher publishing PENDING chat.completed and materializing outbox events into work items is a later runtime task (explicitly out of scope)"
+  ],
+  "knownRisks": [
+    "finalize_generation is the in-DB atomic skeleton; the app-layer final-review->finalize path and the post-commit realtime/outbox dispatchers are later runtime tasks",
+    "quota RELEASE and a second-finalization explicit assertion are structurally covered (status precondition + partial unique index) but not given a dedicated test; usage actual_cost uses Java double (skeleton convention; BigDecimal is a future refinement)",
+    "Java CI on main should pass (persistence compiles under Temurin 25, FinalizeGenerationServiceTest green); confirm on next remote CI run"
+  ],
+  "nextAction": "TASK-0018 已 ACCEPTED。Finalization/Usage/Quota/Outbox 原子事务已落地（V7 finalize_generation SECURITY DEFINER 原子事务 + generation_usage/quota_ledger_entry/realtime_event/outbox_event 复合所有权表；故障注入证明原子提交或完整回滚；Provider EOS 不直接完成），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0019（ContextPlan/人格/LISTEN-DISCUSS，依赖 TASK-0013→TASK-0081、TASK-0017）。"
+}
