@@ -65,3 +65,19 @@ BEGIN
 END $$;
 COMMIT;
 RESET ROLE;
+
+-- Regression for the TASK-0016 P0 class: a non-vc_api role must NOT be able to
+-- call receive_generation. V6 revokes PUBLIC EXECUTE and grants only vc_api, so
+-- the check fires before the function body runs regardless of tenant context.
+SET ROLE vc_worker;
+BEGIN;
+DO $$
+BEGIN
+    PERFORM * FROM vc.receive_generation(1, 100, 'req-forbidden', 'user', 'x');
+    RAISE EXCEPTION 'vc_worker unexpectedly executed receive_generation';
+EXCEPTION
+    WHEN insufficient_privilege THEN
+        -- expected: EXECUTE was revoked from PUBLIC and granted only to vc_api
+END $$;
+COMMIT;
+RESET ROLE;
