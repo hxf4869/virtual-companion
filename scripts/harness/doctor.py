@@ -1107,6 +1107,22 @@ class DoctorGitSnapshot:
         self._current_file_cache: dict[str, tuple[bytes, int, int]] = {}
         self._current_blob_oids: dict[str, str] = {}
         self.ledger_introductions: dict[str, set[str]] | None = None
+        self.tree_cache_hits = 0
+        self.tree_cache_misses = 0
+        self.blob_cache_hits = 0
+        self.blob_cache_misses = 0
+        self._yaml_cache: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def cached_yaml_at_commit(self, commit: str, path: str) -> dict[str, Any]:
+        resolved = self.resolve_commit(commit)
+        if resolved is not None:
+            key = (resolved, normalize_repo_path(path))
+            if key in self._yaml_cache:
+                return self._yaml_cache[key]
+        data = yaml_at_commit(commit, path)
+        if resolved is not None:
+            self._yaml_cache[(resolved, normalize_repo_path(path))] = data
+        return data
 
     @staticmethod
     def _worktree_status() -> bytes:
@@ -1415,7 +1431,9 @@ class DoctorGitSnapshot:
                 f"doctor snapshot: immutable tree requires a full commit, got {commit!r}"
             )
         if resolved in self._trees:
+            self.tree_cache_hits += 1
             return self._trees[resolved]
+        self.tree_cache_misses += 1
         result = git_bytes("ls-tree", "-r", "-z", resolved, check=False)
         if result.returncode != 0:
             detail = result.stderr.decode("utf-8", errors="replace").strip()
@@ -1622,7 +1640,9 @@ class DoctorGitSnapshot:
 
     def blob(self, oid: str) -> bytes:
         if oid in self._blobs:
+            self.blob_cache_hits += 1
             return self._blobs[oid]
+        self.blob_cache_misses += 1
         result = git_bytes("cat-file", "blob", oid, check=False)
         if result.returncode != 0:
             detail = result.stderr.decode("utf-8", errors="replace").strip()
@@ -1749,6 +1769,10 @@ def current_path_exists(path: Path) -> bool:
     )
 
 
+_PHASE_TIMINGS: list[tuple[str, float]] = []
+_PHASE_SLOW_THRESHOLD = 5.0
+
+
 @contextmanager
 def timed_phase(label: str) -> Iterator[None]:
     started = time.perf_counter()
@@ -1757,6 +1781,7 @@ def timed_phase(label: str) -> Iterator[None]:
         yield
     except Exception:
         elapsed = time.perf_counter() - started
+        _PHASE_TIMINGS.append((label, elapsed))
         print(
             f"Harness doctor: ERROR {label} ({elapsed:.3f}s)",
             file=sys.stderr,
@@ -1764,6 +1789,7 @@ def timed_phase(label: str) -> Iterator[None]:
         )
         raise
     elapsed = time.perf_counter() - started
+    _PHASE_TIMINGS.append((label, elapsed))
     print(
         f"Harness doctor: DONE {label} ({elapsed:.3f}s)",
         file=sys.stderr,
@@ -6708,10 +6734,14 @@ def validate_ledger_bound_artifacts(
 
 
 def ledger_entries_at_commit(commit: str) -> dict[str, Any]:
+    snapshot = _ACTIVE_GIT_SNAPSHOT
     entry = git_tree_entry(commit, TASK_LEDGER_PATH)
     if entry is None or entry[1] != "blob":
         return {}
-    ledger = yaml_at_commit(commit, TASK_LEDGER_PATH)
+    if snapshot is not None:
+        ledger = snapshot.cached_yaml_at_commit(commit, TASK_LEDGER_PATH)
+    else:
+        ledger = yaml_at_commit(commit, TASK_LEDGER_PATH)
     if set(ledger) != {"schemaVersion", "tasks"}:
         raise HarnessError(f"task-ledger: invalid root fields at {commit}")
     if ledger.get("schemaVersion") != 1 or not isinstance(ledger.get("tasks"), dict):
@@ -16989,6 +17019,34 @@ def main() -> int:
         pass
     _elapsed = time.monotonic() - _doctor_start
     print(f"Harness doctor: PASS ({audit.checks} checks, {_elapsed:.1f}s)")
+    if _PHASE_TIMINGS:
+        slow_items = [
+            (label, elapsed)
+            for label, elapsed in _PHASE_TIMINGS
+            if elapsed >= _PHASE_SLOW_THRESHOLD
+        ]
+        phase_summary = ", ".join(
+            f"{label}={elapsed:.3f}s" for label, elapsed in _PHASE_TIMINGS
+        )
+        print(f"Harness doctor: PERF phases: {phase_summary}", file=sys.stderr)
+        if slow_items:
+            slow_summary = ", ".join(
+                f"{label}={elapsed:.3f}s" for label, elapsed in slow_items
+            )
+            print(
+                f"Harness doctor: PERF slow (>={_PHASE_SLOW_THRESHOLD:.0f}s): "
+                f"{slow_summary}",
+                file=sys.stderr,
+            )
+    if snapshot is not None:
+        print(
+            "Harness doctor: PERF cache: "
+            f"tree_hits={snapshot.tree_cache_hits} "
+            f"tree_misses={snapshot.tree_cache_misses} "
+            f"blob_hits={snapshot.blob_cache_hits} "
+            f"blob_misses={snapshot.blob_cache_misses}",
+            file=sys.stderr,
+        )
     return 0
 
 
