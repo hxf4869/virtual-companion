@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0013
+activeTaskCard: docs/tasks/TASK-0013-provider-registry-admission-model.md
 lastAcceptedTask: TASK-0059
 lastAcceptedHandoff: docs/handoffs/TASK-0059.json
 lastTerminalTask: TASK-0059
 lastTerminalHandoff: docs/handoffs/TASK-0059.json
-nextAction: TASK-0059 已 ACCEPTED，Harness 里程碑完成。下一张可晋级卡为 TASK-0013（产品任务链起点）
+nextAction: TASK-0013 READY；实现 Provider Registry 与供应商中立准入模型
 capabilityGates:
   businessImplementation:
     state: BLOCKED
