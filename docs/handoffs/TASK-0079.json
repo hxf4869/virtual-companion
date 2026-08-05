@@ -1,0 +1,20 @@
+{
+  "taskId": "TASK-0079",
+  "state": "REJECTED",
+  "title": "Provider Registry 与供应商中立准入模型（TASK-0013 后继）",
+  "baseCommit": "2ec399561306839abe31036a5f750df669e17c06",
+  "candidateCommit": "44dec69754eb1ed4e260ff898ac7c1e48fd418cb",
+  "completedItems": [
+    "DRAFT/READY/IN_PROGRESS lifecycle established",
+    "Doctor PASS on IN_PROGRESS candidate",
+    "Registry source already on main from TASK-0013 attempt"
+  ],
+  "remainingItems": [
+    "Harness fixture fix: load_inputs must not hard-code lastAccepted=TASK-0059",
+    "Provider Registry successor after fixture fix"
+  ],
+  "knownRisks": [
+    "TASK-0078 ACCEPTED left a latent fixture coupling to TASK-0059 terminal pointers"
+  ],
+  "nextAction": "创建 harness-change 任务修复 load_inputs 终态指针硬编码，然后创建 Provider Registry 后继"
+}

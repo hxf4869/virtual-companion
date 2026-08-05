@@ -1,0 +1,28 @@
+{
+  "taskId": "TASK-0079",
+  "baseCommit": "2ec399561306839abe31036a5f750df669e17c06",
+  "headCommit": "44dec69754eb1ed4e260ff898ac7c1e48fd418cb",
+  "contextFingerprint": "7c981ccacac2e3712aa0c1e5d7280aceaa9bf2e580b24d94ee9d375ea78bd2be",
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "1 failure: planning_terminal project-state check; TASK-0078 fixture hard-codes lastAccepted=TASK-0059 but live latest is TASK-0078. C3 task cannot fix C4 test_harness.py.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "44dec69754eb1ed4e260ff898ac7c1e48fd418cb"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0079",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "201502 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "44dec69754eb1ed4e260ff898ac7c1e48fd418cb"
+    }
+  ],
+  "rejectionReason": "Latent TASK-0078 fixture bug blocks product-task acceptance. Requires harness-change fix before Provider Registry successor can close."
+}
