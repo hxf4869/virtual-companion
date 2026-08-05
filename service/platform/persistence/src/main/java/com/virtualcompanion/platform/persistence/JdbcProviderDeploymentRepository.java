@@ -38,10 +38,9 @@ public class JdbcProviderDeploymentRepository {
                 updated_at = now()
             """;
 
-    private static final String SELECT_ALL_SQL = """
+    private static final String SELECT_BASE = """
             SELECT provider_id, protocol, capabilities, admission_state
             FROM vc.provider_deployment
-            ORDER BY provider_id
             """;
 
     public void save(ProviderDeploymentRecord record) {
@@ -56,19 +55,19 @@ public class JdbcProviderDeploymentRepository {
 
     public Optional<ProviderDeploymentRecord> findByProviderId(String providerId) {
         return jdbc.query(
-                SELECT_ALL_SQL + " WHERE provider_id = ?",
+                SELECT_BASE + " WHERE provider_id = ?",
                 rowMapper(),
                 providerId).stream().findFirst();
     }
 
     public List<ProviderDeploymentRecord> findAdmitted() {
         return jdbc.query(
-                SELECT_ALL_SQL + " WHERE admission_state = 'ADMITTED'",
+                SELECT_BASE + " WHERE admission_state = 'ADMITTED' ORDER BY provider_id",
                 rowMapper());
     }
 
     public List<ProviderDeploymentRecord> findAll() {
-        return jdbc.query(SELECT_ALL_SQL, rowMapper());
+        return jdbc.query(SELECT_BASE + " ORDER BY provider_id", rowMapper());
     }
 
     private RowMapper<ProviderDeploymentRecord> rowMapper() {
