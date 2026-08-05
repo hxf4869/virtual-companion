@@ -1,0 +1,63 @@
+schemaVersion: 1
+taskId: TASK-0087
+baseCommit: c2356197e227f69495a26eb6f90b2ffda6c8a456
+contextFingerprint: 3577b0b9a2d3713e144135e46a93afc64dac045dec3949058196e17b2c696fa8
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+- path: .gitattributes
+  sha256: 98ef74cab7df7ea0cc4c4ed35a9fcdfadf085c657dcb4231e9f6dfef25c6faac
+- path: .harness/ci-execution-policy.yaml
+  sha256: aba294e0c4986b3f01035ef9903ac7da631ff224e037f8faa01c26219ced51cb
+- path: .harness/commands.yaml
+  sha256: 35af171f3c83fdbe0adc691789b14f16fff297475046e9d88e91c115a66df720
+- path: .harness/invariants.yaml
+  sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+- path: .harness/project-state.yaml
+  sha256: 42a43597e81dae07fde19519e785175bee2f0c57faf63e0ec5d73d791fc917a3
+- path: .harness/protected-paths.yaml
+  sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+- path: .harness/skills.yaml
+  sha256: bfa02415f111ce99cc39949934194165745d212fe3d57fb0485bbea736c44ee4
+- path: .harness/sources-of-truth.yaml
+  sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+- path: .harness/task-backlog.yaml
+  sha256: dd20b607ac90a08656c4f4e12d7e7211ffcb8be8efb2a44a360d8eb57de4d266
+- path: .harness/task-delivery-policy.yaml
+  sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
+- path: .harness/task-ledger.yaml
+  sha256: fdf968e5359be78bd7bcfa7e5b0d826d8b99a65fb693d062ae5d44055df00ff4
+- path: .harness/task-lifecycle.yaml
+  sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+- path: .harness/tools.lock.yaml
+  sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+- path: AGENTS.md
+  sha256: 8c04d7dc1af1a04ccd9e3fab64b9a071e1a3f143610a08367e8cfce3e91d390c
+- path: CLAUDE.md
+  sha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+- path: docs/evidence/TASK-0015/evidence-pack.json
+  sha256: ef79acd223ec1af8b8ca375f2acbdb4d397109163a0b42c9461938ee7827d497
+- path: docs/schemas/evidence-pack.schema.json
+  sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+- path: docs/schemas/handoff.schema.json
+  sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+- path: docs/tasks/TASK-0015-postgresql-flyway-force-rls.md
+  sha256: 0499192d0dfb2262a95414bca314d226898762f67fe918a08657d051a7955016
+- path: docs/tasks/task-card-template.md
+  sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+- path: requirements-harness.txt
+  sha256: 15a0b1ad3059a055847bf367d43a7d3c138b791d2bf67d8b6a53f982edda1dd3
+- path: scripts/harness/doctor.py
+  sha256: 1c69c642974c01e687ede710905c770d259fcfcc9c8133a82ba9278611cb5440
+- path: scripts/harness/harness_common.py
+  sha256: 00bfe627e1707cd849cd1c4adc536d581cad444dbf7a0c95734c97ece365e8c4
+- path: scripts/harness/precheck.py
+  sha256: 5a8df0760fa2fd37932bc66408d4d0593a47824362907ab63d244e1b6a99bca9
+- path: scripts/harness/tests/test_harness.py
+  sha256: c2c3bf29ccf713035b9d0a004239444ec520e64d2d40879b90fd527fa3733cc2
+- path: skills/harness-change/SKILL.md
+  sha256: deb7f3b7864e19abc06ed7b9ba714e9673ed1c9e0269690058578682440ba9d4
+- path: skills/task-delivery-flow/SKILL.md
+  sha256: bb16b21ede941ebbd4bff6794784a4e902583268ba04488bae8e0a581c2e9744
+- path: skills/task-intake/SKILL.md
+  sha256: 28bba1ef4e3b7a8274297529dea1bcd80aebde7c35efb63c9ea1b5bc35523e12
