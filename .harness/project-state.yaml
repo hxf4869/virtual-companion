@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0085
+activeTaskCard: docs/tasks/TASK-0085-rejected-capability-successor-map-extension.md
 lastAcceptedTask: TASK-0084
 lastAcceptedHandoff: docs/handoffs/TASK-0084.json
 lastTerminalTask: TASK-0084
 lastTerminalHandoff: docs/handoffs/TASK-0084.json
-nextAction: TASK-0084 已 ACCEPTED。授权 Guard 能力已落地。继续按 Backlog DAG 推进下一张可晋级产品任务。
+nextAction: TASK-0085 READY；扩展 REJECTED 能力后继映射 TASK-0014→TASK-0084
 capabilityGates:
   businessImplementation:
     state: BLOCKED
