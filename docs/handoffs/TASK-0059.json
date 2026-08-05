@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0059",
+  "state": "ACCEPTED",
+  "title": "Harness 内容寻址快照复用与 Evidence 门禁永久后继",
+  "baseCommit": "4541f618f45afcf0680717334b7b5c2e3b2a7acc",
+  "candidateCommit": "d5f9effb713e0c9ab2cf3a0573f986a4b279134e",
+  "candidateTree": "bd944bb121e32968ab00f45885fd05c071412496",
+  "completedItems": [
+    "Replace simple HEAD+index cache with structured content-addressed receipt",
+    "compute_doctor_receipt_manifest: complete input identity (HEAD, index, index flags, fsmonitor flags, pre-closure flag)",
+    "compute_receipt_hash: canonical JSON SHA-256 of manifest",
+    "Receipt validates manifest byte-equality + status=PASS before reuse",
+    "Pre-closure runs produce different receipt hash (no cross-context reuse)",
+    "Missing inputs fail-closed (returns None, no cache hit)",
+    "Move tempfile import to module level",
+    "Add 4 receipt system tests: manifest completeness, pre-closure separation, fail-closed, determinism",
+    "Update backlog projection expectations for TASK-0059 IN_PROGRESS",
+    "Doctor PASS: 187225 checks on Windows NTFS; receipt hit verified on second run",
+    "Test suite PASS: 232 tests, 1 skipped, 0 failures",
+    "Independent review R1: PASS (no P0/P1 issues)"
+  ],
+  "remainingItems": [
+    "TASK-0013+ product tasks per DAG (next in executionOrder after 005x chain)"
+  ],
+  "knownRisks": [
+    "Receipt cache is in OS temp directory; cleared on reboot (expected behavior, ensures freshness)",
+    "TASK-0056 WSL test failure remains uninvestigated (internal audit item for this milestone)"
+  ],
+  "nextAction": "TASK-0059 已 ACCEPTED，Harness 里程碑完成。下一张可晋级卡为 TASK-0013（产品任务链起点），需用户确认是否进入产品实现阶段"
+}

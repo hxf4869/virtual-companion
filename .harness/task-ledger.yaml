@@ -228,3 +228,9 @@ tasks:
     taskCard: docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md
     evidence: docs/evidence/TASK-0058/evidence-pack.json
     handoff: docs/handoffs/TASK-0058.json
+  TASK-0059:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md
+    evidence: docs/evidence/TASK-0059/evidence-pack.json
+    handoff: docs/handoffs/TASK-0059.json
