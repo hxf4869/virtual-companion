@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0017
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -59,7 +59,18 @@ databasePolicy:
   storage: TEMPORARY_VOLUME_ONLY
   cleanupRequired: true
   frozenAt: DRAFT
-reviewers: []
+reviewers:
+  - id: task0017_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 63d87be0ee725a710ad9b1bad790f3c5d6ddeee8
+    evidencePath: docs/evidence/TASK-0017/review-r1.md
+    reason: R1 PASS (no P0/P1) on candidate 150e78e; flagged P2-1 receive_generation EXECUTE-isolation regression (TASK-0016 P0 class) closed in 63d87be via test-13 regression; R2 finding-closure PASS no new P0/P1; P2-2 sequence grants + P2-3 read-only TOCTOU accepted as non-exploitable
+    candidateTree: 042be64934d9b2a6af550f08abbf90c4b848183d
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 280
+      hardLimitReached: false
 readAllowlist:
   - .gitattributes
   - AGENTS.md

@@ -321,3 +321,10 @@ tasks:
     taskCard: docs/tasks/TASK-0016-worker-claim-lease-fence.md
     evidence: docs/evidence/TASK-0016/evidence-pack.json
     handoff: docs/handoffs/TASK-0016.json
+
+  TASK-0017:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0017-conversation-generation-persistence.md
+    evidence: docs/evidence/TASK-0017/evidence-pack.json
+    handoff: docs/handoffs/TASK-0017.json
