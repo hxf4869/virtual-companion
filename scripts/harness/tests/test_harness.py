@@ -702,6 +702,81 @@ class GitHistoryPolicyTests(unittest.TestCase):
         )
         doctor._PHASE_TIMINGS.clear()
 
+    def test_doctor_receipt_manifest_binds_complete_input_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "one.txt").write_text("alpha\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                manifest = doctor.compute_doctor_receipt_manifest()
+            self.assertIsNotNone(manifest)
+            for key in (
+                "head",
+                "indexSha256",
+                "indexFlagsSha256",
+                "fsmonitorFlagsSha256",
+                "preClosure",
+            ):
+                self.assertIn(key, manifest, manifest)
+            self.assertEqual("false", manifest["preClosure"])
+
+    def test_doctor_receipt_separates_pre_closure_from_real_head(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "one.txt").write_text("alpha\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                normal = doctor.compute_doctor_receipt_manifest(pre_closure=False)
+                pre_closure = doctor.compute_doctor_receipt_manifest(
+                    pre_closure=True
+                )
+            self.assertIsNotNone(normal)
+            self.assertIsNotNone(pre_closure)
+            self.assertNotEqual(
+                doctor.compute_receipt_hash(normal),
+                doctor.compute_receipt_hash(pre_closure),
+            )
+
+    def test_doctor_receipt_fails_closed_when_head_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "one.txt").write_text("alpha\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+                patch.object(
+                    doctor,
+                    "git_text",
+                    side_effect=lambda *a, **k: subprocess.CompletedProcess(
+                        args=a, returncode=128, stdout="", stderr="fatal: not a git repository"
+                    ),
+                ),
+            ):
+                manifest = doctor.compute_doctor_receipt_manifest()
+            self.assertIsNone(manifest)
+
+    def test_doctor_receipt_hash_is_deterministic(self) -> None:
+        manifest = {
+            "head": "a" * 40,
+            "indexSha256": "b" * 64,
+            "indexFlagsSha256": "c" * 64,
+            "fsmonitorFlagsSha256": "d" * 64,
+            "preClosure": "false",
+        }
+        hash_a = doctor.compute_receipt_hash(manifest)
+        hash_b = doctor.compute_receipt_hash(dict(reversed(list(manifest.items()))))
+        self.assertEqual(hash_a, hash_b)
+
     def test_doctor_snapshot_fails_closed_when_index_or_worktree_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repository = self._repository(directory)
@@ -2451,16 +2526,15 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(25, projection["plannedCount"])
+        self.assertEqual(24, projection["plannedCount"])
         self.assertEqual(
             state.get("activeTask") in (None, ""),
             projection["repositoryIdle"],
         )
         self.assertEqual(None, projection["nextPromotable"])
-        self.assertEqual("TASK-0059", projection["executionOrderFrontier"])
+        self.assertEqual("TASK-0013", projection["executionOrderFrontier"])
         self.assertEqual(
             [
-                "DEPENDENCY:TASK-0058:IN_PROGRESS",
                 "REPOSITORY_NOT_IDLE",
             ],
             projection["frontierBlockers"],
@@ -2526,7 +2600,7 @@ class BacklogTests(unittest.TestCase):
             lifecycle,
         )
         self.assertTrue(terminal_projection["repositoryIdle"])
-        self.assertEqual(26, terminal_projection["plannedCount"])
+        self.assertEqual(25, terminal_projection["plannedCount"])
         self.assertEqual("TASK-0055", terminal_projection["nextPromotable"])
         self.assertIn(
             "WAITING_FOR_ORDER:TASK-0055",
@@ -3424,7 +3498,6 @@ class BacklogTests(unittest.TestCase):
             )
         for path in (
             "AGENTS.md",
-            "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
         ):
             self.assertEqual(
                 doctor.git_object(doctor.TASK_0066_BASE_COMMIT, path),
@@ -3548,7 +3621,6 @@ class BacklogTests(unittest.TestCase):
         for path in (
             "AGENTS.md",
             "CLAUDE.md",
-            "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
             "docs/tasks/TASK-0066-local-fallback-recovery-permanent-replacement.md",
             "docs/evidence/TASK-0066/evidence-pack.json",
             "docs/handoffs/TASK-0066.json",
