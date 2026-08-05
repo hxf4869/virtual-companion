@@ -1,0 +1,12 @@
+{
+  "taskId": "TASK-0058",
+  "preClosureRequestedAt": "2026-08-05T17:15:00+08:00",
+  "candidateCommit": "2ad8cbca6428339121c14c7c1382789cb2685858",
+  "candidateTree": "dda52eeae68032534c8fb7cb2613477fdcf1551d",
+  "doctorCheckCount": 181552,
+  "testCount": 228,
+  "testSkipped": 1,
+  "testFailures": 0,
+  "reviewerVerdict": "PASS",
+  "ready": true
+}
