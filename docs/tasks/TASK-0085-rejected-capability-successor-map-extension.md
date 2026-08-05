@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0085
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -77,16 +77,16 @@ validationPlan:
   selectedChannel: LOCAL_EXACT_TREE_FALLBACK
   profile: HARNESS_PORTABILITY_LOCAL
 reviewers:
-  - id: task0085_reviewer_not_started
-    kind: independent-review-gate-not-started
-    verdict: UNKNOWN
-    reviewedCommit: null
+  - id: task0085_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: f1d46d3860070f38a3a58ca45d707fda1deced29
     evidencePath: docs/evidence/TASK-0085/review-r1.md
-    reason: DRAFT_STATE_REVIEWER_NOT_LAUNCHED
-    candidateTree: null
+    reason: null
+    candidateTree: 20fff4fc8af7b9e24cbbb843896bd3d6c3339013
     budget:
       maximumMinutes: 15
-      elapsedSeconds: 0
+      elapsedSeconds: 120
       hardLimitReached: false
 readAllowlist:
   - .gitattributes
