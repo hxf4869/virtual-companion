@@ -2443,16 +2443,15 @@ class BacklogTests(unittest.TestCase):
             state = dict(state)
             state["activeTask"] = None
             state["activeTaskCard"] = None
-            # Keep terminal pointers on the last accepted harness milestone so
-            # project-state validation does not see a planning-only or
-            # rejected product terminal as the latest execution boundary.
-            state["lastAcceptedTask"] = "TASK-0059"
-            state["lastAcceptedHandoff"] = "docs/handoffs/TASK-0059.json"
-            state["lastTerminalTask"] = "TASK-0059"
-            state["lastTerminalHandoff"] = "docs/handoffs/TASK-0059.json"
+            # Keep live lastAccepted/lastTerminal pointers. They track real
+            # execution terminals (TASK-0078+) and must not be frozen to an
+            # older milestone. Only the active-task occupancy is cleared so
+            # projection tests see repositoryIdle=True with TASK-0013 as the
+            # next promotable PLANNED card.
+            latest_accepted = state.get("lastAcceptedTask") or "TASK-0059"
             state["nextAction"] = (
                 "TASK-0013 is the Backlog next promotable task after "
-                "TASK-0059 ACCEPTED"
+                f"{latest_accepted} ACCEPTED"
             )
         return backlog, tasks, lifecycle, state
 
