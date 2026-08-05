@@ -2474,10 +2474,26 @@ class BacklogTests(unittest.TestCase):
             state["activeTask"] = None
             state["activeTaskCard"] = None
             # Keep live lastAccepted when it still exists as an execution
-            # ACCEPTED task in the fixture set. If lastTerminal points at a
-            # backlog product card that fixtures restored to PLANNED (so it is
-            # no longer an execution terminal), fall back to lastAccepted.
+            # ACCEPTED task in the fixture set. If lastAccepted itself points at
+            # a backlog product card the fixture restored to PLANNED (the first
+            # backlog product card to be accepted), walk the live ledger
+            # backwards to the most recent task still ACCEPTED in the fixture
+            # set. If lastTerminal then still dangles, fall back to that.
+            def _fixture_state(tid: str) -> str:
+                entry = tasks.get(tid)
+                return str(entry.get("state", "")) if isinstance(entry, dict) else ""
+
             latest_accepted = str(state.get("lastAcceptedTask") or "TASK-0059")
+            if _fixture_state(latest_accepted) != "ACCEPTED":
+                ledger_order = list(
+                    load_yaml(ROOT / ".harness/task-ledger.yaml").get("tasks", {}).keys()
+                )
+                for tid in reversed(ledger_order):
+                    if _fixture_state(tid) == "ACCEPTED":
+                        latest_accepted = tid
+                        break
+                state["lastAcceptedTask"] = latest_accepted
+                state["lastAcceptedHandoff"] = f"docs/handoffs/{latest_accepted}.json"
             latest_terminal = str(state.get("lastTerminalTask") or latest_accepted)
             terminal_task = tasks.get(latest_terminal)
             terminal_state = (
@@ -6300,12 +6316,22 @@ class BacklogTests(unittest.TestCase):
 
         ledger = load_yaml(ROOT / ".harness/task-ledger.yaml")
         # Mechanical fixture: planning-only SUPERSEDED must not appear in the
-        # task ledger. Strip live terminal product entries that fixtures restore
-        # to PLANNED (TASK-0013/0014 execution attempts) so the assertion
-        # isolates planning semantics.
+        # task ledger. Strip any ledger entry whose fixture-/resolution-restored
+        # task card disagrees with the live ledger entry's terminal state —
+        # backlog cards restored to PLANNED (TASK-0015 and future product cards)
+        # and cards this test re-stages as a planning terminal (TASK-0013 here)
+        # both diverge from their live execution ledger entries. Generalized so
+        # a new backlog product card reaching the ledger needs no per-id pop,
+        # while every agreeing entry is still fully validated.
         ledger_tasks = dict(ledger.get("tasks", {}))
-        ledger_tasks.pop("TASK-0013", None)
-        ledger_tasks.pop("TASK-0014", None)
+        for ledger_tid in list(ledger_tasks):
+            restored = resolved_tasks.get(ledger_tid)
+            ledger_state = str(ledger_tasks[ledger_tid].get("state", ""))
+            if (
+                isinstance(restored, dict)
+                and str(restored.get("state", "")) != ledger_state
+            ):
+                ledger_tasks.pop(ledger_tid, None)
         audit = Audit()
         validate_task_ledger_entries(
             audit,
