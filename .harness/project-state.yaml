@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0087
+activeTaskCard: docs/tasks/TASK-0087-harness-fixture-backlog-ledger-coupling.md
 lastAcceptedTask: TASK-0015
 lastAcceptedHandoff: docs/handoffs/TASK-0015.json
 lastTerminalTask: TASK-0015
 lastTerminalHandoff: docs/handoffs/TASK-0015.json
-nextAction: TASK-0015 已 ACCEPTED。PostgreSQL 18/pgvector、Flyway、复合所有权、FORCE RLS 与最小权限角色持久化基线已落地。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0016（Worker Claim、Lease、Fence）。
+nextAction: TASK-0087 READY：harness fixture 修复（首个进 Ledger 的 backlog 产品卡耦合）；IN_PROGRESS 后泛化 test_harness.py 的 ledger 过滤并恢复套件为绿。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
