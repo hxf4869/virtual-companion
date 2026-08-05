@@ -1,0 +1,27 @@
+{
+  "taskId": "TASK-0015",
+  "state": "ACCEPTED",
+  "title": "PostgreSQL、Flyway、复合所有权和 FORCE RLS",
+  "baseCommit": "4330dca734487446c489dc7fd46c0cb71e963f1e",
+  "candidateCommit": "8995a749791f8add3f8f5c3c69a4b3b40c64dff1",
+  "candidateTree": "1a3795efce86a2eab49b210c07db134486004fcb",
+  "completedItems": [
+    "service/platform/persistence module: Flyway V1-V4, JdbcTemplate, JDBC skeletons",
+    "Composite ownership FKs for all six contract chains; FORCE RLS on every owned table",
+    "Minimal-privilege NOBYPASSRLS roles vc_api/vc_worker/vc_job_coordinator/vc_dispatcher",
+    "JdbcAuthorizationSnapshotStore (full AuthorizationSnapshotStore) + JdbcProviderDeploymentRepository",
+    "infra/db ephemeral PG18+pgvector harness; 6 cross-tenant SQL tests PASS",
+    "Doctor 251905 PASS; 233 tests OK; R1 P1 fixed then R2 PASS"
+  ],
+  "remainingItems": [
+    "Java 25 compilation + persistence module unit tests: remote exact-SHA CI only (no local JDK 25)",
+    "Full Flyway startup execution + Spring Boot DataSource wiring validated in CI, not locally",
+    "Worker claim/lease/fence lifecycle (TASK-0016) will extend the vc.begin_job_context skeleton"
+  ],
+  "knownRisks": [
+    "Java skeleton uncompiled locally; signatures match modelruntime interfaces by inspection",
+    "begin_job_context is a fail-closed skeleton; real lease validation deferred to TASK-0016",
+    "provider_deployment intentionally has no RLS (platform reference data, not tenant-scoped)"
+  ],
+  "nextAction": "TASK-0015 已 ACCEPTED。PostgreSQL/Flyway/FORCE RLS 基线已落地。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0016（Worker Claim、Lease、Fence）。"
+}

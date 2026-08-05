@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0015
-activeTaskCard: docs/tasks/TASK-0015-postgresql-flyway-force-rls.md
-lastAcceptedTask: TASK-0085
-lastAcceptedHandoff: docs/handoffs/TASK-0085.json
-lastTerminalTask: TASK-0085
-lastTerminalHandoff: docs/handoffs/TASK-0085.json
-nextAction: TASK-0015 READY：PostgreSQL 18/pgvector、Flyway、复合所有权、FORCE RLS 与最小权限角色持久化骨架已授权；IN_PROGRESS 后实施迁移、角色、RLS 与跨租户失败关闭测试。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0015
+lastAcceptedHandoff: docs/handoffs/TASK-0015.json
+lastTerminalTask: TASK-0015
+lastTerminalHandoff: docs/handoffs/TASK-0015.json
+nextAction: TASK-0015 已 ACCEPTED。PostgreSQL 18/pgvector、Flyway、复合所有权、FORCE RLS 与最小权限角色持久化基线已落地。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0016（Worker Claim、Lease、Fence）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
