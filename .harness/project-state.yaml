@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0017
+activeTaskCard: docs/tasks/TASK-0017-conversation-generation-persistence.md
 lastAcceptedTask: TASK-0016
 lastAcceptedHandoff: docs/handoffs/TASK-0016.json
 lastTerminalTask: TASK-0016
 lastTerminalHandoff: docs/handoffs/TASK-0016.json
-nextAction: TASK-0016 已 ACCEPTED。Worker claim/lease/fence 与过期写拒绝已落地，main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0017（Conversation/Generation 持久化与幂等接收）。
+nextAction: TASK-0017 READY：Conversation/Generation 持久化与幂等接收；IN_PROGRESS 后实现 V6 迁移（generation.idempotency_key + id 序列 + SECURITY DEFINER vc.receive_generation 幂等接收）、Conversation/Message/Generation JDBC 仓储与 GenerationReceiveService，并以 SQL 测试 13-15 证明幂等与跨 owner 复合外键拒绝。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-05'
+updatedAt: '2026-08-06'
