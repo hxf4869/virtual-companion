@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0014
+activeTaskCard: docs/tasks/TASK-0014-execution-authorization-guard.md
 lastAcceptedTask: TASK-0082
 lastAcceptedHandoff: docs/handoffs/TASK-0082.json
 lastTerminalTask: TASK-0082
 lastTerminalHandoff: docs/handoffs/TASK-0082.json
-nextAction: TASK-0082 已 ACCEPTED。仓库空闲后可按 Backlog 晋级 TASK-0014（Execution Authorization Guard）。
+nextAction: TASK-0014 READY；实现授权快照与 Execution Authorization Guard
 capabilityGates:
   businessImplementation:
     state: BLOCKED
