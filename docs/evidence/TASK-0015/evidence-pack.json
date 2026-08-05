@@ -1,0 +1,79 @@
+{
+  "taskId": "TASK-0015",
+  "baseCommit": "4330dca734487446c489dc7fd46c0cb71e963f1e",
+  "headCommit": "8995a749791f8add3f8f5c3c69a4b3b40c64dff1",
+  "contextFingerprint": "95e6c7de585040da84e280dc6f803ee4a3bc19f08d6e21f441e3c2d57a0d3128",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ae237ba",
+      "startedAt": "2026-08-05T20:30:00+08:00",
+      "endedAt": "2026-08-05T22:00:00+08:00",
+      "elapsedSeconds": 5400,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "candidateDeadlineMinutes": 45,
+      "elapsedSeconds": 2700,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0015_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "8995a749791f8add3f8f5c3c69a4b3b40c64dff1",
+      "evidencePath": "docs/evidence/TASK-0015/review-r1.md",
+      "reason": "R1 found P1 invalid provider-repo SQL clause order; fixed in 8995a74; R2 finding-closure PASS, no new P0/P1",
+      "candidateTree": "1a3795efce86a2eab49b210c07db134486004fcb",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 248,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "8995a749791f8add3f8f5c3c69a4b3b40c64dff1"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "8995a749791f8add3f8f5c3c69a4b3b40c64dff1"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0015",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "251905 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "8995a749791f8add3f8f5c3c69a4b3b40c64dff1"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "6 cross-tenant fail-closed SQL tests PASS against ephemeral pgvector/pgvector:0.8.5-pg18@sha256:12a379b4 container; --rm, no host port, no volume, full cleanup",
+      "environment": "WSL2 Ubuntu-24.04; PostgreSQL 18 + pgvector 0.8.5",
+      "verifiedCommit": "8995a749791f8add3f8f5c3c69a4b3b40c64dff1"
+    }
+  ]
+}

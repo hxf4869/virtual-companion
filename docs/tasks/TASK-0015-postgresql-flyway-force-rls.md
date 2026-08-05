@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0015
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -95,7 +95,18 @@ databasePolicy:
   portBinding: EPHEMERAL_HOST_PORT_TO_CONTAINER_5432
   volume: EPHEMERAL_TMPFS_OR_TMP_VOLUME_REMOVED_ON_CLEANUP
   frozenAt: DRAFT
-reviewers: []
+reviewers:
+  - id: task0015_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 8995a749791f8add3f8f5c3c69a4b3b40c64dff1
+    evidencePath: docs/evidence/TASK-0015/review-r1.md
+    reason: R1 P1 (provider repo SQL clause order) fixed in 8995a74; R2 finding-closure PASS, no new P0/P1
+    candidateTree: 1a3795efce86a2eab49b210c07db134486004fcb
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 248
+      hardLimitReached: false
 readAllowlist:
   - .gitattributes
   - AGENTS.md
