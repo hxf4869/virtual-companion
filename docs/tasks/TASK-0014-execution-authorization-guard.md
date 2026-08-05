@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0014
-state: IN_PROGRESS
+state: REJECTED
+resolutionReason: >-
+  Authorization snapshot and ExecutionAuthorizationGuard code completed and
+  committed on main. Python harness fixtures still treat TASK-0014 as a stable
+  PLANNED backlog sample; promoting it breaks load_inputs isolation.
+  test_harness.py is C4 harness-change; TASK-0014 is C3 model-routing-change.
+  Reject to free the active slot for fixture generalization; code remains for successor.
 owner: repository-owner
 riskClass: C3
 planningBacklog: .harness/task-backlog.yaml

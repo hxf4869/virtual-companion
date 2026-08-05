@@ -1,0 +1,28 @@
+{
+  "taskId": "TASK-0014",
+  "baseCommit": "36ef39e15ecd2c5f3863237400bca2b9fe543766",
+  "headCommit": "6095b04fd37e4b1d46fa26046df0d75ff50c8766",
+  "contextFingerprint": "c23821a0fa80bda399cdbd9e1b7244e5ba1ce8826959137d923333ca3464cb36",
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0014",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "228536 checks PASS with implementation staged",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "6095b04fd37e4b1d46fa26046df0d75ff50c8766"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "5 failures + 3 errors: load_inputs pops/ignores promoted TASK-0014 PLANNED fixture",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "6095b04fd37e4b1d46fa26046df0d75ff50c8766"
+    }
+  ],
+  "rejectionReason": "Fixture coupling on TASK-0014 PLANNED sample; code preserved on main for successor after harness-change fixture fix."
+}

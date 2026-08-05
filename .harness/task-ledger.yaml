@@ -270,3 +270,9 @@ tasks:
     taskCard: docs/tasks/TASK-0082-rejected-capability-successor-dependency.md
     evidence: docs/evidence/TASK-0082/evidence-pack.json
     handoff: docs/handoffs/TASK-0082.json
+  TASK-0014:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0014-execution-authorization-guard.md
+    evidence: docs/evidence/TASK-0014/evidence-pack.json
+    handoff: docs/handoffs/TASK-0014.json

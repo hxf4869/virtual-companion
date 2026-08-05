@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0014
-activeTaskCard: docs/tasks/TASK-0014-execution-authorization-guard.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0082
 lastAcceptedHandoff: docs/handoffs/TASK-0082.json
-lastTerminalTask: TASK-0082
-lastTerminalHandoff: docs/handoffs/TASK-0082.json
-nextAction: TASK-0014 IN_PROGRESS；实现授权快照与 Execution Authorization Guard
+lastTerminalTask: TASK-0014
+lastTerminalHandoff: docs/handoffs/TASK-0014.json
+nextAction: TASK-0014 已 REJECTED（fixture 耦合；授权 Guard 代码已在 main）。需 harness-change 泛化 load_inputs 后创建后继。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
