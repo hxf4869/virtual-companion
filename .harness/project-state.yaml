@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0083
 lastAcceptedHandoff: docs/handoffs/TASK-0083.json
 lastTerminalTask: TASK-0083
 lastTerminalHandoff: docs/handoffs/TASK-0083.json
-nextAction: TASK-0084 READY；验收授权快照与 Execution Authorization Guard
+nextAction: TASK-0084 IN_PROGRESS；验收授权快照与 Execution Authorization Guard
 capabilityGates:
   businessImplementation:
     state: BLOCKED
