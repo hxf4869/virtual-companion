@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0083
+activeTaskCard: docs/tasks/TASK-0083-backlog-planned-fixture-generalization.md
 lastAcceptedTask: TASK-0082
 lastAcceptedHandoff: docs/handoffs/TASK-0082.json
 lastTerminalTask: TASK-0014
 lastTerminalHandoff: docs/handoffs/TASK-0014.json
-nextAction: TASK-0014 已 REJECTED（fixture 耦合；授权 Guard 代码已在 main）。需 harness-change 泛化 load_inputs 后创建后继。
+nextAction: TASK-0083 READY；泛化 backlog PLANNED fixture 恢复
 capabilityGates:
   businessImplementation:
     state: BLOCKED
