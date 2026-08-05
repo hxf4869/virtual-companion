@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0058
+activeTaskCard: docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md
 lastAcceptedTask: TASK-0057
 lastAcceptedHandoff: docs/handoffs/TASK-0057.json
 lastTerminalTask: TASK-0057
 lastTerminalHandoff: docs/handoffs/TASK-0057.json
-nextAction: TASK-0058 的依赖 TASK-0057 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0058 为 READY
+nextAction: TASK-0058 READY；实现 Harness 路径感知 CI 与包装器平台策略
 capabilityGates:
   businessImplementation:
     state: BLOCKED
