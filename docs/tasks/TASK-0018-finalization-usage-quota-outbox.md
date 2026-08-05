@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0018
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -59,7 +59,18 @@ databasePolicy:
   storage: TEMPORARY_VOLUME_ONLY
   cleanupRequired: true
   frozenAt: DRAFT
-reviewers: []
+reviewers:
+  - id: task0018_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: ec95357f14497914a9a529b8c0489287ab395bc
+    evidencePath: docs/evidence/TASK-0018/review-r1.md
+    reason: R1 PASS (no P0/P1) on candidate 44d1031; verified atomicity (test 17 rolls back all 7 writes), EOS guard, EXECUTE isolation (exact-sig REVOKE + vc_api only), FORCE RLS + owner binding, out_ RETURNS TABLE prefix. P2-1 composite-FK ON DELETE SET NULL over NOT NULL column closed in ec95357 via PG18 column-scoped SET NULL; R2 finding-closure PASS no new P0/P1; P2-2 double-cost accepted as non-defect
+    candidateTree: eb91bb41f6d4594bc54bc22c521daaaba77ec799
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 540
+      hardLimitReached: false
 readAllowlist:
   - .gitattributes
   - AGENTS.md

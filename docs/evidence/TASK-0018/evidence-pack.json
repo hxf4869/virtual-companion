@@ -1,0 +1,72 @@
+{
+  "taskId": "TASK-0018",
+  "baseCommit": "2dfee84a9f7ceece071cd102e11e67ef5ed1e42b",
+  "headCommit": "ec95357f14497914a9a529b8c0489287ab395bc",
+  "contextFingerprint": "906aa97f173d3740035f08709d92451087da14cdef8dde1cef294391df6054ff",
+  "reviewers": [
+    {
+      "id": "task0018_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "ec95357f14497914a9a529b8c0489287ab395bc",
+      "evidencePath": "docs/evidence/TASK-0018/review-r1.md",
+      "reason": "R1 PASS (no P0/P1) on candidate 44d1031. Verified atomicity (test 17 rolls back all 7 writes), EOS guard (test 18), EXECUTE isolation (REVOKE FROM PUBLIC + vc_api only, exact signature), FORCE RLS + owner binding before writes, RETURNS TABLE out_ prefix avoids TASK-0017 shadow trap. Flagged P2-1 (composite FK ON DELETE SET NULL included NOT NULL owner_user_id) closed in ec95357 via PG18 column-scoped ON DELETE SET NULL (assistant_message_id); R2 finding-closure PASS, no new P0/P1. P2-2 (double actualCost vs BigDecimal) accepted as non-defect convention nit.",
+      "candidateTree": "eb91bb41f6d4594bc54bc22c521daaaba77ec799",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 540,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "ec95357f14497914a9a529b8c0489287ab395bc"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "ec95357f14497914a9a529b8c0489287ab395bc"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0018",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "280537 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "ec95357f14497914a9a529b8c0489287ab395bc"
+    },
+    {
+      "command": "docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -e -pl service/platform/persistence -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Temurin 25: catalog + modelruntime + persistence compile; FinalizeGenerationServiceTest 5/5; persistence 22/22",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "ec95357f14497914a9a529b8c0489287ab395bc"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "18 SQL tests PASS against ephemeral pgvector/pgvector:0.8.5-pg18@sha256:12a379b4 (V1-V7 applied): 01-15 regression + 16 atomic finalize commits all + 17 fault-injection rolls back all 7 writes + 18 provider EOS cannot complete + finalize EXECUTE isolation",
+      "environment": "WSL2 Ubuntu-24.04; PostgreSQL 18 + pgvector 0.8.5",
+      "verifiedCommit": "ec95357f14497914a9a529b8c0489287ab395bc"
+    }
+  ]
+}
