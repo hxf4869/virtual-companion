@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0078
-activeTaskCard: docs/tasks/TASK-0078-harness-test-fixture-promotion-isolation.md
-lastAcceptedTask: TASK-0059
-lastAcceptedHandoff: docs/handoffs/TASK-0059.json
-lastTerminalTask: TASK-0013
-lastTerminalHandoff: docs/handoffs/TASK-0013.json
-nextAction: TASK-0078 IN_PROGRESS；修复 harness 测试 fixture 晋升隔离
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0078
+lastAcceptedHandoff: docs/handoffs/TASK-0078.json
+lastTerminalTask: TASK-0078
+lastTerminalHandoff: docs/handoffs/TASK-0078.json
+nextAction: TASK-0078 已 ACCEPTED。仓库空闲后创建 TASK-0013 Provider Registry 后继任务（复用已合入的 registry 源码）
 capabilityGates:
   businessImplementation:
     state: BLOCKED

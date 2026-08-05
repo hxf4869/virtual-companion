@@ -1,0 +1,26 @@
+{
+  "taskId": "TASK-0078",
+  "state": "ACCEPTED",
+  "title": "Harness 测试 fixture 晋升隔离",
+  "baseCommit": "bf1dc0d7ec0ce29a07ab91303bb6bbbabab779bd",
+  "candidateCommit": "22615ba956dfdc0dea0f2b00c2a3f872a174ca0d",
+  "candidateTree": "81e764aa43faf6d4a4600c9151d28a397e98492a",
+  "completedItems": [
+    "load_inputs restores TASK-0013 from PLANNED snapshot commit 1d245f1",
+    "load_inputs strips live active/DRAFT tasks and pins project-state to idle TASK-0059 terminal",
+    "Planning-terminal ledger check ignores residual TASK-0013 execution entry",
+    "full_history corrupt-restore rewritten as synthetic TASK-9002 fixture",
+    "Doctor PASS: 195971 checks on Windows NTFS",
+    "Test suite PASS: 232 tests, 1 skipped, 0 failures",
+    "Independent review R1: PASS"
+  ],
+  "remainingItems": [
+    "Create TASK-0013 Provider Registry successor (TASK-0079) now that fixtures no longer couple to live PLANNED state",
+    "Java 25 compilation of Provider Registry code (CI-only)"
+  ],
+  "knownRisks": [
+    "Snapshot commit constant is task-specific; if another product task becomes the canonical PLANNED sample, load_inputs needs a matching snapshot pin",
+    "TASK-0013 Provider Registry Java sources remain on main from the REJECTED attempt and are reusable by the successor"
+  ],
+  "nextAction": "TASK-0078 已 ACCEPTED。仓库空闲后创建 TASK-0013 Provider Registry 后继任务（复用已合入的 registry 源码）"
+}

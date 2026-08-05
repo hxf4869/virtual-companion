@@ -240,3 +240,9 @@ tasks:
     taskCard: docs/tasks/TASK-0013-provider-registry-admission-model.md
     evidence: docs/evidence/TASK-0013/evidence-pack.json
     handoff: docs/handoffs/TASK-0013.json
+  TASK-0078:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0078-harness-test-fixture-promotion-isolation.md
+    evidence: docs/evidence/TASK-0078/evidence-pack.json
+    handoff: docs/handoffs/TASK-0078.json
