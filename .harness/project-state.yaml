@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0079
+activeTaskCard: docs/tasks/TASK-0079-provider-registry-admission-model-successor.md
 lastAcceptedTask: TASK-0078
 lastAcceptedHandoff: docs/handoffs/TASK-0078.json
 lastTerminalTask: TASK-0078
 lastTerminalHandoff: docs/handoffs/TASK-0078.json
-nextAction: TASK-0078 已 ACCEPTED。仓库空闲后创建 TASK-0013 Provider Registry 后继任务（复用已合入的 registry 源码）
+nextAction: TASK-0079 READY；验收 Provider Registry 后继
 capabilityGates:
   businessImplementation:
     state: BLOCKED
