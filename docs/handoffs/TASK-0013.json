@@ -1,0 +1,31 @@
+{
+  "taskId": "TASK-0013",
+  "state": "BLOCKED",
+  "title": "Provider Registry 与供应商中立准入模型",
+  "baseCommit": "1d245f1d3f0e2f9627b97db001d4f92178119c34",
+  "candidateCommit": "69cf138c83b45bd65dd4e8ca7e76c21b1c8b5dbf",
+  "candidateTree": null,
+  "completedItems": [
+    "ProviderId: immutable supplier-neutral identity value object",
+    "AdmissionStatus: ADMITTED/DISABLED/REJECTED lifecycle enum",
+    "ProviderDeployment: immutable snapshot binding identity+protocol+capabilities+admission",
+    "ProviderRegistration: fail-closed registration request validating adapter agreement",
+    "ProviderRegistry: port interface (register, disable, findAdmitted, deployments)",
+    "InMemoryProviderRegistry: thread-safe fail-closed in-memory implementation",
+    "InMemoryProviderRegistryTest: comprehensive fail-closed test suite",
+    "Doctor PASS: 193037 checks on Windows NTFS",
+    "Java code requires Java 25 (CI-only, not available locally)"
+  ],
+  "remainingItems": [
+    "BLOCKED: Harness test suite (test_harness.py) requires fixture updates for TASK-0013 promotion. 11 tests reference TASK-0013 as a stable PLANNED sample and fail when it is IN_PROGRESS. test_harness.py is C4 harness-change protected path; TASK-0013 is C3 model-routing-change and cannot modify it.",
+    "Java compilation and test verification on CI (Java 25 required)",
+    "Independent review R1 (pending unblock)",
+    "Evidence pack and terminal commit (pending unblock)"
+  ],
+  "knownRisks": [
+    "Governance deadlock: promoting any non-harness task to IN_PROGRESS breaks backlog projection tests that reference that task as PLANNED. Only harness-change tasks can fix test_harness.py. This pattern will recur for every product task promotion.",
+    "test_full_history_scans_introduction_and_preterminal_corrupt_restore has pre-existing fragility unrelated to TASK-0013 (manifests when branch has commits beyond checkout point).",
+    "Suggested resolution: create a harness-change task to update load_inputs() fixture to handle promoted tasks, OR add a stable synthetic PLANNED fixture task for mechanical tests."
+  ],
+  "nextAction": "TASK-0013 BLOCKED。需要 harness-change 任务更新 test_harness.py fixture 以支持 TASK-0013 晋升。解除阻塞后 TASK-0013 可从 BLOCKED 恢复到 IN_PROGRESS 完成验收。"
+}
