@@ -1,0 +1,23 @@
+{
+  "taskId": "TASK-0087",
+  "state": "ACCEPTED",
+  "title": "harness fixture 对首个进入 Ledger 的 Backlog 产品卡的耦合",
+  "baseCommit": "c2356197e227f69495a26eb6f90b2ffda6c8a456",
+  "candidateCommit": "6f6b2dab7d02a98fd1c657a98882da34772b2937",
+  "candidateTree": "59ef0118a29bb8dcb9e5568a456da59706fb9b39",
+  "completedItems": [
+    "Generalized test_planning_terminal_card pop: drop ledger entries whose restored card state differs from the ledger entry",
+    "load_inputs: when lastAccepted is not fixture-ACCEPTED, walk live ledger back to most recent fixture-ACCEPTED task",
+    "Harness suite green again on main (233 OK, 0 failures) after TASK-0015 entered the ledger",
+    "Doctor PASS 253369; R1 PASS (no fail-closed weakening)"
+  ],
+  "remainingItems": [
+    "TASK-0088: fix TASK-0015 JdbcAuthorizationSnapshotStore ProviderId import so persistence compiles under JDK 25",
+    "Resume Backlog longline at TASK-0016 (Worker Claim/Lease/Fence) after TASK-0088"
+  ],
+  "knownRisks": [
+    "P2: ledger-walk fallback uses ledger insertion order while validate_project_state cross-checks git ancestry; agree today, same class as pre-existing coupling",
+    "Java CI on main still red until TASK-0088 fixes the ProviderId import"
+  ],
+  "nextAction": "TASK-0087 已 ACCEPTED。harness 套件恢复为绿。下一张非 Backlog 后续 TASK-0088 修复 TASK-0015 持久化 ProviderId 导入（authorization→registry）以恢复 JDK 25 编译；其后恢复 Backlog 长线至 TASK-0016。"
+}

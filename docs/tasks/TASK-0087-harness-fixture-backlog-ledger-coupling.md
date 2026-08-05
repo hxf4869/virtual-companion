@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0087
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -76,7 +76,18 @@ validationPlan:
   policySource: .harness/ci-execution-policy.yaml
   selectedChannel: LOCAL_EXACT_TREE_FALLBACK
   profile: precheck
-reviewers: []
+reviewers:
+  - id: task0087_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 6f6b2dab7d02a98fd1c657a98882da34772b2937
+    evidencePath: docs/evidence/TASK-0087/review-r1.md
+    reason: No fail-closed weakening; correct dropped-vs-retained partition; load_inputs fallback sound and history-preserving
+    candidateTree: 59ef0118a29bb8dcb9e5568a456da59706fb9b39
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 379
+      hardLimitReached: false
 readAllowlist:
   - .gitattributes
   - AGENTS.md

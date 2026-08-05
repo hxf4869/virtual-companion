@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0087
-activeTaskCard: docs/tasks/TASK-0087-harness-fixture-backlog-ledger-coupling.md
-lastAcceptedTask: TASK-0015
-lastAcceptedHandoff: docs/handoffs/TASK-0015.json
-lastTerminalTask: TASK-0015
-lastTerminalHandoff: docs/handoffs/TASK-0015.json
-nextAction: TASK-0087 READY：harness fixture 修复（首个进 Ledger 的 backlog 产品卡耦合）；IN_PROGRESS 后泛化 test_harness.py 的 ledger 过滤并恢复套件为绿。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0087
+lastAcceptedHandoff: docs/handoffs/TASK-0087.json
+lastTerminalTask: TASK-0087
+lastTerminalHandoff: docs/handoffs/TASK-0087.json
+nextAction: TASK-0087 已 ACCEPTED。harness 套件恢复为绿。下一张 TASK-0088 修复 TASK-0015 持久化 ProviderId 导入以恢复 JDK 25 编译；其后恢复 Backlog 长线至 TASK-0016。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
