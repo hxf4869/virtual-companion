@@ -31,7 +31,8 @@ BEGIN
         ALTER TABLE vc.generation
             ADD CONSTRAINT generation_assistant_message_fk
             FOREIGN KEY (owner_user_id, assistant_message_id)
-            REFERENCES vc.message(owner_user_id, id) ON DELETE SET NULL;
+            REFERENCES vc.message(owner_user_id, id)
+            ON DELETE SET NULL (assistant_message_id);
     END IF;
 END $$;
 
