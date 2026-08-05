@@ -1,0 +1,21 @@
+{
+  "taskId": "TASK-0083",
+  "state": "ACCEPTED",
+  "title": "Harness backlog PLANNED fixture 泛化恢复",
+  "baseCommit": "fb44299bc1f0357338910c6b92cf9bfaebfac681",
+  "candidateCommit": "87d13ec00cf695e087f870c29d2bf0d40635b629",
+  "candidateTree": "259f14bc058029426ab2a7d0c573b14487bc3545",
+  "completedItems": [
+    "Generalized load_inputs PLANNED restore for all backlog product cards",
+    "Snapshot body patch via read_repository_text",
+    "Ledger/project-state terminal isolation for restored product cards",
+    "233 tests OK; Doctor PASS; R1 PASS"
+  ],
+  "remainingItems": [
+    "Create TASK-0014 authorization guard successor and accept pre-landed code"
+  ],
+  "knownRisks": [
+    "Snapshot commit is fixed; cards added after the snapshot are not restored (left live)"
+  ],
+  "nextAction": "TASK-0083 已 ACCEPTED。创建 TASK-0014 授权 Guard 后继并验收已合入 main 的实现。"
+}

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0083
-activeTaskCard: docs/tasks/TASK-0083-backlog-planned-fixture-generalization.md
-lastAcceptedTask: TASK-0082
-lastAcceptedHandoff: docs/handoffs/TASK-0082.json
-lastTerminalTask: TASK-0014
-lastTerminalHandoff: docs/handoffs/TASK-0014.json
-nextAction: TASK-0083 IN_PROGRESS；泛化 backlog PLANNED fixture 恢复
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0083
+lastAcceptedHandoff: docs/handoffs/TASK-0083.json
+lastTerminalTask: TASK-0083
+lastTerminalHandoff: docs/handoffs/TASK-0083.json
+nextAction: TASK-0083 已 ACCEPTED。创建 TASK-0014 授权 Guard 后继并验收已合入 main 的实现。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
