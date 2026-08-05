@@ -1,0 +1,22 @@
+{
+  "taskId": "TASK-0014",
+  "state": "REJECTED",
+  "title": "授权快照与 Execution Authorization Guard",
+  "baseCommit": "36ef39e15ecd2c5f3863237400bca2b9fe543766",
+  "candidateCommit": "6095b04fd37e4b1d46fa26046df0d75ff50c8766",
+  "completedItems": [
+    "AuthorizationSnapshot domain and store",
+    "ExecutionAuthorizationGuard dual-snapshot fail-closed checks",
+    "InMemoryAuthorizationSnapshotStore withdraw/narrow",
+    "ExecutionAuthorizationGuardTest coverage",
+    "Implementation committed on main"
+  ],
+  "remainingItems": [
+    "Generalize load_inputs to restore any promoted backlog PLANNED card",
+    "Successor acceptance after fixture fix"
+  ],
+  "knownRisks": [
+    "Same fixture pattern as TASK-0013 will recur for every product task promotion"
+  ],
+  "nextAction": "创建 harness-change 任务泛化 load_inputs PLANNED fixture 恢复，然后创建 TASK-0014 后继验收授权 Guard。"
+}
