@@ -14,6 +14,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 import time
 import unicodedata
@@ -16855,6 +16856,44 @@ def layer0_fast_pass(audit: Audit) -> None:
             audit.error(f"layer0: .harness/{yaml_name} parse error: {exc}")
 
 
+def compute_doctor_receipt_manifest(
+    pre_closure: bool = False,
+) -> dict[str, str] | None:
+    """Compute the complete input manifest for Doctor result reuse.
+
+    Returns None when any required input cannot be read, so callers
+    fail-closed instead of reusing a stale or partial receipt.
+    """
+    head_result = git_text("rev-parse", "HEAD", check=False)
+    if head_result.returncode != 0:
+        return None
+    head = head_result.stdout.strip()
+    if not FULL_COMMIT_RE.fullmatch(head):
+        return None
+    index_result = git_bytes("ls-files", "--stage", "-z", check=False)
+    if index_result.returncode != 0:
+        return None
+    index_flags_result = git_bytes("ls-files", "-v", "-z", check=False)
+    if index_flags_result.returncode != 0:
+        return None
+    fsmonitor_result = git_bytes("ls-files", "-f", "-z", check=False)
+    if fsmonitor_result.returncode != 0:
+        return None
+    return {
+        "head": head,
+        "indexSha256": hashlib.sha256(index_result.stdout).hexdigest(),
+        "indexFlagsSha256": hashlib.sha256(index_flags_result.stdout).hexdigest(),
+        "fsmonitorFlagsSha256": hashlib.sha256(fsmonitor_result.stdout).hexdigest(),
+        "preClosure": "true" if pre_closure else "false",
+    }
+
+
+def compute_receipt_hash(manifest: dict[str, str]) -> str:
+    """Content-address the manifest via canonical JSON SHA-256."""
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def main() -> int:
     configure_utf8_stdio()
     parser = argparse.ArgumentParser(description="Validate the portable Agent Harness")
@@ -16877,16 +16916,23 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    import json as _j, hashlib as _h, tempfile
+    _receipt_manifest = compute_doctor_receipt_manifest(
+        pre_closure=args.pre_closure
+    )
     _cache = Path(tempfile.gettempdir()) / "vc-doctor-cache.json"
-    _head = git_text("rev-parse", "HEAD").stdout.strip()
-    _idx = git_bytes("ls-files", "--stage", "-z").stdout
-    _fp = _h.sha256(_head.encode() + _idx).hexdigest()
-    if _cache.is_file():
+    if _receipt_manifest is not None and _cache.is_file():
         try:
-            _c = _j.loads(_cache.read_text())
-            if _c.get("fp") == _fp and _c.get("exit") == 0:
-                print(f"Harness doctor: PASS ({_c.get('n', 0)} checks) [cache hit]")
+            _c = json.loads(_cache.read_text())
+            _expected_hash = compute_receipt_hash(_receipt_manifest)
+            if (
+                _c.get("receiptHash") == _expected_hash
+                and _c.get("manifest") == _receipt_manifest
+                and _c.get("status") == "PASS"
+            ):
+                print(
+                    f"Harness doctor: PASS ({_c.get('checks', 0)} checks) "
+                    f"[receipt hit {_expected_hash[:12]}]"
+                )
                 return 0
         except Exception:
             pass
@@ -17008,15 +17054,18 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         print(f"Harness doctor: FAIL ({len(audit.errors)} errors, {audit.checks} checks)", file=sys.stderr)
         return 1
-    try:
-        import json as _j, hashlib as _h, tempfile
-        _cache = Path(tempfile.gettempdir()) / "vc-doctor-cache.json"
-        _head = git_text("rev-parse", "HEAD").stdout.strip()
-        _idx = git_bytes("ls-files", "--stage", "-z").stdout
-        _fp = _h.sha256(_head.encode() + _idx).hexdigest()
-        _cache.write_text(_j.dumps({"fp": _fp, "exit": 0, "n": audit.checks}))
-    except Exception:
-        pass
+    if _receipt_manifest is not None:
+        try:
+            _receipt = {
+                "manifest": _receipt_manifest,
+                "receiptHash": compute_receipt_hash(_receipt_manifest),
+                "status": "PASS",
+                "exit": 0,
+                "checks": audit.checks,
+            }
+            _cache.write_text(json.dumps(_receipt, sort_keys=True))
+        except Exception:
+            pass
     _elapsed = time.monotonic() - _doctor_start
     print(f"Harness doctor: PASS ({audit.checks} checks, {_elapsed:.1f}s)")
     if _PHASE_TIMINGS:
