@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0084
-activeTaskCard: docs/tasks/TASK-0084-execution-authorization-guard-successor.md
-lastAcceptedTask: TASK-0083
-lastAcceptedHandoff: docs/handoffs/TASK-0083.json
-lastTerminalTask: TASK-0083
-lastTerminalHandoff: docs/handoffs/TASK-0083.json
-nextAction: TASK-0084 IN_PROGRESS；验收授权快照与 Execution Authorization Guard
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0084
+lastAcceptedHandoff: docs/handoffs/TASK-0084.json
+lastTerminalTask: TASK-0084
+lastTerminalHandoff: docs/handoffs/TASK-0084.json
+nextAction: TASK-0084 已 ACCEPTED。授权 Guard 能力已落地。继续按 Backlog DAG 推进下一张可晋级产品任务。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

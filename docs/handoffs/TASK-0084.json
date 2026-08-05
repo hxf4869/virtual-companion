@@ -1,0 +1,24 @@
+{
+  "taskId": "TASK-0084",
+  "state": "ACCEPTED",
+  "title": "授权快照与 Execution Authorization Guard（永久后继）",
+  "baseCommit": "33bd2e6cad582807be55f16cd458b9debf4a0ed3",
+  "candidateCommit": "ec45ce4cf39979606fee9070e81bfdab37c715ec",
+  "candidateTree": "dcc5a7e067a588a40393f7261e3f8b5ddf9657dc",
+  "completedItems": [
+    "Accepted pre-landed dual authorization snapshots and ExecutionAuthorizationGuard",
+    "Fail-closed withdraw/narrow/cancel/delete/provider-disabled coverage",
+    "ExternalAttemptBinding dual-snapshot IDs enforced",
+    "Doctor PASS 235875; 233 tests OK; R1 PASS",
+    "Fixture coupling permanently resolved by TASK-0083"
+  ],
+  "remainingItems": [
+    "Java 25 CI compilation of modelruntime authorization package",
+    "Continue Technical Alpha DAG: next product tasks after authorization guard"
+  ],
+  "knownRisks": [
+    "Java unit tests not executed locally (no JDK 25)",
+    "Backlog still lists TASK-0014 as PLANNED nextPromotable; TASK-0084 is non-backlog successor delivering the same capability"
+  ],
+  "nextAction": "TASK-0084 已 ACCEPTED。授权 Guard 能力已落地。继续按 Backlog DAG 推进下一张可晋级产品任务。"
+}
