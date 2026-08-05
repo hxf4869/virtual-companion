@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0058
 lastAcceptedHandoff: docs/handoffs/TASK-0058.json
 lastTerminalTask: TASK-0058
 lastTerminalHandoff: docs/handoffs/TASK-0058.json
-nextAction: TASK-0059 READY；实现 Harness 内容寻址快照复用与 Evidence 门禁
+nextAction: TASK-0059 IN_PROGRESS；实现 Harness 内容寻址快照复用与 Evidence 门禁
 capabilityGates:
   businessImplementation:
     state: BLOCKED
