@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0078
 lastAcceptedHandoff: docs/handoffs/TASK-0078.json
 lastTerminalTask: TASK-0079
 lastTerminalHandoff: docs/handoffs/TASK-0079.json
-nextAction: TASK-0080 READY；修复 fixture 终态指针隔离
+nextAction: TASK-0080 IN_PROGRESS；修复 fixture 终态指针隔离
 capabilityGates:
   businessImplementation:
     state: BLOCKED
