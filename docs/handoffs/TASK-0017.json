@@ -1,0 +1,27 @@
+{
+  "taskId": "TASK-0017",
+  "state": "ACCEPTED",
+  "title": "Conversation/Generation 持久化与幂等接收",
+  "baseCommit": "f46ab941d3d08e1f6637d126f7d09e7ebcb53b95",
+  "headCommit": "63d87be0ee725a710ad9b1bad790f3c5d6ddeee8",
+  "candidateCommit": "63d87be0ee725a710ad9b1bad790f3c5d6ddeee8",
+  "candidateTree": "042be64934d9b2a6af550f08abbf90c4b848183d",
+  "evidencePath": "docs/evidence/TASK-0017/evidence-pack.json",
+  "completed": [
+    "V6 migration: generation.idempotency_key (partial unique per owner) + generation/message id sequences + SECURITY DEFINER vc.receive_generation (idempotent: same owner+key returns same logical_generation_id, no duplicate user message)",
+    "receive_generation binds vc.owner_user_id before writes (FORCE RLS holds), enforces owner explicitly, REVOKE EXECUTE FROM PUBLIC + GRANT only to vc_api (TASK-0016 P0 trap closed)",
+    "Composite ownership FK preserved: cross-owner generation->conversation reference denied (SQL test 15, direct insert + function path)",
+    "GenerationRecord + Conversation/Message/Generation JDBC repositories + GenerationReceiveService (no catalog dependency; status as String); pure unit test 12/12",
+    "SQL tests 13-15: idempotent same generation id (+EXECUTE isolation regression), no duplicate message (+NULL-key not deduped), cross-owner FK denial",
+    "Doctor 274817 PASS; harness suite 233 OK; Docker Temurin-25 build SUCCESS; R1 PASS then R2 finding-closure PASS"
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0018 (Finalization/Usage/Quota/Outbox), depends on TASK-0014/0016/0017"
+  ],
+  "knownRisks": [
+    "receive_generation is the in-DB idempotent skeleton; the app-layer ingestion path (request -> receive -> dispatch) and SSE/streaming are later runtime tasks (H5/SSE explicitly out of scope)",
+    "Sequences are global bigint (safe under composite (owner_user_id,id) keys); if per-owner id allocation is ever required it would be a later migration",
+    "Java CI on main should pass (persistence compiles under Temurin 25, GenerationReceiveServiceTest green); confirm on next remote CI run"
+  ],
+  "nextAction": "TASK-0017 已 ACCEPTED。Conversation/Generation 持久化与幂等接收已落地（V6 generation.idempotency_key + id 序列 + SECURITY DEFINER vc.receive_generation 幂等接收；Conversation/Message/Generation JDBC 仓储），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0018（Finalization/Usage/Quota/Outbox，依赖 TASK-0014/0016/0017）。"
+}
