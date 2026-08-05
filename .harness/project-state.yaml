@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0059
 lastAcceptedHandoff: docs/handoffs/TASK-0059.json
 lastTerminalTask: TASK-0013
 lastTerminalHandoff: docs/handoffs/TASK-0013.json
-nextAction: TASK-0078 READY；修复 harness 测试 fixture 晋升隔离
+nextAction: TASK-0078 IN_PROGRESS；修复 harness 测试 fixture 晋升隔离
 capabilityGates:
   businessImplementation:
     state: BLOCKED
