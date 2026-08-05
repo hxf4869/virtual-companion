@@ -1,0 +1,88 @@
+{
+  "taskId": "TASK-0016",
+  "baseCommit": "b552b0f22f81eb61a6856f57aad8c5f0cbe3602a",
+  "headCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c",
+  "contextFingerprint": "7966d94bf8b44895808cdcfc2c4f528f4ca16371073a3e6ca2901b12a5ee5614",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "63a4095",
+      "startedAt": "2026-08-06T00:00:00+08:00",
+      "endedAt": "2026-08-06T00:40:00+08:00",
+      "elapsedSeconds": 2400,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "candidateDeadlineMinutes": 45,
+      "elapsedSeconds": 1500,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0016_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c",
+      "evidencePath": "docs/evidence/TASK-0016/review-r1.md",
+      "reason": "R1 found P0 (claim_work_items payload leak via default PUBLIC EXECUTE) + P2 (vc_worker direct-write) + P3 (unused PUBLIC _claim_is_live); all fixed in ec634f3; R2 finding-closure PASS, no new P0/P1",
+      "candidateTree": "da595e06cf0308d21558c45e44a7ede8ea527784",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 260,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0016",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "269014 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c"
+    },
+    {
+      "command": "docker run --rm -v /workspace -v vc-maven-cache:/root/.m2 maven:3.9-eclipse-temurin-25-alpine mvn -pl service/platform/persistence -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Temurin 25: catalog + modelruntime + persistence compile; WorkItemClaimServiceTest green",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "12 cross-tenant/worker SQL tests PASS against ephemeral pgvector/pgvector:0.8.5-pg18@sha256:12a379b4 container; incl. claim binds context, expired lease/wrong token/stale fence/missing context zero-write, coordinator payload isolation (table + function path)",
+      "environment": "WSL2 Ubuntu-24.04; PostgreSQL 18 + pgvector 0.8.5",
+      "verifiedCommit": "ec634f3ca00f684eef4334b0932e7fd954e0de7c"
+    }
+  ]
+}
