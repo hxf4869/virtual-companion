@@ -258,3 +258,9 @@ tasks:
     taskCard: docs/tasks/TASK-0080-harness-fixture-terminal-pointer-isolation.md
     evidence: docs/evidence/TASK-0080/evidence-pack.json
     handoff: docs/handoffs/TASK-0080.json
+  TASK-0081:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0081-provider-registry-admission-model-successor.md
+    evidence: docs/evidence/TASK-0081/evidence-pack.json
+    handoff: docs/handoffs/TASK-0081.json
