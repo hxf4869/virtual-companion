@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0082
 lastAcceptedHandoff: docs/handoffs/TASK-0082.json
 lastTerminalTask: TASK-0014
 lastTerminalHandoff: docs/handoffs/TASK-0014.json
-nextAction: TASK-0083 READY；泛化 backlog PLANNED fixture 恢复
+nextAction: TASK-0083 IN_PROGRESS；泛化 backlog PLANNED fixture 恢复
 capabilityGates:
   businessImplementation:
     state: BLOCKED
