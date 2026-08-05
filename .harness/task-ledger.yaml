@@ -264,3 +264,9 @@ tasks:
     taskCard: docs/tasks/TASK-0081-provider-registry-admission-model-successor.md
     evidence: docs/evidence/TASK-0081/evidence-pack.json
     handoff: docs/handoffs/TASK-0081.json
+  TASK-0082:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0082-rejected-capability-successor-dependency.md
+    evidence: docs/evidence/TASK-0082/evidence-pack.json
+    handoff: docs/handoffs/TASK-0082.json

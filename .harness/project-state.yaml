@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0082
-activeTaskCard: docs/tasks/TASK-0082-rejected-capability-successor-dependency.md
-lastAcceptedTask: TASK-0081
-lastAcceptedHandoff: docs/handoffs/TASK-0081.json
-lastTerminalTask: TASK-0081
-lastTerminalHandoff: docs/handoffs/TASK-0081.json
-nextAction: TASK-0082 IN_PROGRESS；REJECTED 能力后继依赖满足
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0082
+lastAcceptedHandoff: docs/handoffs/TASK-0082.json
+lastTerminalTask: TASK-0082
+lastTerminalHandoff: docs/handoffs/TASK-0082.json
+nextAction: TASK-0082 已 ACCEPTED。仓库空闲后可按 Backlog 晋级 TASK-0014（Execution Authorization Guard）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

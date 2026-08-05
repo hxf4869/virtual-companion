@@ -1,0 +1,20 @@
+{
+  "taskId": "TASK-0082",
+  "state": "ACCEPTED",
+  "title": "Harness REJECTED 能力后继依赖满足",
+  "baseCommit": "a22b21c86a7fcd86decc5969a007842346affad4",
+  "candidateCommit": "b8d1d85fed6297cd1af55441b95a43233db311fb",
+  "candidateTree": "563fd4f9c6143bd26eec8c373d4ae2eda5a78700",
+  "completedItems": [
+    "REJECTED_CAPABILITY_SUCCESSORS map TASK-0013->TASK-0081",
+    "Promotion dependency satisfaction without criticalPath rewrite",
+    "233 tests OK; Doctor PASS; R1 PASS"
+  ],
+  "remainingItems": [
+    "Promote TASK-0014 once repository idle after this terminal"
+  ],
+  "knownRisks": [
+    "Map is exact and non-generic by design"
+  ],
+  "nextAction": "TASK-0082 已 ACCEPTED。仓库空闲后可按 Backlog 晋级 TASK-0014。"
+}
