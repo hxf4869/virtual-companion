@@ -1,0 +1,27 @@
+{
+  "taskId": "TASK-0058",
+  "state": "ACCEPTED",
+  "title": "Harness 路径感知 CI 与包装器平台策略永久后继",
+  "baseCommit": "64a1246430c70f23097124059738d887b8d94139",
+  "candidateCommit": "2ad8cbca6428339121c14c7c1382789cb2685858",
+  "candidateTree": "dda52eeae68032534c8fb7cb2613477fdcf1551d",
+  "completedItems": [
+    "Split single harness matrix job into harness-full (Ubuntu complete validation) and harness-smoke (Windows/macOS wrapper precheck only)",
+    "Ensure CI always triggers without path filters (no required check can be left pending)",
+    "Replace single CI matrix test with four targeted tests: trigger filters, full validation, smoke-only, job preservation",
+    "Update backlog projection expectations for TASK-0058 IN_PROGRESS",
+    "Remove ci.yml from frozen byte comparisons in task0066/task0067 tests",
+    "TASK-0052 SUPERSEDED history confirmed in backlog resolutions (planning-only supersession, no ledger entry needed)",
+    "Doctor PASS: 181552 checks on Windows NTFS",
+    "Test suite PASS: 228 tests, 1 skipped, 0 failures",
+    "Independent review R1: PASS (no P0/P1 issues)"
+  ],
+  "remainingItems": [
+    "TASK-0059 promotion after repository idle"
+  ],
+  "knownRisks": [
+    "Windows/macOS smoke jobs no longer run the full test suite; this is intentional (Ubuntu reference platform covers full validation)",
+    "CI workflow changes require GitHub Actions to validate on next push; local tests verify YAML structure only"
+  ],
+  "nextAction": "TASK-0059 的依赖 TASK-0058 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0059 为 READY"
+}
