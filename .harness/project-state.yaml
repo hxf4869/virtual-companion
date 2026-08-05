@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0059
 lastAcceptedHandoff: docs/handoffs/TASK-0059.json
 lastTerminalTask: TASK-0059
 lastTerminalHandoff: docs/handoffs/TASK-0059.json
-nextAction: TASK-0013 IN_PROGRESS；实现 Provider Registry 与供应商中立准入模型
+nextAction: TASK-0013 BLOCKED；Provider Registry 代码已完成，但 harness 测试 fixture 需要 harness-change 任务更新
 capabilityGates:
   businessImplementation:
     state: BLOCKED
