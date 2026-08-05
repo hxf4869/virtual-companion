@@ -2451,16 +2451,16 @@ class BacklogTests(unittest.TestCase):
                 for task_id, entry in backlog["tasks"].items()
             },
         )
-        self.assertEqual(26, projection["plannedCount"])
+        self.assertEqual(25, projection["plannedCount"])
         self.assertEqual(
             state.get("activeTask") in (None, ""),
             projection["repositoryIdle"],
         )
         self.assertEqual(None, projection["nextPromotable"])
-        self.assertEqual("TASK-0058", projection["executionOrderFrontier"])
+        self.assertEqual("TASK-0059", projection["executionOrderFrontier"])
         self.assertEqual(
             [
-                "DEPENDENCY:TASK-0057:IN_PROGRESS",
+                "DEPENDENCY:TASK-0058:IN_PROGRESS",
                 "REPOSITORY_NOT_IDLE",
             ],
             projection["frontierBlockers"],
@@ -2526,7 +2526,7 @@ class BacklogTests(unittest.TestCase):
             lifecycle,
         )
         self.assertTrue(terminal_projection["repositoryIdle"])
-        self.assertEqual(27, terminal_projection["plannedCount"])
+        self.assertEqual(26, terminal_projection["plannedCount"])
         self.assertEqual("TASK-0055", terminal_projection["nextPromotable"])
         self.assertIn(
             "WAITING_FOR_ORDER:TASK-0055",
@@ -3423,9 +3423,7 @@ class BacklogTests(unittest.TestCase):
                 tasks[task_id]["planningContractHash"],
             )
         for path in (
-            ".github/workflows/ci.yml",
             "AGENTS.md",
-            "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
             "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
         ):
             self.assertEqual(
@@ -3548,10 +3546,8 @@ class BacklogTests(unittest.TestCase):
                 tasks[task_id]["planningContractHash"],
             )
         for path in (
-            ".github/workflows/ci.yml",
             "AGENTS.md",
             "CLAUDE.md",
-            "docs/tasks/TASK-0058-harness-path-aware-ci-wrapper-strategy.md",
             "docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md",
             "docs/tasks/TASK-0066-local-fallback-recovery-permanent-replacement.md",
             "docs/evidence/TASK-0066/evidence-pack.json",
@@ -7183,32 +7179,74 @@ class DeterminismTests(unittest.TestCase):
 
 
 class CiWorkflowTests(unittest.TestCase):
-    def test_harness_matrix_preserves_checks_and_uses_per_os_timeout_budgets(self) -> None:
+    def test_ci_always_triggers_without_path_filters(self) -> None:
         workflow = load_yaml(ROOT / ".github/workflows/ci.yml")
-        harness = workflow["jobs"]["harness"]
+        on_config = workflow.get("on") or workflow.get(True) or {}
+        if isinstance(on_config, str):
+            on_config = {on_config: None}
+        self.assertIsInstance(on_config, dict)
+        for event_config in on_config.values():
+            if isinstance(event_config, dict):
+                self.assertNotIn(
+                    "paths",
+                    event_config,
+                    "ci.yml must not use path filters that leave required checks pending",
+                )
+                self.assertNotIn(
+                    "paths-ignore",
+                    event_config,
+                    "ci.yml must not use paths-ignore that leave required checks pending",
+                )
 
-        self.assertFalse(harness["strategy"]["fail-fast"])
-        self.assertEqual("${{ matrix.os }}", harness["runs-on"])
-        self.assertEqual("${{ matrix.timeoutMinutes }}", harness["timeout-minutes"])
+    def test_harness_full_runs_complete_validation_on_reference_platform(self) -> None:
+        workflow = load_yaml(ROOT / ".github/workflows/ci.yml")
+        full_job = workflow["jobs"]["harness-full"]
+        self.assertFalse(full_job["strategy"]["fail-fast"])
+        self.assertEqual("${{ matrix.os }}", full_job["runs-on"])
+        self.assertEqual(
+            "${{ matrix.timeoutMinutes }}", full_job["timeout-minutes"]
+        )
+        self.assertEqual(
+            [{"os": "ubuntu-latest", "timeoutMinutes": 10}],
+            full_job["strategy"]["matrix"]["include"],
+        )
+        full_step_names = [step["name"] for step in full_job["steps"]]
+        self.assertIn("Test Harness failure and portability rules", full_step_names)
+        self.assertIn(
+            "Run canonical Harness precheck (POSIX wrapper)", full_step_names
+        )
+
+    def test_harness_smoke_runs_only_precheck_wrappers(self) -> None:
+        workflow = load_yaml(ROOT / ".github/workflows/ci.yml")
+        smoke_job = workflow["jobs"]["harness-smoke"]
+        self.assertFalse(smoke_job["strategy"]["fail-fast"])
+        self.assertEqual("${{ matrix.os }}", smoke_job["runs-on"])
+        self.assertEqual(
+            "${{ matrix.timeoutMinutes }}", smoke_job["timeout-minutes"]
+        )
+        smoke_step_names = [step["name"] for step in smoke_job["steps"]]
+        self.assertNotIn(
+            "Test Harness failure and portability rules", smoke_step_names
+        )
+        self.assertIn(
+            "Run canonical Harness precheck (Windows wrapper)", smoke_step_names
+        )
+        self.assertIn(
+            "Run canonical Harness precheck (POSIX wrapper)", smoke_step_names
+        )
         self.assertEqual(
             [
-                {"os": "ubuntu-latest", "timeoutMinutes": 10},
                 {"os": "windows-latest", "timeoutMinutes": 20},
                 {"os": "macos-latest", "timeoutMinutes": 10},
             ],
-            harness["strategy"]["matrix"]["include"],
+            smoke_job["strategy"]["matrix"]["include"],
         )
-        self.assertEqual(
-            [
-                "Checkout",
-                "Set up Python",
-                "Install harness dependencies",
-                "Test Harness failure and portability rules",
-                "Run canonical Harness precheck (Windows wrapper)",
-                "Run canonical Harness precheck (POSIX wrapper)",
-            ],
-            [step["name"] for step in harness["steps"]],
-        )
+
+    def test_ci_backend_and_frontend_jobs_preserved(self) -> None:
+        workflow = load_yaml(ROOT / ".github/workflows/ci.yml")
+        jobs = workflow["jobs"]
+        self.assertIn("backend", jobs)
+        self.assertIn("frontend", jobs)
 
 
 class ValidationFlowTests(unittest.TestCase):
