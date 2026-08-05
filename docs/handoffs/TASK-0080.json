@@ -1,0 +1,21 @@
+{
+  "taskId": "TASK-0080",
+  "state": "ACCEPTED",
+  "title": "Harness fixture 终态指针隔离修复",
+  "baseCommit": "0f329b668a702ab30a636b9508ce205d7f0f88ea",
+  "candidateCommit": "78b2c84a0c9cbe59c7700ac9d48cedbabce9da78",
+  "candidateTree": "10254968c4cf1d52903bd44a618c8de26f44cfca",
+  "completedItems": [
+    "load_inputs retains live lastAccepted/lastTerminal",
+    "load_inputs only clears activeTask occupancy",
+    "nextAction derived from live lastAccepted",
+    "232 tests OK; Doctor 207190 PASS; R1 PASS"
+  ],
+  "remainingItems": [
+    "Create Provider Registry successor (reuse main registry sources)"
+  ],
+  "knownRisks": [
+    "Fallback TASK-0059 remains if lastAccepted missing from state"
+  ],
+  "nextAction": "TASK-0080 已 ACCEPTED。创建 Provider Registry 后继任务验收已合入 main 的 registry 源码。"
+}
