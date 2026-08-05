@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0013
-activeTaskCard: docs/tasks/TASK-0013-provider-registry-admission-model.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0059
 lastAcceptedHandoff: docs/handoffs/TASK-0059.json
-lastTerminalTask: TASK-0059
-lastTerminalHandoff: docs/handoffs/TASK-0059.json
-nextAction: TASK-0013 BLOCKED；Provider Registry 代码已完成，但 harness 测试 fixture 需要 harness-change 任务更新
+lastTerminalTask: TASK-0013
+lastTerminalHandoff: docs/handoffs/TASK-0013.json
+nextAction: TASK-0013 已 REJECTED（Provider Registry 代码完成但 test fixture 需 harness-change skill）。需创建 harness-change 任务修复 fixture 后创建 TASK-0013 后继。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

@@ -1,0 +1,37 @@
+{
+  "taskId": "TASK-0013",
+  "baseCommit": "1d245f1d3f0e2f9627b97db001d4f92178119c34",
+  "headCommit": "69cf138c83b45bd65dd4e8ca7e76c21b1c8b5dbf",
+  "contextFingerprint": "891e5c873ec83382bc6e1752fc5e0023c79e6e49c9a3edc11878e72893d242a9",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0abb679",
+      "terminal": "TERMINAL_COMMIT",
+      "elapsedSeconds": 5400,
+      "reanchored": false
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0013",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "193037 checks PASS; Provider Registry code accepted by Doctor diff scope",
+      "environment": "Windows 11 Pro; Python 3.12; NTFS",
+      "verifiedCommit": "69cf138c83b45bd65dd4e8ca7e76c21b1c8b5dbf"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "11 tests fail: promoting TASK-0013 to IN_PROGRESS broke backlog test fixtures that reference TASK-0013 as PLANNED. test_harness.py is C4 harness-change; TASK-0013 is C3 model-routing-change and cannot fix it.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "69cf138c83b45bd65dd4e8ca7e76c21b1c8b5dbf"
+    }
+  ],
+  "rejectionReason": "Governance deadlock: Python test suite fails due to TASK-0013 promotion breaking test fixtures. Fixing test_harness.py requires harness-change skill (C4); TASK-0013 declares model-routing-change (C3). Provider Registry code is complete and Doctor-valid."
+}

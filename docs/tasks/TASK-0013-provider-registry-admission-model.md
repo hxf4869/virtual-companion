@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0013
-state: BLOCKED
+state: REJECTED
+resolutionReason: >-
+  Provider Registry 代码已完成并通过 Doctor 验证（193037 checks），但将 TASK-0013
+  晋升为 IN_PROGRESS 破坏了 test_harness.py 中引用 TASK-0013 作为稳定 PLANNED
+  样本的 11 个测试。test_harness.py 属于 C4 harness-change 保护路径
+  （scripts/harness/**），TASK-0013 声明 C3 model-routing-change，无权修复。
+  需创建 harness-change 任务修复 fixture 后以新任务卡重新交付 Provider Registry。
 owner: repository-owner
 riskClass: C3
 planningBacklog: .harness/task-backlog.yaml

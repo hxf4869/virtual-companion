@@ -234,3 +234,9 @@ tasks:
     taskCard: docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md
     evidence: docs/evidence/TASK-0059/evidence-pack.json
     handoff: docs/handoffs/TASK-0059.json
+  TASK-0013:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0013-provider-registry-admission-model.md
+    evidence: docs/evidence/TASK-0013/evidence-pack.json
+    handoff: docs/handoffs/TASK-0013.json
