@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0057
 lastAcceptedHandoff: docs/handoffs/TASK-0057.json
 lastTerminalTask: TASK-0057
 lastTerminalHandoff: docs/handoffs/TASK-0057.json
-nextAction: TASK-0058 READY；实现 Harness 路径感知 CI 与包装器平台策略
+nextAction: TASK-0058 IN_PROGRESS；实现 Harness 路径感知 CI 与包装器平台策略
 capabilityGates:
   businessImplementation:
     state: BLOCKED
