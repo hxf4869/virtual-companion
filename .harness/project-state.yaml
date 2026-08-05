@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0080
 lastAcceptedHandoff: docs/handoffs/TASK-0080.json
 lastTerminalTask: TASK-0080
 lastTerminalHandoff: docs/handoffs/TASK-0080.json
-nextAction: TASK-0081 READY；验收 Provider Registry 永久后继
+nextAction: TASK-0081 IN_PROGRESS；验收 Provider Registry 永久后继
 capabilityGates:
   businessImplementation:
     state: BLOCKED
