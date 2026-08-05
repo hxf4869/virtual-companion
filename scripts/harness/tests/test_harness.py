@@ -2790,8 +2790,42 @@ class BacklogTests(unittest.TestCase):
 
         # Unrelated REJECTED dependencies remain blocking.
         self.assertEqual(
-            {"TASK-0013": "TASK-0081"},
+            {
+                "TASK-0013": "TASK-0081",
+                "TASK-0014": "TASK-0084",
+            },
             doctor.REJECTED_CAPABILITY_SUCCESSORS,
+        )
+
+        # TASK-0014 REJECTED is likewise satisfied by ACCEPTED TASK-0084.
+        tasks_auth = copy.deepcopy(tasks)
+        tasks_auth["TASK-0014"] = {
+            "taskId": "TASK-0014",
+            "state": "REJECTED",
+            "owner": "repository-owner",
+            "riskClass": "C3",
+            "_path": "docs/tasks/TASK-0014-execution-authorization-guard.md",
+        }
+        tasks_auth["TASK-0084"] = {
+            "taskId": "TASK-0084",
+            "state": "ACCEPTED",
+            "owner": "repository-owner",
+            "riskClass": "C3",
+            "_path": (
+                "docs/tasks/TASK-0084-execution-authorization-guard-successor.md"
+            ),
+        }
+        # With both capability successors accepted and TASK-0013/0014 rejected,
+        # dependents that only needed those capabilities are unblocked at the
+        # dependency layer (order blockers may still apply).
+        auth_projection = derive_backlog_promotion_projection(
+            backlog,
+            tasks_auth,
+            lifecycle,
+        )
+        self.assertNotIn(
+            "DEPENDENCY:TASK-0014:REJECTED",
+            auth_projection["blockers"].get("TASK-0015", []),
         )
 
     def test_backlog_activation_introduction_skips_immutable_root_comparison(
