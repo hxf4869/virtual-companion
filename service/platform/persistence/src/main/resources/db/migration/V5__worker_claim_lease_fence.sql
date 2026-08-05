@@ -95,27 +95,9 @@ BEGIN
 END;
 $$;
 
--- Internal guard shared by every late write: the row must be CLAIMED, owned by
--- the active context, claimed under the CURRENT fence, with a live lease and a
--- matching token. Anything stale/expired/mismatched matches nothing -> zero write.
-CREATE OR REPLACE FUNCTION vc._claim_is_live(
-    p_owner_user_id bigint,
-    p_token text
-)
-    RETURNS boolean
-    LANGUAGE sql
-    SECURITY DEFINER
-    SET search_path = vc, public
-AS $$
-    SELECT EXISTS (
-        SELECT 1 FROM vc.work_item w
-        WHERE w.owner_user_id = p_owner_user_id
-          AND w.claim_token = p_token
-          AND w.claim_fence = NULLIF(current_setting('vc.job_fence', true), '')
-          AND w.status = 'CLAIMED'
-          AND w.lease_expires_at > now()
-    );
-$$;
+-- Internal guard inlined by every late write (renew_lease and _terminalize).
+-- There is intentionally no callable _claim_is_live function: a live-claim probe
+-- must not be invokable by roles that should only read metadata.
 
 -- Renew: extend the lease of a still-live claim. Returns rows affected (0 on
 -- any stale/expired/mismatched condition).
@@ -185,14 +167,29 @@ CREATE OR REPLACE FUNCTION vc.cancel_work_item(p_token text)
     RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = vc, public
 AS $$ SELECT vc._terminalize(p_token, 'CANCELLED'); $$;
 
--- Worker claims via the SECURITY DEFINER functions; it does not need direct
--- table DML. Coordinator reads OPAQUE METADATA ONLY: column-level privilege
--- grants every column except payload, so a coordinator can never read the work
--- payload. vc_worker gets EXECUTE on the claim/lease/fence functions.
+-- Worker reaches work_item ONLY through the SECURITY DEFINER functions, so the
+-- lease/fence/token guards are always enforced. vc_worker gets NO direct table
+-- DML (a direct UPDATE would bypass _terminalize). The coordinator reads OPAQUE
+-- METADATA ONLY: a column-level grant covers every column except payload, so a
+-- coordinator can never read the work payload via the table.
 REVOKE ALL ON vc.work_item FROM PUBLIC;
 GRANT SELECT (owner_user_id, id, kind, ref_id, status, claimed_at, lease_expires_at, finished_at)
     ON vc.work_item TO vc_job_coordinator;
-GRANT SELECT, INSERT, UPDATE, DELETE ON vc.work_item TO vc_worker;
+-- vc_worker may READ work_item (its own rows, RLS-enforced) but NOT write
+-- directly: every write goes through the SECURITY DEFINER functions so the
+-- lease/fence/token guards are always enforced. No INSERT/UPDATE/DELETE grant.
+GRANT SELECT ON vc.work_item TO vc_worker;
+-- Functions default to PUBLIC EXECUTE; revoke it so only vc_worker may call
+-- them. This also blocks vc_job_coordinator from calling claim_work_items,
+-- whose return signature includes the opaque payload (closing the function
+-- bypass of the column-level isolation).
+REVOKE EXECUTE ON FUNCTION
+    vc.claim_work_items(bigint, text, integer, integer),
+    vc.renew_lease(text, integer),
+    vc.complete_work_item(text),
+    vc.fail_work_item(text),
+    vc.cancel_work_item(text)
+    FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION
     vc.claim_work_items(bigint, text, integer, integer),
     vc.renew_lease(text, integer),

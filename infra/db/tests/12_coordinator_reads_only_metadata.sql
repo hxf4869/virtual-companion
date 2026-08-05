@@ -34,5 +34,17 @@ EXCEPTION
             RAISE;
         END IF;
 END $$;
+-- Coordinator CANNOT call claim_work_items either (EXECUTE revoked from PUBLIC;
+-- the function return signature includes payload, so calling it would leak it).
+DO $$
+BEGIN
+    PERFORM * FROM vc.claim_work_items(1, 'FENCE', 30, 16);
+    RAISE EXCEPTION 'coordinator unexpectedly executed claim_work_items';
+EXCEPTION
+    WHEN insufficient_privilege OR others THEN
+        IF sqlerrm NOT LIKE '%permission%' AND sqlerrm NOT LIKE '%execute%' THEN
+            RAISE;
+        END IF;
+END $$;
 COMMIT;
 RESET ROLE;
