@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0018
+activeTaskCard: docs/tasks/TASK-0018-finalization-usage-quota-outbox.md
 lastAcceptedTask: TASK-0017
 lastAcceptedHandoff: docs/handoffs/TASK-0017.json
 lastTerminalTask: TASK-0017
 lastTerminalHandoff: docs/handoffs/TASK-0017.json
-nextAction: TASK-0017 已 ACCEPTED。Conversation/Generation 持久化与幂等接收已落地（V6 generation.idempotency_key + id 序列 + SECURITY DEFINER vc.receive_generation 幂等接收；Conversation/Message/Generation JDBC 仓储），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0018（Finalization/Usage/Quota/Outbox，依赖 TASK-0014/0016/0017）。
+nextAction: TASK-0018 READY：Finalization/Usage/Quota/Outbox 原子事务；IN_PROGRESS 后实现 V7 迁移（finalize_generation SECURITY DEFINER 原子事务 + generation_usage/quota_ledger_entry/realtime_event/outbox_event 复合所有权表）与 FinalizeGenerationService，并以 SQL 故障注入测试 16-18 证明原子提交或完整回滚、Provider EOS 不直接完成 Generation。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
