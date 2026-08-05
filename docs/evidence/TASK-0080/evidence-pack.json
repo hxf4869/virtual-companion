@@ -1,0 +1,69 @@
+{
+  "taskId": "TASK-0080",
+  "baseCommit": "0f329b668a702ab30a636b9508ce205d7f0f88ea",
+  "headCommit": "78b2c84a0c9cbe59c7700ac9d48cedbabce9da78",
+  "contextFingerprint": "89242f89788215596a908846e69ffbf6c1024360124e94a17e04f823d78bd44a",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "1ae6008",
+      "startedAt": "2026-08-05T20:00:00+08:00",
+      "endedAt": "2026-08-05T20:45:00+08:00",
+      "elapsedSeconds": 2700,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "candidateDeadlineMinutes": 45,
+      "elapsedSeconds": 900,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0080_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "78b2c84a0c9cbe59c7700ac9d48cedbabce9da78",
+      "evidencePath": "docs/evidence/TASK-0080/review-r1.md",
+      "candidateTree": "10254968c4cf1d52903bd44a618c8de26f44cfca",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 180,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "232 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "78b2c84a0c9cbe59c7700ac9d48cedbabce9da78"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "78b2c84a0c9cbe59c7700ac9d48cedbabce9da78"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0080",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "207190 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "78b2c84a0c9cbe59c7700ac9d48cedbabce9da78"
+    }
+  ]
+}

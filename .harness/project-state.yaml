@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0080
-activeTaskCard: docs/tasks/TASK-0080-harness-fixture-terminal-pointer-isolation.md
-lastAcceptedTask: TASK-0078
-lastAcceptedHandoff: docs/handoffs/TASK-0078.json
-lastTerminalTask: TASK-0079
-lastTerminalHandoff: docs/handoffs/TASK-0079.json
-nextAction: TASK-0080 IN_PROGRESS；修复 fixture 终态指针隔离
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0080
+lastAcceptedHandoff: docs/handoffs/TASK-0080.json
+lastTerminalTask: TASK-0080
+lastTerminalHandoff: docs/handoffs/TASK-0080.json
+nextAction: TASK-0080 已 ACCEPTED。创建 Provider Registry 后继任务验收已合入 main 的 registry 源码。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
