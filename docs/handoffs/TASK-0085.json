@@ -1,0 +1,20 @@
+{
+  "taskId": "TASK-0085",
+  "state": "ACCEPTED",
+  "title": "Harness REJECTED 能力后继映射扩展（TASK-0014→TASK-0084）",
+  "baseCommit": "7289eaed45fa692a46f562bb349acf084efc15f1",
+  "candidateCommit": "f1d46d3860070f38a3a58ca45d707fda1deced29",
+  "candidateTree": "20fff4fc8af7b9e24cbbb843896bd3d6c3339013",
+  "completedItems": [
+    "REJECTED_CAPABILITY_SUCCESSORS += TASK-0014->TASK-0084",
+    "TASK-0015 dependency unblocked when TASK-0084 ACCEPTED",
+    "233 tests OK; Doctor PASS; R1 PASS"
+  ],
+  "remainingItems": [
+    "Promote TASK-0015 once repository idle after this terminal"
+  ],
+  "knownRisks": [
+    "Map remains exact; each future REJECTED product capability needs an explicit successor entry"
+  ],
+  "nextAction": "TASK-0085 已 ACCEPTED。仓库空闲后可按 Backlog 晋级 TASK-0015。"
+}

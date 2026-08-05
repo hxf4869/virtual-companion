@@ -288,3 +288,9 @@ tasks:
     taskCard: docs/tasks/TASK-0084-execution-authorization-guard-successor.md
     evidence: docs/evidence/TASK-0084/evidence-pack.json
     handoff: docs/handoffs/TASK-0084.json
+  TASK-0085:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0085-rejected-capability-successor-map-extension.md
+    evidence: docs/evidence/TASK-0085/evidence-pack.json
+    handoff: docs/handoffs/TASK-0085.json

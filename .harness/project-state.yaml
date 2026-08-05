@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0085
-activeTaskCard: docs/tasks/TASK-0085-rejected-capability-successor-map-extension.md
-lastAcceptedTask: TASK-0084
-lastAcceptedHandoff: docs/handoffs/TASK-0084.json
-lastTerminalTask: TASK-0084
-lastTerminalHandoff: docs/handoffs/TASK-0084.json
-nextAction: TASK-0085 IN_PROGRESS；扩展 REJECTED 能力后继映射 TASK-0014→TASK-0084
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0085
+lastAcceptedHandoff: docs/handoffs/TASK-0085.json
+lastTerminalTask: TASK-0085
+lastTerminalHandoff: docs/handoffs/TASK-0085.json
+nextAction: TASK-0085 已 ACCEPTED。仓库空闲后可按 Backlog 晋级 TASK-0015（PostgreSQL、Flyway、FORCE RLS）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
