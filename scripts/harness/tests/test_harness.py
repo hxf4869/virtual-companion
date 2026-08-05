@@ -2391,6 +2391,16 @@ class BacklogTests(unittest.TestCase):
         "TASK-0059": "Harness 内容寻址快照复用与 Evidence 门禁永久后继",
     }
 
+    # Canonical PLANNED snapshot of TASK-0013 used as the stable mechanical
+    # fixture for backlog projection / planning-card tests. Live TASK-0013 may
+    # be DRAFT/READY/IN_PROGRESS/REJECTED/ACCEPTED as the DAG advances; tests
+    # that treat it as "the next promotable PLANNED card" must not read the
+    # live lifecycle state. Snapshot is the TASK-0059 ACCEPTED tree where
+    # TASK-0013 was still a clean six-field PLANNED card.
+    TASK_0013_PLANNED_SNAPSHOT_COMMIT = (
+        "1d245f1d3f0e2f9627b97db001d4f92178119c34"
+    )
+
     def load_inputs(
         self,
     ) -> tuple[
@@ -2399,12 +2409,52 @@ class BacklogTests(unittest.TestCase):
         dict[str, object],
         dict[str, object],
     ]:
-        return (
-            load_yaml(ROOT / ".harness/task-backlog.yaml"),
-            discover_tasks(),
-            load_yaml(ROOT / ".harness/task-lifecycle.yaml"),
-            load_yaml(ROOT / ".harness/project-state.yaml"),
+        backlog = load_yaml(ROOT / ".harness/task-backlog.yaml")
+        tasks = discover_tasks()
+        lifecycle = load_yaml(ROOT / ".harness/task-lifecycle.yaml")
+        state = load_yaml(ROOT / ".harness/project-state.yaml")
+        active_states = set(
+            str(item) for item in lifecycle.get("activeStates", [])
         )
+        # Isolate mechanical backlog fixtures from the live lifecycle of any
+        # non-terminal task (READY/IN_PROGRESS/BLOCKED/IN_REVIEW/DRAFT). The
+        # DAG advances independently of these tests; fixtures must see an idle
+        # repository whose next promotable PLANNED card is TASK-0013.
+        for task_id, task in list(tasks.items()):
+            task_state = str(task.get("state", ""))
+            if task_id == "TASK-0013":
+                continue
+            if task_state in active_states or task_state == "DRAFT":
+                tasks.pop(task_id)
+        task_0013 = tasks.get("TASK-0013")
+        if isinstance(task_0013, dict):
+            task_path = str(task_0013.get("_path", ""))
+            if task_path:
+                planned = doctor.task_metadata_from_text(
+                    doctor.git_object(
+                        self.TASK_0013_PLANNED_SNAPSHOT_COMMIT,
+                        task_path,
+                    ).decode("utf-8"),
+                    "TASK-0013 PLANNED fixture",
+                )
+                planned["_path"] = task_path
+                tasks["TASK-0013"] = planned
+        if isinstance(state, dict):
+            state = dict(state)
+            state["activeTask"] = None
+            state["activeTaskCard"] = None
+            # Keep terminal pointers on the last accepted harness milestone so
+            # project-state validation does not see a planning-only or
+            # rejected product terminal as the latest execution boundary.
+            state["lastAcceptedTask"] = "TASK-0059"
+            state["lastAcceptedHandoff"] = "docs/handoffs/TASK-0059.json"
+            state["lastTerminalTask"] = "TASK-0059"
+            state["lastTerminalHandoff"] = "docs/handoffs/TASK-0059.json"
+            state["nextAction"] = (
+                "TASK-0013 is the Backlog next promotable task after "
+                "TASK-0059 ACCEPTED"
+            )
+        return backlog, tasks, lifecycle, state
 
     @staticmethod
     def card_bytes(
@@ -2531,12 +2581,10 @@ class BacklogTests(unittest.TestCase):
             state.get("activeTask") in (None, ""),
             projection["repositoryIdle"],
         )
-        self.assertEqual(None, projection["nextPromotable"])
+        self.assertEqual("TASK-0013", projection["nextPromotable"])
         self.assertEqual("TASK-0013", projection["executionOrderFrontier"])
         self.assertEqual(
-            [
-                "REPOSITORY_NOT_IDLE",
-            ],
+            [],
             projection["frontierBlockers"],
         )
         self.assertEqual(
@@ -5414,30 +5462,75 @@ class BacklogTests(unittest.TestCase):
     def test_full_history_scans_introduction_and_preterminal_corrupt_restore(
         self,
     ) -> None:
-        backlog, _, lifecycle, _ = self.load_inputs()
-        task_id = "TASK-0013"
-        task_path = str(backlog["tasks"][task_id]["taskCard"])
-        card_paths = {
-            str(entry["taskCard"])
-            for entry in backlog["tasks"].values()
-            if isinstance(entry, dict)
+        # Synthetic single-card fixture: live planning cards advance through
+        # the DAG and cannot be used as immutable byte fixtures. This test
+        # only needs one PLANNED card whose heading is corrupted mid-history.
+        _, _, lifecycle, _ = self.load_inputs()
+        task_id = "TASK-9002"
+        task_path = "docs/tasks/TASK-9002-synthetic-history-fixture.md"
+        task_entry = {
+            "title": "Synthetic History Fixture",
+            "taskCard": task_path,
+            "dependencies": [],
+            "decisionGates": [],
+            "promotionConditions": {
+                "requiresRepositoryIdle": True,
+                "requiresAcceptedDependencies": True,
+                "requiresApprovedDecisionGates": True,
+                "requiresFirstByExecutionOrder": True,
+            },
         }
-        card_bytes = {
-            path: (ROOT / path).read_bytes()
-            for path in card_paths
-            if (ROOT / path).is_file()
+        fixture_backlog = {
+            "schemaVersion": 1,
+            "bootstrapTask": task_id,
+            "tasks": {task_id: task_entry},
+            "executionOrder": [task_id],
+            "criticalPath": [],
+            "decisionGates": {},
+            "resolutions": {},
+            "authorizationAmendments": {},
         }
-        good_card = card_bytes[task_path]
+        planned_metadata = {
+            "taskId": task_id,
+            "state": "PLANNED",
+            "owner": "repository-owner",
+            "planningBacklog": ".harness/task-backlog.yaml",
+            "planningContractHash": canonical_json_sha256(task_entry),
+            "planningContractHashAlgorithm": "SHA256_CANONICAL_JSON_V1",
+        }
+        planned_yaml = yaml.safe_dump(
+            planned_metadata,
+            allow_unicode=True,
+            sort_keys=False,
+        ).rstrip()
+        good_card = (
+            f"# {task_id}：{task_entry['title']}\n\n"
+            f"```yaml\n{planned_yaml}\n```\n\n"
+            f"{doctor.PLANNED_CARD_NON_NORMATIVE_NOTICE}\n\n"
+            "## Objective\n\nSynthetic objective.\n\n"
+            "## Scope\n\nSynthetic scope.\n\n"
+            "## Dependencies\n\nNo dependencies.\n\n"
+            "## Decision Gates\n\nNo decision gates.\n\n"
+            "## Promotion Conditions\n\nSynthetic promotion conditions.\n\n"
+            "## Acceptance Criteria\n\nSynthetic acceptance criteria.\n"
+        ).encode("utf-8")
         corrupt_card = good_card.replace(
             f"# {task_id}：".encode("utf-8"),
             f"# {task_id}：被篡改-".encode("utf-8"),
             1,
         )
+        card_paths = {task_path}
+        card_bytes = {task_path: good_card}
         commits = ("a" * 40, "b" * 40, "c" * 40)
+        activation = str(
+            lifecycle["rules"]["backlogHistoryPolicy"]["activationCommit"]
+        )
 
         def tree_entry(revision: str, path: str) -> tuple[str, str, str] | None:
             if path == ".harness/task-backlog.yaml":
                 return ("100644", "blob", "d" * 40)
+            if path == ".harness/task-lifecycle.yaml":
+                return ("100644", "blob", "c" * 40)
             if path not in card_paths:
                 return None
             blob = "e" * 40
@@ -5448,16 +5541,23 @@ class BacklogTests(unittest.TestCase):
         def object_bytes(revision: str, path: str) -> bytes:
             if path == task_path and revision == commits[1]:
                 return corrupt_card
-            return card_bytes[path]
+            if path == task_path:
+                return card_bytes[path]
+            # Repair-authorization probes may request historical cards that
+            # are outside this synthetic fixture. Fail closed without raising
+            # so the repair edge stays unauthorized (observed=[] is correct
+            # because fixture_backlog retains no planning repairs).
+            raise doctor.HarnessError(
+                f"synthetic fixture has no object {path} at {revision}"
+            )
 
         def yaml_snapshot(revision: str, path: str) -> dict[str, object]:
             if path == ".harness/task-backlog.yaml":
-                return copy.deepcopy(backlog)
+                return copy.deepcopy(fixture_backlog)
+            if path == ".harness/task-lifecycle.yaml":
+                return copy.deepcopy(lifecycle)
             return {"tasks": {}}
 
-        activation = str(
-            lifecycle["rules"]["backlogHistoryPolicy"]["activationCommit"]
-        )
         graph = "\n".join(
             (
                 f"{commits[0]} {activation}",
@@ -5468,9 +5568,18 @@ class BacklogTests(unittest.TestCase):
 
         def git_history(*args: str, **_: object) -> subprocess.CompletedProcess[str]:
             if args[0] == "merge-base":
+                if len(args) >= 3 and args[1] == "--is-ancestor":
+                    return subprocess.CompletedProcess(
+                        args=["git", *args],
+                        returncode=0,
+                        stdout="",
+                        stderr="",
+                    )
                 stdout = ""
             elif args[0] == "log":
                 stdout = "\n".join(commits)
+            elif args[0] == "rev-list":
+                stdout = graph
             else:
                 stdout = graph
             return subprocess.CompletedProcess(
@@ -5498,7 +5607,7 @@ class BacklogTests(unittest.TestCase):
             "yaml_at_commit",
             side_effect=yaml_snapshot,
         ):
-            validate_task_backlog_history(audit, backlog, lifecycle)
+            validate_task_backlog_history(audit, fixture_backlog, lifecycle)
         self.assertTrue(
             any(
                 "planning card heading" in error
@@ -6017,10 +6126,15 @@ class BacklogTests(unittest.TestCase):
         self.assertEqual([], audit.errors)
 
         ledger = load_yaml(ROOT / ".harness/task-ledger.yaml")
+        # Mechanical fixture: planning-only SUPERSEDED must not appear in the
+        # task ledger. Strip any live terminal TASK-0013 entry introduced by a
+        # prior execution attempt so the assertion isolates planning semantics.
+        ledger_tasks = dict(ledger.get("tasks", {}))
+        ledger_tasks.pop("TASK-0013", None)
         audit = Audit()
         validate_task_ledger_entries(
             audit,
-            ledger["tasks"],
+            ledger_tasks,
             resolved_tasks,
             set(lifecycle["terminalStates"]),
         )
