@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0078
+activeTaskCard: docs/tasks/TASK-0078-harness-test-fixture-promotion-isolation.md
 lastAcceptedTask: TASK-0059
 lastAcceptedHandoff: docs/handoffs/TASK-0059.json
 lastTerminalTask: TASK-0013
 lastTerminalHandoff: docs/handoffs/TASK-0013.json
-nextAction: TASK-0013 已 REJECTED（Provider Registry 代码完成但 test fixture 需 harness-change skill）。需创建 harness-change 任务修复 fixture 后创建 TASK-0013 后继。
+nextAction: TASK-0078 READY；修复 harness 测试 fixture 晋升隔离
 capabilityGates:
   businessImplementation:
     state: BLOCKED
