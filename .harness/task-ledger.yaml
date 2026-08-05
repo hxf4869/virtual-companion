@@ -282,3 +282,9 @@ tasks:
     taskCard: docs/tasks/TASK-0083-backlog-planned-fixture-generalization.md
     evidence: docs/evidence/TASK-0083/evidence-pack.json
     handoff: docs/handoffs/TASK-0083.json
+  TASK-0084:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0084-execution-authorization-guard-successor.md
+    evidence: docs/evidence/TASK-0084/evidence-pack.json
+    handoff: docs/handoffs/TASK-0084.json
