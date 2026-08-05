@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0088
-activeTaskCard: docs/tasks/TASK-0088-persistence-providerid-import-fix.md
-lastAcceptedTask: TASK-0087
-lastAcceptedHandoff: docs/handoffs/TASK-0087.json
-lastTerminalTask: TASK-0087
-lastTerminalHandoff: docs/handoffs/TASK-0087.json
-nextAction: TASK-0088 READY：修复 TASK-0015 持久化 ProviderId 导入；IN_PROGRESS 后单行修正并以 Docker Temurin 25 真实编译验证。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0088
+lastAcceptedHandoff: docs/handoffs/TASK-0088.json
+lastTerminalTask: TASK-0088
+lastTerminalHandoff: docs/handoffs/TASK-0088.json
+nextAction: TASK-0088 已 ACCEPTED。TASK-0015 持久化编译缺陷已修复，harness 套件与 JDK 25 编译均恢复为绿。恢复 Backlog 长线，下一张可晋级卡为 TASK-0016（Worker Claim、Lease、Fence）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

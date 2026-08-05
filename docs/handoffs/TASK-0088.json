@@ -1,0 +1,21 @@
+{
+  "taskId": "TASK-0088",
+  "state": "ACCEPTED",
+  "title": "修复 TASK-0015 持久化 ProviderId 导入编译错误",
+  "baseCommit": "a4c6a6863bb06640bd4e9fd06253ab9b37cf284c",
+  "candidateCommit": "d9ff3761635ac2b2d78ac6ba333bc4283516d42e",
+  "candidateTree": "62b040c828a30c2de3b04c9271e49f8f96afb229",
+  "completedItems": [
+    "JdbcAuthorizationSnapshotStore ProviderId import corrected (authorization -> registry)",
+    "Docker Temurin-25 mvn -pl persistence -am test: BUILD SUCCESS, codec test 3/3",
+    "Doctor PASS 259073; harness suite 233 OK; git diff --check clean"
+  ],
+  "remainingItems": [
+    "Resume Backlog longline at TASK-0016 (Worker Claim/Lease/Fence) — frontier unblocked"
+  ],
+  "knownRisks": [
+    "Java CI on main should now pass (compile + persistence test); confirm on next remote CI run",
+    "Future Java-touching tasks should use the same Docker Temurin-25 build as local evidence (process improvement now proven)"
+  ],
+  "nextAction": "TASK-0088 已 ACCEPTED。TASK-0015 持久化编译缺陷已修复，main 上 harness 套件与 JDK 25 编译均恢复为绿。恢复 Backlog 长线，下一张可晋级卡为 TASK-0016（Worker Claim、Lease、Fence）。"
+}
