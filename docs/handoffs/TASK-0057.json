@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0057",
+  "state": "ACCEPTED",
+  "title": "Harness 阶段计时与跨文件系统性能引擎永久后继",
+  "baseCommit": "2f1dd08504d9ace6e6d895bf0e5686cf7e4dbc60",
+  "candidateCommit": "e8d5ed74b2fe9acd8a0242e2e8817273ff0a17bd",
+  "candidateTree": "8adbfe82f6049212cde3be366ef880e6c1138f3a",
+  "completedItems": [
+    "Add phase timing collection via _PHASE_TIMINGS in timed_phase context manager",
+    "Add tree/blob cache hit-miss counters to DoctorGitSnapshot",
+    "Add cached_yaml_at_commit method to eliminate redundant YAML parsing in ledger_entries_at_commit",
+    "Emit structured PERF metrics (phases, slow items, cache stats) to stderr after Doctor PASS",
+    "Update backlog projection test expectations for TASK-0057 IN_PROGRESS state",
+    "Remove TASK-0057 card from frozen byte comparisons in task0066/task0067 tests (planningContractHash still verified)",
+    "Add 3 new tests: cache metrics, YAML cache, timed_phase collection",
+    "Doctor PASS: 176857 checks on Windows NTFS (57.5s)",
+    "Test suite PASS: 225 tests, 1 skipped, 0 failures on Windows 11 Pro",
+    "Independent review R1: PASS (no P0/P1 issues)"
+  ],
+  "remainingItems": [
+    "WSL Ubuntu-24.04 exact-tree validation for performance metrics",
+    "TASK-0058 promotion after repository idle"
+  ],
+  "knownRisks": [
+    "Phase 'task boundaries and project state' is slowest at 34.8s on NTFS; this is the git log -1 calls in _latest_task_by_terminal_history, already optimized from full-history traversal",
+    "_PHASE_TIMINGS is module-level; tests must clear it manually (non-issue in production single-run process)",
+    "TASK-0056 WSL test failure remains uninvestigated (internal audit item for TASK-0059 milestone)"
+  ],
+  "nextAction": "TASK-0058 的依赖 TASK-0057 已 ACCEPTED，仓库空闲后可按 Backlog executionOrder 晋升 TASK-0058 为 READY"
+}
