@@ -2391,15 +2391,15 @@ class BacklogTests(unittest.TestCase):
         "TASK-0059": "Harness 内容寻址快照复用与 Evidence 门禁永久后继",
     }
 
-    # Canonical PLANNED snapshot of TASK-0013 used as the stable mechanical
-    # fixture for backlog projection / planning-card tests. Live TASK-0013 may
-    # be DRAFT/READY/IN_PROGRESS/REJECTED/ACCEPTED as the DAG advances; tests
-    # that treat it as "the next promotable PLANNED card" must not read the
-    # live lifecycle state. Snapshot is the TASK-0059 ACCEPTED tree where
-    # TASK-0013 was still a clean six-field PLANNED card.
-    TASK_0013_PLANNED_SNAPSHOT_COMMIT = (
+    # Snapshot where backlog product cards (TASK-0013+) were still clean
+    # six-field PLANNED projections. Live cards advance independently;
+    # mechanical backlog tests restore from this tree so promotions of
+    # TASK-0013/0014/... never break PLANNED-sample fixtures.
+    BACKLOG_PLANNED_SNAPSHOT_COMMIT = (
         "1d245f1d3f0e2f9627b97db001d4f92178119c34"
     )
+    # Backward-compatible alias used by older call sites/comments.
+    TASK_0013_PLANNED_SNAPSHOT_COMMIT = BACKLOG_PLANNED_SNAPSHOT_COMMIT
 
     def load_inputs(
         self,
@@ -2416,44 +2416,116 @@ class BacklogTests(unittest.TestCase):
         active_states = set(
             str(item) for item in lifecycle.get("activeStates", [])
         )
-        # Isolate mechanical backlog fixtures from the live lifecycle of any
-        # non-terminal task (READY/IN_PROGRESS/BLOCKED/IN_REVIEW/DRAFT). The
-        # DAG advances independently of these tests; fixtures must see an idle
-        # repository whose next promotable PLANNED card is TASK-0013.
+        backlog_task_ids = set(backlog.get("tasks", {}))
+        # Drop non-backlog active/DRAFT harness tasks (e.g. TASK-008x) so the
+        # fixture repository looks idle. Never drop backlog-bound product
+        # cards — restore them to PLANNED from the snapshot instead.
         for task_id, task in list(tasks.items()):
-            task_state = str(task.get("state", ""))
-            if task_id == "TASK-0013":
+            if task_id in backlog_task_ids:
                 continue
+            task_state = str(task.get("state", ""))
             if task_state in active_states or task_state == "DRAFT":
                 tasks.pop(task_id)
-        task_0013 = tasks.get("TASK-0013")
-        if isinstance(task_0013, dict):
-            task_path = str(task_0013.get("_path", ""))
-            if task_path:
+        # Restore every backlog-bound card to its PLANNED snapshot projection
+        # when the live card has left PLANNED (promoted, rejected, etc.).
+        # Also capture snapshot card bodies: backlog validation reads live
+        # card text for the six-section PLANNED render check.
+        restored_card_bodies: dict[str, str] = {}
+        for task_id in sorted(backlog_task_ids):
+            entry = backlog["tasks"].get(task_id)
+            if not isinstance(entry, dict):
+                continue
+            card_path = str(entry.get("taskCard", ""))
+            if not card_path:
+                continue
+            live = tasks.get(task_id)
+            live_state = (
+                str(live.get("state", "")) if isinstance(live, dict) else ""
+            )
+            if live_state == "PLANNED" and isinstance(live, dict):
+                # Keep live PLANNED cards as-is (still six-field projections).
+                continue
+            try:
+                snapshot_text = doctor.git_object(
+                    self.BACKLOG_PLANNED_SNAPSHOT_COMMIT,
+                    card_path,
+                ).decode("utf-8")
                 planned = doctor.task_metadata_from_text(
-                    doctor.git_object(
-                        self.TASK_0013_PLANNED_SNAPSHOT_COMMIT,
-                        task_path,
-                    ).decode("utf-8"),
-                    "TASK-0013 PLANNED fixture",
+                    snapshot_text,
+                    f"{task_id} PLANNED fixture",
                 )
-                planned["_path"] = task_path
-                tasks["TASK-0013"] = planned
+            except Exception:
+                # Card may not exist at the snapshot commit (later backlog
+                # additions). Leave live metadata untouched.
+                continue
+            if planned.get("state") != "PLANNED":
+                continue
+            planned["_path"] = (
+                str(live.get("_path"))
+                if isinstance(live, dict) and live.get("_path")
+                else card_path
+            )
+            tasks[task_id] = planned
+            restored_card_bodies[card_path.replace("\\", "/")] = snapshot_text
+        if restored_card_bodies:
+            self._install_planned_card_body_fixture(restored_card_bodies)
         if isinstance(state, dict):
             state = dict(state)
             state["activeTask"] = None
             state["activeTaskCard"] = None
-            # Keep live lastAccepted/lastTerminal pointers. They track real
-            # execution terminals (TASK-0078+) and must not be frozen to an
-            # older milestone. Only the active-task occupancy is cleared so
-            # projection tests see repositoryIdle=True with TASK-0013 as the
-            # next promotable PLANNED card.
-            latest_accepted = state.get("lastAcceptedTask") or "TASK-0059"
+            # Keep live lastAccepted when it still exists as an execution
+            # ACCEPTED task in the fixture set. If lastTerminal points at a
+            # backlog product card that fixtures restored to PLANNED (so it is
+            # no longer an execution terminal), fall back to lastAccepted.
+            latest_accepted = str(state.get("lastAcceptedTask") or "TASK-0059")
+            latest_terminal = str(state.get("lastTerminalTask") or latest_accepted)
+            terminal_task = tasks.get(latest_terminal)
+            terminal_state = (
+                str(terminal_task.get("state", ""))
+                if isinstance(terminal_task, dict)
+                else ""
+            )
+            if terminal_state not in {"ACCEPTED", "REJECTED"}:
+                latest_terminal = latest_accepted
+                state["lastTerminalTask"] = latest_terminal
+                state["lastTerminalHandoff"] = (
+                    f"docs/handoffs/{latest_terminal}.json"
+                )
             state["nextAction"] = (
                 "TASK-0013 is the Backlog next promotable task after "
                 f"{latest_accepted} ACCEPTED"
             )
         return backlog, tasks, lifecycle, state
+
+    def _install_planned_card_body_fixture(
+        self,
+        bodies: dict[str, str],
+    ) -> None:
+        """Serve snapshot PLANNED card bodies through read_repository_text."""
+        existing = getattr(self, "_planned_card_bodies", None)
+        if isinstance(existing, dict):
+            existing.update(bodies)
+            return
+        self._planned_card_bodies = dict(bodies)
+        real_reader = doctor.read_repository_text
+
+        def reader(path: object) -> str:
+            path_obj = Path(str(path))
+            try:
+                relative = path_obj.resolve().relative_to(ROOT.resolve())
+                key = relative.as_posix()
+            except Exception:
+                key = str(path).replace("\\", "/")
+                if "docs/tasks/" in key:
+                    key = key[key.index("docs/tasks/") :]
+            body = self._planned_card_bodies.get(key)
+            if body is not None:
+                return body
+            return real_reader(path)  # type: ignore[arg-type]
+
+        patcher = patch.object(doctor, "read_repository_text", side_effect=reader)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @staticmethod
     def card_bytes(
@@ -6194,10 +6266,12 @@ class BacklogTests(unittest.TestCase):
 
         ledger = load_yaml(ROOT / ".harness/task-ledger.yaml")
         # Mechanical fixture: planning-only SUPERSEDED must not appear in the
-        # task ledger. Strip any live terminal TASK-0013 entry introduced by a
-        # prior execution attempt so the assertion isolates planning semantics.
+        # task ledger. Strip live terminal product entries that fixtures restore
+        # to PLANNED (TASK-0013/0014 execution attempts) so the assertion
+        # isolates planning semantics.
         ledger_tasks = dict(ledger.get("tasks", {}))
         ledger_tasks.pop("TASK-0013", None)
+        ledger_tasks.pop("TASK-0014", None)
         audit = Audit()
         validate_task_ledger_entries(
             audit,
