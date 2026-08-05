@@ -941,6 +941,7 @@ PLANNING_TERMINAL_CARD_FIELDS = PLANNED_CARD_FIELDS | {"planningResolution"}
 # planning contracts. Keys and values are exact Task IDs; no wildcards.
 REJECTED_CAPABILITY_SUCCESSORS: dict[str, str] = {
     "TASK-0013": "TASK-0081",
+    "TASK-0014": "TASK-0084",
 }
 BACKLOG_ROOT_FIELDS = {
     "schemaVersion",
