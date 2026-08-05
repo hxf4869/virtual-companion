@@ -300,3 +300,10 @@ tasks:
     taskCard: docs/tasks/TASK-0015-postgresql-flyway-force-rls.md
     evidence: docs/evidence/TASK-0015/evidence-pack.json
     handoff: docs/handoffs/TASK-0015.json
+
+  TASK-0087:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0087-harness-fixture-backlog-ledger-coupling.md
+    evidence: docs/evidence/TASK-0087/evidence-pack.json
+    handoff: docs/handoffs/TASK-0087.json

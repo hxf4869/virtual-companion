@@ -1,0 +1,70 @@
+{
+  "taskId": "TASK-0087",
+  "baseCommit": "c2356197e227f69495a26eb6f90b2ffda6c8a456",
+  "headCommit": "6f6b2dab7d02a98fd1c657a98882da34772b2937",
+  "contextFingerprint": "3577b0b9a2d3713e144135e46a93afc64dac045dec3949058196e17b2c696fa8",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "477408b",
+      "startedAt": "2026-08-05T22:30:00+08:00",
+      "endedAt": "2026-08-05T23:10:00+08:00",
+      "elapsedSeconds": 2400,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "candidateDeadlineMinutes": 45,
+      "elapsedSeconds": 1500,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0087_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "6f6b2dab7d02a98fd1c657a98882da34772b2937",
+      "evidencePath": "docs/evidence/TASK-0087/review-r1.md",
+      "reason": "No fail-closed weakening; correct partition of dropped vs retained ledger entries; load_inputs fallback sound and historical-case-preserving",
+      "candidateTree": "59ef0118a29bb8dcb9e5568a456da59706fb9b39",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 379,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures - suite green again after generalizing the backlog ledger fixture coupling",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "6f6b2dab7d02a98fd1c657a98882da34772b2937"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "6f6b2dab7d02a98fd1c657a98882da34772b2937"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0087",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "253369 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "6f6b2dab7d02a98fd1c657a98882da34772b2937"
+    }
+  ]
+}
