@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0059
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 planningBacklog: .harness/task-backlog.yaml
@@ -80,16 +80,16 @@ validationPlan:
   selectedChannel: LOCAL_EXACT_TREE_FALLBACK
   profile: HARNESS_PORTABILITY_LOCAL
 reviewers:
-  - id: task0059_reviewer_not_started
-    kind: independent-review-gate-not-started
-    verdict: UNKNOWN
-    reviewedCommit: null
+  - id: task0059_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: d5f9effb713e0c9ab2cf3a0573f986a4b279134e
     evidencePath: docs/evidence/TASK-0059/review-r1.md
-    reason: DRAFT_STATE_REVIEWER_NOT_LAUNCHED
-    candidateTree: null
+    reason: null
+    candidateTree: bd944bb121e32968ab00f45885fd05c071412496
     budget:
       maximumMinutes: 15
-      elapsedSeconds: 0
+      elapsedSeconds: 300
       hardLimitReached: false
 readAllowlist:
   - .gitattributes

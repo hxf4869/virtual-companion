@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0059
-activeTaskCard: docs/tasks/TASK-0059-harness-snapshot-receipt-evidence-gate.md
-lastAcceptedTask: TASK-0058
-lastAcceptedHandoff: docs/handoffs/TASK-0058.json
-lastTerminalTask: TASK-0058
-lastTerminalHandoff: docs/handoffs/TASK-0058.json
-nextAction: TASK-0059 IN_PROGRESS；实现 Harness 内容寻址快照复用与 Evidence 门禁
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0059
+lastAcceptedHandoff: docs/handoffs/TASK-0059.json
+lastTerminalTask: TASK-0059
+lastTerminalHandoff: docs/handoffs/TASK-0059.json
+nextAction: TASK-0059 已 ACCEPTED，Harness 里程碑完成。下一张可晋级卡为 TASK-0013（产品任务链起点）
 capabilityGates:
   businessImplementation:
     state: BLOCKED
