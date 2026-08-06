@@ -1,0 +1,28 @@
+{
+  "taskId": "TASK-0019",
+  "state": "ACCEPTED",
+  "title": "ContextPlan、人格结构、LISTEN/DISCUSS",
+  "baseCommit": "da045605cff70461406eb5cbc218bba049afeb4a",
+  "headCommit": "cee485747b11b9549f74324e8c86bd5391cc5a9e",
+  "candidateCommit": "cee485747b11b9549f74324e8c86bd5391cc5a9e",
+  "candidateTree": "5c036bfbf36ada59138b04aab2111f24930e19fd",
+  "evidencePath": "docs/evidence/TASK-0019/evidence-pack.json",
+  "completed": [
+    "Provider-neutral ContextPlan: ordered, deduped ContextEntry list (canonical order by unique 1-based order, immutable) + ContextBudget + InteractionMode; deterministic projection (acceptance #1)",
+    "ContextSourceKind marks canonical owner-owned sources only; PROVIDER_SESSION deliberately absent (INV-MEM-001: provider session is never a context/memory source)",
+    "InteractionModeSelector: pure deterministic LISTEN/DISCUSS function (gentle-listener LISTEN bias + soft-cap surface + user-opened discussion); no state/clock/random",
+    "PersonaSkeleton gentle-listener skeleton with no provider/model/api/adapter field (acceptance #2); reflection guard rejects provider-specific component names; real persona content is out-of-band (TASK-0035)",
+    "13 unit tests (ContextPlan 5, InteractionModeSelector 5, PersonaSkeleton 3) prove determinism, provider-neutrality and invariants; Docker Temurin-25 conversation module BUILD SUCCESS",
+    "R1 PASS (no P0/P1, no fix batch); Doctor 286199 PASS; harness 233 OK"
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0020 (input/incremental/final safety pipeline), deps TASK-0014->TASK-0084 (ACCEPTED) and TASK-0019 (ACCEPTED)",
+    "Final approved persona content and the allowlist-strengthened persona-field guard are revisited at the TASK-0035 approved-content gate"
+  ],
+  "knownRisks": [
+    "ContextPlan/PersonaSkeleton are pure domain shapes; wiring them into the actual request -> context assembly -> generation path is a later runtime task",
+    "PersonaSkeleton.gentleListener() ships concrete tone/reflection descriptors as skeleton placeholders; final persona content approval is out of scope (TASK-0035)",
+    "Java CI on main should pass (conversation compiles under Temurin 25, contextplan tests green); confirm on next remote CI run"
+  ],
+  "nextAction": "TASK-0019 已 ACCEPTED。ContextPlan/人格/LISTEN-DISCUSS 领域建模已落地（供应商中立 ContextPlan 顺序/来源/预算 + gentle-listener 人格骨架 + LISTEN/DISCUSS 确定性选择），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0020（输入/增量/最终输出安全流水线，依赖 TASK-0014→TASK-0084、TASK-0019）。"
+}

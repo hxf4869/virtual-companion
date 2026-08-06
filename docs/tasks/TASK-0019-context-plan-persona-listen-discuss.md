@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0019
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -47,7 +47,18 @@ complexityAssessment:
   splitRequired: false
   ownerIndivisibleAuthorization: false
 validationPlan: {frozenBefore: READY, policySource: .harness/ci-execution-policy.yaml, selectedChannel: LOCAL_EXACT_TREE_FALLBACK, profile: precheck}
-reviewers: []
+reviewers:
+  - id: task0019_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: cee485747b11b9549f74324e8c86bd5391cc5a9e
+    evidencePath: docs/evidence/TASK-0019/review-r1.md
+    reason: R1 PASS (no P0/P1, no fix batch). Determinism proven (canonical order + unique orders + immutable copy; selector pure static). Provider-neutrality proven (no PROVIDER_SESSION; PersonaSkeleton no provider field; reflection guard real). P2s are non-defects (blacklist guard works; gentleListener strings are skeleton descriptors; coverage niceties)
+    candidateTree: 5c036bfbf36ada59138b04aab2111f24930e19fd
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 200
+      hardLimitReached: false
 readAllowlist:
   - .gitattributes
   - AGENTS.md
