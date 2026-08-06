@@ -1,0 +1,83 @@
+schemaVersion: 1
+taskId: TASK-0023
+baseCommit: 71f3aebe9e2a940ba77b23bb5ba86ae2bbd0a1ca
+contextFingerprint: 11e0012b67f3726e12fd762c829d15ad913a5f8786c281ec09788dad946e5232
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+- path: .gitattributes
+  sha256: 98ef74cab7df7ea0cc4c4ed35a9fcdfadf085c657dcb4231e9f6dfef25c6faac
+- path: .harness/ci-execution-policy.yaml
+  sha256: aba294e0c4986b3f01035ef9903ac7da631ff224e037f8faa01c26219ced51cb
+- path: .harness/commands.yaml
+  sha256: 35af171f3c83fdbe0adc691789b14f16fff297475046e9d88e91c115a66df720
+- path: .harness/invariants.yaml
+  sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+- path: .harness/project-state.yaml
+  sha256: 72baf37be7557788bca53c255a2d46ac4379450b47189031e15f114e2486fda0
+- path: .harness/protected-paths.yaml
+  sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+- path: .harness/skills.yaml
+  sha256: bfa02415f111ce99cc39949934194165745d212fe3d57fb0485bbea736c44ee4
+- path: .harness/sources-of-truth.yaml
+  sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+- path: .harness/task-backlog.yaml
+  sha256: dd20b607ac90a08656c4f4e12d7e7211ffcb8be8efb2a44a360d8eb57de4d266
+- path: .harness/task-delivery-policy.yaml
+  sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
+- path: .harness/task-ledger.yaml
+  sha256: 2afe498fe842caf1e8c6ed240af607ca3bd119bd8ce54a28137b32683ace9ca5
+- path: .harness/task-lifecycle.yaml
+  sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+- path: .harness/tools.lock.yaml
+  sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+- path: AGENTS.md
+  sha256: 8c04d7dc1af1a04ccd9e3fab64b9a071e1a3f143610a08367e8cfce3e91d390c
+- path: CLAUDE.md
+  sha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+- path: docs/decisions/0002-persistence-and-contract-first-direction.md
+  sha256: 0399a065e6988b9cd7752cb6b3eed3dd72b8d079d593bcba485ad31c72b65fc1
+- path: docs/evidence/TASK-0022/evidence-pack.json
+  sha256: 1964c41f08f5d884620828a77ad79291aca8e81940598c10a2bb4bebb79cf58d
+- path: docs/schemas/evidence-pack.schema.json
+  sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+- path: docs/schemas/handoff.schema.json
+  sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+- path: docs/tasks/TASK-0023-openapi-client-generation-drift.md
+  sha256: c4e2e6dd3b1e18b642804a7fbbc39945000c289c119da5047356a06886d602ff
+- path: docs/tasks/task-card-template.md
+  sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+- path: pom.xml
+  sha256: 9032e99be99474b8bdf90ed654eb46db6668455c7dabc2a8b839bdfd7466babd
+- path: requirements-harness.txt
+  sha256: 15a0b1ad3059a055847bf367d43a7d3c138b791d2bf67d8b6a53f982edda1dd3
+- path: scripts/harness/catalog_tool.py
+  sha256: b3b24a4d5a28848754545e05c622e1476f5a049253882665d1f7b58f35adb29f
+- path: scripts/harness/doctor.py
+  sha256: 1c69c642974c01e687ede710905c770d259fcfcc9c8133a82ba9278611cb5440
+- path: scripts/harness/harness_common.py
+  sha256: 00bfe627e1707cd849cd1c4adc536d581cad444dbf7a0c95734c97ece365e8c4
+- path: scripts/harness/precheck.py
+  sha256: 5a8df0760fa2fd37932bc66408d4d0593a47824362907ab63d244e1b6a99bca9
+- path: scripts/harness/tests/test_harness.py
+  sha256: 0f731a95f44d3fc90fc4cdca62bbe748b45e5fd15c654b0415a6abb68fc7eb56
+- path: skills/task-delivery-flow/SKILL.md
+  sha256: bb16b21ede941ebbd4bff6794784a4e902583268ba04488bae8e0a581c2e9744
+- path: skills/task-intake/SKILL.md
+  sha256: 28bba1ef4e3b7a8274297529dea1bcd80aebde7c35efb63c9ea1b5bc35523e12
+- path: specs/catalog/catalog-manifest.yaml
+  sha256: 726915d89c98c6040a53b6930aaa2c77e0ae747bcd13ef960b9b08d6df44da45
+- path: specs/catalog/error-codes.yaml
+  sha256: 4275602b48187fd4898c9822177a528bdbfc76ed0780f84763df0e0d8e2e101e
+- path: specs/catalog/generation-states.yaml
+  sha256: b6e7ae2890d07b55a5c33bc1490538879f99ecc8d4f194bfd41d0afca7202b2a
+- path: specs/catalog/product-scope.yaml
+  sha256: dc8fe7f8a00d4c177a8ce2230376b9738d9da2fd51cbc04de40fae2f6ce1f65b
+- path: specs/catalog/realtime-events.yaml
+  sha256: be896592a0e482643db0389993b7edad08fbd94637c5c280bd627085535e3042
+- path: specs/catalog/risk-levels.yaml
+  sha256: dd4f9a4d34d5b7c5860ffdbbd63cd51bb9b0b56a3175bcd3fe4e327b5d530543
+- path: specs/contracts/identity-session-boundary-contract.yaml
+  sha256: 8c93f5e06628b1b41531030aaaddd941497a1e07de65dd0acd93b5de3074df54
+- path: specs/generated/openapi/catalog-schemas.yaml
+  sha256: afba6db6a8bd2957c9da427d8b348a3c5ed199af1e2479965cee22702c194a47
