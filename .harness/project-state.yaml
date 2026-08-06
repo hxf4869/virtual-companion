@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0025
-activeTaskCard: docs/tasks/TASK-0025-chat-generation-history-api.md
-lastAcceptedTask: TASK-0024
-lastAcceptedHandoff: docs/handoffs/TASK-0024.json
-lastTerminalTask: TASK-0024
-lastTerminalHandoff: docs/handoffs/TASK-0024.json
-nextAction: TASK-0025（Chat/Generation/History API）已 READY 并授权。实现 V10 迁移（cancel_generation 走 catalog 双跳 CANCEL_REQUESTED→CANCELLED 仅可取消非终态、list_messages keyset 分页，沿用 SECURITY DEFINER 范式 revoke PUBLIC 仅 grant vc_api）+ 修正 run-rls-tests.sh 版本排序（sort -V，首个双位数 V10）+ 2 个 SQL 测试；OpenAPI 新增 send/cancel/snapshot/history 端点复用既有 receive_generation/read_generation_snapshot 与 ErrorEnvelope/ErrorCode 不新增错误码；验证 run-rls-tests + openapi validate/drift + harness unittest 全绿后独立 R1、终态 closure、ACCEPTED。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0025
+lastAcceptedHandoff: docs/handoffs/TASK-0025.json
+lastTerminalTask: TASK-0025
+lastTerminalHandoff: docs/handoffs/TASK-0025.json
+nextAction: TASK-0025 已 ACCEPTED。Chat/Generation/History API 已落地（V10 迁移 cancel_generation 走 catalog 双跳 CANCEL_REQUESTED→CANCELLED 仅可取消非终态 + FOR UPDATE 序列化 + list_messages keyset 分页，SECURITY DEFINER 范式 revoke PUBLIC 仅 grant vc_api；infra/db/run-rls-tests.sh 改 version sort 支持 V10+；OpenAPI 新增 send/cancel/snapshot/messages 端点复用既有 receive_generation/read_generation_snapshot 与 ErrorEnvelope/ErrorCode 不新增错误码；SQL 测试全绿）。main 全绿。DAG 下一张可晋级卡 TASK-0026（deps TASK-0025 满足）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-06'
+updatedAt: '2026-08-07'

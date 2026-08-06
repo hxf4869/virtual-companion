@@ -377,3 +377,10 @@ tasks:
     taskCard: docs/tasks/TASK-0024-relationship-active-companion.md
     evidence: docs/evidence/TASK-0024/evidence-pack.json
     handoff: docs/handoffs/TASK-0024.json
+
+  TASK-0025:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0025-chat-generation-history-api.md
+    evidence: docs/evidence/TASK-0025/evidence-pack.json
+    handoff: docs/handoffs/TASK-0025.json

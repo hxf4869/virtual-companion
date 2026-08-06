@@ -1,0 +1,33 @@
+{
+  "taskId": "TASK-0025",
+  "state": "ACCEPTED",
+  "title": "Chat、Generation、History API",
+  "baseCommit": "84ca885cca1368e1c7d6b079aef88b914397f6e8",
+  "headCommit": "5652811484d97c7221147701b2a48d4410948db3",
+  "candidateCommit": "5652811484d97c7221147701b2a48d4410948db3",
+  "candidateTree": "40a84ac6093631aafe9d33d6a6203c1a32b092cb",
+  "evidencePath": "docs/evidence/TASK-0025/evidence-pack.json",
+  "completed": [
+    "V10 migration service/platform/persistence/src/main/resources/db/migration/V10__generation_cancel_message_history.sql: cancel_generation SECURITY DEFINER function transitions a cancellable non-terminal generation (CREATED/INPUT_REVIEW/QUEUED/IN_PROGRESS/WAITING_FOR_CAPACITY/FINAL_REVIEW) to CANCELLED via the catalog double-hop CANCEL_REQUESTED then CANCELLED; COMMITTING and all terminal states rejected; FOR UPDATE target lock makes ownership check + transition indivisible; cross-owner/absent raises echoing only caller-supplied values (existence hidden).",
+    "V10 list_messages SECURITY DEFINER keyset-pagination function over vc.message by (owner_user_id, id) with an after-id cursor and a limit clamped to [1,100] (default 50). The composite ownership FK structurally forbids cross-owner references, so cross-owner/cross-conversation/absent return 0 rows indistinguishable from owned-but-empty.",
+    "Both V10 functions: SECURITY DEFINER SET search_path=vc,public, set_config binds vc.owner_user_id, out_-prefixed RETURNS TABLE, REVOKE EXECUTE FROM PUBLIC + GRANT EXECUTE TO vc_api. No new role, no BYPASSRLS, V1–V9 untouched.",
+    "infra/db/run-rls-tests.sh: migration application switched to sort -V so the first double-digit version V10 applies after V9 (plain lexicographic sort put V10 before V1 because '0'<'_'). One-line test-infra fix; matches Flyway version ordering.",
+    "OpenAPI specs/openapi/virtual-companion.yaml: four new endpoints (POST conversations/{id}/generations send reusing receive_generation idempotency; GET conversations/{id}/messages paginated; POST generations/{id}/cancel; GET generations/{id}/snapshot reusing read_generation_snapshot) plus Generation/GenerationSnapshot/Message/SendGenerationRequest schemas and ConversationId/GenerationId params. Reuses existing ErrorEnvelope/ErrorCode (no new error code). listMessages deliberately omits 404 (200-empty hides existence on a LIST). Generated dist regenerated; validate + diff --fail-on-drift PASS.",
+    "SQL tests 30 (cancel: happy path, re-cancel/COMPLETED/COMMITTING rejection, cross-owner/absent raise, foreign untouched, own-cancel) and 31 (pagination: page/cursor/limit-clamp/cross-isolation). Full suite 01–31 PASS.",
+    "R1 PASS no P0/P1/P2; cancel state machine + FOR UPDATE concurrency + existence hiding + sort -V fix + OpenAPI coherence (incl. deliberate listMessages no-404) + idempotency reuse independently verified; harness unittest 233 OK; doctor 315235 PASS; openapi drift PASS. Satisfies both acceptance criteria."
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0026 (deps TASK-0025 satisfied).",
+    "Java RelationshipRepository/GenerationRepository service + HTTP controller wiring that consumes these SECURITY DEFINER functions and the OpenAPI-generated interface is NOT in this card (scope was contract + DB); a runtime implementation task will wire them.",
+    "Realtime publication of a generation.cancelled event on cancel is deferred (the snapshot exposes status=CANCELLED; a cancel-event stream entry can be added with the realtime machinery later).",
+    "A dedicated (owner_user_id, conversation_id, id) index for list_messages is deferred (P3-3); fine for Alpha scale."
+  ],
+  "knownRisks": [
+    "Generated OpenAPI Java properties are all String (baseline simplification inherited from TASK-0023); Generation.status, GenerationSnapshot.events (jsonb→object), Message.role/content, timestamps render as String. A type-fidelity pass should accompany real endpoint implementation.",
+    "cancel_generation does not append a realtime generation.cancelled event; a streaming client sees the generation reach CANCELLED via snapshot/status rather than via a terminal event. Acceptable for the contract; the realtime layer can add it.",
+    "V10 header comment (lines 21-23) refers to the GUC as vc.current_owner_id (a typo); the code and all other migrations use vc.owner_user_id. Documented P3-1; no runtime impact, no fix batch.",
+    "cancel exercises only IN_PROGRESS as the representative cancellable state in test 30 (P3-2); the function uses one IN-list so this is representative, and the tricky COMMITTING rejection is tested.",
+    "run-rls-tests.sh is a non-Flyway substitute used only by the SQL test harness; production uses Flyway, which already orders V10 after V9. The sort -V fix keeps the harness aligned with Flyway for future double-digit versions."
+  ],
+  "nextAction": "TASK-0025 已 ACCEPTED。Chat/Generation/History API 已落地（V10 迁移 cancel_generation 走 catalog 双跳 CANCEL_REQUESTED→CANCELLED 仅可取消非终态 + FOR UPDATE 序列化 + list_messages keyset 分页，SECURITY DEFINER 范式 revoke PUBLIC 仅 grant vc_api；infra/db/run-rls-tests.sh 改 version sort 支持 V10+；OpenAPI 新增 send/cancel/snapshot/messages 端点复用既有 receive_generation/read_generation_snapshot 与 ErrorEnvelope/ErrorCode 不新增错误码；SQL 测试全绿）。main 全绿。DAG 下一张可晋级卡 TASK-0026（deps TASK-0025 满足）。"
+}
