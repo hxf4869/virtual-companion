@@ -370,3 +370,10 @@ tasks:
     taskCard: docs/tasks/TASK-0021-fetch-sse-resume-gap-reset-snapshot.md
     evidence: docs/evidence/TASK-0021/evidence-pack.json
     handoff: docs/handoffs/TASK-0021.json
+
+  TASK-0024:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0024-relationship-active-companion.md
+    evidence: docs/evidence/TASK-0024/evidence-pack.json
+    handoff: docs/handoffs/TASK-0024.json
