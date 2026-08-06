@@ -1,0 +1,32 @@
+{
+  "taskId": "TASK-0030",
+  "state": "ACCEPTED",
+  "title": "H5 记忆管理界面",
+  "baseCommit": "f4fc986e5848a6ba863fa1e3a8c9e91b0ba71fba",
+  "headCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c",
+  "candidateCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c",
+  "candidateTree": "a655150bd187c3f6308caddc8b9012306ca307ce",
+  "evidencePath": "docs/evidence/TASK-0030/evidence-pack.json",
+  "completed": [
+    "frontend/src/api/memory.ts: transport-injected memory API client consuming the TASK-0028 endpoints (list/get/confirm/reject/update/delete/list-evidence). Existence-hidden (INV-TENANT-001): HTTP non-OK -> null/empty/false, never throws an existence-disclosing error; transport failures propagate so the store can surface them. Defensive parsers reject malformed items.",
+    "frontend/src/stores/memory.ts: Pinia setup store. pending candidates (PENDING_CONFIRMATION) and canonical (ACCEPTED) are partitioned and never mixed -- an unconfirmed candidate is never presented as a saved fact. State mutates ONLY on a confirmed API result: confirm moves pending->canonical when the server returns ACCEPTED; delete removes only on ok=true; update replaces only on a returned object; reject drops pending only on a returned object. Any non-confirmed result (null/false) or thrown transport preserves state and records a typed error -- the store never fakes success. Sources/status come from the API response.",
+    "frontend/src/pages/memory/memory.vue: H5 page rendering a pending section (confirm/reject + evidence, with a 'candidates are not saved facts' hint) and a canonical section (edit/delete + evidence); failures surface an error string; fetch-based production transport (network failures throw into the store).",
+    "frontend/src/pages.json: add pages/memory/memory route (additive).",
+    "vitest specs: api/memory.spec.ts (9 -- existence-hidden mapping, defensive parse, transport propagation, update body {summary}) and stores/memory.spec.ts (10 -- load partition, confirm-only-on-ACCEPTED, delete-no-fake-success on not-confirmed and on throw, update/reject only on success, reset). 72 tests pass total (19 new); vue-tsc --noEmit exit 0.",
+    "R1 PASS no P0/P1/P2. Pending/canonical separation faithful; no fake success on any failure path; existence-hidden consistent and OpenAPI-contract-shaped; status/sources/summary reflect API truth only; tests substantive (PRESERVES assertions would fail on a fake-success impl); write scope clean. Five non-blocking P3 hardening/UX notes deferred."
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0031 (deps TASK-0013 via successor TASK-0081 + TASK-0018 + TASK-0022, all satisfied).",
+    "A future hardening pass may address the five R1 P3 notes (see knownRisks).",
+    "The fetch-based transport in memory.vue is untested glue (vitest node env); a future integration test (jsdom or e2e) could cover it once a backend is wired."
+  ],
+  "knownRisks": [
+    "P3: stores/memory.ts loadEvidence does not clear error on success (unlike the other actions) -- a stale error banner can persist after a successful evidence load. One-line fix (error.value = null at the top).",
+    "P3: pages/memory/memory.vue v-if=\"memory.evidence[...]\" treats an empty [] as truthy, rendering an empty evidence container for a memory that loaded zero evidence. Use a length check.",
+    "P3: api/memory.ts relationshipId is not URL-encoded before path interpolation; existence-hidden mapping collapses a malformed path to []/null so there is no disclosure, but encodeURIComponent is preferred.",
+    "P3: pages/memory/memory.vue onSave exits edit mode even when the update failed (the store preserves the summary, so no fake success, but the user loses the draft). Consider exiting only when memory.error is null.",
+    "P3: stores/memory.ts update replaceIn is safe under the contract's status-preserving guarantee but could desync the partition if the server ever violated it; a defensive re-filter is an option. Not realistic.",
+    "The .vue transport (fetch) is untested glue; node-env vitest covers only the .ts api/store logic (consistent with the TASK-0026 baseline)."
+  ],
+  "nextAction": "TASK-0030 已 ACCEPTED。H5 记忆管理界面已落地——frontend/src/api/memory.ts（transport 注入，existence-hidden）、stores/memory.ts（pending/canonical 分离，未确认永不混 canonical；删除/确认失败保留不伪装成功）、pages/memory/memory.vue（pending+canonical 区，确认/拒绝/编辑/删除+来源，失败显错误）+ pages.json 路由 + 2 vitest spec。vitest 72、vue-tsc exit 0。DAG 下一张可晋级卡 TASK-0031（deps TASK-0013 via TASK-0081+TASK-0018+TASK-0022 满足）。"
+}

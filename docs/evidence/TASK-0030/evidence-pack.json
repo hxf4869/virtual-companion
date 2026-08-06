@@ -1,0 +1,65 @@
+{
+  "taskId": "TASK-0030",
+  "baseCommit": "f4fc986e5848a6ba863fa1e3a8c9e91b0ba71fba",
+  "headCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c",
+  "contextFingerprint": "bfb88a10d5002de0d061b8f64a899e58a13c063703aab72006a45841bb64b87a",
+  "reviewers": [
+    {
+      "id": "task0030_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c",
+      "evidencePath": "docs/evidence/TASK-0030/review-r1.md",
+      "reason": "R1 PASS (no P0/P1/P2). Adversarial audit of the H5 memory UI. AC1 (key interactions + unauthorized/failure states auto-testable) -- vitest api/store specs (19 new) cover confirm/edit/delete + non-OK existence-hidden + transport-throw, with substantive PRESERVES assertions that fail if the store faked success. AC2 (sources/status/delete consistent with API truth) -- status/summary/scope/evidence all come from parsed API responses; confirm moves the server-returned object; update applies the server-returned object; delete gated on ok=true. Forbidden list honored -- pending partitioned from canonical (never rendered as saved fact; .vue separate headings + hint); no fake success on any failure path (every mutation gated on a confirmed result, transport-throw caught); no auto-confirm/account-shared; no fabricated sources. Existence-hidden consistent across all 7 API functions (non-OK -> null/empty/false; transport throw propagates); OpenAPI contract shape match (paths/methods/{summary} body); vue-tsc --noEmit exit 0 (no any); write scope clean (6 files in writeAllowlist, pages.json additive, no forbiddenPaths touched). Five non-blocking P3 hardening/UX notes (loadEvidence stale error; empty-evidence container; relationshipId URL-encoding; onSave draft loss; defensive update re-filter) deferred to a future hardening pass -- none affect correctness, forbidden list, or ACs. No fix batch.",
+      "candidateTree": "a655150bd187c3f6308caddc8b9012306ca307ce",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 174, "hardLimitReached": false}
+    }
+  ],
+  "checks": [
+    {
+      "command": "bash -c \"cd frontend && npx vitest run\"",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "72 tests passed (8 files). New: api/memory.spec.ts (9 -- existence-hidden mapping, defensive parse, transport-failure propagation, update body shape) and stores/memory.spec.ts (10 -- load partition pending/canonical, confirm moves only on ACCEPTED, delete preserves on not-confirmed/throw (no fake success), update replaces only on success, reject drops only on success). Prior 53 tests unaffected.",
+      "environment": "Windows 11 Pro; pnpm; vitest 3.2.6 node environment",
+      "verifiedCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c"
+    },
+    {
+      "command": "bash -c \"cd frontend && npx vue-tsc --noEmit\"",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "TypeScript + Vue SFC type-check passes (exit 0) across the new api/store/page files and the modified pages.json. No any/unsafe casts introduced.",
+      "environment": "Windows 11 Pro; vue-tsc 1.0.24; TypeScript 4.9.4",
+      "verifiedCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures. Full harness unittest suite.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0030 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Candidate diff within frozen writeAllowlist; no forbidden or protected path touched; humanApprovals scope=task-authorization (frontend, no protected skill surface); AUTHORIZATION_FIELDS frozen since READY; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (api/memory.ts + spec, stores/memory.ts + spec, pages/memory/memory.vue, pages.json).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "106cecbabdd5dfcaf778e3dba2671d71e398a31c"
+    }
+  ]
+}
