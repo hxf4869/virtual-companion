@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0030
+activeTaskCard: docs/tasks/TASK-0030-h5-memory-management.md
 lastAcceptedTask: TASK-0029
 lastAcceptedHandoff: docs/handoffs/TASK-0029.json
 lastTerminalTask: TASK-0029
 lastTerminalHandoff: docs/handoffs/TASK-0029.json
-nextAction: TASK-0029 已 ACCEPTED。跨会话召回 + 删除墓碑已落地——V13 迁移新增 recall_memory（确定性召回 status=ACCEPTED 且非删除的 owned 记忆；RELATIONSHIP scope 跨 Conversation 召回，SESSION scope 仅在该 conversation_id 时召回；来源分组 + 确定性排序 scope,created_at,id + 预算 LIMIT 钳制 [1,100]）；删除墓碑经 deleted_at IS NULL 结构性排除（无向量/缓存可复活）；未确认候选/已删除永不召回；跨 owner/跨 relationship 返回空（存在性隐藏，INV-TENANT-001）。canonical 确认门禁未弱化（recall 纯只读 ACCEPTED，不改 status/不产候选）。SQL 测试 37（召回 scope/budget/隔离）+ 38（墓碑/确定性），38/38 全绿。main 全绿。DAG 下一张可晋级卡 TASK-0030（deps TASK-0026+TASK-0029 满足）。
+nextAction: TASK-0030 进行中（READY/IN_PROGRESS）。H5 记忆管理界面建在 TASK-0026 frontend 范式 + TASK-0028 memory API + TASK-0029 recall 之上——新建 api/memory.ts（transport 注入，existence-hidden 映射）、stores/memory.ts（pending/canonical 分离，未确认永不混 canonical；删除失败不乐观伪装成功；来源/状态随 API 真源）、pages/memory/memory.vue（pending 区+canonical 区，确认/拒绝/编辑/删除+来源，失败显错误态）、pages.json 路由、2 vitest spec。frontend/** 未保护路径，single protected surface 无，riskClass C4 policySurfaces AUTHORIZATION 无 split，humanApprovals scope=task-authorization。完成后 DAG 下一张可晋级卡 TASK-0031。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

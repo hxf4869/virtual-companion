@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0030
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -204,7 +204,27 @@ requiredCommands:
   - git diff --check
 reviewers: []
 independentReview: required
-humanApprovals: []
+humanApprovals:
+  - scope: task-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-07"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0030 H5 记忆管理界面（frontend/** 未保护路径，riskClass C4，policySurfaces
+      AUTHORIZATION，无 protected skill surface 故无需 database-migration/safety-change 等 skill-humanApproval，
+      仅需 readyRequiresOwnerApproval 的 task-authorization 批准）。前端遵循既有 api/domain/stores + vitest(node env)
+      范式（TASK-0026）：新建 api/memory.ts（transport 注入式，调用 TASK-0028 的 list/get/confirm/reject/update/
+      delete/list-evidence 端点；存在性隐藏——not-found 映射 null/empty/false，从不抛错披露存在性，INV-TENANT-001）、
+      stores/memory.ts（Pinia setup syntax：pending candidates（PENDING_CONFIRMATION）与 canonical memory（ACCEPTED）
+      分离——未确认候选永不混入 canonical、绝不呈现为已保存事实；evidence 按 memoryId 缓存；确认成功才把候选迁入
+      canonical；删除失败保留条目并记错误，不乐观移除、不伪装成功；来源/状态/删除结果只反映 API 响应真源）、
+      pages/memory/memory.vue（H5 渲染 pending 区+canonical 区，确认/拒绝/编辑/删除按钮+来源展示，失败显示错误态）、
+      pages.json 新增 pages/memory/memory 路由。vitest spec（api/memory.spec.ts + stores/memory.spec.ts，transport/store
+      mock 覆盖关键交互与越权/失败状态：确认迁入、删除失败不伪装、existence-hidden、pending 不混 canonical、来源状态随 API）。
+      不触碰 specs/openapi、specs/catalog、specs/generated、specs/contracts、service、infra、其他 frontend 模块
+      （realtime/chat/baseline/domain）；无 WebSocket/media/localStorage token，沿用 TASK-0026 的 FAKE/loopback 边界。
+      complexityGate 无 split（仅 AUTHORIZATION 面，distinctCrossRiskSurfaces=1）。满足接受条件——关键交互与越权/失败
+      状态可自动复测、来源/状态/删除结果与 API 真源一致。
 ```
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
