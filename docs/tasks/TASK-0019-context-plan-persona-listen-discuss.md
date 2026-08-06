@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0019
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -192,7 +192,16 @@ requiredInvariants:
   - INV-HARNESS-005
   - INV-HARNESS-007
   - INV-HARNESS-009
-humanApprovals: []
+humanApprovals:
+  - scope: task-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-06"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0019：在 service/modules/conversation/contextplan 建立供应商中立
+      ContextPlan（顺序/来源标记/预算）、gentle-listener 人格骨架（不含供应商专属字段）与
+      LISTEN/DISCUSS 确定性选择。纯领域建模、无数据库迁移；不把 Provider session 当记忆真源、
+      不让模型输出直接成为 Canonical Memory、不在本任务猜测最终真实 Persona 内容。
 independentReview: required
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0019

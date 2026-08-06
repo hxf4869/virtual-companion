@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0019
+activeTaskCard: docs/tasks/TASK-0019-context-plan-persona-listen-discuss.md
 lastAcceptedTask: TASK-0018
 lastAcceptedHandoff: docs/handoffs/TASK-0018.json
 lastTerminalTask: TASK-0018
 lastTerminalHandoff: docs/handoffs/TASK-0018.json
-nextAction: TASK-0018 已 ACCEPTED。Finalization/Usage/Quota/Outbox 原子事务已落地（V7 finalize_generation SECURITY DEFINER 原子事务 + generation_usage/quota_ledger_entry/realtime_event/outbox_event 复合所有权表；故障注入证明原子提交或完整回滚；Provider EOS 不直接完成），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0019（ContextPlan/人格/LISTEN-DISCUSS，依赖 TASK-0013→TASK-0081、TASK-0017）。
+nextAction: TASK-0019 READY：ContextPlan/人格/LISTEN-DISCUSS；IN_PROGRESS 后在 service/modules/conversation/contextplan 实现供应商中立 ContextPlan（顺序/来源标记/预算）+ gentle-listener 人格骨架 + LISTEN/DISCUSS 确定性选择，纯单测证明可确定性复测且人格无供应商专属字段。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
