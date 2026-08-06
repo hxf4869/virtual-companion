@@ -357,6 +357,13 @@ tasks:
     evidence: docs/evidence/TASK-0022/evidence-pack.json
     handoff: docs/handoffs/TASK-0022.json
 
+  TASK-0023:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0023-openapi-client-generation-drift.md
+    evidence: docs/evidence/TASK-0023/evidence-pack.json
+    handoff: docs/handoffs/TASK-0023.json
+
   TASK-0021:
     state: ACCEPTED
     contractVersion: 2

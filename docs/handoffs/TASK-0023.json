@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0023",
+  "state": "ACCEPTED",
+  "title": "OpenAPI 生成、Client 生成与漂移检查基线",
+  "baseCommit": "71f3aebe9e2a940ba77b23bb5ba86ae2bbd0a1ca",
+  "headCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9",
+  "candidateCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9",
+  "candidateTree": "ab069b025465e198162437e03ef8844c6ab02640",
+  "evidencePath": "docs/evidence/TASK-0023/evidence-pack.json",
+  "completed": [
+    "specs/openapi/virtual-companion.yaml: single OpenAPI 3.1.0 contract source (ADR-0002) — baseline GET /api/v1/version + ErrorEnvelope/ErrorCode/VersionResponse schemas",
+    "scripts/dev/openapi_tool.py: deterministic Python generator (validate/generate/diff, mirrors catalog_tool, no node/maven dependency) emitting bundled openapi + Java interface (VirtualCompanionApi.getVersion) + records (ErrorEnvelope, VersionResponse) + ErrorCode enum + TypeScript client into specs/openapi/dist",
+    "Drift gate: diff --fail-on-drift detects missing/unexpected/changed generated files (exit 1); clean state exit 0. Byte-stable generation (LF, sort_keys=False, insertion order, fixed templates)",
+    "ErrorEnvelope hides resource existence: 404 reuses the same envelope; NOT_FOUND_OR_FORBIDDEN in the ErrorCode enum; validate() enforces it; contract declares resourceExistenceDisclosureForbidden (INV-TENANT-001 at contract layer)",
+    "Java and TypeScript both consume the single source (one load_yaml, no back-drive path); ErrorCode enum matches specs/catalog/error-codes.yaml",
+    "R1 PASS no P0/P1; determinism + drift + single-source independently reproduced; harness unittest 233 OK; doctor 305871 PASS; openapi drift gate PASS. Satisfies ADR-0002 acceptance #4"
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0024 (Relationship 与唯一活跃 Companion, deps TASK-0015 + TASK-0023)",
+    "OpenAPI baseline ships one endpoint; full Chat/Generation/History API is TASK-0025 (will add endpoints and regenerate). Type fidelity (P2-2 all-String properties) and TS return-type derivation (P2-1) are deferred to that endpoint-expansion task",
+    "Runtime enforcement of ErrorEnvelope existence-hiding is the responsibility of the API implementation task, not this contract baseline"
+  ],
+  "knownRisks": [
+    "Generated properties are all String in Java/TS (ErrorEnvelope.details is type: object in source). Documented baseline simplification; a type-fidelity pass should map OpenAPI types correctly when real endpoints land (TASK-0025)",
+    "TS client return type is hardcoded to VersionResponse rather than derived from the 200-schema (unlike the Java path). Coincidentally correct for one endpoint; the endpoint-expansion task must derive it",
+    "No automated cross-check between the source ErrorCode enum and specs/catalog/error-codes.yaml (kept separate to avoid colliding with the catalog_tool specs/generated contract). Currently identical; future catalog additions could drift silently",
+    "Generated Java in specs/openapi/dist is not yet compiled by a Maven module (it is a contract artifact, not runtime code); wiring it into a build module is a later task when the first real endpoint is implemented"
+  ],
+  "nextAction": "TASK-0023 已 ACCEPTED。OpenAPI 契约优先基线已落地（specs/openapi/virtual-companion.yaml 单一真源 + scripts/dev/openapi_tool.py 确定性生成 bundle/Java interface/records/enum/TS client + drift gate fail-on-drift；ErrorEnvelope NOT_FOUND_OR_FORBIDDEN 隐藏存在性）。满足 ADR-0002 接受条件第4项。main 全绿。DAG 下一张可晋级卡 TASK-0024（Relationship/唯一活跃 Companion，deps TASK-0015/TASK-0023）。"
+}
