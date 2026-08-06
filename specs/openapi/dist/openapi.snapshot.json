@@ -6,10 +6,14 @@
     "listRelationships",
     "getRelationship",
     "activateRelationship",
-    "deactivateRelationship"
+    "deactivateRelationship",
+    "sendGeneration",
+    "listMessages",
+    "cancelGeneration",
+    "getGenerationSnapshot"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "4b1c12b5edfe1af8565b57b07a48faa3f48238c66cf354cc1f93820b99c69ced"
+    "sha256": "ab4f7c114ae86c2e8d56e585f518bebc67c98b5eafc5112c84432284fad01e0c"
   }
 }

@@ -25,6 +25,33 @@ export interface RelationshipCreateRequest {
   personaRef: string
 }
 
+export interface Generation {
+  generationId: string
+  conversationId: string
+  logicalGenerationId: string
+  status: string
+  createdAt?: string
+}
+
+export interface GenerationSnapshot {
+  status: string
+  assistantMessageId?: string
+  events: string
+}
+
+export interface Message {
+  messageId: string
+  conversationId: string
+  role: string
+  content: string
+  createdAt?: string
+}
+
+export interface SendGenerationRequest {
+  idempotencyKey: string
+  userContent?: string
+}
+
 export interface VirtualCompanionApiClient {
   getVersion(): Promise<VersionResponse>
   createRelationship(): Promise<VersionResponse>
@@ -32,4 +59,8 @@ export interface VirtualCompanionApiClient {
   getRelationship(): Promise<VersionResponse>
   activateRelationship(): Promise<VersionResponse>
   deactivateRelationship(): Promise<VersionResponse>
+  sendGeneration(): Promise<VersionResponse>
+  listMessages(): Promise<VersionResponse>
+  cancelGeneration(): Promise<VersionResponse>
+  getGenerationSnapshot(): Promise<VersionResponse>
 }
