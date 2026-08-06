@@ -107,6 +107,10 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM vc.recall_memory(1, 10, NULL, 1);
     IF n <> 1 THEN RAISE EXCEPTION 'budget=1 must return 1, got %', n; END IF;
+    -- LIMIT applies AFTER ORDER BY: the single kept row is the first in
+    -- deterministic order (rel-1), so the budget slice is not arbitrary.
+    PERFORM 1 FROM vc.recall_memory(1, 10, NULL, 1) WHERE out_summary = 'rel-1';
+    IF NOT FOUND THEN RAISE EXCEPTION 'budget=1 must keep the first memory in deterministic order (rel-1)'; END IF;
     SELECT count(*) INTO n FROM vc.recall_memory(1, 10, NULL, 0);
     IF n <> 1 THEN RAISE EXCEPTION 'budget=0 must clamp to 1, got %', n; END IF;
     SELECT count(*) INTO n FROM vc.recall_memory(1, 10, NULL, -3);

@@ -1,8 +1,11 @@
 -- 38_memory_recall_tombstone_determinism: the deletion tombstone and recall
 -- determinism. A deleted memory is never recalled (no vector/cache revival); the
--- remaining recall order is stable; the same inputs always reproduce the same
--- output; an unconfirmed candidate is never recalled. This satisfies AC1
--- (deterministic tests for recall before/after deletion, tombstone, reindex).
+-- remaining recall ORDER is stable (AC1: "顺序不变"); the same inputs always
+-- reproduce the same ordered output; an unconfirmed candidate is never recalled.
+--
+-- The array captures use WITH ORDINALITY so the rows are aggregated IN THE
+-- FUNCTION'S OWN OUTPUT ORDER (scope, created_at, id) -- not re-sorted by id --
+-- so the test pins the deterministic order that budget truncation relies on.
 
 \set ON_ERROR_STOP on
 
@@ -37,46 +40,53 @@ END $$;
 COMMIT;
 RESET ROLE;
 
--- Determinism + tombstone.
+-- Determinism + tombstone + order stability.
 SET ROLE vc_api;
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
 DO $$
 DECLARE
+    va bigint := current_setting('app.mema')::bigint;
+    vb bigint := current_setting('app.memb')::bigint;
+    vc bigint := current_setting('app.memc')::bigint;
     before bigint[]; after bigint[]; twice bigint[]; n int;
 BEGIN
-    -- Recall before deletion: exactly the 3 accepted memories, deterministic
-    -- order (scope, created_at, id).
-    SELECT array_agg(out_id ORDER BY out_id) INTO before
-      FROM vc.recall_memory(1, 10, NULL, 50);
-    IF array_length(before,1) <> 3 THEN RAISE EXCEPTION 'before: expected 3, got %', before; END IF;
+    -- Capture rows IN THE FUNCTION'S OWN ORDER via WITH ORDINALITY, so the order
+    -- (not just the set) is asserted. Expected: [va, vb, vc] (all RELATIONSHIP,
+    -- same tx created_at, id ascending).
+    SELECT array_agg(out_id ORDER BY ord) INTO before
+      FROM vc.recall_memory(1, 10, NULL, 50)
+      WITH ORDINALITY AS r(out_id, out_scope, out_summary, out_conversation_id, out_created_at, ord);
+    IF before IS DISTINCT FROM ARRAY[va, vb, vc] THEN
+        RAISE EXCEPTION 'before: recall must be [va,vb,vc] in function order, got %', before;
+    END IF;
 
-    -- Same inputs reproduce the same output (deterministic).
-    SELECT array_agg(out_id ORDER BY out_id) INTO twice
-      FROM vc.recall_memory(1, 10, NULL, 50);
-    IF twice IS DISTINCT FROM before THEN RAISE EXCEPTION 'recall must be deterministic'; END IF;
+    -- Determinism: same inputs reproduce the same ordered output.
+    SELECT array_agg(out_id ORDER BY ord) INTO twice
+      FROM vc.recall_memory(1, 10, NULL, 50)
+      WITH ORDINALITY AS r(out_id, out_scope, out_summary, out_conversation_id, out_created_at, ord);
+    IF twice IS DISTINCT FROM before THEN RAISE EXCEPTION 'recall must be deterministic (ordered)'; END IF;
 
     -- Unconfirmed candidate is never in the result.
     PERFORM 1 FROM vc.recall_memory(1, 10, NULL, 50) WHERE out_summary = 'unconfirmed';
     IF FOUND THEN RAISE EXCEPTION 'unconfirmed candidate must never be recalled'; END IF;
 
-    -- Tombstone + propagation: delete mem-b; recall excludes it and the order of
-    -- the remaining rows is unchanged (no vector/cache revival).
-    PERFORM vc.delete_memory(1, current_setting('app.memb')::bigint);
+    -- Tombstone + propagation: delete vb; recall excludes it and the remaining
+    -- ORDER is unchanged (no vector/cache revival).
+    PERFORM vc.delete_memory(1, vb);
     SELECT count(*) INTO n FROM vc.recall_memory(1, 10, NULL, 50);
     IF n <> 2 THEN RAISE EXCEPTION 'after delete: expected 2, got %', n; END IF;
-    PERFORM 1 FROM vc.recall_memory(1, 10, NULL, 50) WHERE out_id = current_setting('app.memb')::bigint;
+    PERFORM 1 FROM vc.recall_memory(1, 10, NULL, 50) WHERE out_id = vb;
     IF FOUND THEN RAISE EXCEPTION 'deleted memory must not be recalled (tombstone)'; END IF;
-
-    -- Remaining rows are exactly {a, c} in the same relative deterministic order.
-    SELECT array_agg(out_id ORDER BY out_id) INTO after
-      FROM vc.recall_memory(1, 10, NULL, 50);
-    IF after IS DISTINCT FROM ARRAY[current_setting('app.mema')::bigint,
-                                    current_setting('app.memc')::bigint]
-    THEN RAISE EXCEPTION 'remaining recall must be exactly {a,c}, got %', after; END IF;
+    SELECT array_agg(out_id ORDER BY ord) INTO after
+      FROM vc.recall_memory(1, 10, NULL, 50)
+      WITH ORDINALITY AS r(out_id, out_scope, out_summary, out_conversation_id, out_created_at, ord);
+    IF after IS DISTINCT FROM ARRAY[va, vc] THEN
+        RAISE EXCEPTION 'remaining recall must be [va,vc] in function order, got %', after;
+    END IF;
 
     -- Idempotent re-delete does not change recall (owner-scoped idempotent delete).
-    PERFORM vc.delete_memory(1, current_setting('app.memb')::bigint);
+    PERFORM vc.delete_memory(1, vb);
     SELECT count(*) INTO n FROM vc.recall_memory(1, 10, NULL, 50);
     IF n <> 2 THEN RAISE EXCEPTION 'recall after idempotent re-delete must still be 2, got %', n; END IF;
 END $$;
