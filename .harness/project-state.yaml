@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0020
-activeTaskCard: docs/tasks/TASK-0020-safety-pipeline.md
-lastAcceptedTask: TASK-0019
-lastAcceptedHandoff: docs/handoffs/TASK-0019.json
-lastTerminalTask: TASK-0019
-lastTerminalHandoff: docs/handoffs/TASK-0019.json
-nextAction: TASK-0020 READY：确定性失败关闭安全流水线；IN_PROGRESS 后在 service/modules/safety 实现硬规则+分类信号+增量暂停+最终复核+ZERO_LLM 确定性替代，单测证明所有 classifier failure outcome 失败关闭、最终复核失败时无 chat.completed。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0020
+lastAcceptedHandoff: docs/handoffs/TASK-0020.json
+lastTerminalTask: TASK-0020
+lastTerminalHandoff: docs/handoffs/TASK-0020.json
+nextAction: TASK-0020 已 ACCEPTED。确定性失败关闭安全流水线已落地（service/modules/safety：硬规则绝对优先 + classifier failure outcome 全失败关闭 + 增量暂停 + 最终复核失败阻止 chat.completed + ZERO_LLM 确定性替代），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0021（持久化 Fetch-SSE/续传/Gap/Reset/Snapshot，依赖 TASK-0018、TASK-0020）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -20,4 +20,3 @@ capabilityGates:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
 updatedAt: '2026-08-06'
-

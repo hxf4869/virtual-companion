@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0020
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -49,7 +49,18 @@ complexityAssessment:
   splitRequired: false
   ownerIndivisibleAuthorization: false
 validationPlan: {frozenBefore: READY, policySource: .harness/ci-execution-policy.yaml, selectedChannel: LOCAL_EXACT_TREE_FALLBACK, profile: precheck}
-reviewers: []
+reviewers:
+  - id: task0020_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: a6628fe6152750f3185236e133d581a7f670088e
+    evidencePath: docs/evidence/TASK-0020/review-r1.md
+    reason: R1 PASS (no P0/P1) on cacb0a1; cardinal invariant verified (only CLASSIFIED+adequate allows; every failure outcome blocks regardless of confidence; hard rules absolute; final-review failure prevents chat.completed). P2-1 fail-closed test hardened to enum-iteration in a6628fe; R2 PASS no new P0/P1; P2-2/P2-3 left
+    candidateTree: b51aac889fadba3cd3cd5cf03e2184f07ee2ba1f
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 270
+      hardLimitReached: false
 readAllowlist:
   - .gitattributes
   - AGENTS.md

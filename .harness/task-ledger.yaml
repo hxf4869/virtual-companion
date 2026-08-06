@@ -342,3 +342,10 @@ tasks:
     taskCard: docs/tasks/TASK-0019-context-plan-persona-listen-discuss.md
     evidence: docs/evidence/TASK-0019/evidence-pack.json
     handoff: docs/handoffs/TASK-0019.json
+
+  TASK-0020:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0020-safety-pipeline.md
+    evidence: docs/evidence/TASK-0020/evidence-pack.json
+    handoff: docs/handoffs/TASK-0020.json
