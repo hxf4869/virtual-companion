@@ -1,0 +1,69 @@
+{
+  "taskId": "TASK-0021",
+  "baseCommit": "f09a59661711b5ca7957e397128ce7ca364d5771",
+  "headCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70",
+  "contextFingerprint": "358ec02f3fe9bb6460960f66d232648974890ff3451866bf4eb4f5f2c078da74",
+  "reviewers": [
+    {
+      "id": "task0021_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70",
+      "evidencePath": "docs/evidence/TASK-0021/review-r1.md",
+      "reason": "R1 on 9581946 found 2 P1 (consume TOCTOU single-use; finalize chat.completed seq=0 snapshot ordering) + P2; one fix batch closed P1-1/P1-2/P2-1/P2-4; R2 finding-closure PASS no new P0/P1, folded P2-NEW-1 read_generation_snapshot ordering. INV-RT-001/TENANT-001/TX-001/GEN-003 verified clean.",
+      "candidateTree": "6cc4d729dc1238581b24bb7fb058d46911d0b9da",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 396,
+        "hardLimitReached": false
+      }
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0021 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "296825 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70"
+    },
+    {
+      "command": "cd /mnt/g/ai/hxf/virtual-companion && bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "All 25 SQL tests PASS under ephemeral PostgreSQL 18 + pgvector (V1-V8 migrate clean; 01-25 incl. realtime ticket single-use/TTL/hash-only, RESUMED cursor, GAP_EXPIRED window, RESET_REQUIRED epoch, TERMINAL_SNAPSHOT finalize ordering, NOT_FOUND_OR_FORBIDDEN cross-owner, FORCE-RLS owner isolation)",
+      "environment": "WSL2 Ubuntu-24.04; pgvector 0.8.5-pg18",
+      "verifiedCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70"
+    },
+    {
+      "command": "docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -e -pl service/platform/persistence -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Temurin 25: persistence 39/0 (RealtimeResumeServiceTest 11, RealtimeTicketRepositoryTest 6, plus existing finalize/receive/claim/snapshot tests); Java unchanged by the SQL-only fix batch",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70"
+    }
+  ]
+}

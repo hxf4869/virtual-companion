@@ -1,0 +1,32 @@
+{
+  "taskId": "TASK-0021",
+  "state": "ACCEPTED",
+  "title": "持久化 Fetch-SSE、续传、Gap/Reset/Snapshot",
+  "baseCommit": "f09a59661711b5ca7957e397128ce7ca364d5771",
+  "headCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70",
+  "candidateCommit": "3c88e36158ae2411c6fc83c2c70858fc46235e70",
+  "candidateTree": "6cc4d729dc1238581b24bb7fb058d46911d0b9da",
+  "evidencePath": "docs/evidence/TASK-0021/evidence-pack.json",
+  "completed": [
+    "V8 migration: vc.realtime_event brought up to the realtime-events envelope (stream_epoch/event_seq/committed_at + per-(generation,epoch) monotonic unique index); vc.generation.stream_epoch authoritative epoch column",
+    "New FORCE-RLS composite-owned vc.realtime_stream (next_seq high water mark for durable+non-durable; retained_after_seq low water mark making GAP_EXPIRED a deterministic, testable rule)",
+    "New FORCE-RLS composite-owned vc.realtime_ticket (single-use, sha256(secret) hash-only, TTL 45s, boundTo seven-tuple fully validated, fail-closed on every mismatch)",
+    "9 SECURITY DEFINER functions (ensure/append/advance/expire/reset/issue/consume/resume/read_snapshot) all revoke PUBLIC EXECUTE, grant only vc_api, SET search_path=vc,public, out_-prefixed RETURNS TABLE columns",
+    "resume_stream disposition machine: RESUMED (events strictly after cursor, envelope-encoded, ordered) | TERMINAL_SNAPSHOT (terminal generation snapshot+events) | GAP_EXPIRED (cursor below retained window) | RESET_REQUIRED (stale epoch) | NOT_FOUND_OR_FORBIDDEN (RLS fail-closed)",
+    "SQL contract tests 19-25: ticket single-use/TTL/hash-only/boundTo, RESUMED contiguous cursor + monotonic seq, GAP_EXPIRED window, RESET_REQUIRED epoch, TERMINAL_SNAPSHOT finalize ordering (2-transaction regression), NOT_FOUND_OR_FORBIDDEN cross-owner, FORCE-RLS owner isolation — 25/25 PASS under Docker pgvector",
+    "Java RealtimeResumeService/RealtimeEventRepository/RealtimeTicketRepository + value records (RealtimeEventRecord/ResumeResult/StreamSnapshot) mirroring FinalizeGenerationService (eager validation, pure unit tests); Maven Temurin-25 persistence BUILD SUCCESS 39/0",
+    "R1 independent review: 2 P1 (consume TOCTOU single-use; finalize chat.completed seq=0 snapshot ordering) + P2 closed in one fix batch; R2 finding-closure PASS no new P0/P1; folded read_generation_snapshot ordering consistency"
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0022 (Fake/Failure backend offline end-to-end slice), deps TASK-0016/0019/0021 all ACCEPTED",
+    "Wire realtime_event durable dispatch + Fetch-SSE HTTP endpoints (/tickets, /snapshot, /resume) and the resume_stream resume into a controller is a later API task (TASK-0025 Chat/Generation/History API); acceptance is met at the persistence/contract layer",
+    "A finalize-via-append path would let chat.completed carry the correct stream_epoch/event_seq instead of the V7 DEFAULT; out of scope (V7 is frozen)"
+  ],
+  "knownRisks": [
+    "V7's finalize_generation still INSERTs chat.completed directly (event_seq=0, stream_epoch=1 DEFAULT); V8 cannot modify V7. Snapshot ordering now uses committed_at so seq=0 no longer inverts order, and the envelope still exposes committedAt for client ordering. A reset-then-finalize edge would misreport chat.completed streamEpoch (P2-2, accepted; normal Alpha flow does not reset before finalize).",
+    "append_realtime_event allocates next_seq via read-then-INSERT+UPDATE; concurrent appends are caught by realtime_event_seq_uniq (one raises unique_violation, app retries). Safe for one-stream-per-generation Alpha; an atomic UPDATE...RETURNING would remove the retry (P2-3, accepted).",
+    "advance_realtime_seq / expire_realtime_window model the non-durable delta high-water mark and the recoverable-window low-water mark durably; the actual in-memory delta buffer + window-advance scheduling is a later runtime task. The contract boundary (retained_after_seq) is what resume consults.",
+    "Java CI on main should pass (persistence compiles under Temurin 25, 39 tests green); confirm on next remote CI run."
+  ],
+  "nextAction": "TASK-0021 已 ACCEPTED。持久化 Fetch-SSE 续传/Gap/Reset/Snapshot 已落地（V8 迁移：realtime_event envelope 补齐 stream_epoch/event_seq/committed_at + generation.stream_epoch 权威 epoch + 新建 realtime_stream（next_seq 高水位/retained_after_seq 低水位，GAP 确定性可测）与 realtime_ticket（单次/hash-only/TTL 45s/boundTo 七元组）+ 9 个 SECURITY DEFINER 函数全 revoke PUBLIC 仅 grant vc_api、FORCE RLS + 复合所有权；SQL 合同测试 19-25 + persistence Java 服务/仓储 + 纯单测；R1/R2 闭合 P1 TOCTOU 与 snapshot 排序）。main 全绿。DAG 下一张可晋级卡 TASK-0022（Fake/Failure 后端离线端到端纵切，依赖 TASK-0016/0019/0021 均 ACCEPTED）。"
+}

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0021
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -237,7 +237,18 @@ requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0021
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0021_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 3c88e36158ae2411c6fc83c2c70858fc46235e70
+    evidencePath: docs/evidence/TASK-0021/review-r1.md
+    reason: R1 on candidate 9581946 found 2 P1 (consume TOCTOU single-use; finalize chat.completed seq=0 snapshot ordering) + P2; one fix batch closed P1-1 (SELECT FOR UPDATE), P1-2 (snapshot ORDER BY committed_at + 2-transaction regression test), P2-1 (expire atomic GREATEST), P2-4 (append rejects terminal generation). R2 finding-closure PASS no new P0/P1; folded R2 P2-NEW-1 (read_generation_snapshot same committed_at ordering). INV-RT-001/TENANT-001/TX-001/GEN-003 verified clean (FORCE RLS + composite FK on both new tables, EXECUTE vc_api-only, chat.completed PENDING until commit, terminal snapshot only via finalize). RESUMED keeps event_seq (R2 confirmed). Edge P2-2/P2-3 left.
+    candidateTree: 6cc4d729dc1238581b24bb7fb058d46911d0b9da
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 396
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: database-migration
