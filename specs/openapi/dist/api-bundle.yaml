@@ -286,6 +286,241 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/memories/candidates:
+    post:
+      operationId: createMemoryCandidate
+      summary: Create a memory candidate from model extraction (PENDING_CONFIRMATION)
+      description: The model-extraction entry point that persists a memory candidate (vc.create_memory_candidate). The candidate
+        is always created in PENDING_CONFIRMATION and never ACCEPTED; canonical memory is reached only by the user confirming
+        it later (INV-MEM-001/002). Alpha scope is SESSION or RELATIONSHIP; SESSION additionally requires a conversation binding.
+        The caller identity is the owner. Requires a server-verified authentication context; a foreign relationship maps to
+        NOT_FOUND_OR_FORBIDDEN.
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryCandidateCreateRequest'
+      responses:
+        '200':
+          description: The created candidate, in PENDING_CONFIRMATION status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/memories:
+    get:
+      operationId: listMemories
+      summary: List the caller's memory for a relationship
+      description: Returns the memory candidates and canonical records scoped to a relationship (vc.list_memory). Soft-deleted
+        records are excluded unless includeDeleted is set. Another relationship's memory is never disclosed; a foreign relationship
+        yields no rows and never discloses existence. Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      - name: includeDeleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include soft-deleted memory in the result (default false).
+      responses:
+        '200':
+          description: Memory scoped to the relationship (excluding deleted by default)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/memories/{memoryId}:
+    get:
+      operationId: getMemory
+      summary: Fetch a memory owned by the caller
+      description: Returns a non-deleted memory owned by the caller (vc.get_memory). A foreign, absent or deleted id maps
+        to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: The caller's memory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      operationId: updateMemory
+      summary: Edit a memory's content (status-preserving, idempotent)
+      description: 'Edits the summary of an owned, non-deleted, editable memory (vc.update_memory). Only PENDING_CONFIRMATION
+        and ACCEPTED memories are editable; status is never changed, so this cannot create or revive a canonical record. Idempotent:
+        applying the same summary twice succeeds both times. A foreign, absent, deleted or dead-end id maps to NOT_FOUND_OR_FORBIDDEN.
+        Requires a server-verified authentication context.'
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryUpdateRequest'
+      responses:
+        '200':
+          description: The updated memory, status unchanged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      operationId: deleteMemory
+      summary: Soft-delete a memory (idempotent)
+      description: 'Soft-deletes an owned memory (vc.delete_memory). Idempotent on already- deleted rows: a duplicate delete
+        of the caller''s own memory returns success. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN; existence is never
+        disclosed. Requires a server-verified authentication context.'
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: The memory was soft-deleted (or was already deleted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/memories/{memoryId}/confirm:
+    post:
+      operationId: confirmMemoryCandidate
+      summary: Confirm a pending candidate into canonical memory
+      description: The sole path to a canonical (ACCEPTED) record (vc.confirm_memory_candidate). Only a PENDING_CONFIRMATION
+        candidate can be confirmed; confirming an already-confirmed or otherwise transitioned memory is rejected and maps
+        to NOT_FOUND_OR_FORBIDDEN (confirm is intentionally not idempotent into canonical). Requires a server-verified authentication
+        context.
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: The memory, now in ACCEPTED status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/memories/{memoryId}/reject:
+    post:
+      operationId: rejectMemoryCandidate
+      summary: Reject a pending candidate
+      description: Rejects a PENDING_CONFIRMATION candidate (vc.reject_memory_candidate). Only a pending candidate can be
+        rejected; rejecting an already-transitioned memory is rejected and maps to NOT_FOUND_OR_FORBIDDEN. Requires a server-verified
+        authentication context.
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: The memory, now in REJECTED status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Memory'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/memories/{memoryId}/evidence:
+    get:
+      operationId: listMemoryEvidence
+      summary: List the source Evidence of a memory
+      description: Returns the source Evidence chain of an owned, non-deleted memory (vc.list_memory_evidence). A foreign,
+        absent or deleted id yields no rows, indistinguishable from a real memory that carries no evidence, so existence is
+        never disclosed. Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/MemoryId'
+      responses:
+        '200':
+          description: The ordered source Evidence for the memory (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemoryEvidence'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   schemas:
     ErrorEnvelope:
@@ -447,6 +682,83 @@ components:
         userContent:
           type: string
           description: The user's chat content for this turn
+    Memory:
+      type: object
+      description: A memory candidate or canonical record owned by exactly one user within a relationship. Model extraction
+        only creates PENDING_CONFIRMATION candidates; ACCEPTED (canonical) is reached solely by user confirmation (INV-MEM-001/002).
+        status follows the memory-candidate-statuses catalog.
+      required:
+      - memoryId
+      - scope
+      - summary
+      - status
+      properties:
+        memoryId:
+          type: string
+          description: Stable owner-scoped memory identifier
+        scope:
+          type: string
+          description: memory-scopes catalog code (SESSION or RELATIONSHIP in Alpha)
+        summary:
+          type: string
+          description: Memory content summary
+        status:
+          type: string
+          description: Current memory-candidate-statuses catalog code
+        conversationId:
+          type: string
+          description: Owning conversation identifier, present for SESSION-scoped memory
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+    MemoryCandidateCreateRequest:
+      type: object
+      description: Body for creating a memory candidate from model extraction.
+      required:
+      - scope
+      - summary
+      properties:
+        scope:
+          type: string
+          description: memory-scopes catalog code; SESSION or RELATIONSHIP in Alpha
+        summary:
+          type: string
+          description: Memory content summary proposed by the model
+        conversationId:
+          type: string
+          description: Required when scope is SESSION (the binding conversation)
+        evidence:
+          type: array
+          description: Cited source references supporting the candidate
+          items:
+            type: string
+    MemoryUpdateRequest:
+      type: object
+      description: Body for editing a memory's content (status-preserving).
+      required:
+      - summary
+      properties:
+        summary:
+          type: string
+          description: The new memory content summary
+    MemoryEvidence:
+      type: object
+      description: A cited source reference supporting a memory candidate.
+      required:
+      - evidenceId
+      - sourceRef
+      properties:
+        evidenceId:
+          type: string
+          description: Stable owner-scoped evidence identifier
+        sourceRef:
+          type: string
+          description: Cited source reference
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
   parameters:
     RelationshipId:
       name: relationshipId
@@ -469,3 +781,10 @@ components:
       schema:
         type: string
       description: Owner-scoped generation identifier
+    MemoryId:
+      name: memoryId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped memory identifier

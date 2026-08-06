@@ -52,6 +52,32 @@ export interface SendGenerationRequest {
   userContent?: string
 }
 
+export interface Memory {
+  memoryId: string
+  scope: string
+  summary: string
+  status: string
+  conversationId?: string
+  createdAt?: string
+}
+
+export interface MemoryCandidateCreateRequest {
+  scope: string
+  summary: string
+  conversationId?: string
+  evidence?: string
+}
+
+export interface MemoryUpdateRequest {
+  summary: string
+}
+
+export interface MemoryEvidence {
+  evidenceId: string
+  sourceRef: string
+  createdAt?: string
+}
+
 export interface VirtualCompanionApiClient {
   getVersion(): Promise<VersionResponse>
   createRelationship(): Promise<VersionResponse>
@@ -63,4 +89,12 @@ export interface VirtualCompanionApiClient {
   listMessages(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>
   getGenerationSnapshot(): Promise<VersionResponse>
+  createMemoryCandidate(): Promise<VersionResponse>
+  listMemories(): Promise<VersionResponse>
+  getMemory(): Promise<VersionResponse>
+  updateMemory(): Promise<VersionResponse>
+  deleteMemory(): Promise<VersionResponse>
+  confirmMemoryCandidate(): Promise<VersionResponse>
+  rejectMemoryCandidate(): Promise<VersionResponse>
+  listMemoryEvidence(): Promise<VersionResponse>
 }

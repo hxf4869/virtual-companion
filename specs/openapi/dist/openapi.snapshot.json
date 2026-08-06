@@ -10,10 +10,18 @@
     "sendGeneration",
     "listMessages",
     "cancelGeneration",
-    "getGenerationSnapshot"
+    "getGenerationSnapshot",
+    "createMemoryCandidate",
+    "listMemories",
+    "getMemory",
+    "updateMemory",
+    "deleteMemory",
+    "confirmMemoryCandidate",
+    "rejectMemoryCandidate",
+    "listMemoryEvidence"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "ab4f7c114ae86c2e8d56e585f518bebc67c98b5eafc5112c84432284fad01e0c"
+    "sha256": "c05a95b205919d79305a65d3ccfdb5e0b4747d528c03a5f84946f259c4e976e4"
   }
 }

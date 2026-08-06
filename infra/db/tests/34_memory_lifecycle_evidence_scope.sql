@@ -25,6 +25,7 @@ DECLARE
     v_rel  bigint;
     v_rej  bigint;
     n      int;
+    v_ok   boolean;
 BEGIN
     -- SESSION scope with a conversation and a two-source evidence chain.
     SELECT vc.create_memory_candidate(1, 10, 'SESSION', 'sess-mem', 100,
@@ -77,13 +78,12 @@ BEGIN
     PERFORM 1 FROM vc.get_memory(1, v_rel) WHERE out_status = 'ACCEPTED';
     IF NOT FOUND THEN RAISE EXCEPTION 'get_memory must return the live RELATIONSHIP memory'; END IF;
 
-    -- Deleting an already-deleted memory must fail (no existence disclosure).
-    BEGIN
-        PERFORM vc.delete_memory(1, v_sess);
-        RAISE EXCEPTION 're-deleting must fail';
-    EXCEPTION WHEN OTHERS THEN
-        -- expected: not found (or already deleted)
-    END;
+    -- Deleting an already-deleted memory is idempotent for the owner (V12
+    -- delete_memory matches its documented "Idempotent on already-deleted
+    -- rows"): the call returns TRUE without raising. A foreign id still raises
+    -- (covered in test 33), so existence stays hidden across owners.
+    SELECT vc.delete_memory(1, v_sess) INTO v_ok;
+    IF v_ok IS NOT TRUE THEN RAISE EXCEPTION 'idempotent re-delete must return true'; END IF;
 END $$;
 COMMIT;
 RESET ROLE;
