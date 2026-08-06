@@ -350,6 +350,13 @@ tasks:
     evidence: docs/evidence/TASK-0020/evidence-pack.json
     handoff: docs/handoffs/TASK-0020.json
 
+  TASK-0022:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0022-fake-failure-offline-e2e-slice.md
+    evidence: docs/evidence/TASK-0022/evidence-pack.json
+    handoff: docs/handoffs/TASK-0022.json
+
   TASK-0021:
     state: ACCEPTED
     contractVersion: 2

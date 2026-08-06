@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0022
-activeTaskCard: docs/tasks/TASK-0022-fake-failure-offline-e2e-slice.md
-lastAcceptedTask: TASK-0021
-lastAcceptedHandoff: docs/handoffs/TASK-0021.json
-lastTerminalTask: TASK-0021
-lastTerminalHandoff: docs/handoffs/TASK-0021.json
-nextAction: TASK-0022 READY（Fake/Failure 后端离线端到端纵切，baseCommit 939db37）。进入实现：进程内 OfflineGenerationSlice orchestrator（test scope, generation-contract-tests 模块）接线 InMemoryProviderRegistry+InMemoryAuthorizationSnapshotStore→ExecutionAuthorizationGuard→Fake/Failure adapter→GenerationAttemptReducer→SafetyGate/SafetyReview，映射唯一终态；OfflineGenerationSliceTest 12 故障矩阵（Fake 成功 + Failure 9 场景 + cancel + safety BLOCK）+ SliceTerminalState。JDBC 服务由 SQL 套件证明，slice 聚焦 model-runtime 纵切。DAG 下一张可晋级卡待 TASK-0022 ACCEPTED 后定位（TASK-0023 OpenAPI 生成，deps TASK-0022）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0022
+lastAcceptedHandoff: docs/handoffs/TASK-0022.json
+lastTerminalTask: TASK-0022
+lastTerminalHandoff: docs/handoffs/TASK-0022.json
+nextAction: TASK-0022 已 ACCEPTED。离线端到端纵切已落地（generation-contract-tests：OfflineGenerationSlice 进程内接线 auth guard→Fake/Failure adapter→reducer→safety 决定，13 故障类映射 13 唯一终态；auth 拒绝零外发；LATE_DELTA stale-fence 不伪造 delta）。main 全绿。DAG 下一张可晋级卡 TASK-0023（OpenAPI 生成/Client 生成/漂移检查，依赖 TASK-0022）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

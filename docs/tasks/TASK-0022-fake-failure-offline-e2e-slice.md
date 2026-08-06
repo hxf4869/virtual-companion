@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0022
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -218,7 +218,18 @@ requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0022
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0022_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 69d782b09ff44fca65c978ca22e21e7896c59a67
+    evidencePath: docs/evidence/TASK-0022/review-r1.md
+    reason: R1 PASS (no P0/P1) on candidate 69d782b. READY-frozen writeAllowlist/forbiddenPaths untouched. Authorization denial returns before adapter.open (zero outbound transfer, INV-AUTH-001). LATE_DELTA stale-fence prefix discarded on BINDING_MISMATCH then failure on SEQUENCE_MISMATCH -> FAILED_INVALID_STREAM (no fabricated delta, INV-RT-001). safetyAllowsCompletion=false -> BLOCKED_AT_SAFETY, only COMPLETED signals completion (INV-GEN-003). mapFailure + termination chain exhaustive over sealed types. 13 fault classes -> 13 distinct terminal states. P2 card body mentions recovery but acceptance omits it and handoff clarifies; P3 failure() factory footgun for CANCELLATION_FAILED (tests use raw constructor).
+    candidateTree: 1382e9ea878a60811a9b4c71ee56a239f7d68a0d
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 378
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: task-authorization
