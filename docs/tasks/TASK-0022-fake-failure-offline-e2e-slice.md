@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0022
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -219,6 +219,19 @@ requiredCommands:
   - git diff --check
 reviewers: []
 independentReview: required
+humanApprovals:
+  - scope: task-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-06"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0022 离线端到端纵切（进程内合成测试，不触碰 protected 路径）：
+      用 Fake（成功）与 Failure（9 故障场景）适配器 + 合成授权快照/Provider Registry，把
+      ExecutionAuthorizationGuard → ModelProtocolAdapter → GenerationAttemptReducer →
+      SafetyGate/SafetyReview 接成可重复纵切，映射唯一终态（成功/失败/取消/超时/safety BLOCK）。
+      零真实外发、零真实数据、零真实凭据；JDBC 服务（receive/claim/finalize/resume）的 DB 行为
+      已由现有 SQL 合同套件（tests 01-25）证明，本卡只接进程内 model-runtime 纵切。仅合成数据
+      Java 单测；不实现 H5 界面，不引入 testcontainers（留给后续完整 DB 纵切）。
 ```
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。

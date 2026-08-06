@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0022
+activeTaskCard: docs/tasks/TASK-0022-fake-failure-offline-e2e-slice.md
 lastAcceptedTask: TASK-0021
 lastAcceptedHandoff: docs/handoffs/TASK-0021.json
 lastTerminalTask: TASK-0021
 lastTerminalHandoff: docs/handoffs/TASK-0021.json
-nextAction: TASK-0021 已 ACCEPTED。持久化 Fetch-SSE 续传/Gap/Reset/Snapshot 已落地（V8 迁移：realtime_event envelope 补齐 stream_epoch/event_seq/committed_at + generation.stream_epoch 权威 epoch + 新建 realtime_stream（next_seq 高水位/retained_after_seq 低水位，GAP 确定性可测）与 realtime_ticket（单次/hash-only/TTL 45s/boundTo 七元组）+ 9 个 SECURITY DEFINER 函数全 revoke PUBLIC 仅 grant vc_api、FORCE RLS + 复合所有权；SQL 合同测试 19-25 + persistence Java 服务/仓储 + 纯单测；R1/R2 闭合 P1 TOCTOU 与 snapshot 排序）。main 全绿。DAG 下一张可晋级卡 TASK-0022（Fake/Failure 后端离线端到端纵切，依赖 TASK-0016/0019/0021 均 ACCEPTED）。
+nextAction: TASK-0022 READY（Fake/Failure 后端离线端到端纵切，baseCommit 939db37）。进入实现：进程内 OfflineGenerationSlice orchestrator（test scope, generation-contract-tests 模块）接线 InMemoryProviderRegistry+InMemoryAuthorizationSnapshotStore→ExecutionAuthorizationGuard→Fake/Failure adapter→GenerationAttemptReducer→SafetyGate/SafetyReview，映射唯一终态；OfflineGenerationSliceTest 12 故障矩阵（Fake 成功 + Failure 9 场景 + cancel + safety BLOCK）+ SliceTerminalState。JDBC 服务由 SQL 套件证明，slice 聚焦 model-runtime 纵切。DAG 下一张可晋级卡待 TASK-0022 ACCEPTED 后定位（TASK-0023 OpenAPI 生成，deps TASK-0022）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
