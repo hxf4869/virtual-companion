@@ -5,6 +5,12 @@
 			"style": {
 				"navigationBarTitleText": "Technical Alpha 边界台"
 			}
+		},
+		{
+			"path": "pages/chat/chat",
+			"style": {
+				"navigationBarTitleText": "离线聊天恢复"
+			}
 		}
 	],
 	"globalStyle": {
