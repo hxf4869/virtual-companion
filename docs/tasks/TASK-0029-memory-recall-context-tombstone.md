@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0029
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -198,7 +198,28 @@ requiredCommands:
   - git diff --check
 reviewers: []
 independentReview: required
-humanApprovals: []
+humanApprovals:
+  - scope: database-migration
+    approvedBy: repository-owner
+    approvedAt: "2026-08-07"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0029 跨会话召回、Context 注入与删除墓碑（database-migration C4，单一 protected
+      skill surface）。新建 V13 前向迁移 service/platform/persistence/src/main/resources/db/migration/V13。新增
+      SECURITY DEFINER 函数 recall_memory(owner, relationship_id, conversation_id, max_entries)——确定性召回
+      status='ACCEPTED' 且 deleted_at IS NULL 的 owned 记忆：RELATIONSHIP scope 跨 Conversation 召回，SESSION
+      scope 仅在提供 conversation_id 时为该会话召回；来源分组（scope 对应 ContextSourceKind 的
+      RELATIONSHIP_MEMORY/SESSION_MEMORY）+ 确定性排序（scope, created_at, id）+ 预算 LIMIT 钳制 [1,100]
+      （对应 ContextBudget entries 上限，token 精确预算留给运行时消费方）。删除墓碑与传播经 WHERE deleted_at IS NULL
+      结构性排除——无独立向量/缓存存储可复活（forbidden「删除数据通过向量或缓存复活」trivially 满足，本卡不引入
+      向量存储，recall 读 live 表）。跨 owner/跨 relationship 返回空（存在性隐藏，INV-TENANT-001）；未确认候选
+      （PENDING_CONFIRMATION/REJECTED/PROPOSED）与已删除记忆永不召回。沿用范式（set_config 绑 owner_user_id、
+      out_ 前缀 RETURNS TABLE、SET search_path=vc,public、REVOKE PUBLIC 仅 GRANT vc_api、FORCE RLS 已由 V2 覆盖）。
+      INV-MEM-001（canonical 为 PG 真源、模型只产候选）与 INV-MEM-002（所有候选需确认）不被弱化——recall 纯只读
+      ACCEPTED，绝不产候选或改 status，不触碰确认门禁。complexityGate 无 split（仅 AUTHORIZATION 面，
+      distinctCrossRiskSurfaces=1）。不修改已执行迁移 V1 至 V12（V13 纯前向新增只读函数，不改表结构/权限回收集合），
+      不触碰 specs/catalog、specs/generated、specs/contracts、specs/openapi、service Java 与 pom、frontend（纯 DB 卡）。
+      满足接受条件——删除前后召回/墓碑/确定性可测、跨会话只注入当前 Owner/Relationship 的已确认记忆。
 ```
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
