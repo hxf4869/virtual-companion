@@ -1,0 +1,75 @@
+{
+  "taskId": "TASK-0031",
+  "baseCommit": "1a55e8fd51007e0e98c8ace506736e8b00ac6ad1",
+  "headCommit": "e7f5fc693445796d16b06e7ea98366785094806a",
+  "contextFingerprint": "eab9adb64933b6d08cb044480f4555fa4e6bf6048af6fc3883425724f03dbeb4",
+  "reviewers": [
+    {
+      "id": "task0031_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1e3dc28c915d80db18666132f7752f7231f99afe",
+      "evidencePath": "docs/evidence/TASK-0031/review-r1.md",
+      "reason": "R1 PASS (no P0/P1) on candidate 1e3dc28. All 7 ACs met: deterministic decisionNo over canonical structural fields; stable selection by ProviderId.value() regardless of insertion order; NO_ELIGIBLE_DEPLOYMENT across disabled/protocol-mismatch/capability-mismatch/quota-exhausted/no-zero-llm paths; selected deployment always a registry member (no bypass); external attempt produces ExternalAttemptBinding carrying both requested+execution authorization snapshots (INV-AUTH-001); ZERO_LLM produces DeterministicSourceBinding with no selectedProviderId and no provider_attempt; ServiceClass carries only policy flags (no model/vendor). Two non-blocking P2 (QuotaLedger TOCTOU double-reserve; entitlement vs ownership owner not cross-validated) plus four P3 deferred -- the P2s closed in the fix batch.",
+      "candidateTree": "ed4ca8ad71505cd16a49cc5d7d5773b448c49223",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 191, "hardLimitReached": false}
+    },
+    {
+      "id": "task0031_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "e7f5fc693445796d16b06e7ea98366785094806a",
+      "evidencePath": "docs/evidence/TASK-0031/review-r2.md",
+      "reason": "R2 finding-closure PASS on fix-batch e7f5fc6. F-01 CLOSED: QuotaLedger now backed by ConcurrentHashMap with atomic per-owner compute (insufficient/unknown leaves map untouched; decrement only when current>=units so balance cannot go negative; reservation-id formula unchanged; lambda is pure, null-current short-circuits before unboxing). F-02 CLOSED: RoutingRequest compact constructor requires entitlement.ownerUserId == ownership.ownerUserId else IllegalArgumentException (no NPE; all legitimate paths use matching owners; routingRequestRejectsMismatchedOwner covers the reject path). Four P3 deferred as knownRisks (none load-bearing). No new P0/P1; owner cross-check breaks no legitimate path; compute introduces no deadlock/NPE. Maven 65/65 green.",
+      "candidateTree": "57b64dcdaa8fec3e4fdfe22450d165e5de8aa501",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 89, "hardLimitReached": false}
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0031",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "doctor 347923 checks PASS + precheck 5 commands PASS on clean candidate e7f5fc6 (worktree matched the candidate commit; diff scope within frozen writeAllowlist; no forbidden or protected path touched outside model-routing-change; AUTHORIZATION_FIELDS frozen since READY; context-lock valid).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "e7f5fc693445796d16b06e7ea98366785094806a"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures (PY_EXIT=0). Full harness unittest suite on clean candidate; test_doctor_accepts_current_task passes (no untracked artifacts in the active task write scope during candidate-state validation).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "e7f5fc693445796d16b06e7ea98366785094806a"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (8 main + 2 test routing files).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "e7f5fc693445796d16b06e7ea98366785094806a"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0031 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Pre-closure doctor on staged terminal closure: candidate diff within frozen writeAllowlist; model-routing-change protected path satisfied (requiredSkill registered + pinned + independentReview R1/R2); humanApprovals scope=task-authorization (model-routing is independentReview, not humanApproval); terminal metadata consistent; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "e7f5fc693445796d16b06e7ea98366785094806a"
+    },
+    {
+      "command": "docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -e -pl service/modules/modelruntime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Eclipse Temurin 25: modelruntime module 65 tests, 0 failures (35 pre-existing contract/registry/authorization/guard + 20 DeterministicRouterTest covering determinism/selection/NO_ELIGIBLE/INV-AUTH-001/ZERO_LLM/quota/service-class/tamper + 9 QuotaLedgerTest + 1 owner-mismatch). Fix batch (atomic quota reserve + owner cross-check) verified green.",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "e7f5fc693445796d16b06e7ea98366785094806a"
+    }
+  ]
+}

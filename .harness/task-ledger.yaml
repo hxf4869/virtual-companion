@@ -419,3 +419,10 @@ tasks:
     taskCard: docs/tasks/TASK-0030-h5-memory-management.md
     evidence: docs/evidence/TASK-0030/evidence-pack.json
     handoff: docs/handoffs/TASK-0030.json
+
+  TASK-0031:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0031-entitlement-service-class-routing.md
+    evidence: docs/evidence/TASK-0031/evidence-pack.json
+    handoff: docs/handoffs/TASK-0031.json

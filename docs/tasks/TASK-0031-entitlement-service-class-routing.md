@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0031
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -223,7 +223,29 @@ humanApprovals:
       Registry 或 Guard、不绑定具体模型、不拼接多 Attempt 输出。model-routing-change 为
       independentReview（非 humanApproval）保护路径，由独立 R1 复核。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0031_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1e3dc28c915d80db18666132f7752f7231f99afe
+    evidencePath: docs/evidence/TASK-0031/review-r1.md
+    reason: R1 PASS (no P0/P1) on candidate 1e3dc28. All 7 ACs met — deterministic decisionNo over canonical fields, stable ProviderId selection regardless of insertion order, NO_ELIGIBLE_DEPLOYMENT across disabled/protocol/capability/quota/no-zero-llm paths, selected deployment always a registry member (no bypass), external attempt binds both requested+execution authorization snapshots (INV-AUTH-001), ZERO_LLM yields DeterministicSourceBinding with no provider_attempt, ServiceClass carries only policy flags. Two non-blocking P2 (QuotaLedger TOCTOU, owner mismatch) plus four P3; P2s closed in fix batch.
+    candidateTree: ed4ca8ad71505cd16a49cc5d7d5773b448c49223
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 191
+      hardLimitReached: false
+  - id: task0031_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: e7f5fc693445796d16b06e7ea98366785094806a
+    evidencePath: docs/evidence/TASK-0031/review-r2.md
+    reason: R2 finding-closure PASS on fix-batch e7f5fc6. F-01 (QuotaLedger backed by ConcurrentHashMap with atomic per-owner compute) and F-02 (RoutingRequest owner cross-check) CLOSED — no double-reserve, no negative balance, no NPE/deadlock, legitimate paths unaffected (routingRequestRejectsMismatchedOwner covers reject). Four P3 deferred as knownRisks (none load-bearing); no new P0/P1. Maven 65/65 green.
+    candidateTree: 57b64dcdaa8fec3e4fdfe22450d165e5de8aa501
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 89
+      hardLimitReached: false
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0031
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
