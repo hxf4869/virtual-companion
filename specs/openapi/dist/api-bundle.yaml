@@ -33,6 +33,133 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships:
+    post:
+      operationId: createRelationship
+      summary: Create a Companion relationship (becomes the active Companion)
+      description: Creates a new relationship owned by the caller. The new relationship becomes the caller's single active
+        Companion; any previously active relationship is atomically deactivated so activeCompanionLimit=1 always holds. Requires
+        a server-verified authentication context; the caller's identity is the owner, never a request field. Concurrent creates
+        for the same owner can never produce two active Companions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipCreateRequest'
+      responses:
+        '200':
+          description: The created relationship, now the active Companion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listRelationships
+      summary: List the caller's relationships
+      description: Returns every relationship owned by the caller (the active Companion and any dormant ones). Requires a
+        server-verified authentication context; other owners' relationships are never disclosed.
+      responses:
+        '200':
+          description: Relationships owned by the caller (active and dormant)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Relationship'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}:
+    get:
+      operationId: getRelationship
+      summary: Fetch a relationship owned by the caller
+      description: Returns the relationship if it belongs to the caller. A foreign or absent id is indistinguishable and maps
+        to NOT_FOUND_OR_FORBIDDEN so existence is never disclosed across owners.
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: The caller's relationship
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    post:
+      operationId: activateRelationship
+      summary: Make a relationship the active Companion
+      description: Promotes the target relationship to the caller's single active Companion, atomically deactivating any other
+        active relationship. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: The relationship, now the active Companion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/deactivate:
+    post:
+      operationId: deactivateRelationship
+      summary: Deactivate a relationship (zero active Companions permitted)
+      description: Sets the caller's relationship inactive. Alpha permits zero active Companions. A foreign or absent id maps
+        to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+      parameters:
+      - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: The relationship, now inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   schemas:
     ErrorEnvelope:
@@ -81,3 +208,41 @@ components:
           type: string
         commit:
           type: string
+    Relationship:
+      type: object
+      description: A Companion relationship owned by exactly one user. At most one relationship per owner is active at any
+        time (activeCompanionLimit=1).
+      required:
+      - relationshipId
+      - personaRef
+      properties:
+        relationshipId:
+          type: string
+          description: Stable owner-scoped relationship identifier
+        personaRef:
+          type: string
+          description: Reference to the Persona bound to this Companion
+        active:
+          type: boolean
+          description: Whether this is the owner's current active Companion
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+    RelationshipCreateRequest:
+      type: object
+      description: Body for creating a new Companion relationship.
+      required:
+      - personaRef
+      properties:
+        personaRef:
+          type: string
+          description: Reference to the Persona to bind as the Companion
+  parameters:
+    RelationshipId:
+      name: relationshipId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped relationship identifier

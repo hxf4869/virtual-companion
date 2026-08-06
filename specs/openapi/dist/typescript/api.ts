@@ -14,6 +14,22 @@ export interface VersionResponse {
   commit?: string
 }
 
+export interface Relationship {
+  relationshipId: string
+  personaRef: string
+  active?: string
+  createdAt?: string
+}
+
+export interface RelationshipCreateRequest {
+  personaRef: string
+}
+
 export interface VirtualCompanionApiClient {
   getVersion(): Promise<VersionResponse>
+  createRelationship(): Promise<VersionResponse>
+  listRelationships(): Promise<VersionResponse>
+  getRelationship(): Promise<VersionResponse>
+  activateRelationship(): Promise<VersionResponse>
+  deactivateRelationship(): Promise<VersionResponse>
 }
