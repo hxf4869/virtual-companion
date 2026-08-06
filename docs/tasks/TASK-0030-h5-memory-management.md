@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0030
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -202,7 +202,18 @@ requiredCommands:
   - bash -c "cd frontend && npx vitest run"
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0030_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 106cecbabdd5dfcaf778e3dba2671d71e398a31c
+    evidencePath: docs/evidence/TASK-0030/review-r1.md
+    reason: R1 PASS (no P0/P1/P2). AC1 (key interactions + unauthorized/failure states auto-testable) — vitest api/store specs (19 new) cover confirm/edit/delete + non-OK existence-hidden + transport-throw; substantive PRESERVES assertions fail if the store faked success. AC2 (sources/status/delete consistent with API truth) — all from parsed API responses; confirm moves server object; update applies server object; delete gated on ok=true. Forbidden honored — pending partitioned from canonical (never rendered as fact); no fake success on any failure path; no auto-confirm/account-shared; no fabricated sources. Existence-hidden consistent across all 7 API functions; OpenAPI contract shape match; vue-tsc --noEmit exit 0; write scope clean (6 files in writeAllowlist, pages.json additive, no forbiddenPaths touched). Five non-blocking P3 hardening/UX notes deferred (loadEvidence stale error, empty-evidence container, relationshipId URL-encoding, onSave draft loss, defensive update re-filter) — none affect correctness/forbidden/ACs. No fix batch.
+    candidateTree: a655150bd187c3f6308caddc8b9012306ca307ce
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 174
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: task-authorization

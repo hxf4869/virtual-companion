@@ -412,3 +412,10 @@ tasks:
     taskCard: docs/tasks/TASK-0029-memory-recall-context-tombstone.md
     evidence: docs/evidence/TASK-0029/evidence-pack.json
     handoff: docs/handoffs/TASK-0029.json
+
+  TASK-0030:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0030-h5-memory-management.md
+    evidence: docs/evidence/TASK-0030/evidence-pack.json
+    handoff: docs/handoffs/TASK-0030.json
