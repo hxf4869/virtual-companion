@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0021
+activeTaskCard: docs/tasks/TASK-0021-fetch-sse-resume-gap-reset-snapshot.md
 lastAcceptedTask: TASK-0020
 lastAcceptedHandoff: docs/handoffs/TASK-0020.json
 lastTerminalTask: TASK-0020
 lastTerminalHandoff: docs/handoffs/TASK-0020.json
-nextAction: TASK-0020 已 ACCEPTED。确定性失败关闭安全流水线已落地（service/modules/safety：硬规则绝对优先 + classifier failure outcome 全失败关闭 + 增量暂停 + 最终复核失败阻止 chat.completed + ZERO_LLM 确定性替代），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0021（持久化 Fetch-SSE/续传/Gap/Reset/Snapshot，依赖 TASK-0018、TASK-0020）。
+nextAction: TASK-0021 READY（持久化 Fetch-SSE/续传/Gap/Reset/Snapshot，baseCommit f09a596）。进入实现：V8 迁移补齐 realtime_event envelope（stream_epoch/event_seq/committed_at）+ generation.stream_epoch + 新建 realtime_stream/realtime_ticket + SECURITY DEFINER 函数（append/issue/consume ticket、resume_stream、snapshot、reset/expire window）；SQL 合同测试 19-25 + persistence Java 服务/仓储 + 纯单测。DAG 下一张可晋级卡待 TASK-0021 ACCEPTED 后定位。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
