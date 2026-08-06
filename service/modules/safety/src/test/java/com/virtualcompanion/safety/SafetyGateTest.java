@@ -17,16 +17,16 @@ class SafetyGateTest {
     @Test
     void everyClassifierFailureOutcomeFailsClosed() {
         List<String> noHardRules = List.of();
-        for (SafetyClassifierOutcome failure : new SafetyClassifierOutcome[]{
-                SafetyClassifierOutcome.LOW_CONFIDENCE,
-                SafetyClassifierOutcome.TIMEOUT,
-                SafetyClassifierOutcome.UNAVAILABLE,
-                SafetyClassifierOutcome.INVALID_RESPONSE,
-                SafetyClassifierOutcome.RULE_CONFLICT}) {
+        // Iterate every catalog outcome except CLASSIFIED so a future outcome addition is
+        // automatically proven to fail closed (the gate allows only on CLASSIFIED).
+        for (SafetyClassifierOutcome outcome : SafetyClassifierOutcome.values()) {
+            if (outcome == SafetyClassifierOutcome.CLASSIFIED) {
+                continue;
+            }
             // Even a high-confidence failure outcome must block.
             assertEquals(SafetyVerdict.BLOCK,
-                    SafetyGate.evaluate(noHardRules, new ClassifierReport(failure, 0.99)),
-                    "failure outcome " + failure + " must fail closed");
+                    SafetyGate.evaluate(noHardRules, new ClassifierReport(outcome, 0.99)),
+                    "failure outcome " + outcome + " must fail closed");
         }
     }
 
