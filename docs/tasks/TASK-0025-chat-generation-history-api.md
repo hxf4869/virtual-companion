@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0025
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -204,7 +204,18 @@ requiredCommands:
   - python scripts/dev/openapi_tool.py diff --fail-on-drift
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0025_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 5652811484d97c7221147701b2a48d4410948db3
+    evidencePath: docs/evidence/TASK-0025/review-r1.md
+    reason: R1 PASS (no P0/P1/P2). AC1 — openapi validate + diff --fail-on-drift PASS, specs/catalog + specs/generated unchanged (NOT_FOUND_OR_FORBIDDEN reused). AC2 — full SQL suite 01-31 PASS in fresh PG18+pgvector (V10 applies after V9 via sort -V), idempotency structurally proven by 13/14, cancel + pagination by 30/31, cross-tenant re-confirmed. cancel_generation honors the catalog double-hop and the exact cancellable IN-list; FOR UPDATE serializes ownership+transition; cross-owner/absent raises echoing only caller values. list_messages keyset deterministic, limit clamped, composite FK isolates cross-owner/conversation. Both SECURITY DEFINER (search_path=vc,public, REVOKE PUBLIC + GRANT vc_api, out_ prefix). sort -V matches Flyway ordering. listMessages correctly omits 404. writeAllowlist clean (12 leaves); V1-V9 + catalog/generated/contracts unmodified. Non-blocking P3 only (V10 header GUC-name typo in a comment, broader cancel-state coverage, optional index) — no fix batch.
+    candidateTree: 40a84ac6093631aafe9d33d6a6203c1a32b092cb
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 258
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: database-migration

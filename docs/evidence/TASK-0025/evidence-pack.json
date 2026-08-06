@@ -1,0 +1,81 @@
+{
+  "taskId": "TASK-0025",
+  "baseCommit": "84ca885cca1368e1c7d6b079aef88b914397f6e8",
+  "headCommit": "5652811484d97c7221147701b2a48d4410948db3",
+  "contextFingerprint": "54c89a7705b80a4d3ce5de68ec8406e404a30980a192cb01817b27f9e4eca165",
+  "reviewers": [
+    {
+      "id": "task0025_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "5652811484d97c7221147701b2a48d4410948db3",
+      "evidencePath": "docs/evidence/TASK-0025/review-r1.md",
+      "reason": "R1 PASS (no P0/P1/P2). Independent adversarial review of V10 cancel_generation + list_messages, the run-rls-tests.sh sort -V fix, and the OpenAPI chat/generation/history contract. AC1 satisfied — openapi validate + diff --fail-on-drift PASS (spec↔dist in sync incl. 4 new endpoints + Generation/GenerationSnapshot/Message/SendGenerationRequest records); specs/catalog + specs/generated unchanged (NOT_FOUND_OR_FORBIDDEN reused). AC2 satisfied — full SQL suite 01-31 PASS in fresh PG18+pgvector (V10 applies after V9 via sort -V); idempotency structurally proven by tests 13/14 on receive_generation; cancel + pagination proven by 30/31; cross-tenant fail-closed re-confirmed. cancel_generation honors the catalog double-hop and the exact cancellable IN-list; FOR UPDATE serializes ownership+transition; cross-owner/absent raises echoing only caller-supplied values (existence hidden). list_messages keyset pagination deterministic, limit clamped, composite FK isolates cross-owner/conversation. Both SECURITY DEFINER (search_path=vc,public, REVOKE PUBLIC + GRANT vc_api, out_ prefix). sort -V matches Flyway ordering. listMessages correctly omits 404 (200-empty hides existence). writeAllowlist clean (12 leaves); V1-V9 + catalog/generated/contracts unmodified. Non-blocking P3 only (V10 header GUC-name typo in a comment, broader cancel-state coverage, optional index) — no bearing/safety impact, no fix batch.",
+      "candidateTree": "40a84ac6093631aafe9d33d6a6203c1a32b092cb",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 258,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "All 31 SQL tests PASS in an ephemeral PostgreSQL 18 + pgvector container applying V1-V10 (V10 now applies after V9 via the sort -V fix). New tests 30_generation_cancel (cancellable IN_PROGRESS->CANCELLED, re-cancel/COMPLETED/COMMITTING rejected, cross-owner/absent raise) and 31_message_history_pagination (keyset pages, cursor advance, limit clamp, cross-conversation isolation) PASS. Idempotency (13/14) and cross-tenant fail-closed (01-12/15/24/25/28) remain green.",
+      "environment": "WSL2 Ubuntu-24.04; Docker pgvector/pgvector:0.8.5-pg18; PostgreSQL 18",
+      "verifiedCommit": "5652811484d97c7221147701b2a48d4410948db3"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures. Full harness unittest suite.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "5652811484d97c7221147701b2a48d4410948db3"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI source valid: ErrorEnvelope.code references ErrorCode; ErrorCode is a string enum containing NOT_FOUND_OR_FORBIDDEN. New Generation/GenerationSnapshot/Message/SendGenerationRequest schemas and the send/cancel/snapshot/messages endpoints well-formed.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "5652811484d97c7221147701b2a48d4410948db3"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI drift check PASS: regenerated dist (api-bundle + Java interface/records + TS client + snapshot) byte-identical to committed. The 4 new endpoints and 4 new schemas generated deterministically.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "5652811484d97c7221147701b2a48d4410948db3"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0025 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "315235 checks PASS. Candidate diff within frozen writeAllowlist (incl. infra/db/run-rls-tests.sh); no forbidden path touched; humanApprovals scope=database-migration satisfies the db/migration protected-path gate; AUTHORIZATION_FIELDS frozen since READY; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "5652811484d97c7221147701b2a48d4410948db3"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (V10 migration, tests 30/31, run-rls-tests.sh, OpenAPI source + dist).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "5652811484d97c7221147701b2a48d4410948db3"
+    }
+  ]
+}
