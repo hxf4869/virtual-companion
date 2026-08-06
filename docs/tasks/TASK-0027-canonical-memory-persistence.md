@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0027
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -195,7 +195,18 @@ requiredCommands:
   - bash infra/db/run-rls-tests.sh
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0027_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: e4022176cd54c7cc04d96f7c7842d45831bccdc7
+    evidencePath: docs/evidence/TASK-0027/review-r1.md
+    reason: R1 PASS (no P0/P1). AC1 — create_memory_candidate hardcodes PENDING_CONFIRMATION (never ACCEPTED); confirm_memory_candidate is the sole PENDING_CONFIRMATION->ACCEPTED transition, status-guarded; REVOKE of INSERT/UPDATE/DELETE/SELECT on memory_item/memory_evidence from all runtime roles blocks direct INSERT and UPDATE to ACCEPTED (test 32 + independent UPDATE probe). AC2 — foreign id raise/empty without owner disclosure (FOR UPDATE in confirm/reject); list_memory strictly (owner, relationship_id)-scoped; runtime role has no direct table access (SELECT revoked). All 6 functions SECURITY DEFINER SET search_path=vc,public, REVOKE PUBLIC + GRANT vc_api, out_ prefix. Literals match memory catalogs; SESSION=>conversation_id CHECK; ACCOUNT_* rejected in Alpha. SQL suite independently re-run 34/34. Non-blocking P2 (point-ops owner-scoped not relationship-scoped — same-owner own-data, consistent with owner-based FORCE RLS; list_memory relationship-scoped) + P3 (UPDATE coverage, RELATIONSHIP+foreign-conversation, status CHECK) documented, no bearing/safety weakening, no fix batch.
+    candidateTree: 09c774d83a0c8c17cfe32829b83178ae7a585e73
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 668
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: database-migration
