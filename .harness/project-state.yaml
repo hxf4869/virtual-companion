@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0020
+activeTaskCard: docs/tasks/TASK-0020-safety-pipeline.md
 lastAcceptedTask: TASK-0019
 lastAcceptedHandoff: docs/handoffs/TASK-0019.json
 lastTerminalTask: TASK-0019
 lastTerminalHandoff: docs/handoffs/TASK-0019.json
-nextAction: TASK-0019 已 ACCEPTED。ContextPlan/人格/LISTEN-DISCUSS 领域建模已落地（供应商中立 ContextPlan 顺序/来源/预算 + gentle-listener 人格骨架 + LISTEN/DISCUSS 确定性选择），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0020（输入/增量/最终输出安全流水线，依赖 TASK-0014→TASK-0084、TASK-0019）。
+nextAction: TASK-0020 READY：确定性失败关闭安全流水线；IN_PROGRESS 后在 service/modules/safety 实现硬规则+分类信号+增量暂停+最终复核+ZERO_LLM 确定性替代，单测证明所有 classifier failure outcome 失败关闭、最终复核失败时无 chat.completed。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -20,3 +20,4 @@ capabilityGates:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
 updatedAt: '2026-08-06'
+
