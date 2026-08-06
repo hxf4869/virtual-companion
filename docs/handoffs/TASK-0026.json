@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0026",
+  "state": "ACCEPTED",
+  "title": "H5 离线聊天、流式显示与恢复",
+  "baseCommit": "d2bcfa45a6f091c668e9c1c0a1b09afdfd462050",
+  "headCommit": "21eab7e86aee73bc96674c6ca87deaf8cdd7fe62",
+  "candidateCommit": "21eab7e86aee73bc96674c6ca87deaf8cdd7fe62",
+  "candidateTree": "7de9290e56924da27273f9b73f1c228006bfe073",
+  "evidencePath": "docs/evidence/TASK-0026/evidence-pack.json",
+  "completed": [
+    "frontend/src/domain/stream-reducer.ts: pure client-side reducer (INV-RT-001). applyEvent advances only on eventSeq===cursor+1 (contiguous, +1); duplicates/stale (inclusive <=) ignored; a gap (eventSeq>cursor+1) sets status=gap and drops the event without advancing the cursor — missing deltas are never fabricated; an epoch mismatch discards the whole draft and requires reset; chat.completed is terminal. Helpers markGap/resetStream/cancelStream/applyTerminalSnapshot/beginStreaming invent no events; the snapshot is server-authoritative.",
+    "frontend/src/api/realtime.ts: streamGeneration drives the reducer through the five realtime-contract dispositions. RESUMED ending non-terminal resumes from the new cursor (disconnect preserves progress); in-band gap and GAP_EXPIRED recover via the snapshot endpoint; RESET_REQUIRED discards the draft and re-syncs to the new epoch; NOT_FOUND_OR_FORBIDDEN is terminal without disclosing existence; transport failure surfaces as exhausted (no fabricated success). Cancel handle + bounded MAX_RESUME_ATTEMPTS. Transport (resume/fetchSnapshot) is injected for testability.",
+    "frontend/src/stores/chat.ts: Pinia store binding streamGeneration; draft is the joined contiguous chat.delta payloads only; cancel/reset; race-guarded phase (idle/streaming/completed/cancelled/failed).",
+    "frontend/src/pages/chat/chat.vue + pages.json: H5 chat page rendering the contiguous draft and safe terminal status (gap->snapshot recovery, reset->resync, not-found->generic), cancel button, and a browser fetch transport (readSseEvents over ReadableStream + snapshot fetch). No WebSocket, no media, no long-lived token in localStorage or the realtime query string (realtime-contract h5Security).",
+    "Specs cover the six acceptance scenarios plus never-fabricate: stream-reducer.spec.ts (11), realtime.spec.ts (9), chat.spec.ts (5). Full vitest 53 pass; vue-tsc --noEmit exit 0.",
+    "R1 PASS no P0/P1; never-fabricate audited path-by-path; 6 scenarios proven; contract/h5Security conformance verified; writeAllowlist clean (frontend only, no protected path touched). Satisfies both acceptance criteria."
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0027 (deps TASK-0016 + TASK-0024 satisfied).",
+    "The .vue browser transport is contract-incomplete (P2-1 omits the single-use ticket flow POST /api/v1/realtime/tickets; P2-2 readSseEvents drops nextEpoch). The tested orchestration/reducer are sound; the backend-integration task must implement the exact client-side ticket presentation and nextEpoch extraction against the enforcing backend.",
+    "HTTP controller + Java service wiring the OpenAPI endpoints (TASK-0025) to the actual runtime, and enforcing the realtime ticket/Csrf/origin checks server-side, are separate cards."
+  ],
+  "knownRisks": [
+    "P2-1: chat.vue transport does not issue the contract single-use resume ticket (POST /api/v1/realtime/tickets); against a contract-enforcing backend the stream would not open. Backend does not yet enforce; exact client ticket presentation is underspecified in the contract, so deferred rather than guessed.",
+    "P2-2: readSseEvents drops RESET_REQUIRED nextEpoch; the client falls back to epoch+1 and could loop to exhaustion if the server bumps the epoch by more than one. Clear fix (extract payload.nextEpoch) for the integration task.",
+    "P3-1: dead local createStreamHandle() in chat.vue; P3-2: store.reset() does not flip the live handle (standalone reset unsafe; onUnmounted sequence is safe); P3-3: chat-store cancel test is lenient (race); P3-4: in-band epoch mismatch falls back to epoch+1; P3-5: cancel during an await is checked at the next attempt boundary (latency, not safety).",
+    "The browser transport (chat.vue readSseEvents + fetch wiring) is not unit-tested (vitest node env does not render .vue); it is verified by inspection and vue-tsc. The tested pure modules (reducer, realtime, store) bear the never-fabricate invariant."
+  ],
+  "nextAction": "TASK-0026 已 ACCEPTED。H5 离线聊天/流式/恢复已落地（纯 stream-reducer 仅连续推进永不伪造 delta + Fetch-SSE 恢复客户端 5 disposition 编排 + 断线/cancel/有界重试 + chat store + H5 页面；vitest 53 测试覆盖 6 场景全绿；不触碰任何 protected 路径）。main 全绿。DAG 下一张可晋级卡 TASK-0027（deps TASK-0016/TASK-0024 满足）。"
+}
