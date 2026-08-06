@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0028
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -202,7 +202,18 @@ requiredCommands:
   - python scripts/dev/openapi_tool.py diff --fail-on-drift
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0028_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb
+    evidencePath: docs/evidence/TASK-0028/review-r1.md
+    reason: R1 PASS (no P0/P1). AC1 (canonical gate intact) — update_memory SET clause is summary-only (never status, no INSERT); create_memory_candidate still hardcodes PENDING_CONFIRMATION; confirm remains sole ACCEPTED path; no V12 change restores direct DML (INV-MEM-001/002 unweakened). AC2 (fail-closed + contract tests) — update/delete/list_evidence echo only caller values on foreign/absent id; list_memory_evidence empty for foreign/absent/deleted (indistinguishable from no-evidence); delete_memory idempotency matches V11 documented intent (owned already-deleted -> TRUE via FOR UPDATE existence check; foreign/absent -> raise; no TOCTOU); cross-owner/cross-relationship covered by tests 33/35; confirm/modify/delete/duplicate-request/unauthorized all tested (32/34/35/36). All 3 functions SECURITY DEFINER SET search_path=vc,public, REVOKE PUBLIC + GRANT vc_api, out_ prefix; CREATE OR REPLACE preserves delete_memory ACL. OpenAPI 8 endpoints match function behavior; MEMORY_* codes reused (zero catalog change); snapshot SHA matches source. SQL suite independently re-run 36/36. Non-blocking P2 (vacuous negative assertions in 35/36 — guards verified correct, defense-in-depth on cross-owner, same V11 32/33 pattern) + P3 (no 400-class code for validation failures — out of scope, matches V11, card forbids new codes) documented, no bearing/safety weakening, no fix batch.
+    candidateTree: 1ea87ef8776f6cf15acaf56fdd3dabcd27c7e14d
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 278
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: database-migration

@@ -1,0 +1,29 @@
+{
+  "taskId": "TASK-0028",
+  "state": "ACCEPTED",
+  "title": "记忆候选、确认、修改、删除与来源 API",
+  "baseCommit": "2a715085d0f55104fda7af40001fcf7c0d256e7e",
+  "headCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb",
+  "candidateCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb",
+  "candidateTree": "1ea87ef8776f6cf15acaf56fdd3dabcd27c7e14d",
+  "evidencePath": "docs/evidence/TASK-0028/evidence-pack.json",
+  "completed": [
+    "V12 migration service/platform/persistence/src/main/resources/db/migration/V12__memory_candidate_management_api.sql: two new SECURITY DEFINER functions (update_memory, list_memory_evidence) and CREATE OR REPLACE delete_memory. No table structure or privilege-revocation-set change; canonical confirmation gate untouched.",
+    "update_memory(owner, memory_id, summary): status-preserving content edit. SET clause is summary-only (never status); only PENDING_CONFIRMATION/ACCEPTED are editable; FOR UPDATE; blank/foreign/absent/deleted/dead-end all raise echoing only the caller's own values (existence hidden). Naturally idempotent (same summary twice succeeds both times, content stable).",
+    "list_memory_evidence(owner, memory_id): ordered source Evidence for an owned non-deleted memory. JOIN on memory_item with deleted_at IS NULL hides deleted-memory evidence; foreign/absent/deleted resolve to empty, indistinguishable from a real memory with no evidence, so existence is never disclosed. out_ prefix avoids PL/pgSQL variable shadowing.",
+    "delete_memory made idempotent to match the V11-documented 'Idempotent on already-deleted rows': a PERFORM ... FOR UPDATE existence check distinguishes owned (returns TRUE whether or not the soft-delete UPDATE touches rows) from foreign/absent (raises, existence hidden). Fixes the V11 doc/impl mismatch; cross-owner isolation unchanged (test 33 still passes). CREATE OR REPLACE preserves the V11 EXECUTE ACL.",
+    "Both new functions SECURITY DEFINER, SET search_path=vc,public, set_config('vc.owner_user_id') before any table access, REVOKE EXECUTE FROM PUBLIC + GRANT vc_api (TASK-0016 P0 class).",
+    "OpenAPI: 8 memory endpoints (createMemoryCandidate, listMemories, getMemory, updateMemory, deleteMemory, confirmMemoryCandidate, rejectMemoryCandidate, listMemoryEvidence) + Memory/MemoryCandidateCreateRequest/MemoryUpdateRequest/MemoryEvidence schemas + MemoryId parameter; reuses existing MEMORY_CONFIRMATION_REQUIRED and MEMORY_FORBIDDEN_CONTENT error codes (zero catalog/generated change). list/evidence return empty not 404 (existence hidden); delete documented idempotent; confirm documented non-idempotent into canonical. openapi validate + drift PASS.",
+    "SQL tests 34 (re-delete now asserts idempotent TRUE), 35 (update + evidence + cross-owner/cross-relationship isolation), 36 (idempotency/duplicate-request semantics). Full suite 01-36 PASS in Docker pgvector. R1 PASS no P0/P1; canonical gate integrity, idempotency correctness, privilege hygiene, and OpenAPI-SQL consistency all independently verified."
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0029 (deps include TASK-0028, satisfied).",
+    "Java CanonicalMemoryRepository/Service wiring these SECURITY DEFINER functions to the OpenAPI HTTP surface is a separate runtime-implementation card; the contract and SQL layer are complete and verified here."
+  ],
+  "knownRisks": [
+    "P2: the negative test cases in tests 35/36 use the BEGIN/PERFORM/RAISE/EXCEPTION WHEN OTHERS pattern, which cannot detect a removed guard (the test's own RAISE is caught by the same handler). The guards are independently verified correct and cross-owner has FORCE-RLS + explicit-owner-predicate defense-in-depth; this matches the V11 tests 32/33 ACCEPTED baseline. Regression-detection quality, not a present defect. Future hardening: convert to SQLSTATE/GET DIAGNOSTICS positive assertions.",
+    "P3: validation-class failures (blank summary, non-editable status) raise inside the functions, but the OpenAPI documents only 200/401/404 and the ErrorCode enum has no 400-class code. A future HTTP layer would map such a raise to NOT_FOUND_OR_FORBIDDEN (404), which is semantically imprecise. Out of scope for this card (no Java layer) and the card forbids adding catalog error codes; the functions fail closed (safe). Future card: add a VALIDATION_ERROR (400) catalog code or have the request schema reject blank summary (minLength: 1).",
+    "delete_memory now returns TRUE for the owner on an already-deleted memory (idempotent). This is owner-scoped same-data behavior; cross-owner delete still raises without disclosing existence (test 33)."
+  ],
+  "nextAction": "TASK-0028 已 ACCEPTED。记忆候选管理 API 已落地——V12 迁移新增 update_memory（编辑 summary 不改 status）与 list_memory_evidence（读取来源 Evidence），CREATE OR REPLACE delete_memory 匹配 V11 文档幂等性；OpenAPI 8 端点 create/list/get/update/delete/confirm/reject/evidence 复用既有 MEMORY_CONFIRMATION_REQUIRED 与 MEMORY_FORBIDDEN_CONTENT 错误码（零 catalog 改动）；canonical 确认门禁未弱化（update 不改 status、create 仍只产 PENDING_CONFIRMATION 候选、confirm 唯一 ACCEPTED 路径）。SQL 测试 34 更新 + 35/36 新增，36/36 全绿。main 全绿。DAG 下一张可晋级卡 TASK-0029（deps 含 TASK-0028 满足）。"
+}
