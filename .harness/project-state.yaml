@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0027
+activeTaskCard: docs/tasks/TASK-0027-canonical-memory-persistence.md
 lastAcceptedTask: TASK-0026
 lastAcceptedHandoff: docs/handoffs/TASK-0026.json
 lastTerminalTask: TASK-0026
 lastTerminalHandoff: docs/handoffs/TASK-0026.json
-nextAction: TASK-0026 已 ACCEPTED。H5 离线聊天/流式/恢复已落地（纯 stream-reducer 仅连续推进永不伪造 delta + Fetch-SSE 恢复客户端 5 disposition 编排 + 断线/cancel/有界重试 + chat store + H5 页面；vitest 53 测试覆盖 6 场景全绿；不触碰任何 protected 路径）。main 全绿。DAG 下一张可晋级卡 TASK-0027（deps TASK-0016/TASK-0024 满足）。
+nextAction: TASK-0027（Canonical Memory 持久化）已 READY 并授权。实现 V11 迁移（ALTER memory_item 加 conversation_id/deletedated + 6 个 SECURITY DEFINER 生命周期函数 create/confirm/reject/delete/list/get + REVOKE 直接写强制经函数）与 3 个 SQL 测试；验证 run-rls-tests + harness unittest 全绿后独立 R1、终态 closure、ACCEPTED。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
