@@ -1,0 +1,63 @@
+{
+  "taskId": "TASK-0022",
+  "baseCommit": "939db37dadc9b50e2a9f161a472c338f6e8dc5a2",
+  "headCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67",
+  "contextFingerprint": "4d99fff84a37a5024aaef10b14f9f2fbfec4f435526c9653cd472c938be10b6c",
+  "reviewers": [
+    {
+      "id": "task0022_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67",
+      "evidencePath": "docs/evidence/TASK-0022/review-r1.md",
+      "reason": "R1 PASS (no P0/P1) on candidate 69d782b. Verified: READY-frozen writeAllowlist/forbiddenPaths untouched; authorization denial returns before adapter.open (zero outbound transfer, INV-AUTH-001); LATE_DELTA stale-fence prefix discarded on BINDING_MISMATCH then failure on SEQUENCE_MISMATCH -> FAILED_INVALID_STREAM, no fabricated delta (INV-RT-001); safetyAllowsCompletion=false yields BLOCKED_AT_SAFETY, only COMPLETED signals completion so provider EOS never implies chat.completed (INV-GEN-003); dual binding structurally required (guard ExternalAttemptBinding, adapters DeterministicSourceBinding); sealed-interface mapFailure + termination chain exhaustive; 13 fault classes map to 13 distinct terminal states. P2: card body mentions recovery in scope but acceptance omits it and handoff clarifies (SQL suite owns resume). P3: failure() factory footgun for CANCELLATION_FAILED (tests use raw constructor).",
+      "candidateTree": "1382e9ea878a60811a9b4c71ee56a239f7d68a0d",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 378,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0022",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "301166 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67"
+    },
+    {
+      "command": "docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -e -pl service/tests/generation-contract-tests -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Temurin 25: OfflineGenerationSliceTest 14/14 (Fake success, 9 Failure scenarios, mid-stream cancel, safety block, auth denial, LATE_DELTA stale-discard, distinctness); generation-contract-tests module 33/33",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0022",
+  "state": "ACCEPTED",
+  "title": "Fake/Failure 后端离线端到端纵切",
+  "baseCommit": "939db37dadc9b50e2a9f161a472c338f6e8dc5a2",
+  "headCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67",
+  "candidateCommit": "69d782b09ff44fca65c978ca22e21e7896c59a67",
+  "candidateTree": "1382e9ea878a60811a9b4c71ee56a239f7d68a0d",
+  "evidencePath": "docs/evidence/TASK-0022/evidence-pack.json",
+  "completed": [
+    "OfflineGenerationSlice: in-process orchestrator wiring ExecutionAuthorizationGuard (dual in-memory snapshots + InMemoryProviderRegistry) -> Fake/Failure adapter -> GenerationAttemptReducer on synthetic data, mapping one unique SliceTerminalState per run",
+    "Authorization denial returns before adapter.open (zero outbound transfer on denial, INV-AUTH-001); WITHDRAWN execution snapshot forces the guard to deny",
+    "13 fault classes map to 13 distinct terminal states (Fake success, 9 Failure scenarios, mid-stream cancel, safety block, auth denial); distinctness test proves no collapse",
+    "safetyAllowsCompletion config input models the SafetyGate/SafetyReview decision (TASK-0020): false -> BLOCKED_AT_SAFETY, so a final-review failure never yields COMPLETED (INV-GEN-003, INV-TX-001)",
+    "LATE_DELTA stale-fence prefix discarded on BINDING_MISMATCH, opening a sequence gap that rejects the following failure -> FAILED_INVALID_STREAM + discardedStaleEvents signal; missing deltas never fabricated (INV-RT-001)",
+    "14 OfflineGenerationSliceTest cases (BUILD SUCCESS Temurin 25); generation-contract-tests module 33/33; harness unittest 233 OK; doctor 301166 PASS; R1 PASS no P0/P1"
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0023 (OpenAPI 生成/Client 生成/漂移检查基线, deps TASK-0022)",
+    "JDBC-bound receive/claim/finalize/resume are NOT exercised by this in-process slice; they are proven by the SQL contract suite (tests 01-25). A full DB-bound slice (testcontainers) is a later follow-up, not TASK-0022 scope",
+    "Runtime wiring of the orchestrator into a real Chat endpoint is TASK-0025; the safety gate is consumed as a decision here, not re-evaluated"
+  ],
+  "knownRisks": [
+    "The slice does not compile-depend on the safety module (generation-contract-tests pom is a READY-frozen forbiddenPath); it proves the terminal-state EFFECT of safety via a boolean input rather than re-running SafetyGate. The gate's own correctness is proven by TASK-0020 unit tests",
+    "The card human-readable body lists 'recovery' in scope, but resume/recovery is deferred to the SQL suite; acceptance criteria omit it. This documentation-only inconsistency is noted but not an acceptance violation",
+    "SliceConfiguration.failure() sets cancelMidStream=false, which is a footgun for CANCELLATION_FAILED (terminates only after cancel()); tests use the raw constructor. Ergonomic note for future reuse, not a defect",
+    "Java CI on main should pass (generation-contract-tests compiles under Temurin 25, 33 tests green); confirm on next remote CI run"
+  ],
+  "nextAction": "TASK-0022 已 ACCEPTED。离线端到端纵切已落地（generation-contract-tests：OfflineGenerationSlice 进程内接线 auth guard→Fake/Failure adapter→reducer→safety 决定，13 故障类映射 13 唯一终态；auth 拒绝零外发；LATE_DELTA stale-fence 不伪造 delta）。main 全绿。DAG 下一张可晋级卡 TASK-0023（OpenAPI 生成/Client 生成/漂移检查，依赖 TASK-0022）。"
+}
