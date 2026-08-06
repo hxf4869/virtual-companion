@@ -4,4 +4,19 @@ package com.virtualcompanion.api;
 public interface VirtualCompanionApi {
     /** Service version and build identity. */
     VersionResponse getVersion();
+
+    /** Create a Companion relationship (becomes the active Companion). */
+    Relationship createRelationship();
+
+    /** List the caller's relationships. */
+    Void listRelationships();
+
+    /** Fetch a relationship owned by the caller. */
+    Relationship getRelationship();
+
+    /** Make a relationship the active Companion. */
+    Relationship activateRelationship();
+
+    /** Deactivate a relationship (zero active Companions permitted). */
+    Relationship deactivateRelationship();
 }
