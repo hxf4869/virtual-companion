@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0021
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -238,6 +238,22 @@ requiredCommands:
   - git diff --check
 reviewers: []
 independentReview: required
+humanApprovals:
+  - scope: database-migration
+    approvedBy: repository-owner
+    approvedAt: "2026-08-06"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0021 数据库迁移变更（覆盖 **/db/migration/** 保护路径）：以
+      PostgreSQL 持久事件支撑 Fetch-SSE、续传、Gap/Reset/Snapshot 恢复。ALTER vc.realtime_event
+      增补 stream_epoch/event_seq/committed_at envelope 字段并加 per-(generation,epoch) 单调唯一索引；
+      ALTER vc.generation 增补权威 stream_epoch；新建 vc.realtime_stream（next_seq 高水位 +
+      retained_after_seq 低水位，使 GAP_EXPIRED 确定性可测）与 vc.realtime_ticket（单次、hash-only、
+      TTL 45s、boundTo 七元组）；新增 SECURITY DEFINER 函数 append_realtime_event/
+      issue_realtime_ticket/consume_realtime_ticket/resume_stream/read_generation_snapshot/
+      reset_stream_epoch/expire_realtime_window，全部 revoke PUBLIC 仅 grant vc_api、FORCE RLS +
+      复合所有权。仅合成数据 SQL 合同测试与纯 Java 单测；不接入真实 SSE runtime 或 HTTP 端点
+      （留给 TASK-0022/0025），不伪造缺失 delta，不发布未提交终态事件。
 ```
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
