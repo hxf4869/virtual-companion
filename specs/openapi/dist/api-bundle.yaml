@@ -160,6 +160,132 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/{conversationId}/generations:
+    post:
+      operationId: sendGeneration
+      summary: Idempotently send a Chat turn (create or rejoin a generation)
+      description: Creates a new generation for the conversation or rejoins the existing one for the supplied idempotency
+        key (vc.receive_generation). The caller identity is the owner; owner_user_id is never a request field. Requires a
+        server-verified authentication context. Cross-conversation or cross-owner references never disclose existence.
+      parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendGenerationRequest'
+      responses:
+        '200':
+          description: The generation (newly created or rejoined)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Generation'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/{conversationId}/messages:
+    get:
+      operationId: listMessages
+      summary: Paginated message history for a conversation
+      description: Keyset-paginated history of messages in a conversation (vc.list_messages). The after cursor is the last
+        message id seen; ordering is stable by (owner, id). A foreign or absent conversation yields no rows and never discloses
+        existence. Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor (the last message id seen); omit to start from the beginning.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Page size, clamped to a safe band by the server.
+      responses:
+        '200':
+          description: A page of messages, ordered oldest-first within the page
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/generations/{generationId}/cancel:
+    post:
+      operationId: cancelGeneration
+      summary: Cancel a non-terminal generation
+      description: Transitions a cancellable non-terminal generation to CANCELLED (vc.cancel_generation via the catalog double-hop
+        CANCEL_REQUESTED then CANCELLED). Terminal states and COMMITTING are not cancellable. A foreign or absent id maps
+        to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+      parameters:
+      - $ref: '#/components/parameters/GenerationId'
+      responses:
+        '200':
+          description: The generation, now in CANCELLED state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Generation'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/generations/{generationId}/snapshot:
+    get:
+      operationId: getGenerationSnapshot
+      summary: Read a consistent generation snapshot
+      description: Returns the generation status, the final assistant message id (if any), and the ordered realtime event
+        stream up to a consistent point (vc.read_generation_snapshot). A foreign or absent id never discloses existence. Requires
+        a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/GenerationId'
+      responses:
+        '200':
+          description: A consistent generation snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationSnapshot'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   schemas:
     ErrorEnvelope:
@@ -238,6 +364,89 @@ components:
         personaRef:
           type: string
           description: Reference to the Persona to bind as the Companion
+    Generation:
+      type: object
+      description: A generation owned by exactly one user within a conversation. One logical request has one stable logicalGenerationId
+        (INV-GEN-001); status follows the generation-states catalog.
+      required:
+      - generationId
+      - conversationId
+      - logicalGenerationId
+      - status
+      properties:
+        generationId:
+          type: string
+          description: Stable owner-scoped generation identifier
+        conversationId:
+          type: string
+          description: Owning conversation identifier
+        logicalGenerationId:
+          type: string
+          description: Idempotent logical label shared by create and rejoin
+        status:
+          type: string
+          description: Current generation-states catalog code
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+    GenerationSnapshot:
+      type: object
+      description: 'A consistent point-in-time read of a generation: status, final assistant message id and the ordered realtime
+        event stream (INV-RT-001).'
+      required:
+      - status
+      - events
+      properties:
+        status:
+          type: string
+          description: Current generation-states catalog code
+        assistantMessageId:
+          type: string
+          description: Final assistant message id once committed, absent otherwise
+        events:
+          type: array
+          description: Ordered realtime events up to a consistent point
+          items:
+            type: object
+            additionalProperties: true
+    Message:
+      type: object
+      description: A chat message owned by exactly one user within a conversation.
+      required:
+      - messageId
+      - conversationId
+      - role
+      - content
+      properties:
+        messageId:
+          type: string
+          description: Stable owner-scoped message identifier
+        conversationId:
+          type: string
+          description: Owning conversation identifier
+        role:
+          type: string
+          description: Message role (e.g. user, assistant)
+        content:
+          type: string
+          description: Message content
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+    SendGenerationRequest:
+      type: object
+      description: Body for idempotently sending a Chat turn.
+      required:
+      - idempotencyKey
+      properties:
+        idempotencyKey:
+          type: string
+          description: Caller-supplied idempotency label; reuse to rejoin the same generation
+        userContent:
+          type: string
+          description: The user's chat content for this turn
   parameters:
     RelationshipId:
       name: relationshipId
@@ -246,3 +455,17 @@ components:
       schema:
         type: string
       description: Owner-scoped relationship identifier
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped conversation identifier
+    GenerationId:
+      name: generationId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped generation identifier

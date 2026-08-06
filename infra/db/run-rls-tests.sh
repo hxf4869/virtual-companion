@@ -53,8 +53,10 @@ if ! docker exec "$CID" pg_isready -U "$DB_USER" >/dev/null 2>&1; then
     exit 3
 fi
 
-echo "== applying migrations V1..V4 =="
-for f in $(ls "$MIG_DIR"/V*.sql | sort); do
+echo "== applying migrations =="
+# Version-sort (sort -V) so double-digit versions (V10+) apply after V9; plain
+# lexicographic sort puts V10 before V1 because '0' < '_' at the second char.
+for f in $(ls "$MIG_DIR"/V*.sql | sort -V); do
     echo "  -> $(basename "$f")"
     docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q < "$f"
 done

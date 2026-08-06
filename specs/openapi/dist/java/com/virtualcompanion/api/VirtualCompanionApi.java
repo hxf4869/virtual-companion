@@ -19,4 +19,16 @@ public interface VirtualCompanionApi {
 
     /** Deactivate a relationship (zero active Companions permitted). */
     Relationship deactivateRelationship();
+
+    /** Idempotently send a Chat turn (create or rejoin a generation). */
+    Generation sendGeneration();
+
+    /** Paginated message history for a conversation. */
+    Void listMessages();
+
+    /** Cancel a non-terminal generation. */
+    Generation cancelGeneration();
+
+    /** Read a consistent generation snapshot. */
+    GenerationSnapshot getGenerationSnapshot();
 }
