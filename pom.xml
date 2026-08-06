@@ -24,6 +24,7 @@
         <module>service/platform/persistence</module>
         <module>service/modules/modelruntime</module>
         <module>service/modules/conversation</module>
+        <module>service/modules/safety</module>
         <module>service/adapters/model-fake</module>
         <module>service/adapters/model-failure</module>
         <module>service/adapters/model-openai</module>
