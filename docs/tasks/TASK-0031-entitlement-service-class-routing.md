@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0031
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -207,7 +207,21 @@ requiredInvariants:
   - INV-HARNESS-005
   - INV-HARNESS-007
   - INV-HARNESS-009
-humanApprovals: []
+humanApprovals:
+  - scope: task-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-07"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0031 在 service/modules/modelruntime/routing 建立模拟权益、
+      Service Class、额度预留与供应商中立确定性路由。新建 routing 包（ServiceClass/Entitlement/
+      QuotaReservation/QuotaLedger/RoutingRequest/RouteDecision/DecisionHash/DeterministicRouter）
+      及 JUnit 单测；经 ProviderRegistry.deployments() 选部署、为外发尝试产出携带双授权快照的
+      ExternalAttemptBinding（供 ExecutionAuthorizationGuard 执行期授权）、为 ZERO_LLM 降级产出
+      DeterministicSourceBinding（不创建 provider_attempt）。纯领域 Java、无数据库迁移、无真实支付或
+      订阅或 Provider 或凭据；同一输入确定性产出可审计 decisionNo 与 NO_ELIGIBLE_DEPLOYMENT；不绕过
+      Registry 或 Guard、不绑定具体模型、不拼接多 Attempt 输出。model-routing-change 为
+      independentReview（非 humanApproval）保护路径，由独立 R1 复核。
 independentReview: required
 reviewers: []
 requiredCommands:
