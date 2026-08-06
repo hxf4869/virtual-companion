@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0021
-activeTaskCard: docs/tasks/TASK-0021-fetch-sse-resume-gap-reset-snapshot.md
-lastAcceptedTask: TASK-0020
-lastAcceptedHandoff: docs/handoffs/TASK-0020.json
-lastTerminalTask: TASK-0020
-lastTerminalHandoff: docs/handoffs/TASK-0020.json
-nextAction: TASK-0021 READY（持久化 Fetch-SSE/续传/Gap/Reset/Snapshot，baseCommit f09a596）。进入实现：V8 迁移补齐 realtime_event envelope（stream_epoch/event_seq/committed_at）+ generation.stream_epoch + 新建 realtime_stream/realtime_ticket + SECURITY DEFINER 函数（append/issue/consume ticket、resume_stream、snapshot、reset/expire window）；SQL 合同测试 19-25 + persistence Java 服务/仓储 + 纯单测。DAG 下一张可晋级卡待 TASK-0021 ACCEPTED 后定位。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0021
+lastAcceptedHandoff: docs/handoffs/TASK-0021.json
+lastTerminalTask: TASK-0021
+lastTerminalHandoff: docs/handoffs/TASK-0021.json
+nextAction: TASK-0021 已 ACCEPTED。持久化 Fetch-SSE 续传/Gap/Reset/Snapshot 已落地（V8 迁移：realtime_event envelope 补齐 stream_epoch/event_seq/committed_at + generation.stream_epoch 权威 epoch + 新建 realtime_stream（next_seq 高水位/retained_after_seq 低水位，GAP 确定性可测）与 realtime_ticket（单次/hash-only/TTL 45s/boundTo 七元组）+ 9 个 SECURITY DEFINER 函数全 revoke PUBLIC 仅 grant vc_api、FORCE RLS + 复合所有权；SQL 合同测试 19-25 + persistence Java 服务/仓储 + 纯单测；R1/R2 闭合 P1 TOCTOU 与 snapshot 排序）。main 全绿。DAG 下一张可晋级卡 TASK-0022（Fake/Failure 后端离线端到端纵切，依赖 TASK-0016/0019/0021 均 ACCEPTED）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
