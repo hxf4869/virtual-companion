@@ -18,7 +18,7 @@ planningBacklog: .harness/task-backlog.yaml
 planningContractHash: 750a1b4f507c6c9b7113208cf68aa57688ae5be825f58c647a83af98d6667f64
 planningContractHashAlgorithm: SHA256_CANONICAL_JSON_V1
 baseCommit: 2c4237687431a4421cdfd93c49593712d77be872
-authorizationCommit: ""
+authorizationCommit: 52140e5d8d5ec2d26a860ac3b54c1db8ba790903
 contextFingerprint: 6f1b4c05bfb74e97685f23d85e61bdeb9a92a250593ae4f7d3081d833b908fa6
 contextLock: docs/tasks/context/TASK-0029.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
