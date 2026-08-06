@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0031",
+  "state": "ACCEPTED",
+  "title": "模拟权益、Service Class 与确定性路由",
+  "baseCommit": "1a55e8fd51007e0e98c8ace506736e8b00ac6ad1",
+  "headCommit": "e7f5fc693445796d16b06e7ea98366785094806a",
+  "candidateCommit": "e7f5fc693445796d16b06e7ea98366785094806a",
+  "candidateTree": "57b64dcdaa8fec3e4fdfe22450d165e5de8aa501",
+  "evidencePath": "docs/evidence/TASK-0031/evidence-pack.json",
+  "completed": [
+    "service/modules/modelruntime/routing: provider-neutral deterministic routing domain. ServiceClass (policy flags only, never a model/vendor), Entitlement (owner + service class), QuotaReservation, QuotaLedger (in-memory synthetic, atomic per-owner reserve via ConcurrentHashMap.compute), RoutingRequest (validates entitlement.ownerUserId == ownership.ownerUserId, INV-TENANT-001), RouteDecision (tamper-evident decisionNo derived from its own structural fields; constructor rejects a non-matching decisionNo), DecisionHash (deterministic SHA-256), DeterministicRouter.",
+    "DeterministicRouter.decide: same request + same registry/quota state -> same selection, binding and decisionNo. Selection reads registry.deployments() (no bypass), filters admitted + protocol + capability, sorts by ProviderId.value() and takes the first deterministically (independent of registry iteration order, unlike ProviderRegistry.findAdmitted's findFirst). External attempt -> ExternalAttemptBinding carrying both requested + execution authorization snapshot ids (INV-AUTH-001) for the ExecutionAuthorizationGuard to authorize at execution time. ZERO_LLM fallback -> DeterministicSourceBinding with no selectedProviderId and no provider_attempt. No eligible deployment -> explicit NO_ELIGIBLE_DEPLOYMENT. Service-class policy gates external and ZERO_LLM; quota fail-closed degrades or returns NO_ELIGIBLE.",
+    "JUnit 5 tests: DeterministicRouterTest (20) + QuotaLedgerTest (9) + routingRequestRejectsMismatchedOwner (1). Docker Maven Temurin-25 BUILD SUCCESS, modelruntime module 65/65 (35 pre-existing + 30 new), 0 failures.",
+    "Protected-path governance: model-routing-change skill (C3 independentReview) registered + pinned (1.0.0) in requiredSkills; humanApprovals scope=task-authorization (model-routing is independentReview, not humanApproval). R1 PASS (no P0/P1); one fix batch closed R1 F-01 (atomic quota reserve) + F-02 (owner cross-check); R2 finding-closure PASS. precheck PASS, harness unittest 233 OK, git diff --check clean."
+  ],
+  "remaining": [
+    "Wire DeterministicRouter into the live execution path: the route decision's ExternalAttemptBinding is authorized by ExecutionAuthorizationGuard and the adapter is opened at execution time (the router only produces the binding; it does not invoke adapters or transfer data). This is a subsequent runtime-integration task.",
+    "Persist route decisions (generation_route_decision rows, immutableDecisionNo) and quota ledger entries once a persistence layer for routing is introduced; the in-memory QuotaLedger is a Technical Alpha simulation (real quota integrity is DB-backed via quota_ledger_entry from TASK-0018).",
+    "TASK-0032 (next promotable, deps TASK-0020 + TASK-0021 + TASK-0031 all satisfied): minimal ZERO_LLM no-provider-attempt execution path, quota release, and full provider failure recovery."
+  ],
+  "knownRisks": [
+    "R1 P3 F-03: decisionNo/providerAttemptId/reservationId canonical strings join fields with '|'; ownership/provider ids containing '|' could in principle collide. Theoretical only -- current ids are UUID-style and never contain '|'. A length-prefixed encoding or '|' rejection in OwnershipTuple/ProviderId would close it.",
+    "R1 P3 F-04: RouteDecision's compact constructor cross-checks binding!=null only for SELECTED; it does not reject a binding on NO_ELIGIBLE or a selectedProviderId inconsistent with the binding type. Unreachable via the selected()/noEligible() factories and decide(); defensive-only hardening.",
+    "R1 P3 F-05: decisionNo excludes the authorization snapshot ids (consistent with providerAttemptId); two decisions for the same owner/provider/fence under different authorization snapshots share a decisionNo. Intentional (stable across authorization rotation); the full RouteDecision still self-describes via its binding.",
+    "R1 P3 F-06: RouteDecision.computeDecisionNo is package-private, so external auditors must re-implement the canonical format. AC recomputability is satisfied within the package (noEligibleDecisionNoIsRecomputable).",
+    "QuotaLedger thread-safety (R1 F-01) is added for consistency with the sibling in-memory stores and to close the latent double-reserve; the Technical Alpha router is not exercised concurrently, and real quota integrity remains DB-backed.",
+    "same-input determinism is qualified by quota state: decide() reserves quota as a side-effect, so repeated calls on one ledger instance observe decreasing budget; two routers with identical state yield identical decisions (proven by sameInputProducesSameDecisionNoAndSelection)."
+  ],
+  "nextAction": "TASK-0031 已 ACCEPTED。模拟权益、Service Class 与确定性路由已落地——service/modules/modelruntime/routing（ServiceClass 供应商中立策略、Entitlement、QuotaReservation、QuotaLedger 原子预留、RoutingRequest owner 交叉校验、RouteDecision 防篡改 decisionNo、DecisionHash、DeterministicRouter）。同一输入确定性产出可审计 decisionNo 与 NO_ELIGIBLE_DEPLOYMENT；经 ProviderRegistry.deployments() 选部署不绕过、外发尝试产 ExternalAttemptBinding 携带双授权快照（INV-AUTH-001）、ZERO_LLM 降级产 DeterministicSourceBinding 不创建 provider_attempt；合成额度原子预留失败关闭降级。Maven 65/65、precheck PASS、harness 233 OK。DAG 下一张可晋级卡 TASK-0032（deps TASK-0020+TASK-0021+TASK-0031 满足）。"
+}

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0031
-activeTaskCard: docs/tasks/TASK-0031-entitlement-service-class-routing.md
-lastAcceptedTask: TASK-0030
-lastAcceptedHandoff: docs/handoffs/TASK-0030.json
-lastTerminalTask: TASK-0030
-lastTerminalHandoff: docs/handoffs/TASK-0030.json
-nextAction: TASK-0031 进行中（READY/IN_PROGRESS）。在 service/modules/modelruntime/routing 建立模拟权益、Service Class、额度预留与供应商中立确定性路由——新建 ServiceClass/Entitlement/QuotaReservation/QuotaLedger/RoutingRequest/RouteDecision/DecisionHash/DeterministicRouter + JUnit 单测；经 ProviderRegistry 选部署、外发尝试产出携带双授权快照的 ExternalAttemptBinding、ZERO_LLM 降级产出 DeterministicSourceBinding；同一输入确定性产出可审计 decisionNo 与 NO_ELIGIBLE_DEPLOYMENT。model-routing-change（C3 independentReview）单 protected surface，riskClass C4 policySurfaces AUTHORIZATION 无 split，humanApprovals scope=task-authorization。完成后 DAG 下一张可晋级卡 TASK-0032。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0031
+lastAcceptedHandoff: docs/handoffs/TASK-0031.json
+lastTerminalTask: TASK-0031
+lastTerminalHandoff: docs/handoffs/TASK-0031.json
+nextAction: TASK-0031 已 ACCEPTED。模拟权益、Service Class 与确定性路由已落地——service/modules/modelruntime/routing（ServiceClass 供应商中立策略、Entitlement、QuotaReservation、QuotaLedger 原子预留、RoutingRequest owner 交叉校验、RouteDecision 防篡改 decisionNo、DecisionHash、DeterministicRouter）。同一输入确定性产出可审计 decisionNo 与 NO_ELIGIBLE_DEPLOYMENT；经 ProviderRegistry.deployments() 选部署不绕过、外发尝试产 ExternalAttemptBinding 携带双授权快照（INV-AUTH-001）、ZERO_LLM 降级产 DeterministicSourceBinding 不创建 provider_attempt；合成额度原子预留失败关闭降级。Maven 65/65、precheck PASS、harness 233 OK。DAG 下一张可晋级卡 TASK-0032（deps TASK-0020+TASK-0021+TASK-0031 满足）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
