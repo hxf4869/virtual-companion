@@ -236,6 +236,14 @@ class DeterministicRouterTest {
     }
 
     @Test
+    void routingRequestRejectsMismatchedOwner() {
+        OwnershipTuple ownership = own();
+        Entitlement otherOwner = new Entitlement("owner-2", ServiceClass.simulated());
+        assertThrows(IllegalArgumentException.class, () -> new RoutingRequest(
+                ownership, otherOwner, FAKE, NO_CAPS, "snap-req-1", "snap-exec-1", "zero-llm-1", 1L));
+    }
+
+    @Test
     void routeDecisionRejectsTamperedDecisionNo() {
         OwnershipTuple ownership = own();
         assertThrows(IllegalArgumentException.class, () -> new RouteDecision(
