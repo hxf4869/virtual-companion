@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0029
+activeTaskCard: docs/tasks/TASK-0029-memory-recall-context-tombstone.md
 lastAcceptedTask: TASK-0028
 lastAcceptedHandoff: docs/handoffs/TASK-0028.json
 lastTerminalTask: TASK-0028
 lastTerminalHandoff: docs/handoffs/TASK-0028.json
-nextAction: TASK-0028 已 ACCEPTED。记忆候选管理 API 已落地——V12 迁移新增 update_memory（编辑 summary 不改 status）与 list_memory_evidence（读取来源 Evidence），CREATE OR REPLACE delete_memory 匹配 V11 文档幂等性；OpenAPI 8 端点 create/list/get/update/delete/confirm/reject/evidence 复用既有 MEMORY_CONFIRMATION_REQUIRED 与 MEMORY_FORBIDDEN_CONTENT 错误码（零 catalog 改动）；canonical 确认门禁未弱化（update 不改 status、create 仍只产 PENDING_CONFIRMATION 候选、confirm 唯一 ACCEPTED 路径）。SQL 测试 34 更新 + 35/36 新增，36/36 全绿。main 全绿。DAG 下一张可晋级卡 TASK-0029（deps 含 TASK-0028 满足）。
+nextAction: TASK-0029 进行中（READY/IN_PROGRESS）。跨会话召回 + Context 注入 + 删除墓碑建在 TASK-0027/0028 V11/V12 之上——V13 前向迁移新增 recall_memory（确定性召回 status=ACCEPTED 且非删除的 owned 记忆；RELATIONSHIP scope 跨 Conversation 召回，SESSION scope 仅在该 conversation_id 时召回；来源分组 + 确定性排序 scope,created_at,id + 预算 LIMIT 钳制 [1,100]）；删除墓碑经 deleted_at IS NULL 结构性排除（无向量/缓存可复活）；跨 owner/跨 relationship/未确认/已删除全空或失败关闭（INV-TENANT-001）。纯 DB 卡（无 OpenAPI/Java/catalog 改动），single protected surface 为 database-migration C4。SQL 测试 37（召回 ACCEPTED-only/budget/scope/隔离）+ 38（墓碑/删除传播/确定性）。完成后 DAG 下一张可晋级卡 TASK-0030（deps 含 TASK-0029）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
