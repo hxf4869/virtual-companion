@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0027
-activeTaskCard: docs/tasks/TASK-0027-canonical-memory-persistence.md
-lastAcceptedTask: TASK-0026
-lastAcceptedHandoff: docs/handoffs/TASK-0026.json
-lastTerminalTask: TASK-0026
-lastTerminalHandoff: docs/handoffs/TASK-0026.json
-nextAction: TASK-0027（Canonical Memory 持久化）已 READY 并授权。实现 V11 迁移（ALTER memory_item 加 conversation_id/deletedated + 6 个 SECURITY DEFINER 生命周期函数 create/confirm/reject/delete/list/get + REVOKE 直接写强制经函数）与 3 个 SQL 测试；验证 run-rls-tests + harness unittest 全绿后独立 R1、终态 closure、ACCEPTED。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0027
+lastAcceptedHandoff: docs/handoffs/TASK-0027.json
+lastTerminalTask: TASK-0027
+lastTerminalHandoff: docs/handoffs/TASK-0027.json
+nextAction: TASK-0027 已 ACCEPTED。Canonical Memory 持久化与所有权隔离已落地（V11 迁移 ALTER memory_item 加 conversation_id/deleted_at + 6 SECURITY DEFINER 生命周期函数 create 只产 PENDING_CONFIRMATION 候选/confirm 唯一 ACCEPTED 路径/reject/delete/list/get + REVOKE 直接 DML 强制全经函数；跨 owner/跨关系/缺上下文失败关闭）。SQL 测试 01-34 全绿。main 全绿。DAG 下一张可晋级卡 TASK-0028（deps TASK-0020/TASK-0025/TASK-0027 满足）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

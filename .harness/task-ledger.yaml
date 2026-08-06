@@ -391,3 +391,10 @@ tasks:
     taskCard: docs/tasks/TASK-0026-h5-offline-chat-stream-recovery.md
     evidence: docs/evidence/TASK-0026/evidence-pack.json
     handoff: docs/handoffs/TASK-0026.json
+
+  TASK-0027:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0027-canonical-memory-persistence.md
+    evidence: docs/evidence/TASK-0027/evidence-pack.json
+    handoff: docs/handoffs/TASK-0027.json
