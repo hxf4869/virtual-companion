@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0024
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -196,7 +196,25 @@ requiredCommands:
   - git diff --check
 reviewers: []
 independentReview: required
-humanApprovals: []
+humanApprovals:
+  - scope: database-migration
+    approvedBy: repository-owner
+    approvedAt: "2026-08-06"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0024 Relationship 与唯一活跃 Companion（database-migration C4，单一 protected
+      skill surface）：新建 V9 前向迁移 service/platform/persistence/src/main/resources/db/migration/V9，在
+      vc.relationship 上增加 partial unique index (owner_user_id) WHERE active 作为 activeCompanionLimit=1 的
+      唯一权威不变量（READ COMMITTED 下串行化并发 INSERT/UPDATE）；新增 5 个 SECURITY DEFINER 生命周期函数
+      create_relationship/get_relationship/list_relationships/activate_relationship/deactivate_relationship，按
+      V8 范式（advisory lock 序列化同 owner create/activate 避免 unique_violation、out_ 前缀 RETURNS TABLE、
+      set_config 绑定 current_owner_id、REVOKE PUBLIC 仅 GRANT EXECUTE TO vc_api、新表 FORCE RLS），不新增运行
+      角色、不给 BYPASSRLS、不靠应用 WHERE 代替数据库所有权约束；越权 get/activate 经 FORCE RLS 返回空实现
+      NOT_FOUND_OR_FORBIDDEN（存在性隐藏，INV-TENANT-001）。OpenAPI specs/openapi/virtual-companion.yaml 新增
+      Relationship 端点与 schema，复用既有 ErrorEnvelope/ErrorCode（不新增错误码），重跑 scripts/dev/openapi_tool.py
+      生成 specs/openapi/dist 并通过 diff --fail-on-drift。不修改已执行迁移 V1 至 V8，不触碰 specs/contracts、
+      specs/catalog、specs/generated、service Java 与 pom；complexityGate 无 split（仅 AUTHORIZATION 面，
+      distinctCrossRiskSurfaces=1）。满足接受条件：并发创建仍最多一个活跃 Companion、越权查询统一 NOT_FOUND_OR_FORBIDDEN。
 ```
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
