@@ -1,0 +1,29 @@
+{
+  "taskId": "TASK-0020",
+  "state": "ACCEPTED",
+  "title": "输入、增量输出和最终输出安全流水线",
+  "baseCommit": "f186ecedf495e03544d48dbd0dc2a24b62f3a524",
+  "headCommit": "a6628fe6152750f3185236e133d581a7f670088e",
+  "candidateCommit": "a6628fe6152750f3185236e133d581a7f670088e",
+  "candidateTree": "b51aac889fadba3cd3cd5cf03e2184f07ee2ba1f",
+  "evidencePath": "docs/evidence/TASK-0020/evidence-pack.json",
+  "completed": [
+    "New service/modules/safety module (pom + root reactor registration) with catalog dependency",
+    "SafetyGate: deterministic-priority fail-closed combinator — hard rules absolute (classifier never lowers them); only CLASSIFIED+adequate allows; every failure outcome (LOW_CONFIDENCE/TIMEOUT/UNAVAILABLE/INVALID_RESPONSE/RULE_CONFLICT) blocks regardless of confidence (acceptance #1)",
+    "ClassifierReport: adequate() = CLASSIFIED + confidence>=0.80, short-circuits on outcome so failure outcomes are never adequate",
+    "SafetyReview: incremental non-ALLOW -> PAUSE; final non-ALLOW -> BLOCK; mayComplete only on ALLOW (acceptance #2: final-review failure prevents chat.completed)",
+    "DeterministicSafetyResponse: fixed ZERO_LLM fallback on BLOCK, never invokes a model",
+    "13 unit tests (SafetyGate 6 / SafetyReview 5 / DeterministicSafetyResponse 2); Docker Temurin-25 safety module BUILD SUCCESS",
+    "safety-change protected-path governance satisfied (Skill 1.0.0 + Owner humanApproval + independent R1); R1 PASS no P0/P1, P2-1 fail-closed test hardened to enum-iteration; Doctor 292222 PASS; harness 233 OK"
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0021 (Fetch-SSE/resume/Gap/Reset/Snapshot), deps TASK-0018 and TASK-0020 (both ACCEPTED)",
+    "Wire the safety primitives into the real streaming pause + chat.completed hook (conversation module) is a later runtime task; acceptance is met at the primitive level"
+  ],
+  "knownRisks": [
+    "SafetyGate/SafetyReview are pure primitives; the live input/incremental/final pipeline wiring (classifier adapter, streaming pause, completion gate) is a later task",
+    "Null/blank gate inputs throw rather than return BLOCK; acceptable while there are no consumers, but a wired caller must treat exceptions as BLOCK (fail-closed)",
+    "Java CI on main should pass (safety compiles under Temurin 25, 13 tests green; root pom reactor registration verified); confirm on next remote CI run"
+  ],
+  "nextAction": "TASK-0020 已 ACCEPTED。确定性失败关闭安全流水线已落地（service/modules/safety：硬规则绝对优先 + classifier failure outcome 全失败关闭 + 增量暂停 + 最终复核失败阻止 chat.completed + ZERO_LLM 确定性替代），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0021（持久化 Fetch-SSE/续传/Gap/Reset/Snapshot，依赖 TASK-0018、TASK-0020）。"
+}
