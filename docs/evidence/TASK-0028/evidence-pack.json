@@ -1,0 +1,74 @@
+{
+  "taskId": "TASK-0028",
+  "baseCommit": "2a715085d0f55104fda7af40001fcf7c0d256e7e",
+  "headCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb",
+  "contextFingerprint": "86b39ff3da96e76e640d9fd3a245f6806cd0da39606d4a16b6db3eb9526471d8",
+  "reviewers": [
+    {
+      "id": "task0028_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb",
+      "evidencePath": "docs/evidence/TASK-0028/review-r1.md",
+      "reason": "R1 PASS (no P0/P1). Independent adversarial audit of V12 memory management API. AC1 (canonical gate intact) satisfied -- update_memory SET clause is summary-only (never status, no INSERT); create_memory_candidate still hardcodes PENDING_CONFIRMATION; confirm remains sole ACCEPTED path; no V12 change restores direct DML (INV-MEM-001/002 unweakened). AC2 (fail-closed + contract tests) satisfied -- update/delete/list_evidence echo only caller values on foreign/absent id; list_memory_evidence empty for foreign/absent/deleted (indistinguishable from no-evidence); delete_memory idempotency fix matches V11 documented intent (owned already-deleted -> TRUE via FOR UPDATE existence check; foreign/absent -> raise; no TOCTOU); cross-owner/cross-relationship covered by tests 33/35; confirm/modify/delete/duplicate-request/unauthorized all tested (32/34/35/36). All 3 functions SECURITY DEFINER SET search_path=vc,public, REVOKE PUBLIC + GRANT vc_api, out_ prefix; CREATE OR REPLACE preserves delete_memory ACL. OpenAPI 8 endpoints match function behavior (list/evidence return empty not 404; delete idempotent; confirm non-idempotent); MEMORY_* codes reused (zero catalog change); snapshot SHA matches source. SQL suite 36/36. Non-blocking P2 (vacuous negative assertions in tests 35/36 -- guards verified correct, defense-in-depth on cross-owner, same V11 32/33 pattern) + P3 (no 400-class error code for validation failures -- out of scope, matches V11, card forbids new codes); no fix batch.",
+      "candidateTree": "1ea87ef8776f6cf15acaf56fdd3dabcd27c7e14d",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 278, "hardLimitReached": false}
+    }
+  ],
+  "checks": [
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "All 36 SQL tests PASS in an ephemeral PostgreSQL 18 + pgvector container applying V1-V12. New tests 35 (update_memory status-preserving edit on PENDING/ACCEPTED, rejected/blank/absent/deleted/cross-owner fail-closed; list_memory_evidence returns ordered evidence, empty for foreign/absent/deleted) and 36 (idempotency: update same summary twice, delete already-deleted TRUE, confirm/reject stay status-guarded, create not deduped). Modified test 34 re-delete now asserts idempotent TRUE. Tests 32/33 unchanged (cross-user delete still raises).",
+      "environment": "WSL2 Ubuntu-24.04; Docker pgvector/pgvector:0.8.5-pg18; PostgreSQL 18",
+      "verifiedCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI 3.1.0 source validates after adding the 8 memory endpoints, 4 schemas (Memory/MemoryCandidateCreateRequest/MemoryUpdateRequest/MemoryEvidence) and the MemoryId parameter.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Regenerated dist (api-bundle.yaml, Java VirtualCompanionApi + 4 new Memory records, TypeScript client, snapshot.json) matches the committed dist; no drift.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures. Full harness unittest suite.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0028 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Candidate diff within frozen writeAllowlist; no forbidden or protected path touched; humanApprovals scope=database-migration satisfies the db/migration protected-path gate; AUTHORIZATION_FIELDS frozen since READY; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (V12 migration + tests 34/35/36 + OpenAPI spec and generated dist).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "50b1543fca95d7e6b7d6919e3f3616d1a26ca0eb"
+    }
+  ]
+}

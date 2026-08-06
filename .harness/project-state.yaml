@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0028
-activeTaskCard: docs/tasks/TASK-0028-memory-candidate-management-api.md
-lastAcceptedTask: TASK-0027
-lastAcceptedHandoff: docs/handoffs/TASK-0027.json
-lastTerminalTask: TASK-0027
-lastTerminalHandoff: docs/handoffs/TASK-0027.json
-nextAction: TASK-0028 进行中（READY/IN_PROGRESS）。记忆候选管理 API 建在 TASK-0027 V11 函数之上——V12 前向迁移新增 update_memory（编辑 summary、不改 status、保留 canonical 确认门禁）与 list_memory_evidence（读取来源 Evidence），并 CREATE OR REPLACE delete_memory 使其匹配 V11 文档的「Idempotent on already-deleted rows」（owned 已删除返回 true；foreign/absent 仍 raise 不披露存在性）。OpenAPI 端点 create/list/get/confirm/reject/update/delete/list-evidence 复用既有 MEMORY_CONFIRMATION_REQUIRED 与 MEMORY_FORBIDDEN_CONTENT 错误码（零 catalog/generated 改动，single protected surface 为 database-migration C4）。SQL 测试 34 更新 + 35/36 新增覆盖修改/删除幂等、来源 Evidence、跨 owner/跨 relationship 失败关闭。完成后 DAG 下一张可晋级卡 TASK-0029（deps 含 TASK-0028）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0028
+lastAcceptedHandoff: docs/handoffs/TASK-0028.json
+lastTerminalTask: TASK-0028
+lastTerminalHandoff: docs/handoffs/TASK-0028.json
+nextAction: TASK-0028 已 ACCEPTED。记忆候选管理 API 已落地——V12 迁移新增 update_memory（编辑 summary 不改 status）与 list_memory_evidence（读取来源 Evidence），CREATE OR REPLACE delete_memory 匹配 V11 文档幂等性；OpenAPI 8 端点 create/list/get/update/delete/confirm/reject/evidence 复用既有 MEMORY_CONFIRMATION_REQUIRED 与 MEMORY_FORBIDDEN_CONTENT 错误码（零 catalog 改动）；canonical 确认门禁未弱化（update 不改 status、create 仍只产 PENDING_CONFIRMATION 候选、confirm 唯一 ACCEPTED 路径）。SQL 测试 34 更新 + 35/36 新增，36/36 全绿。main 全绿。DAG 下一张可晋级卡 TASK-0029（deps 含 TASK-0028 满足）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
