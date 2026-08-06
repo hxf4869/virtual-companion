@@ -31,4 +31,28 @@ public interface VirtualCompanionApi {
 
     /** Read a consistent generation snapshot. */
     GenerationSnapshot getGenerationSnapshot();
+
+    /** Create a memory candidate from model extraction (PENDING_CONFIRMATION). */
+    Memory createMemoryCandidate();
+
+    /** List the caller's memory for a relationship. */
+    Void listMemories();
+
+    /** Fetch a memory owned by the caller. */
+    Memory getMemory();
+
+    /** Edit a memory's content (status-preserving, idempotent). */
+    Memory updateMemory();
+
+    /** Soft-delete a memory (idempotent). */
+    Memory deleteMemory();
+
+    /** Confirm a pending candidate into canonical memory. */
+    Memory confirmMemoryCandidate();
+
+    /** Reject a pending candidate. */
+    Memory rejectMemoryCandidate();
+
+    /** List the source Evidence of a memory. */
+    Void listMemoryEvidence();
 }
