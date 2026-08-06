@@ -3,6 +3,12 @@
 -- message id and the durable terminal events. The client reconstructs the
 -- committed state; chat.completed is PENDING in the DB and only ever published
 -- after its transaction commits (INV-TX-001).
+--
+-- R1 P1-2 regression: finalize's chat.completed is written with event_seq=0
+-- (V7 DEFAULT) but a later committed_at than a previously-appended durable
+-- event. The snapshot orders by committed_at so chat.completed sorts AFTER the
+-- appended event, not before. The append and finalize run in SEPARATE
+-- transactions (as they do in the real runtime) so their committed_at differ.
 
 \set ON_ERROR_STOP on
 
@@ -20,6 +26,18 @@ VALUES (1, 5000, 100, 'gen-snap-1', 'FINAL_REVIEW');
 INSERT INTO vc.generation_candidate(owner_user_id, id, generation_id, content, is_final)
 VALUES (1, 6000, 5000, 'draft answer', false);
 
+-- Separate transaction 1: append a durable event (earlier committed_at).
+SET ROLE vc_api;
+BEGIN;
+SET LOCAL vc.owner_user_id = '1';
+DO $$
+BEGIN
+    PERFORM vc.append_realtime_event(1, 5000, 1, 'chat.accepted', '{"v":1}'::jsonb);
+END $$;
+COMMIT;
+RESET ROLE;
+
+-- Separate transaction 2: finalize, then resume and assert snapshot truth.
 SET ROLE vc_api;
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
@@ -61,6 +79,27 @@ BEGIN
     IF hascompleted IS NOT TRUE THEN
         RAISE EXCEPTION 'TERMINAL_SNAPSHOT events must include chat.completed';
     END IF;
+
+    -- R1 P1-2 regression: the appended chat.accepted (earlier committed_at) must
+    -- sort BEFORE finalize's chat.completed (event_seq=0 but later committed_at).
+    IF jsonb_array_length(v_events) < 2 THEN
+        RAISE EXCEPTION 'snapshot must contain the appended event and chat.completed';
+    END IF;
+    IF (v_events->0->>'event') <> 'chat.accepted' THEN
+        RAISE EXCEPTION 'snapshot must order appended event first (got %)', v_events->0->>'event';
+    END IF;
+    n := jsonb_array_length(v_events) - 1;
+    IF (v_events->n->>'event') <> 'chat.completed' THEN
+        RAISE EXCEPTION 'snapshot must order chat.completed last by committed_at';
+    END IF;
+
+    -- R1 P2-4: a terminal generation (now COMPLETED) rejects new durable events.
+    BEGIN
+        PERFORM vc.append_realtime_event(1, 5000, 1, 'safety.notice', '{}'::jsonb);
+        RAISE EXCEPTION 'append to a terminal generation must be rejected';
+    EXCEPTION WHEN OTHERS THEN
+        -- expected: cannot append to a terminal generation
+    END;
 
     -- The standalone snapshot endpoint returns the same committed truth.
     SELECT out_status, out_events INTO v_snapstatus, v_events

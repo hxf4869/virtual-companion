@@ -226,6 +226,17 @@ BEGIN
             p_stream_epoch, v_stream.out_stream_epoch;
     END IF;
 
+    -- Defense in depth (R1 P2-4): a terminal generation never accepts new durable
+    -- events; terminal state is reached only via finalize/cancel/fail (INV-GEN-003).
+    PERFORM 1 FROM vc.generation g
+     WHERE g.owner_user_id = p_owner_user_id
+       AND g.id = p_generation_id
+       AND g.status IN ('INPUT_BLOCKED','COMPLETED','COMPLETED_FALLBACK','CANCELLED',
+                        'OUTPUT_BLOCKED','FAILED_FINAL');
+    IF FOUND THEN
+        RAISE EXCEPTION 'append_realtime_event: cannot append to a terminal generation';
+    END IF;
+
     v_seq := v_stream.out_next_seq;
     v_row_id := nextval('vc.finalize_row_id_seq');
     INSERT INTO vc.realtime_event(
@@ -290,22 +301,21 @@ CREATE OR REPLACE FUNCTION vc.expire_realtime_window(
     SET search_path = vc, public
 AS $$
 DECLARE
-    v_stream record;
     v_retained bigint;
 BEGIN
     IF p_up_to_seq IS NULL OR p_up_to_seq < 0 THEN
         RAISE EXCEPTION 'expire_realtime_window: up_to_seq must be non-negative';
     END IF;
     PERFORM set_config('vc.owner_user_id', p_owner_user_id::text, true);
-    SELECT * INTO v_stream FROM vc.ensure_realtime_stream(p_owner_user_id, p_generation_id);
-    SELECT GREATEST(retained_after_seq, p_up_to_seq) INTO v_retained
-      FROM vc.realtime_stream
-     WHERE owner_user_id = p_owner_user_id
-       AND generation_id = p_generation_id;
+    PERFORM * FROM vc.ensure_realtime_stream(p_owner_user_id, p_generation_id);
+    -- Atomic monotonic advance (R1 P2-1): a single GREATEST-in-UPDATE prevents
+    -- a lower concurrent value from moving the boundary backwards.
     UPDATE vc.realtime_stream
-       SET retained_after_seq = v_retained, updated_at = now()
+       SET retained_after_seq = GREATEST(retained_after_seq, p_up_to_seq),
+           updated_at = now()
      WHERE owner_user_id = p_owner_user_id
-       AND generation_id = p_generation_id;
+       AND generation_id = p_generation_id
+    RETURNING retained_after_seq INTO v_retained;
     RETURN v_retained;
 END;
 $$;
@@ -420,7 +430,8 @@ BEGIN
 
     SELECT * INTO v_ticket FROM vc.realtime_ticket t
      WHERE t.owner_user_id = p_owner_user_id
-       AND t.id = p_ticket_id;
+       AND t.id = p_ticket_id
+     FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'consume_realtime_ticket: ticket not found';
     END IF;
@@ -512,7 +523,7 @@ BEGIN
                 'eventSeq', e.event_seq,
                 'committedAt', e.committed_at,
                 'payload', e.payload
-            ) ORDER BY e.event_seq), '[]'::jsonb) INTO v_events
+            ) ORDER BY e.committed_at, e.event_seq), '[]'::jsonb) INTO v_events
           FROM vc.realtime_event e
          WHERE e.owner_user_id = p_owner_user_id
            AND e.generation_id = p_generation_id;
@@ -588,7 +599,7 @@ BEGIN
             'eventSeq', e.event_seq,
             'committedAt', e.committed_at,
             'payload', e.payload
-        ) ORDER BY e.event_seq), '[]'::jsonb) INTO v_events
+        ) ORDER BY e.committed_at, e.event_seq), '[]'::jsonb) INTO v_events
       FROM vc.realtime_event e
      WHERE e.owner_user_id = p_owner_user_id
        AND e.generation_id = p_generation_id;
