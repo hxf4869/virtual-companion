@@ -1,0 +1,193 @@
+// TASK-0030: Pinia memory store binding the memory API client to the H5 UI.
+//
+// The store keeps pending candidates (status=PENDING_CONFIRMATION) strictly
+// separate from canonical memory (status=ACCEPTED): an unconfirmed candidate is
+// never presented as a saved fact (forbidden). Transport deps are injected at
+// call time so the spec can mock request() exactly like stores/chat.spec.ts.
+//
+// Failure semantics: a confirmed success (truthy API result) is the ONLY thing
+// that mutates the canonical set or removes a memory. A non-confirmed result
+// (null/false) or a thrown transport preserves the current state and records an
+// error -- the store never fakes success (forbidden). Sources, status and delete
+// results come only from the API response.
+
+import { defineStore } from "pinia";
+import { computed, ref } from "vue";
+
+import {
+  confirmMemory,
+  deleteMemory,
+  listMemories,
+  listMemoryEvidence,
+  rejectMemory,
+  updateMemory,
+  type Memory,
+  type MemoryEvidence,
+  type MemoryTransport,
+} from "@/api/memory";
+
+export type MemoryErrorCode =
+  | "load-failed"
+  | "confirm-not-confirmed"
+  | "confirm-failed"
+  | "reject-not-confirmed"
+  | "reject-failed"
+  | "update-not-confirmed"
+  | "update-failed"
+  | "delete-not-confirmed"
+  | "delete-failed"
+  | "evidence-failed";
+
+export const useMemoryStore = defineStore("h5-memory", () => {
+  const pending = ref<Memory[]>([]);
+  const canonical = ref<Memory[]>([]);
+  const evidence = ref<Record<string, MemoryEvidence[]>>({});
+  const error = ref<MemoryErrorCode | null>(null);
+
+  /** Unconfirmed candidates are never part of the canonical set. */
+  const pendingCount = computed(() => pending.value.length);
+  const canonicalCount = computed(() => canonical.value.length);
+
+  function without(list: Memory[], memoryId: string): Memory[] {
+    return list.filter((m) => m.memoryId !== memoryId);
+  }
+
+  function replaceIn(list: Memory[], memory: Memory): Memory[] {
+    let found = false;
+    const next = list.map((m) => {
+      if (m.memoryId === memory.memoryId) {
+        found = true;
+        return memory;
+      }
+      return m;
+    });
+    return found ? next : list;
+  }
+
+  /** Load and partition by status. Pending and canonical never mix. */
+  async function load(t: MemoryTransport, relationshipId: string): Promise<void> {
+    error.value = null;
+    let list: Memory[];
+    try {
+      list = await listMemories(t, relationshipId);
+    } catch {
+      error.value = "load-failed";
+      return;
+    }
+    pending.value = list.filter((m) => m.status === "PENDING_CONFIRMATION");
+    canonical.value = list.filter((m) => m.status === "ACCEPTED");
+  }
+
+  /** Confirm: a pending candidate moves to canonical ONLY on confirmed success. */
+  async function confirm(t: MemoryTransport, memoryId: string): Promise<void> {
+    error.value = null;
+    let confirmed: Memory | null;
+    try {
+      confirmed = await confirmMemory(t, memoryId);
+    } catch {
+      error.value = "confirm-failed";
+      return;
+    }
+    if (!confirmed || confirmed.status !== "ACCEPTED") {
+      // Not confirmed -> preserve state, do not fake a confirmation.
+      error.value = "confirm-not-confirmed";
+      return;
+    }
+    pending.value = without(pending.value, memoryId);
+    canonical.value = [...canonical.value, confirmed];
+  }
+
+  /** Reject: a pending candidate is dropped ONLY on confirmed success. */
+  async function reject(t: MemoryTransport, memoryId: string): Promise<void> {
+    error.value = null;
+    let rejected: Memory | null;
+    try {
+      rejected = await rejectMemory(t, memoryId);
+    } catch {
+      error.value = "reject-failed";
+      return;
+    }
+    if (!rejected) {
+      error.value = "reject-not-confirmed";
+      return;
+    }
+    pending.value = without(pending.value, memoryId);
+  }
+
+  /** Edit: the visible summary changes ONLY on confirmed success. */
+  async function update(
+    t: MemoryTransport,
+    memoryId: string,
+    summary: string,
+  ): Promise<void> {
+    error.value = null;
+    let updated: Memory | null;
+    try {
+      updated = await updateMemory(t, memoryId, summary);
+    } catch {
+      error.value = "update-failed";
+      return;
+    }
+    if (!updated) {
+      error.value = "update-not-confirmed";
+      return;
+    }
+    canonical.value = replaceIn(canonical.value, updated);
+    pending.value = replaceIn(pending.value, updated);
+  }
+
+  /** Delete: a memory is removed ONLY on a confirmed delete; never faked. */
+  async function remove(t: MemoryTransport, memoryId: string): Promise<void> {
+    error.value = null;
+    let ok: boolean;
+    try {
+      ok = await deleteMemory(t, memoryId);
+    } catch {
+      error.value = "delete-failed";
+      return;
+    }
+    if (!ok) {
+      // Delete not confirmed -> preserve the memory, surface an error. The UI
+      // must not pretend the memory was deleted.
+      error.value = "delete-not-confirmed";
+      return;
+    }
+    pending.value = without(pending.value, memoryId);
+    canonical.value = without(canonical.value, memoryId);
+    const nextEvidence = { ...evidence.value };
+    delete nextEvidence[memoryId];
+    evidence.value = nextEvidence;
+  }
+
+  async function loadEvidence(t: MemoryTransport, memoryId: string): Promise<void> {
+    try {
+      const sources = await listMemoryEvidence(t, memoryId);
+      evidence.value = { ...evidence.value, [memoryId]: sources };
+    } catch {
+      error.value = "evidence-failed";
+    }
+  }
+
+  function reset(): void {
+    pending.value = [];
+    canonical.value = [];
+    evidence.value = {};
+    error.value = null;
+  }
+
+  return {
+    pending,
+    canonical,
+    evidence,
+    error,
+    pendingCount,
+    canonicalCount,
+    load,
+    confirm,
+    reject,
+    update,
+    remove,
+    loadEvidence,
+    reset,
+  };
+});

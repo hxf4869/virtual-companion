@@ -11,6 +11,12 @@
 			"style": {
 				"navigationBarTitleText": "离线聊天恢复"
 			}
+		},
+		{
+			"path": "pages/memory/memory",
+			"style": {
+				"navigationBarTitleText": "记忆管理"
+			}
 		}
 	],
 	"globalStyle": {
