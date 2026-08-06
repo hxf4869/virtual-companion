@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0026
+activeTaskCard: docs/tasks/TASK-0026-h5-offline-chat-stream-recovery.md
 lastAcceptedTask: TASK-0025
 lastAcceptedHandoff: docs/handoffs/TASK-0025.json
 lastTerminalTask: TASK-0025
 lastTerminalHandoff: docs/handoffs/TASK-0025.json
-nextAction: TASK-0025 已 ACCEPTED。Chat/Generation/History API 已落地（V10 迁移 cancel_generation 走 catalog 双跳 CANCEL_REQUESTED→CANCELLED 仅可取消非终态 + FOR UPDATE 序列化 + list_messages keyset 分页，SECURITY DEFINER 范式 revoke PUBLIC 仅 grant vc_api；infra/db/run-rls-tests.sh 改 version sort 支持 V10+；OpenAPI 新增 send/cancel/snapshot/messages 端点复用既有 receive_generation/read_generation_snapshot 与 ErrorEnvelope/ErrorCode 不新增错误码；SQL 测试全绿）。main 全绿。DAG 下一张可晋级卡 TASK-0026（deps TASK-0025 满足）。
+nextAction: TASK-0026（H5 离线聊天/流式/恢复）已 READY 并授权。实现 frontend 纯 stream-reducer（仅连续推进、永不伪造 delta、gap/epoch/终态）+ Fetch-SSE 恢复客户端（5 disposition + snapshot + cancel）+ chat store + H5 页面；vitest mock fetch 覆盖离线成功/断线/Gap/Reset/取消/失败 6 场景全绿后独立 R1、终态 closure、ACCEPTED。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
