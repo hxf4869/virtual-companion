@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0023
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -166,6 +166,19 @@ requiredCommands:
   - git diff --check
 reviewers: []
 independentReview: required
+humanApprovals:
+  - scope: task-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-06"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0023 OpenAPI/Client 生成漂移检查基线（不触碰 protected 路径）：
+      新建 specs/openapi/virtual-companion.yaml 单一 OpenAPI 契约真源（基线端点 + ErrorEnvelope：
+      code/message/details，NOT_FOUND_OR_FORBIDDEN 隐藏资源存在性，INV-TENANT-001）；scripts/dev/openapi_tool.py
+      确定性 Python 生成器（镜像 catalog_tool，无 node/maven 重依赖）产出 bundled openapi + Java interface +
+      TypeScript client 到 specs/openapi/dist（避开 specs/generated 与 catalog_tool 契约冲突）；
+      diff --fail-on-drift 漂移门禁。不手改生成物，不借 API 基线开启公开注册或 Beta（Technical Alpha 边界）。
+      满足 ADR-0002 接受条件 #4（OpenAPI 生成和漂移检查）。
 ```
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
