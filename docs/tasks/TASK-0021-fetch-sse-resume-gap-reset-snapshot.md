@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0021
-state: READY
+state: IN_PROGRESS
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -21,6 +21,7 @@ baseCommit: f09a59661711b5ca7957e397128ce7ca364d5771
 contextFingerprint: 358ec02f3fe9bb6460960f66d232648974890ff3451866bf4eb4f5f2c078da74
 contextLock: docs/tasks/context/TASK-0021.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+authorizationCommit: b8077e063ea7a5aaa9b71b9a313eac2df6d8d1e5
 deliveryMode: single-card
 deliveryBudgets:
   schemaVersion: 2
