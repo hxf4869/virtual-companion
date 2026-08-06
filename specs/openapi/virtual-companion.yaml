@@ -1,0 +1,88 @@
+openapi: 3.1.0
+info:
+  title: Virtual Companion API
+  version: 0.1.0
+  description: >-
+    Contract-first HTTP API (ADR-0002). This document is the single source of
+    truth; Java interfaces and TypeScript clients are generated from it and must
+    not be hand-edited or used to back-drive the contract. The ErrorEnvelope
+    shape is uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides
+    resource existence so a missing resource and a forbidden one are
+    indistinguishable to the caller.
+paths:
+  /api/v1/version:
+    get:
+      operationId: getVersion
+      summary: Service version and build identity
+      description: >-
+        Baseline contract endpoint proving the OpenAPI -> Java interface and
+        TypeScript client generation pipeline. Public, unauthenticated.
+      security: []
+      responses:
+        '200':
+          description: Service version and build identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  schemas:
+    ErrorEnvelope:
+      type: object
+      description: >-
+        Unified error shape. NOT_FOUND_OR_FORBIDDEN never discloses whether a
+        resource exists; every error response uses this envelope.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          description: Stable, non-sensitive human-readable explanation
+        details:
+          type: object
+          additionalProperties: true
+          description: Optional structured context (never sensitive data)
+    ErrorCode:
+      type: string
+      description: Stable error code catalog (specs/catalog/error-codes.yaml)
+      enum:
+        - AUTHENTICATION_REQUIRED
+        - ACCESS_DENIED
+        - NOT_FOUND_OR_FORBIDDEN
+        - AGE_VERIFICATION_REQUIRED
+        - MODEL_NO_ELIGIBLE_DEPLOYMENT
+        - MODEL_ATTEMPT_TIMEOUT
+        - MODEL_ALL_UNAVAILABLE
+        - GENERATION_CANCELLED
+        - GENERATION_OUTPUT_BLOCKED
+        - STREAM_GAP_EXPIRED
+        - STREAM_RESET_REQUIRED
+        - MEMORY_CONFIRMATION_REQUIRED
+        - MEMORY_FORBIDDEN_CONTENT
+        - CATALOG_DRIFT_DETECTED
+        - BETA_OPERATIONS_NOT_READY
+    VersionResponse:
+      type: object
+      description: Service version and build identity
+      required:
+        - version
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
