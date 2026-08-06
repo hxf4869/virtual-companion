@@ -384,3 +384,10 @@ tasks:
     taskCard: docs/tasks/TASK-0025-chat-generation-history-api.md
     evidence: docs/evidence/TASK-0025/evidence-pack.json
     handoff: docs/handoffs/TASK-0025.json
+
+  TASK-0026:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0026-h5-offline-chat-stream-recovery.md
+    evidence: docs/evidence/TASK-0026/evidence-pack.json
+    handoff: docs/handoffs/TASK-0026.json

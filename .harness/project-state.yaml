@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0026
-activeTaskCard: docs/tasks/TASK-0026-h5-offline-chat-stream-recovery.md
-lastAcceptedTask: TASK-0025
-lastAcceptedHandoff: docs/handoffs/TASK-0025.json
-lastTerminalTask: TASK-0025
-lastTerminalHandoff: docs/handoffs/TASK-0025.json
-nextAction: TASK-0026（H5 离线聊天/流式/恢复）已 READY 并授权。实现 frontend 纯 stream-reducer（仅连续推进、永不伪造 delta、gap/epoch/终态）+ Fetch-SSE 恢复客户端（5 disposition + snapshot + cancel）+ chat store + H5 页面；vitest mock fetch 覆盖离线成功/断线/Gap/Reset/取消/失败 6 场景全绿后独立 R1、终态 closure、ACCEPTED。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0026
+lastAcceptedHandoff: docs/handoffs/TASK-0026.json
+lastTerminalTask: TASK-0026
+lastTerminalHandoff: docs/handoffs/TASK-0026.json
+nextAction: TASK-0026 已 ACCEPTED。H5 离线聊天/流式/恢复已落地（纯 stream-reducer 仅连续推进永不伪造 delta + Fetch-SSE 恢复客户端 5 disposition 编排 + 断线/cancel/有界重试 + chat store + H5 页面；vitest 53 测试覆盖 6 场景全绿；不触碰任何 protected 路径）。main 全绿。DAG 下一张可晋级卡 TASK-0027（deps TASK-0016/TASK-0024 满足）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
