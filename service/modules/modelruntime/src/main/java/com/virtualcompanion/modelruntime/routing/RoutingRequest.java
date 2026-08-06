@@ -31,6 +31,11 @@ public record RoutingRequest(
         Objects.requireNonNull(entitlement, "entitlement must not be null");
         Objects.requireNonNull(requiredProtocol, "requiredProtocol must not be null");
         Objects.requireNonNull(requiredCapabilities, "requiredCapabilities must not be null");
+        if (!entitlement.ownerUserId().equals(ownership.ownerUserId())) {
+            throw new IllegalArgumentException(
+                    "entitlement ownerUserId must match ownership ownerUserId; got "
+                            + entitlement.ownerUserId() + " and " + ownership.ownerUserId());
+        }
         if (fence < 0) {
             throw new IllegalArgumentException("fence must not be negative");
         }
