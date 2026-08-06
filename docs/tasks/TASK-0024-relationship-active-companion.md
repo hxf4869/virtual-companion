@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0024
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -194,7 +194,18 @@ requiredCommands:
   - python scripts/dev/openapi_tool.py diff --fail-on-drift
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0024_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 752d1b2ae06b7851d82847af786422d628e1e313
+    evidencePath: docs/evidence/TASK-0024/review-r1.md
+    reason: R1 PASS (no P0/P1). AC1 satisfied — partial unique index relationship_one_active_per_owner (owner_user_id WHERE active) is the structural activeCompanionLimit=1 invariant (test 27 direct-INSERT second-active rejected, different owner allowed, dormant allowed); per-owner advisory lock serializes create/activate. AC2 satisfied — cross-owner get returns no row, activate raises, deactivate false for foreign and absent (indistinguishable); no message leaks foreign owner/id; explicit predicate + FORCE RLS defense-in-depth. All 5 functions SECURITY DEFINER SET search_path=vc,public, REVOKE PUBLIC + GRANT vc_api; no BYPASSRLS; sequence grant mirrors V7. V1-V8 untouched; specs/catalog + specs/generated unchanged; writeAllowlist clean; openapi validate + drift PASS; SQL suite independently re-run 29 PASS. Non-blocking P3 only (test 29 comment inaccuracy, no two-session concurrency test, cosmetic OpenAPI) — no fix batch.
+    candidateTree: 9bd819c7f80497b656126dc18b903826bb7b5266
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 692
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: database-migration

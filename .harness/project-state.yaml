@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0024
-activeTaskCard: docs/tasks/TASK-0024-relationship-active-companion.md
-lastAcceptedTask: TASK-0023
-lastAcceptedHandoff: docs/handoffs/TASK-0023.json
-lastTerminalTask: TASK-0023
-lastTerminalHandoff: docs/handoffs/TASK-0023.json
-nextAction: TASK-0024（Relationship 与唯一活跃 Companion）已 READY 并授权。实现 V9 迁移（vc.relationship 上 partial unique index (owner_user_id) WHERE active 作为 activeCompanionLimit=1 唯一权威不变量 + 5 个 SECURITY DEFINER 生命周期函数 create/get/list/activate/deactivate，advisory lock 序列化同 owner、revoke PUBLIC 仅 grant vc_api、FORCE RLS）与 4 个 SQL 测试；OpenAPI 新增 Relationship 端点复用既有 ErrorEnvelope/ErrorCode 不新增错误码；验证 run-rls-tests + openapi validate/drift + harness unittest 全绿后独立 R1、终态 closure、ACCEPTED。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0024
+lastAcceptedHandoff: docs/handoffs/TASK-0024.json
+lastTerminalTask: TASK-0024
+lastTerminalHandoff: docs/handoffs/TASK-0024.json
+nextAction: TASK-0024 已 ACCEPTED。Relationship 与唯一活跃 Companion 已落地（V9 迁移：vc.relationship partial unique index (owner_user_id) WHERE active 作为 activeCompanionLimit=1 结构化权威 + 5 个 SECURITY DEFINER 生命周期函数 create/get/list/activate/deactivate，advisory lock 序列化、revoke PUBLIC 仅 grant vc_api、FORCE RLS；越权查询经 RLS 返回空映射 NOT_FOUND_OR_FORBIDDEN；4 个 SQL 测试全绿）。OpenAPI 新增 Relationship 端点复用既有 ErrorEnvelope/ErrorCode。main 全绿。DAG 下一张可晋级卡 TASK-0025（Chat/Generation/History API，deps TASK-0021/TASK-0023/TASK-0024 均满足）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

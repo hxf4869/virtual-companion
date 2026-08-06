@@ -1,0 +1,32 @@
+{
+  "taskId": "TASK-0024",
+  "state": "ACCEPTED",
+  "title": "Relationship 与唯一活跃 Companion",
+  "baseCommit": "752d682fc2c79d93d011c532f1be705248755283",
+  "headCommit": "752d1b2ae06b7851d82847af786422d628e1e313",
+  "candidateCommit": "752d1b2ae06b7851d82847af786422d628e1e313",
+  "candidateTree": "9bd819c7f80497b656126dc18b903826bb7b5266",
+  "evidencePath": "docs/evidence/TASK-0024/evidence-pack.json",
+  "completed": [
+    "V9 migration service/platform/persistence/src/main/resources/db/migration/V9__relationship_active_companion_limit.sql: partial unique index relationship_one_active_per_owner ON vc.relationship (owner_user_id) WHERE active — the structural activeCompanionLimit=1 invariant. Under READ COMMITTED a second concurrent active INSERT/UPDATE for the same owner blocks on the index and fails unique_violation; dormant rows and different owners never conflict.",
+    "Five SECURITY DEFINER lifecycle functions: create_relationship (advisory-locked deactivate-then-insert, always leaves exactly one active), get_relationship / list_relationships (RLS-scoped reads), activate_relationship (advisory-locked atomic switch with FOR UPDATE target lock), deactivate_relationship (idempotent). All set_config-bind tenant context, use out_-prefixed RETURNS TABLE, SET search_path=vc,public, REVOKE PUBLIC and GRANT EXECUTE only to vc_api.",
+    "Cross-owner existence hiding (INV-TENANT-001): get returns no row, activate raises, deactivate returns false for both foreign and absent ids — indistinguishable; no message discloses the foreign owner/id. Explicit owner predicate + FORCE RLS is defense-in-depth.",
+    "Dedicated vc.relationship_id_seq (GRANT USAGE, SELECT to the four runtime roles, mirroring V7 finalize_row_id_seq). No new roles, no BYPASSRLS, V1–V8 untouched.",
+    "Four SQL tests (26 active-limit-enforced, 27 unique-index-guard, 28 not-found-or-forbidden, 29 lifecycle-activate-deactivate): full SQL suite 01–29 PASS in ephemeral PG18+pgvector.",
+    "OpenAPI specs/openapi/virtual-companion.yaml: Relationship endpoints (create/list/get/activate/deactivate) + Relationship/RelationshipCreateRequest schemas, reusing existing ErrorEnvelope/ErrorCode (no new error code, specs/catalog and specs/generated unchanged). Generated dist regenerated; validate + diff --fail-on-drift PASS.",
+    "R1 PASS no P0/P1; partial unique index + advisory-lock concurrency and cross-owner existence hiding independently reproduced; harness unittest 233 OK; doctor 310563 PASS; openapi drift PASS. Satisfies both acceptance criteria."
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0025 (Chat/Generation/History API, deps TASK-0021/TASK-0023/TASK-0024 all satisfied).",
+    "Java RelationshipRepository/Service wiring and HTTP controller implementation are NOT in this card (scope was database + API contract); a runtime implementation task will consume the SECURITY DEFINER functions and the OpenAPI-generated interface.",
+    "Real two-session concurrency test is deferred (P3-2); the partial unique index is the structural guarantee and the sequential index-guard test (27) proves the invariant per the acceptance criteria."
+  ],
+  "knownRisks": [
+    "Generated OpenAPI Java properties are all String (baseline simplification inherited from TASK-0023); Relationship.active (boolean) and createdAt (date-time) render as String. A type-fidelity pass should accompany real endpoint implementation.",
+    "listRelationships returns Void in the generated interface skeleton (array 200-response has no $ref; generator reads only a 200 $ref). Baseline asymmetry; the endpoint-expansion task may refine the generator.",
+    "create_relationship auto-replaces the active Companion (deactivates the prior on create). This is the chosen Alpha semantic (newest is active); if explicit create-rejected-on-limit is later preferred, a new error code and contract change would be needed.",
+    "No automated cross-check that specs/openapi ErrorCode enum matches specs/catalog/error-codes.yaml (kept separate to avoid colliding with catalog_tool's specs/generated contract); currently identical.",
+    "P3-1: test 29 line 61 comment inaccurately says an idempotent deactivate on an owned-already-inactive relationship returns false (actually true); the test does not assert the value so it passes, and the migration docstring states the correct contract."
+  ],
+  "nextAction": "TASK-0024 已 ACCEPTED。Relationship 与唯一活跃 Companion 已落地（V9 迁移：vc.relationship partial unique index (owner_user_id) WHERE active 作为 activeCompanionLimit=1 结构化权威 + 5 个 SECURITY DEFINER 生命周期函数 create/get/list/activate/deactivate，advisory lock 序列化、revoke PUBLIC 仅 grant vc_api、FORCE RLS；越权查询经 RLS 返回空映射 NOT_FOUND_OR_FORBIDDEN；4 个 SQL 测试全绿）。OpenAPI 新增 Relationship 端点复用既有 ErrorEnvelope/ErrorCode。main 全绿。DAG 下一张可晋级卡 TASK-0025（Chat/Generation/History API，deps TASK-0021/TASK-0023/TASK-0024 均满足）。"
+}

@@ -1,0 +1,81 @@
+{
+  "taskId": "TASK-0024",
+  "baseCommit": "752d682fc2c79d93d011c532f1be705248755283",
+  "headCommit": "752d1b2ae06b7851d82847af786422d628e1e313",
+  "contextFingerprint": "b3d5ef029b0d721956c41b6dfdaefaed57912c9dfd33748c4d6173744378cc33",
+  "reviewers": [
+    {
+      "id": "task0024_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "752d1b2ae06b7851d82847af786422d628e1e313",
+      "evidencePath": "docs/evidence/TASK-0024/review-r1.md",
+      "reason": "R1 PASS (no P0/P1). Independent adversarial review of the V9 partial unique index + 5 SECURITY DEFINER lifecycle functions + OpenAPI Relationship contract. AC1 satisfied: relationship_one_active_per_owner (owner_user_id WHERE active) is the structural activeCompanionLimit=1 invariant (test 27 proves direct-INSERT second-active rejected, different owner allowed, dormant allowed); per-owner advisory lock serializes create/activate. AC2 satisfied: cross-owner get returns no row, activate raises, deactivate returns false for both foreign and absent (indistinguishable); no message leaks the foreign owner/id; explicit owner predicate + FORCE RLS defense-in-depth. All 5 functions SECURITY DEFINER SET search_path=vc,public, REVOKE PUBLIC + GRANT vc_api; no BYPASSRLS; sequence grant mirrors V7. V1-V8 untouched; specs/catalog + specs/generated unchanged (zero diff); writeAllowlist clean (15 paths); openapi validate + drift PASS. SQL suite re-run independently (29 PASS). Non-blocking P3 only (test 29 comment inaccuracy, no real two-session concurrency test, cosmetic OpenAPI required/201) — no bearing/safety impact, no fix batch.",
+      "candidateTree": "9bd819c7f80497b656126dc18b903826bb7b5266",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 692,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "All 29 SQL tests PASS in an ephemeral PostgreSQL 18 + pgvector container applying V1-V9 migrations: cross-tenant fail-closed (01-25) plus the four new relationship tests (26 active-limit-enforced, 27 unique-index-guard, 28 not-found-or-forbidden, 29 lifecycle-activate-deactivate). V9 migration applies cleanly; partial unique index + SECURITY DEFINER lifecycle functions verified.",
+      "environment": "WSL2 Ubuntu-24.04; Docker pgvector/pgvector:0.8.5-pg18; PostgreSQL 18",
+      "verifiedCommit": "752d1b2ae06b7851d82847af786422d628e1e313"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures. Full harness unittest suite (doctor, lifecycle, context-lock, delivery-policy, evidence, catalog, protected-paths).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "752d1b2ae06b7851d82847af786422d628e1e313"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI source valid: ErrorEnvelope.code references ErrorCode; ErrorCode is a string enum containing NOT_FOUND_OR_FORBIDDEN (existence hiding). New Relationship/RelationshipCreateRequest schemas and Relationship endpoints well-formed.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "752d1b2ae06b7851d82847af786422d628e1e313"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI drift check PASS: regenerated dist (api-bundle + Java interface/records + ErrorCode enum + TS client + snapshot) byte-identical to committed. Relationship endpoints and Relationship/RelationshipCreateRequest records generated deterministically.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "752d1b2ae06b7851d82847af786422d628e1e313"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0024 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "310563 checks PASS. Candidate diff within frozen writeAllowlist; no forbidden path touched; humanApprovals scope=database-migration satisfies the db/migration protected-path gate; AUTHORIZATION_FIELDS frozen since READY checkpoint; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "752d1b2ae06b7851d82847af786422d628e1e313"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (V9 migration, tests 26-29, OpenAPI source + dist).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "752d1b2ae06b7851d82847af786422d628e1e313"
+    }
+  ]
+}
