@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0019
-activeTaskCard: docs/tasks/TASK-0019-context-plan-persona-listen-discuss.md
-lastAcceptedTask: TASK-0018
-lastAcceptedHandoff: docs/handoffs/TASK-0018.json
-lastTerminalTask: TASK-0018
-lastTerminalHandoff: docs/handoffs/TASK-0018.json
-nextAction: TASK-0019 READY：ContextPlan/人格/LISTEN-DISCUSS；IN_PROGRESS 后在 service/modules/conversation/contextplan 实现供应商中立 ContextPlan（顺序/来源标记/预算）+ gentle-listener 人格骨架 + LISTEN/DISCUSS 确定性选择，纯单测证明可确定性复测且人格无供应商专属字段。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0019
+lastAcceptedHandoff: docs/handoffs/TASK-0019.json
+lastTerminalTask: TASK-0019
+lastTerminalHandoff: docs/handoffs/TASK-0019.json
+nextAction: TASK-0019 已 ACCEPTED。ContextPlan/人格/LISTEN-DISCUSS 领域建模已落地（供应商中立 ContextPlan 顺序/来源/预算 + gentle-listener 人格骨架 + LISTEN/DISCUSS 确定性选择），main 全绿。继续按 Backlog DAG 推进下一张可晋级卡 TASK-0020（输入/增量/最终输出安全流水线，依赖 TASK-0014→TASK-0084、TASK-0019）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

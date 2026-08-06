@@ -335,3 +335,10 @@ tasks:
     taskCard: docs/tasks/TASK-0018-finalization-usage-quota-outbox.md
     evidence: docs/evidence/TASK-0018/evidence-pack.json
     handoff: docs/handoffs/TASK-0018.json
+
+  TASK-0019:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0019-context-plan-persona-listen-discuss.md
+    evidence: docs/evidence/TASK-0019/evidence-pack.json
+    handoff: docs/handoffs/TASK-0019.json
