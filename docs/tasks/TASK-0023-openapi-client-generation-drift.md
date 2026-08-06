@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0023
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -165,7 +165,18 @@ requiredCommands:
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - python scripts/dev/openapi_tool.py diff --fail-on-drift
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0023_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 108ee037a6c5ec6c765af752b12dddc8baba6bc9
+    evidencePath: docs/evidence/TASK-0023/review-r1.md
+    reason: R1 PASS (no P0/P1). Independently reproduced determinism (two generate runs byte-identical), drift detection (hand-edit/delete/extra exit 1, clean exit 0) and single-source (Java+TS from one load_yaml). ErrorEnvelope hides existence (404 reuses envelope; NOT_FOUND_OR_FORBIDDEN in enum; validate enforces; contract resourceExistenceDisclosureForbidden). ErrorCode enum matches specs/catalog/error-codes.yaml. READY-frozen integrity intact; no protected path touched. Generated Java (enum/record/interface) and TS syntactically valid. Satisfies ADR-0002 #4. Non-blocking P2/P3 are documented baseline simplifications (TS return type hardcoded, all-String properties, TS list-repr vs json.dumps, function-local import); no safety/bearing impact, no fix batch.
+    candidateTree: ab069b025465e198162437e03ef8844c6ab02640
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 340
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: task-authorization

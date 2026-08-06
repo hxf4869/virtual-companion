@@ -1,0 +1,63 @@
+{
+  "taskId": "TASK-0023",
+  "baseCommit": "71f3aebe9e2a940ba77b23bb5ba86ae2bbd0a1ca",
+  "headCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9",
+  "contextFingerprint": "11e0012b67f3726e12fd762c829d15ad913a5f8786c281ec09788dad946e5232",
+  "reviewers": [
+    {
+      "id": "task0023_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9",
+      "evidencePath": "docs/evidence/TASK-0023/review-r1.md",
+      "reason": "R1 PASS (no P0/P1). Independently reproduced determinism (two generate runs byte-identical), drift detection (hand-edit/delete/extra all exit 1, clean exit 0) and single-source (Java+TS from one load_yaml). ErrorEnvelope hides existence (404 reuses envelope; NOT_FOUND_OR_FORBIDDEN in enum; validate enforces; contract resourceExistenceDisclosureForbidden). ErrorCode enum matches specs/catalog/error-codes.yaml. READY-frozen integrity intact; no protected path touched. Generated Java (enum/record/interface) and TS syntactically valid. Satisfies ADR-0002 #4. Non-blocking P2/P3 are documented baseline simplifications (TS return type hardcoded, all-String properties, TS list-repr vs json.dumps) and a cosmetic function-local import; no safety/bearing impact, no fix batch.",
+      "candidateTree": "ab069b025465e198162437e03ef8844c6ab02640",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 340,
+        "hardLimitReached": false
+      },
+      "nativeResult": "PASS",
+      "status": "PASS",
+      "terminalOutputReceived": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0023",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "305871 checks PASS",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI drift check PASS: regenerated dist byte-identical to committed (bundle + Java interface/records/enum + TS client + snapshot)",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "108ee037a6c5ec6c765af752b12dddc8baba6bc9"
+    }
+  ]
+}
