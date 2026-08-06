@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0023
+activeTaskCard: docs/tasks/TASK-0023-openapi-client-generation-drift.md
 lastAcceptedTask: TASK-0022
 lastAcceptedHandoff: docs/handoffs/TASK-0022.json
 lastTerminalTask: TASK-0022
 lastTerminalHandoff: docs/handoffs/TASK-0022.json
-nextAction: TASK-0022 已 ACCEPTED。离线端到端纵切已落地（generation-contract-tests：OfflineGenerationSlice 进程内接线 auth guard→Fake/Failure adapter→reducer→safety 决定，13 故障类映射 13 唯一终态；auth 拒绝零外发；LATE_DELTA stale-fence 不伪造 delta）。main 全绿。DAG 下一张可晋级卡 TASK-0023（OpenAPI 生成/Client 生成/漂移检查，依赖 TASK-0022）。
+nextAction: TASK-0023 READY（OpenAPI/Client 生成漂移检查基线，baseCommit 71f3aeb）。进入实现：specs/openapi/virtual-companion.yaml 单一契约（基线端点+ErrorEnvelope，NOT_FOUND_OR_FORBIDDEN 隐藏存在性）+ scripts/dev/openapi_tool.py 确定性 Python 生成器（bundled openapi+Java interface+TS client 到 specs/openapi/dist，避开 catalog_tool 的 specs/generated 契约）+ diff --fail-on-drift 漂移门禁。满足 ADR-0002 接受条件 #4。DAG 下一张可晋级卡待 TASK-0023 ACCEPTED 后定位（TASK-0024 Relationship/唯一活跃 Companion，deps TASK-0015/TASK-0023）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
