@@ -405,3 +405,10 @@ tasks:
     taskCard: docs/tasks/TASK-0028-memory-candidate-management-api.md
     evidence: docs/evidence/TASK-0028/evidence-pack.json
     handoff: docs/handoffs/TASK-0028.json
+
+  TASK-0029:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0029-memory-recall-context-tombstone.md
+    evidence: docs/evidence/TASK-0029/evidence-pack.json
+    handoff: docs/handoffs/TASK-0029.json

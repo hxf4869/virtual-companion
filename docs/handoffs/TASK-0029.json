@@ -1,0 +1,27 @@
+{
+  "taskId": "TASK-0029",
+  "state": "ACCEPTED",
+  "title": "跨会话召回、Context 注入与删除墓碑",
+  "baseCommit": "2c4237687431a4421cdfd93c49593712d77be872",
+  "headCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2",
+  "candidateCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2",
+  "candidateTree": "c38a62107612afb079dbf933dfe0062f60edc120",
+  "evidencePath": "docs/evidence/TASK-0029/evidence-pack.json",
+  "completed": [
+    "V13 migration service/platform/persistence/src/main/resources/db/migration/V13__memory_recall_context_tombstone.sql: new SECURITY DEFINER function recall_memory. No table/privilege-set change; canonical confirmation gate untouched.",
+    "recall_memory(owner, relationship_id, conversation_id DEFAULT NULL, max_entries DEFAULT 50): deterministic recall of confirmed memory for ContextPlan injection. Returns ONLY status='ACCEPTED' AND deleted_at IS NULL rows for one owner and one relationship; RELATIONSHIP scope recalled cross-conversation; SESSION scope recalled only when the caller binds the conversation. Source-grouped (RELATIONSHIP before SESSION) and deterministic (ORDER BY scope, created_at, id -- total order via per-owner id), then budget-capped (LIMIT LEAST(GREATEST(max_entries,1),100); the entries upper bound mirrors ContextBudget; exact token budgeting is the runtime consumer's job). Tombstone is structural (deleted_at IS NULL; no vector/matview/cache store to revive from). Cross-owner/cross-relationship -> empty, indistinguishable from an empty relationship (existence hidden, INV-TENANT-001). Unconfirmed/deleted never recalled.",
+    "recall_memory is a pure read (no FOR UPDATE, no INSERT/UPDATE/DELETE); SECURITY DEFINER SET search_path=vc,public; set_config('vc.owner_user_id') before table access; REVOKE EXECUTE FROM PUBLIC + GRANT vc_api. INV-MEM-001/002 unweakened (recall reads ACCEPTED rows only; never creates candidates or changes status).",
+    "SQL tests 37 (recall ACCEPTED-only; RELATIONSHIP cross-conversation + SESSION per-conversation; budget clamp incl NULL/0/negative and >100; budget=1 keeps the first deterministic row proving LIMIT-after-ORDER BY; cross-owner empty; cross-relationship isolation; unconfirmed never recalled) and 38 (tombstone: deleted excluded + remaining ORDER stable via WITH ORDINALITY; determinism: same inputs same ordered output; idempotent re-delete unchanged). Full suite 01-38 PASS.",
+    "R1 PASS no P0/P1 (canonical gate intact, scope correctness incl OR parenthesization, ownership/existence hiding, budget clamp, determinism, tombstone, privilege hygiene, write scope). R1 non-blocking P2 (test 38 asserted the SET not the ORDER) closed by a test-only fix batch (V13 byte-identical); R2 finding-closure PASS. Both acceptance criteria satisfied."
+  ],
+  "remaining": [
+    "Resume Backlog longline: next promotable TASK-0030 (deps TASK-0026 + TASK-0029 satisfied).",
+    "A Java recall-to-ContextPlan assembler (calling recall_memory and building ContextEntry(SESSION_MEMORY/RELATIONSHIP_MEMORY) within ContextBudget, with exact token budgeting) is a separate runtime-implementation card; the deterministic SQL read source and its guarantees are complete and verified here."
+  ],
+  "knownRisks": [
+    "recall_memory returns owner-scoped memory without checking the relationship belongs to a different active context; it is (owner, relationship_id)-scoped like list_memory/get_memory, so an owner can recall their own memory across their relationships. Same-owner own-data, consistent with the owner-based FORCE RLS model; no cross-tenant leak. The SESSION predicate additionally binds conversation_id, and composite ownership structurally prevents cross-relationship SESSION leakage.",
+    "Budget is an entries cap clamped to [1,100], not a token count; exact ContextBudget token budgeting is deferred to the Java consumer (the recall provides a deterministic ordered slice the consumer truncates by tokens).",
+    "Recall returns empty (not an error) for foreign/absent ids to hide existence, consistent with the other memory read functions; a future HTTP-facing recall endpoint must preserve that empty-not-404 mapping."
+  ],
+  "nextAction": "TASK-0029 已 ACCEPTED。跨会话召回 + 删除墓碑已落地——V13 迁移新增 recall_memory（确定性召回 status=ACCEPTED 且非删除的 owned 记忆；RELATIONSHIP scope 跨 Conversation 召回，SESSION scope 仅在该 conversation_id 时召回；来源分组 + 确定性排序 scope,created_at,id + 预算 LIMIT 钳制 [1,100]）；删除墓碑经 deleted_at IS NULL 结构性排除（无向量/缓存可复活）；未确认候选/已删除永不召回；跨 owner/跨 relationship 返回空（存在性隐藏，INV-TENANT-001）。canonical 确认门禁未弱化（recall 纯只读 ACCEPTED，不改 status/不产候选）。SQL 测试 37（召回 scope/budget/隔离）+ 38（墓碑/确定性），38/38 全绿。main 全绿。DAG 下一张可晋级卡 TASK-0030（deps TASK-0026+TASK-0029 满足）。"
+}

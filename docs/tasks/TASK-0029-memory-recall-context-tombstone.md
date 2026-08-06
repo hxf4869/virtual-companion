@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0029
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -196,7 +196,29 @@ requiredCommands:
   - bash infra/db/run-rls-tests.sh
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
   - git diff --check
-reviewers: []
+reviewers:
+  - id: task0029_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: e45975976fc5ac074c509a67cf34ae5043f19bff
+    evidencePath: docs/evidence/TASK-0029/review-r1.md
+    reason: R1 PASS (no P0/P1). AC1 (deterministic recall/tombstone/reindex) — recall is a pure SELECT, status='ACCEPTED' AND deleted_at IS NULL, ORDER BY scope,created_at,id (total order via per-owner id), no volatile fns; tombstone structural (no vector/matview/cache to revive); test 38 covers delete-then-recall + determinism. AC2 (cross-session injects only current Owner/Relationship confirmed memory) — predicate (owner,relationship); RELATIONSHIP cross-conversation; SESSION only for bound conversation (OR parenthesized, no leak); cross-owner/cross-relationship empty; unconfirmed never recalled. Budget clamp LEAST(GREATEST(x,1),100) verified; LIMIT after ORDER BY. SECURITY DEFINER SET search_path=vc,public, REVOKE PUBLIC + GRANT vc_api, set_config before table access. INV-MEM-001/002 unweakened. Write scope clean (SQL-only). One non-blocking P2 (test 38 asserted SET not ORDER) — closed by fix batch d734723 (test-only, V13 byte-identical) and R2.
+    candidateTree: dc0195069b1fa25bc05f85774f6b7b8943df076f
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 261
+      hardLimitReached: false
+  - id: task0029_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: d734723ce772f21fc02ff8f71bd56ee93a71f0f2
+    evidencePath: docs/evidence/TASK-0029/review-r2.md
+    reason: R2 finding-closure PASS. R1 P2 closed — test 38 now uses WITH ORDINALITY to aggregate in the function's own emission order and compares ordered arrays, so flipping/removing V13 ORDER BY would FAIL; test 37 budget=1 pins the kept row (rel-1) proving LIMIT-after-ORDER BY. git diff e459759 d734723 -- service/ empty (V13 byte-identical, test-only delta). No new P0/P1/P2. Candidate d734723 acceptable for closure.
+    candidateTree: c38a62107612afb079dbf933dfe0062f60edc120
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 89
+      hardLimitReached: false
 independentReview: required
 humanApprovals:
   - scope: database-migration

@@ -1,0 +1,66 @@
+{
+  "taskId": "TASK-0029",
+  "baseCommit": "2c4237687431a4421cdfd93c49593712d77be872",
+  "headCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2",
+  "contextFingerprint": "6f1b4c05bfb74e97685f23d85e61bdeb9a92a250593ae4f7d3081d833b908fa6",
+  "reviewers": [
+    {
+      "id": "task0029_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "e45975976fc5ac074c509a67cf34ae5043f19bff",
+      "evidencePath": "docs/evidence/TASK-0029/review-r1.md",
+      "reason": "R1 PASS (no P0/P1). Adversarial audit of V13 recall_memory. AC1 (deterministic recall before/after delete, tombstone, reindex) -- recall is a pure SELECT, status='ACCEPTED' AND deleted_at IS NULL, ORDER BY scope,created_at,id (total order via per-owner id), no volatile fns; tombstone structural (no vector/matview/cache to revive from); test 38 covers delete-then-recall + determinism (order assertion strengthened in fix batch). AC2 (cross-session injects only current Owner/Relationship confirmed memory) -- predicate (owner_user_id,relationship_id); RELATIONSHIP recalled cross-conversation; SESSION only for bound conversation (OR parenthesized, no leak when conversation_id NULL); cross-owner/cross-relationship empty (indistinguishable from empty relationship); unconfirmed never recalled. Budget clamp LEAST(GREATEST(x,1),100) verified (NULL/0/neg->1, >100->100); LIMIT after ORDER BY. SECURITY DEFINER SET search_path=vc,public, REVOKE PUBLIC + GRANT vc_api, set_config before table access. INV-MEM-001/002 unweakened (pure read). Write scope clean (3 files, all in writeAllowlist, SQL-only). One non-blocking P2 (test 38 array_agg re-sorted by id so it checked the SET not the ORDER AC1 requires) -- addressed by fix batch d734723 (test-only; V13 byte-identical, verified by R2). The PASS verdict extends to the final candidate d734723 because the fix batch is test-only.",
+      "candidateTree": "dc0195069b1fa25bc05f85774f6b7b8943df076f",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 261, "hardLimitReached": false}
+    },
+    {
+      "id": "task0029_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2",
+      "evidencePath": "docs/evidence/TASK-0029/review-r2.md",
+      "reason": "R2 finding-closure PASS. R1 P2 (test 38 did not assert the ORDER) is closed: WITH ORDINALITY captures rows in the function's own emission order and array_agg(out_id ORDER BY ord) + order-sensitive IS DISTINCT FROM ARRAY[...] now pins the (scope,created_at,id) sequence; flipping or removing V13 ORDER BY would now FAIL the test. Test 37 budget=1 pins the kept row (rel-1), proving LIMIT applies after ORDER BY. git diff e459759 d734723 -- service/ is empty -> V13 byte-identical (test-only delta). No new P0/P1/P2. Candidate d734723 acceptable for closure.",
+      "candidateTree": "c38a62107612afb079dbf933dfe0062f60edc120",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 89, "hardLimitReached": false}
+    }
+  ],
+  "checks": [
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "All 38 SQL tests PASS in an ephemeral PostgreSQL 18 + pgvector container applying V1-V13. New tests 37 (recall ACCEPTED-only; RELATIONSHIP cross-conversation + SESSION per-conversation; budget clamp [1,100] incl NULL/0/neg; budget=1 keeps first deterministic row; cross-owner empty; cross-relationship isolation; unconfirmed never recalled) and 38 (tombstone: deleted excluded + remaining order stable; determinism: same inputs same ordered output via WITH ORDINALITY; idempotent re-delete unchanged). 36/36 prior tests unaffected.",
+      "environment": "WSL2 Ubuntu-24.04; Docker pgvector/pgvector:0.8.5-pg18; PostgreSQL 18",
+      "verifiedCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures. Full harness unittest suite.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0029 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Candidate diff within frozen writeAllowlist; no forbidden or protected path touched; humanApprovals scope=database-migration satisfies the db/migration protected-path gate; AUTHORIZATION_FIELDS frozen since READY; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (V13 migration + tests 37/38).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "d734723ce772f21fc02ff8f71bd56ee93a71f0f2"
+    }
+  ]
+}
