@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0028
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -204,7 +204,30 @@ requiredCommands:
   - git diff --check
 reviewers: []
 independentReview: required
-humanApprovals: []
+humanApprovals:
+  - scope: database-migration
+    approvedBy: repository-owner
+    approvedAt: "2026-08-07"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0028 记忆候选、确认、修改、删除与来源 API（database-migration C4，单一 protected
+      skill surface）。新建 V12 前向迁移 service/platform/persistence/src/main/resources/db/migration/V12。新增两个
+      SECURITY DEFINER 函数——update_memory（编辑 owned 非删除记忆的 summary，状态无关、绝不改 status，保留
+      canonical 仅确认路径门禁；FOR UPDATE；foreign/absent/deleted raise 不披露存在性；天然幂等）与 list_memory_evidence
+      （返回 owned 非删除记忆的来源 Evidence 行；foreign/absent/deleted 返回空与无证据不可区分）。CREATE OR REPLACE
+      vc.delete_memory 使其匹配 V11 注释自称的「Idempotent on already-deleted rows」——owned 且已删除返回 true，
+      foreign/absent 仍 raise 不披露存在性（修正 V11 文档/实现不一致；跨 owner 隔离不变，test 33 仍通过）。两个新函数
+      沿用范式（set_config 绑 owner_user_id、out_ 前缀 RETURNS TABLE、SET search_path=vc,public、REVOKE PUBLIC 仅
+      GRANT vc_api、FORCE RLS 已由 V2 覆盖）。OpenAPI 端点 createMemoryCandidate（模型入口只产 PENDING_CONFIRMATION）
+      /list/get/confirm/reject/update/delete/list-evidence 复用既有 ErrorEnvelope/ErrorCode（MEMORY_CONFIRMATION_REQUIRED
+      与 MEMORY_FORBIDDEN_CONTENT 已存在，零 catalog/generated 改动，不新增 protected surface）。SQL 测试 35（update+evidence
+      新能力与跨 owner/跨 relationship 隔离）、36（幂等与重复请求语义），更新 test 34 的 re-delete 断言为 owner 范围幂等 true。
+      INV-MEM-001（canonical 为 PG 真源、模型只产候选）与 INV-MEM-002（所有候选需确认）不被弱化——update_memory 不改 status，
+      create 仍硬编码 PENDING_CONFIRMATION，confirm 仍唯一 ACCEPTED 路径，REVOKE 直接 DML 不回收。跨 owner/跨 relationship/
+      缺上下文经 RLS + 显式谓词失败关闭 → NOT_FOUND_OR_FORBIDDEN（存在性隐藏，INV-TENANT-001）。complexityGate 无 split
+      （仅 AUTHORIZATION 面，distinctCrossRiskSurfaces=1）。不修改已执行迁移 V1 至 V11（V12 仅前向新增 + delete CREATE OR REPLACE，
+      不改表结构/权限回收集合），不触碰 specs/catalog、specs/generated、specs/contracts、service Java 与 pom、frontend（纯 DB +
+      OpenAPI 契约卡）。满足接受条件——候选仅确认进入 canonical、修改/删除幂等、确认/修改/删除/重复请求/越权均有合同测试。
 ```
 
 > 规划正文仅为非规范的人类可读渲染；唯一机器真源是 `.harness/task-backlog.yaml` 中本 Task ID 的静态合同，并由 `planningContractHash` 完整绑定。
