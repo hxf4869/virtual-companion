@@ -2,7 +2,7 @@
 
 - **任务**：TASK-0036（Technical Alpha 隔离、安全、记忆、故障与指标总验收），criticalPath 终点
 - **baseCommit**：`b515364208a8f3b6e204d9025eddc053118ad14a`
-- **candidateCommit**：（候选提交，由 `evidence-pack.json` headCommit 绑定，终态填写）
+- **candidateCommit**：`5507bce2a2f8e025b866465455d4f0007aed1690`（矩阵候选，终态证据见 `evidence-pack.json`）
 - **authorizationCommit**：`0f853e6eea08569f1d1e3eef1fef2d948e213c23`（READMEY，READY doctor PASS 378055 checks）
 - **验证通道**：`LOCAL_EXACT_TREE_FALLBACK`，profile `precheck`（READMEY 冻结；remote PRIMARY_REMOTE_EXACT_SHA 以强类型 QUOTA 证据不可用）
 - **结论**：AC1–AC5 全部真实通过；Technical Alpha 禁止能力保持关闭；P0/P1 为零、P2 全部闭环或显式非阻塞处置。

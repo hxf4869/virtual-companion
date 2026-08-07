@@ -454,3 +454,9 @@ tasks:
     taskCard: docs/tasks/TASK-0035-approved-live-model-provider.md
     evidence: docs/evidence/TASK-0035/evidence-pack.json
     handoff: docs/handoffs/TASK-0035.json
+  TASK-0036:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0036-technical-alpha-acceptance.md
+    evidence: docs/evidence/TASK-0036/evidence-pack.json
+    handoff: docs/handoffs/TASK-0036.json

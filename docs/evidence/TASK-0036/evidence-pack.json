@@ -1,0 +1,98 @@
+{
+  "taskId": "TASK-0036",
+  "baseCommit": "b515364208a8f3b6e204d9025eddc053118ad14a",
+  "headCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+  "contextFingerprint": "ebce1cea3c21fb712ddf7a94d43361d0750b730c791fa1e188a03602bc753eac",
+  "reviewers": [
+    {
+      "id": "task0036_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "evidencePath": "docs/evidence/TASK-0036/review-r1.md",
+      "reason": "R1 PASS (no P0/P1, no ACCEPTANCE/INVARIANT violation) on candidate 5507bce. AC1-5 all met: 5 dependency terminal-Evidence headCommits traceable in git history (0026=21eab7e8, 0030=106cecba, 0032=828241e1, 0034=280c002f, 0035=66dc2576); 8-domain matrix counts match execution logs (RLS 39/39, Maven 243/0, vitest 93, harness unittest 239 OK, openapi validate+diff, precheck 5 commands); TASK-0034 historical harness FAIL truthfully disclosed (pre-existing, post-closure fix ef3891c); TASK-0026 P2-1/P2-2 truthfully marked non-blocking deferral (not claimed fixed); forbidden capabilities stay off; missing perf baseline truthfully N/A. 3 non-blocking P3 wording-precision notes (recorded, no fix batch)."
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0036",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "canonical precheck at candidate: doctor 379542 checks + catalogValidate + catalogDrift + paidFeatureCheck + betaRosterGate, 5 commands PASS"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -u root -- bash -c 'docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -o -pl service/apps/runtime -am test'",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "Maven full module test at candidate: BUILD SUCCESS, 243 tests / 0 failures / 0 errors (catalog 2 + safety 13 + modelruntime 104 + persistence 39 + runtime 85)"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -u root -- bash -c 'cd /mnt/g/ai/hxf/virtual-companion && bash infra/db/run-rls-tests.sh'",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "RLS cross-tenant/security/memory/identity matrix at candidate: 39/39 PASS"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "OpenAPI validation PASS"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "OpenAPI drift check PASS"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "harness unittest at candidate: 239 tests OK (skipped=1), exit 0; TASK-0034 evidence historical FAIL resolved by post-closure fix ef3891c"
+    },
+    {
+      "command": "bash -c \"cd frontend && npx vitest run\"",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "frontend vitest at candidate: 93 passed (11 files)"
+    },
+    {
+      "command": "bash -c \"cd frontend && npx vue-tsc --noEmit\"",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "frontend vue-tsc type check PASS"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "no whitespace errors"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0036 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "verifiedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "reason": "pre-closure doctor validates the staged closure candidate"
+    }
+  ]
+}

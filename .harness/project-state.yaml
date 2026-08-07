@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0036
-activeTaskCard: docs/tasks/TASK-0036-technical-alpha-acceptance.md
-lastAcceptedTask: TASK-0035
-lastAcceptedHandoff: docs/handoffs/TASK-0035.json
-lastTerminalTask: TASK-0035
-lastTerminalHandoff: docs/handoffs/TASK-0035.json
-nextAction: TASK-0036（Technical Alpha 总验收）READY 授权，实施中：跨租户/授权撤销/安全失败/记忆删除/故障恢复/协议/指标/审计 8 域验收矩阵真实执行（RLS 39/39 + Maven 全模块测试 + frontend vitest/vue-tsc + openapi validate/diff + harness unittest + precheck）+ 5 张依赖卡（TASK-0026/0030/0032/0034/0035）终态 Evidence 可追溯 + Alpha 禁止能力保持关闭验证（真实支付/公开注册/Beta/语音/图像/WebSocket/默认 Beta 生成）+ P0/P1/P2 闭环处置；产出 docs/evidence/TASK-0036/technical-alpha-acceptance.md + evidence-pack + handoff。baseCommit=b515364。criticalPath 终点。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0036
+lastAcceptedHandoff: docs/handoffs/TASK-0036.json
+lastTerminalTask: TASK-0036
+lastTerminalHandoff: docs/handoffs/TASK-0036.json
+nextAction: TASK-0036（Technical Alpha 总验收）ACCEPTED：跨租户/授权撤销/安全失败/记忆删除/故障恢复/协议/指标/审计 8 域验收矩阵真实通过（RLS 39/39、Maven 243/0、frontend vitest 93+vue-tsc、openapi validate/diff、harness 239 OK、precheck PASS）+ 5 张依赖卡（TASK-0026/0030/0032/0034/0035）终态 Evidence 全可追溯 + Alpha 禁止能力保持关闭（真实支付 FORBIDDEN/Beta BLOCKED）+ P0/P1 为零、P2 闭环或显式非阻塞处置；产出 docs/evidence/TASK-0036/technical-alpha-acceptance.md。Backlog executionOrder 已尽（TASK-0036 为末卡），Technical Alpha 治理交付到达总验收终点；后续 streaming/finalization 接线、持久化同步、H5 认证接线与 Beta 门禁证据补齐为 Owner 门控/后续任务。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

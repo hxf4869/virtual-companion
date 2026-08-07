@@ -1,0 +1,42 @@
+{
+  "taskId": "TASK-0036",
+  "state": "ACCEPTED",
+  "title": "Technical Alpha 隔离、安全、记忆、故障与指标总验收",
+  "baseCommit": "b515364208a8f3b6e204d9025eddc053118ad14a",
+  "headCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+  "evidencePath": "docs/evidence/TASK-0036/evidence-pack.json",
+  "completed": [
+    "总验收矩阵（docs/evidence/TASK-0036/technical-alpha-acceptance.md）8 域真实执行且全绿：跨租户（RLS 01-06/15/25/33）、授权撤销（identity/worker lease/fence + JWT 会话）、安全失败（Safety 13 tests + RLS 17 fault injection + 18 provider EOS）、记忆删除（RLS 32-38 七项 + canonical 记忆仅 ACCEPTED）、故障恢复（RLS 16/17/13/14/30/31 + GenerationRecovery）、协议（realtime RLS 19-25 + OpenAI/Anthropic 契约测试）、指标审计（provider_attempt/usage/realtime_event 审计链 + LiveModelInvokerTest）、性能基线（Maven 243/0 + RLS 39 + vitest 93 + 运行期基线端点断言）。",
+    "5 张依赖卡（TASK-0026/0030/0032/0034/0035）终态 Evidence 全可追溯：evidence-pack + review-r1/r2 + handoff 存在，headCommit 在 Git 历史复算，逐卡追溯表（矩阵 §1）。TASK-0034 evidence 历史 FAIL 如实处置（pre-existing harness 保真问题，post-closure fix ef3891c 后 HEAD 转绿，本卡重新执行 harness 239 OK）。",
+    "Alpha 禁止能力保持关闭（矩阵 §3）：capabilityGates realPayment=FORBIDDEN / realUserBeta=BLOCKED / businessImplementation=BLOCKED；paid-feature-check PASS（23 文件，无付费前置）；beta duty roster gate CLOSED（generation 保持关闭）；product-scope 7 项受限能力全 false；BaselineControllerTest 运行期强制 7 项受限能力 false；catalogValidate/catalogDrift PASS。",
+    "P0/P1/P2 闭环处置表（矩阵 §4）：5 卡 R1/R2 全部 PASS，P0=0、P1=0；P2 中 TASK-0032 F1/F2 与 TASK-0035 P2#1/#2/#3 由 R2 fix batch 实测 CLOSED，TASK-0026 P2-1/P2-2 如实标注非阻塞 deferral（R1 判定不崩溃/不披露、后续接线）；无未处置 P2。",
+    "验证：RLS 39/39、Maven 243 tests/0 failures、frontend vitest 93 + vue-tsc、openapi validate + diff、harness unittest 239 OK、precheck PASS（379,542 checks）、git diff --check 干净，全部绑定候选 5507bce。",
+    "Backlog 关键事实：TASK-0036 为 executionOrder 末卡，其后无 PLANNED 卡；Technical Alpha 治理交付到达总验收终点。"
+  ],
+  "remaining": [
+    "上游 streaming/finalization 接线：LiveModelInvoker 尚无生产调用入口，需将 LiveAttemptOutcome 映射 GenerationState 终态并持久化 provider_attempt/usage/realtime_event（后续 runtime/persistence 任务）。",
+    "provider_deployment 表持久化同步 + QuotaLedger 真实 quota_ledger_entry 结算（TASK-0018）：当前均为 in-memory，属后续持久化接线。",
+    "H5 既有 chat/memory 页面 transport 的 Bearer 认证接线（TASK-0034 remaining）：VC_AUTH_ENABLED=true 后既有页面 401 直至后续任务。",
+    "TASK-0026 P2-1/P2-2（.vue 运输 ticket 流 / nextEpoch）：已由 R1 判定非阻塞 deferral，backend-integration 后续任务接线。",
+    "应用层独立性能 benchmark（吞吐/延迟基线脚本）仓库中不存在，本卡如实标记 N/A，未编造；如需可作为后续任务。",
+    "Backlog executionOrder 已尽，无下一张可晋级治理卡；后续工作（Beta 门禁证据补齐、真实支付评估、业务能力实现）为 Owner 门控/新卡范围。"
+  ],
+  "knownRisks": [
+    "TASK-0036 总验收为只读矩阵；未实现任何业务修复，前述 remaining 项均依赖后续任务，Alpha 的运行时/持久化接线完整性取决于后续实现。",
+    "TASK-0034 固有权衡：无状态 access token（2h）不可服务端即时撤销、token 存 localStorage 暴露面、身份校验哈希可枚举（均与闸门一致，P3）。",
+    "LiveModelInvoker 真实外发路径端到端接线（streaming/finalization/审计落库）无生产消费者，AC 仅单元级可复测（TASK-0035 knownRisk 延续）。",
+    "成功路径配额预留保留交 finalize 结算；finalize 未结算则额度悬置（TASK-0018 契约）。",
+    "R1 复核 3 条 P3（非阻塞、不影响验收）：(1) 矩阵 §4 TASK-0034 括注\"1 条 harness post-closure\"与 review-r1 的 6 项无对应（harness P3 实际在 review-harness-fixes-r1.md），建议措辞改为\"另含 review-harness-fixes-r1 的 2 条 harness P3\"；(2) 矩阵 §5\"provider_deployment 持久化同步不存在\"偏松——JdbcProviderDeploymentRepository 存在但无 Spring 注解/无调用方（死代码），建议注明\"仓库未接线\"；(3) 矩阵 §1\"READY doctor PASS 378055 checks\"为最终检查点，首次 READY doctor 曾因 Context Lock/标题问题在 READY 流程内修正，属过程透明性提示。"
+  ],
+  "nextAction": "TASK-0036（Technical Alpha 总验收）ACCEPTED：跨租户/授权撤销/安全失败/记忆删除/故障恢复/协议/指标/审计 8 域验收矩阵真实通过（RLS 39/39、Maven 243/0、frontend vitest 93+vue-tsc、openapi validate/diff、harness 239 OK、precheck PASS）+ 5 张依赖卡（TASK-0026/0030/0032/0034/0035）终态 Evidence 全可追溯 + Alpha 禁止能力保持关闭（真实支付 FORBIDDEN/Beta BLOCKED）+ P0/P1 为零、P2 闭环或显式非阻塞处置；产出 docs/evidence/TASK-0036/technical-alpha-acceptance.md。Backlog executionOrder 已尽（TASK-0036 为末卡），Technical Alpha 治理交付到达总验收终点；后续 streaming/finalization 接线、持久化同步、H5 认证接线与 Beta 门禁证据补齐为 Owner 门控/后续任务。",
+  "reviewers": [
+    {
+      "id": "task0036_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "5507bce2a2f8e025b866465455d4f0007aed1690",
+      "evidencePath": "docs/evidence/TASK-0036/review-r1.md",
+      "reason": "R1 PASS (no P0/P1, no ACCEPTANCE/INVARIANT violation). AC1-5 all met; TASK-0034 historical harness FAIL truthfully disclosed; TASK-0026 P2-1/P2-2 truthfully marked non-blocking deferral; forbidden capabilities stay off; missing perf baseline truthfully N/A. 3 non-blocking P3 wording-precision notes (recorded in knownRisks, no fix batch)."
+    }
+  ]
+}
