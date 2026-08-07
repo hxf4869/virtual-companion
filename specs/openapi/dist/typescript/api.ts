@@ -78,6 +78,46 @@ export interface MemoryEvidence {
   createdAt?: string
 }
 
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface RefreshTokenRequest {
+  refreshToken: string
+}
+
+export interface LogoutRequest {
+  refreshToken: string
+}
+
+export interface AdminCreateAccountRequest {
+  username: string
+  password: string
+  role?: string
+  displayName?: string
+}
+
+export interface AuthTokenResponse {
+  accessToken: string
+  refreshToken: string
+  tokenType: string
+  expiresInSeconds: string
+  accountId: string
+  role: string
+}
+
+export interface LogoutResponse {
+  ok: string
+}
+
+export interface AccountResponse {
+  accountId: string
+  username: string
+  role: string
+  status: string
+}
+
 export interface VirtualCompanionApiClient {
   getVersion(): Promise<VersionResponse>
   createRelationship(): Promise<VersionResponse>
@@ -97,4 +137,8 @@ export interface VirtualCompanionApiClient {
   confirmMemoryCandidate(): Promise<VersionResponse>
   rejectMemoryCandidate(): Promise<VersionResponse>
   listMemoryEvidence(): Promise<VersionResponse>
+  login(): Promise<VersionResponse>
+  refresh(): Promise<VersionResponse>
+  logout(): Promise<VersionResponse>
+  createInternalAccount(): Promise<VersionResponse>
 }

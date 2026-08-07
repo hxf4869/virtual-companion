@@ -6,6 +6,8 @@ info:
     clients are generated from it and must not be hand-edited or used to back-drive the contract. The ErrorEnvelope shape
     is uniform across every error response; NOT_FOUND_OR_FORBIDDEN hides resource existence so a missing resource and a forbidden
     one are indistinguishable to the caller.
+security:
+- bearerAuth: []
 paths:
   /api/v1/version:
     get:
@@ -521,7 +523,135 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Log in with internal-account credentials
+      description: Exchanges a username and password for an access token and a refresh session. Public. An unknown user and
+        a wrong password are indistinguishable and both map to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed); a DISABLED
+        account maps to AUTHENTICATION_REQUIRED. Credentials are never logged, placed in a URL or stored.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: New access token and refresh session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: DISABLED account (cause is not disclosed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Unknown username or wrong password; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/refresh:
+    post:
+      operationId: refresh
+      summary: Renew a session from a refresh token
+      description: Validates the presented refresh token server-side (unrevoked, unexpired, ACTIVE account), revokes it and
+        issues a new access token and refresh session. Public. An unknown, revoked, expired or DISABLED-account token all
+        map to AUTHENTICATION_REQUIRED; the cause is never disclosed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: New access token and rotated refresh session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: Invalid, revoked, expired or disabled refresh session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke a refresh session
+      description: 'Revokes the caller''s presented refresh session. Idempotent: a second logout or a foreign/unknown token
+        is still reported as success so existence is never disclosed. Requires a valid Bearer access token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '200':
+          description: The refresh session was revoked (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/accounts:
+    post:
+      operationId: createInternalAccount
+      summary: Create an internal account (ADMIN only)
+      description: 'Creates an internal account for an ACTIVE ADMIN caller. No public registration: a non-ADMIN caller maps
+        to ACCESS_DENIED. The new account starts ACTIVE; a duplicate username maps to NOT_FOUND_OR_FORBIDDEN so existence
+        is never disclosed. Requires a valid Bearer access token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminCreateAccountRequest'
+      responses:
+        '200':
+          description: The created account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Invalid request or duplicate username; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     ErrorEnvelope:
       type: object
@@ -759,6 +889,117 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (RFC 3339)
+    LoginRequest:
+      type: object
+      description: Internal-account login credentials.
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+          description: Internal account username
+        password:
+          type: string
+          description: Plaintext password (compared in the JVM, never stored or logged)
+    RefreshTokenRequest:
+      type: object
+      description: A refresh token to renew.
+      required:
+      - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: The raw refresh token; only its sha256 hash is stored server-side
+    LogoutRequest:
+      type: object
+      description: The refresh token to revoke.
+      required:
+      - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: The raw refresh token to revoke
+    AdminCreateAccountRequest:
+      type: object
+      description: Internal-account creation (ADMIN only). Role defaults to USER when omitted; only ADMIN or USER is accepted.
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+          description: Internal account username (normalized to lowercase)
+        password:
+          type: string
+          description: Plaintext password; only its BCrypt hash is stored
+        role:
+          type: string
+          description: ADMIN or USER (default USER)
+        displayName:
+          type: string
+          description: Human-readable display name
+    AuthTokenResponse:
+      type: object
+      description: A new access token plus its refresh session. The raw refresh token is returned exactly once here; the server
+        stores only its sha256 hash and never echoes it again.
+      required:
+      - accessToken
+      - refreshToken
+      - tokenType
+      - expiresInSeconds
+      - accountId
+      - role
+      properties:
+        accessToken:
+          type: string
+          description: JWT Bearer access token (expires after expiresInSeconds)
+        refreshToken:
+          type: string
+          description: Raw refresh token for session renewal
+        tokenType:
+          type: string
+          description: Always Bearer
+        expiresInSeconds:
+          type: integer
+          format: int64
+          description: Access token lifetime in seconds
+        accountId:
+          type: string
+          description: The authenticated account id (also the owner_user_id)
+        role:
+          type: string
+          description: ADMIN or USER
+    LogoutResponse:
+      type: object
+      description: Idempotent logout acknowledgment.
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always true; existence is never disclosed
+    AccountResponse:
+      type: object
+      description: An internal account (ADMIN creation result).
+      required:
+      - accountId
+      - username
+      - role
+      - status
+      properties:
+        accountId:
+          type: string
+          description: The new account id (also the owner_user_id)
+        username:
+          type: string
+          description: Normalized (lowercase) internal username
+        role:
+          type: string
+          description: ADMIN or USER
+        status:
+          type: string
+          description: ACTIVE at creation
   parameters:
     RelationshipId:
       name: relationshipId
