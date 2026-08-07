@@ -157,14 +157,35 @@ criticalPath:
 decisionGates:
   GATE-IDENTITY-PROVIDER-SESSION:
     kind: HARD_OWNER_DECISION
-    status: PENDING
+    status: APPROVED
     requiredFor:
       - TASK-0034
     requiredDecisions:
       - 成熟身份供应商与部署方式
       - Technical Alpha 登录渠道、账号供给和首次登录映射
       - Cookie 或 Bearer 架构及会话 TTL、刷新、撤销和设备策略
-    approval: null
+    approval:
+      approvedBy: repository-owner
+      approvedAt: "2026-08-07"
+      evidence: >-
+        Owner 在长线执行会话批准 GATE-IDENTITY-PROVIDER-SESSION，解锁 TASK-0034。采用 Spring
+        Security + JWT 自托管鉴权（Virtual Companion 应用内，不接入外部 IdP）；用户名+密码登录，
+        平台初始化生成 1 条平台管理员账户、其余由管理员后台手动建（不开放公开注册）；user_id 与
+        owner_user_id 1:1 等同，登录签入 JWT claim，服务端 SET LOCAL current_owner_id 注入接 RLS
+        （INV-TENANT-001 合规，服务端可信来源）；Bearer JWT access 2h + refresh 7d，refresh 服务端
+        有状态存储+删除即撤销，access 靠 2h 短 TTL 自然收口（不上 jti 黑名单），Alpha 一期不限设备。
+        Spring Security 等成熟框架配置鉴权允许，禁止自研密码学原语（密码哈希算法、OAuth/OIDC 协议
+        实现、JWT 签名实现）。
+      decisionEvidence:
+        成熟身份供应商与部署方式:
+          value: "Spring Security（Spring Boot 4.1.x 集成）+ JWT，自托管于 Virtual Companion 应用内，不接入 Authentik/Keycloak/Auth0 等外部 IdP"
+          evidence: "Owner 选择标准 JWT 鉴权，避免外部服务依赖；本地内网/受控测试场景足够；成熟框架配置鉴权允许，仅禁止自研密码学原语"
+        Technical Alpha 登录渠道、账号供给和首次登录映射:
+          value: "用户名+密码登录；平台初始化生成 1 条平台管理员账户，其余账户由管理员后台手动建（不开放公开注册，符合 publicRegistrationEnabled false）；user_id 与 owner_user_id 1:1 等同，登录成功签入 JWT claim，服务端注入 SET LOCAL current_owner_id 接 RLS"
+          evidence: "Owner 决定 Alpha 内部受控供给；owner_user_id 服务端可信来源，INV-TENANT-001 合规，客户端 owner_user_id 或开发 Header 不成为身份真源"
+        Cookie 或 Bearer 架构及会话 TTL、刷新、撤销和设备策略:
+          value: "Bearer JWT in Authorization header；access TTL 2h + refresh TTL 7d；撤销策略为 refresh token 服务端有状态存储+删除或标记即撤销，access 靠 2h 短 TTL 自然收口（不上 jti 黑名单，避免每请求查表成本）；Alpha 一期不限设备"
+          evidence: "Owner 指定参数；access 立即撤销严格度（jti 黑名单）留 TASK-0034 intake 复核，当前按 refresh 撤销加 access 自然过期理解"
   GATE-LIVE-MODEL-PROVIDER:
     kind: HARD_OWNER_DECISION
     status: PENDING
