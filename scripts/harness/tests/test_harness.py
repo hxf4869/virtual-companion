@@ -4210,6 +4210,7 @@ class BacklogTests(unittest.TestCase):
 
     def test_backlog_draft_cannot_bypass_pending_hard_gate(self) -> None:
         backlog, tasks, lifecycle, state = self.load_inputs()
+        backlog["decisionGates"]["GATE-IDENTITY-PROVIDER-SESSION"]["status"] = "PENDING"
         bypass = copy.deepcopy(tasks)
         for task_id in backlog["executionOrder"]:
             if task_id == "TASK-0034":
@@ -4506,8 +4507,20 @@ class BacklogTests(unittest.TestCase):
             )
             harness_dir = repository / ".harness"
             harness_dir.mkdir(parents=True)
+            backlog_text = (ROOT / ".harness/task-backlog.yaml").read_text(
+                encoding="utf-8"
+            )
+            backlog_text = backlog_text.replace(
+                "  GATE-IDENTITY-PROVIDER-SESSION:\n"
+                "    kind: HARD_OWNER_DECISION\n"
+                "    status: APPROVED",
+                "  GATE-IDENTITY-PROVIDER-SESSION:\n"
+                "    kind: HARD_OWNER_DECISION\n"
+                "    status: PENDING",
+                1,
+            )
             (harness_dir / "task-backlog.yaml").write_text(
-                (ROOT / ".harness/task-backlog.yaml").read_text(encoding="utf-8"),
+                backlog_text,
                 encoding="utf-8",
             )
             (harness_dir / "project-state.yaml").write_text(
