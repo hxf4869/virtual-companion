@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0033
 lastAcceptedHandoff: docs/handoffs/TASK-0033.json
 lastTerminalTask: TASK-0033
 lastTerminalHandoff: docs/handoffs/TASK-0033.json
-nextAction: GATE-IDENTITY-PROVIDER-SESSION 已批准（Spring Security + JWT 自托管鉴权；用户名+密码登录、平台初始化 1 条管理员账户 + 管理员后台手动建、user_id 即 owner_user_id；Bearer access 2h + refresh 7d、refresh 服务端撤销、access 2h 自然收口、Alpha 不限设备）。TASK-0034（成熟身份组件与内部测试账号接入）gate 已 APPROVED，为下一张可晋级卡。长线可继续 TASK-0034 intake，DRAFT 需含 Spring Security + JWT 方案并按 decisionEvidence 细化范围。
+nextAction: GATE-IDENTITY-PROVIDER-SESSION 与 GATE-LIVE-MODEL-PROVIDER 均已批准。闸门2 决策：获批供应商集 = {OpenAI, Anthropic} 两家主流，具体模型/API 请求地址/供应商名称/凭据由运行期配置手动指定（不硬编码）；凭据经 Docker secret/密钥文件注入；数据区域由配置端点决定、采用供应商标准开发者条款；Persona 采用 Gentle Listener 内容；Alpha 安全政策 7 条落于既有 Guard/Safety/Quota 约束。nextPromotable=TASK-0034（成熟身份组件与内部测试账号接入），gate 已 APPROVED，可晋级 intake（Spring Security + JWT 方案已定，DRAFT 需按 decisionEvidence 细化范围）。TASK-0035 闸门已解锁，但依赖 TASK-0034 ACCEPTED 后方可晋级；其卡「唯一/单一真实供应商」措辞需在 intake 前经 Owner amendment 对齐获批两家。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
