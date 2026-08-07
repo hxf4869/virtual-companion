@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.modelproviders;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -32,7 +33,7 @@ import org.springframework.validation.annotation.Validated;
 public record ModelProviderProperties(
         boolean enabled,
         @DefaultValue("/run/secrets") String secretRoot,
-        List<Deployment> deployments) {
+        @Valid List<Deployment> deployments) {
 
     public ModelProviderProperties {
         deployments = deployments == null ? List.of() : List.copyOf(deployments);

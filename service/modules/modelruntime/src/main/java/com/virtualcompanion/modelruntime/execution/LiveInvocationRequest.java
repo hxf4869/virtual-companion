@@ -39,6 +39,13 @@ public record LiveInvocationRequest(
         Objects.requireNonNull(timeoutBudget, "timeoutBudget must not be null");
         Objects.requireNonNull(hardRuleViolations, "hardRuleViolations must not be null");
         hardRuleViolations = List.copyOf(hardRuleViolations);
+        hardRuleViolations.forEach(ruleId -> {
+            Objects.requireNonNull(ruleId, "hardRuleViolations must not contain null");
+            if (ruleId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "hardRuleViolations must not contain blank ids");
+            }
+        });
         Objects.requireNonNull(classifierReport, "classifierReport must not be null");
     }
 }

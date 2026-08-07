@@ -90,9 +90,17 @@ public record LiveAttemptOutcome(
         };
     }
 
-    /** True when a real outbound provider attempt was created (provider_attempt row). */
+    /**
+     * True when a real outbound provider attempt was created (a
+     * {@code provider_attempt} row exists). This is exactly when the outcome
+     * carries a non-empty audit list: every real outbound attempt records an
+     * audit, and every path that never opened an adapter (blocked, ZERO_LLM,
+     * no-eligible, or a misconfiguration that failed before transfer) records
+     * none. A path that merely resolved an external binding but never
+     * transferred is therefore not a created provider attempt.
+     */
     public boolean externalAttemptCreated() {
-        return binding instanceof InvocationBinding.ExternalAttemptBinding;
+        return !audits.isEmpty();
     }
 
     /**

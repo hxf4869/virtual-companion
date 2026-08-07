@@ -75,11 +75,13 @@ public class ApprovedModelProviderConfig {
     LiveModelInvoker liveModelInvoker(
             DeterministicRouter deterministicRouter,
             ExecutionAuthorizationGuard executionAuthorizationGuard,
+            InMemoryAuthorizationSnapshotStore authorizationSnapshotStore,
             ApprovedModelProviders approvedModelProviders,
             GenerationRecovery generationRecovery) {
         return new LiveModelInvoker(
                 deterministicRouter,
                 executionAuthorizationGuard,
+                authorizationSnapshotStore,
                 approvedModelProviders.locator(),
                 generationRecovery,
                 approvedModelProviders.supplierNames());
