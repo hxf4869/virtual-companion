@@ -1,0 +1,47 @@
+{
+  "taskId": "TASK-0034",
+  "state": "ACCEPTED",
+  "baseCommit": "ddc98d1f96192ecb94053c9740b3956bdf6fc750",
+  "headCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259",
+  "evidencePath": "docs/evidence/TASK-0034/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task0034_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259",
+      "evidencePath": "docs/evidence/TASK-0034/review-r1.md",
+      "reason": "R1 PASS (no P0/P1, no AC/invariant violation) on candidate 280c002 (diff c44b88f..280c002, 49 files, +4114/-5). 8 review dimensions PASS; AC1-7 satisfied; writeAllowlist 49/49 programmatically verified; git diff --check clean; 6 P3 non-blocking findings documented; no fix batch needed.",
+      "candidateTree": "77afe801e0b651e6211be3e76298ec71b8b1bda8",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 900,
+        "hardLimitReached": true
+      }
+    }
+  ],
+  "completed": [
+    "V14 migration (service/platform/persistence/src/main/resources/db/migration/V14__identity_accounts_sessions.sql): identity_account (id==owner_user_id, username UNIQUE normalized lowercase, BCrypt password_hash, role ADMIN/USER, status ACTIVE/DISABLED, FK->vc_user ON DELETE CASCADE), identity_refresh_token (only sha256 hex token_hash, account FK, expires_at, revoked_at), identity_auth_event (LOGIN_SUCCESS/LOGIN_FAILURE/LOGOUT/ACCOUNT_CREATE, never a password/token); 8 SECURITY DEFINER functions (authenticate/login audit/issue/rotate/logout/account_create/admin_seed) with SET search_path=vc,public and REVOKE PUBLIC / GRANT EXECUTE TO vc_api only; no direct DML for any runtime role; idempotent admin seed via dedicated sequence starting high",
+    "Spring Security + JWT (service/apps/runtime): spring-boot-starter-security + jjwt 0.12.6 (HS256, secret>=256bit enforced, issuer validated); stateless Bearer filter chain (login/refresh/health public, anyRequest().authenticated(), 401 AUTHENTICATION_REQUIRED JSON entry point, CORS origin allow-list rejecting unknown Origins, no cookie so CSRF disabled); access token 2h / refresh token 7d with server-state refresh revocation",
+    "AuthService: login/refresh/logout/ADMIN account creation with BCrypt timing equalization (dummy hash for unknown users), DISABLED -> AUTHENTICATION_REQUIRED, revoked/expired/unknown refresh all fail closed, idempotent logout that never discloses, ADMIN-only create (service role check + DB ACTIVE-ADMIN re-check), duplicate username mapped to generic NOT_FOUND_OR_FORBIDDEN; credentials never logged/URL'd/model'd",
+    "OwnerContext (runtime/auth/tenant): user_id -> owner_user_id direct server-side mapping via transaction-scoped set_config('vc.owner_user_id', ?, true), binding RLS (INV-TENANT-001); principal derived only from the server-verified Bearer token, never a request field or dev header",
+    "Admin seed runner (idempotent, credentials from approved channel VC_ADMIN_* env; hash-only persisted)",
+    "OpenAPI: 4 auth endpoints (POST /api/v1/auth/login|refresh|logout|admin/accounts) + bearerAuth security scheme + schemas; errors reuse AUTHENTICATION_REQUIRED/ACCESS_DENIED/NOT_FOUND_OR_FORBIDDEN (zero catalog/generated changes); dist regenerated and drift-free",
+    "Frontend H5 login: api/auth.ts + api/transport.ts (Bearer injection + 401 -> clear session + redirect), stores/auth.ts (login/refresh/logout, never fakes success, token never in chat drafts/memory/model context), pages/login/login.vue, pages.json route, main.ts bootstrap; vitest 93 + vue-tsc green",
+    "Validation: RLS tests 39/39 PASS (incl 39_identity_accounts_sessions), Maven full reactor PASS (runtime 70 tests incl AuthServiceTest 15 / AuthSecurityIntegrationTest 4 / JwtTokenServiceTest 7 / OwnerContextTest 4), openapi validate + diff --fail-on-drift PASS, canonical precheck PASS (doctor 368270 checks + catalog + paid + beta), git diff --check clean",
+    "R1 independent review PASS (no P0/P1, no AC/invariant violation) on candidate 280c002; writeAllowlist 49/49 programmatically verified; zero forbidden paths touched"
+  ],
+  "remaining": [
+    "Existing chat/memory/relationship H5 transports (pages/chat, pages/memory — frozen/out of scope) not yet wired to the authenticated transport factory; once VC_AUTH_ENABLED=true they receive 401 until a later task adopts createAuthenticatedTransport"
+  ],
+  "knownRisks": [
+    "P3-001 identity_authenticate is SECURITY DEFINER and returns the BCrypt hash for any username to vc_api; a compromised vc_api session could enumerate usernames and offline-crack hashes. Approved-scheme trade-off (Spring Security BCrypt in the JVM), consistent with the gate; not a defect",
+    "P3-002 stateless access token (2h) is not server-revocable; a DISABLED account keeps a valid access token until natural expiry. Per the gate (only refresh is server-state); refresh path fails closed for DISABLED",
+    "P3-003 access/refresh tokens live in localStorage; XSS could exfiltrate them. Standard H5 pattern, acceptable for an Alpha internal tool",
+    "P3-004 OwnerContext uses jdbc.update(\"SELECT set_config(...)\") to run a SELECT; functionally correct, execute() would be more idiomatic (style only)",
+    "P3-005 OpenAPI + runtime expose accountId/role in the login response; acceptable as the caller's own identity",
+    "P3-006 test 39 DISABLED-issue negative uses BEGIN...EXCEPTION WHEN OTHERS THEN NULL (broad catch); rotate negatives assert precisely, no security issue",
+    "HARNESS-UNITTEST-PRE-EXISTING: python -m unittest harness suite has 1 pre-existing failure (test_backlog_draft_reconstructs_base_git_snapshot), proven identical at 15cdee8 before this task; root cause is the GATE-IDENTITY-PROVIDER-SESSION approval (e126c12) leaving approval data that the fixture's status->PENDING replace no longer matches, plus the live TASK-0034 card leaving DRAFT. Harness doctor --task is GREEN; all product tests green. Owner (repository-owner) authorized a minimal harness-change fix (fixture pins TASK-0034 to DRAFT) which lands as a separate post-closure Owner-authorized harness-change commit; the full unittest suite is green after that fix"
+  ],
+  "nextAction": "TASK-0034（成熟身份组件）ACCEPTED：V14 身份账户/refresh token/审计迁移 + Spring Security JWT（Bearer access 2h + refresh 7d 服务端有状态撤销）+ 登录/刷新/登出/管理员建号端点 + user_id→owner_user_id 接 RLS + 最小 H5 登录 + OpenAPI 契约；RLS 39/39、Maven runtime 70 测试、vitest 93、precheck PASS。nextPromotable TASK-0035（真实供应商接线）依赖本卡 ACCEPTED；TASK-0035 卡「唯一/单一真实供应商」措辞与获批供应商集 {OpenAI, Anthropic} 冲突，intake 前需 Owner amendment。另：harness 单测套件存在 gate 批准环节引入的既有失效测试（test_backlog_draft_reconstructs_base_git_snapshot），Owner 已授权修复，作为 post-closure Owner 授权 harness-change 落地后套件转绿。"
+}

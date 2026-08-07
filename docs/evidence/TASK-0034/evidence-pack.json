@@ -1,0 +1,105 @@
+{
+  "taskId": "TASK-0034",
+  "baseCommit": "ddc98d1f96192ecb94053c9740b3956bdf6fc750",
+  "headCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259",
+  "contextFingerprint": "71babb7366bfc6fb961f621d4f901ffb8682c1a27dd481ff49ea54b41bd292a9",
+  "reviewers": [
+    {
+      "id": "task0034_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259",
+      "evidencePath": "docs/evidence/TASK-0034/review-r1.md",
+      "reason": "R1 PASS (no P0/P1, no AC/invariant violation) on candidate 280c002 (diff c44b88f..280c002, 49 files, +4114/-5). 8 review dimensions PASS (V14 SECURITY DEFINER + REVOKE PUBLIC/GRANT vc_api, fail-closed tokens, id==owner_user_id; Spring Security JWT chain + 401 entry point + CORS + CSRF-off; AuthService BCrypt timing equalization + ADMIN-only create + no existence disclosure; OwnerContext set_config tenant binding; frontend transport injection + 401 redirect, no token in model context; OpenAPI bearerAuth + error reuse; writeAllowlist 49/49; AC1-7). git diff --check clean. 6 P3 non-blocking findings documented in review-r1.md; no fix batch needed.",
+      "candidateTree": "77afe801e0b651e6211be3e76298ec71b8b1bda8",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 900,
+        "hardLimitReached": true
+      }
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0034",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Canonical precheck PASS on clean committed candidate 280c002: doctor 368270 checks PASS (receipt hit), catalogValidate PASS, catalogDrift PASS, paidFeatureCheck PASS, betaRosterGate PASS.",
+      "environment": "Windows 11 + Python 3.12.9",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Ephemeral PG18+pgvector (WSL2 Docker) applies V1..V14; all 39 tests PASS including 39_identity_accounts_sessions: admin seed idempotent, credential fetch, login audit, ADMIN-only create + duplicate rejected + cross-role fail-closed, refresh issue/rotate/logout with revoked/expired/unknown/disabled all fail closed, cross-account logout never revokes, DISABLED account no renewal, vc_api has no direct DML on identity tables.",
+      "environment": "WSL2 Ubuntu-24.04 docker",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI 3.1.0 source validates (ErrorEnvelope requires code+message, ErrorCode includes NOT_FOUND_OR_FORBIDDEN, every path has operationId).",
+      "environment": "Windows 11 + Python 3.12.9",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Generated dist (api-bundle.yaml, java records, typescript client, snapshot) byte-identical to committed dist; no drift.",
+      "environment": "Windows 11 + Python 3.12.9",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "bash -c \"cd frontend && npx vitest run\"",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "93 tests / 11 files PASS including new auth.spec.ts (8), transport.spec.ts (5), stores/auth.spec.ts (8).",
+      "environment": "Windows 11 + node v22.23.1",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "bash -c \"cd frontend && npx vue-tsc --noEmit\"",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Type-safe UI; no type errors (login.vue, auth store, transport).",
+      "environment": "Windows 11 + node v22.23.1",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "239 tests ran, 1 FAILURE (test_backlog_draft_reconstructs_base_git_snapshot), 1 skipped. PRE-EXISTING harness test-fidelity failure NOT caused by this task: proven to fail identically at 15cdee8 (state before TASK-0034 implementation). Root cause: GATE-IDENTITY-PROVIDER-SESSION approval (e126c12) added approval data to the gate; the fixture test's status->PENDING replace leaves that data, so the doctor now reports 'PENDING gate must not fabricate approval' + MISSING_FROM_PROMOTION_PROJECTION instead of the old DECISION_GATE:...PENDING format; the live TASK-0034 card also left DRAFT (now IN_PROGRESS), so the fixture no longer sees it as the DRAFT candidate. The harness doctor --task TASK-0034 is GREEN (368270 checks) and ALL product tests are green; this is a stale harness SELF-test. Owner (repository-owner) authorized a minimal harness-change fix (updated fixture pins TASK-0034 to DRAFT); the fix lands as a separate post-closure Owner-authorized harness-change commit, after which the full unittest suite is green.",
+      "environment": "Windows 11 + Python 3.12.9",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors in the candidate diff.",
+      "environment": "Windows 11 git",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    },
+    {
+      "command": "mvn -o -e -pl service/apps/runtime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "WSL2 Docker Temurin-25 offline full reactor PASS: runtime module 70 tests green (RuntimeContextTest 3, RuntimeModuleStructureTest 1, AuthServiceTest 15, AuthSecurityIntegrationTest 4, JwtTokenServiceTest 7, JwtAuthenticationFilterTest 4, OwnerContextTest 4, baseline tests), plus upstream catalog/persistence/modelruntime/safety suites green.",
+      "environment": "WSL2 Ubuntu-24.04 docker maven:3.9-eclipse-temurin-25-alpine",
+      "verifiedCommit": "280c002f91cc44f00a1ed8e674259a04a6f30259"
+    }
+  ]
+}
