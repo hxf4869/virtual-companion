@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0032
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -208,7 +208,20 @@ requiredInvariants:
   - INV-HARNESS-005
   - INV-HARNESS-007
   - INV-HARNESS-009
-humanApprovals: []
+humanApprovals:
+  - scope: task-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-07"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0032 在 service/modules/modelruntime/routing 之上实现最小 ZERO_LLM
+      执行、合成额度释放与全故障恢复。扩展 QuotaLedger.release（原子归还）+ 新增
+      RecoveryScenario/QuotaDisposition/RecoveryTerminal/RecoveryOutcome/GenerationRecovery；4 失败场景
+      （TIMEOUT/CANCELLED/NO_CAPACITY/ALL_FAILURE）正确释放或结算额度；ZERO_LLM 完成路径无
+      provider_attempt、消费 DeterministicSafetyResponse 确定性响应；全故障绝不自由文本。modelruntime
+      pom 新增 safety 依赖（acyclic，safety 仅依赖 catalog）。纯领域 Java、无数据库迁移、无真实
+      Provider 或付费；保持稳定 generationId 与唯一终态、不绕过最终安全复核。model-routing-change 为
+      independentReview（非 humanApproval）保护路径，由独立 R1 复核。
 independentReview: required
 reviewers: []
 requiredCommands:

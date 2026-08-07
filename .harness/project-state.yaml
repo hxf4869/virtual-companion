@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0032
+activeTaskCard: docs/tasks/TASK-0032-zero-llm-quota-failure-recovery.md
 lastAcceptedTask: TASK-0031
 lastAcceptedHandoff: docs/handoffs/TASK-0031.json
 lastTerminalTask: TASK-0031
 lastTerminalHandoff: docs/handoffs/TASK-0031.json
-nextAction: TASK-0031 已 ACCEPTED。模拟权益、Service Class 与确定性路由已落地——service/modules/modelruntime/routing（ServiceClass 供应商中立策略、Entitlement、QuotaReservation、QuotaLedger 原子预留、RoutingRequest owner 交叉校验、RouteDecision 防篡改 decisionNo、DecisionHash、DeterministicRouter）。同一输入确定性产出可审计 decisionNo 与 NO_ELIGIBLE_DEPLOYMENT；经 ProviderRegistry.deployments() 选部署不绕过、外发尝试产 ExternalAttemptBinding 携带双授权快照（INV-AUTH-001）、ZERO_LLM 降级产 DeterministicSourceBinding 不创建 provider_attempt；合成额度原子预留失败关闭降级。Maven 65/65、precheck PASS、harness 233 OK。DAG 下一张可晋级卡 TASK-0032（deps TASK-0020+TASK-0021+TASK-0031 满足）。
+nextAction: TASK-0032 进行中（READY/IN_PROGRESS）。在 service/modules/modelruntime/routing 之上实现最小 ZERO_LLM、额度释放与全故障恢复——扩展 QuotaLedger.release（原子归还）+ 新增 RecoveryScenario/QuotaDisposition/RecoveryTerminal/RecoveryOutcome/GenerationRecovery；4 失败场景（TIMEOUT/CANCELLED/NO_CAPACITY/ALL_FAILURE）正确释放或结算额度，ZERO_LLM 完成路径无 provider_attempt 消费 DeterministicSafetyResponse、全故障不自由文本；保持稳定 generationId 与唯一终态。model-runtime 单 protected surface model-routing-change（C3 independentReview），riskClass C4 policySurfaces AUTHORIZATION 无 split，humanApprovals scope=task-authorization。完成后 DAG 下一张可晋级卡 TASK-0033。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
