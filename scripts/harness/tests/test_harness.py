@@ -4537,7 +4537,17 @@ class BacklogTests(unittest.TestCase):
                 target = repository / relative_path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 text = (ROOT / relative_path).read_text(encoding="utf-8")
-                if task_id == "TASK-0012":
+                if task_id == "TASK-0034":
+                    # The fixture reconstructs the base where TASK-0034 is the
+                    # DRAFT being promoted; the live card has left DRAFT (now
+                    # ACCEPTED/IN_PROGRESS), so pin its state to DRAFT for this
+                    # snapshot. Without this the reconstructed promotion cannot
+                    # see the DRAFT candidate and the test would report
+                    # MISSING_FROM_PROMOTION_PROJECTION instead of the gate
+                    # blocker it is verifying.
+                    text = text.replace("state: ACCEPTED", "state: DRAFT", 1)
+                    text = text.replace("state: IN_PROGRESS", "state: DRAFT", 1)
+                elif task_id == "TASK-0012":
                     text = text.replace("state: IN_PROGRESS", "state: ACCEPTED", 1)
                 elif task_id < "TASK-0034":
                     text = text.replace("state: PLANNED", "state: ACCEPTED", 1)
