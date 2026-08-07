@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0033
 lastAcceptedHandoff: docs/handoffs/TASK-0033.json
 lastTerminalTask: TASK-0033
 lastTerminalHandoff: docs/handoffs/TASK-0033.json
-nextAction: TASK-0033 已 ACCEPTED。Anthropic Messages 离线 HTTP/SSE 合同已落地——service/adapters/model-anthropic 实现 /v1/messages 非流与 SSE Adapter（镜像 TASK-0011 单请求 Session、Codec、三段超时、终态唯一、late fence、脱敏；system 顶层、x-api-key 与 anthropic-version header、message_start/content_block_delta/message_delta/message_stop SSE 序列、stop_reason 映射、tools 与 tool_choice 结构化）加 service/tests/anthropic-messages-contract-tests 覆盖 14 项 requiredContractTests（loopback JDK HttpServer mock）；根 pom 注册两模块。Maven 26 合同测试加依赖链全绿、precheck PASS、harness 233 OK。model-protocol-contract 两个主协议（OPENAI 加 ANTHROPIC）均通过本地 mock-server。DAG 下一张 TASK-0034 因 GATE-IDENTITY-PROVIDER-SESSION PENDING 不可晋级，长线暂停待 Owner 硬决策闸门。
+nextAction: GATE-IDENTITY-PROVIDER-SESSION 已批准（Spring Security + JWT 自托管鉴权；用户名+密码登录、平台初始化 1 条管理员账户 + 管理员后台手动建、user_id 即 owner_user_id；Bearer access 2h + refresh 7d、refresh 服务端撤销、access 2h 自然收口、Alpha 不限设备）。TASK-0034（成熟身份组件与内部测试账号接入）gate 已 APPROVED，为下一张可晋级卡。长线可继续 TASK-0034 intake，DRAFT 需含 Spring Security + JWT 方案并按 decisionEvidence 细化范围。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

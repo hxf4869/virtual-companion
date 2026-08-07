@@ -10102,6 +10102,65 @@ def derive_idle_planning_checkpoint(
                 child_resolutions if isinstance(child_resolutions, dict) else {}
             )
             added = sorted(set(child_resolutions) - set(parent_resolutions))
+            parent_gates = parent_backlog.get("decisionGates")
+            child_gates = child_backlog.get("decisionGates")
+            parent_gates = parent_gates if isinstance(parent_gates, dict) else {}
+            child_gates = child_gates if isinstance(child_gates, dict) else {}
+            approved_gate_ids = [
+                gate_id
+                for gate_id, child_gate in child_gates.items()
+                if isinstance(child_gate, dict)
+                and str(child_gate.get("status", "")) == "APPROVED"
+                and isinstance(parent_gates.get(gate_id), dict)
+                and str(parent_gates[gate_id].get("status", "")) != "APPROVED"
+            ]
+            if len(added) == 0 and len(approved_gate_ids) == 1:
+                gate_id = approved_gate_ids[0]
+                gate = child_gates[gate_id]
+                approval = gate.get("approval")
+                audit.require(
+                    isinstance(approval, dict)
+                    and approval.get("approvedBy") == "repository-owner"
+                    and is_valid_approval_timestamp(approval.get("approvedAt"))
+                    and isinstance(approval.get("decisionEvidence"), dict)
+                    and bool(approval.get("decisionEvidence")),
+                    f"{label}: gate approval edge {gate_id} approval invalid",
+                )
+                expected_gate_paths = {TASK_BACKLOG_PATH, PROJECT_STATE_PATH}
+                audit.require(
+                    set(paths) == expected_gate_paths
+                    or set(paths)
+                    == expected_gate_paths | {"scripts/harness/doctor.py"},
+                    f"{label}: gate approval edge changed non-atomic or extra paths; "
+                    f"edge={expected_parent}..{commit}, paths={paths}",
+                )
+                gate_static_parent = dict(parent_state)
+                gate_static_child = dict(child_state)
+                gate_static_parent.pop("nextAction", None)
+                gate_static_child.pop("nextAction", None)
+                audit.require(
+                    gate_static_parent == gate_static_child
+                    and child_state.get("activeTask") is None
+                    and child_state.get("activeTaskCard") is None,
+                    f"{label}: gate approval edge project-state may only change "
+                    f"nextAction while idle",
+                )
+                gate_projection = derive_backlog_promotion_projection(
+                    child_backlog,
+                    _task_metadata_snapshot_at_commit(commit),
+                    lifecycle,
+                )
+                gate_next = gate_projection.get("nextPromotable")
+                gate_next_action = str(child_state.get("nextAction", ""))
+                if gate_next is not None:
+                    mentioned = set(re.findall(r"TASK-[0-9]{4,}", gate_next_action))
+                    audit.require(
+                        mentioned == {gate_next},
+                        f"{label}: gate approval edge nextAction must identify "
+                        f"only next promotable {gate_next}",
+                    )
+                expected_parent = commit
+                continue
             audit.require(
                 len(added) == 1,
                 f"{label}: each edge must add exactly one planning resolution; "
@@ -16654,10 +16713,15 @@ def validate_diff_scope(
             changed = changed_override
         else:
             base_commit = str(task.get("baseCommit", ""))
-            changed = sorted(
-                set(changed_paths_across_history(base_commit, "HEAD"))
-                | set(changed_paths(base_commit))
-            )
+            if target_commit is not None:
+                changed = sorted(
+                    set(changed_paths_across_history(base_commit, target_commit))
+                )
+            else:
+                changed = sorted(
+                    set(changed_paths_across_history(base_commit, "HEAD"))
+                    | set(changed_paths(base_commit))
+                )
     except (HarnessError, OSError) as exc:
         audit.error(f"{task_id}: cannot calculate diff scope: {exc}")
         return
@@ -17051,6 +17115,16 @@ def main() -> int:
                                 lifecycle,
                             )
                         if not task0072_idle_boundary:
+                            diff_target = None
+                            if (
+                                not active_task
+                                and not pending_draft
+                                and selected_task_id == last_terminal_task
+                            ):
+                                diff_target = canonical_terminal_commit(
+                                    selected_task,
+                                    {"ACCEPTED", "REJECTED"},
+                                )
                             validate_diff_scope(
                                 audit,
                                 selected_task,
@@ -17060,6 +17134,7 @@ def main() -> int:
                                     selected_task,
                                     protected_rules,
                                 ),
+                                target_commit=diff_target,
                             )
                 if args.summary:
                     print_summary(state, tasks, backlog_projection)
