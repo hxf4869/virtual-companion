@@ -56,3 +56,16 @@ virtual-companion:
       url: ${VC_DB_URL:}
       username: ${VC_DB_USERNAME:}
       password: ${VC_DB_PASSWORD:}
+  model-providers:
+    # Master switch for the approved live model providers {OpenAI Chat
+    # Completions, Anthropic Messages} (TASK-0035). Off by default: a plain
+    # runtime wires no live provider, so every external attempt fails closed at
+    # routing with no eligible deployment and no credential is ever read.
+    enabled: ${VC_MODEL_PROVIDERS_ENABLED:false}
+    # Directory holding Docker-style secret files (default /run/secrets on
+    # Linux deployments). Local/Windows development may instead set
+    # VC_MODEL_SECRET_<NAME> environment variables, where <NAME> is the
+    # upper-cased credential-secret reference with '-' replaced by '_'.
+    # The concrete approved deployments (provider-id / protocol /
+    # supplier-name / model / endpoint / credential-secret / ...) are supplied
+    # by the operator at deploy time, never committed here.

@@ -25,6 +25,29 @@
             <artifactId>virtual-companion-persistence</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Model runtime orchestration, authorization guard, routing and quota. -->
+        <dependency>
+            <groupId>com.virtualcompanion</groupId>
+            <artifactId>virtual-companion-modelruntime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Fail-closed safety gate consumed by the live invocation path. -->
+        <dependency>
+            <groupId>com.virtualcompanion</groupId>
+            <artifactId>virtual-companion-safety</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Approved live model suppliers: OpenAI Chat Completions + Anthropic Messages. -->
+        <dependency>
+            <groupId>com.virtualcompanion</groupId>
+            <artifactId>virtual-companion-model-openai</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.virtualcompanion</groupId>
+            <artifactId>virtual-companion-model-anthropic</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
