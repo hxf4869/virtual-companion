@@ -188,7 +188,7 @@ decisionGates:
           evidence: "Owner 指定参数；access 立即撤销严格度（jti 黑名单）留 TASK-0034 intake 复核，当前按 refresh 撤销加 access 自然过期理解"
   GATE-LIVE-MODEL-PROVIDER:
     kind: HARD_OWNER_DECISION
-    status: PENDING
+    status: APPROVED
     requiredFor:
       - TASK-0035
     requiredDecisions:
@@ -197,7 +197,32 @@ decisionGates:
       - 数据处理区域与供应商合同
       - 获批 Persona 内容
       - Technical Alpha 安全政策和外发边界
-    approval: null
+    approval:
+      approvedBy: repository-owner
+      approvedAt: "2026-08-07"
+      evidence: >-
+        Owner 在长线执行会话批准 GATE-LIVE-MODEL-PROVIDER，解锁 TASK-0035。获批供应商集
+        = {OpenAI, Anthropic} 两家主流供应商（TASK-0035 卡「唯一/单一真实供应商」措辞将在
+        intake 前经 Owner amendment 对齐）；具体模型/API 请求地址/供应商名称/凭据不硬编码，
+        由运行期配置手动指定；凭据经 Docker secret/密钥文件注入；数据区域由配置端点决定、
+        采用供应商标准开发者条款不签商务合同；Persona 采用 Gentle Listener 内容；Alpha
+        安全政策 7 条全部落在既有 Guard/Safety/Quota 约束。
+      decisionEvidence:
+        唯一真实模型供应商与具体模型:
+          value: "获批供应商集 = {OpenAI Chat Completions, Anthropic Messages}，两家均受支持；具体模型/API 请求地址/供应商名称/凭据不硬编码，由运行期配置手动指定"
+          evidence: "Owner 决策两家主流供应商均接入；不固定具体模型，支持自定义 url/供应商/API key/请求地址/模型，避免猜默认值"
+        凭据来源、保管和轮换方式:
+          value: "真实凭据经 Docker secret / 本机密钥文件（0600 权限）注入，读取即用；不进入仓库、日志或业务类型；轮换=替换密钥后重启进程"
+          evidence: "Owner 在闸门2 讨论选择 Docker secret/密钥文件保管；符合 TASK-0035 验收『凭据不进入仓库、日志或业务类型』"
+        数据处理区域与供应商合同:
+          value: "数据区域由配置的 API 请求地址（供应商端点）决定，采用供应商默认区域；合同使用供应商标准开发者条款（调用即接受），Alpha 不签商务合同，未来涉真实用户数据再升级 DPA"
+          evidence: "Owner 确认采用可配置请求地址；Alpha 内部受控测试数据量小，标准开发者条款足够，无需商务合同"
+        获批 Persona 内容:
+          value: "Gentle Listener（温柔倾听者）：冷静、沉思、低压的陪伴式角色，不模拟真人身份；默认 LISTEN、仅明确受邀转 DISCUSS；语气温和不评判、偏好开放式反思式提问；不提供医疗/法律/财务专业结论；拒绝生成有害/暴力/非法/自伤协助内容；不收集或复述敏感个人信息（真实姓名、联系方式、证件、住址）；不做真实性/身份声称"
+          evidence: "Owner 在闸门2 讨论批准该 Persona 内容（基于 TASK-0019 gentle-listener 骨架）"
+        Technical Alpha 安全政策和外发边界:
+          value: "① 外发仅允许 Registry 启用+获批部署+Authorization Guard 双授权通过；② SafetyGate 失败关闭，分类非 adequate 一律不 ALLOW/不外发，硬规则绝对优先；③ ZERO_LLM 固定降级、全故障不外发不伪造；④ Quota 每 owner 预留/释放、超限与 NO_CAPACITY 失败关闭；⑤ 生成单终态、取消/超时/撤销失败关闭、外发留 provider_attempt+usage+realtime_event 审计链；⑥ 凭据仅经批准渠道注入，不进仓库/日志/业务类型/OpenAPI/catalog；⑦ 不接未获批供应商、不公开注册、无真实支付、无 Beta 外放"
+          evidence: "Owner 在闸门2 讨论批准该 7 条安全政策，全部落在既有代码约束上（TASK-0020/0031/0032）"
 authorizationAmendments:
   task-0012-owner-formalize-task-0037:
     schemaVersion: 1
