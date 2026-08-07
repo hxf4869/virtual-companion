@@ -1,0 +1,40 @@
+{
+  "taskId": "TASK-0090",
+  "state": "ACCEPTED",
+  "title": "生成终态持久化与审计落库（SQL/持久化侧）",
+  "baseCommit": "fd3b6f37c3dafc62b825d3c6cc4b23f13c098070",
+  "headCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5",
+  "evidencePath": "docs/evidence/TASK-0090/evidence-pack.json",
+  "completed": [
+    "V15 迁移（service/platform/persistence/src/main/resources/db/migration/V15__provider_attempt_terminal_transitions.sql）：provider_attempt 审计表（复合主键+复合 FK+FORCE RLS owner_isolation，status CHECK 对齐 ProviderAttemptStatus 枚举 11 值，无凭据/内容列）+ 四个 SECURITY DEFINER 函数（record_provider_attempt、terminalize_generation、insert_generation_candidate、record_quota_release），全部 REVOKE PUBLIC + GRANT EXECUTE TO vc_api，模式对齐 V6-V10。",
+    "终态转移遵守 generation-states.yaml：FAILED_FINAL（from IN_PROGRESS/WAITING_FOR_CAPACITY/COMMITTING）、OUTPUT_BLOCKED（from FINAL_REVIEW）、COMPLETED_FALLBACK（from COMMITTING）；非法 from/已终态/未知 generation/直接 CANCELLED 全部失败关闭；CANCELLED 双跳保留走 V10 cancel_generation。",
+    "终态 realtime_event 与状态变更同一事务（INV-TX-001），事件类型与终态强匹配（INV-GEN-003：FAILED_FINAL→chat.failed、OUTPUT_BLOCKED→chat.blocked、COMPLETED_FALLBACK→chat.completed，禁止伪造 chat.completed）；append_realtime_event 对终态 generation 的拒绝保持不变。",
+    "insert_generation_candidate 提供 finalize 前置落库（INV-GEN-002 单终态候选唯一约束生效），终态 generation 拒绝新候选；record_quota_release 落 RELEASE 行（成功路径 reservation 保留交 finalize 原子 SETTLE）。",
+    "RLS 测试 40-43（infra/db/tests/）：provider_attempt 落库/跨租户拒绝/无凭据列、终态转移合法/非法/回滚、终态事件原子性 + resume TERMINAL_SNAPSHOT、candidate 落库 + finalize 端到端 + quota RELEASE——RLS 套件 43/43 全 PASS。",
+    "验证全绿（候选 e75df6b）：precheck 5 commands PASS（doctor 382436 checks）、Maven 冻结 offline argv BUILD SUCCESS（486/0/0）、harness unittest 239 OK、git diff --check 干净。R1 独立复核 PASS（0 blocking；8 条非阻塞 P2/P3 记录于 review-r1.md）。"
+  ],
+  "remaining": [
+    "TASK-0093 运行时编排侧（新会话执行）：send-generation controller/service、OwnershipTuple String↔bigint 组装映射、LiveInvocationRequest 组装、LiveModelInvoker.invoke 接线、LiveAttemptOutcome→GenerationState 全枚举终态映射、POST /api/v1/realtime/tickets + resume SSE HTTP 端点——消费本卡四个函数（record_provider_attempt 返回列名以实现为准 out_owner_user_id，非卡正文措辞 out_owner）。",
+    "chat.cancelled 终态事件原子写未覆盖：V10 cancel_generation 不写 realtime/quota，CANCELLED 路径的 chat.cancelled 落库需 TASK-0093 决策（新函数或组合调用）。",
+    "TASK-0091（provider_deployment 持久化供给）独立可并行；TASK-0092（H5 认证接线）依赖 TASK-0093 的 realtime/ticket HTTP 端点。"
+  ],
+  "knownRisks": [
+    "R1 P2 F-1：卡正文 API 契约写的 record_provider_attempt 返回列名 out_owner 与实现 out_owner_user_id 不一致（测试按实现断言）；TASK-0093 消费侧按实现列名编码（非阻塞）。",
+    "R1 P2 F-2：AC3 声明 FAILED_FINAL 合法 from 三态，41 号测试正向断言覆盖 2/3（缺 COMMITTING→FAILED_FINAL 正向断言；实现与 catalog 逐边核对一致，非阻塞）。",
+    "R1 P2 F-3：终态 realtime_event 以 stream_epoch=1/event_seq=0 默认落库（与 V7 finalize 既有模式一致），reset 场景与权威 epoch 不一致但不破坏 TERMINAL_SNAPSHOT（继承的技术债）。",
+    "harness unittest 环境注入：本机 git 默认分支 main 而测试 fixture 硬编码 master，验证时以 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch GIT_CONFIG_VALUE_0=master 注入后 239 OK（环境差异，非代码缺陷；已如实记录于 evidence）。",
+    "Maven 验证通道：本机 vc-maven-cache 卷为空，正式冻结 offline argv 前先在线预取依赖一次（BUILD SUCCESS）；RLS 容器首次并行运行偶发 shutdown，重试即 PASS（交接文档坑 10 同类）。"
+  ],
+  "nextAction": "TASK-0090（生成终态持久化与审计落库，SQL/持久化侧）ACCEPTED：V15 provider_attempt 表（FORCE RLS，无凭据/内容列）+ record_provider_attempt / terminalize_generation（FAILED_FINAL/OUTPUT_BLOCKED/COMPLETED_FALLBACK 终态转移 + 终态 realtime_event 原子写 INV-TX-001）/ insert_generation_candidate / record_quota_release SECURITY DEFINER 函数（仅授 vc_api）+ RLS 40-43 新增测试（RLS 43/43、Maven 486/0、harness unittest 239 OK、precheck 5 commands PASS）。后续（新会话）：TASK-0093 运行时编排侧（controller/service/终态映射/realtime HTTP 端点，消费本卡函数）→ TASK-0092（H5 认证接线）；TASK-0091（provider_deployment 持久化）与 0093 独立。",
+  "reviewers": [
+    {
+      "id": "task0090_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5",
+      "evidencePath": "docs/evidence/TASK-0090/review-r1.md",
+      "reason": "R1 PASS (0 blocking: no P0/P1, no ACCEPTANCE/INVARIANT violation) on candidate e75df6b. AC1-AC4 code+test support complete (RLS 40-43 real assertions); terminal transitions match generation-states.yaml; terminal realtime_event atomic with status + event-type matching (INV-TX-001/INV-GEN-003); FORCE RLS owner_isolation + SECURITY DEFINER + REVOKE PUBLIC/GRANT vc_api aligned with V6-V10; no credential/content columns; diff fully inside writeAllowlist, zero forbidden-path touches; five invariants not weakened. 8 non-blocking findings (3 P2, 5 P3) recorded; no fix batch required.",
+      "candidateTree": "29ca236221aa6edeeb77240f06b80cb4394fb27e"
+    }
+  ]
+}

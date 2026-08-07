@@ -460,3 +460,9 @@ tasks:
     taskCard: docs/tasks/TASK-0036-technical-alpha-acceptance.md
     evidence: docs/evidence/TASK-0036/evidence-pack.json
     handoff: docs/handoffs/TASK-0036.json
+  TASK-0090:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0090-generation-terminal-persistence.md
+    evidence: docs/evidence/TASK-0090/evidence-pack.json
+    handoff: docs/handoffs/TASK-0090.json
