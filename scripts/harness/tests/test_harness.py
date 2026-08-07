@@ -6725,6 +6725,54 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
                 audit.errors,
             )
 
+    def test_accepts_gate_approval_companion_edge(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(repository)
+            target = self.approve_gate(
+                repository,
+                "GATE-FIXTURE",
+                next_action="GATE-FIXTURE 已批准，将 TASK-1001 晋级为唯一 DRAFT",
+            )
+            tests_dir = repository / "scripts" / "harness" / "tests"
+            tests_dir.mkdir(parents=True, exist_ok=True)
+            (tests_dir / "companion_test.py").write_text(
+                "# gate approval companion\n", encoding="utf-8"
+            )
+            self.git(repository, "add", "--", ".")
+            self.git(repository, "commit", "-qm", "gate approval companion")
+            target = self.git(repository, "rev-parse", "HEAD")
+            result, audit = self.derive(repository, terminal, target)
+            self.assertEqual(target, result, audit.errors)
+
+    def test_rejects_gate_approval_companion_edge_with_extra_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(repository)
+            target = self.approve_gate(
+                repository,
+                "GATE-FIXTURE",
+                next_action="GATE-FIXTURE 已批准，将 TASK-1001 晋级为唯一 DRAFT",
+            )
+            tests_dir = repository / "scripts" / "harness" / "tests"
+            tests_dir.mkdir(parents=True, exist_ok=True)
+            (tests_dir / "companion_test.py").write_text(
+                "# gate approval companion\n", encoding="utf-8"
+            )
+            (repository / "extra.txt").write_text("extra\n", encoding="utf-8")
+            self.git(repository, "add", "--", ".")
+            self.git(repository, "commit", "-qm", "companion with extra path")
+            target = self.git(repository, "rev-parse", "HEAD")
+            result, audit = self.derive(repository, terminal, target)
+            self.assertIsNone(result)
+            self.assertTrue(
+                any(
+                    "each edge must add exactly one planning resolution" in error
+                    for error in audit.errors
+                ),
+                audit.errors,
+            )
+
     def test_accepts_no_tail_and_serial_rejected_superseded_edges(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
