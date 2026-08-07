@@ -60,6 +60,16 @@ class GenerationRecoveryTest {
     }
 
     @Test
+    void noCapacityRejectsNonNullReservationFailClosed() {
+        QuotaLedger ledger = provision(5);
+        QuotaReservation reservation = reserveOne(ledger);
+        GenerationRecovery recovery = new GenerationRecovery(ledger);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> recovery.recover(own(), RecoveryScenario.NO_CAPACITY, reservation));
+    }
+
+    @Test
     void allFailureReleasesAndEmitsReviewedSafetyResponse() {
         QuotaLedger ledger = provision(5);
         QuotaReservation reservation = reserveOne(ledger);
