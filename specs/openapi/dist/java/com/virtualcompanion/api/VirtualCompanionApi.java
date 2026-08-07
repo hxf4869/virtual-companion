@@ -55,4 +55,16 @@ public interface VirtualCompanionApi {
 
     /** List the source Evidence of a memory. */
     Void listMemoryEvidence();
+
+    /** Log in with internal-account credentials. */
+    AuthTokenResponse login();
+
+    /** Renew a session from a refresh token. */
+    AuthTokenResponse refresh();
+
+    /** Revoke a refresh session. */
+    LogoutResponse logout();
+
+    /** Create an internal account (ADMIN only). */
+    AccountResponse createInternalAccount();
 }

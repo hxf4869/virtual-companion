@@ -4,6 +4,14 @@ spring:
   threads:
     virtual:
       enabled: true
+  autoconfigure:
+    exclude:
+      # The runtime enables its own DataSource only when the auth subsystem is
+      # on (virtual-companion.auth.datasource-enabled=true) and injects
+      # credentials through an approved channel (VC_DB_* env / secrets). Keeping
+      # the auto DataSource excluded means the default context never demands a
+      # live database, and a misconfigured deploy fails fast instead of probing.
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
 
 management:
   endpoints:
@@ -22,3 +30,29 @@ virtual-companion:
     spring-boot-version: "@spring-boot.version@"
     spring-ai-version: "@spring-ai.version@"
     spring-modulith-version: "@spring-modulith.version@"
+  auth:
+    # Master switch for the self-hosted identity component. Off by default so a
+    # plain runtime context (tests, baseline) needs no secret and no database.
+    enabled: ${VC_AUTH_ENABLED:false}
+    # When true (and auth.enabled=true) the runtime wires a DataSource and the
+    # V14 SECURITY DEFINER identity repositories. Credentials come from env.
+    datasource-enabled: ${VC_AUTH_DATASOURCE_ENABLED:false}
+    # HMAC-SHA256 signing secret (>= 256 bits). Injected via env/secrets; never
+    # committed. An empty value fails closed at bean creation.
+    jwt-secret: ${VC_JWT_SECRET:}
+    access-token-ttl: ${VC_ACCESS_TOKEN_TTL:2h}
+    refresh-token-ttl: ${VC_REFRESH_TOKEN_TTL:7d}
+    issuer: ${VC_AUTH_ISSUER:virtual-companion}
+    # Alpha Origin allow-list (host-origin strings). Requests with an unknown
+    # Origin are rejected; a curl/server client without an Origin is unaffected.
+    cors-allowed-origins: ${VC_CORS_ALLOWED_ORIGINS:}
+    admin-seed:
+      # Platform-init ADMIN account. All three must be injected together; when
+      # blank the bootstrap seed is skipped. Never committed to the repository.
+      username: ${VC_ADMIN_USERNAME:}
+      password: ${VC_ADMIN_PASSWORD:}
+      display-name: ${VC_ADMIN_DISPLAY_NAME:Platform Administrator}
+    datasource:
+      url: ${VC_DB_URL:}
+      username: ${VC_DB_USERNAME:}
+      password: ${VC_DB_PASSWORD:}
