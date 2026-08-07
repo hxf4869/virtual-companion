@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0033
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -221,7 +221,21 @@ requiredInvariants:
   - INV-HARNESS-002
   - INV-HARNESS-003
   - INV-HARNESS-005
-humanApprovals: []
+humanApprovals:
+  - scope: task-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-07"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0033 以 loopback mock-server 实现 Anthropic Messages 非流与
+      SSE 离线 Adapter 合同。新增 service/adapters/model-anthropic（镜像 TASK-0011 OpenAI
+      adapter 单请求 Session、Codec、三段超时、终态唯一、迟到事件丢弃范式，仅替换为
+      Anthropic Messages 形状）与 service/tests/anthropic-messages-contract-tests 覆盖 14 项
+      requiredContractTests；根 pom 注册两模块。每 session 单 HttpClient.sendAsync、仅
+      ExternalAttemptBinding、脱敏、零真实外发、无重试或路由或业务状态真源。
+      model-routing-change 为 independentReview（非 humanApproval）保护路径，由独立 R1
+      复核。不读取真实 Anthropic 凭据或访问真实供应商，不触 catalog、contract、modelruntime
+      改动（ANTHROPIC_MESSAGES 已声明）。
 independentReview: required
 reviewers: []
 requiredCommands:
