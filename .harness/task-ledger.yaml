@@ -426,3 +426,10 @@ tasks:
     taskCard: docs/tasks/TASK-0031-entitlement-service-class-routing.md
     evidence: docs/evidence/TASK-0031/evidence-pack.json
     handoff: docs/handoffs/TASK-0031.json
+
+  TASK-0032:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0032-zero-llm-quota-failure-recovery.md
+    evidence: docs/evidence/TASK-0032/evidence-pack.json
+    handoff: docs/handoffs/TASK-0032.json

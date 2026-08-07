@@ -1,0 +1,75 @@
+{
+  "taskId": "TASK-0032",
+  "baseCommit": "a44817567d50365c2514785b179037522e6eb17b",
+  "headCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91",
+  "contextFingerprint": "cd3411f2ceff287a76d7a5a62ec998ae86b797b75ecb69605b71625f595b4430",
+  "reviewers": [
+    {
+      "id": "task0032_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "750244e78ec7fd83b805315ff3f11b39e1d8431a",
+      "evidencePath": "docs/evidence/TASK-0032/review-r1.md",
+      "reason": "R1 PASS (no P0/P1) on candidate 750244e. All 4 ACs met — AC1 per-scenario quota disposition (TIMEOUT/CANCELLED/ALL_FAILURE release; NO_CAPACITY none) verifiable via QuotaLedger.remaining after recovery; AC2 RecoveryOutcome carries original OwnershipTuple unchanged (stable generationId) and each scenario reaches exactly one RecoveryTerminal; AC3 ZERO_LLM creates no provider_attempt — RecoveryOutcome.providerAttemptCreated is structurally forced false by the compact constructor (rejects true) and the only factory hard-codes false, with no binding/providerAttemptId/selectedProviderId on the ZERO_LLM path; AC4 ALL_FAILURE/ZERO_LLM response is DeterministicSafetyResponse.ZERO_LLM_FALLBACK directly, never free text. INV-GEN-001/AUTH-001/COST-001 + fail-closed preserved; pom modelruntime->safety is acyclic (safety only depends on catalog). Two non-blocking P2 (NO_CAPACITY silent reservation leak; release additive inflation) plus three P3; P2s closed in fix batch.",
+      "candidateTree": "6675984a81833afaca3cf20ecdbf724c7834d60a",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 260, "hardLimitReached": false}
+    },
+    {
+      "id": "task0032_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91",
+      "evidencePath": "docs/evidence/TASK-0032/review-r2.md",
+      "reason": "R2 finding-closure PASS on fix-batch 828241e. F1 CLOSED — GenerationRecovery NO_CAPACITY throws IllegalArgumentException when priorReservation != null (fail-closed; first statement in branch, no partial effect; null path + exhaustive-enum tests unaffected; noCapacityRejectsNonNullReservationFailClosed proves it). F2 CLOSED — QuotaLedger tracks ceilingByOwner, provision sets both remaining and ceiling, release caps at min(ceiling, current+units); double-release cannot inflate (releaseCapsAtProvisionedCeiling: provision 3, reserve 1, release twice stays 3); legitimate single release unaffected. No new P0/P1 (one non-blocking P3 on ceiling-read atomicity under concurrent provision). ACs, invariants, and pom acyclicity unaffected. Maven 84/84 green.",
+      "candidateTree": "512f1dc54a1a75f4b30cd66ba2c704b58d7428ba",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 158, "hardLimitReached": false}
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0032",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "doctor 353729 checks PASS + precheck 5 commands PASS on clean fix-batch candidate 828241e (diff within frozen writeAllowlist incl modelruntime pom + routing; model-routing-change protected path satisfied; humanApprovals scope=task-authorization; context-lock valid).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures (PY_EXIT=0). Full harness unittest on clean candidate; test_doctor_accepts_current_task passes (worktree cleared of untracked review artifacts during candidate-state validation).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (QuotaLedger/GenerationRecovery/Recovery types + pom + tests).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0032 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Pre-closure doctor on staged terminal closure: candidate diff within frozen writeAllowlist; model-routing-change protected path satisfied; R1+R2 independent reviewers recorded; terminal metadata consistent; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91"
+    },
+    {
+      "command": "docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -e -pl service/modules/modelruntime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Eclipse Temurin 25: catalog + safety + modelruntime reactor 84 tests, 0 failures. New GenerationRecoveryTest 13 (4 scenarios + ZERO_LLM + stable generationId + unique terminal + no provider_attempt + fail-closed rejects + safety-constant response), QuotaLedgerTest 15 (incl release + ceiling-cap), DeterministicRouterTest 21 unchanged; fix batch (NO_CAPACITY throw + ceiling cap) verified green.",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91"
+    }
+  ]
+}
