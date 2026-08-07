@@ -10208,8 +10208,16 @@ def derive_idle_planning_checkpoint(
                 gate_next_action = str(child_state.get("nextAction", ""))
                 if gate_next is not None:
                     mentioned = set(re.findall(r"TASK-[0-9]{4,}", gate_next_action))
+                    required_for = gate.get("requiredFor")
+                    required_for = (
+                        set(required_for)
+                        if isinstance(required_for, list)
+                        else set()
+                    )
+                    allowed_next = {gate_next} | required_for
                     audit.require(
-                        mentioned == {gate_next},
+                        gate_next in mentioned
+                        and not (mentioned - allowed_next),
                         f"{label}: gate approval edge nextAction must identify "
                         f"only next promotable {gate_next}",
                     )

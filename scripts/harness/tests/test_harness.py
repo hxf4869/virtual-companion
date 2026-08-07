@@ -6773,6 +6773,25 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
                 audit.errors,
             )
 
+    def test_rejects_gate_approval_edge_next_action_extra_task(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(repository)
+            target = self.approve_gate(
+                repository,
+                "GATE-FIXTURE",
+                next_action=(
+                    "GATE-FIXTURE 已批准，将 TASK-1001 晋级，"
+                    "TASK-0099 涉及无关说明"
+                ),
+            )
+            result, audit = self.derive(repository, terminal, target)
+            self.assertIsNone(result)
+            self.assertTrue(
+                any("gate approval edge nextAction" in error for error in audit.errors),
+                audit.errors,
+            )
+
     def test_accepts_no_tail_and_serial_rejected_superseded_edges(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
