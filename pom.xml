@@ -28,8 +28,10 @@
         <module>service/adapters/model-fake</module>
         <module>service/adapters/model-failure</module>
         <module>service/adapters/model-openai</module>
+        <module>service/adapters/model-anthropic</module>
         <module>service/tests/model-protocol-contract-tests</module>
         <module>service/tests/openai-chat-completions-contract-tests</module>
+        <module>service/tests/anthropic-messages-contract-tests</module>
         <module>service/tests/generation-contract-tests</module>
         <module>service/apps/runtime</module>
     </modules>
