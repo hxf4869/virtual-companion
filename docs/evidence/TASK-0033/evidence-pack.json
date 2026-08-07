@@ -1,0 +1,65 @@
+{
+  "taskId": "TASK-0033",
+  "baseCommit": "cf29d26e9943dc80da2c35401e43c14f3945c827",
+  "headCommit": "0987f8b0372802cda2a59fba862361cf222ab64f",
+  "contextFingerprint": "c91d42b66d19fa7282d659d4d049f7966135278cb526d93d3d263d4d849cb46c",
+  "reviewers": [
+    {
+      "id": "task0033_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "0987f8b0372802cda2a59fba862361cf222ab64f",
+      "evidencePath": "docs/evidence/TASK-0033/review-r1.md",
+      "reason": "R1 PASS (no P0/P1/P2) on candidate 0987f8b. All 12 ACs pass with direct test evidence and all 14 requiredContractTests covered by 26 @Test methods across 4 classes; 8 invariants hold. Faithful mirror of TASK-0011 OpenAI adapter single-request Session/Codec/three-phase-timeout/single-terminal/late-fence/desensitization pattern with correct Anthropic Messages substitution (system top-level, x-api-key and anthropic-version headers, message_start/content_block_delta/message_delta/message_stop SSE sequence, end_turn and stop_sequence to STOP and max_tokens to LENGTH and tool_use to UNKNOWN, tools+tool_choice structured output). Write scope clean (21 files in writeAllowlist, no forbidden paths). Three non-blocking P3 (safeSum stream/non-stream divergence both safe; StructuredJson syntax-only validation per spec; SseDecoder strict id/retry rejection by design); no fix batch needed.",
+      "candidateTree": "c2669d533eac0b6e9e0d8fe0c630754c3cba89da",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 720, "hardLimitReached": false}
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0033",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "doctor 359497 checks PASS + paidFeatureCheck PASS + catalogDrift PASS + 5 precheck commands PASS on clean candidate 0987f8b (diff within frozen writeAllowlist incl model-anthropic adapter + anthropic-messages-contract-tests + root pom; model-routing-change protected path satisfied; humanApprovals scope=task-authorization; context-lock 82 inputs valid).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "0987f8b0372802cda2a59fba862361cf222ab64f"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "233 tests, 1 skipped, 0 failures (PY_EXIT=0). Full harness unittest on clean candidate; test_doctor_accepts_current_task passes (worktree cleared of untracked review-r1.md during candidate-state validation).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "0987f8b0372802cda2a59fba862361cf222ab64f"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (model-anthropic adapter 8 files + anthropic-messages-contract-tests 9 files + root pom).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "0987f8b0372802cda2a59fba862361cf222ab64f"
+    },
+    {
+      "command": "docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -e -pl service/tests/anthropic-messages-contract-tests -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Eclipse Temurin 25. Anthropic contract tests 26 (Boundary 7 + Failure 6 + Success 7 + TimeoutCancellation 6) covering all 14 requiredContractTests; dependency chain green (catalog 2 + safety 13 + modelruntime 84). Adapter implements single-request Session, ExternalAttemptBinding-only, three-phase timeout, single terminal, late-token fence, desensitization; correct Anthropic Messages protocol (system top-level, x-api-key/anthropic-version, message_start/content_block_delta/message_delta/message_stop SSE, stop_reason mapping, tools+tool_choice structured).",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "0987f8b0372802cda2a59fba862361cf222ab64f"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0033 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Pre-closure doctor on staged terminal closure: candidate diff within frozen writeAllowlist; model-routing-change protected path satisfied; R1 independent reviewer recorded; terminal metadata consistent; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "0987f8b0372802cda2a59fba862361cf222ab64f"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0033
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -237,7 +237,27 @@ humanApprovals:
       复核。不读取真实 Anthropic 凭据或访问真实供应商，不触 catalog、contract、modelruntime
       改动（ANTHROPIC_MESSAGES 已声明）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0033_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 0987f8b0372802cda2a59fba862361cf222ab64f
+    evidencePath: docs/evidence/TASK-0033/review-r1.md
+    reason: >-
+      R1 PASS (no P0/P1/P2) on candidate 0987f8b. All 12 ACs pass with direct
+      test evidence and all 14 requiredContractTests covered by 26 @Test methods
+      across 4 classes; 8 invariants hold. Faithful mirror of TASK-0011 OpenAI
+      adapter single-request Session/Codec/three-phase-timeout/single-terminal/
+      late-fence/desensitization pattern with correct Anthropic Messages
+      substitution. Write scope clean (21 files in writeAllowlist, no forbidden).
+      Three non-blocking P3 (safeSum stream/non-stream divergence both safe;
+      StructuredJson syntax-only per spec; SseDecoder strict id/retry rejection
+      by design); no fix batch needed.
+    candidateTree: c2669d533eac0b6e9e0d8fe0c630754c3cba89da
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 720
+      hardLimitReached: false
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0033
   - python -m unittest discover -s scripts/harness/tests -p test_*.py

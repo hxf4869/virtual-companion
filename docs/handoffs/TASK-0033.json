@@ -1,0 +1,35 @@
+{
+  "taskId": "TASK-0033",
+  "state": "ACCEPTED",
+  "baseCommit": "cf29d26e9943dc80da2c35401e43c14f3945c827",
+  "headCommit": "0987f8b0372802cda2a59fba862361cf222ab64f",
+  "evidencePath": "docs/evidence/TASK-0033/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task0033_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "0987f8b0372802cda2a59fba862361cf222ab64f",
+      "evidencePath": "docs/evidence/TASK-0033/review-r1.md",
+      "reason": "R1 PASS (no P0/P1/P2) on candidate 0987f8b. All 12 ACs pass with direct test evidence and all 14 requiredContractTests covered by 26 @Test methods across 4 classes; 8 invariants hold. Faithful mirror of TASK-0011 OpenAI adapter pattern with correct Anthropic Messages substitution (system top-level, x-api-key/anthropic-version, message_start/content_block_delta/message_delta/message_stop SSE, stop_reason mapping, tools+tool_choice structured). Three non-blocking P3; no fix batch needed.",
+      "candidateTree": "c2669d533eac0b6e9e0d8fe0c630754c3cba89da",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 720, "hardLimitReached": false}
+    }
+  ],
+  "completed": [
+    "service/adapters/model-anthropic implements ModelProtocolAdapter for ANTHROPIC_MESSAGES (/v1/messages): single HttpClient.sendAsync per session, ExternalAttemptBinding only (DeterministicSourceBinding -> UnsupportedBinding zero-network), three-phase timeout (connect/first-token/total), single terminal arbitration, late-token fence, desensitized toString/exceptions",
+    "AnthropicMessagesCodec maps system (top-level), messages (user/assistant), max_tokens, stream, tools+tool_choice; non-stream content[].text + stop_reason + usage{input_tokens,output_tokens}; SSE message_start(input_tokens)/content_block_delta(text)/message_delta(stop_reason+output_tokens)/message_stop; stop_reason end_turn|stop_sequence->STOP, max_tokens->LENGTH, tool_use->UNKNOWN",
+    "service/tests/anthropic-messages-contract-tests covers all 14 requiredContractTests via loopback 127.0.0.1:0 JDK HttpServer mock: non_stream/sse success, unicode+long text, usage mapping, stop reason mapping, 429/5xx, connect/first_token/total timeout, malformed event, cancellation, late token fence, structured output (26 @Test across 4 classes)",
+    "Root pom.xml registers the two new modules; dependency direction tests -> model-anthropic -> modelruntime -> catalog; Runtime classpath excludes the new adapter",
+    "R1 independent review PASS (model-routing-change C3) on candidate 0987f8b: 12 ACs pass, 14 requiredContractTests covered, 8 invariants hold, no P0/P1/P2",
+    "Candidate Maven 26 contract tests + catalog/safety/modelruntime dependency chain green; candidate precheck 359497 checks PASS; harness unittest 233 OK (1 skipped)"
+  ],
+  "remaining": [],
+  "knownRisks": [
+    "P3-001 safeSum overflow handling diverges: stream path caps totalTokens at Long.MAX_VALUE while non-stream requireUsage throws AnthropicCodecException; both safe, token counts never approach Long.MAX_VALUE in practice (AnthropicMessagesSession.safeSum vs AnthropicMessagesCodec.requireUsage)",
+    "P3-002 StructuredJson validation is JSON-syntax only (incl trailing-token rejection) not schema-shape; spec-compliant ('JSON syntax validation'); optional future object-type enforcement as defense-in-depth (AnthropicMessagesCodec.requireStructuredJson)",
+    "P3-003 SseDecoder rejects standard SSE id:/retry: fields (Anthropic does not use them); strict-by-design, acceptable for current Anthropic Messages contract (SseDecoder)",
+    "DAG frontier after TASK-0033 is TASK-0034 but it is blocked by GATE-IDENTITY-PROVIDER-SESSION (PENDING hard owner decision); longline pauses until Owner approves the gate"
+  ],
+  "nextAction": "TASK-0033 已 ACCEPTED。Anthropic Messages 离线 HTTP/SSE 合同已落地——service/adapters/model-anthropic 实现 /v1/messages 非流与 SSE Adapter（镜像 TASK-0011 单请求 Session、Codec、三段超时、终态唯一、late fence、脱敏；system 顶层、x-api-key 与 anthropic-version header、message_start/content_block_delta/message_delta/message_stop SSE 序列、stop_reason 映射、tools 与 tool_choice 结构化）加 service/tests/anthropic-messages-contract-tests 覆盖 14 项 requiredContractTests（loopback JDK HttpServer mock）；根 pom 注册两模块。Maven 26 合同测试加依赖链全绿、precheck PASS、harness 233 OK。model-protocol-contract 两个主协议（OPENAI 加 ANTHROPIC）均通过本地 mock-server。DAG 下一张 TASK-0034 因 GATE-IDENTITY-PROVIDER-SESSION PENDING 不可晋级，长线暂停待 Owner 硬决策闸门。"
+}
