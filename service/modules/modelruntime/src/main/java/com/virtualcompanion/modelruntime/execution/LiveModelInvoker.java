@@ -2,6 +2,9 @@ package com.virtualcompanion.modelruntime.execution;
 
 import com.virtualcompanion.catalog.ProviderAttemptStatus;
 import com.virtualcompanion.catalog.RouteDecisionStatus;
+import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshot;
+import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotId;
+import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore;
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationDecision;
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationGuard;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
@@ -48,6 +51,7 @@ public final class LiveModelInvoker {
 
     private final DeterministicRouter router;
     private final ExecutionAuthorizationGuard authorizationGuard;
+    private final AuthorizationSnapshotStore authorizationSnapshotStore;
     private final AdapterLocator adapterLocator;
     private final GenerationRecovery recovery;
     private final Map<ProviderId, String> supplierNames;
@@ -55,12 +59,15 @@ public final class LiveModelInvoker {
     public LiveModelInvoker(
             DeterministicRouter router,
             ExecutionAuthorizationGuard authorizationGuard,
+            AuthorizationSnapshotStore authorizationSnapshotStore,
             AdapterLocator adapterLocator,
             GenerationRecovery recovery,
             Map<ProviderId, String> supplierNames) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.authorizationGuard = Objects.requireNonNull(
                 authorizationGuard, "authorizationGuard must not be null");
+        this.authorizationSnapshotStore = Objects.requireNonNull(
+                authorizationSnapshotStore, "authorizationSnapshotStore must not be null");
         this.adapterLocator = Objects.requireNonNull(adapterLocator, "adapterLocator must not be null");
         this.recovery = Objects.requireNonNull(recovery, "recovery must not be null");
         this.supplierNames = Map.copyOf(supplierNames);
@@ -104,7 +111,25 @@ public final class LiveModelInvoker {
             return LiveAttemptOutcome.blockedByAuthorization(decision, outcome);
         }
 
-        // 2. Safety gate: only an adequate ALLOW releases an external attempt.
+        // 2. The selected deployment must be exactly the one the execution
+        //    snapshot authorized; otherwise a request authorized for provider Y
+        //    could be routed to provider X (INV-AUTH-001). Fail closed.
+        ProviderId providerId = Objects.requireNonNull(
+                decision.selectedProviderId(),
+                "external SELECTED decision must carry a provider id");
+        AuthorizationSnapshotId executionSnapshotId =
+                new AuthorizationSnapshotId(binding.executionAuthorizationSnapshotId());
+        Optional<AuthorizationSnapshot> executionSnapshot =
+                authorizationSnapshotStore.find(executionSnapshotId);
+        if (executionSnapshot.isEmpty()
+                || !executionSnapshot.get().providerId().equals(providerId)) {
+            RecoveryOutcome outcome = recovery.recover(
+                    decision.ownership(), RecoveryScenario.CANCELLED,
+                    decision.quotaReservation());
+            return LiveAttemptOutcome.blockedByAuthorization(decision, outcome);
+        }
+
+        // 3. Safety gate: only an adequate ALLOW releases an external attempt.
         SafetyVerdict verdict = SafetyGate.evaluate(
                 request.hardRuleViolations(), request.classifierReport());
         if (verdict != SafetyVerdict.ALLOW) {
@@ -114,10 +139,7 @@ public final class LiveModelInvoker {
             return LiveAttemptOutcome.blockedBySafety(decision, outcome);
         }
 
-        // 3. Resolve the approved adapter (fail-closed; never a guessed default).
-        ProviderId providerId = Objects.requireNonNull(
-                decision.selectedProviderId(),
-                "external SELECTED decision must carry a provider id");
+        // 4. Resolve the approved adapter (fail-closed; never a guessed default).
         final ModelProtocolAdapter adapter;
         final String supplierName;
         try {

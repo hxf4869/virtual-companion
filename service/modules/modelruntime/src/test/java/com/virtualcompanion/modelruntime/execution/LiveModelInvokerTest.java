@@ -60,7 +60,7 @@ class LiveModelInvokerTest {
     private static final OwnershipTuple OWNERSHIP =
             new OwnershipTuple("owner-1", "rel-1", "conv-1", "gen-1");
     private static final ProviderId PROVIDER = new ProviderId("openai-approved");
-    private static final ProviderId OTHER_PROVIDER = new ProviderId("anthropic-approved");
+    private static final ProviderId OTHER_PROVIDER = new ProviderId("openai-other");
     private static final ModelProtocolCapabilities CAPABILITIES =
             new ModelProtocolCapabilities(Set.of(
                     ModelProtocolCapabilities.Capability.STREAMING,
@@ -222,6 +222,8 @@ class LiveModelInvokerTest {
         assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
         assertEquals(0, harness.adapter.openCount());
         assertTrue(outcome.audits().isEmpty());
+        assertFalse(outcome.externalAttemptCreated(),
+                "a path that never transferred must not create a provider attempt");
         assertEquals(5L, quota.remaining("owner-1"));
     }
 
@@ -279,11 +281,47 @@ class LiveModelInvokerTest {
                         .realtimeEventType());
     }
 
+    @Test
+    void selectedProviderMustMatchAuthorizedSnapshotProvider() {
+        // The authorization snapshots authorize OTHER_PROVIDER (also admitted),
+        // but deterministic routing selects PROVIDER (openai-approved sorts
+        // before openai-other). The live path must fail closed instead of
+        // transferring through a provider the request was never authorized for.
+        Harness harness = harness(
+                false,
+                Scripts.success("world"),
+                Map.of(PROVIDER, "OpenAI", OTHER_PROVIDER, "OpenAI"),
+                false,
+                OTHER_PROVIDER);
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome.terminal());
+        assertEquals(0, harness.adapter.openCount());
+        assertTrue(outcome.audits().isEmpty());
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void quotaExhaustionDegradesToZeroLlmWithoutProviderAttempt() {
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
+        quota.provision("owner-1", 0);
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.ZERO_LLM_COMPLETED, outcome.terminal());
+        assertEquals(0, harness.adapter.openCount());
+        assertTrue(outcome.audits().isEmpty());
+        assertFalse(outcome.externalAttemptCreated());
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertEquals(0L, quota.remaining("owner-1"));
+    }
+
     private Harness harness(
             boolean denyExecution,
             Function<InvocationBinding, List<ModelProtocolEvent>> script,
             Map<ProviderId, String> supplierNames) {
-        return harness(denyExecution, script, supplierNames, false);
+        return harness(denyExecution, script, supplierNames, false, PROVIDER);
     }
 
     private Harness harness(
@@ -291,6 +329,15 @@ class LiveModelInvokerTest {
             Function<InvocationBinding, List<ModelProtocolEvent>> script,
             Map<ProviderId, String> supplierNames,
             boolean emptyLocator) {
+        return harness(denyExecution, script, supplierNames, emptyLocator, PROVIDER);
+    }
+
+    private Harness harness(
+            boolean denyExecution,
+            Function<InvocationBinding, List<ModelProtocolEvent>> script,
+            Map<ProviderId, String> supplierNames,
+            boolean emptyLocator,
+            ProviderId snapshotProvider) {
         quota.provision("owner-1", 5);
         ScriptedAdapter adapter = new ScriptedAdapter(
                 ModelProtocol.OPENAI_CHAT_COMPLETIONS, CAPABILITIES, script);
@@ -299,12 +346,22 @@ class LiveModelInvokerTest {
         ProviderRegistration registration = new ProviderRegistration(
                 PROVIDER, adapter.protocol(), CAPABILITIES, adapter);
         registry.register(registration);
+        if (!snapshotProvider.equals(PROVIDER)) {
+            // Also admit the snapshot's provider so the authorization guard
+            // passes and only the new provider-binding check must fail.
+            registry.register(new ProviderRegistration(
+                    snapshotProvider,
+                    adapter.protocol(),
+                    CAPABILITIES,
+                    new ScriptedAdapter(
+                            ModelProtocol.OPENAI_CHAT_COMPLETIONS, CAPABILITIES, script)));
+        }
 
         InMemoryAuthorizationSnapshotStore store = new InMemoryAuthorizationSnapshotStore();
-        store.put(snapshot("snap-req", AuthorizationStatus.ACTIVE));
+        store.put(snapshot("snap-req", AuthorizationStatus.ACTIVE, snapshotProvider));
         store.put(denyExecution
-                ? snapshot("snap-exec", AuthorizationStatus.WITHDRAWN)
-                : snapshot("snap-exec", AuthorizationStatus.ACTIVE));
+                ? snapshot("snap-exec", AuthorizationStatus.WITHDRAWN, snapshotProvider)
+                : snapshot("snap-exec", AuthorizationStatus.ACTIVE, snapshotProvider));
 
         ExecutionAuthorizationGuard guard = new ExecutionAuthorizationGuard(store, registry);
         DeterministicRouter router = new DeterministicRouter(registry, quota);
@@ -313,7 +370,7 @@ class LiveModelInvokerTest {
                 ? new InMemoryAdapterLocator(List.of())
                 : new InMemoryAdapterLocator(List.of(registration));
         LiveModelInvoker invoker = new LiveModelInvoker(
-                router, guard, locator, recovery, supplierNames);
+                router, guard, store, locator, recovery, supplierNames);
         return new Harness(adapter, invoker);
     }
 
@@ -358,11 +415,12 @@ class LiveModelInvokerTest {
                 42L);
     }
 
-    private static AuthorizationSnapshot snapshot(String id, AuthorizationStatus status) {
+    private static AuthorizationSnapshot snapshot(
+            String id, AuthorizationStatus status, ProviderId provider) {
         return new AuthorizationSnapshot(
                 new AuthorizationSnapshotId(id),
                 status,
-                PROVIDER,
+                provider,
                 REGION,
                 CONTRACT,
                 PURPOSE,
