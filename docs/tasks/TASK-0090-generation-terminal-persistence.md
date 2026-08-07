@@ -15,7 +15,7 @@ requiredSkillVersions:
   database-migration: "1.0.0"
 targetSkillVersions: {}
 baseCommit: fd3b6f37c3dafc62b825d3c6cc4b23f13c098070
-authorizationCommit: ""
+authorizationCommit: "a01932b5802f7459091bf04c373e05efaec8e5ea"
 contextFingerprint: 89c380043ff3fbc8dc2fc9fba905796521949f16c18cc5c781dee31266546ba4
 contextLock: docs/tasks/context/TASK-0090.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
