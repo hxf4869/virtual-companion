@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0035
+activeTaskCard: docs/tasks/TASK-0035-approved-live-model-provider.md
 lastAcceptedTask: TASK-0034
 lastAcceptedHandoff: docs/handoffs/TASK-0034.json
 lastTerminalTask: TASK-0034
 lastTerminalHandoff: docs/handoffs/TASK-0034.json
-nextAction: TASK-0034（成熟身份组件）ACCEPTED：V14 身份账户/refresh token/审计迁移 + Spring Security JWT（Bearer access 2h + refresh 7d 服务端有状态撤销）+ 登录/刷新/登出/管理员建号端点 + user_id→owner_user_id 接 RLS + 最小 H5 登录 + OpenAPI 契约；RLS 39/39、Maven runtime 70 测试、vitest 93、precheck PASS。nextPromotable TASK-0035（真实供应商接线）依赖本卡 ACCEPTED；TASK-0035 卡「唯一/单一真实供应商」措辞与获批供应商集 {OpenAI, Anthropic} 冲突，intake 前需 Owner amendment。另：harness 单测套件存在 gate 批准环节引入的既有失效测试（test_backlog_draft_reconstructs_base_git_snapshot），Owner 已授权修复，作为 post-closure Owner 授权 harness-change 落地后套件转绿。
+nextAction: TASK-0035（获批真实模型供应商 {OpenAI, Anthropic} 受控接入）READY 授权，实施中：运行期配置驱动的获批部署供给（具体模型/API 请求地址/供应商名称/凭据由运行期配置手动指定、不硬编码）、外发路径经既有 Registry/Authorization Guard/SafetyGate adequate/Quota 双授权校验、真实外发故障/撤销/配额/安全失败全部关闭且不伪造、凭据经 Docker secret/密钥文件注入不落仓库/日志/业务类型、审计链 provider_attempt+usage+realtime_event。baseCommit=ef3891c。Owner amendment task-0035-owner-align-provider-set 对齐获批两家（READY 阶段应用）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
