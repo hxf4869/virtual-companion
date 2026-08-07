@@ -1,0 +1,102 @@
+{
+  "taskId": "TASK-0035",
+  "baseCommit": "ef3891c3fb90dde886cd9e9268bd11504037fffd",
+  "headCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6",
+  "contextFingerprint": "60ef5dfed42d00e38b8ec68679e707d3ee052832c47ae81ebf2883f8eaff3028",
+  "reviewers": [
+    {
+      "id": "task0035_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "97a73ad46a9d3cf53555b9fb9be41e77ece0488e",
+      "evidencePath": "docs/evidence/TASK-0035/review-r1.md",
+      "reason": "R1 PASS (no P0/P1) on candidate 97a73ad. AC1-6 all met — AC1/AC4 approved-only outbound + credentials never in repository/logs/business types/OpenAPI/catalog (ProviderAttemptAudit carries identity+outcome only, Config toString redacts, zero logging, only test fixture sk-live-token); AC2 runtime-config-driven provisioning with fail-closed unknown protocol/missing credential/missing anthropic params and unapproved providers unreachable; AC3 live path behind dual-snapshot authorization guard + adequate SafetyGate ALLOW + quota reservation, every failure/cancel/timeout/safety/authorization/quota path fail-closed with unique terminal and quota release, ZERO_LLM never creates a provider_attempt; AC6 unapproved/non-adequate/no-capacity all rejected (unit-verifiable); AC5 Maven modelruntime 102 + runtime 85 + harness 239 OK + openapi validate/diff PASS + precheck 5 commands PASS + git diff --check clean. 25 files all in writeAllowlist, zero forbidden-path touches, zero modification of existing Registry/Guard/Router/Recovery/Quota/adapters. Three P2 (externalAttemptCreated truthfulness; authorized-provider binding; blank hard-rule input) plus three P3; P2s closed in fix batch 66dc257.",
+      "candidateTree": "d234a456ed6a7ed9f603d457016d452c76356b62",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 1080, "hardLimitReached": false}
+    },
+    {
+      "id": "task0035_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6",
+      "evidencePath": "docs/evidence/TASK-0035/review-r2.md",
+      "reason": "R2 finding-closure PASS on fix batch 66dc257. All 7 R1 findings CLOSED: P2#1 externalAttemptCreated now reflects a real provider_attempt (non-empty audit) with no-fabrication assertion; P2#2 LiveModelInvoker verifies execution snapshot providerId equals the selected deployment before transfer (INV-AUTH-001), failing closed with new selectedProviderMustMatchAuthorizedSnapshotProvider test green; P2#3 LiveInvocationRequest rejects blank hard-rule ids so a bad input cannot escape invoke() and orphan quota; P3#3 quota-exhaustion ZERO_LLM degradation covered by new test (provision 0 + simulated -> ZERO_LLM_COMPLETED, no attempt); P3#4 @Valid cascades into Deployment validation. P3#1 (CHAT_COMPLETED projection) and P3#2 (no production call site yet) closed as knownRisks in Handoff. No new P0/P1 in delta; provider-binding check adds no new TOCTOU beyond the guard's existing semantics; wiring order (binding before safety) both fail-closed with no behavior dependency. Maven modelruntime 104 tests green on fix batch.",
+      "candidateTree": "7b0c50e7d02dc13ac24e5bf2f107664de888a39e",
+      "budget": {"maximumMinutes": 15, "elapsedSeconds": 498, "hardLimitReached": false}
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0035",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "doctor 374225 checks PASS + precheck 5 commands (doctor/catalogValidate/catalogDrift/paidFeatureCheck/betaRosterGate) PASS on clean candidate 66dc257; model-routing-change protected path satisfied via independentReview; humanApprovals scope=task-authorization; context-lock valid; diff within frozen writeAllowlist.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    },
+    {
+      "command": "wsl.exe -d Ubuntu-24.04 -u root -- bash -c 'docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -o -pl service/apps/runtime -am test'",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "BUILD SUCCESS on Eclipse Temurin 25: catalog + safety + modelruntime (104 tests, incl 17 new execution tests) + persistence (39) + runtime (85, incl 15 new modelproviders tests) — 0 failures. New LiveModelInvokerTest 15 (success/denied authorization/safety block/provider failure/rate-limit/timeout/cancel/ZERO_LLM/no-capacity/missing adapter/structured output/malformed stream/realtime event mapping/authorized-provider binding/quota-exhaustion ZERO_LLM), InMemoryAdapterLocatorTest 5, modelproviders tests 15.",
+      "environment": "WSL2 Ubuntu-24.04; Eclipse Temurin 25, Maven 3.9",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Ephemeral pgvector 0.8.5-pg18 container applied all V1-V14 Flyway migrations and ran 39 SQL fail-closed tests: ALL TESTS PASS. Cross-tenant isolation, authorization-snapshot isolation, provider EOS cannot complete, realtime RLS, memory and identity suites all green.",
+      "environment": "WSL2 Ubuntu-24.04; pgvector/pgvector:0.8.5-pg18@sha256:12a379b4...",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI validation PASS on unchanged specs/openapi/virtual-companion.yaml (no new endpoints or error codes; credentials never appear in OpenAPI).",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "OpenAPI drift check PASS — no drift between the contract and generated outputs.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Full harness unit+integration suite: 239 tests, 1 skipped, 0 failures (512.7s). Worktree cleared of untracked artifacts during candidate-state validation.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "No whitespace errors across the candidate diff (execution + modelproviders + pom + application.yaml).",
+      "environment": "Windows 11 Pro",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0035 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Pre-closure doctor on staged terminal closure: 434650 checks PASS; candidate diff within frozen writeAllowlist; model-routing-change protected path satisfied via independentReview (R1+R2 recorded); terminal metadata consistent; context-lock valid.",
+      "environment": "Windows 11 Pro; Python 3.12",
+      "verifiedCommit": "66dc2576861e30d263c351bdf7031f193fa51bf6"
+    }
+  ]
+}

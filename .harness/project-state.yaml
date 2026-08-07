@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0035
-activeTaskCard: docs/tasks/TASK-0035-approved-live-model-provider.md
-lastAcceptedTask: TASK-0034
-lastAcceptedHandoff: docs/handoffs/TASK-0034.json
-lastTerminalTask: TASK-0034
-lastTerminalHandoff: docs/handoffs/TASK-0034.json
-nextAction: TASK-0035（获批真实模型供应商 {OpenAI, Anthropic} 受控接入）READY 授权，实施中：运行期配置驱动的获批部署供给（具体模型/API 请求地址/供应商名称/凭据由运行期配置手动指定、不硬编码）、外发路径经既有 Registry/Authorization Guard/SafetyGate adequate/Quota 双授权校验、真实外发故障/撤销/配额/安全失败全部关闭且不伪造、凭据经 Docker secret/密钥文件注入不落仓库/日志/业务类型、审计链 provider_attempt+usage+realtime_event。baseCommit=ef3891c。Owner amendment task-0035-owner-align-provider-set 对齐获批两家（READY 阶段应用）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0035
+lastAcceptedHandoff: docs/handoffs/TASK-0035.json
+lastTerminalTask: TASK-0035
+lastTerminalHandoff: docs/handoffs/TASK-0035.json
+nextAction: TASK-0035（获批真实模型供应商 {OpenAI, Anthropic} 受控接入）ACCEPTED：运行期配置驱动获批部署供给（ModelProviderProperties + ProviderSecretReader Docker secret/密钥文件注入 + ApprovedModelProviderProvisioner）+ 真实外发路径 LiveModelInvoker（Registry/AuthorizationGuard 双授权/SafetyGate adequate/Quota 全链，失败/撤销/配额/安全全关闭不伪造，ZERO_LLM 固定降级）+ provider_attempt+usage+realtime_event 审计链；Maven modelruntime 104 + runtime 85、RLS 39/39、harness 239 OK、openapi validate/diff、precheck PASS。nextPromotable TASK-0036（Technical Alpha 总验收）依赖本卡 ACCEPTED。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-07'
+updatedAt: '2026-08-08'

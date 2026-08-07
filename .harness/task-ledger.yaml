@@ -447,3 +447,10 @@ tasks:
     taskCard: docs/tasks/TASK-0034-identity-component-internal-accounts.md
     evidence: docs/evidence/TASK-0034/evidence-pack.json
     handoff: docs/handoffs/TASK-0034.json
+
+  TASK-0035:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0035-approved-live-model-provider.md
+    evidence: docs/evidence/TASK-0035/evidence-pack.json
+    handoff: docs/handoffs/TASK-0035.json

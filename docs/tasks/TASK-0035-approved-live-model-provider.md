@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0035
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -210,7 +210,23 @@ humanApprovals:
       全部落在既有 Guard/Safety/Quota 约束）。外发仅获批部署可外发、凭据不进仓库/日志/
       业务类型。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0035_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 97a73ad46a9d3cf53555b9fb9be41e77ece0488e
+    evidencePath: docs/evidence/TASK-0035/review-r1.md
+    reason: R1 PASS (no P0/P1) on candidate 97a73ad. AC1-6 all met; 25 files all in writeAllowlist, zero forbidden-path touches, zero modification of existing Registry/Guard/Router/Recovery/Quota/adapters. Three P2 (externalAttemptCreated truthfulness; authorized-provider binding; blank hard-rule input) plus three P3; P2s closed in fix batch 66dc257.
+    candidateTree: d234a456ed6a7ed9f603d457016d452c76356b62
+    budget: {maximumMinutes: 15, elapsedSeconds: 1080, hardLimitReached: false}
+  - id: task0035_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 66dc2576861e30d263c351bdf7031f193fa51bf6
+    evidencePath: docs/evidence/TASK-0035/review-r2.md
+    reason: R2 finding-closure PASS on fix batch 66dc257. All 7 R1 findings CLOSED (2 as knownRisks); no new P0/P1; provider-binding check adds no new TOCTOU; Maven modelruntime 104 tests green.
+    candidateTree: 7b0c50e7d02dc13ac24e5bf2f107664de888a39e
+    budget: {maximumMinutes: 15, elapsedSeconds: 498, hardLimitReached: false}
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0035
   - bash -c "cd service && mvn -o -pl service/apps/runtime -am test"
