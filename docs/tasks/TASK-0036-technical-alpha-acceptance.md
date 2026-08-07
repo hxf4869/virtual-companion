@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0036
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -288,7 +288,18 @@ humanApprovals:
       合成 PASS 替代真实验收。写入仅限任务卡、Context Lock、docs/evidence/TASK-0036/**、
       docs/handoffs/TASK-0036.json、project-state、task-ledger。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0036_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 5507bce2a2f8e025b866465455d4f0007aed1690
+    evidencePath: docs/evidence/TASK-0036/review-r1.md
+    reason: >-
+      R1 PASS (no P0/P1, no ACCEPTANCE/INVARIANT violation). AC1-5 all met;
+      TASK-0034 historical harness FAIL truthfully disclosed; TASK-0026 P2-1/P2-2
+      truthfully marked non-blocking deferral; forbidden capabilities stay off;
+      missing perf baseline truthfully N/A. 3 non-blocking P3 wording-precision
+      notes (recorded in knownRisks, no fix batch).
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0036
   - wsl.exe -d Ubuntu-24.04 -u root -- bash -c 'docker run --rm -v /mnt/g/ai/hxf/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -o -pl service/apps/runtime -am test'
