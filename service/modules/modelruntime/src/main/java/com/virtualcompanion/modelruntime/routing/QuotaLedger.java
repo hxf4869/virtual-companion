@@ -76,4 +76,35 @@ public final class QuotaLedger {
         });
         return Optional.ofNullable(outcome.get());
     }
+
+    /**
+     * Release (restore) {@code units} back to an owner's budget.
+     *
+     * <p>The restore is atomic per owner (via {@link ConcurrentHashMap#compute}). Unknown
+     * owners are left absent and the method returns {@code 0} — release is a no-op for an
+     * owner with no budget, mirroring the fail-closed symmetry of {@link #reserve}.
+     *
+     * @return the owner's remaining budget after the release, or {@code 0} when unknown
+     * @throws IllegalArgumentException if {@code units} is negative
+     */
+    public long release(String ownerUserId, long units) {
+        Objects.requireNonNull(ownerUserId, "ownerUserId must not be null");
+        if (units < 0) {
+            throw new IllegalArgumentException("units must not be negative");
+        }
+        if (units == 0) {
+            return remainingByOwner.getOrDefault(ownerUserId, 0L);
+        }
+        java.util.concurrent.atomic.AtomicLong newRemaining = new java.util.concurrent.atomic.AtomicLong();
+        remainingByOwner.compute(ownerUserId, (key, current) -> {
+            if (current == null) {
+                newRemaining.set(0L);
+                return null;
+            }
+            long after = current + units;
+            newRemaining.set(after);
+            return after;
+        });
+        return newRemaining.get();
+    }
 }

@@ -105,4 +105,52 @@ class QuotaLedgerTest {
         ledger.provision("owner-1", 1L);
         assertThrows(IllegalArgumentException.class, () -> ledger.reserve("owner-1", -1L));
     }
+
+    @Test
+    void releaseRestoresReservedBudget() {
+        QuotaLedger ledger = new QuotaLedger();
+        ledger.provision("owner-1", 5L);
+        ledger.reserve("owner-1", 2L).orElseThrow();
+
+        long remaining = ledger.release("owner-1", 2L);
+
+        assertEquals(5L, remaining);
+        assertEquals(5L, ledger.remaining("owner-1"));
+    }
+
+    @Test
+    void releaseOnUnknownOwnerIsNoOpReturningZero() {
+        QuotaLedger ledger = new QuotaLedger();
+
+        long remaining = ledger.release("ghost", 1L);
+
+        assertEquals(0L, remaining);
+        assertEquals(0L, ledger.remaining("ghost"));
+    }
+
+    @Test
+    void releaseZeroUnitsIsNoOp() {
+        QuotaLedger ledger = new QuotaLedger();
+        ledger.provision("owner-1", 4L);
+
+        assertEquals(4L, ledger.release("owner-1", 0L));
+    }
+
+    @Test
+    void releaseRejectsNegativeUnits() {
+        QuotaLedger ledger = new QuotaLedger();
+        ledger.provision("owner-1", 1L);
+        assertThrows(IllegalArgumentException.class, () -> ledger.release("owner-1", -1L));
+    }
+
+    @Test
+    void reserveThenReleaseThenReserveIsCyclicallyStable() {
+        QuotaLedger ledger = new QuotaLedger();
+        ledger.provision("owner-1", 2L);
+
+        assertTrue(ledger.reserve("owner-1", 2L).isPresent());
+        ledger.release("owner-1", 2L);
+        assertTrue(ledger.reserve("owner-1", 2L).isPresent());
+        assertEquals(0L, ledger.remaining("owner-1"));
+    }
 }
