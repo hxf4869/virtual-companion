@@ -1,0 +1,30 @@
+{
+  "taskId": "TASK-0032",
+  "state": "ACCEPTED",
+  "title": "最小 ZERO_LLM、额度释放与全故障恢复",
+  "baseCommit": "a44817567d50365c2514785b179037522e6eb17b",
+  "headCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91",
+  "candidateCommit": "828241e13f74f8527aa4740d7f031a3484ab6c91",
+  "candidateTree": "512f1dc54a1a75f4b30cd66ba2c704b58d7428ba",
+  "evidencePath": "docs/evidence/TASK-0032/evidence-pack.json",
+  "completed": [
+    "service/modules/modelruntime/routing: QuotaLedger.release — atomic per-owner restore (ConcurrentHashMap.compute) capped at the provisioned ceiling (ceilingByOwner), so over-release/repeated release cannot inflate the balance; unknown owner is a no-op returning 0 (fail-closed symmetry with reserve).",
+    "RecoveryScenario (TIMEOUT/CANCELLED/NO_CAPACITY/ALL_FAILURE), QuotaDisposition (RELEASED/NONE), RecoveryTerminal (5 routing-level unique terminals), RecoveryOutcome — providerAttemptCreated is structurally forced false by the compact constructor (rejects true), so recovery/ZERO_LLM can never produce an external provider_attempt.",
+    "GenerationRecovery.recover: TIMEOUT/CANCELLED/ALL_FAILURE release the reserved quota (RELEASED); NO_CAPACITY is NONE and fail-closed-rejects a non-null prior reservation; each scenario reaches exactly one terminal. GenerationRecovery.completeZeroLlm: emits DeterministicSafetyResponse.ZERO_LLM_FALLBACK, releases any prior provider reservation, ZERO_LLM itself is free, no provider_attempt. ALL_FAILURE uses the same reviewed safety constant (never free text).",
+    "modelruntime pom gains a virtual-companion-safety dependency (acyclic: safety depends only on catalog), so the recovery references the safety-reviewed deterministic constant at the type level rather than free text.",
+    "JUnit: GenerationRecoveryTest 13 + QuotaLedgerTest release/ceiling tests. Docker Maven Temurin-25 BUILD SUCCESS, modelruntime reactor 84 tests, 0 failures. R1 PASS (no P0/P1); one fix batch closed R1 F-01 (NO_CAPACITY fail-closed) + F-02 (release ceiling cap); R2 finding-closure PASS."
+  ],
+  "remaining": [
+    "Wire GenerationRecovery into the live generation lifecycle: map each RecoveryTerminal to its GenerationState terminal (ZERO_LLM_COMPLETED -> COMPLETED_FALLBACK; RELEASED_ON_TIMEOUT/ALL_FAILURE_BLOCKED -> FAILED_FINAL/OUTPUT_BLOCKED; RELEASED_ON_CANCEL -> CANCELLED; NO_CAPACITY_TERMINAL -> FAILED_FINAL) and persist generation_route_decision rows. This is a subsequent runtime/persistence task.",
+    "Persist the QuotaLedger (in-memory synthetic) against quota_ledger_entry (TASK-0018) once a persistence layer for routing is introduced; the ceiling-cap and atomic reserve/release semantics carry over.",
+    "TASK-0033 (next promotable, deps TASK-0011 + TASK-0013-via-TASK-0081 satisfied): Anthropic Messages offline HTTP/SSE contract."
+  ],
+  "knownRisks": [
+    "R1 P3 F3: GenerationRecovery releases quota against the reservation's ownerUserId but never cross-checks it against the outcome ownership (caller invariant only; not a bug in current single-owner usage; TASK-0031's RoutingRequest owner cross-check guards the upstream request).",
+    "R1 P3 F5 / card footnote: QuotaDisposition publishes only RELEASED/NONE; the AC's '或结算' (SETTLE/consume-on-success) is the finalization path (TASK-0018 finalize_generation), intentionally out of scope for failure recovery.",
+    "R2 P3 N1: the ceilingByOwner.get inside release's compute is not atomic with a concurrent provision refresh; the dangerous direction (inflation) is still bounded by the read ceiling, there are no concurrent callers in Technical Alpha, and this is strictly stricter than the pre-fix uncapped behavior.",
+    "RecoveryOutcome.providerAttemptCreated is a boolean invariant (always false) rather than a sealed-type distinction; a future refactor could model the no-provider-attempt guarantee via the type system instead.",
+    "The recovery is not yet wired to ExecutionAuthorizationGuard/adapter execution (it produces outcomes only); integration is a later task."
+  ],
+  "nextAction": "TASK-0032 已 ACCEPTED。最小 ZERO_LLM、额度释放与全故障恢复已落地——service/modules/modelruntime/routing 扩展 QuotaLedger.release（原子归还、cap at provisioned ceiling）+ 新增 RecoveryScenario/QuotaDisposition/RecoveryTerminal/RecoveryOutcome（providerAttemptCreated 结构强制 false）/GenerationRecovery；4 失败场景（TIMEOUT/CANCELLED/NO_CAPACITY/ALL_FAILURE）正确释放额度、保持稳定 generationId 与唯一终态；ZERO_LLM 完成路径无 provider_attempt 消费 DeterministicSafetyResponse、全故障不自由文本。modelruntime pom 新增 safety 依赖（acyclic）。Maven 84/84、precheck PASS、harness 233 OK。DAG 下一张可晋级卡 TASK-0033（deps TASK-0011+TASK-0013 via TASK-0081 满足）。"
+}

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0032
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -223,7 +223,29 @@ humanApprovals:
       Provider 或付费；保持稳定 generationId 与唯一终态、不绕过最终安全复核。model-routing-change 为
       independentReview（非 humanApproval）保护路径，由独立 R1 复核。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0032_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 750244e78ec7fd83b805315ff3f11b39e1d8431a
+    evidencePath: docs/evidence/TASK-0032/review-r1.md
+    reason: R1 PASS (no P0/P1) on candidate 750244e. All 4 ACs met — per-scenario quota disposition (TIMEOUT/CANCELLED/ALL_FAILURE release; NO_CAPACITY none); stable generationId (OwnershipTuple carried unchanged) + unique terminal per scenario; ZERO_LLM creates no provider_attempt (RecoveryOutcome.providerAttemptCreated structurally forced false by compact constructor, only factory hard-codes false, no binding on ZERO_LLM path); all-failure/ZERO_LLM response is DeterministicSafetyResponse.ZERO_LLM_FALLBACK directly, never free text. INV-GEN-001/AUTH-001/COST-001 + fail-closed preserved; pom modelruntime->safety acyclic. Two non-blocking P2 (NO_CAPACITY silent reservation leak; release additive inflation) plus three P3; P2s closed in fix batch.
+    candidateTree: 6675984a81833afaca3cf20ecdbf724c7834d60a
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 260
+      hardLimitReached: false
+  - id: task0032_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 828241e13f74f8527aa4740d7f031a3484ab6c91
+    evidencePath: docs/evidence/TASK-0032/review-r2.md
+    reason: R2 finding-closure PASS on fix-batch 828241e. F1 CLOSED (NO_CAPACITY throws on non-null prior reservation, fail-closed, no partial effect, null path unaffected, test proves it). F2 CLOSED (QuotaLedger tracks ceilingByOwner, release caps at min(ceiling, current+units), double-release cannot inflate, legitimate single release unaffected). No new P0/P1 (one non-blocking P3 on ceiling-read atomicity). ACs, invariants, pom acyclicity unaffected. Maven 84/84 green.
+    candidateTree: 512f1dc54a1a75f4b30cd66ba2c704b58d7428ba
+    budget:
+      maximumMinutes: 15
+      elapsedSeconds: 158
+      hardLimitReached: false
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0032
   - python -m unittest discover -s scripts/harness/tests -p test_*.py
