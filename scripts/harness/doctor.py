@@ -10008,6 +10008,60 @@ def _require_regular_git_blob(
     )
 
 
+GATE_COMPANION_EXACT_PATHS = {"scripts/harness/doctor.py"}
+GATE_COMPANION_PATH_PREFIXES = ("scripts/harness/tests/", "docs/evidence/")
+
+
+def _is_gate_approval_companion_edge(
+    parent_gates: dict[str, Any],
+    paths: list[str],
+    parent_state: dict[str, Any],
+    child_state: dict[str, Any],
+    parent_backlog: dict[str, Any],
+    child_backlog: dict[str, Any],
+) -> bool:
+    """Accept bounded companion commits that follow a gate approval idle edge.
+
+    The gate-approval bootstrap is delivered as several single-parent commits:
+    the approval edge itself, then test fixes / gate-edge coverage / the R1
+    review record, and later a harness repair. Without accepting these
+    companion commits as part of the gate-approval idle history, no later
+    DRAFT card can anchor its baseCommit to the tail of that chain. A
+    companion commit must keep the repository idle and touch only harness
+    governance / evidence paths; it must not change gate status, resolutions,
+    or the static task contract.
+    """
+    if not any(
+        isinstance(gate, dict)
+        and str(gate.get("status", "")) == "APPROVED"
+        for gate in parent_gates.values()
+    ):
+        return False
+    if not paths:
+        return False
+    if not all(
+        path in GATE_COMPANION_EXACT_PATHS
+        or any(path.startswith(prefix) for prefix in GATE_COMPANION_PATH_PREFIXES)
+        for path in paths
+    ):
+        return False
+    static_parent = dict(parent_state)
+    static_child = dict(child_state)
+    static_parent.pop("nextAction", None)
+    static_child.pop("nextAction", None)
+    if static_parent != static_child:
+        return False
+    if child_state.get("activeTask") is not None or child_state.get("activeTaskCard") is not None:
+        return False
+    if parent_backlog.get("tasks") != child_backlog.get("tasks"):
+        return False
+    if parent_backlog.get("decisionGates") != child_backlog.get("decisionGates"):
+        return False
+    if parent_backlog.get("resolutions") != child_backlog.get("resolutions"):
+        return False
+    return True
+
+
 def derive_idle_planning_checkpoint(
     audit: Audit,
     terminal_commit: str,
@@ -10161,6 +10215,18 @@ def derive_idle_planning_checkpoint(
                     )
                 expected_parent = commit
                 continue
+            if len(added) == 0 and len(approved_gate_ids) == 0:
+                gate_companion_ok = _is_gate_approval_companion_edge(
+                    parent_gates,
+                    paths,
+                    parent_state,
+                    child_state,
+                    parent_backlog,
+                    child_backlog,
+                )
+                if gate_companion_ok:
+                    expected_parent = commit
+                    continue
             audit.require(
                 len(added) == 1,
                 f"{label}: each edge must add exactly one planning resolution; "
