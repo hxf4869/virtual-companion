@@ -21,6 +21,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Safety owns the deterministic ZERO_LLM fallback response consumed by routing recovery. -->
+        <dependency>
+            <groupId>com.virtualcompanion</groupId>
+            <artifactId>virtual-companion-safety</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
