@@ -440,3 +440,10 @@ tasks:
     taskCard: docs/tasks/TASK-0033-anthropic-messages-offline-contract.md
     evidence: docs/evidence/TASK-0033/evidence-pack.json
     handoff: docs/handoffs/TASK-0033.json
+
+  TASK-0034:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0034-identity-component-internal-accounts.md
+    evidence: docs/evidence/TASK-0034/evidence-pack.json
+    handoff: docs/handoffs/TASK-0034.json

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0034
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -246,7 +246,17 @@ humanApprovals:
       Bearer access 2h + refresh 7d 服务端有状态撤销），user_id→owner_user_id 服务端映射接 RLS
       （INV-TENANT-001），最小 H5 登录集成与 OpenAPI 契约，零 catalog/generated 改动。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0034_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 280c002f91cc44f00a1ed8e674259a04a6f30259
+    evidencePath: docs/evidence/TASK-0034/review-r1.md
+    reason: >-
+      R1 PASS (no P0/P1, no AC/invariant violation) on candidate 280c002 (diff
+      c44b88f..280c002, 49 files, +4114/-5). 8 review dimensions PASS; AC1-7
+      satisfied; writeAllowlist 49/49 programmatically verified; git diff --check
+      clean; 6 P3 non-blocking findings documented; no fix batch needed.
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0034
   - bash infra/db/run-rls-tests.sh

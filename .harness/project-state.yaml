@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0034
-activeTaskCard: docs/tasks/TASK-0034-identity-component-internal-accounts.md
-lastAcceptedTask: TASK-0033
-lastAcceptedHandoff: docs/handoffs/TASK-0033.json
-lastTerminalTask: TASK-0033
-lastTerminalHandoff: docs/handoffs/TASK-0033.json
-nextAction: TASK-0034（成熟身份组件与内部测试账号接入）READY 授权，实施中：Spring Security + JWT 自托管鉴权（用户名+密码、平台初始化管理员 + 后台手动建号、Bearer access 2h + refresh 7d 服务端有状态撤销）、V14 身份账户/会话/审计迁移、登录/刷新/登出/管理员建号端点、user_id→owner_user_id 服务端映射接 RLS、最小 H5 登录、OpenAPI 契约。baseCommit=ddc98d1。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0034
+lastAcceptedHandoff: docs/handoffs/TASK-0034.json
+lastTerminalTask: TASK-0034
+lastTerminalHandoff: docs/handoffs/TASK-0034.json
+nextAction: TASK-0034（成熟身份组件）ACCEPTED：V14 身份账户/refresh token/审计迁移 + Spring Security JWT（Bearer access 2h + refresh 7d 服务端有状态撤销）+ 登录/刷新/登出/管理员建号端点 + user_id→owner_user_id 接 RLS + 最小 H5 登录 + OpenAPI 契约；RLS 39/39、Maven runtime 70 测试、vitest 93、precheck PASS。nextPromotable TASK-0035（真实供应商接线）依赖本卡 ACCEPTED；TASK-0035 卡「唯一/单一真实供应商」措辞与获批供应商集 {OpenAI, Anthropic} 冲突，intake 前需 Owner amendment。另：harness 单测套件存在 gate 批准环节引入的既有失效测试（test_backlog_draft_reconstructs_base_git_snapshot），Owner 已授权修复，作为 post-closure Owner 授权 harness-change 落地后套件转绿。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
