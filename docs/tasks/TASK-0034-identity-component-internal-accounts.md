@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0034
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -234,7 +234,17 @@ requiredInvariants:
   - INV-HARNESS-005
   - INV-HARNESS-007
   - INV-HARNESS-009
-humanApprovals: []
+humanApprovals:
+  - scope: database-migration
+    approvedBy: repository-owner
+    approvedAt: "2026-08-07"
+    sourceThreadId: long-line-execution-product-conversation
+    evidence: >-
+      长线执行 Owner 授权 TASK-0034 成熟身份组件与内部测试账号接入（database-migration C4，
+      单一 protected skill surface）：新建 V14 前向迁移（身份账户/refresh token/认证审计），
+      Spring Security + JWT 自托管鉴权（用户名+密码登录、平台初始化管理员 + 后台手动建号、
+      Bearer access 2h + refresh 7d 服务端有状态撤销），user_id→owner_user_id 服务端映射接 RLS
+      （INV-TENANT-001），最小 H5 登录集成与 OpenAPI 契约，零 catalog/generated 改动。
 independentReview: required
 reviewers: []
 requiredCommands:
