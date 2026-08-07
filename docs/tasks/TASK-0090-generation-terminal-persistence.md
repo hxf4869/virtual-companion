@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0090
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -224,7 +224,22 @@ humanApprovals:
       record_quota_release），仅授 vc_api；不改 V1-V14、不改既有角色/RLS 语义、不触碰
       Runtime 上下文无 DB 约束。范围外：Java 运行时编排（TASK-0093）、Beta、公开注册、真实支付。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0090_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: e75df6bf7f3f4200351a3059d87fb06790cce7d5
+    evidencePath: docs/evidence/TASK-0090/review-r1.md
+    candidateTree: 29ca236221aa6edeeb77240f06b80cb4394fb27e
+    reason: >-
+      R1 PASS (0 blocking: no P0/P1, no ACCEPTANCE/INVARIANT violation) on
+      candidate e75df6b. AC1-AC4 code+test support complete; terminal transitions
+      match generation-states.yaml; terminal realtime_event atomic with status +
+      event-type matching (INV-TX-001/INV-GEN-003); FORCE RLS owner_isolation +
+      SECURITY DEFINER + REVOKE PUBLIC/GRANT vc_api aligned with V6-V10; no
+      credential/content columns; diff inside writeAllowlist, zero forbidden-path
+      touches; five invariants not weakened. 8 non-blocking findings (3 P2, 5 P3)
+      recorded; no fix batch required.
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0090
   - bash infra/db/run-rls-tests.sh

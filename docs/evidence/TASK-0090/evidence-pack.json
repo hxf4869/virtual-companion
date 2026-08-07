@@ -1,0 +1,59 @@
+{
+  "taskId": "TASK-0090",
+  "baseCommit": "fd3b6f37c3dafc62b825d3c6cc4b23f13c098070",
+  "headCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5",
+  "contextFingerprint": "89c380043ff3fbc8dc2fc9fba905796521949f16c18cc5c781dee31266546ba4",
+  "reviewers": [
+    {
+      "id": "task0090_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5",
+      "evidencePath": "docs/evidence/TASK-0090/review-r1.md",
+      "reason": "R1 PASS (0 blocking: no P0/P1, no ACCEPTANCE/INVARIANT violation) on candidate e75df6b. AC1-AC4 code+test support complete (RLS 40-43 real assertions); terminal transitions match generation-states.yaml (FAILED_FINAL from IN_PROGRESS/WAITING_FOR_CAPACITY/COMMITTING, OUTPUT_BLOCKED from FINAL_REVIEW, COMPLETED_FALLBACK from COMMITTING; CANCELLED double-hop stays with V10); terminal realtime_event atomic with status + event-type matching (INV-TX-001/INV-GEN-003); FORCE RLS owner_isolation + SECURITY DEFINER + REVOKE PUBLIC/GRANT vc_api aligned with V6-V10; no credential/content columns; diff fully inside writeAllowlist, zero forbidden-path touches; five invariants not weakened. 8 non-blocking findings (3 P2, 5 P3) recorded in review-r1.md; no fix batch required.",
+      "candidateTree": "29ca236221aa6edeeb77240f06b80cb4394fb27e"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0090",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Harness precheck PASS (5 commands: doctor 382436 checks receipt hit, catalogValidate, catalogDrift, paidFeatureCheck 23 files, betaRosterGate). Executed with /tmp/vc-harness-venv/bin/python (PyYAML/tzdata installed per requirements-harness.txt) on macOS.",
+      "verifiedCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "RLS suite ALL TESTS PASS (43/43: 39 existing + 40_provider_attempt_rls, 41_generation_terminal_transitions, 42_terminal_event_atomic, 43_candidate_and_quota_release). Ephemeral pgvector:0.8.5-pg18 container via OrbStack docker; first parallel run hit transient container shutdown (retry passed).",
+      "verifiedCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine mvn -o -pl service/apps/runtime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Maven offline full-module build BUILD SUCCESS (486 tests, 0 failures, 0 errors, 0 skipped). Dependencies pre-fetched online once (vc-maven-cache volume) before the frozen offline argv run.",
+      "verifiedCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p test_*.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Harness unittest 239 tests OK (Ran 239, OK). Environment note: executed with GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch GIT_CONFIG_VALUE_0=master because the host git default branch is 'main' while the test fixture hardcodes branch 'master' (host git 2.50.1, Apple Git). Without the injection 1 fixture error occurs (environment-only, not a code defect).",
+      "verifiedCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check clean on candidate worktree.",
+      "verifiedCommit": "e75df6bf7f3f4200351a3059d87fb06790cce7d5"
+    }
+  ]
+}
