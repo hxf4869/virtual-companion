@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0090
+activeTaskCard: docs/tasks/TASK-0090-generation-terminal-persistence.md
 lastAcceptedTask: TASK-0036
 lastAcceptedHandoff: docs/handoffs/TASK-0036.json
 lastTerminalTask: TASK-0036
 lastTerminalHandoff: docs/handoffs/TASK-0036.json
-nextAction: TASK-0036（Technical Alpha 总验收）ACCEPTED：跨租户/授权撤销/安全失败/记忆删除/故障恢复/协议/指标/审计 8 域验收矩阵真实通过（RLS 39/39、Maven 243/0、frontend vitest 93+vue-tsc、openapi validate/diff、harness 239 OK、precheck PASS）+ 5 张依赖卡（TASK-0026/0030/0032/0034/0035）终态 Evidence 全可追溯 + Alpha 禁止能力保持关闭（真实支付 FORBIDDEN/Beta BLOCKED）+ P0/P1 为零、P2 闭环或显式非阻塞处置；产出 docs/evidence/TASK-0036/technical-alpha-acceptance.md。Backlog executionOrder 已尽（TASK-0036 为末卡），Technical Alpha 治理交付到达总验收终点；后续 streaming/finalization 接线、持久化同步、H5 认证接线与 Beta 门禁证据补齐为 Owner 门控/后续任务。
+nextAction: TASK-0090（生成终态持久化与审计落库，SQL/持久化侧）READY 授权，实施中：V15 provider_attempt 表（复合所有权 + FORCE RLS，无凭据/内容列，status 对齐 ProviderAttemptStatus 枚举）+ record_provider_attempt / terminalize_generation（终态转移 + 终态 realtime_event 原子写，INV-TX-001）/ insert_generation_candidate / record_quota_release SECURITY DEFINER 函数（仅授 vc_api）+ 40-43 号 RLS 测试；不改 V1-V14 与既有角色/RLS 语义。baseCommit=fd3b6f3。TASK-0093（运行时编排侧）消费本卡函数。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
