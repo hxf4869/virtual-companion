@@ -6530,7 +6530,14 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
         backlog = {
             "executionOrder": list(cls.TASK_IDS),
             "criticalPath": [],
-            "decisionGates": {},
+            "decisionGates": {
+                "GATE-FIXTURE": {
+                    "kind": "HARD_OWNER_DECISION",
+                    "status": "PENDING",
+                    "requiredFor": ["TASK-1001"],
+                    "requiredDecisions": ["决策甲"],
+                },
+            },
             "resolutions": {},
             "tasks": entries,
         }
@@ -6618,6 +6625,49 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
         cls.git(repository, "commit", "-qm", f"resolve {task_id}")
         return cls.git(repository, "rev-parse", "HEAD")
 
+    @classmethod
+    def approve_gate(
+        cls,
+        repository: Path,
+        gate_id: str,
+        *,
+        next_action: str,
+        extra_path: bool = False,
+        invalid_approval: bool = False,
+    ) -> str:
+        backlog_path = repository / ".harness/task-backlog.yaml"
+        backlog = yaml.safe_load(backlog_path.read_text(encoding="utf-8"))
+        backlog["decisionGates"][gate_id] = {
+            "kind": "HARD_OWNER_DECISION",
+            "status": "APPROVED",
+            "requiredFor": ["TASK-1001"],
+            "requiredDecisions": ["决策甲"],
+            "approval": {
+                "approvedBy": "agent" if invalid_approval else "repository-owner",
+                "approvedAt": "2026-08-07",
+                "evidence": "owner decision",
+                "decisionEvidence": {
+                    "决策甲": {"value": "v", "evidence": "e"},
+                },
+            },
+        }
+        backlog_path.write_text(
+            yaml.safe_dump(backlog, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        state_path = repository / ".harness/project-state.yaml"
+        project = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+        project["nextAction"] = next_action
+        state_path.write_text(
+            yaml.safe_dump(project, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        if extra_path:
+            (repository / "extra.txt").write_text("extra\n", encoding="utf-8")
+        cls.git(repository, "add", "--", ".")
+        cls.git(repository, "commit", "-qm", f"approve gate {gate_id}")
+        return cls.git(repository, "rev-parse", "HEAD")
+
     @staticmethod
     def derive(repository: Path, terminal: str, target: str) -> tuple[str | None, Audit]:
         audit = Audit()
@@ -6628,6 +6678,52 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
         ):
             result = doctor.derive_idle_planning_checkpoint(audit, terminal, target)
         return result, audit
+
+    def test_accepts_single_gate_approval_edge(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(repository)
+            target = self.approve_gate(
+                repository,
+                "GATE-FIXTURE",
+                next_action="GATE-FIXTURE 已批准，将 TASK-1001 晋级为唯一 DRAFT",
+            )
+            result, audit = self.derive(repository, terminal, target)
+            self.assertEqual(target, result, audit.errors)
+
+    def test_rejects_gate_approval_edge_with_invalid_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(repository)
+            target = self.approve_gate(
+                repository,
+                "GATE-FIXTURE",
+                next_action="将 TASK-1001 晋级为唯一 DRAFT",
+                invalid_approval=True,
+            )
+            result, audit = self.derive(repository, terminal, target)
+            self.assertIsNone(result)
+            self.assertTrue(
+                any("gate approval edge" in error for error in audit.errors),
+                audit.errors,
+            )
+
+    def test_rejects_gate_approval_edge_with_extra_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            terminal = self.initialize(repository)
+            target = self.approve_gate(
+                repository,
+                "GATE-FIXTURE",
+                next_action="将 TASK-1001 晋级为唯一 DRAFT",
+                extra_path=True,
+            )
+            result, audit = self.derive(repository, terminal, target)
+            self.assertIsNone(result)
+            self.assertTrue(
+                any("gate approval edge" in error for error in audit.errors),
+                audit.errors,
+            )
 
     def test_accepts_no_tail_and_serial_rejected_superseded_edges(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
