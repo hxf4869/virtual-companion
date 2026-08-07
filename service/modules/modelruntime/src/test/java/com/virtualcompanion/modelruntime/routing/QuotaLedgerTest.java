@@ -119,6 +119,19 @@ class QuotaLedgerTest {
     }
 
     @Test
+    void releaseCapsAtProvisionedCeiling() {
+        QuotaLedger ledger = new QuotaLedger();
+        ledger.provision("owner-1", 3L);
+        ledger.reserve("owner-1", 1L).orElseThrow();
+
+        ledger.release("owner-1", 1L);
+        ledger.release("owner-1", 1L);
+
+        // Repeated release cannot inflate beyond the provisioned ceiling.
+        assertEquals(3L, ledger.remaining("owner-1"));
+    }
+
+    @Test
     void releaseOnUnknownOwnerIsNoOpReturningZero() {
         QuotaLedger ledger = new QuotaLedger();
 

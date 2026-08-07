@@ -66,6 +66,11 @@ public final class GenerationRecovery {
                         QuotaDisposition.RELEASED,
                         "");
             case NO_CAPACITY:
+                if (priorReservation != null) {
+                    throw new IllegalArgumentException(
+                            "NO_CAPACITY must not carry a prior reservation; got "
+                                    + priorReservation.reservationId());
+                }
                 return RecoveryOutcome.of(
                         ownership,
                         RecoveryTerminal.NO_CAPACITY_TERMINAL,

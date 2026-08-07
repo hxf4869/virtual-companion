@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class QuotaLedger {
 
     private final ConcurrentHashMap<String, Long> remainingByOwner = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> ceilingByOwner = new ConcurrentHashMap<>();
 
     /**
      * Seed or refresh an owner's reservable budget.
@@ -39,6 +40,7 @@ public final class QuotaLedger {
             throw new IllegalArgumentException("budget must not be negative");
         }
         remainingByOwner.put(ownerUserId, budget);
+        ceilingByOwner.put(ownerUserId, budget);
     }
 
     /**
@@ -80,9 +82,11 @@ public final class QuotaLedger {
     /**
      * Release (restore) {@code units} back to an owner's budget.
      *
-     * <p>The restore is atomic per owner (via {@link ConcurrentHashMap#compute}). Unknown
-     * owners are left absent and the method returns {@code 0} — release is a no-op for an
-     * owner with no budget, mirroring the fail-closed symmetry of {@link #reserve}.
+     * <p>The restore is atomic per owner (via {@link ConcurrentHashMap#compute}) and capped at
+     * the provisioned ceiling, so an over-release or repeated release can never inflate the
+     * balance beyond what was ever provisioned. Unknown owners are left absent and the method
+     * returns {@code 0} — release is a no-op for an owner with no budget, mirroring the
+     * fail-closed symmetry of {@link #reserve}.
      *
      * @return the owner's remaining budget after the release, or {@code 0} when unknown
      * @throws IllegalArgumentException if {@code units} is negative
@@ -97,11 +101,12 @@ public final class QuotaLedger {
         }
         java.util.concurrent.atomic.AtomicLong newRemaining = new java.util.concurrent.atomic.AtomicLong();
         remainingByOwner.compute(ownerUserId, (key, current) -> {
-            if (current == null) {
+            Long ceiling = ceilingByOwner.get(key);
+            if (current == null || ceiling == null) {
                 newRemaining.set(0L);
                 return null;
             }
-            long after = current + units;
+            long after = Math.min(ceiling, current + units);
             newRemaining.set(after);
             return after;
         });
