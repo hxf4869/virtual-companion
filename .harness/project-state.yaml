@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0033
-activeTaskCard: docs/tasks/TASK-0033-anthropic-messages-offline-contract.md
-lastAcceptedTask: TASK-0032
-lastAcceptedHandoff: docs/handoffs/TASK-0032.json
-lastTerminalTask: TASK-0032
-lastTerminalHandoff: docs/handoffs/TASK-0032.json
-nextAction: TASK-0033 已 READY 授权。在 service/adapters/model-anthropic 实现 Anthropic Messages 非流与 SSE 离线 Adapter（镜像 TASK-0011 OpenAI 范式）与 service/tests/anthropic-messages-contract-tests 覆盖 14 项 requiredContractTests（loopback JDK HttpServer mock），根 pom 注册两模块。每 session 单 HttpClient.sendAsync、仅 ExternalAttemptBinding、三段超时、终态唯一、迟到事件丢弃、脱敏、零真实外发。model-routing-change C3 independentReview 由独立 R1 复核。不触 catalog、contract、modelruntime（ANTHROPIC_MESSAGES 已声明）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0033
+lastAcceptedHandoff: docs/handoffs/TASK-0033.json
+lastTerminalTask: TASK-0033
+lastTerminalHandoff: docs/handoffs/TASK-0033.json
+nextAction: TASK-0033 已 ACCEPTED。Anthropic Messages 离线 HTTP/SSE 合同已落地——service/adapters/model-anthropic 实现 /v1/messages 非流与 SSE Adapter（镜像 TASK-0011 单请求 Session、Codec、三段超时、终态唯一、late fence、脱敏；system 顶层、x-api-key 与 anthropic-version header、message_start/content_block_delta/message_delta/message_stop SSE 序列、stop_reason 映射、tools 与 tool_choice 结构化）加 service/tests/anthropic-messages-contract-tests 覆盖 14 项 requiredContractTests（loopback JDK HttpServer mock）；根 pom 注册两模块。Maven 26 合同测试加依赖链全绿、precheck PASS、harness 233 OK。model-protocol-contract 两个主协议（OPENAI 加 ANTHROPIC）均通过本地 mock-server。DAG 下一张 TASK-0034 因 GATE-IDENTITY-PROVIDER-SESSION PENDING 不可晋级，长线暂停待 Owner 硬决策闸门。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
