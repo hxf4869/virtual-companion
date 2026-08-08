@@ -2,14 +2,8 @@
 
 ```yaml
 taskId: TASK-0097
-state: BLOCKED
-resolutionReason: >-
-  EVIDENCED_BLOCKED：候选 fa93a8a 已推送 origin/main 并触发 CI（run 31251522764，rerun 后仍失败）。
-  Backend job 确定性失败但本地等价验证全部 PASS（带/不带 m2 缓存的根级 verify 均
-  BUILD SUCCESS，OpenAI/Anthropic boundary 各 7/7）。CI 日志/check-run 详情因
-  fine-grained token 无 checks/actions 读权限不可获取，无法归因；修复 ci.yml 需要触碰
-  .github/**（forbiddenPaths + C4 授权）。验收 4（backend job success）未达成，转
-  BLOCKED 等待 Owner 决策。
+state: IN_PROGRESS
+
 owner: repository-owner
 riskClass: C2
 requiredSkills:
