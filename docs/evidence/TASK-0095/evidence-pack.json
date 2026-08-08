@@ -1,0 +1,162 @@
+{
+  "taskId": "TASK-0095",
+  "baseCommit": "d3e43de84cf1d10b0b5d0038f34ec326dd2afbb9",
+  "headCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+  "contextFingerprint": "d7e9aa40b0a7817a40be4211acee07a75d4996471a6ba817f6dbc51c691195d0",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "26297370f7d06ce3edd94bd06919f5c8b8dc7f09",
+      "startedAt": "2026-08-08T15:51:33+08:00",
+      "endedAt": "2026-08-08T16:47:30+08:00",
+      "elapsedSeconds": 3357,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "26297370f7d06ce3edd94bd06919f5c8b8dc7f09",
+      "startedAt": "2026-08-08T15:51:33+08:00",
+      "endedAt": "2026-08-08T15:53:04+08:00",
+      "elapsedSeconds": 91,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "7188b2c391be0ac0e5dc6c53d2863cee498397ae",
+      "startedAt": "2026-08-08T15:53:19+08:00",
+      "endedAt": "2026-08-08T16:47:30+08:00",
+      "elapsedSeconds": 3251,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-08T15:53:04+08:00",
+      "inProgressCommit": "7188b2c391be0ac0e5dc6c53d2863cee498397ae"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0095_r1",
+      "kind": "independent-review-gate",
+      "verdict": "APPROVE",
+      "reviewedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "evidencePath": "docs/evidence/TASK-0095/review-r1.md",
+      "reason": "R1 covers the complete matrix: diff confined to writeAllowlist, full-manifest recomputation with constant comparison before any receipt PASS, None or any field change invalidates the receipt, and six lookup-window race negatives. Two non-blocking P3 suggestions were adopted into candidate v2.",
+      "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b"
+    },
+    {
+      "id": "task0095_r2",
+      "kind": "independent-review-gate",
+      "verdict": "APPROVE",
+      "reviewedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "evidencePath": "docs/evidence/TASK-0095/review-r2.md",
+      "reason": "R2 delta review closes P3-1 (environment injection guaranteed to differ from ambient TZ) and P3-2 (recomputation-failure negative test); no new blocking findings; 52 targeted tests PASS.",
+      "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0095",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Canonical precheck on candidate 5c64000: 5/5 commands PASS (doctor 393706 checks, catalogValidate, catalogDrift, paidFeatureCheck, betaRosterGate); real exit 0.",
+      "environment": "macOS darwin 25.6.0 arm64; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python (Python 3.13.0); PyYAML/tzdata per requirements-harness.txt; clean TMPDIR",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.GitHistoryPolicyTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Ran 52 tests; OK. Covers the legal cache hit with pre-PASS recomputation, and lookup-window races on graft, replace refs, Git config, timezone source, environment, implementation identity, plus recomputation-failure miss.",
+      "environment": "macOS; controlled venv python 3.13.0; PATH prepended with venv bin",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Whitespace-clean across the full task diff (base d3e43de..candidate 5c64000) and closure staging.",
+      "environment": "macOS; Git 2.50.1",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54"
+    },
+    {
+      "command": "python -m unittest discover -s scripts/harness/tests -p \"test_*.py\"",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "Full-suite regression (parallel workers): Ran 256 tests, 1 error. The only error is IdlePlanningCheckpointTests.test_rejects_merge_empty_split_multiple_and_extra_paths (scenario=merge), the known audit finding P2-20 (fixture hard-codes 'master' while this machine sets init.defaultBranch=main). Verified identical on the untouched baseline (stash) and passing on CI ubuntu where init.defaultBranch defaults to master. No TASK-0095 regression.",
+      "environment": "macOS; controlled venv python 3.13.0",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0095 frozen candidate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Verdict APPROVE: diff scope, full-manifest recomputation semantics, race-test injection point (lookup after, recomputation before) and preservation of task-existence/summary/corrupt-cache/exit-code semantics all verified; 51 targeted tests re-run OK.",
+      "environment": "independent read-only Reviewer (subagent, no task history)",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "candidateCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b"
+    },
+    {
+      "command": "Independent Reviewer R2 for TASK-0095 final candidate (delta)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Verdict APPROVE: P3-1 (environment injection) and P3-2 (recomputation-failure negative) closed; delta confined to test_harness.py; 52 targeted tests re-run OK.",
+      "environment": "independent read-only Reviewer (subagent, no task history)",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "candidateCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions run 31248285476 on candidate 5c64000",
+      "status": "FAIL",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Remote exact-SHA channel executed on the exact candidate commit/tree (origin/main = 5c64000). The workflow run completed with all 5 jobs failing (Backend, Frontend, Harness full, Harness smoke windows+macos); the failure set is byte-identical to the audit baseline c09e832 run 31221480139 (Backend/Frontend/Harness full/Harness smoke all failure) — all pre-existing confirmed audit findings (e.g. P1-02), no new failure introduced by TASK-0095. Local equivalents all PASS: canonical precheck, precheck.sh wrapper, parallel full unittest (only the machine-specific P2-20 error). Job-level logs were not retrievable (fine-grained token lacks Actions read scope). Recorded truthfully as non-PASS; the pre-existing red CI line is scoped to follow-up work package 2 (P1-02 green line).",
+      "environment": "GitHub Actions; exact commit 5c64000, exact tree 4c22e2661b1f95958d8757f4ff6a31a01cf4c85b; run 31248285476",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "candidateCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0095 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Pre-closure doctor on the fully staged ACCEPTED closure snapshot: PASS (462355 checks, 155.7s, exit 0).",
+      "environment": "macOS; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python; clean TMPDIR",
+      "verifiedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "PRIMARY_REMOTE_EXACT_SHA",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_APPROVED_CANONICAL_PASS",
+    "candidateCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+    "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b",
+    "passClaimed": false,
+    "githubActions": {
+      "status": "FAIL",
+      "reason": "Run 31248285476 executed on exact SHA 5c64000; all 5 jobs failed with a failure set identical to the audit baseline run 31221480139 (pre-existing findings, no new failure). Local equivalents (canonical precheck, wrapper, parallel full suite) all PASS. Recorded as non-PASS; CI green line is follow-up P1-02.",
+      "dispatchCount": 1,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}
