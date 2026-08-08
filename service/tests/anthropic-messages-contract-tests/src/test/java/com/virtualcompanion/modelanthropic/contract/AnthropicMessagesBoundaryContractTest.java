@@ -312,7 +312,33 @@ class AnthropicMessagesBoundaryContractTest {
         var runtimePom = Files.readString(
                 root.resolve("service/apps/runtime/pom.xml")
         );
-        assertFalse(runtimePom.contains("virtual-companion-model-anthropic"));
+        // Approved live model suppliers are legitimate compile-time runtime
+        // dependencies (TASK-0035). What the boundary must guarantee instead
+        // is that providers stay disabled by default and that no default
+        // endpoint or credential is ever committed.
+        assertTrue(runtimePom.contains("virtual-companion-model-anthropic"));
+
+        var runtimeConfig = Files.readString(
+                root.resolve("service/apps/runtime/src/main/resources/application.yaml")
+        );
+        // The master switch defaults to disabled, and no provider endpoint,
+        // secret literal or committed URL exists in runtime configuration.
+        assertTrue(runtimeConfig.contains("${VC_MODEL_PROVIDERS_ENABLED:false}"));
+        assertFalse(runtimeConfig.contains("api.anthropic.com"));
+        assertFalse(runtimeConfig.contains("sk-"));
+
+        // The provisioner wires a deployment only when its per-deployment
+        // switch is true, and never hard-codes a scheme, endpoint or
+        // credential: only approved runtime configuration can provision.
+        var provisionerSources = Files.readString(
+                root.resolve("service/apps/runtime/src/main/java/"
+                        + "com/virtualcompanion/runtime/modelproviders/"
+                        + "ApprovedModelProviderProvisioner.java")
+        );
+        assertTrue(provisionerSources.contains("if (!deployment.enabled())"));
+        assertFalse(provisionerSources.contains("http://"));
+        assertFalse(provisionerSources.contains("https://"));
+        assertFalse(provisionerSources.contains("sk-"));
     }
 
     private static Path findRepositoryRoot() {
