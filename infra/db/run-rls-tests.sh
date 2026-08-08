@@ -98,22 +98,30 @@ for f in $(ls "$MIG_DIR"/V*.sql | sort -V); do
             } >>"$LOG_DIR/migration.log"
             rm -f "$attempt_log"
             break
+        else
+            # Inside the else branch, $? is the failed psql exit code (the
+            # if condition is exempt from set -e). Capturing it after the
+            # whole if statement would always read 0 (no else-executed
+            # command), which would swallow the failure.
+            migrate_rc=$?
         fi
         {
             echo "--- $name attempt $attempt FAILED ---"
             cat "$attempt_log"
         } >>"$LOG_DIR/migration.log"
-        if ! grep -Eq "connection refused|could not connect to server|server closed the connection unexpectedly|terminating connection due to administrator command|Connection to server was lost|database system is starting up" "$attempt_log"; then
+        # Case-insensitive match: real libpq/psql output varies in casing
+        # (e.g. "Connection refused", "connection to server was lost").
+        if ! grep -Eiq "connection refused|could not connect to server|server closed the connection unexpectedly|terminating connection due to administrator command|Connection to server was lost|database system is starting up" "$attempt_log"; then
             echo "    FAIL $name" >&2
             cat "$attempt_log" >&2
             rm -f "$attempt_log"
-            exit 1
+            exit "$migrate_rc"
         fi
         rm -f "$attempt_log"
         if [ "$attempt" -ge "$max_attempts" ]; then
             echo "    FAIL $name (startup connection error persisted after $max_attempts attempts)" >&2
             echo "    migration log: $LOG_DIR/migration.log" >&2
-            exit 1
+            exit "$migrate_rc"
         fi
         echo "    retry $name (startup connection error, attempt $attempt/$max_attempts)"
         sleep 1
