@@ -556,3 +556,9 @@ tasks:
     taskCard: docs/tasks/TASK-0108-provider-egress-security.md
     evidence: docs/evidence/TASK-0108/evidence-pack.json
     handoff: docs/handoffs/TASK-0108.json
+  TASK-0109:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0109-model-request-size-limits.md
+    evidence: docs/evidence/TASK-0109/evidence-pack.json
+    handoff: docs/handoffs/TASK-0109.json

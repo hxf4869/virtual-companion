@@ -2,29 +2,17 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0109
-activeTaskCard: docs/tasks/TASK-0109-model-request-size-limits.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0108
 lastAcceptedHandoff: docs/handoffs/TASK-0108.json
-lastTerminalTask: TASK-0108
-lastTerminalHandoff: docs/handoffs/TASK-0108.json
+lastTerminalTask: TASK-0109
+lastTerminalHandoff: docs/handoffs/TASK-0109.json
 nextAction: >-
-  TASK-0109 READY（工作包 12
-  第三张 P2-06 尺寸/成本上限）：新增
-  SizeLimits 集中上限（Owner 确认方案 A：消息数 ≤64、
-  单条 ≤64 KiB、schema ≤16 KiB、单流事件 ≤1 MiB、
-  累计输出 ≤1 MiB、OpenAI max_tokens ≤8192）；
-  domain 层 ProtocolMessage/LiveInvocationRequest/
-  ModelProtocolRequest 构造校验 + adapter 层 Codec
-  max_tokens/schema、Session 单事件/累计输出上限
-  （超限失败关闭）+ LiveModelInvoker 输出兜底与测试；
-  完成后条件风险 6/7（db/migration C4 +
-  database-migration + humanApproval）继续等待；生产接线（controller/dispatcher，TASK-0093）不受本卡影响；工作包
-  6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB
-  权限架构）继续等待 Owner 决策可信数据库
-  principal/连接池绑定模型与 migration
-  principal 部署拓扑；Actions
-  配额耗尽下的远端复核延后至配额恢复。
+  通过 task-intake 创建新的永久 replacement（下一可用 ID 预期为 TASK-0110），承接
+  TASK-0109 R1 FAIL；保留原六个已确认上限并新增非流原始 HTTP body 8 MiB 上限，授权
+  SseDecoder、读取阶段 early-stop 测试和 LiveModelInvoker 显式 session cancel；不得复用
+  TASK-0109 PASS、重置其预算或改写失败历史。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0109",
+  "state": "REJECTED",
+  "baseCommit": "7b3c11415488988ddab20e3b30624e5d686dd2f8",
+  "headCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167",
+  "evidencePath": "docs/evidence/TASK-0109/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ee7882b13452ebe75b4aed2ed58a47079750c549",
+      "startedAt": "2026-08-09T05:39:58+08:00",
+      "endedAt": "2026-08-09T07:46:35+08:00",
+      "elapsedSeconds": 7597,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ee7882b13452ebe75b4aed2ed58a47079750c549",
+      "startedAt": "2026-08-09T05:39:58+08:00",
+      "endedAt": "2026-08-09T05:48:09+08:00",
+      "elapsedSeconds": 491,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "c79f6c6599ecf13d210c3b484922a5152d97d909",
+      "startedAt": "2026-08-09T05:48:23+08:00",
+      "endedAt": "2026-08-09T07:46:35+08:00",
+      "elapsedSeconds": 7092,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 1692,
+      "readyDoctorPassAt": "2026-08-09T05:48:09+08:00",
+      "inProgressCommit": "c79f6c6599ecf13d210c3b484922a5152d97d909",
+      "reason": "R1 returned FAIL at 2026-08-09T05:59:53+08:00. No implementation, fixes, reviewer, canonical validation, or CI ran after the hard fuse; the recorded overrun contains closure-only Evidence/Handoff and session-recovery work."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0109_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167",
+      "evidencePath": "docs/evidence/TASK-0109/review-r1.md",
+      "reason": "R1 发现 provider body/SSE 在无界物化后才检查尺寸，且 one-shot git diff --check 被重复执行；完整修复超出本卡冻结范围并需要永久 replacement。",
+      "candidateTree": "75753c35837e497e56709ae747961a391fef9017"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0109 的 DRAFT、READY、authorization binding、IN_PROGRESS 与冻结候选单父链；READY Doctor 真实 PASS。",
+    "实现消息数、单消息 UTF-8 字节、schema、单事件、累计输出与 OpenAI max_tokens 的首版限制；受影响 Maven reactor 三次 BUILD SUCCESS。",
+    "R1 对候选 cdddc1b/75753c3 完成独立只读评审并返回 FAIL；候选实现、失败报告、重复 diff gate 事实和完整审计交接文档均被保留。",
+    "TASK-0109 仅执行 REJECTED terminal metadata-only closure；未声称 canonical、根级 Maven、GitHub Actions 或验收 PASS。"
+  ],
+  "remaining": [
+    "在新的永久 replacement 中对 SSE 行/事件组帧和非流原始 HTTP body 在读取阶段实施字节上限与 early-stop，非流 raw body 上限采用 8 MiB。",
+    "为 counting/throwing stream 增加回归测试，证明越界后不继续读取、不完成无界 materialization，并立即取消 HTTP body/session。",
+    "补 LiveModelInvoker 对通用 ModelProtocolSession 的显式 cancel 断言，并评估/限制 Session 无界事件对象队列、schemaName 与总编码请求体。",
+    "新卡重新完成独立 Reviewer、canonical precheck、根级 JDK-25 Maven verify、冻结 exact-tree 渠道、Evidence/Handoff、push 与远端 0/0；不得复用 TASK-0109 的任何 PASS。"
+  ],
+  "knownRisks": [
+    "TASK-0109 的首版实现提交保留在 main 历史中，但 R1 已证明它仍可能在限制触发前无界读取 provider 数据；在 replacement ACCEPTED 前不得把它视为资源防护闭环。",
+    "git diff --check 被重复执行是不可逆流程违规；单次内容检查虽返回 clean，也不能恢复本卡验收资格。",
+    "candidateExecution 从冻结 anchor 到 closure snapshot 共 7092 秒，超过 90 分钟 hard fuse 1692 秒；R1 早已停止候选推进，超时段仅用于生成审计交接、会话恢复与 terminal closure，没有继续实现、评审、canonical 或 CI。",
+    "canonical precheck、根级 Maven verify 和 GitHub Actions 均因 Reviewer FAIL 而 NOT_RUN；targeted reactor PASS 不能替代这些门禁。"
+  ],
+  "nextAction": "通过 task-intake 创建新的永久 replacement（下一可用 ID 预期为 TASK-0110），承接 TASK-0109 R1 FAIL；保留原六个已确认上限并新增非流原始 HTTP body 8 MiB 上限，授权 SseDecoder、读取阶段 early-stop 测试和 LiveModelInvoker 显式 session cancel；不得复用 TASK-0109 PASS、重置其预算或改写失败历史。"
+}

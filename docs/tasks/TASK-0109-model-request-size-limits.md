@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0109
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  R1 确认 SSE 与非流响应均在无界物化后才执行尺寸检查，无法满足读取阶段
+  fail-closed；完整修复需要 TASK-0109 writeAllowlist 外的 SseDecoder 与 early-stop
+  测试。同时本卡的 one-shot git diff --check 被重复执行，属于不可逆的验收流程违规。
+  旧候选和失败证据原样保留，本卡不再修复，改由新的永久 replacement 前向承接。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -206,7 +212,16 @@ humanApprovals:
       + 独立 Reviewer）+ service/adapters/model-openai 的 Codec/Session；
       不触碰 specs/** 与 **/db/migration/**（forbiddenPaths）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0109_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: cdddc1b3e7272f1c364b0279e2da59d31c86e167
+    evidencePath: docs/evidence/TASK-0109/review-r1.md
+    reason: >-
+      R1 发现 provider body/SSE 在无界物化后才检查尺寸，且 one-shot
+      git diff --check 被重复执行；完整修复超出本卡冻结范围并需要永久 replacement。
+    candidateTree: 75753c35837e497e56709ae747961a391fef9017
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0109
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

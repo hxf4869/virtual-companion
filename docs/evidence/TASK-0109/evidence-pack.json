@@ -1,0 +1,141 @@
+{
+  "taskId": "TASK-0109",
+  "baseCommit": "7b3c11415488988ddab20e3b30624e5d686dd2f8",
+  "headCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167",
+  "contextFingerprint": "17e6c47e55eeff5c3875f5425ee30305609aecfc4d82b5c02db451eb4201cae8",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ee7882b13452ebe75b4aed2ed58a47079750c549",
+      "startedAt": "2026-08-09T05:39:58+08:00",
+      "endedAt": "2026-08-09T07:46:35+08:00",
+      "elapsedSeconds": 7597,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ee7882b13452ebe75b4aed2ed58a47079750c549",
+      "startedAt": "2026-08-09T05:39:58+08:00",
+      "endedAt": "2026-08-09T05:48:09+08:00",
+      "elapsedSeconds": 491,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "c79f6c6599ecf13d210c3b484922a5152d97d909",
+      "startedAt": "2026-08-09T05:48:23+08:00",
+      "endedAt": "2026-08-09T07:46:35+08:00",
+      "elapsedSeconds": 7092,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 1692,
+      "readyDoctorPassAt": "2026-08-09T05:48:09+08:00",
+      "inProgressCommit": "c79f6c6599ecf13d210c3b484922a5152d97d909",
+      "reason": "R1 returned FAIL at 2026-08-09T05:59:53+08:00. No implementation, fixes, reviewer, canonical validation, or CI ran after the hard fuse; the recorded overrun contains closure-only Evidence/Handoff and session-recovery work."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0109_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167",
+      "evidencePath": "docs/evidence/TASK-0109/review-r1.md",
+      "reason": "R1 发现 provider body/SSE 在无界物化后才检查尺寸，且 one-shot git diff --check 被重复执行；完整修复超出本卡冻结范围并需要永久 replacement。",
+      "candidateTree": "75753c35837e497e56709ae747961a391fef9017"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0109 (READY stage)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "c7568c1c2bb4cf687992528dcef1d85aebae44d9ec278ff0180cd6e6a758b627",
+      "reason": "READY Doctor completed 473603 checks with exit 0 in 70.6 seconds. The durable cache receipt was bound to activation head 38383ad0ade4e3e15022db5e2d4f7ad0c9d7cd86 with receiptHash d48b79f5992c96308286059352dbd4b7a7f9e6c377635c75eeb1a14bc6e10551; this check is carried into the final candidate Evidence without claiming it validated later implementation.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; clean TMPDIR",
+      "verifiedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/modules/modelruntime,service/adapters/model-openai,service/tests/openai-chat-completions-contract-tests,service/tests/model-protocol-contract-tests,service/apps/runtime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Targeted affected-module reactor ran three times and each completed BUILD SUCCESS; the final run included 134 modelruntime tests and 13 OpenAI boundary tests. Full stdout was not retained as a durable artifact.",
+      "environment": "OrbStack Docker; maven:3.9-eclipse-temurin-25-alpine; JDK 25; vc-maven-cache volume",
+      "verifiedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0109 frozen candidate",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "8a1c51e6cadd68146a0038d11fd5e4d59ac89ace17623f7f6b4a579ba9fa481f",
+      "reason": "R1 found two blocking issues: provider bytes are limited only after unbounded SSE/non-stream materialization, and the one-shot git diff --check gate was dispatched multiple times. Reviewer did not run canonical or root Maven validation.",
+      "environment": "Independent read-only Codex reviewer; no repository source writes and no expensive full-suite dispatch",
+      "verifiedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167",
+      "candidateCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167",
+      "candidateTree": "75753c35837e497e56709ae747961a391fef9017"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0109",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "R1 returned FAIL, so policy forbids candidate canonical validation and no canonical PASS is claimed.",
+      "environment": "macOS; deliberately not launched after Reviewer FAIL",
+      "verifiedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "R1 returned FAIL before the root JDK-25 Maven gate; the targeted module PASS is not substituted for this required root command.",
+      "environment": "OrbStack Docker; deliberately not launched after Reviewer FAIL",
+      "verifiedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The selected final literal invocation returned clean output, but the literal command was dispatched more than once and git diff --cached --check was also dispatched. This content PASS is not an acceptance-gate PASS: the one-shot execution contract failed and is a blocking R1 finding.",
+      "environment": "macOS; Git 2.50.1 (Apple Git-155)",
+      "verifiedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0109 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: pre-closure runs once after staging this complete REJECTED closure snapshot; the result is consumed after the frozen input is published and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; one execution reserved",
+      "verifiedCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_R1_FAIL_AND_ONE_SHOT_GATE_VIOLATION_CLOSURE_ONLY",
+    "candidateCommit": "cdddc1b3e7272f1c364b0279e2da59d31c86e167",
+    "candidateTree": "75753c35837e497e56709ae747961a391fef9017",
+    "passClaimed": false,
+    "githubActions": {
+      "status": "NOT_RUN",
+      "reason": "Reviewer PASS prerequisite was not met; no candidate validation dispatch is permitted.",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}
