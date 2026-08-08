@@ -1340,6 +1340,112 @@ task0076PreReadyMaintenance:
     generalizedOverride: false
     branchOrWorktree: false
     githubActionsDispatch: false
+task0098PostTerminalTail:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01
+  decisionId: TASK-0098-POST-TERMINAL-TAIL-ACCEPTANCE-20260808
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_POST_TERMINAL_TAIL_ACCEPTANCE
+  targetTask: TASK-0098
+  sourceThreadId: zcode-audit-fix-20260808
+  authorization:
+    path: docs/evidence/TASK-0098/pre-ready-maintenance-authorization.json
+    sha256: aed07c156ef03c0a9cc8739731658981129089876a0c79cb005e0174541b4cbc
+  terminal:
+    commit: 169673991b962e87fc556d04d3e29635bf0d264c
+    tree: 77a9732603c984db022adcaf4f4c479cbd179a52
+    taskId: TASK-0097
+    state: ACCEPTED
+  tail:
+    commit: d33515946a5666ccc22075f9ae5b6d8b42711a1c
+    tree: 9f8d71810f63bc0dd0456a2a56d24db1271b7579
+    parent: 169673991b962e87fc556d04d3e29635bf0d264c
+    changedPaths:
+      - .harness/project-state.yaml
+    projectStateSha256: eb36e60428a9e55083b501dcad6abd793d7cebb3a87d12e6411c1f6b68de1026
+  draft:
+    commit: 5cce7ed2e14c21cb8ce7909da639418ec7d7e17c
+    tree: f3f4f7e18b9534bdca7ba408cebc651f91c75433
+    parent: d33515946a5666ccc22075f9ae5b6d8b42711a1c
+    changedFiles:
+      docs/tasks/TASK-0098-generation-finalization-terminal-concurrency.md:
+        mode: "100644"
+        type: blob
+        blobOid: 3a0b4357db27cf072265fb716fd3515d2f2c48fb
+        sha256: 072853d83591692a61d904033bd13b20db0a25fd669737dd851c37e3bbbaffa2
+      docs/tasks/context/TASK-0098.context-lock.yaml:
+        mode: "100644"
+        type: blob
+        blobOid: c20dff3f9cfe7121aef45c8a638f9f5057ac3f0a
+        sha256: d522d4535b295d3608d4e040df254af1f8f886a18784bf31007239770e77323c
+  boundary:
+    directParentCommit: 5cce7ed2e14c21cb8ce7909da639418ec7d7e17c
+    directParentTree: f3f4f7e18b9534bdca7ba408cebc651f91c75433
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - .harness/skills.yaml
+      - docs/evidence/TASK-0098/pre-ready-maintenance-authorization.json
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      - skills/harness-change/SKILL.md
+      - skills/task-delivery-flow/SKILL.md
+      - skills/task-intake/SKILL.md
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0098_BOUNDARY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: 2138dad7252daf4327902a3cdd481863e2e07bfa
+        sha256: 48db1b5c3bcab7bbab74ab3ae5aae662efde9d9ed931c95f76facd3566501735
+      exactFiles:
+        .harness/skills.yaml:
+          blobOid: 838c73622872cc9254f716cde04de5cef79e9d6e
+          sha256: ff2688b1c3e4620906f6d9da2eed7e6b663d0d9adc4d4f2a47c5fad672a35fad
+        docs/evidence/TASK-0098/pre-ready-maintenance-authorization.json:
+          blobOid: a71c13dc47d0cb8486f3b410cc83109b19dabf0a
+          sha256: aed07c156ef03c0a9cc8739731658981129089876a0c79cb005e0174541b4cbc
+        scripts/harness/tests/test_harness.py:
+          blobOid: 18bf07935f1a64463dd50652eebf779ccdb590a9
+          sha256: d11d53fa91cbbb88b0942836edacc08488bef4604b8008935c7d981a55394279
+        skills/harness-change/SKILL.md:
+          blobOid: 41c3152aff989524d5b6cc5b220e7c2368c1b2b4
+          sha256: bf015ebe97cbd391fdab27a2a3e2601a7b7ea2d3d02a35986df05711e8a499b0
+        skills/task-delivery-flow/SKILL.md:
+          blobOid: 68e93e764d8d473260e24d36ac1cfa0020f246eb
+          sha256: 9993e863360e181f7f13c1c058868196c69bf49d85c2ba128787ca6e8a95481b
+        skills/task-intake/SKILL.md:
+          blobOid: 833fb1dc04e9223edf6542e2793a183684246dba
+          sha256: 025fb456212052459245bbf2b79bce38684e63e63e0e8c664ff5d69091af9c4d
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0098
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: precheck
+    remote: UNKNOWN_NOT_RUN
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    wildcardWritePath: false
+    generalizedOverride: false
+    branchOrWorktree: false
+    githubActionsDispatch: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

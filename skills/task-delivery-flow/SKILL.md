@@ -164,6 +164,29 @@ description: Execute one governed repository task or coordinate a strictly seria
 - Recover TASK-0056 dependency to TASK-0077 with synchronized hash.
 - Increase harness-change 1.1.6, task-intake 1.2.6, task-delivery-flow 1.3.6.
 
+## TASK-0098 one-time post-terminal tail acceptance
+
+- The only TASK-0098 pre-READY maintenance record is
+  `OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01`. Accept exactly one
+  direct single-parent child of the frozen TASK-0098 DRAFT and bind its Base
+  tail `d335159`, DRAFT, derived Commit and Tree, the frozen 8-path set,
+  mode/type/blob/content identities, and the exact Owner authorization.
+- Machine-bind the pushed post-terminal edge `1696739 -> d335159`
+  (TASK-0097 canonical terminal -> nextAction alignment fix changing only
+  `.harness/project-state.yaml`) as the DRAFT anchor: baseCommit = `d335159`.
+  Validate that the tail project-state `nextAction` equals
+  `docs/handoffs/TASK-0097.json` `nextAction` byte-for-byte and that
+  `d335159` is the direct single-parent child of `1696739`.
+- The record is one-time, consumed when TASK-0098's READY authorization is
+  committed, inert after terminal, and never reusable by another task.
+  A copied record, a second consumption, an extra commit or path, or any
+  changed identity fails closed. No environment variable, CLI flag, Git note,
+  replace, graft, history rewrite, configurable allowlist, or generalized
+  override is authorized.
+- Increase harness-change 1.1.7, task-intake 1.2.7, task-delivery-flow 1.3.7.
+  Ordinary READY authorization and a real READY Doctor PASS remain mandatory;
+  afterwards the P1-03/P2-10 database implementation proceeds on TASK-0098.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from

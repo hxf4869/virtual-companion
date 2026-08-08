@@ -3,7 +3,7 @@ name: harness-change
 description: 修改 Agent 规则、Harness 配置、治理脚本、受保护路径、Skill、任务模板、证据 Schema 或 CI 门禁时使用。
 metadata:
   id: harness-change
-  version: 1.1.6
+  version: 1.1.7
   riskClass: C4
 ---
 
@@ -54,6 +54,18 @@ metadata:
   “按计划用 goal 继续下去”必须同时绑定；第二条记录、复制、额外路径、
   通配写路径、当前 Policy 重判历史、通用 override 或任何禁止接口均未授权。
 - `OWNER-MAINT-20260804-TASK-0076-PRE-READY-01` only authorizes 9 frozen paths.
+- `OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01` only authorizes 8
+  frozen paths in one direct single-parent child of the frozen TASK-0098 DRAFT:
+  it machine-binds the pushed post-terminal edge `1696739 -> d335159`
+  (TASK-0097 canonical terminal -> nextAction alignment fix, only
+  `.harness/project-state.yaml`) as the TASK-0098 DRAFT anchor
+  (baseCommit = `d335159`), validates the tail project-state `nextAction`
+  equals `docs/handoffs/TASK-0097.json` byte-for-byte, and bumps
+  harness-change/task-intake/task-delivery-flow to 1.1.7/1.2.7/1.3.7.
+  One-time consumption at READY authorization, inert after terminal, never
+  reusable; copied record, second consumption, extra commit/path, history
+  rewrite and every forbidden interface fail closed. Ordinary READY Doctor
+  PASS remains mandatory before implementation.
 
 ## Procedure
 

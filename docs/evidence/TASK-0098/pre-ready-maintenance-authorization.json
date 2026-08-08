@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01",
+  "decisionId": "TASK-0098-POST-TERMINAL-TAIL-ACCEPTANCE-20260808",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_POST_TERMINAL_TAIL_ACCEPTANCE",
+  "targetTask": "TASK-0098",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-08",
+  "sourceThreadId": "zcode-audit-fix-20260808",
+  "terminalCommit": "169673991b962e87fc556d04d3e29635bf0d264c",
+  "terminalTaskId": "TASK-0097",
+  "terminalState": "ACCEPTED",
+  "tailCommit": "d33515946a5666ccc22075f9ae5b6d8b42711a1c",
+  "tailChangedPaths": [
+    ".harness/project-state.yaml"
+  ],
+  "draftAnchorBaseCommit": "d33515946a5666ccc22075f9ae5b6d8b42711a1c",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false,
+  "remoteDispatchAuthorized": false,
+  "evidence": "Owner 于 2026-08-08 按审计交接工作包 4 分配 P1-03+P2-10 并选择一次性维护记录方案（TASK-0073/0074/0075/0076 先例）：授权新增 ci-execution-policy 一次性记录 OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01，机器绑定接受 1696739→d335159（TASK-0097 canonical terminal 后的 project-state nextAction 对齐修复边，仅改 .harness/project-state.yaml，nextAction 与 TASK-0097 handoff 逐字一致）作为 TASK-0098 DRAFT 锚（baseCommit=d335159）；TASK-0098 声明 harness-change 1.1.6→1.1.7、task-delivery-flow 1.3.6→1.3.7、task-intake 1.2.6→1.2.7；维护边只允许 8 个冻结路径、一次性消费、不可复用、禁止历史改写/通用 override；落地后继续 P1-03+P2-10 终态并发修复。"
+}

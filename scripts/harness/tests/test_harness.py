@@ -9871,9 +9871,36 @@ class Task0076PreReadyMaintenanceTests(unittest.TestCase):
     def test_skill_versions(self):
         r = load_yaml(ROOT / ".harness/skills.yaml")
         for s in r["skills"]:
-            if s["id"]=="harness-change": self.assertEqual(s["version"],"1.1.6")
-            elif s["id"]=="task-intake": self.assertEqual(s["version"],"1.2.6")
-            elif s["id"]=="task-delivery-flow": self.assertEqual(s["version"],"1.3.6")
+            if s["id"]=="harness-change": self.assertEqual(s["version"],"1.1.7")
+            elif s["id"]=="task-intake": self.assertEqual(s["version"],"1.2.7")
+            elif s["id"]=="task-delivery-flow": self.assertEqual(s["version"],"1.3.7")
+
+class Task0098PostTerminalTailTests(unittest.TestCase):
+    def test_exact_machine_record_is_accepted(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0098_post_terminal_tail_record(audit, policy)
+        self.assertFalse(audit.errors)
+        self.assertIsNotNone(record)
+
+    def test_tail_edge_facts_are_bound(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0098_post_terminal_tail_record(audit, policy)
+        self.assertIsNotNone(record)
+        self.assertEqual(record["terminal"]["commit"], doctor.TASK_0098_TERMINAL_COMMIT)
+        self.assertEqual(record["tail"]["commit"], doctor.TASK_0098_TAIL_COMMIT)
+        self.assertEqual(record["tail"]["parent"], doctor.TASK_0098_TERMINAL_COMMIT)
+        self.assertEqual(record["tail"]["changedPaths"], [".harness/project-state.yaml"])
+
+    def test_mutated_record_fails_closed(self):
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        record = policy["task0098PostTerminalTail"]
+        record["tail"]["commit"] = "0" * 40
+        doctor.validate_task0098_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
 
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
@@ -10108,6 +10135,6 @@ class Task0077QuarantineTests(unittest.TestCase):
         with open(".harness/skills.yaml", encoding="utf-8") as f:
             skills = yaml.safe_load(f)
         versions = {s["id"]: s["version"] for s in skills["skills"]}
-        self.assertEqual(versions["harness-change"], "1.1.6")
-        self.assertEqual(versions["task-intake"], "1.2.6")
-        self.assertEqual(versions["task-delivery-flow"], "1.3.6")
+        self.assertEqual(versions["harness-change"], "1.1.7")
+        self.assertEqual(versions["task-intake"], "1.2.7")
+        self.assertEqual(versions["task-delivery-flow"], "1.3.7")
