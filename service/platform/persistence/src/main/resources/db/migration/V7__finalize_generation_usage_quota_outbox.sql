@@ -11,6 +11,18 @@
 -- and an eligible memory.extract outbox event. INV-TX-001 (atomic) and
 -- INV-GEN-003 (provider EOS never completes) live here.
 --
+-- TASK-0098 P1-03: every terminal transition (finalize / cancel_generation /
+-- terminalize_generation) now serializes on the same generation row lock.
+-- finalize_generation takes SELECT ... FOR UPDATE on the generation, re-checks
+-- status FINAL_REVIEW AND assistant_message_id IS NULL under that lock, and
+-- writes the terminal state with a conditional UPDATE winner
+-- (WHERE status = 'FINAL_REVIEW'). A concurrent cancel/terminalize winner
+-- surfaces as its terminal state and fails closed; terminal states are never
+-- rewritable and duplicate finalize artifacts are impossible. The message
+-- table gains a nullable generation_id (composite FK + partial unique index
+-- message_generation_one_final) so "at most one final assistant message per
+-- generation" (INV-GEN-002) is enforced at the message table too.
+--
 -- A p_fault hook raises AFTER the writes so a fault-injection test proves the
 -- whole transaction rolls back; chat.completed is only ever PENDING in the DB
 -- and the realtime dispatcher publishes it post-commit (out of scope here).
@@ -35,6 +47,34 @@ BEGIN
             ON DELETE SET NULL (assistant_message_id);
     END IF;
 END $$;
+
+-- INV-GEN-002: at most one final assistant message per generation, enforced
+-- at the message table. The final assistant message is the one
+-- finalize_generation materializes; the generation row lock (below) makes
+-- finalize the single writer, and this partial unique index rejects a second
+-- final assistant message for the same generation even against future
+-- direct-DML paths. generation_id is nullable and only ever set by finalize
+-- (user messages stay NULL), so the index never constrains conversation
+-- history; the composite FK mirrors generation.assistant_message_id.
+ALTER TABLE vc.message
+    ADD COLUMN IF NOT EXISTS generation_id bigint;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'message_generation_fk'
+           AND conparentid = 0
+    ) THEN
+        ALTER TABLE vc.message
+            ADD CONSTRAINT message_generation_fk
+            FOREIGN KEY (owner_user_id, generation_id)
+            REFERENCES vc.generation(owner_user_id, id)
+            ON DELETE SET NULL (generation_id);
+    END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS message_generation_one_final
+    ON vc.message (owner_user_id, generation_id)
+    WHERE generation_id IS NOT NULL AND role = 'assistant';
 
 -- Provider attempt usage + actual cost, settled atomically with finalize.
 CREATE TABLE IF NOT EXISTS vc.generation_usage (
@@ -158,6 +198,7 @@ DECLARE
     v_conv_id bigint;
     v_status  text;
     v_msg_id  bigint;
+    v_assistant_message_id bigint;
 BEGIN
     IF p_owner_user_id IS NULL OR p_generation_id IS NULL OR p_final_candidate_id IS NULL THEN
         RAISE EXCEPTION 'owner_user_id, generation_id and final_candidate_id are required';
@@ -166,20 +207,38 @@ BEGIN
     -- reads in the same transaction stay owner-scoped.
     PERFORM set_config('vc.owner_user_id', p_owner_user_id::text, true);
 
-    -- Precondition: the generation exists for this owner.
-    SELECT g.conversation_id, g.status INTO v_conv_id, v_status
+    -- TASK-0098 P1-03: lock the generation row FIRST so every terminal
+    -- transition (finalize / cancel_generation / terminalize_generation)
+    -- serializes on the same row and the status re-check below cannot be
+    -- split by a concurrent writer. Without the lock, two sessions could both
+    -- observe FINAL_REVIEW and both write COMPLETED plus duplicate
+    -- message/usage/quota/event/outbox artifacts.
+    SELECT g.conversation_id, g.status, g.assistant_message_id
+      INTO v_conv_id, v_status, v_assistant_message_id
       FROM vc.generation g
      WHERE g.owner_user_id = p_owner_user_id
-       AND g.id = p_generation_id;
+       AND g.id = p_generation_id
+     FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'finalize: generation % not found for owner %', p_generation_id, p_owner_user_id;
     END IF;
 
-    -- INV-GEN-003: only a generation past final review may be completed. A
-    -- generation still IN_PROGRESS at provider EOS fails here, so EOS can never
-    -- imply chat.completed.
+    -- INV-GEN-003 + P1-03: only a generation still in FINAL_REVIEW under our
+    -- lock may be completed. A concurrent cancel/terminalize winner surfaces
+    -- here as its terminal state and fails closed, so a later finalize can
+    -- never overwrite CANCELLED / OUTPUT_BLOCKED / FAILED_FINAL (terminal
+    -- states are not rewritable). A generation still IN_PROGRESS at provider
+    -- EOS fails here, so EOS can never imply chat.completed.
     IF v_status <> 'FINAL_REVIEW' THEN
         RAISE EXCEPTION 'finalize: generation must be in FINAL_REVIEW (current %)', v_status;
+    END IF;
+
+    -- INV-GEN-002 idempotency guard: at most one final assistant message per
+    -- generation. assistant_message_id is only ever set by finalize, so a
+    -- non-NULL value here means this generation was already finalized.
+    IF v_assistant_message_id IS NOT NULL THEN
+        RAISE EXCEPTION 'finalize: generation % already has a final assistant message (id %)',
+            p_generation_id, v_assistant_message_id;
     END IF;
 
     -- Precondition: the chosen candidate belongs to this generation.
@@ -202,16 +261,26 @@ BEGIN
        AND generation_id = p_generation_id
        AND id = p_final_candidate_id;
 
-    -- Final assistant message.
+    -- Final assistant message, bound to its generation. The partial unique
+    -- index message_generation_one_final (INV-GEN-002) rejects a second final
+    -- assistant message for the same generation.
     v_msg_id := nextval('vc.message_id_seq');
-    INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content)
-    VALUES (p_owner_user_id, v_msg_id, v_conv_id, 'assistant', p_assistant_content);
+    INSERT INTO vc.message(owner_user_id, id, conversation_id, role, content, generation_id)
+    VALUES (p_owner_user_id, v_msg_id, v_conv_id, 'assistant', p_assistant_content, p_generation_id);
 
-    -- Generation terminal state + assistant binding.
+    -- Conditional UPDATE winner (P1-03): the status predicate is the
+    -- machine-readable winner condition. Under the row lock it always matches;
+    -- if a future code path drops the lock, the UPDATE still fails closed
+    -- instead of overwriting a terminal state.
     UPDATE vc.generation
        SET status = 'COMPLETED', assistant_message_id = v_msg_id
      WHERE owner_user_id = p_owner_user_id
-       AND id = p_generation_id;
+       AND id = p_generation_id
+       AND status = 'FINAL_REVIEW';
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'finalize: generation % lost the terminal transition race (status no longer FINAL_REVIEW)',
+            p_generation_id;
+    END IF;
 
     -- Usage + actual cost.
     INSERT INTO vc.generation_usage(

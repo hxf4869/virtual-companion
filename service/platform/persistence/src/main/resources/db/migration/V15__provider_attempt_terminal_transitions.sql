@@ -217,7 +217,11 @@ GRANT EXECUTE ON FUNCTION
 -- 4. insert_generation_candidate: finalize prerequisite (V7 requires
 --    p_final_candidate_id to already exist). Terminal generations accept no
 --    new candidates (INV-GEN-003). The generation_candidate_one_final partial
---    unique index rejects a second final candidate (INV-GEN-002).
+--    unique index rejects a second final candidate (INV-GEN-002). TASK-0098
+--    P2-10: the status read takes the generation row lock (FOR UPDATE) and the
+--    terminal-state check is re-evaluated under that lock, so a concurrent
+--    terminal transition can never commit between the check and the insert
+--    (no late candidates into a terminal generation).
 CREATE SEQUENCE IF NOT EXISTS vc.generation_candidate_id_seq;
 
 CREATE OR REPLACE FUNCTION vc.insert_generation_candidate(
@@ -243,10 +247,14 @@ BEGIN
     END IF;
     PERFORM set_config('vc.owner_user_id', p_owner_user_id::text, true);
 
+    -- P2-10: lock the generation row before checking status so a concurrent
+    -- finalize/cancel/terminalize winner is observed under our lock instead of
+    -- racing the insert.
     SELECT g.status INTO v_status
       FROM vc.generation g
      WHERE g.owner_user_id = p_owner_user_id
-       AND g.id = p_generation_id;
+       AND g.id = p_generation_id
+     FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'insert_generation_candidate: generation % not found for owner %',
             p_generation_id, p_owner_user_id;
