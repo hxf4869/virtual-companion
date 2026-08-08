@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0102
+activeTaskCard: docs/tasks/TASK-0102-backend-session-boundary.md
 lastAcceptedTask: TASK-0101
 lastAcceptedHandoff: docs/handoffs/TASK-0101.json
 lastTerminalTask: TASK-0101
 lastTerminalHandoff: docs/handoffs/TASK-0101.json
-nextAction: 创建工作包 9 Frontend session 卡（P1-09+P1-08+条件风险 3/4）——cookie/CSRF 与 baseline 公开/认证语义需 Owner 先决策；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0101 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
+nextAction: TASK-0102 已授权（READY）：实施后端 session 边界（P1-08 baseline permitAll + P1-09 后端侧 HttpOnly refresh cookie + CSRF/Origin + 风险 3 production fail-closed + 契约决策解析）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
