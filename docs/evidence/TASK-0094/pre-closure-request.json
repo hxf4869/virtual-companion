@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "executable": "/tmp/vc-audit-venv/bin/python",
+  "argv": [
+    "scripts/harness/doctor.py",
+    "--task",
+    "TASK-0094",
+    "--pre-closure"
+  ],
+  "workingDirectory": "/Users/hxf/projects/virtual-companion",
+  "terminalState": "REJECTED",
+  "candidateCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+  "candidateTree": "a31b577d5f530eec120d4ca01c0b2fac5abde6c2",
+  "passClaimed": false
+}

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0094
-activeTaskCard: docs/tasks/TASK-0094-doctor-receipt-cache-binding.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0090
 lastAcceptedHandoff: docs/handoffs/TASK-0090.json
-lastTerminalTask: TASK-0090
-lastTerminalHandoff: docs/handoffs/TASK-0090.json
-nextAction: 执行 TASK-0094：修复 Doctor receipt cache 输入绑定与前置校验；完成 READY 授权绑定与真实 Doctor 后进入 IN_PROGRESS，仅修改 doctor.py 和定向测试。
+lastTerminalTask: TASK-0094
+lastTerminalHandoff: docs/handoffs/TASK-0094.json
+nextAction: 等待 Owner 分配新的修复卡，修复 TASK-0094 R2 发现的 receipt cache-hit 完整 manifest TOCTOU；TASK-0094 已 REJECTED，不得 R3 或继续修改。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

@@ -2,7 +2,12 @@
 
 ```yaml
 taskId: TASK-0094
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  R1 在首版候选发现两项 P1，唯一 fix batch 补齐 Git 历史解释元数据与时区数据身份；
+  R2 在最终候选发现 cache-hit 返回前未重新计算完整 manifest 的 P1 TOCTOU。
+  maximumFixBatches=1、maximumReviewRounds=2 且 r3Forbidden=true 已耗尽，任务失败关闭为 REJECTED。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -199,7 +204,25 @@ humanApprovals:
       Agent 随后精确说明首卡分配 TASK-0094、仅修 Doctor receipt cache P1-01、C4 Harness
       保护路径、独立复核与直接原子提交并推送 origin/main；Owner 回复“继续”，批准上述两项决策。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0094_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: 305f124d83fc7b2e2a674b2a099d0df7be2b8c3d
+    evidencePath: docs/evidence/TASK-0094/review-r1.md
+    reason: >-
+      R1 发现 receipt 未绑定 shallow/replace/grafts 历史解释元数据，且未绑定
+      PYTHONTZPATH 与实际时区数据身份；进入唯一 fix batch。
+    candidateTree: 9ea32328457b0f5ff9b6e93e19ca991e318c9850
+  - id: task0094_r2
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: da9b0fe4eb7345a85ee404500cb91b9538e75b8e
+    evidencePath: docs/evidence/TASK-0094/review-r2.md
+    reason: >-
+      R2 确认 R1 静态绑定已补齐，但发现 cache-hit 返回前未重算完整 manifest；
+      lookup 期间 Git history/config/timezone/implementation/environment 变化仍可复用旧 PASS。
+    candidateTree: a31b577d5f530eec120d4ca01c0b2fac5abde6c2
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0094
   - python -m unittest scripts.harness.tests.test_harness.GitHistoryPolicyTests

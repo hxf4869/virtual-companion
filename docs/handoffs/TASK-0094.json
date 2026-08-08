@@ -1,0 +1,79 @@
+{
+  "taskId": "TASK-0094",
+  "state": "REJECTED",
+  "baseCommit": "c09e83246054225f7bc29fb202ecc6976a88ceb1",
+  "headCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+  "evidencePath": "docs/evidence/TASK-0094/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ab854dddf8861a6934523f061d4c4ac2b9bec4af",
+      "startedAt": "2026-08-08T14:35:45+08:00",
+      "endedAt": "2026-08-08T15:30:41+08:00",
+      "elapsedSeconds": 3296,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ab854dddf8861a6934523f061d4c4ac2b9bec4af",
+      "startedAt": "2026-08-08T14:35:45+08:00",
+      "endedAt": "2026-08-08T14:38:46+08:00",
+      "elapsedSeconds": 181,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f8a57a713828d2481556288a8c9edf1857b45675",
+      "startedAt": "2026-08-08T14:38:46+08:00",
+      "endedAt": "2026-08-08T15:30:41+08:00",
+      "elapsedSeconds": 3115,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-08T14:38:46+08:00",
+      "inProgressCommit": "f8a57a713828d2481556288a8c9edf1857b45675"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0094_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "305f124d83fc7b2e2a674b2a099d0df7be2b8c3d",
+      "evidencePath": "docs/evidence/TASK-0094/review-r1.md",
+      "reason": "R1 found missing Git history and timezone identity bindings.",
+      "candidateTree": "9ea32328457b0f5ff9b6e93e19ca991e318c9850"
+    },
+    {
+      "id": "task0094_r2",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+      "evidencePath": "docs/evidence/TASK-0094/review-r2.md",
+      "reason": "R2 found the remaining complete-manifest TOCTOU on cache hit.",
+      "candidateTree": "a31b577d5f530eec120d4ca01c0b2fac5abde6c2"
+    }
+  ],
+  "completed": [
+    "建立并授权 C4 TASK-0094，Context Lock 验证 PASS，READY Doctor 真实 PASS 后进入 IN_PROGRESS。",
+    "实现 receipt schema v2，静态绑定 repo/argv/task/HEAD/index/worktree/untracked/Python/Doctor implementation/environment/Git config，并保留 summary cache-hit 输出。",
+    "唯一 fix batch 补充 shallow/replace/grafts/alternates 等 Git 历史解释元数据，以及 PYTHONTZPATH 与 system/tzdata 时区来源身份；定向 44 tests PASS。",
+    "R1 与 R2 均完成独立只读复核，结果和候选 Commit/Tree 已如实固化；未声称 canonical 或远端 PASS。"
+  ],
+  "remaining": [
+    "cache-hit 返回 PASS 前必须重新计算并比较完整 manifest，读取失败或任何输入变化均按 cache miss/失败关闭处理。",
+    "增加 lookup 期间 Git history/config/timezone/implementation/environment 变化的竞态回归测试。",
+    "由新任务重新执行独立 Reviewer、canonical precheck 与 PRIMARY_REMOTE_EXACT_SHA；TASK-0094 不得 R3 或继续修复。"
+  ],
+  "knownRisks": [
+    "当前 main 上的新 cache schema 比旧实现更完整，但 R2 已证明 lookup 期间存在 P1 TOCTOU，因此 Doctor receipt PASS 仍不可作为可信终态证据。",
+    "TASK-0094 为 REJECTED；其实现提交保留在历史中，只能由新的 Owner 授权任务前向修复，不得改写或回退历史。",
+    "canonical precheck 与远端 exact-SHA 均因 Reviewer prerequisite 失败而 NOT_RUN，没有 PASS 声明。"
+  ],
+  "nextAction": "等待 Owner 分配新的修复卡，修复 TASK-0094 R2 发现的 receipt cache-hit 完整 manifest TOCTOU；TASK-0094 已 REJECTED，不得 R3 或继续修改。"
+}
