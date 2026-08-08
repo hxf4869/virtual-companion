@@ -2,7 +2,21 @@
 
 ```yaml
 taskId: TASK-0106
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-19+P2-18 完成并验证：ci.yml frontend job 增加 test:run/type-check 门禁
+  （不改触发/权限/其他 job）；chat/auth/memory 3 页面组件 glue 测试（真实
+  挂载 .vue，vitest 138/138）；依赖完整升级——pnpm-workspace overrides 修复
+  intlify/adm-zip/postcss/nanoid/esbuild/qs/cookie/send/body-parser/
+  brace-expansion/path-to-regexp/@babel/core，audit 11h/18m/7l → 2h/12m/2l
+  （critical 0），例外台账覆盖 vite 5.2.8（uni-app 精确锁定）与
+  vue-template-compiler 2.7.16（无 v2 修复），到期日 2026-11-09。type-check
+  PASS；uni build PASS；canonical precheck 5/5 PASS（doctor 457972 checks）；
+  R1 FAIL（happy-dom 17.4.4 引入 1 critical+2 high → fix batch 20.11.2）+
+  R2 delta PASS；链因卡片契约纠正（riskClass C4 + harness-change approval
+  scope）reset 重建，重建候选实现树与复核树逐字节一致；remote CI 因 Actions
+  配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价
+  验证为备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -214,7 +228,28 @@ humanApprovals:
       glue 测试；不改 harness-full/harness-smoke/backend/database job 语义，
       不触碰 workflow 触发条件与 permissions 最小化。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0106_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 55fb6d54d802c21aa481f618814cb232b6a2162c
+    evidencePath: docs/evidence/TASK-0106/review-r1.md
+    reason: >-
+      R1 完整矩阵复核：overrides 真实性/审计计数/ci.yml 门禁/组件测试/既有
+      用例均 PASS；发现 1×P1 阻塞（happy-dom 17.4.4 引入 1 critical + 2
+      high 且未入台账，计数声明失实）+ 1×P2 说明；P1 采纳进 fix batch
+      （happy-dom 20.11.2），R2 关闭。复核树与最终候选 6505060 逐字节一致。
+    candidateTree: b4ef5be8672e5c4606720d770e40878c5428d9ca
+  - id: task0106_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 078774b124f349cd986955b763162daba1e8f7b9
+    evidencePath: docs/evidence/TASK-0106/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：happy-dom 20.11.2 清除 critical+2 high（P1 关闭）；
+      audit 2h/12m/2l 与例外台账逐字一致；vitest 138/138 + type-check exit
+      0；lockfile delta 限于 happy-dom 子树；无新 finding。
+    candidateTree: 6e9ca8f453e2519ebe959d5eadd9a85e44c45839
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0106
   - pnpm --dir frontend test:run

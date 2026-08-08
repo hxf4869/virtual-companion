@@ -1,0 +1,84 @@
+{
+ "taskId": "TASK-0106",
+ "state": "ACCEPTED",
+ "baseCommit": "950162c94a008bf741c48cf55e0d57374d1c8b62",
+ "headCommit": "6505060b1f77be7f8e840bea8e55c17d4d2add79",
+ "evidencePath": "docs/evidence/TASK-0106/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "2e6e929a667839a3b4e70d28cee67d21e37867e0",
+   "startedAt": "2026-08-09T02:26:23+08:00",
+   "endedAt": "2026-08-09T02:36:00+08:00",
+   "elapsedSeconds": 577,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "2e6e929a667839a3b4e70d28cee67d21e37867e0",
+   "startedAt": "2026-08-09T02:26:23+08:00",
+   "endedAt": "2026-08-09T02:27:55+08:00",
+   "elapsedSeconds": 92,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "3e612841be8a9247bc50fa9cb7de0af5c07ce181",
+   "startedAt": "2026-08-09T02:27:58+08:00",
+   "endedAt": "2026-08-09T02:36:00+08:00",
+   "elapsedSeconds": 482,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0106_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "55fb6d54d802c21aa481f618814cb232b6a2162c",
+   "evidencePath": "docs/evidence/TASK-0106/review-r1.md",
+   "reason": "R1 complete-matrix review: overrides/audit counts/ci.yml gates/component tests/existing cases PASS; 1 blocking P1 (happy-dom 17.4.4 introduced 1 critical + 2 high, ledger claim mismatch) adopted into fix batch (happy-dom 20.11.2) and closed by R2; reviewed tree byte-identical to final candidate.",
+   "candidateTree": "b4ef5be8672e5c4606720d770e40878c5428d9ca"
+  },
+  {
+   "id": "task0106_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "078774b124f349cd986955b763162daba1e8f7b9",
+   "evidencePath": "docs/evidence/TASK-0106/review-r2.md",
+   "reason": "R2 delta review PASS: happy-dom 20.11.2 clears critical+2 high (P1 closed); audit 2h/12m/2l matches exceptions ledger exactly; vitest 138/138 + type-check exit 0; lockfile delta confined to happy-dom subtree; no new findings.",
+   "candidateTree": "6e9ca8f453e2519ebe959d5eadd9a85e44c45839"
+  }
+ ],
+ "completed": [
+  "P2-19: ci.yml frontend job 在 install 后新增 'Test H5 (vitest incl. page component glue)'（test:run）与 'Type-check H5'（type-check）步骤，build 保留；触发条件/permissions/其他 job/actions 版本零改动",
+  "P2-19: 3 页面组件 glue 测试——memory.spec.ts（role=alert 错误区、空证据不渲染容器、保存失败保持编辑态/成功退出）、login.spec.ts（aria-label、失败后 role=alert+焦点回用户名、submitting aria-busy）、chat.spec.ts（role=status+aria-live、fetch stub 失败→恢复失败请重试、取消按钮 aria-busy）；@vue/test-utils 2.4.6 + happy-dom 20.11.2 + @vitejs/plugin-vue 5.2.4 入 devDeps，vitest.config.ts 注册 vue 插件（全局 node 环境，组件 spec 文件头 happy-dom）",
+  "P2-18: pnpm-workspace.yaml overrides 修复 13 项——@intlify/core-base→9.14.5、@intlify/message-resolver→9.1.11、adm-zip→0.6.0、postcss→8.5.24、nanoid→3.3.17、path-to-regexp→0.1.13、qs→6.15.2、body-parser→1.20.6、cookie→0.7.0、send→0.19.0、brace-expansion→2.1.4、@babel/core→7.29.7、esbuild 0.20.x→0.25.0；audit 11 high/18 moderate/7 low → 2 high/12 moderate/2 low（critical 0）",
+  "P2-18: 例外台账 docs/dependency-audit-exceptions.yaml——vite 5.2.8（15 advisories，uni-app vue3 全线精确 peer 锁定 vite 5.2.8，dev-server/build 工具链攻击面）与 vue-template-compiler 2.7.16（无 v2 修复版），owner/reason/attackSurface/expiryDate 2026-11-09 齐全",
+  "R1 P1 采纳（fix batch）：happy-dom 17.4.4→20.11.2（清除其引入的 GHSA-37j7-fg3j-429f critical + GHSA-w4gp-fjgq-3q4g/GHSA-6q6h-j7hj-3r64 high，修复线 >=20.8.9）",
+  "验证: vitest 138/138 PASS（15 文件，128 既有 + 10 新增组件用例）；type-check PASS；uni build PASS；frozen-lockfile 一致（pnpm 11.9.0 与 CI 同版本）；canonical precheck 5/5 PASS（doctor 457972 checks）；R1 FAIL（1×P1）+ fix batch + R2 delta PASS；remote CI 因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）",
+  "提交链（重建后）: DRAFT 2e6e929 → READY cd0127d/bind 81af09c → IN_PROGRESS 3e61284 → 候选 6505060（实现树与 R1/R2 复核树逐字节一致）"
+ ],
+ "remaining": [
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核（含新 CI 门禁步骤的真实执行验证）",
+  "依赖例外台账到期复审：vite 5.2.8 与 vue-template-compiler 2.7.16 例外 expiryDate 2026-11-09，到期或 uni-app 发布放开 vite 锁定的版本后立即升级并移除条目",
+  "工作包 12 Provider（P2-01/02/05/06+条件风险 5/6/7）：provider egress allowlist 需 Owner 决策，为下一卡",
+  "工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）",
+  "条件风险 1（Generation/Realtime HTTP 纵切未实现）仍 OPEN；P2-23（Actions 固定 SHA）/P2-24/P2-25/P2-26/P2-27 属工作包 15"
+ ],
+ "knownRisks": [
+  "vite 5.2.8 的 dev-server 类 advisory（server.fs.deny 绕过/launch-editor 注入等）在生产 H5 静态产物下不可利用，但本地 dev server 运行期间仍有攻击面——例外台账已记录攻击面与到期日",
+  "esbuild 0.25.0 override 在 vite 5.2.8 链下经 build/type-check/test 验证兼容，但 vite 官方支持范围仍为 esbuild ^0.20——uni-app 升级放开 vite 锁定前，esbuild 大版本漂移存在隐性风险",
+  "组件测试在 happy-dom 环境运行，与真实浏览器/uni-app H5 运行时存在差异（a11y 语义已由属性断言覆盖，视觉/键盘真机检查未做——P3-04 说明项）",
+  "CI 门禁步骤的真实远端执行受 Actions 配额限制未验证（workflow YAML 语法本地校验 + 步骤语义 Reviewer 复核）",
+  "Actions 配额恢复前，前端 CI 与远端 exact-SHA 复核均无法真实执行"
+ ],
+ "nextAction": "TASK-0106 已 ACCEPTED（工作包 11 第二张：P2-19 前端 CI 门禁——ci.yml frontend job 加 test:run/type-check + chat/auth/memory 3 页面组件 glue 测试；P2-18 依赖完整升级——pnpm-workspace overrides 修复 intlify/adm-zip/postcss/nanoid/esbuild/qs/cookie/send/body-parser/brace-expansion/path-to-regexp/@babel/core，audit 11h/18m/7l→2h/12m/2l，例外台账 docs/dependency-audit-exceptions.yaml 覆盖 vite 5.2.8（uni-app 锁定）与 vue-template-compiler 2.7.16（无 v2 修复），到期日 2026-11-09；vitest 138/138、precheck 5/5、R1 FAIL→fix batch→R2 PASS）；工作包 12 Provider（P2-01/02/05/06+风险 5/6/7，provider egress allowlist 需 Owner 决策）为下一卡；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额耗尽下的远端复核延后至配额恢复。"
+}
