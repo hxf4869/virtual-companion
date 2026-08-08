@@ -1,8 +1,11 @@
 -- 42_terminal_event_atomic: terminalize_generation writes the terminal
 -- realtime_event atomically with the status change (INV-TX-001) and only the
 -- matching event type (INV-GEN-003: no fabricated chat.completed on a failed
--- generation). A terminal generation continues to reject append_realtime_event,
--- and resume_stream returns TERMINAL_SNAPSHOT with the committed terminal event.
+-- generation). TASK-0100 P2-09: the terminal event is allocated from the
+-- shared stream allocator (real epoch 1 / seq 1, high water mark advanced);
+-- P2-08: append_realtime_event rejects non-durable types (chat.delta). A
+-- terminal generation continues to reject append_realtime_event, and
+-- resume_stream returns TERMINAL_SNAPSHOT with the committed terminal event.
 
 \set ON_ERROR_STOP on
 
@@ -41,6 +44,19 @@ BEGIN
     IF n <> 1 THEN
         RAISE EXCEPTION 'terminalize must write exactly one PENDING chat.failed (got %)', n;
     END IF;
+    -- TASK-0100 P2-09: the terminal event carries the real allocated epoch/seq
+    -- (1/1) and the stream high water mark advanced to 2 inside the terminal txn.
+    SELECT count(*) INTO n FROM vc.realtime_event
+     WHERE generation_id = 5000 AND event_type = 'chat.failed'
+       AND stream_epoch = 1 AND event_seq = 1;
+    IF n <> 1 THEN
+        RAISE EXCEPTION 'terminal event must carry real epoch 1 seq 1 (got %)', n;
+    END IF;
+    SELECT next_seq INTO n FROM vc.realtime_stream
+     WHERE owner_user_id = 1 AND generation_id = 5000;
+    IF n <> 2 THEN
+        RAISE EXCEPTION 'stream next_seq must advance to 2 (got %)', n;
+    END IF;
     SELECT status INTO v_status FROM vc.generation WHERE owner_user_id = 1 AND id = 5000;
     IF v_status <> 'FAILED_FINAL' THEN
         RAISE EXCEPTION 'status must be FAILED_FINAL (got %)', v_status;
@@ -53,7 +69,8 @@ BEGIN
         RAISE EXCEPTION 'failed generation must not fabricate chat.completed (got %)', n;
     END IF;
 
-    -- Terminal generations reject new durable events (append defense).
+    -- Terminal generations reject new durable events (append defense), and
+    -- P2-08 narrow validation rejects the non-durable chat.delta type.
     BEGIN
         PERFORM vc.append_realtime_event(1, 5000, 1, 'chat.delta', '{}'::jsonb);
         RAISE EXCEPTION 'append to a terminal generation must be rejected';

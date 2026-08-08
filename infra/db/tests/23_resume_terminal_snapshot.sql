@@ -4,11 +4,12 @@
 -- committed state; chat.completed is PENDING in the DB and only ever published
 -- after its transaction commits (INV-TX-001).
 --
--- R1 P1-2 regression: finalize's chat.completed is written with event_seq=0
--- (V7 DEFAULT) but a later committed_at than a previously-appended durable
--- event. The snapshot orders by committed_at so chat.completed sorts AFTER the
--- appended event, not before. The append and finalize run in SEPARATE
--- transactions (as they do in the real runtime) so their committed_at differ.
+-- TASK-0100 P2-09: finalize's chat.completed is allocated from the shared
+-- stream allocator, so it carries the real event_seq (2, after the appended
+-- chat.accepted seq 1) and the stream high water mark advances to 3 — the
+-- snapshot orders events by committed_at/event_seq consistently. The append
+-- and finalize run in SEPARATE transactions (as they do in the real runtime)
+-- so their committed_at differ.
 
 \set ON_ERROR_STOP on
 
@@ -80,8 +81,9 @@ BEGIN
         RAISE EXCEPTION 'TERMINAL_SNAPSHOT events must include chat.completed';
     END IF;
 
-    -- R1 P1-2 regression: the appended chat.accepted (earlier committed_at) must
-    -- sort BEFORE finalize's chat.completed (event_seq=0 but later committed_at).
+    -- R1 P1-2 regression (TASK-0100 P2-09 semantics): the appended
+    -- chat.accepted (seq 1) must sort BEFORE finalize's chat.completed, which
+    -- now carries the real allocated seq 2 from the stream allocator.
     IF jsonb_array_length(v_events) < 2 THEN
         RAISE EXCEPTION 'snapshot must contain the appended event and chat.completed';
     END IF;
@@ -92,6 +94,16 @@ BEGIN
     IF (v_events->n->>'event') <> 'chat.completed' THEN
         RAISE EXCEPTION 'snapshot must order chat.completed last by committed_at';
     END IF;
+
+    -- TASK-0100 P2-09: chat.completed carries real epoch 1 / seq 2 and the
+    -- stream high water mark advanced atomically to 3 in the finalize txn.
+    SELECT count(*) INTO n FROM vc.realtime_event
+     WHERE owner_user_id = 1 AND generation_id = 5000 AND event_type = 'chat.completed'
+       AND stream_epoch = 1 AND event_seq = 2;
+    IF n <> 1 THEN RAISE EXCEPTION 'chat.completed must carry real epoch 1 seq 2 (got %)', n; END IF;
+    SELECT next_seq INTO n FROM vc.realtime_stream
+     WHERE owner_user_id = 1 AND generation_id = 5000;
+    IF n <> 3 THEN RAISE EXCEPTION 'stream next_seq must advance to 3 (got %)', n; END IF;
 
     -- R1 P2-4: a terminal generation (now COMPLETED) rejects new durable events.
     BEGIN

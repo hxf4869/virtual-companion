@@ -142,7 +142,6 @@ CREATE OR REPLACE FUNCTION vc.terminalize_generation(
 AS $$
 DECLARE
     v_status text;
-    v_row_id bigint;
 BEGIN
     IF p_owner_user_id IS NULL OR p_generation_id IS NULL THEN
         RAISE EXCEPTION 'terminalize_generation: owner_user_id and generation_id are required';
@@ -195,13 +194,12 @@ BEGIN
        AND id = p_generation_id;
 
     -- Durable terminal event, PENDING only (published post-commit), matching
-    -- finalize_generation's chat.completed (V7).
-    v_row_id := nextval('vc.finalize_row_id_seq');
-    INSERT INTO vc.realtime_event(
-        owner_user_id, id, generation_id, event_type, payload, status)
-    VALUES (
-        p_owner_user_id, v_row_id, p_generation_id, p_event_type,
-        COALESCE(p_payload, '{}'::jsonb), 'PENDING');
+    -- finalize_generation's chat.completed (V7). TASK-0100 P2-09: allocated
+    -- from the shared stream allocator inside this terminal transaction so the
+    -- event carries the real (stream_epoch, event_seq).
+    PERFORM vc.append_terminal_event(
+        p_owner_user_id, p_generation_id, p_event_type,
+        COALESCE(p_payload, '{}'::jsonb));
 
     RETURN p_to_status;
 END;

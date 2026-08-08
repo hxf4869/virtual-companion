@@ -1,8 +1,10 @@
 -- 45_finalize_cancel_concurrent: a finalize already in flight (blocked on the
 -- generation row lock) loses to a concurrent cancel_generation that wins
 -- inside the lock. The late finalize must fail closed with zero writes:
--- status stays CANCELLED and no message/usage/quota/event/outbox row appears
--- (TASK-0098 P1-03: terminal states are never rewritable).
+-- status stays CANCELLED and no message/usage/quota/outbox row appears, and
+-- the only realtime event is the cancel winner's own durable chat.cancelled
+-- (TASK-0098 P1-03 terminal states are never rewritable; TASK-0100 P2-11
+-- cancel produces its terminal event atomically).
 
 \set ON_ERROR_STOP on
 
@@ -72,8 +74,16 @@ BEGIN
     IF n <> 0 THEN RAISE EXCEPTION 'cancel winner must leave zero usage rows (got %)', n; END IF;
     SELECT count(*) INTO n FROM vc.quota_ledger_entry WHERE owner_user_id = 1 AND generation_id = 5000;
     IF n <> 0 THEN RAISE EXCEPTION 'cancel winner must leave zero quota ledger rows (got %)', n; END IF;
+    -- The cancel winner's own terminal event: exactly one PENDING
+    -- chat.cancelled, and never a chat.completed (P2-11).
     SELECT count(*) INTO n FROM vc.realtime_event WHERE owner_user_id = 1 AND generation_id = 5000;
-    IF n <> 0 THEN RAISE EXCEPTION 'cancel winner must leave zero realtime events (got %)', n; END IF;
+    IF n <> 1 THEN RAISE EXCEPTION 'cancel winner must leave exactly one realtime event (got %)', n; END IF;
+    SELECT count(*) INTO n FROM vc.realtime_event
+     WHERE owner_user_id = 1 AND generation_id = 5000 AND event_type = 'chat.cancelled';
+    IF n <> 1 THEN RAISE EXCEPTION 'cancel winner must leave one chat.cancelled (got %)', n; END IF;
+    SELECT count(*) INTO n FROM vc.realtime_event
+     WHERE owner_user_id = 1 AND generation_id = 5000 AND event_type = 'chat.completed';
+    IF n <> 0 THEN RAISE EXCEPTION 'cancel winner must leave zero chat.completed (got %)', n; END IF;
     SELECT count(*) INTO n FROM vc.outbox_event WHERE owner_user_id = 1 AND generation_id = 5000;
     IF n <> 0 THEN RAISE EXCEPTION 'cancel winner must leave zero outbox rows (got %)', n; END IF;
     PERFORM dblink_disconnect('sess_l');

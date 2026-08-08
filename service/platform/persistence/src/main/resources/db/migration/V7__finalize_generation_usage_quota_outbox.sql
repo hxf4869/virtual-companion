@@ -297,14 +297,13 @@ BEGIN
         p_owner_user_id, nextval('vc.finalize_row_id_seq'), p_generation_id,
         'SETTLE', p_quota_amount, 'finalize');
 
-    -- Durable chat.completed, PENDING only (published post-commit).
-    INSERT INTO vc.realtime_event(
-        owner_user_id, id, generation_id, event_type, payload, status)
-    VALUES (
-        p_owner_user_id, nextval('vc.finalize_row_id_seq'), p_generation_id,
-        'chat.completed',
-        jsonb_build_object('generation_id', p_generation_id, 'assistant_message_id', v_msg_id),
-        'PENDING');
+    -- Durable chat.completed, PENDING only (published post-commit). TASK-0100
+    -- P2-09: allocated from the shared stream allocator inside this terminal
+    -- transaction, so the event carries the real (stream_epoch, event_seq) and
+    -- the stream high water mark advances atomically with the terminal state.
+    PERFORM vc.append_terminal_event(
+        p_owner_user_id, p_generation_id, 'chat.completed',
+        jsonb_build_object('generation_id', p_generation_id, 'assistant_message_id', v_msg_id));
 
     -- Eligible outbox event (memory.extract.requested).
     IF p_outbox_eligible THEN

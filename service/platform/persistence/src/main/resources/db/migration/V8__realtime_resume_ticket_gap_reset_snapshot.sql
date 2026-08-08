@@ -52,6 +52,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS realtime_event_seq_uniq
 CREATE INDEX IF NOT EXISTS realtime_event_resume_idx
     ON vc.realtime_event (owner_user_id, generation_id, stream_epoch, event_seq);
 
+-- TASK-0100 P2-08: realtime_event.event_type is bound to the durable subset of
+-- specs/catalog/realtime-events.yaml (durable: true entries). Non-durable
+-- stream events (chat.delta, chat.replace, stream.*) never persist, and the
+-- four terminal types (chat.completed / chat.cancelled / chat.blocked /
+-- chat.failed) can only be written by the terminal transitions
+-- (finalize_generation / terminalize_generation / cancel_generation) through
+-- the owner-only vc.append_terminal_event allocator.
+ALTER TABLE vc.realtime_event
+    DROP CONSTRAINT IF EXISTS realtime_event_type_catalog;
+ALTER TABLE vc.realtime_event
+    ADD CONSTRAINT realtime_event_type_catalog CHECK (
+        event_type IN (
+            'chat.accepted', 'chat.completed', 'chat.cancelled',
+            'chat.blocked', 'chat.failed', 'safety.notice',
+            'service.mode.changed', 'memory.candidate.created',
+            'memory.candidate.confirmation_required'));
+
 -- The authoritative current epoch for a generation. A reset increments it; a
 -- resume carrying a stale epoch returns RESET_REQUIRED and the client must
 -- discard uncommitted draft (realtime-contract rule: "an epoch mismatch
@@ -195,6 +212,14 @@ $$;
 -- append_realtime_event: persist one durable event and allocate its monotonic
 -- event_seq from the stream high water mark. Rejects an epoch mismatch so an
 -- event can never be appended to a stale epoch. Returns the assigned event_seq.
+--
+-- TASK-0100 P2-07/P2-08: the seq allocation is one atomic UPDATE (row lock +
+-- epoch predicate, so concurrent appends get strictly unique increasing seqs
+-- and a concurrent reset cannot split the check from the write); the event
+-- type is validated against the durable non-terminal subset of
+-- specs/catalog/realtime-events.yaml — unknown (foo), non-durable (chat.delta,
+-- stream.*) and terminal types (chat.completed/cancelled/blocked/failed, which
+-- only the terminal transitions may produce) all fail closed.
 CREATE OR REPLACE FUNCTION vc.append_realtime_event(
     p_owner_user_id  bigint,
     p_generation_id  bigint,
@@ -218,6 +243,13 @@ BEGIN
     IF p_event_type IS NULL OR btrim(p_event_type) = '' THEN
         RAISE EXCEPTION 'append_realtime_event: event_type is required';
     END IF;
+    IF p_event_type NOT IN (
+        'chat.accepted', 'safety.notice', 'service.mode.changed',
+        'memory.candidate.created', 'memory.candidate.confirmation_required'
+    ) THEN
+        RAISE EXCEPTION 'append_realtime_event: event type % is not a durable non-terminal event (realtime-events catalog)',
+            p_event_type;
+    END IF;
     PERFORM set_config('vc.owner_user_id', p_owner_user_id::text, true);
 
     SELECT * INTO v_stream FROM vc.ensure_realtime_stream(p_owner_user_id, p_generation_id);
@@ -237,7 +269,22 @@ BEGIN
         RAISE EXCEPTION 'append_realtime_event: cannot append to a terminal generation';
     END IF;
 
-    v_seq := v_stream.out_next_seq;
+    -- Atomic allocation (P2-07): the row lock serializes concurrent appends and
+    -- the stream_epoch predicate makes the epoch check race-free against a
+    -- concurrent reset (a stale epoch matches zero rows and fails closed).
+    -- next_seq is the post-increment high water mark, so the allocated seq is
+    -- next_seq - 1 (the first event of a fresh stream is seq 1).
+    UPDATE vc.realtime_stream
+       SET next_seq = next_seq + 1, updated_at = now()
+     WHERE owner_user_id = p_owner_user_id
+       AND generation_id = p_generation_id
+       AND stream_epoch = p_stream_epoch
+     RETURNING next_seq - 1 INTO v_seq;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'append_realtime_event: stream_epoch mismatch under lock (got %)',
+            p_stream_epoch;
+    END IF;
+
     v_row_id := nextval('vc.finalize_row_id_seq');
     INSERT INTO vc.realtime_event(
         owner_user_id, id, generation_id, event_type, payload, status,
@@ -245,11 +292,6 @@ BEGIN
     VALUES (
         p_owner_user_id, v_row_id, p_generation_id, p_event_type, COALESCE(p_payload, '{}'::jsonb),
         'PENDING', p_stream_epoch, v_seq, now());
-
-    UPDATE vc.realtime_stream
-       SET next_seq = v_seq + 1, updated_at = now()
-     WHERE owner_user_id = p_owner_user_id
-       AND generation_id = p_generation_id;
 
     RETURN v_seq;
 END;
@@ -259,6 +301,9 @@ $$;
 -- are never persisted. This keeps next_seq a true high water mark so the gap
 -- between persisted durable seqs and next_seq reflects deltas a client may have
 -- missed. Returns the new next_seq.
+--
+-- TASK-0100 P2-07: one atomic UPDATE (row lock) so concurrent advances never
+-- lose an increment.
 CREATE OR REPLACE FUNCTION vc.advance_realtime_seq(
     p_owner_user_id  bigint,
     p_generation_id  bigint,
@@ -278,12 +323,73 @@ BEGIN
     END IF;
     PERFORM set_config('vc.owner_user_id', p_owner_user_id::text, true);
     SELECT * INTO v_stream FROM vc.ensure_realtime_stream(p_owner_user_id, p_generation_id);
-    v_next := v_stream.out_next_seq + p_count;
     UPDATE vc.realtime_stream
-       SET next_seq = v_next, updated_at = now()
+       SET next_seq = next_seq + p_count, updated_at = now()
      WHERE owner_user_id = p_owner_user_id
-       AND generation_id = p_generation_id;
+       AND generation_id = p_generation_id
+     RETURNING next_seq INTO v_next;
     RETURN v_next;
+END;
+$$;
+
+-- append_terminal_event: the shared stream allocator for terminal transitions
+-- (TASK-0100 P2-09/P2-11). finalize_generation (chat.completed),
+-- terminalize_generation (chat.failed / chat.blocked / chat.completed) and
+-- cancel_generation (chat.cancelled) allocate the terminal event's epoch/seq
+-- from the same per-generation stream high water mark, atomically, inside
+-- their own terminal transaction, so the event carries a real (epoch, seq)
+-- that advances the stream cursor and resume/gap semantics stay correct.
+--
+-- The function accepts ONLY terminal event types and is NOT granted to any
+-- runtime role (REVOKE PUBLIC, no GRANT): only the SECURITY DEFINER terminal
+-- functions (executed as the migration owner) can reach it, so terminal events
+-- can only ever be produced by the corresponding terminal transaction.
+CREATE OR REPLACE FUNCTION vc.append_terminal_event(
+    p_owner_user_id  bigint,
+    p_generation_id  bigint,
+    p_event_type     text,
+    p_payload        jsonb DEFAULT '{}'::jsonb
+)
+    RETURNS bigint
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = vc, public
+AS $$
+DECLARE
+    v_stream  record;
+    v_seq     bigint;
+    v_row_id  bigint;
+BEGIN
+    IF p_owner_user_id IS NULL OR p_generation_id IS NULL THEN
+        RAISE EXCEPTION 'append_terminal_event: owner_user_id and generation_id are required';
+    END IF;
+    IF p_event_type NOT IN ('chat.completed', 'chat.cancelled', 'chat.blocked', 'chat.failed') THEN
+        RAISE EXCEPTION 'append_terminal_event: % is not a terminal event type', p_event_type;
+    END IF;
+    PERFORM set_config('vc.owner_user_id', p_owner_user_id::text, true);
+    SELECT * INTO v_stream FROM vc.ensure_realtime_stream(p_owner_user_id, p_generation_id);
+
+    UPDATE vc.realtime_stream
+       SET next_seq = next_seq + 1, updated_at = now()
+     WHERE owner_user_id = p_owner_user_id
+       AND generation_id = p_generation_id
+       AND stream_epoch = v_stream.out_stream_epoch
+     RETURNING next_seq - 1 INTO v_seq;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'append_terminal_event: stream row vanished for generation %',
+            p_generation_id;
+    END IF;
+
+    v_row_id := nextval('vc.finalize_row_id_seq');
+    INSERT INTO vc.realtime_event(
+        owner_user_id, id, generation_id, event_type, payload, status,
+        stream_epoch, event_seq, committed_at)
+    VALUES (
+        p_owner_user_id, v_row_id, p_generation_id, p_event_type,
+        COALESCE(p_payload, '{}'::jsonb), 'PENDING',
+        v_stream.out_stream_epoch, v_seq, now());
+
+    RETURN v_seq;
 END;
 $$;
 
@@ -618,6 +724,12 @@ REVOKE EXECUTE ON FUNCTION
     FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION
     vc.advance_realtime_seq(bigint, bigint, integer)
+    FROM PUBLIC;
+-- TASK-0100 P2-09/P2-11: terminal-event allocator is intentionally NOT granted
+-- to any role (owner-only). Only the SECURITY DEFINER terminal functions
+-- (finalize / terminalize / cancel) may produce terminal events.
+REVOKE EXECUTE ON FUNCTION
+    vc.append_terminal_event(bigint, bigint, text, jsonb)
     FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION
     vc.expire_realtime_window(bigint, bigint, bigint)

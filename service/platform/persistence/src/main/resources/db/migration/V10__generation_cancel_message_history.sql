@@ -84,6 +84,14 @@ BEGIN
      WHERE owner_user_id = p_owner_user_id
        AND id = p_generation_id;
 
+    -- TASK-0100 P2-11: durable chat.cancelled written atomically in the same
+    -- transaction (allocated from the shared stream allocator, PENDING until
+    -- commit), so a client resumes into TERMINAL_SNAPSHOT containing the
+    -- terminal cancel event instead of relying on status alone.
+    PERFORM vc.append_terminal_event(
+        p_owner_user_id, p_generation_id, 'chat.cancelled',
+        jsonb_build_object('generation_id', p_generation_id));
+
     RETURN 'CANCELLED';
 END;
 $$;
