@@ -31,7 +31,6 @@ import {
   updateMemory,
   type Memory,
   type MemoryEvidence,
-  type MemoryHttpErrorKind,
   type MemoryTransport,
 } from "@/api/memory";
 
