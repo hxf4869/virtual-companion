@@ -2,7 +2,9 @@
 
 ```yaml
 taskId: TASK-0100
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-07/08/09/11 Realtime DB 一致性修复完成并验证：V8 append/advance 改原子 UPDATE 分配 seq（行锁 + epoch 谓词，无丢更新/无唯一键冲突）；realtime_event 新增 catalog-backed CHECK（realtime-events.yaml durable 子集 9 code）+ append 窄函数拒绝非 durable/终态类型；新增 owner-only append_terminal_event 窄函数，finalize/terminalize/cancel 终态事件同事务经统一 allocator 分配真实 epoch/seq 并推进 high-water（cancel 原子写 durable chat.cancelled）。新增 49/50 测试并更新 23/42/45：冻结 runner 全新容器 V1-V15 全量迁移后 50/50 SQL 测试 PASS（P2-28 竞态 9 次首轮命中后第 10/11 次通过）；canonical precheck 5/5 PASS（doctor 423666 checks）；R1 无阻塞 PASS + R2 delta PASS（2 条 P3 防御已采纳）；remote CI 因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -299,7 +301,27 @@ humanApprovals:
       TEMPORARY_VOLUME_ONLY，runner 每次全新容器应用全量迁移），无持久环境、无
       Flyway checksum 历史可违反（TASK-0098/0099 先例）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0100_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 95684f90db3651d6d0faecf9b1ce8a9e19ff919b
+    evidencePath: docs/evidence/TASK-0100/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：diff 仅 writeAllowlist；V8 原子 seq 分配、catalog CHECK +
+      窄函数、owner-only append_terminal_event、终态 allocator（cancel 原子 chat.cancelled）；
+      测试 23/42/45/49/50 覆盖验收 1-4；无阻塞 finding（2 条 P3 可选建议采纳进 fix batch）。
+    candidateTree: 8be6ff622f6375a50dbce562b6c93224810f9f44
+  - id: task0100_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: de9402f706d906a3e103f4e632b7e8ae352a28f5
+    evidencePath: docs/evidence/TASK-0100/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：fix batch 仅 V8（19 行）；P3-1（advance NOT FOUND）与 P3-2
+      （append_terminal_event 终态断言）正确关闭，三个调用方均先终态后事件；无新阻塞；
+      R2 实测重跑冻结 DB 套件 50/50 PASS。
+    candidateTree: 1d60ea4baa111e5964ed509c0fc0eb3b1c4c0300
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0100
   - bash infra/db/run-rls-tests.sh

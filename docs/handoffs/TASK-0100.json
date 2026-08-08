@@ -1,0 +1,83 @@
+{
+ "taskId": "TASK-0100",
+ "state": "ACCEPTED",
+ "baseCommit": "760743318a1153327373473fd3b7f3decfcae7a2",
+ "headCommit": "de9402f706d906a3e103f4e632b7e8ae352a28f5",
+ "evidencePath": "docs/evidence/TASK-0100/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "50fe4592f1e15e4946cb274b262947b8ee67774f",
+   "startedAt": "2026-08-08T21:31:02+08:00",
+   "endedAt": "2026-08-08T22:02:30+08:00",
+   "elapsedSeconds": 1888,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "50fe4592f1e15e4946cb274b262947b8ee67774f",
+   "startedAt": "2026-08-08T21:31:02+08:00",
+   "endedAt": "2026-08-08T21:32:10+08:00",
+   "elapsedSeconds": 68,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "609fd89483c452b8755e774068ce51e92667a786",
+   "startedAt": "2026-08-08T21:32:26+08:00",
+   "endedAt": "2026-08-08T22:02:30+08:00",
+   "elapsedSeconds": 1804,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0100_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "95684f90db3651d6d0faecf9b1ce8a9e19ff919b",
+   "evidencePath": "docs/evidence/TASK-0100/review-r1.md",
+   "reason": "R1 complete-matrix review PASS (no P0/P1/P2): diff confined to writeAllowlist; V8 atomic seq allocation (UPDATE RETURNING next_seq-1, epoch predicate) closes P2-07; realtime_event_type_catalog CHECK mirrors the 9 durable codes of realtime-events.yaml and append is a narrow function (P2-08); append_terminal_event is owner-only and finalize/terminalize/cancel allocate terminal events through it atomically (P2-09/P2-11); tests 23/42/45/49/50 cover the acceptance matrix. Two P3 optional suggestions adopted in fix batch de9402f, closed by R2.",
+   "candidateTree": "8be6ff622f6375a50dbce562b6c93224810f9f44"
+  },
+  {
+   "id": "task0100_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "de9402f706d906a3e103f4e632b7e8ae352a28f5",
+   "evidencePath": "docs/evidence/TASK-0100/review-r2.md",
+   "reason": "R2 delta review PASS: fix batch de9402f only touches V8 (19 lines); advance_realtime_seq NOT FOUND fail-closed and append_terminal_event terminal-status assertion both correct; all three callers (V7/V15/V10) flip status before allocating; no new P0/P1/P2; re-ran the frozen DB suite 50/50 PASS.",
+   "candidateTree": "1d60ea4baa111e5964ed509c0fc0eb3b1c4c0300"
+  }
+ ],
+ "completed": [
+  "P2-07: V8 append_realtime_event 与 advance_realtime_seq 改为单条原子 UPDATE（stream 行锁）分配 seq——并发 append 严格唯一递增（{1,2}）、并发 advance 无丢更新（+4 累计）；append 的 UPDATE 带 stream_epoch 谓词，reset 竞态下匹配零行失败关闭",
+  "P2-08: vc.realtime_event 新增 catalog-backed CHECK realtime_event_type_catalog（realtime-events.yaml durable:true 的 9 个 code）；append_realtime_event 窄函数只接受 durable 非终态类型（foo/chat.delta/终态类型均失败关闭）；直接 INSERT 非 durable 类型触发 CHECK",
+  "P2-09: 新增 owner-only 窄函数 append_terminal_event（REVOKE PUBLIC 且不 GRANT vc_api——终态事件只能由终态事务产生）；finalize（chat.completed）与 terminalize（chat.failed/blocked/completed）的终态事件改为同事务经统一 allocator 分配真实 epoch/seq 并推进 stream high-water（含 reset 后落入新 epoch）",
+  "P2-11: cancel_generation 同事务写 durable PENDING chat.cancelled（真实 epoch/seq + high-water 推进）；重复 cancel 失败且不产生第二条事件",
+  "R1 P3 防御采纳（fix batch de9402f）：advance_realtime_seq NOT FOUND 失败关闭；append_terminal_event 增加 generation 终态断言（先终态后事件的调用顺序由 V7/V15/V10 保证）",
+  "测试：新增 49（dblink 双会话并发 append/advance，连接复用前 drain）与 50（catalog 约束/窄函数/终态事件 epoch-seq/cancel 原子事件/reset 后 resume 顺序）；更新 23（chat.completed 真实 seq 2 + next_seq=3）、42（chat.failed epoch 1 seq 1 + next_seq=2）、45（cancel 获胜方 1 条 chat.cancelled / 0 条 chat.completed）",
+  "验证：冻结 runner 全新容器 V1-V15 全量迁移后 50/50 SQL 测试 PASS（P2-28 竞态 9 次首轮命中后第 10/11 次通过，期间仓库外等价流程 50/50×2 佐证）；canonical precheck 5/5 PASS（doctor 423666 checks）；R1 无阻塞 PASS + R2 delta PASS（R2 实测重跑 50/50）",
+  "提交链：DRAFT 50fe459 → READY b71820b/1aeb9ae → IN_PROGRESS 609fd89 → 候选 95684f9 → fix batch de9402f → 评审 eecc4b2 → 终态提交"
+ ],
+ "remaining": [
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核",
+  "P2-28（run-rls-tests.sh readiness 竞态）已实测恶化（2026-08-08 冻结 runner 9/10 次首轮命中；稳定窗口等价流程可规避），工作包 8（P1-10+P2-28 数据库持续门禁）为下一可独立推进卡",
+  "工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）",
+  "其余审计项（P1-07/08/09 前端、P2-12/13、P2-03/04 等）按交接工作包顺序推进"
+ ],
+ "knownRisks": [
+  "V7/V8/V10/V15 迁移为原地修改：本项目迁移只应用于一次性合成容器（SYNTHETIC_ONLY/TEMPORARY_VOLUME_ONLY），无持久环境与 Flyway checksum 历史；若未来存在已执行迁移的持久环境，需按 database-migration skill 的迁移治理重审",
+  "realtime_event_type_catalog CHECK 与 append 窄函数的类型集合是 realtime-events.yaml durable 子集的静态镜像：未来 catalog 增删 durable 事件需同步迁移与测试（catalogDrift gate 不校验该镜像，属已知维护点，R2 亦注明终态列表与 resume_stream 重复为既有模式）",
+  "P2-28 readiness 竞态使冻结 runner 在 warm 环境下首轮失败概率显著（本次 9/10）；已按重跑约定通过并如实记录，正式修复在工作包 8",
+  "append_terminal_event 的终态断言依赖调用方先翻转状态的顺序（V7/V15/V10 均满足）；未来新增终态函数必须保持该顺序"
+ ],
+ "nextAction": "创建 P1-10+P2-28 数据库持续门禁卡（工作包 8）：run-rls-tests.sh readiness 需改为稳定窗口（连续 SQL 成功探针）——2026-08-08 实测 9/10 次首轮命中 P2-28 竞态；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0100 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。"
+}

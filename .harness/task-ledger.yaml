@@ -502,3 +502,9 @@ tasks:
     taskCard: docs/tasks/TASK-0099-refresh-rotation-single-successor.md
     evidence: docs/evidence/TASK-0099/evidence-pack.json
     handoff: docs/handoffs/TASK-0099.json
+  TASK-0100:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0100-realtime-db-consistency.md
+    evidence: docs/evidence/TASK-0100/evidence-pack.json
+    handoff: docs/handoffs/TASK-0100.json
