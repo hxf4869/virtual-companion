@@ -715,14 +715,31 @@ class GitHistoryPolicyTests(unittest.TestCase):
                 manifest = doctor.compute_doctor_receipt_manifest()
             self.assertIsNotNone(manifest)
             for key in (
+                "schemaVersion",
+                "repositoryRootSha256",
+                "argvSha256",
+                "taskIdSha256",
+                "summary",
                 "head",
                 "indexSha256",
                 "indexFlagsSha256",
                 "fsmonitorFlagsSha256",
+                "worktreeStatusSha256",
+                "worktreeCandidateSha256",
+                "pythonExecutableSha256",
+                "pythonVersionSha256",
+                "pythonDependencySha256",
+                "platformSha256",
+                "environmentSha256",
+                "gitVersionSha256",
+                "gitConfigSha256",
+                "implementationSha256",
                 "preClosure",
             ):
                 self.assertIn(key, manifest, manifest)
+            self.assertEqual(doctor.DOCTOR_RECEIPT_SCHEMA_VERSION, manifest["schemaVersion"])
             self.assertEqual("false", manifest["preClosure"])
+            self.assertEqual("false", manifest["summary"])
 
     def test_doctor_receipt_separates_pre_closure_from_real_head(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -776,6 +793,281 @@ class GitHistoryPolicyTests(unittest.TestCase):
         hash_a = doctor.compute_receipt_hash(manifest)
         hash_b = doctor.compute_receipt_hash(dict(reversed(list(manifest.items()))))
         self.assertEqual(hash_a, hash_b)
+
+    def test_doctor_receipt_binds_worktree_and_untracked_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                clean = doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+                fixture.write_text("changed\n", encoding="utf-8")
+                tracked = doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+                untracked_file = repository / "untracked.txt"
+                untracked_file.write_text("first\n", encoding="utf-8")
+                untracked = doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+                untracked_file.write_text("second\n", encoding="utf-8")
+                untracked_changed = doctor.compute_doctor_receipt_manifest(
+                    argv=["doctor.py"]
+                )
+            manifests = (clean, tracked, untracked, untracked_changed)
+            self.assertTrue(all(manifest is not None for manifest in manifests))
+            hashes = {
+                doctor.compute_receipt_hash(manifest)
+                for manifest in manifests
+                if manifest is not None
+            }
+            self.assertEqual(4, len(hashes))
+
+    def test_doctor_receipt_binds_invocation_interpreter_and_git_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                baseline = doctor.compute_doctor_receipt_manifest(
+                    task_id="TASK-ONE",
+                    argv=["doctor.py", "--task", "TASK-ONE"],
+                )
+                alternate_task = doctor.compute_doctor_receipt_manifest(
+                    task_id="TASK-TWO",
+                    argv=["doctor.py", "--task", "TASK-TWO"],
+                )
+                summary = doctor.compute_doctor_receipt_manifest(
+                    task_id="TASK-ONE",
+                    summary=True,
+                    argv=["doctor.py", "--task", "TASK-ONE", "--summary"],
+                )
+                with patch.object(doctor.sys, "executable", "/different/python"):
+                    interpreter = doctor.compute_doctor_receipt_manifest(
+                        task_id="TASK-ONE",
+                        argv=["doctor.py", "--task", "TASK-ONE"],
+                    )
+                with patch.object(
+                    doctor,
+                    "_doctor_receipt_implementation_sha256",
+                    return_value="f" * 64,
+                ):
+                    implementation = doctor.compute_doctor_receipt_manifest(
+                        task_id="TASK-ONE",
+                        argv=["doctor.py", "--task", "TASK-ONE"],
+                    )
+                self._git(repository, "config", "doctor.cache-test", "changed")
+                git_config = doctor.compute_doctor_receipt_manifest(
+                    task_id="TASK-ONE",
+                    argv=["doctor.py", "--task", "TASK-ONE"],
+                )
+            manifests = (
+                baseline,
+                alternate_task,
+                summary,
+                interpreter,
+                implementation,
+                git_config,
+            )
+            self.assertTrue(all(manifest is not None for manifest in manifests))
+            hashes = {
+                doctor.compute_receipt_hash(manifest)
+                for manifest in manifests
+                if manifest is not None
+            }
+            self.assertEqual(6, len(hashes))
+
+    def test_doctor_receipt_binds_repository_root(self) -> None:
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            manifests = []
+            for directory in (first, second):
+                repository = self._repository(directory)
+                (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+                self._git(repository, "add", ".")
+                self._git(repository, "commit", "-qm", "base")
+                with (
+                    patch.object(harness_common, "ROOT", repository),
+                    patch.object(doctor, "ROOT", repository),
+                ):
+                    manifests.append(
+                        doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+                    )
+            self.assertTrue(all(manifest is not None for manifest in manifests))
+            self.assertNotEqual(
+                manifests[0]["repositoryRootSha256"],
+                manifests[1]["repositoryRootSha256"],
+            )
+
+    def test_doctor_receipt_environment_does_not_disclose_secret_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                baseline = doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+                with patch.dict(
+                    os.environ,
+                    {"GIT_DOCTOR_CACHE_SECRET": "do-not-store-this-value"},
+                    clear=False,
+                ):
+                    secret_environment = doctor.compute_doctor_receipt_manifest(
+                        argv=["doctor.py"]
+                    )
+            self.assertIsNotNone(baseline)
+            self.assertIsNotNone(secret_environment)
+            self.assertNotEqual(
+                baseline["environmentSha256"],
+                secret_environment["environmentSha256"],
+            )
+            self.assertNotIn(
+                "do-not-store-this-value",
+                json.dumps(secret_environment, sort_keys=True),
+            )
+
+    def test_doctor_receipt_load_fails_closed_and_round_trips_atomically(self) -> None:
+        manifest = {
+            "schemaVersion": doctor.DOCTOR_RECEIPT_SCHEMA_VERSION,
+            "head": "a" * 40,
+        }
+        receipt = {
+            "schemaVersion": doctor.DOCTOR_RECEIPT_SCHEMA_VERSION,
+            "manifest": manifest,
+            "receiptHash": doctor.compute_receipt_hash(manifest),
+            "status": "PASS",
+            "exit": 0,
+            "checks": 17,
+            "summaryLines": ["Project: fixture"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "vc-doctor-cache.json"
+            cache_path.write_text("{not-json", encoding="utf-8")
+            self.assertIsNone(
+                doctor.load_matching_doctor_receipt(
+                    cache_path,
+                    manifest,
+                    require_summary=False,
+                )
+            )
+            old_receipt = dict(receipt, schemaVersion="1")
+            cache_path.write_text(json.dumps(old_receipt), encoding="utf-8")
+            self.assertIsNone(
+                doctor.load_matching_doctor_receipt(
+                    cache_path,
+                    manifest,
+                    require_summary=False,
+                )
+            )
+            no_summary = dict(receipt, summaryLines=[])
+            cache_path.write_text(json.dumps(no_summary), encoding="utf-8")
+            self.assertIsNone(
+                doctor.load_matching_doctor_receipt(
+                    cache_path,
+                    manifest,
+                    require_summary=True,
+                )
+            )
+            doctor.write_doctor_receipt(cache_path, receipt)
+            self.assertEqual(
+                receipt,
+                doctor.load_matching_doctor_receipt(
+                    cache_path,
+                    manifest,
+                    require_summary=True,
+                ),
+            )
+            self.assertFalse(list(Path(directory).glob(".vc-doctor-cache-*.tmp")))
+
+    def test_doctor_receipt_rejects_unknown_explicit_task(self) -> None:
+        tasks = {"TASK-ONE": {"state": "IN_PROGRESS"}}
+        self.assertIsNone(doctor.doctor_receipt_task_error("TASK-ONE", tasks))
+        self.assertEqual(
+            "selected task does not exist: TASK-MISSING",
+            doctor.doctor_receipt_task_error("TASK-MISSING", tasks),
+        )
+
+    def test_doctor_main_cache_hit_preserves_summary_and_rejects_unknown_task(
+        self,
+    ) -> None:
+        manifest = {
+            "schemaVersion": doctor.DOCTOR_RECEIPT_SCHEMA_VERSION,
+            "head": "a" * 40,
+        }
+        receipt = {
+            "schemaVersion": doctor.DOCTOR_RECEIPT_SCHEMA_VERSION,
+            "manifest": manifest,
+            "receiptHash": doctor.compute_receipt_hash(manifest),
+            "status": "PASS",
+            "exit": 0,
+            "checks": 23,
+            "summaryLines": ["Project: fixture | Phase: test"],
+        }
+
+        class StableSnapshot:
+            def verify_unchanged(self, audit: Audit) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "vc-doctor-cache.json"
+            doctor.write_doctor_receipt(cache_path, receipt)
+            stdout = io.StringIO()
+            with (
+                patch.object(doctor, "layer0_fast_pass", return_value=None),
+                patch.object(doctor, "DoctorGitSnapshot", return_value=StableSnapshot()),
+                patch.object(
+                    doctor,
+                    "compute_doctor_receipt_manifest",
+                    return_value=manifest,
+                ),
+                patch.object(doctor.tempfile, "gettempdir", return_value=directory),
+                patch.object(
+                    doctor,
+                    "discover_tasks",
+                    return_value={"TASK-ONE": {"state": "IN_PROGRESS"}},
+                ),
+                patch.object(
+                    doctor.sys,
+                    "argv",
+                    ["doctor.py", "--task", "TASK-ONE", "--summary"],
+                ),
+                redirect_stdout(stdout),
+            ):
+                self.assertEqual(0, doctor.main())
+            self.assertIn("Project: fixture | Phase: test", stdout.getvalue())
+            self.assertIn("[receipt hit", stdout.getvalue())
+
+            stderr = io.StringIO()
+            with (
+                patch.object(doctor, "layer0_fast_pass", return_value=None),
+                patch.object(doctor, "DoctorGitSnapshot", return_value=StableSnapshot()),
+                patch.object(
+                    doctor,
+                    "compute_doctor_receipt_manifest",
+                    return_value=manifest,
+                ),
+                patch.object(doctor.tempfile, "gettempdir", return_value=directory),
+                patch.object(
+                    doctor,
+                    "discover_tasks",
+                    return_value={"TASK-ONE": {"state": "IN_PROGRESS"}},
+                ),
+                patch.object(
+                    doctor.sys,
+                    "argv",
+                    ["doctor.py", "--task", "TASK-MISSING", "--summary"],
+                ),
+                redirect_stderr(stderr),
+            ):
+                self.assertEqual(1, doctor.main())
+            self.assertIn("selected task does not exist: TASK-MISSING", stderr.getvalue())
 
     def test_doctor_snapshot_fails_closed_when_index_or_worktree_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
