@@ -466,3 +466,9 @@ tasks:
     taskCard: docs/tasks/TASK-0090-generation-terminal-persistence.md
     evidence: docs/evidence/TASK-0090/evidence-pack.json
     handoff: docs/handoffs/TASK-0090.json
+  TASK-0094:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0094-doctor-receipt-cache-binding.md
+    evidence: docs/evidence/TASK-0094/evidence-pack.json
+    handoff: docs/handoffs/TASK-0094.json

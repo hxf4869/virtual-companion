@@ -1,0 +1,142 @@
+{
+  "taskId": "TASK-0094",
+  "baseCommit": "c09e83246054225f7bc29fb202ecc6976a88ceb1",
+  "headCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+  "contextFingerprint": "8d7ef321aa3dc1dfba0fd4aa020f062932b6ab730645f419a33d6c6071260a28",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ab854dddf8861a6934523f061d4c4ac2b9bec4af",
+      "startedAt": "2026-08-08T14:35:45+08:00",
+      "endedAt": "2026-08-08T15:30:41+08:00",
+      "elapsedSeconds": 3296,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ab854dddf8861a6934523f061d4c4ac2b9bec4af",
+      "startedAt": "2026-08-08T14:35:45+08:00",
+      "endedAt": "2026-08-08T14:38:46+08:00",
+      "elapsedSeconds": 181,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f8a57a713828d2481556288a8c9edf1857b45675",
+      "startedAt": "2026-08-08T14:38:46+08:00",
+      "endedAt": "2026-08-08T15:30:41+08:00",
+      "elapsedSeconds": 3115,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-08T14:38:46+08:00",
+      "inProgressCommit": "f8a57a713828d2481556288a8c9edf1857b45675"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0094_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "305f124d83fc7b2e2a674b2a099d0df7be2b8c3d",
+      "evidencePath": "docs/evidence/TASK-0094/review-r1.md",
+      "reason": "R1 found missing Git history interpretation metadata and timezone runtime identity bindings; the only fix batch was used.",
+      "candidateTree": "9ea32328457b0f5ff9b6e93e19ca991e318c9850"
+    },
+    {
+      "id": "task0094_r2",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+      "evidencePath": "docs/evidence/TASK-0094/review-r2.md",
+      "reason": "R2 found a P1 complete-manifest TOCTOU on cache hit; AC2 and AC5 fail and R3 is forbidden.",
+      "candidateTree": "a31b577d5f530eec120d4ca01c0b2fac5abde6c2"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0094",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Reviewer R2 returned FAIL after the only allowed fix batch; policy forbids candidate canonical without Reviewer PASS.",
+      "environment": "macOS; /tmp/vc-audit-venv/bin/python; deliberately not launched after R2 FAIL",
+      "verifiedCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.GitHistoryPolicyTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Ran 44 tests in 12.605s; OK. Covers static receipt identities, corrupt/old cache, unknown task and summary cache hit, but R2 correctly identified missing lookup-race coverage.",
+      "environment": "macOS; PATH prepended with /tmp/vc-audit-venv/bin; PyYAML/tzdata from requirements-harness.txt",
+      "verifiedCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Final fix-batch diff was whitespace-clean before committing the exact content as da9b0fe.",
+      "environment": "macOS; Git 2.50.1 (Apple Git-155)",
+      "verifiedCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0094 frozen candidate",
+      "status": "FAIL",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Two P1 findings: Git history interpretation metadata and timezone runtime identity were not bound.",
+      "environment": "independent read-only Reviewer",
+      "verifiedCommit": "305f124d83fc7b2e2a674b2a099d0df7be2b8c3d",
+      "candidateCommit": "305f124d83fc7b2e2a674b2a099d0df7be2b8c3d",
+      "candidateTree": "9ea32328457b0f5ff9b6e93e19ca991e318c9850"
+    },
+    {
+      "command": "Independent Reviewer R2 for TASK-0094 final candidate",
+      "status": "FAIL",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "P1 complete-manifest TOCTOU remains on cache hit; maximumFixBatches and maximumReviewRounds are exhausted.",
+      "environment": "independent read-only Reviewer",
+      "verifiedCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+      "candidateCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+      "candidateTree": "a31b577d5f530eec120d4ca01c0b2fac5abde6c2"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0094 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: pre-closure runs once after staging this complete REJECTED closure snapshot.",
+      "environment": "macOS; /tmp/vc-audit-venv/bin/python",
+      "verifiedCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "PRIMARY_REMOTE_EXACT_SHA",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_R2_FAIL_CLOSURE_ONLY",
+    "candidateCommit": "da9b0fe4eb7345a85ee404500cb91b9538e75b8e",
+    "candidateTree": "a31b577d5f530eec120d4ca01c0b2fac5abde6c2",
+    "passClaimed": false,
+    "githubActions": {
+      "status": "NOT_RUN",
+      "reason": "Reviewer PASS prerequisite not met; no candidate push or exact-SHA CI dispatch is permitted.",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}
