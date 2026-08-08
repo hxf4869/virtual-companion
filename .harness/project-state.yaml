@@ -2,13 +2,22 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0107
+activeTaskCard: docs/tasks/TASK-0107-model-protocol-correctness.md
 lastAcceptedTask: TASK-0106
 lastAcceptedHandoff: docs/handoffs/TASK-0106.json
 lastTerminalTask: TASK-0106
 lastTerminalHandoff: docs/handoffs/TASK-0106.json
-nextAction: TASK-0106 已 ACCEPTED（工作包 11 第二张：P2-19 前端 CI 门禁——ci.yml frontend job 加 test:run/type-check + chat/auth/memory 3 页面组件 glue 测试；P2-18 依赖完整升级——pnpm-workspace overrides 修复 intlify/adm-zip/postcss/nanoid/esbuild/qs/cookie/send/body-parser/brace-expansion/path-to-regexp/@babel/core，audit 11h/18m/7l→2h/12m/2l，例外台账 docs/dependency-audit-exceptions.yaml 覆盖 vite 5.2.8（uni-app 锁定）与 vue-template-compiler 2.7.16（无 v2 修复），到期日 2026-11-09；vitest 138/138、precheck 5/5、R1 FAIL→fix batch→R2 PASS）；工作包 12 Provider（P2-01/02/05/06+风险 5/6/7，provider egress allowlist 需 Owner 决策）为下一卡；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额耗尽下的远端复核延后至配额恢复。
+nextAction: >-
+  TASK-0107 READY（工作包 12 第一张协议正确性卡）：P2-01 LiveModelInvoker 应用
+  ModelProtocolEventFence（binding/sequence/重复 usage/EOS 内容校验）+ P2-02
+  AnthropicMessagesCodec 真实 tool-use 协议解析（tool_use block / input_json_delta）
+  + 条件风险 5 EOS≠completed 语义验证；完成后工作包 12 第二张 P2-05 Provider
+  egress 安全（需 Owner egress allowlist 决策）为下一卡；P2-06 尺寸/成本上限
+  （数值需 Owner 确认）与条件风险 6/7（db/migration C4）继续等待；工作包 6
+  （P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信
+  数据库 principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额
+  耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
