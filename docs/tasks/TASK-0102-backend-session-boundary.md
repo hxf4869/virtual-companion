@@ -15,7 +15,7 @@ requiredSkillVersions:
   contract-change: "1.0.0"
 targetSkillVersions: {}
 baseCommit: 9ae55774533bc455d1ab911dc01ee7a215d510b5
-authorizationCommit: ""
+authorizationCommit: "90c93b8a48859bd2c8fc100580783c5b9d596997"
 contextFingerprint: 229678870d1137ad57259d3645d347da4817aa3e4026cfe58fdc2355592fc89f
 contextLock: docs/tasks/context/TASK-0102.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
