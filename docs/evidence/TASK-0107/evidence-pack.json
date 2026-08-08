@@ -1,0 +1,157 @@
+{
+  "taskId": "TASK-0107",
+  "baseCommit": "5a0490cca34230fae7b575814c7c18d84a7da9e0",
+  "headCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364",
+  "contextFingerprint": "303981ae0e745098c11969ece0e23d89c33d30d5e0f8465e01a95a57d388d91e",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "113286c0fb61daf18ed14dce53fc50dbccbe83f4",
+      "startedAt": "2026-08-09T04:07:22+08:00",
+      "endedAt": "2026-08-09T04:29:22+08:00",
+      "elapsedSeconds": 1320,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "113286c0fb61daf18ed14dce53fc50dbccbe83f4",
+      "startedAt": "2026-08-09T04:07:22+08:00",
+      "endedAt": "2026-08-09T04:08:52+08:00",
+      "elapsedSeconds": 90,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "457e5e251857c874e7bd861c751f0562832f6b31",
+      "startedAt": "2026-08-09T04:08:59+08:00",
+      "endedAt": "2026-08-09T04:29:22+08:00",
+      "elapsedSeconds": 1223,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0107_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "5d054d55874d20b040652df17877ea676adbf34d",
+      "evidencePath": "docs/evidence/TASK-0107/review-r1.md",
+      "candidateTree": "f661551da3933620a4cace7f37a1067d78448cc5",
+      "reason": "R1 complete-matrix review found one blocking P1-01: ModelProtocolEventFence static accept(expected, candidate) API removed, breaking test-compile of forbiddenPath module service/tests/model-protocol-contract-tests (FailureModelProtocolAdapterContractTest:148,174,176) -> root verify would fail. Positive: scope confined to writeAllowlist, P2-01 fence state machine and P2-02 real tool-use codec correct, EOS!=completed (CHAT_FAILED) and INV-AUTH-001 preserved. 3 P2/P3 non-blocking notes recorded; fix batch bf4231e closed them."
+    },
+    {
+      "id": "task0107_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364",
+      "evidencePath": "docs/evidence/TASK-0107/review-r2.md",
+      "candidateTree": "4ab775609fea0946558a9030e4f09352834c724c",
+      "reason": "R2 delta review PASS: fix batch only 4 writeAllowlist files; P1-01 closed (static fence accept restored byte-identical semantics, model-protocol-contract-tests 28/28); P2-01 mixed-block accumulation + nonStreamingMultipleTextBlocksAreJoinedInOrder; P2-02 streaming negative paths (structuredStreamRejectsTextDelta, textStreamRejectsToolUseDelta); no new P0/P1/P2. Residual P3 (tool_use name runtime consistency, ContentBlockStop index cross-check) recorded for Handoff."
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0107 (READY stage)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "a4ab2a91f7afd5539e671e0e96c7b8c55e60f2725a9731efa256a8221e0f42e6",
+      "reason": "READY doctor on chain DRAFT 113286c -> READY 6fb308e -> bind 80c1817: PASS (462101 checks, 84.1s, exit 0); authorization fields frozen at READY; context fingerprint independently recomputed.",
+      "verifiedCommit": "80c1817a95289b97c6e83f08414563c613f2caea"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/modules/modelruntime,service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests,service/tests/model-protocol-contract-tests -am test (targeted affected modules)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "1e16233b6476e17874283b2f1f681366545491fd060443ed3b37bd0c7093884c",
+      "reason": "Affected-module tests on fix batch bf4231e: modelruntime 113/113, model-protocol-contract-tests 28/28, anthropic-messages contract tests 30/30, BUILD SUCCESS (exit 0).",
+      "verifiedCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify (root reactor)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "eefcdf9d533fe0efe1342bc4c50b8475c98c0602e54952662462f69d697343f5",
+      "reason": "Root Maven verify on fix batch bf4231e (worktree clean): BUILD SUCCESS (exit 0); the single 'Application run failed' ERROR line is an expected in-test startup-failure scenario (fail-closed tests), no test failures.",
+      "verifiedCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0107 frozen candidate 5d054d5 (fork_turns=none)",
+      "status": "FAIL",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "R1 verdict FAIL with one blocking P1-01 (static fence API removed breaks model-protocol-contract-tests compile); fix batch bf4231e restored static accept and added missing negative-path tests; R2 PASS on delta. Evidence: docs/evidence/TASK-0107/review-r1.md.",
+      "verifiedCommit": "5d054d55874d20b040652df17877ea676adbf34d"
+    },
+    {
+      "command": "Independent Reviewer R2 for TASK-0107 fix batch (delta 5d054d5..bf4231e, fork_turns=none)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "R2 delta review PASS: P1-01 closed, P2-01/P2-02 closed with tests, no new P0/P1/P2. Evidence: docs/evidence/TASK-0107/review-r2.md.",
+      "verifiedCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate bf4231e",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Remote exact-SHA CI not run: Actions quota exhausted in resetDate 2026-08-01 cycle (includedMinutes 2000, usedMinutes 2000, paidBudgetUsd 0, stopUsageEnabled true, dispatchCount 0). Remote remains non-PASS (passClaimed=false); local exact-tree fallback is the Owner-authorized standby channel.",
+      "verifiedCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check clean on fix batch bf4231e and base..candidate range (no whitespace errors).",
+      "verifiedCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_APPROVED_CANONICAL_PASS",
+    "candidateCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364",
+    "candidateTree": "4ab775609fea0946558a9030e4f09352834c724c",
+    "passClaimed": true,
+    "localExactTree": {
+      "taskId": "TASK-0107",
+      "candidateCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364",
+      "candidateTree": "4ab775609fea0946558a9030e4f09352834c724c",
+      "cleanWorktree": true,
+      "cleanIndex": true,
+      "argv": "python scripts/harness/precheck.py --task TASK-0107",
+      "cwd": "/Users/hxf/projects/virtual-companion",
+      "operatingSystem": "macOS darwin 25.6.0 arm64",
+      "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python (Python 3.13.0)",
+      "toolchain": "git; OrbStack docker (maven:3.9-eclipse-temurin-25-alpine + vc-maven-cache)",
+      "dependencies": "requirements-harness.txt installed in vc-harness venv",
+      "environment": "clean TMPDIR per run; GITHUB_PERSONAL_ACCESS_TOKEN present but unused by local checks",
+      "stdoutSha256": "3a37fab1a9cb197da5e8a4365ffa79e8890647b705e7f60a47a9ce4595966da7",
+      "stderrSha256": "3a37fab1a9cb197da5e8a4365ffa79e8890647b705e7f60a47a9ce4595966da7",
+      "receiptSha256": "3a37fab1a9cb197da5e8a4365ffa79e8890647b705e7f60a47a9ce4595966da7",
+      "exitCode": 0,
+      "startedAt": "2026-08-09T04:27:42+08:00",
+      "completedAt": "2026-08-09T04:29:22+08:00"
+    },
+    "remote": {
+      "status": "UNKNOWN_NOT_RUN",
+      "type": "OWNER_SUPPLIED_QUOTA_EXHAUSTED",
+      "includedMinutes": 2000,
+      "usedMinutes": 2000,
+      "paidBudgetUsd": 0,
+      "stopUsageEnabled": true,
+      "resetDate": "2026-08-01",
+      "dispatchCount": 0,
+      "passClaimed": false
+    }
+  }
+}

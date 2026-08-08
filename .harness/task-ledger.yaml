@@ -544,3 +544,9 @@ tasks:
     taskCard: docs/tasks/TASK-0106-frontend-ci-deps.md
     evidence: docs/evidence/TASK-0106/evidence-pack.json
     handoff: docs/handoffs/TASK-0106.json
+  TASK-0107:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0107-model-protocol-correctness.md
+    evidence: docs/evidence/TASK-0107/evidence-pack.json
+    handoff: docs/handoffs/TASK-0107.json

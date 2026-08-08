@@ -1,0 +1,82 @@
+{
+  "taskId": "TASK-0107",
+  "state": "ACCEPTED",
+  "baseCommit": "5a0490cca34230fae7b575814c7c18d84a7da9e0",
+  "headCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364",
+  "evidencePath": "docs/evidence/TASK-0107/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "113286c0fb61daf18ed14dce53fc50dbccbe83f4",
+      "startedAt": "2026-08-09T04:07:22+08:00",
+      "endedAt": "2026-08-09T04:29:22+08:00",
+      "elapsedSeconds": 1320,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "113286c0fb61daf18ed14dce53fc50dbccbe83f4",
+      "startedAt": "2026-08-09T04:07:22+08:00",
+      "endedAt": "2026-08-09T04:08:52+08:00",
+      "elapsedSeconds": 90,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "457e5e251857c874e7bd861c751f0562832f6b31",
+      "startedAt": "2026-08-09T04:08:59+08:00",
+      "endedAt": "2026-08-09T04:29:22+08:00",
+      "elapsedSeconds": 1223,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0107_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "5d054d55874d20b040652df17877ea676adbf34d",
+      "evidencePath": "docs/evidence/TASK-0107/review-r1.md",
+      "candidateTree": "f661551da3933620a4cace7f37a1067d78448cc5",
+      "reason": "R1 complete-matrix review found one blocking P1-01 (static fence API removed breaks model-protocol-contract-tests compile); scope confined to writeAllowlist; P2-01/P2-02 implementation correct; EOS!=completed preserved. fix batch bf4231e closed P1-01."
+    },
+    {
+      "id": "task0107_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "bf4231e49024c391c01bd9e8e28883942cc8d364",
+      "evidencePath": "docs/evidence/TASK-0107/review-r2.md",
+      "candidateTree": "4ab775609fea0946558a9030e4f09352834c724c",
+      "reason": "R2 delta review PASS: P1-01 closed (static accept restored), P2-01 mixed-block accumulation + multi-text test, P2-02 streaming negative-path tests; no new P0/P1/P2."
+    }
+  ],
+  "completed": [
+    "P2-01: LiveModelInvoker.invokeExternal 事件消费循环应用 ModelProtocolEventFence（每 attempt 持有有状态 fence）——binding 完整匹配、sequence 从 0 严格连续、UsageReported 至多一次、AttemptEos 前必须已有 OutputDelta、terminal 后事件拒绝；FenceViolation → MalformedResponse 失败关闭 + ALL_FAILURE 额度释放 + NON_RETRYABLE_FAILED audit，绝无部分输出/usage 污染（LiveModelInvokerTest 新增 wrongBinding/outOfOrder/duplicateUsage/eosWithoutOutput 4 测试 + ModelProtocolEventFenceTest 新增 5 测试）",
+    "P2-02: AnthropicMessagesCodec.decodeMessage 遍历 content blocks——text 按序累积 + 单 tool_use block 提取 input JSON（多 tool_use 拒绝）；decodeStreamEvent 新增 content_block_start（block 类型）/input_json_delta（partial_json）/content_block_stop；AnthropicMessagesSession 结构化模式只接受 tool_use block + input_json_delta（text_delta 拒绝）、非结构化只接受 text block（tool_use/input_json_delta 拒绝）、message_stop 前 block 必须已结算（blockSettled）；结构化输出经 tool_use input 提取并 requireStructuredJson 验证（AnthropicMessagesSuccessContractTest structured_output_when_claimed 改用真实 tool_use/input_json_delta mock + nonStreamingToolUseWithoutStructuredModeFailsClosed + structuredStreamRejectsTextDelta + textStreamRejectsToolUseDelta + nonStreamingMultipleTextBlocksAreJoinedInOrder）",
+    "条件风险 5: EOS 无内容 → CHAT_FAILED（RealtimeEventType 断言）+ ZERO_LLM fallback，INV-GEN-003（provider EOS 从不意味着 chat.completed）由 FinalizeGenerationService FINAL_REVIEW→COMPLETED 事务承担（未改动）；生产接线依赖 TASK-0093",
+    "模型协议契约保持：model-protocol-contract.yaml 未改；late_token_fence/full_binding_fence 契约测试（model-protocol-contract-tests 28/28）通过——ModelProtocolEventFence 静态 accept(expected, candidate) 完整 binding 校验入口保留",
+    "验收 1-7 全部满足：定向测试 modelruntime 113/113 + anthropic 30/30 + model-protocol-contract-tests 28/28（BUILD SUCCESS）；根级 Maven verify BUILD SUCCESS（exit 0）；canonical precheck 5/5 PASS（doctor 463986 checks）；git diff --check 干净；R1 FAIL→fix batch→R2 PASS"
+  ],
+  "remaining": [
+    "P2-05 Provider egress 安全（工作包 12 第二张）：ProviderSecretReader 路径穿越（basename/containment/大小权限）+ OpenAi/Anthropic endpoint 校验（https 强制 + approved host/port allowlist + 阻断 loopback/私网/link-local/metadata）——需 Owner 决策 egress allowlist（未猜默认值），本卡 forbiddenPaths 未触碰",
+    "P2-06 模型请求/响应尺寸与成本上限（工作包 12 第三张）：消息数/单消息/schema/单事件/累计输出上限 + OpenAI max_tokens——数值需 Owner 确认合理默认",
+    "条件风险 6（V15 provider_attempt authorization snapshot 强约束）与风险 7（provider registry/quota ledger 持久化）：**/db/migration/** C4 + database-migration skill + humanApproval，独立后续工作包",
+    "生产接线：controller/dispatcher → LiveModelInvoker → FinalizeGenerationService FINAL_REVIEW（TASK-0093）",
+    "remote CI 复核：Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后补远端 exact-SHA 复核",
+    "P3 残留（非阻塞）：响应 tool_use name 与请求声明工具名的运行时一致性未校验（当前 mock 与请求构造性一致）；content_block_stop index 未交叉校验"
+  ],
+  "knownRisks": [
+    "远端 CI 未运行（Actions 配额耗尽）；本地等价验证为 Owner 既有授权备用通道，localExactTree PASS 不代表远端绿",
+    "混合 text+tool_use blocks 在解码层按序累积，但非结构化模式 session 仍拒绝 tool_use（fail-closed，无单一消费者）",
+    "Anthropic 流式结构化输出依赖 content_block_start(tool_use) 先行声明；若真实供应商实现与 mock 的 block 序不同（如先 text 后 tool_use），结构化模式会失败关闭（安全方向，非放行）",
+    "ModelProtocolEventFence 实例方法与静态方法重载并存；新消费方必须使用实例方法（生产路径），静态方法仅供契约测试的 binding 校验语义"
+  ],
+  "nextAction": "TASK-0107 已 ACCEPTED（工作包 12 第一张协议正确性卡）：P2-01 LiveModelInvoker 应用 ModelProtocolEventFence（binding/sequence 严格连续/重复 usage/EOS 内容校验，违规失败关闭）+ P2-02 Anthropic 真实 tool-use 协议（tool_use block + input_json_delta 流式累积，结构化输出经 tool_use input 提取，非结构化拒绝 tool_use）+ 条件风险 5 EOS 无内容不产生 CHAT_COMPLETED（INV-GEN-003）；根级 Maven verify BUILD SUCCESS、canonical precheck 5/5（doctor 463986 checks）、R1 FAIL→fix batch→R2 PASS；工作包 12 第二张 P2-05 Provider egress 安全（ProviderSecretReader 路径穿越 + endpoint/egress allowlist，需 Owner 决策 approved host/port）为下一卡；P2-06 尺寸/成本上限（数值需 Owner 确认）与条件风险 6/7（db/migration C4 + database-migration + humanApproval）继续等待；生产接线（controller/dispatcher，TASK-0093）不受本卡影响；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额耗尽下的远端复核延后至配额恢复。"
+}

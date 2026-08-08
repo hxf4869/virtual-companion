@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0107
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-01+P2-02+条件风险 5 完成并验证：LiveModelInvoker 应用 ModelProtocolEventFence
+  （binding/sequence 严格连续/重复 usage/EOS 内容校验，FenceViolation 失败关闭 +
+  额度释放 + NON_RETRYABLE_FAILED）；Anthropic 真实 tool-use 协议（非流 tool_use
+  block + 流式 input_json_delta 累积，结构化输出经 tool_use input 提取并
+  requireStructuredJson 验证，非结构化拒绝 tool_use/input_json_delta）；EOS 无内容
+  不产生 CHAT_COMPLETED（INV-GEN-003，RealtimeEventType.CHAT_FAILED 断言）。
+  根级 Maven verify BUILD SUCCESS；canonical precheck 5/5 PASS（doctor 463986
+  checks）；定向测试 modelruntime 113/113 + anthropic 30/30 +
+  model-protocol-contract-tests 28/28；R1 FAIL（P1-01 静态 fence API 兼容）→ fix
+  batch bf4231e → R2 PASS；remote CI 因 Actions 配额耗尽如实记录非 PASS
+  （UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -203,7 +215,29 @@ humanApprovals:
       Handoff 登记。本卡不触碰 specs/** 与 **/db/migration/**（forbiddenPaths）。
       modelruntime C3 保护路径（model-routing-change skill）需独立 Reviewer。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0107_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: 5d054d55874d20b040652df17877ea676adbf34d
+    evidencePath: docs/evidence/TASK-0107/review-r1.md
+    reason: >-
+      R1 完整矩阵复核发现 1 个阻塞 P1-01（ModelProtocolEventFence 静态
+      accept(expected, candidate) 移除破坏 model-protocol-contract-tests
+      编译）；其余 P2-01/P2-02 实现与断言真实、范围合规；fix batch bf4231e
+      关闭 P1-01。
+    candidateTree: f661551da3933620a4cace7f37a1067d78448cc5
+  - id: task0107_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: bf4231e49024c391c01bd9e8e28883942cc8d364
+    evidencePath: docs/evidence/TASK-0107/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：P1-01 关闭（静态 accept 恢复）、P2-01 混合 block
+      累积 + 多 text 测试、P2-02 流式负路径测试；无新 P0/P1/P2；残留 P3
+      （tool_use name 运行时一致性、ContentBlockStop index 交叉校验）记入
+      Handoff。
+    candidateTree: 4ab775609fea0946558a9030e4f09352834c724c
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0107
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

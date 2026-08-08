@@ -2,22 +2,38 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0107
-activeTaskCard: docs/tasks/TASK-0107-model-protocol-correctness.md
-lastAcceptedTask: TASK-0106
-lastAcceptedHandoff: docs/handoffs/TASK-0106.json
-lastTerminalTask: TASK-0106
-lastTerminalHandoff: docs/handoffs/TASK-0106.json
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0107
+lastAcceptedHandoff: docs/handoffs/TASK-0107.json
+lastTerminalTask: TASK-0107
+lastTerminalHandoff: docs/handoffs/TASK-0107.json
 nextAction: >-
-  TASK-0107 READY（工作包 12 第一张协议正确性卡）：P2-01 LiveModelInvoker 应用
-  ModelProtocolEventFence（binding/sequence/重复 usage/EOS 内容校验）+ P2-02
-  AnthropicMessagesCodec 真实 tool-use 协议解析（tool_use block / input_json_delta）
-  + 条件风险 5 EOS≠completed 语义验证；完成后工作包 12 第二张 P2-05 Provider
-  egress 安全（需 Owner egress allowlist 决策）为下一卡；P2-06 尺寸/成本上限
-  （数值需 Owner 确认）与条件风险 6/7（db/migration C4）继续等待；工作包 6
-  （P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信
-  数据库 principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额
-  耗尽下的远端复核延后至配额恢复。
+  TASK-0107 已 ACCEPTED（工作包 12
+  第一张协议正确性卡）：P2-01 LiveModelInvoker 应用
+  ModelProtocolEventFence（binding/sequence
+  严格连续/重复 usage/EOS 内容校验，违规失败关闭）+
+  P2-02 Anthropic 真实 tool-use
+  协议（tool_use block + input_json_delta
+  流式累积，结构化输出经 tool_use input 提取，非结构化拒绝
+  tool_use）+ 条件风险 5 EOS 无内容不产生
+  CHAT_COMPLETED（INV-GEN-003）；根级 Maven
+  verify BUILD SUCCESS、canonical
+  precheck 5/5（doctor 463986
+  checks）、R1 FAIL→fix batch→R2
+  PASS；工作包 12 第二张 P2-05 Provider
+  egress 安全（ProviderSecretReader 路径穿越
+  + endpoint/egress allowlist，需 Owner
+  决策 approved host/port）为下一卡；P2-06
+  尺寸/成本上限（数值需 Owner 确认）与条件风险
+  6/7（db/migration C4 +
+  database-migration +
+  humanApproval）继续等待；生产接线（controller/dispatcher，TASK-0093）不受本卡影响；工作包
+  6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB
+  权限架构）继续等待 Owner 决策可信数据库
+  principal/连接池绑定模型与 migration
+  principal 部署拓扑；Actions
+  配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
