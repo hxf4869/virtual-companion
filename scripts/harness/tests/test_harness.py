@@ -312,6 +312,18 @@ class GitHistoryPolicyTests(unittest.TestCase):
         self._git(repository, "config", "user.email", "harness@example.invalid")
         return repository
 
+    def _receipt_repository(self, directory: str) -> Path:
+        repository = self._repository(directory)
+        tools_lock = repository / ".harness/tools.lock.yaml"
+        tools_lock.parent.mkdir(parents=True, exist_ok=True)
+        tools_lock.write_text(
+            "governance:\n"
+            "  timezoneData:\n"
+            "    requiredZone: Asia/Shanghai\n",
+            encoding="utf-8",
+        )
+        return repository
+
     @staticmethod
     def _write_task(repository: Path, state: str) -> None:
         task_path = repository / "docs/tasks/TASK-9999-policy.md"
@@ -704,7 +716,7 @@ class GitHistoryPolicyTests(unittest.TestCase):
 
     def test_doctor_receipt_manifest_binds_complete_input_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            repository = self._repository(directory)
+            repository = self._receipt_repository(directory)
             (repository / "one.txt").write_text("alpha\n", encoding="utf-8")
             self._git(repository, "add", ".")
             self._git(repository, "commit", "-qm", "base")
@@ -733,17 +745,22 @@ class GitHistoryPolicyTests(unittest.TestCase):
                 "environmentSha256",
                 "gitVersionSha256",
                 "gitConfigSha256",
+                "gitHistorySha256",
+                "timezoneDataSha256",
                 "implementationSha256",
                 "preClosure",
             ):
                 self.assertIn(key, manifest, manifest)
-            self.assertEqual(doctor.DOCTOR_RECEIPT_SCHEMA_VERSION, manifest["schemaVersion"])
+            self.assertEqual(
+                doctor.DOCTOR_RECEIPT_SCHEMA_VERSION,
+                manifest["schemaVersion"],
+            )
             self.assertEqual("false", manifest["preClosure"])
             self.assertEqual("false", manifest["summary"])
 
     def test_doctor_receipt_separates_pre_closure_from_real_head(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            repository = self._repository(directory)
+            repository = self._receipt_repository(directory)
             (repository / "one.txt").write_text("alpha\n", encoding="utf-8")
             self._git(repository, "add", ".")
             self._git(repository, "commit", "-qm", "base")
@@ -764,7 +781,7 @@ class GitHistoryPolicyTests(unittest.TestCase):
 
     def test_doctor_receipt_fails_closed_when_head_missing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            repository = self._repository(directory)
+            repository = self._receipt_repository(directory)
             (repository / "one.txt").write_text("alpha\n", encoding="utf-8")
             self._git(repository, "add", ".")
             self._git(repository, "commit", "-qm", "base")
@@ -796,7 +813,7 @@ class GitHistoryPolicyTests(unittest.TestCase):
 
     def test_doctor_receipt_binds_worktree_and_untracked_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            repository = self._repository(directory)
+            repository = self._receipt_repository(directory)
             fixture = repository / "fixture.txt"
             fixture.write_text("base\n", encoding="utf-8")
             self._git(repository, "add", ".")
@@ -826,7 +843,7 @@ class GitHistoryPolicyTests(unittest.TestCase):
 
     def test_doctor_receipt_binds_invocation_interpreter_and_git_config(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            repository = self._repository(directory)
+            repository = self._receipt_repository(directory)
             (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
             self._git(repository, "add", ".")
             self._git(repository, "commit", "-qm", "base")
@@ -883,10 +900,13 @@ class GitHistoryPolicyTests(unittest.TestCase):
             self.assertEqual(6, len(hashes))
 
     def test_doctor_receipt_binds_repository_root(self) -> None:
-        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+        with (
+            tempfile.TemporaryDirectory() as first,
+            tempfile.TemporaryDirectory() as second,
+        ):
             manifests = []
             for directory in (first, second):
-                repository = self._repository(directory)
+                repository = self._receipt_repository(directory)
                 (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
                 self._git(repository, "add", ".")
                 self._git(repository, "commit", "-qm", "base")
@@ -903,9 +923,81 @@ class GitHistoryPolicyTests(unittest.TestCase):
                 manifests[1]["repositoryRootSha256"],
             )
 
+    def test_doctor_receipt_binds_git_history_interpretation_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            fixture.write_text("second\n", encoding="utf-8")
+            self._git(repository, "commit", "-qam", "second")
+            head = self._git(repository, "rev-parse", "HEAD")
+            parent = self._git(repository, "rev-parse", "HEAD^")
+            git_directory = repository / self._git(repository, "rev-parse", "--git-dir")
+            with (
+                patch.object(harness_common, "ROOT", repository),
+                patch.object(doctor, "ROOT", repository),
+            ):
+                baseline = doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+                shallow_path = git_directory / "shallow"
+                shallow_path.write_text(f"{head}\n", encoding="ascii")
+                shallow = doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+                shallow_path.unlink()
+
+                replace_path = git_directory / "refs/replace" / head
+                replace_path.parent.mkdir(parents=True, exist_ok=True)
+                replace_path.write_text(f"{parent}\n", encoding="ascii")
+                replacement = doctor.compute_doctor_receipt_manifest(
+                    argv=["doctor.py"]
+                )
+                replace_path.unlink()
+
+                graft_path = git_directory / "info/grafts"
+                graft_path.write_text(f"{head}\n", encoding="ascii")
+                graft = doctor.compute_doctor_receipt_manifest(argv=["doctor.py"])
+            manifests = (baseline, shallow, replacement, graft)
+            self.assertTrue(all(manifest is not None for manifest in manifests))
+            history_identities = {
+                manifest["gitHistorySha256"]
+                for manifest in manifests
+                if manifest is not None
+            }
+            self.assertEqual(4, len(history_identities))
+
+    def test_doctor_receipt_binds_timezone_path_and_source_data(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            tempfile.TemporaryDirectory() as timezone_directory,
+        ):
+            repository = self._receipt_repository(directory)
+            zone_path = Path(timezone_directory) / "Asia/Shanghai"
+            zone_path.parent.mkdir(parents=True, exist_ok=True)
+            zone_path.write_bytes(b"timezone-data-one")
+            with (
+                patch.object(doctor, "ROOT", repository),
+                patch.object(doctor.zoneinfo, "TZPATH", (timezone_directory,)),
+            ):
+                first = doctor._doctor_receipt_timezone_sha256()
+                zone_path.write_bytes(b"timezone-data-two")
+                second = doctor._doctor_receipt_timezone_sha256()
+            self.assertIsNotNone(first)
+            self.assertIsNotNone(second)
+            self.assertNotEqual(first, second)
+
+            with patch.dict(
+                os.environ,
+                {"PYTHONTZPATH": timezone_directory},
+                clear=False,
+            ):
+                environment = doctor._doctor_receipt_environment_sha256()
+            with patch.dict(os.environ, {"PYTHONTZPATH": ""}, clear=False):
+                alternate_environment = doctor._doctor_receipt_environment_sha256()
+            self.assertNotEqual(environment, alternate_environment)
+
     def test_doctor_receipt_environment_does_not_disclose_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            repository = self._repository(directory)
+            repository = self._receipt_repository(directory)
             (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
             self._git(repository, "add", ".")
             self._git(repository, "commit", "-qm", "base")
