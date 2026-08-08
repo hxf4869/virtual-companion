@@ -1164,13 +1164,16 @@ class GitHistoryPolicyTests(unittest.TestCase):
     def _cache_race_run(
         self,
         repository: Path,
-        inject: Callable[[], None] | None,
+        inject: Callable[[], None] | None = None,
         *,
+        recompute_results: list[dict[str, str] | None] | None = None,
         main_patches: list[tuple[object, dict[str, object]]] | None = None,
     ) -> tuple[int, str]:
         """Run doctor.main() against a fixture repository holding a valid
         receipt. `inject` runs between the lookup manifest computation and the
-        pre-PASS manifest recomputation, exactly inside the TOCTOU window."""
+        pre-PASS manifest recomputation, exactly inside the TOCTOU window.
+        `recompute_results` overrides the recomputation result (for example
+        [None] to simulate an identity-establishment failure)."""
         argv = ["doctor.py", "--task", "TASK-ONE", "--summary"]
         with (
             patch.object(harness_common, "ROOT", repository),
@@ -1201,8 +1204,15 @@ class GitHistoryPolicyTests(unittest.TestCase):
 
             def _compute(*args: object, **kwargs: object) -> dict[str, str] | None:
                 calls["n"] += 1
-                if calls["n"] == 2 and inject is not None:
-                    inject()
+                if calls["n"] == 2:
+                    if recompute_results is not None:
+                        return (
+                            recompute_results.pop(0)
+                            if recompute_results
+                            else None
+                        )
+                    if inject is not None:
+                        inject()
                 return real_compute(*args, **kwargs)
 
             stdout = io.StringIO()
@@ -1346,9 +1356,16 @@ class GitHistoryPolicyTests(unittest.TestCase):
             self._git(repository, "add", ".")
             self._git(repository, "commit", "-qm", "base")
             original_tz = os.environ.get("TZ")
+            # Inject a value guaranteed to differ from the ambient TZ so the
+            # environment identity always changes during the lookup window.
+            target_tz = (
+                "Etc/GMT-14"
+                if original_tz != "Etc/GMT-14"
+                else "Etc/GMT+14"
+            )
 
             def inject_environment() -> None:
-                os.environ["TZ"] = "Etc/UTC"
+                os.environ["TZ"] = target_tz
 
             try:
                 result, output = self._cache_race_run(
@@ -1391,6 +1408,21 @@ class GitHistoryPolicyTests(unittest.TestCase):
                         },
                     )
                 ],
+            )
+            self.assertNotEqual(0, result)
+            self.assertNotIn("[receipt hit", output)
+
+    def test_doctor_cache_hit_misses_when_manifest_recomputation_fails(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            result, output = self._cache_race_run(
+                repository,
+                recompute_results=[None],
             )
             self.assertNotEqual(0, result)
             self.assertNotIn("[receipt hit", output)
