@@ -7,6 +7,7 @@
         data-testid="username"
         v-model="username"
         placeholder="用户名"
+        aria-label="用户名"
         autocomplete="username"
       />
       <input
@@ -15,17 +16,24 @@
         v-model="password"
         password
         placeholder="密码"
+        aria-label="密码"
         autocomplete="current-password"
       />
       <button
         class="login-submit"
         data-testid="submit"
         :disabled="submitting"
+        :aria-busy="submitting"
         @click="onSubmit"
       >
         {{ submitting ? "登录中…" : "登录" }}
       </button>
-      <view v-if="message" class="login-error" data-testid="error">
+      <view
+        v-if="message"
+        class="login-error"
+        data-testid="error"
+        role="alert"
+      >
         <text>{{ message }}</text>
       </view>
       <view class="login-hint">
@@ -40,6 +48,9 @@
 // live in the tested auth store and identity API client. On a confirmed login
 // the user is sent to the Alpha boundary page; on a server rejection the page
 // shows a generic message and never discloses whether the account exists.
+// TASK-0105 (P3-04): stable aria-labels, alert semantics on the error region,
+// aria-busy while submitting, and focus returns to the username field after a
+// failed attempt so keyboard/screen-reader users can correct and resubmit.
 import { defineComponent, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -74,6 +85,20 @@ export default defineComponent({
       }
     }
 
+    /** Move focus back to the username field after a failed attempt (a11y). */
+    function focusUsername(): void {
+      try {
+        if (typeof document !== "undefined") {
+          const field = document.querySelector<HTMLInputElement>(
+            '[data-testid="username"]',
+          );
+          field?.focus();
+        }
+      } catch {
+        // Best-effort a11y; never break the login flow.
+      }
+    }
+
     async function onSubmit(): Promise<void> {
       if (submitting.value) {
         return;
@@ -89,6 +114,7 @@ export default defineComponent({
           store.error === "network-failed"
             ? "网络错误，请重试"
             : "用户名或密码错误";
+        focusUsername();
       }
     }
 

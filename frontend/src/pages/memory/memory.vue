@@ -1,7 +1,11 @@
 <!-- TASK-0030: H5 memory management page. Renders pending candidates (never as
 saved facts) separately from canonical memory; confirm/reject/edit/delete actions
 route through the store, which only mutates state on a confirmed API result and
-surfaces failures instead of faking success. Sources come from the API. -->
+surfaces failures instead of faking success. Sources come from the API.
+TASK-0105 (P2-16/P3-03/P3-04): transport is the shared authenticated transport
+(401 -> session handling, CSRF on state changes); edit mode exits only on
+confirmed save; empty evidence does not render a container; error and busy
+states carry alert/live a11y semantics. -->
 <template>
   <view class="memory-page">
     <view class="bar">
@@ -9,15 +13,24 @@ surfaces failures instead of faking success. Sources come from the API. -->
         v-model="relationshipId"
         class="rel-input"
         placeholder="relationship id"
+        aria-label="relationship id"
       />
-      <button :disabled="!relationshipId || busy" @click="reload">
+      <button
+        :disabled="!relationshipId || busy"
+        :aria-busy="busy"
+        @click="reload"
+      >
         刷新记忆
       </button>
     </view>
 
-    <view v-if="memory.error" class="error">{{ errorText }}</view>
+    <view
+      v-if="memory.error"
+      class="error"
+      role="alert"
+    >{{ errorText }}</view>
 
-    <view class="section">
+    <view class="section" aria-live="polite">
       <text class="section-title">待确认候选（{{ memory.pendingCount }}）</text>
       <text class="hint">候选未经确认，不作为已保存事实。</text>
       <view
@@ -36,7 +49,7 @@ surfaces failures instead of faking success. Sources come from the API. -->
           </button>
           <button size="mini" @click="onEvidence(m.memoryId)">来源</button>
         </view>
-        <view v-if="memory.evidence[m.memoryId]" class="evidence">
+        <view v-if="hasEvidence(m.memoryId)" class="evidence">
           <text
             v-for="e in memory.evidence[m.memoryId]"
             :key="e.evidenceId"
@@ -46,7 +59,7 @@ surfaces failures instead of faking success. Sources come from the API. -->
       </view>
     </view>
 
-    <view class="section">
+    <view class="section" aria-live="polite">
       <text class="section-title">Canonical 记忆（{{ memory.canonicalCount }}）</text>
       <view
         v-for="m in memory.canonical"
@@ -55,7 +68,11 @@ surfaces failures instead of faking success. Sources come from the API. -->
       >
         <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}</text>
         <view v-else class="edit-row">
-          <input v-model="draftSummary" class="edit-input" />
+          <input
+            v-model="draftSummary"
+            class="edit-input"
+            aria-label="编辑记忆内容"
+          />
           <button size="mini" :disabled="busy" @click="onSave(m.memoryId)">
             保存
           </button>
@@ -74,7 +91,7 @@ surfaces failures instead of faking success. Sources come from the API. -->
           </button>
           <button size="mini" @click="onEvidence(m.memoryId)">来源</button>
         </view>
-        <view v-if="memory.evidence[m.memoryId]" class="evidence">
+        <view v-if="hasEvidence(m.memoryId)" class="evidence">
           <text
             v-for="e in memory.evidence[m.memoryId]"
             :key="e.evidenceId"
@@ -89,50 +106,49 @@ surfaces failures instead of faking success. Sources come from the API. -->
 <script setup lang="ts">
 import { computed, ref } from "vue";
 
+import { createAuthenticatedTransport } from "@/api/transport";
+import { useAuthStore } from "@/stores/auth";
 import type { MemoryTransport } from "@/api/memory";
 import { useMemoryStore, type MemoryErrorCode } from "@/stores/memory";
 
 const memory = useMemoryStore();
+const auth = useAuthStore();
 
 const relationshipId = ref("");
 const busy = ref(false);
 const editingId = ref<string | null>(null);
 const draftSummary = ref("");
 
-// Production transport: fetch-based (H5). Network failures throw and are caught
-// by the store, which surfaces a failure instead of faking success.
-const transport: MemoryTransport = {
-  async request(method, path, body) {
-    const res = await fetch(path, {
-      method,
-      headers: body !== undefined ? { "Content-Type": "application/json" } : {},
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    let json: unknown = null;
-    try {
-      json = await res.json();
-    } catch {
-      json = null;
-    }
-    return { ok: res.ok, status: res.status, json };
-  },
-};
+// TASK-0105 (P2-16): shared authenticated transport -- the single place where
+// credentials/CSRF are attached; an HTTP 401 routes to the auth store's
+// session handling (clear + redirect to login) exactly like the rest of the H5.
+const transport: MemoryTransport = createAuthenticatedTransport({
+  getAccessToken: () => auth.accessToken,
+  onUnauthorized: () => auth.onUnauthorized(),
+});
 
 const errorText = computed(() => {
   const map: Record<MemoryErrorCode, string> = {
-    "load-failed": "加载失败",
+    "load-failed": "加载失败，请稍后重试",
+    "session-expired": "登录已过期，请重新登录",
     "confirm-not-confirmed": "确认未生效（候选不存在或已变更）",
-    "confirm-failed": "确认失败",
+    "confirm-failed": "确认失败，请稍后重试",
     "reject-not-confirmed": "拒绝未生效",
-    "reject-failed": "拒绝失败",
+    "reject-failed": "拒绝失败，请稍后重试",
     "update-not-confirmed": "编辑未生效",
-    "update-failed": "编辑失败",
+    "update-failed": "编辑失败，请稍后重试",
     "delete-not-confirmed": "删除未生效（记忆可能已不存在）",
-    "delete-failed": "删除失败",
-    "evidence-failed": "来源加载失败",
+    "delete-failed": "删除失败，请稍后重试",
+    "evidence-failed": "来源加载失败，请稍后重试",
   };
   return memory.error ? map[memory.error] : "";
 });
+
+/** An empty evidence array must not render an empty container (P3-03). */
+function hasEvidence(memoryId: string): boolean {
+  const list = memory.evidence[memoryId];
+  return Array.isArray(list) && list.length > 0;
+}
 
 async function reload(): Promise<void> {
   if (!relationshipId.value) return;
@@ -170,8 +186,12 @@ function startEdit(id: string, summary: string): void {
 async function onSave(id: string): Promise<void> {
   busy.value = true;
   try {
-    await memory.update(transport, id, draftSummary.value);
-    editingId.value = null;
+    // Exit edit mode ONLY on a confirmed save (P3-03); on failure the edit row
+    // stays open and the error region announces the typed failure.
+    const saved = await memory.update(transport, id, draftSummary.value);
+    if (saved) {
+      editingId.value = null;
+    }
   } finally {
     busy.value = false;
   }

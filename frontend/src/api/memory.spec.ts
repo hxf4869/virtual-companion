@@ -6,6 +6,7 @@ import {
   getMemory,
   listMemories,
   listMemoryEvidence,
+  MemoryHttpError,
   rejectMemory,
   updateMemory,
   type MemoryApiResponse,
@@ -132,5 +133,93 @@ describe("api/memory transport failure propagation", () => {
     await expect(confirmMemory(t, "m1")).rejects.toThrow("network down");
     await expect(deleteMemory(t, "m1")).rejects.toThrow("network down");
     await expect(listMemoryEvidence(t, "m1")).rejects.toThrow("network down");
+  });
+});
+
+describe("api/memory typed error mapping (P2-16)", () => {
+  function statusResponse(status: number): MemoryApiResponse {
+    return { ok: false, status, json: null };
+  }
+
+  it("401 maps to a typed unauthorized error, never empty success", async () => {
+    const t = transportReturning({
+      "/api/v1/relationships/rel-1/memories": statusResponse(401),
+    });
+    const err = await listMemories(t, "rel-1").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(MemoryHttpError);
+    const httpErr = err as MemoryHttpError;
+    expect(httpErr.kind).toBe("unauthorized");
+    expect(httpErr.status).toBe(401);
+  });
+
+  it("5xx maps to a typed server error for every endpoint", async () => {
+    const cases: Array<[string, string, string, (t: MemoryTransport) => Promise<unknown>]> = [
+      ["list", "GET", "/api/v1/relationships/rel-1/memories", (t) => listMemories(t, "rel-1")],
+      ["get", "GET", "/api/v1/memories/m1", (t) => getMemory(t, "m1")],
+      ["confirm", "POST", "/api/v1/memories/m1/confirm", (t) => confirmMemory(t, "m1")],
+      ["reject", "POST", "/api/v1/memories/m1/reject", (t) => rejectMemory(t, "m1")],
+      ["update", "PATCH", "/api/v1/memories/m1", (t) => updateMemory(t, "m1", "s")],
+      ["evidence", "GET", "/api/v1/memories/m1/evidence", (t) => listMemoryEvidence(t, "m1")],
+      ["delete", "DELETE", "/api/v1/memories/m1", (t) => deleteMemory(t, "m1")],
+    ];
+    for (const [name, , path, call] of cases) {
+      const t = transportReturning({ [path]: statusResponse(503) });
+      const err = await call(t).then(() => null, (e: unknown) => e);
+      expect(err, name).toBeInstanceOf(MemoryHttpError);
+      expect((err as MemoryHttpError).kind, name).toBe("server");
+    }
+  });
+
+  it("other 4xx (400/409/422) map to a typed client error, not empty success", async () => {
+    const t = transportReturning({
+      "/api/v1/memories/m1/confirm": statusResponse(409),
+    });
+    const err = await confirmMemory(t, "m1").then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(MemoryHttpError);
+    expect((err as MemoryHttpError).kind).toBe("client");
+    expect((err as MemoryHttpError).status).toBe(409);
+  });
+
+  it("403 hides existence exactly like 404 (no throw, no disclosure)", async () => {
+    const forbidden = transportReturning({
+      "/api/v1/relationships/rel-1/memories": statusResponse(403),
+      "/api/v1/memories/m1": statusResponse(403),
+      "/api/v1/memories/m1/confirm": statusResponse(403),
+      "/api/v1/memories/m1/evidence": statusResponse(403),
+    });
+    expect(await listMemories(forbidden, "rel-1")).toEqual([]);
+    expect(await getMemory(forbidden, "m1")).toBeNull();
+    expect(await confirmMemory(forbidden, "m1")).toBeNull();
+    expect(await deleteMemory(forbidden, "m1")).toBe(false);
+    expect(await listMemoryEvidence(forbidden, "m1")).toEqual([]);
+  });
+
+  it("an OK response whose body failed to parse maps to a typed parse error", async () => {
+    const t = transportReturning({
+      "/api/v1/relationships/rel-1/memories": {
+        ok: true,
+        status: 200,
+        json: null,
+        parseFailed: true,
+      },
+    });
+    const err = await listMemories(t, "rel-1").then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(MemoryHttpError);
+    expect((err as MemoryHttpError).kind).toBe("parse");
+  });
+
+  it("listMemories URL-encodes the relationshipId (P3-03)", async () => {
+    let seenPath = "";
+    const t: MemoryTransport = {
+      request: vi.fn(async (_method: string, path: string): Promise<MemoryApiResponse> => {
+        seenPath = path;
+        return { ok: true, status: 200, json: [] };
+      }),
+    };
+    await listMemories(t, "rel a/b?c#d&e");
+    expect(seenPath).toBe("/api/v1/relationships/rel%20a%2Fb%3Fc%23d%26e/memories");
   });
 });

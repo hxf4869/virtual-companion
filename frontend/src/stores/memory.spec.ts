@@ -185,3 +185,108 @@ describe("useMemoryStore partition + no-fake-success", () => {
     expect(store.error).toBeNull();
   });
 });
+
+describe("useMemoryStore typed error mapping (P2-16)", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  async function seed(store: ReturnType<typeof useMemoryStore>): Promise<void> {
+    const t = keyedTransport({
+      ...Object.fromEntries([ok(
+        "/api/v1/relationships/rel-1/memories",
+        [
+          memory("pend-1", "PENDING_CONFIRMATION", "candidate"),
+          memory("acc-1", "ACCEPTED", "canonical"),
+        ],
+      )]),
+    });
+    await store.load(t, "rel-1");
+  }
+
+  function typedTransport(status: number): MemoryTransport {
+    return {
+      request: vi.fn(async (_method: string, _path: string): Promise<MemoryApiResponse> => ({
+        ok: false,
+        status,
+        json: null,
+      })),
+    };
+  }
+
+  it("a 401 load maps to session-expired, never an empty-success look", async () => {
+    const store = useMemoryStore();
+    await store.load(typedTransport(401), "rel-1");
+    expect(store.error).toBe("session-expired");
+    expect(store.pending).toEqual([]);
+    expect(store.canonical).toEqual([]);
+  });
+
+  it("a 5xx load maps to load-failed while preserving state", async () => {
+    const store = useMemoryStore();
+    await store.load(typedTransport(503), "rel-1");
+    expect(store.error).toBe("load-failed");
+  });
+
+  it("a 401 confirm/reject/update/remove map to session-expired", async () => {
+    const store = useMemoryStore();
+    await seed(store);
+    await store.confirm(typedTransport(401), "pend-1");
+    expect(store.error).toBe("session-expired");
+    await store.reject(typedTransport(401), "pend-1");
+    expect(store.error).toBe("session-expired");
+    const updated = await store.update(typedTransport(401), "acc-1", "x");
+    expect(updated).toBe(false);
+    expect(store.error).toBe("session-expired");
+    await store.remove(typedTransport(401), "acc-1");
+    expect(store.error).toBe("session-expired");
+  });
+
+  it("a 5xx confirm/remove map to the per-operation failed codes", async () => {
+    const store = useMemoryStore();
+    await seed(store);
+    await store.confirm(typedTransport(500), "pend-1");
+    expect(store.error).toBe("confirm-failed");
+    await store.remove(typedTransport(500), "acc-1");
+    expect(store.error).toBe("delete-failed");
+    // State was preserved throughout -- no fake success.
+    expect(store.pending.map((m) => m.memoryId)).toEqual(["pend-1"]);
+    expect(store.canonical.map((m) => m.memoryId)).toEqual(["acc-1"]);
+  });
+
+  it("update returns true only on confirmed success and false on any failure", async () => {
+    const store = useMemoryStore();
+    await seed(store);
+
+    const okT = keyedTransport({
+      ...Object.fromEntries([ok("/api/v1/memories/acc-1", memory("acc-1", "ACCEPTED", "edited"))]),
+    });
+    expect(await store.update(okT, "acc-1", "edited")).toBe(true);
+    expect(store.canonical.find((m) => m.memoryId === "acc-1")?.summary).toBe("edited");
+
+    const failT = keyedTransport({
+      ...Object.fromEntries([notOk("/api/v1/memories/acc-1")]),
+    });
+    expect(await store.update(failT, "acc-1", "no")).toBe(false);
+    expect(store.error).toBe("update-not-confirmed");
+    expect(store.canonical.find((m) => m.memoryId === "acc-1")?.summary).toBe("edited");
+  });
+
+  it("loadEvidence success clears a stale error; a 5xx sets evidence-failed (P3-03)", async () => {
+    const store = useMemoryStore();
+    await seed(store);
+
+    // A 404 evidence lookup is existence-hidden (empty sources, no error);
+    // a server failure is the typed error that must surface.
+    const failingEvidence = typedTransport(503);
+    await store.loadEvidence(failingEvidence, "acc-1");
+    expect(store.error).toBe("evidence-failed");
+
+    const okEvidence = keyedTransport({
+      ...Object.fromEntries([ok("/api/v1/memories/acc-1/evidence", [{ evidenceId: "e1", sourceRef: "src-1" }])]),
+    });
+    await store.loadEvidence(okEvidence, "acc-1");
+    expect(store.error).toBeNull();
+    expect(store.evidence["acc-1"]).toHaveLength(1);
+  });
+});

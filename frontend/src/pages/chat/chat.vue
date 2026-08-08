@@ -6,7 +6,7 @@
       <text>{{ draft || placeholder }}</text>
     </view>
 
-    <view class="chat-status" data-testid="status">
+    <view class="chat-status" data-testid="status" role="status" aria-live="polite">
       <text>{{ statusText }}</text>
     </view>
 
@@ -14,6 +14,7 @@
       <button
         class="chat-cancel"
         :disabled="!isStreaming"
+        :aria-busy="isStreaming"
         data-testid="cancel"
         @click="onCancel"
       >
@@ -36,6 +37,10 @@
 // cancel / new run / unmount truly abort the underlying fetch. 5xx / network
 // failures surface as typed exhausted failures instead of empty streams or
 // fake terminal snapshots.
+//
+// TASK-0105 (P3-04): the status region carries role="status" +
+// aria-live="polite" and the cancel button aria-busy while streaming, so
+// async phase changes are announced to assistive technology.
 import { computed, defineComponent, onUnmounted, ref } from "vue";
 
 import { useChatStore } from "@/stores/chat";

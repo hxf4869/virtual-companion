@@ -10,6 +10,13 @@
 // (null/false) or a thrown transport preserves the current state and records an
 // error -- the store never fakes success (forbidden). Sources, status and delete
 // results come only from the API response.
+//
+// TASK-0105 (P2-16): a typed MemoryHttpError from the api layer maps 401 to the
+// new "session-expired" code (the page's authenticated transport routes the
+// 401 to the auth store for session handling); 5xx/other typed failures map to
+// the per-operation failed codes instead of an empty-success look. P3-03:
+// update() returns a boolean so the page exits edit mode only on confirmed
+// success; loadEvidence clears any stale error on a successful load.
 
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
@@ -19,15 +26,18 @@ import {
   deleteMemory,
   listMemories,
   listMemoryEvidence,
+  MemoryHttpError,
   rejectMemory,
   updateMemory,
   type Memory,
   type MemoryEvidence,
+  type MemoryHttpErrorKind,
   type MemoryTransport,
 } from "@/api/memory";
 
 export type MemoryErrorCode =
   | "load-failed"
+  | "session-expired"
   | "confirm-not-confirmed"
   | "confirm-failed"
   | "reject-not-confirmed"
@@ -37,6 +47,14 @@ export type MemoryErrorCode =
   | "delete-not-confirmed"
   | "delete-failed"
   | "evidence-failed";
+
+/** Map a caught api-layer failure to a store error code. */
+function failureCode(error: unknown, fallback: MemoryErrorCode): MemoryErrorCode {
+  if (error instanceof MemoryHttpError && error.kind === "unauthorized") {
+    return "session-expired";
+  }
+  return fallback;
+}
 
 export const useMemoryStore = defineStore("h5-memory", () => {
   const pending = ref<Memory[]>([]);
@@ -70,8 +88,8 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     let list: Memory[];
     try {
       list = await listMemories(t, relationshipId);
-    } catch {
-      error.value = "load-failed";
+    } catch (e) {
+      error.value = failureCode(e, "load-failed");
       return;
     }
     pending.value = list.filter((m) => m.status === "PENDING_CONFIRMATION");
@@ -84,8 +102,8 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     let confirmed: Memory | null;
     try {
       confirmed = await confirmMemory(t, memoryId);
-    } catch {
-      error.value = "confirm-failed";
+    } catch (e) {
+      error.value = failureCode(e, "confirm-failed");
       return;
     }
     if (!confirmed || confirmed.status !== "ACCEPTED") {
@@ -103,8 +121,8 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     let rejected: Memory | null;
     try {
       rejected = await rejectMemory(t, memoryId);
-    } catch {
-      error.value = "reject-failed";
+    } catch (e) {
+      error.value = failureCode(e, "reject-failed");
       return;
     }
     if (!rejected) {
@@ -114,26 +132,30 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     pending.value = without(pending.value, memoryId);
   }
 
-  /** Edit: the visible summary changes ONLY on confirmed success. */
+  /**
+   * Edit: the visible summary changes ONLY on confirmed success. Returns true
+   * only then, so the page keeps the edit row open on any failure.
+   */
   async function update(
     t: MemoryTransport,
     memoryId: string,
     summary: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     error.value = null;
     let updated: Memory | null;
     try {
       updated = await updateMemory(t, memoryId, summary);
-    } catch {
-      error.value = "update-failed";
-      return;
+    } catch (e) {
+      error.value = failureCode(e, "update-failed");
+      return false;
     }
     if (!updated) {
       error.value = "update-not-confirmed";
-      return;
+      return false;
     }
     canonical.value = replaceIn(canonical.value, updated);
     pending.value = replaceIn(pending.value, updated);
+    return true;
   }
 
   /** Delete: a memory is removed ONLY on a confirmed delete; never faked. */
@@ -142,8 +164,8 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     let ok: boolean;
     try {
       ok = await deleteMemory(t, memoryId);
-    } catch {
-      error.value = "delete-failed";
+    } catch (e) {
+      error.value = failureCode(e, "delete-failed");
       return;
     }
     if (!ok) {
@@ -159,12 +181,14 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     evidence.value = nextEvidence;
   }
 
+  /** Load sources; a successful load clears any stale error (P3-03). */
   async function loadEvidence(t: MemoryTransport, memoryId: string): Promise<void> {
+    error.value = null;
     try {
       const sources = await listMemoryEvidence(t, memoryId);
       evidence.value = { ...evidence.value, [memoryId]: sources };
-    } catch {
-      error.value = "evidence-failed";
+    } catch (e) {
+      error.value = failureCode(e, "evidence-failed");
     }
   }
 
