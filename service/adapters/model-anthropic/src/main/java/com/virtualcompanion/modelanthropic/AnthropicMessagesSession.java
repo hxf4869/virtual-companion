@@ -270,11 +270,23 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
     private void parseCompletion(InputStream body) throws AnthropicCodecException {
         var message = codec.decodeMessage(body);
         markFirstContent();
-        ModelPayload payload = request.responseMode() instanceof ResponseMode.StructuredJson
-                ? new ModelPayload.StructuredJson(
-                        codec.requireStructuredJson(message.content())
-                )
-                : new ModelPayload.TextChunk(message.content());
+        ModelPayload payload;
+        if (request.responseMode() instanceof ResponseMode.StructuredJson) {
+            // Real tool-use protocol: the structured answer arrives in the
+            // tool_use block input, never in a text block.
+            var toolUse = message.toolUseInput()
+                    .orElseThrow(AnthropicCodecException::new);
+            payload = new ModelPayload.StructuredJson(
+                    codec.requireStructuredJson(toolUse)
+            );
+        } else {
+            if (message.toolUseInput().isPresent()) {
+                // An unclaimed tool_use without a structured consumer is a
+                // protocol mismatch; fail closed instead of leaking JSON text.
+                throw new AnthropicCodecException();
+            }
+            payload = new ModelPayload.TextChunk(message.content());
+        }
         completeSuccessfully(payload, message.usage(), message.stopReason());
     }
 
@@ -303,14 +315,54 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
         if (state.done) {
             throw new AnthropicCodecException();
         }
+        if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.ContentBlockStart start) {
+            if (state.blockOpen) {
+                throw new AnthropicCodecException();
+            }
+            if (state.structured && !"tool_use".equals(start.blockType())) {
+                throw new AnthropicCodecException();
+            }
+            if (!state.structured && !"text".equals(start.blockType())) {
+                throw new AnthropicCodecException();
+            }
+            state.blockOpen = true;
+            state.blockType = start.blockType();
+            return true;
+        }
+        if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.ContentBlockStop stop) {
+            if (!state.blockOpen) {
+                throw new AnthropicCodecException();
+            }
+            state.blockOpen = false;
+            state.blockType = null;
+            if (state.structured) {
+                // The tool_use block is complete; its input JSON is settled.
+                state.blockSettled = true;
+            }
+            return true;
+        }
         if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.TextDelta delta) {
+            if (!state.blockOpen || !"text".equals(state.blockType)) {
+                throw new AnthropicCodecException();
+            }
             state.contentSeen = true;
             markFirstContent();
             if (state.structured) {
-                state.structuredContent.append(delta.text());
-            } else {
-                emitText(delta.text());
+                throw new AnthropicCodecException();
             }
+            emitText(delta.text());
+            return true;
+        }
+        if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.InputJsonDelta delta) {
+            if (!state.blockOpen || !"tool_use".equals(state.blockType)) {
+                throw new AnthropicCodecException();
+            }
+            if (!state.structured) {
+                throw new AnthropicCodecException();
+            }
+            state.contentSeen = true;
+            markFirstContent();
+            state.structuredContent.append(delta.partialJson());
             return true;
         }
         if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.MessageDelta messageDelta) {
@@ -329,7 +381,8 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             if (!state.startSeen
                     || !state.contentSeen
                     || state.stopReason == null
-                    || state.outputTokens < 0) {
+                    || state.outputTokens < 0
+                    || state.blockOpen) {
                 throw new AnthropicCodecException();
             }
             var usage = new TokenUsage(
@@ -339,6 +392,9 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             );
             ModelPayload structuredPayload = null;
             if (state.structured) {
+                if (!state.blockSettled) {
+                    throw new AnthropicCodecException();
+                }
                 structuredPayload = new ModelPayload.StructuredJson(
                         codec.requireStructuredJson(state.structuredContent.toString())
                 );
@@ -552,6 +608,9 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
         private final StringBuilder structuredContent = new StringBuilder();
         private boolean startSeen;
         private boolean contentSeen;
+        private boolean blockOpen;
+        private String blockType;
+        private boolean blockSettled;
         private StopReason stopReason;
         private long inputTokens;
         private long outputTokens = -1;

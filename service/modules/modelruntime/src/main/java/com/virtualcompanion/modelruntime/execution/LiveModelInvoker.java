@@ -15,6 +15,7 @@ import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.port.ModelProtocolAdapter;
 import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
+import com.virtualcompanion.modelruntime.guard.ModelProtocolEventFence;
 import com.virtualcompanion.modelruntime.registry.ProviderId;
 import com.virtualcompanion.modelruntime.routing.DeterministicRouter;
 import com.virtualcompanion.modelruntime.routing.GenerationRecovery;
@@ -164,6 +165,7 @@ public final class LiveModelInvoker {
         String output = "";
         TokenUsage usage = new TokenUsage(0, 0, 0);
         ModelProtocolEvent terminalEvent = null;
+        ModelProtocolEventFence fence = new ModelProtocolEventFence(binding);
         try (ModelProtocolSession session = adapter.open(protocolRequest)) {
             StringBuilder builder = new StringBuilder();
             while (true) {
@@ -171,7 +173,15 @@ public final class LiveModelInvoker {
                 if (next.isEmpty()) {
                     break;
                 }
-                ModelProtocolEvent event = next.get();
+                final ModelProtocolEvent event;
+                try {
+                    event = fence.accept(next.get());
+                } catch (ModelProtocolEventFence.FenceViolation violation) {
+                    // Corrupt stream (wrong binding, out-of-order, duplicate
+                    // usage, EOS without output): fail the whole attempt closed
+                    // so a late or wrong event can never pollute output/usage.
+                    return fenceViolationOutcome(decision, binding, providerId, supplierName);
+                }
                 if (event instanceof ModelProtocolEvent.OutputDelta delta) {
                     if (delta.payload() instanceof ModelPayload.TextChunk chunk) {
                         builder.append(chunk.text());
@@ -216,6 +226,20 @@ public final class LiveModelInvoker {
             return handleFailure(decision, binding, providerId, supplierName, failed.failure());
         }
         throw new IllegalStateException("unexpected terminal event: " + terminalEvent);
+    }
+
+    private LiveAttemptOutcome fenceViolationOutcome(
+            RouteDecision decision,
+            InvocationBinding.ExternalAttemptBinding binding,
+            ProviderId providerId,
+            String supplierName) {
+        RecoveryOutcome outcome = recovery.recover(
+                decision.ownership(), RecoveryScenario.ALL_FAILURE,
+                decision.quotaReservation());
+        ProviderAttemptAudit audit = audit(binding, providerId, supplierName,
+                ProviderAttemptStatus.NON_RETRYABLE_FAILED);
+        return LiveAttemptOutcome.failed(decision, binding, audit,
+                new AdapterFailure.MalformedResponse(), outcome, LiveAttemptTerminal.FAILED);
     }
 
     private LiveAttemptOutcome handleFailure(

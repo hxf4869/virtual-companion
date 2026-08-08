@@ -1,6 +1,7 @@
 package com.virtualcompanion.modelanthropic.contract;
 
 import com.virtualcompanion.catalog.ModelProtocol;
+import com.virtualcompanion.modelruntime.contract.AdapterFailure;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
@@ -22,8 +23,10 @@ import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTest
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.adapter;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.completion;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.contentBlockStart;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.contentBlockStartToolUse;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.contentBlockStop;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.drain;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.inputJsonDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStart;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStop;
@@ -33,6 +36,7 @@ import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTest
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.structuredRequest;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.textDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.textRequest;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.toolUseCompletion;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -173,7 +177,9 @@ class AnthropicMessagesSuccessContractTest {
         // comments; the decoder must tolerate both without changing semantics.
         var stream = "event: message_start\n" + "data: " + messageStart(3) + "\n\n"
                 + ": heartbeat\n\n"
+                + "event: content_block_start\n" + "data: " + contentBlockStart() + "\n\n"
                 + "event: content_block_delta\n" + "data: " + textDelta("event-line") + "\n\n"
+                + "event: content_block_stop\n" + "data: " + contentBlockStop() + "\n\n"
                 + "event: message_delta\n" + "data: " + messageDelta("end_turn", 2) + "\n\n"
                 + "event: message_stop\n" + "data: " + messageStop() + "\n\n";
         try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
@@ -295,11 +301,14 @@ class AnthropicMessagesSuccessContractTest {
     @Test
     void structured_output_when_claimed() throws Exception {
         var structuredJson = "{\"answer\":\"今晚辛苦了\"}";
-        var nonStreamingStream = completion(structuredJson, "end_turn", 4, 3);
+        // Real tool-use protocol: the non-streaming answer is a tool_use
+        // content block and the streaming answer arrives as input_json_delta
+        // fragments, not as text blocks or text_delta events.
+        var nonStreamingStream = toolUseCompletion(structuredJson, "end_turn", 4, 3);
         var streamingStream = sse(messageStart(4))
-                + sse(contentBlockStart())
-                + sse(textDelta("{\"answer\":\"今"))
-                + sse(textDelta("晚辛苦了\"}"))
+                + sse(contentBlockStartToolUse())
+                + sse(inputJsonDelta("{\"answer\":\"今"))
+                + sse(inputJsonDelta("晚辛苦了\"}"))
                 + sse(contentBlockStop())
                 + sse(messageDelta("end_turn", 3))
                 + sse(messageStop());
@@ -336,6 +345,31 @@ class AnthropicMessagesSuccessContractTest {
                 assertEquals("tool", toolChoice.get("type").stringValue());
                 assertEquals("companion_response", toolChoice.get("name").stringValue());
             }
+        }
+    }
+
+    @Test
+    void nonStreamingToolUseWithoutStructuredModeFailsClosed() throws Exception {
+        var stream = toolUseCompletion("{\"answer\":\"ignored\"}", "end_turn", 4, 3);
+        try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "application/json",
+                stream
+        ))) {
+            var session = adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(textRequest(false, "finish"));
+            var events = drain(session);
+            assertEquals(1, events.size());
+            assertInstanceOf(ModelProtocolEvent.AttemptFailed.class, events.getFirst());
+            assertInstanceOf(
+                    AdapterFailure.MalformedResponse.class,
+                    assertInstanceOf(
+                            ModelProtocolEvent.AttemptFailed.class,
+                            events.getFirst()
+                    ).failure()
+            );
         }
     }
 

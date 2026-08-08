@@ -201,6 +201,28 @@ final class AnthropicContractTestSupport {
         return JSON.writeValueAsString(root);
     }
 
+    static String toolUseCompletion(
+            String inputJson,
+            String stopReason,
+            long inputTokens,
+            long outputTokens
+    ) {
+        var root = JSON.createObjectNode();
+        root.put("id", "msg_offline");
+        root.put("type", "message");
+        root.put("role", "assistant");
+        root.put("model", MODEL);
+        var block = root.putArray("content").addObject();
+        block.put("type", "tool_use");
+        block.put("id", "toolu_offline");
+        block.put("name", "companion_response");
+        block.set("input", parseJson(inputJson));
+        root.put("stop_reason", stopReason);
+        root.putNull("stop_sequence");
+        addUsage(root, inputTokens, outputTokens);
+        return JSON.writeValueAsString(root);
+    }
+
     static String messageStart(long inputTokens) {
         var root = JSON.createObjectNode();
         root.put("type", "message_start");
@@ -225,6 +247,18 @@ final class AnthropicContractTestSupport {
         return JSON.writeValueAsString(root);
     }
 
+    static String contentBlockStartToolUse() {
+        var root = JSON.createObjectNode();
+        root.put("type", "content_block_start");
+        root.put("index", 0);
+        var block = root.putObject("content_block");
+        block.put("type", "tool_use");
+        block.put("id", "toolu_offline");
+        block.put("name", "companion_response");
+        block.putObject("input");
+        return JSON.writeValueAsString(root);
+    }
+
     static String contentBlockStop() {
         return "{\"type\":\"content_block_stop\",\"index\":0}";
     }
@@ -236,6 +270,16 @@ final class AnthropicContractTestSupport {
         var delta = root.putObject("delta");
         delta.put("type", "text_delta");
         delta.put("text", text);
+        return JSON.writeValueAsString(root);
+    }
+
+    static String inputJsonDelta(String partialJson) {
+        var root = JSON.createObjectNode();
+        root.put("type", "content_block_delta");
+        root.put("index", 0);
+        var delta = root.putObject("delta");
+        delta.put("type", "input_json_delta");
+        delta.put("partial_json", partialJson);
         return JSON.writeValueAsString(root);
     }
 

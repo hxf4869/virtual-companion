@@ -93,6 +93,88 @@ class LiveModelInvokerTest {
     }
 
     @Test
+    void wrongBindingEventFailsClosedAndReleasesQuota() {
+        Harness harness = harness(
+                false,
+                binding -> List.of(new ModelProtocolEvent.OutputDelta(
+                        wrongBinding(binding), 0, new ModelPayload.TextChunk("leak"))),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        assertEquals(ProviderAttemptStatus.NON_RETRYABLE_FAILED,
+                outcome.audits().getFirst().status());
+        // The wrong-binding output must never pollute the deterministic response.
+        assertFalse(outcome.response().contains("leak"));
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void outOfOrderSequenceFailsClosedAndReleasesQuota() {
+        Harness harness = harness(
+                false,
+                binding -> List.of(
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 0, new ModelPayload.TextChunk("a")),
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 2, new ModelPayload.TextChunk("skip"))),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void duplicateUsageFailsClosedAndReleasesQuota() {
+        Harness harness = harness(
+                false,
+                binding -> List.of(
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 0, new ModelPayload.TextChunk("a")),
+                        new ModelProtocolEvent.UsageReported(
+                                binding, 1, new TokenUsage(1, 1, 2)),
+                        new ModelProtocolEvent.UsageReported(
+                                binding, 2, new TokenUsage(2, 2, 4))),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void eosWithoutAnyOutputFailsClosedAndReleasesQuota() {
+        Harness harness = harness(
+                false,
+                binding -> List.of(new ModelProtocolEvent.AttemptEos(
+                        binding, 0, StopReason.STOP)),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        // The empty EOS never produces a successful response; the degraded
+        // path yields only the deterministic ZERO_LLM fallback.
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        // INV-GEN-003: an attempt-level EOS without output is a failure and
+        // never carries the completion event semantics.
+        assertEquals(RealtimeEventType.CHAT_FAILED, outcome.realtimeEventType());
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
     void deniedAuthorizationClosesBeforeOutboundAndReleasesQuota() {
         Harness harness = harness(true, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
 
@@ -442,6 +524,16 @@ class LiveModelInvokerTest {
                             binding, 2, new TokenUsage(10, 5, 15)),
                     new ModelProtocolEvent.AttemptEos(binding, 3, StopReason.STOP));
         }
+    }
+
+    private static InvocationBinding wrongBinding(InvocationBinding binding) {
+        var external = (InvocationBinding.ExternalAttemptBinding) binding;
+        return new InvocationBinding.ExternalAttemptBinding(
+                external.ownership(),
+                external.providerAttemptId() + "-wrong",
+                external.fence(),
+                external.requestedAuthorizationSnapshotId(),
+                external.executionAuthorizationSnapshotId());
     }
 
     private static final class Harness {

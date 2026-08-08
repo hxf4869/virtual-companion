@@ -85,12 +85,45 @@ final class AnthropicMessagesCodec {
             if (content == null || !content.isArray() || content.isEmpty()) {
                 throw new AnthropicCodecException();
             }
-            var firstBlock = requireObject(content.get(0));
-            requireExactText(firstBlock, "type", "text");
-            var text = requireNonEmptyText(firstBlock, "text");
+            StringBuilder text = new StringBuilder();
+            String toolUseInput = null;
+            for (var blockNode : content) {
+                var block = requireObject(blockNode);
+                var blockType = block.get("type");
+                if (blockType == null || !blockType.isString()) {
+                    throw new AnthropicCodecException();
+                }
+                switch (blockType.stringValue()) {
+                    case "text" -> {
+                        if (toolUseInput != null) {
+                            // Mixed text and tool_use blocks have no single
+                            // consumer; fail closed instead of guessing.
+                            throw new AnthropicCodecException();
+                        }
+                        text.append(requireNonEmptyText(block, "text"));
+                    }
+                    case "tool_use" -> {
+                        if (toolUseInput != null) {
+                            // A forced tool_choice produces exactly one
+                            // tool_use block; more than one is malformed.
+                            throw new AnthropicCodecException();
+                        }
+                        var input = block.get("input");
+                        if (input == null || input.isNull()) {
+                            throw new AnthropicCodecException();
+                        }
+                        toolUseInput = input.toString();
+                    }
+                    default -> throw new AnthropicCodecException();
+                }
+            }
             var stopReason = requireStopReason(root.get("stop_reason"));
             var usage = requireUsage(root.get("usage"));
-            return new Message(text, usage, stopReason);
+            return new Message(
+                    text.toString(),
+                    toolUseInput == null ? Optional.empty() : Optional.of(toolUseInput),
+                    usage,
+                    stopReason);
         } catch (AnthropicCodecException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -113,16 +146,35 @@ final class AnthropicMessagesCodec {
                     long input = requireNonNegativeInteger(usage, "input_tokens");
                     return new AnthropicStreamEvent.MessageStart(input);
                 }
+                case "content_block_start" -> {
+                    var block = requireObject(root.get("content_block"));
+                    var blockType = requireNonEmptyText(block, "type");
+                    return new AnthropicStreamEvent.ContentBlockStart(blockType);
+                }
                 case "content_block_delta" -> {
                     var delta = requireObject(root.get("delta"));
                     var deltaType = delta.get("type");
-                    if (deltaType == null
-                            || !deltaType.isString()
-                            || !"text_delta".equals(deltaType.stringValue())) {
+                    if (deltaType == null || !deltaType.isString()) {
                         throw new AnthropicCodecException();
                     }
-                    var text = requireNonEmptyText(delta, "text");
-                    return new AnthropicStreamEvent.TextDelta(text);
+                    switch (deltaType.stringValue()) {
+                        case "text_delta" -> {
+                            var text = requireNonEmptyText(delta, "text");
+                            return new AnthropicStreamEvent.TextDelta(text);
+                        }
+                        case "input_json_delta" -> {
+                            var partial = delta.get("partial_json");
+                            if (partial == null || !partial.isString()) {
+                                throw new AnthropicCodecException();
+                            }
+                            return new AnthropicStreamEvent.InputJsonDelta(partial.stringValue());
+                        }
+                        default -> throw new AnthropicCodecException();
+                    }
+                }
+                case "content_block_stop" -> {
+                    var index = requireNonNegativeInteger(root, "index");
+                    return new AnthropicStreamEvent.ContentBlockStop(index);
                 }
                 case "message_delta" -> {
                     var delta = requireObject(root.get("delta"));
@@ -138,7 +190,7 @@ final class AnthropicMessagesCodec {
                 case "message_stop" -> {
                     return new AnthropicStreamEvent.MessageStop();
                 }
-                case "ping", "content_block_start", "content_block_stop" -> {
+                case "ping" -> {
                     return new AnthropicStreamEvent.Ignored();
                 }
                 default -> throw new AnthropicCodecException();
@@ -240,19 +292,35 @@ final class AnthropicMessagesCodec {
         return number;
     }
 
-    record Message(String content, TokenUsage usage, StopReason stopReason) {
+    record Message(
+            String content,
+            Optional<String> toolUseInput,
+            TokenUsage usage,
+            StopReason stopReason) {
     }
 
     sealed interface AnthropicStreamEvent permits
             AnthropicStreamEvent.MessageStart,
+            AnthropicStreamEvent.ContentBlockStart,
             AnthropicStreamEvent.TextDelta,
+            AnthropicStreamEvent.InputJsonDelta,
+            AnthropicStreamEvent.ContentBlockStop,
             AnthropicStreamEvent.MessageDelta,
             AnthropicStreamEvent.MessageStop,
             AnthropicStreamEvent.Ignored {
         record MessageStart(long inputTokens) implements AnthropicStreamEvent {
         }
 
+        record ContentBlockStart(String blockType) implements AnthropicStreamEvent {
+        }
+
         record TextDelta(String text) implements AnthropicStreamEvent {
+        }
+
+        record InputJsonDelta(String partialJson) implements AnthropicStreamEvent {
+        }
+
+        record ContentBlockStop(long index) implements AnthropicStreamEvent {
         }
 
         record MessageDelta(
