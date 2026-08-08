@@ -2,7 +2,9 @@
 
 ```yaml
 taskId: TASK-0099
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P1-06 Refresh rotation 单后继修复完成并验证：V14 identity_refresh_token_rotate 增加 token 行锁（SELECT ... FOR UPDATE OF t）+ 锁内 live 复查 + 条件 UPDATE winner（WHERE revoked_at IS NULL AND expires_at > now()，NOT FOUND 失败关闭），并发 rotate 同一 token 唯一获胜、败者零写入；AuthService.refresh() 返回传给 rotate 的同一明文 token（不再调用 issueTokens() 创建隐藏 session）；48 并发测试（dblink 双会话）证明单 live successor、返回 hash 等于 rotation 插入值、失败不遗留隐藏 session；AuthServiceTest 15/15（哈希相等 + issue 永不调用断言）。全新 pgvector 容器 V1-V15 全量迁移后 48/48 SQL 测试 PASS；canonical precheck 5/5 PASS（doctor 417630 checks）；R1 独立复核 PASS；remote CI 因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -283,7 +285,19 @@ humanApprovals:
       每次全新容器应用全量迁移），无持久环境、无 Flyway checksum 历史可违反
       （TASK-0098 先例）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0099_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: c7ece0e28d0d48d4ef6b56ae48d9183e17313c3a
+    evidencePath: docs/evidence/TASK-0099/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：diff 仅 writeAllowlist 文件；V14 rotate 行锁（FOR UPDATE OF t）
+      + 锁内 live 复查 + 条件 UPDATE winner；AuthService.refresh 返回传给 rotate 的同一明文
+      token 且永不调用 issueTokens/sessions.issue；48 dblink 双会话测试证明唯一获胜/单 live
+      successor/胜者 hash/无隐藏 session；验收 1-7 可满足；无 blocking finding（2 条 P3
+      措辞建议已在 Handoff 校准）。
+    candidateTree: 140f3ba0205a7e9d8bf926a84dc91ec551138422
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0099
   - bash infra/db/run-rls-tests.sh

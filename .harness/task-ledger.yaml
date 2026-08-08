@@ -496,3 +496,9 @@ tasks:
     taskCard: docs/tasks/TASK-0098-generation-finalization-terminal-concurrency.md
     evidence: docs/evidence/TASK-0098/evidence-pack.json
     handoff: docs/handoffs/TASK-0098.json
+  TASK-0099:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0099-refresh-rotation-single-successor.md
+    evidence: docs/evidence/TASK-0099/evidence-pack.json
+    handoff: docs/handoffs/TASK-0099.json

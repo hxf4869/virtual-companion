@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0099
-activeTaskCard: docs/tasks/TASK-0099-refresh-rotation-single-successor.md
-lastAcceptedTask: TASK-0098
-lastAcceptedHandoff: docs/handoffs/TASK-0098.json
-lastTerminalTask: TASK-0098
-lastTerminalHandoff: docs/handoffs/TASK-0098.json
-nextAction: TASK-0099 已授权（READY）：实施 P1-06 Refresh rotation 修复——V14 rotate 行锁/条件 UPDATE RETURNING 唯一 winner（revoked_at IS NULL AND expires_at > now()）、AuthService.refresh() 返回传给 rotate 的同一明文 token（不再调用 issueTokens() 创建第二 session）、并发 refresh 单 live successor 的 DB+服务层测试（48 并发测试 + AuthServiceTest）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0099
+lastAcceptedHandoff: docs/handoffs/TASK-0099.json
+lastTerminalTask: TASK-0099
+lastTerminalHandoff: docs/handoffs/TASK-0099.json
+nextAction: 创建 P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构卡（工作包 6）：需 Owner 先决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）；工作包 7（Realtime DB 一致性 P2-07/08/09/11）为 Owner 决策前可独立推进的下一候选；TASK-0099 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

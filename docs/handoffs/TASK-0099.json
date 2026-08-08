@@ -1,0 +1,73 @@
+{
+ "taskId": "TASK-0099",
+ "state": "ACCEPTED",
+ "baseCommit": "60c00e1f5142ac7e6666cbeb91c7834c511ac1d9",
+ "headCommit": "c7ece0e28d0d48d4ef6b56ae48d9183e17313c3a",
+ "evidencePath": "docs/evidence/TASK-0099/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "a19a27c343708c13cbd23a36bd24b5a1476081d4",
+   "startedAt": "2026-08-08T20:49:03+08:00",
+   "endedAt": "2026-08-08T21:04:55+08:00",
+   "elapsedSeconds": 952,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "a19a27c343708c13cbd23a36bd24b5a1476081d4",
+   "startedAt": "2026-08-08T20:49:03+08:00",
+   "endedAt": "2026-08-08T20:52:56+08:00",
+   "elapsedSeconds": 233,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "6bf6e476843554406a9926f44bf42bdefd793850",
+   "startedAt": "2026-08-08T20:53:01+08:00",
+   "endedAt": "2026-08-08T21:04:55+08:00",
+   "elapsedSeconds": 714,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0099_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "c7ece0e28d0d48d4ef6b56ae48d9183e17313c3a",
+   "evidencePath": "docs/evidence/TASK-0099/review-r1.md",
+   "reason": "R1 complete-matrix review PASS: diff confined to the writeAllowlist files; V14 rotate SELECT ... FOR UPDATE OF t row lock + in-lock live re-check (revoked_at IS NULL AND expires_at > now(), account ACTIVE) + conditional UPDATE winner with NOT FOUND fail-closed; AuthService.refresh returns the exact plaintext token passed to rotate and never calls issueTokens/sessions.issue; dblink two-session test 48 proves exactly one winner, one live successor with the winner hash, no hidden session; AuthServiceTest 15/15 kept with hash-equality and never-issue assertions; acceptance 1-7 satisfiable; no blocking finding (two P3 wording notes adopted in handoff).",
+   "candidateTree": "140f3ba0205a7e9d8bf926a84dc91ec551138422"
+  }
+ ],
+ "completed": [
+  "P1-06 DB: V14 identity_refresh_token_rotate 增加 token 行锁（SELECT ... FOR UPDATE OF t）+ 锁内 live 复查（revoked_at IS NULL AND expires_at > now() 且账户 ACTIVE）+ 条件 UPDATE winner（WHERE revoked_at IS NULL AND expires_at > now()，NOT FOUND 失败关闭）——并发 rotate 同一 token 唯一获胜，败者零写入",
+  "P1-06 服务层: AuthService.refresh() 返回传给 sessions.rotate() 的同一明文 token（sha256 等于 rotation 插入值），不再调用创建第二 session 的 issueTokens()/sessions.issue()；access token 仍由 jwt.issueAccessToken 按 rotated session 签发；login() 首会话语义不变",
+  "新增 DB 并发测试 48_refresh_rotate_concurrent.sql（dblink 两独立 DB session，SET ROLE vc_api）：恰好一个获胜（cnt_a+cnt_b=1）、旧 token 恰好 revoke 一次、恰好一个 live successor 且 hash 等于获胜者新 hash、败者 hash 零落库、账户总行数=2（无隐藏 session）",
+  "AuthServiceTest 15/15 全部保留：refreshRotatesSessionAndReissuesTokens 增强为 ArgumentCaptor 断言返回 token sha256 == rotate 新 hash + verify issue 永不调用；失败用例改名 refreshNeverIssuesWhenRotationFails 并强化 issue 永不调用断言",
+  "全新 pgvector 容器 V1-V15 全量迁移后 48/48 SQL 测试 PASS（01-47 无回归，39 身份套件保持；48 新增）——首轮命中 P2-28 readiness 竞态重跑即过（P2-28 为独立审计项）",
+  "R1 独立复核 PASS（无 blocking finding，2 条 P3 措辞建议已在 Handoff 校准：验收 6 实为 15 项既有用例，无净新增方法）",
+  "Canonical precheck 5/5 PASS（doctor 417630 checks）；定向 Maven AuthServiceTest（docker JDK 25）15/15 PASS",
+  "提交链：DRAFT a19a27c → READY ed36e7f/2ce0fae → IN_PROGRESS 6bf6e47 → 候选 c7ece0e → 评审 4d9df72 → 终态提交"
+ ],
+ "remaining": [
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核",
+  "P1-06 之外的审计项继续按交接工作包推进：工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）需 Owner 先决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；P1-11（空库迁移/readiness）同属该决策；工作包 7（Realtime DB 一致性 P2-07/08/09/11）为决策前可独立推进的下一候选",
+  "P2-28（run-rls-tests.sh readiness 竞态）与 P1-10（DB 套件接入 PR CI）为独立审计项，本卡范围外"
+ ],
+ "knownRisks": [
+  "V14 迁移为原地修改：本项目迁移只应用于一次性合成容器（SYNTHETIC_ONLY/TEMPORARY_VOLUME_ONLY），无持久环境与 Flyway checksum 历史；若未来存在已执行迁移的持久环境，需按 database-migration skill 的迁移治理重审",
+  "并发语义依赖 READ COMMITTED 下 FOR UPDATE 的 EvalPlanQual 重查；dblink 并发测试只在冻结 pgvector 镜像上验证，其他 PostgreSQL 版本未覆盖",
+  "DISABLED 账户在 rotate 在途时被禁用的窗口语义：与既有语义一致（ACTIVE 时签发/轮换的 token 仍可用但不可再轮换），不构成新不变量缺口",
+  "并发测试依赖 dblink（pgvector 镜像已实测支持）；runner 首轮仍可能命中 P2-28 readiness 竞态（本次重跑通过，P2-28 独立修复）"
+ ],
+ "nextAction": "创建 P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构卡（工作包 6）：需 Owner 先决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）；工作包 7（Realtime DB 一致性 P2-07/08/09/11）为 Owner 决策前可独立推进的下一候选；TASK-0099 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。"
+}
