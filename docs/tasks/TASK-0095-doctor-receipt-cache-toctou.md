@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0095
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  R1 与 R2 独立复核均 APPROVE（R1 发现两条 P3 非阻塞建议已采纳进候选 v2）；canonical
+  Precheck 5/5 PASS；PRIMARY_REMOTE_EXACT_SHA 在候选 exact SHA 5c64000 上真实执行
+  （run 31248285476），失败集合与审计基线 c09e832（run 31221480139）逐项一致，无新增
+  失败；本地等价复现（precheck.sh、并行全量）PASS。remote 结论如实记录为非 PASS，
+  既有 CI 红线由后续工作包 2（P1-02 构建绿线）修复。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -197,7 +203,25 @@ humanApprovals:
       独立 Reviewer、PRIMARY_REMOTE_EXACT_SHA、按仓库任务流创建原子提交并推送
       origin/main；禁止顺手修其他审计项。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0095_r1
+    kind: independent-review-gate
+    verdict: APPROVE
+    reviewedCommit: 5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54
+    evidencePath: docs/evidence/TASK-0095/review-r1.md
+    reason: >-
+      R1 覆盖完整矩阵：diff 仅 writeAllowlist、cache PASS 前完整 manifest 重算与常量
+      比较、None/变化均 miss、六类竞态负测；两条 P3 非阻塞建议被采纳进候选 v2。
+    candidateTree: 4c22e2661b1f95958d8757f4ff6a31a01cf4c85b
+  - id: task0095_r2
+    kind: independent-review-gate
+    verdict: APPROVE
+    reviewedCommit: 5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54
+    evidencePath: docs/evidence/TASK-0095/review-r2.md
+    reason: >-
+      R2 delta 复核确认 P3-1（env 注入保证异于 ambient）与 P3-2（重算失败负测）关闭，
+      无新阻塞；52 项定向测试 PASS。
+    candidateTree: 4c22e2661b1f95958d8757f4ff6a31a01cf4c85b
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0095
   - python -m unittest scripts.harness.tests.test_harness.GitHistoryPolicyTests

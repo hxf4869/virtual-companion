@@ -1,0 +1,78 @@
+{
+  "taskId": "TASK-0095",
+  "state": "ACCEPTED",
+  "baseCommit": "d3e43de84cf1d10b0b5d0038f34ec326dd2afbb9",
+  "headCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+  "evidencePath": "docs/evidence/TASK-0095/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "26297370f7d06ce3edd94bd06919f5c8b8dc7f09",
+      "startedAt": "2026-08-08T15:51:33+08:00",
+      "endedAt": "2026-08-08T16:47:30+08:00",
+      "elapsedSeconds": 3357,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "26297370f7d06ce3edd94bd06919f5c8b8dc7f09",
+      "startedAt": "2026-08-08T15:51:33+08:00",
+      "endedAt": "2026-08-08T15:53:04+08:00",
+      "elapsedSeconds": 91,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "7188b2c391be0ac0e5dc6c53d2863cee498397ae",
+      "startedAt": "2026-08-08T15:53:19+08:00",
+      "endedAt": "2026-08-08T16:47:30+08:00",
+      "elapsedSeconds": 3251,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-08T15:53:04+08:00",
+      "inProgressCommit": "7188b2c391be0ac0e5dc6c53d2863cee498397ae"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0095_r1",
+      "kind": "independent-review-gate",
+      "verdict": "APPROVE",
+      "reviewedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "evidencePath": "docs/evidence/TASK-0095/review-r1.md",
+      "reason": "R1 complete-matrix review APPROVE; two non-blocking P3 suggestions adopted into candidate v2.",
+      "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b"
+    },
+    {
+      "id": "task0095_r2",
+      "kind": "independent-review-gate",
+      "verdict": "APPROVE",
+      "reviewedCommit": "5c64000f44b38c40ac4b6856eb4d7ea0cf6d3b54",
+      "evidencePath": "docs/evidence/TASK-0095/review-r2.md",
+      "reason": "R2 delta review APPROVE; P3-1 and P3-2 closed, no new findings.",
+      "candidateTree": "4c22e2661b1f95958d8757f4ff6a31a01cf4c85b"
+    }
+  ],
+  "completed": [
+    "cache PASS 前重新计算完整 manifest 并与 lookup manifest 逐字段常量比较；重算失败（None）或任一字段变化均按 cache miss 处理，绝不返回旧 PASS。",
+    "新增 8 项测试：合法 cache hit 重验（summary + receipt hit 标识）、graft/replace refs/Git config/timezone source/environment/implementation 六类 lookup 窗口竞态负测、重算失败负测；定向 GitHistoryPolicyTests 52 tests PASS。",
+    "独立 Reviewer R1（完整矩阵 APPROVE）与 R2（delta APPROVE）均为独立只读复核；canonical precheck 5/5 PASS（doctor 393706 checks）；PRIMARY_REMOTE_EXACT_SHA 在候选 exact SHA 上真实执行并如实记录非 PASS（失败集合与审计基线完全一致，无新增）。",
+    "全量回归（并行 256 tests）仅 P2-20 本机 init.defaultBranch=main 特有既存 error，已在无本卡改动基线上验证同样失败，无 TASK-0095 回归。"
+  ],
+  "remaining": [
+    "remote CI 既存红线（Backend/Frontend/Harness jobs）由后续工作包 2 构建绿线卡（P1-02）修复；本次已如实记录为非 PASS 并给出基线对比证据。",
+    "P2-20（fixture 硬编码 master）在 init.defaultBranch=main 的本机会失败，属既存审计项，待后续供应链卡修复。"
+  ],
+  "knownRisks": [
+    "PRIMARY_REMOTE_EXACT_SHA 通道结论非 PASS（既存失败集合，无新增失败）；本地等价复现（canonical precheck、wrapper、并行全量）全部 PASS，但 exact-tree 通道 PASS 未声明（passClaimed=false）。",
+    "fine-grained token 无 Actions 读取权限，CI job 级日志不可获取；run 级结论与基线对比已足够证明无新增失败。",
+    "TASK-0095 之前（TASK-0094 时代）的 Doctor receipt PASS 仍不可作为可信终态证据；本卡修复后，cache-hit 路径在返回 PASS 前会重算完整 manifest。"
+  ],
+  "nextAction": "创建构建绿线卡（P1-02）：根级 Maven verify 与后端 CI 修复；TASK-0095 已 ACCEPTED，remote CI 既存红线留待该卡。"
+}

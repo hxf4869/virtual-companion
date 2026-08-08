@@ -472,3 +472,9 @@ tasks:
     taskCard: docs/tasks/TASK-0094-doctor-receipt-cache-binding.md
     evidence: docs/evidence/TASK-0094/evidence-pack.json
     handoff: docs/handoffs/TASK-0094.json
+  TASK-0095:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0095-doctor-receipt-cache-toctou.md
+    evidence: docs/evidence/TASK-0095/evidence-pack.json
+    handoff: docs/handoffs/TASK-0095.json
