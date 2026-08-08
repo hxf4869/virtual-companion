@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0096
+activeTaskCard: docs/tasks/TASK-0096-root-maven-verify-greenline.md
 lastAcceptedTask: TASK-0095
 lastAcceptedHandoff: docs/handoffs/TASK-0095.json
 lastTerminalTask: TASK-0095
 lastTerminalHandoff: docs/handoffs/TASK-0095.json
-nextAction: 创建构建绿线卡（P1-02）：根级 Maven verify 与后端 CI 修复；TASK-0095 已 ACCEPTED，remote CI 既存红线留待该卡。
+nextAction: 执行 TASK-0096：根级 Maven verify 与后端 CI 转绿（P1-02，更新过期 contract test 语义）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
