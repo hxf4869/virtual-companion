@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0103
+activeTaskCard: docs/tasks/TASK-0103-frontend-session-wiring.md
 lastAcceptedTask: TASK-0102
 lastAcceptedHandoff: docs/handoffs/TASK-0102.json
 lastTerminalTask: TASK-0102
 lastTerminalHandoff: docs/handoffs/TASK-0102.json
-nextAction: 创建 TASK-0103 前端 session 接线卡（工作包 9 前端侧，P1-09 前端 + 条件风险 4）：auth store 移除 localStorage 持久化（access token 仅内存、refresh 走 HttpOnly cookie）、fetch credentials:'include' + X-CSRF-Token header、401 生命周期重写（refresh 失败清会话跳登录）、统一 authenticated transport 防页面散拼 header，前端测试固化；TASK-0102 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
+nextAction: TASK-0103 已授权（READY）：实施前端 session 接线（P1-09 前端侧 localStorage 移除 + 统一 authenticated transport（风险 4）+ 测试固化）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
