@@ -93,6 +93,7 @@ class OpenAiChatCompletionsSuccessContractTest {
 
             var body = parseJson(captured.body());
             assertEquals(MODEL, body.get("model").stringValue());
+            assertEquals(8192, body.get("max_tokens").intValue());
             assertFalse(body.get("stream").booleanValue());
             assertEquals(
                     List.of("system", "user", "assistant"),
@@ -153,6 +154,7 @@ class OpenAiChatCompletionsSuccessContractTest {
             );
             var captured = server.awaitRequest();
             var body = parseJson(captured.body());
+            assertEquals(8192, body.get("max_tokens").intValue());
             assertTrue(body.get("stream").booleanValue());
             assertTrue(body.get("stream_options").get("include_usage").booleanValue());
             assertEquals("text/event-stream", captured.firstHeader("Accept"));

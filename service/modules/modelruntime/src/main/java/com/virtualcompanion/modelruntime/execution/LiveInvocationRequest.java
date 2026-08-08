@@ -3,6 +3,7 @@ package com.virtualcompanion.modelruntime.execution;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
 import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.safety.ClassifierReport;
@@ -30,10 +31,15 @@ public record LiveInvocationRequest(
     public LiveInvocationRequest {
         Objects.requireNonNull(routingRequest, "routingRequest must not be null");
         Objects.requireNonNull(messages, "messages must not be null");
-        messages = List.copyOf(messages);
         if (messages.isEmpty()) {
             throw new IllegalArgumentException("messages must not be empty");
         }
+        SizeLimits.requireWithin(
+                "messages",
+                messages.size(),
+                SizeLimits.MAX_MESSAGES
+        );
+        messages = List.copyOf(messages);
         messages.forEach(message -> Objects.requireNonNull(message, "messages must not contain null"));
         Objects.requireNonNull(responseMode, "responseMode must not be null");
         Objects.requireNonNull(timeoutBudget, "timeoutBudget must not be null");

@@ -3,6 +3,7 @@ package com.virtualcompanion.modelopenai;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import tools.jackson.databind.DeserializationFeature;
@@ -32,6 +33,7 @@ final class OpenAiChatCompletionsCodec {
         try {
             var root = jsonMapper.createObjectNode();
             root.put("model", model);
+            root.put("max_tokens", SizeLimits.MAX_OPENAI_OUTPUT_TOKENS);
             var messages = root.putArray("messages");
             for (ProtocolMessage message : request.messages()) {
                 var encoded = messages.addObject();
@@ -43,6 +45,10 @@ final class OpenAiChatCompletionsCodec {
                 root.putObject("stream_options").put("include_usage", true);
             }
             if (request.responseMode() instanceof ResponseMode.StructuredJson structured) {
+                if (SizeLimits.utf8Bytes(structured.jsonSchema())
+                        > SizeLimits.MAX_SCHEMA_BYTES) {
+                    throw new OpenAiCodecException();
+                }
                 var schema = jsonMapper.readTree(structured.jsonSchema());
                 if (schema == null || !schema.isObject()) {
                     throw new OpenAiCodecException();

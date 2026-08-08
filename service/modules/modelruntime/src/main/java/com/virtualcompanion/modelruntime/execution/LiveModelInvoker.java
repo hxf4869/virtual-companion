@@ -12,6 +12,7 @@ import com.virtualcompanion.modelruntime.contract.InvocationBinding;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.port.ModelProtocolAdapter;
 import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
@@ -168,6 +169,7 @@ public final class LiveModelInvoker {
         ModelProtocolEventFence fence = new ModelProtocolEventFence(binding);
         try (ModelProtocolSession session = adapter.open(protocolRequest)) {
             StringBuilder builder = new StringBuilder();
+            long outputBytes = 0;
             while (true) {
                 Optional<ModelProtocolEvent> next = session.next();
                 if (next.isEmpty()) {
@@ -183,11 +185,22 @@ public final class LiveModelInvoker {
                     return fenceViolationOutcome(decision, binding, providerId, supplierName);
                 }
                 if (event instanceof ModelProtocolEvent.OutputDelta delta) {
+                    final String content;
                     if (delta.payload() instanceof ModelPayload.TextChunk chunk) {
-                        builder.append(chunk.text());
+                        content = chunk.text();
                     } else if (delta.payload() instanceof ModelPayload.StructuredJson json) {
-                        builder.append(json.json());
+                        content = json.json();
+                    } else {
+                        throw new IllegalStateException("unexpected output payload type");
                     }
+                    long contentBytes = SizeLimits.utf8Bytes(content);
+                    if (contentBytes > SizeLimits.MAX_TOTAL_OUTPUT_BYTES - outputBytes) {
+                        return fenceViolationOutcome(
+                                decision, binding, providerId, supplierName
+                        );
+                    }
+                    outputBytes += contentBytes;
+                    builder.append(content);
                 } else if (event instanceof ModelProtocolEvent.UsageReported reported) {
                     usage = reported.usage();
                 } else if (event.terminal()) {

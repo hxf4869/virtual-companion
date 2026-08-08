@@ -6,6 +6,7 @@ import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
@@ -269,6 +270,10 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
 
     private void parseCompletion(InputStream body) throws OpenAiCodecException {
         var completion = codec.decodeCompletion(body);
+        if (SizeLimits.utf8Bytes(completion.content())
+                > SizeLimits.MAX_TOTAL_OUTPUT_BYTES) {
+            throw new OpenAiCodecException();
+        }
         markFirstContent();
         ModelPayload payload = request.responseMode() instanceof ResponseMode.StructuredJson
                 ? new ModelPayload.StructuredJson(
@@ -291,6 +296,9 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
 
     private boolean onSseData(StreamState state, String data)
             throws OpenAiCodecException {
+        if (SizeLimits.utf8Bytes(data) > SizeLimits.MAX_STREAM_EVENT_BYTES) {
+            throw new OpenAiCodecException();
+        }
         if ("[DONE]".equals(data)) {
             if (state.done
                     || !state.contentSeen
@@ -325,7 +333,13 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
         if (state.stopReason != null) {
             throw new OpenAiCodecException();
         }
-        choice.content().ifPresent(content -> {
+        if (choice.content().isPresent()) {
+            var content = choice.content().orElseThrow();
+            long contentBytes = SizeLimits.utf8Bytes(content);
+            if (contentBytes > SizeLimits.MAX_TOTAL_OUTPUT_BYTES - state.outputBytes) {
+                throw new OpenAiCodecException();
+            }
+            state.outputBytes += contentBytes;
             state.contentSeen = true;
             markFirstContent();
             if (state.structured) {
@@ -333,7 +347,7 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
             } else {
                 emitText(content);
             }
-        });
+        }
         choice.finishReason().ifPresent(reason -> state.stopReason = reason);
         return true;
     }
@@ -531,6 +545,7 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
     private static final class StreamState {
         private final boolean structured;
         private final StringBuilder structuredContent = new StringBuilder();
+        private long outputBytes;
         private boolean contentSeen;
         private StopReason stopReason;
         private TokenUsage usage;

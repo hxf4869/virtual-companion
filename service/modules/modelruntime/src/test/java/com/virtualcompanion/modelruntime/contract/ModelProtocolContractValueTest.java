@@ -2,6 +2,7 @@ package com.virtualcompanion.modelruntime.contract;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +14,68 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModelProtocolContractValueTest {
+
+    @Test
+    void sizeLimitConstantsMatchTheApprovedBudget() {
+        assertEquals(64, SizeLimits.MAX_MESSAGES);
+        assertEquals(64 * 1024, SizeLimits.MAX_MESSAGE_BYTES);
+        assertEquals(16 * 1024, SizeLimits.MAX_SCHEMA_BYTES);
+        assertEquals(1024 * 1024, SizeLimits.MAX_STREAM_EVENT_BYTES);
+        assertEquals(1024 * 1024, SizeLimits.MAX_TOTAL_OUTPUT_BYTES);
+        assertEquals(8192, SizeLimits.MAX_OPENAI_OUTPUT_TOKENS);
+    }
+
+    @Test
+    void utf8ByteCounterMatchesTheJdkEncoder() {
+        for (String value : List.of("ascii", "陪伴", "🙂", "e\u0301", "\ud800")) {
+            assertEquals(
+                    value.getBytes(StandardCharsets.UTF_8).length,
+                    SizeLimits.utf8Bytes(value)
+            );
+        }
+    }
+
+    @Test
+    void protocolMessageAllowsExactUtf8LimitAndRejectsOneByteOver() {
+        var exact = "🙂".repeat(SizeLimits.MAX_MESSAGE_BYTES / 4);
+
+        assertEquals(
+                SizeLimits.MAX_MESSAGE_BYTES,
+                SizeLimits.utf8Bytes(
+                        new ProtocolMessage(ProtocolMessage.Role.USER, exact).content()
+                )
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ProtocolMessage(ProtocolMessage.Role.USER, exact + "a")
+        );
+    }
+
+    @Test
+    void structuredSchemaAllowsExactUtf8LimitAndRejectsOneByteOver() {
+        var exact = "s".repeat(SizeLimits.MAX_SCHEMA_BYTES);
+        var messages = List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hello"));
+
+        var request = new ModelProtocolRequest(
+                deterministicBinding(),
+                messages,
+                new ResponseMode.StructuredJson("schema", exact),
+                false,
+                timeoutBudget()
+        );
+
+        assertEquals(exact, ((ResponseMode.StructuredJson) request.responseMode()).jsonSchema());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ModelProtocolRequest(
+                        deterministicBinding(),
+                        messages,
+                        new ResponseMode.StructuredJson("schema", exact + "a"),
+                        false,
+                        timeoutBudget()
+                )
+        );
+    }
 
     @Test
     void requestDefensivelyCopiesMessages() {

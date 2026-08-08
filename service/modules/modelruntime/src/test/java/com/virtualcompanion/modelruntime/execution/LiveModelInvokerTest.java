@@ -2,6 +2,7 @@ package com.virtualcompanion.modelruntime.execution;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.virtualcompanion.catalog.ModelProtocol;
@@ -25,6 +26,7 @@ import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
@@ -71,6 +73,29 @@ class LiveModelInvokerTest {
     private static final Set<DataCategory> CATEGORIES = Set.of(DataCategory.MESSAGE_TEXT);
 
     private final QuotaLedger quota = new QuotaLedger();
+
+    @Test
+    void liveRequestAllowsExactMessageLimitAndRejectsOneOver() {
+        var exact = java.util.Collections.nCopies(
+                SizeLimits.MAX_MESSAGES,
+                new ProtocolMessage(ProtocolMessage.Role.USER, "hello")
+        );
+
+        assertEquals(
+                SizeLimits.MAX_MESSAGES,
+                request(routing(ServiceClass.simulated()), exact).messages().size()
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> request(
+                        routing(ServiceClass.simulated()),
+                        java.util.Collections.nCopies(
+                                SizeLimits.MAX_MESSAGES + 1,
+                                new ProtocolMessage(ProtocolMessage.Role.USER, "hello")
+                        )
+                )
+        );
+    }
 
     @Test
     void successRecordsAuditAndUsageAndRetainsReservation() {
@@ -326,6 +351,30 @@ class LiveModelInvokerTest {
     }
 
     @Test
+    void cumulativeOutputOverLimitFailsClosedWithoutPartialOutput() {
+        var exactLimit = "a".repeat(SizeLimits.MAX_TOTAL_OUTPUT_BYTES);
+        Harness harness = harness(
+                false,
+                binding -> List.of(
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 0, new ModelPayload.TextChunk(exactLimit)),
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 1, new ModelPayload.TextChunk("b")),
+                        new ModelProtocolEvent.AttemptEos(binding, 2, StopReason.STOP)),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        assertEquals(ProviderAttemptStatus.NON_RETRYABLE_FAILED,
+                outcome.audits().getFirst().status());
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
     void sessionClosingWithoutTerminalEventFailsClosed() {
         Harness harness = harness(
                 false,
@@ -474,9 +523,30 @@ class LiveModelInvokerTest {
     private static LiveInvocationRequest request(
             RoutingRequest routingRequest,
             ClassifierReport classifierReport) {
-        return new LiveInvocationRequest(
+        return request(
                 routingRequest,
                 List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hello")),
+                classifierReport
+        );
+    }
+
+    private static LiveInvocationRequest request(
+            RoutingRequest routingRequest,
+            List<ProtocolMessage> messages) {
+        return request(
+                routingRequest,
+                messages,
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95)
+        );
+    }
+
+    private static LiveInvocationRequest request(
+            RoutingRequest routingRequest,
+            List<ProtocolMessage> messages,
+            ClassifierReport classifierReport) {
+        return new LiveInvocationRequest(
+                routingRequest,
+                messages,
                 new ResponseMode.Text(),
                 true,
                 new TimeoutBudget(

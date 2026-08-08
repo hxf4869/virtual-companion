@@ -3,7 +3,11 @@ package com.virtualcompanion.modelopenai.contract;
 import com.virtualcompanion.modelopenai.OpenAiChatCompletionsAdapter;
 import com.virtualcompanion.modelopenai.OpenAiChatCompletionsConfig;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
+import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
+import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
+import com.virtualcompanion.modelruntime.contract.ResponseMode;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +30,7 @@ import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSuppor
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.done;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.drain;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.invalidStructuredRequest;
+import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.normalBudgets;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.sse;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.textRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.usageChunk;
@@ -36,6 +41,147 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OpenAiChatCompletionsBoundaryContractTest {
+
+    @Test
+    void oversizedMessageAndSchemaFailBeforeNetwork() {
+        var client = new NeverCompletingHttpClient();
+        var adapter = adapter(client, URI.create("http://127.0.0.1:9/v1/chat/completions"));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> adapter.open(new ModelProtocolRequest(
+                        binding(),
+                        List.of(new ProtocolMessage(
+                                ProtocolMessage.Role.USER,
+                                "m".repeat(SizeLimits.MAX_MESSAGE_BYTES + 1)
+                        )),
+                        new ResponseMode.Text(),
+                        false,
+                        normalBudgets()
+                ))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> adapter.open(new ModelProtocolRequest(
+                        binding(),
+                        java.util.Collections.nCopies(
+                                SizeLimits.MAX_MESSAGES + 1,
+                                new ProtocolMessage(ProtocolMessage.Role.USER, "hello")
+                        ),
+                        new ResponseMode.Text(),
+                        false,
+                        normalBudgets()
+                ))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> adapter.open(new ModelProtocolRequest(
+                        binding(),
+                        List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hello")),
+                        new ResponseMode.StructuredJson(
+                                "oversized",
+                                "s".repeat(SizeLimits.MAX_SCHEMA_BYTES + 1)
+                        ),
+                        false,
+                        normalBudgets()
+                ))
+        );
+
+        assertEquals(0, client.calls());
+    }
+
+    @Test
+    void exactRequestSizeLimitsRemainValid() {
+        var request = new ModelProtocolRequest(
+                binding(),
+                java.util.Collections.nCopies(
+                        SizeLimits.MAX_MESSAGES,
+                        new ProtocolMessage(ProtocolMessage.Role.USER, "hello")
+                ),
+                new ResponseMode.StructuredJson(
+                        "exact",
+                        "s".repeat(SizeLimits.MAX_SCHEMA_BYTES)
+                ),
+                false,
+                normalBudgets()
+        );
+
+        assertEquals(SizeLimits.MAX_MESSAGES, request.messages().size());
+        assertEquals(
+                SizeLimits.MAX_SCHEMA_BYTES,
+                SizeLimits.utf8Bytes(
+                        ((ResponseMode.StructuredJson) request.responseMode()).jsonSchema()
+                )
+        );
+        assertEquals(
+                SizeLimits.MAX_MESSAGE_BYTES,
+                SizeLimits.utf8Bytes(new ProtocolMessage(
+                        ProtocolMessage.Role.USER,
+                        "🙂".repeat(SizeLimits.MAX_MESSAGE_BYTES / 4)
+                ).content())
+        );
+    }
+
+    @Test
+    void streamingSingleEventOverLimitFailsClosed() throws Exception {
+        var oversizedEvent = sse(choiceChunk(
+                "x".repeat(SizeLimits.MAX_STREAM_EVENT_BYTES),
+                null
+        ));
+        try (var server = new MockOpenAiServer(MockOpenAiServer.fixed(
+                200,
+                "text/event-stream",
+                oversizedEvent
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(textRequest(true, "single event limit")));
+
+            assertMalformedFailure(events.getFirst());
+        }
+    }
+
+    @Test
+    void streamingCumulativeOutputOverLimitFailsClosed() throws Exception {
+        int firstBytes = SizeLimits.MAX_TOTAL_OUTPUT_BYTES / 2;
+        var stream = sse(choiceChunk("a".repeat(firstBytes), null))
+                + sse(choiceChunk("b".repeat(firstBytes + 1), null));
+        try (var server = new MockOpenAiServer(MockOpenAiServer.fixed(
+                200,
+                "text/event-stream",
+                stream
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(textRequest(true, "total output limit")));
+
+            assertMalformedFailure(events.getLast());
+            assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+        }
+    }
+
+    @Test
+    void nonStreamingOutputOverLimitFailsClosed() throws Exception {
+        try (var server = new MockOpenAiServer(MockOpenAiServer.fixed(
+                200,
+                "application/json",
+                OpenAiContractTestSupport.completion(
+                        "x".repeat(SizeLimits.MAX_TOTAL_OUTPUT_BYTES + 1),
+                        "stop",
+                        1,
+                        1
+                )
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(textRequest(false, "non-stream output limit")));
+
+            assertMalformedFailure(events.getFirst());
+        }
+    }
 
     @Test
     void deterministic_binding_and_invalid_schema_make_zero_network_calls() {
@@ -345,5 +491,12 @@ class OpenAiChatCompletionsBoundaryContractTest {
             throw new IllegalStateException("repository root not found");
         }
         return current;
+    }
+
+    private static void assertMalformedFailure(ModelProtocolEvent event) {
+        assertInstanceOf(
+                AdapterFailure.MalformedResponse.class,
+                assertInstanceOf(ModelProtocolEvent.AttemptFailed.class, event).failure()
+        );
     }
 }
