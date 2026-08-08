@@ -90,6 +90,25 @@ jobs:
       - name: Build and test
         run: ./mvnw --batch-mode --no-transfer-progress verify
 
+  database:
+    name: Database (PostgreSQL 18 + pgvector)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Run full migrations and SQL test suite
+        env:
+          VC_DB_LOG_DIR: db-test-logs
+        run: bash infra/db/run-rls-tests.sh
+      - name: Upload database logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-logs
+          path: db-test-logs/**
+          if-no-files-found: ignore
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

@@ -7,6 +7,14 @@
 # `docker exec`, satisfying TEMPORARY_PORT_ONLY and TEMPORARY_VOLUME_ONLY.
 # It never touches MySQL, Redis, RabbitMQ or Kingbase.
 #
+# P2-28: readiness uses a stable window of consecutive real SQL probes against
+# the target database (a single pg_isready success can land inside initdb's
+# temporary-server window before the real server and the vc database exist).
+# Migration failures caused by recognised startup connection errors are retried
+# a bounded number of times; other failures propagate unchanged. All output is
+# captured under $VC_DB_LOG_DIR so CI can preserve migration/readiness logs on
+# failure (locally it defaults to a fresh /tmp/vc-db-logs.* directory).
+#
 # Usage (from the repo or via WSL):  bash infra/db/run-rls-tests.sh
 set -euo pipefail
 
@@ -19,6 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MIG_DIR="$REPO_ROOT/service/platform/persistence/src/main/resources/db/migration"
 TEST_DIR="$SCRIPT_DIR/tests"
+LOG_DIR="${VC_DB_LOG_DIR:-$(mktemp -d /tmp/vc-db-logs.XXXXXX)}"
+mkdir -p "$LOG_DIR"
+echo "log dir: $LOG_DIR"
 
 if [ ! -d "$MIG_DIR" ]; then
     echo "migration dir not found: $MIG_DIR" >&2
@@ -40,25 +51,73 @@ CID=$(docker run -d --rm \
     -e POSTGRES_DB="$DB_NAME" \
     "$IMAGE")
 
-echo "== waiting for readiness =="
-for _ in $(seq 1 60); do
-    if docker exec "$CID" pg_isready -U "$DB_USER" >/dev/null 2>&1; then
-        break
+echo "== waiting for stable readiness (P2-28: consecutive SQL successes) =="
+# Probe the target database with real SQL: only the final server has the vc
+# database, so a stable window of consecutive successes cannot land inside the
+# initdb/entrypoint temporary-server windows. A single probe failure resets the
+# count.
+STABLE=0
+STABLE_REQUIRED=3
+for _ in $(seq 1 200); do
+    if docker exec "$CID" psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" >/dev/null 2>>"$LOG_DIR/readiness.log"; then
+        STABLE=$((STABLE+1))
+        if [ "$STABLE" -ge "$STABLE_REQUIRED" ]; then
+            echo "  ready (${STABLE_REQUIRED} consecutive SQL successes)"
+            break
+        fi
+    else
+        STABLE=0
     fi
     sleep 0.5
 done
-if ! docker exec "$CID" pg_isready -U "$DB_USER" >/dev/null 2>&1; then
-    echo "postgres did not become ready" >&2
+if [ "$STABLE" -lt "$STABLE_REQUIRED" ]; then
+    echo "postgres did not become stable-ready (${STABLE_REQUIRED} consecutive SQL successes required)" >&2
+    echo "--- container logs ---" >&2
     docker logs "$CID" >&2 || true
+    echo "readiness probe log: $LOG_DIR/readiness.log" >&2
     exit 3
 fi
 
 echo "== applying migrations =="
 # Version-sort (sort -V) so double-digit versions (V10+) apply after V9; plain
 # lexicographic sort puts V10 before V1 because '0' < '_' at the second char.
+# Only recognised startup connection errors are retried (bounded); anything
+# else fails immediately with the psql output and the preserved migration log.
 for f in $(ls "$MIG_DIR"/V*.sql | sort -V); do
-    echo "  -> $(basename "$f")"
-    docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q < "$f"
+    name="$(basename "$f")"
+    echo "  -> $name"
+    attempt=0
+    max_attempts=3
+    while :; do
+        attempt=$((attempt+1))
+        attempt_log="$(mktemp)"
+        if docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q < "$f" >"$attempt_log" 2>&1; then
+            {
+                echo "--- $name attempt $attempt OK ---"
+                cat "$attempt_log"
+            } >>"$LOG_DIR/migration.log"
+            rm -f "$attempt_log"
+            break
+        fi
+        {
+            echo "--- $name attempt $attempt FAILED ---"
+            cat "$attempt_log"
+        } >>"$LOG_DIR/migration.log"
+        if ! grep -Eq "connection refused|could not connect to server|server closed the connection unexpectedly|terminating connection due to administrator command|Connection to server was lost|database system is starting up" "$attempt_log"; then
+            echo "    FAIL $name" >&2
+            cat "$attempt_log" >&2
+            rm -f "$attempt_log"
+            exit 1
+        fi
+        rm -f "$attempt_log"
+        if [ "$attempt" -ge "$max_attempts" ]; then
+            echo "    FAIL $name (startup connection error persisted after $max_attempts attempts)" >&2
+            echo "    migration log: $LOG_DIR/migration.log" >&2
+            exit 1
+        fi
+        echo "    retry $name (startup connection error, attempt $attempt/$max_attempts)"
+        sleep 1
+    done
 done
 
 echo "== running cross-tenant fail-closed tests =="
@@ -73,6 +132,10 @@ for t in $(ls "$TEST_DIR"/[0-9][0-9]_*.sql | sort); do
         cat "$log" >&2
         FAIL=1
     fi
+    {
+        echo "--- $name ---"
+        cat "$log"
+    } >>"$LOG_DIR/tests.log"
     rm -f "$log"
 done
 
@@ -81,5 +144,6 @@ if [ "$FAIL" -eq 0 ]; then
     echo "ALL TESTS PASS"
 else
     echo "SOME TESTS FAILED"
+    echo "test log: $LOG_DIR/tests.log"
 fi
 exit "$FAIL"
