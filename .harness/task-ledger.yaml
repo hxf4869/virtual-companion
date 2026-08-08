@@ -490,3 +490,9 @@ tasks:
     taskCard: docs/tasks/TASK-0097-root-maven-verify-greenline.md
     evidence: docs/evidence/TASK-0097/evidence-pack.json
     handoff: docs/handoffs/TASK-0097.json
+  TASK-0098:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0098-generation-finalization-terminal-concurrency.md
+    evidence: docs/evidence/TASK-0098/evidence-pack.json
+    handoff: docs/handoffs/TASK-0098.json

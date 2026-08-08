@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0098",
+  "state": "ACCEPTED",
+  "baseCommit": "d33515946a5666ccc22075f9ae5b6d8b42711a1c",
+  "headCommit": "e65bdb855e80bb782ee2653ca1a57ad2edb9d8a9",
+  "evidencePath": "docs/evidence/TASK-0098/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5cce7ed2e14c21cb8ce7909da639418ec7d7e17c",
+      "startedAt": "2026-08-08T19:46:39+08:00",
+      "endedAt": "2026-08-08T20:19:00+08:00",
+      "elapsedSeconds": 1941,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5cce7ed2e14c21cb8ce7909da639418ec7d7e17c",
+      "startedAt": "2026-08-08T19:46:39+08:00",
+      "endedAt": "2026-08-08T19:51:10+08:00",
+      "elapsedSeconds": 271,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "2d1061fe10e80c06ecb9095a0fae1adef0703059",
+      "startedAt": "2026-08-08T19:50:34+08:00",
+      "endedAt": "2026-08-08T20:19:00+08:00",
+      "elapsedSeconds": 1706,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0098_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "5a0f0cff65fc18e56fe9728c127a23882635185f",
+      "evidencePath": "docs/evidence/TASK-0098/review-r1.md",
+      "reason": "R1 complete-matrix review PASS: diff confined to the 6 writeAllowlist files; V7 row lock + in-lock status re-check + conditional UPDATE winner + message_generation_one_final unique index; V15 candidate in-lock terminal re-check; dblink two-session tests 44-47 prove unique winner, zero duplicates and non-rewritable terminal states; acceptance 1-8 all PASS; no blocking finding.",
+      "candidateTree": "937d2eebff42023a109cd18dc1a9d546420cbc88"
+    }
+  ],
+  "completed": [
+    "P1-03: V7 finalize_generation 共享 generation 行锁（SELECT ... FOR UPDATE）、锁内复查 status='FINAL_REVIEW' 与 assistant_message_id IS NULL、条件 UPDATE winner（WHERE status='FINAL_REVIEW'，NOT FOUND 失败关闭）——finalize/finalize、finalize/cancel、finalize/terminalize 交错唯一获胜，终态不可回写",
+    "P1-03: message 表新增 generation_id 可空列 + 复合 FK（ON DELETE SET NULL）+ 部分唯一索引 message_generation_one_final（INV-GEN-002 的 message 侧 DB 级强制）",
+    "P2-10: V15 insert_generation_candidate 加 generation 行锁 + 锁内终态复查，终态后迟到 candidate 拒绝",
+    "新增 44-47 双会话并发测试（dblink 两独立 DB session，SET ROLE vc_api 模拟 API 客户端）：44 finalize/finalize、45 finalize/cancel、46 finalize/terminalize、47 candidate/terminalize TOCTOU，全部确定性断言",
+    "全新 pgvector 容器 V1-V15 全量迁移后 47/47 SQL 测试 PASS（01-43 无回归 + 44-47 新增）",
+    "一次性后终态尾部维护记录 OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01：机器绑定接受 1696739→d335159 作为 DRAFT 锚（baseCommit=d335159），8 路径维护边、一次性消费（READY 授权提交 56b6663d）、不可复用",
+    "R1 独立复核 PASS；canonical precheck 5/5 PASS（doctor 412488 checks）；pre-closure 与终态 Doctor PASS",
+    "提交链：DRAFT 5cce7ed → 维护边 a09071c → READY 56b6663d/99752d0 → IN_PROGRESS 2d1061fe → 候选 5a0f0cff → 评审 e65bdb8 → 终态提交"
+  ],
+  "remaining": [
+    "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核",
+    "P1-03/P2-10 之外的审计项继续按交接工作包推进（下一张：P1-06 Refresh rotation；P1-11 等待 Owner 决策 migration principal）",
+    "P2-28（run-rls-tests.sh readiness 竞态）与 P1-10（DB 套件接入 PR CI）为独立审计项，本卡范围外"
+  ],
+  "knownRisks": [
+    "迁移文件（V7/V15）为原地修改：本项目迁移只应用于一次性合成容器（SYNTHETIC_ONLY/TEMPORARY_VOLUME_ONLY），无持久环境与 Flyway checksum 历史；若未来存在已执行迁移的持久环境，需按 database-migration skill 的迁移治理重审",
+    "message.generation_id 复合 FK 与 generation.assistant_message_id 形成对偶循环 FK（均为 ON DELETE SET NULL，插入顺序已保证无死锁）；直接 DML 写 message 仍可绕过（P1-05 权限收窄为独立审计项）",
+    "并发测试依赖 dblink（pgvector 镜像已实测支持）；runner 首轮仍可能命中 P2-28 readiness 竞态（本次重跑通过，P2-28 独立修复）",
+    "d335159 尾部提交的接受依赖一次性维护记录，该记录已消费并惰化；后续任务不得复用"
+  ],
+  "nextAction": "创建 P1-06 卡（Refresh rotation 修复）：DB 行锁或条件 UPDATE RETURNING 唯一 winner、服务层返回传给 rotate 的同一明文 token、并发 refresh 单 live successor 测试；P1-11（空库迁移/readiness）等待 Owner 决策 migration principal 拓扑；TASK-0098 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。"
+}

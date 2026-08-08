@@ -2,7 +2,21 @@
 
 ```yaml
 taskId: TASK-0098
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P1-03+P2-10 终态并发修复完成并验证：V7 finalize_generation 增加 generation
+  行锁（SELECT ... FOR UPDATE）+ 锁内复查（FINAL_REVIEW + assistant_message_id
+  IS NULL）+ 条件 UPDATE winner（WHERE status='FINAL_REVIEW'）；message 表新增
+  generation_id 可空列 + 复合 FK + 部分唯一索引 message_generation_one_final；
+  V15 insert_generation_candidate 增加行锁 + 锁内终态复查；44-47 双会话并发测试
+  证明 finalize/finalize、finalize/cancel、finalize/terminalize 唯一获胜、
+  candidate TOCTOU 关闭、无重复 message/usage/quota/event/outbox、终态不可回写。
+  全新 pgvector 容器 V1-V15 全量迁移后 47/47 SQL 测试 PASS；canonical precheck
+  5/5 PASS（doctor 412488 checks）；R1 独立复核 PASS；pre-closure 与终态 Doctor
+  PASS。一次性后终态尾部维护记录 OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01
+  已消费（READY 授权提交 56b6663d）。remote CI 因 Actions 配额耗尽如实记录非 PASS
+  （UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证（LOCAL_EXACT_TREE_FALLBACK）
+  为备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -328,7 +342,17 @@ humanApprovals:
     sourceThreadId: zcode-audit-fix-20260808
     evidence: "Owner 于 2026-08-08 按审计交接工作包 4 分配 P1-03+P2-10 并选择一次性维护记录方案（TASK-0073/0074/0075/0076 先例）：授权新增 ci-execution-policy 一次性记录 OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01，机器绑定接受 1696739→d335159（TASK-0097 canonical terminal 后的 project-state nextAction 对齐修复边，仅改 .harness/project-state.yaml，nextAction 与 TASK-0097 handoff 逐字一致）作为 TASK-0098 DRAFT 锚（baseCommit=d335159）；TASK-0098 声明 harness-change 1.1.6→1.1.7、task-delivery-flow 1.3.6→1.3.7、task-intake 1.2.6→1.2.7；维护边只允许 8 个冻结路径、一次性消费、不可复用、禁止历史改写/通用 override；落地后继续 P1-03+P2-10 终态并发修复。"
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0098_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 5a0f0cff65fc18e56fe9728c127a23882635185f
+    evidencePath: docs/evidence/TASK-0098/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：diff 仅 writeAllowlist 6 文件；V7 行锁+锁内复查+
+      条件 UPDATE winner+message 唯一约束，V15 candidate 锁内复查；44-47 双会话
+      并发测试证明唯一获胜/零重复/终态不可回写；验收 1-8 全过，无阻塞 finding。
+    candidateTree: 937d2eebff42023a109cd18dc1a9d546420cbc88
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0098
   - bash infra/db/run-rls-tests.sh

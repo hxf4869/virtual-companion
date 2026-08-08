@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0098
-activeTaskCard: docs/tasks/TASK-0098-generation-finalization-terminal-concurrency.md
-lastAcceptedTask: TASK-0097
-lastAcceptedHandoff: docs/handoffs/TASK-0097.json
-lastTerminalTask: TASK-0097
-lastTerminalHandoff: docs/handoffs/TASK-0097.json
-nextAction: TASK-0098 已授权（READY，含一次性后终态尾部维护记录）：实施 P1-03+P2-10 Generation 终态并发修复——V7/V10/V15 行锁+条件 UPDATE winner+message 唯一约束与 44-47 双会话并发测试。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0098
+lastAcceptedHandoff: docs/handoffs/TASK-0098.json
+lastTerminalTask: TASK-0098
+lastTerminalHandoff: docs/handoffs/TASK-0098.json
+nextAction: 创建 P1-06 卡（Refresh rotation 修复）：DB 行锁或条件 UPDATE RETURNING 唯一 winner、服务层返回传给 rotate 的同一明文 token、并发 refresh 单 live successor 测试；P1-11（空库迁移/readiness）等待 Owner 决策 migration principal 拓扑；TASK-0098 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
