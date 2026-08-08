@@ -2,7 +2,18 @@
 
 ```yaml
 taskId: TASK-0105
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-16+P3-03+P3-04 完成并验证：Memory API typed 错误映射（仅 403/404 隐藏
+  存在性，401→session-expired 会话处理，5xx/parse→typed 错误，deleteMemory
+  同语义）；页面状态/交互修复（evidence 清错、length 判断、仅成功退出编辑、
+  relationshipId URL encode）；登录与 chat/memory 状态 a11y（aria-label/
+  role=alert/aria-live/aria-busy/focus）。vitest 128/128 PASS；type-check
+  PASS；uni build PASS；canonical precheck 5/5 PASS（doctor 452407 checks）；
+  R1 PASS（1×P2 残余 parseFailed 生产路径不可达如实记入 Handoff + 1×P3
+  采纳进 fix batch 1cb96bc）+ R2 delta PASS；remote CI 因 Actions 配额耗尽
+  如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为
+  备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -196,7 +207,28 @@ humanApprovals:
       前端组件测试基建（@vue/test-utils/happy-dom 新增 devDeps）归 TASK-0106
       P2-19，本卡页面行为以 api/store 测试 + 薄页面逻辑覆盖。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0105_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 9257065458d15d0ba0c1e66eab8ae3324fa4c4ca
+    evidencePath: docs/evidence/TASK-0105/review-r1.md
+    reason: >-
+      R1 完整矩阵复核：P2-16/P3-03/P3-04 PASS；发现 1×P2 残余（parseFailed
+      生产 transport 不可达，transport.ts 为 forbiddenPath，记入 Handoff）+
+      1×P3（未使用类型导入，采纳进 fix batch）；vitest 128/128、type-check、
+      build、diff --check 全部实测 PASS。
+    candidateTree: f1f6bd5024f930376f456038455e799181b0f4e3
+  - id: task0105_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1cb96bcde14025b43bd0e31ce1c00122994cb11b
+    evidencePath: docs/evidence/TASK-0105/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：fix batch 精确删除未使用的 MemoryHttpErrorKind
+      类型导入（P3 关闭）；P2 残余如实保持未淡化；vitest 128/128 +
+      type-check exit 0；无新 finding。
+    candidateTree: 8f60b77975ee6639580f278746ce42eb5bea16d7
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0105
   - pnpm --dir frontend test:run

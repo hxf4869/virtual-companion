@@ -532,3 +532,9 @@ tasks:
     taskCard: docs/tasks/TASK-0104-frontend-realtime-correctness.md
     evidence: docs/evidence/TASK-0104/evidence-pack.json
     handoff: docs/handoffs/TASK-0104.json
+  TASK-0105:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0105-frontend-memory-a11y.md
+    evidence: docs/evidence/TASK-0105/evidence-pack.json
+    handoff: docs/handoffs/TASK-0105.json

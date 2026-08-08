@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0105
-activeTaskCard: docs/tasks/TASK-0105-frontend-memory-a11y.md
-lastAcceptedTask: TASK-0104
-lastAcceptedHandoff: docs/handoffs/TASK-0104.json
-lastTerminalTask: TASK-0104
-lastTerminalHandoff: docs/handoffs/TASK-0104.json
-nextAction: TASK-0105 已授权（READY）：实施 Frontend memory/a11y（P2-16 Memory API 401/5xx typed 错误映射 + P3-03 Memory 页面状态/交互修复 + P3-04 登录与状态反馈 a11y）；TASK-0106（P2-19 CI 门禁 + P2-18 依赖完整升级）为本工作包第二张。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0105
+lastAcceptedHandoff: docs/handoffs/TASK-0105.json
+lastTerminalTask: TASK-0105
+lastTerminalHandoff: docs/handoffs/TASK-0105.json
+nextAction: TASK-0105 已 ACCEPTED（工作包 11 第一张：P2-16 Memory API 仅 403/404 隐藏存在性、401 走会话处理、5xx/parse typed 错误 + P3-03 页面状态/交互修复 + P3-04 登录/状态 a11y，vitest 128/128、canonical precheck 5/5、R1/R2 PASS；残余：parseFailed 生产路径不可达，留待允许触碰 transport.ts 的后续卡）；下一卡 TASK-0106（P2-19 前端 CI 门禁 + P2-18 依赖完整升级，含 .github/workflows/ci.yml C4 变更，Owner 2026-08-09 已确认完整升级范围）；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-08'
+updatedAt: '2026-08-09'

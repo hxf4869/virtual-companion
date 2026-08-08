@@ -1,0 +1,83 @@
+{
+ "taskId": "TASK-0105",
+ "state": "ACCEPTED",
+ "baseCommit": "8e11d11f2789c975b6dadad8c06b2493a15323f4",
+ "headCommit": "1cb96bcde14025b43bd0e31ce1c00122994cb11b",
+ "evidencePath": "docs/evidence/TASK-0105/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "cf0a4e2b9a907bbca43d3870b6a58debc3c2f7cc",
+   "startedAt": "2026-08-09T01:38:41+08:00",
+   "endedAt": "2026-08-09T01:57:15+08:00",
+   "elapsedSeconds": 1114,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "cf0a4e2b9a907bbca43d3870b6a58debc3c2f7cc",
+   "startedAt": "2026-08-09T01:38:41+08:00",
+   "endedAt": "2026-08-09T01:40:44+08:00",
+   "elapsedSeconds": 123,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "d34d417420add6f83404c265ebdd3f34320c2bcb",
+   "startedAt": "2026-08-09T01:40:57+08:00",
+   "endedAt": "2026-08-09T01:57:15+08:00",
+   "elapsedSeconds": 978,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0105_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "9257065458d15d0ba0c1e66eab8ae3324fa4c4ca",
+   "evidencePath": "docs/evidence/TASK-0105/review-r1.md",
+   "reason": "R1 complete-matrix review: P2-16/P3-03/P3-04 PASS; 1 non-blocking P2 residual (parseFailed production-unreachable, transport.ts forbidden path) recorded for Handoff + 1 P3 (unused import) adopted into fix batch; vitest 128/128, type-check, build, diff --check verified.",
+   "candidateTree": "f1f6bd5024f930376f456038455e799181b0f4e3"
+  },
+  {
+   "id": "task0105_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "1cb96bcde14025b43bd0e31ce1c00122994cb11b",
+   "evidencePath": "docs/evidence/TASK-0105/review-r2.md",
+   "reason": "R2 delta review PASS: P3 closed (unused import removed), P2 residual truthfully preserved, vitest 128/128 + type-check exit 0; no new findings.",
+   "candidateTree": "8f60b77975ee6639580f278746ce42eb5bea16d7"
+  }
+ ],
+ "completed": [
+  "P2-16: Memory API typed 错误映射——api/memory.ts 新增 MemoryHttpError{status,kind}，仅 403/404 隐藏存在性（[]/null/false 不抛错）；401→unauthorized、>=500→server、其他 4xx→client、ok+parseFailed→parse；deleteMemory 同样 401/5xx 抛 typed error；store failureCode 对 unauthorized→session-expired（新 code），其余→per-op failed codes；memory.vue transport 复用 createAuthenticatedTransport（401→auth.onUnauthorized 会话处理，POST/PATCH/DELETE 自动注入 X-CSRF-Token）；spec 全路径断言（503 覆盖 7 端点、409→client、403/404 等价隐藏、parseFailed→parse）",
+  "P3-03: loadEvidence 成功清旧 error；memory.vue hasEvidence() 用 Array.isArray&&length>0（空数组不再渲染空容器）；store.update 返回 Promise<boolean>，onSave 仅 confirmed 成功才退出编辑；listMemories 用 encodeURIComponent(relationshipId)（spec 断言特殊字符路径）",
+  "P3-04: login.vue 输入 aria-label、错误 role=alert、submitting aria-busy、失败后 focusUsername()；memory.vue 错误 role=alert、两 section aria-live=polite、编辑输入 aria-label、刷新按钮 aria-busy；chat.vue 状态区 role=status+aria-live=polite、取消按钮 aria-busy（仅模板/薄胶水，不改 store/domain/api 逻辑）",
+  "R1 P3 采纳（fix batch 1cb96bc）：移除 stores/memory.ts 未使用的 MemoryHttpErrorKind 类型导入",
+  "验证: vitest 128/128 PASS（12 文件，api/memory.spec 15 + stores/memory.spec 16 增补）；type-check PASS；uni build PASS；canonical precheck 5/5 PASS（doctor 452407 checks）；R1 PASS（1×P2 残余如实记录 + 1×P3 采纳）+ R2 delta PASS；remote CI 因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）",
+  "提交链: DRAFT cf0a4e2 → READY bba3d14/bind ff801ad → IN_PROGRESS d34d417 → 候选 9257065 → fix batch 1cb96bc → 终态提交"
+ ],
+ "remaining": [
+  "P2 残余（R1 记录）：MemoryApiResponse.parseFailed 生产路径不可达——生产 transport（transport.ts，TASK-0103 闭环物）用 response.json().catch(()=>null) 从不置 parseFailed，ok+parseFailed→parse 分支仅 spec 可触发；服务端契约返回 JSON，风险低；留待允许触碰 transport.ts 的后续工作包统一置位",
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核",
+  "TASK-0106（工作包 11 第二张）：P2-19 前端 CI 门禁（.github/workflows/ci.yml C4 harness-change + humanApproval + 独立 Reviewer）+ P2-18 前端依赖完整升级（uni-app/vite 传递链，Owner 2026-08-09 确认完整升级范围，不可升级项建带到期日例外台账）",
+  "工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）",
+  "条件风险 1（Generation/Realtime HTTP 纵切未实现：controller/dispatcher/owner binding/终态闭环）仍 OPEN；条件风险 4（memory 统一 authenticated transport）本卡已按方向收敛（memory.vue 复用 createAuthenticatedTransport）"
+ ],
+ "knownRisks": [
+  "parseFailed 生产不可达（见 remaining P2 残余）：200+非 JSON body 在生产 transport 下仍表现为空成功，需允许触碰 transport.ts 的卡闭环",
+  "页面级组件测试未接入（@vue/test-utils/happy-dom 基建归 TASK-0106 P2-19）；本卡页面行为以 api/store spec + 薄页面逻辑覆盖",
+  "memory.vue 现在经 createAuthenticatedTransport 带凭据/CSRF 请求；若后端 memory 端点实际尚未接入认证（Alpha 后端纵切未完成），401 会触发会话处理——与后端实际接线需在纵切联调时验证",
+  "a11y 语义（aria-label/role/aria-live）在 uni-app H5 编译下按属性透传；小程序端行为未验证（本卡验证范围 H5 build）",
+  "Actions 配额恢复前，前端 CI（P2-19）与远端 exact-SHA 复核均无法真实执行"
+ ],
+ "nextAction": "TASK-0105 已 ACCEPTED（工作包 11 第一张：P2-16 Memory API 仅 403/404 隐藏存在性、401 走会话处理、5xx/parse typed 错误 + P3-03 页面状态/交互修复 + P3-04 登录/状态 a11y，vitest 128/128、canonical precheck 5/5、R1/R2 PASS；残余：parseFailed 生产路径不可达，留待允许触碰 transport.ts 的后续卡）；下一卡 TASK-0106（P2-19 前端 CI 门禁 + P2-18 依赖完整升级，含 .github/workflows/ci.yml C4 变更，Owner 2026-08-09 已确认完整升级范围）；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额耗尽下的远端复核延后至配额恢复。"
+}
