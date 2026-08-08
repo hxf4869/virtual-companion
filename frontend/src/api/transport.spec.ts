@@ -88,6 +88,36 @@ describe("createAuthenticatedTransport", () => {
     expect(fetchMock.mock.calls[0]![1]!.credentials).toBe("include");
   });
 
+  it("does not inject the CSRF header when document is unavailable (SSR/non-browser)", async () => {
+    vi.stubGlobal("document", undefined);
+    const fetchMock = fetchOk();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => null,
+      onUnauthorized: vi.fn(),
+    });
+
+    await transport.request("POST", "/api/v1/auth/logout");
+
+    expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty("X-CSRF-Token");
+  });
+
+  it("tolerates a malformed CSRF cookie value without crashing", async () => {
+    vi.stubGlobal("document", { cookie: "vc_csrf=%" });
+    const fetchMock = fetchOk();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => null,
+      onUnauthorized: vi.fn(),
+    });
+
+    await transport.request("POST", "/api/v1/auth/logout");
+
+    expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty("X-CSRF-Token");
+  });
+
   it("routes a 401 to the auth store and still returns the non-OK result", async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
       ok: false,

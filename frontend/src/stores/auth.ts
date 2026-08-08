@@ -66,6 +66,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     accessToken.value = null;
     accountId.value = null;
     role.value = null;
+    error.value = null;
   }
 
   /** Log in. true only on a confirmed server login; never fakes success. */
