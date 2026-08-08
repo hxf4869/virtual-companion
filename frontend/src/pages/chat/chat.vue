@@ -106,9 +106,16 @@ function createBrowserRealtimeDeps(): RealtimeDeps {
         if (frame.disposition) {
           disposition = frame.disposition as ResumeDisposition;
         }
-        const event = parseEvent(frame.data, request.streamEpoch);
-        if (event) {
-          events.push(event);
+        // Envelope frames carry {"disposition":...,"events":[...]}; a bare
+        // event object is treated as a single-event frame (R1 P2: restore the
+        // envelope shape so TERMINAL_SNAPSHOT event batches are not dropped).
+        const payload = frame.data as Record<string, unknown>;
+        const candidates = Array.isArray(payload.events) ? payload.events : [frame.data];
+        for (const candidate of candidates) {
+          const event = parseEvent(candidate, request.streamEpoch);
+          if (event) {
+            events.push(event);
+          }
         }
       }
       return { disposition, events };

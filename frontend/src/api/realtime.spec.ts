@@ -144,11 +144,10 @@ describe("streamGeneration cancel", () => {
     expect(result.state.status).toBe("cancelled");
   });
 
-  it("aborts the transport signal when the handle is aborted (P2-14)", async () => {
+  it("passes the handle's abort signal to the transport (P2-14)", async () => {
+    let signalSeen: AbortSignal | undefined;
     const resume = vi.fn(async (_req: ResumeRequest, signal?: AbortSignal): Promise<ResumeResult> => {
-      if (signal?.aborted) {
-        throw new Error("aborted");
-      }
+      signalSeen = signal;
       return { disposition: "RESUMED", events: [delta(1)] };
     });
     const deps: RealtimeDeps = {
@@ -157,12 +156,10 @@ describe("streamGeneration cancel", () => {
     };
     const handle = createStreamHandle();
 
-    handle.cancelled = true;
-    handle.abort();
+    await streamGeneration(deps, "gen-1", 1, handle);
 
-    const result = await streamGeneration(deps, "gen-1", 1, handle);
-
-    expect(result.outcome).toBe("cancelled");
+    expect(signalSeen).toBe(handle.signal);
+    expect(handle.signal.aborted).toBe(false);
   });
 });
 

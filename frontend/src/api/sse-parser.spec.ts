@@ -85,10 +85,16 @@ describe("readSseFrames (P2-15)", () => {
     expect((frames[0].data as { eventSeq: number }).eventSeq).toBe(3);
   });
 
-  it("throws a typed SseParseError for a frame without a data: line", async () => {
-    const body = streamOf(["event: keepalive\n\n"]);
+  it("skips comment/keepalive frames without a data: line (no event, no error)", async () => {
+    const body = streamOf([
+      ": ping\n\n",
+      'data: {"eventSeq":1}\n\n',
+    ]);
 
-    await expect(readSseFrames(body)).rejects.toBeInstanceOf(SseParseError);
+    const frames = await readSseFrames(body);
+
+    expect(frames).toHaveLength(1);
+    expect((frames[0].data as { eventSeq: number }).eventSeq).toBe(1);
   });
 
   it("throws a typed SseParseError for non-JSON data", async () => {

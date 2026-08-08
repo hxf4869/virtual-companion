@@ -8,8 +8,10 @@
 //   - Each frame carries one or more "data:" lines joined by "\n" and parsed as
 //     JSON; an optional top-level "disposition" field is surfaced.
 //   - A final unclosed frame at stream end is flushed (SSE EOF dispatch).
-//   - A malformed frame (no data line, non-JSON, non-object payload) throws
-//     SseParseError -- a typed failure, never a silent empty stream.
+//   - A frame without a data: line (comment/keepalive, e.g. ": ping") carries
+//     no event and is skipped; a frame whose data is non-JSON or a non-object
+//     payload throws SseParseError -- a typed failure, never a silent empty
+//     stream.
 //   - An aborted signal throws SseAbortedError so the caller can distinguish
 //     cancellation from a transport failure.
 
@@ -19,7 +21,7 @@ export interface SseFrame {
   data: unknown;
 }
 
-/** A malformed SSE frame: no data line, non-JSON data, or a non-object payload. */
+/** A malformed SSE frame: non-JSON data or a non-object payload. Frames without a data: line are valid comment/keepalive frames and are skipped. */
 export class SseParseError extends Error {
   constructor(message: string) {
     super(message);
@@ -45,7 +47,9 @@ function flushFrame(raw: string, frames: SseFrame[]): void {
     .filter((line) => line.startsWith("data:"))
     .map((line) => line.slice(5).replace(/^\s+/, ""));
   if (dataLines.length === 0) {
-    throw new SseParseError("SSE frame has no data: line");
+    // Comment/keepalive frames (": ping") carry no event; they are valid SSE
+    // and must not fail the stream (R1 P3).
+    return;
   }
   let payload: unknown;
   try {
