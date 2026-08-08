@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0105
+activeTaskCard: docs/tasks/TASK-0105-frontend-memory-a11y.md
 lastAcceptedTask: TASK-0104
 lastAcceptedHandoff: docs/handoffs/TASK-0104.json
 lastTerminalTask: TASK-0104
 lastTerminalHandoff: docs/handoffs/TASK-0104.json
-nextAction: 创建工作包 11 Frontend memory/CI/a11y/dependencies 卡（P2-16 Memory API 把 401/5xx 映射为空成功 + P2-18 前端依赖高/中漏洞 + P2-19 前端 CI 不跑 tests/type-check/page glue + P3-03 Memory 页面状态/交互小错 + P3-04 登录与状态反馈缺 a11y）；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0104 已 ACCEPTED（工作包 10 P1-07+P2-14/15/17 全部闭环），Actions 配额耗尽下的远端复核延后至配额恢复。
+nextAction: TASK-0105 已授权（READY）：实施 Frontend memory/a11y（P2-16 Memory API 401/5xx typed 错误映射 + P3-03 Memory 页面状态/交互修复 + P3-04 登录与状态反馈 a11y）；TASK-0106（P2-19 CI 门禁 + P2-18 依赖完整升级）为本工作包第二张。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
