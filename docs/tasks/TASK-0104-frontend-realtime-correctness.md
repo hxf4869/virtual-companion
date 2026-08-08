@@ -2,7 +2,18 @@
 
 ```yaml
 taskId: TASK-0104
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P1-07+P2-14+P2-15+P2-17 完成并验证：快照恢复 typed（失败/空/非终态快照 →
+  exhausted，绝不伪装安全终态，applyTerminalSnapshot 防御拒绝）；StreamHandle
+  abort+signal 线程化（cancel/new run/unmount 真实中止底层 fetch）；
+  sse-parser 模块化（LF/CRLF/尾帧 flush/typed SseParseError/keepalive 跳过）；
+  chat store run 序号单写者（旧 run 迟到写入丢弃）。vitest 116/116 PASS；
+  type-check PASS；uni build PASS；canonical precheck 5/5 PASS（doctor 446681
+  checks）；R1 复核发现 1×P2（信封帧事件丢失）并采纳 3×P3 进 fix batch
+  60e578f，R2 delta PASS；remote CI 因 Actions 配额耗尽如实记录非 PASS
+  （UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道
+  （Owner 既有授权）。
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -201,7 +212,27 @@ humanApprovals:
       P2-17 Chat 旧 run 覆盖新 generation/reset。工作包 10 无 Owner 决策门，
       直接可执行；TASK-0103 nextAction 逐字一致的下一卡。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0104_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 599f8354fe2ba72cb1dea164f8629ea46d7c8faf
+    evidencePath: docs/evidence/TASK-0104/review-r1.md
+    reason: >-
+      R1 完整矩阵复核：P1-07/P2-14/P2-17 PASS；发现 1×P2 阻塞（chat.vue 事件
+      提取丢失信封帧 {"disposition","events"}，TERMINAL_SNAPSHOT 事件批被静默
+      丢弃）+ 3×P3；全部采纳进 fix batch 60e578f，R2 关闭。
+    candidateTree: 68dab4dd2090409533fb221e06fcbfac173f34ad
+  - id: task0104_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 60e578f1da050f432e95c5c0dae73bbc9782e281
+    evidencePath: docs/evidence/TASK-0104/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：信封帧提取恢复（P2 关闭，与 Base 语义逐字等价）；
+      keepalive 跳过未弱化 malformed 检测；signal 传递测试有效；注释同步
+      amend 关闭最后 P3；无新 finding。
+    candidateTree: 1f63896de2bafd4b68f5be16067d1b1608385138
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0104
   - pnpm --dir frontend test:run

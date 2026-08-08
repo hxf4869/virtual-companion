@@ -526,3 +526,9 @@ tasks:
     taskCard: docs/tasks/TASK-0103-frontend-session-wiring.md
     evidence: docs/evidence/TASK-0103/evidence-pack.json
     handoff: docs/handoffs/TASK-0103.json
+  TASK-0104:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0104-frontend-realtime-correctness.md
+    evidence: docs/evidence/TASK-0104/evidence-pack.json
+    handoff: docs/handoffs/TASK-0104.json

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0104
-activeTaskCard: docs/tasks/TASK-0104-frontend-realtime-correctness.md
-lastAcceptedTask: TASK-0103
-lastAcceptedHandoff: docs/handoffs/TASK-0103.json
-lastTerminalTask: TASK-0103
-lastTerminalHandoff: docs/handoffs/TASK-0103.json
-nextAction: TASK-0104 已授权（READY）：实施 Frontend realtime 正确性（P1-07 快照失败不伪装完成 + P2-14 真实 abort + P2-15 SSE parser CRLF/typed 错误 + P2-17 单写者 run 序号）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0104
+lastAcceptedHandoff: docs/handoffs/TASK-0104.json
+lastTerminalTask: TASK-0104
+lastTerminalHandoff: docs/handoffs/TASK-0104.json
+nextAction: 创建工作包 11 Frontend memory/CI/a11y/dependencies 卡（P2-16 Memory API 把 401/5xx 映射为空成功 + P2-18 前端依赖高/中漏洞 + P2-19 前端 CI 不跑 tests/type-check/page glue + P3-03 Memory 页面状态/交互小错 + P3-04 登录与状态反馈缺 a11y）；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0104 已 ACCEPTED（工作包 10 P1-07+P2-14/15/17 全部闭环），Actions 配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

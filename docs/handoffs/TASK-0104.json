@@ -1,0 +1,84 @@
+{
+ "taskId": "TASK-0104",
+ "state": "ACCEPTED",
+ "baseCommit": "c9c3ccce88a16528c9a8af28d49c92869d5c0f6f",
+ "headCommit": "60e578f1da050f432e95c5c0dae73bbc9782e281",
+ "evidencePath": "docs/evidence/TASK-0104/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "45235382e444eff5113b4ff419458dfd79822737",
+   "startedAt": "2026-08-09T00:20:16+08:00",
+   "endedAt": "2026-08-09T00:42:50+08:00",
+   "elapsedSeconds": 1354,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "45235382e444eff5113b4ff419458dfd79822737",
+   "startedAt": "2026-08-09T00:20:16+08:00",
+   "endedAt": "2026-08-09T00:22:19+08:00",
+   "elapsedSeconds": 123,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "909163ef8884ea8eaced2adf4a51ee710a94566d",
+   "startedAt": "2026-08-09T00:22:19+08:00",
+   "endedAt": "2026-08-09T00:42:50+08:00",
+   "elapsedSeconds": 1231,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0104_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "599f8354fe2ba72cb1dea164f8629ea46d7c8faf",
+   "evidencePath": "docs/evidence/TASK-0104/review-r1.md",
+   "reason": "R1 complete-matrix review: P1-07/P2-14/P2-17 PASS; found 1 blocking P2 (envelope-frame event loss in chat.vue extraction) + 3 P3; all adopted into fix batch and closed by R2.",
+   "candidateTree": "68dab4dd2090409533fb221e06fcbfac173f34ad"
+  },
+  {
+   "id": "task0104_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "60e578f1da050f432e95c5c0dae73bbc9782e281",
+   "evidencePath": "docs/evidence/TASK-0104/review-r2.md",
+   "reason": "R2 delta review PASS: envelope extraction restored (P2 closed), keepalive skip without weakening malformed detection, signal-propagation test effective, comment sync closes last P3; no new findings.",
+   "candidateTree": "1f63896de2bafd4b68f5be16067d1b1608385138"
+  }
+ ],
+ "completed": [
+  "P1-07: 快照恢复 typed——RealtimeDeps.fetchSnapshot 返回 SnapshotResult{ok,status,events}；失败（!ok/5xx/网络/parse）/空快照/非终态快照（无 chat.completed）→ exhausted（typed 非终态失败），UI 不再误报\"安全终态\"；applyTerminalSnapshot 防御性拒绝非终态快照（返回 prev 不置 terminal）；spec 覆盖失败/空/非终态/合法四路径",
+  "P2-14: StreamHandle{cancelled,abort,signal} 绑定 AbortController；streamGeneration 把 handle.signal 传入 deps.resume/fetchSnapshot；catch 中 isCancel → cancelled（非 exhausted）；chat store cancel()/reset()/新 run 均 handle.abort()（真实中止底层 fetch）；chat.vue resume/snapshot fetch 传 signal；spec 断言 signal 传递与 store abort 路径",
+  "P2-15: SSE parser 从 chat.vue 移出为 sse-parser.ts——LF/CRLF 帧边界（buffer.search(/\\r?\\n\\r?\\n/) + 精确分隔符消费）、多 data 行 join、尾帧 flush、跨 chunk 拼接、注释/keepalive 帧（无 data 行）跳过、非 JSON/非对象 → typed SseParseError、abort → SseAbortedError；chat.vue 5xx/网络 → throw（exhausted）非空流，401/403/404 → NOT_FOUND_OR_FORBIDDEN；spec 10 用例",
+  "P2-17: chat store runSequence 单写者——run 递增序号，完成后序号不匹配则丢弃（旧 run 迟到写入不覆盖新 generation/reset 状态）；reset() 递增序号使在飞 run 过期；新 run 先 cancel+abort 旧 handle；双 run 交错 spec 断言 generationId/phase/draft 不被旧 run 覆盖",
+  "R1 P2/P3 采纳（fix batch 60e578f）：信封帧 {\"disposition\":...,\"events\":[...]} 提取恢复（TERMINAL_SNAPSHOT 事件批不丢，与 Base 语义逐字等价）；keepalive 注释帧跳过不抛错；abort 测试改断言 signal 传递；sse-parser 注释同步",
+  "验证: vitest 116/116 PASS（12 文件，新增 sse-parser 10 用例 + realtime/chat/reducer 增补）；type-check PASS；uni build PASS；canonical precheck 5/5 PASS（doctor 446681 checks）；R1 复核（P2 发现）+ R2 delta PASS；remote CI 因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）",
+  "提交链: DRAFT 4523538 → READY bdecaec/bind 97f1fd2 → IN_PROGRESS 909163e → 候选 599f835 → fix batch 60e578f → 终态提交"
+ ],
+ "remaining": [
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核",
+  "工作包 11 Frontend memory/CI/a11y/dependencies（P2-16 Memory API 401/5xx 映射 + P2-18 前端依赖漏洞 + P2-19 前端 CI 门禁 + P3-03/04）为下一卡",
+  "条件风险 1（Generation/Realtime HTTP 纵切未实现：controller/dispatcher/owner binding/终态闭环）仍 OPEN——本卡只修前端既有 transport 正确性，后端纵切接线前不能宣称聊天生产可用",
+  "工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）",
+  "snapshot 端点 401/403/404 → exhausted 与 resume 的 NOT_FOUND_OR_FORBIDDEN 映射语义不一致（均不披露存在性，R1 说明项，可接受）"
+ ],
+ "knownRisks": [
+  "chat.vue 页面内 transport 仍非单元测试覆盖（vue 组件测试未接入，P2-19 范围）；sse-parser 与编排/状态机已完全测试，页面仅为薄胶水",
+  "TERMINAL_SNAPSHOT 信封帧依赖后端按契约发送 {\"disposition\",\"events\"} 形状；若后端实际形状不同，需后端纵切（条件风险 1）时联调",
+  "keepalive 注释帧跳过依赖 SSE 标准语义（\":\" 开头行为注释）；非标准代理发送无 data 行的非注释帧时将被跳过（不抛错不产生事件，符合 SSE 规范）",
+  "AbortController 依赖浏览器/运行时支持（node 22+ / 现代浏览器均支持）；旧 WebView 需评估",
+  "Actions 配额恢复前，前端 CI（P2-19）与远端 exact-SHA 复核均无法真实执行"
+ ],
+ "nextAction": "创建工作包 11 Frontend memory/CI/a11y/dependencies 卡（P2-16 Memory API 把 401/5xx 映射为空成功 + P2-18 前端依赖高/中漏洞 + P2-19 前端 CI 不跑 tests/type-check/page glue + P3-03 Memory 页面状态/交互小错 + P3-04 登录与状态反馈缺 a11y）；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0104 已 ACCEPTED（工作包 10 P1-07+P2-14/15/17 全部闭环），Actions 配额耗尽下的远端复核延后至配额恢复。"
+}
