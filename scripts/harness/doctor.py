@@ -16934,32 +16934,52 @@ def print_summary(
     tasks: dict[str, dict[str, Any]],
     backlog_projection: dict[str, Any] | None = None,
 ) -> None:
+    for line in summary_lines(state, tasks, backlog_projection):
+        print(line)
+
+
+def summary_lines(
+    state: dict[str, Any],
+    tasks: dict[str, dict[str, Any]],
+    backlog_projection: dict[str, Any] | None = None,
+) -> list[str]:
+    lines: list[str] = []
     active = state.get("activeTask") or "NONE"
     last = state.get("lastAcceptedTask") or "NONE"
     terminal = state.get("lastTerminalTask") or "NONE"
-    print(f"Project: {state.get('projectId')} | Phase: {state.get('phase')}")
-    print(f"Active task: {active} | Last accepted: {last} | Last terminal: {terminal}")
+    lines.append(f"Project: {state.get('projectId')} | Phase: {state.get('phase')}")
+    lines.append(
+        f"Active task: {active} | Last accepted: {last} | Last terminal: {terminal}"
+    )
     if active in tasks:
         task = tasks[str(active)]
-        print(f"Task card: {task.get('_path')} | State: {task.get('state')} | Risk: {task.get('riskClass')}")
-        print(f"Required Skills: {', '.join(task_required_skills(task)) or 'NONE'}")
-    print(f"Next action: {state.get('nextAction')}")
+        lines.append(
+            f"Task card: {task.get('_path')} | State: {task.get('state')} | "
+            f"Risk: {task.get('riskClass')}"
+        )
+        lines.append(
+            f"Required Skills: {', '.join(task_required_skills(task)) or 'NONE'}"
+        )
+    lines.append(f"Next action: {state.get('nextAction')}")
     if backlog_projection:
         next_promotable = backlog_projection.get("nextPromotable") or "NONE"
-        print(
+        lines.append(
             f"Backlog: {backlog_projection.get('plannedCount', 0)} PLANNED | "
             f"Next promotable: {next_promotable}"
         )
         frontier = backlog_projection.get("executionOrderFrontier") or "NONE"
         frontier_blockers = backlog_projection.get("frontierBlockers") or []
-        print(
+        lines.append(
             f"Execution-order frontier: {frontier} | "
             f"Blocked by: {', '.join(frontier_blockers) or 'NONE'}"
         )
     gates = state.get("capabilityGates") or {}
     for gate_id, gate in gates.items():
         if isinstance(gate, dict):
-            print(f"Gate {gate_id}: {gate.get('state')} — {gate.get('reason')}")
+            lines.append(
+                f"Gate {gate_id}: {gate.get('state')} — {gate.get('reason')}"
+            )
+    return lines
 
 
 def layer0_fast_pass(audit: Audit) -> None:
@@ -17017,35 +17037,131 @@ def layer0_fast_pass(audit: Audit) -> None:
             audit.error(f"layer0: .harness/{yaml_name} parse error: {exc}")
 
 
+DOCTOR_RECEIPT_SCHEMA_VERSION = "2"
+DOCTOR_RECEIPT_MAX_BYTES = 1024 * 1024
+DOCTOR_RECEIPT_ENVIRONMENT_KEYS = {
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+    "PYTHONHASHSEED",
+    "PYTHONPATH",
+    "TZ",
+    "XDG_CONFIG_HOME",
+}
+
+
+def _doctor_receipt_environment_sha256() -> str:
+    projection = {
+        key: sha256_text(value)
+        for key, value in sorted(os.environ.items())
+        if key in DOCTOR_RECEIPT_ENVIRONMENT_KEYS or key.startswith("GIT_")
+    }
+    return canonical_json_sha256(projection)
+
+
+def _doctor_receipt_implementation_sha256() -> str | None:
+    implementation: list[dict[str, str]] = []
+    for path in (Path(__file__), Path(__file__).with_name("harness_common.py")):
+        try:
+            content = path.read_bytes()
+        except OSError:
+            return None
+        implementation.append(
+            {"name": path.name, "sha256": hashlib.sha256(content).hexdigest()}
+        )
+    return canonical_json_sha256(implementation)
+
+
+def _doctor_receipt_worktree_sha256(snapshot: DoctorGitSnapshot) -> str:
+    projection = [
+        {
+            "pathSha256": hashlib.sha256(raw_path).hexdigest(),
+            "kind": kind,
+            "mode": mode,
+            "attributes": attributes,
+            "contentSha256": digest.hex(),
+        }
+        for raw_path, kind, mode, attributes, digest in snapshot.worktree_fingerprint
+    ]
+    return canonical_json_sha256(projection)
+
+
 def compute_doctor_receipt_manifest(
     pre_closure: bool = False,
+    *,
+    task_id: str | None = None,
+    summary: bool = False,
+    argv: list[str] | tuple[str, ...] | None = None,
+    snapshot: DoctorGitSnapshot | None = None,
 ) -> dict[str, str] | None:
     """Compute the complete input manifest for Doctor result reuse.
 
     Returns None when any required input cannot be read, so callers
     fail-closed instead of reusing a stale or partial receipt.
     """
-    head_result = git_text("rev-parse", "HEAD", check=False)
-    if head_result.returncode != 0:
+    try:
+        bound_snapshot = snapshot or DoctorGitSnapshot()
+        root = ROOT.resolve().as_posix()
+    except (HarnessError, OSError):
         return None
-    head = head_result.stdout.strip()
-    if not FULL_COMMIT_RE.fullmatch(head):
+    root_result = git_text("rev-parse", "--show-toplevel", check=False)
+    if root_result.returncode != 0:
         return None
-    index_result = git_bytes("ls-files", "--stage", "-z", check=False)
-    if index_result.returncode != 0:
+    try:
+        resolved_git_root = Path(root_result.stdout.strip()).resolve().as_posix()
+    except OSError:
         return None
-    index_flags_result = git_bytes("ls-files", "-v", "-z", check=False)
-    if index_flags_result.returncode != 0:
+    if resolved_git_root != root:
         return None
-    fsmonitor_result = git_bytes("ls-files", "-f", "-z", check=False)
-    if fsmonitor_result.returncode != 0:
+    git_version = git_text("--version", check=False)
+    git_config = git_bytes(
+        "config",
+        "--null",
+        "--list",
+        "--show-origin",
+        "--show-scope",
+        check=False,
+    )
+    implementation_sha256 = _doctor_receipt_implementation_sha256()
+    if (
+        git_version.returncode != 0
+        or git_config.returncode != 0
+        or implementation_sha256 is None
+    ):
         return None
+    invocation = list(sys.argv if argv is None else argv)
     return {
-        "head": head,
-        "indexSha256": hashlib.sha256(index_result.stdout).hexdigest(),
-        "indexFlagsSha256": hashlib.sha256(index_flags_result.stdout).hexdigest(),
-        "fsmonitorFlagsSha256": hashlib.sha256(fsmonitor_result.stdout).hexdigest(),
+        "schemaVersion": DOCTOR_RECEIPT_SCHEMA_VERSION,
+        "repositoryRootSha256": sha256_text(root),
+        "argvSha256": canonical_json_sha256(invocation),
+        "taskIdSha256": sha256_text(task_id or ""),
+        "summary": "true" if summary else "false",
         "preClosure": "true" if pre_closure else "false",
+        "head": bound_snapshot.head,
+        "indexSha256": hashlib.sha256(bound_snapshot.index_bytes).hexdigest(),
+        "indexFlagsSha256": hashlib.sha256(
+            bound_snapshot.index_flags_bytes
+        ).hexdigest(),
+        "fsmonitorFlagsSha256": hashlib.sha256(
+            bound_snapshot.fsmonitor_flags_bytes
+        ).hexdigest(),
+        "worktreeStatusSha256": hashlib.sha256(
+            bound_snapshot.worktree_bytes
+        ).hexdigest(),
+        "worktreeCandidateSha256": _doctor_receipt_worktree_sha256(
+            bound_snapshot
+        ),
+        "pythonExecutableSha256": sha256_text(str(Path(sys.executable).resolve())),
+        "pythonVersionSha256": sha256_text(sys.version),
+        "pythonDependencySha256": canonical_json_sha256(
+            {"pyyaml": str(getattr(yaml, "__version__", "UNKNOWN"))}
+        ),
+        "platformSha256": sha256_text(f"{os.name}|{sys.platform}"),
+        "environmentSha256": _doctor_receipt_environment_sha256(),
+        "gitVersionSha256": sha256_text(git_version.stdout.strip()),
+        "gitConfigSha256": hashlib.sha256(git_config.stdout).hexdigest(),
+        "implementationSha256": implementation_sha256,
     }
 
 
@@ -17053,6 +17169,75 @@ def compute_receipt_hash(manifest: dict[str, str]) -> str:
     """Content-address the manifest via canonical JSON SHA-256."""
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def load_matching_doctor_receipt(
+    cache_path: Path,
+    manifest: dict[str, str],
+    *,
+    require_summary: bool,
+) -> dict[str, Any] | None:
+    try:
+        if cache_path.stat().st_size > DOCTOR_RECEIPT_MAX_BYTES:
+            return None
+        receipt = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(receipt, dict):
+        return None
+    expected_hash = compute_receipt_hash(manifest)
+    if (
+        receipt.get("schemaVersion") != DOCTOR_RECEIPT_SCHEMA_VERSION
+        or receipt.get("receiptHash") != expected_hash
+        or receipt.get("manifest") != manifest
+        or receipt.get("status") != "PASS"
+        or type(receipt.get("exit")) is not int
+        or receipt.get("exit") != 0
+        or type(receipt.get("checks")) is not int
+        or int(receipt["checks"]) < 0
+    ):
+        return None
+    summary_payload = receipt.get("summaryLines")
+    if (
+        not isinstance(summary_payload, list)
+        or not all(isinstance(line, str) for line in summary_payload)
+        or (require_summary and not summary_payload)
+    ):
+        return None
+    return receipt
+
+
+def write_doctor_receipt(cache_path: Path, receipt: dict[str, Any]) -> None:
+    temporary_path: Path | None = None
+    try:
+        descriptor, raw_path = tempfile.mkstemp(
+            prefix=".vc-doctor-cache-",
+            suffix=".tmp",
+            dir=cache_path.parent,
+            text=True,
+        )
+        temporary_path = Path(raw_path)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(receipt, stream, ensure_ascii=True, sort_keys=True)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, cache_path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+
+
+def doctor_receipt_task_error(
+    task_id: str | None,
+    tasks: dict[str, dict[str, Any]],
+) -> str | None:
+    if task_id and task_id not in tasks:
+        return f"selected task does not exist: {task_id}"
+    return None
 
 
 def main() -> int:
@@ -17067,6 +17252,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     audit = Audit()
+    snapshot: DoctorGitSnapshot | None = None
     _doctor_start = time.monotonic()
     layer0_fast_pass(audit)
     if audit.errors:
@@ -17077,26 +17263,65 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    _receipt_manifest = compute_doctor_receipt_manifest(
-        pre_closure=args.pre_closure
+    try:
+        _receipt_snapshot = DoctorGitSnapshot()
+    except HarnessError:
+        _receipt_snapshot = None
+    _receipt_manifest = (
+        compute_doctor_receipt_manifest(
+            pre_closure=args.pre_closure,
+            task_id=args.task,
+            summary=args.summary,
+            argv=sys.argv,
+            snapshot=_receipt_snapshot,
+        )
+        if _receipt_snapshot is not None
+        else None
     )
+    try:
+        _receipt_tasks = discover_tasks()
+    except HarnessError:
+        _receipt_tasks = None
+        _receipt_manifest = None
+    if _receipt_tasks is not None:
+        _task_error = doctor_receipt_task_error(args.task, _receipt_tasks)
+        if _task_error:
+            print(f"ERROR: {_task_error}", file=sys.stderr)
+            print("Harness doctor: FAIL (1 errors, 0 checks)", file=sys.stderr)
+            return 1
     _cache = Path(tempfile.gettempdir()) / "vc-doctor-cache.json"
     if _receipt_manifest is not None and _cache.is_file():
         try:
-            _c = json.loads(_cache.read_text())
-            _expected_hash = compute_receipt_hash(_receipt_manifest)
-            if (
-                _c.get("receiptHash") == _expected_hash
-                and _c.get("manifest") == _receipt_manifest
-                and _c.get("status") == "PASS"
-            ):
+            _c = load_matching_doctor_receipt(
+                _cache,
+                _receipt_manifest,
+                require_summary=args.summary,
+            )
+            if _c is not None:
+                if _receipt_snapshot is None:
+                    audit.error("doctor receipt snapshot is unavailable")
+                else:
+                    _receipt_snapshot.verify_unchanged(audit)
+            if _c is not None and not audit.errors:
+                for line in _c.get("summaryLines", []):
+                    print(line)
+                _expected_hash = compute_receipt_hash(_receipt_manifest)
                 print(
                     f"Harness doctor: PASS ({_c.get('checks', 0)} checks) "
                     f"[receipt hit {_expected_hash[:12]}]"
                 )
                 return 0
-        except Exception:
-            pass
+        except (HarnessError, OSError, UnicodeError, ValueError) as exc:
+            audit.error(f"doctor receipt validation failed: {exc}")
+        if audit.errors:
+            for error in audit.errors:
+                print(f"ERROR: {error}", file=sys.stderr)
+            print(
+                f"Harness doctor: FAIL ({len(audit.errors)} errors, "
+                f"{audit.checks} checks)",
+                file=sys.stderr,
+            )
+            return 1
     backlog_projection: dict[str, Any] = {}
     try:
         with doctor_git_snapshot() as snapshot:
@@ -17226,17 +17451,37 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         print(f"Harness doctor: FAIL ({len(audit.errors)} errors, {audit.checks} checks)", file=sys.stderr)
         return 1
-    if _receipt_manifest is not None:
+    _completed_manifest = (
+        compute_doctor_receipt_manifest(
+            pre_closure=args.pre_closure,
+            task_id=args.task,
+            summary=args.summary,
+            argv=sys.argv,
+            snapshot=snapshot,
+        )
+        if snapshot is not None
+        else None
+    )
+    if (
+        _receipt_manifest is not None
+        and _completed_manifest == _receipt_manifest
+    ):
         try:
             _receipt = {
+                "schemaVersion": DOCTOR_RECEIPT_SCHEMA_VERSION,
                 "manifest": _receipt_manifest,
                 "receiptHash": compute_receipt_hash(_receipt_manifest),
                 "status": "PASS",
                 "exit": 0,
                 "checks": audit.checks,
+                "summaryLines": (
+                    summary_lines(state, tasks, backlog_projection)
+                    if args.summary
+                    else []
+                ),
             }
-            _cache.write_text(json.dumps(_receipt, sort_keys=True))
-        except Exception:
+            write_doctor_receipt(_cache, _receipt)
+        except (OSError, UnicodeError, ValueError):
             pass
     _elapsed = time.monotonic() - _doctor_start
     print(f"Harness doctor: PASS ({audit.checks} checks, {_elapsed:.1f}s)")
