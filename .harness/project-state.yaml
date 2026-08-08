@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0097
 lastAcceptedHandoff: docs/handoffs/TASK-0097.json
 lastTerminalTask: TASK-0097
 lastTerminalHandoff: docs/handoffs/TASK-0097.json
-nextAction: 创建 TASK-0097 重新执行 P1-02 构建绿线（授权时预填 Owner 批准证据）：更新过期 contract test 语义，根级 Maven verify 与 GitHub backend job 转绿。
+nextAction: 创建 P1-03 卡（终态并发修复）：Generation finalization/cancel/terminalize 行锁与条件 UPDATE winner 及双会话交错测试；TASK-0097 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
