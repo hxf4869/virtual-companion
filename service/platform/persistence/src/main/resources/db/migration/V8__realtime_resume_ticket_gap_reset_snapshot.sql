@@ -328,6 +328,10 @@ BEGIN
      WHERE owner_user_id = p_owner_user_id
        AND generation_id = p_generation_id
      RETURNING next_seq INTO v_next;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'advance_realtime_seq: stream row vanished for generation %',
+            p_generation_id;
+    END IF;
     RETURN v_next;
 END;
 $$;
@@ -367,6 +371,21 @@ BEGIN
         RAISE EXCEPTION 'append_terminal_event: % is not a terminal event type', p_event_type;
     END IF;
     PERFORM set_config('vc.owner_user_id', p_owner_user_id::text, true);
+
+    -- Defense in depth (R1 P3): a terminal event may only be written for a
+    -- generation that is already terminal in this transaction — the terminal
+    -- transitions (finalize / terminalize / cancel) flip the status before
+    -- allocating their event, so any future caller that writes a terminal
+    -- event for a non-terminal generation fails closed here.
+    PERFORM 1 FROM vc.generation g
+     WHERE g.owner_user_id = p_owner_user_id
+       AND g.id = p_generation_id
+       AND g.status IN ('INPUT_BLOCKED','COMPLETED','COMPLETED_FALLBACK','CANCELLED',
+                        'OUTPUT_BLOCKED','FAILED_FINAL');
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'append_terminal_event: generation % is not terminal', p_generation_id;
+    END IF;
+
     SELECT * INTO v_stream FROM vc.ensure_realtime_stream(p_owner_user_id, p_generation_id);
 
     UPDATE vc.realtime_stream
