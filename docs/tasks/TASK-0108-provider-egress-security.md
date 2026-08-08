@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0108
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-05 Provider egress 安全完成并验证：ProviderSecretReader secret 路径穿越
+  加固（纯 basename/root containment/符号链接拒绝/≤64KiB/POSIX group-other
+  可写拒绝，fail-closed）；ProviderEgressPolicy（modelruntime/port，默认
+  allowlist = api.openai.com:443 + api.anthropic.com:443 + 127.0.0.1 loopback，
+  https 强制、非 443 端口/私网/link-local/metadata/CGNAT/组播/IPv6 字面/未获批
+  host 全拒绝，纯词法不解析 DNS，策略可注入）；OpenAiChatCompletionsConfig/
+  AnthropicMessagesConfig 接线与 Provisioner 失败关闭 + 测试。定向测试 7 模块
+  BUILD SUCCESS（含 model-protocol-contract-tests 编译面）；根级 Maven verify
+  15 模块 BUILD SUCCESS；canonical precheck 5/5 PASS（doctor 469519 checks）；
+  R1 PASS（阻塞 P0/P1 为零）；remote CI 因 Actions 配额耗尽如实记录非 PASS
+  （UNKNOWN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -212,7 +224,20 @@ humanApprovals:
       ProviderEgressPolicy（protected glob C3，model-routing-change skill +
       独立 Reviewer）；不触碰 specs/** 与 **/db/migration/**（forbiddenPaths）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0108_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 4cf4746083f4f5f9d1458e80f295dd85d97ed11d
+    evidencePath: docs/evidence/TASK-0108/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS（阻塞 P0/P1 为零）：ProviderSecretReader 加固与
+      ProviderEgressPolicy + config 接线实现正确、范围合规（9 文件全在
+      writeAllowlist）、git diff --check 干净；1 项 P2（验收字面偏差——
+      metadata 100.100.100.200 并入 CGNAT 100.64/10 阻断，fail-closed 语义
+      等价）与 3 项 P3（hostname 大小写、DNS 重绑定边界、null 参数 NPE）
+      记入 Handoff。
+    candidateTree: b085aecdcc3c4de6588ede4e2be3651d2dc69d69
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0108
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

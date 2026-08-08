@@ -1,0 +1,74 @@
+{
+  "taskId": "TASK-0108",
+  "state": "ACCEPTED",
+  "baseCommit": "df85ece8eb86774ba536e8f349fb8f7a5e44515f",
+  "headCommit": "4cf4746083f4f5f9d1458e80f295dd85d97ed11d",
+  "evidencePath": "docs/evidence/TASK-0108/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "d9fb1f6d3eb5ee91163c250b47f7ef16e482d2f2",
+      "startedAt": "2026-08-09T05:14:48+08:00",
+      "endedAt": "2026-08-09T05:26:46+08:00",
+      "elapsedSeconds": 718,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "d9fb1f6d3eb5ee91163c250b47f7ef16e482d2f2",
+      "startedAt": "2026-08-09T05:14:48+08:00",
+      "endedAt": "2026-08-09T05:16:30+08:00",
+      "elapsedSeconds": 102,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "2e3aa850c86253888a979ec7b317adc47cb0d69d",
+      "startedAt": "2026-08-09T05:17:06+08:00",
+      "endedAt": "2026-08-09T05:26:46+08:00",
+      "elapsedSeconds": 580,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0108_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "4cf4746083f4f5f9d1458e80f295dd85d97ed11d",
+      "evidencePath": "docs/evidence/TASK-0108/review-r1.md",
+      "candidateTree": "b085aecdcc3c4de6588ede4e2be3651d2dc69d69",
+      "reason": "R1 complete-matrix review PASS: no blocking P0/P1; ProviderSecretReader hardening and ProviderEgressPolicy + config wiring verified correct; scope confined to writeAllowlist; git diff --check clean; 1 P2 (acceptance wording deviation) + 3 P3 recorded."
+    }
+  ],
+  "completed": [
+    "P2-05 secret 路径穿越：ProviderSecretReader 加固——secretName 纯 basename（/、\\ 分隔符与 ./.. dot segment 全部 IllegalArgumentException）；resolve 后 normalize 必须 startsWith secretRoot（root containment）；符号链接拒绝（containment 强化，防 symlink 指向 root 外文件）；regular file + 大小 ≤ 64 KiB；POSIX group/other 可写拒绝（非 POSIX 平台跳过）；失败语义保持 fail-closed IllegalStateException。ProviderSecretReaderTest 新增穿越名 7 种/symlink 逃逸/超限/group 可写测试，既有 5 测试不回归",
+    "P2-05 endpoint/egress allowlist：新增 ProviderEgressPolicy（modelruntime/port，C3 protected）——默认 allowlist = {api.openai.com, api.anthropic.com} + 127.0.0.1 loopback（http/https 任意端口，保既有 http://127.0.0.1 mock-server 契约测试）；loopback 外 https 强制 + 端口 443；IPv4 字面类别阻断 10/8、172.16/12、192.168/16、127/8（除 127.0.0.1）、169.254/16（metadata）、100.64/10（CGNAT + 阿里 metadata 100.100.100.200）、0/8、224/4+ 组播/保留/广播；IPv6 字面一律拒绝（含 ::ffff:127.0.0.1 映射）；hostname 精确匹配 allowlist；公网字面 IP 拒绝；纯词法校验（不解析 DNS/不开连接）；错误消息不含凭据；策略可注入（自定义 host 集），构造拒绝空集与含 loopback 集合（fail-closed）。ProviderEgressPolicyTest 14 测试方法全绿",
+    "Config 接线：OpenAiChatCompletionsConfig/AnthropicMessagesConfig requireEndpoint 保留既有 scheme/host/path/userinfo/query/fragment 校验后追加 ProviderEgressPolicy.defaults().requireAllowed(value)；既有契约测试正例（http://127.0.0.1 任意端口）与负例全部保持；两个 Boundary 契约测试新增 config_rejects_endpoints_outside_the_egress_allowlist（12 个 egress 负例 + 正例断言）",
+    "Provisioner 接线：config 构造即接线点（无需改 Provisioner 代码）；ApprovedModelProviderProvisionerTest 新增 endpointOutsideEgressAllowlistFailsClosed（https://evil.example.com）与 traversalSecretReferenceFailsClosed（../openai-key）两例，验证 provision 全链路失败关闭",
+    "验证闭环：定向测试 7 模块（modelruntime + model-openai + model-anthropic + openai/anthropic contract-tests + model-protocol-contract-tests 编译面 + apps/runtime）BUILD SUCCESS（两次 15.8s/12.8s）；根级 Maven verify 15 模块 BUILD SUCCESS（两次 16.5s/18.1s）；canonical precheck 5/5 PASS（doctor 469519 checks，两次 63.3s/99.5s）；git diff --check 干净；R1 PASS（阻塞 P0/P1 为零）"
+  ],
+  "remaining": [
+    "P2-06 模型请求/响应尺寸与成本上限（工作包 12 第三张）：消息数/单消息/schema/单事件/累计输出上限 + OpenAI max_tokens——数值需 Owner 确认合理默认",
+    "条件风险 6（V15 provider_attempt authorization snapshot 强约束）与风险 7（provider registry/quota ledger 持久化）：**/db/migration/** C4 + database-migration skill + humanApproval，独立后续工作包",
+    "生产接线：controller/dispatcher → LiveModelInvoker → FinalizeGenerationService FINAL_REVIEW（TASK-0093）",
+    "remote CI 复核：Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 UNKNOWN（passClaimed=false，dispatch=0），配额恢复后补远端 exact-SHA 复核",
+    "P3 残留（非阻塞）：ProviderEgressPolicy hostname 大小写不敏感兼容未实现（API.OpenAI.com 被拒，fail-closed 方向正确）；allowlist 内 hostname 的 DNS 重绑定边界（纯词法校验不解析 DNS，HttpClient 侧解析，后续 egress/DNS 层策略卡承接）；100.64/10 CGNAT 段与 metadata 100.100.100.200 合并阻断（验收字面偏差，fail-closed 语义等价，R1 P2-01）",
+    "egress allowlist 决策确认：采用交接文档推荐候选方案 A（AskUserQuestion 无应答，按 Owner 既有建议推进）——Owner 若修订默认值（如自定义 host/port），走 Backlog 强类型 amendment 流程"
+  ],
+  "knownRisks": [
+    "远端 CI 未运行（Actions 配额耗尽）；本地等价验证为 Owner 既有授权备用通道，localExactTree PASS 不代表远端绿",
+    "ProviderEgressPolicy 不解析 DNS：获批 hostname（api.openai.com/api.anthropic.com）若遭 DNS 重绑定指向私网 IP，本层无法阻断——卡明示设计边界，HttpClient 侧解析为后续 egress/DNS 策略卡的承接点",
+    "127.0.0.1 loopback 允许 http/https 任意端口（方案 A）：生产配置若误用 loopback endpoint 仍可出站到本机服务——由配置边界与 Provisioner 默认严格策略约束（仅显式配置才接线）",
+    "ProviderSecretReader 符号链接拒绝可能影响未来 k8s projected secrets（symlink 结构）部署——当前部署面为 Docker-secret 风格（/run/secrets 普通文件），切换部署形态时需重新评估",
+    "跨供应商 host+path 组合（如 api.anthropic.com + /v1/chat/completions）在 egress 层面合法不拒绝——path 语义由各 config 自身契约校验，无安全放行"
+  ],
+  "nextAction": "TASK-0108 已 ACCEPTED（工作包 12 第二张 Provider egress 安全）：ProviderSecretReader secret 路径穿越加固（basename/root containment/文件大小与权限限制 + 符号链接拒绝）+ ProviderEgressPolicy endpoint 校验（https 强制 + approved host/port egress allowlist，默认方案 A = api.openai.com:443 + api.anthropic.com:443 + 127.0.0.1 loopback，拒绝 http 明文/私网/link-local/metadata/CGNAT/IPv6 字面）+ OpenAiChatCompletionsConfig/AnthropicMessagesConfig 接线与 Provisioner 失败关闭 + 测试；根级 Maven verify BUILD SUCCESS、canonical precheck 5/5（doctor 469519 checks）、R1 PASS；工作包 12 第三张 P2-06 尺寸/成本上限（数值需 Owner 确认）为下一卡；条件风险 6/7（db/migration C4 + database-migration + humanApproval）继续等待；生产接线（controller/dispatcher，TASK-0093）不受本卡影响；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；Actions 配额耗尽下的远端复核延后至配额恢复。"
+}

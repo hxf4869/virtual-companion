@@ -550,3 +550,9 @@ tasks:
     taskCard: docs/tasks/TASK-0107-model-protocol-correctness.md
     evidence: docs/evidence/TASK-0107/evidence-pack.json
     handoff: docs/handoffs/TASK-0107.json
+  TASK-0108:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0108-provider-egress-security.md
+    evidence: docs/evidence/TASK-0108/evidence-pack.json
+    handoff: docs/handoffs/TASK-0108.json

@@ -2,24 +2,27 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0108
-activeTaskCard: docs/tasks/TASK-0108-provider-egress-security.md
-lastAcceptedTask: TASK-0107
-lastAcceptedHandoff: docs/handoffs/TASK-0107.json
-lastTerminalTask: TASK-0107
-lastTerminalHandoff: docs/handoffs/TASK-0107.json
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0108
+lastAcceptedHandoff: docs/handoffs/TASK-0108.json
+lastTerminalTask: TASK-0108
+lastTerminalHandoff: docs/handoffs/TASK-0108.json
 nextAction: >-
-  TASK-0108 READY（工作包 12
-  第二张 Provider egress 安全）：ProviderSecretReader
-  secret 路径穿越加固（basename/root
-  containment/文件大小与权限限制）+
+  TASK-0108 已 ACCEPTED（工作包 12
+  第二张 Provider egress 安全）：ProviderSecretReader secret
+  路径穿越加固（basename/root
+  containment/文件大小与权限限制 +
+  符号链接拒绝）+
   ProviderEgressPolicy endpoint 校验（https 强制 +
-  approved host/port egress allowlist，默认方案 A
-  = api.openai.com:443 + api.anthropic.com:443 +
-  127.0.0.1 loopback，拒绝 http 明文/私网/link-local/
-  metadata）+ OpenAiChatCompletionsConfig/
-  AnthropicMessagesConfig 接线与 Provisioner
-  失败关闭 + 测试；完成后工作包 12 第三张
+  approved host/port egress allowlist，默认方案 A =
+  api.openai.com:443 + api.anthropic.com:443 +
+  127.0.0.1 loopback，拒绝 http 明文/私网/link-local/metadata/CGNAT/IPv6 字面）+
+  OpenAiChatCompletionsConfig/AnthropicMessagesConfig 接线与 Provisioner
+  失败关闭 + 测试；根级 Maven
+  verify BUILD SUCCESS、canonical
+  precheck 5/5（doctor 469519
+  checks）、R1 PASS；工作包 12 第三张
   P2-06 尺寸/成本上限（数值需 Owner
   确认）为下一卡；条件风险 6/7（db/migration
   C4 + database-migration +
