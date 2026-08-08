@@ -94,14 +94,7 @@ final class AnthropicMessagesCodec {
                     throw new AnthropicCodecException();
                 }
                 switch (blockType.stringValue()) {
-                    case "text" -> {
-                        if (toolUseInput != null) {
-                            // Mixed text and tool_use blocks have no single
-                            // consumer; fail closed instead of guessing.
-                            throw new AnthropicCodecException();
-                        }
-                        text.append(requireNonEmptyText(block, "text"));
-                    }
+                    case "text" -> text.append(requireNonEmptyText(block, "text"));
                     case "tool_use" -> {
                         if (toolUseInput != null) {
                             // A forced tool_choice produces exactly one

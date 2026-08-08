@@ -223,6 +223,27 @@ final class AnthropicContractTestSupport {
         return JSON.writeValueAsString(root);
     }
 
+    static String multiTextCompletion(
+            List<String> texts,
+            String stopReason,
+            long inputTokens,
+            long outputTokens
+    ) {
+        var root = JSON.createObjectNode();
+        root.put("id", "msg_offline");
+        root.put("type", "message");
+        root.put("role", "assistant");
+        root.put("model", MODEL);
+        var blocks = root.putArray("content");
+        for (var text : texts) {
+            blocks.addObject().put("type", "text").put("text", text);
+        }
+        root.put("stop_reason", stopReason);
+        root.putNull("stop_sequence");
+        addUsage(root, inputTokens, outputTokens);
+        return JSON.writeValueAsString(root);
+    }
+
     static String messageStart(long inputTokens) {
         var root = JSON.createObjectNode();
         root.put("type", "message_start");

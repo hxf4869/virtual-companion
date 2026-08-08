@@ -30,6 +30,7 @@ import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTest
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStart;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStop;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.multiTextCompletion;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.parseJson;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.sse;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.sseCrLf;
@@ -361,6 +362,93 @@ class AnthropicMessagesSuccessContractTest {
                     server.endpoint()
             ).open(textRequest(false, "finish"));
             var events = drain(session);
+            assertEquals(1, events.size());
+            assertInstanceOf(ModelProtocolEvent.AttemptFailed.class, events.getFirst());
+            assertInstanceOf(
+                    AdapterFailure.MalformedResponse.class,
+                    assertInstanceOf(
+                            ModelProtocolEvent.AttemptFailed.class,
+                            events.getFirst()
+                    ).failure()
+            );
+        }
+    }
+
+    @Test
+    void nonStreamingMultipleTextBlocksAreJoinedInOrder() throws Exception {
+        var stream = multiTextCompletion(
+                List.of("第一段，", "第二段，", "第三段。"),
+                "end_turn",
+                6,
+                3
+        );
+        try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "application/json",
+                stream
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(textRequest(false, "多段")));
+
+            assertEquals(3, events.size());
+            assertEquals(
+                    new ModelPayload.TextChunk("第一段，第二段，第三段。"),
+                    assertInstanceOf(
+                            ModelProtocolEvent.OutputDelta.class,
+                            events.get(0)
+                    ).payload()
+            );
+        }
+    }
+
+    @Test
+    void structuredStreamRejectsTextDelta() throws Exception {
+        var stream = sse(messageStart(4))
+                + sse(contentBlockStart())
+                + sse(textDelta("{\"answer\":\"错误路径\"}"))
+                + sse(contentBlockStop())
+                + sse(messageDelta("end_turn", 3))
+                + sse(messageStop());
+        try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "text/event-stream",
+                stream
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(structuredRequest(true, "结构化流")));
+            assertEquals(1, events.size());
+            assertInstanceOf(ModelProtocolEvent.AttemptFailed.class, events.getFirst());
+            assertInstanceOf(
+                    AdapterFailure.MalformedResponse.class,
+                    assertInstanceOf(
+                            ModelProtocolEvent.AttemptFailed.class,
+                            events.getFirst()
+                    ).failure()
+            );
+        }
+    }
+
+    @Test
+    void textStreamRejectsToolUseDelta() throws Exception {
+        var stream = sse(messageStart(4))
+                + sse(contentBlockStartToolUse())
+                + sse(inputJsonDelta("{\"answer\":\"工具\"}"))
+                + sse(contentBlockStop())
+                + sse(messageDelta("end_turn", 3))
+                + sse(messageStop());
+        try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "text/event-stream",
+                stream
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(textRequest(true, "工具流")));
             assertEquals(1, events.size());
             assertInstanceOf(ModelProtocolEvent.AttemptFailed.class, events.getFirst());
             assertInstanceOf(

@@ -4,6 +4,7 @@ import com.virtualcompanion.modelruntime.contract.InvocationBinding;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Fail-closed stateful gate for normalized adapter events of one attempt.
@@ -29,6 +30,24 @@ public final class ModelProtocolEventFence {
 
     public ModelProtocolEventFence(InvocationBinding expected) {
         this.expected = Objects.requireNonNull(expected, "expected must not be null");
+    }
+
+    /**
+     * Stateless complete-binding check kept for the protocol contract tests:
+     * accepts only an event carrying the exact expected binding.
+     *
+     * @return the event when the binding matches, otherwise empty to represent
+     *         discard
+     */
+    public static Optional<ModelProtocolEvent> accept(
+            InvocationBinding expected,
+            ModelProtocolEvent candidate
+    ) {
+        Objects.requireNonNull(expected, "expected must not be null");
+        Objects.requireNonNull(candidate, "candidate must not be null");
+        return expected.equals(candidate.binding())
+                ? Optional.of(candidate)
+                : Optional.empty();
     }
 
     /**
