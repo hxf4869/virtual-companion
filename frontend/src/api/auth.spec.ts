@@ -7,13 +7,12 @@ function transportFor(response: AuthApiResponse): AuthTransport {
 }
 
 describe("auth api client", () => {
-  it("parses a confirmed login into tokens", async () => {
+  it("parses a confirmed login into tokens (no refreshToken in the response body)", async () => {
     const t = transportFor({
       ok: true,
       status: 200,
       json: {
         accessToken: "a-token",
-        refreshToken: "r-token",
         tokenType: "Bearer",
         expiresInSeconds: 7200,
         accountId: "7",
@@ -25,7 +24,6 @@ describe("auth api client", () => {
 
     expect(tokens).toEqual({
       accessToken: "a-token",
-      refreshToken: "r-token",
       tokenType: "Bearer",
       expiresInSeconds: 7200,
       accountId: "7",
@@ -35,6 +33,26 @@ describe("auth api client", () => {
       username: "root",
       password: "pw",
     });
+  });
+
+  it("tolerates a legacy response body that still carries refreshToken (ignored)", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: {
+        accessToken: "a-token",
+        refreshToken: "r-token",
+        tokenType: "Bearer",
+        expiresInSeconds: 7200,
+        accountId: "7",
+        role: "USER",
+      },
+    });
+
+    const tokens = await login(t, "root", "pw");
+
+    expect(tokens?.accessToken).toBe("a-token");
+    expect(tokens).not.toHaveProperty("refreshToken");
   });
 
   it("maps a non-OK login to null (existence never disclosed)", async () => {
@@ -63,13 +81,12 @@ describe("auth api client", () => {
     await expect(login(t, "root", "pw")).rejects.toThrow("offline");
   });
 
-  it("parses a refresh and sends only the raw refresh token", async () => {
+  it("refresh sends no body and no token argument (cookie-based)", async () => {
     const t = transportFor({
       ok: true,
       status: 200,
       json: {
         accessToken: "a-2",
-        refreshToken: "r-2",
         tokenType: "Bearer",
         expiresInSeconds: 7200,
         accountId: "7",
@@ -77,13 +94,11 @@ describe("auth api client", () => {
       },
     });
 
-    const tokens = await refresh(t, "r-1");
+    const tokens = await refresh(t);
 
     expect(tokens?.accessToken).toBe("a-2");
-    expect(tokens?.refreshToken).toBe("r-2");
-    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/refresh", {
-      refreshToken: "r-1",
-    });
+    expect(tokens).not.toHaveProperty("refreshToken");
+    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/refresh");
   });
 
   it("maps an invalid refresh to null", async () => {
@@ -93,16 +108,14 @@ describe("auth api client", () => {
       json: { code: "AUTHENTICATION_REQUIRED", message: "The refresh session is no longer valid" },
     });
 
-    expect(await refresh(t, "stale")).toBeNull();
+    expect(await refresh(t)).toBeNull();
   });
 
-  it("logout is true only on HTTP OK and revokes the raw token", async () => {
+  it("logout is true only on HTTP OK and sends no body (cookie-based)", async () => {
     const t = transportFor({ ok: true, status: 200, json: { ok: true } });
 
-    expect(await logout(t, "r-1")).toBe(true);
-    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/logout", {
-      refreshToken: "r-1",
-    });
+    expect(await logout(t)).toBe(true);
+    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/logout");
   });
 
   it("rejects a malformed token payload without crashing", async () => {
