@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from datetime import datetime
 import hashlib
 import io
@@ -1160,6 +1160,240 @@ class GitHistoryPolicyTests(unittest.TestCase):
             ):
                 self.assertEqual(1, doctor.main())
             self.assertIn("selected task does not exist: TASK-MISSING", stderr.getvalue())
+
+    def _cache_race_run(
+        self,
+        repository: Path,
+        inject: Callable[[], None] | None,
+        *,
+        main_patches: list[tuple[object, dict[str, object]]] | None = None,
+    ) -> tuple[int, str]:
+        """Run doctor.main() against a fixture repository holding a valid
+        receipt. `inject` runs between the lookup manifest computation and the
+        pre-PASS manifest recomputation, exactly inside the TOCTOU window."""
+        argv = ["doctor.py", "--task", "TASK-ONE", "--summary"]
+        with (
+            patch.object(harness_common, "ROOT", repository),
+            patch.object(doctor, "ROOT", repository),
+        ):
+            manifest = doctor.compute_doctor_receipt_manifest(
+                task_id="TASK-ONE",
+                summary=True,
+                argv=argv,
+            )
+        self.assertIsNotNone(manifest)
+        receipt = {
+            "schemaVersion": doctor.DOCTOR_RECEIPT_SCHEMA_VERSION,
+            "manifest": manifest,
+            "receiptHash": doctor.compute_receipt_hash(manifest),
+            "status": "PASS",
+            "exit": 0,
+            "checks": 17,
+            "summaryLines": ["Project: fixture | Phase: test"],
+        }
+        with tempfile.TemporaryDirectory() as cache_directory:
+            doctor.write_doctor_receipt(
+                Path(cache_directory) / "vc-doctor-cache.json",
+                receipt,
+            )
+            real_compute = doctor.compute_doctor_receipt_manifest
+            calls = {"n": 0}
+
+            def _compute(*args: object, **kwargs: object) -> dict[str, str] | None:
+                calls["n"] += 1
+                if calls["n"] == 2 and inject is not None:
+                    inject()
+                return real_compute(*args, **kwargs)
+
+            stdout = io.StringIO()
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(harness_common, "ROOT", repository))
+                stack.enter_context(patch.object(doctor, "ROOT", repository))
+                for target, kwargs in main_patches or []:
+                    stack.enter_context(patch.object(target, **kwargs))
+                stack.enter_context(
+                    patch.object(doctor, "layer0_fast_pass", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(
+                        doctor,
+                        "compute_doctor_receipt_manifest",
+                        side_effect=_compute,
+                    )
+                )
+                stack.enter_context(
+                    patch.object(
+                        doctor.tempfile,
+                        "gettempdir",
+                        return_value=cache_directory,
+                    )
+                )
+                stack.enter_context(
+                    patch.object(
+                        doctor,
+                        "discover_tasks",
+                        return_value={"TASK-ONE": {"state": "IN_PROGRESS"}},
+                    )
+                )
+                stack.enter_context(patch.object(doctor.sys, "argv", argv))
+                with redirect_stdout(stdout):
+                    result = doctor.main()
+        return result, stdout.getvalue()
+
+    def test_doctor_cache_hit_revalidates_unchanged_manifest_and_passes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            result, output = self._cache_race_run(repository, None)
+            self.assertEqual(0, result)
+            self.assertIn("[receipt hit", output)
+            self.assertIn("Project: fixture | Phase: test", output)
+
+    def test_doctor_cache_hit_misses_when_graft_changes_during_lookup(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            head = self._git(repository, "rev-parse", "HEAD")
+
+            def inject_graft() -> None:
+                git_directory = repository / self._git(
+                    repository, "rev-parse", "--git-dir"
+                )
+                (git_directory / "info/grafts").write_text(
+                    f"{head}\n", encoding="ascii"
+                )
+
+            result, output = self._cache_race_run(repository, inject_graft)
+            self.assertNotEqual(0, result)
+            self.assertNotIn("[receipt hit", output)
+
+    def test_doctor_cache_hit_misses_when_replace_ref_changes_during_lookup(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            fixture = repository / "fixture.txt"
+            fixture.write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            fixture.write_text("second\n", encoding="utf-8")
+            self._git(repository, "commit", "-qam", "second")
+            head = self._git(repository, "rev-parse", "HEAD")
+            parent = self._git(repository, "rev-parse", "HEAD^")
+
+            def inject_replace() -> None:
+                self._git(
+                    repository, "update-ref", f"refs/replace/{head}", parent
+                )
+
+            result, output = self._cache_race_run(repository, inject_replace)
+            self.assertNotEqual(0, result)
+            self.assertNotIn("[receipt hit", output)
+
+    def test_doctor_cache_hit_misses_when_git_config_changes_during_lookup(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+
+            def inject_config() -> None:
+                self._git(repository, "config", "doctor.cache-race", "changed")
+
+            result, output = self._cache_race_run(repository, inject_config)
+            self.assertNotEqual(0, result)
+            self.assertNotIn("[receipt hit", output)
+
+    def test_doctor_cache_hit_misses_when_timezone_source_changes_during_lookup(
+        self,
+    ) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            tempfile.TemporaryDirectory() as timezone_directory,
+        ):
+            repository = self._receipt_repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            zone_path = Path(timezone_directory) / "Asia/Shanghai"
+            zone_path.parent.mkdir(parents=True, exist_ok=True)
+            zone_path.write_bytes(b"timezone-data-one")
+
+            def inject_timezone() -> None:
+                zone_path.write_bytes(b"timezone-data-two")
+
+            with patch.object(doctor.zoneinfo, "TZPATH", (timezone_directory,)):
+                result, output = self._cache_race_run(repository, inject_timezone)
+            self.assertNotEqual(0, result)
+            self.assertNotIn("[receipt hit", output)
+
+    def test_doctor_cache_hit_misses_when_environment_changes_during_lookup(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            original_tz = os.environ.get("TZ")
+
+            def inject_environment() -> None:
+                os.environ["TZ"] = "Etc/UTC"
+
+            try:
+                result, output = self._cache_race_run(
+                    repository, inject_environment
+                )
+            finally:
+                if original_tz is None:
+                    os.environ.pop("TZ", None)
+                else:
+                    os.environ["TZ"] = original_tz
+            self.assertNotEqual(0, result)
+            self.assertNotIn("[receipt hit", output)
+
+    def test_doctor_cache_hit_misses_when_implementation_changes_during_lookup(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = self._receipt_repository(directory)
+            (repository / "fixture.txt").write_text("base\n", encoding="utf-8")
+            self._git(repository, "add", ".")
+            self._git(repository, "commit", "-qm", "base")
+            real_implementation = doctor._doctor_receipt_implementation_sha256
+            implementation_calls = {"n": 0}
+
+            def _implementation() -> str | None:
+                implementation_calls["n"] += 1
+                if implementation_calls["n"] == 1:
+                    return real_implementation()
+                return "e" * 64
+
+            result, output = self._cache_race_run(
+                repository,
+                None,
+                main_patches=[
+                    (
+                        doctor,
+                        {
+                            "attribute": "_doctor_receipt_implementation_sha256",
+                            "side_effect": _implementation,
+                        },
+                    )
+                ],
+            )
+            self.assertNotEqual(0, result)
+            self.assertNotIn("[receipt hit", output)
 
     def test_doctor_snapshot_fails_closed_when_index_or_worktree_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

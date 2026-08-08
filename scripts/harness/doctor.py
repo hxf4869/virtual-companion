@@ -17445,6 +17445,28 @@ def main() -> int:
                     audit.error("doctor receipt snapshot is unavailable")
                 else:
                     _receipt_snapshot.verify_unchanged(audit)
+                    # Recompute the complete manifest before trusting any
+                    # receipt PASS. The initial manifest was computed before
+                    # lookup, and verify_unchanged only re-checks
+                    # HEAD/index/flags/worktree. Inputs such as Git history
+                    # and config, timezone data, environment, or the Doctor
+                    # implementation may have changed during the lookup
+                    # window; any recomputation failure or field change must
+                    # invalidate the receipt instead of reusing the old PASS.
+                    _revalidated_manifest = compute_doctor_receipt_manifest(
+                        pre_closure=args.pre_closure,
+                        task_id=args.task,
+                        summary=args.summary,
+                        argv=sys.argv,
+                    )
+                    if _revalidated_manifest is None:
+                        # Cannot re-establish a stable candidate identity:
+                        # treat as a miss and run the real validation.
+                        _c = None
+                    elif _revalidated_manifest != _receipt_manifest:
+                        # A manifest input changed during lookup: the old
+                        # PASS no longer applies; run the real validation.
+                        _c = None
             if _c is not None and not audit.errors:
                 for line in _c.get("summaryLines", []):
                     print(line)
