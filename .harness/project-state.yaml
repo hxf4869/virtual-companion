@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0095
+activeTaskCard: docs/tasks/TASK-0095-doctor-receipt-cache-toctou.md
 lastAcceptedTask: TASK-0090
 lastAcceptedHandoff: docs/handoffs/TASK-0090.json
 lastTerminalTask: TASK-0094
 lastTerminalHandoff: docs/handoffs/TASK-0094.json
-nextAction: 等待 Owner 分配新的修复卡，修复 TASK-0094 R2 发现的 receipt cache-hit 完整 manifest TOCTOU；TASK-0094 已 REJECTED，不得 R3 或继续修改。
+nextAction: 执行 TASK-0095：修复 Doctor receipt cache-hit 完整 manifest TOCTOU（cache PASS 前重算完整 manifest 并常量比较；graft/replace/config/timezone/environment/implementation 竞态负测；独立复核与 PRIMARY_REMOTE_EXACT_SHA）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
