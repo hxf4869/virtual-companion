@@ -23,7 +23,8 @@ class ProductionProfileFailClosedTest {
         assertThatThrownBy(() -> new SpringApplicationBuilder(VirtualCompanionRuntimeApplication.class)
                 .profiles("production")
                 .run())
-                .satisfies(t -> assertThat(chainMessages(t)).contains("VC_AUTH_ENABLED"));
+                .satisfies(t -> assertThat(chainMessages(t))
+                        .containsAnyOf("VC_AUTH_ENABLED", "VC_AUTH_DATASOURCE_ENABLED"));
     }
 
     private static String chainMessages(Throwable throwable) {

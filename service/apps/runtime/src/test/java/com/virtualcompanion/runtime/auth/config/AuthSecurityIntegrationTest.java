@@ -7,8 +7,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import jakarta.servlet.http.Cookie;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.web.FilterChainProxy;
@@ -93,6 +97,34 @@ class AuthSecurityIntegrationTest {
     void healthStaysPublic() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void csrfFilterRejectsUnknownOriginDirectly() throws Exception {
+        // The CORS filter normally rejects unknown Origins before the security
+        // chain; exercise the filter's own Origin branch in isolation.
+        CookieCsrfGuardFilter filter = new CookieCsrfGuardFilter(List.of("https://app.example"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/logout");
+        request.addHeader("Origin", "https://evil.example");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+        org.assertj.core.api.Assertions.assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void csrfFilterAllowsAllowedOriginAndCsrfToken() throws Exception {
+        CookieCsrfGuardFilter filter = new CookieCsrfGuardFilter(List.of("https://app.example"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/logout");
+        request.addHeader("Origin", "https://app.example");
+        request.setCookies(sessionCookies());
+        request.addHeader(CookieCsrfGuardFilter.CSRF_HEADER, "csrf-value");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+        org.assertj.core.api.Assertions.assertThat(response.getStatus()).isEqualTo(200);
     }
 
     @Test

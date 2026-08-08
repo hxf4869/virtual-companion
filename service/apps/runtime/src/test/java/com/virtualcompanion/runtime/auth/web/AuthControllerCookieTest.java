@@ -82,6 +82,7 @@ class AuthControllerCookieTest {
                 .andExpect(cookie().httpOnly(CookieCsrfGuardFilter.REFRESH_COOKIE, true))
                 .andExpect(cookie().secure(CookieCsrfGuardFilter.REFRESH_COOKIE, true))
                 .andExpect(cookie().maxAge(CookieCsrfGuardFilter.REFRESH_COOKIE, 604800))
+                .andExpect(cookie().path(CookieCsrfGuardFilter.REFRESH_COOKIE, "/api/v1/auth"))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE,
                         org.hamcrest.Matchers.containsString("SameSite=Lax")))
                 .andExpect(jsonPath("$.accessToken").value("access-token"))
@@ -99,7 +100,9 @@ class AuthControllerCookieTest {
                         .content("{\"username\":\"alice\",\"password\":\"pw\"}"))
                 .andExpect(status().isOk())
                 .andExpect(cookie().httpOnly(CookieCsrfGuardFilter.CSRF_COOKIE, false))
-                .andExpect(cookie().path(CookieCsrfGuardFilter.CSRF_COOKIE, "/"));
+                .andExpect(cookie().path(CookieCsrfGuardFilter.CSRF_COOKIE, "/"))
+                .andExpect(cookie().secure(CookieCsrfGuardFilter.CSRF_COOKIE, true))
+                .andExpect(cookie().maxAge(CookieCsrfGuardFilter.CSRF_COOKIE, 604800));
     }
 
     @Test
