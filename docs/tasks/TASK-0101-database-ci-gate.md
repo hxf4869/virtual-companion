@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0101
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P1-10/P2-28 数据库持续门禁完成并验证：run-rls-tests.sh readiness 改为稳定窗口
+  （连续 ≥3 次 psql -d vc SELECT 1 成功探针，覆盖 initdb/entrypoint 临时 server
+  窗口），迁移只对 6 个已识别启动连接错误模式有限重试（≤3 次/文件，grep -Ei 大小写
+  不敏感）并传播 psql 原退出码，失败保留 migration/readiness 日志（$VC_DB_LOG_DIR）；
+  ci.yml 新增 digest 固定 pgvector DB job（复用 run-rls-tests.sh 单一入口执行
+  V1-V15 全量迁移 + 01-50 全部 SQL 套件，失败阻断合并 + if: failure() 上传日志
+  artifact）。冻结 runner 全新容器 7 轮首轮全部 50/50 PASS（修复前 9/10 首轮失败）；
+  canonical precheck 5/5 PASS（doctor 429320 checks）；R1 无阻塞 PASS + R2 delta
+  PASS（R2 发现并修正 else 分支退出码捕获 P0）；remote CI 因 Actions 配额耗尽如实
+  记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道
+  （Owner 既有授权）。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -192,7 +204,30 @@ humanApprovals:
       本卡不改任何 `.harness/**` 机器真源（除 project-state/task-ledger 生命周期
       字段），不改 scripts/harness/**，不改其他 workflow 文件。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0101_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: f2f5044c134f798d65b2220bbf13dcd37affb90d
+    evidencePath: docs/evidence/TASK-0101/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：diff 仅 writeAllowlist；P2-28 稳定窗口 readiness +
+      启动连接错误有限重试 + 日志保留正确；P1-10 database job 复用
+      run-rls-tests.sh 单一入口（digest 由脚本冻结），失败阻断合并 + 失败上传日志；
+      无范围外顺手修（P2-23/26/27、P3-07 未动）；contextFingerprint 独立重算一致。
+      1×P2（grep 大小写）+ 1×P3（传播原退出码）采纳进 fix batch，R2 关闭。
+    candidateTree: 97d4508fd2f74eb232162d642001d9ddeac3e3f8
+  - id: task0101_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 32a8304177e7ff106a36073ddd7e9373063ea93f
+    evidencePath: docs/evidence/TASK-0101/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：首次 delta 复核发现 P0-1（if 语句后捕获 $? 恒 0 →
+      失败转 exit 0 fail-open）；修正为 else 分支内捕获 + 两条失败路径传播原退出码；
+      最终 fix batch 32a8304 仅改 run-rls-tests.sh（14 行），脚本与已复核 671110f
+      逐字节一致；P0-1 closure 确认，无新 finding。
+    candidateTree: f7d632c50ae291d7da9c11b4643798314a67b1f0
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0101
   - bash infra/db/run-rls-tests.sh

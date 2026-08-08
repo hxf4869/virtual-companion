@@ -1,0 +1,82 @@
+{
+ "taskId": "TASK-0101",
+ "state": "ACCEPTED",
+ "baseCommit": "0a70e9425e85da6f20ed5aac55200a63d0996d50",
+ "headCommit": "32a8304177e7ff106a36073ddd7e9373063ea93f",
+ "evidencePath": "docs/evidence/TASK-0101/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "939ce14b52666704de6999fb295d96c8f4b49595",
+   "startedAt": "2026-08-08T22:34:18+08:00",
+   "endedAt": "2026-08-08T22:57:18+08:00",
+   "elapsedSeconds": 1380,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "939ce14b52666704de6999fb295d96c8f4b49595",
+   "startedAt": "2026-08-08T22:34:18+08:00",
+   "endedAt": "2026-08-08T22:36:51+08:00",
+   "elapsedSeconds": 153,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "2558a42798373389ff0872d510856d30ac889426",
+   "startedAt": "2026-08-08T22:36:51+08:00",
+   "endedAt": "2026-08-08T22:57:18+08:00",
+   "elapsedSeconds": 1227,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0101_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "f2f5044c134f798d65b2220bbf13dcd37affb90d",
+   "evidencePath": "docs/evidence/TASK-0101/review-r1.md",
+   "reason": "R1 complete-matrix review PASS (no P0/P1/P2): diff confined to writeAllowlist; P2-28 stable-window readiness + bounded startup-error retry + log preservation correct; P1-10 database job reuses run-rls-tests.sh as the single entry point, failure blocks merge, logs uploaded; no scope creep; fingerprint independently recomputed and matching. 1 P2 (grep case-sensitivity) + 1 P3 (original exit code) adopted into fix batch, closed by R2.",
+   "candidateTree": "97d4508fd2f74eb232162d642001d9ddeac3e3f8"
+  },
+  {
+   "id": "task0101_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "32a8304177e7ff106a36073ddd7e9373063ea93f",
+   "evidencePath": "docs/evidence/TASK-0101/review-r2.md",
+   "reason": "R2 delta review PASS after P0 fix: first delta review found P0-1 (migrate_rc captured after the if statement always reads 0 -> fail-open); fixed via else-branch capture + exit propagation; final fix batch 32a8304 changes only run-rls-tests.sh (14 lines), script bytes identical to the reviewed 671110f; P0-1 closed, no new findings.",
+   "candidateTree": "f7d632c50ae291d7da9c11b4643798314a67b1f0"
+  }
+ ],
+ "completed": [
+  "P2-28: run-rls-tests.sh readiness 从单点 pg_isready 改为稳定窗口——连续 ≥3 次 `psql -U postgres -d vc -c \"SELECT 1\"` 成功（探针目标库 vc，天然覆盖 initdb/entrypoint 临时 server 窗口）；探针失败清零计数；总预算 200×0.5s；readiness 失败打印容器日志 + 探针日志并退出 3",
+  "P2-28: 迁移阶段只对 6 个已识别启动连接错误模式有限重试（每文件 ≤3 次，间隔 1s；grep -Ei 大小写不敏感匹配真实 libpq/psql 输出）；其他失败立即传播 psql 原退出码（else 分支捕获 $?——R2 发现并修正 if 语句后捕获恒 0 的 fail-open 缺陷）",
+  "P2-28: 日志保留——$VC_DB_LOG_DIR（默认 mktemp -d /tmp/vc-db-logs.XXXXXX）：readiness.log（探针失败输出）、migration.log（每迁移每次尝试带分隔追加）、tests.log（每测试 PASS/FAIL + 输出）；CI 通过 VC_DB_LOG_DIR 指向 workspace 相对目录上传 artifact",
+  "P1-10: ci.yml 新增 database job——digest 固定 pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0（由 run-rls-tests.sh 冻结保证一致）；复用 `bash infra/db/run-rls-tests.sh` 单一入口执行完整 V1-V15 迁移 + 全部 SQL 套件（01-50 自动拾取）；timeout-minutes 20；失败非零退出阻断合并；if: failure() + actions/upload-artifact@v4（if-no-files-found: ignore）上传 DB 日志",
+  "验证：冻结 runner 全新容器 7 轮首轮全部 50/50 PASS（rounds 1-7，fresh container 无重跑；脚本内容 sha256 772830e9… 与候选树逐字节一致；修复前 TASK-0100 实测 9/10 首轮失败）；canonical precheck 5/5 PASS（doctor 429320 checks）；R1 无阻塞 PASS + R2 delta PASS（P0 发现→else 分支修正→closure 确认）",
+  "提交链：DRAFT 939ce14 → READY 4930280/bind 13661d7 → IN_PROGRESS 2558a42 → 候选 f2f5044 → fix batch 32a8304 → 终态提交"
+ ],
+ "remaining": [
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false）；配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核，并验证 database job 在 ubuntu runner 上的真实首次运行（本卡仅本地验证 YAML 合法性 + run-rls-tests.sh 等价内容 7 轮实测）",
+  "P3-07（run-rls-tests.sh 头注释\"five tests\"与 for $(ls ...) 安全 glob）保持 OPEN（工作包 16 文档与发布），本卡明确范围外未顺手修",
+  "P2-23（Actions 固定 commit SHA）/P2-26（precheck/CI timeout 机制，本卡仅为新 job 设 timeout-minutes 防御）/P2-27（Windows/Linux 矩阵）保持 OPEN（工作包 15 Harness/CI 供应链）",
+  "工作包 9（P1-09+P1-08+条件风险 3/4 Frontend session）等待 Owner 先决策 cookie/CSRF 与 baseline 公开/认证语义后创建",
+  "工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）"
+ ],
+ "knownRisks": [
+  "database job 在 Actions 配额耗尽下未真实运行：workflow 语法仅本地 PyYAML 验证 + 结构对照既有 job；配额恢复后首次真实运行需观察 ubuntu runner docker 环境、artifact 相对路径与 required-check 配置",
+  "迁移重试模式集为静态枚举（grep -Ei 已覆盖大小写变体并含 6 个已识别模式）；若未来 pgvector/PostgreSQL 镜像改变启动错误文本，需同步模式集（fail-closed 方向不变：未匹配即立即失败）",
+  "卡片正文保持 READY 冻结文本（未写入 grep -Ei 措辞）；实现为大小写不敏感超集匹配，语义一致且不违反授权边界（R2 已确认）",
+  "日志目录默认在 /tmp（mktemp -d），本地运行由脚本打印路径；CI 必须通过 VC_DB_LOG_DIR 指向 workspace 相对目录才能被 upload-artifact 收集（job 已设置，但配额恢复前无法端到端验证）"
+ ],
+ "nextAction": "创建工作包 9 Frontend session 卡（P1-09+P1-08+条件风险 3/4）——cookie/CSRF 与 baseline 公开/认证语义需 Owner 先决策；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0101 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。"
+}
