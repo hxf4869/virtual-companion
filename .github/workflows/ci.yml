@@ -128,5 +128,9 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm --dir frontend install --frozen-lockfile
+      - name: Test H5 (vitest incl. page component glue)
+        run: pnpm --dir frontend test:run
+      - name: Type-check H5
+        run: pnpm --dir frontend type-check
       - name: Build H5
         run: pnpm --dir frontend build

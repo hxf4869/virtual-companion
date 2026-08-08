@@ -1,0 +1,56 @@
+schemaVersion: 1
+# Frontend dependency audit exceptions ledger (TASK-0106, P2-18).
+# Baseline 2026-08-09: 11 high / 18 moderate / 7 low. After overrides:
+# 2 high / 12 moderate / 2 low, all covered by the entries below.
+# Review policy: re-evaluate each entry at/after its expiryDate or when the
+# upstream toolchain (uni-app) releases a version that un-pins the package.
+policy: 未修复项必须同时满足——上游锁定链（uni-app 精确 peer/dep 锁定）或无修复版本可用、攻击面明确记录、到期复审日明确。
+entries:
+  - package: vite
+    versions: ["5.2.8"]
+    advisories:
+      - {id: GHSA-c27g-q93r-2cwf, severity: high}
+      - {id: GHSA-fx2h-pf6j-xcff, severity: high}
+      - {id: GHSA-356w-63v5-8wf4, severity: moderate}
+      - {id: GHSA-4r4m-qw57-chr8, severity: moderate}
+      - {id: GHSA-4w7w-66w2-5vf9, severity: moderate}
+      - {id: GHSA-64vr-g452-qvp3, severity: moderate}
+      - {id: GHSA-859w-5945-r5v3, severity: moderate}
+      - {id: GHSA-93m4-6634-74q7, severity: moderate}
+      - {id: GHSA-9cwx-2883-4wfx, severity: moderate}
+      - {id: GHSA-v6wh-96g9-6wx3, severity: moderate}
+      - {id: GHSA-vg6x-rcgg-rjx6, severity: moderate}
+      - {id: GHSA-x574-m823-4x7w, severity: moderate}
+      - {id: GHSA-xcj6-pq6g-qj4x, severity: moderate}
+      - {id: GHSA-g4jq-h2w9-997c, severity: low}
+      - {id: GHSA-jqfw-vq24-v9c3, severity: low}
+    owner: repository-owner
+    reason: >-
+      @dcloudio/vite-plugin-uni 对 vite 是精确 peer 锁定（peerDependencies:
+      vite 5.2.8）；2026-08-09 实测最新 uni-app vue3 线
+      3.0.0-5020320260806002 仍精确锁定 vite 5.2.8，升级 vite 会破坏
+      peer 解析与 uni build。vite 5.x 修复版（5.4.21）仍不能关闭
+      GHSA-fx2h-pf6j-xcff（仅 6.4.3+ 修复），完整修复需要 uni-app 放开
+      vite 6/7 锁定。
+    attackSurface: >-
+      dev server / build 工具链：绝大多数 advisory 为 server.fs.deny 绕过与
+      launch-editor 注入，需要本地 dev server 接收攻击者可控请求；生产 H5
+      产物为静态构建输出，不经 vite dev server 服务。GHSA-64vr-g452-qvp3
+      （DOM clobbering）影响 vite 打包脚本产物，本项目产物仅内部 Alpha 页面，
+      无公开不可信输入。
+    expiryDate: "2026-11-09"
+    reviewCondition: uni-app 发布放开 vite 锁定的版本后立即升级并移除本条目
+  - package: vue-template-compiler
+    versions: ["2.7.16"]
+    advisories:
+      - {id: GHSA-g3ch-rx76-35fx, severity: moderate}
+    owner: repository-owner
+    reason: >-
+      无 v2 修复版本（advisory patched_versions >=3.0.0 即要求迁移 Vue 3）；
+      uni-app 工具链（@dcloudio/uni-*）构建期使用 vue-template-compiler
+      2.7.16 编译模板。
+    attackSurface: >-
+      构建期模板编译（本仓库模板为受信源码，无不可信模板输入）；客户端
+      XSS 需要编译含恶意模板属性的产物，本仓库产物不接收外部模板。
+    expiryDate: "2026-11-09"
+    reviewCondition: uni-app 移除 vue2 template compiler 依赖或模板编译路径变更后复审
