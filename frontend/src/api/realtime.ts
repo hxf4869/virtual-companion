@@ -1,10 +1,16 @@
-// TASK-0026: Fetch-SSE resume client orchestrating the stream reducer through
-// the realtime contract's five dispositions. The transport (ticket issue +
-// resume + snapshot fetch) is injected so the orchestration is fully testable
-// with mocks (node vitest environment). The client never fabricates missing
-// deltas: that invariant lives in the reducer; this module only routes
+// TASK-0026/TASK-0104: Fetch-SSE resume client orchestrating the stream reducer
+// through the realtime contract's five dispositions. The transport (ticket
+// issue + resume + snapshot fetch) is injected so the orchestration is fully
+// testable with mocks (node vitest environment). The client never fabricates
+// missing deltas: that invariant lives in the reducer; this module only routes
 // dispositions and retry/cancel/snapshot recovery. See
 // specs/contracts/realtime-contract.yaml.
+//
+// TASK-0104 (P1-07/P2-14): snapshot recovery is typed -- a failed, empty or
+// non-terminal snapshot NEVER completes the stream (it surfaces as exhausted,
+// a typed non-terminal failure). resume/fetchSnapshot receive an AbortSignal so
+// cancel/new-run/unmount can truly abort the underlying fetch; an aborted
+// stream returns cancelled, never a fabricated continuation.
 
 import {
   applyEvent,
@@ -43,15 +49,30 @@ export interface ResumeRequest {
   streamEpoch: number;
 }
 
+/**
+ * Typed snapshot result (P1-07): a failed fetch (HTTP/parse) has ok=false and
+ * must never be treated as a safe terminal snapshot.
+ */
+export interface SnapshotResult {
+  ok: boolean;
+  /** HTTP status when known, null for network/parse failures. */
+  status: number | null;
+  events: StreamEvent[];
+}
+
 export interface RealtimeDeps {
   /** Open (or reopen) the Fetch-SSE stream and return its disposition + events. */
-  resume: (request: ResumeRequest) => Promise<ResumeResult>;
+  resume: (request: ResumeRequest, signal?: AbortSignal) => Promise<ResumeResult>;
   /** Fetch the consistent terminal snapshot for snapshot recovery. */
-  fetchSnapshot: (generationId: string) => Promise<StreamEvent[]>;
+  fetchSnapshot: (generationId: string, signal?: AbortSignal) => Promise<SnapshotResult>;
 }
 
 export interface StreamHandle {
   cancelled: boolean;
+  /** Abort the underlying transport fetch (P2-14). */
+  abort: () => void;
+  /** AbortSignal the transport must pass to fetch/reader (P2-14). */
+  signal: AbortSignal;
 }
 
 export type StreamOutcome =
@@ -76,6 +97,8 @@ function isCancel(handle: StreamHandle | undefined): boolean {
  * again from the new cursor. GAP_EXPIRED and an in-band gap both recover via the
  * snapshot endpoint. RESET_REQUIRED discards the draft and re-syncs to the new
  * epoch. NOT_FOUND_OR_FORBIDDEN is terminal and never discloses existence.
+ * Snapshot recovery only completes on a genuine terminal snapshot (P1-07);
+ * every other snapshot outcome surfaces as exhausted.
  */
 export async function streamGeneration(
   deps: RealtimeDeps,
@@ -93,16 +116,21 @@ export async function streamGeneration(
 
     let result: ResumeResult;
     try {
-      result = await deps.resume({
-        generationId,
-        afterSeq: state.cursor,
-        streamEpoch: epoch,
-      });
+      result = await deps.resume(
+        {
+          generationId,
+          afterSeq: state.cursor,
+          streamEpoch: epoch,
+        },
+        handle?.signal,
+      );
     } catch {
       // A transport failure is not auto-retried into a fabricated stream: the
-      // caller decides. Surface as exhausted (non-terminal) so the UI does not
-      // pretend success.
-      return { state, outcome: "exhausted" };
+      // caller decides. Aborted transports are cancellation, everything else
+      // is exhausted (non-terminal) so the UI does not pretend success.
+      return isCancel(handle)
+        ? { state: cancelStream(state), outcome: "cancelled" }
+        : { state, outcome: "exhausted" };
     }
 
     if (isCancel(handle)) {
@@ -132,12 +160,16 @@ export async function streamGeneration(
           return { state, outcome: "completed" };
         }
         if (state.status === "gap") {
-          const snapshot = await safeSnapshot(deps, generationId);
+          const snapshot = await safeSnapshot(deps, generationId, handle);
           if (snapshot === null) {
-            return { state, outcome: "exhausted" };
+            return isCancel(handle)
+              ? { state: cancelStream(state), outcome: "cancelled" }
+              : { state, outcome: "exhausted" };
           }
           state = applyTerminalSnapshot(state, snapshot);
-          return { state, outcome: "completed" };
+          return state.terminal
+            ? { state, outcome: "completed" }
+            : { state, outcome: "exhausted" };
         }
         if (state.status === "reset_required") {
           epoch = result.nextEpoch ?? epoch + 1;
@@ -150,18 +182,25 @@ export async function streamGeneration(
       }
 
       case "TERMINAL_SNAPSHOT": {
+        // Only a genuine terminal snapshot completes (P1-07).
         state = applyTerminalSnapshot(state, result.events);
-        return { state, outcome: "completed" };
+        return state.terminal
+          ? { state, outcome: "completed" }
+          : { state, outcome: "exhausted" };
       }
 
       case "GAP_EXPIRED": {
         state = markGap(state);
-        const snapshot = await safeSnapshot(deps, generationId);
+        const snapshot = await safeSnapshot(deps, generationId, handle);
         if (snapshot === null) {
-          return { state, outcome: "exhausted" };
+          return isCancel(handle)
+            ? { state: cancelStream(state), outcome: "cancelled" }
+            : { state, outcome: "exhausted" };
         }
         state = applyTerminalSnapshot(state, snapshot);
-        return { state, outcome: "completed" };
+        return state.terminal
+          ? { state, outcome: "completed" }
+          : { state, outcome: "exhausted" };
       }
 
       case "RESET_REQUIRED": {
@@ -183,12 +222,23 @@ export async function streamGeneration(
   return { state, outcome: "exhausted" };
 }
 
+/**
+ * Fetch the terminal snapshot with typed failure semantics (P1-07): null on any
+ * transport/HTTP/parse failure; the caller decides between cancelled and
+ * exhausted. A valid-but-non-terminal snapshot is NOT filtered here -- the
+ * reducer's applyTerminalSnapshot refuses to complete on it.
+ */
 async function safeSnapshot(
   deps: RealtimeDeps,
   generationId: string,
+  handle?: StreamHandle,
 ): Promise<StreamEvent[] | null> {
   try {
-    return await deps.fetchSnapshot(generationId);
+    const result = await deps.fetchSnapshot(generationId, handle?.signal);
+    if (!result.ok) {
+      return null;
+    }
+    return result.events;
   } catch {
     return null;
   }
@@ -196,5 +246,10 @@ async function safeSnapshot(
 
 /** Convenience: build a cancel handle the UI can flip during streaming. */
 export function createStreamHandle(): StreamHandle {
-  return { cancelled: false };
+  const controller = new AbortController();
+  return {
+    cancelled: false,
+    abort: () => controller.abort(),
+    signal: controller.signal,
+  };
 }

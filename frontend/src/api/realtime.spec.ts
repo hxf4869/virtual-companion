@@ -32,7 +32,11 @@ function depsWith(
       }
       return next;
     }),
-    fetchSnapshot: vi.fn(async (_id: string) => snapshot),
+    fetchSnapshot: vi.fn(async (_id: string) => ({
+      ok: true,
+      status: 200,
+      events: snapshot,
+    })),
   };
   return { deps, resumeCalls };
 }
@@ -73,7 +77,11 @@ describe("streamGeneration disconnect then resume", () => {
 describe("streamGeneration gap recovery", () => {
   it("recovers an in-band gap via the snapshot endpoint without fabricating", async () => {
     const snapshot = [delta(1, 1), delta(2, 1), terminal(3, 1)];
-    const fetchSnapshot = vi.fn(async (_id: string) => snapshot);
+    const fetchSnapshot = vi.fn(async (_id: string) => ({
+      ok: true,
+      status: 200,
+      events: snapshot,
+    }));
     const deps: RealtimeDeps = {
       resume: vi.fn(async (): Promise<ResumeResult> => ({
         disposition: "RESUMED",
@@ -89,7 +97,7 @@ describe("streamGeneration gap recovery", () => {
     expect(result.state.cursor).toBe(3);
     // The reducer never stored the gapped event 3; the snapshot supplied 2.
     expect(result.state.events.map((e) => e.eventSeq)).toEqual([1, 2, 3]);
-    expect(fetchSnapshot).toHaveBeenCalledWith("gen-1");
+    expect(fetchSnapshot).toHaveBeenCalledWith("gen-1", undefined);
   });
 
   it("recovers a GAP_EXPIRED disposition via the snapshot endpoint", async () => {
@@ -135,6 +143,27 @@ describe("streamGeneration cancel", () => {
     expect(result.outcome).toBe("cancelled");
     expect(result.state.status).toBe("cancelled");
   });
+
+  it("aborts the transport signal when the handle is aborted (P2-14)", async () => {
+    const resume = vi.fn(async (_req: ResumeRequest, signal?: AbortSignal): Promise<ResumeResult> => {
+      if (signal?.aborted) {
+        throw new Error("aborted");
+      }
+      return { disposition: "RESUMED", events: [delta(1)] };
+    });
+    const deps: RealtimeDeps = {
+      resume,
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+    const handle = createStreamHandle();
+
+    handle.cancelled = true;
+    handle.abort();
+
+    const result = await streamGeneration(deps, "gen-1", 1, handle);
+
+    expect(result.outcome).toBe("cancelled");
+  });
 });
 
 describe("streamGeneration failure", () => {
@@ -153,7 +182,7 @@ describe("streamGeneration failure", () => {
       resume: vi.fn(async (): Promise<ResumeResult> => {
         throw new Error("network");
       }),
-      fetchSnapshot: vi.fn(async () => []),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: 500, events: [] })),
     };
 
     const result = await streamGeneration(deps, "gen-1", 1);
@@ -168,12 +197,74 @@ describe("streamGeneration bounded retry", () => {
     const empty: ResumeResult = { disposition: "RESUMED", events: [] };
     const deps: RealtimeDeps = {
       resume: vi.fn(async (): Promise<ResumeResult> => empty),
-      fetchSnapshot: vi.fn(async () => []),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: 500, events: [] })),
     };
 
     const result = await streamGeneration(deps, "gen-1", 1);
 
     expect(result.outcome).toBe("exhausted");
     expect(deps.resume).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS);
+  });
+});
+
+describe("streamGeneration snapshot terminality (P1-07)", () => {
+  it("surfaces a failed snapshot fetch as exhausted, not completed", async () => {
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [delta(1), delta(3)], // gap -> snapshot recovery
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: 500, events: [] })),
+    };
+
+    const result = await streamGeneration(deps, "gen-1", 1);
+
+    expect(result.outcome).toBe("exhausted");
+    expect(result.state.terminal).toBe(false);
+  });
+
+  it("surfaces an empty snapshot as exhausted (no fake safe terminal)", async () => {
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "GAP_EXPIRED",
+        events: [],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    const result = await streamGeneration(deps, "gen-1", 1);
+
+    expect(result.outcome).toBe("exhausted");
+    expect(result.state.terminal).toBe(false);
+  });
+
+  it("surfaces a non-terminal snapshot (no chat.completed) as exhausted", async () => {
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "TERMINAL_SNAPSHOT",
+        events: [delta(1), delta(2)], // no terminal event
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    const result = await streamGeneration(deps, "gen-1", 1);
+
+    expect(result.outcome).toBe("exhausted");
+    expect(result.state.terminal).toBe(false);
+  });
+
+  it("completes only on a snapshot containing chat.completed", async () => {
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "TERMINAL_SNAPSHOT",
+        events: [delta(1), delta(2), terminal(3)],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    const result = await streamGeneration(deps, "gen-1", 1);
+
+    expect(result.outcome).toBe("completed");
+    expect(result.state.terminal).toBe(true);
   });
 });

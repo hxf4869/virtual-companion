@@ -118,9 +118,17 @@ export function cancelStream(prev: StreamState): StreamState {
  * TERMINAL_SNAPSHOT disposition: replace the draft with the server's consistent
  * snapshot and freeze. The snapshot is authoritative, so the partial draft is
  * discarded rather than merged.
+ *
+ * P1-07 (TASK-0104): only a snapshot containing the durable terminal event
+ * (chat.completed) may complete the stream. A failed/empty/non-terminal
+ * snapshot returns the previous state unchanged -- the caller must surface it
+ * as a typed non-terminal failure, never as a safe completion.
  */
 export function applyTerminalSnapshot(prev: StreamState, events: StreamEvent[]): StreamState {
   if (prev.status === "cancelled") {
+    return prev;
+  }
+  if (!events.some((event) => event.eventType === TERMINAL_EVENT_TYPE)) {
     return prev;
   }
   const ordered = [...events].sort((a, b) => a.eventSeq - b.eventSeq);

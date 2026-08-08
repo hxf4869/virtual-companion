@@ -18,7 +18,7 @@ function successDeps(): RealtimeDeps {
       disposition: "RESUMED",
       events: [delta(1, 1, "Hel"), delta(2, 1, "lo"), terminal(3, 1)],
     })),
-    fetchSnapshot: vi.fn(async () => []),
+    fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
   };
 }
 
@@ -44,7 +44,7 @@ describe("useChatStore", () => {
         disposition: "RESUMED",
         events: [delta(1, 1, "Hi"), terminal(2, 1)],
       })),
-      fetchSnapshot: vi.fn(async () => []),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
     };
     store.cancel(); // handle is null until run; this is a no-op
     // Start run, then cancel before the microtask resolves.
@@ -62,7 +62,7 @@ describe("useChatStore", () => {
         disposition: "NOT_FOUND_OR_FORBIDDEN",
         events: [],
       })),
-      fetchSnapshot: vi.fn(async () => []),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
     };
 
     await store.run(deps, "gen-1", 1);
@@ -90,11 +90,11 @@ describe("useChatStore", () => {
         disposition: "RESUMED",
         events: [delta(1, 1, "A"), delta(3, 1, "C")],
       })),
-      fetchSnapshot: vi.fn(async () => [
-        delta(1, 1, "A"),
-        delta(2, 1, "B"),
-        terminal(3, 1),
-      ]),
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        events: [delta(1, 1, "A"), delta(2, 1, "B"), terminal(3, 1)],
+      })),
     };
 
     await store.run(deps, "gen-1", 1);
@@ -102,5 +102,63 @@ describe("useChatStore", () => {
     expect(store.phase).toBe("completed");
     // Snapshot recovered the contiguous A then B; the gapped C was never fabricated.
     expect(store.draft).toBe("AB");
+  });
+
+  it("drops a stale run's late completion (P2-17 single writer)", async () => {
+    const store = useChatStore();
+    let releaseFirst: () => void = () => undefined;
+    const firstResume = vi.fn(async () => {
+      await new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      return { disposition: "RESUMED", events: [delta(1), terminal(2)] } as ResumeResult;
+    });
+    const firstDeps: RealtimeDeps = {
+      resume: firstResume,
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+    const firstRun = store.run(firstDeps, "gen-old", 1);
+
+    // A newer run starts while the first is still in flight.
+    const secondDeps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [delta(1), terminal(2)],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+    await store.run(secondDeps, "gen-new", 1);
+    expect(store.generationId).toBe("gen-new");
+    expect(store.phase).toBe("completed");
+
+    // The old run finishes late; its result must be dropped.
+    releaseFirst();
+    await firstRun;
+    expect(store.generationId).toBe("gen-new");
+    expect(store.phase).toBe("completed");
+    expect(store.draft).toBe("Hel");
+  });
+
+  it("cancel() aborts the underlying transport (P2-14)", async () => {
+    const store = useChatStore();
+    let signalSeen: AbortSignal | undefined;
+    const resume = vi.fn(async (_req: unknown, signal?: AbortSignal) => {
+      signalSeen = signal;
+      await new Promise<void>((resolve) => {
+        signal?.addEventListener("abort", () => resolve());
+      });
+      return { disposition: "RESUMED", events: [delta(1)] } as ResumeResult;
+    });
+    const deps: RealtimeDeps = {
+      resume,
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    const runPromise = store.run(deps, "gen-1", 1);
+    store.cancel();
+    await runPromise;
+
+    expect(signalSeen?.aborted).toBe(true);
+    expect(store.phase).toBe("cancelled");
   });
 });

@@ -138,6 +138,17 @@ describe("disposition helpers", () => {
     expect(state.events.map((e) => e.eventSeq)).toEqual([1, 2, 3]);
   });
 
+  it("refuses to complete on a snapshot without the terminal event (P1-07)", () => {
+    let state = initialState(1);
+    state = applyEvent(state, delta(1));
+    state = applyEvent(state, delta(3)); // gap
+
+    state = applyTerminalSnapshot(state, [delta(1, 1), delta(2, 1)]); // no chat.completed
+
+    expect(state.terminal).toBe(false);
+    expect(state.status).not.toBe("terminal");
+  });
+
   it("does not apply events after terminal", () => {
     let state = initialState(1);
     state = applyEvent(state, delta(1));

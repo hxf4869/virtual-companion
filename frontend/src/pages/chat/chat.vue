@@ -24,20 +24,29 @@
 </template>
 
 <script lang="ts">
-// TASK-0026 H5 chat page. Presentation only; the load-bearing stream logic lives
-// in the tested domain/api/stores modules. The transport factory below wires the
-// Fetch-SSE resume + snapshot endpoints for production. No WebSocket, no media,
-// no long-lived token in localStorage (per realtime-contract h5Security).
+// TASK-0026/TASK-0104 H5 chat page. Presentation only; the load-bearing stream
+// logic lives in the tested domain/api/stores modules. The transport factory
+// below wires the Fetch-SSE resume + snapshot endpoints for production. No
+// WebSocket, no media, no long-lived token in localStorage (per
+// realtime-contract h5Security).
+//
+// TASK-0104 (P2-14/P2-15): the SSE frame parser is the tested
+// sse-parser module (LF/CRLF, tail flush, typed SseParseError); resume and
+// snapshot fetches receive the per-run AbortSignal from the stream handle, so
+// cancel / new run / unmount truly abort the underlying fetch. 5xx / network
+// failures surface as typed exhausted failures instead of empty streams or
+// fake terminal snapshots.
 import { computed, defineComponent, onUnmounted, ref } from "vue";
 
 import { useChatStore } from "@/stores/chat";
-import {
-  createStreamHandle,
-  type RealtimeDeps,
-  type ResumeDisposition,
-  type ResumeRequest,
-  type ResumeResult,
+import type {
+  RealtimeDeps,
+  ResumeDisposition,
+  ResumeRequest,
+  ResumeResult,
+  SnapshotResult,
 } from "@/api/realtime";
+import { readSseFrames, SseParseError, SseAbortedError } from "@/api/sse-parser";
 import type { StreamEvent } from "@/domain/stream-reducer";
 
 const RESUME_ENDPOINT = "/api/v1/realtime/resume";
@@ -60,102 +69,72 @@ function parseEvent(value: unknown, epoch: number): StreamEvent | null {
   return { eventSeq, streamEpoch, eventType, payload: value.payload };
 }
 
-/**
- * Parse an SSE byte/chunk stream into events. Kept here as the H5 transport
- * glue; the reducer (tested) is what guarantees no delta is fabricated.
- */
-async function readSseEvents(
-  body: ReadableStream<Uint8Array> | null,
-  epoch: number,
-): Promise<{ disposition: ResumeDisposition; events: StreamEvent[] }> {
-  if (!body || !body.getReader) {
-    return { disposition: "RESUMED", events: [] };
-  }
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const events: StreamEvent[] = [];
-  let disposition: ResumeDisposition = "RESUMED";
-
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary !== -1) {
-      const raw = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      const dataLines = raw
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart());
-      if (dataLines.length === 0) {
-        boundary = buffer.indexOf("\n\n");
-        continue;
-      }
-      try {
-        const payload = JSON.parse(dataLines.join("\n"));
-        if (isRecord(payload) && typeof payload.disposition === "string") {
-          disposition = payload.disposition as ResumeDisposition;
-        }
-        const candidates = Array.isArray(payload.events) ? payload.events : [payload];
-        for (const candidate of candidates) {
-          const event = parseEvent(candidate, epoch);
-          if (event) {
-            events.push(event);
-          }
-        }
-      } catch {
-        // Ignore a malformed frame; the reducer only advances contiguous data.
-      }
-      boundary = buffer.indexOf("\n\n");
-    }
-  }
-  return { disposition, events };
-}
-
 function createBrowserRealtimeDeps(): RealtimeDeps {
   return {
-    resume: async (request: ResumeRequest): Promise<ResumeResult> => {
+    resume: async (request: ResumeRequest, signal?: AbortSignal): Promise<ResumeResult> => {
       const url = `${RESUME_ENDPOINT}?generationId=${encodeURIComponent(
         request.generationId,
       )}&afterSeq=${request.afterSeq}&streamEpoch=${request.streamEpoch}`;
       const response = await fetch(url, {
         method: "GET",
         headers: { Accept: "text/event-stream" },
+        signal,
       });
-      if (response.status === 401) {
-        return { disposition: "NOT_FOUND_OR_FORBIDDEN", events: [] };
-      }
-      if (response.status === 404) {
+      if (response.status === 401 || response.status === 403 || response.status === 404) {
         // Existence is never disclosed.
         return { disposition: "NOT_FOUND_OR_FORBIDDEN", events: [] };
       }
-      const parsed = await readSseEvents(response.body, request.streamEpoch);
-      return parsed;
-    },
-    fetchSnapshot: async (generationId: string): Promise<StreamEvent[]> => {
-      const response = await fetch(
-        `${SNAPSHOT_ENDPOINT}/${encodeURIComponent(generationId)}/snapshot`,
-        { method: "GET" },
-      );
       if (!response.ok) {
-        return [];
+        // 5xx and other failures are typed transport failures (exhausted),
+        // never an empty stream that looks like a disconnect.
+        throw new Error(`resume failed with status ${response.status}`);
       }
-      const data = (await response.json()) as unknown;
-      if (!isRecord(data) || !Array.isArray(data.events)) {
-        return [];
+      let frames;
+      try {
+        frames = await readSseFrames(response.body, signal);
+      } catch (error) {
+        if (error instanceof SseAbortedError) {
+          throw error; // cancellation surfaces through the handle
+        }
+        throw error instanceof SseParseError
+          ? error
+          : new SseParseError("resume stream failed");
       }
       const events: StreamEvent[] = [];
-      for (const candidate of data.events) {
-        const event = parseEvent(candidate, Number((data as { streamEpoch?: unknown }).streamEpoch ?? 1));
+      let disposition: ResumeDisposition = "RESUMED";
+      for (const frame of frames) {
+        if (frame.disposition) {
+          disposition = frame.disposition as ResumeDisposition;
+        }
+        const event = parseEvent(frame.data, request.streamEpoch);
         if (event) {
           events.push(event);
         }
       }
-      return events;
+      return { disposition, events };
+    },
+    fetchSnapshot: async (generationId: string, signal?: AbortSignal): Promise<SnapshotResult> => {
+      const response = await fetch(
+        `${SNAPSHOT_ENDPOINT}/${encodeURIComponent(generationId)}/snapshot`,
+        { method: "GET", signal },
+      );
+      if (!response.ok) {
+        // P1-07: a failed snapshot is a typed failure, never a fake terminal.
+        return { ok: false, status: response.status, events: [] };
+      }
+      const data = (await response.json().catch(() => null)) as unknown;
+      if (!isRecord(data) || !Array.isArray(data.events)) {
+        return { ok: false, status: response.status, events: [] };
+      }
+      const epoch = Number((data as { streamEpoch?: unknown }).streamEpoch ?? 1);
+      const events: StreamEvent[] = [];
+      for (const candidate of data.events) {
+        const event = parseEvent(candidate, epoch);
+        if (event) {
+          events.push(event);
+        }
+      }
+      return { ok: true, status: response.status, events };
     },
   };
 }
@@ -166,7 +145,6 @@ export default defineComponent({
     const store = useChatStore();
     const generationId = ref("gen-alpha-1");
     const deps = createBrowserRealtimeDeps();
-    const handle = createStreamHandle();
 
     const draft = computed(() => store.draft);
     const isStreaming = computed(() => store.isStreaming);

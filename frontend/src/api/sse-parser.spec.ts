@@ -1,0 +1,118 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  readSseFrames,
+  SseAbortedError,
+  SseParseError,
+  type SseFrame,
+} from "@/api/sse-parser";
+
+function streamOf(chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+}
+
+function streamThatNeverEnds(): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"eventSeq":1}\n\n'));
+      // never close
+    },
+  });
+}
+
+describe("readSseFrames (P2-15)", () => {
+  it("parses LF-delimited frames with a disposition and events", async () => {
+    const body = streamOf([
+      'data: {"disposition":"RESUMED","events":[{"eventSeq":1}]}\n\n',
+      'data: {"eventSeq":2}\n\n',
+    ]);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames).toHaveLength(2);
+    expect(frames[0].disposition).toBe("RESUMED");
+    expect(frames[1].data).toEqual({ eventSeq: 2 });
+  });
+
+  it("parses CRLF-delimited frames (was silently lost before)", async () => {
+    const body = streamOf([
+      'data: {"eventSeq":1}\r\n\r\n',
+      'data: {"eventSeq":2}\r\n\r\n',
+    ]);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames.map((f) => (f.data as { eventSeq: number }).eventSeq)).toEqual([1, 2]);
+  });
+
+  it("joins multi-line data: payloads into one JSON document", async () => {
+    const body = streamOf([
+      'data: {"events":[\n',
+      'data: {"eventSeq":1},\n',
+      'data: {"eventSeq":2}]}\n\n',
+    ]);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames).toHaveLength(1);
+    expect((frames[0].data as { events: unknown[] }).events).toHaveLength(2);
+  });
+
+  it("flushes a final unclosed frame at stream end (tail flush)", async () => {
+    const body = streamOf(['data: {"eventSeq":9}']);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames).toHaveLength(1);
+    expect((frames[0].data as { eventSeq: number }).eventSeq).toBe(9);
+  });
+
+  it("handles data split across byte chunks", async () => {
+    const body = streamOf(['data: {"event', 'Seq":3}\n\n']);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames).toHaveLength(1);
+    expect((frames[0].data as { eventSeq: number }).eventSeq).toBe(3);
+  });
+
+  it("throws a typed SseParseError for a frame without a data: line", async () => {
+    const body = streamOf(["event: keepalive\n\n"]);
+
+    await expect(readSseFrames(body)).rejects.toBeInstanceOf(SseParseError);
+  });
+
+  it("throws a typed SseParseError for non-JSON data", async () => {
+    const body = streamOf(["data: not-json\n\n"]);
+
+    await expect(readSseFrames(body)).rejects.toBeInstanceOf(SseParseError);
+  });
+
+  it("throws a typed SseParseError for a non-object payload", async () => {
+    const body = streamOf(["data: 42\n\n"]);
+
+    await expect(readSseFrames(body)).rejects.toBeInstanceOf(SseParseError);
+  });
+
+  it("returns [] for a null body (empty-but-valid)", async () => {
+    expect(await readSseFrames(null)).toEqual([]);
+  });
+
+  it("throws SseAbortedError when the signal is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(readSseFrames(streamThatNeverEnds(), controller.signal)).rejects.toBeInstanceOf(
+      SseAbortedError,
+    );
+  });
+});
