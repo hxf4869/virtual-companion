@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from datetime import date, datetime
 import functools
 import hashlib
+import importlib.metadata
+import importlib.resources
 import io
 import json
 import os
@@ -18,6 +20,7 @@ import tempfile
 import threading
 import time
 import unicodedata
+import zoneinfo
 from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -17046,6 +17049,7 @@ DOCTOR_RECEIPT_ENVIRONMENT_KEYS = {
     "PATH",
     "PYTHONHASHSEED",
     "PYTHONPATH",
+    "PYTHONTZPATH",
     "TZ",
     "XDG_CONFIG_HOME",
 }
@@ -17071,6 +17075,139 @@ def _doctor_receipt_implementation_sha256() -> str | None:
             {"name": path.name, "sha256": hashlib.sha256(content).hexdigest()}
         )
     return canonical_json_sha256(implementation)
+
+
+def _doctor_receipt_regular_file_identity(path: Path) -> dict[str, str] | None:
+    try:
+        file_stat = path.lstat()
+    except FileNotFoundError:
+        return {"state": "MISSING"}
+    except OSError:
+        return None
+    if not stat.S_ISREG(file_stat.st_mode) or path.is_symlink():
+        return None
+    try:
+        content = path.read_bytes()
+    except OSError:
+        return None
+    try:
+        normalized_path = path.resolve().as_posix()
+    except OSError:
+        return None
+    return {
+        "state": "REGULAR",
+        "pathSha256": sha256_text(normalized_path),
+        "contentSha256": hashlib.sha256(content).hexdigest(),
+    }
+
+
+def _doctor_receipt_git_history_sha256() -> str | None:
+    shallow = git_text("rev-parse", "--is-shallow-repository", check=False)
+    replace_refs = git_bytes(
+        "for-each-ref",
+        "--format=%(refname)%00%(objectname)%00%(objecttype)",
+        "refs/replace/",
+        check=False,
+    )
+    git_directory = git_text("rev-parse", "--absolute-git-dir", check=False)
+    common_directory = git_text("rev-parse", "--git-common-dir", check=False)
+    if any(
+        result.returncode != 0
+        for result in (shallow, replace_refs, git_directory, common_directory)
+    ):
+        return None
+    metadata: dict[str, dict[str, str]] = {}
+    for name in (
+        "shallow",
+        "info/grafts",
+        "objects/info/alternates",
+        "info/exclude",
+        "info/attributes",
+        "info/sparse-checkout",
+    ):
+        resolved = git_text("rev-parse", "--git-path", name, check=False)
+        if resolved.returncode != 0 or not resolved.stdout.strip():
+            return None
+        path = Path(resolved.stdout.strip())
+        if not path.is_absolute():
+            path = ROOT / path
+        identity = _doctor_receipt_regular_file_identity(path)
+        if identity is None:
+            return None
+        metadata[name] = identity
+
+    def resolved_git_path(raw_path: str) -> Path:
+        candidate = Path(raw_path)
+        return candidate if candidate.is_absolute() else ROOT / candidate
+
+    projection = {
+        "isShallow": shallow.stdout.strip(),
+        "replaceRefsSha256": hashlib.sha256(replace_refs.stdout).hexdigest(),
+        "gitDirectorySha256": sha256_text(
+            resolved_git_path(git_directory.stdout.strip()).resolve().as_posix()
+        ),
+        "commonDirectorySha256": sha256_text(
+            resolved_git_path(common_directory.stdout.strip()).resolve().as_posix()
+        ),
+        "metadata": metadata,
+    }
+    return canonical_json_sha256(projection)
+
+
+def _doctor_receipt_timezone_sha256() -> str | None:
+    try:
+        tools = strict_yaml_load((ROOT / ".harness/tools.lock.yaml").read_bytes())
+        if not isinstance(tools, dict):
+            return None
+        governance = tools.get("governance")
+        governance = governance if isinstance(governance, dict) else {}
+        timezone_policy = governance.get("timezoneData")
+        timezone_policy = timezone_policy if isinstance(timezone_policy, dict) else {}
+        required_zone = str(timezone_policy.get("requiredZone", ""))
+    except (OSError, UnicodeError, yaml.YAMLError, HarnessError, AttributeError):
+        return None
+    components = required_zone.split("/")
+    if (
+        not required_zone
+        or required_zone.startswith("/")
+        or any(component in ("", ".", "..") for component in components)
+    ):
+        return None
+    for raw_directory in zoneinfo.TZPATH:
+        candidate = Path(raw_directory).joinpath(*components)
+        identity = _doctor_receipt_regular_file_identity(candidate)
+        if identity is None:
+            return None
+        if identity.get("state") == "REGULAR":
+            return canonical_json_sha256(
+                {
+                    "provider": "SYSTEM",
+                    "requiredZone": required_zone,
+                    "tzpathSha256": canonical_json_sha256(
+                        [
+                            sha256_text(str(Path(path).resolve()))
+                            for path in zoneinfo.TZPATH
+                        ]
+                    ),
+                    "source": identity,
+                }
+            )
+    try:
+        resource = importlib.resources.files("tzdata.zoneinfo")
+        for component in components:
+            resource = resource.joinpath(component)
+        content = resource.read_bytes()
+        version = importlib.metadata.version("tzdata")
+    except (ImportError, ModuleNotFoundError, OSError, AttributeError):
+        return None
+    return canonical_json_sha256(
+        {
+            "provider": "TZDATA_PACKAGE",
+            "requiredZone": required_zone,
+            "version": version,
+            "contentSha256": hashlib.sha256(content).hexdigest(),
+        }
+    )
 
 
 def _doctor_receipt_worktree_sha256(snapshot: DoctorGitSnapshot) -> str:
@@ -17124,10 +17261,14 @@ def compute_doctor_receipt_manifest(
         check=False,
     )
     implementation_sha256 = _doctor_receipt_implementation_sha256()
+    git_history_sha256 = _doctor_receipt_git_history_sha256()
+    timezone_sha256 = _doctor_receipt_timezone_sha256()
     if (
         git_version.returncode != 0
         or git_config.returncode != 0
         or implementation_sha256 is None
+        or git_history_sha256 is None
+        or timezone_sha256 is None
     ):
         return None
     invocation = list(sys.argv if argv is None else argv)
@@ -17161,6 +17302,8 @@ def compute_doctor_receipt_manifest(
         "environmentSha256": _doctor_receipt_environment_sha256(),
         "gitVersionSha256": sha256_text(git_version.stdout.strip()),
         "gitConfigSha256": hashlib.sha256(git_config.stdout).hexdigest(),
+        "gitHistorySha256": git_history_sha256,
+        "timezoneDataSha256": timezone_sha256,
         "implementationSha256": implementation_sha256,
     }
 
