@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0101
+activeTaskCard: docs/tasks/TASK-0101-database-ci-gate.md
 lastAcceptedTask: TASK-0100
 lastAcceptedHandoff: docs/handoffs/TASK-0100.json
 lastTerminalTask: TASK-0100
 lastTerminalHandoff: docs/handoffs/TASK-0100.json
-nextAction: 创建 P1-10+P2-28 数据库持续门禁卡（工作包 8）：run-rls-tests.sh readiness 需改为稳定窗口（连续 SQL 成功探针）——2026-08-08 实测 9/10 次首轮命中 P2-28 竞态；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0100 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
+nextAction: TASK-0101 已授权（READY）：实施数据库持续门禁（P1-10+P2-28）——run-rls-tests.sh readiness 改稳定窗口（连续 SQL 成功探针，只对已识别启动连接错误有限重试）关闭 P2-28；digest 固定 pgvector/PostgreSQL DB job 接入 PR CI（全迁移 + 全部 SQL 套件，失败保留 migration/readiness 日志）关闭 P1-10。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
