@@ -1,0 +1,84 @@
+{
+ "taskId": "TASK-0103",
+ "state": "ACCEPTED",
+ "baseCommit": "f39a550c31ad5572581657b44ac9e162e6c97e81",
+ "headCommit": "8e55a84adb4212b55ee3917febd8a52384bce018",
+ "evidencePath": "docs/evidence/TASK-0103/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "e3ac7a3281bb321d0915e4aee06ba01feb1c59e9",
+   "startedAt": "2026-08-08T23:54:03+08:00",
+   "endedAt": "2026-08-09T00:07:36+08:00",
+   "elapsedSeconds": 813,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "e3ac7a3281bb321d0915e4aee06ba01feb1c59e9",
+   "startedAt": "2026-08-08T23:54:03+08:00",
+   "endedAt": "2026-08-08T23:56:03+08:00",
+   "elapsedSeconds": 120,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "7e032c63e5de492d7bfb63c22a2d069df32f83e6",
+   "startedAt": "2026-08-08T23:56:03+08:00",
+   "endedAt": "2026-08-09T00:07:36+08:00",
+   "elapsedSeconds": 693,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0103_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "1e5213025a1cee1911217ba439f637472e15d17e",
+   "evidencePath": "docs/evidence/TASK-0103/review-r1.md",
+   "reason": "R1 complete-matrix review PASS (no P0/P1/P2): diff confined to writeAllowlist; memory-only store (no localStorage credentials), cookie-based refresh/logout; single transport credentials/CSRF injection point; specs固化 without deleted tests; fingerprint matching. 3 P3 adopted into fix batch 8e55a84.",
+   "candidateTree": "15a6d4fef877c178c6dc32e3d97f06085d80a24b"
+  },
+  {
+   "id": "task0103_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "8e55a84adb4212b55ee3917febd8a52384bce018",
+   "evidencePath": "docs/evidence/TASK-0103/review-r2.md",
+   "reason": "R2 delta review PASS: fix batch only 3 in-allowlist files; P3-1 (constant-driven regex), P3-2 (clear resets error), P3-3 (SSR/malformed cookie tests) all correct; no new findings.",
+   "candidateTree": "964f1dff8de72af2191c003b7206785b7796323c"
+  }
+ ],
+ "completed": [
+  "P1-09 前端侧: auth store 完全移除 localStorage 持久化（ACCESS_KEY/REFRESH_KEY/ACCOUNT_KEY/ROLE_KEY 常量与 storage/read/write/remove 辅助删除）；accessToken/accountId/role 仅内存；refresh token 客户端永不持有（HttpOnly vc_refresh cookie 由浏览器管理）",
+  "API 契约对齐: AuthTokens 移除 refreshToken 字段；asTokens 只解析 accessToken/tokenType/expiresInSeconds/accountId/role（legacy 响应体含 refreshToken 被忽略）；refresh()/logout() 无 token 参数、无 body（cookie 自动携带）",
+  "条件风险 4 统一 transport: createAuthenticatedTransport 为唯一凭据注入点——所有请求 credentials:\"include\"；状态变更方法（POST/PUT/PATCH/DELETE）自动从 document.cookie 读 vc_csrf 注入 X-CSRF-Token（decodeURIComponent + try/catch + typeof document 保护）；GET/HEAD/OPTIONS 不注入；401 → onUnauthorized 语义保持；页面/业务 store 无散拼 header",
+  "401 生命周期: tryRefresh 无存储 token 依赖（cookie 刷新）；refresh 401 → 清会话（clear 含 error 重置）；onUnauthorized 清会话 + 跳登录；logout best-effort 撤销 + 清内存",
+  "测试固化: stores/auth.spec 8/8（localStorage setItem 从未调用断言、cookie 刷新无 body 断言、logout 无 body、onUnauthorized 跳登录）；api/auth.spec 9/9（legacy refreshToken 容忍、refresh/logout 无 body）；api/transport.spec 9/9（credentials include、CSRF 注入/不注入/SSR/畸形 cookie、401 路由）；vitest 98/98 全 PASS",
+  "验证: canonical precheck 5/5 PASS（doctor 440896 checks）；type-check（vue-tsc）PASS；uni build PASS；R1 无阻塞 PASS + R2 delta PASS（3×P3 采纳进 fix batch 8e55a84）；remote CI 因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道（Owner 既有授权）",
+  "提交链: DRAFT e3ac7a3 → READY 9d3c492/bind 510c43d → IN_PROGRESS 7e032c6 → 候选 1e52130 → fix batch 8e55a84 → 终态提交"
+ ],
+ "remaining": [
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核",
+  "P2-19（前端 CI 门禁：test:run/type-check 接入 GitHub Actions）保持 OPEN（工作包 11），本卡仅本地执行这些命令",
+  "工作包 10 Frontend realtime 正确性（P1-07 Snapshot 失败/非终态伪装安全完成 + P2-14 前端取消不 abort SSE/fetch + P2-15 SSE parser CRLF/错误处理 + P2-17 Chat 旧 run 覆盖新 generation/reset）为下一卡",
+  "工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）",
+  "public_api_paths_http_statuses_and_error_envelope 决策的 http statuses/error envelope 部分仍 deferred（P2-04 范围）"
+ ],
+ "knownRisks": [
+  "浏览器需支持 SameSite=Lax + credentials:include 的 cookie 语义；本地 http 开发需 VC_AUTH_COOKIE_SECURE=false（后端 TASK-0102 契约）",
+  "前端在无后端运行（纯静态预览）时 login/refresh 不可用属预期（auth.enabled=false 时端点 404）；baseline 页面保持公开 plain fetch 不受影响",
+  "chat/memory/realtime 业务请求尚未接线（main.ts 注释保留，TASK-0103 范围外）；transport 新语义（credentials/CSRF）对它们的未来接线透明生效",
+  "login CSRF 残余风险由后端 SameSite=Lax + Origin 校验缓解（TASK-0102 已记录）",
+  "Actions 配额恢复前，前端 CI（P2-19）与远端 exact-SHA 复核均无法真实执行"
+ ],
+ "nextAction": "创建工作包 10 Frontend realtime 正确性卡（P1-07 Snapshot 失败/非终态被伪装成安全完成 + P2-14 前端取消不 abort SSE/fetch + P2-15 SSE parser 不支持 CRLF/错误被当空流 + P2-17 Chat 旧 run 覆盖新 generation/reset）；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0103 已 ACCEPTED（工作包 9 P1-09+P1-08+风险 3/4 全部闭环），Actions 配额耗尽下的远端复核延后至配额恢复。"
+}

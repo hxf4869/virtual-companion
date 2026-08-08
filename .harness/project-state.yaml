@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0103
-activeTaskCard: docs/tasks/TASK-0103-frontend-session-wiring.md
-lastAcceptedTask: TASK-0102
-lastAcceptedHandoff: docs/handoffs/TASK-0102.json
-lastTerminalTask: TASK-0102
-lastTerminalHandoff: docs/handoffs/TASK-0102.json
-nextAction: TASK-0103 已授权（READY）：实施前端 session 接线（P1-09 前端侧 localStorage 移除 + 统一 authenticated transport（风险 4）+ 测试固化）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0103
+lastAcceptedHandoff: docs/handoffs/TASK-0103.json
+lastTerminalTask: TASK-0103
+lastTerminalHandoff: docs/handoffs/TASK-0103.json
+nextAction: 创建工作包 10 Frontend realtime 正确性卡（P1-07 Snapshot 失败/非终态被伪装成安全完成 + P2-14 前端取消不 abort SSE/fetch + P2-15 SSE parser 不支持 CRLF/错误被当空流 + P2-17 Chat 旧 run 覆盖新 generation/reset）；工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑；TASK-0103 已 ACCEPTED（工作包 9 P1-09+P1-08+风险 3/4 全部闭环），Actions 配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

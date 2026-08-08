@@ -520,3 +520,9 @@ tasks:
     taskCard: docs/tasks/TASK-0102-backend-session-boundary.md
     evidence: docs/evidence/TASK-0102/evidence-pack.json
     handoff: docs/handoffs/TASK-0102.json
+  TASK-0103:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0103-frontend-session-wiring.md
+    evidence: docs/evidence/TASK-0103/evidence-pack.json
+    handoff: docs/handoffs/TASK-0103.json

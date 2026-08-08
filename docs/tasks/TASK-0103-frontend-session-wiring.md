@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0103
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P1-09 前端侧 + 风险 4 完成并验证：auth store 完全移除 localStorage 持久化
+  （accessToken/accountId/role 仅内存，refresh token 客户端永不持有）；API
+  契约对齐（AuthTokens 无 refreshToken，refresh/logout cookie 化无 body）；
+  transport 为唯一凭据/CSRF 注入点（credentials:"include" + 状态变更方法
+  注入 X-CSRF-Token，GET/SSR/无 cookie 不注入）；401 生命周期统一（refresh
+  失败清会话跳登录）；specs 固化（localStorage setItem 从未调用断言等）。
+  vitest 98/98 PASS；type-check PASS；uni build PASS；canonical precheck 5/5
+  PASS（doctor 440896 checks）；R1 无阻塞 PASS + R2 delta PASS（3×P3 采纳进
+  fix batch 8e55a84）；remote CI 因 Actions 配额耗尽如实记录非 PASS
+  （UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证为备用通道
+  （Owner 既有授权）。
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -198,7 +210,28 @@ humanApprovals:
       header + baseline permitAll），本卡只做前端消费方接线与测试固化。
       P1-09 由 TASK-0102（后端侧）+ TASK-0103（前端侧）共同关闭。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0103_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1e5213025a1cee1911217ba439f637472e15d17e
+    evidencePath: docs/evidence/TASK-0103/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：diff 仅 writeAllowlist；store 内存化（无
+      localStorage 凭据）；refresh/logout cookie 化；transport 单一凭据/CSRF
+      注入点；specs 固化无删测；fingerprint 独立重算一致。3×P3 采纳进 fix
+      batch 8e55a84。
+    candidateTree: 15a6d4fef877c178c6dc32e3d97f06085d80a24b
+  - id: task0103_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 8e55a84adb4212b55ee3917febd8a52384bce018
+    evidencePath: docs/evidence/TASK-0103/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：fix batch 仅 3 个白名单内文件；P3-1（常量驱动正则）、
+      P3-2（clear 重置 error）、P3-3（SSR/畸形 cookie 用例）全部正确；无新
+      finding。
+    candidateTree: 964f1dff8de72af2191c003b7206785b7796323c
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0103
   - pnpm --dir frontend test:run
