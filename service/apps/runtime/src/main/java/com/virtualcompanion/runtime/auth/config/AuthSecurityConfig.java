@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -26,14 +27,18 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * database- and secret-free for tests/baseline). Policy:
  *
  * <ul>
- *   <li>Stateless Bearer-only API. No cookie session, so there is no CSRF
- *       token requirement (per the approved gate) -- CSRF is disabled and CORS
- *       enforces the configured Alpha Origin allow-list, rejecting unknown
- *       Origins.</li>
+ *   <li>Hybrid session: the refresh token lives in the HttpOnly
+ *       {@code vc_refresh} cookie, the access token stays a stateless Bearer
+ *       token. State-changing requests that carry the session cookies must
+ *       pass the {@link CookieCsrfGuardFilter} (double-submit CSRF token +
+ *       Origin allow-list); Bearer-only requests without cookies are not
+ *       CSRF-bound.</li>
  *   <li>{@code POST /api/v1/auth/login} and {@code /api/v1/auth/refresh} are
- *       public; the health endpoint stays public; every other route requires a
- *       valid Bearer token, and an unauthenticated request is answered with
- *       {@code 401 AUTHENTICATION_REQUIRED} (never an existence hint).</li>
+ *       public; {@code GET /api/internal/baseline} is public (P1-08, Owner
+ *       decision 2026-08-08); the health endpoint stays public; every other
+ *       route requires a valid Bearer token, and an unauthenticated request is
+ *       answered with {@code 401 AUTHENTICATION_REQUIRED} (never an existence
+ *       hint).</li>
  *   <li>Passwords are hashed with Spring Security's BCrypt encoder (no
  *       self-written crypto).</li>
  * </ul>
@@ -74,8 +79,15 @@ public class AuthSecurityConfig {
     }
 
     @Bean
+    public CookieCsrfGuardFilter cookieCsrfGuardFilter(
+            @Value("${virtual-companion.auth.cors-allowed-origins:}") List<String> allowedOrigins) {
+        return new CookieCsrfGuardFilter(allowedOrigins);
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
+            CookieCsrfGuardFilter cookieCsrfGuardFilter,
             JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -83,6 +95,7 @@ public class AuthSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/internal/baseline").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(
@@ -94,6 +107,7 @@ public class AuthSecurityConfig {
                                     "{\"code\":\"AUTHENTICATION_REQUIRED\","
                                             + "\"message\":\"A valid bearer token is required\"}");
                         }))
+                .addFilterBefore(cookieCsrfGuardFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

@@ -20,6 +20,7 @@ import com.virtualcompanion.runtime.auth.web.AuthErrorException;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,10 +56,11 @@ class AuthServiceTest {
                 .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
         when(passwordEncoder.matches("pw", "hash")).thenReturn(true);
 
-        AuthResponse response = service.login("alice", "pw");
+        IssuedSession session = service.login("alice", "pw");
+        AuthResponse response = session.response();
 
         assertThat(response.accessToken()).isEqualTo("access-token");
-        assertThat(response.refreshToken()).isNotBlank();
+        assertThat(session.refreshToken()).isNotBlank();
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.accountId()).isEqualTo("7");
         assertThat(response.role()).isEqualTo("USER");
@@ -67,7 +69,7 @@ class AuthServiceTest {
         // Only the sha256 hash of the returned raw token is persisted.
         ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
         verify(sessions).issue(eq(7L), hashCaptor.capture(), any());
-        assertThat(hashCaptor.getValue()).isEqualTo(RefreshTokens.sha256Hex(response.refreshToken()));
+        assertThat(hashCaptor.getValue()).isEqualTo(RefreshTokens.sha256Hex(session.refreshToken()));
     }
 
     @Test
@@ -116,12 +118,13 @@ class AuthServiceTest {
         when(sessions.rotate(anyString(), anyString(), any()))
                 .thenReturn(Optional.of(new RotatedSession(7, "USER", "ACTIVE", "alice")));
 
-        AuthResponse response = service.refresh("raw-refresh-token");
+        IssuedSession session = service.refresh("raw-refresh-token");
+        AuthResponse response = session.response();
 
         assertThat(response.accountId()).isEqualTo("7");
         assertThat(response.role()).isEqualTo("USER");
         assertThat(response.accessToken()).isEqualTo("access-token");
-        assertThat(response.refreshToken()).isNotBlank();
+        assertThat(session.refreshToken()).isNotBlank();
 
         // The old hash is used for lookup, never the raw token.
         ArgumentCaptor<String> oldHash = ArgumentCaptor.forClass(String.class);
@@ -131,7 +134,7 @@ class AuthServiceTest {
 
         // P1-06: the returned plaintext token is exactly the one whose hash was
         // rotated in, and refresh never creates a second (hidden) session.
-        assertThat(newHash.getValue()).isEqualTo(RefreshTokens.sha256Hex(response.refreshToken()));
+        assertThat(newHash.getValue()).isEqualTo(RefreshTokens.sha256Hex(session.refreshToken()));
         verify(sessions, never()).issue(anyLong(), anyString(), any());
     }
 

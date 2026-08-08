@@ -9,6 +9,7 @@ import com.virtualcompanion.runtime.auth.web.AuthErrorException;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -35,9 +36,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  *       disclosing the cause.</li>
  *   <li>Account creation is ADMIN-only (the DB function re-checks); duplicate
  *       usernames map to a generic error, never an existence hint.</li>
- *   <li>Only the raw refresh token is returned to the client at issue time; the
- *       server stores only its sha256 hash, and passwords/tokens never reach
- *       logs, URLs or the model.</li>
+ *   <li>The raw refresh token is handed to the controller exactly once so it
+ *       can be set as the HttpOnly vc_refresh cookie; it is never placed in a
+ *       response body or script-readable storage, the server stores only its
+ *       sha256 hash, and passwords/tokens never reach logs, URLs or the
+ *       model.</li>
  * </ul>
  */
 public class AuthService {
@@ -71,8 +74,12 @@ public class AuthService {
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
     }
 
-    /** Login with username+password; issues an access token and a refresh session. */
-    public AuthResponse login(String username, String password) {
+    /**
+     * Login with username+password; issues an access token and a refresh
+     * session. The returned {@link IssuedSession} carries the plaintext refresh
+     * token for the controller's HttpOnly cookie only.
+     */
+    public IssuedSession login(String username, String password) {
         if (username == null || username.isBlank() || password == null) {
             // Blank credentials fail closed without an audit event (there is no
             // meaningful username to record, and existence is never disclosed).
@@ -107,7 +114,7 @@ public class AuthService {
      * successor) is never made, so a failed refresh cannot leave an
      * unreachable live session behind.
      */
-    public AuthResponse refresh(String refreshToken) {
+    public IssuedSession refresh(String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
                     "A valid refresh token is required");
@@ -124,13 +131,14 @@ public class AuthService {
         }
         RotatedSession session = rotated.get();
         String accessToken = jwt.issueAccessToken(session.accountId(), session.role(), session.username());
-        return new AuthResponse(
-                accessToken,
-                newRefreshToken,
-                "Bearer",
-                jwt.accessTtl().getSeconds(),
-                Long.toString(session.accountId()),
-                session.role());
+        return new IssuedSession(
+                new AuthResponse(
+                        accessToken,
+                        "Bearer",
+                        jwt.accessTtl().getSeconds(),
+                        Long.toString(session.accountId()),
+                        session.role()),
+                newRefreshToken);
     }
 
     /**
@@ -196,17 +204,23 @@ public class AuthService {
         return accounts.seedAdmin(username, passwordEncoder.encode(password), displayName);
     }
 
-    private AuthResponse issueTokens(long accountId, String role, String username) {
+    private IssuedSession issueTokens(long accountId, String role, String username) {
         String refreshToken = RefreshTokens.generate();
         sessions.issue(accountId, RefreshTokens.sha256Hex(refreshToken), OffsetDateTime.now().plus(refreshTtl));
         String accessToken = jwt.issueAccessToken(accountId, role, username);
-        return new AuthResponse(
-                accessToken,
-                refreshToken,
-                "Bearer",
-                jwt.accessTtl().getSeconds(),
-                Long.toString(accountId),
-                role);
+        return new IssuedSession(
+                new AuthResponse(
+                        accessToken,
+                        "Bearer",
+                        jwt.accessTtl().getSeconds(),
+                        Long.toString(accountId),
+                        role),
+                refreshToken);
+    }
+
+    /** Refresh-session TTL in seconds (used for the vc_refresh cookie Max-Age). */
+    public long refreshTtlSeconds() {
+        return refreshTtl.getSeconds();
     }
 
     private static String normalizeRole(String role) {

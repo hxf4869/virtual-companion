@@ -1,8 +1,10 @@
 package com.virtualcompanion.runtime.auth.web;
 
 /**
- * Request bodies for the identity endpoints. Passwords and refresh tokens are
- * never logged, never placed in a URL and never returned by any response.
+ * Request bodies for the identity endpoints. Passwords are never logged, never
+ * placed in a URL and never returned by any response. Refresh and logout take
+ * the refresh token from the HttpOnly {@code vc_refresh} cookie instead of a
+ * request body (P1-09, Owner decision 2026-08-08).
  */
 public final class AuthRequests {
 
@@ -11,14 +13,6 @@ public final class AuthRequests {
 
     /** {@code POST /api/v1/auth/login}. */
     public record LoginRequest(String username, String password) {
-    }
-
-    /** {@code POST /api/v1/auth/refresh}. */
-    public record RefreshTokenRequest(String refreshToken) {
-    }
-
-    /** {@code POST /api/v1/auth/logout}. */
-    public record LogoutRequest(String refreshToken) {
     }
 
     /**

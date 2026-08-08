@@ -1,9 +1,11 @@
 package com.virtualcompanion.runtime.auth.web;
 
 /**
- * Response bodies for the identity endpoints. The raw refresh token is
- * returned exactly once here (and only here); it is never persisted, logged or
- * echoed back on refresh -- the server stores only its sha256 hash.
+ * Response bodies for the identity endpoints. The raw refresh token is handed
+ * to the controller exactly once (inside {@link IssuedSession}) so it can be
+ * placed into the HttpOnly {@code vc_refresh} cookie; it is never persisted,
+ * logged, echoed back on refresh or returned in any response body -- the
+ * server stores only its sha256 hash.
  */
 public final class AuthResponses {
 
@@ -13,11 +15,18 @@ public final class AuthResponses {
     /** {@code POST /api/v1/auth/login} and {@code /refresh}. */
     public record AuthResponse(
             String accessToken,
-            String refreshToken,
             String tokenType,
             long expiresInSeconds,
             String accountId,
             String role) {
+    }
+
+    /**
+     * What login/refresh produce: the JSON response body plus the plaintext
+     * refresh token that must ONLY be written into the HttpOnly session cookie
+     * by the controller (never into the body or script-readable storage).
+     */
+    public record IssuedSession(AuthResponse response, String refreshToken) {
     }
 
     /** {@code POST /api/v1/auth/logout}. Idempotent: always {@code true}. */

@@ -43,6 +43,9 @@ virtual-companion:
     access-token-ttl: ${VC_ACCESS_TOKEN_TTL:2h}
     refresh-token-ttl: ${VC_REFRESH_TOKEN_TTL:7d}
     issuer: ${VC_AUTH_ISSUER:virtual-companion}
+    # Secure flag on the vc_refresh/vc_csrf session cookies. True in production;
+    # local HTTP development may set VC_AUTH_COOKIE_SECURE=false (never in prod).
+    cookie-secure: ${VC_AUTH_COOKIE_SECURE:true}
     # Alpha Origin allow-list (host-origin strings). Requests with an unknown
     # Origin are rejected; a curl/server client without an Origin is unaffected.
     cors-allowed-origins: ${VC_CORS_ALLOWED_ORIGINS:}
@@ -69,3 +72,16 @@ virtual-companion:
     # The concrete approved deployments (provider-id / protocol /
     # supplier-name / model / endpoint / credential-secret / ...) are supplied
     # by the operator at deploy time, never committed here.
+
+---
+# 条件风险 3（TASK-0102）：production profile 强制认证与数据源开启。两个开关
+# 在该 profile 下没有默认值——缺少 VC_AUTH_ENABLED / VC_AUTH_DATASOURCE_ENABLED
+# 环境变量时占位符解析失败，应用启动即失败（fail-closed，绝不静默降级为关闭）。
+spring:
+  config:
+    activate:
+      on-profile: production
+virtual-companion:
+  auth:
+    enabled: ${VC_AUTH_ENABLED}
+    datasource-enabled: ${VC_AUTH_DATASOURCE_ENABLED}
