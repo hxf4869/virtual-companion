@@ -2,8 +2,8 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0097
+activeTaskCard: docs/tasks/TASK-0097-root-maven-verify-greenline.md
 lastAcceptedTask: TASK-0095
 lastAcceptedHandoff: docs/handoffs/TASK-0095.json
 lastTerminalTask: TASK-0096
