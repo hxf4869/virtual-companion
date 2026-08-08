@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0094
+activeTaskCard: docs/tasks/TASK-0094-doctor-receipt-cache-binding.md
 lastAcceptedTask: TASK-0090
 lastAcceptedHandoff: docs/handoffs/TASK-0090.json
 lastTerminalTask: TASK-0090
 lastTerminalHandoff: docs/handoffs/TASK-0090.json
-nextAction: TASK-0090（生成终态持久化与审计落库，SQL/持久化侧）ACCEPTED：V15 provider_attempt 表（FORCE RLS，无凭据/内容列）+ record_provider_attempt / terminalize_generation（FAILED_FINAL/OUTPUT_BLOCKED/COMPLETED_FALLBACK 终态转移 + 终态 realtime_event 原子写 INV-TX-001）/ insert_generation_candidate / record_quota_release SECURITY DEFINER 函数（仅授 vc_api）+ RLS 40-43 新增测试（RLS 43/43、Maven 486/0、harness unittest 239 OK、precheck 5 commands PASS）。后续（新会话）：TASK-0093 运行时编排侧（controller/service/终态映射/realtime HTTP 端点，消费本卡函数）→ TASK-0092（H5 认证接线）；TASK-0091（provider_deployment 持久化）与 0093 独立。
+nextAction: 执行 TASK-0094：修复 Doctor receipt cache 输入绑定与前置校验；完成 READY 授权绑定与真实 Doctor 后进入 IN_PROGRESS，仅修改 doctor.py 和定向测试。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
