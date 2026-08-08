@@ -1,0 +1,70 @@
+{
+  "taskId": "TASK-0097",
+  "state": "ACCEPTED",
+  "baseCommit": "9bf02d23438860c0c75db78ec3dfec8112307199",
+  "headCommit": "fa93a8a7a3b2133faf8dac5901508eae691ded9f",
+  "evidencePath": "docs/evidence/TASK-0097/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5357515df7e23271a1702913b86931340d783b13",
+      "startedAt": "2026-08-08T17:34:00+08:00",
+      "endedAt": "2026-08-08T18:40:00+08:00",
+      "elapsedSeconds": 3960,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5357515df7e23271a1702913b86931340d783b13",
+      "startedAt": "2026-08-08T17:34:00+08:00",
+      "endedAt": "2026-08-08T17:46:37+08:00",
+      "elapsedSeconds": 757,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "b10eeec7daeff1f2aa9050507182bd2baf13c4d7",
+      "startedAt": "2026-08-08T17:47:00+08:00",
+      "endedAt": "2026-08-08T18:40:00+08:00",
+      "elapsedSeconds": 3180,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-08T17:46:37+08:00",
+      "inProgressCommit": "b10eeec7daeff1f2aa9050507182bd2baf13c4d7"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0097_r1",
+      "kind": "independent-review-gate",
+      "verdict": "APPROVE",
+      "reviewedCommit": "fa93a8a7a3b2133faf8dac5901508eae691ded9f",
+      "evidencePath": "docs/evidence/TASK-0097/review-r1.md",
+      "reason": "R1 complete-matrix review APPROVE; root Maven verify re-run BUILD SUCCESS twice.",
+      "candidateTree": "f7c24868b2ac64eae08748238731629f6a864fbd"
+    }
+  ],
+  "completed": [
+    "OpenAI 与 Anthropic 两个 boundary contract test 的过期断言（runtime POM 不得依赖 provider adapter）已更新为正确语义：runtime POM 声明 approved adapter 依赖；application.yaml 无 api.openai.com/api.anthropic.com 与 sk- 字面量且 model-providers.enabled 默认 ${VC_MODEL_PROVIDERS_ENABLED:false}；provisioner 仅当 per-deployment enabled 时 provision 且无 http(s):///sk- 字面量。",
+    "根级 Maven verify（锁定 JDK 25 容器，精确 argv）BUILD SUCCESS：OpenAI/Anthropic boundary 各 7/7，15 个 reactor 模块全绿；带 m2 缓存与冷启动（空缓存）两种方式均 PASS。",
+    "独立 Reviewer R1 APPROVE；canonical precheck 5/5 PASS（doctor 403847 checks）；git diff --check PASS。",
+    "候选 fa93a8a 已推送 origin/main；remote CI 记录经完整证据链归因为 GitHub Actions 配额耗尽（08-07 21:11 UTC 起所有 job 秒级失败未执行；policy 既有 OWNER_QUOTA 证据；billing 探测 404），Backend job 从未执行 Maven；remote 如实记录为非 PASS（passClaimed=false）。",
+    "诊断设施（临时 PR #1、ci-diag 分支）已全部清理。"
+  ],
+  "remaining": [
+    "GitHub Actions 配额于 2026-08-01 周期内耗尽（used=included=2000 分钟，resetDate 2026-08-01），远端 backend job 在配额重置或额度恢复前无法实际执行；届时可在相同 exact SHA fa93a8a 上复核。",
+    "后续工作包按交接文档第 6 节继续（P1-03 终态并发等）。"
+  ],
+  "knownRisks": [
+    "PRIMARY_REMOTE_EXACT_SHA 通道结论非 PASS：远端 job 因配额耗尽未执行（非代码失败）；本地等价验证（带/不带缓存根级 verify、canonical、Reviewer 复跑）全部 PASS。Owner 在 TASK-0064-0069 ownerEvidence 中的既有授权（'免费分钟耗尽不能让长线停下，本地跑或不跑作为备用方案'）支持本处置。",
+    "fine-grained token 无 checks/actions 读取权限，CI job 级日志不可获取；根因通过 run 时间线、job 秒级时长与 policy 既有配额证据交叉确认。",
+    "TASK-0096/0097 前两轮尝试（amendment 权限、授权缺证据）已作为失败关闭/重置记录；最终交付链为 v2 授权（DRAFT 5357515 → READY f406e3c → IN_PROGRESS b10eeec → 候选 fa93a8a）。"
+  ],
+  "nextAction": "创建 P1-03 卡（终态并发修复）：Generation finalization/cancel/terminalize 行锁与条件 UPDATE winner 及双会话交错测试；TASK-0097 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。"
+}

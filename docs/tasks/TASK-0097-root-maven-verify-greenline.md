@@ -2,7 +2,14 @@
 
 ```yaml
 taskId: TASK-0097
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  OpenAI/Anthropic 两个过期 contract test 断言已按审计要求更新（默认关闭/无默认凭据/
+  approved-only provision）；根级 Maven verify 带/不带缓存均 BUILD SUCCESS；R1 独立复核
+  APPROVE；canonical precheck 5/5 PASS。remote CI 归因为 GitHub Actions 配额耗尽
+  （job 秒级失败未执行，policy 既有 OWNER_QUOTA 证据），Backend job 从未执行 Maven，
+  remote 如实记录为非 PASS（passClaimed=false）；按 Owner 在 TASK-0064-0069 ownerEvidence
+  中的既有授权（免费分钟耗尽不停线，本地验证为备用方案）完成 closure。
 
 owner: repository-owner
 riskClass: C2
@@ -179,7 +186,16 @@ humanApprovals:
       根级 Maven verify 与 GitHub backend job 转绿。范围覆盖 OpenAI 与 Anthropic 两个
       同类 boundary contract test（根级 verify 复现两者均含过期断言）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0097_r1
+    kind: independent-review-gate
+    verdict: APPROVE
+    reviewedCommit: fa93a8a7a3b2133faf8dac5901508eae691ded9f
+    evidencePath: docs/evidence/TASK-0097/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 APPROVE：diff 仅 writeAllowlist；两个 boundary 测试证明默认关闭/
+      无默认凭据/approved-only provision；根级 verify 复跑两次 BUILD SUCCESS。
+    candidateTree: f7c24868b2ac64eae08748238731629f6a864fbd
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0097
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify
