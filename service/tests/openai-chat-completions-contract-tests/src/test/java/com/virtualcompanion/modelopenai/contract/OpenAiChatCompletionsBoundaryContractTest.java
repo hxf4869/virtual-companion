@@ -142,6 +142,31 @@ class OpenAiChatCompletionsBoundaryContractTest {
     }
 
     @Test
+    void config_rejects_endpoints_outside_the_egress_allowlist() {
+        var openai = URI.create("https://api.openai.com/v1/chat/completions");
+        var validConfig = new OpenAiChatCompletionsConfig(openai, TOKEN, MODEL);
+        assertEquals(openai, validConfig.endpoint());
+
+        assertRejected("http://api.openai.com/v1/chat/completions");
+        assertRejected("https://evil.example.com/v1/chat/completions");
+        assertRejected("https://api.openai.com:8443/v1/chat/completions");
+        assertRejected("https://192.168.1.5/v1/chat/completions");
+        assertRejected("https://10.0.0.1/v1/chat/completions");
+        assertRejected("https://172.16.0.1/v1/chat/completions");
+        assertRejected("https://169.254.169.254/v1/chat/completions");
+        assertRejected("https://100.100.100.200/v1/chat/completions");
+        assertRejected("https://127.0.0.2/v1/chat/completions");
+        assertRejected("https://8.8.8.8/v1/chat/completions");
+        assertRejected("https://[::1]/v1/chat/completions");
+    }
+
+    private void assertRejected(String endpoint) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new OpenAiChatCompletionsConfig(URI.create(endpoint), TOKEN, MODEL));
+    }
+
+    @Test
     void config_rejects_unicode_header_token_without_leak_or_network() {
         var invalidToken = "synthetic-token-密钥-🙂";
         var client = new NeverCompletingHttpClient();

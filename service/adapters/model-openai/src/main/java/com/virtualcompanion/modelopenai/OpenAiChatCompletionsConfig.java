@@ -1,5 +1,6 @@
 package com.virtualcompanion.modelopenai;
 
+import com.virtualcompanion.modelruntime.port.ProviderEgressPolicy;
 import java.net.URI;
 import java.util.Objects;
 
@@ -66,6 +67,7 @@ public final class OpenAiChatCompletionsConfig {
                     "endpoint must not include user info, query, or fragment"
             );
         }
+        ProviderEgressPolicy.defaults().requireAllowed(value);
         return value;
     }
 

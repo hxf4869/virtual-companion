@@ -100,6 +100,26 @@ class ApprovedModelProviderProvisionerTest {
         assertThrows(IllegalStateException.class, () -> provision(missingSecret));
     }
 
+    @Test
+    void endpointOutsideEgressAllowlistFailsClosed() {
+        ModelProviderProperties.Deployment unapproved = new ModelProviderProperties.Deployment(
+                "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
+                "gpt-4o-mini", "https://evil.example.com/v1/chat/completions",
+                "openai-key", "", 0, true);
+
+        assertThrows(IllegalArgumentException.class, () -> provision(unapproved));
+    }
+
+    @Test
+    void traversalSecretReferenceFailsClosed() {
+        ModelProviderProperties.Deployment traversal = new ModelProviderProperties.Deployment(
+                "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
+                "gpt-4o-mini", "http://127.0.0.1:1/v1/chat/completions",
+                "../openai-key", "", 0, true);
+
+        assertThrows(IllegalArgumentException.class, () -> provision(traversal));
+    }
+
     private ApprovedModelProviders provision(
             ModelProviderProperties.Deployment... deployments) {
         ModelProviderProperties properties =

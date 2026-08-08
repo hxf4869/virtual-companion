@@ -1,5 +1,6 @@
 package com.virtualcompanion.modelanthropic;
 
+import com.virtualcompanion.modelruntime.port.ProviderEgressPolicy;
 import java.net.URI;
 import java.util.Objects;
 
@@ -87,6 +88,7 @@ public final class AnthropicMessagesConfig {
                     "endpoint must not include user info, query, or fragment"
             );
         }
+        ProviderEgressPolicy.defaults().requireAllowed(value);
         return value;
     }
 

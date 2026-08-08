@@ -171,6 +171,33 @@ class AnthropicMessagesBoundaryContractTest {
     }
 
     @Test
+    void config_rejects_endpoints_outside_the_egress_allowlist() {
+        var anthropic = URI.create("https://api.anthropic.com/v1/messages");
+        var validConfig = new AnthropicMessagesConfig(
+                anthropic, API_KEY, ANTHROPIC_VERSION, MODEL, MAX_TOKENS);
+        assertEquals(anthropic, validConfig.endpoint());
+
+        assertRejected("http://api.anthropic.com/v1/messages");
+        assertRejected("https://evil.example.com/v1/messages");
+        assertRejected("https://api.anthropic.com:8443/v1/messages");
+        assertRejected("https://192.168.1.5/v1/messages");
+        assertRejected("https://10.0.0.1/v1/messages");
+        assertRejected("https://172.16.0.1/v1/messages");
+        assertRejected("https://169.254.169.254/v1/messages");
+        assertRejected("https://100.100.100.200/v1/messages");
+        assertRejected("https://127.0.0.2/v1/messages");
+        assertRejected("https://8.8.8.8/v1/messages");
+        assertRejected("https://[::1]/v1/messages");
+    }
+
+    private void assertRejected(String endpoint) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new AnthropicMessagesConfig(
+                        URI.create(endpoint), API_KEY, ANTHROPIC_VERSION, MODEL, MAX_TOKENS));
+    }
+
+    @Test
     void config_rejects_unicode_header_key_without_leak_or_network() {
         var invalidKey = "synthetic-key-密钥-🙂";
         var client = new NeverCompletingHttpClient();
