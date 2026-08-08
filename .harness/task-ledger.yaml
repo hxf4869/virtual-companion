@@ -514,3 +514,9 @@ tasks:
     taskCard: docs/tasks/TASK-0101-database-ci-gate.md
     evidence: docs/evidence/TASK-0101/evidence-pack.json
     handoff: docs/handoffs/TASK-0101.json
+  TASK-0102:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0102-backend-session-boundary.md
+    evidence: docs/evidence/TASK-0102/evidence-pack.json
+    handoff: docs/handoffs/TASK-0102.json

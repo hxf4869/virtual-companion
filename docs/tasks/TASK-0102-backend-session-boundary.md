@@ -2,7 +2,20 @@
 
 ```yaml
 taskId: TASK-0102
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P1-08+P1-09 后端侧+风险 3 完成并验证：GET /api/internal/baseline permitAll
+  （匿名 200，其余端点 401）；refresh token 只经 HttpOnly vc_refresh cookie
+  交付（AuthResponse 移除 refreshToken，login/refresh 返回 IssuedSession，
+  V14 rotate 语义保持）；CookieCsrfGuardFilter（Origin allowlist +
+  double-submit 常量时间比较，Bearer-only 无 cookie 不强制）；production
+  profile 无默认值占位符（缺 VC_AUTH_ENABLED/VC_AUTH_DATASOURCE_ENABLED
+  启动失败 fail-closed）；identity-session-boundary-contract.yaml 决策解析
+  （h5CredentialBoundary 更新 + resolvedOwnerDecisions）。根级 Maven verify
+  BUILD SUCCESS；canonical precheck 5/5 PASS（doctor 435228 checks）；R1
+  无阻塞 PASS + R2 delta PASS（4×P3 采纳进 fix batch 9f214e9）；remote CI
+  因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），
+  本地等价验证为备用通道（Owner 既有授权）。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -222,7 +235,28 @@ humanApprovals:
       permitAll）；同步 h5CredentialBoundary 与响应契约（refresh token 不再进
       响应体）。contract-change skill 1.0.0；独立 Reviewer 按 C3 要求。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0102_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 70ddf96
+    evidencePath: docs/evidence/TASK-0102/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：diff 仅 writeAllowlist；P1-08 baseline permitAll
+      正确；P1-09 HttpOnly refresh cookie（IssuedSession、body 无 refreshToken、
+      V14 rotate 保持）；CookieCsrfGuardFilter 正确；production fail-closed；
+      契约一致；fingerprint 独立重算一致。4×P3 采纳进 fix batch 9f214e9。
+    candidateTree: a51bbc3a5ca253b946a8d5b9622079b64d964a55
+  - id: task0102_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 9f214e97c07435460594b11b80d226d3299927fe
+    evidencePath: docs/evidence/TASK-0102/review-r2.md
+    reason: >-
+      R2 delta 复核 PASS：fix batch 仅 4 个白名单内文件；F1（CORS header）、
+      F2（containsAnyOf）、F3（filter 直接单测）、F4（cookie 断言）全部正确；
+      无新 P0/P1/P2；卡正文未动。
+    candidateTree: a51bbc3a5ca253b946a8d5b9622079b64d964a55
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0102
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0102
-activeTaskCard: docs/tasks/TASK-0102-backend-session-boundary.md
-lastAcceptedTask: TASK-0101
-lastAcceptedHandoff: docs/handoffs/TASK-0101.json
-lastTerminalTask: TASK-0101
-lastTerminalHandoff: docs/handoffs/TASK-0101.json
-nextAction: TASK-0102 已授权（READY）：实施后端 session 边界（P1-08 baseline permitAll + P1-09 后端侧 HttpOnly refresh cookie + CSRF/Origin + 风险 3 production fail-closed + 契约决策解析）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0102
+lastAcceptedHandoff: docs/handoffs/TASK-0102.json
+lastTerminalTask: TASK-0102
+lastTerminalHandoff: docs/handoffs/TASK-0102.json
+nextAction: 创建 TASK-0103 前端 session 接线卡（工作包 9 前端侧，P1-09 前端 + 条件风险 4）：auth store 移除 localStorage 持久化（access token 仅内存、refresh 走 HttpOnly cookie）、fetch credentials:'include' + X-CSRF-Token header、401 生命周期重写（refresh 失败清会话跳登录）、统一 authenticated transport 防页面散拼 header，前端测试固化；TASK-0102 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

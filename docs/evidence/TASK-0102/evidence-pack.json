@@ -1,0 +1,166 @@
+{
+ "taskId": "TASK-0102",
+ "baseCommit": "9ae55774533bc455d1ab911dc01ee7a215d510b5",
+ "headCommit": "9f214e97c07435460594b11b80d226d3299927fe",
+ "contextFingerprint": "229678870d1137ad57259d3645d347da4817aa3e4026cfe58fdc2355592fc89f",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "95a7f52b5c0f40a7ded6715aa7399ae3511f8a41",
+   "startedAt": "2026-08-08T23:28:07+08:00",
+   "endedAt": "2026-08-08T23:41:40+08:00",
+   "elapsedSeconds": 813,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "95a7f52b5c0f40a7ded6715aa7399ae3511f8a41",
+   "startedAt": "2026-08-08T23:28:07+08:00",
+   "endedAt": "2026-08-08T23:28:28+08:00",
+   "elapsedSeconds": 21,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "aa1e952b46aac056090d7bb67be91e9d9df6b48b",
+   "startedAt": "2026-08-08T23:28:28+08:00",
+   "endedAt": "2026-08-08T23:41:40+08:00",
+   "elapsedSeconds": 792,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0102_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "70ddf96",
+   "evidencePath": "docs/evidence/TASK-0102/review-r1.md",
+   "reason": "R1 complete-matrix review PASS (no P0/P1/P2): diff confined to writeAllowlist; P1-08 baseline GET permitAll correct; P1-09 refresh token delivered only via HttpOnly vc_refresh cookie (IssuedSession, body has no refreshToken, V14 rotate preserved); CookieCsrfGuardFilter (Origin allowlist + double-submit constant-time) correct; production profile fail-closed verified; contract updated consistently (h5CredentialBoundary + resolvedOwnerDecisions); fingerprint independently recomputed matching. 4 P3 suggestions adopted into fix batch 9f214e9, closed by R2.",
+   "candidateTree": "a51bbc3a5ca253b946a8d5b9622079b64d964a55"
+  },
+  {
+   "id": "task0102_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "9f214e97c07435460594b11b80d226d3299927fe",
+   "evidencePath": "docs/evidence/TASK-0102/review-r2.md",
+   "reason": "R2 delta review PASS: fix batch 9f214e9 changes only 4 in-allowlist files; F1 (CORS allowedHeaders + X-CSRF-Token, no credential weakening), F2 (containsAnyOf for both placeholders), F3 (direct filter unit tests for Origin branch), F4 (cookie Path/Secure/MaxAge assertions) all correct and consistent with implementation; no new P0/P1/P2; card body untouched (READY-frozen).",
+   "candidateTree": "a51bbc3a5ca253b946a8d5b9622079b64d964a55"
+  }
+ ],
+ "checks": [
+  {
+   "command": "python scripts/harness/precheck.py --task TASK-0102",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "Canonical precheck on final candidate 9f214e9 (after R1/R2 PASS): 5/5 commands PASS (doctor 435228 checks, catalogValidate, catalogDrift, paidFeatureCheck, betaRosterGate); real exit 0. Log sha256 ac161e7f670e8cdcfb15d023776a9444080c7df31ffe8f93ed63508fabc5d6d9.",
+   "environment": "macOS darwin 25.6.0 arm64; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python (Python 3.13.0); clean TMPDIR",
+   "verifiedCommit": "9f214e97c07435460594b11b80d226d3299927fe"
+  },
+  {
+   "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "Root Maven verify on final candidate content (OrbStack docker maven:3.9-eclipse-temurin-25-alpine + vc-maven-cache): BUILD SUCCESS; runtime auth tests all green (AuthSecurityIntegrationTest 11/11 incl. 2 new direct filter tests, AuthControllerCookieTest 5/5, AuthServiceTest 15/15, ProductionProfileFailClosedTest 2/2). Log sha256 9b3f59499ab73a2c77d9bdafb2cbb29d5f0bb5f2dc64e4b3868bfd2601a788c2.",
+   "environment": "OrbStack docker; maven:3.9-eclipse-temurin-25-alpine; vc-maven-cache volume; macOS darwin 25.6.0 arm64",
+   "verifiedCommit": "9f214e97c07435460594b11b80d226d3299927fe"
+  },
+  {
+   "command": "git diff --check",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "No whitespace errors in the working tree diff.",
+   "environment": "macOS; repo /Users/hxf/projects/virtual-companion",
+   "verifiedCommit": "9f214e97c07435460594b11b80d226d3299927fe"
+  },
+  {
+   "command": "Independent Reviewer R1 for TASK-0102 frozen candidate 70ddf96",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "R1 complete-matrix independent review PASS (no P0/P1/P2); 4 P3 suggestions adopted into fix batch. Evidence: docs/evidence/TASK-0102/review-r1.md.",
+   "environment": "independent read-only subagent; no implementation context",
+   "verifiedCommit": "70ddf96"
+  },
+  {
+   "command": "Independent Reviewer R2 for TASK-0102 fix batch (delta 70ddf96..9f214e9)",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "R2 delta review PASS: fix batch only 4 in-allowlist files; F1-F4 correct; no new P0/P1/P2; card body untouched. Evidence: docs/evidence/TASK-0102/review-r2.md.",
+   "environment": "independent read-only subagent; no implementation context",
+   "verifiedCommit": "9f214e97c07435460594b11b80d226d3299927fe"
+  },
+  {
+   "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate 9f214e9",
+   "status": "NOT_RUN",
+   "exitCode": null,
+   "artifactHash": null,
+   "reason": "Actions quota exhausted (resetDate 2026-08-01 period): every job fails in seconds without executing on a runner; policy records OWNER_QUOTA_EVIDENCE_EXPIRED (billing probe 404) and OWNER_SUPPLIED_QUOTA_EXHAUSTED (included=used=2000, dispatchCount 0); no checks/actions read permission. Remote stays non-PASS; local equivalent validation (root Maven verify BUILD SUCCESS, canonical precheck 5/5) is the Owner-authorized fallback (TASK-0064-0069 ownerEvidence).",
+   "environment": "GitHub Actions (quota-limited, no checks/actions read permission)",
+   "verifiedCommit": "9f214e97c07435460594b11b80d226d3299927fe"
+  },
+  {
+   "command": "python scripts/harness/doctor.py --task TASK-0102 --pre-closure",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "Pre-closure doctor on the fully staged ACCEPTED closure snapshot: PASS (513127 checks, 229.2s, exit 0). Log sha256 684712aac2083b2f10db8d6efd64c537149e96e2921e0c1c094f99ff7038bf3e.",
+   "environment": "macOS; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python; clean TMPDIR",
+   "verifiedCommit": "9f214e97c07435460594b11b80d226d3299927fe"
+  }
+ ],
+ "validationChannels": {
+  "policySource": ".harness/ci-execution-policy.yaml",
+  "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+  "profile": "precheck",
+  "candidateStatus": "REVIEWER_APPROVED_CANONICAL_PASS",
+  "candidateCommit": "9f214e97c07435460594b11b80d226d3299927fe",
+  "candidateTree": "a51bbc3a5ca253b946a8d5b9622079b64d964a55",
+  "passClaimed": true,
+  "localExactTree": {
+   "taskId": "TASK-0102",
+   "candidateCommit": "9f214e97c07435460594b11b80d226d3299927fe",
+   "candidateTree": "a51bbc3a5ca253b946a8d5b9622079b64d964a55",
+   "cleanWorktree": true,
+   "cleanIndex": true,
+   "argv": "python scripts/harness/precheck.py --task TASK-0102",
+   "cwd": "/Users/hxf/projects/virtual-companion",
+   "operatingSystem": "macOS darwin 25.6.0 arm64",
+   "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python (Python 3.13.0)",
+   "toolchain": "git; OrbStack docker (maven:3.9-eclipse-temurin-25-alpine + vc-maven-cache)",
+   "dependencies": "requirements-harness.txt installed in vc-harness venv",
+   "environment": "clean TMPDIR per run; GITHUB_PERSONAL_ACCESS_TOKEN present but unused by local checks",
+   "stdoutSha256": "ac161e7f670e8cdcfb15d023776a9444080c7df31ffe8f93ed63508fabc5d6d9",
+   "stderrSha256": "ac161e7f670e8cdcfb15d023776a9444080c7df31ffe8f93ed63508fabc5d6d9",
+   "receiptSha256": null,
+   "exitCode": 0,
+   "startedAt": "2026-08-08T23:38:50+08:00",
+   "completedAt": "2026-08-08T23:40:30+08:00"
+  },
+  "remote": {
+   "status": "UNKNOWN_NOT_RUN",
+   "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+   "currentQuotaVerified": false,
+   "dispatchCount": 0,
+   "passClaimed": false
+  },
+  "terminalMetadataOnly": {
+   "profile": "TERMINAL_METADATA_ONLY",
+   "commitMarker": "[skip ci]",
+   "representsCiPass": false,
+   "implementationCandidateCreated": true
+  }
+ }
+}

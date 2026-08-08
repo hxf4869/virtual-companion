@@ -1,0 +1,85 @@
+{
+ "taskId": "TASK-0102",
+ "state": "ACCEPTED",
+ "baseCommit": "9ae55774533bc455d1ab911dc01ee7a215d510b5",
+ "headCommit": "9f214e97c07435460594b11b80d226d3299927fe",
+ "evidencePath": "docs/evidence/TASK-0102/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "95a7f52b5c0f40a7ded6715aa7399ae3511f8a41",
+   "startedAt": "2026-08-08T23:28:07+08:00",
+   "endedAt": "2026-08-08T23:41:40+08:00",
+   "elapsedSeconds": 813,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "95a7f52b5c0f40a7ded6715aa7399ae3511f8a41",
+   "startedAt": "2026-08-08T23:28:07+08:00",
+   "endedAt": "2026-08-08T23:28:28+08:00",
+   "elapsedSeconds": 21,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "aa1e952b46aac056090d7bb67be91e9d9df6b48b",
+   "startedAt": "2026-08-08T23:28:28+08:00",
+   "endedAt": "2026-08-08T23:41:40+08:00",
+   "elapsedSeconds": 792,
+   "outcome": "PASS",
+   "candidateDeadlineMinutes": 45,
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "closureOnlyOverrunSeconds": 0
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0102_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "70ddf96",
+   "evidencePath": "docs/evidence/TASK-0102/review-r1.md",
+   "reason": "R1 complete-matrix review PASS (no P0/P1/P2): diff confined to writeAllowlist; P1-08 baseline permitAll correct; P1-09 HttpOnly refresh cookie (IssuedSession, no body refreshToken, V14 rotate preserved); CookieCsrfGuardFilter correct; production profile fail-closed; contract consistent; fingerprint independently recomputed matching. 4 P3 adopted into fix batch 9f214e9.",
+   "candidateTree": "a51bbc3a5ca253b946a8d5b9622079b64d964a55"
+  },
+  {
+   "id": "task0102_r2",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "9f214e97c07435460594b11b80d226d3299927fe",
+   "evidencePath": "docs/evidence/TASK-0102/review-r2.md",
+   "reason": "R2 delta review PASS: fix batch only 4 in-allowlist files; F1-F4 correct and consistent; no new P0/P1/P2; card body untouched.",
+   "candidateTree": "a51bbc3a5ca253b946a8d5b9622079b64d964a55"
+  }
+ ],
+ "completed": [
+  "P1-08: GET /api/internal/baseline 公开 permitAll（AuthSecurityConfig requestMatchers(HttpMethod.GET, ...)）；auth.enabled=true 集成测试匿名 200（含 garbage token 仍 200），其余端点匿名 401 AUTHENTICATION_REQUIRED",
+  "P1-09 后端侧: refresh token 只经 HttpOnly vc_refresh cookie 交付——AuthResponse 移除 refreshToken；login/refresh 返回 IssuedSession（明文 token 仅 controller 写 cookie）；vc_refresh（HttpOnly+SameSite=Lax+Secure 默认 true（VC_AUTH_COOKIE_SECURE）+Path=/api/v1/auth+Max-Age=refresh TTL）；vc_csrf 非 HttpOnly double-submit；refresh 从 cookie 读取（缺失/无效 → 401 AUTHENTICATION_REQUIRED）；V14 rotate 语义保持（唯一 live successor）",
+  "CSRF/Origin: 新增 CookieCsrfGuardFilter——状态变更方法（POST/PUT/PATCH/DELETE）带 Origin 必须命中 cors-allowed-origins；带会话 cookie 必须 X-CSRF-Token == vc_csrf（MessageDigest.isEqual 常量时间）；Bearer-only 无 cookie 不强制 CSRF；403 CSRF_REJECTED 不泄露存在性；CORS allowedHeaders 补 X-CSRF-Token",
+  "风险 3: application.yaml 新增 production profile——virtual-companion.auth.enabled/datasource-enabled 无默认值（缺 VC_AUTH_ENABLED/VC_AUTH_DATASOURCE_ENABLED → 占位符解析失败 → 启动失败 fail-closed）；测试覆盖缺 env 失败（cause chain 断言）与显式 env 启动成功",
+  "契约: identity-session-boundary-contract.yaml——h5CredentialBoundary 更新（vc_refresh/vc_csrf 名、SameSite=Lax 决策、refreshTokenInResponseBodyForbidden、bearerOnlyWithoutSessionCookieNotCsrfBound）；deferredOwnerDecisions 移除 cookie_or_bearer_architecture_and_cookie_parameters；新增 resolvedOwnerDecisions（cookie 架构 + baseline 公开路径部分解析）",
+  "测试: AuthSecurityIntegrationTest 11/11（baseline 公开、CSRF/Origin 全路径、2 个 filter 直接单测）、AuthControllerCookieTest 5/5（cookie 属性/刷新轮换/无 cookie 401/logout 清 cookie）、AuthServiceTest 15/15、ProductionProfileFailClosedTest 2/2；根级 Maven verify BUILD SUCCESS",
+  "验证: canonical precheck 5/5 PASS（doctor 435228 checks）；R1 无阻塞 PASS + R2 delta PASS（4×P3 采纳进 fix batch 9f214e9）；remote CI 因 Actions 配额耗尽如实记录非 PASS（UNKNOWN_NOT_RUN，passClaimed=false），本地等价验证（根级 Maven verify + canonical precheck）为备用通道（Owner 既有授权）",
+  "提交链: DRAFT 95a7f52 → READY 90c93b8/bind ce1b0aa → IN_PROGRESS aa1e952 → 候选 70ddf96 → fix batch 9f214e9 → 终态提交（卡片白名单曾漏 4 个文件，本地未推送链按先例重建治理链后重新授权，非倒推扩权）"
+ ],
+ "remaining": [
+  "remote CI 复核：GitHub Actions 配额耗尽（resetDate 2026-08-01 周期），remote 如实记录 NOT_RUN/UNKNOWN_NOT_RUN（passClaimed=false），配额恢复后按 ci-execution-policy 通道补远端 exact-SHA 复核",
+  "TASK-0103 前端 session 接线（工作包 9 前端侧）：auth store 移除 localStorage 持久化（access token 仅内存）、fetch credentials:'include' + X-CSRF-Token header、401 生命周期重写（refresh 失败 → 清会话跳登录）、统一 authenticated transport（风险 4）；前端必须始终携带 vc_refresh cookie 调用 logout（无 cookie 的 logout 现按契约 401）",
+  "P1-09 跨卡关闭确认：本卡（后端侧 cookie/CSRF/Origin + 集成测试）+ TASK-0103（前端侧 localStorage 移除 + 内存 + 测试）共同满足 P1-09 完成条件",
+  "public_api_paths_http_statuses_and_error_envelope 决策仅解析 baseline 公开部分；http statuses 与 error envelope 语义仍 deferred（P2-04 范围）",
+  "工作包 6（P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构）继续等待 Owner 决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）"
+ ],
+ "knownRisks": [
+  "Bearer-only 无 cookie 的 logout 现返回 401（cookie-only 交付的预期语义变化）；TASK-0103 前端必须保持会话 cookie 调用 logout",
+  "vc_refresh cookie Secure 默认 true：本地 http 开发需显式 VC_AUTH_COOKIE_SECURE=false（非生产）；浏览器在 http://localhost 不会保存 Secure cookie",
+  "CSRF 校验仅对带会话 cookie 的请求强制；登录（尚无 cookie）不强制 CSRF token（标准实践，Origin 校验保持）——login CSRF 残余风险由 SameSite=Lax + Origin 校验缓解，契约已记录",
+  "生产 profile 占位符失败的具体包装异常类型依赖条件求值顺序（cause chain 断言已兼容两个占位符名）；fail-closed 方向不变",
+  "CORS allowCredentials 保持 false：跨源部署若要携带 cookie 需重新评估（当前部署为同源相对路径 fetch，不受影响；契约 exactSameSiteValueDeferred 已关闭，SameSite=Lax）"
+ ],
+ "nextAction": "创建 TASK-0103 前端 session 接线卡（工作包 9 前端侧，P1-09 前端 + 条件风险 4）：auth store 移除 localStorage 持久化（access token 仅内存、refresh 走 HttpOnly cookie）、fetch credentials:'include' + X-CSRF-Token header、401 生命周期重写（refresh 失败清会话跳登录）、统一 authenticated transport 防页面散拼 header，前端测试固化；TASK-0102 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。"
+}
