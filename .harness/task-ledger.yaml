@@ -478,3 +478,9 @@ tasks:
     taskCard: docs/tasks/TASK-0095-doctor-receipt-cache-toctou.md
     evidence: docs/evidence/TASK-0095/evidence-pack.json
     handoff: docs/handoffs/TASK-0095.json
+  TASK-0096:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0096-root-maven-verify-greenline.md
+    evidence: docs/evidence/TASK-0096/evidence-pack.json
+    handoff: docs/handoffs/TASK-0096.json

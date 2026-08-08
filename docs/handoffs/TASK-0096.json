@@ -1,0 +1,19 @@
+{
+  "taskId": "TASK-0096",
+  "state": "REJECTED",
+  "baseCommit": "0151e32b8e98942aee9fc612d9765dd2d3b82204",
+  "headCommit": "409cbeb8196273f8845a6d9c154ce00d6be3130e",
+  "evidencePath": "docs/evidence/TASK-0096/evidence-pack.json",
+  "completed": [
+    "完成 P1-02 调研：根级 verify 基线复现唯一失败为 OpenAiChatCompletionsBoundaryContractTest.adapter_has_no_default_real_endpoint_environment_or_runtime_wiring:282（过期断言 runtime POM 不得依赖 model-openai），与审计报告一致；修复路径（默认关闭/无默认凭据/approved-only provision 断言）已明确。",
+    "READY Doctor 真实 FAIL（exit 1）并如实固化：授权提交缺失 Owner approval evidence。"
+  ],
+  "remaining": [
+    "由 TASK-0097 重新执行 P1-02：授权时预填 repository-owner 的 humanApprovals 证据；修复过期 contract test 断言；根级 Maven verify PASS；GitHub backend job 真实绿。"
+  ],
+  "knownRisks": [
+    "TASK-0096 因 intake 错误（授权提交 humanApprovals 为空）失败关闭；humanApprovals 是不可变授权字段，补齐即构成历史重写，故按规则 REJECTED。",
+    "根级 verify 当前仍红（P1-02），待 TASK-0097 修复。"
+  ],
+  "nextAction": "创建 TASK-0097 重新执行 P1-02 构建绿线（授权时预填 Owner 批准证据）：更新过期 contract test 语义，根级 Maven verify 与 GitHub backend job 转绿。"
+}

@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0096
-state: READY
+state: REJECTED
+terminalStateReason: >-
+  READY 授权提交（de7962f0）创建时任务卡 humanApprovals 为空；readyRequiresOwnerApproval
+  要求 READY 检查点必须包含 Owner 批准证据，READY Doctor 真实 FAIL（exit 1：
+  READY checkpoint lacks Owner approval evidence）。humanApprovals 是不可变授权字段，
+  授权提交后无法补齐，也不得重写历史；按失败关闭规则 REJECTED，由 TASK-0097 重新建卡
+  （授权时预填 Owner 批准证据）。
 owner: repository-owner
 riskClass: C2
 requiredSkills:
