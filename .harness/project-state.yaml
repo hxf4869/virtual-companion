@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0100
+activeTaskCard: docs/tasks/TASK-0100-realtime-db-consistency.md
 lastAcceptedTask: TASK-0099
 lastAcceptedHandoff: docs/handoffs/TASK-0099.json
 lastTerminalTask: TASK-0099
 lastTerminalHandoff: docs/handoffs/TASK-0099.json
-nextAction: 创建 P1-04+P1-05+P2-29+条件风险 9 租户与 DB 权限架构卡（工作包 6）：需 Owner 先决策可信数据库 principal/连接池绑定模型与 migration principal 部署拓扑（P1-11 同属该决策）；工作包 7（Realtime DB 一致性 P2-07/08/09/11）为 Owner 决策前可独立推进的下一候选；TASK-0099 已 ACCEPTED，Actions 配额耗尽下的远端复核延后至配额恢复。
+nextAction: TASK-0100 已授权（READY）：实施 Realtime DB 一致性（P2-07/08/09/11）——V8 append/advance 原子 seq 分配 + realtime_event catalog CHECK + append_terminal_event 窄函数，V7/V15 finalize/terminalize 与 V10 cancel 终态事务统一 allocator 原子分配（cancel 同事务写 durable chat.cancelled），新增 49/50 并发与 catalog 测试并更新 23/42/45。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
