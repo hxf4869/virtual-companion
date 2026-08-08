@@ -125,12 +125,18 @@ class AuthServiceTest {
 
         // The old hash is used for lookup, never the raw token.
         ArgumentCaptor<String> oldHash = ArgumentCaptor.forClass(String.class);
-        verify(sessions).rotate(oldHash.capture(), anyString(), any());
+        ArgumentCaptor<String> newHash = ArgumentCaptor.forClass(String.class);
+        verify(sessions).rotate(oldHash.capture(), newHash.capture(), any());
         assertThat(oldHash.getValue()).isEqualTo(RefreshTokens.sha256Hex("raw-refresh-token"));
+
+        // P1-06: the returned plaintext token is exactly the one whose hash was
+        // rotated in, and refresh never creates a second (hidden) session.
+        assertThat(newHash.getValue()).isEqualTo(RefreshTokens.sha256Hex(response.refreshToken()));
+        verify(sessions, never()).issue(anyLong(), anyString(), any());
     }
 
     @Test
-    void invalidOrRevokedOrExpiredRefreshFailsClosed() {
+    void refreshNeverIssuesWhenRotationFails() {
         when(sessions.rotate(anyString(), anyString(), any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.refresh("stale-token"))
@@ -139,6 +145,9 @@ class AuthServiceTest {
                     assertThat(((AuthErrorException) e).code()).isEqualTo("AUTHENTICATION_REQUIRED");
                     assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.UNAUTHORIZED);
                 });
+
+        // A failed refresh must not leave any hidden session behind (P1-06).
+        verify(sessions, never()).issue(anyLong(), anyString(), any());
     }
 
     @Test

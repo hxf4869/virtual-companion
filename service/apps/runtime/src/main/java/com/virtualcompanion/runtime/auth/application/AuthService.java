@@ -95,10 +95,17 @@ public class AuthService {
     }
 
     /**
-     * Renew a session from a refresh token. The old session is revoked and a new
-     * one issued only when the presented token is unrevoked, unexpired and owned
-     * by an ACTIVE account (validated server-side by the database function);
-     * every other case fails closed to AUTHENTICATION_REQUIRED.
+     * Renew a session from a refresh token. The old session is revoked and a
+     * single successor issued only when the presented token is unrevoked,
+     * unexpired and owned by an ACTIVE account (validated server-side by the
+     * database function under a token row lock, so concurrent refreshes of the
+     * same token have exactly one winner); every other case fails closed to
+     * AUTHENTICATION_REQUIRED.
+     *
+     * <p>The plaintext token passed to {@code rotate()} is the token returned
+     * to the client — a second session-creating call (P1-06's hidden
+     * successor) is never made, so a failed refresh cannot leave an
+     * unreachable live session behind.
      */
     public AuthResponse refresh(String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
@@ -116,7 +123,14 @@ public class AuthService {
                     "The refresh session is no longer valid");
         }
         RotatedSession session = rotated.get();
-        return issueTokens(session.accountId(), session.role(), session.username());
+        String accessToken = jwt.issueAccessToken(session.accountId(), session.role(), session.username());
+        return new AuthResponse(
+                accessToken,
+                newRefreshToken,
+                "Bearer",
+                jwt.accessTtl().getSeconds(),
+                Long.toString(session.accountId()),
+                session.role());
     }
 
     /**

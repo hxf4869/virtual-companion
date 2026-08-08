@@ -192,11 +192,15 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- identity_refresh_token_rotate: atomic refresh-session renewal. The old token
--- must be unrevoked, unexpired and owned by an ACTIVE account; it is then
--- revoked and replaced by the new session in one transaction. An unknown,
--- revoked, expired or DISABLED-account token returns no rows (all failure
--- causes are indistinguishable; existence and cause are never disclosed).
+-- identity_refresh_token_rotate: atomic refresh-session renewal with a unique
+-- single-use winner (P1-06). The old token must be unrevoked, unexpired and
+-- owned by an ACTIVE account; it is then revoked and replaced by the new
+-- session in one transaction. The token row is locked (SELECT ... FOR UPDATE
+-- OF t) so two concurrent rotates of the same token serialize: the first
+-- caller wins, the second re-checks the now-revoked row under the lock and
+-- returns no rows (fail closed, nothing written). An unknown, revoked,
+-- expired or DISABLED-account token returns no rows (all failure causes are
+-- indistinguishable; existence and cause are never disclosed).
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION vc.identity_refresh_token_rotate(
     p_old_token_hash text,
@@ -217,19 +221,31 @@ BEGIN
        OR p_new_expires_at IS NULL THEN
         RAISE EXCEPTION 'identity_refresh_token_rotate: token hashes and expires_at are required';
     END IF;
+    -- The token row lock serializes concurrent rotates of the same token; the
+    -- live-state re-check runs under the lock so only the first caller can
+    -- ever see the old token as live.
     SELECT t.account_id INTO v_account_id
       FROM vc.identity_refresh_token t
       JOIN vc.identity_account a ON a.id = t.account_id
      WHERE t.token_hash = p_old_token_hash
        AND t.revoked_at IS NULL
        AND t.expires_at > now()
-       AND a.status = 'ACTIVE';
+       AND a.status = 'ACTIVE'
+     FOR UPDATE OF t;
     IF NOT FOUND THEN
         RETURN;
     END IF;
+    -- Conditional revoke as defense in depth: under the row lock the old
+    -- token is still live, so this always matches exactly one row; a loser
+    -- that somehow reached this point fails closed instead of inserting.
     UPDATE vc.identity_refresh_token
        SET revoked_at = now()
-     WHERE token_hash = p_old_token_hash;
+     WHERE token_hash = p_old_token_hash
+       AND revoked_at IS NULL
+       AND expires_at > now();
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
     INSERT INTO vc.identity_refresh_token(account_id, token_hash, expires_at)
     VALUES (v_account_id, p_new_token_hash, p_new_expires_at);
     RETURN QUERY
