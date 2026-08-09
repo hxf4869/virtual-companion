@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0130
-activeTaskCard: docs/tasks/TASK-0130-anthropic-tool-use-protocol-replacement.md
-lastAcceptedTask: TASK-0127
-lastAcceptedHandoff: docs/handoffs/TASK-0127.json
-lastTerminalTask: TASK-0129
-lastTerminalHandoff: docs/handoffs/TASK-0129.json
-nextAction: '执行 TASK-0130 replacement：以 TASK-0129 REJECTED 终态 Base 中已提交的 Anthropic tool_use.name/schemaName 与 stream block index fail-closed 实现为候选，不继承旧 Reviewer/command PASS；READY Doctor PASS 后进入 IN_PROGRESS 并冻结 clean candidate，在 15 分钟内取得新的独立 Reviewer 终态，再按冻结顺序重新执行 Precheck、targeted reactor、root verify 与唯一 diff check，完成 Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0130
+lastAcceptedHandoff: docs/handoffs/TASK-0130.json
+lastTerminalTask: TASK-0130
+lastTerminalHandoff: docs/handoffs/TASK-0130.json
+nextAction: '通过 task-intake 创建 TASK-0131，关闭 TASK-0130 R1 P3-01：为 Anthropic 非流 structured response 的同一 content 数组包含第二个 tool_use 增加直接 contract test，断言唯一 MalformedResponse 且无 OutputDelta/Usage/EOS；不改生产实现、provider 配置、尺寸上限、网络、OpenAPI、数据库或历史制品，完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核后，继续处理 TASK-0108 egress hostname/DNS 边界及其余审计项。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

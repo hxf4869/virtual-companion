@@ -1,0 +1,70 @@
+{
+  "taskId": "TASK-0130",
+  "state": "ACCEPTED",
+  "baseCommit": "ebc7c2228c5ed4d07ec345d9d33a7d187de00392",
+  "headCommit": "fc318cbbca55098c36c4de159d301c41905e85d7",
+  "evidencePath": "docs/evidence/TASK-0130/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a214dd999e7d925d07a5187e94ae8108ae0f9b12",
+      "startedAt": "2026-08-10T01:39:48+08:00",
+      "endedAt": "2026-08-10T02:05:00+08:00",
+      "elapsedSeconds": 1512,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a214dd999e7d925d07a5187e94ae8108ae0f9b12",
+      "startedAt": "2026-08-10T01:39:48+08:00",
+      "endedAt": "2026-08-10T01:41:44+08:00",
+      "elapsedSeconds": 116,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "fc318cbbca55098c36c4de159d301c41905e85d7",
+      "startedAt": "2026-08-10T01:42:16+08:00",
+      "endedAt": "2026-08-10T02:05:00+08:00",
+      "elapsedSeconds": 1364,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-10T01:41:44+08:00",
+      "inProgressCommit": "fc318cbbca55098c36c4de159d301c41905e85d7"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0130_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "fc318cbbca55098c36c4de159d301c41905e85d7",
+      "evidencePath": "docs/evidence/TASK-0130/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：非流 tool_use.name/schemaName 与流式 start/delta/stop index 绑定、wrong/missing/blank name、第二 structured block、mixed prelude、多 text block 和失败时序均正确；Base 后业务/测试与历史制品零 diff，候选 P0/P1/P2=0。P3-01 仅为非流重复 tool_use 拒绝分支缺少直接 contract test，生产实现已 fail-closed，转 TASK-0131 前向补测。",
+      "candidateTree": "4c7e576015d5267299506a579f64cffa2c9e5855"
+    }
+  ],
+  "completed": [
+    "TASK-0128 已提交的 Anthropic 非流 tool_use.name/schemaName 与流式 start/delta/stop index fail-closed 实现，在新的有效 TASK-0130 Context、授权与预算下重新冻结并独立复核。",
+    "R1 完整覆盖 wrong/missing/blank name、mixed text prelude、第二 structured block、wrong/negative index、text mismatch 精确失败时序与合法多 text block；P0/P1/P2=0。",
+    "TASK-0130 Base 后业务/测试路径零 diff，TASK-0128/TASK-0129 历史制品零 diff；Reviewer 与所有正式命令均绑定 clean candidate fc318cbb/4c7e5760。",
+    "READY Doctor 591904 checks、Precheck 5/5、targeted 22 tests、root 15-project 675 tests 与唯一一次无参数 git diff --check 全部 PASS。"
+  ],
+  "remaining": [
+    "R1 P3-01：非流同一 content 数组包含第二个 tool_use 时生产实现已 fail-closed，但缺少直接 contract test；TASK-0131 负责前向补测。",
+    "TASK-0108 egress hostname 大小写与 DNS 解析/重绑定边界仍需复核；P1-04/P1-05/P1-11/P2-29、P2-12/P2-13、P2-03 跨实例边界及 Harness/CI P2-20/P2-21/P2-23/P2-24/P2-25/P2-26/P2-27、P3-07 仍未关闭。",
+    "RISK-01 至 RISK-11 必须在相应能力触发前形成正式证据；全部审计项处理后仍需对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "非流重复 tool_use 当前依赖已审查的生产 fail-closed 分支而非直接 contract test；在 TASK-0131 前保持为明确 P3。",
+    "TASK-0130 没有新增业务 diff，其 PASS 证明的是 Base 中既有实现的当前候选身份与完整门禁，不改写 TASK-0128/TASK-0129 的 REJECTED 历史。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、本机工具链和输出哈希。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0131，关闭 TASK-0130 R1 P3-01：为 Anthropic 非流 structured response 的同一 content 数组包含第二个 tool_use 增加直接 contract test，断言唯一 MalformedResponse 且无 OutputDelta/Usage/EOS；不改生产实现、provider 配置、尺寸上限、网络、OpenAPI、数据库或历史制品，完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核后，继续处理 TASK-0108 egress hostname/DNS 边界及其余审计项。"
+}

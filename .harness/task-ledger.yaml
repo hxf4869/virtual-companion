@@ -682,3 +682,9 @@ tasks:
     taskCard: docs/tasks/TASK-0129-anthropic-tool-use-protocol-replacement.md
     evidence: docs/evidence/TASK-0129/evidence-pack.json
     handoff: docs/handoffs/TASK-0129.json
+  TASK-0130:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0130-anthropic-tool-use-protocol-replacement.md
+    evidence: docs/evidence/TASK-0130/evidence-pack.json
+    handoff: docs/handoffs/TASK-0130.json

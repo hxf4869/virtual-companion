@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0130
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -316,7 +316,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0128 的本机结果。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0130_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: fc318cbbca55098c36c4de159d301c41905e85d7
+    evidencePath: docs/evidence/TASK-0130/review-r1.md
+    reason: 'R1 完整矩阵复核 PASS：非流 tool_use.name/schemaName 与流式 start/delta/stop index 绑定、wrong/missing/blank name、第二 structured block、mixed prelude、多 text block 和失败时序均正确；Base 后业务/测试与历史制品零 diff，候选 P0/P1/P2=0。P3-01 仅为非流重复 tool_use 拒绝分支缺少直接 contract test，生产实现已 fail-closed，转 TASK-0131 前向补测。'
+    candidateTree: 4c7e576015d5267299506a579f64cffa2c9e5855
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0130
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests -am -Dtest=AnthropicMessagesSuccessContractTest,AnthropicMessagesFailureContractTest -Dsurefire.failIfNoSpecifiedTests=false test
