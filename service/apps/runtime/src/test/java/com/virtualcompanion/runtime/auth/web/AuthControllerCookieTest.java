@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.config.CookieCsrfGuardFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
@@ -49,7 +50,7 @@ class AuthControllerCookieTest {
     void setUp() {
         authService = mock(AuthService.class);
         when(authService.refreshTtlSeconds()).thenReturn(604800L);
-        AuthController controller = new AuthController(authService);
+        AuthController controller = new AuthController(authService, new AuthAbuseGuard());
         ReflectionTestUtils.setField(controller, "cookieSecure", true);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new AuthExceptionHandler())

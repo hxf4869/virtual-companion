@@ -300,7 +300,7 @@ public class AuthService {
         }
     }
 
-    private static String normalizeUsername(String username) {
+    static String normalizeUsername(String username) {
         return username == null ? null : username.trim().toLowerCase(Locale.ROOT);
     }
 

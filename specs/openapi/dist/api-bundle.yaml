@@ -529,7 +529,10 @@ paths:
       summary: Log in with internal-account credentials
       description: Exchanges a username and password for an access token and a refresh session. Public. An unknown user and
         a wrong password are indistinguishable and both map to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed); a DISABLED
-        account maps to AUTHENTICATION_REQUIRED. Credentials are never logged, placed in a URL or stored.
+        account maps to AUTHENTICATION_REQUIRED. Credentials are never logged, placed in a URL or stored. Before account lookup
+        or password verification, a Technical Alpha single-instance admission guard applies route-source and source-plus-canonical-username
+        rolling windows and a non-blocking shared concurrency bulkhead. Servlet remoteAddr is authoritative; forwarded client-address
+        headers are ignored.
       security: []
       requestBody:
         required: true
@@ -563,13 +566,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: 'AUTH_RATE_LIMITED: Authentication is temporarily rate limited'
+          headers:
+            Retry-After:
+              description: Positive integer seconds before another admission attempt
+              schema:
+                type: integer
+                format: int32
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/refresh:
     post:
       operationId: refresh
       summary: Renew a session from a refresh token
       description: Validates the presented refresh token server-side (unrevoked, unexpired, ACTIVE account), revokes it and
         issues a new access token and refresh session. Public. An unknown, revoked, expired or DISABLED-account token all
-        map to AUTHENTICATION_REQUIRED; the cause is never disclosed.
+        map to AUTHENTICATION_REQUIRED; the cause is never disclosed. Before token hashing or session JDBC, a Technical Alpha
+        single-instance admission guard applies route-source and token rolling windows and the same non-blocking concurrency
+        bulkhead. Servlet remoteAddr is authoritative; forwarded client-address headers are ignored.
       security: []
       parameters:
       - in: cookie
@@ -588,6 +606,19 @@ paths:
                 $ref: '#/components/schemas/AuthTokenResponse'
         '401':
           description: Invalid, revoked, expired or disabled refresh session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: 'AUTH_RATE_LIMITED: Authentication is temporarily rate limited'
+          headers:
+            Retry-After:
+              description: Positive integer seconds before another admission attempt
+              schema:
+                type: integer
+                format: int32
+                minimum: 1
           content:
             application/json:
               schema:
@@ -708,6 +739,7 @@ components:
       - CATALOG_DRIFT_DETECTED
       - BETA_OPERATIONS_NOT_READY
       - INVALID_REQUEST
+      - AUTH_RATE_LIMITED
     VersionResponse:
       type: object
       description: Service version and build identity

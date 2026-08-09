@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.auth.config;
 
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
+import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
@@ -102,8 +103,8 @@ public class AuthDataSourceConfig {
     }
 
     @Bean
-    public AuthController authController(AuthService authService) {
-        return new AuthController(authService);
+    public AuthController authController(AuthService authService, AuthAbuseGuard authAbuseGuard) {
+        return new AuthController(authService, authAbuseGuard);
     }
 
     @Bean

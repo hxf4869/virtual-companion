@@ -33,3 +33,5 @@ entries:
   order: 14
 - code: INVALID_REQUEST
   order: 15
+- code: AUTH_RATE_LIMITED
+  order: 16

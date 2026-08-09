@@ -1,25 +1,33 @@
 package com.virtualcompanion.runtime.auth.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
+import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import com.virtualcompanion.runtime.auth.web.AuthController;
 import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
+import jakarta.servlet.Filter;
 import jakarta.servlet.http.Cookie;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
@@ -49,6 +57,9 @@ class AuthSecurityIntegrationTest {
 
     @Autowired
     private JwtTokenService jwtTokenService;
+
+    @Autowired
+    private AuthAbuseGuard authAbuseGuard;
 
     private MockMvc mockMvc;
 
@@ -115,6 +126,52 @@ class AuthSecurityIntegrationTest {
     }
 
     @Test
+    void sourceAdmissionRejectsNonCanonicalLoginPathsBeforeMvcRouting() throws Exception {
+        byte[] body = new byte[AuthInputLimits.MAX_REQUEST_BODY_BYTES + 1];
+        Arrays.fill(body, (byte) 'x');
+
+        for (String path : List.of(
+                "/api/v1/auth/l%6Fgin",
+                "/api/v1/auth/login;v=1")) {
+            mockMvc.perform(post(URI.create(path))
+                            .contentType("application/json")
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void admissionFiltersHaveOneSecurityChainRegistrationInTheFrozenOrder() {
+        List<Filter> filters = springSecurityFilterChain.getFilterChains().stream()
+                .flatMap(chain -> chain.getFilters().stream())
+                .toList();
+
+        int cookieIndex = indexOf(filters, CookieCsrfGuardFilter.class);
+        int sourceIndex = indexOf(filters, AuthSourceAdmissionFilter.class);
+        int bodyIndex = indexOf(filters, AuthRequestBodyLimitFilter.class);
+        assertThat(cookieIndex).isGreaterThanOrEqualTo(0);
+        assertThat(sourceIndex).isGreaterThan(cookieIndex);
+        assertThat(bodyIndex).isGreaterThan(sourceIndex);
+        assertThat(count(filters, CookieCsrfGuardFilter.class)).isEqualTo(1);
+        assertThat(count(filters, AuthSourceAdmissionFilter.class)).isEqualTo(1);
+        assertThat(count(filters, AuthRequestBodyLimitFilter.class)).isEqualTo(1);
+        assertThat(context.getBeansOfType(CookieCsrfGuardFilter.class)).isEmpty();
+        assertThat(context.getBeansOfType(AuthSourceAdmissionFilter.class)).isEmpty();
+        assertThat(context.getBeansOfType(AuthRequestBodyLimitFilter.class)).isEmpty();
+    }
+
+    @Test
+    void datasourceControllerFactoryReceivesTheSameSingletonGuard() {
+        AuthService authService = mock(AuthService.class);
+        AuthController controller = new AuthDataSourceConfig().authController(authService, authAbuseGuard);
+
+        assertThat(ReflectionTestUtils.getField(controller, "authService"))
+                .isSameAs(authService);
+        assertThat(ReflectionTestUtils.getField(controller, "abuseGuard"))
+                .isSameAs(authAbuseGuard);
+    }
+
+    @Test
     void csrfFilterRejectsUnknownOriginDirectly() throws Exception {
         // The CORS filter normally rejects unknown Origins before the security
         // chain; exercise the filter's own Origin branch in isolation.
@@ -125,7 +182,7 @@ class AuthSecurityIntegrationTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, new MockFilterChain());
-        org.assertj.core.api.Assertions.assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getStatus()).isEqualTo(403);
     }
 
     @Test
@@ -139,7 +196,7 @@ class AuthSecurityIntegrationTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, new MockFilterChain());
-        org.assertj.core.api.Assertions.assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getStatus()).isEqualTo(200);
     }
 
     @Test
@@ -198,5 +255,18 @@ class AuthSecurityIntegrationTest {
                 new Cookie(CookieCsrfGuardFilter.REFRESH_COOKIE, "refresh-token-value"),
                 new Cookie(CookieCsrfGuardFilter.CSRF_COOKIE, "csrf-value")
         };
+    }
+
+    private static int indexOf(List<Filter> filters, Class<? extends Filter> type) {
+        for (int i = 0; i < filters.size(); i++) {
+            if (type.isInstance(filters.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static long count(List<Filter> filters, Class<? extends Filter> type) {
+        return filters.stream().filter(type::isInstance).count();
     }
 }

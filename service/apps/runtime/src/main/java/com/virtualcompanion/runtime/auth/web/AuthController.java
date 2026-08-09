@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.auth.web;
 
+import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.config.CookieCsrfGuardFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
@@ -9,6 +10,7 @@ import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.security.SecureRandom;
@@ -29,8 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
  * creation require a valid Bearer access token (the caller identity always
  * comes from the server-verified principal, never from a request field).
  *
- * <p>The controller is intentionally thin -- all fail-closed rules live in
- * {@link AuthService} and the V14 SECURITY DEFINER functions. Session cookies
+ * <p>The controller is intentionally thin -- input-key admission runs before
+ * {@link AuthService}, while credential/session rules remain in the service
+ * and V14 SECURITY DEFINER functions. Session cookies
  * (HttpOnly {@code vc_refresh} + double-submit {@code vc_csrf}) are set and
  * cleared here; the refresh token never leaves the cookie into a response
  * body. It only exists when the auth subsystem is enabled AND a DataSource is
@@ -47,6 +50,7 @@ public class AuthController {
     private static final String REFRESH_COOKIE_PATH = "/api/v1/auth";
 
     private final AuthService authService;
+    private final AuthAbuseGuard abuseGuard;
 
     /**
      * Secure flag for the session cookies. Field-injected so the bean can be
@@ -57,12 +61,17 @@ public class AuthController {
     @Value("${virtual-companion.auth.cookie-secure:true}")
     private boolean cookieSecure;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, AuthAbuseGuard abuseGuard) {
         this.authService = authService;
+        this.abuseGuard = abuseGuard;
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
+    public AuthResponse login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse response) {
+        abuseGuard.admitLogin(servletRequest.getRemoteAddr(), request.username());
         IssuedSession session = authService.login(request.username(), request.password());
         setSessionCookies(response, session.refreshToken());
         return session.response();
@@ -72,6 +81,7 @@ public class AuthController {
     public AuthResponse refresh(
             @CookieValue(name = CookieCsrfGuardFilter.REFRESH_COOKIE, required = false) String refreshToken,
             HttpServletResponse response) {
+        abuseGuard.admitRefresh(refreshToken);
         IssuedSession session = authService.refresh(refreshToken);
         setSessionCookies(response, session.refreshToken());
         return session.response();

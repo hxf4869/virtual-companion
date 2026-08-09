@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.auth.config;
 
+import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.jwt.JwtAuthenticationFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import java.time.Duration;
@@ -66,6 +67,11 @@ public class AuthSecurityConfig {
     }
 
     @Bean
+    public AuthAbuseGuard authAbuseGuard() {
+        return new AuthAbuseGuard();
+    }
+
+    @Bean
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${virtual-companion.auth.cors-allowed-origins:}") List<String> allowedOrigins) {
         CorsConfiguration config = new CorsConfiguration();
@@ -79,22 +85,15 @@ public class AuthSecurityConfig {
     }
 
     @Bean
-    public CookieCsrfGuardFilter cookieCsrfGuardFilter(
-            @Value("${virtual-companion.auth.cors-allowed-origins:}") List<String> allowedOrigins) {
-        return new CookieCsrfGuardFilter(allowedOrigins);
-    }
-
-    @Bean
-    public AuthRequestBodyLimitFilter authRequestBodyLimitFilter() {
-        return new AuthRequestBodyLimitFilter();
-    }
-
-    @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            CookieCsrfGuardFilter cookieCsrfGuardFilter,
-            AuthRequestBodyLimitFilter authRequestBodyLimitFilter,
+            @Value("${virtual-companion.auth.cors-allowed-origins:}") List<String> allowedOrigins,
+            AuthAbuseGuard authAbuseGuard,
             JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+        CookieCsrfGuardFilter cookieCsrfGuardFilter = new CookieCsrfGuardFilter(allowedOrigins);
+        AuthSourceAdmissionFilter authSourceAdmissionFilter =
+                new AuthSourceAdmissionFilter(authAbuseGuard);
+        AuthRequestBodyLimitFilter authRequestBodyLimitFilter = new AuthRequestBodyLimitFilter();
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -113,9 +112,10 @@ public class AuthSecurityConfig {
                                     "{\"code\":\"AUTHENTICATION_REQUIRED\","
                                             + "\"message\":\"A valid bearer token is required\"}");
                         }))
-                .addFilterBefore(cookieCsrfGuardFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(authRequestBodyLimitFilter, CookieCsrfGuardFilter.class)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(authRequestBodyLimitFilter, JwtAuthenticationFilter.class)
+                .addFilterBefore(authSourceAdmissionFilter, AuthRequestBodyLimitFilter.class)
+                .addFilterBefore(cookieCsrfGuardFilter, AuthSourceAdmissionFilter.class);
         return http.build();
     }
 }

@@ -8,8 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.virtualcompanion.runtime.auth.config.AuthRequestBodyLimitFilter;
+import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
+import com.virtualcompanion.runtime.auth.config.AuthRequestBodyLimitFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -38,7 +39,7 @@ class AuthControllerValidationTest {
     @BeforeEach
     void setUp() {
         authService = mock(AuthService.class);
-        AuthController controller = new AuthController(authService);
+        AuthController controller = new AuthController(authService, new AuthAbuseGuard());
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(controller)

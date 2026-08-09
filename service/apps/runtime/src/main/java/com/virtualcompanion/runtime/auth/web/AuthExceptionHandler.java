@@ -22,6 +22,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class AuthExceptionHandler {
 
+    @ExceptionHandler(AuthRateLimitException.class)
+    public ResponseEntity<ErrorEnvelope> handleRateLimit(AuthRateLimitException e) {
+        return AuthRateLimitResponse.entity(e.retryAfterSeconds());
+    }
+
     @ExceptionHandler(AuthErrorException.class)
     public ResponseEntity<ErrorEnvelope> handleAuthError(AuthErrorException e) {
         return ResponseEntity.status(e.status())
