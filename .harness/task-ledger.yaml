@@ -670,3 +670,9 @@ tasks:
     taskCard: docs/tasks/TASK-0127-technical-alpha-capability-truth.md
     evidence: docs/evidence/TASK-0127/evidence-pack.json
     handoff: docs/handoffs/TASK-0127.json
+  TASK-0128:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0128-anthropic-tool-use-protocol-consistency.md
+    evidence: docs/evidence/TASK-0128/evidence-pack.json
+    handoff: docs/handoffs/TASK-0128.json

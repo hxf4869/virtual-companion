@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0128
-activeTaskCard: docs/tasks/TASK-0128-anthropic-tool-use-protocol-consistency.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0127
 lastAcceptedHandoff: docs/handoffs/TASK-0127.json
-lastTerminalTask: TASK-0127
-lastTerminalHandoff: docs/handoffs/TASK-0127.json
-nextAction: '执行 TASK-0128：校验 Anthropic structured tool_use.name 与请求 schemaName、绑定 SSE start/delta/stop block index，协议违例固定 MalformedResponse 且不得产生结构化输出/Usage/EOS；补齐混合非流和错误帧 contract tests，并完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
+lastTerminalTask: TASK-0128
+lastTerminalHandoff: docs/handoffs/TASK-0128.json
+nextAction: '通过 task-intake 创建 TASK-0129，作为 TASK-0128 的永久 replacement：保留已提交的 Anthropic tool_use.name/schemaName 与 stream block index fail-closed 实现及完整 contract tests，但不得继承 TASK-0128 的 Reviewer 或正式门禁 PASS；在全新授权、Context 与预算下冻结候选，使用 15 分钟内真实返回终态的独立 Reviewer，随后按新卡冻结顺序重新执行 canonical、targeted、root verify 与唯一 diff check，完成 Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

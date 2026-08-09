@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0128
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -290,7 +290,22 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。TASK-0112 至
       TASK-0127 已按同一 fallback 合规闭环；本卡冻结 LOCAL_EXACT_TREE_FALLBACK，远端如实非 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0128_r2
+    kind: independent-review-gate
+    verdict: TIMEOUT
+    reviewedCommit: a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9
+    evidencePath: docs/evidence/TASK-0128/review-r2-timeout.md
+    reason: >-
+      R2 在 15 分钟 Reviewer 硬上限到达时没有可用终态输出；wait_agent 返回 timed_out=true。
+      随后才由 list_agents 观察到的 PASS 文本属于 late output，不可倒推为期限内 PASS，因此停止晋级并
+      以 TIMEOUT 关闭本卡。
+    candidateTree: 3f759478734261db431731994879c8f0df5c8ade
+    budget: {maximumMinutes: 15, elapsedSeconds: 900, hardLimitReached: true}
+    interruption:
+      terminalOutputReceived: false
+      observedStatus: WAIT_AGENT_TIMEOUT_THEN_LATE_PASS_TEXT
+      action: QUARANTINE_LATE_OUTPUT_AND_REJECT_TASK
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0128
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests -am -Dtest=AnthropicMessagesSuccessContractTest,AnthropicMessagesFailureContractTest -Dsurefire.failIfNoSpecifiedTests=false test

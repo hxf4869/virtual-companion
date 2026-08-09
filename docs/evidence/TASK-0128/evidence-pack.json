@@ -1,0 +1,159 @@
+{
+  "taskId": "TASK-0128",
+  "baseCommit": "2febf109eacb692096bbcae1baf15cc12138d2d0",
+  "headCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9",
+  "contextFingerprint": "40d8fae46a1197d2705954d15fc2d2e91f7df937f38dc265f07b73ffed437f24",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "94a04623d40938e8e1120d48289ce04ca2c8c475",
+      "startedAt": "2026-08-10T00:04:12+08:00",
+      "endedAt": "2026-08-10T00:57:30+08:00",
+      "elapsedSeconds": 3198,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "94a04623d40938e8e1120d48289ce04ca2c8c475",
+      "startedAt": "2026-08-10T00:04:12+08:00",
+      "endedAt": "2026-08-10T00:06:15+08:00",
+      "elapsedSeconds": 123,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "58dffde943cea5f43a4a6056d8d8a8f8f6a3b217",
+      "startedAt": "2026-08-10T00:06:32+08:00",
+      "endedAt": "2026-08-10T00:45:53+08:00",
+      "elapsedSeconds": 2361,
+      "outcome": "TIMEOUT",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-10T00:06:15+08:00",
+      "inProgressCommit": "58dffde943cea5f43a4a6056d8d8a8f8f6a3b217"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0128_r2",
+      "kind": "independent-review-gate",
+      "verdict": "TIMEOUT",
+      "reviewedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9",
+      "evidencePath": "docs/evidence/TASK-0128/review-r2-timeout.md",
+      "reason": "R2 在 15 分钟 Reviewer 硬上限到达时没有可用终态输出；wait_agent 返回 timed_out=true。随后才由 list_agents 观察到的 PASS 文本属于 late output，不可倒推为期限内 PASS，因此停止晋级并以 TIMEOUT 关闭本卡。",
+      "candidateTree": "3f759478734261db431731994879c8f0df5c8ade",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 900,
+        "hardLimitReached": true
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "WAIT_AGENT_TIMEOUT_THEN_LATE_PASS_TEXT",
+        "action": "QUARANTINE_LATE_OUTPUT_AND_REJECT_TASK"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0128 (READY activation)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "c6b7ffa97eeaab5ceab69b68f3e5edc3a72db3dd1614285e1ed1fe0bf169ffcf",
+      "reason": "READY Doctor completed once with 581435 checks in 75.5s; stderr sha256 18dd1791b166d4e494de2dcc47e42c9707d82117cac93bb554c41ba02ffe96c2.",
+      "environment": "macOS 26.6.1; controlled Python 3.13.0; stdout /tmp/vc-task0128-ready-doctor.out; stderr /tmp/vc-task0128-ready-doctor.err; completed 2026-08-10T00:06:15+08:00",
+      "verifiedCommit": "1303e25f85e5423f5b872149ba3d6a20a65a1648"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0128",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "54c31e7bc0a07c2bcdfba4dfd9c52ab7f9b6d49f6f11e0ba3ec6c5cdfaf76579",
+      "reason": "Process exit 0 and all 5 commands PASS; Doctor completed 583381 checks in 78.2s. stderr sha256 185aeaaa9a88b39c31e32cbd9faf9433a7eeeb46be09aa2790a1a6463fde7e1e. This command ran only after the Reviewer deadline had already returned TIMEOUT, so the raw PASS is retained as a non-promotable diagnostic and cannot authorize ACCEPTED.",
+      "environment": "macOS 26.6.1; controlled Python 3.13.0; stdout /tmp/vc-task0128-formal-precheck.out; stderr /tmp/vc-task0128-formal-precheck.err; 2026-08-10T00:45:53+08:00..2026-08-10T00:47:18+08:00",
+      "verifiedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests -am -Dtest=AnthropicMessagesSuccessContractTest,AnthropicMessagesFailureContractTest -Dsurefire.failIfNoSpecifiedTests=false test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "f890a17219c5683f73aa436f208dc374509ce1f292eb200cbfd406a71e1d13f9",
+      "reason": "Process exit 0; frozen reactor BUILD SUCCESS with Success 13 and Failure 9 tests, zero failures/errors/skips; stderr was empty. Because Reviewer had already timed out, this raw PASS is diagnostic only and not a valid post-Reviewer gate.",
+      "environment": "OrbStack Docker 29.4.0; Maven 3.9.16; Eclipse Adoptium JDK 25.0.3; stdout /tmp/vc-task0128-formal-targeted.out; stderr /tmp/vc-task0128-formal-targeted.err; completed 2026-08-10T00:47:36+08:00",
+      "verifiedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "9c1b1ff22f4f7a6c69d53e78427e4dd3bcb4b1fa7e204953c627cab87f43db8b",
+      "reason": "Process exit 0; root 15-project JDK-25 reactor BUILD SUCCESS with 675 tests and zero failures/errors/skips; stderr sha256 0477ba3fcf23f407eb7c03e723b39e8e068871d9a4c0eaeb644d3c290293a807. Because Reviewer had already timed out, this raw PASS is diagnostic only and not a valid post-Reviewer gate.",
+      "environment": "OrbStack Docker 29.4.0; Maven 3.9.16; Eclipse Adoptium JDK 25.0.3; stdout /tmp/vc-task0128-formal-root-verify.out; stderr /tmp/vc-task0128-formal-root-verify.err; 2026-08-10T00:47:49+08:00..2026-08-10T00:48:11+08:00",
+      "verifiedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The unique formal no-argument diff check exited 0 with empty stdout/stderr. It ran after Reviewer TIMEOUT and is retained only as a diagnostic fact, not a valid acceptance gate.",
+      "environment": "macOS; Git 2.50.1; clean candidate Commit/Tree; completed 2026-08-10T00:48:33+08:00",
+      "verifiedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No dispatch was made. Reviewer R2 timed out and stopped promotion; dispatchCount=0 and no remote PASS is claimed.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0128 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_REJECTED_CLOSURE_FREEZE: runs once after the complete REJECTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0128/pre-closure-request.json; one execution reserved",
+      "verifiedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_R2_TIMEOUT_LATE_PASS_QUARANTINED_POST_TIMEOUT_COMMANDS_NON_PROMOTABLE",
+    "candidateCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9",
+    "candidateTree": "3f759478734261db431731994879c8f0df5c8ade",
+    "passClaimed": false,
+    "localExactTree": {
+      "status": "FAIL",
+      "reason": "Reviewer R2 had no terminal output at the 15-minute hard deadline. Later PASS text and subsequent exit-0 commands cannot repair the validation-order violation or establish an acceptance gate.",
+      "cleanWorktree": true,
+      "cleanIndex": true,
+      "exitCode": null,
+      "stdoutSha256": "9c1b1ff22f4f7a6c69d53e78427e4dd3bcb4b1fa7e204953c627cab87f43db8b",
+      "stderrSha256": "0477ba3fcf23f407eb7c03e723b39e8e068871d9a4c0eaeb644d3c290293a807",
+      "receiptSha256": null
+    },
+    "remote": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "REVIEWER_TIMEOUT",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}

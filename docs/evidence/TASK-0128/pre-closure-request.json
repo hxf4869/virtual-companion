@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "executable": "/Users/hxf/.zcode/venvs/vc-harness/bin/python",
+  "argv": [
+    "scripts/harness/doctor.py",
+    "--task",
+    "TASK-0128",
+    "--pre-closure"
+  ],
+  "workingDirectory": "/Users/hxf/projects/virtual-companion",
+  "terminalState": "REJECTED",
+  "candidateCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9",
+  "candidateTree": "3f759478734261db431731994879c8f0df5c8ade",
+  "passClaimed": false
+}

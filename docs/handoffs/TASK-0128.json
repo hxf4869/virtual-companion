@@ -1,0 +1,81 @@
+{
+  "taskId": "TASK-0128",
+  "state": "REJECTED",
+  "baseCommit": "2febf109eacb692096bbcae1baf15cc12138d2d0",
+  "headCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9",
+  "evidencePath": "docs/evidence/TASK-0128/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "94a04623d40938e8e1120d48289ce04ca2c8c475",
+      "startedAt": "2026-08-10T00:04:12+08:00",
+      "endedAt": "2026-08-10T00:57:30+08:00",
+      "elapsedSeconds": 3198,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "94a04623d40938e8e1120d48289ce04ca2c8c475",
+      "startedAt": "2026-08-10T00:04:12+08:00",
+      "endedAt": "2026-08-10T00:06:15+08:00",
+      "elapsedSeconds": 123,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "58dffde943cea5f43a4a6056d8d8a8f8f6a3b217",
+      "startedAt": "2026-08-10T00:06:32+08:00",
+      "endedAt": "2026-08-10T00:45:53+08:00",
+      "elapsedSeconds": 2361,
+      "outcome": "TIMEOUT",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-10T00:06:15+08:00",
+      "inProgressCommit": "58dffde943cea5f43a4a6056d8d8a8f8f6a3b217"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0128_r2",
+      "kind": "independent-review-gate",
+      "verdict": "TIMEOUT",
+      "reviewedCommit": "a18c5d8d7e3f2860fbae02147ce73429b6dbb5d9",
+      "evidencePath": "docs/evidence/TASK-0128/review-r2-timeout.md",
+      "reason": "R2 在 15 分钟 Reviewer 硬上限到达时没有可用终态输出；wait_agent 返回 timed_out=true。随后才由 list_agents 观察到的 PASS 文本属于 late output，不可倒推为期限内 PASS，因此停止晋级并以 TIMEOUT 关闭本卡。",
+      "candidateTree": "3f759478734261db431731994879c8f0df5c8ade",
+      "budget": {
+        "maximumMinutes": 15,
+        "elapsedSeconds": 900,
+        "hardLimitReached": true
+      },
+      "interruption": {
+        "terminalOutputReceived": false,
+        "observedStatus": "WAIT_AGENT_TIMEOUT_THEN_LATE_PASS_TEXT",
+        "action": "QUARANTINE_LATE_OUTPUT_AND_REJECT_TASK"
+      }
+    }
+  ],
+  "completed": [
+    "候选实现保留并精确校验非流 structured tool_use.name 与请求 schemaName；wrong/missing/blank name 固定 MalformedResponse，混合 text prelude 不泄漏为 TextChunk。",
+    "流式 codec/session 保留并绑定 start/delta/stop index 与 tool_use name，拒绝 mismatch、第二 structured block 与负 index；text stop mismatch 保留已发 OutputDelta 历史但不得产生 Usage/EOS。",
+    "Contract tests 覆盖非流三类 name 失败、流式 name/index/第二 block、合法非零 index、合法多 text block、混合 text+tool_use 与失败事件精确时序。",
+    "R1 P3-01 通过唯一 fix batch 关闭；候选前两轮 bounded iteration 均为 Success 13 + Failure 9 tests PASS。",
+    "在 Reviewer 超时后被错误启动的 Precheck 5/5、targeted 22 tests、root 675 tests 与唯一 diff check 均真实 exit 0；其结果如实保留为非 promotable 诊断，不冒充 ACCEPTED。"
+  ],
+  "remaining": [
+    "R2 在 15 分钟硬上限到达时无终态输出，Reviewer Gate 为 TIMEOUT；随后出现的 late PASS 文本不得倒推为有效 PASS。",
+    "TASK-0129 replacement 必须在新授权、Context 和预算下采用当前已提交实现，重新取得期限内独立 Reviewer 终态并重新执行全部正式门禁；TASK-0128 的 Reviewer/command 结果不得继承。",
+    "TASK-0108 egress hostname/DNS 边界、数据库 principal/readiness、authorization snapshot、admin seed、跨实例限流及其余审计项仍需串行处理；全部处理后对最新 origin/main 独立全项目复审。"
+  ],
+  "knownRisks": [
+    "业务实现静态与测试诊断均显示正确，但 TASK-0128 为 REJECTED；replacement ACCEPTED 前不得把该协议修复声明为正式交付。",
+    "late Reviewer 输出与在其后执行的 exit-0 命令均保留为事实，但 validation sequence 已失效，不能建立 local exact-tree promotion PASS。",
+    "远端 exact-SHA 未运行，dispatchCount=0、passClaimed=false；REJECTED terminal metadata commit 不代表 CI PASS。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0129，作为 TASK-0128 的永久 replacement：保留已提交的 Anthropic tool_use.name/schemaName 与 stream block index fail-closed 实现及完整 contract tests，但不得继承 TASK-0128 的 Reviewer 或正式门禁 PASS；在全新授权、Context 与预算下冻结候选，使用 15 分钟内真实返回终态的独立 Reviewer，随后按新卡冻结顺序重新执行 canonical、targeted、root verify 与唯一 diff check，完成 Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。"
+}
