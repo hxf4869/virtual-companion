@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0126
+activeTaskCard: docs/tasks/TASK-0126-auth-refresh-malformed-utf16-fail-closed.md
 lastAcceptedTask: TASK-0122
 lastAcceptedHandoff: docs/handoffs/TASK-0122.json
 lastTerminalTask: TASK-0125
 lastTerminalHandoff: docs/handoffs/TASK-0125.json
-nextAction: '通过 task-intake 创建 TASK-0126：以 TASK-0125 的 REJECTED 终态为 Base，保留已提交的 Auth firewall envelope 与 official observation marking 修复，定位并修复 root JDK-25 verify 中 AuthAbuseGuardTest.malformedUtf16CannotAliasAValidDigestKeyAcrossAnyHmacInput 在第 200 行未抛异常的确定性失败（判明生产 HMAC fail-closed 缺陷或测试状态污染并在最小范围修复），补齐孤立 high/low surrogate 跨全部 HMAC 输入的确定性隔离测试；随后重新覆盖 TASK-0125 完整 Auth 矩阵、独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
+nextAction: '执行 TASK-0126：修复 malformed UTF-16 refresh token 绕过 AuthAbuseGuard fail-closed 的回归，保留 null/blank/over-limit 401 与 TASK-0125 firewall/observation 行为，补齐 limiter/controller 矩阵并完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
