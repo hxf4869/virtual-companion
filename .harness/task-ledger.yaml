@@ -598,3 +598,9 @@ tasks:
     taskCard: docs/tasks/TASK-0115-streaming-utf8-accumulator.md
     evidence: docs/evidence/TASK-0115/evidence-pack.json
     handoff: docs/handoffs/TASK-0115.json
+  TASK-0116:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0116-openai-stream-backpressure.md
+    evidence: docs/evidence/TASK-0116/evidence-pack.json
+    handoff: docs/handoffs/TASK-0116.json

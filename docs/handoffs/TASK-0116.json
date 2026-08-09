@@ -1,0 +1,71 @@
+{
+  "taskId": "TASK-0116",
+  "state": "ACCEPTED",
+  "baseCommit": "1ad813579d235b45ab511f75be1aa6fe1bf3bb14",
+  "headCommit": "9191041321d6a42b6efe06a1c9cd593b1a0dc2d5",
+  "evidencePath": "docs/evidence/TASK-0116/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f2c1618eca4bcfa3a61c77341ef1f69cf6645cb0",
+      "startedAt": "2026-08-09T12:46:07+08:00",
+      "endedAt": "2026-08-09T13:20:55+08:00",
+      "elapsedSeconds": 2088,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f2c1618eca4bcfa3a61c77341ef1f69cf6645cb0",
+      "startedAt": "2026-08-09T12:46:07+08:00",
+      "endedAt": "2026-08-09T12:49:34+08:00",
+      "elapsedSeconds": 207,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "aa80120536ac09948e9b3fffdb81c103343e1f83",
+      "startedAt": "2026-08-09T12:49:40+08:00",
+      "endedAt": "2026-08-09T13:20:55+08:00",
+      "elapsedSeconds": 1875,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T12:49:34+08:00",
+      "inProgressCommit": "aa80120536ac09948e9b3fffdb81c103343e1f83"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0116_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "9191041321d6a42b6efe06a1c9cd593b1a0dc2d5",
+      "evidencePath": "docs/evidence/TASK-0116/review-r1.md",
+      "reason": "R1 PASS：候选身份、64/3/67 容量、wait/notify、取消/超时/body-close 和唯一终态均满足，P0/P1/P2/P3 为零。",
+      "candidateTree": "82ffa19d59bb5db003059671ae14d83f38b09984"
+    }
+  ],
+  "completed": [
+    "OpenAiChatCompletionsSession 以受 stateLock 保护的 ArrayDeque 替换无界 LinkedBlockingQueue，冻结 64 个 pending streaming OutputDelta、3 个成功控制事件保留位与 67 个事件引用绝对上界。",
+    "producer 在提交第 65 个 OutputDelta 前通过 wait 释放状态锁；consumer dequeue 后 notifyAll，sequence 仅在实际入队后递增，terminal 仲裁、队列修改和序列分配继续由同一锁串行化。",
+    "cancel、close 与 total timeout 在满队列下先冻结唯一终态并唤醒 parser，再于锁外关闭 body、取消 future 和 interrupt 线程；已接受事件保持顺序，terminal 唯一且最后，terminal 后永久 empty。",
+    "新增独立 OpenAI backpressure contract tests，覆盖等待 consumer 唤醒、64 容量阻塞与恢复、满载 cancel/close、满载 total timeout、body close、structured streaming 与 non-stream 三事件成功批次。",
+    "验证绑定 91910413/82ffa19d：独立 R1 P0/P1/P2/P3=0，canonical 5/5 PASS，定向 reactor 262 tests PASS，根级 15 模块 verify 570 tests PASS，唯一次 git diff --check PASS。"
+  ],
+  "remaining": [
+    "AnthropicMessagesSession 的 LinkedBlockingQueue 仍无界；解析线程快于消费者时可持续累积事件对象，需要与本卡等价但独立冻结的有界背压契约。",
+    "Anthropic maxTokens 仍只有正值校验，尚未冻结 provider-safe ceiling；连续 comment/empty-data frame 仍缺少连接级累计 raw byte budget。",
+    "P2-03 Auth 滥用防护、P2-13 admin seed 并发、P2-12 JDBC snapshot 复活，以及审计交接中的其余 OPEN/OWNER_GATE 继续严格串行。"
+  ],
+  "knownRisks": [
+    "Anthropic provider 路径仍存在无界事件队列，慢消费者可造成进程内存持续增长；下一卡优先关闭该路径。",
+    "Anthropic maxTokens ceiling 与跨 frame raw budget 继续分别保留为未关闭资源和成本风险。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、工具链与本机结果。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0117，作为永久独立 C3 卡为 Anthropic streaming session 引入与 TASK-0116 等价的有界事件队列与可取消 backpressure：冻结队列容量和控制事件保留位，确保解析线程快于消费者时内存有界，cancel/timeout/body-close 不死锁且唯一终态不丢失；Anthropic maxTokens ceiling 与跨 frame raw budget 继续拆分后续卡。"
+}
