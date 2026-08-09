@@ -2,14 +2,16 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0114
+activeTaskCard: docs/tasks/TASK-0114-anthropic-response-side-limits.md
 lastAcceptedTask: TASK-0113
 lastAcceptedHandoff: docs/handoffs/TASK-0113.json
 lastTerminalTask: TASK-0113
 lastTerminalHandoff: docs/handoffs/TASK-0113.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0114，作为永久独立 C3 卡处理 Anthropic response-side limits：在 JSON 物化前限制 non-stream raw body，以有界原始字节 parser 替换无界 SSE readLine/聚合，在 adapter emit/append 前限制累计 UTF-8 输出，并补 exact/one-over、Unicode、early-stop、cancel/body-close 合同测试；OpenAI/Anthropic 无界事件队列与 backpressure 继续拆分为后续独立契约任务。
+  执行 TASK-0114：在 Anthropic JSON 物化前限制 non-stream raw body，以有界 raw-byte parser
+  替换无界 SSE readLine/聚合，在 adapter emit/append 前限制累计 UTF-8 输出，并补
+  exact/one-over、Unicode、early-stop、cancel/body-close 合同测试。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
