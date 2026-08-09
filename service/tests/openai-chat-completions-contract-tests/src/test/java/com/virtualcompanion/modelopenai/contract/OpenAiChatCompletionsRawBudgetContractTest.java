@@ -229,9 +229,13 @@ class OpenAiChatCompletionsRawBudgetContractTest {
         );
         beforeContent.awaitClosed();
 
-        var afterContent = new BlockingAfterDataInputStream(
-                sse(choiceChunk("before-total-timeout", null))
-                        .getBytes(StandardCharsets.UTF_8)
+        byte[] totalPrefix = sse(choiceChunk("before-total-timeout", null))
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] lateContentlessFrame = sse(choiceChunk(null, null))
+                .getBytes(StandardCharsets.UTF_8);
+        var afterContent = new CloseReleasedLateInputStream(
+                totalPrefix,
+                lateContentlessFrame
         );
         var totalEvents = assertTimeoutPreemptively(
                 Duration.ofSeconds(5),
@@ -254,15 +258,21 @@ class OpenAiChatCompletionsRawBudgetContractTest {
         assertTrue(totalEvents.stream()
                 .noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
         afterContent.awaitClosed();
+        afterContent.awaitReaderStopped();
+        assertEquals(
+                totalPrefix.length + lateContentlessFrame.length,
+                afterContent.bytesRead()
+        );
     }
 
     @Test
     void repeated_cancel_and_close_stop_blocked_body_without_late_events()
             throws Exception {
-        var body = new BlockingAfterDataInputStream(
-                sse(choiceChunk("before-cancel", null))
-                        .getBytes(StandardCharsets.UTF_8)
-        );
+        byte[] prefix = sse(choiceChunk("before-cancel", null))
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] lateContentlessFrame = sse(choiceChunk(null, null))
+                .getBytes(StandardCharsets.UTF_8);
+        var body = new CloseReleasedLateInputStream(prefix, lateContentlessFrame);
         var session = open(body, longRequest());
 
         var first = assertTimeoutPreemptively(
@@ -276,7 +286,7 @@ class OpenAiChatCompletionsRawBudgetContractTest {
                         assertInstanceOf(ModelProtocolEvent.OutputDelta.class, first).payload()
                 ).text()
         );
-        body.awaitWaitingForMoreData();
+        body.awaitWaitingForClose();
 
         session.cancel();
         session.cancel();
@@ -290,6 +300,8 @@ class OpenAiChatCompletionsRawBudgetContractTest {
         assertEquals(1, cancelled.sequence());
         assertTrue(session.next().isEmpty());
         body.awaitClosed();
+        body.awaitReaderStopped();
+        assertEquals(prefix.length + lateContentlessFrame.length, body.bytesRead());
     }
 
     private static ModelProtocolSession open(
@@ -465,6 +477,75 @@ class OpenAiChatCompletionsRawBudgetContractTest {
 
         private void awaitClosed() throws InterruptedException {
             assertTrue(closed.await(2, TimeUnit.SECONDS), "response body was not closed");
+        }
+    }
+
+    private static final class CloseReleasedLateInputStream extends InputStream {
+
+        private static final byte[] SENTINEL =
+                "SENTINEL".getBytes(StandardCharsets.US_ASCII);
+
+        private final byte[] data;
+        private final int releaseOffset;
+        private final CountDownLatch waitingForClose = new CountDownLatch(1);
+        private final CountDownLatch closed = new CountDownLatch(1);
+        private volatile int position;
+        private volatile Thread readerThread;
+        private boolean released;
+
+        private CloseReleasedLateInputStream(byte[] prefix, byte[] lateFrame) {
+            this.data = concat(
+                    Objects.requireNonNull(prefix, "prefix must not be null"),
+                    Objects.requireNonNull(lateFrame, "lateFrame must not be null"),
+                    SENTINEL
+            );
+            this.releaseOffset = prefix.length;
+        }
+
+        @Override
+        public synchronized int read() {
+            readerThread = Thread.currentThread();
+            while (position >= releaseOffset && !released) {
+                waitingForClose.countDown();
+                try {
+                    wait();
+                } catch (InterruptedException ignored) {
+                    // A hostile or buffered body may ignore interruption and remain readable.
+                }
+            }
+            if (position >= data.length) {
+                return -1;
+            }
+            return data[position++] & 0xff;
+        }
+
+        @Override
+        public synchronized void close() {
+            released = true;
+            closed.countDown();
+            notifyAll();
+        }
+
+        private int bytesRead() {
+            return position;
+        }
+
+        private void awaitWaitingForClose() throws InterruptedException {
+            assertTrue(
+                    waitingForClose.await(2, TimeUnit.SECONDS),
+                    "response parser did not wait for body close"
+            );
+        }
+
+        private void awaitClosed() throws InterruptedException {
+            assertTrue(closed.await(2, TimeUnit.SECONDS), "response body was not closed");
+        }
+
+        private void awaitReaderStopped() throws InterruptedException {
+            Thread reader = readerThread;
+            assertTrue(reader != null, "response parser never read the body");
+            reader.join(2_000);
+            assertTrue(!reader.isAlive(), "response parser kept reading after terminal");
         }
     }
 

@@ -349,6 +349,9 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
 
     private boolean onSseData(StreamState state, String data)
             throws OpenAiCodecException {
+        if (isTerminalQueued()) {
+            return false;
+        }
         if (SizeLimits.utf8Bytes(data) > SizeLimits.MAX_STREAM_EVENT_BYTES) {
             throw new OpenAiCodecException();
         }
@@ -379,7 +382,7 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
                 throw new OpenAiCodecException();
             }
             state.usage = usageChunk.usage();
-            return true;
+            return !isTerminalQueued();
         }
 
         var choice = (OpenAiChatCompletionsCodec.ChoiceChunk) chunk;
@@ -401,7 +404,7 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
             }
         }
         choice.finishReason().ifPresent(reason -> state.stopReason = reason);
-        return true;
+        return !isTerminalQueued();
     }
 
     private void markFirstContent() {
