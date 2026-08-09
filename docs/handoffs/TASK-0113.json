@@ -1,0 +1,71 @@
+{
+  "taskId": "TASK-0113",
+  "state": "ACCEPTED",
+  "baseCommit": "c91f325fa836f296463edad9197c25d78d8526ae",
+  "headCommit": "383d78ddc0375263ab429a75c6aefa9d18364f5f",
+  "evidencePath": "docs/evidence/TASK-0113/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "723a66a605153c63fd63cf3b1a23ea69832d53b1",
+      "startedAt": "2026-08-09T10:38:02+08:00",
+      "endedAt": "2026-08-09T10:58:00+08:00",
+      "elapsedSeconds": 1198,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "723a66a605153c63fd63cf3b1a23ea69832d53b1",
+      "startedAt": "2026-08-09T10:38:02+08:00",
+      "endedAt": "2026-08-09T10:39:53+08:00",
+      "elapsedSeconds": 111,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f5f68c33c391e60538cd80d8b5729fe78550f5fd",
+      "startedAt": "2026-08-09T10:40:09+08:00",
+      "endedAt": "2026-08-09T10:58:00+08:00",
+      "elapsedSeconds": 1071,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T10:39:53+08:00",
+      "inProgressCommit": "f5f68c33c391e60538cd80d8b5729fe78550f5fd"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0113_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "383d78ddc0375263ab429a75c6aefa9d18364f5f",
+      "evidencePath": "docs/evidence/TASK-0113/review-r1.md",
+      "reason": "R1 PASS：七项冻结上限、严格 UTF-8、early-stop、body close 和显式 session cancel 均满足验收，未发现 P0/P1。",
+      "candidateTree": "f7002943f45e7c74d671a35be4e7dab091d471c6"
+    }
+  ],
+  "completed": [
+    "TASK-0110 遗留在 main 的 OpenAI response early-limit 已以新候选 Commit/Tree 重新验收；七项冻结上限未改名、未放宽、未改数值。",
+    "SSE data payload 在 dispatch 前使用严格 UTF-8 decoder；非法字节、组合 payload one-over 和物理行越界都 fail closed，不产生该事件的 OutputDelta、Usage 或 EOS。",
+    "新增 BoundedInputStream 直接单测与 OpenAI 合同测试，覆盖 non-BMP SSE/non-stream exact/one-over、offset/哨兵、单 overflow probe、early-stop 和 cancel 关闭 body。",
+    "LiveModelInvoker 对 terminalless 与 session.next() 异常显式 cancel，返回归一化 Malformed/ZERO_LLM 失败，不泄漏 partial output/usage 并恢复 quota。",
+    "验证已绑定 383d78d/f700294：独立 R1 PASS，canonical 5/5 PASS，定向九模块 reactor 242 tests PASS，根级 15 模块 verify PASS，唯一次 git diff --check PASS。"
+  ],
+  "remaining": [
+    "Anthropic non-stream response 仍在 Jackson readTree 前无 raw-body 上限，SSE 仍使用无界 BufferedReader.readLine/列表聚合，adapter emit/append 前仍无累计 UTF-8 输出上限；下一张 C3 卡必须闭环。",
+    "OpenAI 与 Anthropic session 的 LinkedBlockingQueue 仍无界，跨连续 comment/empty-data 的 raw SSE frame 总预算也未引入；queue/backpressure 需要独立契约与数值授权。",
+    "P2-03 Auth 滥用防护、P2-13 admin seed/refresh 并发、P2-12 JDBC snapshot 复活以及审计交接中其余 OPEN/OWNER_GATE 继续严格串行。"
+  ],
+  "knownRisks": [
+    "启用 Anthropic 时，当前无界 non-stream/SSE response path 仍是上线阻塞风险；TASK-0113 只关闭 OpenAI replacement，不声称产品级 P2-06 全部关闭。",
+    "无界 Provider 事件队列可在解析线程快于消费者时累积对象；当前的字节预算不等价于 backpressure。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、工具链与本机结果。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0114，作为永久独立 C3 卡处理 Anthropic response-side limits：在 JSON 物化前限制 non-stream raw body，以有界原始字节 parser 替换无界 SSE readLine/聚合，在 adapter emit/append 前限制累计 UTF-8 输出，并补 exact/one-over、Unicode、early-stop、cancel/body-close 合同测试；OpenAI/Anthropic 无界事件队列与 backpressure 继续拆分为后续独立契约任务。"
+}

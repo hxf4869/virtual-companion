@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0113
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -269,7 +269,14 @@ humanApprovals:
       在无 runner、零 step 状态终止；TASK-0112 已用同一 READY 冻结 fallback 合规 ACCEPTED。
       本卡冻结 LOCAL_EXACT_TREE_FALLBACK，远端继续如实为非 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0113_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 383d78ddc0375263ab429a75c6aefa9d18364f5f
+    evidencePath: docs/evidence/TASK-0113/review-r1.md
+    reason: 'R1 完整矩阵复核 PASS：候选 Commit/Tree 与 writeAllowlist 一致，七项上限、严格 UTF-8、non-BMP exact/one-over、early-stop、body close 与 invoker 显式 cancel 均有可执行证据；未发现 P0/P1，Anthropic response limits 与无界事件队列继续作为明确范围外风险。'
+    candidateTree: f7002943f45e7c74d671a35be4e7dab091d471c6
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0113
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/modules/modelruntime,service/adapters/model-openai,service/tests/openai-chat-completions-contract-tests,service/tests/model-protocol-contract-tests -am test
