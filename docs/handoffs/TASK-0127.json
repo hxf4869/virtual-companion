@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0127",
+  "state": "ACCEPTED",
+  "baseCommit": "86389bd2fca56ec1f3afea638c5eda1869a12555",
+  "headCommit": "1de996a401931be49e06dca76393d574b63abf9a",
+  "evidencePath": "docs/evidence/TASK-0127/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2c68c1c681994ee0f0badef918c21cb4b85b254d",
+      "startedAt": "2026-08-09T23:04:28+08:00",
+      "endedAt": "2026-08-09T23:46:00+08:00",
+      "elapsedSeconds": 2492,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2c68c1c681994ee0f0badef918c21cb4b85b254d",
+      "startedAt": "2026-08-09T23:04:28+08:00",
+      "endedAt": "2026-08-09T23:06:32+08:00",
+      "elapsedSeconds": 124,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "b95e248a1dc50dee9a7663ef9fae625866dbe347",
+      "startedAt": "2026-08-09T23:06:47+08:00",
+      "endedAt": "2026-08-09T23:46:00+08:00",
+      "elapsedSeconds": 2353,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T23:06:32+08:00",
+      "inProgressCommit": "b95e248a1dc50dee9a7663ef9fae625866dbe347"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0127_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1de996a401931be49e06dca76393d574b63abf9a",
+      "evidencePath": "docs/evidence/TASK-0127/review-r2.md",
+      "reason": "R2 完整复核 PASS：R1 发现的 OpenAPI version 未接线遗漏与 production profile 显式 false 边界均已在唯一 README fix batch 关闭；runtime/contract、V1-V15、15-project reactor、前端、provider、发布闸门和 P3-08 append-only/精确 Evidence 标签矩阵均一致，最终候选 P0/P1/P2/P3=0。",
+      "candidateTree": "53044cdb5b0e810e3585062c86687959c77429b4"
+    }
+  ],
+  "completed": [
+    "README 不再把身份、数据库、模型、记忆与安全全部描述为未实现；已按当前 Base 列出 15-project Java reactor、V1-V15、provider adapters、Auth 和 H5 页面。",
+    "runtime 固定 health/baseline、条件 Auth 四路与 OpenAPI version/relationship/generation/message/snapshot/memory 未接线合同面已清晰分层，未把内核或页面写成完整产品纵切。",
+    "production 配置准确区分变量缺失失败、显式 false 仍可通过与部署政策要求 true，避免把政策过度声明为代码保证。",
+    "TASK-0090 及全部历史 Evidence 保持零 diff；README 前向规定 targeted/runtime-upstream、root 15-project、local exact-tree 与 remote exact-SHA 精确标签，关闭 P3-08。",
+    "R1 两项 P2 经唯一 fix batch 关闭，R2 P0/P1/P2/P3=0；Precheck 5/5、OpenAPI、root 670 tests、frontend 138 tests/type-check/build、database 50 tests 与唯一 diff check 全部 PASS。"
+  ],
+  "remaining": [
+    "P1-04/P1-05/P1-11/P2-29 数据库 principal、runtime DML/readiness，P2-12 authorization snapshot 与 P2-13 admin seed 多实例并发仍需高风险卡。",
+    "P2-03 跨实例限流/锁定/密码/审计保留，以及 P2-20/P2-21/P2-23/P2-24/P2-25/P2-26/P2-27、P3-01/P3-07 仍未关闭。",
+    "TASK-0107 Reviewer 的 Anthropic tool_use name 与 content_block_stop index 一致性、TASK-0108 provider egress 后续边界仍需逐项处理。",
+    "RISK-01 至 RISK-11 的生产纵切、持久化、部署与产品伦理条件风险必须在能力触发前取得证据；全部修复后对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "README 是 Base 能力的保守投影而非机器真源；后续 controller、migration、page 或 gate 变化必须由新任务前向更新。",
+    "production profile 目前不拒绝 VC_AUTH_ENABLED=false 或 VC_AUTH_DATASOURCE_ENABLED=false，生产强制 true 仍是未由配置代码执行的部署政策。",
+    "本机正式 frontend 命令由 ambient pnpm 10.32.1 执行，仓库 packageManager 声明 pnpm 11.9.0；命令真实 PASS，但可重复工具链锁定属于后续供应链治理范围。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、本机工具链和输出哈希。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0128，关闭 TASK-0107 Reviewer 遗留的 Anthropic tool-use 协议一致性：要求结构化响应 tool_use.name 与请求声明工具名一致，content_block_stop.index 与已打开 block index 一致；违规在输出或完成前以协议错误 fail-closed，补足 success/failure/stream interleaving contract tests。保持 provider 配置、尺寸上限、网络、OpenAPI 和数据库零变更，并完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。"
+}

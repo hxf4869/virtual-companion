@@ -664,3 +664,9 @@ tasks:
     taskCard: docs/tasks/TASK-0126-auth-refresh-malformed-utf16-fail-closed.md
     evidence: docs/evidence/TASK-0126/evidence-pack.json
     handoff: docs/handoffs/TASK-0126.json
+  TASK-0127:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0127-technical-alpha-capability-truth.md
+    evidence: docs/evidence/TASK-0127/evidence-pack.json
+    handoff: docs/handoffs/TASK-0127.json

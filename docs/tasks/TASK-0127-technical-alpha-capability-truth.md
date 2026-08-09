@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0127
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -258,7 +258,14 @@ humanApprovals:
       TASK-0112 至 TASK-0126 已按同一 fallback 合规闭环；本卡冻结 LOCAL_EXACT_TREE_FALLBACK，
       远端继续如实非 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0127_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1de996a401931be49e06dca76393d574b63abf9a
+    candidateTree: 53044cdb5b0e810e3585062c86687959c77429b4
+    evidencePath: docs/evidence/TASK-0127/review-r2.md
+    reason: "R2 完整复核 PASS：R1 发现的 OpenAPI version 未接线遗漏与 production profile 显式 false 边界均已在唯一 README fix batch 关闭；runtime/contract、V1-V15、15-project reactor、前端、provider、发布闸门和 P3-08 append-only/精确 Evidence 标签矩阵均一致，最终候选 P0/P1/P2/P3=0。"
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0127
   - python scripts/dev/openapi_tool.py validate

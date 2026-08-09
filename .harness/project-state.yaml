@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0127
-activeTaskCard: docs/tasks/TASK-0127-technical-alpha-capability-truth.md
-lastAcceptedTask: TASK-0126
-lastAcceptedHandoff: docs/handoffs/TASK-0126.json
-lastTerminalTask: TASK-0126
-lastTerminalHandoff: docs/handoffs/TASK-0126.json
-nextAction: '执行 TASK-0127：更新根 README 的 Technical Alpha 能力、runtime 端点、契约未接线面、数据库/前端/provider 与发布阻断真值；保持 TASK-0090 等历史 Evidence append-only，并以精确 reactor/local/remote 标签关闭 P3-08。完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0127
+lastAcceptedHandoff: docs/handoffs/TASK-0127.json
+lastTerminalTask: TASK-0127
+lastTerminalHandoff: docs/handoffs/TASK-0127.json
+nextAction: '通过 task-intake 创建 TASK-0128，关闭 TASK-0107 Reviewer 遗留的 Anthropic tool-use 协议一致性：要求结构化响应 tool_use.name 与请求声明工具名一致，content_block_stop.index 与已打开 block index 一致；违规在输出或完成前以协议错误 fail-closed，补足 success/failure/stream interleaving contract tests。保持 provider 配置、尺寸上限、网络、OpenAPI 和数据库零变更，并完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

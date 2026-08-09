@@ -1,0 +1,176 @@
+{
+  "taskId": "TASK-0127",
+  "baseCommit": "86389bd2fca56ec1f3afea638c5eda1869a12555",
+  "headCommit": "1de996a401931be49e06dca76393d574b63abf9a",
+  "contextFingerprint": "c2b0d5dabfda727be6f1f0ea27fb652ab8091d86fbc414afa6e57a6c6b79f648",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2c68c1c681994ee0f0badef918c21cb4b85b254d",
+      "startedAt": "2026-08-09T23:04:28+08:00",
+      "endedAt": "2026-08-09T23:46:00+08:00",
+      "elapsedSeconds": 2492,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2c68c1c681994ee0f0badef918c21cb4b85b254d",
+      "startedAt": "2026-08-09T23:04:28+08:00",
+      "endedAt": "2026-08-09T23:06:32+08:00",
+      "elapsedSeconds": 124,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "b95e248a1dc50dee9a7663ef9fae625866dbe347",
+      "startedAt": "2026-08-09T23:06:47+08:00",
+      "endedAt": "2026-08-09T23:46:00+08:00",
+      "elapsedSeconds": 2353,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T23:06:32+08:00",
+      "inProgressCommit": "b95e248a1dc50dee9a7663ef9fae625866dbe347"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0127_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1de996a401931be49e06dca76393d574b63abf9a",
+      "evidencePath": "docs/evidence/TASK-0127/review-r2.md",
+      "reason": "R2 完整复核 PASS：R1 发现的 OpenAPI version 未接线遗漏与 production profile 显式 false 边界均已在唯一 README fix batch 关闭；runtime/contract、V1-V15、15-project reactor、前端、provider、发布闸门和 P3-08 append-only/精确 Evidence 标签矩阵均一致，最终候选 P0/P1/P2/P3=0。",
+      "candidateTree": "53044cdb5b0e810e3585062c86687959c77429b4"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0127",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "389a4fc1541570373d9346db32adabc636490c6de6a363669664e4697cb65182",
+      "reason": "Canonical Precheck ran once after R2 on the frozen candidate: all 5 commands PASS; Doctor completed 577507 checks in 82.9s. stderr sha256 14785ef4a33a5a5933c63addb5374df6c3a764cda1fd7c8fc12d906554825260.",
+      "environment": "macOS 26.6.1; controlled Python 3.13.0; stdout /tmp/vc-task0127-formal-precheck.out; stderr /tmp/vc-task0127-formal-precheck.err; 2026-08-09T23:40:16+08:00..2026-08-09T23:41:39+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "0781e7534fbf21fab135cb9b9f98939521d3ed85a28053bb33dc4c1df538c5ff",
+      "reason": "OpenAPI source validation returned PASS; stderr was empty.",
+      "environment": "controlled Python 3.13.0; stdout /tmp/vc-task0127-formal-openapi.out; stderr /tmp/vc-task0127-formal-openapi.err; completed 2026-08-09T23:41:44+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "8dcf31ec51c97f12895c955210e9200bbb46f69974b146d6faa2459d063cff13",
+      "reason": "Root 15-project JDK-25 reactor BUILD SUCCESS with 670 tests passing and zero failures, errors, or skips; stderr sha256 0477ba3fcf23f407eb7c03e723b39e8e068871d9a4c0eaeb644d3c290293a807.",
+      "environment": "OrbStack Docker 29.4.0; Maven 3.9.16; Eclipse Adoptium JDK 25.0.3; stdout /tmp/vc-task0127-formal-verify.out; stderr /tmp/vc-task0127-formal-verify.err; 2026-08-09T23:41:51+08:00..2026-08-09T23:42:29+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "pnpm --dir frontend test:run",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "674c110f5679755279479330494c8eb1ac51d3895f3345ef16121d626f581c4a",
+      "reason": "Vitest 3.2.6 ran 15 files and 138 tests; all passed with zero failures or skips. stderr sha256 58d9c8089d35ab0f9fdb395d51ef9b532feb7dec9589d6f63e011f44b2785be5.",
+      "environment": "Node 22.23.1; ambient pnpm 10.32.1; frozen packageManager declaration pnpm@11.9.0; stdout /tmp/vc-task0127-formal-frontend-test.out; stderr /tmp/vc-task0127-formal-frontend-test.err; completed 2026-08-09T23:42:36+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "pnpm --dir frontend type-check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "vue-tsc --noEmit completed with exit 0 and no diagnostics; stderr only recorded the invoked script, sha256 aacdfedc485449151e8f0cedfb8264a7d15047256a7b3c3a4a9e848e28e7b178.",
+      "environment": "Node 22.23.1; ambient pnpm 10.32.1; stdout /tmp/vc-task0127-formal-frontend-typecheck.out; stderr /tmp/vc-task0127-formal-frontend-typecheck.err; completed 2026-08-09T23:42:43+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "pnpm --dir frontend build",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "195c17c47a2e392ed979d259b111c54d09525986445c594cca199137cc1ff482",
+      "reason": "uni-app H5 production build completed successfully; stderr only recorded the invoked script, sha256 6c8bfedcee05e67af64c31e57334e138ebe16415f00090176f5329722e9502ce.",
+      "environment": "Node 22.23.1; ambient pnpm 10.32.1; stdout /tmp/vc-task0127-formal-frontend-build.out; stderr /tmp/vc-task0127-formal-frontend-build.err; completed 2026-08-09T23:42:54+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "fb44240fb19e71e7117f66c00411f193bda2cadc447af8df38e0dddce463dd31",
+      "reason": "Digest-pinned PostgreSQL 18 + pgvector runner applied V1-V15 and passed all 50 SQL/RLS/concurrency tests; stderr was empty.",
+      "environment": "OrbStack Docker; synthetic temporary PostgreSQL volume/port; stdout /tmp/vc-task0127-formal-db.out; stderr /tmp/vc-task0127-formal-db.err; 2026-08-09T23:42:58+08:00..2026-08-09T23:43:26+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The unique formal no-argument diff check ran once after the database suite; stdout and stderr were empty.",
+      "environment": "macOS; Git 2.50.1; clean candidate Commit/Tree; completed 2026-08-09T23:43:34+08:00",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate 1de996a401931be49e06dca76393d574b63abf9a",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No dispatch was made. Owner-supplied August quota evidence remains includedMinutes=usedMinutes=2000 with paidBudgetUsd=0 and stopUsageEnabled=true; remote remains non-PASS and is not represented by local fallback.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0127 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_ACCEPTED_CLOSURE_FREEZE: runs once after the complete ACCEPTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0127/pre-closure-request.json; one execution reserved",
+      "verifiedCommit": "1de996a401931be49e06dca76393d574b63abf9a"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "R1_FAIL_FIX_BATCH_R2_PASS_CANONICAL_PASS",
+    "candidateCommit": "1de996a401931be49e06dca76393d574b63abf9a",
+    "candidateTree": "53044cdb5b0e810e3585062c86687959c77429b4",
+    "passClaimed": true,
+    "localExactTree": {
+      "status": "PASS",
+      "reason": "R2, canonical, OpenAPI, root reactor, frontend, database and unique formal diff gates all passed on the same clean candidate.",
+      "cleanWorktree": true,
+      "cleanIndex": true,
+      "exitCode": 0,
+      "stdoutSha256": "389a4fc1541570373d9346db32adabc636490c6de6a363669664e4697cb65182",
+      "stderrSha256": "14785ef4a33a5a5933c63addb5374df6c3a764cda1fd7c8fc12d906554825260",
+      "receiptSha256": null
+    },
+    "remote": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}
