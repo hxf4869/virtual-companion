@@ -1,0 +1,149 @@
+schemaVersion: 1
+taskId: TASK-0123
+baseCommit: 30a0a25e20cd1c76b31d016d768faaf13a72588f
+contextFingerprint: 27fd964b15ac0f6068b1866dd4081cd191bd65a4979d073394709fa9dd11fc05
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+  - path: .gitattributes
+    sha256: 98ef74cab7df7ea0cc4c4ed35a9fcdfadf085c657dcb4231e9f6dfef25c6faac
+  - path: .harness/agent-entrypoints.yaml
+    sha256: ecafcd1e736aa65fb5a47c91c9e1947b5d056c9037f2905ca03fe8eba32a823a
+  - path: .harness/ci-execution-policy.yaml
+    sha256: 666976659494a5e5188e3b37c933fcc5cb1522c958d1d4f55565a4172a9be43b
+  - path: .harness/commands.yaml
+    sha256: 35af171f3c83fdbe0adc691789b14f16fff297475046e9d88e91c115a66df720
+  - path: .harness/invariants.yaml
+    sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+  - path: .harness/license-policy.yaml
+    sha256: c13ce6bb1a0806f6ea4d47685386df6c7064b66b02173e496d47ec7468478205
+  - path: .harness/paid-feature-denylist.yaml
+    sha256: 4f96855253f04a886e77cdcbaf0462387a380f9eca6be6e347d88bb529dc4708
+  - path: .harness/phase-scope.yaml
+    sha256: 55f4e02048943206868b74129f85a0c73f39da9960f95b64f631a9788a9ad0e6
+  - path: .harness/project-state.yaml
+    sha256: 32b1aaca6e364ff5c6019cbcca5320cce179426f3f1b3bc3980702413c8920c9
+  - path: .harness/protected-paths.yaml
+    sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+  - path: .harness/skills.yaml
+    sha256: ff2688b1c3e4620906f6d9da2eed7e6b663d0d9adc4d4f2a47c5fad672a35fad
+  - path: .harness/sources-of-truth.yaml
+    sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+  - path: .harness/task-backlog.yaml
+    sha256: e1c150fcf98f07a91a384467828c3d4a3161d9037e8d43aeab85be37212b6fd5
+  - path: .harness/task-delivery-policy.yaml
+    sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
+  - path: .harness/task-ledger.yaml
+    sha256: 2b280c1e93a39af6712a2eb86153a4eb475ebd5c2475edf3b0ab679a100b0e74
+  - path: .harness/task-lifecycle.yaml
+    sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+  - path: .harness/tools.lock.yaml
+    sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+  - path: AGENTS.md
+    sha256: 8c04d7dc1af1a04ccd9e3fab64b9a071e1a3f143610a08367e8cfce3e91d390c
+  - path: CLAUDE.md
+    sha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+  - path: docs/evidence/TASK-0109/zcode-remediation-handoff.md
+    sha256: 04bc8d6145db5c7c6f77875e0cdb9b4a35ec187c514687f18af005a06a97efda
+  - path: docs/evidence/TASK-0122/evidence-pack.json
+    sha256: 0af2cbe606e04021eff71f18412054172855db66c47359e07c8d60616e5b108f
+  - path: docs/evidence/TASK-0122/review-r1.md
+    sha256: 91e347d0088d2fabce5068cf3d7c865f347531a148c18fc3f0f5bcb176460406
+  - path: docs/evidence/TASK-0122/review-r2.md
+    sha256: 4f7e850aa9fe6c9735a22f1dd181b6b6989d5ea227e0a9a8db8df4aa0fe99b2f
+  - path: docs/handoffs/TASK-0122.json
+    sha256: 11c4b54437b88ca504655110a069ce86f000abeebe13b6cc7aef6d2cc780c021
+  - path: docs/schemas/evidence-pack.schema.json
+    sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+  - path: docs/schemas/handoff.schema.json
+    sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+  - path: docs/tasks/TASK-0112-auth-input-hygiene.md
+    sha256: a44ead3044ca7371ded8665d0b0bcaf004365b5cb2d72ef734d1a42e9a242498
+  - path: docs/tasks/TASK-0121-auth-body-token-fences.md
+    sha256: e33cb02abd963ddcae22af967f62869d41f041cc6153c4ab4a4dc9fcbe52e0c5
+  - path: docs/tasks/TASK-0122-auth-abuse-admission-control.md
+    sha256: c798c889bf6ad34fcb251fe0a16447e002d4aa77a714f94273610d2dc191e226
+  - path: docs/tasks/context/TASK-0112.context-lock.yaml
+    sha256: ba049efbff08d000c78aecb128a34b385f4658f8269010df16a7d9d1a18bb04b
+  - path: docs/tasks/context/TASK-0121.context-lock.yaml
+    sha256: 82b0b5edb6e92a954d9292d8d51624779c989ea3f53e2477de8f8154f0818235
+  - path: docs/tasks/context/TASK-0122.context-lock.yaml
+    sha256: 47587a096c02a7437329833638c4a6334f1306d93bc10a7b20eda104f0e4d1d0
+  - path: docs/tasks/task-card-template.md
+    sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+  - path: pom.xml
+    sha256: b4c91c41c074f1e1d67c5f17b600004961c9a1af9959f9f10379bfe5e990cdb0
+  - path: requirements-harness.txt
+    sha256: 15a0b1ad3059a055847bf367d43a7d3c138b791d2bf67d8b6a53f982edda1dd3
+  - path: scripts/dev/openapi_tool.py
+    sha256: e176b00df777650d0c955a3648976fd4d1d6ec53a2db737f8e8f5f2953d38ebe
+  - path: scripts/harness/catalog_tool.py
+    sha256: b3b24a4d5a28848754545e05c622e1476f5a049253882665d1f7b58f35adb29f
+  - path: service/apps/runtime/pom.xml
+    sha256: ba0906cb8848e9b5b7e9080201732cfe39585c50c9bd67ffa4d93f91f723adae
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/application/AuthAbuseGuard.java
+    sha256: c2042db8193a7c47e6db1992b7364f991a1b4cf5d2363dcf98f86c2aa6fe1403
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/application/AuthService.java
+    sha256: ee2c446d3f02588e3358616f88b4312397fe393c591d77e93696acdd500f7d9c
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/application/RefreshTokens.java
+    sha256: 20fa4e5f843d365fa3baa6e03e96eb95dcafbc5ab8a814dcdf040663177e8efc
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/AuthDataSourceConfig.java
+    sha256: 958d04d02425ef270b2a5e673d6b30cd3933d7cd11e2f1eca1ac0c384d5da755
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/AuthRequestBodyLimitFilter.java
+    sha256: 3140cbf61a535363ca7b897f031aed4a80d79e169a3e8b0f227a8d9a5128129a
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/AuthSecurityConfig.java
+    sha256: 53a25a20819255212871fdbf76cf1dd4100e6cc86874a96ab567cd6ea6a65b64
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/AuthSourceAdmissionFilter.java
+    sha256: 2de034c07e9dc956d39f279a46c050ff9a3ec02d69fcbfab9e6defd66fa18b7a
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/CookieCsrfGuardFilter.java
+    sha256: 133b8925f0636790e8f6ff384fdabe6ff0a7673407b40dbf2ccb5e224bef8b03
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/jwt/JwtTokenService.java
+    sha256: 427292ba4bba1c75d1add178f23fa083134320f32d989f5439825994458e6377
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthController.java
+    sha256: 39e82b7ecb2fdfb53931b76c1b81ee75dc31c70166c8d5b98942ef3666106f02
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthErrorException.java
+    sha256: b1d2eed130ad6ff18db838768cb573c434c49956f376de172bb864f9ebac9d54
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthExceptionHandler.java
+    sha256: 35ae7ca09d18afe517c4013787580dc0ab3ca1a5f2fcfba35e98cfbb973ad17a
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthInputLimits.java
+    sha256: 09b68097e3e29a0c1e6f59d4bd84c9e124625ec7575d1fe20b2ba8d726c32253
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthRateLimitException.java
+    sha256: e556f1968d93841d51bfc7d5dbade562438f87879d3210c605e1201fe2b40bdb
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthRateLimitResponse.java
+    sha256: b915b3b2748abb227378dbdbb295029345f9aa81375593d11ec23f0f6e943cb9
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthRequests.java
+    sha256: 271277b361f97031cd4e865bef846d6f3473363a93b8dd6cf8e86a2c9114897e
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthResponses.java
+    sha256: b62823f0c8c49d75ee2b8f10695d35e31349942fcf943e7d69491ab11b5f1a37
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/ErrorEnvelope.java
+    sha256: 1c1eab6646e2e88e8965bbfeadf531a3fec924296202e8ab7bd66164a0d9f7a6
+  - path: service/apps/runtime/src/main/resources/application.yaml
+    sha256: 0d6298ba4b016ce564f8aa498a23818de6e8f601e1263e9709ea5fefcc1d9e38
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/application/AuthAbuseGuardTest.java
+    sha256: a89c009081ea59188048d4c23be41a18115d71d1a34fc067a7b9fb835233966a
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/application/AuthServiceTest.java
+    sha256: fcfe556c6262e672b5e4df5945954e68bdbfaa192a07aaffdb4d4c0af3950776
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/AuthRequestBodyLimitFilterTest.java
+    sha256: 5f84ca12f1b559fecc826452897f1dc23f6175962a27deb16519a76a764d626c
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/AuthSecurityIntegrationTest.java
+    sha256: f4a68a5594adac552563316c7a23345b39bb909f406ee0109fa7e6f2ed6d318c
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/AuthSourceAdmissionFilterTest.java
+    sha256: e2cfd46efad23675a8b4f4a61eb7ddfdb7870e7847c2fd7d54da7a67fbc37ec2
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/web/AuthControllerAbuseControlTest.java
+    sha256: d10d58ddde6dc5b61cdcfecfe66bf52f7cba5f11a66d6158e6d9bcb18b78a527
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/web/AuthControllerCookieTest.java
+    sha256: 68b8a1d744949f9122b1c5fcf71561bef17dad79b606068a223113fcdfafdf8b
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/web/AuthControllerValidationTest.java
+    sha256: 0cc423654ca69cc03d78bd58cb166df797e95127bb8909783e4a2b59e6fdc9f3
+  - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/web/AuthInputLimitsTest.java
+    sha256: b31a10cb20ce73eb91cc49a732f5949e52adc75b93a1d036dd298f999013df95
+  - path: skills/task-delivery-flow/SKILL.md
+    sha256: 9993e863360e181f7f13c1c058868196c69bf49d85c2ba128787ca6e8a95481b
+  - path: skills/task-intake/SKILL.md
+    sha256: 025fb456212052459245bbf2b79bce38684e63e63e0e8c664ff5d69091af9c4d
+  - path: specs/catalog/error-codes.yaml
+    sha256: 9a467dd8eb7039d8494f43ec66cc0c62009031d6bb6ebc619492c6691bfa7157
+  - path: specs/contracts/identity-session-boundary-contract.yaml
+    sha256: 039faa26b924c6aa54a7496b0e72e2523d5742385882bac1acc90058bfc094c6
+  - path: specs/openapi/virtual-companion.yaml
+    sha256: 166e36ded4d0a861bcf34a03ee825f7dddaf41c5e43ea39144a9be1a1ed84f72
