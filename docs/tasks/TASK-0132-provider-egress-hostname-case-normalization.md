@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0132
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -257,7 +257,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用历史 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0132_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 79274b7196dbf5d82126b5055df8da9fcafea767
+    evidencePath: docs/evidence/TASK-0132/review-r1.md
+    reason: 'R1 完整复核 PASS：endpoint host 与 custom approvedHosts 均以 Locale.ROOT 规范化；策略层、OpenAI、Anthropic 的合法大小写变体与未获批 host 负例覆盖完整，scheme/port/IP/loopback/DNS 边界未扩大。Base 后业务 diff 精确为四个授权路径，候选 P0/P1/P2/P3=0。'
+    candidateTree: 9d3316736da30a572ad6a83e8bd79340784d8500
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0132
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/modules/modelruntime,service/adapters/model-openai,service/adapters/model-anthropic,service/tests/openai-chat-completions-contract-tests,service/tests/anthropic-messages-contract-tests -am -Dtest=ProviderEgressPolicyTest,OpenAiChatCompletionsBoundaryContractTest,AnthropicMessagesBoundaryContractTest -Dsurefire.failIfNoSpecifiedTests=false test

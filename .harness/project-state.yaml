@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0132
-activeTaskCard: docs/tasks/TASK-0132-provider-egress-hostname-case-normalization.md
-lastAcceptedTask: TASK-0131
-lastAcceptedHandoff: docs/handoffs/TASK-0131.json
-lastTerminalTask: TASK-0131
-lastTerminalHandoff: docs/handoffs/TASK-0131.json
-nextAction: '执行 TASK-0132：仅在 ProviderEgressPolicy 以 Locale.ROOT 规范化 hostname 与 approvedHosts 后比较，并在策略层、OpenAI 与 Anthropic Boundary tests 增加供应商 uppercase/mixed-case 正例及未获批 host 负例；不引入 DNS 解析、连接或重绑定防护。冻结 clean candidate 后取得 15 分钟内独立 Reviewer 终态，再依序完成正式门禁、Evidence/Handoff、单父终态提交和远端 0/0。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0132
+lastAcceptedHandoff: docs/handoffs/TASK-0132.json
+lastTerminalTask: TASK-0132
+lastTerminalHandoff: docs/handoffs/TASK-0132.json
+nextAction: '通过 task-intake 创建 TASK-0133，先在当前 HEAD 独立复核并关闭审计 P2-20：修复 scripts/harness/tests/test_harness.py 在临时 git init fixture 中硬编码 master 的可移植性问题，显式创建或查询实际默认分支，并增加 init.defaultBranch=main、master 与无全局配置的回归；本卡仅触碰必要 Harness 测试/契约路径，不合并 P2-21 canonical Python 选择、Actions/依赖锁/timeout/matrix/OpenAPI 或业务代码。完成 C4 harness-change Owner 证据、独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交和远端 0/0 后，再处理其余 Harness/CI、Provider DNS 与数据库 Owner gates。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

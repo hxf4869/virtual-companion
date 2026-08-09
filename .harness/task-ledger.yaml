@@ -694,3 +694,9 @@ tasks:
     taskCard: docs/tasks/TASK-0131-anthropic-nonstream-duplicate-tool-use-test.md
     evidence: docs/evidence/TASK-0131/evidence-pack.json
     handoff: docs/handoffs/TASK-0131.json
+  TASK-0132:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0132-provider-egress-hostname-case-normalization.md
+    evidence: docs/evidence/TASK-0132/evidence-pack.json
+    handoff: docs/handoffs/TASK-0132.json
