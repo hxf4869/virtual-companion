@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0132
+activeTaskCard: docs/tasks/TASK-0132-provider-egress-hostname-case-normalization.md
 lastAcceptedTask: TASK-0131
 lastAcceptedHandoff: docs/handoffs/TASK-0131.json
 lastTerminalTask: TASK-0131
 lastTerminalHandoff: docs/handoffs/TASK-0131.json
-nextAction: '通过 task-intake 创建 TASK-0132，先在当前 HEAD 复核并关闭 TASK-0108 R1 P3-01 的 Provider egress hostname 大小写误拒：若可复现，则仅在 ProviderEgressPolicy 以 Locale.ROOT 规范化 hostname 后比较 approvedHosts，并为 OpenAI、Anthropic 与策略层补 uppercase/mixed-case 正例及未获批 host 负例；不在本小卡引入 DNS 解析、网络连接或重绑定防护，不改 endpoint 路径、端口、TLS、secret、模型、数据库、OpenAPI 或历史制品。完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交和远端 0/0 后，再单独评估 DNS 重绑定边界与其余审计项。'
+nextAction: '执行 TASK-0132：仅在 ProviderEgressPolicy 以 Locale.ROOT 规范化 hostname 与 approvedHosts 后比较，并在策略层、OpenAI 与 Anthropic Boundary tests 增加供应商 uppercase/mixed-case 正例及未获批 host 负例；不引入 DNS 解析、连接或重绑定防护。冻结 clean candidate 后取得 15 分钟内独立 Reviewer 终态，再依序完成正式门禁、Evidence/Handoff、单父终态提交和远端 0/0。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
