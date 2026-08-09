@@ -1,0 +1,199 @@
+{
+  "taskId": "TASK-0110",
+  "baseCommit": "717582ec8f0bba5c81ebdc8cb2b535974ce281f0",
+  "headCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+  "contextFingerprint": "71fcdebba70f312f721722834956caafbb26d366a60132668fde8d6b10108aa3",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "eeb6ce2457d9c1e8e7d5e6dceac779aed34cfd51",
+      "startedAt": "2026-08-09T08:07:10+08:00",
+      "endedAt": "2026-08-09T08:45:28+08:00",
+      "elapsedSeconds": 2298,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "eeb6ce2457d9c1e8e7d5e6dceac779aed34cfd51",
+      "startedAt": "2026-08-09T08:07:10+08:00",
+      "endedAt": "2026-08-09T08:08:58+08:00",
+      "elapsedSeconds": 108,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "398b38a5ebb601cda2f352ea8bbf4deb6688fba1",
+      "startedAt": "2026-08-09T08:09:05+08:00",
+      "endedAt": "2026-08-09T08:45:28+08:00",
+      "elapsedSeconds": 2183,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T08:08:58+08:00",
+      "inProgressCommit": "398b38a5ebb601cda2f352ea8bbf4deb6688fba1"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0110_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "b0c2d10f208be3ec86eea095af7633df95c5a4fb",
+      "evidencePath": "docs/evidence/TASK-0110/review-r1.md",
+      "candidateTree": "4d0cfddf76f1a4e05a25924151841aa96a336178",
+      "reason": "单行 exact 1 MiB data payload 被物理行 framing 预算误拒，必须使用唯一 fix batch 修复。"
+    },
+    {
+      "id": "task0110_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+      "evidencePath": "docs/evidence/TASK-0110/review-r2.md",
+      "candidateTree": "f71fb147f4d7410ab2212a4eed0624100fbf2e3f",
+      "reason": "R1 finding 已关闭；delta 仅含两个授权路径，未发现新 P0/P1 或相邻回归。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0110 (READY stage)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "c0b376ee038984bde304e15a2881852b25425bc071a57d81d211f26d5e1ca7d7",
+      "reason": "READY Doctor completed 479358 checks in 64.8 seconds with exit 0 on the bound READY authorization chain.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; fresh TMPDIR",
+      "verifiedCommit": "ba0696cfddf9677e598891ad9592f398252c3b3c"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/tests/openai-chat-completions-contract-tests -am test (pre-R1 targeted candidate)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "cd1b40ce9950fce1e3446e433207d87e3b44d35511e97bf0b1de4b1caf948add",
+      "reason": "Candidate b0c2d10 targeted reactor completed BUILD SUCCESS; the retained log reports 188 tests across Catalog, Safety, Model Runtime, and OpenAI contracts.",
+      "environment": "OrbStack Docker; Maven 3.9; Temurin JDK 25; vc-maven-cache",
+      "verifiedCommit": "b0c2d10f208be3ec86eea095af7633df95c5a4fb"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0110 frozen candidate",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "R1 found one blocking P1 acceptance defect: fixed SSE framing caused a legal single-line exact 1 MiB payload to fail.",
+      "environment": "Independent read-only Codex reviewer; no canonical or root Maven dispatch",
+      "verifiedCommit": "b0c2d10f208be3ec86eea095af7633df95c5a4fb",
+      "candidateCommit": "b0c2d10f208be3ec86eea095af7633df95c5a4fb",
+      "candidateTree": "4d0cfddf76f1a4e05a25924151841aa96a336178"
+    },
+    {
+      "command": "git diff --check 717582e..b0c2d10 (Reviewer accidental non-gate inspection)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The reviewer accidentally executed this range form once and observed clean output. It is not the frozen no-argument formal gate and is not used as its PASS; the fact is retained without concealment.",
+      "environment": "macOS; independent reviewer process",
+      "verifiedCommit": "b0c2d10f208be3ec86eea095af7633df95c5a4fb"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/tests/openai-chat-completions-contract-tests -am test (R1 fix batch targeted)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "1b4136be5bf16b80ff53f4bebef5d9ec4bc658af649fb7412c47f42a5223464f",
+      "reason": "Fix candidate 38b0b80 targeted reactor completed BUILD SUCCESS; OpenAI contract module ran 40 tests with zero failures, errors, or skips.",
+      "environment": "OrbStack Docker; Maven 3.9; Temurin JDK 25; vc-maven-cache",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3"
+    },
+    {
+      "command": "Independent Reviewer R2 for TASK-0110 fix batch",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "R2 PASS: R1 finding closed, delta limited to two authorized paths, no new P0/P1 or adjacent regression.",
+      "environment": "Independent read-only Codex reviewer; no canonical, root Maven, or diff-check dispatch",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0110",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "a9f668325f46c694b85a5db8507e55457e60d6e836d4c3577aad5fdfd1ed7ca9",
+      "reason": "Post-R2 candidate canonical completed 5/5 PASS; Doctor reported 481255 checks in 64.8 seconds. stderr SHA256 da4f33573a28e487e7fd93a2d4652c2857e3d4ccd9c2845c9be6c5e55695b8c1.",
+      "environment": "macOS; controlled Python 3.13.0; fresh TMPDIR /tmp/vc-task0110-canonical.IddjpP/tmp.J6hVUK",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "135a870e6478df4ac9bb7560c707c5b491d75d73b566ca121ce0096b66a728c2",
+      "reason": "Root 15-module reactor completed BUILD SUCCESS in 14.744 seconds; stderr warning stream SHA256 0477ba3fcf23f407eb7c03e723b39e8e068871d9a4c0eaeb644d3c290293a807.",
+      "environment": "OrbStack Docker; maven:3.9-eclipse-temurin-25-alpine; Java 25.0.3; vc-maven-cache",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The single reserved formal no-argument command completed with empty stdout/stderr and exit 0 on the clean candidate.",
+      "environment": "macOS; Git 2.50.1 (Apple Git-155)",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions run 31286798584",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "91251c2c0ebb905dfc391a755addc1a65412fac33241e803b514d3f1d9fda5d9",
+      "reason": "Exact candidate SHA was pushed and remote main reverified 0/0. The matching workflow reached terminal failure in 4 seconds; all six jobs had empty runner_name and zero steps. Billing/check-annotation APIs returned 403, so no unverified quota cause or remote PASS is claimed. Full summary: docs/evidence/TASK-0110/remote-exact-sha.json.",
+      "environment": "GitHub Actions REST API 2022-11-28; runs/jobs endpoints HTTP 200",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+      "candidateCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+      "candidateTree": "f71fb147f4d7410ab2212a4eed0624100fbf2e3f"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0110 --pre-closure (superseded closure snapshot)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "4756d316d917bcdfa640d8155df078c08a625333f7317796d9dd52c7e68fa914",
+      "reason": "The first staged REJECTED snapshot passed 569728 checks in 180.7 seconds, but the subsequent independent closure audit found reviewer-array drift and a stale nextAction. That snapshot was not committed and this result is not reused for the repaired closure.",
+      "environment": "macOS; controlled Python 3.13.0; fresh TMPDIR /tmp/vc-task0110-preclosure.90wXqG/tmp.y0psdO; stderr SHA256 aad250c8052e47fe1647df0dbb26f7bf9ccb5e47461ed346b27202b288af2c8f",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0110 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: the command runs once after this complete REJECTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; controlled Python 3.13.0; one execution reserved",
+      "verifiedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "PRIMARY_REMOTE_EXACT_SHA",
+    "profile": "precheck",
+    "candidateStatus": "REMOTE_EXACT_SHA_TERMINAL_FAILURE",
+    "candidateCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+    "candidateTree": "f71fb147f4d7410ab2212a4eed0624100fbf2e3f",
+    "passClaimed": false,
+    "githubActions": {
+      "status": "FAIL",
+      "runId": 31286798584,
+      "conclusion": "failure",
+      "jobCount": 6,
+      "runnerAssigned": false,
+      "stepsObserved": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}

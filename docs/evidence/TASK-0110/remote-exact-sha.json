@@ -1,0 +1,32 @@
+{
+  "taskId": "TASK-0110",
+  "candidateCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+  "candidateTree": "f71fb147f4d7410ab2212a4eed0624100fbf2e3f",
+  "channel": "PRIMARY_REMOTE_EXACT_SHA",
+  "runId": 31286798584,
+  "runUrl": "https://github.com/hxf4869/virtual-companion/actions/runs/31286798584",
+  "event": "push",
+  "createdAt": "2026-08-09T00:43:50Z",
+  "completedAt": "2026-08-09T00:43:54Z",
+  "status": "completed",
+  "conclusion": "failure",
+  "jobCount": 6,
+  "jobs": [
+    "Backend",
+    "Harness full (ubuntu-latest)",
+    "Frontend",
+    "Database (PostgreSQL 18 + pgvector)",
+    "Harness smoke (windows-latest)",
+    "Harness smoke (macos-latest)"
+  ],
+  "runnerAssigned": false,
+  "stepsObserved": 0,
+  "runsApiHttpStatus": 200,
+  "jobsApiHttpStatus": 200,
+  "checksAnnotationsHttpStatus": 403,
+  "billingApiHttpStatus": 403,
+  "runsResponseSha256": "f12389dca20aa205b2762148b8d1c24988f100c57e5bce97fa0c956a6b3140ee",
+  "jobsResponseSha256": "91251c2c0ebb905dfc391a755addc1a65412fac33241e803b514d3f1d9fda5d9",
+  "passClaimed": false,
+  "reason": "The exact-SHA workflow reached a terminal failure before any job acquired a runner or emitted a step. The available token could read Actions runs/jobs but could not read billing or check annotations, so no unsupported quota cause is asserted."
+}

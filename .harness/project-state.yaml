@@ -2,16 +2,16 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0110
-activeTaskCard: docs/tasks/TASK-0110-provider-response-early-limits.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0108
 lastAcceptedHandoff: docs/handoffs/TASK-0108.json
-lastTerminalTask: TASK-0109
-lastTerminalHandoff: docs/handoffs/TASK-0109.json
+lastTerminalTask: TASK-0110
+lastTerminalHandoff: docs/handoffs/TASK-0110.json
 nextAction: >-
-  将 TASK-0110 authorizationCommit 绑定到本 READY 授权提交并运行 READY Doctor；PASS 后转入
-  IN_PROGRESS，实施非流 8 MiB raw body 与 SSE 1 MiB 读取阶段 early-stop、关闭 response body
-  及 LiveModelInvoker 显式 session cancel，随后冻结候选并按 C3 独立复核和 exact-SHA 渠道验收。
+  通过 task-intake 创建下一张永久独立任务卡，处理 P2-04/P3-05/P3-06 Auth hygiene：
+  Bean Validation 与统一 400 ErrorEnvelope、移除普通日志账户标识、统一 username trim/lower 语义；
+  TASK-0110 Provider early-limit 保持未验收，待合规 exact-tree 渠道的新永久卡重新验证。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

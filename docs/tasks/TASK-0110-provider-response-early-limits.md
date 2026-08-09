@@ -2,7 +2,14 @@
 
 ```yaml
 taskId: TASK-0110
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  唯一 fix batch 后 R2 PASS，canonical precheck、根级 JDK-25 Maven verify 与正式无参数
+  git diff --check 均在候选 38b0b80/f71fb14 上 PASS；但 READY 冻结的
+  PRIMARY_REMOTE_EXACT_SHA 在 GitHub Actions run 31286798584 上终态 failure，6 个 job
+  均未获得 runner、steps 为空。该远端非 PASS 不能由本地结果替代，也不能在 READY 后降级
+  validationPlan，因此本卡如实 REJECTED；实现与全部失败证据保留，后续由新永久任务前向承接。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -200,7 +207,21 @@ humanApprovals:
       无需逐项回问，但不得在本卡引入未经独立验证的跨 Provider queue/backpressure、schemaName
       或总编码请求体契约，也不得越过治理、凭据或人工专属批准。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0110_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: b0c2d10f208be3ec86eea095af7633df95c5a4fb
+    candidateTree: 4d0cfddf76f1a4e05a25924151841aa96a336178
+    evidencePath: docs/evidence/TASK-0110/review-r1.md
+    reason: 单行 exact 1 MiB data payload 被物理行 framing 预算误拒，必须使用唯一 fix batch 修复。
+  - id: task0110_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 38b0b80e06211acb12ba4777b0b0631697bf2da3
+    candidateTree: f71fb147f4d7410ab2212a4eed0624100fbf2e3f
+    evidencePath: docs/evidence/TASK-0110/review-r2.md
+    reason: R1 finding 已关闭；delta 仅含两个授权路径，未发现新 P0/P1 或相邻回归。
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0110
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

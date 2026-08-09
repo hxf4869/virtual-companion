@@ -562,3 +562,9 @@ tasks:
     taskCard: docs/tasks/TASK-0109-model-request-size-limits.md
     evidence: docs/evidence/TASK-0109/evidence-pack.json
     handoff: docs/handoffs/TASK-0109.json
+  TASK-0110:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0110-provider-response-early-limits.md
+    evidence: docs/evidence/TASK-0110/evidence-pack.json
+    handoff: docs/handoffs/TASK-0110.json

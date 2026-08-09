@@ -1,0 +1,80 @@
+{
+  "taskId": "TASK-0110",
+  "state": "REJECTED",
+  "baseCommit": "717582ec8f0bba5c81ebdc8cb2b535974ce281f0",
+  "headCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+  "evidencePath": "docs/evidence/TASK-0110/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "eeb6ce2457d9c1e8e7d5e6dceac779aed34cfd51",
+      "startedAt": "2026-08-09T08:07:10+08:00",
+      "endedAt": "2026-08-09T08:45:28+08:00",
+      "elapsedSeconds": 2298,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "eeb6ce2457d9c1e8e7d5e6dceac779aed34cfd51",
+      "startedAt": "2026-08-09T08:07:10+08:00",
+      "endedAt": "2026-08-09T08:08:58+08:00",
+      "elapsedSeconds": 108,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "398b38a5ebb601cda2f352ea8bbf4deb6688fba1",
+      "startedAt": "2026-08-09T08:09:05+08:00",
+      "endedAt": "2026-08-09T08:45:28+08:00",
+      "elapsedSeconds": 2183,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T08:08:58+08:00",
+      "inProgressCommit": "398b38a5ebb601cda2f352ea8bbf4deb6688fba1"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0110_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "b0c2d10f208be3ec86eea095af7633df95c5a4fb",
+      "evidencePath": "docs/evidence/TASK-0110/review-r1.md",
+      "candidateTree": "4d0cfddf76f1a4e05a25924151841aa96a336178",
+      "reason": "单行 exact 1 MiB data payload 被物理行 framing 预算误拒，必须使用唯一 fix batch 修复。"
+    },
+    {
+      "id": "task0110_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "38b0b80e06211acb12ba4777b0b0631697bf2da3",
+      "evidencePath": "docs/evidence/TASK-0110/review-r2.md",
+      "candidateTree": "f71fb147f4d7410ab2212a4eed0624100fbf2e3f",
+      "reason": "R1 finding 已关闭；delta 仅含两个授权路径，未发现新 P0/P1 或相邻回归。"
+    }
+  ],
+  "completed": [
+    "保留 TASK-0109 六项上限，并新增非流 raw body 8 MiB 读取阶段上限；BoundedInputStream 对所有 read API 限制底层请求，并仅用一个 overflow probe 区分 exact EOF 与 one-over。",
+    "SseDecoder 改为有界字节解析，支持 LF/CRLF/CR、comment、空 data 与 EOF 无空行；组合 data payload 精确包含插入 LF、不含 framing，单行与多行 exact/one-over 均有 early-stop 证据。",
+    "OpenAI non-stream/SSE 超限统一关闭 body、只产生 MalformedResponse、无 Usage/EOS；LiveModelInvoker 对 fence 与累计输出违规显式 session.cancel()。",
+    "R1 FAIL 后只使用一个 fix batch；R2 PASS。定向 reactor、canonical precheck 5/5、根级 15 模块 Maven verify 与正式 git diff --check 均在最终候选通过。",
+    "候选 38b0b80/f71fb14 已推送，origin/main 与 HEAD 0/0；PRIMARY_REMOTE_EXACT_SHA run 31286798584 的真实 failure、空 runner/steps 与 API 可见性限制均已记录，未伪装 PASS。"
+  ],
+  "remaining": [
+    "TASK-0110 因 READY 冻结的 PRIMARY_REMOTE_EXACT_SHA 终态 failure 而未获 ACCEPTED；Provider early-limit 实现虽然本地验证通过，仍必须由新的永久任务在合规 exact-tree 渠道上重新验收。",
+    "P2-04/P3-05/P3-06 Auth hygiene 仍为当前 HEAD 的独立 OPEN 工作：Bean Validation/统一 400 ErrorEnvelope、普通日志账户标识移除与 username 规范化。",
+    "跨 Provider queue/backpressure、provider-neutral schemaName 与总编码请求体预算仍为后续独立问题；本卡没有静默扩展契约。"
+  ],
+  "knownRisks": [
+    "远端 exact-SHA run 在 4 秒内失败，6 个 job 均未获得 runner 且 steps 为空；billing 与 check annotations API 对当前 token 返回 403，因此只陈述可验证现象，不猜测配额或计费根因。",
+    "Reviewer R1 曾误跑一次带 range 的 git diff --check；它不是正式无参数门禁，已单独披露。正式命令只在 R2 PASS 后执行一次并通过。",
+    "本卡实现提交已位于 main，但终态为 REJECTED；任何后续卡不得把本地 PASS、R2 PASS 或已推送代码等同于该卡 ACCEPTED。"
+  ],
+  "nextAction": "通过 task-intake 创建下一张永久独立任务卡，处理 P2-04/P3-05/P3-06 Auth hygiene： Bean Validation 与统一 400 ErrorEnvelope、移除普通日志账户标识、统一 username trim/lower 语义； TASK-0110 Provider early-limit 保持未验收，待合规 exact-tree 渠道的新永久卡重新验证。"
+}
