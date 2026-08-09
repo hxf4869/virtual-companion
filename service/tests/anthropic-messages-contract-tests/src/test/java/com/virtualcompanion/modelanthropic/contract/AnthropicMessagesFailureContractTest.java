@@ -1,6 +1,7 @@
 package com.virtualcompanion.modelanthropic.contract;
 
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
+import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -220,19 +221,34 @@ class AnthropicMessagesFailureContractTest {
                 + sse(textDelta(3, "already emitted"))
                 + sse(contentBlockStop(4));
 
-        for (var stream : List.of(mismatchedDelta, mismatchedStop)) {
-            try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
-                    200,
-                    "text/event-stream",
-                    stream
-            ))) {
-                var events = drain(adapter(
-                        new CountingHttpClient(),
-                        server.endpoint()
-                ).open(textRequest(true, "invalid text stream")));
+        try (var deltaServer = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "text/event-stream",
+                mismatchedDelta
+        )); var stopServer = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "text/event-stream",
+                mismatchedStop
+        ))) {
+            var deltaEvents = drain(adapter(
+                    new CountingHttpClient(),
+                    deltaServer.endpoint()
+            ).open(textRequest(true, "mismatched delta index")));
+            var stopEvents = drain(adapter(
+                    new CountingHttpClient(),
+                    stopServer.endpoint()
+            ).open(textRequest(true, "mismatched stop index")));
 
-                assertMalformedWithoutSuccess(events, false);
-            }
+            assertMalformedWithoutSuccess(deltaEvents, true);
+            assertEquals(2, stopEvents.size());
+            assertEquals(
+                    new ModelPayload.TextChunk("already emitted"),
+                    assertInstanceOf(
+                            ModelProtocolEvent.OutputDelta.class,
+                            stopEvents.getFirst()
+                    ).payload()
+            );
+            assertMalformedWithoutSuccess(stopEvents, false);
         }
     }
 
