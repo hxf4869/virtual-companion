@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0119
+activeTaskCard: docs/tasks/TASK-0119-anthropic-sse-raw-budget.md
 lastAcceptedTask: TASK-0118
 lastAcceptedHandoff: docs/handoffs/TASK-0118.json
 lastTerminalTask: TASK-0118
 lastTerminalHandoff: docs/handoffs/TASK-0118.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0119，作为永久独立 C3 卡为 Anthropic SSE 连续 comment/empty-data frame 冻结连接级累计 raw byte budget：从现有 BoundedInputStream、SseDecoder、stream session 与 TASK-0114/TASK-0117 边界重新取证，在不改变合法事件语义的前提下对跨 frame 无有效 data 的字节消耗 fail closed，覆盖 exact/one-over、early stop、body close、cancel/timeout 与无 late event；其余 OPEN/OWNER_GATE 按审计交接严格串行推进。
+  执行 TASK-0119：在 Anthropic SseDecoder 冻结不可重置的 8388608-byte 全连接 raw budget，并由 streaming session 传入；覆盖 comment/blank/event-only/ping/data/framing/CR/LF/CRLF 全计数、exact/one-over、budget+1/sentinel、MalformedResponse、body close、cancel/timeout 与无 late event，在独立 Reviewer PASS 后完成正式门禁、Evidence/Handoff、推送与远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
