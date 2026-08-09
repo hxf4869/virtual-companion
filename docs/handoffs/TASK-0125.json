@@ -1,0 +1,72 @@
+{
+  "taskId": "TASK-0125",
+  "state": "REJECTED",
+  "baseCommit": "098115264879ed1bd99c79e90db2ddca54061c4b",
+  "headCommit": "24495063231dac2f2b78ac94432de81de511b030",
+  "evidencePath": "docs/evidence/TASK-0125/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "06107db686595f4846fc0bb63117fbe4f88b7a49",
+      "startedAt": "2026-08-09T21:38:53+08:00",
+      "endedAt": "2026-08-09T22:03:13+08:00",
+      "elapsedSeconds": 1460,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "06107db686595f4846fc0bb63117fbe4f88b7a49",
+      "startedAt": "2026-08-09T21:38:53+08:00",
+      "endedAt": "2026-08-09T21:40:42+08:00",
+      "elapsedSeconds": 109,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "ba098d3038a1f8840e3e93b1d12801c9c71a6ee1",
+      "startedAt": "2026-08-09T21:41:48+08:00",
+      "endedAt": "2026-08-09T22:01:03+08:00",
+      "elapsedSeconds": 1155,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T21:40:42+08:00",
+      "inProgressCommit": "ba098d3038a1f8840e3e93b1d12801c9c71a6ee1"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0125_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "24495063231dac2f2b78ac94432de81de511b030",
+      "evidencePath": "docs/evidence/TASK-0125/review-r1.md",
+      "reason": "R1 完整矩阵 PASS：encoded Auth-prefix 在实际 Security chain 返回固定 JSON 400；官方 ObservationMarkingRequestRejectedHandler 在 Auth/非 Auth 分支前标记同一异常；非 Auth 保持默认空 400；P0/P1/P2/P3=0。后续 root verify 的范围外 AuthAbuseGuardTest 失败不改写本 Reviewer 结论。",
+      "candidateTree": "a6ec7cb48b116fd3241e38584963cf040d35ec78"
+    }
+  ],
+  "completed": [
+    "正确创建并授权 TASK-0125；55 个 Context 输入和 canonical 无末尾 LF fingerprint 通过 READY Doctor 与 Reviewer 独立复算。",
+    "Auth firewall handler 现复用 shared resolver，`/api/v1/%61uth/admin/accounts` 在实际 Security chain 返回固定 `400 INVALID_REQUEST` JSON。",
+    "所有 firewall rejection 分支先调用 Spring Security 官方 ObservationMarkingRequestRejectedHandler；Auth 与非 Auth active Observation 均绑定同一异常对象。",
+    "非 Auth rejection 继续委托 HttpStatusRequestRejectedHandler 并保持空 400；exact POST、context-path 与 malformed 边界测试保留。",
+    "C3 Reviewer R1 PASS 且 P0/P1/P2/P3=0；canonical Precheck PASS，正式 targeted reactor 110/110 PASS。"
+  ],
+  "remaining": [
+    "正式 root JDK-25 verify 在 AuthAbuseGuardTest.malformedUtf16CannotAliasAValidDigestKeyAcrossAnyHmacInput:200 失败：期望异常但未抛出。该文件未被候选修改且是 TASK-0125 forbidden path。",
+    "唯一无参数 git diff --check 因前置 root verify FAIL 而未运行；本地 exact-tree fallback、远端 exact-SHA 均不声称 PASS。",
+    "必须用新永久 TASK-0126 判明失败属于生产 HMAC fail-closed 缺陷还是测试共享状态污染，并在授权范围内修复后重新验证 TASK-0125 完整矩阵。",
+    "TASK-0122 Handoff 中数据库 principal/readiness、authorization snapshot、admin seed 并发、跨实例 limiter、密码策略、审计聚合及其余 P2/P3 仍需后续卡串行处理；全部修复后执行独立全项目复审。"
+  ],
+  "knownRisks": [
+    "TASK-0125 的业务候选通过独立 Reviewer 与聚焦矩阵，但 root verify 非 PASS，因此不得把当前 Auth 边界声明为 ACCEPTED。",
+    "失败测试覆盖孤立 UTF-16 surrogate 的 HMAC fail-closed 边界；在 TASK-0126 定位前，既可能是共享 guard 状态导致断言未抵达 HMAC，也可能是生产路径遗漏。",
+    "远端 dispatchCount=0、passClaimed=false；终态提交只能表示 REJECTED closure，不能代表 CI PASS。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0126：以 TASK-0125 的 REJECTED 终态为 Base，保留已提交的 Auth firewall envelope 与 official observation marking 修复，定位并修复 root JDK-25 verify 中 AuthAbuseGuardTest.malformedUtf16CannotAliasAValidDigestKeyAcrossAnyHmacInput 在第 200 行未抛异常的确定性失败（判明生产 HMAC fail-closed 缺陷或测试状态污染并在最小范围修复），补齐孤立 high/low surrogate 跨全部 HMAC 输入的确定性隔离测试；随后重新覆盖 TASK-0125 完整 Auth 矩阵、独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。"
+}

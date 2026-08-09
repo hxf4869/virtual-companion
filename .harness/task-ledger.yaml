@@ -652,3 +652,9 @@ tasks:
     taskCard: docs/tasks/TASK-0124-auth-firewall-envelope-observation.md
     evidence: docs/evidence/TASK-0124/evidence-pack.json
     handoff: docs/handoffs/TASK-0124.json
+  TASK-0125:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0125-auth-firewall-envelope-observation.md
+    evidence: docs/evidence/TASK-0125/evidence-pack.json
+    handoff: docs/handoffs/TASK-0125.json
