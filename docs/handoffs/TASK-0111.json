@@ -1,0 +1,76 @@
+{
+  "taskId": "TASK-0111",
+  "state": "REJECTED",
+  "baseCommit": "a3a294d19b8024bc52fa08eb052fa7a957b046ee",
+  "headCommit": "3280efb70e04cdb38df635489cd575c7f666a48d",
+  "evidencePath": "docs/evidence/TASK-0111/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "54ae758faac0d1ab30a645cd5400b80cdfaba2d7",
+      "startedAt": "2026-08-09T09:15:36+08:00",
+      "endedAt": "2026-08-09T09:21:30+08:00",
+      "elapsedSeconds": 354,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "54ae758faac0d1ab30a645cd5400b80cdfaba2d7",
+      "startedAt": "2026-08-09T09:15:36+08:00",
+      "endedAt": "2026-08-09T09:17:22+08:00",
+      "elapsedSeconds": 106,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+      "anchorCommit": null,
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": 0,
+      "outcome": "NOT_STARTED",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": null,
+      "inProgressCommit": null,
+      "reason": "READY Doctor returned a real non-zero result for an immutable Context Fingerprint mismatch; no READY Doctor PASS, IN_PROGRESS commit or candidate freeze exists.",
+      "reanchored": false
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0111_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d",
+      "candidateTree": "90cd7752cde42b8e8c9f99fc226c515dca17a3da",
+      "evidencePath": "docs/evidence/TASK-0111/review-r1.md",
+      "reason": "REJECTED 决策与 Context Fingerprint 根因正确，但首轮闭包快照缺少结构化 Reviewer，且把真实 exit 1 的首次 pre-closure 错写为 PASS；必须保留失败记录并修正后复核。"
+    },
+    {
+      "id": "task0111_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d",
+      "candidateTree": "90cd7752cde42b8e8c9f99fc226c515dca17a3da",
+      "evidencePath": "docs/evidence/TASK-0111/review-r2.md",
+      "reason": "R1 指出的 Reviewer 缺失和首次 pre-closure 结果失实均已修正；冻结 Context 未改，任务从未进入 IN_PROGRESS 或产生实现候选，治理制品与唯一 nextAction 一致，允许执行最终 pre-closure 并 REJECTED 关闭。"
+    }
+  ],
+  "completed": [
+    "完成 P2-04/P3-05/P3-06 当前调用链、契约和测试范围取证，并冻结 C3 Catalog/Contract/Auth 最小修复授权。",
+    "READY Doctor 真实 FAIL（exit 1）并固化 expected/got fingerprint、输出哈希和 485132 checks；没有执行或伪造候选实现。"
+  ],
+  "remaining": [
+    "由 TASK-0112 使用 harness_common.py 的 canonical 无尾随 LF payload 重算 Context Fingerprint，重新完成 intake 后实施原 Auth hygiene 范围。"
+  ],
+  "knownRisks": [
+    "TASK-0111 的 contextFingerprint 在 DRAFT 计算时错误加入尾随 LF；该授权字段 READY 后不可修改，因此必须 REJECTED，不能把后续 TASK-0112 结果追溯到本卡。",
+    "P2-04/P3-05/P3-06 仍为 OPEN；TASK-0110 Provider early-limit 也仍未获得合规 exact-tree 验收。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0112，重新执行 P2-04/P3-05/P3-06 Auth hygiene（修正 Context Fingerprint 为无尾随 LF 的 canonical 算法），其余范围、风险和验收保持 TASK-0111 授权语义；TASK-0110 Provider early-limit 保持未验收。"
+}

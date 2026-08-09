@@ -1,0 +1,163 @@
+{
+  "taskId": "TASK-0111",
+  "baseCommit": "a3a294d19b8024bc52fa08eb052fa7a957b046ee",
+  "headCommit": "3280efb70e04cdb38df635489cd575c7f666a48d",
+  "contextFingerprint": "deadcf31035ec180393998f0f0abf3ae77a5d3a3d07f49b83033a8242fe9a6a9",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "54ae758faac0d1ab30a645cd5400b80cdfaba2d7",
+      "startedAt": "2026-08-09T09:15:36+08:00",
+      "endedAt": "2026-08-09T09:21:30+08:00",
+      "elapsedSeconds": 354,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "54ae758faac0d1ab30a645cd5400b80cdfaba2d7",
+      "startedAt": "2026-08-09T09:15:36+08:00",
+      "endedAt": "2026-08-09T09:17:22+08:00",
+      "elapsedSeconds": 106,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+      "anchorCommit": null,
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": 0,
+      "outcome": "NOT_STARTED",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": null,
+      "inProgressCommit": null,
+      "reason": "READY Doctor returned a real non-zero result for an immutable Context Fingerprint mismatch; no READY Doctor PASS, IN_PROGRESS commit or candidate freeze exists.",
+      "reanchored": false
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0111_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d",
+      "candidateTree": "90cd7752cde42b8e8c9f99fc226c515dca17a3da",
+      "evidencePath": "docs/evidence/TASK-0111/review-r1.md",
+      "reason": "REJECTED 决策与 Context Fingerprint 根因正确，但首轮闭包快照缺少结构化 Reviewer，且把真实 exit 1 的首次 pre-closure 错写为 PASS；必须保留失败记录并修正后复核。"
+    },
+    {
+      "id": "task0111_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d",
+      "candidateTree": "90cd7752cde42b8e8c9f99fc226c515dca17a3da",
+      "evidencePath": "docs/evidence/TASK-0111/review-r2.md",
+      "reason": "R1 指出的 Reviewer 缺失和首次 pre-closure 结果失实均已修正；冻结 Context 未改，任务从未进入 IN_PROGRESS 或产生实现候选，治理制品与唯一 nextAction 一致，允许执行最终 pre-closure 并 REJECTED 关闭。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0111",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "e15684b3a5669940497ef2b05636bab705ef08a9e01336238e4912c5412b2595",
+      "reason": "READY Doctor failed after 485132 checks: Context fingerprint mismatch (expected deadcf31035ec180393998f0f0abf3ae77a5d3a3d07f49b83033a8242fe9a6a9, canonical got 5a2147e0c5ea53a843aacdab6b4257da18421f7aedcb47f8221f980521f242e7). stdout was empty (sha256 e3b0c442...), stderr sha256 is the artifact hash. The DRAFT calculation incorrectly included one trailing LF in the fingerprint payload; the registered algorithm does not. The field is immutable after READY.",
+      "environment": "macOS; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python; clean TMPDIR /tmp/vc-task0111-ready.hM4M6R",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0111",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Canonical Precheck requires READY Doctor PASS and an IN_PROGRESS candidate; neither exists.",
+      "environment": "macOS; controlled venv",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Candidate implementation never started because READY Doctor failed.",
+      "environment": "OrbStack Docker gate not dispatched",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No Catalog, Contract or OpenAPI implementation changes were made.",
+      "environment": "macOS; controlled venv",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No Catalog, Contract or OpenAPI implementation changes were made.",
+      "environment": "macOS; controlled venv",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The sole formal diff check is candidate-only; no candidate was eligible, so it was not consumed.",
+      "environment": "Git gate not dispatched",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0111 --pre-closure (first failed closure snapshot)",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "64da7c5a9c63652fec8612d7da7598dc22bda84d34f9fbba53d3d62267177113",
+      "reason": "First pre-closure Doctor failed after 575039 checks because the staged C3 terminal snapshot had no structured independent reviewers. stdout was empty (sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855); stderr sha256 is the artifact hash. This result is retained and is not overwritten by a later run.",
+      "environment": "macOS; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python; clean TMPDIR /tmp/vc-task0111-preclosure.gRV381",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0111 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: the command runs once after this complete repaired REJECTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python; one execution reserved",
+      "verifiedCommit": "3280efb70e04cdb38df635489cd575c7f666a48d"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "READY_DOCTOR_FAIL_CLOSURE_ONLY",
+    "candidateCommit": "3280efb70e04cdb38df635489cd575c7f666a48d",
+    "candidateTree": "90cd7752cde42b8e8c9f99fc226c515dca17a3da",
+    "passClaimed": false,
+    "localExactTree": {
+      "status": "NOT_RUN",
+      "reason": "No implementation candidate was eligible after READY Doctor failure.",
+      "passClaimed": false
+    },
+    "githubActions": {
+      "status": "NOT_RUN",
+      "reason": "No candidate was pushed; READY Doctor prerequisite failed.",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": false
+    }
+  }
+}

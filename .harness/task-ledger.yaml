@@ -568,3 +568,9 @@ tasks:
     taskCard: docs/tasks/TASK-0110-provider-response-early-limits.md
     evidence: docs/evidence/TASK-0110/evidence-pack.json
     handoff: docs/handoffs/TASK-0110.json
+  TASK-0111:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0111-auth-input-hygiene.md
+    evidence: docs/evidence/TASK-0111/evidence-pack.json
+    handoff: docs/handoffs/TASK-0111.json

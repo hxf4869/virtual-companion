@@ -2,7 +2,12 @@
 
 ```yaml
 taskId: TASK-0111
-state: READY
+state: REJECTED
+terminalStateReason: >-
+  READY Doctor 真实 FAIL（exit 1）：Context Lock 的 fingerprint 使用了带尾随 LF 的 payload，
+  与 canonical harness_common.py 无尾随 LF 算法不一致（expected deadcf31，got 5a2147e0）。
+  contextFingerprint 是 READY 后不可变授权字段，不能补写或重写历史；候选执行从未开始，按失败关闭
+  记录 NOT_STARTED，并由新的永久 TASK-0112 从本终态重新 intake。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -293,7 +298,25 @@ humanApprovals:
       31286798584 又在无 runner、零 step 状态终止。远端继续如实为非 PASS；本卡冻结
       LOCAL_EXACT_TREE_FALLBACK，只对记录的本机 Commit/Tree/命令覆盖声明 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0111_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: 3280efb70e04cdb38df635489cd575c7f666a48d
+    candidateTree: 90cd7752cde42b8e8c9f99fc226c515dca17a3da
+    evidencePath: docs/evidence/TASK-0111/review-r1.md
+    reason: >-
+      REJECTED 决策与 Context Fingerprint 根因正确，但首轮闭包快照缺少结构化 Reviewer，且把真实
+      exit 1 的首次 pre-closure 错写为 PASS；必须保留失败记录并修正后复核。
+  - id: task0111_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 3280efb70e04cdb38df635489cd575c7f666a48d
+    candidateTree: 90cd7752cde42b8e8c9f99fc226c515dca17a3da
+    evidencePath: docs/evidence/TASK-0111/review-r2.md
+    reason: >-
+      R1 指出的 Reviewer 缺失和首次 pre-closure 结果失实均已修正；冻结 Context 未改，任务从未进入
+      IN_PROGRESS 或产生实现候选，治理制品与唯一 nextAction 一致，允许执行最终 pre-closure 并 REJECTED 关闭。
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0111
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify
