@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0121
+activeTaskCard: docs/tasks/TASK-0121-auth-body-token-fences.md
 lastAcceptedTask: TASK-0120
 lastAcceptedHandoff: docs/handoffs/TASK-0120.json
 lastTerminalTask: TASK-0120
 lastTerminalHandoff: docs/handoffs/TASK-0120.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0121：冻结 Auth login/admin-account 请求体 16384-byte raw fence，以及 username/password/displayName/role UTF-8 字节界限和 vc_refresh cookie 512-byte token fence；请求体在 JSON 物化前拒绝、字段和 token 在 BCrypt/hash/JDBC 前拒绝，保持既有 INVALID_REQUEST/AUTHENTICATION_REQUIRED 失败语义并同步 identity/OpenAPI 契约与边界测试；不实现 login/refresh 限流、退避/锁定、密码最低策略或审计聚合/保留，后续由独立卡串行处理。
+  执行 TASK-0121：为 Auth login/admin-account 增加 16384-byte parser-before raw body fence，为 username/password/displayName/role 与 vc_refresh 增加冻结的 UTF-8 byte fence，同步 identity/OpenAPI cookie-only 契约与生成物，完成独立 Reviewer、正式门禁、Evidence/Handoff、终态提交和远端 0/0 复核；不得扩入限流、退避/锁定、密码最低策略、审计聚合/保留、数据库或 Harness。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
