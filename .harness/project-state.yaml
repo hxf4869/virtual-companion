@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0118
+activeTaskCard: docs/tasks/TASK-0118-anthropic-max-tokens-ceiling.md
 lastAcceptedTask: TASK-0117
 lastAcceptedHandoff: docs/handoffs/TASK-0117.json
 lastTerminalTask: TASK-0117
 lastTerminalHandoff: docs/handoffs/TASK-0117.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0118，作为永久独立 C3 卡为 Anthropic maxTokens 冻结 provider-safe 私有上限：从当前 runtime 配置、Anthropic request codec 与已批准模型路由重新取证，拒绝非正值和超上限配置或请求，覆盖边界、启动失败与无外发；连续 comment/empty-data frame 的连接级累计 raw byte budget 继续独立后续卡，其余 OPEN/OWNER_GATE 按审计交接严格串行推进。
+  执行 TASK-0118：在 AnthropicMessagesConfig 冻结 1..8192 的私有 maxTokens 成本上限，并在 request codec 编码前复核；覆盖配置 exact/one-over、Integer.MAX_VALUE、runtime provisioning fail-fast、JSON 原值和零 HTTP 外发，在独立 Reviewer PASS 后完成正式门禁、Evidence/Handoff、推送与远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
