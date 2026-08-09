@@ -377,6 +377,128 @@ class LiveModelInvokerTest {
     }
 
     @Test
+    void textSplitSurrogatePairAtExactLimitSucceeds() {
+        String first = "a".repeat(SizeLimits.MAX_TOTAL_OUTPUT_BYTES - 4) + "\uD83D";
+        String second = "\uDE42";
+        Harness harness = harness(
+                false,
+                binding -> List.of(
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 0, new ModelPayload.TextChunk(first)),
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 1, new ModelPayload.TextChunk(second)),
+                        new ModelProtocolEvent.UsageReported(
+                                binding, 2, new TokenUsage(1, 1, 2)),
+                        new ModelProtocolEvent.AttemptEos(binding, 3, StopReason.STOP)),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.SUCCEEDED, outcome.terminal());
+        assertEquals(first + second, outcome.response());
+        assertEquals(2L, outcome.usageOptional().orElseThrow().totalTokens());
+        assertEquals(ProviderAttemptStatus.SUCCEEDED,
+                outcome.audits().getFirst().status());
+        assertEquals(4L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void textSplitSurrogatePairOneOverCancelsWithoutPartialOutput() {
+        String first = "a".repeat(SizeLimits.MAX_TOTAL_OUTPUT_BYTES - 4) + "\uD83D";
+        String offending = "\uDE42b";
+        Harness harness = harness(
+                false,
+                binding -> List.of(
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 0, new ModelPayload.TextChunk(first)),
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 1, new ModelPayload.TextChunk(offending)),
+                        new ModelProtocolEvent.UsageReported(
+                                binding, 2, new TokenUsage(1, 1, 2)),
+                        new ModelProtocolEvent.AttemptEos(binding, 3, StopReason.STOP)),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertTrue(outcome.usageOptional().isEmpty());
+        assertEquals(ProviderAttemptStatus.NON_RETRYABLE_FAILED,
+                outcome.audits().getFirst().status());
+        assertEquals(1, harness.adapter.cancelCount());
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void structuredSplitSurrogatePairAtExactLimitSucceeds() {
+        String prefix = "{\"value\":\"";
+        String suffix = "\"}";
+        int asciiBytes = (int) (SizeLimits.MAX_TOTAL_OUTPUT_BYTES
+                - SizeLimits.utf8Bytes(prefix)
+                - SizeLimits.utf8Bytes(suffix)
+                - 4);
+        String first = prefix + "a".repeat(asciiBytes) + "\uD83D";
+        String second = "\uDE42" + suffix;
+        Harness harness = harness(
+                false,
+                binding -> List.of(
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 0, new ModelPayload.StructuredJson(first)),
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 1, new ModelPayload.StructuredJson(second)),
+                        new ModelProtocolEvent.UsageReported(
+                                binding, 2, new TokenUsage(1, 1, 2)),
+                        new ModelProtocolEvent.AttemptEos(binding, 3, StopReason.STOP)),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(structuredAdequateRequest());
+
+        assertEquals(LiveAttemptTerminal.SUCCEEDED, outcome.terminal());
+        assertEquals(first + second, outcome.response());
+        assertEquals(2L, outcome.usageOptional().orElseThrow().totalTokens());
+        assertEquals(ProviderAttemptStatus.SUCCEEDED,
+                outcome.audits().getFirst().status());
+        assertEquals(4L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void structuredSplitSurrogatePairOneOverCancelsWithoutPartialOutput() {
+        String prefix = "{\"value\":\"";
+        String suffix = "\"}";
+        int asciiBytes = (int) (SizeLimits.MAX_TOTAL_OUTPUT_BYTES
+                - SizeLimits.utf8Bytes(prefix)
+                - SizeLimits.utf8Bytes(suffix)
+                - 4);
+        String first = prefix + "a".repeat(asciiBytes) + "\uD83D";
+        String offending = "\uDE42" + suffix + "x";
+        Harness harness = harness(
+                false,
+                binding -> List.of(
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 0, new ModelPayload.StructuredJson(first)),
+                        new ModelProtocolEvent.OutputDelta(
+                                binding, 1, new ModelPayload.StructuredJson(offending)),
+                        new ModelProtocolEvent.UsageReported(
+                                binding, 2, new TokenUsage(1, 1, 2)),
+                        new ModelProtocolEvent.AttemptEos(binding, 3, StopReason.STOP)),
+                Map.of(PROVIDER, "OpenAI"));
+
+        LiveAttemptOutcome outcome = harness.invoke(structuredAdequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertTrue(outcome.usageOptional().isEmpty());
+        assertEquals(ProviderAttemptStatus.NON_RETRYABLE_FAILED,
+                outcome.audits().getFirst().status());
+        assertEquals(1, harness.adapter.cancelCount());
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
     void sessionClosingWithoutTerminalEventFailsClosed() {
         Harness harness = harness(
                 false,
@@ -564,6 +686,15 @@ class LiveModelInvokerTest {
                 new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95));
     }
 
+    private static LiveInvocationRequest structuredAdequateRequest() {
+        return request(
+                routing(ServiceClass.simulated()),
+                List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hello")),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95),
+                new ResponseMode.StructuredJson("schema", "{\"type\":\"object\"}")
+        );
+    }
+
     private static LiveInvocationRequest inadequateSafetyRequest() {
         return request(routing(ServiceClass.simulated()),
                 new ClassifierReport(SafetyClassifierOutcome.LOW_CONFIDENCE, 0.5));
@@ -598,10 +729,22 @@ class LiveModelInvokerTest {
             RoutingRequest routingRequest,
             List<ProtocolMessage> messages,
             ClassifierReport classifierReport) {
+        return request(
+                routingRequest,
+                messages,
+                classifierReport,
+                new ResponseMode.Text());
+    }
+
+    private static LiveInvocationRequest request(
+            RoutingRequest routingRequest,
+            List<ProtocolMessage> messages,
+            ClassifierReport classifierReport,
+            ResponseMode responseMode) {
         return new LiveInvocationRequest(
                 routingRequest,
                 messages,
-                new ResponseMode.Text(),
+                responseMode,
                 true,
                 new TimeoutBudget(
                         Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(3)),

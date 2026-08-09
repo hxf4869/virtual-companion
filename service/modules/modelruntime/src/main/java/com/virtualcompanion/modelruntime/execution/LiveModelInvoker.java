@@ -14,6 +14,7 @@ import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
+import com.virtualcompanion.modelruntime.contract.Utf8ByteAccumulator;
 import com.virtualcompanion.modelruntime.port.ModelProtocolAdapter;
 import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
 import com.virtualcompanion.modelruntime.guard.ModelProtocolEventFence;
@@ -169,7 +170,9 @@ public final class LiveModelInvoker {
         ModelProtocolEventFence fence = new ModelProtocolEventFence(binding);
         try (ModelProtocolSession session = adapter.open(protocolRequest)) {
             StringBuilder builder = new StringBuilder();
-            long outputBytes = 0;
+            Utf8ByteAccumulator outputBytes = new Utf8ByteAccumulator(
+                    SizeLimits.MAX_TOTAL_OUTPUT_BYTES
+            );
             while (true) {
                 final Optional<ModelProtocolEvent> next;
                 try {
@@ -205,14 +208,12 @@ public final class LiveModelInvoker {
                     } else {
                         throw new IllegalStateException("unexpected output payload type");
                     }
-                    long contentBytes = SizeLimits.utf8Bytes(content);
-                    if (contentBytes > SizeLimits.MAX_TOTAL_OUTPUT_BYTES - outputBytes) {
+                    if (!outputBytes.tryAppend(content)) {
                         session.cancel();
                         return fenceViolationOutcome(
                                 decision, binding, providerId, supplierName
                         );
                     }
-                    outputBytes += contentBytes;
                     builder.append(content);
                 } else if (event instanceof ModelProtocolEvent.UsageReported reported) {
                     usage = reported.usage();

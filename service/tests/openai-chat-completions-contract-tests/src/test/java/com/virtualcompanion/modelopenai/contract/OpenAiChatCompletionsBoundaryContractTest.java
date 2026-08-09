@@ -54,6 +54,7 @@ import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSuppor
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.normalBudgets;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.sse;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.sseCrLf;
+import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.structuredRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.textRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.usageChunk;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -178,6 +179,136 @@ class OpenAiChatCompletionsBoundaryContractTest {
         assertTrue(events.stream().noneMatch(ModelProtocolEvent.UsageReported.class::isInstance));
         assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
         assertTrue(body.bytesRead() < response.length);
+        body.awaitClosed();
+    }
+
+    @Test
+    void streamingTextSplitPairAtExactOutputLimitSucceeds() throws Exception {
+        int limit = SizeLimits.MAX_TOTAL_OUTPUT_BYTES;
+        int firstAscii = limit / 3;
+        int secondAscii = limit / 3;
+        int thirdAscii = limit - firstAscii - secondAscii - 4;
+        String first = "a".repeat(firstAscii);
+        String second = "b".repeat(secondAscii) + "\uD83D";
+        String third = "\uDE42" + "c".repeat(thirdAscii);
+        String response = sse(choiceChunkWithJsonEncodedContent(first))
+                + sse(choiceChunkWithJsonEncodedContent(
+                        "b".repeat(secondAscii) + "\\uD83D"))
+                + sse(choiceChunkWithJsonEncodedContent(
+                        "\\uDE42" + "c".repeat(thirdAscii)))
+                + sse(choiceChunk(null, "stop"))
+                + sse(usageChunk(1, 1))
+                + done();
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(responseBytes, Long.MAX_VALUE);
+
+        var events = drain(adapter(
+                new StaticInputHttpClient("text/event-stream", body),
+                offlineEndpoint()
+        ).open(longBudgetRequest(true)));
+
+        assertSuccessfulText(events, first + second + third);
+        body.awaitClosed();
+    }
+
+    @Test
+    void streamingTextSplitPairOneOverFailsBeforeOffendingDelta() throws Exception {
+        int limit = SizeLimits.MAX_TOTAL_OUTPUT_BYTES;
+        int firstAscii = limit / 3;
+        int secondAscii = limit / 3;
+        int thirdAscii = limit - firstAscii - secondAscii - 4 + 1;
+        String first = "a".repeat(firstAscii);
+        String second = "b".repeat(secondAscii) + "\uD83D";
+        String third = "\uDE42" + "c".repeat(thirdAscii);
+        String response = sse(choiceChunkWithJsonEncodedContent(first))
+                + sse(choiceChunkWithJsonEncodedContent(
+                        "b".repeat(secondAscii) + "\\uD83D"))
+                + sse(choiceChunkWithJsonEncodedContent(
+                        "\\uDE42" + "c".repeat(thirdAscii)))
+                + "must-not-be-read";
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(responseBytes, Long.MAX_VALUE);
+
+        var events = drain(adapter(
+                new StaticInputHttpClient("text/event-stream", body),
+                offlineEndpoint()
+        ).open(longBudgetRequest(true)));
+
+        assertMalformedFailure(events.getLast());
+        assertEquals(List.of(first, second), textDeltas(events));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.UsageReported.class::isInstance));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+        assertTrue(body.bytesRead() < responseBytes.length);
+        body.awaitClosed();
+    }
+
+    @Test
+    void streamingStructuredSplitPairAtExactOutputLimitSucceeds() throws Exception {
+        int limit = SizeLimits.MAX_TOTAL_OUTPUT_BYTES;
+        String prefix = "{\"value\":\"";
+        String suffix = "\"}";
+        int asciiBytes = (int) (limit
+                - SizeLimits.utf8Bytes(prefix)
+                - SizeLimits.utf8Bytes(suffix)
+                - 4);
+        int firstAscii = asciiBytes / 2;
+        int secondAscii = asciiBytes - firstAscii;
+        String first = prefix + "a".repeat(firstAscii);
+        String second = "b".repeat(secondAscii) + "\uD83D";
+        String third = "\uDE42" + suffix;
+        String response = sse(choiceChunkWithJsonEncodedContent(
+                        "{\\\"value\\\":\\\"" + "a".repeat(firstAscii)))
+                + sse(choiceChunkWithJsonEncodedContent(
+                        "b".repeat(secondAscii) + "\\uD83D"))
+                + sse(choiceChunkWithJsonEncodedContent("\\uDE42\\\"}"))
+                + sse(choiceChunk(null, "stop"))
+                + sse(usageChunk(1, 1))
+                + done();
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(responseBytes, Long.MAX_VALUE);
+
+        var events = drain(adapter(
+                new StaticInputHttpClient("text/event-stream", body),
+                offlineEndpoint()
+        ).open(structuredRequest(true, "split structured exact")));
+
+        assertSuccessfulStructured(events, first + second + third);
+        body.awaitClosed();
+    }
+
+    @Test
+    void streamingStructuredSplitPairOneOverFailsBeforeAppendingSuccess() throws Exception {
+        int limit = SizeLimits.MAX_TOTAL_OUTPUT_BYTES;
+        String prefix = "{\"value\":\"";
+        String suffix = "\"}";
+        int asciiBytes = (int) (limit
+                - SizeLimits.utf8Bytes(prefix)
+                - SizeLimits.utf8Bytes(suffix)
+                - 4);
+        int firstAscii = asciiBytes / 2;
+        int secondAscii = asciiBytes - firstAscii;
+        String first = prefix + "a".repeat(firstAscii);
+        String second = "b".repeat(secondAscii) + "\uD83D";
+        String third = "\uDE42" + suffix + "x";
+        String response = sse(choiceChunkWithJsonEncodedContent(
+                        "{\\\"value\\\":\\\"" + "a".repeat(firstAscii)))
+                + sse(choiceChunkWithJsonEncodedContent(
+                        "b".repeat(secondAscii) + "\\uD83D"))
+                + sse(choiceChunkWithJsonEncodedContent("\\uDE42\\\"}x"))
+                + "must-not-be-read";
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(responseBytes, Long.MAX_VALUE);
+
+        var events = drain(adapter(
+                new StaticInputHttpClient("text/event-stream", body),
+                offlineEndpoint()
+        ).open(structuredRequest(true, "split structured over")));
+
+        assertMalformedFailure(events.getLast());
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.OutputDelta.class::isInstance));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.UsageReported.class::isInstance));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+        assertTrue(body.bytesRead() < responseBytes.length);
         body.awaitClosed();
     }
 
@@ -815,6 +946,15 @@ class OpenAiChatCompletionsBoundaryContractTest {
         return URI.create("http://127.0.0.1:9/v1/chat/completions");
     }
 
+    private static String choiceChunkWithJsonEncodedContent(String encodedContent) {
+        return "{\"id\":\"chatcmpl-offline\","
+                + "\"object\":\"chat.completion.chunk\","
+                + "\"model\":\"" + MODEL + "\","
+                + "\"choices\":[{\"index\":0,\"delta\":{\"content\":\""
+                + encodedContent
+                + "\"},\"finish_reason\":null}]}";
+    }
+
     private static ModelProtocolRequest longBudgetRequest(boolean streaming) {
         return textRequest(
                 binding(),
@@ -1172,6 +1312,46 @@ class OpenAiChatCompletionsBoundaryContractTest {
             }
         }
         assertEquals(expectedText, output.toString());
+    }
+
+    private static List<String> textDeltas(List<ModelProtocolEvent> events) {
+        return events.stream()
+                .filter(ModelProtocolEvent.OutputDelta.class::isInstance)
+                .map(ModelProtocolEvent.OutputDelta.class::cast)
+                .map(ModelProtocolEvent.OutputDelta::payload)
+                .filter(ModelPayload.TextChunk.class::isInstance)
+                .map(ModelPayload.TextChunk.class::cast)
+                .map(ModelPayload.TextChunk::text)
+                .toList();
+    }
+
+    private static void assertSuccessfulStructured(
+            List<ModelProtocolEvent> events,
+            String expectedJson
+    ) {
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptFailed.class::isInstance));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptCancelled.class::isInstance));
+        assertEquals(
+                1L,
+                events.stream().filter(ModelProtocolEvent.UsageReported.class::isInstance).count()
+        );
+        var eos = assertInstanceOf(ModelProtocolEvent.AttemptEos.class, events.getLast());
+        assertEquals(StopReason.STOP, eos.stopReason());
+        assertEquals(
+                List.of(expectedJson),
+                events.stream()
+                        .filter(ModelProtocolEvent.OutputDelta.class::isInstance)
+                        .map(ModelProtocolEvent.OutputDelta.class::cast)
+                        .map(ModelProtocolEvent.OutputDelta::payload)
+                        .map(ModelPayload.StructuredJson.class::cast)
+                        .map(ModelPayload.StructuredJson::json)
+                        .toList()
+        );
+        assertTrue(events.stream()
+                .filter(ModelProtocolEvent.OutputDelta.class::isInstance)
+                .map(ModelProtocolEvent.OutputDelta.class::cast)
+                .map(ModelProtocolEvent.OutputDelta::payload)
+                .noneMatch(ModelPayload.TextChunk.class::isInstance));
     }
 
     private static void assertMalformedFailure(ModelProtocolEvent event) {

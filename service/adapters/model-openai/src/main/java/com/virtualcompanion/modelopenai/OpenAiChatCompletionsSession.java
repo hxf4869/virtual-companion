@@ -10,6 +10,7 @@ import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
+import com.virtualcompanion.modelruntime.contract.Utf8ByteAccumulator;
 import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
 
 import java.io.IOException;
@@ -342,11 +343,9 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
         }
         if (choice.content().isPresent()) {
             var content = choice.content().orElseThrow();
-            long contentBytes = SizeLimits.utf8Bytes(content);
-            if (contentBytes > SizeLimits.MAX_TOTAL_OUTPUT_BYTES - state.outputBytes) {
+            if (!state.outputBytes.tryAppend(content)) {
                 throw new OpenAiCodecException();
             }
-            state.outputBytes += contentBytes;
             state.contentSeen = true;
             markFirstContent();
             if (state.structured) {
@@ -552,7 +551,9 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
     private static final class StreamState {
         private final boolean structured;
         private final StringBuilder structuredContent = new StringBuilder();
-        private long outputBytes;
+        private final Utf8ByteAccumulator outputBytes = new Utf8ByteAccumulator(
+                SizeLimits.MAX_TOTAL_OUTPUT_BYTES
+        );
         private boolean contentSeen;
         private StopReason stopReason;
         private TokenUsage usage;
