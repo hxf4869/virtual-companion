@@ -1,0 +1,71 @@
+{
+  "taskId": "TASK-0118",
+  "state": "ACCEPTED",
+  "baseCommit": "f77198abd1514b1414b1999e48c3dc8fc4a6bb94",
+  "headCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9",
+  "evidencePath": "docs/evidence/TASK-0118/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "707335f7405bb836e949641de1616d9ba386da2d",
+      "startedAt": "2026-08-09T14:41:45+08:00",
+      "endedAt": "2026-08-09T14:58:07+08:00",
+      "elapsedSeconds": 982,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "707335f7405bb836e949641de1616d9ba386da2d",
+      "startedAt": "2026-08-09T14:41:45+08:00",
+      "endedAt": "2026-08-09T14:43:10+08:00",
+      "elapsedSeconds": 85,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "bdf5e474db20cdc9e6897d699d99c809b7d123ee",
+      "startedAt": "2026-08-09T14:43:18+08:00",
+      "endedAt": "2026-08-09T14:58:07+08:00",
+      "elapsedSeconds": 889,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T14:43:10+08:00",
+      "inProgressCommit": "bdf5e474db20cdc9e6897d699d99c809b7d123ee"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0118_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9",
+      "evidencePath": "docs/evidence/TASK-0118/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：候选 Commit/Tree、Context、逐父授权与 writeAllowlist 一致；独立 8192 私有上限、config/codec 双重校验、runtime fail-fast、JSON 原值、零 HTTP 外发与 disabled/master-off 保持满足验收，最终 P0/P1/P2/P3 为零。",
+      "candidateTree": "1450ddbc76992bab8607b2a2df27e6559e414d2a"
+    }
+  ],
+  "completed": [
+    "AnthropicMessagesConfig 冻结独立 package-private 8192 私有应用成本上限，统一接受 1..8192 并拒绝 0、负值、8193 与 Integer.MAX_VALUE，不复用 OpenAI/SizeLimits 常量。",
+    "AnthropicMessagesCodec 在写入 JSON max_tokens 前复用同一校验；合法边界保持原始数值，非法内部值在 request dispatch 前归一化失败，不静默截断。",
+    "runtime 生产调用链保持不变；启用 Anthropic deployment 的 one-over/Integer.MAX_VALUE 在 registry 注册前 fail-fast，8192 正常注册，disabled/master-off 语义保持。",
+    "新增 config 与 Messages contract tests，并扩展 provisioner test，覆盖 1/1024/2048/8192 JSON 原值、0/负值/8193/Integer.MAX_VALUE 拒绝、脱敏和零 HTTP 外发。",
+    "验证绑定 7a6c0186/1450ddbc：独立 R1 最终 P0/P1/P2/P3=0，canonical 5/5 PASS，定向 reactor 308 tests PASS，根级 15 模块 verify 585 tests PASS，唯一次 git diff --check PASS。"
+  ],
+  "remaining": [
+    "Anthropic SSE 连续 comment/empty-data frame 仍缺少连接级累计 raw byte budget；现有单物理行、单事件、raw body、累计输出和事件队列上限不替代该跨 frame 边界。",
+    "8192 是应用成本上限而非所有 Anthropic 模型的能力证明；Provider/model 可能施加更低限制并拒绝请求，动态 Models API 与 model-specific capability map 仍明确不在本卡内。",
+    "P2-03 Auth 滥用防护、P2-13 admin seed 并发、P2-12 JDBC snapshot 复活，以及审计交接中的其余 OPEN/OWNER_GATE 继续严格串行。"
+  ],
+  "knownRisks": [
+    "跨 frame raw budget 继续保留为未关闭资源风险，不被本卡 token 成本上限掩盖。",
+    "Anthropic private ceiling 只控制最大输出预算；它不验证具体 model capability，也不支持 max_tokens=0 cache-warmup 语义。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、工具链和本机结果。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0119，作为永久独立 C3 卡为 Anthropic SSE 连续 comment/empty-data frame 冻结连接级累计 raw byte budget：从现有 BoundedInputStream、SseDecoder、stream session 与 TASK-0114/TASK-0117 边界重新取证，在不改变合法事件语义的前提下对跨 frame 无有效 data 的字节消耗 fail closed，覆盖 exact/one-over、early stop、body close、cancel/timeout 与无 late event；其余 OPEN/OWNER_GATE 按审计交接严格串行推进。"
+}

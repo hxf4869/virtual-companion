@@ -1,0 +1,159 @@
+{
+  "taskId": "TASK-0118",
+  "baseCommit": "f77198abd1514b1414b1999e48c3dc8fc4a6bb94",
+  "headCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9",
+  "contextFingerprint": "a8cf6143b276fa1e747cb5b382efbf11078540d1c1c7ebecaaba8fdd6a4696c4",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "707335f7405bb836e949641de1616d9ba386da2d",
+      "startedAt": "2026-08-09T14:41:45+08:00",
+      "endedAt": "2026-08-09T14:58:07+08:00",
+      "elapsedSeconds": 982,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "707335f7405bb836e949641de1616d9ba386da2d",
+      "startedAt": "2026-08-09T14:41:45+08:00",
+      "endedAt": "2026-08-09T14:43:10+08:00",
+      "elapsedSeconds": 85,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "bdf5e474db20cdc9e6897d699d99c809b7d123ee",
+      "startedAt": "2026-08-09T14:43:18+08:00",
+      "endedAt": "2026-08-09T14:58:07+08:00",
+      "elapsedSeconds": 889,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T14:43:10+08:00",
+      "inProgressCommit": "bdf5e474db20cdc9e6897d699d99c809b7d123ee"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0118_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9",
+      "evidencePath": "docs/evidence/TASK-0118/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：候选 Commit/Tree、Context、逐父授权与 writeAllowlist 一致；独立 8192 私有上限、config/codec 双重校验、runtime fail-fast、JSON 原值、零 HTTP 外发与 disabled/master-off 保持满足验收，最终 P0/P1/P2/P3 为零。",
+      "candidateTree": "1450ddbc76992bab8607b2a2df27e6559e414d2a"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0118",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "7374857318d492c9b663e5d1b23d5529818fa14aac5808cc610590410aa0a6dd",
+      "reason": "READY Doctor completed 524558 checks in 61.5s before IN_PROGRESS; artifactHash binds the exact combined persistent-PTY transcript because this pre-candidate run was not redirected into separate stream files.",
+      "environment": "macOS Darwin 25.6.0 arm64; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; Codex persistent PTY combined transcript; completed before the 2026-08-09T14:43:18+08:00 IN_PROGRESS commit",
+      "verifiedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0118",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "78fef6046af4156d713cac712d1e6b74dcd4387bb353abcb6d633e3add7f51e7",
+      "reason": "Canonical precheck ran once after R1 on the frozen candidate: 5/5 PASS; Doctor completed 526206 checks in 62.8s. stderr sha256 c7ee7005c8f178a75d9c49445fe69016f49bdda6b9c4d7f5ec3cca6901e0f5eb.",
+      "environment": "macOS Darwin 25.6.0 arm64; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; stdout /tmp/vc-task0118-canonical.PI4XdF; stderr /tmp/vc-task0118-canonical-stderr.dpmOxN; 2026-08-09T06:56:07Z..2026-08-09T06:57:10Z",
+      "verifiedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime,service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests,service/tests/model-protocol-contract-tests -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "bb2789f20d0d1614023e6b63d0e1ba5b4bac5cb043960fbb9649185718e513c9",
+      "reason": "Frozen targeted reactor BUILD SUCCESS; 308 tests passed with zero failures, errors, or skips. stderr only contained the known Mockito/Byte Buddy dynamic-agent warning (sha256 0477ba3fcf23f407eb7c03e723b39e8e068871d9a4c0eaeb644d3c290293a807).",
+      "environment": "OrbStack Docker 29.4.0; maven:3.9-eclipse-temurin-25-alpine; vc-maven-cache volume; macOS Darwin 25.6.0 arm64; stdout /tmp/vc-task0118-targeted.jc9ALf; stderr /tmp/vc-task0118-targeted-stderr.NkfRDH; 2026-08-09T06:57:20Z..2026-08-09T06:57:33Z",
+      "verifiedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "b095fa3ee581bbc7577641eb271cb646b8b0b273bb6fd869267389b52c9df8b9",
+      "reason": "Root 15-module reactor BUILD SUCCESS with 585 tests passing and zero failures, errors, or skips. stderr only contained the known Mockito/Byte Buddy dynamic-agent warning (sha256 0477ba3fcf23f407eb7c03e723b39e8e068871d9a4c0eaeb644d3c290293a807).",
+      "environment": "OrbStack Docker 29.4.0; maven:3.9-eclipse-temurin-25-alpine; vc-maven-cache volume; macOS Darwin 25.6.0 arm64; stdout /tmp/vc-task0118-verify.z9TTSn; stderr /tmp/vc-task0118-verify-stderr.GWHGLA; 2026-08-09T06:57:41Z..2026-08-09T06:57:58Z",
+      "verifiedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The single formal no-argument diff check ran once after R1; stdout and stderr were empty.",
+      "environment": "macOS Darwin 25.6.0 arm64; Git 2.50.1; stdout /tmp/vc-task0118-diffcheck.kkd0v9; stderr /tmp/vc-task0118-diffcheck-stderr.hiG64e; clean candidate Commit/Tree; 2026-08-09T06:58:07Z",
+      "verifiedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate 7a6c01864db978fc5271491c1130723e11ad4ad9",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No dispatch was made. Owner-supplied August quota evidence remains includedMinutes=usedMinutes=2000 with paidBudgetUsd=0 and stopUsageEnabled=true; TASK-0110 run 31286798584 terminated without a runner or executed step. Remote remains non-PASS and is not represented by the local fallback.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0118 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: runs once after the complete ACCEPTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; one execution reserved",
+      "verifiedCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_APPROVED_CANONICAL_PASS",
+    "candidateCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9",
+    "candidateTree": "1450ddbc76992bab8607b2a2df27e6559e414d2a",
+    "passClaimed": true,
+    "localExactTree": {
+      "taskId": "TASK-0118",
+      "candidateCommit": "7a6c01864db978fc5271491c1130723e11ad4ad9",
+      "candidateTree": "1450ddbc76992bab8607b2a2df27e6559e414d2a",
+      "cleanWorktree": true,
+      "cleanIndex": true,
+      "argv": "python scripts/harness/precheck.py --task TASK-0118",
+      "cwd": "/Users/hxf/projects/virtual-companion",
+      "operatingSystem": "macOS Darwin 25.6.0 arm64",
+      "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python (Python 3.13.0)",
+      "toolchain": "Git 2.50.1; OrbStack Docker 29.4.0; maven:3.9-eclipse-temurin-25-alpine; vc-maven-cache",
+      "dependencies": "requirements-harness.txt installed in vc-harness venv",
+      "environment": "candidate worktree and index clean before dispatch; stdout /tmp/vc-task0118-canonical.PI4XdF; stderr /tmp/vc-task0118-canonical-stderr.dpmOxN",
+      "stdoutSha256": "78fef6046af4156d713cac712d1e6b74dcd4387bb353abcb6d633e3add7f51e7",
+      "stderrSha256": "c7ee7005c8f178a75d9c49445fe69016f49bdda6b9c4d7f5ec3cca6901e0f5eb",
+      "receiptSha256": null,
+      "exitCode": 0,
+      "startedAt": "2026-08-09T14:56:07+08:00",
+      "completedAt": "2026-08-09T14:57:10+08:00"
+    },
+    "remote": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}
