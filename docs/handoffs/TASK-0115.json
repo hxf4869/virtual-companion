@@ -1,0 +1,71 @@
+{
+  "taskId": "TASK-0115",
+  "state": "ACCEPTED",
+  "baseCommit": "ffc838cad053873d3fca2668de4e039475823c7c",
+  "headCommit": "b9fb4a3f4f65fdc8a88edd1a6721005a33821f36",
+  "evidencePath": "docs/evidence/TASK-0115/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2a64aa0e50bd97fd87b88ff649f0074f096f1a06",
+      "startedAt": "2026-08-09T12:07:10+08:00",
+      "endedAt": "2026-08-09T12:29:05+08:00",
+      "elapsedSeconds": 1315,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2a64aa0e50bd97fd87b88ff649f0074f096f1a06",
+      "startedAt": "2026-08-09T12:07:10+08:00",
+      "endedAt": "2026-08-09T12:09:24+08:00",
+      "elapsedSeconds": 134,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "618c6e1efc366bd26636369b114af026c0bdff6a",
+      "startedAt": "2026-08-09T12:09:31+08:00",
+      "endedAt": "2026-08-09T12:29:05+08:00",
+      "elapsedSeconds": 1174,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T12:09:24+08:00",
+      "inProgressCommit": "618c6e1efc366bd26636369b114af026c0bdff6a"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0115_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "b9fb4a3f4f65fdc8a88edd1a6721005a33821f36",
+      "evidencePath": "docs/evidence/TASK-0115/review-r1.md",
+      "reason": "R1 PASS：候选身份、累计 UTF-8、跨 delta surrogate、原子拒绝、OpenAI/Invoker exact/one-over 与失败副作用均满足；P0/P1/P2/P3 为零。",
+      "candidateTree": "eab31c2b9329c6527a83d530962a64b3479924d6"
+    }
+  ],
+  "completed": [
+    "新增 provider-neutral Utf8ByteAccumulator，以固定 maximum 对已接受 chunk 的逻辑拼接结果累计 UTF-8 bytes；跨边界 high/low surrogate 补足 2 字节，空 chunk 保留 pending 状态，拒绝原子且不改变状态。",
+    "OpenAI streaming text 与 structured partial 在 mark/emit/append 前使用累计器；one-over 关闭 body，只产生 MalformedResponse，不产生 offending delta、Usage 或 EOS。",
+    "LiveModelInvoker 在响应 builder append 前使用同一累计器；one-over 显式 cancel，丢弃 partial output，返回 ZERO_LLM 与 MalformedResponse，记录 NON_RETRYABLE_FAILED audit 并按 ALL_FAILURE 恢复 quota。",
+    "新增 direct utility、OpenAI contract 和 Invoker tests，覆盖 ASCII/非 BMP、同 delta/跨 delta exact/one-over、多 pair、空 chunk、孤立与畸形 surrogate，以及 text/structured 成功和失败副作用。",
+    "验证绑定 b9fb4a3/eab31c2b：独立 R1 P0/P1/P2/P3=0，canonical 5/5 PASS，定向 reactor 256 tests PASS，根级 15 模块 verify 564 tests PASS，唯一次 git diff --check PASS。"
+  ],
+  "remaining": [
+    "OpenAIChatCompletionsSession 的 LinkedBlockingQueue 仍无界；解析线程快于消费者时可持续累积事件对象，单事件和总输出字节限制不等价于 backpressure。",
+    "Anthropic 事件 queue/backpressure、Anthropic maxTokens ceiling 与连续 comment/empty-data frame 的连接级 raw byte budget 仍需各自独立契约和任务卡。",
+    "P2-03 Auth 滥用防护、P2-13 admin seed 并发、P2-12 JDBC snapshot 复活，以及审计交接中的其余 OPEN/OWNER_GATE 继续严格串行。"
+  ],
+  "knownRisks": [
+    "Provider 无界事件队列可在解析线程快于消费者时造成进程内存持续增长；下一卡先关闭 OpenAI 路径并冻结可取消 backpressure 语义。",
+    "Anthropic maxTokens 只有正值校验，仍存在异常大输出 token 请求的成本与资源风险。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、工具链与本机结果。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0116，作为永久独立 C3 卡为 OpenAI streaming session 引入有界事件队列与可取消 backpressure：冻结队列容量和阻塞/取消语义，确保解析线程快于消费者时内存有界，cancel/timeout/body-close 不死锁且唯一终态不丢失；Anthropic queue/backpressure、Anthropic maxTokens ceiling 与跨 frame raw budget 继续拆分后续卡。"
+}

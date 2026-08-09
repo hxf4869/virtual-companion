@@ -592,3 +592,9 @@ tasks:
     taskCard: docs/tasks/TASK-0114-anthropic-response-side-limits.md
     evidence: docs/evidence/TASK-0114/evidence-pack.json
     handoff: docs/handoffs/TASK-0114.json
+  TASK-0115:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0115-streaming-utf8-accumulator.md
+    evidence: docs/evidence/TASK-0115/evidence-pack.json
+    handoff: docs/handoffs/TASK-0115.json
