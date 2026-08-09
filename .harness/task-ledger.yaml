@@ -622,3 +622,9 @@ tasks:
     taskCard: docs/tasks/TASK-0119-anthropic-sse-raw-budget.md
     evidence: docs/evidence/TASK-0119/evidence-pack.json
     handoff: docs/handoffs/TASK-0119.json
+  TASK-0120:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0120-openai-sse-raw-budget.md
+    evidence: docs/evidence/TASK-0120/evidence-pack.json
+    handoff: docs/handoffs/TASK-0120.json

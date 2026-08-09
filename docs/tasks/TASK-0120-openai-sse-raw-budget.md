@@ -2,7 +2,15 @@
 
 ```yaml
 taskId: TASK-0120
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  OpenAI streaming 已冻结 adapter-private 8388608-byte 全连接 raw fence：所有真实
+  data/comment/framing/CR/LF 字节不可重置累计，exact 允许，首个 one-over byte 在处理前
+  失败为 MalformedResponse，底层最多读取 budget+1；[DONE]、body close、structured no-leak、
+  cancel/timeout 与无 late event 均有受控测试。R1 FAIL（terminal 后 buffered frame 读取竞态）
+  经唯一 fix batch 03188ae 关闭，R2 最终 P0/P1/P2/P3=0；canonical 5/5、定向 273 tests、
+  根级 604 tests 与唯一次 git diff --check 全部 PASS。Remote exact-SHA 未运行且不声称 PASS，
+  LOCAL_EXACT_TREE_FALLBACK 仅绑定候选 03188aec/7f267fe1。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -321,7 +329,17 @@ humanApprovals:
       在无 runner、零 step 状态终止；TASK-0112 至 TASK-0119 已按同一 READY 冻结 fallback 合规
       ACCEPTED。本卡冻结 LOCAL_EXACT_TREE_FALLBACK，远端继续如实为非 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0120_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 03188aec64a05f324769d2d2afbb6603cfd8d236
+    evidencePath: docs/evidence/TASK-0120/review-r2.md
+    reason: >-
+      R2 delta 与完整矩阵复核 PASS：onSseData 在 callback 入口与当前 frame 处理后检查
+      terminal；忽略 close/interrupt 的 buffered-body tests 证明 cancel/timeout 后只到 late
+      contentless frame dispatch、sentinel 未读、reader 停止；最终 P0/P1/P2/P3=0。
+    candidateTree: 7f267fe18204dd81f04081d2279213e6eccb83a6
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0120
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-openai,service/tests/openai-chat-completions-contract-tests,service/tests/model-protocol-contract-tests -am test

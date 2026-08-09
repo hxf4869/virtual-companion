@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0120
-activeTaskCard: docs/tasks/TASK-0120-openai-sse-raw-budget.md
-lastAcceptedTask: TASK-0119
-lastAcceptedHandoff: docs/handoffs/TASK-0119.json
-lastTerminalTask: TASK-0119
-lastTerminalHandoff: docs/handoffs/TASK-0119.json
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0120
+lastAcceptedHandoff: docs/handoffs/TASK-0120.json
+lastTerminalTask: TASK-0120
+lastTerminalHandoff: docs/handoffs/TASK-0120.json
 nextAction: >-
-  执行 TASK-0120：在 OpenAI SseDecoder 冻结不可重置的 8388608-byte 全连接 raw budget，并由 streaming session 传入；覆盖 comment/blank/contentless-data/data/framing/CR/LF/CRLF/[DONE] 全计数、exact/one-over、budget+1/sentinel、MalformedResponse、body close、cancel/timeout 与无 late event，在独立 Reviewer PASS 后完成正式门禁、Evidence/Handoff、推送与远端 0/0 复核。
+  通过 task-intake 创建 TASK-0121：冻结 Auth login/admin-account 请求体 16384-byte raw fence，以及 username/password/displayName/role UTF-8 字节界限和 vc_refresh cookie 512-byte token fence；请求体在 JSON 物化前拒绝、字段和 token 在 BCrypt/hash/JDBC 前拒绝，保持既有 INVALID_REQUEST/AUTHENTICATION_REQUIRED 失败语义并同步 identity/OpenAPI 契约与边界测试；不实现 login/refresh 限流、退避/锁定、密码最低策略或审计聚合/保留，后续由独立卡串行处理。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
