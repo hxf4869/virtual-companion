@@ -754,9 +754,14 @@ class OpenAiChatCompletionsBoundaryContractTest {
         var openai = URI.create("https://api.openai.com/v1/chat/completions");
         var validConfig = new OpenAiChatCompletionsConfig(openai, TOKEN, MODEL);
         assertEquals(openai, validConfig.endpoint());
+        var uppercaseOpenAi = URI.create("https://API.OPENAI.COM/v1/chat/completions");
+        assertEquals(
+                uppercaseOpenAi,
+                new OpenAiChatCompletionsConfig(uppercaseOpenAi, TOKEN, MODEL).endpoint());
 
         assertRejected("http://api.openai.com/v1/chat/completions");
         assertRejected("https://evil.example.com/v1/chat/completions");
+        assertRejected("https://EVIL.EXAMPLE.COM/v1/chat/completions");
         assertRejected("https://api.openai.com:8443/v1/chat/completions");
         assertRejected("https://192.168.1.5/v1/chat/completions");
         assertRejected("https://10.0.0.1/v1/chat/completions");

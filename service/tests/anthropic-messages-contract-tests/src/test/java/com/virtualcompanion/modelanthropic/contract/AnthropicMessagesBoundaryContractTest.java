@@ -205,9 +205,19 @@ class AnthropicMessagesBoundaryContractTest {
         var validConfig = new AnthropicMessagesConfig(
                 anthropic, API_KEY, ANTHROPIC_VERSION, MODEL, MAX_TOKENS);
         assertEquals(anthropic, validConfig.endpoint());
+        var mixedCaseAnthropic = URI.create("https://Api.AnThRoPiC.CoM/v1/messages");
+        assertEquals(
+                mixedCaseAnthropic,
+                new AnthropicMessagesConfig(
+                        mixedCaseAnthropic,
+                        API_KEY,
+                        ANTHROPIC_VERSION,
+                        MODEL,
+                        MAX_TOKENS).endpoint());
 
         assertRejected("http://api.anthropic.com/v1/messages");
         assertRejected("https://evil.example.com/v1/messages");
+        assertRejected("https://EVIL.EXAMPLE.COM/v1/messages");
         assertRejected("https://api.anthropic.com:8443/v1/messages");
         assertRejected("https://192.168.1.5/v1/messages");
         assertRejected("https://10.0.0.1/v1/messages");

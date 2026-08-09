@@ -1,6 +1,8 @@
 package com.virtualcompanion.modelruntime.port;
 
 import java.net.URI;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -41,12 +43,17 @@ public final class ProviderEgressPolicy {
         if (approvedHosts.isEmpty()) {
             throw new IllegalArgumentException("approvedHosts must not be empty");
         }
-        if (approvedHosts.contains(LOOPBACK_HOST)) {
+        var normalizedApprovedHosts = new HashSet<String>();
+        for (String approvedHost : approvedHosts) {
+            normalizedApprovedHosts.add(normalizeHostname(Objects.requireNonNull(
+                    approvedHost, "approved host must not be null")));
+        }
+        if (normalizedApprovedHosts.contains(LOOPBACK_HOST)) {
             throw new IllegalArgumentException(
                     "loopback must not be part of the approved host set"
                             + " (loopback is handled explicitly by the policy)");
         }
-        this.approvedHosts = Set.copyOf(approvedHosts);
+        this.approvedHosts = Set.copyOf(normalizedApprovedHosts);
     }
 
     /** The production egress policy: approved suppliers + loopback only. */
@@ -74,7 +81,8 @@ public final class ProviderEgressPolicy {
             throw new IllegalArgumentException(
                     "endpoint must not use an IPv6 literal host");
         }
-        if (LOOPBACK_HOST.equals(host)) {
+        String normalizedHost = normalizeHostname(host);
+        if (LOOPBACK_HOST.equals(normalizedHost)) {
             if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
                 throw new IllegalArgumentException(
                         "endpoint must use https, or http on the loopback address");
@@ -90,15 +98,19 @@ public final class ProviderEgressPolicy {
             throw new IllegalArgumentException(
                     "endpoint must use port 443 outside the loopback address");
         }
-        String addressCategory = ipv4Category(host);
+        String addressCategory = ipv4Category(normalizedHost);
         if (addressCategory != null) {
             throw new IllegalArgumentException(
                     "endpoint host is on a blocked address category: " + addressCategory);
         }
-        if (!approvedHosts.contains(host)) {
+        if (!approvedHosts.contains(normalizedHost)) {
             throw new IllegalArgumentException(
                     "endpoint host is not on the approved provider egress allowlist");
         }
+    }
+
+    private static String normalizeHostname(String host) {
+        return host.toLowerCase(Locale.ROOT);
     }
 
     /**

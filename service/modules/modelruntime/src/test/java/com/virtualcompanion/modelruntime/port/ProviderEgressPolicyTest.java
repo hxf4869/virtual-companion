@@ -30,6 +30,14 @@ class ProviderEgressPolicyTest {
     }
 
     @Test
+    void approvedSupplierHostnamesAreCaseInsensitive() {
+        assertDoesNotThrow(() -> policy.requireAllowed(
+                URI.create("https://API.OPENAI.COM/v1/chat/completions")));
+        assertDoesNotThrow(() -> policy.requireAllowed(
+                URI.create("https://Api.AnThRoPiC.CoM/v1/messages")));
+    }
+
+    @Test
     void loopbackIsAllowedOverHttpAndHttpsOnAnyPort() {
         assertDoesNotThrow(() -> policy.requireAllowed(
                 URI.create("http://127.0.0.1/v1/chat/completions")));
@@ -53,6 +61,10 @@ class ProviderEgressPolicyTest {
                 URI.create("https://evil.example.com/v1/chat/completions")));
         assertThrows(IllegalArgumentException.class, () -> policy.requireAllowed(
                 URI.create("https://api.openai.com.evil.example/v1/chat/completions")));
+        assertThrows(IllegalArgumentException.class, () -> policy.requireAllowed(
+                URI.create("https://EVIL.EXAMPLE.COM/v1/chat/completions")));
+        assertThrows(IllegalArgumentException.class, () -> policy.requireAllowed(
+                URI.create("https://API.OPENAI.COM.EVIL.EXAMPLE/v1/chat/completions")));
     }
 
     @Test
@@ -139,10 +151,10 @@ class ProviderEgressPolicyTest {
     @Test
     void customApprovedHostSetIsRespected() {
         ProviderEgressPolicy custom =
-                new ProviderEgressPolicy(Set.of("my-gateway.example.com"));
+                new ProviderEgressPolicy(Set.of("MY-GATEWAY.EXAMPLE.COM"));
 
         assertDoesNotThrow(() -> custom.requireAllowed(
-                URI.create("https://my-gateway.example.com/v1/chat/completions")));
+                URI.create("https://My-Gateway.Example.Com/v1/chat/completions")));
         assertThrows(IllegalArgumentException.class, () -> custom.requireAllowed(
                 URI.create("https://api.openai.com/v1/chat/completions")));
     }
