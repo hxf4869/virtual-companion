@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0123
+activeTaskCard: docs/tasks/TASK-0123-auth-request-target-utf8-boundary.md
 lastAcceptedTask: TASK-0122
 lastAcceptedHandoff: docs/handoffs/TASK-0122.json
 lastTerminalTask: TASK-0122
 lastTerminalHandoff: docs/handoffs/TASK-0122.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0123：统一 Auth request-target 的 parsed/canonical 边界，修复 admin/accounts percent-encoded 或 matrix MVC 等价路径绕过 16384-byte body fence，并将到达 filter 的 malformed percent request-target 固定为 400 INVALID_REQUEST 且 body zero-read；同时把 AuthInputLimits 对 username、password、displayName、role 和 token 的 UTF-8 检查改为严格 REPORT 语义，防止孤立 surrogate 进入 JDBC 或响应。保持 route 权限、JWT、CSRF、cookie 和数据库状态机语义不变；完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。
+  执行 TASK-0123：统一 Auth POST request-target 的 parsed/canonical 分类，修复 admin/accounts encoded/matrix body-fence 绕过和 malformed percent 未处理异常，并把 AuthInputLimits 改为严格 UTF-8 REPORT 失败关闭；保持 route 权限、JWT、CSRF、cookie、limiter 和数据库状态机不变，完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
