@@ -31,7 +31,7 @@ final class AnthropicMessagesCodec {
         try {
             var root = jsonMapper.createObjectNode();
             root.put("model", model);
-            root.put("max_tokens", maxTokens);
+            root.put("max_tokens", AnthropicMessagesConfig.requireMaxTokens(maxTokens));
 
             var systemBuilder = new StringBuilder();
             boolean hasSystem = false;

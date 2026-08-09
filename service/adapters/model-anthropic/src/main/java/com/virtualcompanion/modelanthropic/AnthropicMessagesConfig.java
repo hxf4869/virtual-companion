@@ -12,6 +12,7 @@ import java.util.Objects;
 public final class AnthropicMessagesConfig {
 
     public static final String MESSAGES_PATH = "/v1/messages";
+    static final int MAX_TOKENS = 8192;
 
     private final URI endpoint;
     private final String apiKey;
@@ -30,10 +31,7 @@ public final class AnthropicMessagesConfig {
         this.apiKey = requireSecret(apiKey);
         this.anthropicVersion = requireNonBlank(anthropicVersion, "anthropicVersion");
         this.model = requireNonBlank(model, "model");
-        if (maxTokens <= 0) {
-            throw new IllegalArgumentException("maxTokens must be positive");
-        }
-        this.maxTokens = maxTokens;
+        this.maxTokens = requireMaxTokens(maxTokens);
     }
 
     public URI endpoint() {
@@ -54,6 +52,15 @@ public final class AnthropicMessagesConfig {
 
     String anthropicVersion() {
         return anthropicVersion;
+    }
+
+    static int requireMaxTokens(int value) {
+        if (value < 1 || value > MAX_TOKENS) {
+            throw new IllegalArgumentException(
+                    "maxTokens must be between 1 and " + MAX_TOKENS
+            );
+        }
+        return value;
     }
 
     @Override

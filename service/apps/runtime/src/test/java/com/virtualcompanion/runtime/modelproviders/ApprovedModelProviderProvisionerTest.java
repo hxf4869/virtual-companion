@@ -83,6 +83,34 @@ class ApprovedModelProviderProvisionerTest {
     }
 
     @Test
+    void anthropicMaxTokensCeilingFailsBeforeRegistration() {
+        for (int maxTokens : new int[]{8193, Integer.MAX_VALUE}) {
+            IllegalArgumentException exception = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> provision(anthropic("anthropic-key", true, maxTokens))
+            );
+            assertFalse(exception.getMessage().contains("sk-ant-live"));
+        }
+    }
+
+    @Test
+    void anthropicMaxTokensUpperBoundaryRegisters() {
+        ApprovedModelProviders set = provision(anthropic("anthropic-key", true, 8192));
+
+        assertEquals(1, set.registry().deployments().size());
+        assertNotNull(set.locator().adapterFor(new ProviderId("anthropic-approved")));
+    }
+
+    @Test
+    void disabledAnthropicDeploymentSkipsMaxTokensValidation() {
+        ApprovedModelProviders set = provision(
+                anthropic("anthropic-key", false, Integer.MAX_VALUE));
+
+        assertTrue(set.registry().deployments().isEmpty());
+        assertTrue(set.supplierNames().isEmpty());
+    }
+
+    @Test
     void disabledDeploymentsAreNotRegistered() {
         ApprovedModelProviders set = provision(openai("openai-key", false));
 
@@ -135,9 +163,16 @@ class ApprovedModelProviderProvisionerTest {
     }
 
     private static ModelProviderProperties.Deployment anthropic(String secret, boolean enabled) {
+        return anthropic(secret, enabled, 2048);
+    }
+
+    private static ModelProviderProperties.Deployment anthropic(
+            String secret,
+            boolean enabled,
+            int maxTokens) {
         return new ModelProviderProperties.Deployment(
                 "anthropic-approved", "ANTHROPIC_MESSAGES", "Anthropic",
                 "claude-sonnet-5", "http://127.0.0.1:1/v1/messages",
-                secret, "2023-06-01", 2048, enabled);
+                secret, "2023-06-01", maxTokens, enabled);
     }
 }
