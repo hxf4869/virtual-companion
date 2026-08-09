@@ -42,6 +42,7 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
     private static final int MAX_SUCCESS_TERMINAL_BATCH_EVENTS = 3;
     private static final int MAX_BUFFERED_EVENT_REFERENCES =
             MAX_PENDING_OUTPUT_EVENTS + MAX_SUCCESS_TERMINAL_BATCH_EVENTS;
+    private static final long MAX_STREAM_RAW_RESPONSE_BYTES = 8L * 1024 * 1024;
 
     private final Object stateLock = new Object();
     private final Deque<ModelProtocolEvent> events =
@@ -318,6 +319,7 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
         SseDecoder.decode(
                 body,
                 SizeLimits.MAX_STREAM_EVENT_BYTES,
+                MAX_STREAM_RAW_RESPONSE_BYTES,
                 data -> onStreamEvent(state, data)
         );
         if (!state.done) {

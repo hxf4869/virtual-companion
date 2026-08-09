@@ -30,6 +30,7 @@ final class SseDecoder {
     static void decode(
             InputStream input,
             int maximumEventBytes,
+            long maximumRawBytes,
             EventConsumer consumer
     ) throws IOException, AnthropicCodecException {
         Objects.requireNonNull(input, "input must not be null");
@@ -37,10 +38,14 @@ final class SseDecoder {
         if (maximumEventBytes <= 0) {
             throw new IllegalArgumentException("maximumEventBytes must be positive");
         }
+        if (maximumRawBytes <= 0) {
+            throw new IllegalArgumentException("maximumRawBytes must be positive");
+        }
 
         var event = new EventBuffer(maximumEventBytes);
         var line = new LineParser(event);
         int lineBytes = 0;
+        long rawBytes = 0;
         boolean skipLineFeed = false;
 
         while (true) {
@@ -54,6 +59,10 @@ final class SseDecoder {
                 }
                 return;
             }
+            if (rawBytes >= maximumRawBytes) {
+                throw new AnthropicCodecException();
+            }
+            rawBytes++;
 
             if (skipLineFeed) {
                 skipLineFeed = false;
