@@ -12,6 +12,7 @@ import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.config.AuthRequestBodyLimitFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,6 +71,26 @@ class AuthControllerValidationTest {
                 .andReturn();
 
         assertThat(result.getResponse().getContentAsString()).doesNotContain("16385", "BBBB");
+        verifyNoInteractions(authService);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+        "/api/v1/auth/admin/acc%6Funts",
+        "/api/v1/auth/admin/acc%6funts",
+        "/api/v1/auth/admin/accounts;v=1"
+    })
+    void nonCanonicalAdminAliasesNeverReachJsonOrService(String path) throws Exception {
+        MvcResult result = mockMvc.perform(post(URI.create(path))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"bob\",\"password\":\"pw\","
+                                + "\"displayName\":\"Bob\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("The request is invalid"))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("bob", "password");
         verifyNoInteractions(authService);
     }
 

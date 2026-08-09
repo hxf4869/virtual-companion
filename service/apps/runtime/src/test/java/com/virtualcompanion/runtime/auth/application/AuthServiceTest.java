@@ -342,6 +342,28 @@ class AuthServiceTest {
     }
 
     @Test
+    void malformedUtf16FailsBeforeHashingBcryptRepositoryOrJdbc() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        for (String malformed : new String[] {"\uD800", "\uDC00"}) {
+            assertInvalidLogin(malformed, "pw");
+            assertInvalidLogin("alice", malformed);
+            assertInvalidAccount(admin,
+                    new CreateAccountRequest(malformed, "pw", "USER", "User"));
+            assertInvalidAccount(admin,
+                    new CreateAccountRequest("bob", malformed, "USER", "User"));
+            assertInvalidAccount(admin,
+                    new CreateAccountRequest("bob", "pw", malformed, "User"));
+            assertInvalidAccount(admin,
+                    new CreateAccountRequest("bob", "pw", "USER", malformed));
+            assertInvalidRefresh(malformed);
+            assertInvalidLogout(malformed);
+            assertInvalidSeed(malformed, "pw", "Display");
+            assertInvalidSeed("root", malformed, "Display");
+            assertInvalidSeed("root", "pw", malformed);
+        }
+    }
+
+    @Test
     void seedAdminIsSkippedWhenCredentialsAbsent() {
         long id = service.seedAdmin("   ", "pw", "Name");
 
@@ -394,6 +416,21 @@ class AuthServiceTest {
                 .satisfies(e -> {
                     assertThat(((AuthErrorException) e).code()).isEqualTo("AUTHENTICATION_REQUIRED");
                     assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                });
+
+        verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);
+    }
+
+    private void assertInvalidLogout(String refreshToken) {
+        clearInvocations(accounts, sessions, passwordEncoder, jwt);
+
+        assertThatThrownBy(() -> service.logout(7, refreshToken))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code())
+                            .isEqualTo("AUTHENTICATION_REQUIRED");
+                    assertThat(((AuthErrorException) e).status())
+                            .isEqualTo(HttpStatus.UNAUTHORIZED);
                 });
 
         verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);

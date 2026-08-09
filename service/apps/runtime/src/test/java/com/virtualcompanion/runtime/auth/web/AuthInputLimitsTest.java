@@ -1,6 +1,7 @@
 package com.virtualcompanion.runtime.auth.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
@@ -12,6 +13,7 @@ class AuthInputLimitsTest {
         assertThat(AuthInputLimits.utf8ByteLength("é")).isEqualTo(2);
         assertThat(AuthInputLimits.utf8ByteLength("界")).isEqualTo(3);
         assertThat(AuthInputLimits.utf8ByteLength("😀")).isEqualTo(4);
+        assertThat(AuthInputLimits.utf8ByteLength("�")).isEqualTo(3);
     }
 
     @Test
@@ -46,6 +48,25 @@ class AuthInputLimitsTest {
     void nullIsHandledByRequiredOrOptionalFieldValidation() {
         assertThat(AuthInputLimits.utf8ByteLength(null)).isZero();
         assertThat(AuthInputLimits.withinUtf8Bytes(null, 0)).isTrue();
+    }
+
+    @Test
+    void loneSurrogatesFailClosedWithoutReplacementAliases() {
+        for (String malformed : new String[] {"\uD800", "\uDC00"}) {
+            assertThat(AuthInputLimits.withinUtf8Bytes(malformed, 64)).isFalse();
+            assertThatThrownBy(() -> AuthInputLimits.utf8ByteLength(malformed))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("value is not valid UTF-8")
+                    .hasMessageNotContaining(malformed);
+        }
+        assertThat(AuthInputLimits.withinUtf8Bytes("�", 3)).isTrue();
+    }
+
+    @Test
+    void negativeMaximumRemainsAProgrammingError() {
+        assertThatThrownBy(() -> AuthInputLimits.withinUtf8Bytes("value", -1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("maximumBytes must not be negative");
     }
 
     private static void assertBoundary(String exact, int maximumBytes) {

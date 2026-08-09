@@ -111,6 +111,41 @@ class AuthRequestBodyLimitFilterTest {
         assertThat(otherRequest.input().bytesRead()).isZero();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/v1/auth/admin/acc%6Funts",
+        "/api/v1/auth/admin/acc%6funts",
+        "/api/v1/auth/admin/accounts;v=1",
+        "/api/v1/%61uth/admin/accounts"
+    })
+    void nonCanonicalAdminAliasesAreRejectedBeforeBodyRead(String path) throws Exception {
+        byte[] body = body(AuthInputLimits.MAX_REQUEST_BODY_BYTES + 1);
+        TrackingRequest request = request("POST", path, body, body.length, "");
+
+        FilterResult result = runWithoutReading(request);
+
+        assertInvalid(result, body);
+        assertThat(request.input().bytesRead()).isZero();
+        assertThat(request.input().closed()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/v1/auth/%",
+        "/api/v1/auth/login%2",
+        "/api/v1/auth/admin/accounts%ZZ"
+    })
+    void malformedPercentTargetsAreRejectedBeforeBodyRead(String path) throws Exception {
+        byte[] body = body(AuthInputLimits.MAX_REQUEST_BODY_BYTES + 1);
+        TrackingRequest request = request("POST", path, body, body.length, "");
+
+        FilterResult result = runWithoutReading(request);
+
+        assertInvalid(result, body);
+        assertThat(request.input().bytesRead()).isZero();
+        assertThat(request.input().closed()).isFalse();
+    }
+
     private static FilterResult run(
             TrackingRequest request, AtomicReference<byte[]> forwardedBody) throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();

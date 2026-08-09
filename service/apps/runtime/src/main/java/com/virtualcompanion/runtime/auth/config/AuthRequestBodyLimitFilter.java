@@ -16,7 +16,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -26,17 +25,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 public class AuthRequestBodyLimitFilter extends OncePerRequestFilter {
 
-    private static final String LOGIN_PATH = "/api/v1/auth/login";
-    private static final String ACCOUNT_PATH = "/api/v1/auth/admin/accounts";
-    private static final String INVALID_REQUEST_BODY =
-            "{\"code\":\"INVALID_REQUEST\",\"message\":\"The request is invalid\"}";
-
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain chain) throws ServletException, IOException {
-        if (!isTarget(request)) {
+        AuthRequestTarget.Match match = AuthRequestTarget.resolve(request);
+        if (match.rejected()) {
+            reject(response);
+            return;
+        }
+        if (!match.canonical() || !match.route().bodyLimited()) {
             chain.doFilter(request, response);
             return;
         }
@@ -56,24 +55,6 @@ public class AuthRequestBodyLimitFilter extends OncePerRequestFilter {
         }
 
         chain.doFilter(new ReplayableBodyRequest(request, body), response);
-    }
-
-    static boolean isTarget(HttpServletRequest request) {
-        if (request == null || !"POST".equalsIgnoreCase(request.getMethod())) {
-            return false;
-        }
-        String path = request.getRequestURI();
-        if (path == null) {
-            path = request.getServletPath();
-        }
-        String contextPath = request.getContextPath();
-        if (path == null) {
-            return false;
-        }
-        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
-            path = path.substring(contextPath.length());
-        }
-        return LOGIN_PATH.equals(path) || ACCOUNT_PATH.equals(path);
     }
 
     private static byte[] readAtMost(InputStream input, int maximumBytes) throws IOException {
@@ -99,10 +80,7 @@ public class AuthRequestBodyLimitFilter extends OncePerRequestFilter {
     }
 
     private static void reject(HttpServletResponse response) throws IOException {
-        response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write(INVALID_REQUEST_BODY);
+        AuthRequestTarget.reject(response);
     }
 
     private static final class ReplayableBodyRequest extends HttpServletRequestWrapper {

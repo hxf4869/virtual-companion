@@ -188,7 +188,8 @@ class AuthSourceAdmissionFilterTest {
         String[] paths = {
                 AuthSourceAdmissionFilter.LOGIN_PATH + "/",
                 "/prefix" + AuthSourceAdmissionFilter.LOGIN_PATH,
-                "/api/v1/auth/logout"
+                "/api/v1/auth/logout",
+                "/api/v1/auth/admin/accounts"
         };
         for (String path : paths) {
             CountingRequest request = request("POST", path, null, null);
@@ -211,7 +212,12 @@ class AuthSourceAdmissionFilterTest {
                 "/api/v1/auth/l%6Fgin",
                 "/api/v1/auth/login;v=1",
                 "/api/v1/auth/refr%65sh",
-                "/api/v1/auth/refresh;v=1")) {
+                "/api/v1/auth/refresh;v=1",
+                "/api/v1/auth/log%6Fut",
+                "/api/v1/auth/logout;v=1",
+                "/api/v1/auth/admin/acc%6Funts",
+                "/api/v1/auth/admin/acc%6funts",
+                "/api/v1/auth/admin/accounts;v=1")) {
             CountingRequest request = request("POST", path, "192.0.2.140", null);
             AtomicBoolean chainCalled = new AtomicBoolean();
             MockHttpServletResponse response = new MockHttpServletResponse();
@@ -228,6 +234,51 @@ class AuthSourceAdmissionFilterTest {
             assertThat(request.reads()).isZero();
             assertThat(chainCalled).isFalse();
         }
+    }
+
+    @Test
+    void malformedPercentRequestTargetsAreRejectedWithoutBodyReadOrException() throws Exception {
+        AuthSourceAdmissionFilter filter = new AuthSourceAdmissionFilter(new AuthAbuseGuard());
+
+        for (String path : List.of(
+                "/api/v1/auth/%",
+                "/api/v1/auth/login%2",
+                "/api/v1/auth/admin/accounts%ZZ")) {
+            CountingRequest request = request("POST", path, "192.0.2.141", null);
+            AtomicBoolean chainCalled = new AtomicBoolean();
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            filter.doFilter(request, response, (servletRequest, servletResponse) ->
+                    chainCalled.set(true));
+
+            assertThat(response.getStatus()).isEqualTo(400);
+            assertThat(response.getContentAsString())
+                    .isEqualTo("{\"code\":\"INVALID_REQUEST\","
+                            + "\"message\":\"The request is invalid\"}");
+            assertThat(request.reads()).isZero();
+            assertThat(chainCalled).isFalse();
+        }
+    }
+
+    @Test
+    void sharedResolverHandlesContextPathAndLeavesUnknownRoutesUntargeted() {
+        for (AuthRequestTarget.Route route : AuthRequestTarget.Route.values()) {
+            MockHttpServletRequest canonical = new MockHttpServletRequest(
+                    "POST", "/ctx" + route.path());
+            canonical.setContextPath("/ctx");
+
+            AuthRequestTarget.Match match = AuthRequestTarget.resolve(canonical);
+
+            assertThat(match.status()).isEqualTo(AuthRequestTarget.Status.CANONICAL);
+            assertThat(match.route()).isEqualTo(route);
+        }
+        assertThat(AuthRequestTarget.Route.ADMIN_ACCOUNTS.bodyLimited()).isTrue();
+        assertThat(AuthRequestTarget.resolve(
+                        new MockHttpServletRequest("GET", AuthSourceAdmissionFilter.LOGIN_PATH))
+                .status()).isEqualTo(AuthRequestTarget.Status.NOT_TARGET);
+        assertThat(AuthRequestTarget.resolve(
+                        new MockHttpServletRequest("POST", "/api/v1/auth/unknown"))
+                .status()).isEqualTo(AuthRequestTarget.Status.NOT_TARGET);
     }
 
     private static MockHttpServletResponse invoke(

@@ -1,5 +1,8 @@
 package com.virtualcompanion.runtime.auth.web;
 
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -21,7 +24,18 @@ public final class AuthInputLimits {
 
     /** Returns the UTF-8 encoded size; null is treated as an absent value. */
     public static int utf8ByteLength(String value) {
-        return value == null ? 0 : value.getBytes(StandardCharsets.UTF_8).length;
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return StandardCharsets.UTF_8.newEncoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .encode(CharBuffer.wrap(value))
+                    .remaining();
+        } catch (CharacterCodingException e) {
+            throw new IllegalArgumentException("value is not valid UTF-8", e);
+        }
     }
 
     /** Null remains the responsibility of the required/optional field rules. */
@@ -34,6 +48,13 @@ public final class AuthInputLimits {
         }
         // Avoid allocating a second attacker-sized byte array when the Java
         // string alone already proves that the UTF-8 limit is exceeded.
-        return value.length() <= maximumBytes && utf8ByteLength(value) <= maximumBytes;
+        if (value.length() > maximumBytes) {
+            return false;
+        }
+        try {
+            return utf8ByteLength(value) <= maximumBytes;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 }
