@@ -12,6 +12,7 @@ import java.util.Objects;
 final class SseDecoder {
 
     private static final byte[] DATA_FIELD = "data".getBytes(StandardCharsets.US_ASCII);
+    private static final int MAXIMUM_DATA_LINE_FRAMING_BYTES = "data: ".length();
 
     private SseDecoder() {
     }
@@ -66,7 +67,10 @@ final class SseDecoder {
             }
 
             lineBytes++;
-            if (lineBytes > maximumEventBytes) {
+            int maximumLineBytes = line.isComment()
+                    ? maximumEventBytes
+                    : maximumEventBytes + MAXIMUM_DATA_LINE_FRAMING_BYTES;
+            if (lineBytes > maximumLineBytes) {
                 throw new OpenAiCodecException();
             }
             line.accept(value);
@@ -148,6 +152,10 @@ final class SseDecoder {
         private void reset() {
             mode = LineMode.START;
             fieldBytes = 0;
+        }
+
+        private boolean isComment() {
+            return mode == LineMode.COMMENT;
         }
     }
 

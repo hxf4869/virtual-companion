@@ -145,20 +145,19 @@ class OpenAiChatCompletionsBoundaryContractTest {
     }
 
     @Test
-    void streamingSingleEventOverLimitStopsEarlyAndFailsClosed() throws Exception {
+    void streamingSingleDataPayloadOneOverStopsEarlyAndFailsClosed() throws Exception {
         int limit = SizeLimits.MAX_STREAM_EVENT_BYTES;
-        byte[] oversizedEvent = sse(choiceChunk(
-                "x".repeat(SizeLimits.MAX_STREAM_EVENT_BYTES),
-                null
-        )).getBytes(StandardCharsets.UTF_8);
-        var body = new TrackingInputStream(oversizedEvent, limit + 1L);
+        byte[] oversizedEvent = ("data: " + " ".repeat(limit + 1) + "\n\n")
+                .getBytes(StandardCharsets.UTF_8);
+        long offendingByte = "data: ".length() + limit + 1L;
+        var body = new TrackingInputStream(oversizedEvent, offendingByte);
         var client = new StaticInputHttpClient("text/event-stream", body);
 
         var events = drain(adapter(client, offlineEndpoint())
                 .open(longBudgetRequest(true)));
 
         assertMalformedFailure(events.getFirst());
-        assertEquals(limit + 1L, body.bytesRead());
+        assertEquals(offendingByte, body.bytesRead());
         body.awaitClosed();
     }
 
@@ -296,6 +295,27 @@ class OpenAiChatCompletionsBoundaryContractTest {
                 .open(longBudgetRequest(true)));
 
         assertSuccessfulText(events, "exact-event");
+        assertTrue(body.bytesRead() <= responseBytes.length);
+        body.awaitClosed();
+    }
+
+    @Test
+    void exactSingleLineSseDataPayloadLimitRemainsValid() throws Exception {
+        int limit = SizeLimits.MAX_STREAM_EVENT_BYTES;
+        String chunk = choiceChunk("exact-single-line", null);
+        int chunkBytes = chunk.getBytes(StandardCharsets.UTF_8).length;
+        String response = "data: " + " ".repeat(limit - chunkBytes) + chunk + "\n\n"
+                + sse(choiceChunk(null, "stop"))
+                + sse(usageChunk(1, 1))
+                + "data: [DONE]\n\n";
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(responseBytes, Long.MAX_VALUE);
+        var client = new StaticInputHttpClient("text/event-stream", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertSuccessfulText(events, "exact-single-line");
         assertTrue(body.bytesRead() <= responseBytes.length);
         body.awaitClosed();
     }
