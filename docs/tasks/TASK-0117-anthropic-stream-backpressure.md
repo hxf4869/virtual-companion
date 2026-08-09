@@ -15,7 +15,7 @@ requiredSkillVersions:
   model-routing-change: "1.0.0"
 targetSkillVersions: {}
 baseCommit: 714fcd328c88d2977b58619090f72f5be85e9a48
-authorizationCommit: ""
+authorizationCommit: "dceca853a594f16adc842f2aa8ef15162b981e85"
 contextFingerprint: b3dc4e598b3f4c095da6da0de41237c1e916a1e581a92594a030879f684fe742
 contextLock: docs/tasks/context/TASK-0117.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
