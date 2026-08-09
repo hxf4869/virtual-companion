@@ -1,0 +1,87 @@
+{
+  "taskId": "TASK-0122",
+  "state": "ACCEPTED",
+  "baseCommit": "55629d56be58006b4cffc1fc474229293a04381d",
+  "headCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+  "evidencePath": "docs/evidence/TASK-0122/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "8d13977c4bbb58dbee12ea799ad7fd6f27b2fec9",
+      "startedAt": "2026-08-09T17:49:42+08:00",
+      "endedAt": "2026-08-09T19:48:00+08:00",
+      "elapsedSeconds": 7098,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "8d13977c4bbb58dbee12ea799ad7fd6f27b2fec9",
+      "startedAt": "2026-08-09T17:49:42+08:00",
+      "endedAt": "2026-08-09T17:51:38+08:00",
+      "elapsedSeconds": 116,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "fb76b3f533e0a9a5ecb04a96ac77e65c02f34771",
+      "startedAt": "2026-08-09T17:51:46+08:00",
+      "endedAt": "2026-08-09T19:48:00+08:00",
+      "elapsedSeconds": 6974,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 1574,
+      "readyDoctorPassAt": "2026-08-09T17:51:38+08:00",
+      "inProgressCommit": "fb76b3f533e0a9a5ecb04a96ac77e65c02f34771",
+      "reason": "All implementation, R1, canonical, targeted, OpenAPI, root verify and diff gates completed before the hard fuse. The Owner-requested model-depth pause and the already-dispatched R2 mailbox wait extended the closure snapshot beyond the fuse; after the fuse no implementation, reviewer dispatch, canonical validation or CI ran, only closure Evidence/Handoff repair and freeze."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0122_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+      "evidencePath": "docs/evidence/TASK-0122/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：单实例 source/input-key rolling windows、progressive backoff、4-slot 无阻塞舱壁、有界 HMAC 状态、固定 429、filter/controller 次序和 Catalog/Contract/OpenAPI 同步均满足冻结验收；候选内 P0/P1/P2/P3=0。",
+      "candidateTree": "03307764106086c3d7a81b82bb36d29c9bfdf9cd"
+    },
+    {
+      "id": "task0122_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+      "evidencePath": "docs/evidence/TASK-0122/review-r2.md",
+      "reason": "R2 闭包复核 PASS：任务卡、Evidence 与 Handoff 的结构化 R1 已一致，首次 pre-closure FAIL/exit 1/654086 checks 与输出哈希均真实保留，候选身份和正式 PASS 记录未漂移；闭包 delta 无新增 P0/P1/P2/P3，允许执行唯一一次最终 pre-closure。",
+      "candidateTree": "03307764106086c3d7a81b82bb36d29c9bfdf9cd"
+    }
+  ],
+  "completed": [
+    "login/refresh 在任何昂贵 Auth 操作前执行 route-source 与 input-key rolling windows：login 为 source 20/60s、source+canonical username 5/900s，refresh 为 source 10/60s、token 5/60s。",
+    "新增 1/2/4/8/16/60 秒 progressive admission backoff、4-slot 全局非阻塞 semaphore 和完整下游 lease；拒绝不等待、不自增，异常退出和幂等 close 均释放 permit。",
+    "四个 scope 使用 bounded state、过期回收、active no-eviction、单调不减 Clock、严格 UTF-8 length-framed domain-separated ephemeral HMAC；map 不保存 raw source、username 或 token。",
+    "Cookie -> source -> body -> JWT/MVC 顺序及无容器重复注册已验证；MVC 等价的 login/refresh encoded/matrix alias 在 body 前固定 400，source/舱壁/key 拒绝固定返回 429 AUTH_RATE_LIMITED 与正整数 Retry-After。",
+    "Catalog ordinal 16、identity contract、OpenAPI login/refresh 429 及全部实际生成物已同步；R1、canonical 5/5、定向 99 tests、OpenAPI validate/drift、根级 651 tests 和唯一次 git diff --check 全部 PASS。",
+    "首次 pre-closure 的结构化 Reviewer 缺失已按真实 FAIL 保留并修正；独立 R2 对 finding closure、staged delta 和相邻风险复核 PASS。"
+  ],
+  "remaining": [
+    "新复核发现 admin/accounts 的 percent-encoded 或 matrix MVC 等价路径仍可绕过 16384-byte body fence；到达 source filter 的 malformed percent request-target 在非默认容器/内部 forward 下也可能变成未处理异常。TASK-0123 优先统一 parsed/canonical request-target 边界。",
+    "P2-03 的跨实例共享原子限流、account-only 跨 source credential-stuffing 防护、永久锁定、密码最低/breach/history 策略，以及身份失败审计聚合、去标识化、保留与清理仍未关闭。",
+    "P1-04/P1-05/P1-11/P2-29 数据库 principal、runtime DML 与 readiness 边界，P2-12 JDBC authorization snapshot 不可复活和 P2-13 admin seed 多实例并发仍需独立高风险卡。",
+    "P2-20/P2-21/P2-23/P2-24/P2-25/P2-26/P2-27、P3-01/P3-02/P3-05/P3-07/P3-08 及其后续复核候选仍需逐项处理；全部修复后必须对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "当前 limiter 仅为单 JVM 进程内状态，重启即清空；它不提供水平扩展、跨节点共享配额或真实用户发布级防护。",
+    "只信任 servlet remoteAddr 并忽略转发头；反向代理部署会安全聚合到代理地址，但可能产生集中误伤，trusted proxy 拓扑仍未授权。",
+    "source+canonical username 不能阻止分布式多 source credential stuffing，且 success/failure 都不会重置 admission state。",
+    "admin/accounts 的 MVC 等价非 canonical 路径和 malformed percent request-target 残余已进入唯一下一动作，在 TASK-0123 关闭前不得声称所有 Auth body route 均受 canonical fence。",
+    "首次 pre-closure 因任务卡 reviewers 为空真实 FAIL（exit 1、654086 checks）；该结果已保留，闭包元数据修正后必须经独立 R2 并只执行一次最终 pre-closure，不得覆盖或冒充首轮 PASS。",
+    "候选执行闭包快照超过 90 分钟 hard fuse 1574 秒；实现、R1 和全部正式候选门禁均在 fuse 前结束，超时来自 Owner 请求的模型深度暂停和已发出的 R2 mailbox 等待，fuse 后仅进行 closure Evidence/Handoff 修复与冻结。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、本机工具链和输出哈希。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0123：统一 Auth request-target 的 parsed/canonical 边界，修复 admin/accounts percent-encoded 或 matrix MVC 等价路径绕过 16384-byte body fence，并将到达 filter 的 malformed percent request-target 固定为 400 INVALID_REQUEST 且 body zero-read；同时把 AuthInputLimits 对 username、password、displayName、role 和 token 的 UTF-8 检查改为严格 REPORT 语义，防止孤立 surrogate 进入 JDBC 或响应。保持 route 权限、JWT、CSRF、cookie 和数据库状态机语义不变；完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。"
+}

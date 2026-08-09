@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0122
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -358,7 +358,27 @@ humanApprovals:
       已按同一 READY 冻结 fallback 合规 ACCEPTED。本卡冻结 LOCAL_EXACT_TREE_FALLBACK，
       远端继续如实为非 PASS，PASS 只绑定记录的本机 Commit/Tree 与精确命令覆盖。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0122_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5
+    candidateTree: 03307764106086c3d7a81b82bb36d29c9bfdf9cd
+    evidencePath: docs/evidence/TASK-0122/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：单实例 source/input-key rolling windows、progressive backoff、4-slot
+      无阻塞舱壁、有界 HMAC 状态、固定 429、filter/controller 次序和 Catalog/Contract/OpenAPI
+      同步均满足冻结验收；候选内 P0/P1/P2/P3=0。
+  - id: task0122_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5
+    candidateTree: 03307764106086c3d7a81b82bb36d29c9bfdf9cd
+    evidencePath: docs/evidence/TASK-0122/review-r2.md
+    reason: >-
+      R2 闭包复核 PASS：任务卡、Evidence 与 Handoff 的结构化 R1 已一致，首次 pre-closure
+      FAIL/exit 1/654086 checks 与输出哈希均真实保留，候选身份和正式 PASS 记录未漂移；闭包 delta
+      无新增 P0/P1/P2/P3，允许执行唯一一次最终 pre-closure。
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0122
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am -Dtest=AuthAbuseGuardTest,AuthSourceAdmissionFilterTest,AuthControllerAbuseControlTest,AuthControllerCookieTest,AuthControllerValidationTest,AuthSecurityIntegrationTest,AuthServiceTest -Dsurefire.failIfNoSpecifiedTests=false test

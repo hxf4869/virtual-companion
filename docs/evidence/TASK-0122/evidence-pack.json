@@ -1,0 +1,187 @@
+{
+  "taskId": "TASK-0122",
+  "baseCommit": "55629d56be58006b4cffc1fc474229293a04381d",
+  "headCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+  "contextFingerprint": "d608f595fdfc71758b6304b00eb32cc4be495f6d1da88ebae84c37ea7c7fdd9c",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "8d13977c4bbb58dbee12ea799ad7fd6f27b2fec9",
+      "startedAt": "2026-08-09T17:49:42+08:00",
+      "endedAt": "2026-08-09T19:48:00+08:00",
+      "elapsedSeconds": 7098,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "8d13977c4bbb58dbee12ea799ad7fd6f27b2fec9",
+      "startedAt": "2026-08-09T17:49:42+08:00",
+      "endedAt": "2026-08-09T17:51:38+08:00",
+      "elapsedSeconds": 116,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "fb76b3f533e0a9a5ecb04a96ac77e65c02f34771",
+      "startedAt": "2026-08-09T17:51:46+08:00",
+      "endedAt": "2026-08-09T19:48:00+08:00",
+      "elapsedSeconds": 6974,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 1574,
+      "readyDoctorPassAt": "2026-08-09T17:51:38+08:00",
+      "inProgressCommit": "fb76b3f533e0a9a5ecb04a96ac77e65c02f34771",
+      "reason": "All implementation, R1, canonical, targeted, OpenAPI, root verify and diff gates completed before the hard fuse. The Owner-requested model-depth pause and the already-dispatched R2 mailbox wait extended the closure snapshot beyond the fuse; after the fuse no implementation, reviewer dispatch, canonical validation or CI ran, only closure Evidence/Handoff repair and freeze."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0122_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+      "evidencePath": "docs/evidence/TASK-0122/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：单实例 source/input-key rolling windows、progressive backoff、4-slot 无阻塞舱壁、有界 HMAC 状态、固定 429、filter/controller 次序和 Catalog/Contract/OpenAPI 同步均满足冻结验收；候选内 P0/P1/P2/P3=0。",
+      "candidateTree": "03307764106086c3d7a81b82bb36d29c9bfdf9cd"
+    },
+    {
+      "id": "task0122_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+      "evidencePath": "docs/evidence/TASK-0122/review-r2.md",
+      "reason": "R2 闭包复核 PASS：任务卡、Evidence 与 Handoff 的结构化 R1 已一致，首次 pre-closure FAIL/exit 1/654086 checks 与输出哈希均真实保留，候选身份和正式 PASS 记录未漂移；闭包 delta 无新增 P0/P1/P2/P3，允许执行唯一一次最终 pre-closure。",
+      "candidateTree": "03307764106086c3d7a81b82bb36d29c9bfdf9cd"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0122",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "b55b01894d154cf415bee12d8b42b240ff0df9d7992087615a4aecb6a38f90b4",
+      "reason": "Canonical precheck ran once after R1 on the frozen candidate: 5/5 PASS; Doctor completed 549779 checks in 98.2s. stderr sha256 c2499963c9a6327af9d0c9ae54d7ff0682cf1f9e85a278625db6258721615866.",
+      "environment": "macOS Darwin 25.6.0 arm64; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; stdout /tmp/vc-task0122-canonical-r1.out; stderr /tmp/vc-task0122-canonical-r1.err; 2026-08-09T10:29:18Z..2026-08-09T10:31:00Z",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am -Dtest=AuthAbuseGuardTest,AuthSourceAdmissionFilterTest,AuthControllerAbuseControlTest,AuthControllerCookieTest,AuthControllerValidationTest,AuthSecurityIntegrationTest,AuthServiceTest -Dsurefire.failIfNoSpecifiedTests=false test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "cab6f7ce2532f9397bebc3318ed10cfed75d0cc54508b1b462ca42caebbcc6fa",
+      "reason": "Frozen targeted reactor BUILD SUCCESS; 99 tests passed with zero failures, errors, or skips. stderr contained only known JVM/Mockito/Byte Buddy warnings (sha256 4e3a5c8d77fdff840f877d9823ca18948c0e8f0f609afd54f6320536d5a67709).",
+      "environment": "OrbStack Docker 29.4.0; Maven 3.9.16; Eclipse Adoptium JDK 25.0.3; maven:3.9-eclipse-temurin-25-alpine; vc-maven-cache; stdout /tmp/vc-task0122-targeted-r1.out; stderr /tmp/vc-task0122-targeted-r1.err; 2026-08-09T10:31:24Z..2026-08-09T10:31:37Z",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "0781e7534fbf21fab135cb9b9f98939521d3ed85a28053bb33dc4c1df538c5ff",
+      "reason": "OpenAPI validation returned PASS; stderr was empty with sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.",
+      "environment": "macOS Darwin 25.6.0 arm64; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; stdout /tmp/vc-task0122-openapi-validate-r1.out; stderr /tmp/vc-task0122-openapi-validate-r1.err; 2026-08-09T10:31:43Z..2026-08-09T10:31:44Z",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "python scripts/dev/openapi_tool.py diff --fail-on-drift",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "b3d55ae90485aee76899fd46c9bf12f6e8e550a6e14aa0730f600cf73d65b1c1",
+      "reason": "OpenAPI deterministic source/dist drift check returned PASS; stderr was empty with sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.",
+      "environment": "macOS Darwin 25.6.0 arm64; /Users/hxf/.zcode/venvs/vc-harness/bin/python 3.13.0; stdout /tmp/vc-task0122-openapi-diff-r1.out; stderr /tmp/vc-task0122-openapi-diff-r1.err; 2026-08-09T10:31:54Z..2026-08-09T10:31:55Z",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "c52d0213930e4438dcd9d654dfd4f43d271d56526177f39c15d5abfb01fd0299",
+      "reason": "Root 15-module reactor BUILD SUCCESS with 651 tests passing and zero failures, errors, or skips. stderr contained only known JVM/Mockito/Byte Buddy warnings (sha256 0477ba3fcf23f407eb7c03e723b39e8e068871d9a4c0eaeb644d3c290293a807).",
+      "environment": "OrbStack Docker 29.4.0; Maven 3.9.16; Eclipse Adoptium JDK 25.0.3; image digest sha256:af1e0b9de1a3617dc13eaff61b7ff92118c0051855eac223d8d3d9acb9848d4f; vc-maven-cache; stdout /tmp/vc-task0122-root-verify-r1.out; stderr /tmp/vc-task0122-root-verify-r1.err; 2026-08-09T10:32:05Z..2026-08-09T10:32:37Z",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The single formal no-argument diff check ran once after R1; stdout and stderr were empty.",
+      "environment": "macOS Darwin 25.6.0 arm64; Git 2.50.1; stdout /tmp/vc-task0122-diff-check-r1.out; stderr /tmp/vc-task0122-diff-check-r1.err; clean candidate Commit/Tree; 2026-08-09T10:33:08Z..2026-08-09T10:33:09Z",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate 1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No dispatch was made. Owner-supplied August quota evidence remains includedMinutes=usedMinutes=2000 with paidBudgetUsd=0 and stopUsageEnabled=true; TASK-0110 run 31286798584 terminated without a runner or executed step. Remote remains non-PASS and is not represented by the local fallback.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0122 --pre-closure (first failed closure snapshot)",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "0eb88bd1279dbaf71c939b7fb71cde2736fdd80f5206f35512ee083c73eceb56",
+      "reason": "First pre-closure Doctor failed after 654086 checks because the staged C3 terminal snapshot had no structured independent reviewers. stdout was empty (sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855); stderr sha256 is the artifact hash. This result is retained and is not overwritten by a later run.",
+      "environment": "macOS; controlled venv /Users/hxf/.zcode/venvs/vc-harness/bin/python; stdout /tmp/vc-task0122-pre-closure-r1.out; stderr /tmp/vc-task0122-pre-closure-r1.err",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0122 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_CLOSURE_FREEZE: runs once after the complete repaired ACCEPTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0122/pre-closure-request.json; one final execution reserved",
+      "verifiedCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_APPROVED_CANONICAL_PASS",
+    "candidateCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+    "candidateTree": "03307764106086c3d7a81b82bb36d29c9bfdf9cd",
+    "passClaimed": true,
+    "localExactTree": {
+      "taskId": "TASK-0122",
+      "candidateCommit": "1c27a0bb598efdfd07aecfcb14dcfd46b19aaef5",
+      "candidateTree": "03307764106086c3d7a81b82bb36d29c9bfdf9cd",
+      "cleanWorktree": true,
+      "cleanIndex": true,
+      "argv": "python scripts/harness/precheck.py --task TASK-0122",
+      "cwd": "/Users/hxf/projects/virtual-companion",
+      "operatingSystem": "macOS 26.6.1 build 25G76; Darwin 25.6.0 arm64",
+      "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python (Python 3.13.0)",
+      "toolchain": "Git 2.50.1; OrbStack Docker 29.4.0; Maven 3.9.16; Eclipse Adoptium JDK 25.0.3",
+      "dependencies": "requirements-harness.txt installed in vc-harness venv; maven:3.9-eclipse-temurin-25-alpine@sha256:af1e0b9de1a3617dc13eaff61b7ff92118c0051855eac223d8d3d9acb9848d4f; vc-maven-cache",
+      "environment": "candidate worktree and index clean before dispatch; durable record docs/evidence/TASK-0122/local-exact-tree.json; stdout /tmp/vc-task0122-canonical-r1.out; stderr /tmp/vc-task0122-canonical-r1.err",
+      "stdoutSha256": "b55b01894d154cf415bee12d8b42b240ff0df9d7992087615a4aecb6a38f90b4",
+      "stderrSha256": "c2499963c9a6327af9d0c9ae54d7ff0682cf1f9e85a278625db6258721615866",
+      "receiptSha256": null,
+      "exitCode": 0,
+      "startedAt": "2026-08-09T18:29:18+08:00",
+      "completedAt": "2026-08-09T18:31:00+08:00"
+    },
+    "remote": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "OWNER_QUOTA_EVIDENCE_EXPIRED",
+      "currentQuotaVerified": false,
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}

@@ -634,3 +634,9 @@ tasks:
     taskCard: docs/tasks/TASK-0121-auth-body-token-fences.md
     evidence: docs/evidence/TASK-0121/evidence-pack.json
     handoff: docs/handoffs/TASK-0121.json
+  TASK-0122:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0122-auth-abuse-admission-control.md
+    evidence: docs/evidence/TASK-0122/evidence-pack.json
+    handoff: docs/handoffs/TASK-0122.json

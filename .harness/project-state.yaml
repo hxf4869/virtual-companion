@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0122
-activeTaskCard: docs/tasks/TASK-0122-auth-abuse-admission-control.md
-lastAcceptedTask: TASK-0121
-lastAcceptedHandoff: docs/handoffs/TASK-0121.json
-lastTerminalTask: TASK-0121
-lastTerminalHandoff: docs/handoffs/TASK-0121.json
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0122
+lastAcceptedHandoff: docs/handoffs/TASK-0122.json
+lastTerminalTask: TASK-0122
+lastTerminalHandoff: docs/handoffs/TASK-0122.json
 nextAction: >-
-  执行 TASK-0122：按冻结顺序在 Auth 贵重操作前实现单实例 rolling-window 准入、ephemeral HMAC 隐私 key、4-slot 无阻塞舱壁和固定 429 AUTH_RATE_LIMITED；同步 Catalog、identity contract、OpenAPI 与生成物，完成独立 Reviewer、全部正式门禁、Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。
+  通过 task-intake 创建 TASK-0123：统一 Auth request-target 的 parsed/canonical 边界，修复 admin/accounts percent-encoded 或 matrix MVC 等价路径绕过 16384-byte body fence，并将到达 filter 的 malformed percent request-target 固定为 400 INVALID_REQUEST 且 body zero-read；同时把 AuthInputLimits 对 username、password、displayName、role 和 token 的 UTF-8 检查改为严格 REPORT 语义，防止孤立 surrogate 进入 JDBC 或响应。保持 route 权限、JWT、CSRF、cookie 和数据库状态机语义不变；完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
