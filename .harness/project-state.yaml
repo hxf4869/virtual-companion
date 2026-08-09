@@ -2,16 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0112
-activeTaskCard: docs/tasks/TASK-0112-auth-input-hygiene.md
-lastAcceptedTask: TASK-0108
-lastAcceptedHandoff: docs/handoffs/TASK-0108.json
-lastTerminalTask: TASK-0111
-lastTerminalHandoff: docs/handoffs/TASK-0111.json
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0112
+lastAcceptedHandoff: docs/handoffs/TASK-0112.json
+lastTerminalTask: TASK-0112
+lastTerminalHandoff: docs/handoffs/TASK-0112.json
 nextAction: >-
-  执行 TASK-0112：为 Auth JSON 入口加入 Bean Validation 与统一 400 INVALID_REQUEST ErrorEnvelope，
-  移除普通日志账户标识并统一 username trim/lower 在 repository、审计、JWT 与响应中的语义；
-  TASK-0110 Provider early-limit 保持未验收，待合规 exact-tree 渠道的新永久卡重新验证。
+  通过 task-intake 创建 TASK-0113，重新验收 TASK-0110 留下的 Provider response early-limit：在当前 HEAD 复核读取阶段有界的 SSE/non-stream body、显式 session cancel、early-stop 边界测试和既有七项冻结上限，并用 LOCAL_EXACT_TREE_FALLBACK 完成合规 Commit/Tree 绑定；随后继续 P2-03 Auth 滥用防护、P2-13 admin seed 并发、P2-12 JDBC snapshot 与其余 OPEN/OWNER_GATE。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

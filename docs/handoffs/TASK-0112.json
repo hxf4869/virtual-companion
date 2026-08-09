@@ -1,0 +1,72 @@
+{
+  "taskId": "TASK-0112",
+  "state": "ACCEPTED",
+  "baseCommit": "9bfd47eea55aa2a485c77617a2581924d69dbe84",
+  "headCommit": "fac9aa8d2c643ea747c47ce825749e400402f695",
+  "evidencePath": "docs/evidence/TASK-0112/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f2677d362a93e8be91e2be2827751d016804aa90",
+      "startedAt": "2026-08-09T09:44:39+08:00",
+      "endedAt": "2026-08-09T10:16:00+08:00",
+      "elapsedSeconds": 1881,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f2677d362a93e8be91e2be2827751d016804aa90",
+      "startedAt": "2026-08-09T09:44:39+08:00",
+      "endedAt": "2026-08-09T09:46:23+08:00",
+      "elapsedSeconds": 104,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "2ee90087983885cee2f9fb6dd5cf437da12aaf1f",
+      "startedAt": "2026-08-09T09:46:39+08:00",
+      "endedAt": "2026-08-09T10:16:00+08:00",
+      "elapsedSeconds": 1761,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T09:46:23+08:00",
+      "inProgressCommit": "2ee90087983885cee2f9fb6dd5cf437da12aaf1f"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0112_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "fac9aa8d2c643ea747c47ce825749e400402f695",
+      "evidencePath": "docs/evidence/TASK-0112/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：候选 Commit/Tree 与 writeAllowlist 一致，Auth validation、INVALID_REQUEST、username canonicalization、日志最小化及定向测试均满足验收；未发现 P0/P1。非阻塞残余为 Java UTF-16 length 与 OpenAPI Unicode code point 边界差异，以及 seedAdmin 跳过时 \"ensured\" 日志措辞不精确，均已进入 Handoff。",
+      "candidateTree": "42bf24beb2dcb7f1cba3aa4685b76d3e610bede1"
+    }
+  ],
+  "completed": [
+    "P2-04：login/admin create 使用 Bean Validation；缺 body、JSON null、畸形 JSON、空对象、空白字段、超长字段与非法 role 在进入 AuthService 前统一返回 400 INVALID_REQUEST，响应只含固定非敏感 code/message。",
+    "P3-06：AuthService 对直接调用保留等价 fail-closed 校验；username 在 authenticate、login audit、create/seed、JWT claim 与 account response 全链路统一 trim + lower(Locale.ROOT)，密码保持原值，displayName 只 trim，role canonical uppercase。",
+    "P3-05：AdminSeedRunner 的 ensured/skipped 普通日志不再记录 account id、username、displayName、密码、token 或 hash；日志捕获测试固定无身份标识语义。",
+    "Catalog/Contract/OpenAPI：只在 error-codes 末尾追加 ordinal 15 INVALID_REQUEST，不重排既有值；由注册工具再生 Catalog 五个产物与 OpenAPI dist，identity contract 同步字段限制与 400 语义。",
+    "验证：定向 runtime reactor 76 tests PASS；根级 Maven 15 模块 verify BUILD SUCCESS；独立 R1 PASS；canonical precheck 5/5、OpenAPI validate、OpenAPI drift 与唯一 git diff --check 全部绑定 fac9aa8/42bf24b 并 PASS。"
+  ],
+  "remaining": [
+    "TASK-0110 Provider response early-limit 代码位于当前 main，但该卡因 PRIMARY_REMOTE_EXACT_SHA 非 PASS 而 REJECTED；必须由 TASK-0113 在当前 HEAD 重新复核并用合规 exact-tree fallback 独立验收，不能把本卡 PASS 追溯为 TASK-0110 ACCEPTED。",
+    "P2-03 Auth 滥用防护仍未关闭：总 request-body 与 refresh-token 字节上限、login/refresh 分层限流、退避/锁定、密码最低策略及审计聚合/保留需要独立卡。",
+    "P2-13 admin seed 并发与 P2-12 JDBC snapshot 复活仍需独立数据库任务；其余 Harness/CI、OpenAPI CI 与低风险文档项按审计交接串行推进。"
+  ],
+  "knownRisks": [
+    "Java Bean Validation @Size 与 String.length() 按 UTF-16 code unit 计数，OpenAPI maxLength 按 Unicode code point；含非 BMP 字符的边界输入可能比客户端契约更早被 Java 拒绝，当前 ASCII 边界测试未覆盖。",
+    "AuthService.seedAdmin 对非法或空白 displayName 返回 0 时，AdminSeedRunner 仍记录 admin seed ensured；日志不泄露身份且行为 fail-closed，但 ensured 措辞可能不精确。",
+    "P2-03 的总 body/refresh token 字节上限、限流、锁定和密码最低策略明确不在本卡；字段字符上限不能被误解为关闭请求滥用风险。",
+    "远端 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的 candidate Commit/Tree、命令、环境和本机结果。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0113，重新验收 TASK-0110 留下的 Provider response early-limit：在当前 HEAD 复核读取阶段有界的 SSE/non-stream body、显式 session cancel、early-stop 边界测试和既有七项冻结上限，并用 LOCAL_EXACT_TREE_FALLBACK 完成合规 Commit/Tree 绑定；随后继续 P2-03 Auth 滥用防护、P2-13 admin seed 并发、P2-12 JDBC snapshot 与其余 OPEN/OWNER_GATE。"
+}

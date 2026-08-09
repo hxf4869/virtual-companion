@@ -2,7 +2,17 @@
 
 ```yaml
 taskId: TASK-0112
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-04/P3-05/P3-06 Auth hygiene 已完成：login 与 admin create JSON 入口使用
+  Bean Validation，畸形、缺失、空白和超长输入统一返回非敏感 400
+  INVALID_REQUEST ErrorEnvelope；AuthService 直接调用保持等价 fail-closed 校验，
+  username 在 repository、审计、JWT 与响应中统一 trim/lower(Locale.ROOT)，密码不
+  trim，displayName 只 trim；Admin seed 普通日志不再包含账户标识。Catalog 仅追加
+  ordinal 15 并由注册工具确定性再生，identity contract 与 OpenAPI 同步。定向 76
+  tests、根级 15 模块 Maven verify、canonical precheck 5/5、两条 OpenAPI gate 与
+  唯一 git diff --check 全部在候选 fac9aa8/42bf24b PASS；独立 R1 PASS，未发现
+  P0/P1。远端保持非 PASS，本卡只声明 READY 冻结的 LOCAL_EXACT_TREE_FALLBACK。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -310,7 +320,14 @@ humanApprovals:
       31286798584 又在无 runner、零 step 状态终止。远端继续如实为非 PASS；本卡冻结
       LOCAL_EXACT_TREE_FALLBACK，只对记录的本机 Commit/Tree/命令覆盖声明 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0112_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: fac9aa8d2c643ea747c47ce825749e400402f695
+    evidencePath: docs/evidence/TASK-0112/review-r1.md
+    reason: 'R1 完整矩阵复核 PASS：候选 Commit/Tree 与 writeAllowlist 一致，Auth validation、INVALID_REQUEST、username canonicalization、日志最小化及定向测试均满足验收；未发现 P0/P1。非阻塞残余为 Java UTF-16 length 与 OpenAPI Unicode code point 边界差异，以及 seedAdmin 跳过时 "ensured" 日志措辞不精确，均已进入 Handoff。'
+    candidateTree: 42bf24beb2dcb7f1cba3aa4685b76d3e610bede1
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0112
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

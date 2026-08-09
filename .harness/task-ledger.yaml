@@ -574,3 +574,9 @@ tasks:
     taskCard: docs/tasks/TASK-0111-auth-input-hygiene.md
     evidence: docs/evidence/TASK-0111/evidence-pack.json
     handoff: docs/handoffs/TASK-0111.json
+  TASK-0112:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0112-auth-input-hygiene.md
+    evidence: docs/evidence/TASK-0112/evidence-pack.json
+    handoff: docs/handoffs/TASK-0112.json
