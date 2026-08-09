@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0122
+activeTaskCard: docs/tasks/TASK-0122-auth-abuse-admission-control.md
 lastAcceptedTask: TASK-0121
 lastAcceptedHandoff: docs/handoffs/TASK-0121.json
 lastTerminalTask: TASK-0121
 lastTerminalHandoff: docs/handoffs/TASK-0121.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0122：冻结并实现 P2-03 第一阶段 Auth 无阻塞资源舱壁与单实例 bounded rate limiter；只使用 servlet remoteAddr、canonical username digest 和 vc_refresh digest，不信任转发头；login 按 source+account 5/15min、source 20/min，refresh 按 source 10/min、token 5/min，退避为 1/2/4/8/16/60s，并以固定 429 AUTH_RATE_LIMITED、整数 Retry-After、有界过期状态和可注入时钟在 BCrypt、session JDBC 与逐次失败审计前拒绝。明确 Technical Alpha single-instance，不实现永久账户锁定、跨实例共享状态、密码最低策略或审计保留；后续以独立 C4 数据库/审计卡关闭这些残余。
+  执行 TASK-0122：按冻结顺序在 Auth 贵重操作前实现单实例 rolling-window 准入、ephemeral HMAC 隐私 key、4-slot 无阻塞舱壁和固定 429 AUTH_RATE_LIMITED；同步 Catalog、identity contract、OpenAPI 与生成物，完成独立 Reviewer、全部正式门禁、Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
