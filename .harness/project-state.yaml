@@ -2,17 +2,16 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0115
+activeTaskCard: docs/tasks/TASK-0115-streaming-utf8-accumulator.md
 lastAcceptedTask: TASK-0114
 lastAcceptedHandoff: docs/handoffs/TASK-0114.json
 lastTerminalTask: TASK-0114
 lastTerminalHandoff: docs/handoffs/TASK-0114.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0115，作为永久独立 C3 卡修复流式输出跨 delta Unicode surrogate
-  计数：在 OpenAI adapter 与 LiveModelInvoker 使用状态化 UTF-8 累计器，覆盖同 delta/跨 delta
-  exact/one-over、多对与畸形 surrogate，确保 1 MiB 上限前失败且不产生违规 delta/Usage/EOS；
-  Anthropic maxTokens、OpenAI/Anthropic 无界事件队列与 backpressure、跨 frame raw budget 继续拆分后续卡。
+  执行 TASK-0115：在 OpenAI adapter 与 LiveModelInvoker 使用状态化 UTF-8 累计器，修复跨 delta
+  surrogate 计数，覆盖同 delta/跨 delta exact/one-over、多对与畸形 surrogate，并在独立 Reviewer
+  PASS 后完成正式门禁、Evidence/Handoff、推送与远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
