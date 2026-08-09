@@ -21,13 +21,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -39,8 +39,14 @@ import static java.net.http.HttpResponse.BodyHandlers;
  */
 final class OpenAiChatCompletionsSession implements ModelProtocolSession {
 
+    private static final int MAX_PENDING_OUTPUT_EVENTS = 64;
+    private static final int MAX_SUCCESS_TERMINAL_BATCH_EVENTS = 3;
+    private static final int MAX_BUFFERED_EVENT_REFERENCES =
+            MAX_PENDING_OUTPUT_EVENTS + MAX_SUCCESS_TERMINAL_BATCH_EVENTS;
+
     private final Object stateLock = new Object();
-    private final BlockingQueue<ModelProtocolEvent> events = new LinkedBlockingQueue<>();
+    private final Deque<ModelProtocolEvent> events =
+            new ArrayDeque<>(MAX_BUFFERED_EVENT_REFERENCES);
     private final HttpClient httpClient;
     private final HttpRequest httpRequest;
     private final ModelProtocolRequest request;
@@ -82,33 +88,70 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
 
     @Override
     public Optional<ModelProtocolEvent> next() {
+        ModelProtocolEvent event = null;
+        boolean interrupted = false;
         synchronized (stateLock) {
             if (terminalDelivered) {
                 return Optional.empty();
             }
-        }
 
-        final ModelProtocolEvent event;
-        try {
-            event = events.take();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            cancel();
-            return deliver(events.poll());
-        }
-        return deliver(event);
-    }
-
-    private Optional<ModelProtocolEvent> deliver(ModelProtocolEvent event) {
-        if (event == null) {
-            return Optional.empty();
-        }
-        if (event.terminal()) {
-            synchronized (stateLock) {
-                terminalDelivered = true;
+            while (events.isEmpty()) {
+                try {
+                    stateLock.wait();
+                } catch (InterruptedException exception) {
+                    interrupted = true;
+                    break;
+                }
+            }
+            if (!interrupted) {
+                event = events.removeFirst();
+                if (event.terminal()) {
+                    terminalDelivered = true;
+                }
+                stateLock.notifyAll();
             }
         }
-        return Optional.of(event);
+
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+            cancel();
+            synchronized (stateLock) {
+                event = events.pollFirst();
+                if (event != null && event.terminal()) {
+                    terminalDelivered = true;
+                }
+                stateLock.notifyAll();
+            }
+        }
+        return Optional.ofNullable(event);
+    }
+
+    private boolean emitText(String text) {
+        synchronized (stateLock) {
+            while (!terminalQueued
+                    && events.size() >= MAX_PENDING_OUTPUT_EVENTS) {
+                try {
+                    stateLock.wait();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    if (terminalQueued) {
+                        return false;
+                    }
+                    throw new CancellationException();
+                }
+            }
+            if (terminalQueued) {
+                return false;
+            }
+            enqueue(new ModelProtocolEvent.OutputDelta(
+                    binding,
+                    nextSequence,
+                    new ModelPayload.TextChunk(text)
+            ));
+            nextSequence++;
+            stateLock.notifyAll();
+            return true;
+        }
     }
 
     @Override
@@ -346,12 +389,13 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
             if (!state.outputBytes.tryAppend(content)) {
                 throw new OpenAiCodecException();
             }
+            if (!state.structured && !emitText(content)) {
+                return false;
+            }
             state.contentSeen = true;
             markFirstContent();
             if (state.structured) {
                 state.structuredContent.append(content);
-            } else {
-                emitText(content);
             }
         }
         choice.finishReason().ifPresent(reason -> state.stopReason = reason);
@@ -360,19 +404,6 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
 
     private void markFirstContent() {
         firstContentSeen.complete(null);
-    }
-
-    private void emitText(String text) {
-        synchronized (stateLock) {
-            if (terminalQueued) {
-                return;
-            }
-            events.add(new ModelProtocolEvent.OutputDelta(
-                    binding,
-                    nextSequence++,
-                    new ModelPayload.TextChunk(text)
-            ));
-        }
     }
 
     private void completeSuccessfully(
@@ -384,24 +415,31 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
             if (terminalQueued) {
                 return;
             }
+            requireCapacity(finalPayload == null
+                    ? 2
+                    : MAX_SUCCESS_TERMINAL_BATCH_EVENTS);
+            terminalQueued = true;
             if (finalPayload != null) {
-                events.add(new ModelProtocolEvent.OutputDelta(
+                enqueue(new ModelProtocolEvent.OutputDelta(
                         binding,
-                        nextSequence++,
+                        nextSequence,
                         finalPayload
                 ));
+                nextSequence++;
             }
-            events.add(new ModelProtocolEvent.UsageReported(
+            enqueue(new ModelProtocolEvent.UsageReported(
                     binding,
-                    nextSequence++,
+                    nextSequence,
                     usage
             ));
-            terminalQueued = true;
-            events.add(new ModelProtocolEvent.AttemptEos(
+            nextSequence++;
+            enqueue(new ModelProtocolEvent.AttemptEos(
                     binding,
-                    nextSequence++,
+                    nextSequence,
                     stopReason
             ));
+            nextSequence++;
+            stateLock.notifyAll();
         }
     }
 
@@ -410,12 +448,15 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
             if (terminalQueued) {
                 return false;
             }
+            requireCapacity(1);
             terminalQueued = true;
-            events.add(new ModelProtocolEvent.AttemptFailed(
+            enqueue(new ModelProtocolEvent.AttemptFailed(
                     binding,
-                    nextSequence++,
+                    nextSequence,
                     failure
             ));
+            nextSequence++;
+            stateLock.notifyAll();
             return true;
         }
     }
@@ -425,11 +466,14 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
             if (terminalQueued) {
                 return false;
             }
+            requireCapacity(1);
             terminalQueued = true;
-            events.add(new ModelProtocolEvent.AttemptCancelled(
+            enqueue(new ModelProtocolEvent.AttemptCancelled(
                     binding,
-                    nextSequence++
+                    nextSequence
             ));
+            nextSequence++;
+            stateLock.notifyAll();
             return true;
         }
     }
@@ -437,6 +481,18 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
     private boolean isTerminalQueued() {
         synchronized (stateLock) {
             return terminalQueued;
+        }
+    }
+
+    private void enqueue(ModelProtocolEvent event) {
+        requireCapacity(1);
+        events.addLast(event);
+    }
+
+    private void requireCapacity(int additionalEvents) {
+        if (additionalEvents <= 0
+                || events.size() > MAX_BUFFERED_EVENT_REFERENCES - additionalEvents) {
+            throw new IllegalStateException("event buffer capacity exceeded");
         }
     }
 
