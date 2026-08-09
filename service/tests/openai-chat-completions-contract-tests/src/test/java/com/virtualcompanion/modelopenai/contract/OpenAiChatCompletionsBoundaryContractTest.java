@@ -3,21 +3,42 @@ package com.virtualcompanion.modelopenai.contract;
 import com.virtualcompanion.modelopenai.OpenAiChatCompletionsAdapter;
 import com.virtualcompanion.modelopenai.OpenAiChatCompletionsConfig;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
+import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
 import com.virtualcompanion.modelruntime.contract.SizeLimits;
+import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.Authenticator;
+import java.net.CookieHandler;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSession;
 
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.EXECUTION_AUTH;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.MODEL;
@@ -32,6 +53,7 @@ import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSuppor
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.invalidStructuredRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.normalBudgets;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.sse;
+import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.sseCrLf;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.textRequest;
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.usageChunk;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -123,64 +145,214 @@ class OpenAiChatCompletionsBoundaryContractTest {
     }
 
     @Test
-    void streamingSingleEventOverLimitFailsClosed() throws Exception {
-        var oversizedEvent = sse(choiceChunk(
+    void streamingSingleEventOverLimitStopsEarlyAndFailsClosed() throws Exception {
+        int limit = SizeLimits.MAX_STREAM_EVENT_BYTES;
+        byte[] oversizedEvent = sse(choiceChunk(
                 "x".repeat(SizeLimits.MAX_STREAM_EVENT_BYTES),
                 null
-        ));
-        try (var server = new MockOpenAiServer(MockOpenAiServer.fixed(
-                200,
-                "text/event-stream",
-                oversizedEvent
-        ))) {
-            var events = drain(adapter(
-                    new CountingHttpClient(),
-                    server.endpoint()
-            ).open(textRequest(true, "single event limit")));
+        )).getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(oversizedEvent, limit + 1L);
+        var client = new StaticInputHttpClient("text/event-stream", body);
 
-            assertMalformedFailure(events.getFirst());
-        }
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertMalformedFailure(events.getFirst());
+        assertEquals(limit + 1L, body.bytesRead());
+        body.awaitClosed();
     }
 
     @Test
     void streamingCumulativeOutputOverLimitFailsClosed() throws Exception {
         int firstBytes = SizeLimits.MAX_TOTAL_OUTPUT_BYTES / 2;
         var stream = sse(choiceChunk("a".repeat(firstBytes), null))
-                + sse(choiceChunk("b".repeat(firstBytes + 1), null));
-        try (var server = new MockOpenAiServer(MockOpenAiServer.fixed(
-                200,
-                "text/event-stream",
-                stream
-        ))) {
-            var events = drain(adapter(
-                    new CountingHttpClient(),
-                    server.endpoint()
-            ).open(textRequest(true, "total output limit")));
+                + sse(choiceChunk("b".repeat(firstBytes + 1), null))
+                + "must-not-be-read";
+        byte[] response = stream.getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(response, Long.MAX_VALUE);
+        var client = new StaticInputHttpClient("text/event-stream", body);
 
-            assertMalformedFailure(events.getLast());
-            assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
-        }
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertMalformedFailure(events.getLast());
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.UsageReported.class::isInstance));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+        assertTrue(body.bytesRead() < response.length);
+        body.awaitClosed();
     }
 
     @Test
     void nonStreamingOutputOverLimitFailsClosed() throws Exception {
-        try (var server = new MockOpenAiServer(MockOpenAiServer.fixed(
-                200,
-                "application/json",
-                OpenAiContractTestSupport.completion(
-                        "x".repeat(SizeLimits.MAX_TOTAL_OUTPUT_BYTES + 1),
-                        "stop",
-                        1,
-                        1
-                )
-        ))) {
-            var events = drain(adapter(
-                    new CountingHttpClient(),
-                    server.endpoint()
-            ).open(textRequest(false, "non-stream output limit")));
+        byte[] response = OpenAiContractTestSupport.completion(
+                "x".repeat(SizeLimits.MAX_TOTAL_OUTPUT_BYTES + 1),
+                "stop",
+                1,
+                1
+        ).getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(response, Long.MAX_VALUE);
+        var client = new StaticInputHttpClient("application/json", body);
 
-            assertMalformedFailure(events.getFirst());
-        }
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(false)));
+
+        assertMalformedFailure(events.getFirst());
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.UsageReported.class::isInstance));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+        assertEquals(response.length, body.bytesRead());
+        body.awaitClosed();
+    }
+
+    @Test
+    void nonStreamingRawBodyExactLimitRemainsValidAndClosesBody() throws Exception {
+        byte[] response = paddedCompletionBody(SizeLimits.MAX_NON_STREAM_RESPONSE_BODY_BYTES);
+        var body = new TrackingInputStream(response, Long.MAX_VALUE);
+        var client = new StaticInputHttpClient("application/json", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(false)));
+
+        assertSuccessfulText(events, "bounded");
+        assertEquals(response.length, body.bytesRead());
+        body.awaitClosed();
+    }
+
+    @Test
+    void nonStreamingRawBodyOneOverStopsAtProbeAndFailsMalformed() throws Exception {
+        int limit = SizeLimits.MAX_NON_STREAM_RESPONSE_BODY_BYTES;
+        byte[] response = paddedCompletionBody(limit + 4096);
+        var body = new TrackingInputStream(response, limit + 1L, limit);
+        var client = new StaticInputHttpClient("application/json", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(false)));
+
+        assertMalformedFailure(events.getFirst());
+        assertEquals(limit + 1L, body.bytesRead());
+        assertFalse(body.bulkReadRequestedPastFence());
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+        body.awaitClosed();
+    }
+
+    @Test
+    void oversizedSseCommentStopsAtFirstOverLimitByteAndClosesBody() throws Exception {
+        int limit = SizeLimits.MAX_STREAM_EVENT_BYTES;
+        byte[] response = (":" + "x".repeat(limit) + "\n\n")
+                .getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(response, limit + 1L);
+        var client = new StaticInputHttpClient("text/event-stream", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertMalformedFailure(events.getFirst());
+        assertEquals(limit + 1L, body.bytesRead());
+        body.awaitClosed();
+    }
+
+    @Test
+    void multilineSseEventStopsOnTheByteThatExceedsCombinedLimit() throws Exception {
+        int limit = SizeLimits.MAX_STREAM_EVENT_BYTES;
+        int firstValueBytes = limit / 2;
+        int secondValueBytes = limit - firstValueBytes;
+        assertEquals(limit + 1, firstValueBytes + 1 + secondValueBytes);
+        String response = "data: " + " ".repeat(firstValueBytes) + "\n"
+                + "data: " + " ".repeat(secondValueBytes) + "\n\n"
+                + "must-not-be-read";
+        long offendingByte = "data: ".length() + firstValueBytes + 1L
+                + "data: ".length() + secondValueBytes;
+        var body = new TrackingInputStream(
+                response.getBytes(StandardCharsets.UTF_8),
+                offendingByte
+        );
+        var client = new StaticInputHttpClient("text/event-stream", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertMalformedFailure(events.getFirst());
+        assertEquals(offendingByte, body.bytesRead());
+        body.awaitClosed();
+    }
+
+    @Test
+    void exactCombinedSseDataLimitRemainsValidWithMultilineCrLf() throws Exception {
+        int limit = SizeLimits.MAX_STREAM_EVENT_BYTES;
+        String chunk = choiceChunk("exact-event", null);
+        int firstValueBytes = limit / 2;
+        int chunkBytes = chunk.getBytes(StandardCharsets.UTF_8).length;
+        int secondPaddingBytes = limit - firstValueBytes - 1 - chunkBytes;
+        assertEquals(limit, firstValueBytes + 1 + secondPaddingBytes + chunkBytes);
+        String response = "data: " + " ".repeat(firstValueBytes) + "\r\n"
+                + "data: " + " ".repeat(secondPaddingBytes) + chunk + "\r\n\r\n"
+                + sseCrLf(choiceChunk(null, "stop"))
+                + sseCrLf(usageChunk(1, 1))
+                + "data: [DONE]\r\n\r\n";
+        byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
+        var body = new TrackingInputStream(responseBytes, Long.MAX_VALUE);
+        var client = new StaticInputHttpClient("text/event-stream", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertSuccessfulText(events, "exact-event");
+        assertTrue(body.bytesRead() <= responseBytes.length);
+        body.awaitClosed();
+    }
+
+    @Test
+    void bareCarriageReturnSseFramingRemainsValid() throws Exception {
+        String response = "data: " + choiceChunk("cr-only", null) + "\r\r"
+                + "data: " + choiceChunk(null, "stop") + "\r\r"
+                + "data: " + usageChunk(1, 1) + "\r\r"
+                + "data: [DONE]\r\r";
+        var body = new TrackingInputStream(
+                response.getBytes(StandardCharsets.UTF_8),
+                Long.MAX_VALUE
+        );
+        var client = new StaticInputHttpClient("text/event-stream", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertSuccessfulText(events, "cr-only");
+        body.awaitClosed();
+    }
+
+    @Test
+    void emptyDataEventRetainsMalformedFailureSemantics() throws Exception {
+        var body = new TrackingInputStream(
+                "data:\n\n".getBytes(StandardCharsets.UTF_8),
+                Long.MAX_VALUE
+        );
+        var client = new StaticInputHttpClient("text/event-stream", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        assertMalformedFailure(events.getFirst());
+        body.awaitClosed();
+    }
+
+    @Test
+    void finalDataLineWithoutBlankSeparatorIsDispatchedAtEof() throws Exception {
+        String response = "data: " + choiceChunk("eof-data", null);
+        var body = new TrackingInputStream(
+                response.getBytes(StandardCharsets.UTF_8),
+                Long.MAX_VALUE
+        );
+        var client = new StaticInputHttpClient("text/event-stream", body);
+
+        var events = drain(adapter(client, offlineEndpoint())
+                .open(longBudgetRequest(true)));
+
+        var delta = assertInstanceOf(
+                ModelProtocolEvent.OutputDelta.class,
+                events.getFirst()
+        );
+        assertEquals("eof-data", assertInstanceOf(ModelPayload.TextChunk.class, delta.payload()).text());
+        assertMalformedFailure(events.getLast());
+        body.awaitClosed();
     }
 
     @Test
@@ -480,6 +652,247 @@ class OpenAiChatCompletionsBoundaryContractTest {
         assertFalse(provisionerSources.contains("sk-"));
     }
 
+    private static URI offlineEndpoint() {
+        return URI.create("http://127.0.0.1:9/v1/chat/completions");
+    }
+
+    private static ModelProtocolRequest longBudgetRequest(boolean streaming) {
+        return textRequest(
+                binding(),
+                streaming,
+                "bounded response",
+                new TimeoutBudget(
+                        Duration.ofSeconds(5),
+                        Duration.ofSeconds(10),
+                        Duration.ofSeconds(30)
+                )
+        );
+    }
+
+    private static byte[] paddedCompletionBody(int targetBytes) {
+        String completion = OpenAiContractTestSupport.completion(
+                "bounded",
+                "stop",
+                1,
+                1
+        );
+        String prefix = completion.substring(0, completion.length() - 1)
+                + ",\"padding\":\"";
+        String suffix = "\"}";
+        int fixedBytes = prefix.getBytes(StandardCharsets.UTF_8).length
+                + suffix.getBytes(StandardCharsets.UTF_8).length;
+        if (targetBytes < fixedBytes) {
+            throw new IllegalArgumentException("targetBytes is too small");
+        }
+        return (prefix + "p".repeat(targetBytes - fixedBytes) + suffix)
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static final class TrackingInputStream extends InputStream {
+
+        private final byte[] data;
+        private final long failAfterBytes;
+        private final long bulkReadFence;
+        private final CountDownLatch closed = new CountDownLatch(1);
+        private volatile int position;
+        private volatile boolean bulkReadRequestedPastFence;
+
+        private TrackingInputStream(byte[] data, long failAfterBytes) {
+            this(data, failAfterBytes, Long.MAX_VALUE);
+        }
+
+        private TrackingInputStream(
+                byte[] data,
+                long failAfterBytes,
+                long bulkReadFence
+        ) {
+            this.data = Objects.requireNonNull(data, "data must not be null");
+            this.failAfterBytes = failAfterBytes;
+            this.bulkReadFence = bulkReadFence;
+        }
+
+        @Override
+        public int read() {
+            if (position >= data.length) {
+                return -1;
+            }
+            requireWithinReadFence();
+            return data[position++] & 0xff;
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) {
+            Objects.checkFromIndexSize(offset, length, bytes.length);
+            if (length == 0) {
+                return 0;
+            }
+            if (position >= data.length) {
+                return -1;
+            }
+            requireWithinReadFence();
+            if (position + (long) length > bulkReadFence) {
+                bulkReadRequestedPastFence = true;
+            }
+            int count = (int) Math.min(
+                    Math.min((long) length, data.length - (long) position),
+                    failAfterBytes - position
+            );
+            System.arraycopy(data, position, bytes, offset, count);
+            position += count;
+            return count;
+        }
+
+        @Override
+        public void close() {
+            closed.countDown();
+        }
+
+        private long bytesRead() {
+            return position;
+        }
+
+        private boolean bulkReadRequestedPastFence() {
+            return bulkReadRequestedPastFence;
+        }
+
+        private void awaitClosed() throws InterruptedException {
+            assertTrue(closed.await(2, TimeUnit.SECONDS), "response body was not closed");
+        }
+
+        private void requireWithinReadFence() {
+            if (position >= failAfterBytes) {
+                throw new AssertionError("response parser read beyond the allowed fence");
+            }
+        }
+    }
+
+    private static final class StaticInputHttpClient extends HttpClient {
+
+        private final String contentType;
+        private final TrackingInputStream body;
+
+        private StaticInputHttpClient(String contentType, TrackingInputStream body) {
+            this.contentType = contentType;
+            this.body = body;
+        }
+
+        @Override
+        public Optional<CookieHandler> cookieHandler() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Duration> connectTimeout() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Redirect followRedirects() {
+            return Redirect.NEVER;
+        }
+
+        @Override
+        public Optional<ProxySelector> proxy() {
+            return Optional.empty();
+        }
+
+        @Override
+        public SSLContext sslContext() {
+            try {
+                return SSLContext.getDefault();
+            } catch (Exception exception) {
+                throw new IllegalStateException(exception);
+            }
+        }
+
+        @Override
+        public SSLParameters sslParameters() {
+            return new SSLParameters();
+        }
+
+        @Override
+        public Optional<Authenticator> authenticator() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Version version() {
+            return Version.HTTP_1_1;
+        }
+
+        @Override
+        public Optional<Executor> executor() {
+            return Optional.empty();
+        }
+
+        @Override
+        public <T> HttpResponse<T> send(
+                HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler
+        ) throws IOException {
+            throw new AssertionError("adapter must use sendAsync");
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler
+        ) {
+            return CompletableFuture.completedFuture((HttpResponse<T>)
+                    new StaticInputResponse(request, contentType, body));
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                HttpRequest request,
+                HttpResponse.BodyHandler<T> responseBodyHandler,
+                HttpResponse.PushPromiseHandler<T> pushPromiseHandler
+        ) {
+            return sendAsync(request, responseBodyHandler);
+        }
+    }
+
+    private record StaticInputResponse(
+            HttpRequest request,
+            String contentType,
+            InputStream body
+    ) implements HttpResponse<InputStream> {
+
+        @Override
+        public int statusCode() {
+            return 200;
+        }
+
+        @Override
+        public Optional<HttpResponse<InputStream>> previousResponse() {
+            return Optional.empty();
+        }
+
+        @Override
+        public HttpHeaders headers() {
+            return HttpHeaders.of(
+                    Map.of("Content-Type", List.of(contentType)),
+                    (name, value) -> true
+            );
+        }
+
+        @Override
+        public Optional<SSLSession> sslSession() {
+            return Optional.empty();
+        }
+
+        @Override
+        public URI uri() {
+            return request.uri();
+        }
+
+        @Override
+        public HttpClient.Version version() {
+            return HttpClient.Version.HTTP_1_1;
+        }
+    }
+
     private static Path findRepositoryRoot() {
         var current = Path.of("").toAbsolutePath();
         while (current != null
@@ -491,6 +904,28 @@ class OpenAiChatCompletionsBoundaryContractTest {
             throw new IllegalStateException("repository root not found");
         }
         return current;
+    }
+
+    private static void assertSuccessfulText(
+            List<ModelProtocolEvent> events,
+            String expectedText
+    ) {
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptFailed.class::isInstance));
+        assertTrue(events.stream().noneMatch(ModelProtocolEvent.AttemptCancelled.class::isInstance));
+        assertEquals(
+                1L,
+                events.stream().filter(ModelProtocolEvent.UsageReported.class::isInstance).count()
+        );
+        var eos = assertInstanceOf(ModelProtocolEvent.AttemptEos.class, events.getLast());
+        assertEquals(StopReason.STOP, eos.stopReason());
+
+        var output = new StringBuilder();
+        for (ModelProtocolEvent event : events) {
+            if (event instanceof ModelProtocolEvent.OutputDelta delta) {
+                output.append(assertInstanceOf(ModelPayload.TextChunk.class, delta.payload()).text());
+            }
+        }
+        assertEquals(expectedText, output.toString());
     }
 
     private static void assertMalformedFailure(ModelProtocolEvent event) {

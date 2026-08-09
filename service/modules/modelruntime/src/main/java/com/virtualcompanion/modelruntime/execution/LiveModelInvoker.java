@@ -182,6 +182,7 @@ public final class LiveModelInvoker {
                     // Corrupt stream (wrong binding, out-of-order, duplicate
                     // usage, EOS without output): fail the whole attempt closed
                     // so a late or wrong event can never pollute output/usage.
+                    session.cancel();
                     return fenceViolationOutcome(decision, binding, providerId, supplierName);
                 }
                 if (event instanceof ModelProtocolEvent.OutputDelta delta) {
@@ -195,6 +196,7 @@ public final class LiveModelInvoker {
                     }
                     long contentBytes = SizeLimits.utf8Bytes(content);
                     if (contentBytes > SizeLimits.MAX_TOTAL_OUTPUT_BYTES - outputBytes) {
+                        session.cancel();
                         return fenceViolationOutcome(
                                 decision, binding, providerId, supplierName
                         );

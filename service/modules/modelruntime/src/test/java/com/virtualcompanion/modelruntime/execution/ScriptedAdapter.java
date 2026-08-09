@@ -10,6 +10,8 @@ import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 /**
@@ -25,6 +27,7 @@ final class ScriptedAdapter implements ModelProtocolAdapter {
     private final ModelProtocolCapabilities capabilities;
     private final Function<InvocationBinding, List<ModelProtocolEvent>> script;
     private final List<InvocationBinding> openedBindings = new ArrayList<>();
+    private final AtomicInteger cancellations = new AtomicInteger();
 
     ScriptedAdapter(
             ModelProtocol protocol,
@@ -48,7 +51,7 @@ final class ScriptedAdapter implements ModelProtocolAdapter {
     @Override
     public ModelProtocolSession open(ModelProtocolRequest request) {
         openedBindings.add(request.binding());
-        return new ScriptedSession(script.apply(request.binding()));
+        return new ScriptedSession(script.apply(request.binding()), cancellations);
     }
 
     /** Number of times {@code open} was called (zero means no outbound transfer). */
@@ -56,13 +59,20 @@ final class ScriptedAdapter implements ModelProtocolAdapter {
         return openedBindings.size();
     }
 
+    int cancelCount() {
+        return cancellations.get();
+    }
+
     private static final class ScriptedSession implements ModelProtocolSession {
 
         private final List<ModelProtocolEvent> events;
+        private final AtomicInteger cancellations;
+        private final AtomicBoolean cancelled = new AtomicBoolean();
         private int index;
 
-        ScriptedSession(List<ModelProtocolEvent> events) {
+        ScriptedSession(List<ModelProtocolEvent> events, AtomicInteger cancellations) {
             this.events = events;
+            this.cancellations = cancellations;
         }
 
         @Override
@@ -75,6 +85,9 @@ final class ScriptedAdapter implements ModelProtocolAdapter {
 
         @Override
         public void cancel() {
+            if (cancelled.compareAndSet(false, true)) {
+                cancellations.incrementAndGet();
+            }
         }
 
         @Override

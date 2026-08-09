@@ -23,6 +23,7 @@ class ModelProtocolContractValueTest {
         assertEquals(1024 * 1024, SizeLimits.MAX_STREAM_EVENT_BYTES);
         assertEquals(1024 * 1024, SizeLimits.MAX_TOTAL_OUTPUT_BYTES);
         assertEquals(8192, SizeLimits.MAX_OPENAI_OUTPUT_TOKENS);
+        assertEquals(8 * 1024 * 1024, SizeLimits.MAX_NON_STREAM_RESPONSE_BODY_BYTES);
     }
 
     @Test

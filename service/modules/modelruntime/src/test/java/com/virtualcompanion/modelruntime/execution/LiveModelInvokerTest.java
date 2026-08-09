@@ -134,6 +134,7 @@ class LiveModelInvokerTest {
                 outcome.audits().getFirst().status());
         // The wrong-binding output must never pollute the deterministic response.
         assertFalse(outcome.response().contains("leak"));
+        assertEquals(1, harness.adapter.cancelCount());
         assertEquals(5L, quota.remaining("owner-1"));
     }
 
@@ -371,6 +372,7 @@ class LiveModelInvokerTest {
         assertEquals(ProviderAttemptStatus.NON_RETRYABLE_FAILED,
                 outcome.audits().getFirst().status());
         assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertEquals(1, harness.adapter.cancelCount());
         assertEquals(5L, quota.remaining("owner-1"));
     }
 

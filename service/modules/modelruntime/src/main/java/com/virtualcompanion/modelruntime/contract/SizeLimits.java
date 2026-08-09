@@ -13,6 +13,7 @@ public final class SizeLimits {
     public static final int MAX_STREAM_EVENT_BYTES = 1024 * 1024;
     public static final int MAX_TOTAL_OUTPUT_BYTES = 1024 * 1024;
     public static final int MAX_OPENAI_OUTPUT_TOKENS = 8192;
+    public static final int MAX_NON_STREAM_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
 
     private SizeLimits() {
     }

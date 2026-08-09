@@ -269,7 +269,10 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
     }
 
     private void parseCompletion(InputStream body) throws OpenAiCodecException {
-        var completion = codec.decodeCompletion(body);
+        var completion = codec.decodeCompletion(new BoundedInputStream(
+                body,
+                SizeLimits.MAX_NON_STREAM_RESPONSE_BODY_BYTES
+        ));
         if (SizeLimits.utf8Bytes(completion.content())
                 > SizeLimits.MAX_TOTAL_OUTPUT_BYTES) {
             throw new OpenAiCodecException();
@@ -288,7 +291,11 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
         var state = new StreamState(
                 request.responseMode() instanceof ResponseMode.StructuredJson
         );
-        SseDecoder.decode(body, data -> onSseData(state, data));
+        SseDecoder.decode(
+                body,
+                SizeLimits.MAX_STREAM_EVENT_BYTES,
+                data -> onSseData(state, data)
+        );
         if (!state.done) {
             throw new OpenAiCodecException();
         }

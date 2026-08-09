@@ -1,65 +1,190 @@
 package com.virtualcompanion.modelopenai;
 
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Objects;
 
 /**
- * Minimal UTF-8 SSE framing decoder for Chat Completions data events.
+ * Bounded UTF-8 SSE framing decoder for Chat Completions data events.
  */
 final class SseDecoder {
+
+    private static final byte[] DATA_FIELD = "data".getBytes(StandardCharsets.US_ASCII);
 
     private SseDecoder() {
     }
 
-    static void decode(InputStream input, EventConsumer consumer)
-            throws IOException, OpenAiCodecException {
-        var reader = new BufferedReader(new InputStreamReader(
-                input,
-                StandardCharsets.UTF_8
-        ));
-        var dataLines = new ArrayList<String>();
+    static void decode(
+            InputStream input,
+            int maximumEventBytes,
+            EventConsumer consumer
+    ) throws IOException, OpenAiCodecException {
+        Objects.requireNonNull(input, "input must not be null");
+        Objects.requireNonNull(consumer, "consumer must not be null");
+        if (maximumEventBytes <= 0) {
+            throw new IllegalArgumentException("maximumEventBytes must be positive");
+        }
+
+        var event = new EventBuffer(maximumEventBytes);
+        var line = new LineParser(event);
+        int lineBytes = 0;
+        boolean skipLineFeed = false;
+
         while (true) {
-            var line = reader.readLine();
-            if (line == null) {
-                if (!dataLines.isEmpty()) {
-                    dispatch(dataLines, consumer);
+            int value = input.read();
+            if (value < 0) {
+                if (lineBytes > 0) {
+                    line.finish();
+                }
+                if (event.hasData()) {
+                    event.dispatch(consumer);
                 }
                 return;
             }
-            if (line.isEmpty()) {
-                if (!dataLines.isEmpty() && !dispatch(dataLines, consumer)) {
-                    return;
+
+            if (skipLineFeed) {
+                skipLineFeed = false;
+                if (value == '\n') {
+                    continue;
                 }
-                dataLines.clear();
-                continue;
             }
-            if (line.startsWith(":")) {
+
+            if (value == '\r' || value == '\n') {
+                if (lineBytes == 0) {
+                    if (event.hasData() && !event.dispatch(consumer)) {
+                        return;
+                    }
+                } else {
+                    line.finish();
+                }
+                line.reset();
+                lineBytes = 0;
+                skipLineFeed = value == '\r';
                 continue;
             }
 
-            int colon = line.indexOf(':');
-            var field = colon < 0 ? line : line.substring(0, colon);
-            var value = colon < 0 ? "" : line.substring(colon + 1);
-            if (value.startsWith(" ")) {
-                value = value.substring(1);
-            }
-            if (!"data".equals(field)) {
+            lineBytes++;
+            if (lineBytes > maximumEventBytes) {
                 throw new OpenAiCodecException();
             }
-            dataLines.add(value);
+            line.accept(value);
         }
     }
 
-    private static boolean dispatch(
-            List<String> dataLines,
-            EventConsumer consumer
-    ) throws OpenAiCodecException {
-        return consumer.onEvent(String.join("\n", dataLines));
+    private enum LineMode {
+        START,
+        DATA_FIELD,
+        BEFORE_VALUE,
+        VALUE,
+        COMMENT
+    }
+
+    private static final class LineParser {
+
+        private final EventBuffer event;
+        private LineMode mode = LineMode.START;
+        private int fieldBytes;
+
+        private LineParser(EventBuffer event) {
+            this.event = event;
+        }
+
+        private void accept(int value) throws OpenAiCodecException {
+            switch (mode) {
+                case START -> start(value);
+                case DATA_FIELD -> field(value);
+                case BEFORE_VALUE -> {
+                    mode = LineMode.VALUE;
+                    if (value != ' ') {
+                        event.append(value);
+                    }
+                }
+                case VALUE -> event.append(value);
+                case COMMENT -> {
+                    // Comments are ignored after their physical-line budget is enforced.
+                }
+            }
+        }
+
+        private void start(int value) throws OpenAiCodecException {
+            if (value == ':') {
+                mode = LineMode.COMMENT;
+                return;
+            }
+            if (value != DATA_FIELD[0]) {
+                throw new OpenAiCodecException();
+            }
+            mode = LineMode.DATA_FIELD;
+            fieldBytes = 1;
+        }
+
+        private void field(int value) throws OpenAiCodecException {
+            if (fieldBytes < DATA_FIELD.length) {
+                if (value != DATA_FIELD[fieldBytes]) {
+                    throw new OpenAiCodecException();
+                }
+                fieldBytes++;
+                return;
+            }
+            if (value != ':') {
+                throw new OpenAiCodecException();
+            }
+            event.beginLine();
+            mode = LineMode.BEFORE_VALUE;
+        }
+
+        private void finish() throws OpenAiCodecException {
+            if (mode == LineMode.DATA_FIELD && fieldBytes == DATA_FIELD.length) {
+                event.beginLine();
+                return;
+            }
+            if (mode == LineMode.START || mode == LineMode.DATA_FIELD) {
+                throw new OpenAiCodecException();
+            }
+        }
+
+        private void reset() {
+            mode = LineMode.START;
+            fieldBytes = 0;
+        }
+    }
+
+    private static final class EventBuffer {
+
+        private final int maximumBytes;
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private boolean hasData;
+
+        private EventBuffer(int maximumBytes) {
+            this.maximumBytes = maximumBytes;
+        }
+
+        private void beginLine() throws OpenAiCodecException {
+            if (hasData) {
+                append('\n');
+            }
+            hasData = true;
+        }
+
+        private void append(int value) throws OpenAiCodecException {
+            if (bytes.size() >= maximumBytes) {
+                throw new OpenAiCodecException();
+            }
+            bytes.write(value);
+        }
+
+        private boolean hasData() {
+            return hasData;
+        }
+
+        private boolean dispatch(EventConsumer consumer) throws OpenAiCodecException {
+            String data = bytes.toString(StandardCharsets.UTF_8);
+            bytes.reset();
+            hasData = false;
+            return consumer.onEvent(data);
+        }
     }
 
     @FunctionalInterface
