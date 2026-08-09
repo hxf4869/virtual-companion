@@ -646,3 +646,9 @@ tasks:
     taskCard: docs/tasks/TASK-0123-auth-request-target-utf8-boundary.md
     evidence: docs/evidence/TASK-0123/evidence-pack.json
     handoff: docs/handoffs/TASK-0123.json
+  TASK-0124:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0124-auth-firewall-envelope-observation.md
+    evidence: docs/evidence/TASK-0124/evidence-pack.json
+    handoff: docs/handoffs/TASK-0124.json

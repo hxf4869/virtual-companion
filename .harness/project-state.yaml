@@ -2,17 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0124
-activeTaskCard: docs/tasks/TASK-0124-auth-firewall-envelope-observation.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0122
 lastAcceptedHandoff: docs/handoffs/TASK-0122.json
-lastTerminalTask: TASK-0123
-lastTerminalHandoff: docs/handoffs/TASK-0123.json
-nextAction: >-
-  执行 TASK-0124：在不重开 TASK-0123 第三轮修复或复核的前提下，让 Spring Security firewall 对
-  encoded Auth-prefix MVC 等价路径返回固定 INVALID_REQUEST envelope，同时保留 official observation
-  marking 与非 Auth 默认 400；重新覆盖 TASK-0123 完整矩阵并完成独立 Reviewer、正式门禁、
-  Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。
+lastTerminalTask: TASK-0124
+lastTerminalHandoff: docs/handoffs/TASK-0124.json
+nextAction: '通过 task-intake 创建 TASK-0125：保持 TASK-0124 的目标、范围、风险、白名单、禁止项与验收不变，但以最新终态 Base 新建 DRAFT，并按 canonical 无末尾 LF 算法重新生成 Context Lock/fingerprint；随后让 Spring Security firewall 对 encoded Auth-prefix MVC 等价路径返回固定 INVALID_REQUEST envelope，同时保留 official observation marking 与非 Auth 默认 400，重新覆盖 TASK-0123 完整矩阵并完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
