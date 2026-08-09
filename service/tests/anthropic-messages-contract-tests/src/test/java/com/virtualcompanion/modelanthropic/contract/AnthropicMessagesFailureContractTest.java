@@ -154,6 +154,47 @@ class AnthropicMessagesFailureContractTest {
     }
 
     @Test
+    void structured_non_stream_rejects_second_tool_use_without_success()
+            throws Exception {
+        var response = """
+                {
+                  "type": "message",
+                  "content": [
+                    {
+                      "type": "tool_use",
+                      "id": "toolu_first",
+                      "name": "companion_response",
+                      "input": {"answer": "first"}
+                    },
+                    {
+                      "type": "tool_use",
+                      "id": "toolu_second",
+                      "name": "companion_response",
+                      "input": {"answer": "second"}
+                    }
+                  ],
+                  "stop_reason": "end_turn",
+                  "usage": {"input_tokens": 2, "output_tokens": 1}
+                }
+                """;
+
+        try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "application/json",
+                response
+        ))) {
+            var client = new CountingHttpClient();
+            var events = drain(adapter(client, server.endpoint()).open(
+                    structuredRequest(false, "duplicate tool use")
+            ));
+
+            assertMalformedWithoutSuccess(events, true);
+            assertEquals(1, server.requestCount());
+            assertEquals(1, client.asynchronousCalls());
+        }
+    }
+
+    @Test
     void structured_stream_rejects_tool_name_and_block_index_violations()
             throws Exception {
         var wrongName = sse(messageStart(2))
