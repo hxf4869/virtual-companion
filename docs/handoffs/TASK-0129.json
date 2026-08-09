@@ -1,0 +1,72 @@
+{
+  "taskId": "TASK-0129",
+  "state": "REJECTED",
+  "baseCommit": "603402304b878d939c8381721ff9bc5082561780",
+  "headCommit": "a12b5eaa934f88c983102277d706f179da3dfce8",
+  "evidencePath": "docs/evidence/TASK-0129/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "663b4a3556a3a22723f239a22dd4a8832599a3a9",
+      "startedAt": "2026-08-10T01:09:38+08:00",
+      "endedAt": "2026-08-10T01:31:30+08:00",
+      "elapsedSeconds": 1312,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "663b4a3556a3a22723f239a22dd4a8832599a3a9",
+      "startedAt": "2026-08-10T01:09:38+08:00",
+      "endedAt": "2026-08-10T01:11:27+08:00",
+      "elapsedSeconds": 109,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+      "anchorCommit": null,
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": 0,
+      "outcome": "NOT_STARTED",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": null,
+      "inProgressCommit": null,
+      "reason": "READY Doctor failed before IN_PROGRESS and before any candidate freeze because the frozen Context fingerprint incorrectly included a trailing LF.",
+      "reanchored": false
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0129_intake_failure_r1",
+      "kind": "independent-intake-failure-review",
+      "verdict": "PASS",
+      "reviewedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8",
+      "evidencePath": "docs/evidence/TASK-0129/review-r1.md",
+      "reason": "独立复核确认 67 个 Context 输入 hash 全部正确，但冻结 fingerprint payload 错误追加末尾 LF；canonical fingerprint 应为 fbdcf3991d84e86450a5a6ee8d22614cd3e8245f61d511dffa5ebba6cb9246c4。READY Doctor 的唯一失败可复现，任务未进入 IN_PROGRESS、未形成候选，必须 REJECTED 并使用新永久 TASK-0130。",
+      "candidateTree": "e64f65d07240743b89b251dec7edf16c4bc95093"
+    }
+  ],
+  "completed": [
+    "TASK-0129 的 DRAFT、READY 与 authorization binding 均以严格单父治理提交完成，未包含任何业务实现或测试改动。",
+    "67 个 Context 输入在 Base 上的逐项 SHA-256 已独立复核全部正确。",
+    "READY Doctor 唯一错误与独立 Reviewer 一致：fingerprint 计算错误包含末尾 LF；真实 FAIL/exit 1/587219 checks 和输出哈希已保留。",
+    "任务未进入 IN_PROGRESS、未冻结候选、未运行正式 requiredCommands，candidateExecution 如实为 NOT_STARTED。"
+  ],
+  "remaining": [
+    "TASK-0129 的 Context fingerprint 已冻结为错误值，无法在本永久任务内合法修复或重新授权。",
+    "TASK-0128 已提交的 Anthropic tool_use.name/schemaName 与 stream block index fail-closed 实现仍未在有效期限内完成独立 Reviewer 和正式门禁。",
+    "需要以 TASK-0130 新 DRAFT 和 canonical 无末尾 LF 算法重新冻结 Context，再重新取得全部 Reviewer 与 validation 证据。"
+  ],
+  "knownRisks": [
+    "TASK-0129 只有治理提交且从未形成业务候选；任何实现 PASS 声明均为不实。",
+    "TASK-0128 的 late Reviewer 和 formal command 结果不可复用，TASK-0130 必须重新执行。",
+    "远端 exact-SHA、本地 fallback、Maven 和 formal diff check 均未运行，passClaimed=false。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0130：保持 TASK-0129 的目标、范围、风险、白名单、禁止项与验收不变，但以最新终态 Base 新建 DRAFT，并按 canonical 无末尾 LF 算法重新生成 Context Lock/fingerprint；随后以 Base 中已提交的 Anthropic tool_use.name/schemaName 与 stream block index fail-closed 实现为候选，不继承旧 Reviewer/command PASS，完成期限内独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。"
+}

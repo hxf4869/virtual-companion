@@ -676,3 +676,9 @@ tasks:
     taskCard: docs/tasks/TASK-0128-anthropic-tool-use-protocol-consistency.md
     evidence: docs/evidence/TASK-0128/evidence-pack.json
     handoff: docs/handoffs/TASK-0128.json
+  TASK-0129:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0129-anthropic-tool-use-protocol-replacement.md
+    evidence: docs/evidence/TASK-0129/evidence-pack.json
+    handoff: docs/handoffs/TASK-0129.json

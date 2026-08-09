@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0129
-state: READY
+state: REJECTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -301,7 +301,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0128 的本机结果。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0129_intake_failure_r1
+    kind: independent-intake-failure-review
+    verdict: PASS
+    reviewedCommit: a12b5eaa934f88c983102277d706f179da3dfce8
+    evidencePath: docs/evidence/TASK-0129/review-r1.md
+    reason: '独立复核确认 67 个 Context 输入 hash 全部正确，但冻结 fingerprint payload 错误追加末尾 LF；canonical fingerprint 应为 fbdcf3991d84e86450a5a6ee8d22614cd3e8245f61d511dffa5ebba6cb9246c4。READY Doctor 的唯一失败可复现，任务未进入 IN_PROGRESS、未形成候选，必须 REJECTED 并使用新永久 TASK-0130。'
+    candidateTree: e64f65d07240743b89b251dec7edf16c4bc95093
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0129
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests -am -Dtest=AnthropicMessagesSuccessContractTest,AnthropicMessagesFailureContractTest -Dsurefire.failIfNoSpecifiedTests=false test

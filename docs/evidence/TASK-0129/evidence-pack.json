@@ -1,0 +1,145 @@
+{
+  "taskId": "TASK-0129",
+  "baseCommit": "603402304b878d939c8381721ff9bc5082561780",
+  "headCommit": "a12b5eaa934f88c983102277d706f179da3dfce8",
+  "contextFingerprint": "31abce12955f5be0b2f11e0f18170468c2a236f48e546b5879dc6270a76b15cd",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "663b4a3556a3a22723f239a22dd4a8832599a3a9",
+      "startedAt": "2026-08-10T01:09:38+08:00",
+      "endedAt": "2026-08-10T01:31:30+08:00",
+      "elapsedSeconds": 1312,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "663b4a3556a3a22723f239a22dd4a8832599a3a9",
+      "startedAt": "2026-08-10T01:09:38+08:00",
+      "endedAt": "2026-08-10T01:11:27+08:00",
+      "elapsedSeconds": 109,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "NOT_STARTED_READY_DOCTOR_NON_PASS",
+      "anchorCommit": null,
+      "startedAt": null,
+      "endedAt": null,
+      "elapsedSeconds": 0,
+      "outcome": "NOT_STARTED",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": null,
+      "inProgressCommit": null,
+      "reason": "READY Doctor failed before IN_PROGRESS and before any candidate freeze because the frozen Context fingerprint incorrectly included a trailing LF.",
+      "reanchored": false
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0129_intake_failure_r1",
+      "kind": "independent-intake-failure-review",
+      "verdict": "PASS",
+      "reviewedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8",
+      "evidencePath": "docs/evidence/TASK-0129/review-r1.md",
+      "reason": "独立复核确认 67 个 Context 输入 hash 全部正确，但冻结 fingerprint payload 错误追加末尾 LF；canonical fingerprint 应为 fbdcf3991d84e86450a5a6ee8d22614cd3e8245f61d511dffa5ebba6cb9246c4。READY Doctor 的唯一失败可复现，任务未进入 IN_PROGRESS、未形成候选，必须 REJECTED 并使用新永久 TASK-0130。",
+      "candidateTree": "e64f65d07240743b89b251dec7edf16c4bc95093"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0129 (READY activation)",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "51a4ae6487759e51eab636fb640f6eda87a4320b8b9d84438ba85b08e581550e",
+      "reason": "READY Doctor failed after 587219 checks: expected fingerprint 31abce12955f5be0b2f11e0f18170468c2a236f48e546b5879dc6270a76b15cd, canonical actual fbdcf3991d84e86450a5a6ee8d22614cd3e8245f61d511dffa5ebba6cb9246c4. stdout was empty with SHA-256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; stdout /tmp/vc-task0129-ready-doctor.out; stderr /tmp/vc-task0129-ready-doctor.err; completed 2026-08-10T01:11:27+08:00",
+      "verifiedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0129",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "READY Doctor prerequisite failed; canonical candidate validation was never eligible.",
+      "environment": "macOS; controlled venv; no process dispatched",
+      "verifiedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests -am -Dtest=AnthropicMessagesSuccessContractTest,AnthropicMessagesFailureContractTest -Dsurefire.failIfNoSpecifiedTests=false test",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No IN_PROGRESS state or candidate existed after READY Doctor FAIL.",
+      "environment": "OrbStack Docker formal channel; no process dispatched",
+      "verifiedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8"
+    },
+    {
+      "command": "docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No implementation candidate existed; root verify was not dispatched.",
+      "environment": "OrbStack Docker formal channel; no process dispatched",
+      "verifiedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The unique formal no-argument diff check was never eligible because READY Doctor failed.",
+      "environment": "macOS; Git 2.50.1; no process dispatched",
+      "verifiedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions for TASK-0129",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "No candidate existed and no dispatch was made; passClaimed=false.",
+      "environment": "GitHub Actions; dispatchCount=0",
+      "verifiedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0129 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_REJECTED_CLOSURE_FREEZE: runs once after the complete REJECTED snapshot is staged.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0129/pre-closure-request.json",
+      "verifiedCommit": "a12b5eaa934f88c983102277d706f179da3dfce8"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "READY_DOCTOR_FAIL_NO_CANDIDATE",
+    "candidateCommit": null,
+    "candidateTree": null,
+    "passClaimed": false,
+    "localExactTree": {
+      "status": "NOT_RUN",
+      "reason": "READY activation failed before candidate execution.",
+      "exitCode": null
+    },
+    "remote": {
+      "status": "UNKNOWN_NOT_RUN",
+      "reasonType": "NO_CANDIDATE",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": false
+    }
+  }
+}

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0129
-activeTaskCard: docs/tasks/TASK-0129-anthropic-tool-use-protocol-replacement.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0127
 lastAcceptedHandoff: docs/handoffs/TASK-0127.json
-lastTerminalTask: TASK-0128
-lastTerminalHandoff: docs/handoffs/TASK-0128.json
-nextAction: '执行 TASK-0129 replacement：以 TASK-0128 REJECTED 终态 Base 中已提交的 Anthropic tool_use.name/schemaName 与 stream block index fail-closed 实现为候选，不继承旧 Reviewer/command PASS；先在 15 分钟内取得新的独立 Reviewer 终态，再按冻结顺序重新执行 Precheck、targeted reactor、root verify 与唯一 diff check，完成 Evidence/Handoff、单父终态提交、推送和远端 0/0 复核。'
+lastTerminalTask: TASK-0129
+lastTerminalHandoff: docs/handoffs/TASK-0129.json
+nextAction: '通过 task-intake 创建 TASK-0130：保持 TASK-0129 的目标、范围、风险、白名单、禁止项与验收不变，但以最新终态 Base 新建 DRAFT，并按 canonical 无末尾 LF 算法重新生成 Context Lock/fingerprint；随后以 Base 中已提交的 Anthropic tool_use.name/schemaName 与 stream block index fail-closed 实现为候选，不继承旧 Reviewer/command PASS，完成期限内独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
