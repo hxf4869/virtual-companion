@@ -586,3 +586,9 @@ tasks:
     taskCard: docs/tasks/TASK-0113-provider-response-limits-revalidation.md
     evidence: docs/evidence/TASK-0113/evidence-pack.json
     handoff: docs/handoffs/TASK-0113.json
+  TASK-0114:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0114-anthropic-response-side-limits.md
+    evidence: docs/evidence/TASK-0114/evidence-pack.json
+    handoff: docs/handoffs/TASK-0114.json
