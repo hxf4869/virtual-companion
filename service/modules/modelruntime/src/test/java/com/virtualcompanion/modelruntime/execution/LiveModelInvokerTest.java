@@ -387,8 +387,38 @@ class LiveModelInvokerTest {
         LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
 
         assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
         assertEquals(ProviderAttemptStatus.NON_RETRYABLE_FAILED,
                 outcome.audits().getFirst().status());
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertTrue(outcome.usageOptional().isEmpty());
+        assertEquals(1, harness.adapter.cancelCount());
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void sessionNextFailureCancelsWithoutPartialOutputAndReleasesQuota() {
+        Harness harness = harness(
+                false,
+                binding -> List.of(new ModelProtocolEvent.OutputDelta(
+                        binding, 0, new ModelPayload.TextChunk("partial"))),
+                Map.of(PROVIDER, "OpenAI"),
+                false,
+                PROVIDER,
+                1,
+                new IllegalStateException("scripted session read failure"));
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failureOptional().orElseThrow()
+                instanceof AdapterFailure.MalformedResponse);
+        assertEquals(ProviderAttemptStatus.NON_RETRYABLE_FAILED,
+                outcome.audits().getFirst().status());
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertTrue(outcome.usageOptional().isEmpty());
+        assertEquals(1, harness.adapter.cancelCount());
         assertEquals(5L, quota.remaining("owner-1"));
     }
 
@@ -471,9 +501,31 @@ class LiveModelInvokerTest {
             Map<ProviderId, String> supplierNames,
             boolean emptyLocator,
             ProviderId snapshotProvider) {
+        return harness(
+                denyExecution,
+                script,
+                supplierNames,
+                emptyLocator,
+                snapshotProvider,
+                -1,
+                null);
+    }
+
+    private Harness harness(
+            boolean denyExecution,
+            Function<InvocationBinding, List<ModelProtocolEvent>> script,
+            Map<ProviderId, String> supplierNames,
+            boolean emptyLocator,
+            ProviderId snapshotProvider,
+            int nextFailureAfterEvents,
+            RuntimeException nextFailure) {
         quota.provision("owner-1", 5);
         ScriptedAdapter adapter = new ScriptedAdapter(
-                ModelProtocol.OPENAI_CHAT_COMPLETIONS, CAPABILITIES, script);
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                CAPABILITIES,
+                script,
+                nextFailureAfterEvents,
+                nextFailure);
 
         InMemoryProviderRegistry registry = new InMemoryProviderRegistry();
         ProviderRegistration registration = new ProviderRegistration(

@@ -171,8 +171,19 @@ public final class LiveModelInvoker {
             StringBuilder builder = new StringBuilder();
             long outputBytes = 0;
             while (true) {
-                Optional<ModelProtocolEvent> next = session.next();
+                final Optional<ModelProtocolEvent> next;
+                try {
+                    next = session.next();
+                } catch (RuntimeException failure) {
+                    // A read failure can happen after partial provider output;
+                    // cancel before returning the normalized fail-closed result.
+                    session.cancel();
+                    return fenceViolationOutcome(decision, binding, providerId, supplierName);
+                }
                 if (next.isEmpty()) {
+                    // close() is not a substitute for cancelling an incomplete
+                    // provider session; release the stream explicitly first.
+                    session.cancel();
                     break;
                 }
                 final ModelProtocolEvent event;

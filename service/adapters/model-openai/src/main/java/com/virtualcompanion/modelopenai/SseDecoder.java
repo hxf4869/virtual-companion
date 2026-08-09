@@ -3,6 +3,9 @@ package com.virtualcompanion.modelopenai;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
@@ -188,10 +191,22 @@ final class SseDecoder {
         }
 
         private boolean dispatch(EventConsumer consumer) throws OpenAiCodecException {
-            String data = bytes.toString(StandardCharsets.UTF_8);
+            String data = decodeUtf8(bytes.toByteArray());
             bytes.reset();
             hasData = false;
             return consumer.onEvent(data);
+        }
+
+        private String decodeUtf8(byte[] value) throws OpenAiCodecException {
+            try {
+                return StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                        .decode(ByteBuffer.wrap(value))
+                        .toString();
+            } catch (CharacterCodingException exception) {
+                throw new OpenAiCodecException();
+            }
         }
     }
 
