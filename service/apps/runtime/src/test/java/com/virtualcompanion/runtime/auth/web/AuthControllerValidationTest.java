@@ -8,8 +8,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.runtime.auth.config.AuthRequestBodyLimitFilter;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import java.util.Arrays;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -43,7 +45,31 @@ class AuthControllerValidationTest {
                 .setValidator(validator)
                 .setControllerAdvice(new AuthExceptionHandler())
                 .setCustomArgumentResolvers(adminPrincipalResolver())
+                .addFilters(new AuthRequestBodyLimitFilter())
                 .build();
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+        "/api/v1/auth/login",
+        "/api/v1/auth/admin/accounts"
+    })
+    void oneOverBodyIsRejectedBeforeJsonAndService(String path) throws Exception {
+        byte[] body = new byte[AuthInputLimits.MAX_REQUEST_BODY_BYTES + 1];
+        Arrays.fill(body, (byte) 'b');
+        body[AuthInputLimits.MAX_REQUEST_BODY_BYTES] = 'B';
+
+        MvcResult result = mockMvc.perform(post(path)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("The request is invalid"))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("16385", "BBBB");
+        verifyNoInteractions(authService);
     }
 
     @ParameterizedTest

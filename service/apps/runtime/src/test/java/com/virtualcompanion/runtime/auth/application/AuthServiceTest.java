@@ -19,6 +19,7 @@ import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository.RotatedSession;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthErrorException;
+import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
@@ -163,10 +164,52 @@ class AuthServiceTest {
     }
 
     @Test
+    void refreshAcceptsExact512ByteCookie() {
+        String rawToken = "r".repeat(AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES);
+        when(sessions.rotate(anyString(), anyString(), any()))
+                .thenReturn(Optional.of(new RotatedSession(7, "USER", "ACTIVE", "alice")));
+
+        service.refresh(rawToken);
+
+        verify(sessions).rotate(eq(RefreshTokens.sha256Hex(rawToken)), anyString(), any());
+    }
+
+    @Test
+    void refreshRejectsNullBlankAndOneOverCookieBeforeHashOrJdbc() {
+        assertInvalidRefresh(null);
+        assertInvalidRefresh("");
+        assertInvalidRefresh("   ");
+        assertInvalidRefresh("r".repeat(AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES + 1));
+    }
+
+    @Test
     void logoutRevokesOnlyTheOwnedSessionHash() {
         service.logout(7, "raw-refresh-token");
 
         verify(sessions).logout(7, RefreshTokens.sha256Hex("raw-refresh-token"));
+    }
+
+    @Test
+    void logoutAcceptsExact512ByteCookie() {
+        String rawToken = "r".repeat(AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES);
+
+        service.logout(7, rawToken);
+
+        verify(sessions).logout(7, RefreshTokens.sha256Hex(rawToken));
+    }
+
+    @Test
+    void logoutRejectsOneOverCookieBeforeHashOrJdbc() {
+        String rawToken = "r".repeat(AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES + 1);
+        clearInvocations(accounts, sessions, passwordEncoder, jwt);
+
+        assertThatThrownBy(() -> service.logout(7, rawToken))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("AUTHENTICATION_REQUIRED");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                });
+        verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);
     }
 
     @Test
@@ -255,6 +298,10 @@ class AuthServiceTest {
         assertInvalidLogin("alice", "   ");
         assertInvalidLogin("u".repeat(129), "pw");
         assertInvalidLogin("alice", "p".repeat(1025));
+        assertInvalidLogin(
+                "u".repeat(AuthInputLimits.MAX_USERNAME_UTF8_BYTES + 1), "pw");
+        assertInvalidLogin(
+                "alice", "p".repeat(AuthInputLimits.MAX_PASSWORD_UTF8_BYTES + 1));
     }
 
     @Test
@@ -273,6 +320,25 @@ class AuthServiceTest {
         assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "USER", "d".repeat(257)));
         assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "", "User"));
         assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "MANAGER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest(
+                "u".repeat(AuthInputLimits.MAX_USERNAME_UTF8_BYTES + 1), "pw", "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest(
+                "bob", "p".repeat(AuthInputLimits.MAX_PASSWORD_UTF8_BYTES + 1), "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest(
+                "bob", "pw", "r".repeat(AuthInputLimits.MAX_ROLE_UTF8_BYTES + 1), "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest(
+                "bob", "pw", "USER",
+                "d".repeat(AuthInputLimits.MAX_DISPLAY_NAME_UTF8_BYTES + 1)));
+    }
+
+    @Test
+    void seedAdminByteValidationFailsBeforeBcryptOrJdbc() {
+        assertInvalidSeed(
+                "u".repeat(AuthInputLimits.MAX_USERNAME_UTF8_BYTES + 1), "pw", "Display");
+        assertInvalidSeed(
+                "root", "p".repeat(AuthInputLimits.MAX_PASSWORD_UTF8_BYTES + 1), "Display");
+        assertInvalidSeed(
+                "root", "pw", "d".repeat(AuthInputLimits.MAX_DISPLAY_NAME_UTF8_BYTES + 1));
     }
 
     @Test
@@ -311,6 +377,32 @@ class AuthServiceTest {
         clearInvocations(accounts, sessions, passwordEncoder, jwt);
 
         assertThatThrownBy(() -> service.createAccount(admin, request))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+
+        verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);
+    }
+
+    private void assertInvalidRefresh(String refreshToken) {
+        clearInvocations(accounts, sessions, passwordEncoder, jwt);
+
+        assertThatThrownBy(() -> service.refresh(refreshToken))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("AUTHENTICATION_REQUIRED");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                });
+
+        verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);
+    }
+
+    private void assertInvalidSeed(String username, String password, String displayName) {
+        clearInvocations(accounts, sessions, passwordEncoder, jwt);
+
+        assertThatThrownBy(() -> service.seedAdmin(username, password, displayName))
                 .isInstanceOf(AuthErrorException.class)
                 .satisfies(e -> {
                     assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");

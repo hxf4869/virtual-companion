@@ -83,14 +83,6 @@ export interface LoginRequest {
   password: string
 }
 
-export interface RefreshTokenRequest {
-  refreshToken: string
-}
-
-export interface LogoutRequest {
-  refreshToken: string
-}
-
 export interface AdminCreateAccountRequest {
   username: string
   password: string
@@ -100,7 +92,6 @@ export interface AdminCreateAccountRequest {
 
 export interface AuthTokenResponse {
   accessToken: string
-  refreshToken: string
   tokenType: string
   expiresInSeconds: string
   accountId: string

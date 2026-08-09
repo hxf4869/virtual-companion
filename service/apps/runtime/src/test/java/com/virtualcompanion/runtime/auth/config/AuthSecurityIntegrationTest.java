@@ -6,7 +6,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
 import jakarta.servlet.http.Cookie;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -97,6 +99,19 @@ class AuthSecurityIntegrationTest {
     void healthStaysPublic() throws Exception {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void oversizedPublicLoginBodyIsRejectedByTheRegisteredFilter() throws Exception {
+        byte[] body = new byte[AuthInputLimits.MAX_REQUEST_BODY_BYTES + 1];
+        Arrays.fill(body, (byte) 'x');
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("The request is invalid"));
     }
 
     @Test

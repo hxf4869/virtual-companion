@@ -6,6 +6,7 @@ import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository.RotatedSession;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthErrorException;
+import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
@@ -86,6 +87,7 @@ public class AuthService {
     public IssuedSession login(String username, String password) {
         validateLoginInput(username, password);
         String canonicalUsername = normalizeUsername(username);
+        validateNormalizedInput(canonicalUsername, null, null);
         Optional<AuthenticatedIdentity> identity = accounts.authenticate(canonicalUsername);
         String storedHash = identity.map(AuthenticatedIdentity::passwordHash).orElse(dummyHash);
         boolean passwordOk = passwordEncoder.matches(password, storedHash);
@@ -116,7 +118,9 @@ public class AuthService {
      * unreachable live session behind.
      */
     public IssuedSession refresh(String refreshToken) {
-        if (refreshToken == null || refreshToken.isBlank()) {
+        if (refreshToken == null || refreshToken.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        refreshToken, AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES)) {
             throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
                     "A valid refresh token is required");
         }
@@ -149,7 +153,9 @@ public class AuthService {
      * still reported as success so existence is never disclosed.
      */
     public LogoutResponse logout(long accountId, String refreshToken) {
-        if (refreshToken == null || refreshToken.isBlank()) {
+        if (refreshToken == null || refreshToken.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        refreshToken, AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES)) {
             throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
                     "A refresh token is required");
         }
@@ -177,6 +183,7 @@ public class AuthService {
         String username = normalizeUsername(rawUsername);
         String displayName = normalizeDisplayName(rawDisplayName);
         String role = normalizeRole(request.role());
+        validateNormalizedInput(username, displayName, role);
         long accountId;
         try {
             accountId = accounts.createAccount(
@@ -202,11 +209,18 @@ public class AuthService {
                 || canonicalDisplayName == null || canonicalDisplayName.isBlank()) {
             return 0; // nothing injected -> nothing seeded
         }
-        if (username.length() > MAX_USERNAME_LENGTH
+        if (!AuthInputLimits.withinUtf8Bytes(
+                        username, AuthInputLimits.MAX_USERNAME_UTF8_BYTES)
+                || !AuthInputLimits.withinUtf8Bytes(
+                        password, AuthInputLimits.MAX_PASSWORD_UTF8_BYTES)
+                || !AuthInputLimits.withinUtf8Bytes(
+                        displayName, AuthInputLimits.MAX_DISPLAY_NAME_UTF8_BYTES)
+                || username.length() > MAX_USERNAME_LENGTH
                 || password.length() > MAX_PASSWORD_LENGTH
                 || displayName.length() > MAX_DISPLAY_NAME_LENGTH) {
             throw invalidRequestError();
         }
+        validateNormalizedInput(canonicalUsername, canonicalDisplayName, ROLE_ADMIN);
         return accounts.seedAdmin(
                 canonicalUsername, passwordEncoder.encode(password), canonicalDisplayName);
     }
@@ -245,19 +259,43 @@ public class AuthService {
     }
 
     private static void validateLoginInput(String username, String password) {
-        if (username == null || username.isBlank() || username.length() > MAX_USERNAME_LENGTH
-                || password == null || password.isBlank() || password.length() > MAX_PASSWORD_LENGTH) {
+        if (username == null || username.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        username, AuthInputLimits.MAX_USERNAME_UTF8_BYTES)
+                || username.length() > MAX_USERNAME_LENGTH
+                || password == null || password.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        password, AuthInputLimits.MAX_PASSWORD_UTF8_BYTES)
+                || password.length() > MAX_PASSWORD_LENGTH) {
             throw invalidRequestError();
         }
     }
 
     private static void validateAccountInput(
             String username, String password, String role, String displayName) {
-        if (username == null || username.isBlank() || username.length() > MAX_USERNAME_LENGTH
-                || password == null || password.isBlank() || password.length() > MAX_PASSWORD_LENGTH
+        if (username == null || username.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        username, AuthInputLimits.MAX_USERNAME_UTF8_BYTES)
+                || username.length() > MAX_USERNAME_LENGTH
+                || password == null || password.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        password, AuthInputLimits.MAX_PASSWORD_UTF8_BYTES)
+                || password.length() > MAX_PASSWORD_LENGTH
+                || !AuthInputLimits.withinUtf8Bytes(role, AuthInputLimits.MAX_ROLE_UTF8_BYTES)
                 || role != null && role.length() > MAX_ROLE_LENGTH
                 || displayName == null || displayName.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        displayName, AuthInputLimits.MAX_DISPLAY_NAME_UTF8_BYTES)
                 || displayName.length() > MAX_DISPLAY_NAME_LENGTH) {
+            throw invalidRequestError();
+        }
+    }
+
+    private static void validateNormalizedInput(String username, String displayName, String role) {
+        if (!AuthInputLimits.withinUtf8Bytes(username, AuthInputLimits.MAX_USERNAME_UTF8_BYTES)
+                || !AuthInputLimits.withinUtf8Bytes(
+                        displayName, AuthInputLimits.MAX_DISPLAY_NAME_UTF8_BYTES)
+                || !AuthInputLimits.withinUtf8Bytes(role, AuthInputLimits.MAX_ROLE_UTF8_BYTES)) {
             throw invalidRequestError();
         }
     }

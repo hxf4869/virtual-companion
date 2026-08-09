@@ -533,13 +533,14 @@ paths:
       security: []
       requestBody:
         required: true
+        x-raw-max-bytes: 16384
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: New access token and refresh session
+          description: New access token; the refresh session is delivered only through the HttpOnly vc_refresh cookie
           content:
             application/json:
               schema:
@@ -570,15 +571,17 @@ paths:
         issues a new access token and refresh session. Public. An unknown, revoked, expired or DISABLED-account token all
         map to AUTHENTICATION_REQUIRED; the cause is never disclosed.
       security: []
-      requestBody:
+      parameters:
+      - in: cookie
+        name: vc_refresh
         required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshTokenRequest'
+        schema:
+          type: string
+          x-utf8-max-bytes: 512
+        description: Required HttpOnly refresh cookie; the raw value is never accepted in a request body.
       responses:
         '200':
-          description: New access token and rotated refresh session
+          description: New access token; the rotated refresh session is delivered only through the HttpOnly vc_refresh cookie
           content:
             application/json:
               schema:
@@ -595,12 +598,14 @@ paths:
       summary: Revoke a refresh session
       description: 'Revokes the caller''s presented refresh session. Idempotent: a second logout or a foreign/unknown token
         is still reported as success so existence is never disclosed. Requires a valid Bearer access token.'
-      requestBody:
+      parameters:
+      - in: cookie
+        name: vc_refresh
         required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LogoutRequest'
+        schema:
+          type: string
+          x-utf8-max-bytes: 512
+        description: Required HttpOnly refresh cookie; the raw value is never accepted in a request body.
       responses:
         '200':
           description: The refresh session was revoked (idempotent)
@@ -623,6 +628,7 @@ paths:
         is never disclosed. Requires a valid Bearer access token.'
       requestBody:
         required: true
+        x-raw-max-bytes: 16384
         content:
           application/json:
             schema:
@@ -913,32 +919,16 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+          x-utf8-max-bytes: 512
           pattern: .*\S.*
           description: Internal account username; surrounding whitespace is removed and the value is lowercased
         password:
           type: string
           minLength: 1
           maxLength: 1024
+          x-utf8-max-bytes: 4096
           pattern: .*\S.*
           description: Plaintext password (compared in the JVM, never stored or logged)
-    RefreshTokenRequest:
-      type: object
-      description: A refresh token to renew.
-      required:
-      - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          description: The raw refresh token; only its sha256 hash is stored server-side
-    LogoutRequest:
-      type: object
-      description: The refresh token to revoke.
-      required:
-      - refreshToken
-      properties:
-        refreshToken:
-          type: string
-          description: The raw refresh token to revoke
     AdminCreateAccountRequest:
       type: object
       description: Internal-account creation (ADMIN only). Role defaults to USER when omitted; only ADMIN or USER is accepted.
@@ -951,33 +941,36 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+          x-utf8-max-bytes: 512
           pattern: .*\S.*
           description: Internal account username (trimmed and normalized to lowercase)
         password:
           type: string
           minLength: 1
           maxLength: 1024
+          x-utf8-max-bytes: 4096
           pattern: .*\S.*
           description: Plaintext password; only its BCrypt hash is stored
         role:
           type: string
           minLength: 1
           maxLength: 16
+          x-utf8-max-bytes: 64
           pattern: ^(?:[Aa][Dd][Mm][Ii][Nn]|[Uu][Ss][Ee][Rr])$
           description: ADMIN or USER (default USER)
         displayName:
           type: string
           minLength: 1
           maxLength: 256
+          x-utf8-max-bytes: 1024
           pattern: .*\S.*
           description: Human-readable display name
     AuthTokenResponse:
       type: object
-      description: A new access token plus its refresh session. The raw refresh token is returned exactly once here; the server
-        stores only its sha256 hash and never echoes it again.
+      description: A new access token plus its refresh session. The raw refresh token is delivered only through the HttpOnly
+        vc_refresh cookie; it is never returned in this response body.
       required:
       - accessToken
-      - refreshToken
       - tokenType
       - expiresInSeconds
       - accountId
@@ -986,9 +979,6 @@ components:
         accessToken:
           type: string
           description: JWT Bearer access token (expires after expiresInSeconds)
-        refreshToken:
-          type: string
-          description: Raw refresh token for session renewal
         tokenType:
           type: string
           description: Always Bearer

@@ -3,7 +3,6 @@ package com.virtualcompanion.api;
 
 public record AuthTokenResponse(
     final String accessToken,
-    final String refreshToken,
     final String tokenType,
     final String expiresInSeconds,
     final String accountId,
@@ -11,7 +10,6 @@ public record AuthTokenResponse(
 ) {
     public AuthTokenResponse {
         java.util.Objects.requireNonNull(accessToken, "accessToken must not be null");
-        java.util.Objects.requireNonNull(refreshToken, "refreshToken must not be null");
         java.util.Objects.requireNonNull(tokenType, "tokenType must not be null");
         java.util.Objects.requireNonNull(expiresInSeconds, "expiresInSeconds must not be null");
         java.util.Objects.requireNonNull(accountId, "accountId must not be null");

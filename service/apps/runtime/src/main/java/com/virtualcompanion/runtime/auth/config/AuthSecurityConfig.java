@@ -85,9 +85,15 @@ public class AuthSecurityConfig {
     }
 
     @Bean
+    public AuthRequestBodyLimitFilter authRequestBodyLimitFilter() {
+        return new AuthRequestBodyLimitFilter();
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             CookieCsrfGuardFilter cookieCsrfGuardFilter,
+            AuthRequestBodyLimitFilter authRequestBodyLimitFilter,
             JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -108,6 +114,7 @@ public class AuthSecurityConfig {
                                             + "\"message\":\"A valid bearer token is required\"}");
                         }))
                 .addFilterBefore(cookieCsrfGuardFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(authRequestBodyLimitFilter, CookieCsrfGuardFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

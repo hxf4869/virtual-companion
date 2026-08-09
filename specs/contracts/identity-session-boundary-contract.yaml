@@ -102,6 +102,7 @@ authorizationAndOwnership:
 errorSemantics:
   AUTHENTICATION_REQUIRED:
     when: no valid server-verified authentication context can be established
+    httpStatus: 401
   ACCESS_DENIED:
     when: an authenticated subject is not permitted to perform the requested general operation
   NOT_FOUND_OR_FORBIDDEN:
@@ -148,6 +149,12 @@ internalAccountRequestBoundary:
     password: 1024
     displayName: 256
     role: 16
+  fieldUtf8ByteLimits:
+    encoding: UTF-8
+    username: 512
+    password: 4096
+    displayName: 1024
+    role: 64
   requiredNonBlankFields:
     login:
       - username
@@ -156,7 +163,13 @@ internalAccountRequestBoundary:
       - username
       - password
       - displayName
-  aggregateRequestBodyByteLimitDefined: false
+  aggregateRequestBodyByteLimit:
+    encoding: RAW_HTTP_ENTITY_BYTES
+    maxBytes: 16384
+    appliesTo:
+      - login
+      - adminCreateAccount
+    enforcement: BEFORE_JSON_MATERIALIZATION
 ageCapabilityBoundary:
   betaGenerativeChatAllowedOnlyWhen: ADULT_VERIFIED
   dataRightsAllowedForEveryCatalogAgeState: true
@@ -177,6 +190,16 @@ h5CredentialBoundary:
     path: /api/v1/auth
     secureDefault: true
     secureConfigurableForLocalDevelopment: true
+    requiredFor:
+      - refresh
+      - logout
+    requestBodyForbiddenFor:
+      - refresh
+      - logout
+    valueEncoding: UTF-8
+    maxValueBytes: 512
+    overLimitError: AUTHENTICATION_REQUIRED
+    enforcement: BEFORE_REFRESH_TOKEN_HASH_OR_SESSION_JDBC
     refreshTokenInResponseBodyForbidden: true
   csrfCookie:
     name: vc_csrf
@@ -281,9 +304,21 @@ resolvedOwnerDecisions:
     source: TASK-0112
     resolution: >-
       POST /api/v1/auth/login 与 POST /api/v1/auth/admin/accounts 的缺失、JSON null、不可读 JSON、
-      空白必填字段和超过冻结字符上限的字段统一返回 HTTP 400；ErrorEnvelope 固定为
+      空白必填字段、超过冻结字符上限或 UTF-8 字节上限的字段，以及超过冻结原始请求体上限的请求，
+      统一返回 HTTP 400；ErrorEnvelope 固定为
       INVALID_REQUEST / The request is invalid，不返回字段名、拒绝值或解析细节。既有凭据错误、
       disabled、非 ADMIN 与重复 username 的不泄密映射保持不变。
+  - decisionId: auth_cookie_only_and_byte_boundaries
+    resolvedAt: "2026-08-09"
+    approvedBy: repository-owner
+    source: TASK-0121
+    resolution: >-
+      login 与 adminCreateAccount 的原始 HTTP entity body 上限为 16384 bytes，必须在 JSON
+      物化前按实际读取 bytes 拒绝；username/password/displayName/role 的 UTF-8 上限分别为
+      512/4096/1024/64 bytes，保留既有字符上限。refresh/logout 只接受 required HttpOnly
+      vc_refresh cookie，不接受 request body；cookie 值 UTF-8 上限为 512 bytes，超限与缺失
+      均返回 HTTP 401 AUTHENTICATION_REQUIRED；login/refresh 响应体不含 refreshToken，原始
+      token 只通过 vc_refresh cookie 轮换或清除。
 rules:
   - deferred decisions have no implied default
   - public registration, real-user beta and real payment remain closed
