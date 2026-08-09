@@ -1,0 +1,70 @@
+{
+  "taskId": "TASK-0131",
+  "state": "ACCEPTED",
+  "baseCommit": "e4c90d168f02541771bf9c016fdd47f8ac5706aa",
+  "headCommit": "a2ab4e285d20b4539c545cee0676ea6bc70a9c62",
+  "evidencePath": "docs/evidence/TASK-0131/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "189810dbf4cf53bb19521a43ce372db1e40d666d",
+      "startedAt": "2026-08-10T02:12:55+08:00",
+      "endedAt": "2026-08-10T02:35:00+08:00",
+      "elapsedSeconds": 1325,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "189810dbf4cf53bb19521a43ce372db1e40d666d",
+      "startedAt": "2026-08-10T02:12:55+08:00",
+      "endedAt": "2026-08-10T02:14:36+08:00",
+      "elapsedSeconds": 101,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "03098226621c6a22f0d7cb18f24901615afe0ca6",
+      "startedAt": "2026-08-10T02:14:51+08:00",
+      "endedAt": "2026-08-10T02:35:00+08:00",
+      "elapsedSeconds": 1209,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-10T02:14:36+08:00",
+      "inProgressCommit": "03098226621c6a22f0d7cb18f24901615afe0ca6"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0131_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "a2ab4e285d20b4539c545cee0676ea6bc70a9c62",
+      "evidencePath": "docs/evidence/TASK-0131/review-r1.md",
+      "reason": "R1 完整复核 PASS：新测试为 structured non-stream，两个 tool_use 位于同一 content 数组且 name 均匹配 companion_response；断言唯一 MalformedResponse、无 OutputDelta/Usage/EOS、单次请求与异步调用，并真实命中 Codec 第二 tool_use 拒绝分支。Base 后仅 FailureContractTest 有业务/测试 diff，候选 P0/P1/P2/P3=0。",
+      "candidateTree": "f665f0601357ba07d1f7dc44c94063b20e951ad2"
+    }
+  ],
+  "completed": [
+    "AnthropicMessagesFailureContractTest 新增 structured non-stream 双 matching-name tool_use 场景，直接命中 Codec 的第二 tool_use fail-closed 分支。",
+    "测试断言 session 只有一个 AttemptFailed(MalformedResponse)，无 OutputDelta、UsageReported 或 AttemptEos，并证明一次服务端请求、一次异步 HTTP 调用和终态后无迟到事件。",
+    "Base 后只有单一 Failure contract test 路径发生业务/测试 diff；生产、Support、Success tests、TASK-0128 至 TASK-0130 历史制品和 forbidden paths 零 diff。",
+    "R1 P0/P1/P2/P3=0；READY Doctor 597714 checks、Precheck 5/5、targeted 10 tests、root 15-project 676 tests 与唯一一次无参数 git diff --check 全部 PASS。"
+  ],
+  "remaining": [
+    "TASK-0108 R1 的 provider hostname 大小写误拒与 DNS 解析/重绑定边界仍需在当前 HEAD 独立复核和拆卡处理。",
+    "当前审计复核新增的 admin encoded/matrix body fence 绕过和 malformed percent 跨容器异常边界仍是 P2 候选，需要独立 Auth 卡。",
+    "P1-04/P1-05/P1-11/P2-29、P2-12/P2-13、P2-03 跨实例边界及 Harness/CI P2-20/P2-21/P2-23/P2-24/P2-25/P2-26/P2-27、P3-07 与 RISK-01 至 RISK-11 仍需按依赖和 Owner gate 串行处理；最终对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "本卡只补直接 contract test，不改变已经由 TASK-0130 接受的生产协议语义。",
+    "Provider egress 的 hostname/DNS 风险与 Auth request-target 新 P2 不属于本卡，不能以本卡 PASS 视为关闭。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、本机工具链和输出哈希。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0132，先在当前 HEAD 复核并关闭 TASK-0108 R1 P3-01 的 Provider egress hostname 大小写误拒：若可复现，则仅在 ProviderEgressPolicy 以 Locale.ROOT 规范化 hostname 后比较 approvedHosts，并为 OpenAI、Anthropic 与策略层补 uppercase/mixed-case 正例及未获批 host 负例；不在本小卡引入 DNS 解析、网络连接或重绑定防护，不改 endpoint 路径、端口、TLS、secret、模型、数据库、OpenAPI 或历史制品。完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交和远端 0/0 后，再单独评估 DNS 重绑定边界与其余审计项。"
+}

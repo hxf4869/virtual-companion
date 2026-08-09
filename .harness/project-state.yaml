@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0131
-activeTaskCard: docs/tasks/TASK-0131-anthropic-nonstream-duplicate-tool-use-test.md
-lastAcceptedTask: TASK-0130
-lastAcceptedHandoff: docs/handoffs/TASK-0130.json
-lastTerminalTask: TASK-0130
-lastTerminalHandoff: docs/handoffs/TASK-0130.json
-nextAction: '执行 TASK-0131：只在 AnthropicMessagesFailureContractTest 增加非流 structured response 同一 content 数组含第二个 matching-name tool_use 的直接回归，断言唯一 MalformedResponse 且无 OutputDelta/Usage/EOS；冻结 clean candidate 后取得 15 分钟内独立 Reviewer 终态，再按顺序完成 Precheck、targeted Failure contract test、root verify 与唯一 diff check，生成 Evidence/Handoff、单父终态提交并 push/fetch 复核远端 0/0。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0131
+lastAcceptedHandoff: docs/handoffs/TASK-0131.json
+lastTerminalTask: TASK-0131
+lastTerminalHandoff: docs/handoffs/TASK-0131.json
+nextAction: '通过 task-intake 创建 TASK-0132，先在当前 HEAD 复核并关闭 TASK-0108 R1 P3-01 的 Provider egress hostname 大小写误拒：若可复现，则仅在 ProviderEgressPolicy 以 Locale.ROOT 规范化 hostname 后比较 approvedHosts，并为 OpenAI、Anthropic 与策略层补 uppercase/mixed-case 正例及未获批 host 负例；不在本小卡引入 DNS 解析、网络连接或重绑定防护，不改 endpoint 路径、端口、TLS、secret、模型、数据库、OpenAPI 或历史制品。完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交和远端 0/0 后，再单独评估 DNS 重绑定边界与其余审计项。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
