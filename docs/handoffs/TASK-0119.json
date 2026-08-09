@@ -1,0 +1,71 @@
+{
+  "taskId": "TASK-0119",
+  "state": "ACCEPTED",
+  "baseCommit": "d112171e504ce86d8aa0e46cbd24cfc33559337e",
+  "headCommit": "64df08d197972b551e79e7ed2b63b4ff2b13d1f0",
+  "evidencePath": "docs/evidence/TASK-0119/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "cb9b6db3c061a9fb2ab7d395559f1c316623375a",
+      "startedAt": "2026-08-09T15:20:30+08:00",
+      "endedAt": "2026-08-09T15:39:10+08:00",
+      "elapsedSeconds": 1120,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "cb9b6db3c061a9fb2ab7d395559f1c316623375a",
+      "startedAt": "2026-08-09T15:20:30+08:00",
+      "endedAt": "2026-08-09T15:23:08+08:00",
+      "elapsedSeconds": 158,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "de33a5c2b64073016459770dd25e3151f115638a",
+      "startedAt": "2026-08-09T15:23:20+08:00",
+      "endedAt": "2026-08-09T15:39:10+08:00",
+      "elapsedSeconds": 950,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T15:23:08+08:00",
+      "inProgressCommit": "de33a5c2b64073016459770dd25e3151f115638a"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0119_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "64df08d197972b551e79e7ed2b63b4ff2b13d1f0",
+      "evidencePath": "docs/evidence/TASK-0119/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：候选 Commit/Tree、Context、逐父授权与 writeAllowlist 一致；8 MiB 私有全连接 raw fence、全字节不可重置计数、exact/one-over、MalformedResponse、body close 与 cancel/timeout/无 late event 满足验收，最终 P0/P1/P2/P3 为零。",
+      "candidateTree": "575fb720f56ab49e0479b2278fd6ab694facc43c"
+    }
+  ],
+  "completed": [
+    "AnthropicMessagesSession 冻结 adapter-private 8388608-byte streaming raw 上限，并显式传入 SseDecoder；SizeLimits、BoundedInputStream、OpenAI 与公开协议保持不变。",
+    "SseDecoder 使用正 long 参数对全连接每个真实 byte 不可重置累计；exact 允许，第一个 one-over byte 读取后、解析前抛无详情 AnthropicCodecException，EOF 不计数。",
+    "direct decoder tests 覆盖 comment、blank、event-only、empty-data、data、CR、LF、CRLF、unknown id/retry、exact/one-over、no-reset 和 sentinel early stop。",
+    "production contract tests 覆盖 8 MiB exact 成功、合法 delta 后 mixed control/raw flood one-over、budget+1、MalformedResponse、body close、空 data 既有语义、first-token/total timeout、重复 cancel/close 与无 late event。",
+    "验证绑定 64df08d1/575fb720：独立 R1 最终 P0/P1/P2/P3=0，canonical 5/5 PASS，定向 reactor 277 tests PASS，根级 15 模块 verify 593 tests PASS，唯一次 git diff --check PASS。"
+  ],
+  "remaining": [
+    "OpenAI SSE 仍存在同类全连接 raw byte budget 缺口；其 comment/blank/data framing 可在 total timeout 前持续消耗网络与逐字节解析资源，必须用独立永久卡关闭。",
+    "Anthropic 8192 maxTokens 是应用成本上限而非模型 capability 证明；动态 Models API、model-specific capability map 与 max_tokens=0 语义仍不在本卡范围。",
+    "P2-03 Auth 滥用防护、P2-13 admin seed 并发、P2-12 JDBC snapshot 复活，以及审计交接中的其余 OPEN/OWNER_GATE 继续严格串行。"
+  ],
+  "knownRisks": [
+    "OpenAI streaming raw 输入放大风险在 TASK-0120 完成前继续存在，不被本卡 Anthropic fence 掩盖。",
+    "8 MiB 是 Anthropic adapter 的固定运维输入 fence；超长合法 streaming response 会确定性失败为 MalformedResponse，而不是动态按模型或网络条件放宽。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、工具链和本机结果。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0120，作为永久独立 C3 卡为 OpenAI SSE 冻结不可重置的 8388608-byte 全连接 raw budget：从当前 OpenAI SseDecoder、stream session、TASK-0116 backpressure 与 TASK-0113 response limits 重新取证，在不改变 [DONE]、合法 data、strict UTF-8、queue/output/timeout 语义的前提下覆盖 comment/blank/data/framing/CR/LF/CRLF 全计数、exact/one-over、budget+1/sentinel、MalformedResponse、body close、cancel/timeout 与无 late event；其余 OPEN/OWNER_GATE 按审计交接严格串行推进。"
+}

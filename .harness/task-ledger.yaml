@@ -616,3 +616,9 @@ tasks:
     taskCard: docs/tasks/TASK-0118-anthropic-max-tokens-ceiling.md
     evidence: docs/evidence/TASK-0118/evidence-pack.json
     handoff: docs/handoffs/TASK-0118.json
+  TASK-0119:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0119-anthropic-sse-raw-budget.md
+    evidence: docs/evidence/TASK-0119/evidence-pack.json
+    handoff: docs/handoffs/TASK-0119.json

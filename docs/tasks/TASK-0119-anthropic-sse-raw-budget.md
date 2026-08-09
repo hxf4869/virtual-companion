@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0119
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -320,7 +320,14 @@ humanApprovals:
       在无 runner、零 step 状态终止；TASK-0112 至 TASK-0118 已按同一 READY 冻结 fallback 合规
       ACCEPTED。本卡冻结 LOCAL_EXACT_TREE_FALLBACK，远端继续如实为非 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0119_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 64df08d197972b551e79e7ed2b63b4ff2b13d1f0
+    evidencePath: docs/evidence/TASK-0119/review-r1.md
+    reason: 'R1 完整矩阵复核 PASS：候选 Commit/Tree、Context、逐父授权与 writeAllowlist 一致；8 MiB 私有全连接 raw fence、全字节不可重置计数、exact/one-over、MalformedResponse、body close 与 cancel/timeout/无 late event 满足验收，最终 P0/P1/P2/P3 为零。'
+    candidateTree: 575fb720f56ab49e0479b2278fd6ab694facc43c
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0119
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests,service/tests/model-protocol-contract-tests -am test
