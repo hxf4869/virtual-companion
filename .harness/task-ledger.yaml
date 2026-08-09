@@ -628,3 +628,9 @@ tasks:
     taskCard: docs/tasks/TASK-0120-openai-sse-raw-budget.md
     evidence: docs/evidence/TASK-0120/evidence-pack.json
     handoff: docs/handoffs/TASK-0120.json
+  TASK-0121:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0121-auth-body-token-fences.md
+    evidence: docs/evidence/TASK-0121/evidence-pack.json
+    handoff: docs/handoffs/TASK-0121.json

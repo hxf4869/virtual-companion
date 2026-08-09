@@ -2,7 +2,14 @@
 
 ```yaml
 taskId: TASK-0121
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  Auth login/admin-account 已在 JSON 物化前执行 16384-byte raw body fence，字段与
+  vc_refresh 分别在 BCrypt、hash、JDBC、JWT 和 successor 生成前执行冻结的 UTF-8 byte
+  fence；cookie-only identity/OpenAPI 契约和确定性生成物已经同步。独立 R1 对候选
+  a5722a37/2e19cb31 完整复核 PASS，最终 P0/P1/P2/P3=0；canonical 5/5、定向 82 tests、
+  OpenAPI validate/drift、根级 623 tests 与唯一次 git diff --check 全部 PASS。Remote
+  exact-SHA 未运行且不声称 PASS，LOCAL_EXACT_TREE_FALLBACK 只绑定记录的候选和本机环境。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -288,7 +295,14 @@ humanApprovals:
       已按同一 READY 冻结 fallback 合规 ACCEPTED。本卡冻结 LOCAL_EXACT_TREE_FALLBACK，
       远端继续如实为非 PASS，PASS 只绑定记录的本机 Commit/Tree 与精确命令覆盖。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0121_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: a5722a37a7c74be66262fe6c641f54c5f1a1f5d0
+    evidencePath: docs/evidence/TASK-0121/review-r1.md
+    reason: "R1 完整矩阵复核 PASS：请求体、字段和 token 字节边界均在昂贵操作前失败关闭，cookie-only OpenAPI/生成物同步，治理链及 82 项迭代测试一致；最终 P0/P1/P2/P3=0。"
+    candidateTree: 2e19cb3111213cf18eb0425d2468ea85614900ec
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0121
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am -Dtest=AuthInputLimitsTest,AuthRequestBodyLimitFilterTest,AuthServiceTest,AuthControllerValidationTest,AuthControllerCookieTest,AuthSecurityIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
