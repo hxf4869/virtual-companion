@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0126
-activeTaskCard: docs/tasks/TASK-0126-auth-refresh-malformed-utf16-fail-closed.md
-lastAcceptedTask: TASK-0122
-lastAcceptedHandoff: docs/handoffs/TASK-0122.json
-lastTerminalTask: TASK-0125
-lastTerminalHandoff: docs/handoffs/TASK-0125.json
-nextAction: '执行 TASK-0126：修复 malformed UTF-16 refresh token 绕过 AuthAbuseGuard fail-closed 的回归，保留 null/blank/over-limit 401 与 TASK-0125 firewall/observation 行为，补齐 limiter/controller 矩阵并完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0126
+lastAcceptedHandoff: docs/handoffs/TASK-0126.json
+lastTerminalTask: TASK-0126
+lastTerminalHandoff: docs/handoffs/TASK-0126.json
+nextAction: '通过 task-intake 创建 TASK-0127，关闭 P3-02/P3-08 的当前能力与 Evidence 标签真值：更新根 README，使 Technical Alpha 能力、Auth/Chat/Memory/Admin/Provider/数据库/前端与发布阻断描述和当前代码/机器真源一致；不改历史 Evidence，只验证 TASK-0112 以后 Evidence 的 reactor/remote 标签精确且把历史歧义明确为不可追溯改写。完成 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送和远端 0/0 复核；随后继续未关闭数据库、Harness/CI 和条件风险。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

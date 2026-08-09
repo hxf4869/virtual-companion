@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0126",
+  "state": "ACCEPTED",
+  "baseCommit": "dc1dfca319e1c1793bcbaba2b74b38b2b7caea85",
+  "headCommit": "680e1a3e71c9c817ddc31f33f26648a214d960b7",
+  "evidencePath": "docs/evidence/TASK-0126/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0db486f9ce2693558f86a67589cd5fe8a6a4561e",
+      "startedAt": "2026-08-09T22:19:56+08:00",
+      "endedAt": "2026-08-09T22:45:00+08:00",
+      "elapsedSeconds": 1504,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0db486f9ce2693558f86a67589cd5fe8a6a4561e",
+      "startedAt": "2026-08-09T22:19:56+08:00",
+      "endedAt": "2026-08-09T22:21:47+08:00",
+      "elapsedSeconds": 111,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "4b1cba9c360c4f4658c3c35b321d7e63c84ae7eb",
+      "startedAt": "2026-08-09T22:22:00+08:00",
+      "endedAt": "2026-08-09T22:45:00+08:00",
+      "elapsedSeconds": 1380,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T22:21:47+08:00",
+      "inProgressCommit": "4b1cba9c360c4f4658c3c35b321d7e63c84ae7eb"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0126_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "680e1a3e71c9c817ddc31f33f26648a214d960b7",
+      "evidencePath": "docs/evidence/TASK-0126/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：malformed high/low surrogate 在 HMAC/state/AuthService 前固定 fail-closed 为 429/Retry-After 60；null、blank、Java/UTF-8 over-limit 仍保留 401，exact 512-byte 与合法 U+FFFD 保持独立 HMAC bucket；TASK-0125 firewall/observation 零回归，候选内 P0/P1/P2/P3=0。",
+      "candidateTree": "8a98f11531c030240c293763a306ef0d7cca47b6"
+    }
+  ],
+  "completed": [
+    "AuthAbuseGuard.admitRefresh 使用有界 Java length coarse fence 与 strict UTF-8 length 分层处理；孤立 high/low surrogate 进入既有固定 60 秒 fail-closed，而非被当作普通无效 token 跳过 limiter。",
+    "null、blank、Java length over-limit 与 UTF-8 one-over refresh token 保留 AuthService 401；exact 512-byte token 和合法 U+FFFD 正常进入各自 HMAC bucket。",
+    "guard/controller 边界证明 malformed cookie/token 在 limiter state 和 AuthService 前返回固定 429 AUTH_RATE_LIMITED、Retry-After 60、无输入回显，且 bulkhead permit 不泄漏。",
+    "TASK-0125 encoded Auth-prefix JSON 400、官方 observation marking、非 Auth 空 400、request-target/body/source fence 完整保留。",
+    "独立 R1 的 P0/P1/P2/P3 均为 0；canonical Precheck 5/5、targeted 129 tests、root 15-module 670 tests 与唯一一次无参数 git diff --check 全部 PASS。"
+  ],
+  "remaining": [
+    "P2-03 的跨实例共享原子限流、account-only 跨 source credential-stuffing 防护、永久锁定、密码最低/breach/history 策略，以及身份失败审计聚合、去标识化、保留与清理仍未关闭。",
+    "P1-04/P1-05/P1-11/P2-29 数据库 principal、runtime DML 与 readiness 边界，P2-12 JDBC authorization snapshot 不可复活和 P2-13 admin seed 多实例并发仍需独立高风险卡。",
+    "P2-20/P2-21/P2-23/P2-24/P2-25/P2-26/P2-27、P3-01/P3-02/P3-07/P3-08 及 provider protocol 后续 Reviewer 候选仍需逐项处理。",
+    "RISK-01 至 RISK-11 的生产纵切、持久化、部署与产品伦理条件风险必须在对应能力触发前逐项取得正式证据；全部修复后必须对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "当前 limiter 仅为单 JVM 进程内状态，重启即清空；它不提供水平扩展、跨节点共享配额或真实用户发布级防护。",
+    "source 只使用 servlet remoteAddr 并忽略转发头；反向代理部署可能安全聚合到代理地址并产生集中误伤，trusted proxy 拓扑仍未授权。",
+    "source+canonical username 不能阻止分布式多 source credential stuffing，且 success/failure 都不会重置 admission state。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、本机工具链和输出哈希。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0127，关闭 P3-02/P3-08 的当前能力与 Evidence 标签真值：更新根 README，使 Technical Alpha 能力、Auth/Chat/Memory/Admin/Provider/数据库/前端与发布阻断描述和当前代码/机器真源一致；不改历史 Evidence，只验证 TASK-0112 以后 Evidence 的 reactor/remote 标签精确且把历史歧义明确为不可追溯改写。完成 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送和远端 0/0 复核；随后继续未关闭数据库、Harness/CI 和条件风险。"
+}

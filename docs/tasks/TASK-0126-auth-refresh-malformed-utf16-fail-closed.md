@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0126
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -252,7 +252,18 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner 的 exact-SHA 失败事实保持不变。TASK-0112 至
       TASK-0122 已按同一 fallback 合规闭环；本卡冻结 LOCAL_EXACT_TREE_FALLBACK，远端继续如实非 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0126_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 680e1a3e71c9c817ddc31f33f26648a214d960b7
+    candidateTree: 8a98f11531c030240c293763a306ef0d7cca47b6
+    evidencePath: docs/evidence/TASK-0126/review-r1.md
+    reason: >-
+      R1 完整矩阵复核 PASS：malformed high/low surrogate 在 HMAC/state/AuthService 前固定
+      fail-closed 为 429/Retry-After 60；null、blank、Java/UTF-8 over-limit 仍保留 401，exact
+      512-byte 与合法 U+FFFD 保持独立 HMAC bucket；TASK-0125 firewall/observation 零回归，
+      候选内 P0/P1/P2/P3=0。
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0126
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am -Dtest=AuthAbuseGuardTest,AuthRequestBodyLimitFilterTest,AuthSourceAdmissionFilterTest,AuthInputLimitsTest,AuthServiceTest,AuthControllerValidationTest,AuthControllerAbuseControlTest,AuthControllerCookieTest,AuthSecurityIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test

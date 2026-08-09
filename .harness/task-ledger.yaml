@@ -658,3 +658,9 @@ tasks:
     taskCard: docs/tasks/TASK-0125-auth-firewall-envelope-observation.md
     evidence: docs/evidence/TASK-0125/evidence-pack.json
     handoff: docs/handoffs/TASK-0125.json
+  TASK-0126:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0126-auth-refresh-malformed-utf16-fail-closed.md
+    evidence: docs/evidence/TASK-0126/evidence-pack.json
+    handoff: docs/handoffs/TASK-0126.json
