@@ -1,0 +1,137 @@
+schemaVersion: 1
+taskId: TASK-0127
+baseCommit: 86389bd2fca56ec1f3afea638c5eda1869a12555
+contextFingerprint: c2b0d5dabfda727be6f1f0ea27fb652ab8091d86fbc414afa6e57a6c6b79f648
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+  - path: .gitattributes
+    sha256: 98ef74cab7df7ea0cc4c4ed35a9fcdfadf085c657dcb4231e9f6dfef25c6faac
+  - path: .github/workflows/ci.yml
+    sha256: 7b6357649f49f85af508c24c8440bb12ac0d62010fa86d7b4aa7df7e6b55f158
+  - path: .harness/agent-entrypoints.yaml
+    sha256: ecafcd1e736aa65fb5a47c91c9e1947b5d056c9037f2905ca03fe8eba32a823a
+  - path: .harness/ci-execution-policy.yaml
+    sha256: 666976659494a5e5188e3b37c933fcc5cb1522c958d1d4f55565a4172a9be43b
+  - path: .harness/commands.yaml
+    sha256: 35af171f3c83fdbe0adc691789b14f16fff297475046e9d88e91c115a66df720
+  - path: .harness/invariants.yaml
+    sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+  - path: .harness/license-policy.yaml
+    sha256: c13ce6bb1a0806f6ea4d47685386df6c7064b66b02173e496d47ec7468478205
+  - path: .harness/paid-feature-denylist.yaml
+    sha256: 4f96855253f04a886e77cdcbaf0462387a380f9eca6be6e347d88bb529dc4708
+  - path: .harness/phase-scope.yaml
+    sha256: 55f4e02048943206868b74129f85a0c73f39da9960f95b64f631a9788a9ad0e6
+  - path: .harness/project-state.yaml
+    sha256: 831c85ab68021c5c96d1919eed36acfdfc245c0c5c049ca72a56c75cd6664fe3
+  - path: .harness/protected-paths.yaml
+    sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+  - path: .harness/skills.yaml
+    sha256: ff2688b1c3e4620906f6d9da2eed7e6b663d0d9adc4d4f2a47c5fad672a35fad
+  - path: .harness/sources-of-truth.yaml
+    sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+  - path: .harness/task-backlog.yaml
+    sha256: e1c150fcf98f07a91a384467828c3d4a3161d9037e8d43aeab85be37212b6fd5
+  - path: .harness/task-delivery-policy.yaml
+    sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
+  - path: .harness/task-ledger.yaml
+    sha256: c5fa08e32633b7e095585edac48634f11fc281dd388eabad90d9dc7b1fc3d19e
+  - path: .harness/task-lifecycle.yaml
+    sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+  - path: .harness/tools.lock.yaml
+    sha256: fb107e5b18b64a4c42fed466da1456e8093a8112c9facaa24c9206044eb18e35
+  - path: AGENTS.md
+    sha256: 8c04d7dc1af1a04ccd9e3fab64b9a071e1a3f143610a08367e8cfce3e91d390c
+  - path: CLAUDE.md
+    sha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+  - path: README.md
+    sha256: 7577bc9fed1a57f4f2d9ab91c18fd1e245abb42028da9ddb9372b4ab6a7ed7ae
+  - path: docs/architecture/repository-structure.md
+    sha256: 2b6229812ee79f136fe680079969c54688e84c3455b4f6394713f6b61e572927
+  - path: docs/engineering/technology-baseline.md
+    sha256: 932d3887654c674e56b4befca2ce197f35c801e0e44d2ec7b36f03ac13d703c1
+  - path: docs/evidence/TASK-0090/evidence-pack.json
+    sha256: 7772ffe9f4bc846b2156baa1ed3c425967ca482cf4922c8bce54056749f91121
+  - path: docs/evidence/TASK-0109/zcode-remediation-handoff.md
+    sha256: 04bc8d6145db5c7c6f77875e0cdb9b4a35ec187c514687f18af005a06a97efda
+  - path: docs/evidence/TASK-0112/evidence-pack.json
+    sha256: c443a832703c1373018e56ebb9f118b9c23bb8f6e9e647bcd683364196e4c6df
+  - path: docs/evidence/TASK-0122/evidence-pack.json
+    sha256: 0af2cbe606e04021eff71f18412054172855db66c47359e07c8d60616e5b108f
+  - path: docs/evidence/TASK-0126/evidence-pack.json
+    sha256: 09b40387925f7b37be97e3db144cec76391e96dc17c1653732176bceac54d9f6
+  - path: docs/handoffs/TASK-0090.json
+    sha256: c270ee7c301396134c6dcb6351b20e54319d6081be46f845ff51e431c805962c
+  - path: docs/handoffs/TASK-0126.json
+    sha256: 41566ef45c807518adb923b953da89226699c3696a8ea8160ba5be8b7d73adef
+  - path: docs/schemas/evidence-pack.schema.json
+    sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+  - path: docs/schemas/handoff.schema.json
+    sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+  - path: docs/tasks/TASK-0090-generation-terminal-persistence.md
+    sha256: 8ab6fdc7e15faba443bc2a63a6a3455fa15d2049a302fba53d48c3bbf0f86998
+  - path: docs/tasks/TASK-0126-auth-refresh-malformed-utf16-fail-closed.md
+    sha256: cd755afef062d27bd4e87b214d02629eec88171f0f19fbc937322f5d06160f79
+  - path: docs/tasks/context/TASK-0126.context-lock.yaml
+    sha256: 706d575502513cef112fa2ff97c9b80f9fbc384f11c2e2ea201eb1ef8a5a3ea5
+  - path: docs/tasks/task-card-template.md
+    sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+  - path: frontend/package.json
+    sha256: cdfa3fb54f0968139a508b6cd60b868306f242ccc54d126e05bef0cb6e7726be
+  - path: frontend/pnpm-lock.yaml
+    sha256: 373eb4628593f256c3551e84ffa1455d19e138c0eec568381108edeb77481659
+  - path: frontend/src/pages.json
+    sha256: aa888f6b9a8a92d0cdda5b6cc7717590e1a5834884e65dc4177de7fb0bcf0b74
+  - path: infra/db/run-rls-tests.sh
+    sha256: 772830e98da8ad199acdbc54efadc7e90782d77773d335be39ee042f16aff331
+  - path: pom.xml
+    sha256: b4c91c41c074f1e1d67c5f17b600004961c9a1af9959f9f10379bfe5e990cdb0
+  - path: requirements-harness.txt
+    sha256: 15a0b1ad3059a055847bf367d43a7d3c138b791d2bf67d8b6a53f982edda1dd3
+  - path: service/apps/runtime/pom.xml
+    sha256: ba0906cb8848e9b5b7e9080201732cfe39585c50c9bd67ffa4d93f91f723adae
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/web/AuthController.java
+    sha256: 39e82b7ecb2fdfb53931b76c1b81ee75dc31c70166c8d5b98942ef3666106f02
+  - path: service/apps/runtime/src/main/java/com/virtualcompanion/runtime/baseline/BaselineController.java
+    sha256: 724e88cddc3d9512c266238ecfb72284230cda972662bf854e3ae0a5f7b5a9c5
+  - path: service/apps/runtime/src/main/resources/application.yaml
+    sha256: 0d6298ba4b016ce564f8aa498a23818de6e8f601e1263e9709ea5fefcc1d9e38
+  - path: service/platform/persistence/src/main/resources/db/migration/V10__generation_cancel_message_history.sql
+    sha256: 051bcb31f007db217f732a73fd6254928f5e1743edf815ae65338b01c85609fe
+  - path: service/platform/persistence/src/main/resources/db/migration/V11__canonical_memory_lifecycle.sql
+    sha256: 3ec7074a1be9ea68d8fb104e41d3a864fe79ebad2007d30bc09a2a8ae866a15a
+  - path: service/platform/persistence/src/main/resources/db/migration/V12__memory_candidate_management_api.sql
+    sha256: 440708c6b3d18c2e0a9b082a26e92973eca32c81565338773639839ce77ef5c0
+  - path: service/platform/persistence/src/main/resources/db/migration/V13__memory_recall_context_tombstone.sql
+    sha256: 98c726560f6011ad75b874d3f8220916732504bbe755ed02531eaff6f68f51ea
+  - path: service/platform/persistence/src/main/resources/db/migration/V14__identity_accounts_sessions.sql
+    sha256: 17f14469bcfd95bbb73b42fcdd1a887f1673d231f49af1f1912e7c5478818316
+  - path: service/platform/persistence/src/main/resources/db/migration/V15__provider_attempt_terminal_transitions.sql
+    sha256: 4e24046cf645bd1c7feaa1cc6da079926426e75641a25e7895970f487185b6c6
+  - path: service/platform/persistence/src/main/resources/db/migration/V1__extensions_roles_functions.sql
+    sha256: 660d1885784da00a99271d8fe5c0aac10856c3cbf53cf93712efda5589418555
+  - path: service/platform/persistence/src/main/resources/db/migration/V2__user_domain_ownership.sql
+    sha256: ffe0c1db251f13e1130ee1b716461b51ef7ab0a8d8b3a9608f2508abd66ddab1
+  - path: service/platform/persistence/src/main/resources/db/migration/V3__authorization_snapshot.sql
+    sha256: a1d3e1a6cb28e4706084c3b26c7ed6f25d1d841e929ddcfd82373cf3de85c5a4
+  - path: service/platform/persistence/src/main/resources/db/migration/V4__provider_registry.sql
+    sha256: c40b8161ff364b959cdbd732fa5678256eceb09de6d8e9b4870dcac5ff40a3d5
+  - path: service/platform/persistence/src/main/resources/db/migration/V5__worker_claim_lease_fence.sql
+    sha256: f090e3fc99a5d426ec596046ff090d4c799b98d21d611abb81d47177c76ba0d7
+  - path: service/platform/persistence/src/main/resources/db/migration/V6__conversation_generation_persistence.sql
+    sha256: 2c7c7a30c0aadecd1100b4a6f9c69768016e62220706bb9e88134a77b5163a3c
+  - path: service/platform/persistence/src/main/resources/db/migration/V7__finalize_generation_usage_quota_outbox.sql
+    sha256: 72faf51f97168330a632b30aee420c3d735f3736e3e381543b82c491465edab1
+  - path: service/platform/persistence/src/main/resources/db/migration/V8__realtime_resume_ticket_gap_reset_snapshot.sql
+    sha256: 68207ef94eb20e2d82eb6ed2ed5b9b76a07eb2d5f447fe902bf6558167d5d60a
+  - path: service/platform/persistence/src/main/resources/db/migration/V9__relationship_active_companion_limit.sql
+    sha256: 31c21c658215f6efa9dc9f3429b5d526b04d891c9b00e6a783dc553194fc6e1c
+  - path: skills/task-delivery-flow/SKILL.md
+    sha256: 9993e863360e181f7f13c1c058868196c69bf49d85c2ba128787ca6e8a95481b
+  - path: skills/task-intake/SKILL.md
+    sha256: 025fb456212052459245bbf2b79bce38684e63e63e0e8c664ff5d69091af9c4d
+  - path: specs/catalog/product-scope.yaml
+    sha256: dc8fe7f8a00d4c177a8ce2230376b9738d9da2fd51cbc04de40fae2f6ce1f65b
+  - path: specs/openapi/virtual-companion.yaml
+    sha256: 166e36ded4d0a861bcf34a03ee825f7dddaf41c5e43ea39144a9be1a1ed84f72
