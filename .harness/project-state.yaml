@@ -2,16 +2,16 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0112
+activeTaskCard: docs/tasks/TASK-0112-auth-input-hygiene.md
 lastAcceptedTask: TASK-0108
 lastAcceptedHandoff: docs/handoffs/TASK-0108.json
 lastTerminalTask: TASK-0111
 lastTerminalHandoff: docs/handoffs/TASK-0111.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0112，重新执行 P2-04/P3-05/P3-06 Auth hygiene（修正 Context Fingerprint
-  为无尾随 LF 的 canonical 算法），其余范围、风险和验收保持 TASK-0111 授权语义；TASK-0110
-  Provider early-limit 保持未验收。
+  执行 TASK-0112：为 Auth JSON 入口加入 Bean Validation 与统一 400 INVALID_REQUEST ErrorEnvelope，
+  移除普通日志账户标识并统一 username trim/lower 在 repository、审计、JWT 与响应中的语义；
+  TASK-0110 Provider early-limit 保持未验收，待合规 exact-tree 渠道的新永久卡重新验证。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
