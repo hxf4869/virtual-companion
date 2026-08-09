@@ -2,14 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0120
+activeTaskCard: docs/tasks/TASK-0120-openai-sse-raw-budget.md
 lastAcceptedTask: TASK-0119
 lastAcceptedHandoff: docs/handoffs/TASK-0119.json
 lastTerminalTask: TASK-0119
 lastTerminalHandoff: docs/handoffs/TASK-0119.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0120，作为永久独立 C3 卡为 OpenAI SSE 冻结不可重置的 8388608-byte 全连接 raw budget：从当前 OpenAI SseDecoder、stream session、TASK-0116 backpressure 与 TASK-0113 response limits 重新取证，在不改变 [DONE]、合法 data、strict UTF-8、queue/output/timeout 语义的前提下覆盖 comment/blank/data/framing/CR/LF/CRLF 全计数、exact/one-over、budget+1/sentinel、MalformedResponse、body close、cancel/timeout 与无 late event；其余 OPEN/OWNER_GATE 按审计交接严格串行推进。
+  执行 TASK-0120：在 OpenAI SseDecoder 冻结不可重置的 8388608-byte 全连接 raw budget，并由 streaming session 传入；覆盖 comment/blank/contentless-data/data/framing/CR/LF/CRLF/[DONE] 全计数、exact/one-over、budget+1/sentinel、MalformedResponse、body close、cancel/timeout 与无 late event，在独立 Reviewer PASS 后完成正式门禁、Evidence/Handoff、推送与远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
