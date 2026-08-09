@@ -2,17 +2,17 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0117
+activeTaskCard: docs/tasks/TASK-0117-anthropic-stream-backpressure.md
 lastAcceptedTask: TASK-0116
 lastAcceptedHandoff: docs/handoffs/TASK-0116.json
 lastTerminalTask: TASK-0116
 lastTerminalHandoff: docs/handoffs/TASK-0116.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0117，作为永久独立 C3 卡为 Anthropic streaming session 引入与 TASK-0116
-  等价的有界事件队列与可取消 backpressure：冻结队列容量和控制事件保留位，确保解析线程快于消费者时内存有界，cancel/timeout/body-close
-  不死锁且唯一终态不丢失；Anthropic maxTokens ceiling 与跨 frame raw budget
-  继续拆分后续卡。
+  执行 TASK-0117：在 AnthropicMessagesSession 冻结 64 个待消费 OutputDelta 与 3 个成功控制事件保留位，
+  实现释放 stateLock 的可取消背压与 terminal 后 stream frame 早停，覆盖满载消费恢复、cancel/close/total-timeout、
+  structured late-frame fence、body-close、唯一终态和连续 sequence，并在独立 Reviewer PASS 后完成正式门禁、
+  Evidence/Handoff、推送与远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
