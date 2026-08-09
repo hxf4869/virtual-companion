@@ -207,6 +207,22 @@ final class AnthropicContractTestSupport {
             long inputTokens,
             long outputTokens
     ) {
+        return toolUseCompletion(
+                "companion_response",
+                inputJson,
+                stopReason,
+                inputTokens,
+                outputTokens
+        );
+    }
+
+    static String toolUseCompletion(
+            String toolName,
+            String inputJson,
+            String stopReason,
+            long inputTokens,
+            long outputTokens
+    ) {
         var root = JSON.createObjectNode();
         root.put("id", "msg_offline");
         root.put("type", "message");
@@ -215,8 +231,35 @@ final class AnthropicContractTestSupport {
         var block = root.putArray("content").addObject();
         block.put("type", "tool_use");
         block.put("id", "toolu_offline");
-        block.put("name", "companion_response");
+        if (toolName != null) {
+            block.put("name", toolName);
+        }
         block.set("input", parseJson(inputJson));
+        root.put("stop_reason", stopReason);
+        root.putNull("stop_sequence");
+        addUsage(root, inputTokens, outputTokens);
+        return JSON.writeValueAsString(root);
+    }
+
+    static String mixedTextToolUseCompletion(
+            String text,
+            String inputJson,
+            String stopReason,
+            long inputTokens,
+            long outputTokens
+    ) {
+        var root = JSON.createObjectNode();
+        root.put("id", "msg_offline");
+        root.put("type", "message");
+        root.put("role", "assistant");
+        root.put("model", MODEL);
+        var blocks = root.putArray("content");
+        blocks.addObject().put("type", "text").put("text", text);
+        var toolUse = blocks.addObject();
+        toolUse.put("type", "tool_use");
+        toolUse.put("id", "toolu_offline");
+        toolUse.put("name", "companion_response");
+        toolUse.set("input", parseJson(inputJson));
         root.put("stop_reason", stopReason);
         root.putNull("stop_sequence");
         addUsage(root, inputTokens, outputTokens);
@@ -259,9 +302,13 @@ final class AnthropicContractTestSupport {
     }
 
     static String contentBlockStart() {
+        return contentBlockStart(0);
+    }
+
+    static String contentBlockStart(long index) {
         var root = JSON.createObjectNode();
         root.put("type", "content_block_start");
-        root.put("index", 0);
+        root.put("index", index);
         var block = root.putObject("content_block");
         block.put("type", "text");
         block.put("text", "");
@@ -269,25 +316,42 @@ final class AnthropicContractTestSupport {
     }
 
     static String contentBlockStartToolUse() {
+        return contentBlockStartToolUse("companion_response", 0);
+    }
+
+    static String contentBlockStartToolUse(String toolName, long index) {
         var root = JSON.createObjectNode();
         root.put("type", "content_block_start");
-        root.put("index", 0);
+        root.put("index", index);
         var block = root.putObject("content_block");
         block.put("type", "tool_use");
         block.put("id", "toolu_offline");
-        block.put("name", "companion_response");
+        if (toolName != null) {
+            block.put("name", toolName);
+        }
         block.putObject("input");
         return JSON.writeValueAsString(root);
     }
 
     static String contentBlockStop() {
-        return "{\"type\":\"content_block_stop\",\"index\":0}";
+        return contentBlockStop(0);
+    }
+
+    static String contentBlockStop(long index) {
+        var root = JSON.createObjectNode();
+        root.put("type", "content_block_stop");
+        root.put("index", index);
+        return JSON.writeValueAsString(root);
     }
 
     static String textDelta(String text) {
+        return textDelta(0, text);
+    }
+
+    static String textDelta(long index, String text) {
         var root = JSON.createObjectNode();
         root.put("type", "content_block_delta");
-        root.put("index", 0);
+        root.put("index", index);
         var delta = root.putObject("delta");
         delta.put("type", "text_delta");
         delta.put("text", text);
@@ -295,9 +359,13 @@ final class AnthropicContractTestSupport {
     }
 
     static String inputJsonDelta(String partialJson) {
+        return inputJsonDelta(0, partialJson);
+    }
+
+    static String inputJsonDelta(long index, String partialJson) {
         var root = JSON.createObjectNode();
         root.put("type", "content_block_delta");
-        root.put("index", 0);
+        root.put("index", index);
         var delta = root.putObject("delta");
         delta.put("type", "input_json_delta");
         delta.put("partial_json", partialJson);

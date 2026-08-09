@@ -290,16 +290,19 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
                 SizeLimits.MAX_NON_STREAM_RESPONSE_BODY_BYTES
         ));
         ModelPayload payload;
-        if (request.responseMode() instanceof ResponseMode.StructuredJson) {
+        if (request.responseMode() instanceof ResponseMode.StructuredJson structured) {
             // Real tool-use protocol: the structured answer arrives in the
             // tool_use block input, never in a text block.
-            var toolUse = message.toolUseInput()
+            var toolUse = message.toolUse()
                     .orElseThrow(AnthropicCodecException::new);
+            if (!structured.schemaName().equals(toolUse.name())) {
+                throw new AnthropicCodecException();
+            }
             payload = new ModelPayload.StructuredJson(
-                    codec.requireStructuredJson(toolUse)
+                    codec.requireStructuredJson(toolUse.input())
             );
         } else {
-            if (message.toolUseInput().isPresent()) {
+            if (message.toolUse().isPresent()) {
                 // An unclaimed tool_use without a structured consumer is a
                 // protocol mismatch; fail closed instead of leaking JSON text.
                 throw new AnthropicCodecException();
@@ -313,9 +316,10 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
 
     private void parseStream(InputStream body)
             throws IOException, AnthropicCodecException {
-        var state = new StreamState(
-                request.responseMode() instanceof ResponseMode.StructuredJson
-        );
+        var expectedToolName = request.responseMode() instanceof ResponseMode.StructuredJson structured
+                ? structured.schemaName()
+                : null;
+        var state = new StreamState(expectedToolName);
         SseDecoder.decode(
                 body,
                 SizeLimits.MAX_STREAM_EVENT_BYTES,
@@ -348,21 +352,27 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             if (state.blockOpen) {
                 throw new AnthropicCodecException();
             }
-            if (state.structured && !"tool_use".equals(start.blockType())) {
-                throw new AnthropicCodecException();
-            }
-            if (!state.structured && !"text".equals(start.blockType())) {
+            if (state.structured) {
+                if (state.blockSettled
+                        || !"tool_use".equals(start.blockType())
+                        || !state.expectedToolName.equals(
+                                start.toolUseName().orElse(null))) {
+                    throw new AnthropicCodecException();
+                }
+            } else if (!"text".equals(start.blockType())) {
                 throw new AnthropicCodecException();
             }
             state.blockOpen = true;
+            state.blockIndex = start.index();
             state.blockType = start.blockType();
             return true;
         }
         if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.ContentBlockStop stop) {
-            if (!state.blockOpen) {
+            if (!state.blockOpen || stop.index() != state.blockIndex) {
                 throw new AnthropicCodecException();
             }
             state.blockOpen = false;
+            state.blockIndex = -1;
             state.blockType = null;
             if (state.structured) {
                 // The tool_use block is complete; its input JSON is settled.
@@ -371,7 +381,9 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             return true;
         }
         if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.TextDelta delta) {
-            if (!state.blockOpen || !"text".equals(state.blockType)) {
+            if (!state.blockOpen
+                    || delta.index() != state.blockIndex
+                    || !"text".equals(state.blockType)) {
                 throw new AnthropicCodecException();
             }
             if (state.structured) {
@@ -386,7 +398,9 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             return true;
         }
         if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.InputJsonDelta delta) {
-            if (!state.blockOpen || !"tool_use".equals(state.blockType)) {
+            if (!state.blockOpen
+                    || delta.index() != state.blockIndex
+                    || !"tool_use".equals(state.blockType)) {
                 throw new AnthropicCodecException();
             }
             if (!state.structured) {
@@ -719,10 +733,12 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
 
     private static final class StreamState {
         private final boolean structured;
+        private final String expectedToolName;
         private final StringBuilder structuredContent = new StringBuilder();
         private boolean startSeen;
         private boolean contentSeen;
         private boolean blockOpen;
+        private long blockIndex = -1;
         private String blockType;
         private boolean blockSettled;
         private StopReason stopReason;
@@ -732,8 +748,9 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
         private boolean trailingHighSurrogate;
         private boolean done;
 
-        private StreamState(boolean structured) {
-            this.structured = structured;
+        private StreamState(String expectedToolName) {
+            this.structured = expectedToolName != null;
+            this.expectedToolName = expectedToolName;
         }
     }
 

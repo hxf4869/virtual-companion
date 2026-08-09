@@ -11,8 +11,10 @@ import java.util.List;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.adapter;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.completion;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.contentBlockStart;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.contentBlockStartToolUse;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.contentBlockStop;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.drain;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.inputJsonDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStart;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStop;
@@ -20,6 +22,7 @@ import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTest
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.structuredRequest;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.textDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.textRequest;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.toolUseCompletion;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
@@ -120,6 +123,115 @@ class AnthropicMessagesFailureContractTest {
                         .noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
                 assertEquals(1, server.requestCount());
                 assertEquals(1, client.asynchronousCalls());
+            }
+        }
+    }
+
+    @Test
+    void structured_non_stream_rejects_wrong_missing_and_blank_tool_names()
+            throws Exception {
+        var responses = List.of(
+                toolUseCompletion("wrong_tool", "{\"answer\":\"wrong\"}", "end_turn", 2, 1),
+                toolUseCompletion(null, "{\"answer\":\"missing\"}", "end_turn", 2, 1),
+                toolUseCompletion("   ", "{\"answer\":\"blank\"}", "end_turn", 2, 1)
+        );
+
+        for (var response : responses) {
+            try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                    200,
+                    "application/json",
+                    response
+            ))) {
+                var events = drain(adapter(
+                        new CountingHttpClient(),
+                        server.endpoint()
+                ).open(structuredRequest(false, "invalid tool name")));
+
+                assertMalformedWithoutSuccess(events, true);
+            }
+        }
+    }
+
+    @Test
+    void structured_stream_rejects_tool_name_and_block_index_violations()
+            throws Exception {
+        var wrongName = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("wrong_tool", 0));
+        var missingName = sse(messageStart(2))
+                + sse(contentBlockStartToolUse(null, 0));
+        var blankName = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("   ", 0));
+        var mismatchedDelta = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("companion_response", 3))
+                + sse(inputJsonDelta(4, "{\"answer\":\"wrong\"}"));
+        var mismatchedStop = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("companion_response", 3))
+                + sse(inputJsonDelta(3, "{\"answer\":\"wrong\"}"))
+                + sse(contentBlockStop(4));
+        var secondToolBlock = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("companion_response", 0))
+                + sse(inputJsonDelta(0, "{\"answer\":\"first\"}"))
+                + sse(contentBlockStop(0))
+                + sse(contentBlockStartToolUse("companion_response", 1));
+        var negativeStart = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("companion_response", -1));
+        var negativeDelta = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("companion_response", 0))
+                + sse(inputJsonDelta(-1, "{}"));
+        var negativeStop = sse(messageStart(2))
+                + sse(contentBlockStartToolUse("companion_response", 0))
+                + sse(inputJsonDelta(0, "{}"))
+                + sse(contentBlockStop(-1));
+
+        for (var stream : List.of(
+                wrongName,
+                missingName,
+                blankName,
+                mismatchedDelta,
+                mismatchedStop,
+                secondToolBlock,
+                negativeStart,
+                negativeDelta,
+                negativeStop
+        )) {
+            try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                    200,
+                    "text/event-stream",
+                    stream
+            ))) {
+                var events = drain(adapter(
+                        new CountingHttpClient(),
+                        server.endpoint()
+                ).open(structuredRequest(true, "invalid structured stream")));
+
+                assertMalformedWithoutSuccess(events, true);
+            }
+        }
+    }
+
+    @Test
+    void text_stream_rejects_mismatched_delta_and_stop_indexes()
+            throws Exception {
+        var mismatchedDelta = sse(messageStart(2))
+                + sse(contentBlockStart(3))
+                + sse(textDelta(4, "must not emit"));
+        var mismatchedStop = sse(messageStart(2))
+                + sse(contentBlockStart(3))
+                + sse(textDelta(3, "already emitted"))
+                + sse(contentBlockStop(4));
+
+        for (var stream : List.of(mismatchedDelta, mismatchedStop)) {
+            try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                    200,
+                    "text/event-stream",
+                    stream
+            ))) {
+                var events = drain(adapter(
+                        new CountingHttpClient(),
+                        server.endpoint()
+                ).open(textRequest(true, "invalid text stream")));
+
+                assertMalformedWithoutSuccess(events, false);
             }
         }
     }
@@ -271,6 +383,22 @@ class AnthropicMessagesFailureContractTest {
                 ModelProtocolEvent.AttemptFailed.class,
                 events.getLast()
         ).failure();
+    }
+
+    private static void assertMalformedWithoutSuccess(
+            List<ModelProtocolEvent> events,
+            boolean outputForbidden
+    ) {
+        assertInstanceOf(AdapterFailure.MalformedResponse.class, onlyFailure(events));
+        assertTrue(events.stream()
+                .noneMatch(ModelProtocolEvent.UsageReported.class::isInstance));
+        assertTrue(events.stream()
+                .noneMatch(ModelProtocolEvent.AttemptEos.class::isInstance));
+        if (outputForbidden) {
+            assertEquals(1, events.size());
+            assertTrue(events.stream()
+                    .noneMatch(ModelProtocolEvent.OutputDelta.class::isInstance));
+        }
     }
 
     private record ResponseCase(String contentType, String body) {

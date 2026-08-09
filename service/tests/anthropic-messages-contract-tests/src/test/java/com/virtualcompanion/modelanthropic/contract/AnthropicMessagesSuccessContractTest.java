@@ -30,6 +30,7 @@ import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTest
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageDelta;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStart;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.messageStop;
+import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.mixedTextToolUseCompletion;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.multiTextCompletion;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.parseJson;
 import static com.virtualcompanion.modelanthropic.contract.AnthropicContractTestSupport.sse;
@@ -307,10 +308,10 @@ class AnthropicMessagesSuccessContractTest {
         // fragments, not as text blocks or text_delta events.
         var nonStreamingStream = toolUseCompletion(structuredJson, "end_turn", 4, 3);
         var streamingStream = sse(messageStart(4))
-                + sse(contentBlockStartToolUse())
-                + sse(inputJsonDelta("{\"answer\":\"今"))
-                + sse(inputJsonDelta("晚辛苦了\"}"))
-                + sse(contentBlockStop())
+                + sse(contentBlockStartToolUse("companion_response", 7))
+                + sse(inputJsonDelta(7, "{\"answer\":\"今"))
+                + sse(inputJsonDelta(7, "晚辛苦了\"}"))
+                + sse(contentBlockStop(7))
                 + sse(messageDelta("end_turn", 3))
                 + sse(messageStop());
         try (var nonStreamingServer = new MockAnthropicServer(MockAnthropicServer.fixed(
@@ -346,6 +347,60 @@ class AnthropicMessagesSuccessContractTest {
                 assertEquals("tool", toolChoice.get("type").stringValue());
                 assertEquals("companion_response", toolChoice.get("name").stringValue());
             }
+        }
+    }
+
+    @Test
+    void nonStreamingStructuredOutputIgnoresTextPrelude() throws Exception {
+        var structuredJson = "{\"answer\":\"工具结果\"}";
+        var response = mixedTextToolUseCompletion(
+                "provider prelude must not leak",
+                structuredJson,
+                "end_turn",
+                4,
+                3
+        );
+        try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "application/json",
+                response
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(structuredRequest(false, "mixed structured")));
+
+            assertStructuredOnly(events, structuredJson);
+        }
+    }
+
+    @Test
+    void streamingMultipleTextBlocksPreserveOrderAndIndexes() throws Exception {
+        var stream = sse(messageStart(5))
+                + sse(contentBlockStart(2))
+                + sse(textDelta(2, "第一块"))
+                + sse(contentBlockStop(2))
+                + sse(contentBlockStart(9))
+                + sse(textDelta(9, " / 第二块"))
+                + sse(contentBlockStop(9))
+                + sse(messageDelta("end_turn", 2))
+                + sse(messageStop());
+        try (var server = new MockAnthropicServer(MockAnthropicServer.fixed(
+                200,
+                "text/event-stream",
+                stream
+        ))) {
+            var events = drain(adapter(
+                    new CountingHttpClient(),
+                    server.endpoint()
+            ).open(textRequest(true, "multiple blocks")));
+
+            assertEquals(List.of("第一块", " / 第二块"), textDeltas(events));
+            assertEquals(new TokenUsage(5, 2, 7), assertInstanceOf(
+                    ModelProtocolEvent.UsageReported.class,
+                    events.get(2)
+            ).usage());
+            assertInstanceOf(ModelProtocolEvent.AttemptEos.class, events.get(3));
         }
     }
 
