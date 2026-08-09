@@ -640,3 +640,9 @@ tasks:
     taskCard: docs/tasks/TASK-0122-auth-abuse-admission-control.md
     evidence: docs/evidence/TASK-0122/evidence-pack.json
     handoff: docs/handoffs/TASK-0122.json
+  TASK-0123:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0123-auth-request-target-utf8-boundary.md
+    evidence: docs/evidence/TASK-0123/evidence-pack.json
+    handoff: docs/handoffs/TASK-0123.json

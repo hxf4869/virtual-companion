@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0123",
+  "state": "REJECTED",
+  "baseCommit": "30a0a25e20cd1c76b31d016d768faaf13a72588f",
+  "headCommit": "70ace14a89a9c094690a94bb8576ca978d518456",
+  "evidencePath": "docs/evidence/TASK-0123/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "6154b27359aab9048151a4c22fb4945740873e0c",
+      "startedAt": "2026-08-09T20:05:24+08:00",
+      "endedAt": "2026-08-09T20:49:13+08:00",
+      "elapsedSeconds": 2629,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "6154b27359aab9048151a4c22fb4945740873e0c",
+      "startedAt": "2026-08-09T20:05:24+08:00",
+      "endedAt": "2026-08-09T20:07:27+08:00",
+      "elapsedSeconds": 123,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "d4ec252849f76e4089d796b0adf9dcb473a42896",
+      "startedAt": "2026-08-09T20:07:42+08:00",
+      "endedAt": "2026-08-09T20:47:31+08:00",
+      "elapsedSeconds": 2389,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T20:07:27+08:00",
+      "inProgressCommit": "d4ec252849f76e4089d796b0adf9dcb473a42896"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0123_r2",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "70ace14a89a9c094690a94bb8576ca978d518456",
+      "evidencePath": "docs/evidence/TASK-0123/review-r2.md",
+      "reason": "R2 FAIL：R1 P2-01 已关闭，但 encoded Auth-prefix alias /api/v1/%61uth/admin/accounts 仍由 firewall fallback 产生空 400；自定义 RequestRejectedHandler 还替代了 Spring Security 默认 observation marking，新增全局可观测性 P2。唯一 fix batch 已消耗且 R3 禁止。",
+      "candidateTree": "7c195d82363781e73d2747d46ed50af9c36c0f5b"
+    }
+  ],
+  "completed": [
+    "已提交 shared Auth POST request-target classifier，并让 source/body filters 统一拒绝 literal Auth-prefix 的 encoded、matrix 与 malformed target；login/admin body fence 的 exact/one-over 行为保留。",
+    "AuthInputLimits 已改为严格 UTF-8 REPORT；合法 U+FFFD 与孤立 high/low surrogate 分离，direct AuthService login/createAccount/refresh/logout/seed 在昂贵依赖前失败关闭。",
+    "R1 的 method case-sensitivity 与 malformed 非 Auth 过度拦截 finding 已在唯一 fix batch 中关闭；lowercase method 和 malformed 非 Auth zero-read chain-through 已覆盖。",
+    "实际 Security chain 对 literal raw Auth-prefix 的 firewall rejection 已返回固定 INVALID_REQUEST envelope，非 Auth 仍委托默认 400 handler。",
+    "迭代测试分组均通过；最后相关报告为 BodyLimit 14、Source 11、Security 17 tests PASS，但它们不替代未运行的正式门禁。"
+  ],
+  "remaining": [
+    "R2 证明 /api/v1/%61uth/admin/accounts 等 encoded Auth-prefix alias 仍在 StrictHttpFirewall 后走默认空 400，尚未满足固定 INVALID_REQUEST envelope。",
+    "自定义 RequestRejectedHandler bean 替换了 Spring Security 7.1 默认 ObservationMarkingRequestRejectedHandler 组合，Auth-enabled 时 firewall rejection 的异常 observation 标记丢失。",
+    "TASK-0123 的 canonical precheck、冻结 targeted reactor、root verify、唯一无参数 git diff --check 与远端 exact-SHA 均因 R2 FAIL 而未运行，不得声称候选通过。",
+    "TASK-0122 Handoff 中其他数据库 principal/readiness、authorization snapshot、admin seed 并发、跨实例 limiter、密码策略、审计聚合及其余 P2/P3 仍需后续卡串行处理；全部修复后必须独立全项目复审。"
+  ],
+  "knownRisks": [
+    "TASK-0123 已消费唯一 fix batch，R2 仍有两个 P2 且 R3 禁止；继续修改或复核本卡会违反冻结 delivery policy。",
+    "已提交但 REJECTED 的候选部分收敛了边界，同时引入 firewall observation marking 回归；在 TASK-0124 关闭前不得把当前 main 声称为 accepted Auth 边界。",
+    "literal raw Auth-prefix firewall rejection 已固定 JSON，但 encoded Auth segment 仍空 400，外部客户端可观察结果不一致。",
+    "远端 exact-SHA 与 LOCAL_EXACT_TREE_FALLBACK 均未运行，passClaimed=false。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0124：继承 TASK-0123 已提交的 Auth request-target/严格 UTF-8 实现，在不重开 TASK-0123 第三轮修复或复核的前提下，补全 Spring Security firewall 对 encoded Auth-prefix MVC 等价路径（至少 /api/v1/%61uth/admin/accounts）的固定 400 INVALID_REQUEST envelope，并保留默认 ObservationMarkingRequestRejectedHandler 的异常标记和非 Auth 400 行为；重新覆盖 TASK-0123 完整矩阵，完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核。"
+}

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0123
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -279,7 +279,18 @@ humanApprovals:
       已按同一 READY 冻结 fallback 合规关闭。本卡冻结 LOCAL_EXACT_TREE_FALLBACK，远端继续
       如实为非 PASS，PASS 只绑定记录的本机 Commit/Tree、精确命令、工具链和输出哈希。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0123_r2
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: 70ace14a89a9c094690a94bb8576ca978d518456
+    evidencePath: docs/evidence/TASK-0123/review-r2.md
+    reason: >-
+      R2 FAIL：R1 P2-01 已关闭，但 encoded Auth-prefix alias
+      /api/v1/%61uth/admin/accounts 仍由 firewall fallback 产生空 400；自定义
+      RequestRejectedHandler 还替代了 Spring Security 默认 observation marking，新增全局可观测性
+      P2。唯一 fix batch 已消耗且 R3 禁止。
+    candidateTree: 7c195d82363781e73d2747d46ed50af9c36c0f5b
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0123
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am -Dtest=AuthRequestBodyLimitFilterTest,AuthSourceAdmissionFilterTest,AuthInputLimitsTest,AuthServiceTest,AuthControllerValidationTest,AuthControllerAbuseControlTest,AuthSecurityIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test
