@@ -54,10 +54,10 @@ PowerShell/POSIX 包装器仍可用于本机辅助，但正式 Evidence 的 cano
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/admin/accounts`
 
-`specs/openapi/virtual-companion.yaml` 还定义了 relationship、generation、message、snapshot 和 memory 的合同面，
-但当前 runtime 没有对应 controller。Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的
-组成部分，不应被描述成已可供真实用户调用的完整纵切。真实 provider 默认关闭，具体 deployment、endpoint
-和凭据只允许由部署配置注入。
+`specs/openapi/virtual-companion.yaml` 还定义了 version、relationship、generation、message、snapshot 和 memory
+的合同面，但当前 runtime 没有对应 controller，包括尚未接线的 `GET /api/v1/version`。Chat/Memory 页面、
+领域内核、provider adapters 和数据库函数是已实现的组成部分，不应被描述成已可供真实用户调用的完整纵切。
+真实 provider 默认关闭，具体 deployment、endpoint 和凭据只允许由部署配置注入。
 
 后端需要 JDK 25：
 
@@ -108,8 +108,9 @@ runtime-upstream reactor、root 15-module reactor、本地 exact-tree fallback �
 ## 安全与发布状态
 
 当前只允许本地开发和 CI 使用合成数据。普通 profile 的 Auth 与 live provider 均默认关闭；production profile
-要求显式开启 Auth 和 datasource，但这只证明配置缺失时会失败关闭，不代表生产就绪。系统未开放注册、
-未启用真实支付、未授权保存真实用户数据，也没有接通面向用户的 generation/realtime/memory 纵切。
+要求显式提供 Auth 和 datasource 两个开关，缺少任一配置时启动失败，但当前实现不会拒绝显式的 `false`。
+部署政策要求生产环境将两者设为 `true`，这项要求尚未由配置代码自身强制，也不代表生产就绪。系统未开放
+注册、未启用真实支付、未授权保存真实用户数据，也没有接通面向用户的 generation/realtime/memory 纵切。
 
 Duty-roster 检查通过不等于 Beta 获批；`realUserBeta` 在 PIA、伦理适用性、成年人验证、责任人、值班和安全
 演练形成证据前保持 `BLOCKED`，`realPayment` 在 Technical Alpha 保持 `FORBIDDEN`。真实 provider 外发还必须
