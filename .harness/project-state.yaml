@@ -2,17 +2,16 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0116
+activeTaskCard: docs/tasks/TASK-0116-openai-stream-backpressure.md
 lastAcceptedTask: TASK-0115
 lastAcceptedHandoff: docs/handoffs/TASK-0115.json
 lastTerminalTask: TASK-0115
 lastTerminalHandoff: docs/handoffs/TASK-0115.json
 nextAction: >-
-  通过 task-intake 创建 TASK-0116，作为永久独立 C3 卡为 OpenAI streaming session 引入有界事件队列与可取消
-  backpressure：冻结队列容量和阻塞/取消语义，确保解析线程快于消费者时内存有界，cancel/timeout/body-close
-  不死锁且唯一终态不丢失；Anthropic queue/backpressure、Anthropic maxTokens ceiling 与跨 frame raw budget
-  继续拆分后续卡。
+  执行 TASK-0116：在 OpenAiChatCompletionsSession 冻结 64 个待消费 OutputDelta 与 3 个控制事件保留位，
+  实现释放状态锁的可取消背压，覆盖满载消费恢复、cancel/close/total-timeout、body-close、唯一终态与连续
+  序列，并在独立 Reviewer PASS 后完成正式门禁、Evidence/Handoff、推送与远端 0/0 复核。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
