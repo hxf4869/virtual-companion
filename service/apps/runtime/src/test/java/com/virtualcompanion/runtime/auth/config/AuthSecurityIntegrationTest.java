@@ -135,6 +135,7 @@ class AuthSecurityIntegrationTest {
                 "/api/v1/auth/login;v=1",
                 "/api/v1/auth/refr%65sh",
                 "/api/v1/auth/logout;v=1",
+                "/api/v1/%61uth/admin/accounts",
                 "/api/v1/auth/admin/acc%6Funts",
                 "/api/v1/auth/admin/acc%6funts",
                 "/api/v1/auth/admin/accounts;v=1")) {

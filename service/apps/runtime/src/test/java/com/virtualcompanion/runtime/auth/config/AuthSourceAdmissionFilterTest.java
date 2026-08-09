@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard.AdmissionLease;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard.Route;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletInputStream;
 import java.util.ArrayList;
@@ -286,6 +289,10 @@ class AuthSourceAdmissionFilterTest {
         assertThat(AuthRequestTarget.resolve(
                         new MockHttpServletRequest("POST", "/api/v1/other/%ZZ"))
                 .status()).isEqualTo(AuthRequestTarget.Status.NOT_TARGET);
+        assertThat(AuthRequestTarget.resolve(
+                        new MockHttpServletRequest(
+                                "POST", "/api/v1/%61uth/admin/accounts"))
+                .status()).isEqualTo(AuthRequestTarget.Status.NON_CANONICAL);
     }
 
     @Test
@@ -308,21 +315,26 @@ class AuthSourceAdmissionFilterTest {
     }
 
     @Test
-    void firewallHandlerMapsOnlyRawAuthPostTargetsToTheFixedEnvelope() throws Exception {
-        AuthRequestRejectedHandler handler = new AuthRequestRejectedHandler();
-        MockHttpServletRequest authRequest = new MockHttpServletRequest(
-                "POST", "/ctx/api/v1/auth/admin/acc%6Funts");
-        authRequest.setContextPath("/ctx");
-        MockHttpServletResponse authResponse = new MockHttpServletResponse();
+    void firewallHandlerMapsResolvedAndRawAuthTargetsToTheFixedEnvelope() throws Exception {
+        AuthRequestRejectedHandler handler =
+                new AuthRequestRejectedHandler(ObservationRegistry.NOOP);
 
-        handler.handle(
-                authRequest, authResponse, new RequestRejectedException("sensitive target"));
+        for (MockHttpServletRequest authRequest : List.of(
+                requestWithContextPath("/ctx/api/v1/auth/admin/acc%6Funts", "/ctx"),
+                new MockHttpServletRequest("POST", "/api/v1/%61uth/admin/accounts"))) {
+            MockHttpServletResponse authResponse = new MockHttpServletResponse();
 
-        assertThat(authResponse.getStatus()).isEqualTo(400);
-        assertThat(authResponse.getContentAsString())
-                .isEqualTo("{\"code\":\"INVALID_REQUEST\","
-                        + "\"message\":\"The request is invalid\"}")
-                .doesNotContain("sensitive target");
+            handler.handle(
+                    authRequest,
+                    authResponse,
+                    new RequestRejectedException("sensitive target"));
+
+            assertThat(authResponse.getStatus()).isEqualTo(400);
+            assertThat(authResponse.getContentAsString())
+                    .isEqualTo("{\"code\":\"INVALID_REQUEST\","
+                            + "\"message\":\"The request is invalid\"}")
+                    .doesNotContain("sensitive target");
+        }
 
         MockHttpServletResponse nonAuthResponse = new MockHttpServletResponse();
         handler.handle(
@@ -332,6 +344,40 @@ class AuthSourceAdmissionFilterTest {
 
         assertThat(nonAuthResponse.getStatus()).isEqualTo(400);
         assertThat(nonAuthResponse.getContentAsByteArray()).isEmpty();
+    }
+
+    @Test
+    void firewallHandlerMarksTheCurrentObservationBeforeEitherResponseBranch() throws Exception {
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig().observationHandler(new ObservationHandler<>() {
+            @Override
+            public boolean supportsContext(Observation.Context context) {
+                return true;
+            }
+        });
+        AuthRequestRejectedHandler handler = new AuthRequestRejectedHandler(registry);
+
+        for (MockHttpServletRequest request : List.of(
+                new MockHttpServletRequest("POST", "/api/v1/%61uth/admin/accounts"),
+                new MockHttpServletRequest("POST", "/api/v1/other/%ZZ"))) {
+            RequestRejectedException exception =
+                    new RequestRejectedException("sensitive rejection");
+            Observation observation = Observation.start("firewall.rejected", registry);
+            try (Observation.Scope ignored = observation.openScope()) {
+                handler.handle(request, new MockHttpServletResponse(), exception);
+            } finally {
+                observation.stop();
+            }
+
+            assertThat(observation.getContext().getError()).isSameAs(exception);
+        }
+    }
+
+    private static MockHttpServletRequest requestWithContextPath(
+            String requestUri, String contextPath) {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", requestUri);
+        request.setContextPath(contextPath);
+        return request;
     }
 
     private static MockHttpServletResponse invoke(

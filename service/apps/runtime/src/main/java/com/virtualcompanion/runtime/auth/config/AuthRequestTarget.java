@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.auth.config;
 
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -11,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.server.PathContainer;
 import org.springframework.http.server.RequestPath;
 import org.springframework.security.web.firewall.HttpStatusRequestRejectedHandler;
+import org.springframework.security.web.firewall.ObservationMarkingRequestRejectedHandler;
 import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.stereotype.Component;
@@ -146,14 +148,21 @@ final class AuthRequestTarget {
 @ConditionalOnProperty(name = "virtual-companion.auth.enabled", havingValue = "true")
 final class AuthRequestRejectedHandler implements RequestRejectedHandler {
 
+    private final RequestRejectedHandler observationMarker;
     private final RequestRejectedHandler fallback = new HttpStatusRequestRejectedHandler();
+
+    AuthRequestRejectedHandler(ObservationRegistry observationRegistry) {
+        this.observationMarker = new ObservationMarkingRequestRejectedHandler(observationRegistry);
+    }
 
     @Override
     public void handle(
             HttpServletRequest request,
             HttpServletResponse response,
             RequestRejectedException exception) throws IOException, ServletException {
-        if (AuthRequestTarget.isRawAuthTarget(request)) {
+        observationMarker.handle(request, response, exception);
+        AuthRequestTarget.Match match = AuthRequestTarget.resolve(request);
+        if (match.rejected() || AuthRequestTarget.isRawAuthTarget(request)) {
             AuthRequestTarget.reject(response);
             return;
         }
