@@ -153,9 +153,13 @@ public final class AuthAbuseGuard {
      */
     public void admitRefresh(String refreshToken) {
         try {
-            if (refreshToken == null || refreshToken.isBlank()
-                    || !AuthInputLimits.withinUtf8Bytes(
-                            refreshToken, AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES)) {
+            if (refreshToken == null
+                    || refreshToken.length() > AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES
+                    || refreshToken.isBlank()) {
+                return;
+            }
+            if (AuthInputLimits.utf8ByteLength(refreshToken)
+                    > AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES) {
                 return;
             }
             refreshKeys.admit(digest("refresh-key", refreshToken), nowMillis());

@@ -113,18 +113,21 @@ class AuthAbuseGuardTest {
     void refreshFenceSkipsInvalidTokensAndTokenScopesAreIndependent() {
         MutableClock clock = new MutableClock();
         AuthAbuseGuard guard = guard(clock);
+        String exactUtf8 = "\uD83D\uDE00".repeat(128);
 
         guard.admitRefresh(null);
         guard.admitRefresh(" ");
         guard.admitRefresh("x".repeat(513));
+        guard.admitRefresh(exactUtf8 + "a");
         assertThat(guard.refreshKeyStateSize()).isZero();
 
+        guard.admitRefresh(exactUtf8);
         guard.admitRefresh("token-a");
         assertThatThrownBy(() -> guard.admitRefresh("token-a"))
                 .isInstanceOfSatisfying(AuthRateLimitException.class,
                         e -> assertThat(e.retryAfterSeconds()).isEqualTo(1));
         guard.admitRefresh("token-b");
-        assertThat(guard.refreshKeyStateSize()).isEqualTo(2);
+        assertThat(guard.refreshKeyStateSize()).isEqualTo(3);
     }
 
     @Test

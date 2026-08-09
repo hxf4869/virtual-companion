@@ -149,6 +149,22 @@ class AuthControllerAbuseControlTest {
     }
 
     @Test
+    void malformedRefreshTokenFailsClosedBeforeAuthService() throws Exception {
+        for (String malformed : List.of("\uD800", "\uDC00")) {
+            mockMvc.perform(post("/api/v1/auth/refresh")
+                            .cookie(new Cookie(CookieCsrfGuardFilter.REFRESH_COOKIE, malformed)))
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "60"))
+                    .andExpect(jsonPath("$.code").value("AUTH_RATE_LIMITED"))
+                    .andExpect(jsonPath("$.message")
+                            .value("Authentication is temporarily rate limited"))
+                    .andExpect(jsonPath("$.details").doesNotExist());
+        }
+
+        verify(authService, times(0)).refresh(anyString());
+    }
+
+    @Test
     void nonCanonicalLoginPathsDoNotReachTheMvcEndpoint() throws Exception {
         AuthAbuseGuard guard = new AuthAbuseGuard();
         MockMvc admissionProtectedMvc = MockMvcBuilders.standaloneSetup(
