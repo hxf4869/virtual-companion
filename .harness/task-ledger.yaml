@@ -604,3 +604,9 @@ tasks:
     taskCard: docs/tasks/TASK-0116-openai-stream-backpressure.md
     evidence: docs/evidence/TASK-0116/evidence-pack.json
     handoff: docs/handoffs/TASK-0116.json
+  TASK-0117:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0117-anthropic-stream-backpressure.md
+    evidence: docs/evidence/TASK-0117/evidence-pack.json
+    handoff: docs/handoffs/TASK-0117.json

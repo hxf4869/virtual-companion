@@ -1,0 +1,80 @@
+{
+  "taskId": "TASK-0117",
+  "state": "ACCEPTED",
+  "baseCommit": "714fcd328c88d2977b58619090f72f5be85e9a48",
+  "headCommit": "ee4a503b3d2be4e9cea806ad5a2f9e92fbeb0b63",
+  "evidencePath": "docs/evidence/TASK-0117/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "d6813b0f50a69db6cc10b815c1e884ee33037648",
+      "startedAt": "2026-08-09T13:41:29+08:00",
+      "endedAt": "2026-08-09T14:12:29+08:00",
+      "elapsedSeconds": 1860,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "d6813b0f50a69db6cc10b815c1e884ee33037648",
+      "startedAt": "2026-08-09T13:41:29+08:00",
+      "endedAt": "2026-08-09T13:43:27+08:00",
+      "elapsedSeconds": 118,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "d51310b7c8e92528401ce39c2ca4080441b12208",
+      "startedAt": "2026-08-09T13:43:34+08:00",
+      "endedAt": "2026-08-09T14:12:29+08:00",
+      "elapsedSeconds": 1735,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-09T13:43:27+08:00",
+      "inProgressCommit": "d51310b7c8e92528401ce39c2ca4080441b12208"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0117_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "ee4a503b3d2be4e9cea806ad5a2f9e92fbeb0b63",
+      "evidencePath": "docs/evidence/TASK-0117/review-r1.md",
+      "reason": "R1 完整矩阵复核 PASS：候选 Commit/Tree、Context、逐父授权和 writeAllowlist 一致；64/3/67 容量、wait/notify、取消/超时/body-close、structured late-frame fence 与唯一终态满足验收，允许进入正式门禁。",
+      "candidateTree": "387b86a59f683bef67845b4be417c41865898053"
+    },
+    {
+      "id": "task0117_r2",
+      "kind": "independent-finding-closure-review",
+      "verdict": "PASS",
+      "reviewedCommit": "ee4a503b3d2be4e9cea806ad5a2f9e92fbeb0b63",
+      "evidencePath": "docs/evidence/TASK-0117/review-r2.md",
+      "reason": "R2 只读澄清关闭 R1 的测试精度备注：共享 drain helper 已逐事件验证连续 sequence、完整 binding、唯一且最后的 terminal 和 terminal 后永久 empty；单 producer 与锁内 while 复核证明一次 dequeue 最多放行一个当前 delta，最终 P0/P1/P2/P3 为零。",
+      "candidateTree": "387b86a59f683bef67845b4be417c41865898053"
+    }
+  ],
+  "completed": [
+    "AnthropicMessagesSession 以受 stateLock 保护的 ArrayDeque 替换无界 LinkedBlockingQueue，冻结 64 个 pending streaming OutputDelta、3 个成功控制事件保留位和 67 个事件引用绝对上界。",
+    "producer 在提交第 65 个 OutputDelta 前通过 wait 释放状态锁；consumer dequeue 后 notifyAll，sequence 只在真实入队后递增，terminal 仲裁、队列修改和序列分配继续由同一锁串行化。",
+    "cancel、close 与 total timeout 在满队列下先冻结唯一终态并唤醒 parser，再于锁外关闭 body、取消 future 并中断线程；已接受事件保持顺序，terminal 唯一且最后，terminal 后永久 empty。",
+    "terminal 冻结后 Anthropic stream callback 立即返回 false，新增受控 structured sentinel 场景证明不再读取 late provider frame；structured streaming 和 non-stream success 原子容纳 final delta、Usage 与 EOS。",
+    "验证绑定 ee4a503b/387b86a5：独立 R1/R2 最终 P0/P1/P2/P3=0，canonical 5/5 PASS，定向 reactor 264 tests PASS，根级 15 模块 verify 577 tests PASS，唯一次 git diff --check PASS。"
+  ],
+  "remaining": [
+    "Anthropic maxTokens 仍只有正值校验，尚未冻结 provider-safe ceiling；异常大输出 token 配置仍是成本与资源风险。",
+    "连续 comment/empty-data frame 仍缺少连接级累计 raw byte budget；现有单物理行、单事件、raw body 与累计输出上限不替代该跨 frame 边界。",
+    "P2-03 Auth 滥用防护、P2-13 admin seed 并发、P2-12 JDBC snapshot 复活，以及审计交接中的其余 OPEN/OWNER_GATE 继续严格串行。"
+  ],
+  "knownRisks": [
+    "Anthropic maxTokens provider-safe ceiling 与跨 frame raw budget 继续分别保留为未关闭成本和资源风险，不被本卡背压修复掩盖。",
+    "远程 exact-SHA 未运行且不声称 PASS；LOCAL_EXACT_TREE_FALLBACK 只覆盖记录的候选 Commit/Tree、命令、工具链和本机结果。",
+    "R1 的测试精度备注已经由同一冻结候选上的 R2 只读复核关闭，未消耗实现 fix batch，最终无未关闭 P0/P1/P2/P3 reviewer finding。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0118，作为永久独立 C3 卡为 Anthropic maxTokens 冻结 provider-safe 私有上限：从当前 runtime 配置、Anthropic request codec 与已批准模型路由重新取证，拒绝非正值和超上限配置或请求，覆盖边界、启动失败与无外发；连续 comment/empty-data frame 的连接级累计 raw byte budget 继续独立后续卡，其余 OPEN/OWNER_GATE 按审计交接严格串行推进。"
+}

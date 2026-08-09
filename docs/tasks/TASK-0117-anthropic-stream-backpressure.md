@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0117
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -302,7 +302,21 @@ humanApprovals:
       在无 runner、零 step 状态终止；TASK-0112 至 TASK-0116 已按同一 READY 冻结 fallback 合规
       ACCEPTED。本卡冻结 LOCAL_EXACT_TREE_FALLBACK，远端继续如实为非 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0117_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: ee4a503b3d2be4e9cea806ad5a2f9e92fbeb0b63
+    evidencePath: docs/evidence/TASK-0117/review-r1.md
+    reason: 'R1 完整矩阵复核 PASS：候选 Commit/Tree、Context、逐父授权和 writeAllowlist 一致；64/3/67 容量、wait/notify、取消/超时/body-close、structured late-frame fence 与唯一终态满足验收，允许进入正式门禁。'
+    candidateTree: 387b86a59f683bef67845b4be417c41865898053
+  - id: task0117_r2
+    kind: independent-finding-closure-review
+    verdict: PASS
+    reviewedCommit: ee4a503b3d2be4e9cea806ad5a2f9e92fbeb0b63
+    evidencePath: docs/evidence/TASK-0117/review-r2.md
+    reason: 'R2 只读澄清关闭 R1 的测试精度备注：共享 drain helper 已逐事件验证连续 sequence、完整 binding、唯一且最后的 terminal 和 terminal 后永久 empty；单 producer 与锁内 while 复核证明一次 dequeue 最多放行一个当前 delta，最终 P0/P1/P2/P3 为零。'
+    candidateTree: 387b86a59f683bef67845b4be417c41865898053
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0117
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress -pl service/adapters/model-anthropic,service/tests/anthropic-messages-contract-tests,service/tests/model-protocol-contract-tests -am test
