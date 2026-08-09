@@ -7182,8 +7182,17 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
         )
 
     @classmethod
-    def initialize(cls, repository: Path, *, initial_next: str | None = None) -> str:
-        cls.git(repository, "init", "-q")
+    def initialize(
+        cls,
+        repository: Path,
+        *,
+        initial_next: str | None = None,
+        initial_branch: str | None = None,
+    ) -> str:
+        init_args = ["init", "-q"]
+        if initial_branch is not None:
+            init_args.extend(["--initial-branch", initial_branch])
+        cls.git(repository, *init_args)
         cls.git(repository, "config", "user.name", "Harness Test")
         cls.git(repository, "config", "user.email", "harness@example.invalid")
         entries = {task_id: cls.entry(task_id) for task_id in cls.TASK_IDS}
@@ -7535,8 +7544,8 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
                     audit.errors,
                 )
 
-    def test_rejects_merge_empty_split_multiple_and_extra_paths(self) -> None:
-        for scenario in ("empty", "split", "multiple", "extra", "merge"):
+    def test_rejects_empty_split_multiple_and_extra_paths(self) -> None:
+        for scenario in ("empty", "split", "multiple", "extra"):
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
                 repository = Path(directory)
                 terminal = self.initialize(repository)
@@ -7603,19 +7612,49 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
                         next_action="将 TASK-1002 晋级为唯一 DRAFT",
                         extra_path=True,
                     )
-                else:
-                    self.git(repository, "checkout", "-qb", "side")
-                    (repository / "side.txt").write_text("side\n", encoding="utf-8")
-                    self.git(repository, "add", "--", ".")
-                    self.git(repository, "commit", "-qm", "side")
-                    self.git(repository, "checkout", "-q", "master")
-                    self.resolve(
-                        repository,
-                        "TASK-1001",
-                        "REJECTED",
-                        next_action="将 TASK-1002 晋级为唯一 DRAFT",
-                    )
-                    self.git(repository, "merge", "--no-ff", "-qm", "merge", "side")
+                target = self.git(repository, "rev-parse", "HEAD")
+                result, audit = self.derive(repository, terminal, target)
+                self.assertIsNone(result)
+                self.assertTrue(audit.errors)
+
+    def test_rejects_merge_on_discovered_primary_branch(self) -> None:
+        branch_cases = (
+            ("without-global-config", None, True),
+            ("explicit-main", "main", False),
+            ("explicit-master", "master", False),
+        )
+        for label, initial_branch, without_global_config in branch_cases:
+            with (
+                self.subTest(branch_case=label),
+                tempfile.TemporaryDirectory() as directory,
+                ExitStack() as stack,
+            ):
+                if without_global_config:
+                    stack.enter_context(patch.dict(
+                        os.environ,
+                        {"GIT_CONFIG_GLOBAL": os.devnull},
+                        clear=False,
+                    ))
+                repository = Path(directory)
+                terminal = self.initialize(repository, initial_branch=initial_branch)
+                primary_branch = self.git(repository, "branch", "--show-current")
+                self.assertTrue(primary_branch)
+                if initial_branch is not None:
+                    self.assertEqual(initial_branch, primary_branch)
+
+                self.git(repository, "checkout", "-qb", "side")
+                (repository / "side.txt").write_text("side\n", encoding="utf-8")
+                self.git(repository, "add", "--", ".")
+                self.git(repository, "commit", "-qm", "side")
+                self.git(repository, "checkout", "-q", primary_branch)
+                self.resolve(
+                    repository,
+                    "TASK-1001",
+                    "REJECTED",
+                    next_action="将 TASK-1002 晋级为唯一 DRAFT",
+                )
+                self.git(repository, "merge", "--no-ff", "-qm", "merge", "side")
+
                 target = self.git(repository, "rev-parse", "HEAD")
                 result, audit = self.derive(repository, terminal, target)
                 self.assertIsNone(result)
