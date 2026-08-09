@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0133
+activeTaskCard: docs/tasks/TASK-0133-harness-default-branch-fixture-portability.md
 lastAcceptedTask: TASK-0132
 lastAcceptedHandoff: docs/handoffs/TASK-0132.json
 lastTerminalTask: TASK-0132
 lastTerminalHandoff: docs/handoffs/TASK-0132.json
-nextAction: '通过 task-intake 创建 TASK-0133，先在当前 HEAD 独立复核并关闭审计 P2-20：修复 scripts/harness/tests/test_harness.py 在临时 git init fixture 中硬编码 master 的可移植性问题，显式创建或查询实际默认分支，并增加 init.defaultBranch=main、master 与无全局配置的回归；本卡仅触碰必要 Harness 测试/契约路径，不合并 P2-21 canonical Python 选择、Actions/依赖锁/timeout/matrix/OpenAPI 或业务代码。完成 C4 harness-change Owner 证据、独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交和远端 0/0 后，再处理其余 Harness/CI、Provider DNS 与数据库 Owner gates。'
+nextAction: '执行 TASK-0133：只修改 scripts/harness/tests/test_harness.py，令 merge planning fixture 查询真实 primary branch，并覆盖显式 main、显式 master 与 GIT_CONFIG_GLOBAL=/dev/null 三种初始化；不改 Harness 生产逻辑或 P2-21。冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
