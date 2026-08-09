@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0131
+activeTaskCard: docs/tasks/TASK-0131-anthropic-nonstream-duplicate-tool-use-test.md
 lastAcceptedTask: TASK-0130
 lastAcceptedHandoff: docs/handoffs/TASK-0130.json
 lastTerminalTask: TASK-0130
 lastTerminalHandoff: docs/handoffs/TASK-0130.json
-nextAction: '通过 task-intake 创建 TASK-0131，关闭 TASK-0130 R1 P3-01：为 Anthropic 非流 structured response 的同一 content 数组包含第二个 tool_use 增加直接 contract test，断言唯一 MalformedResponse 且无 OutputDelta/Usage/EOS；不改生产实现、provider 配置、尺寸上限、网络、OpenAPI、数据库或历史制品，完成独立 Reviewer、正式门禁、Evidence/Handoff、单父终态提交、推送与远端 0/0 复核后，继续处理 TASK-0108 egress hostname/DNS 边界及其余审计项。'
+nextAction: '执行 TASK-0131：只在 AnthropicMessagesFailureContractTest 增加非流 structured response 同一 content 数组含第二个 matching-name tool_use 的直接回归，断言唯一 MalformedResponse 且无 OutputDelta/Usage/EOS；冻结 clean candidate 后取得 15 分钟内独立 Reviewer 终态，再按顺序完成 Precheck、targeted Failure contract test、root verify 与唯一 diff check，生成 Evidence/Handoff、单父终态提交并 push/fetch 复核远端 0/0。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
