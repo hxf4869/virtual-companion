@@ -6,6 +6,7 @@ import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
@@ -268,8 +269,10 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
     }
 
     private void parseCompletion(InputStream body) throws AnthropicCodecException {
-        var message = codec.decodeMessage(body);
-        markFirstContent();
+        var message = codec.decodeMessage(new BoundedInputStream(
+                body,
+                SizeLimits.MAX_NON_STREAM_RESPONSE_BODY_BYTES
+        ));
         ModelPayload payload;
         if (request.responseMode() instanceof ResponseMode.StructuredJson) {
             // Real tool-use protocol: the structured answer arrives in the
@@ -287,6 +290,8 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             }
             payload = new ModelPayload.TextChunk(message.content());
         }
+        requireOutputWithinLimit(payload);
+        markFirstContent();
         completeSuccessfully(payload, message.usage(), message.stopReason());
     }
 
@@ -295,7 +300,11 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
         var state = new StreamState(
                 request.responseMode() instanceof ResponseMode.StructuredJson
         );
-        SseDecoder.decode(body, data -> onStreamEvent(state, data));
+        SseDecoder.decode(
+                body,
+                SizeLimits.MAX_STREAM_EVENT_BYTES,
+                data -> onStreamEvent(state, data)
+        );
         if (!state.done) {
             throw new AnthropicCodecException();
         }
@@ -345,11 +354,12 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             if (!state.blockOpen || !"text".equals(state.blockType)) {
                 throw new AnthropicCodecException();
             }
-            state.contentSeen = true;
-            markFirstContent();
             if (state.structured) {
                 throw new AnthropicCodecException();
             }
+            addOutputBytes(state, delta.text());
+            state.contentSeen = true;
+            markFirstContent();
             emitText(delta.text());
             return true;
         }
@@ -360,9 +370,10 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             if (!state.structured) {
                 throw new AnthropicCodecException();
             }
+            addOutputBytes(state, delta.partialJson());
+            state.structuredContent.append(delta.partialJson());
             state.contentSeen = true;
             markFirstContent();
-            state.structuredContent.append(delta.partialJson());
             return true;
         }
         if (event instanceof AnthropicMessagesCodec.AnthropicStreamEvent.MessageDelta messageDelta) {
@@ -395,8 +406,11 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
                 if (!state.blockSettled) {
                     throw new AnthropicCodecException();
                 }
+                var structuredJson = codec.requireStructuredJson(
+                        state.structuredContent.toString());
+                requireOutputWithinLimit(structuredJson);
                 structuredPayload = new ModelPayload.StructuredJson(
-                        codec.requireStructuredJson(state.structuredContent.toString())
+                        structuredJson
                 );
             }
             completeSuccessfully(structuredPayload, usage, state.stopReason);
@@ -404,6 +418,44 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             return false;
         }
         return true;
+    }
+
+    private static void requireOutputWithinLimit(ModelPayload payload)
+            throws AnthropicCodecException {
+        String content = switch (payload) {
+            case ModelPayload.TextChunk text -> text.text();
+            case ModelPayload.StructuredJson structured -> structured.json();
+        };
+        requireOutputWithinLimit(content);
+    }
+
+    private static void requireOutputWithinLimit(String content)
+            throws AnthropicCodecException {
+        if (SizeLimits.utf8Bytes(content) > SizeLimits.MAX_TOTAL_OUTPUT_BYTES) {
+            throw new AnthropicCodecException();
+        }
+    }
+
+    private static void addOutputBytes(StreamState state, String content)
+            throws AnthropicCodecException {
+        long deltaBytes = SizeLimits.utf8Bytes(content);
+        if (state.trailingHighSurrogate
+                && !content.isEmpty()
+                && Character.isLowSurrogate(content.charAt(0))) {
+            // SizeLimits counts isolated surrogates as one replacement byte.
+            // When adjacent deltas complete a pair, the joined output is four
+            // UTF-8 bytes, so account for the two-byte boundary difference.
+            deltaBytes += 2;
+        }
+        if (deltaBytes > SizeLimits.MAX_TOTAL_OUTPUT_BYTES - state.outputBytes) {
+            throw new AnthropicCodecException();
+        }
+        state.outputBytes += deltaBytes;
+        if (!content.isEmpty()) {
+            state.trailingHighSurrogate = Character.isHighSurrogate(
+                    content.charAt(content.length() - 1)
+            );
+        }
     }
 
     private void markFirstContent() {
@@ -614,6 +666,8 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
         private StopReason stopReason;
         private long inputTokens;
         private long outputTokens = -1;
+        private long outputBytes;
+        private boolean trailingHighSurrogate;
         private boolean done;
 
         private StreamState(boolean structured) {
