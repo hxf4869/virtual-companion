@@ -1,13 +1,19 @@
 package com.virtualcompanion.runtime.auth.config;
 
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.PathContainer;
 import org.springframework.http.server.RequestPath;
+import org.springframework.security.web.firewall.HttpStatusRequestRejectedHandler;
+import org.springframework.security.web.firewall.RequestRejectedException;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
+import org.springframework.stereotype.Component;
 import org.springframework.web.util.ServletRequestPathUtils;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
@@ -15,6 +21,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 /** Shared parsed/canonical boundary for the mapped Auth POST routes. */
 final class AuthRequestTarget {
 
+    private static final String AUTH_ROOT = "/api/v1/auth";
     private static final String INVALID_REQUEST_BODY =
             "{\"code\":\"INVALID_REQUEST\",\"message\":\"The request is invalid\"}";
 
@@ -22,7 +29,7 @@ final class AuthRequestTarget {
     }
 
     static Match resolve(HttpServletRequest request) {
-        if (request == null || !"POST".equalsIgnoreCase(request.getMethod())) {
+        if (request == null || !"POST".equals(request.getMethod())) {
             return Match.notTarget();
         }
 
@@ -30,7 +37,7 @@ final class AuthRequestTarget {
         try {
             requestPath = ServletRequestPathUtils.parse(request);
         } catch (IllegalArgumentException e) {
-            return Match.malformed();
+            return isRawAuthTarget(request) ? Match.malformed() : Match.notTarget();
         }
 
         PathContainer path = requestPath.pathWithinApplication();
@@ -41,6 +48,24 @@ final class AuthRequestTarget {
                         ? Match.canonical(route)
                         : Match.nonCanonical(route))
                 .orElseGet(Match::notTarget);
+    }
+
+    static boolean isRawAuthTarget(HttpServletRequest request) {
+        if (request == null || !"POST".equals(request.getMethod())) {
+            return false;
+        }
+        String path = request.getRequestURI();
+        if (path == null) {
+            return false;
+        }
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty()) {
+            if (!path.startsWith(contextPath)) {
+                return false;
+            }
+            path = path.substring(contextPath.length());
+        }
+        return AUTH_ROOT.equals(path) || path.startsWith(AUTH_ROOT + "/");
     }
 
     static void reject(HttpServletResponse response) throws IOException {
@@ -113,5 +138,25 @@ final class AuthRequestTarget {
         boolean canonical() {
             return status == Status.CANONICAL;
         }
+    }
+}
+
+/** Preserves the fixed Auth envelope when Spring Security's firewall rejects first. */
+@Component
+@ConditionalOnProperty(name = "virtual-companion.auth.enabled", havingValue = "true")
+final class AuthRequestRejectedHandler implements RequestRejectedHandler {
+
+    private final RequestRejectedHandler fallback = new HttpStatusRequestRejectedHandler();
+
+    @Override
+    public void handle(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            RequestRejectedException exception) throws IOException, ServletException {
+        if (AuthRequestTarget.isRawAuthTarget(request)) {
+            AuthRequestTarget.reject(response);
+            return;
+        }
+        fallback.handle(request, response, exception);
     }
 }

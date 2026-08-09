@@ -141,7 +141,9 @@ class AuthSecurityIntegrationTest {
             mockMvc.perform(post(URI.create(path))
                             .contentType("application/json")
                             .content(body))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                    .andExpect(jsonPath("$.message").value("The request is invalid"));
         }
     }
 

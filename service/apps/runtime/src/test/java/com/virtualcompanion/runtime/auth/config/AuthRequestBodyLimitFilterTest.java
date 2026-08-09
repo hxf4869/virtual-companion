@@ -100,15 +100,25 @@ class AuthRequestBodyLimitFilterTest {
     void otherMethodAndPathDoNotReadOrWrapBody() throws Exception {
         byte[] body = body(AuthInputLimits.MAX_REQUEST_BODY_BYTES + 1);
         TrackingRequest getRequest = request("GET", "/api/v1/auth/login", body, body.length, "");
+        TrackingRequest lowerCaseMethod = request(
+                "post", "/api/v1/auth/login", body, body.length, "");
         TrackingRequest otherRequest = request("POST", "/api/v1/auth/refresh", body, body.length, "");
+        TrackingRequest malformedNonAuth = request(
+                "POST", "/api/v1/other/%ZZ", body, body.length, "");
 
         FilterResult getResult = runWithoutReading(getRequest);
+        FilterResult lowerCaseResult = runWithoutReading(lowerCaseMethod);
         FilterResult otherResult = runWithoutReading(otherRequest);
+        FilterResult malformedNonAuthResult = runWithoutReading(malformedNonAuth);
 
         assertThat(getResult.chainCalled()).isTrue();
+        assertThat(lowerCaseResult.chainCalled()).isTrue();
         assertThat(otherResult.chainCalled()).isTrue();
+        assertThat(malformedNonAuthResult.chainCalled()).isTrue();
         assertThat(getRequest.input().bytesRead()).isZero();
+        assertThat(lowerCaseMethod.input().bytesRead()).isZero();
         assertThat(otherRequest.input().bytesRead()).isZero();
+        assertThat(malformedNonAuth.input().bytesRead()).isZero();
     }
 
     @ParameterizedTest

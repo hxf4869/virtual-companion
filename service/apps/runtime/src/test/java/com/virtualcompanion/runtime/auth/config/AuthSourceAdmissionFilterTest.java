@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.web.firewall.RequestRejectedException;
 
 class AuthSourceAdmissionFilterTest {
 
@@ -277,8 +278,60 @@ class AuthSourceAdmissionFilterTest {
                         new MockHttpServletRequest("GET", AuthSourceAdmissionFilter.LOGIN_PATH))
                 .status()).isEqualTo(AuthRequestTarget.Status.NOT_TARGET);
         assertThat(AuthRequestTarget.resolve(
+                        new MockHttpServletRequest("post", AuthSourceAdmissionFilter.LOGIN_PATH))
+                .status()).isEqualTo(AuthRequestTarget.Status.NOT_TARGET);
+        assertThat(AuthRequestTarget.resolve(
                         new MockHttpServletRequest("POST", "/api/v1/auth/unknown"))
                 .status()).isEqualTo(AuthRequestTarget.Status.NOT_TARGET);
+        assertThat(AuthRequestTarget.resolve(
+                        new MockHttpServletRequest("POST", "/api/v1/other/%ZZ"))
+                .status()).isEqualTo(AuthRequestTarget.Status.NOT_TARGET);
+    }
+
+    @Test
+    void lowercaseMethodAndMalformedNonAuthTargetRemainOutsideTheFilterBoundary()
+            throws Exception {
+        AuthSourceAdmissionFilter filter = new AuthSourceAdmissionFilter(new AuthAbuseGuard());
+        for (CountingRequest request : List.of(
+                request("post", AuthSourceAdmissionFilter.LOGIN_PATH, "192.0.2.150", null),
+                request("POST", "/api/v1/other/%ZZ", "192.0.2.151", null))) {
+            AtomicBoolean chainCalled = new AtomicBoolean();
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            filter.doFilter(request, response,
+                    (servletRequest, servletResponse) -> chainCalled.set(true));
+
+            assertThat(chainCalled).isTrue();
+            assertThat(request.reads()).isZero();
+            assertThat(response.getStatus()).isEqualTo(200);
+        }
+    }
+
+    @Test
+    void firewallHandlerMapsOnlyRawAuthPostTargetsToTheFixedEnvelope() throws Exception {
+        AuthRequestRejectedHandler handler = new AuthRequestRejectedHandler();
+        MockHttpServletRequest authRequest = new MockHttpServletRequest(
+                "POST", "/ctx/api/v1/auth/admin/acc%6Funts");
+        authRequest.setContextPath("/ctx");
+        MockHttpServletResponse authResponse = new MockHttpServletResponse();
+
+        handler.handle(
+                authRequest, authResponse, new RequestRejectedException("sensitive target"));
+
+        assertThat(authResponse.getStatus()).isEqualTo(400);
+        assertThat(authResponse.getContentAsString())
+                .isEqualTo("{\"code\":\"INVALID_REQUEST\","
+                        + "\"message\":\"The request is invalid\"}")
+                .doesNotContain("sensitive target");
+
+        MockHttpServletResponse nonAuthResponse = new MockHttpServletResponse();
+        handler.handle(
+                new MockHttpServletRequest("POST", "/api/v1/other/%ZZ"),
+                nonAuthResponse,
+                new RequestRejectedException("default rejection"));
+
+        assertThat(nonAuthResponse.getStatus()).isEqualTo(400);
+        assertThat(nonAuthResponse.getContentAsByteArray()).isEmpty();
     }
 
     private static MockHttpServletResponse invoke(
