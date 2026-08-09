@@ -2,15 +2,15 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0111
+activeTaskCard: docs/tasks/TASK-0111-auth-input-hygiene.md
 lastAcceptedTask: TASK-0108
 lastAcceptedHandoff: docs/handoffs/TASK-0108.json
 lastTerminalTask: TASK-0110
 lastTerminalHandoff: docs/handoffs/TASK-0110.json
 nextAction: >-
-  通过 task-intake 创建下一张永久独立任务卡，处理 P2-04/P3-05/P3-06 Auth hygiene：
-  Bean Validation 与统一 400 ErrorEnvelope、移除普通日志账户标识、统一 username trim/lower 语义；
+  执行 TASK-0111：为 Auth JSON 入口加入 Bean Validation 与统一 400 INVALID_REQUEST ErrorEnvelope，
+  移除普通日志账户标识并统一 username trim/lower 在 repository、审计、JWT 与响应中的语义；
   TASK-0110 Provider early-limit 保持未验收，待合规 exact-tree 渠道的新永久卡重新验证。
 capabilityGates:
   businessImplementation:
