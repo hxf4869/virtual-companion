@@ -10,6 +10,7 @@ import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import org.springframework.beans.factory.annotation.Value;
@@ -61,7 +62,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@RequestBody LoginRequest request, HttpServletResponse response) {
+    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
         IssuedSession session = authService.login(request.username(), request.password());
         setSessionCookies(response, session.refreshToken());
         return session.response();
@@ -87,7 +88,7 @@ public class AuthController {
 
     @PostMapping("/admin/accounts")
     public AccountResponse createAccount(
-            @RequestBody CreateAccountRequest request,
+            @Valid @RequestBody CreateAccountRequest request,
             @AuthenticationPrincipal JwtTokenService.Principal principal) {
         return authService.createAccount(principal, request);
     }

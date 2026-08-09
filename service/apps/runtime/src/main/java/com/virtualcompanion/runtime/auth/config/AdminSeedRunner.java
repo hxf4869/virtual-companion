@@ -40,7 +40,7 @@ public class AdminSeedRunner implements ApplicationRunner {
             log.info("admin seed skipped (no injected credentials)");
             return;
         }
-        long accountId = authService.seedAdmin(username, password, displayName);
-        log.info("admin seed ensured account id {}", accountId);
+        authService.seedAdmin(username, password, displayName);
+        log.info("admin seed ensured");
     }
 }

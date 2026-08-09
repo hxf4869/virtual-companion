@@ -1,5 +1,9 @@
 package com.virtualcompanion.runtime.auth.web;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
 /**
  * Request bodies for the identity endpoints. Passwords are never logged, never
  * placed in a URL and never returned by any response. Refresh and logout take
@@ -12,7 +16,9 @@ public final class AuthRequests {
     }
 
     /** {@code POST /api/v1/auth/login}. */
-    public record LoginRequest(String username, String password) {
+    public record LoginRequest(
+            @NotBlank @Size(max = 128) String username,
+            @NotBlank @Size(max = 1024) String password) {
     }
 
     /**
@@ -20,9 +26,10 @@ public final class AuthRequests {
      * to USER in the service; only an ACTIVE ADMIN can call the endpoint.
      */
     public record CreateAccountRequest(
-            String username,
-            String password,
-            String role,
-            String displayName) {
+            @NotBlank @Size(max = 128) String username,
+            @NotBlank @Size(max = 1024) String password,
+            @Size(max = 16)
+            @Pattern(regexp = "(?i:ADMIN|USER)") String role,
+            @NotBlank @Size(max = 256) String displayName) {
     }
 }

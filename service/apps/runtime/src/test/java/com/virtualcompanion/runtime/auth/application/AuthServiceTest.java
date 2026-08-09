@@ -6,9 +6,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
@@ -54,9 +56,10 @@ class AuthServiceTest {
     void loginSuccessIssuesTokensAndAudits() {
         when(accounts.authenticate("alice"))
                 .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
-        when(passwordEncoder.matches("pw", "hash")).thenReturn(true);
+        String rawPassword = "  p w password-sentinel  ";
+        when(passwordEncoder.matches(rawPassword, "hash")).thenReturn(true);
 
-        IssuedSession session = service.login("alice", "pw");
+        IssuedSession session = service.login("  ALICE  ", rawPassword);
         AuthResponse response = session.response();
 
         assertThat(response.accessToken()).isEqualTo("access-token");
@@ -65,6 +68,8 @@ class AuthServiceTest {
         assertThat(response.accountId()).isEqualTo("7");
         assertThat(response.role()).isEqualTo("USER");
         verify(accounts).recordLoginSuccess(7, "alice");
+        verify(passwordEncoder).matches(rawPassword, "hash");
+        verify(jwt).issueAccessToken(7L, "USER", "alice");
 
         // Only the sha256 hash of the returned raw token is persisted.
         ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
@@ -76,15 +81,18 @@ class AuthServiceTest {
     void wrongPasswordIsIndistinguishableFromUnknownUser() {
         when(accounts.authenticate("alice"))
                 .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
-        when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
+        String rawPassword = "  wrong password-sentinel  ";
+        when(passwordEncoder.matches(rawPassword, "hash")).thenReturn(false);
 
-        assertThatThrownBy(() -> service.login("alice", "wrong"))
+        assertThatThrownBy(() -> service.login("  ALICE  ", rawPassword))
                 .isInstanceOf(AuthErrorException.class)
                 .satisfies(e -> {
                     assertThat(((AuthErrorException) e).code()).isEqualTo("NOT_FOUND_OR_FORBIDDEN");
                     assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.NOT_FOUND);
                 });
+        verify(accounts).authenticate("alice");
         verify(accounts).recordLoginFailure("alice");
+        verify(passwordEncoder).matches(rawPassword, "hash");
         verify(sessions, never()).issue(anyLong(), anyString(), any());
     }
 
@@ -116,7 +124,7 @@ class AuthServiceTest {
     @Test
     void refreshRotatesSessionAndReissuesTokens() {
         when(sessions.rotate(anyString(), anyString(), any()))
-                .thenReturn(Optional.of(new RotatedSession(7, "USER", "ACTIVE", "alice")));
+                .thenReturn(Optional.of(new RotatedSession(7, "USER", "ACTIVE", "  ALICE  ")));
 
         IssuedSession session = service.refresh("raw-refresh-token");
         AuthResponse response = session.response();
@@ -125,6 +133,7 @@ class AuthServiceTest {
         assertThat(response.role()).isEqualTo("USER");
         assertThat(response.accessToken()).isEqualTo("access-token");
         assertThat(session.refreshToken()).isNotBlank();
+        verify(jwt).issueAccessToken(7L, "USER", "alice");
 
         // The old hash is used for lookup, never the raw token.
         ArgumentCaptor<String> oldHash = ArgumentCaptor.forClass(String.class);
@@ -171,15 +180,13 @@ class AuthServiceTest {
     }
 
     @Test
-    void adminCreatesAccountWithBcryptHashAndNormalizedUsername() {
+    void adminCreatesAccountWithBcryptHashNormalizedUsernameAndDefaultRole() {
         JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
-        // The raw (unnormalized) username is passed to the repository; the V14
-        // function normalizes it to lowercase.
-        when(accounts.createAccount(eq(1L), eq("Bob"), anyString(), eq("USER"), eq("Bob User")))
+        when(accounts.createAccount(eq(1L), eq("bob"), anyString(), eq("USER"), eq("Bob User")))
                 .thenReturn(42L);
 
         AccountResponse response = service.createAccount(
-                admin, new CreateAccountRequest("Bob", "s3cret", "USER", "Bob User"));
+                admin, new CreateAccountRequest("  Bob  ", "s3cret", null, "  Bob User  "));
 
         assertThat(response.accountId()).isEqualTo("42");
         assertThat(response.username()).isEqualTo("bob");
@@ -191,11 +198,11 @@ class AuthServiceTest {
     @Test
     void adminCreatesAdminAccountWhenRoleExplicit() {
         JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
-        when(accounts.createAccount(eq(1L), eq("Ops"), anyString(), eq("ADMIN"), eq("Ops")))
+        when(accounts.createAccount(eq(1L), eq("ops"), anyString(), eq("ADMIN"), eq("Ops")))
                 .thenReturn(43L);
 
         AccountResponse response = service.createAccount(
-                admin, new CreateAccountRequest("Ops", "pw", "admin", "Ops"));
+                admin, new CreateAccountRequest("  Ops  ", "pw", "admin", "  Ops  "));
 
         assertThat(response.role()).isEqualTo("ADMIN");
     }
@@ -233,8 +240,39 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.createAccount(
                         admin, new CreateAccountRequest("Bob", "pw", "SUPERUSER", "Bob")))
                 .isInstanceOf(AuthErrorException.class)
-                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("NOT_FOUND_OR_FORBIDDEN"));
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
         verify(accounts, never()).createAccount(anyLong(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void directLoginValidationFailsClosedBeforeRepositoryOrPasswordCheck() {
+        assertInvalidLogin(null, "pw");
+        assertInvalidLogin("alice", null);
+        assertInvalidLogin("   ", "pw");
+        assertInvalidLogin("alice", "   ");
+        assertInvalidLogin("u".repeat(129), "pw");
+        assertInvalidLogin("alice", "p".repeat(1025));
+    }
+
+    @Test
+    void directAccountValidationFailsClosedBeforeRepositoryOrPasswordEncoder() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        assertInvalidAccount(admin, null);
+        assertInvalidAccount(admin, new CreateAccountRequest(null, "pw", "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", null, "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "USER", null));
+        assertInvalidAccount(admin, new CreateAccountRequest("", "pw", "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "   ", "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "USER", "   "));
+        assertInvalidAccount(admin, new CreateAccountRequest("u".repeat(129), "pw", "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "p".repeat(1025), "USER", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "r".repeat(17), "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "USER", "d".repeat(257)));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "", "User"));
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "pw", "MANAGER", "User"));
     }
 
     @Test
@@ -249,9 +287,36 @@ class AuthServiceTest {
     void seedAdminHashesPasswordBeforePersisting() {
         when(accounts.seedAdmin(eq("root"), anyString(), eq("Root Admin"))).thenReturn(9L);
 
-        long id = service.seedAdmin("root", "secret", "Root Admin");
+        long id = service.seedAdmin("  ROOT  ", "secret", "  Root Admin  ");
 
         assertThat(id).isEqualTo(9);
         verify(passwordEncoder).encode("secret");
+    }
+
+    private void assertInvalidLogin(String username, String password) {
+        clearInvocations(accounts, sessions, passwordEncoder, jwt);
+
+        assertThatThrownBy(() -> service.login(username, password))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+
+        verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);
+    }
+
+    private void assertInvalidAccount(
+            JwtTokenService.Principal admin, CreateAccountRequest request) {
+        clearInvocations(accounts, sessions, passwordEncoder, jwt);
+
+        assertThatThrownBy(() -> service.createAccount(admin, request))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+
+        verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);
     }
 }

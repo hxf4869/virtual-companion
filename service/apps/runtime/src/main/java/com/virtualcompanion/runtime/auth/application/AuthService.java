@@ -47,6 +47,10 @@ public class AuthService {
 
     private static final String ROLE_ADMIN = "ADMIN";
     private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final int MAX_USERNAME_LENGTH = 128;
+    private static final int MAX_PASSWORD_LENGTH = 1024;
+    private static final int MAX_DISPLAY_NAME_LENGTH = 256;
+    private static final int MAX_ROLE_LENGTH = 16;
 
     private final IdentityAccountRepository accounts;
     private final IdentityRefreshTokenRepository sessions;
@@ -80,25 +84,22 @@ public class AuthService {
      * token for the controller's HttpOnly cookie only.
      */
     public IssuedSession login(String username, String password) {
-        if (username == null || username.isBlank() || password == null) {
-            // Blank credentials fail closed without an audit event (there is no
-            // meaningful username to record, and existence is never disclosed).
-            throw credentialsError();
-        }
-        Optional<AuthenticatedIdentity> identity = accounts.authenticate(username);
+        validateLoginInput(username, password);
+        String canonicalUsername = normalizeUsername(username);
+        Optional<AuthenticatedIdentity> identity = accounts.authenticate(canonicalUsername);
         String storedHash = identity.map(AuthenticatedIdentity::passwordHash).orElse(dummyHash);
         boolean passwordOk = passwordEncoder.matches(password, storedHash);
         if (identity.isEmpty() || !passwordOk) {
-            accounts.recordLoginFailure(username);
+            accounts.recordLoginFailure(canonicalUsername);
             throw credentialsError();
         }
         AuthenticatedIdentity account = identity.get();
         if (!STATUS_ACTIVE.equals(account.status())) {
-            accounts.recordLoginFailure(username);
+            accounts.recordLoginFailure(canonicalUsername);
             throw disabledError();
         }
-        accounts.recordLoginSuccess(account.accountId(), username);
-        return issueTokens(account.accountId(), account.role(), username);
+        accounts.recordLoginSuccess(account.accountId(), canonicalUsername);
+        return issueTokens(account.accountId(), account.role(), canonicalUsername);
     }
 
     /**
@@ -130,7 +131,8 @@ public class AuthService {
                     "The refresh session is no longer valid");
         }
         RotatedSession session = rotated.get();
-        String accessToken = jwt.issueAccessToken(session.accountId(), session.role(), session.username());
+        String canonicalUsername = normalizeUsername(session.username());
+        String accessToken = jwt.issueAccessToken(session.accountId(), session.role(), canonicalUsername);
         return new IssuedSession(
                 new AuthResponse(
                         accessToken,
@@ -165,19 +167,16 @@ public class AuthService {
             throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
                     "ADMIN role is required");
         }
-        String username = request.username();
+        if (request == null) {
+            throw invalidRequestError();
+        }
+        String rawUsername = request.username();
         String password = request.password();
-        String displayName = request.displayName();
+        String rawDisplayName = request.displayName();
+        validateAccountInput(rawUsername, password, request.role(), rawDisplayName);
+        String username = normalizeUsername(rawUsername);
+        String displayName = normalizeDisplayName(rawDisplayName);
         String role = normalizeRole(request.role());
-        if (username == null || username.isBlank()) {
-            throw genericError();
-        }
-        if (password == null || password.isBlank()) {
-            throw genericError();
-        }
-        if (displayName == null || displayName.isBlank()) {
-            throw genericError();
-        }
         long accountId;
         try {
             accountId = accounts.createAccount(
@@ -191,17 +190,25 @@ public class AuthService {
             // persistence failure: one generic, non-disclosing surface.
             throw genericError();
         }
-        return new AccountResponse(Long.toString(accountId), username.toLowerCase(Locale.ROOT), role, STATUS_ACTIVE);
+        return new AccountResponse(Long.toString(accountId), username, role, STATUS_ACTIVE);
     }
 
     /** Platform bootstrap: seed the single ADMIN (idempotent, no-op when one exists). */
     public long seedAdmin(String username, String password, String displayName) {
-        if (username == null || username.isBlank()
+        String canonicalUsername = username == null ? null : normalizeUsername(username);
+        String canonicalDisplayName = normalizeDisplayName(displayName);
+        if (canonicalUsername == null || canonicalUsername.isBlank()
                 || password == null || password.isBlank()
-                || displayName == null || displayName.isBlank()) {
+                || canonicalDisplayName == null || canonicalDisplayName.isBlank()) {
             return 0; // nothing injected -> nothing seeded
         }
-        return accounts.seedAdmin(username, passwordEncoder.encode(password), displayName);
+        if (username.length() > MAX_USERNAME_LENGTH
+                || password.length() > MAX_PASSWORD_LENGTH
+                || displayName.length() > MAX_DISPLAY_NAME_LENGTH) {
+            throw invalidRequestError();
+        }
+        return accounts.seedAdmin(
+                canonicalUsername, passwordEncoder.encode(password), canonicalDisplayName);
     }
 
     private IssuedSession issueTokens(long accountId, String role, String username) {
@@ -224,15 +231,43 @@ public class AuthService {
     }
 
     private static String normalizeRole(String role) {
-        if (role == null || role.isBlank()) {
+        if (role == null) {
             return "USER";
         }
-        String normalized = role.trim().toUpperCase(Locale.ROOT);
+        if (role.isBlank() || role.length() > MAX_ROLE_LENGTH) {
+            throw invalidRequestError();
+        }
+        String normalized = role.toUpperCase(Locale.ROOT);
         if (normalized.equals(ROLE_ADMIN) || normalized.equals("USER")) {
             return normalized;
         }
-        throw new AuthErrorException(HttpStatus.NOT_FOUND, "NOT_FOUND_OR_FORBIDDEN",
-                "Role must be ADMIN or USER");
+        throw invalidRequestError();
+    }
+
+    private static void validateLoginInput(String username, String password) {
+        if (username == null || username.isBlank() || username.length() > MAX_USERNAME_LENGTH
+                || password == null || password.isBlank() || password.length() > MAX_PASSWORD_LENGTH) {
+            throw invalidRequestError();
+        }
+    }
+
+    private static void validateAccountInput(
+            String username, String password, String role, String displayName) {
+        if (username == null || username.isBlank() || username.length() > MAX_USERNAME_LENGTH
+                || password == null || password.isBlank() || password.length() > MAX_PASSWORD_LENGTH
+                || role != null && role.length() > MAX_ROLE_LENGTH
+                || displayName == null || displayName.isBlank()
+                || displayName.length() > MAX_DISPLAY_NAME_LENGTH) {
+            throw invalidRequestError();
+        }
+    }
+
+    private static String normalizeUsername(String username) {
+        return username == null ? null : username.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeDisplayName(String displayName) {
+        return displayName == null ? null : displayName.trim();
     }
 
     private static AuthErrorException credentialsError() {
@@ -248,5 +283,10 @@ public class AuthService {
     private static AuthErrorException genericError() {
         return new AuthErrorException(HttpStatus.NOT_FOUND, "NOT_FOUND_OR_FORBIDDEN",
                 "The request could not be completed");
+    }
+
+    private static AuthErrorException invalidRequestError() {
+        return new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                "The request is invalid");
     }
 }

@@ -109,8 +109,54 @@ errorSemantics:
     resourceExistenceDisclosureForbidden: true
   AGE_VERIFICATION_REQUIRED:
     when: an age-gated capability requires a verified adult state and the requirement is not met
-  newCatalogCodeIntroduced: false
-  httpStatusMappingDefined: false
+  INVALID_REQUEST:
+    when: an authentication request body is missing, unreadable or violates the frozen field constraints
+    httpStatus: 400
+    envelope:
+      code: INVALID_REQUEST
+      message: The request is invalid
+    rejectedFieldOrValueDisclosureForbidden: true
+  newCatalogCodeIntroduced: true
+  httpStatusMappingDefined: true
+internalAccountRequestBoundary:
+  usernameCanonicalization:
+    operationOrder:
+      - TRIM
+      - LOWER_LOCALE_ROOT
+    appliesTo:
+      - authentication
+      - login_audit
+      - account_creation
+      - admin_seed
+      - jwt_username_claim
+      - account_response
+  passwordTransformationForbidden:
+    - TRIM
+    - CASE_FOLD
+  displayNameTransformation:
+    - TRIM
+  role:
+    optional: true
+    acceptedCaseInsensitiveValues:
+      - ADMIN
+      - USER
+    canonicalValues:
+      - ADMIN
+      - USER
+  fieldCharacterLimits:
+    username: 128
+    password: 1024
+    displayName: 256
+    role: 16
+  requiredNonBlankFields:
+    login:
+      - username
+      - password
+    adminCreateAccount:
+      - username
+      - password
+      - displayName
+  aggregateRequestBodyByteLimitDefined: false
 ageCapabilityBoundary:
   betaGenerativeChatAllowedOnlyWhen: ADULT_VERIFIED
   dataRightsAllowedForEveryCatalogAgeState: true
@@ -206,7 +252,7 @@ deferredOwnerDecisions:
   - authentication_session_ttl_refresh_revocation_and_device_policy
   - account_and_authentication_session_state_catalogs
   - external_identity_bind_merge_unbind_and_delete_synchronization
-  - public_api_paths_http_statuses_and_error_envelope
+  - remaining_public_api_paths_http_statuses_and_error_envelope
   - age_verification_provider_and_appeal_flow
 resolvedOwnerDecisions:
   - decisionId: cookie_or_bearer_architecture_and_cookie_parameters
@@ -229,6 +275,15 @@ resolvedOwnerDecisions:
       仅解析公开路径部分：GET /api/internal/baseline 为公开端点（permitAll，
       P1-08）；其余 public 路径、http statuses 与 error envelope 语义仍
       deferred（P2-04 范围）。
+  - decisionId: auth_invalid_request_http_status_and_error_envelope
+    resolvedAt: "2026-08-09"
+    approvedBy: repository-owner
+    source: TASK-0112
+    resolution: >-
+      POST /api/v1/auth/login 与 POST /api/v1/auth/admin/accounts 的缺失、JSON null、不可读 JSON、
+      空白必填字段和超过冻结字符上限的字段统一返回 HTTP 400；ErrorEnvelope 固定为
+      INVALID_REQUEST / The request is invalid，不返回字段名、拒绝值或解析细节。既有凭据错误、
+      disabled、非 ADMIN 与重复 username 的不泄密映射保持不变。
 rules:
   - deferred decisions have no implied default
   - public registration, real-user beta and real payment remain closed

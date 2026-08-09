@@ -544,6 +544,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthTokenResponse'
+        '400':
+          description: Missing, unreadable or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: DISABLED account (cause is not disclosed)
           content:
@@ -628,6 +634,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountResponse'
+        '400':
+          description: Missing, unreadable or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -641,7 +653,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Invalid request or duplicate username; existence is not disclosed
+          description: Duplicate username; existence is not disclosed
           content:
             application/json:
               schema:
@@ -689,6 +701,7 @@ components:
       - MEMORY_FORBIDDEN_CONTENT
       - CATALOG_DRIFT_DETECTED
       - BETA_OPERATIONS_NOT_READY
+      - INVALID_REQUEST
     VersionResponse:
       type: object
       description: Service version and build identity
@@ -898,9 +911,15 @@ components:
       properties:
         username:
           type: string
-          description: Internal account username
+          minLength: 1
+          maxLength: 128
+          pattern: .*\S.*
+          description: Internal account username; surrounding whitespace is removed and the value is lowercased
         password:
           type: string
+          minLength: 1
+          maxLength: 1024
+          pattern: .*\S.*
           description: Plaintext password (compared in the JVM, never stored or logged)
     RefreshTokenRequest:
       type: object
@@ -926,18 +945,31 @@ components:
       required:
       - username
       - password
+      - displayName
       properties:
         username:
           type: string
-          description: Internal account username (normalized to lowercase)
+          minLength: 1
+          maxLength: 128
+          pattern: .*\S.*
+          description: Internal account username (trimmed and normalized to lowercase)
         password:
           type: string
+          minLength: 1
+          maxLength: 1024
+          pattern: .*\S.*
           description: Plaintext password; only its BCrypt hash is stored
         role:
           type: string
+          minLength: 1
+          maxLength: 16
+          pattern: ^(?:[Aa][Dd][Mm][Ii][Nn]|[Uu][Ss][Ee][Rr])$
           description: ADMIN or USER (default USER)
         displayName:
           type: string
+          minLength: 1
+          maxLength: 256
+          pattern: .*\S.*
           description: Human-readable display name
     AuthTokenResponse:
       type: object

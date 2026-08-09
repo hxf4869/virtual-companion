@@ -11,6 +11,6 @@ public record AdminCreateAccountRequest(
         java.util.Objects.requireNonNull(username, "username must not be null");
         java.util.Objects.requireNonNull(password, "password must not be null");
         // role is nullable
-        // displayName is nullable
+        java.util.Objects.requireNonNull(displayName, "displayName must not be null");
     }
 }

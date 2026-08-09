@@ -43,7 +43,8 @@
       "MEMORY_CONFIRMATION_REQUIRED",
       "MEMORY_FORBIDDEN_CONTENT",
       "CATALOG_DRIFT_DETECTED",
-      "BETA_OPERATIONS_NOT_READY"
+      "BETA_OPERATIONS_NOT_READY",
+      "INVALID_REQUEST"
     ],
     "GenerationState": [
       "CREATED",
@@ -478,11 +479,15 @@
           {
             "code": "BETA_OPERATIONS_NOT_READY",
             "order": 14
+          },
+          {
+            "code": "INVALID_REQUEST",
+            "order": 15
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "4275602b48187fd4898c9822177a528bdbfc76ed0780f84763df0e0d8e2e101e"
+      "sha256": "f6306d8d6d7035d9b3517e1480c81f7745cfa8b06a152ea2aabbc0b662faa75e"
     },
     "generation-states.yaml": {
       "document": {

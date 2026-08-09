@@ -31,3 +31,5 @@ entries:
   order: 13
 - code: BETA_OPERATIONS_NOT_READY
   order: 14
+- code: INVALID_REQUEST
+  order: 15

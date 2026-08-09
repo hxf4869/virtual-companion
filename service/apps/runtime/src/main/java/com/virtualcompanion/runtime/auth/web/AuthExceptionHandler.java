@@ -3,8 +3,10 @@ package com.virtualcompanion.runtime.auth.web;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -44,5 +46,20 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(new ErrorEnvelope("AUTHENTICATION_REQUIRED",
                         "A valid authentication context is required"));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorEnvelope> handleValidation(MethodArgumentNotValidException e) {
+        return invalidRequest();
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorEnvelope> handleUnreadableJson(HttpMessageNotReadableException e) {
+        return invalidRequest();
+    }
+
+    private static ResponseEntity<ErrorEnvelope> invalidRequest() {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorEnvelope("INVALID_REQUEST", "The request is invalid"));
     }
 }
