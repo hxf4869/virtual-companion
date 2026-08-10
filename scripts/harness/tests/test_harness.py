@@ -10213,7 +10213,9 @@ class Task0098PostTerminalTailTests(unittest.TestCase):
 
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
-    def test_posix_wrapper_selects_literal_python(self) -> None:
+    def test_posix_wrapper_selects_literal_python_and_fails_closed_without_it(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             binary_dir = Path(directory)
             python = binary_dir / "python"
@@ -10237,9 +10239,6 @@ class IntegrationTests(unittest.TestCase):
             )
             self.assertEqual(0, result.returncode, result.stdout)
             self.assertIn("selected-python", result.stdout)
-
-    @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
-    def test_posix_wrapper_fails_closed_without_literal_python(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             binary_dir = Path(directory)
             python3 = binary_dir / "python3"
