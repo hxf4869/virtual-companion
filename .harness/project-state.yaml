@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0136
-activeTaskCard: docs/tasks/TASK-0136-task0111-0124-0129-context-fingerprint-quarantine.md
-lastAcceptedTask: TASK-0132
-lastAcceptedHandoff: docs/handoffs/TASK-0132.json
-lastTerminalTask: TASK-0135
-lastTerminalHandoff: docs/handoffs/TASK-0135.json
-nextAction: '执行 TASK-0136：只修改 scripts/harness/doctor.py 与 scripts/harness/tests/test_harness.py，以固定对象身份隔离 TASK-0111/0124/0129 三个错误 Context Fingerprint 历史并在 ContextTests.test_all_context_locks_are_reproducible 消费；普通 context-lock 校验规则不得放宽，README 后不再修改任务卡。冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0，正式承接 P2-20。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0136
+lastAcceptedHandoff: docs/handoffs/TASK-0136.json
+lastTerminalTask: TASK-0136
+lastTerminalHandoff: docs/handoffs/TASK-0136.json
+nextAction: '创建 P2-21 的 OWNER_GATE 决策卡前，先向 Owner 提交 canonical Python 解释器合同选择（字面量 python/python3 或受控解析 argv），获批后以新 C4 卡同步 AGENTS、policy、Skill、模板、wrapper 与测试并完成正式门禁；随后继续 P2-23 至 P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

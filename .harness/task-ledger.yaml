@@ -718,3 +718,9 @@ tasks:
     taskCard: docs/tasks/TASK-0135-task0111-context-fingerprint-quarantine.md
     evidence: docs/evidence/TASK-0135/evidence-pack.json
     handoff: docs/handoffs/TASK-0135.json
+  TASK-0136:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0136-task0111-0124-0129-context-fingerprint-quarantine.md
+    evidence: docs/evidence/TASK-0136/evidence-pack.json
+    handoff: docs/handoffs/TASK-0136.json

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0136
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -374,7 +374,14 @@ humanApprovals:
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0133/0134/0135 的 Reviewer
       或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0136_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 066b33ccca8a46a2dbdbe7b98a2bb82965a2906d
+    evidencePath: docs/evidence/TASK-0136/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份（commit/tree/parent/diff 路径集）、三历史隔离实现（Base 已含 + 本卡死参数清理）、验收标准逐条、INV-HARNESS-001..009 与邻近风险全部核对；12/12 单父边、6/6 tree、3/3 Ledger、12/12 终态产物、9/9 reviewers hash 独立实值核验；普通 context-lock 路径零改动，无 CLI/env/alias 兼容层；P0/P1/P2=0、P3=2 非阻断提示；Reviewer 未运行正式门禁。"
+    candidateTree: 721695e8d7c044c817ba7998d15fea7d4da278b5
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0136
   - python -m unittest scripts.harness.tests.test_harness
