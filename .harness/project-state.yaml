@@ -2,13 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0149
+activeTaskCard: docs/tasks/TASK-0149-db-runner-hygiene.md
 lastAcceptedTask: TASK-0148
 lastAcceptedHandoff: docs/handoffs/TASK-0148.json
 lastTerminalTask: TASK-0148
 lastTerminalHandoff: docs/handoffs/TASK-0148.json
-nextAction: 串行处理 P3-07（infra/db/run-rls-tests.sh 的 ls V*.sql glob 与陈旧注释，C2 小卡）；随后 Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
+nextAction: 执行 TASK-0149（P3-07 DB runner 陈旧注释与 glob）：infra/db/run-rls-tests.sh 头部注释移除 five 硬编码改为动态描述，测试发现 glob 改为 compgen -G 支持 2 位及以上数字前缀且空匹配安全；冻结 clean candidate 后依序完成唯一 Precheck、唯一正式 SQL suite（52 项 ALL
+  TESTS PASS）、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0；随后 Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
