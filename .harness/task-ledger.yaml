@@ -706,3 +706,9 @@ tasks:
     taskCard: docs/tasks/TASK-0133-harness-default-branch-fixture-portability.md
     evidence: docs/evidence/TASK-0133/evidence-pack.json
     handoff: docs/handoffs/TASK-0133.json
+  TASK-0134:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0134-task0133-harness-approval-quarantine.md
+    evidence: docs/evidence/TASK-0134/evidence-pack.json
+    handoff: docs/handoffs/TASK-0134.json

@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0134",
+  "state": "REJECTED",
+  "baseCommit": "3c30dd693af0574eb160bbbd37b2e8e2b79a9d80",
+  "headCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d",
+  "evidencePath": "docs/evidence/TASK-0134/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ea01652b0d0a3b7ab51fbff5b3aa0944e3879d0d",
+      "startedAt": "2026-08-10T10:06:40+08:00",
+      "endedAt": "2026-08-10T11:03:48+08:00",
+      "elapsedSeconds": 3428,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ea01652b0d0a3b7ab51fbff5b3aa0944e3879d0d",
+      "startedAt": "2026-08-10T10:06:40+08:00",
+      "endedAt": "2026-08-10T10:09:02+08:00",
+      "elapsedSeconds": 142,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "a3df26e43bf7428913675d897101c4ce2bd0a445",
+      "startedAt": "2026-08-10T10:09:17+08:00",
+      "endedAt": "2026-08-10T11:03:48+08:00",
+      "elapsedSeconds": 3271,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 571,
+      "readyDoctorPassAt": "2026-08-10T10:09:02+08:00",
+      "inProgressCommit": "a3df26e43bf7428913675d897101c4ce2bd0a445",
+      "reason": "Candidate canonical Precheck PASS and complete Harness unittest ran once each; the frozen full Harness suite FAILED on ContextTests.test_all_context_locks_are_reproducible (TASK-0111 historical fingerprint mismatch). A /tmp diagnostic clone at Base 3c30dd69 reproduces the identical failure, proving it is a pre-existing Base failure, not a candidate regression; formal gate non-PASS still stops promotion and closes this card as REJECTED. git diff --check was deliberately not launched and remote dispatch was not attempted."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0134_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d",
+      "evidencePath": "docs/evidence/TASK-0134/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份（commit/tree/parent/diff 路径集）、验收标准逐条、INV-HARNESS-001..009 与邻近风险全部核对；隔离 predicate 只对固定 TASK-0133 REJECTED 身份放行，普通精确 scope 路径零改动，无 CLI/env/alias 兼容层；merge fixture 三例均证明真实双亲 merge 并拒绝 derivation；P0/P1/P2=0、P3=2 非阻断提示；Reviewer 未运行正式门禁。",
+      "candidateTree": "b64c6bd02888a9168f8a35cfd55d6a7ebd37b446"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0134 DRAFT、READY、authorization binding、IN_PROGRESS 与冻结候选单父链；READY Doctor 真实 PASS。",
+    "独立 C4 R1 对候选 e3b35ef / tree b64c6bd 完整复核 PASS（P0/P1/P2=0，P3=2 非阻断），身份、验收、不变量与邻近风险全部核对，Reviewer 未运行正式门禁。",
+    "唯一正式 Precheck 真实 PASS（5 commands，exit 0，Doctor 616709 checks 77.6s），绑定候选。",
+    "唯一一次完整 Harness unittest 真实运行并如实 FAIL（261 tests，1 failure：ContextTests.test_all_context_locks_are_reproducible，TASK-0111 fingerprint mismatch）；/tmp 诊断 clone 在 Base 3c30dd69 复现同一失败，证明是 Base 既存失败而非候选回归；门禁非 PASS 即停止 promotion，不重跑挑结果、不伪造成 PASS。",
+    "git diff --check 按顺序冻结保留未运行（前序正式门禁 FAIL 后停止，与 TASK-0133 先例一致）；远端 exact-SHA 未调度（卡冻结 LOCAL_EXACT_TREE_FALLBACK，remote 保持非 PASS）。"
+  ],
+  "remaining": [
+    "TASK-0111 REJECTED 历史卡保留错误 context fingerprint（deadcf31…），verify_context_lock 无 REJECTED 历史豁免，ContextTests.test_all_context_locks_are_reproducible 在 Base 上即失败；需要新的 C4 治理卡精确隔离或豁免该固定历史，使完整 Harness unittest 恢复绿线。",
+    "P2-20（merge fixture 真实双亲断言与默认分支可移植性）与 P2-21（canonical Python 合同选择）仍未正式承接，TASK-0134 候选实现（doctor.py 隔离 predicate + 测试）随 REJECTED 保留为历史，不得复用其门禁 PASS。",
+    "TASK-0133 的 approval scope 隔离实现已通过 R1 与 Precheck，但正式完整 Harness 门禁未过，须在新的恢复卡中重新验证后正式承接。",
+    "其余 Harness/CI、Provider DNS、数据库 Owner gates、条件风险与最终全项目复审仍待后续串行处理。"
+  ],
+  "knownRisks": [
+    "完整 Harness unittest 的 TASK-0111 fingerprint 失败是 Base 既存失败（已在 Base clone 中复现），但任何任务卡只要冻结该套件都会先于其自身门禁失败；在隔离卡落地前，长线推进必须绕过或先修复该绿线冲突。",
+    "TASK-0134 候选实现本身经 R1 与 Precheck 验证，但正式门禁链未完整通过，不得将本卡表示为已验收；不得把 TASK-0133/TASK-0134 的 Reviewer 或命令结果复用为下一卡 PASS。",
+    "远端 exact-SHA 与本地 exact-tree 通道均未取得 PASS；LOCAL_EXACT_TREE_FALLBACK 的 passClaimed=false，卡终态不改变 remote 状态。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0135 C4 一次性治理恢复：以固定对象身份精确隔离 TASK-0111 REJECTED 历史（其 Card 保留错误 context fingerprint，导致 ContextTests.test_all_context_locks_are_reproducible 在 Base 上即失败），使完整 Harness unittest 恢复绿线；重新验证并正式承接 P2-20 与 P2-21，不改写历史、不删测、不加 skip，独立 C4 Reviewer、唯一 Precheck、完整 Harness、唯一 diff check、单父终态提交与远端 0/0 全部真实完成后再继续其余审计项。"
+}

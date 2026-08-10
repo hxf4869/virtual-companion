@@ -1,0 +1,157 @@
+{
+  "taskId": "TASK-0134",
+  "baseCommit": "3c30dd693af0574eb160bbbd37b2e8e2b79a9d80",
+  "headCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d",
+  "contextFingerprint": "b8a971de490359f186de9ddeb77da4d541ca94ec83a80218b8e8edfe8a871e26",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ea01652b0d0a3b7ab51fbff5b3aa0944e3879d0d",
+      "startedAt": "2026-08-10T10:06:40+08:00",
+      "endedAt": "2026-08-10T11:03:48+08:00",
+      "elapsedSeconds": 3428,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ea01652b0d0a3b7ab51fbff5b3aa0944e3879d0d",
+      "startedAt": "2026-08-10T10:06:40+08:00",
+      "endedAt": "2026-08-10T10:09:02+08:00",
+      "elapsedSeconds": 142,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "a3df26e43bf7428913675d897101c4ce2bd0a445",
+      "startedAt": "2026-08-10T10:09:17+08:00",
+      "endedAt": "2026-08-10T11:03:48+08:00",
+      "elapsedSeconds": 3271,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 571,
+      "readyDoctorPassAt": "2026-08-10T10:09:02+08:00",
+      "inProgressCommit": "a3df26e43bf7428913675d897101c4ce2bd0a445",
+      "reason": "Candidate canonical Precheck PASS and complete Harness unittest ran once each; the frozen full Harness suite FAILED on ContextTests.test_all_context_locks_are_reproducible (TASK-0111 historical fingerprint mismatch). A /tmp diagnostic clone at Base 3c30dd69 reproduces the identical failure, proving it is a pre-existing Base failure, not a candidate regression; formal gate non-PASS still stops promotion and closes this card as REJECTED. git diff --check was deliberately not launched and remote dispatch was not attempted."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0134_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d",
+      "evidencePath": "docs/evidence/TASK-0134/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份（commit/tree/parent/diff 路径集）、验收标准逐条、INV-HARNESS-001..009 与邻近风险全部核对；隔离 predicate 只对固定 TASK-0133 REJECTED 身份放行，普通精确 scope 路径零改动，无 CLI/env/alias 兼容层；merge fixture 三例均证明真实双亲 merge 并拒绝 derivation；P0/P1/P2=0、P3=2 非阻断提示；Reviewer 未运行正式门禁。",
+      "candidateTree": "b64c6bd02888a9168f8a35cfd55d6a7ebd37b446"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0134 (READY activation)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "25fdc1efcbfd038eb4d2f3b70cb33d9ff3153e42bb0ff53cc1a2f608224c20a5",
+      "reason": "READY Doctor completed once with exit 0; stderr sha256 d8d7f8db382a2c511e74265a47e9e576a3f16851640fcc598093dec0ab272844. Recorded in the Codex handoff as the TASK-0134 READY activation result.",
+      "environment": "macOS; controlled Python; 2026-08-10T10:07:29+08:00..2026-08-10T10:09:02+08:00",
+      "verifiedCommit": "d5b62ad8c9dd300420145b467a3df2e336fce376"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.BacklogTests.test_task0133_rejected_harness_approval_isolation_is_exact_and_fail_closed scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_on_discovered_primary_branch",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Iterative targeted run before candidate freeze: Ran 2 tests in 7.411s, OK. Iterative checks are not formal gates; no full-suite result is inferred.",
+      "environment": "macOS; controlled Python; local temporary Git repositories",
+      "verifiedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0134 frozen candidate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Independent R1 verified candidate identity, acceptance criteria, invariants, and adjacent risk; P0/P1/P2 are zero with two non-blocking P3 notes. Reviewer did not run formal gates.",
+      "environment": "Independent read-only reviewer; no source writes or expensive full-suite dispatch",
+      "verifiedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d",
+      "candidateCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d",
+      "candidateTree": "b64c6bd02888a9168f8a35cfd55d6a7ebd37b446"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0134",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "cade11c3290829b2f10ce286bfde3d1c915556d9a58c1d7568f305e8b2c744bc",
+      "reason": "The sole canonical Precheck ran once after R1 on the frozen candidate: all 5 commands PASS; Doctor completed 616709 checks in 77.6s. stderr sha256 bc39568f9dfd6d7b2017dfe9de259ac70e369c5130ff27cf8efe4be6aaa6223e.",
+      "environment": "macOS; controlled Python; stdout /tmp/vc-task0134-formal-precheck.out; stderr /tmp/vc-task0134-formal-precheck.err; 2026-08-10T10:34:47+08:00..2026-08-10T10:36:05+08:00",
+      "verifiedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "The frozen full Harness suite ran once: 261 tests in 1336.819s, FAILED (failures=1). Failure: ContextTests.test_all_context_locks_are_reproducible — TASK-0111: context fingerprint mismatch (expected deadcf31035ec180393998f0f0abf3ae77a5d3a3d07f49b83033a8242fe9a6a9, got 5a2147e0c5ea53a843aacdab6b4257da18421f7aedcb47f8221f980521f242e7). A /tmp diagnostic clone of Base 3c30dd69 reproduces the identical failure, proving it is a pre-existing Base failure (TASK-0111 REJECTED on 2026-08-10 retains its erroneous fingerprint; verify_context_lock has no REJECTED-history exemption) and not a candidate regression. Formal gate non-PASS still stops promotion. stderr sha256 be5d18ed1ee754140da9638fc50a04505032d40fd0cac55be8c4565c12694cef; stdout empty.",
+      "environment": "macOS; controlled Python; stdout /tmp/vc-task0134-harness-tests.out; stderr /tmp/vc-task0134-harness-tests.err; 2026-08-10T10:36:26+08:00..2026-08-10T10:58:43+08:00",
+      "verifiedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The unique formal no-argument diff gate was reserved for after the full Harness suite and was not launched because the full Harness suite FAILED first, stopping promotion.",
+      "environment": "macOS; deliberately not launched after full Harness FAIL",
+      "verifiedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate e3b35ef5bfd168830805f4dd87fe43265573975d",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Card froze LOCAL_EXACT_TREE_FALLBACK with strong typed remote-unavailable evidence (includedMinutes=usedMinutes=2000, paidBudgetUsd=0, stopUsageEnabled=true, dispatchCount=0). No dispatch was made; the full Harness gate FAIL also stopped any later channel.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0134 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_REJECTED_CLOSURE_FREEZE: runs once after the complete REJECTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0134/pre-closure-request.json; one execution reserved",
+      "verifiedCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_PASS_CANDIDATE_CANONICAL_PASS_FULL_HARNESS_FAIL_BASE_EXISTING",
+    "candidateCommit": "e3b35ef5bfd168830805f4dd87fe43265573975d",
+    "candidateTree": "b64c6bd02888a9168f8a35cfd55d6a7ebd37b446",
+    "passClaimed": false,
+    "localExactTree": {
+      "status": "FAIL",
+      "reason": "Candidate code review and canonical Precheck passed, but the frozen full Harness suite FAILED on a pre-existing Base failure (TASK-0111 historical fingerprint mismatch reproduced at Base 3c30dd69); the unique formal diff gate did not run, so no local exact-tree PASS exists.",
+      "exitCode": 1,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "be5d18ed1ee754140da9638fc50a04505032d40fd0cac55be8c4565c12694cef"
+    },
+    "remote": {
+      "status": "NOT_RUN",
+      "reason": "Card froze LOCAL_EXACT_TREE_FALLBACK with strong typed quota-exhausted evidence; no dispatch was attempted and the full Harness gate FAIL also stopped the chain.",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}

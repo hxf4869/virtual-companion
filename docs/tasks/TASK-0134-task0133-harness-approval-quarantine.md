@@ -2,7 +2,16 @@
 
 ```yaml
 taskId: TASK-0134
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  独立 C4 R1 对候选 e3b35ef 完整复核 PASS（P0/P1/P2=0，P3=2 非阻断），唯一正式
+  Precheck 真实 PASS，但唯一一次完整 Harness unittest 如实 FAIL：261 tests 中
+  ContextTests.test_all_context_locks_are_reproducible 因 TASK-0111 REJECTED 历史卡
+  保留错误 context fingerprint 而失败；该失败已在 Base 3c30dd69 的 /tmp 诊断 clone
+  中复现，是 Base 既存失败而非本候选回归。正式门禁非 PASS 即停止 promotion，
+  不重跑挑结果、不伪造 PASS、不改写历史，本卡按机器策略如实 REJECTED，并由新的
+  C4 一次性治理恢复卡隔离 TASK-0111 固定历史后重新验证并正式承接 P2-20/P2-21。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -271,7 +280,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0133 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0134_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: e3b35ef5bfd168830805f4dd87fe43265573975d
+    evidencePath: docs/evidence/TASK-0134/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份（commit/tree/parent/diff 路径集）、验收标准逐条、INV-HARNESS-001..009 与邻近风险全部核对；隔离 predicate 只对固定 TASK-0133 REJECTED 身份放行，普通精确 scope 路径零改动，无 CLI/env/alias 兼容层；merge fixture 三例均证明真实双亲 merge 并拒绝 derivation；P0/P1/P2=0、P3=2 非阻断提示；Reviewer 未运行正式门禁。"
+    candidateTree: b64c6bd02888a9168f8a35cfd55d6a7ebd37b446
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0134
   - python -m unittest scripts.harness.tests.test_harness
