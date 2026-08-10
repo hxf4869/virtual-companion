@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0135
+activeTaskCard: docs/tasks/TASK-0135-task0111-context-fingerprint-quarantine.md
 lastAcceptedTask: TASK-0132
 lastAcceptedHandoff: docs/handoffs/TASK-0132.json
 lastTerminalTask: TASK-0134
 lastTerminalHandoff: docs/handoffs/TASK-0134.json
-nextAction: '通过 task-intake 创建 TASK-0135 C4 一次性治理恢复：以固定对象身份精确隔离 TASK-0111 REJECTED 历史（其 Card 保留错误 context fingerprint，导致 ContextTests.test_all_context_locks_are_reproducible 在 Base 上即失败），使完整 Harness unittest 恢复绿线；重新验证并正式承接 P2-20 与 P2-21，不改写历史、不删测、不加 skip，独立 C4 Reviewer、唯一 Precheck、完整 Harness、唯一 diff check、单父终态提交与远端 0/0 全部真实完成后再继续其余审计项。'
+nextAction: '执行 TASK-0135：只修改 scripts/harness/doctor.py 与 scripts/harness/tests/test_harness.py，以固定对象身份隔离 TASK-0111 的错误 Context Fingerprint 历史并在 ContextTests.test_all_context_locks_are_reproducible 消费；普通 context-lock 校验规则不得放宽。冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0，正式承接 P2-20。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
