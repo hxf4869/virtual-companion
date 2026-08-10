@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
 import time
 from typing import Any
@@ -62,8 +61,15 @@ def main() -> int:
 
         def _run_cmd(cid: str, cmd: dict[str, Any], tid: str | None) -> tuple[str, int]:
             argv = command_argv(cmd, tid)
+            explicit_timeout = cmd.get("timeoutSeconds")
             timeout = command_timeout_seconds(cmd)
             print(f"\n== {cid}: {cmd.get('description', '')}", flush=True)
+            if not (isinstance(explicit_timeout, int) and explicit_timeout > 0):
+                print(
+                    f"== {cid}: default timeout 1800s applied "
+                    f"(no timeoutSeconds configured)",
+                    flush=True,
+                )
             started = time.perf_counter()
             returncode, timed_out = run_command_with_timeout(
                 argv,

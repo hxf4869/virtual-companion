@@ -9,7 +9,6 @@ import re
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -401,23 +400,19 @@ def run_command_with_timeout(
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     else:
         start_new_session = True
-    started = time.perf_counter()
+    proc = subprocess.Popen(
+        argv,
+        cwd=str(cwd),
+        start_new_session=start_new_session,
+        creationflags=creationflags,
+    )
     try:
-        proc = subprocess.Popen(
-            argv,
-            cwd=str(cwd),
-            start_new_session=start_new_session,
-            creationflags=creationflags,
-        )
-        try:
-            proc.communicate(timeout=timeout_seconds)
-            return proc.returncode, False
-        except subprocess.TimeoutExpired:
-            _terminate_process_tree(proc)
-            proc.communicate()
-            return proc.returncode, True
-    finally:
-        _ = started
+        proc.communicate(timeout=timeout_seconds)
+        return proc.returncode, False
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(proc)
+        proc.communicate()
+        return proc.returncode, True
 
 
 def _terminate_process_tree(proc: subprocess.Popen[Any]) -> None:
