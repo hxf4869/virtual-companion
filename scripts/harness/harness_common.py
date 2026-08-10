@@ -4,9 +4,12 @@ from contextlib import contextmanager
 import fnmatch
 import functools
 import hashlib
+import os
 import re
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -376,3 +379,57 @@ def changed_paths(base_commit: str) -> list[str]:
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(read_repository_bytes(path)).hexdigest()
+
+
+def run_command_with_timeout(
+    argv: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float,
+) -> tuple[int | None, bool]:
+    """Run argv with an explicit timeout and full process-tree termination.
+
+    Returns ``(returncode, timed_out)``. On timeout the complete process tree
+    is terminated: POSIX creates a new session/process group and sends SIGKILL
+    to the group; Windows creates a new process group and runs ``taskkill /F /T``.
+    A timed-out run never reports PASS semantics from the caller; the real
+    termination exit code is returned alongside ``timed_out=True``.
+    """
+    creationflags = 0
+    start_new_session = False
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        start_new_session = True
+    started = time.perf_counter()
+    try:
+        proc = subprocess.Popen(
+            argv,
+            cwd=str(cwd),
+            start_new_session=start_new_session,
+            creationflags=creationflags,
+        )
+        try:
+            proc.communicate(timeout=timeout_seconds)
+            return proc.returncode, False
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(proc)
+            proc.communicate()
+            return proc.returncode, True
+    finally:
+        _ = started
+
+
+def _terminate_process_tree(proc: subprocess.Popen[Any]) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        pass

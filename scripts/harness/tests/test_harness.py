@@ -8859,14 +8859,10 @@ class ValidationFlowTests(unittest.TestCase):
             },
             "profiles": {"precheck": ["fixture"]},
         }
-        completed = subprocess.CompletedProcess(
-            args=["fixture"],
-            returncode=0,
-        )
         output = io.StringIO()
         with (
             patch.object(precheck, "load_yaml", return_value=config),
-            patch.object(precheck.subprocess, "run", return_value=completed),
+            patch.object(precheck, "run_command_with_timeout", return_value=(0, False)),
             patch.object(sys, "argv", ["precheck.py"]),
             redirect_stdout(output),
         ):
@@ -8884,15 +8880,11 @@ class ValidationFlowTests(unittest.TestCase):
             },
             "profiles": {"precheck": ["fixture"]},
         }
-        completed = subprocess.CompletedProcess(
-            args=["fixture"],
-            returncode=7,
-        )
         output = io.StringIO()
         errors = io.StringIO()
         with (
             patch.object(precheck, "load_yaml", return_value=config),
-            patch.object(precheck.subprocess, "run", return_value=completed),
+            patch.object(precheck, "run_command_with_timeout", return_value=(7, False)),
             patch.object(sys, "argv", ["precheck.py"]),
             redirect_stdout(output),
             redirect_stderr(errors),
@@ -8901,6 +8893,32 @@ class ValidationFlowTests(unittest.TestCase):
 
         self.assertIn("fixture: FAIL (exit=7, elapsed=", output.getvalue())
         self.assertIn("FAIL: fixture exited 7", errors.getvalue())
+
+    def test_precheck_reports_timeout_status_and_nonzero_exit(self) -> None:
+        config = {
+            "commands": {
+                "fixture": {
+                    "description": "fixture command",
+                    "argv": ["scripts/harness/doctor.py"],
+                    "timeoutSeconds": 60,
+                }
+            },
+            "profiles": {"precheck": ["fixture"]},
+        }
+        output = io.StringIO()
+        errors = io.StringIO()
+        with (
+            patch.object(precheck, "load_yaml", return_value=config),
+            patch.object(precheck, "run_command_with_timeout", return_value=(-9, True)),
+            patch.object(sys, "argv", ["precheck.py"]),
+            redirect_stdout(output),
+            redirect_stderr(errors),
+        ):
+            self.assertEqual(1, precheck.main())
+
+        self.assertIn("fixture: TIMEOUT (exit=-9, elapsed=", output.getvalue())
+        self.assertIn("timeout=60s", output.getvalue())
+        self.assertIn("FAIL: fixture exited 1", errors.getvalue())
 
     def test_agent_rules_define_snapshot_reuse_and_low_frequency_polling(self) -> None:
         instructions = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
@@ -10562,3 +10580,79 @@ class SupplyChainTests(unittest.TestCase):
         self.assertGreaterEqual(len(install_lines), 2, "both harness jobs must install dependencies")
         for line in install_lines:
             self.assertIn("--require-hashes", line, f"install command missing --require-hashes: {line!r}")
+
+
+class TimeoutTests(unittest.TestCase):
+    """P2-26: explicit command timeouts with complete process-tree termination."""
+
+    def _blocking_child_code(self, marker: str) -> str:
+        # Child spawns a grandchild that records its PID and sleeps forever,
+        # then the child itself sleeps forever: a timeout must kill both.
+        grandchild = (
+            "import os, time;"
+            f"open({marker!r}, 'w').write(str(os.getpid()));"
+            "time.sleep(3600)"
+        )
+        return (
+            "import subprocess, sys, time;"
+            f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]);"
+            "time.sleep(3600)"
+        )
+
+    def test_run_command_with_timeout_completes_normally(self) -> None:
+        returncode, timed_out = harness_common.run_command_with_timeout(
+            [sys.executable, "-c", "pass"],
+            cwd=ROOT,
+            timeout_seconds=30,
+        )
+        self.assertEqual(0, returncode)
+        self.assertFalse(timed_out)
+
+    @unittest.skipIf(os.name == "nt", "POSIX process-group termination")
+    def test_timeout_terminates_posix_process_tree(self) -> None:
+        marker = os.path.join(tempfile.mkdtemp(), "grandchild.pid")
+        returncode, timed_out = harness_common.run_command_with_timeout(
+            [sys.executable, "-c", self._blocking_child_code(marker)],
+            cwd=ROOT,
+            timeout_seconds=2,
+        )
+        self.assertTrue(timed_out, "blocking command must time out")
+        self.assertNotEqual(0, returncode)
+        self.assertTrue(os.path.exists(marker), "grandchild must have started")
+        with open(marker, encoding="utf-8") as f:
+            grandchild_pid = int(f.read().strip())
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(grandchild_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        else:
+            self.fail("grandchild process survived the timeout")
+
+    @unittest.skipIf(os.name != "nt", "Windows taskkill /T process-tree termination")
+    def test_timeout_terminates_windows_process_tree(self) -> None:
+        marker = os.path.join(tempfile.mkdtemp(), "grandchild.pid")
+        returncode, timed_out = harness_common.run_command_with_timeout(
+            [sys.executable, "-c", self._blocking_child_code(marker)],
+            cwd=ROOT,
+            timeout_seconds=2,
+        )
+        self.assertTrue(timed_out, "blocking command must time out")
+        self.assertNotEqual(0, returncode)
+        self.assertTrue(os.path.exists(marker), "grandchild must have started")
+        with open(marker, encoding="utf-8") as f:
+            grandchild_pid = int(f.read().strip())
+        probe = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {grandchild_pid}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotIn(str(grandchild_pid), probe.stdout, "grandchild survived taskkill /T")
+
+    def test_precheck_command_timeout_seconds_explicit_and_default(self) -> None:
+        self.assertEqual(900, precheck.command_timeout_seconds({"timeoutSeconds": 900}))
+        self.assertEqual(1800, precheck.command_timeout_seconds({"argv": []}))
+        self.assertEqual(1800, precheck.command_timeout_seconds({"timeoutSeconds": 0}))

@@ -7,7 +7,13 @@ import sys
 import time
 from typing import Any
 
-from harness_common import ROOT, HarnessError, configure_utf8_stdio, load_yaml
+from harness_common import (
+    ROOT,
+    HarnessError,
+    configure_utf8_stdio,
+    load_yaml,
+    run_command_with_timeout,
+)
 
 
 def command_argv(command: dict[str, Any], task_id: str | None) -> list[str]:
@@ -18,6 +24,13 @@ def command_argv(command: dict[str, Any], task_id: str | None) -> list[str]:
     if task_id and command.get("passTask") is True:
         argv.extend(["--task", task_id])
     return argv
+
+
+def command_timeout_seconds(command: dict[str, Any]) -> int:
+    timeout = command.get("timeoutSeconds")
+    if isinstance(timeout, int) and timeout > 0:
+        return timeout
+    return 1800
 
 
 def main() -> int:
@@ -49,17 +62,31 @@ def main() -> int:
 
         def _run_cmd(cid: str, cmd: dict[str, Any], tid: str | None) -> tuple[str, int]:
             argv = command_argv(cmd, tid)
+            timeout = command_timeout_seconds(cmd)
             print(f"\n== {cid}: {cmd.get('description', '')}", flush=True)
             started = time.perf_counter()
-            result = subprocess.run(argv, cwd=ROOT, check=False)
+            returncode, timed_out = run_command_with_timeout(
+                argv,
+                cwd=ROOT,
+                timeout_seconds=timeout,
+            )
             elapsed = time.perf_counter() - started
-            status = "PASS" if result.returncode == 0 else "FAIL"
+            if timed_out:
+                status = "TIMEOUT"
+                print(
+                    f"== {cid}: {status} "
+                    f"(exit={returncode}, elapsed={elapsed:.3f}s, "
+                    f"timeout={timeout}s, process tree terminated)",
+                    flush=True,
+                )
+                return cid, 1
+            status = "PASS" if returncode == 0 else "FAIL"
             print(
                 f"== {cid}: {status} "
-                f"(exit={result.returncode}, elapsed={elapsed:.3f}s)",
+                f"(exit={returncode}, elapsed={elapsed:.3f}s)",
                 flush=True,
             )
-            return cid, result.returncode
+            return cid, int(returncode)
 
         failures: list[tuple[str, int]] = []
         with _cf.ThreadPoolExecutor(max_workers=len(command_ids)) as pool:

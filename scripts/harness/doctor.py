@@ -13491,6 +13491,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
                 "Run the complete portable Harness unit and integration test suite"
             ),
             "argv": ["scripts/harness/tests/test_harness.py"],
+            "timeoutSeconds": 3600,
         },
         "ci-execution-policy: Harness portability command profile drifted",
     )
@@ -14347,6 +14348,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
             "argv": ["scripts/harness/durable_command.ps1"],
             "interpreter": "POWERSHELL_7_WINDOWS",
             "profileEligible": False,
+            "timeoutSeconds": 600,
         },
         "task-delivery-policy: durableCommand registry projection drifted",
     )
