@@ -33,10 +33,13 @@ import org.springframework.jdbc.core.RowMapper;
  * <p>The snapshot lifecycle is one-way: {@code ACTIVE -> WITHDRAWN} and
  * {@code ACTIVE -> NARROWED} are the only legal transitions, and a terminal
  * snapshot can never be resurrected. {@code put} is insert-only (a duplicate
- * id fails closed), {@code withdraw}/{@code narrow} are status-conditioned
+ * id fails closed) and {@code withdraw}/{@code narrow} are status-conditioned
  * single UPDATE statements whose row lock makes concurrent transitions
- * mutually exclusive — matching the in-memory implementation and the port
- * contract "must not resurrect withdrawn or narrowed snapshots".
+ * mutually exclusive. This is deliberately stricter than the current
+ * in-memory implementation, which still allows re-transitioning terminal
+ * snapshots; aligning that implementation is tracked as a follow-up. The
+ * port contract "must not resurrect withdrawn or narrowed snapshots" is
+ * satisfied.
  *
  * <p>This is the persistence skeleton: the schema, roles and policies live in
  * the Flyway migrations, and this class wires the domain port to that substrate.
