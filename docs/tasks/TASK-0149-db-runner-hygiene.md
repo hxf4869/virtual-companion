@@ -2,7 +2,13 @@
 
 ```yaml
 taskId: TASK-0149
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P3-07 DB runner 陈旧注释与 glob 已完成：infra/db/run-rls-tests.sh 头部注释移除 five 硬编码改为
+  numbered 动态描述；测试发现 glob 改为 compgen -G 且整个模式双引号（避免 bash 预展开），支持
+  2 位及以上数字前缀与空目录安全，保持编号排序。唯一 Precheck 7/7 PASS、正式 SQL suite ALL
+  TESTS PASS（52）、唯一 git diff --check PASS 在候选 bdfbe8d/e6245a4；C2 无强制独立 Reviewer；
+  remote exact-SHA 如实非 PASS（dispatchCount=0），本卡只声明 READY 冻结的 LOCAL_EXACT_TREE_FALLBACK。
 owner: repository-owner
 riskClass: C2
 requiredSkills:

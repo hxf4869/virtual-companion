@@ -794,3 +794,10 @@ tasks:
     taskCard: docs/tasks/TASK-0148-readme-status-endpoints-audit.md
     evidence: docs/evidence/TASK-0148/evidence-pack.json
     handoff: docs/handoffs/TASK-0148.json
+
+  TASK-0149:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0149-db-runner-hygiene.md
+    evidence: docs/evidence/TASK-0149/evidence-pack.json
+    handoff: docs/handoffs/TASK-0149.json

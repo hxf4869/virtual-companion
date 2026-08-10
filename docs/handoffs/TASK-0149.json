@@ -1,0 +1,63 @@
+{
+  "taskId": "TASK-0149",
+  "state": "ACCEPTED",
+  "baseCommit": "a6c4c68041f32c6abf2be769dc662f3b9b2eb493",
+  "headCommit": "bdfbe8df2c2002ae2570caf86421c15e2ff3b93c",
+  "evidencePath": "docs/evidence/TASK-0149/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0afea13",
+      "startedAt": "2026-08-11T03:44:42+08:00",
+      "endedAt": "2026-08-11T03:57:00+08:00",
+      "elapsedSeconds": 738,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0afea13",
+      "startedAt": "2026-08-11T03:44:42+08:00",
+      "endedAt": "2026-08-11T03:46:20+08:00",
+      "elapsedSeconds": 98,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "843c50b",
+      "startedAt": "2026-08-11T03:46:23+08:00",
+      "endedAt": "2026-08-11T03:57:00+08:00",
+      "elapsedSeconds": 637,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-11T03:46:20+08:00",
+      "inProgressCommit": "843c50b",
+      "reason": "Implementation (comment 'five' -> 'numbered'; compgen -G quoted-whole-pattern glob supporting 2+ digit prefixes and empty-directory safety), iterative SQL suite ALL TESTS PASS (52), candidate freeze bdfbe8d/e6245a4, sole formal Precheck PASS (7 commands), sole formal SQL suite ALL TESTS PASS (52), unique git diff --check PASS."
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "建立 TASK-0149 DRAFT（0afea13）、READY 授权（ea38bd4）、authorizationCommit 绑定（28a225d）、IN_PROGRESS（843c50b）；DRAFT 检查点 Doctor 695438 checks PASS，READY Doctor 699692 checks PASS。",
+    "实现 P3-07：infra/db/run-rls-tests.sh 头部注释移除 'five' 硬编码改为 'numbered cross-tenant fail-closed SQL tests'；测试发现 glob 改为 compgen -G 且整个模式双引号（避免 bash 预展开成多参数），支持 2 位及以上数字前缀（01..99、100+），空目录/无匹配安全（循环零次执行），保持按编号排序。",
+    "迭代验证：bash -n 语法 PASS；glob 实测 51 匹配/空目录 0 匹配；SQL suite 实跑 ALL TESTS PASS（52）。",
+    "唯一正式 Precheck 真实 PASS（7/7 commands，含 openapiValidate/openapiDrift）。",
+    "唯一正式 SQL suite 真实 PASS：ALL TESTS PASS（52）。",
+    "唯一无参数 git diff --check 真实 PASS（exit 0，输出空）。",
+    "本地 exact-tree 通道在精确候选 Commit/Tree（bdfbe8d/e6245a4）上 PASS；remote exact-SHA 未调度（卡冻结 LOCAL_EXACT_TREE_FALLBACK，remote 保持非 PASS，passClaimed=false）。"
+  ],
+  "remaining": [
+    "P2-27（平台矩阵）、P2-25（SBOM/license）仍在 Owner gate 待决策（本会话已多次提交决策请求，Owner 未作答）。",
+    "Provider DNS/连接层威胁边界、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与 RISK-01..11 条件风险待后续。",
+    "全部修复后须对最新 origin/main 做独立全项目复审；只有无未处置 P0/P1、P2/P3 均修复或正式限期接受、机器真源/Evidence/Handoff/Commit/Tree/远端一致且 clean 0/0 才可宣称 Goal 完成。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（配额耗尽强类型证据，dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 的 passClaimed 限于已记录平台（macOS）/命令（Precheck、SQL suite、git diff --check）。",
+    "compgen 为 bash 内建（脚本 shebang 已是 /usr/bin/env bash），Windows Git Bash/WSL 均可用；首次 Windows CI 运行需确认 compgen 行为。"
+  ],
+  "nextAction": "处理 Provider DNS/连接层威胁边界（独立调查卡）、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29 需 Owner 决策可信 principal/限流/Admin 语义）与 RISK-01..11 条件风险（P2-27/P2-25 待 Owner 决策）；全部修复后对最新 origin/main 做独立全项目复审。"
+}
