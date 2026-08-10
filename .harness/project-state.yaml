@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0134
+activeTaskCard: docs/tasks/TASK-0134-task0133-harness-approval-quarantine.md
 lastAcceptedTask: TASK-0132
 lastAcceptedHandoff: docs/handoffs/TASK-0132.json
 lastTerminalTask: TASK-0133
 lastTerminalHandoff: docs/handoffs/TASK-0133.json
-nextAction: '通过 task-intake 创建 TASK-0134 C4 一次性治理恢复：以 Owner 2026-08-10 “按你说的来”授权和 scope=harness-change，精确绑定 TASK-0133 Base/READY/candidate/REJECTED terminal 与产物，隔离其错误 approval scope 历史；前向修复 Doctor 及对应 Harness 测试，不改写历史，重新验证并正式承接 P2-20 后，再继续 P2-21 与其余审计项。'
+nextAction: '执行 TASK-0134：只修改 scripts/harness/doctor.py 与 scripts/harness/tests/test_harness.py，以固定对象身份隔离 TASK-0133 的错误 Harness approval scope 历史并强化真实 merge 双亲断言；普通精确 scope 规则不得放宽。冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
