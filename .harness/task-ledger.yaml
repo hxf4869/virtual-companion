@@ -787,3 +787,10 @@ tasks:
     taskCard: docs/tasks/TASK-0147-openapi-drift-gate-canonical.md
     evidence: docs/evidence/TASK-0147/evidence-pack.json
     handoff: docs/handoffs/TASK-0147.json
+
+  TASK-0148:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0148-readme-status-endpoints-audit.md
+    evidence: docs/evidence/TASK-0148/evidence-pack.json
+    handoff: docs/handoffs/TASK-0148.json

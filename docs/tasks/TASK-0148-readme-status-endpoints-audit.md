@@ -2,7 +2,15 @@
 
 ```yaml
 taskId: TASK-0148
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P3-02 README 状态与端点核对已完成：docs/evidence/TASK-0148/audit-matrix.md 覆盖 README 全部
+  16 项可验证声明（固定端点/Auth 四端点/合同面/技术栈/V1-V15 迁移/15 模块/admission limiter/
+  profile 开关/边界/脚本与文档引用/MANIFEST 语义），逐项与代码、配置、OpenAPI、frontend、文件
+  系统事实对照，结论全部一致——README.md 字节不变，未把规划能力写成可用。独立 R1 复核抽查 12
+  项全部一致（P0/P1/P2=0，P3=2 矩阵核对源表述，fix batch 修正）。唯一 Precheck 7/7 PASS、唯一
+  git diff --check PASS 在候选 06ca59e/8e27ba8；remote exact-SHA 如实非 PASS（dispatchCount=0），
+  本卡只声明 READY 冻结的 LOCAL_EXACT_TREE_FALLBACK。
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -227,7 +235,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用任何跨卡 Reviewer 或命令 PASS。
 independentReview: not-required
-reviewers: []
+reviewers:
+  - id: task0148_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 06ca59ef59b695090852198fe0885c84cedd342e
+    evidencePath: docs/evidence/TASK-0148/review-r1.md
+    reason: "R1 独立复核 PASS：抽查核对矩阵 16 项中的 12 项（含全部重点项），逐项与代码/配置/OpenAPI/frontend/文件系统事实一致；README 行号标注精确，README 在候选 tree 中与父提交字节相同；P0/P1/P2=0、P3=2（矩阵核对源表述瑕疵，fix batch 已修正）。Reviewer 未运行正式门禁。"
+    candidateTree: 8e27ba8d25f03a417d79c4724349d36202ca80a0
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0148
   - git diff --check

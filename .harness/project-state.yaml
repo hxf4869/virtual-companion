@@ -2,14 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0148
-activeTaskCard: docs/tasks/TASK-0148-readme-status-endpoints-audit.md
-lastAcceptedTask: TASK-0147
-lastAcceptedHandoff: docs/handoffs/TASK-0147.json
-lastTerminalTask: TASK-0147
-lastTerminalHandoff: docs/handoffs/TASK-0147.json
-nextAction: 执行 TASK-0148（P3-02 README 状态与端点核对）：逐项核对 README 全部可验证声明（固定端点/Auth 端点/技术栈/V1-V15 迁移/15 模块/合同面/profile 开关/脚本文档引用）与代码、配置、OpenAPI、frontend、文件系统事实，差异处最小修正，无差异则记录核对矩阵；冻结 clean candidate 后依序完成唯一 Precheck、唯一
-  diff check、Evidence/Handoff、单父终态提交和远端 0/0；随后处理 P3-07（run-rls-tests.sh glob/注释）独立卡、Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0148
+lastAcceptedHandoff: docs/handoffs/TASK-0148.json
+lastTerminalTask: TASK-0148
+lastTerminalHandoff: docs/handoffs/TASK-0148.json
+nextAction: 串行处理 P3-07（infra/db/run-rls-tests.sh 的 ls V*.sql glob 与陈旧注释，C2 小卡）；随后 Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
