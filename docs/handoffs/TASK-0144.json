@@ -1,0 +1,91 @@
+{
+  "taskId": "TASK-0144",
+  "state": "ACCEPTED",
+  "baseCommit": "ba8b1661926452abf5e975948246f626ddc2795e",
+  "headCommit": "0c3d0d7df0e8a700d5d75da5f54e5a83e55baf34",
+  "evidencePath": "docs/evidence/TASK-0144/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "b74661602568edfe514ec2047a3c34814d7387e5",
+      "startedAt": "2026-08-11T00:29:01+08:00",
+      "endedAt": "2026-08-11T00:57:00+08:00",
+      "elapsedSeconds": 1680,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "b74661602568edfe514ec2047a3c34814d7387e5",
+      "startedAt": "2026-08-11T00:29:01+08:00",
+      "endedAt": "2026-08-11T00:35:20+08:00",
+      "elapsedSeconds": 379,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "eac715a2e2519ef4c96240f983d5bb8916b15692",
+      "startedAt": "2026-08-11T00:35:38+08:00",
+      "endedAt": "2026-08-11T00:57:00+08:00",
+      "elapsedSeconds": 1282,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-11T00:35:20+08:00",
+      "inProgressCommit": "eac715a2e2519ef4c96240f983d5bb8916b15692",
+      "reason": "Implementation and iteration (targeted Java tests 11 PASS, SQL suite iteration ALL TESTS PASS), candidate freeze 9d4a14a, independent C3 R1 PASS (P0/P1=0, P2=1 non-blocking Javadoc wording, P3=4 informational), one fix batch 0c3d0d7 (Javadoc only) with R2 delta PASS (P2 closed, no new findings), then the sole formal Precheck PASS (5 commands, Doctor 677127 checks), the sole root Docker Maven verify BUILD SUCCESS (1370 tests, 0 failures/errors/skips), the sole formal SQL suite ALL TESTS PASS (52 tests), and the unique no-argument git diff --check PASS (empty output), all on the frozen candidate before closure."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0144_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "9d4a14a3e799e80ce335007d3a2312b117da3caf",
+      "evidencePath": "docs/evidence/TASK-0144/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份（diff 恰 3 文件全在 writeAllowlist）、put insert-only（ON CONFLICT DO NOTHING 无 DO UPDATE + affected=0 抛 already stored）、withdraw/narrow 状态条件单语句 UPDATE（行锁原子、错误分类 not-stored/only ACTIVE may transition）、narrow ID 一致性校验、RLS/租户绑定未削弱、Java 单测与 SQL suite 51（并发 dblink 双会话单胜、跨 owner 隔离）覆盖充分；P0/P1=0、P2=1 非阻塞（Javadoc 措辞）、P3=4 信息性（R2 关闭）；Reviewer 未运行正式门禁。",
+      "candidateTree": "d34bb2a4231bfbce5c19ebeb084e8538dafb1442"
+    },
+    {
+      "id": "task0144_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "0c3d0d7df0e8a700d5d75da5f54e5a83e55baf34",
+      "evidencePath": "docs/evidence/TASK-0144/review-r2.md",
+      "reason": "R2 FINDING_CLOSURE + DELTA 复核 PASS：delta 仅 JdbcAuthorizationSnapshotStore.java 类 Javadoc（6 增 3 删），零行为变化；R1 唯一 P2 已关闭（措辞改为说明 JDBC 严格单向、内存实现对齐列为后续项，端口契约满足）；无新增 P0/P1/P2/P3；Reviewer 未运行正式门禁。",
+      "candidateTree": "589dd04766fb59e48354f2a63c9362f9bb25a653"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0144 DRAFT（b746616）、READY 授权（6ebd274）、authorizationCommit 绑定（60a294b）、IN_PROGRESS（eac715a）与冻结候选单父链；DRAFT 检查点 Doctor 672275 checks PASS，READY Doctor 675116 checks PASS。",
+    "实现 P2-12 JDBC 授权快照单向生命周期：JdbcAuthorizationSnapshotStore.put 改 insert-only（INSERT ... ON CONFLICT (owner_user_id, snapshot_id) DO NOTHING，affected=0 抛 already stored，无 DO UPDATE 复活路径）；withdraw 改状态条件单语句 UPDATE（WHERE snapshot_id=? AND status='ACTIVE'，行锁由单条原子 UPDATE 保证，affected=0 按 find 分类 not-stored / only ACTIVE may transition）；narrow 增加 narrowed.id() 与目标 id 一致性校验（IllegalArgumentException）并使用 status='ACTIVE' 条件更新；类 Javadoc 明确单向生命周期与端口契约，内存实现对齐列为后续项。",
+    "新增 JdbcAuthorizationSnapshotStoreTest（Mockito 断言 put/withdraw/narrow 的 SQL 文本与参数、重复 put、not-stored、已终态 withdraw/narrow、narrow ID 不一致等 8 个单测）+ 既有 CodecTest 3 个，11 tests PASS。",
+    "新增 infra/db/tests/51_authorization_snapshot_one_way_lifecycle.sql（真实 PostgreSQL）：insert-only 重复插入失败、WITHDRAWN/NARROWED 终态不可复活与不可再转换、并发 withdraw 单胜（dblink 双会话 + FOR UPDATE 持锁）、跨 owner 不可见/不可影响；SQL suite 52 项 ALL TESTS PASS。",
+    "独立 C3 R1 完整复核 PASS（P0/P1=0，P2=1 非阻塞 Javadoc 措辞，P3=4 信息性）；一次 fix batch（0c3d0d7，仅 Javadoc）后 R2 delta 复核 PASS（P2 关闭，P0/P1/P2/P3=0）。",
+    "唯一正式 Precheck 真实 PASS（5 commands，Doctor 677127 checks，无 ERROR）。",
+    "唯一根级 Docker Maven verify 真实 PASS：BUILD SUCCESS，1370 tests，0 failures/errors/skips。",
+    "唯一正式 SQL suite 真实 PASS：ALL TESTS PASS（52）。",
+    "唯一无参数 git diff --check 真实 PASS（exit 0，输出空）。",
+    "本地 exact-tree 通道在精确候选 Commit/Tree（0c3d0d7/589dd04）上 PASS；remote exact-SHA 未调度（卡冻结 LOCAL_EXACT_TREE_FALLBACK，remote 保持非 PASS，passClaimed=false）。"
+  ],
+  "remaining": [
+    "InMemoryAuthorizationSnapshotStore 允许终态再转换（withdraw 幂等、narrow 可转 WITHDRAWN 终态），与 JDBC 单向语义存在可观察分歧——R1 P2 记录，需独立小卡对齐内存实现（或由 Owner 决策语义）。",
+    "V3 表级 UPDATE/DELETE 权限收紧（REVOKE）与 CHECK 约束未纳入本卡（不触碰 db/migration）：与 P1-04/P1-05/P2-29 的 DB 安全边界大卡（Owner gate）协同处理。",
+    "跨 owner 重复 snapshot_id 走 put() 时抛 DuplicateKeyException 而非 IllegalStateException（V3 全局 UNIQUE(snapshot_id)），两者均失败关闭；若 id 为全局唯一值则不可达，随 P1-04/05 复核。",
+    "P2-27（平台矩阵）、P2-25（SBOM/license）仍在 Owner gate 待决策（本会话已再次提交决策请求，Owner 未作答）。",
+    "P3-01（OpenAPI drift gate 接入 canonical/CI）、P3-02（README 端点核对）、P3-07（run-rls-tests.sh glob/注释）等独立卡待后续串行处理。",
+    "Provider DNS/连接层威胁边界、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与 RISK-01..11 条件风险待后续。",
+    "全部修复后须对最新 origin/main 做独立全项目复审；只有无未处置 P0/P1、P2/P3 均修复或正式限期接受、机器真源/Evidence/Handoff/Commit/Tree/远端一致且 clean 0/0 才可宣称 Goal 完成。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（配额耗尽强类型证据，dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 的 passClaimed 限于已记录平台（macOS）/命令（Precheck、根级 Maven verify、SQL suite、git diff --check）。",
+    "SQL suite 的并发 withdraw 单胜测试由 dblink 双会话 + 主会话 FOR UPDATE 持锁保证确定性；R1 已审查无确定性竞态，但首次 Windows/WSL 运行需确认 dblink 连接语义。",
+    "transitionFailure 中 UPDATE(0 行) 与 find() 之间存在极小 TOCTOU（并发同 id 插入时错误消息措辞可能矛盾），语义仍失败关闭——R1 P3 记录。",
+    "TASK-0140/0141 的 REJECTED 历史保持不可变；本卡未复用任何跨卡 Reviewer 或命令 PASS。"
+  ],
+  "nextAction": "创建 P2-12 后继的内存实现对齐小卡（InMemoryAuthorizationSnapshotStore 允许终态再转换，与 JDBC 单向语义对齐——R1 P2 记录）；随后串行处理 P3-01（OpenAPI drift gate 接入 canonical/CI）、P3-02/P3-07 独立卡、Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。"
+}

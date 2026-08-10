@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0144
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-12 JDBC 授权快照单向生命周期已完成：JdbcAuthorizationSnapshotStore.put 改 insert-only
+  （ON CONFLICT DO NOTHING，重复 ID 抛 already stored，WITHDRAWN/NARROWED 不可复活）；withdraw/
+  narrow 改状态条件单语句 UPDATE（仅 ACTIVE 可转，行锁由单条原子 UPDATE 保证，affected=0 分类
+  not-stored / only ACTIVE may transition）；narrow 增加 ID 一致性校验。新增
+  JdbcAuthorizationSnapshotStoreTest（Mockito 断言 SQL/异常语义，8 测试）与
+  infra/db/tests/51_authorization_snapshot_one_way_lifecycle.sql（真实 PostgreSQL：insert-only
+  冲突、终态不可复活/不可再转换、并发 withdraw 单胜、跨 owner 隔离）。唯一 Precheck 5/5 PASS
+  （Doctor 677127 checks）、根级 Docker Maven verify BUILD SUCCESS（1370 tests 0 failures）、
+  正式 SQL suite ALL TESTS PASS（52）、唯一 git diff --check PASS 全部在候选 0c3d0d7/589dd04
+  PASS；独立 C3 R1 PASS（P0/P1=0，P2=1 非阻塞 Javadoc 措辞，R2 关闭）后完成；remote exact-SHA
+  如实非 PASS（dispatchCount=0），本卡只声明 READY 冻结的 LOCAL_EXACT_TREE_FALLBACK。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -259,7 +271,21 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0143 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0144_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 9d4a14a3e799e80ce335007d3a2312b117da3caf
+    evidencePath: docs/evidence/TASK-0144/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份（diff 恰 3 文件全在 writeAllowlist）、put insert-only（ON CONFLICT DO NOTHING 无 DO UPDATE + affected=0 抛 already stored）、withdraw/narrow 状态条件单语句 UPDATE（行锁原子、错误分类 not-stored/only ACTIVE may transition）、narrow ID 一致性校验、RLS/租户绑定未削弱、Java 单测与 SQL suite 51（并发 dblink 双会话单胜、跨 owner 隔离）覆盖充分；P0/P1=0、P2=1 非阻塞（Javadoc 措辞）、P3=4 信息性（R2 关闭）；Reviewer 未运行正式门禁。"
+    candidateTree: d34bb2a4231bfbce5c19ebeb084e8538dafb1442
+  - id: task0144_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 0c3d0d7df0e8a700d5d75da5f54e5a83e55baf34
+    evidencePath: docs/evidence/TASK-0144/review-r2.md
+    reason: "R2 FINDING_CLOSURE + DELTA 复核 PASS：delta 仅 JdbcAuthorizationSnapshotStore.java 类 Javadoc（6 增 3 删），零行为变化；R1 唯一 P2 已关闭（措辞改为说明 JDBC 严格单向、内存实现对齐列为后续项，端口契约满足）；无新增 P0/P1/P2/P3；Reviewer 未运行正式门禁。"
+    candidateTree: 589dd04766fb59e48354f2a63c9362f9bb25a653
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0144
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

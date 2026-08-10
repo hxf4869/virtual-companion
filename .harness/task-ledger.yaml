@@ -766,3 +766,10 @@ tasks:
     taskCard: docs/tasks/TASK-0143-p2-26-timeout-process-tree.md
     evidence: docs/evidence/TASK-0143/evidence-pack.json
     handoff: docs/handoffs/TASK-0143.json
+
+  TASK-0144:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0144-p2-12-jdbc-authorization-snapshot-one-way.md
+    evidence: docs/evidence/TASK-0144/evidence-pack.json
+    handoff: docs/handoffs/TASK-0144.json
