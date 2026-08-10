@@ -742,3 +742,9 @@ tasks:
     taskCard: docs/tasks/TASK-0139-p2-21-canonical-python-literal-full.md
     evidence: docs/evidence/TASK-0139/evidence-pack.json
     handoff: docs/handoffs/TASK-0139.json
+  TASK-0140:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0140-p2-23-supply-chain-reproducibility.md
+    evidence: docs/evidence/TASK-0140/evidence-pack.json
+    handoff: docs/handoffs/TASK-0140.json

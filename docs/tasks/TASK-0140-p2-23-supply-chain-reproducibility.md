@@ -2,8 +2,15 @@
 
 ```yaml
 taskId: TASK-0140
-state: READY
+state: REJECTED
 owner: repository-owner
+terminalStateReason: >-
+  READY Doctor 唯一一次真实 FAIL（exit 1，2 errors，651975 checks）：context lock 的
+  owner-authorization provenance 条目生成时缺 provenanceOnly: true 字段，Doctor 将其当作仓库
+  文件在 Base 75644e7 读取失败，且 fingerprint 复算不一致（expected 7ba2995e…，got fcc09ef9…）。
+  context lock 在 READY 检查点后字节不可变（validate_ready_context_lock_bytes），无法原地修复；
+  按交付策略停止 promotion 并如实 REJECTED，未启动实现/Reviewer/正式门禁；由 TASK-0141 从 DRAFT
+  起修正 context lock 后承接 P2-23。
 riskClass: C4
 requiredSkills:
   - task-delivery-flow
@@ -240,7 +247,16 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0139 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0140_r1
+    kind: independent-review-gate
+    verdict: UNKNOWN
+    reviewedCommit: 3fa3c8181ffb9b296389da6a450db88c7c92a924
+    evidencePath: docs/evidence/TASK-0140/review-r1.md
+    reason: "Independent review never launched: READY Doctor FAIL (context lock provenance row missing provenanceOnly: true) stopped promotion before any implementation candidate existed. reviewedCommit/candidateTree are the card head commit and its tree, recorded only to satisfy the Evidence Schema 40-hex fields; they are not candidate identity. Honest UNKNOWN, never PASS."
+    candidateTree: 5473be49359243f796a007880336cb7491ef469b
+    budget: {maximumMinutes: 15, elapsedSeconds: 0, hardLimitReached: false}
+    interruption: {terminalOutputReceived: false, observedStatus: REVIEWER_NEVER_LAUNCHED, action: REJECT_TASK_AT_READY_DOCTOR_FAIL}
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0140
   - python -m unittest scripts.harness.tests.test_harness

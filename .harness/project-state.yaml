@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0140
-activeTaskCard: docs/tasks/TASK-0140-p2-23-supply-chain-reproducibility.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0139
 lastAcceptedHandoff: docs/handoffs/TASK-0139.json
-lastTerminalTask: TASK-0139
-lastTerminalHandoff: docs/handoffs/TASK-0139.json
-nextAction: '执行 TASK-0140：将 .github/workflows/ci.yml 全部 actions 固定为完整 40-char commit SHA（附原 tag 注释与受审升级流程）并将 harness 依赖安装命令收敛为 python -m pip install --require-hashes，requirements-harness.txt 锁定 PyYAML==6.0.3、tzdata==2026.3 精确版本与 sha256 hash lock，test_harness.py 新增锁合同测试并在全新临时 venv 验证可重复安装；冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0；随后继续 P2-25 至 P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
+lastTerminalTask: TASK-0140
+lastTerminalHandoff: docs/handoffs/TASK-0140.json
+nextAction: '通过 task-intake 创建 TASK-0141 C4 卡承接 P2-23：从 DRAFT 起重新生成 context lock（owner-authorization provenance 条目带 provenanceOnly: true，fingerprint 复算），沿用 Owner 已批准的方案与写路径（.github/workflows/ci.yml 全部 actions 固定完整 40-char commit SHA 并附原 tag 注释与受审升级流程、requirements-harness.txt 锁定 PyYAML==6.0.3/tzdata==2026.3 精确版本与 sha256 hash lock、安装命令 --require-hashes、test_harness.py 新增锁合同测试、全新临时 venv 可重复安装验证），独立 C4 Reviewer、唯一 Precheck、完整 Harness、唯一 diff check、单父终态提交与远端 0/0 全部真实完成后再继续 P2-25 至 P2-27 与其余审计项。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
