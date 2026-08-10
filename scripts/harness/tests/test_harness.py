@@ -2099,6 +2099,12 @@ class ContextTests(unittest.TestCase):
         for task in discover_tasks().values():
             if is_planning_only_task(task):
                 continue
+            if task.get("state") in ("REJECTED", "SUPERSEDED"):
+                # Doctor only validates context locks of non-terminal tasks
+                # (doctor.py validate_task_card skips ACCEPTED/REJECTED/SUPERSEDED);
+                # a rejected task's context lock is frozen by its READY checkpoint
+                # and cannot be repaired, so reproducibility cannot be required.
+                continue
             errors = verify_context_lock(task)
             if errors and doctor.rejected_fingerprint_history_isolated(
                 task,
