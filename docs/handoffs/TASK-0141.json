@@ -1,0 +1,84 @@
+{
+  "taskId": "TASK-0141",
+  "state": "REJECTED",
+  "baseCommit": "8d613427573915b628d6643bdd78fc0e58227e71",
+  "headCommit": "0b351cdff4e7271c6aa9d563f2b1f95a442cfdcd",
+  "evidencePath": "docs/evidence/TASK-0141/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a7b5de08c1497ba2ac699cba7a0f9c1dcdb0004b",
+      "startedAt": "2026-08-10T18:22:00+08:00",
+      "endedAt": "2026-08-10T19:40:00+08:00",
+      "elapsedSeconds": 4680,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a7b5de08c1497ba2ac699cba7a0f9c1dcdb0004b",
+      "startedAt": "2026-08-10T18:22:00+08:00",
+      "endedAt": "2026-08-10T18:36:00+08:00",
+      "elapsedSeconds": 840,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "3293624580d9729a18b50483c435ad46e67a409f",
+      "startedAt": "2026-08-10T18:37:00+08:00",
+      "endedAt": "2026-08-10T19:40:00+08:00",
+      "elapsedSeconds": 3780,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 1560,
+      "readyDoctorPassAt": "2026-08-10T18:36:30+08:00",
+      "inProgressCommit": "3293624580d9729a18b50483c435ad46e67a409f",
+      "reason": "Candidate implementation, R1/R2 independent review (PASS), the sole canonical Precheck (5/5 PASS, Doctor 658638 checks), and fresh-venv --require-hashes installation all PASSED, but the unique full Harness unittest FAILED: test_all_context_locks_are_reproducible (ContextTests) found that the REJECTED TASK-0140 context lock is not reproducible (provenance row missing provenanceOnly: true). The TASK-0140 context-lock defect is frozen by the READY checkpoint byte binding (validate_ready_context_lock_bytes runs for REJECTED tasks too), so a file-level repair is forbidden by Doctor, and this card's READY-frozen scope does not authorize changing the context-lock test semantics; promotion stops and this card closes as REJECTED. git diff --check was deliberately not launched; remote dispatch was not attempted."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0141_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "d34ff2c16ea95eafe6e463d856d6a1e45c18b43d",
+      "evidencePath": "docs/evidence/TASK-0141/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份、六个 actions SHA 与上游 tag 实测一致、23 个依赖 hash 与 PyPI digest 逐一对应、SupplyChainTests 失败关闭语义完备、范围严格受控；P0/P1=0、P2=1（升级流程注释未逐行覆盖，已在修复批次补齐）、P3=3 信息性；Reviewer 未运行正式门禁。",
+      "candidateTree": "c82bb086685aff7325f4ea8977b2864a9e10cd09"
+    },
+    {
+      "id": "task0141_r2",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "0b351cdff4e7271c6aa9d563f2b1f95a442cfdcd",
+      "evidencePath": "docs/evidence/TASK-0141/review-r2.md",
+      "reason": "R2 FINDING_CLOSURE + DELTA 复核 PASS：delta 仅 ci.yml 注释补齐（+9/-0），11/11 uses 注释统一、无占位残留、无行为变化；P2-1 已关闭，无新增结构性 P0/P1；Reviewer 未运行正式门禁。",
+      "candidateTree": "1f3bfcb0f39ad5bb96937d863de1dada05cec137"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0141 DRAFT、READY、authorization binding、IN_PROGRESS 与冻结候选单父链；READY Doctor 真实 PASS（656650 checks）。",
+    "实现 P2-23 供应链可复现：ci.yml 全部 11 处 uses 固定完整 commit SHA（6 个唯一 SHA 与上游 tag 实测一致）+ 受审升级流程注释；requirements-harness.txt 锁定 PyYAML==6.0.3/tzdata==2026.3 精确版本与 23 个 sha256 hash（与 PyPI digest 逐一对应）；SupplyChainTests 3 个锁合同测试；全新临时 venv --require-hashes 安装真实 PASS（exit 0）。",
+    "独立 C4 R1（P0/P1=0，P2=1）与 R2 delta（P0/P1/P2/P3=0）均 PASS；R1 的 P2-1 在修复批次补齐注释后关闭。",
+    "唯一正式 Precheck 真实 PASS（5/5，Doctor 658638 checks）。首次 Precheck FAIL（review 文件过早写入导致快照不一致）已如实记录，按 candidateIdentity RERUN_REQUIRED 恢复被审查的确切候选快照后重跑。",
+    "唯一完整 Harness unittest 如实 FAIL：265 tests 中 test_all_context_locks_are_reproducible 发现 REJECTED TASK-0140 的 context lock 不可复现（provenance 行缺 provenanceOnly: true；其 READY checkpoint 字节绑定使文件级修复被 Doctor 禁止，本卡 READY 冻结范围也不授权修改该测试语义）；正式门禁非 PASS 即停止 promotion，不重跑挑结果、不伪造成 PASS。",
+    "REJECTED closure 保留实现于候选提交 d34ff2c/0b351cd 历史中（不破坏 Doctor 绿线，Precheck 已 PASS），供 TASK-0142 承接。"
+  ],
+  "remaining": [
+    "P2-23 必须以新 C4 卡（TASK-0142）从 DRAFT 起把「test_all_context_locks_are_reproducible 对 terminal 任务（REJECTED/SUPERSEDED）跳过 context lock 可复现校验（对齐 Doctor 7321 行语义）或等价隔离」纳入 writeAllowlist，承接本卡已实现并验证的 P2-23 供应链合同（ci.yml 固定 SHA + 锁文件 + SupplyChainTests + 全新 venv 安装验证），重新完成完整门禁；不得复用本卡 Reviewer 或命令结果。",
+    "P2-25 至 P2-27（license/SBOM、超时进程树、路径感知矩阵）与 P3 项待后续串行处理。",
+    "Provider DNS/连接层威胁边界、数据库 principal/RLS/migration 等 Owner gates 与 RISK-01..11 条件风险待后续。",
+    "全部修复后须对最新 origin/main 做独立全项目复审；只有无未处置 P0/P1、P2/P3 均修复或正式限期接受、机器真源/Evidence/Handoff/Commit/Tree/远端一致且 clean 0/0 才可宣称 Goal 完成。"
+  ],
+  "knownRisks": [
+    "REJECTED TASK-0140 的 context lock 缺 provenanceOnly: true 且被 READY checkpoint 字节绑定冻结，文件级修复被 Doctor 禁止；test_all_context_locks_are_reproducible 对其不可复现断言失败。TASK-0142 必须把该测试的 terminal-task 语义对齐（Doctor 对 terminal 任务不做 context lock 可复现校验）纳入范围，否则完整 Harness 永远 FAIL。",
+    "首次正式 Precheck 因 review 文件过早写入 worktree 而 FAIL（candidateIdentity UNTRACKED_CANDIDATE 变化）；教训：Reviewer 结论文件必须在全部正式门禁完成后随终态提交写入，正式门禁前工作树必须与候选提交完全一致。",
+    "TASK-0141 的 P2-23 实现（ci.yml/requirements-harness.txt/SupplyChainTests）经 R1/R2 与 Precheck 验证正确，保留在候选提交历史中，TASK-0142 承接时不得复用本卡门禁 PASS。",
+    "remote exact-SHA 与本地 exact-tree 通道均未取得 PASS；remote 保持非 PASS（dispatchCount=0）。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0142 C4 卡承接 P2-23：从 DRAFT 起将「test_all_context_locks_are_reproducible 对 terminal 任务跳过 context lock 可复现校验（对齐 Doctor 语义）」与 docs/evidence/TASK-0141/**、docs/handoffs/TASK-0141.json 等承接参考纳入 writeAllowlist，承接本卡已验证的供应链合同实现（ci.yml 全部 actions 固定完整 40-char commit SHA + 受审升级流程注释、requirements-harness.txt 精确版本与 sha256 hash lock、--require-hashes 安装、SupplyChainTests 锁合同测试、全新临时 venv 可重复安装验证），独立 C4 Reviewer、唯一 Precheck、完整 Harness、唯一 diff check、单父终态提交与远端 0/0 全部真实完成后再继续 P2-25 至 P2-27 与其余审计项。"
+}

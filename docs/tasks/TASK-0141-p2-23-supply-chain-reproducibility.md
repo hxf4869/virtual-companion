@@ -2,8 +2,15 @@
 
 ```yaml
 taskId: TASK-0141
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
+terminalStateReason: >-
+  唯一完整 Harness unittest 如实 FAIL（265 tests，1 failure）：test_all_context_locks_are_reproducible
+  发现 REJECTED TASK-0140 的 context lock 不可复现（provenance 行缺 provenanceOnly: true）；
+  TASK-0140 的 context lock 被其 READY checkpoint 字节绑定冻结（validate_ready_context_lock_bytes
+  对 REJECTED 任务仍运行），文件级修复被 Doctor 禁止，本卡 READY 冻结范围也不授权修改该测试的
+  terminal-task 语义；按交付策略停止 promotion 并如实 REJECTED。R1/R2 均 PASS、唯一 Precheck
+  5/5 PASS、全新 venv 安装 PASS；由 TASK-0142 从 DRAFT 起把该测试语义对齐纳入范围后承接 P2-23。
 riskClass: C4
 requiredSkills:
   - task-delivery-flow
@@ -257,7 +264,21 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0139/0140 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0141_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: d34ff2c16ea95eafe6e463d856d6a1e45c18b43d
+    evidencePath: docs/evidence/TASK-0141/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份、六个 actions SHA 与上游 tag 实测一致、23 个依赖 hash 与 PyPI digest 逐一对应、SupplyChainTests 失败关闭语义完备、范围严格受控；P0/P1=0、P2=1（升级流程注释未逐行覆盖，已在修复批次补齐）、P3=3 信息性；Reviewer 未运行正式门禁。"
+    candidateTree: c82bb086685aff7325f4ea8977b2864a9e10cd09
+  - id: task0141_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 0b351cdff4e7271c6aa9d563f2b1f95a442cfdcd
+    evidencePath: docs/evidence/TASK-0141/review-r2.md
+    reason: "R2 FINDING_CLOSURE + DELTA 复核 PASS：delta 仅 ci.yml 注释补齐（+9/-0），11/11 uses 注释统一、无占位残留、无行为变化；P2-1 已关闭，无新增结构性 P0/P1；Reviewer 未运行正式门禁。"
+    candidateTree: 1f3bfcb0f39ad5bb96937d863de1dada05cec137
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0141
   - python -m unittest scripts.harness.tests.test_harness
