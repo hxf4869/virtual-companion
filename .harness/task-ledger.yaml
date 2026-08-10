@@ -712,3 +712,9 @@ tasks:
     taskCard: docs/tasks/TASK-0134-task0133-harness-approval-quarantine.md
     evidence: docs/evidence/TASK-0134/evidence-pack.json
     handoff: docs/handoffs/TASK-0134.json
+  TASK-0135:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0135-task0111-context-fingerprint-quarantine.md
+    evidence: docs/evidence/TASK-0135/evidence-pack.json
+    handoff: docs/handoffs/TASK-0135.json

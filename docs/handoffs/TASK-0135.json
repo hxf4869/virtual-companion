@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0135",
+  "state": "REJECTED",
+  "baseCommit": "2fe3e470bb499aa1e968d6acd2d23f7421757077",
+  "headCommit": "6e0bdeeb5cfe0343a1ea6e457bdb79661ad82013",
+  "evidencePath": "docs/evidence/TASK-0135/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4343ead49591029d5b1134ecdcac7263c08e18cd",
+      "startedAt": "2026-08-10T11:24:29+08:00",
+      "endedAt": "2026-08-10T12:35:00+08:00",
+      "elapsedSeconds": 4231,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4343ead49591029d5b1134ecdcac7263c08e18cd",
+      "startedAt": "2026-08-10T11:24:29+08:00",
+      "endedAt": "2026-08-10T11:33:28+08:00",
+      "elapsedSeconds": 539,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "8e1d60363254d990adc1a50ac2d71a2c1c14445a",
+      "startedAt": "2026-08-10T11:33:35+08:00",
+      "endedAt": "2026-08-10T12:35:00+08:00",
+      "elapsedSeconds": 3685,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 985,
+      "readyDoctorPassAt": "2026-08-10T11:33:28+08:00",
+      "inProgressCommit": "8e1d60363254d990adc1a50ac2d71a2c1c14445a",
+      "reason": "Candidate code review PASS and targeted tests PASS, but the sole canonical Precheck FAILED because the candidate modified the READY-frozen task card body, changing the authorization projection (doctor errors: task title/body or immutable metadata changed after READY checkpoint; authorization projection changed in commit 6e0bdee). The READY card authorizes only TASK-0111 isolation; the Owner-approved three-history extension has no legal post-READY landing surface in this card (scopeAmendments require a Backlog contract and task-backlog.yaml is forbidden), so promotion stops and this card closes as REJECTED. Full Harness and git diff --check were deliberately not launched; remote dispatch was not attempted."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0135_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "6e0bdeeb5cfe0343a1ea6e457bdb79661ad82013",
+      "evidencePath": "docs/evidence/TASK-0135/review-r1.md",
+      "reason": "R1 完整复核 PASS：三历史固定身份（commit/tree/parent/diff 路径集）、验收标准逐条、INV-HARNESS-001..009 与邻近风险全部核对；隔离 predicate 只对 TASK-0111/0124/0129 三个固定 REJECTED 身份放行，普通 context-lock 校验路径零改动，无 CLI/env/alias 兼容层；P0/P1/P2=0、P3=3 非阻断提示；Reviewer 未运行正式门禁。",
+      "candidateTree": "29b7e18c98d8a1b64bed06e15d215014fd97b82d"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0135 DRAFT、READY、authorization binding、IN_PROGRESS 与冻结候选单父链；READY Doctor 真实 PASS（622205 checks）。",
+    "定向扫描发现完整 Harness 的 context-lock 失败历史共有三个（TASK-0111/0124/0129，同类 fingerprint 错误 REJECTED）；Owner 明确批准一次隔离三历史恢复绿线。",
+    "实现三历史固定身份隔离 predicate（共享精确校验 helper + 三个公开 predicate + 聚合函数）与正负例测试；定向测试 4 tests OK（含消费点、P2-20 与 TASK-0133/0134 回归）。",
+    "独立 C4 R1 对候选 6e0bdee / tree 29b7e18 完整复核 PASS（P0/P1/P2=0，P3=3 非阻断），Reviewer 未运行正式门禁。",
+    "唯一正式 Precheck 如实 FAIL：候选修改 READY 冻结任务卡正文导致 authorization projection 变化（title/body/immutable metadata changed after READY checkpoint）；三历史扩展在 READY 后无合法落点（scopeAmendments 需 Backlog 合同且 task-backlog.yaml 被 forbiddenPaths 禁止），正式门禁非 PASS 即停止 promotion，不重跑挑结果、不伪造成 PASS。"
+  ],
+  "remaining": [
+    "三历史（TASK-0111/0124/0129）context fingerprint 隔离必须以新 C4 治理卡从 DRAFT 起即冻结全部三历史身份与 Owner 批准，重新走 READY/IN_PROGRESS/候选/R1/Precheck/完整 Harness/diff check/pre-closure/push/远端 0/0，不得复用本卡任何门禁结果。",
+    "P2-20（merge fixture 真实双亲断言）实现已在 Base 历史中，随恢复卡完整 Harness 通过后正式承接。",
+    "P2-21（canonical Python 合同选择，OWNER_GATE）需 Owner 决策后另卡处理。",
+    "其余 Harness/CI、Provider DNS、数据库 Owner gates、条件风险与最终全项目复审仍待后续串行处理。"
+  ],
+  "knownRisks": [
+    "完整 Harness 的 ContextTests.test_all_context_locks_are_reproducible 在三个 REJECTED fingerprint 历史落地前持续失败；任何冻结该套件的卡都会先于其自身门禁失败。",
+    "READY 冻结任务卡正文/不可变元数据不可修改；任何 READY 后范围扩展必须在新卡的 DRAFT 阶段完成，或走 Backlog scopeAmendments 合同（本卡因 forbiddenPaths 不可用）。",
+    "本卡候选实现（doctor.py/test_harness.py 三历史隔离）保留为 REJECTED 历史，代码经验证正确但不得复用其门禁 PASS；远端 exact-SHA 与本地 exact-tree 通道均未取得 PASS。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0136 C4 一次性治理恢复：从 DRAFT 起冻结 TASK-0111/0124/0129 三个固定 context fingerprint 失败历史的完整身份与 Owner 2026-08-10 批准（含三历史 rejectedHistoryQuarantine、humanApprovals 与验收），实现三历史隔离 predicate 与测试，使 ContextTests.test_all_context_locks_are_reproducible 恢复绿线并正式承接 P2-20；不改写历史、不删测、不加 skip，独立 C4 Reviewer、唯一 Precheck、完整 Harness、唯一 diff check、单父终态提交与远端 0/0 全部真实完成后再继续其余审计项。"
+}
