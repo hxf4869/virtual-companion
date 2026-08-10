@@ -780,3 +780,10 @@ tasks:
     taskCard: docs/tasks/TASK-0146-p2-12-inmemory-authz-snapshot-one-way-alignment.md
     evidence: docs/evidence/TASK-0146/evidence-pack.json
     handoff: docs/handoffs/TASK-0146.json
+
+  TASK-0147:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0147-openapi-drift-gate-canonical.md
+    evidence: docs/evidence/TASK-0147/evidence-pack.json
+    handoff: docs/handoffs/TASK-0147.json

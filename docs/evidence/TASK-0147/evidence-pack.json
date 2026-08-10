@@ -1,0 +1,157 @@
+{
+  "taskId": "TASK-0147",
+  "baseCommit": "e6e6d1264f9b90254a137625f7a3824eabd6a0f9",
+  "headCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+  "contextFingerprint": "7c912181b4ddb0e80d5fd3aed45a24161236e888da48ce6a7bb8c606d60687f8",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c5f2da2",
+      "startedAt": "2026-08-11T02:15:47+08:00",
+      "endedAt": "2026-08-11T02:58:00+08:00",
+      "elapsedSeconds": 2533,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c5f2da2",
+      "startedAt": "2026-08-11T02:15:47+08:00",
+      "endedAt": "2026-08-11T02:17:30+08:00",
+      "elapsedSeconds": 103,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "dbd8dbb",
+      "startedAt": "2026-08-11T02:17:36+08:00",
+      "endedAt": "2026-08-11T02:58:00+08:00",
+      "elapsedSeconds": 2424,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-11T02:17:30+08:00",
+      "inProgressCommit": "dbd8dbb",
+      "reason": "Implementation (commands.yaml openapiValidate/openapiDrift + precheck profile 7 commands; test_harness.py profile assertion sync + 3 new openapi tests), iterative ValidationFlowTests 11 PASS, candidate freeze b2aeb98/bbacc23, independent C4 R1 PASS (P0/P1/P2=0, P3=1 informational), then the sole formal Precheck PASS (7 commands incl. openapiValidate/openapiDrift, Doctor 688121+ checks), the sole full Harness unittest PASS (273 tests in 1886.773s, OK, 1 platform-gated skip), and the unique no-argument git diff --check PASS (empty output), all on the frozen candidate before closure."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0147_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+      "evidencePath": "docs/evidence/TASK-0147/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份（diff 恰 2 文件全在 writeAllowlist）、commands.yaml openapiValidate/openapiDrift 精确注册（argv/timeoutSeconds 300）且 precheck profile 恰 7 命令无重复、harnessPortabilityLocal 与父提交字节级一致、doctor.py 包含性校验兼容、四个目标测试（profile 精确断言同步 + 注册契约 + 干净树 PASS + 漂移阻断）与工具真实输出匹配、try/finally 恢复无脏状态、INV-HARNESS-004 三平台 wrapper 自动继承、验收标准逐项可复测；P0/P1/P2=0、P3=1 信息性（漂移测试写-恢复唯一理论残留是进程被 SIGKILL 强杀，可接受）。Reviewer 未运行正式门禁。",
+      "candidateTree": "bbacc2356b9ac4f95617c8705ab679b73b9e0be5"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0147 (READY activation)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor completed once with 688121 checks in 85.5s; stderr contained no ERROR lines.",
+      "environment": "macOS; controlled Python; clean TMPDIR",
+      "verifiedCommit": "3f97d2c"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.ValidationFlowTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Iterative targeted tests on the frozen candidate: ValidationFlowTests 11 tests OK, including the 3 new openapi tests (registration contract, clean-tree validate/drift PASS, drift fails closed with DRIFT on stderr and byte-exact restoration). Iterative checks are not formal gates.",
+      "environment": "macOS; controlled Python",
+      "verifiedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0147 frozen candidate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Independent R1 (full matrix) PASS with zero P0/P1/P2 and one informational P3 note (drift test write-restore has no residual risk except SIGKILL of the test process). Reviewer did not run formal gates.",
+      "environment": "Independent read-only reviewer; no source writes or expensive full-suite dispatch",
+      "verifiedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+      "candidateCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+      "candidateTree": "bbacc2356b9ac4f95617c8705ab679b73b9e0be5"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0147",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "bb72a18c92e76de021b6fd65090e226f13da2e0f77b3062da56d5d690d21781a",
+      "reason": "The sole canonical Precheck ran once after R1 on the frozen candidate: all 7 commands PASS including the newly registered openapiValidate (0.133s) and openapiDrift (0.183s); Doctor completed with no ERROR lines. Combined stdout+stderr log sha256 bb72a18c...",
+      "environment": "macOS; controlled Python; /tmp/vc-precheck-0147.log",
+      "verifiedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "390d805e2ffe141f870f05ccde1661bd43c1541bca5369e653764300c7b020c9",
+      "reason": "The frozen full Harness suite ran once: 273 tests in 1886.773s, OK (1 platform-gated skip; zero failures/errors); includes the 3 new openapi tests. Log sha256 390d805e...",
+      "environment": "macOS; controlled Python; /tmp/vc-harness-full-0147.log",
+      "verifiedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The unique formal no-argument diff check ran once after all other gates; stdout/stderr both empty (sha256 e3b0c44...).",
+      "environment": "macOS; /tmp/vc-diffcheck-0147.log",
+      "verifiedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Card froze LOCAL_EXACT_TREE_FALLBACK with strong typed quota-exhausted evidence (includedMinutes=usedMinutes=2000, paidBudgetUsd=0, stopUsageEnabled=true, dispatchCount=0); no dispatch was made. Remote remains non-PASS.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0147 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_ACCEPTED_CLOSURE_FREEZE: runs once after the complete ACCEPTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0147/pre-closure-request.json; one execution reserved",
+      "verifiedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_PASS_CANDIDATE_CANONICAL_PASS_FULL_HARNESS_PASS_DIFF_CHECK_PASS",
+    "candidateCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+    "candidateTree": "bbacc2356b9ac4f95617c8705ab679b73b9e0be5",
+    "passClaimed": true,
+    "localExactTree": {
+      "status": "PASS",
+      "reason": "The frozen local exact-tree channel completed on the exact candidate Commit and Tree: candidate canonical Precheck PASS (7 commands), full Harness 273 tests OK, and the unique no-argument git diff --check PASS, all on the same clean candidate with recorded hashes.",
+      "exitCode": 0,
+      "stdoutSha256": "bb72a18c92e76de021b6fd65090e226f13da2e0f77b3062da56d5d690d21781a",
+      "stderrSha256": "bb72a18c92e76de021b6fd65090e226f13da2e0f77b3062da56d5d690d21781a"
+    },
+    "remote": {
+      "status": "NOT_RUN",
+      "reason": "Card froze LOCAL_EXACT_TREE_FALLBACK with strong typed quota-exhausted evidence; no dispatch was attempted. Remote remains non-PASS.",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}

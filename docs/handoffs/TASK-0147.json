@@ -1,0 +1,77 @@
+{
+  "taskId": "TASK-0147",
+  "state": "ACCEPTED",
+  "baseCommit": "e6e6d1264f9b90254a137625f7a3824eabd6a0f9",
+  "headCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+  "evidencePath": "docs/evidence/TASK-0147/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c5f2da2",
+      "startedAt": "2026-08-11T02:15:47+08:00",
+      "endedAt": "2026-08-11T02:58:00+08:00",
+      "elapsedSeconds": 2533,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c5f2da2",
+      "startedAt": "2026-08-11T02:15:47+08:00",
+      "endedAt": "2026-08-11T02:17:30+08:00",
+      "elapsedSeconds": 103,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "dbd8dbb",
+      "startedAt": "2026-08-11T02:17:36+08:00",
+      "endedAt": "2026-08-11T02:58:00+08:00",
+      "elapsedSeconds": 2424,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-11T02:17:30+08:00",
+      "inProgressCommit": "dbd8dbb",
+      "reason": "Implementation, iterative ValidationFlowTests 11 PASS, candidate freeze b2aeb98/bbacc23, independent C4 R1 PASS (P0/P1/P2=0, P3=1 informational), then the sole formal Precheck PASS (7 commands), the sole full Harness unittest PASS (273 tests in 1886.773s OK), and the unique no-argument git diff --check PASS, all on the frozen candidate before closure."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0147_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0",
+      "evidencePath": "docs/evidence/TASK-0147/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份（diff 恰 2 文件全在 writeAllowlist）、commands.yaml openapiValidate/openapiDrift 精确注册（argv/timeoutSeconds 300）且 precheck profile 恰 7 命令无重复、harnessPortabilityLocal 字节级一致、doctor.py 包含性校验兼容、四个目标测试与工具真实输出匹配、try/finally 恢复无脏状态、INV-HARNESS-004 三平台 wrapper 自动继承；P0/P1/P2=0、P3=1 信息性。Reviewer 未运行正式门禁。",
+      "candidateTree": "bbacc2356b9ac4f95617c8705ab679b73b9e0be5"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0147 DRAFT（c5f2da2）、READY 授权（0df7d90）、authorizationCommit 绑定（3f97d2c）、IN_PROGRESS（dbd8dbb）；DRAFT 检查点 Doctor 683882 checks PASS，READY Doctor 688121 checks PASS。",
+    "实现 P3-01 OpenAPI drift gate 接入 canonical：.harness/commands.yaml 新增 openapiValidate（scripts/dev/openapi_tool.py validate）与 openapiDrift（diff --fail-on-drift）命令（timeoutSeconds 300）并加入 precheck profile（5→7 命令）；harnessPortabilityLocal profile 字节不变（TASK-0074..77 combined gate 语义保持）；CI 经 precheck.sh 自动继承，不改 ci.yml。",
+    "test_harness.py：同步 test_precheck_profile_keeps_each_canonical_gate_exactly_once 期望列表（7 命令）；新增 test_openapi_commands_are_registered_exactly（argv/timeoutSeconds/profile 包含/harnessPortabilityLocal 不含）、test_openapi_validate_and_drift_pass_on_clean_tree（exit 0 + PASS 输出）、test_openapi_drift_fails_closed（修改生成物 → exit 1 + DRIFT，finally 字节级恢复）。",
+    "迭代 ValidationFlowTests 11 tests OK（含 3 个新 openapi 测试）。",
+    "独立 C4 R1 完整复核 PASS（P0/P1/P2=0，P3=1 信息性：漂移测试写-恢复唯一理论残留为进程被 SIGKILL，可接受）。",
+    "唯一正式 Precheck 真实 PASS：7/7 commands（含 openapiValidate 0.133s、openapiDrift 0.183s），Doctor 无 ERROR。",
+    "唯一完整 Harness unittest 真实 PASS：273 tests in 1886.773s，OK（1 平台门控 skip，零失败/错误）。",
+    "唯一无参数 git diff --check 真实 PASS（exit 0，输出空）。",
+    "本地 exact-tree 通道在精确候选 Commit/Tree（b2aeb98/bbacc23）上 PASS；remote exact-SHA 未调度（卡冻结 LOCAL_EXACT_TREE_FALLBACK，remote 保持非 PASS，passClaimed=false）。"
+  ],
+  "remaining": [
+    "P3-02（README 状态/端点过期）与 P3-07（infra/db/run-rls-tests.sh 的 ls V*.sql glob 与陈旧注释）独立小卡待后续串行处理。",
+    "P2-27（平台矩阵）、P2-25（SBOM/license）仍在 Owner gate 待决策（本会话已多次提交决策请求，Owner 未作答）。",
+    "Provider DNS/连接层威胁边界、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与 RISK-01..11 条件风险待后续。",
+    "全部修复后须对最新 origin/main 做独立全项目复审；只有无未处置 P0/P1、P2/P3 均修复或正式限期接受、机器真源/Evidence/Handoff/Commit/Tree/远端一致且 clean 0/0 才可宣称 Goal 完成。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（配额耗尽强类型证据，dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 的 passClaimed 限于已记录平台（macOS）/命令（Precheck、完整 Harness unittest、git diff --check）。",
+    "openapiValidate/openapiDrift 在 Windows/macOS precheck（harness-smoke）也会运行：openapi_tool.py 仅标准库 + PyYAML（requirements-harness.txt 已锁定），无平台依赖；首次 Windows CI 运行时需确认输出编码。",
+    "test_openapi_drift_fails_closed 修改真实生成物后字节级恢复；唯一理论残留为测试进程被 SIGKILL 强杀（R1 P3 记录，可接受）。"
+  ],
+  "nextAction": "串行处理 P3-02（README 状态/端点核对：按 Technical Alpha 真实接线能力更新，C2 小卡）与 P3-07（infra/db/run-rls-tests.sh 的 ls V*.sql glob 与陈旧注释，C2 小卡）；随后 Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。"
+}

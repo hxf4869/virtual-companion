@@ -2,7 +2,17 @@
 
 ```yaml
 taskId: TASK-0147
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P3-01 OpenAPI drift gate 接入 canonical/CI 已完成：.harness/commands.yaml 新增
+  openapiValidate（scripts/dev/openapi_tool.py validate）与 openapiDrift（diff --fail-on-drift）
+  命令（timeoutSeconds 300）并加入 precheck profile（5→7 命令）；harnessPortabilityLocal profile
+  字节不变（TASK-0074..77 combined gate 语义保持）；CI 经 precheck.sh 自动继承。test_harness.py
+  同步 precheck profile 精确断言并新增 3 个 openapi 测试（注册契约、干净树 PASS、漂移阻断
+  try/finally 恢复）。唯一 Precheck 7/7 PASS、完整 Harness 273 tests OK（1886.8s）、唯一 git
+  diff --check PASS 全部在候选 b2aeb98/bbacc23 PASS；独立 C4 R1 PASS（P0/P1/P2=0，P3=1 信息性）
+  后完成；remote exact-SHA 如实非 PASS（dispatchCount=0），本卡只声明 READY 冻结的
+  LOCAL_EXACT_TREE_FALLBACK。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -262,7 +272,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0147_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: b2aeb9812f427fd7c70404bbca3f95ab8db5b1a0
+    evidencePath: docs/evidence/TASK-0147/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份（diff 恰 2 文件全在 writeAllowlist）、commands.yaml openapiValidate/openapiDrift 精确注册（argv/timeoutSeconds 300）且 precheck profile 恰 7 命令无重复、harnessPortabilityLocal 字节级一致、doctor.py 包含性校验兼容、四个目标测试与工具真实输出匹配、try/finally 恢复无脏状态、INV-HARNESS-004 三平台 wrapper 自动继承；P0/P1/P2=0、P3=1 信息性。Reviewer 未运行正式门禁。"
+    candidateTree: bbacc2356b9ac4f95617c8705ab679b73b9e0be5
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0147
   - python -m unittest scripts.harness.tests.test_harness

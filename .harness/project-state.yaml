@@ -2,15 +2,14 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0147
-activeTaskCard: docs/tasks/TASK-0147-openapi-drift-gate-canonical.md
-lastAcceptedTask: TASK-0146
-lastAcceptedHandoff: docs/handoffs/TASK-0146.json
-lastTerminalTask: TASK-0146
-lastTerminalHandoff: docs/handoffs/TASK-0146.json
-nextAction: 执行 TASK-0147（P3-01 OpenAPI drift gate 接入 canonical/CI）：.harness/commands.yaml 新增 openapiValidate（scripts/dev/openapi_tool.py validate）与 openapiDrift（diff --fail-on-drift）命令并加入 precheck profile（CI
-  经 precheck.sh 自动继承）；scripts/harness/tests/test_harness.py 同步 precheck profile 精确断言并新增 openapi 注册契约与漂移阻断测试；冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端
-  0/0；随后处理 P3-02/P3-07 独立卡、Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0147
+lastAcceptedHandoff: docs/handoffs/TASK-0147.json
+lastTerminalTask: TASK-0147
+lastTerminalHandoff: docs/handoffs/TASK-0147.json
+nextAction: 串行处理 P3-02（README 状态/端点核对：按 Technical Alpha 真实接线能力更新，C2 小卡）与 P3-07（infra/db/run-rls-tests.sh 的 ls V*.sql glob 与陈旧注释，C2 小卡）；随后 Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25
+  待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
