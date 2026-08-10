@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # TASK-0015: one-shot PostgreSQL 18 + pgvector container that applies the
-# Flyway migrations and runs the five cross-tenant fail-closed SQL tests.
+# Flyway migrations and runs the numbered cross-tenant fail-closed SQL tests.
 #
 # Image version AND digest are frozen by the task card. The container is
 # anonymous (--rm), binds no host port and mounts no volume: tests run via
@@ -130,7 +130,11 @@ done
 
 echo "== running cross-tenant fail-closed tests =="
 FAIL=0
-for t in $(ls "$TEST_DIR"/[0-9][0-9]_*.sql | sort); do
+# Two-or-more-digit numbered prefix (01..99, 100+), sorted numerically; the
+# whole pattern is quoted so bash does not pre-expand it before compgen, and
+# the compgen glob is safe for an empty or unmatched directory (no literal
+# glob string is ever passed to psql).
+for t in $(compgen -G "$TEST_DIR/[0-9][0-9]*_*.sql" | sort); do
     name="$(basename "$t")"
     log="$(mktemp)"
     if docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q < "$t" >"$log" 2>&1; then
