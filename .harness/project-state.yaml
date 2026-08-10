@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0139
+activeTaskCard: docs/tasks/TASK-0139-p2-21-canonical-python-literal-full.md
 lastAcceptedTask: TASK-0136
 lastAcceptedHandoff: docs/handoffs/TASK-0136.json
 lastTerminalTask: TASK-0138
 lastTerminalHandoff: docs/handoffs/TASK-0138.json
-nextAction: '通过 task-intake 创建 TASK-0139 C4 一次性治理恢复：从 DRAFT 起把 .harness/agent-entrypoints.yaml 写路径与「更新 TASK-0066/0067 恢复记录测试的 AGENTS.md 断言（改为绑定固定历史对象而非当前工作树）」一并纳入范围，重新实现并正式验证 P2-21 字面量 python 合同，独立 C4 Reviewer、唯一 Precheck、完整 Harness、唯一 diff check、单父终态提交与远端 0/0 全部真实完成后再继续 P2-23 至 P2-27 与其余审计项。'
+nextAction: '执行 TASK-0139：按 Owner 选定的字面量 python 合同，将 AGENTS.md 会话恢复命令、.harness/agent-entrypoints.yaml 的 contentSha256 绑定与 precheck.sh/precheck.ps1 解释器探测及对应 wrapper 测试统一收敛为字面量 python，并将 TASK-0066/0067 恢复记录测试的 AGENTS.md 断言改为链内固定历史对象绑定；冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
