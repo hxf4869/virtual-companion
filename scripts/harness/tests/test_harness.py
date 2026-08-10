@@ -10471,3 +10471,88 @@ class Task0077QuarantineTests(unittest.TestCase):
         self.assertEqual(versions["harness-change"], "1.1.7")
         self.assertEqual(versions["task-intake"], "1.2.7")
         self.assertEqual(versions["task-delivery-flow"], "1.3.7")
+
+
+class SupplyChainTests(unittest.TestCase):
+    """P2-23/P2-24 supply-chain contracts: pinned actions SHAs and hashed requirements."""
+
+    def _ci_yaml(self):
+        import yaml
+
+        with open(".github/workflows/ci.yml", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    def test_requirements_harness_pins_exact_versions_with_hashes(self):
+        """requirements-harness.txt must pin exact == versions and carry sha256 hashes."""
+        with open("requirements-harness.txt", encoding="utf-8") as f:
+            content = f.read()
+        self.assertNotRegex(content, r">=|<=|~=", "range constraints are forbidden in the lock file")
+        package_blocks = [block.strip() for block in content.splitlines() if "==" in block]
+        self.assertGreaterEqual(len(package_blocks), 2, "at least PyYAML and tzdata must be pinned")
+        for block in package_blocks:
+            package_line, _, _ = block.partition("\\")
+            self.assertRegex(
+                package_line.strip(),
+                r"^[A-Za-z0-9_.-]+==[0-9][0-9A-Za-z.+_-]*$",
+                f"package line must be an exact pin: {package_line!r}",
+            )
+        hash_lines = [
+            line.strip() for line in content.splitlines() if "--hash=sha256:" in line
+        ]
+        self.assertGreaterEqual(len(hash_lines), 2, "every pinned package needs hashes")
+        for line in hash_lines:
+            self.assertRegex(
+                line, r"^--hash=sha256:[0-9a-f]{64}\s*\\?\s*$", f"malformed hash line: {line!r}"
+            )
+        for expected in ("PyYAML==6.0.3", "tzdata==2026.3"):
+            self.assertIn(expected, content, f"missing expected pinned package {expected}")
+
+    def test_ci_workflow_pins_full_commit_sha_with_reviewed_tag_comment(self):
+        """Every actions uses: reference must be a full 40-char commit SHA with a tag comment."""
+        import re
+
+        ci = self._ci_yaml()
+        uses_values = []
+
+        def collect(node):
+            if isinstance(node, dict):
+                if isinstance(node.get("uses"), str):
+                    uses_values.append(node["uses"])
+                for value in node.values():
+                    collect(value)
+            elif isinstance(node, list):
+                for item in node:
+                    collect(item)
+
+        collect(ci)
+        self.assertGreaterEqual(len(uses_values), 6, "all six pinned actions must be present")
+        for value in uses_values:
+            self.assertRegex(
+                value,
+                r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$",
+                f"uses must pin owner/repo@full commit SHA, got {value!r}",
+            )
+        with open(".github/workflows/ci.yml", encoding="utf-8") as f:
+            raw = f.read()
+        self.assertNotRegex(raw, r"uses:\s*[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@v[0-9]",
+                            "no mutable major-tag uses reference may remain")
+        pinned_shas = sorted({value.split("@", 1)[1] for value in uses_values})
+        comment_sha_pairs = sorted(set(re.findall(
+            r"#\s*[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@v[0-9]+\s*->\s*([0-9a-f]{40})", raw
+        )))
+        self.assertEqual(
+            comment_sha_pairs, pinned_shas,
+            "every pinned SHA must have a reviewed tag comment and vice versa",
+        )
+
+    def test_ci_harness_install_commands_require_hashes(self):
+        """pip install of requirements-harness.txt must always use --require-hashes."""
+        with open(".github/workflows/ci.yml", encoding="utf-8") as f:
+            raw = f.read()
+        install_lines = [
+            line for line in raw.splitlines()
+            if "pip install" in line and "requirements-harness.txt" in line
+        ]
+        self.assertGreaterEqual(len(install_lines), 2, "both harness jobs must install dependencies")
+        for line in install_lines:
+            self.assertIn("--require-hashes", line, f"install command missing --require-hashes: {line!r}")
