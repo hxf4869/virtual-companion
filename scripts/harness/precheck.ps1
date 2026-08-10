@@ -11,7 +11,9 @@ if ($Task) {
 
 $candidates = @(
     # Respect activated virtual environments and actions/setup-python first.
-    @{ Command = "python"; Prefix = @() }
+    @{ Command = "python"; Prefix = @() },
+    @{ Command = "python3"; Prefix = @() },
+    @{ Command = "py"; Prefix = @("-3") }
 )
 
 $selected = $null

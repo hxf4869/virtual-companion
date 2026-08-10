@@ -2,7 +2,16 @@
 
 ```yaml
 taskId: TASK-0137
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  唯一正式 Precheck 在 Doctor 阶段如实 FAIL：修改 AGENTS.md（P2-21 字面量 python 合同的一部分）
+  导致 .harness/agent-entrypoints.yaml 中 codex/zed/githubCopilotCliAgentInstructions 绑定的
+  contentSha256 drift，而该文件被本卡 READY 冻结的 forbiddenPaths 禁止（写路径设计错误：
+  AGENTS.md 变更的必要伴随同步文件未纳入 writeAllowlist）。READY 后 writeAllowlist/forbiddenPaths
+  不可修改（scopeAmendments 需 Backlog 合同，task-backlog.yaml 同样被禁），正式门禁非 PASS 即
+  停止 promotion，本卡如实 REJECTED，不改写历史、不删测、不伪造 PASS；P2-21 由新的 C4 治理卡
+  从 DRAFT 起将 agent-entrypoints.yaml 纳入写路径后重新验证。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -281,7 +290,21 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0136 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0137_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 187c4f5c95e06bbc0b7f6bfb84f440d7a1db0a0b
+    evidencePath: docs/evidence/TASK-0137/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份、P2-21 字面量 python 合同验收逐条、INV-HARNESS-001..009 与邻近风险全部核对；AGENTS/precheck.sh/ps1 唯一字面量 python，wrapper 测试正负例覆盖，无删测无吞退出码；P0/P1/P2=0、P3=4 非阻断提示；Reviewer 未运行正式门禁。"
+    candidateTree: ce09d8b6e9845724b5a214c41d3661e0f6b99b20
+  - id: task0137_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 0e65262651f2dba077f52a28aef57609856a30e8
+    evidencePath: docs/evidence/TASK-0137/review-r1.md
+    reason: "R2 FINDING_CLOSURE + DELTA 复核 PASS：R1 P3-1（wrapper 负例测试平台门控与「无新增 skip」字面冲突）已按 Owner 既定方向关闭——两 wrapper 测试合并为单方法、保留既有 1 个平台门控，net 无新增 skip、无删测、无吞退出码；R2 delta 只改 test_harness.py（+3/-4），无新结构性 P0/P1；Reviewer 未运行正式门禁。"
+    candidateTree: 69ed63613b4ee776ca826a07d64adde196c72e0a
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0137
   - python -m unittest scripts.harness.tests.test_harness

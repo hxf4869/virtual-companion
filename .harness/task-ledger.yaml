@@ -724,3 +724,9 @@ tasks:
     taskCard: docs/tasks/TASK-0136-task0111-0124-0129-context-fingerprint-quarantine.md
     evidence: docs/evidence/TASK-0136/evidence-pack.json
     handoff: docs/handoffs/TASK-0136.json
+  TASK-0137:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0137-p2-21-canonical-python-literal.md
+    evidence: docs/evidence/TASK-0137/evidence-pack.json
+    handoff: docs/handoffs/TASK-0137.json

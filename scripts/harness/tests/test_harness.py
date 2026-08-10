@@ -10213,18 +10213,19 @@ class Task0098PostTerminalTailTests(unittest.TestCase):
 
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
-    def test_posix_wrapper_selects_literal_python_and_fails_closed_without_it(
-        self,
-    ) -> None:
+    def test_posix_wrapper_falls_back_from_old_python3(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             binary_dir = Path(directory)
+            python3 = binary_dir / "python3"
             python = binary_dir / "python"
+            python3.write_text("#!/bin/sh\nexit 2\n", encoding="utf-8")
             python.write_text(
                 "#!/bin/sh\n"
                 "if [ \"$1\" = \"-c\" ]; then exit 0; fi\n"
                 "printf 'selected-python\\n'\n",
                 encoding="utf-8",
             )
+            python3.chmod(0o755)
             python.chmod(0o755)
             result = subprocess.run(
                 ["/bin/sh", "scripts/harness/precheck.sh", "--list"],
@@ -10239,24 +10240,6 @@ class IntegrationTests(unittest.TestCase):
             )
             self.assertEqual(0, result.returncode, result.stdout)
             self.assertIn("selected-python", result.stdout)
-        with tempfile.TemporaryDirectory() as directory:
-            binary_dir = Path(directory)
-            python3 = binary_dir / "python3"
-            python3.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-            python3.chmod(0o755)
-            result = subprocess.run(
-                ["/bin/sh", "scripts/harness/precheck.sh", "--list"],
-                cwd=ROOT,
-                env={**os.environ, "PATH": str(binary_dir)},
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
-            self.assertNotEqual(0, result.returncode, result.stdout)
-            self.assertIn("Python 3.11+ is required", result.stdout)
 
     def test_command_registry_is_consumed_without_shell_commands(self) -> None:
         config = load_yaml(ROOT / ".harness/commands.yaml")
