@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0142
-activeTaskCard: docs/tasks/TASK-0142-p2-23-supply-chain-reproducibility.md
-lastAcceptedTask: TASK-0139
-lastAcceptedHandoff: docs/handoffs/TASK-0139.json
-lastTerminalTask: TASK-0141
-lastTerminalHandoff: docs/handoffs/TASK-0141.json
-nextAction: '执行 TASK-0142（TASK-0141 的 replacement，承接 P2-23）：将 test_all_context_locks_are_reproducible 对 REJECTED/SUPERSEDED 任务跳过 context lock 可复现校验（对齐 Doctor 对 terminal 任务不校验的语义，ACCEPTED 任务仍全量校验），并重新完整验证 Base 中已就位的供应链实现（ci.yml 全部 actions 固定 40-char commit SHA + 受审升级流程注释、requirements-harness.txt 精确版本与 sha256 hash lock、--require-hashes 安装、SupplyChainTests、全新临时 venv 可重复安装验证）；冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0；随后继续 P2-25 至 P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0142
+lastAcceptedHandoff: docs/handoffs/TASK-0142.json
+lastTerminalTask: TASK-0142
+lastTerminalHandoff: docs/handoffs/TASK-0142.json
+nextAction: '创建 P2-25 的 C4 卡（license/SBOM/vulnerability gate）前，先向 Owner 提交扫描器选择、离线/在线要求、严重级门槛、例外字段与到期策略方案并获批；随后继续 P2-26、P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

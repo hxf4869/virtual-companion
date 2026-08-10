@@ -1,0 +1,77 @@
+{
+  "taskId": "TASK-0142",
+  "state": "ACCEPTED",
+  "baseCommit": "61aa6f96f0b4fe5809c53e2cdc7040b8e88fdbcb",
+  "headCommit": "94bfc29c08d62ce3d0642a100a76a0bd634ba90d",
+  "evidencePath": "docs/evidence/TASK-0142/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "57820a058ac2b7824eca5ab369eaa720e93dd7ed",
+      "startedAt": "2026-08-10T19:50:00+08:00",
+      "endedAt": "2026-08-10T21:19:00+08:00",
+      "elapsedSeconds": 5340,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "57820a058ac2b7824eca5ab369eaa720e93dd7ed",
+      "startedAt": "2026-08-10T19:50:00+08:00",
+      "endedAt": "2026-08-10T20:02:00+08:00",
+      "elapsedSeconds": 720,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "604d9c8f93464a01dfd0157c5ad492fda40a7ee2",
+      "startedAt": "2026-08-10T20:03:00+08:00",
+      "endedAt": "2026-08-10T21:19:00+08:00",
+      "elapsedSeconds": 4560,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 1740,
+      "readyDoctorPassAt": "2026-08-10T20:02:30+08:00",
+      "inProgressCommit": "604d9c8f93464a01dfd0157c5ad492fda40a7ee2",
+      "reason": "Candidate freeze, independent C4 R1 PASS (P0/P1/P2=0, P3=1 informational), the sole formal Precheck PASS (5 commands, Doctor 664120 checks), the full Harness unittest PASS (265 tests in 2317.414s, OK), and the unique no-argument git diff --check PASS (empty output) all completed on the frozen candidate before closure. Overrun beyond the 45-minute candidate deadline is closure-only (full Harness suite duration); no reanchoring."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0142_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "94bfc29c08d62ce3d0642a100a76a0bd634ba90d",
+      "evidencePath": "docs/evidence/TASK-0142/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份（tree/单父/授权提交）、测试语义对齐（与 doctor.py 7322 行对 terminal 任务不校验 context lock 的语义一致，ACCEPTED 仍全量校验、既有隔离分支保留）、Base 供应链合同（11 处 uses/6 个 SHA、23 个 hash、2 处 --require-hashes、3 个锁合同测试）全部核对；P0/P1/P2=0、P3=1 信息性；Reviewer 未运行正式门禁。",
+      "candidateTree": "383494d18ef39b03512ae7fac7596d23e05ef7d3"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0142 DRAFT、READY、authorization binding、IN_PROGRESS 与冻结候选单父链；READY Doctor 真实 PASS（662440 checks）。",
+    "实现 terminal context lock 语义对齐：test_all_context_locks_are_reproducible 对 REJECTED/SUPERSEDED 任务跳过 context lock 可复现校验（与 doctor.py 对 terminal 任务不调用 verify_context_lock 的语义一致；ACCEPTED 仍全量校验；planning-only 跳过与 rejected_fingerprint_history_isolated 隔离分支保留；无删测、无新增 skip）；定向测试 PASS（84.158s）。",
+    "重新完整验证 Base 中已就位的 P2-23 供应链实现：SupplyChainTests 3/3 PASS；全新临时 venv --require-hashes 安装真实 PASS（exit 0，PyYAML 6.0.3 + tzdata 2026.3）。",
+    "独立 C4 R1 完整复核 PASS（P0/P1/P2=0，P3=1 信息性）。",
+    "唯一正式 Precheck 真实 PASS（5 commands，Doctor 664120 checks，无 ERROR）。",
+    "唯一完整 Harness unittest 真实 PASS：265 tests in 2317.414s，OK（零失败/错误/skip）——TASK-0140 context lock 遗留缺陷引发的完整 Harness 红线已消除，绿线恢复。",
+    "唯一无参数 git diff --check 真实 PASS（exit 0，输出空）。",
+    "本地 exact-tree 通道在精确候选 Commit/Tree 上 PASS；remote exact-SHA 未调度（卡冻结 LOCAL_EXACT_TREE_FALLBACK，remote 保持非 PASS，passClaimed=false）。"
+  ],
+  "remaining": [
+    "P2-25（license/SBOM/vulnerability gate）为 OWNER_GATE：创建卡前先向 Owner 提交扫描器选择、离线/在线要求、严重级门槛、例外字段与到期策略方案并获批。",
+    "P2-26（超时与进程树终止）、P2-27（路径感知矩阵 + 移除固定 JDK 路径）与 P3 项待后续串行处理。",
+    "Provider DNS/连接层威胁边界、数据库 principal/RLS/migration 等 Owner gates 与 RISK-01..11 条件风险待后续。",
+    "全部修复后须对最新 origin/main 做独立全项目复审；只有无未处置 P0/P1、P2/P3 均修复或正式限期接受、机器真源/Evidence/Handoff/Commit/Tree/远端一致且 clean 0/0 才可宣称 Goal 完成。"
+  ],
+  "knownRisks": [
+    "TASK-0140 的 context lock 缺 provenanceOnly: true 且被其 READY checkpoint 字节绑定冻结，文件级修复被 Doctor 禁止；test_all_context_locks_are_reproducible 已对齐 Doctor 语义（terminal 任务不要求可复现），该缺陷作为不可变历史保留，不影响绿线。",
+    "REJECTED TASK-0141 的实现（ci.yml 固定 SHA、requirements-harness.txt 锁文件、SupplyChainTests）保留在历史中，已由本卡重新完整验证并正式承接。",
+    "remote exact-SHA 通道未取得 PASS（配额耗尽证据，dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK 的 passClaimed 限于已记录平台/命令。",
+    "TASK-0140/0141 的 REJECTED 历史保持不可变；其失败与实现均已如实记录，不得改写。"
+  ],
+  "nextAction": "创建 P2-25 的 C4 卡（license/SBOM/vulnerability gate）前，先向 Owner 提交扫描器选择、离线/在线要求、严重级门槛、例外字段与到期策略方案并获批；随后继续 P2-26、P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。"
+}

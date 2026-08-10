@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0142
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -267,7 +267,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0140/0141 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0142_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 94bfc29c08d62ce3d0642a100a76a0bd634ba90d
+    evidencePath: docs/evidence/TASK-0142/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份（tree/单父/授权提交）、测试语义对齐（与 doctor.py 7322 行对 terminal 任务不校验 context lock 的语义一致，ACCEPTED 仍全量校验、既有隔离分支保留）、Base 供应链合同（11 处 uses/6 个 SHA、23 个 hash、2 处 --require-hashes、3 个锁合同测试）全部核对；P0/P1/P2=0、P3=1 信息性；Reviewer 未运行正式门禁。"
+    candidateTree: 383494d18ef39b03512ae7fac7596d23e05ef7d3
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0142
   - python -m unittest scripts.harness.tests.test_harness

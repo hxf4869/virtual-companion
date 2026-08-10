@@ -754,3 +754,9 @@ tasks:
     taskCard: docs/tasks/TASK-0141-p2-23-supply-chain-reproducibility.md
     evidence: docs/evidence/TASK-0141/evidence-pack.json
     handoff: docs/handoffs/TASK-0141.json
+  TASK-0142:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0142-p2-23-supply-chain-reproducibility.md
+    evidence: docs/evidence/TASK-0142/evidence-pack.json
+    handoff: docs/handoffs/TASK-0142.json
