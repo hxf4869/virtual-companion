@@ -2,7 +2,18 @@
 
 ```yaml
 taskId: TASK-0146
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-12 后继 InMemory 授权快照单向语义对齐已完成：InMemoryAuthorizationSnapshotStore.withdraw/
+  narrow 改为仅 ACTIVE 可转换（已终态含 WITHDRAWN/NARROWED 交叉抛与 JDBC transitionFailure 逐字
+  一致的单向异常），narrow id 一致性校验先于状态检查，put insert-only 未变；requiredSkills 含
+  model-routing-change（service/**/modelruntime/** 受保护路径）。新增
+  InMemoryAuthorizationSnapshotStoreTest（11 测试覆盖全部验收分支，含终态交叉）。唯一 Precheck
+  5/5 PASS（Doctor 682648 checks）、根级 Docker Maven verify BUILD SUCCESS（1392 tests 0
+  failures）、唯一 git diff --check PASS 全部在候选 bf1f99b/c845414 PASS；独立 C3 R1 PASS
+  （P0/P1/P2=0，P3=2 信息性）后完成；remote exact-SHA 如实非 PASS（dispatchCount=0），本卡只
+  声明 READY 冻结的 LOCAL_EXACT_TREE_FALLBACK。TASK-0145 同范围失败链（缺 model-routing-change）
+  已按 Owner 授权 reset 摘除，失败记录备份于 /tmp/vc-task0145-rejected-record/。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -258,7 +269,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0146_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b
+    evidencePath: docs/evidence/TASK-0146/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份（2 文件、单父、tree 匹配、diff-check 干净）、put insert-only 未变、withdraw/narrow 仅 ACTIVE 可转换且单向异常与 JDBC transitionFailure 逐字一致、narrow ID 一致性校验顺序与 JDBC 一致、测试覆盖验收全部三分支（含 WITHDRAWN/NARROWED 交叉）、生产代码零 withdraw/narrow 调用点无回归、INV-AUTH-001 维持；P0/P1/P2=0、P3=2 信息性。Reviewer 未运行正式门禁。"
+    candidateTree: c845414b85484f3b05538551c1b55461369ffaa8
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0146
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

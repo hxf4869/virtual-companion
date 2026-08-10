@@ -773,3 +773,10 @@ tasks:
     taskCard: docs/tasks/TASK-0144-p2-12-jdbc-authorization-snapshot-one-way.md
     evidence: docs/evidence/TASK-0144/evidence-pack.json
     handoff: docs/handoffs/TASK-0144.json
+
+  TASK-0146:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0146-p2-12-inmemory-authz-snapshot-one-way-alignment.md
+    evidence: docs/evidence/TASK-0146/evidence-pack.json
+    handoff: docs/handoffs/TASK-0146.json

@@ -1,0 +1,157 @@
+{
+  "taskId": "TASK-0146",
+  "baseCommit": "439ea01ed1442ada2d273679548673efa9ff32b4",
+  "headCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b",
+  "contextFingerprint": "4a318026d13199e5caaa45bb12becf8e9959db91985ae44f4a276b455e1d33f6",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "885b5f5",
+      "startedAt": "2026-08-11T01:48:35+08:00",
+      "endedAt": "2026-08-11T02:01:00+08:00",
+      "elapsedSeconds": 745,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "885b5f5",
+      "startedAt": "2026-08-11T01:48:35+08:00",
+      "endedAt": "2026-08-11T01:50:40+08:00",
+      "elapsedSeconds": 125,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "c38648b",
+      "startedAt": "2026-08-11T01:52:40+08:00",
+      "endedAt": "2026-08-11T02:01:00+08:00",
+      "elapsedSeconds": 500,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-11T01:50:40+08:00",
+      "inProgressCommit": "c38648b",
+      "reason": "Implementation restored from the Owner-authorized verified content and re-validated (iterative 22 tests PASS, BUILD SUCCESS), candidate freeze bf1f99b/c845414, independent C3 R1 PASS (P0/P1/P2=0, P3=2 informational), then the sole formal Precheck PASS (5 commands, Doctor 682648 checks), the sole root Docker Maven verify BUILD SUCCESS (1392 tests, 0 failures/errors/skips), and the unique no-argument git diff --check PASS (empty output), all on the frozen candidate before closure."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0146_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b",
+      "evidencePath": "docs/evidence/TASK-0146/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选身份（2 文件、单父、tree 匹配、diff-check 干净）、put insert-only 未变、withdraw/narrow 仅 ACTIVE 可转换且单向异常与 JDBC transitionFailure 逐字一致、narrow ID 一致性校验顺序与 JDBC 一致、测试覆盖验收全部三分支（含 WITHDRAWN/NARROWED 交叉）、生产代码零 withdraw/narrow 调用点无回归、INV-AUTH-001 维持；P0/P1/P2=0、P3=2 信息性（check-then-act 非原子但单向不变量并发下仍成立、narrowed 非 ACTIVE 输入无测试锁定）。Reviewer 未运行正式门禁。",
+      "candidateTree": "c845414b85484f3b05538551c1b55461369ffaa8"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0146 (READY activation)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor completed once with 680930 checks in 102.5s; stderr contained no ERROR lines.",
+      "environment": "macOS; controlled Python; clean TMPDIR",
+      "verifiedCommit": "25960da"
+    },
+    {
+      "command": "docker run ... maven:3.9-eclipse-temurin-25-alpine ./mvnw -pl service/modules/modelruntime -am -Dtest=InMemoryAuthorizationSnapshotStoreTest,ExecutionAuthorizationGuardTest test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "ff682b2fe3d03535698233598e55b49b9172dc39782013eb864babc8f3e95f95",
+      "reason": "Iterative targeted tests on the frozen candidate: InMemoryAuthorizationSnapshotStoreTest 11 tests and ExecutionAuthorizationGuardTest 11 tests, 22 tests, 0 failures/errors/skips, BUILD SUCCESS. Iterative checks are not formal gates.",
+      "environment": "macOS; OrbStack Docker; maven:3.9-eclipse-temurin-25-alpine; vc-maven-cache volume",
+      "verifiedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0146 frozen candidate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Independent R1 (full matrix) PASS with zero P0/P1/P2 and two informational P3 notes (check-then-act non-atomic with one-way invariant still holding under concurrency; narrowed non-ACTIVE input not locked by a test). Reviewer did not run formal gates.",
+      "environment": "Independent read-only reviewer; no source writes or expensive full-suite dispatch",
+      "verifiedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b",
+      "candidateCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b",
+      "candidateTree": "c845414b85484f3b05538551c1b55461369ffaa8"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0146",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "49510248fbe4517157feea01c6e6dfd7803d91cc39aa2ca498cbcc173f209780",
+      "reason": "The sole canonical Precheck ran once after R1 on the frozen candidate: all 5 commands PASS; Doctor completed 682648 checks in 91.8s with no ERROR lines. Combined stdout+stderr log sha256 49510248...",
+      "environment": "macOS; controlled Python; /tmp/vc-precheck-0146.log",
+      "verifiedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b"
+    },
+    {
+      "command": "docker run ... maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "cb1962ef2a5902ab8b8631b76bba1183619effdcce5f190c37421714a5292f64",
+      "reason": "The sole root Maven verify ran once on the frozen candidate: BUILD SUCCESS; 1392 tests total, 0 failures, 0 errors, 0 skipped across all modules. Log sha256 cb1962ef...",
+      "environment": "macOS; OrbStack Docker; maven:3.9-eclipse-temurin-25-alpine; vc-maven-cache volume; /tmp/vc-mvn-root-0146.log",
+      "verifiedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reason": "The unique formal no-argument diff check ran once after all other gates; stdout/stderr both empty (sha256 e3b0c44...).",
+      "environment": "macOS; /tmp/vc-diffcheck-0146.log",
+      "verifiedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Card froze LOCAL_EXACT_TREE_FALLBACK with strong typed quota-exhausted evidence (includedMinutes=usedMinutes=2000, paidBudgetUsd=0, stopUsageEnabled=true, dispatchCount=0); no dispatch was made. Remote remains non-PASS.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0146 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_ACCEPTED_CLOSURE_FREEZE: runs once after the complete ACCEPTED closure snapshot is staged; its result is consumed after the frozen input and is not written back into that input.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0146/pre-closure-request.json; one execution reserved",
+      "verifiedCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_PASS_CANDIDATE_CANONICAL_PASS_MAVEN_VERIFY_PASS_DIFF_CHECK_PASS",
+    "candidateCommit": "bf1f99b5c7078eace51873f8d0e6f6c20b5eca6b",
+    "candidateTree": "c845414b85484f3b05538551c1b55461369ffaa8",
+    "passClaimed": true,
+    "localExactTree": {
+      "status": "PASS",
+      "reason": "The frozen local exact-tree channel completed on the exact candidate Commit and Tree: candidate canonical Precheck PASS (5 commands, Doctor 682648 checks), root Maven verify BUILD SUCCESS (1392 tests), and the unique no-argument git diff --check PASS, all on the same clean candidate with recorded hashes.",
+      "exitCode": 0,
+      "stdoutSha256": "49510248fbe4517157feea01c6e6dfd7803d91cc39aa2ca498cbcc173f209780",
+      "stderrSha256": "49510248fbe4517157feea01c6e6dfd7803d91cc39aa2ca498cbcc173f209780"
+    },
+    "remote": {
+      "status": "NOT_RUN",
+      "reason": "Card froze LOCAL_EXACT_TREE_FALLBACK with strong typed quota-exhausted evidence; no dispatch was attempted. Remote remains non-PASS.",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}
