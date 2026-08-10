@@ -4138,6 +4138,130 @@ class BacklogTests(unittest.TestCase):
             "the exact frozen historical anchor must recover after test corruption",
         )
 
+    def test_task0133_rejected_harness_approval_isolation_is_exact_and_fail_closed(
+        self,
+    ) -> None:
+        task = discover_tasks()["TASK-0133"]
+        for target in (
+            doctor.TASK_0133_CANDIDATE_COMMIT,
+            doctor.TASK_0133_TERMINAL_COMMIT,
+        ):
+            with self.subTest(target=target):
+                self.assertTrue(
+                    doctor.task0133_rejected_harness_approval_isolated(
+                        task,
+                        doctor.TASK_0133_PROTECTED_PATH,
+                        target,
+                    )
+                )
+
+        scope_audit = Audit()
+        protected_rules = effective_protected_rules(
+            scope_audit,
+            task,
+            load_yaml(ROOT / ".harness/protected-paths.yaml")["paths"],
+            target_commit=doctor.TASK_0133_TERMINAL_COMMIT,
+        )
+        validate_diff_scope(
+            scope_audit,
+            task,
+            doctor.skill_registry_at_commit(doctor.TASK_0133_TERMINAL_COMMIT),
+            protected_rules,
+            changed_override=[doctor.TASK_0133_PROTECTED_PATH],
+            target_commit=doctor.TASK_0133_TERMINAL_COMMIT,
+        )
+        self.assertEqual([], scope_audit.errors)
+
+        for field, value in (
+            ("taskId", "TASK-0134"),
+            ("state", "ACCEPTED"),
+            ("riskClass", "C3"),
+            ("baseCommit", "0" * 40),
+            ("authorizationCommit", "1" * 40),
+        ):
+            variant = copy.deepcopy(task)
+            variant[field] = value
+            with self.subTest(field=field):
+                self.assertFalse(
+                    doctor.task0133_rejected_harness_approval_isolated(
+                        variant,
+                        doctor.TASK_0133_PROTECTED_PATH,
+                        doctor.TASK_0133_TERMINAL_COMMIT,
+                    )
+                )
+
+        for path, target in (
+            ("scripts/harness/doctor.py", doctor.TASK_0133_TERMINAL_COMMIT),
+            (doctor.TASK_0133_PROTECTED_PATH, doctor.TASK_0133_BASE_COMMIT),
+            (doctor.TASK_0133_PROTECTED_PATH, None),
+        ):
+            with self.subTest(path=path, target=target):
+                self.assertFalse(
+                    doctor.task0133_rejected_harness_approval_isolated(
+                        task,
+                        path,
+                        target,
+                    )
+                )
+
+        exact_scope = copy.deepcopy(task)
+        exact_scope["humanApprovals"][1]["scope"] = "harness-change"
+        self.assertFalse(
+            doctor.task0133_rejected_harness_approval_isolated(
+                exact_scope,
+                doctor.TASK_0133_PROTECTED_PATH,
+                doctor.TASK_0133_TERMINAL_COMMIT,
+            )
+        )
+
+        with patch.object(doctor, "TASK_0133_TERMINAL_TREE", "2" * 40):
+            self.assertFalse(
+                doctor.task0133_rejected_harness_approval_isolated(
+                    task,
+                    doctor.TASK_0133_PROTECTED_PATH,
+                    doctor.TASK_0133_TERMINAL_COMMIT,
+                )
+            )
+
+        real_load_yaml = doctor.load_yaml
+        ledger_path = ROOT / doctor.TASK_LEDGER_PATH
+        drifted_ledger = copy.deepcopy(load_yaml(ledger_path))
+        drifted_ledger["tasks"]["TASK-0133"]["state"] = "ACCEPTED"
+
+        def load_with_ledger_drift(path: Path) -> dict[str, object]:
+            if Path(path) == ledger_path:
+                return drifted_ledger
+            return real_load_yaml(path)
+
+        with patch.object(doctor, "load_yaml", side_effect=load_with_ledger_drift):
+            self.assertFalse(
+                doctor.task0133_rejected_harness_approval_isolated(
+                    task,
+                    doctor.TASK_0133_PROTECTED_PATH,
+                    doctor.TASK_0133_TERMINAL_COMMIT,
+                )
+            )
+
+        target_path = ROOT / "docs/evidence/TASK-0133/review-r1.md"
+        real_read_bytes = doctor.read_repository_bytes
+
+        def read_with_artifact_drift(path: Path) -> bytes:
+            content = real_read_bytes(path)
+            return content + b"\ncorrupt" if Path(path) == target_path else content
+
+        with patch.object(
+            doctor,
+            "read_repository_bytes",
+            side_effect=read_with_artifact_drift,
+        ):
+            self.assertFalse(
+                doctor.task0133_rejected_harness_approval_isolated(
+                    task,
+                    doctor.TASK_0133_PROTECTED_PATH,
+                    doctor.TASK_0133_TERMINAL_COMMIT,
+                )
+            )
+
     def test_task0061_replacement_is_exact_and_atomic(self) -> None:
         current, _, _, _ = self.load_inputs()
         child = copy.deepcopy(current)
@@ -7656,6 +7780,16 @@ class IdlePlanningCheckpointTests(unittest.TestCase):
                 self.git(repository, "merge", "--no-ff", "-qm", "merge", "side")
 
                 target = self.git(repository, "rev-parse", "HEAD")
+                merge_line = self.git(
+                    repository,
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    target,
+                ).split()
+                self.assertEqual(3, len(merge_line), merge_line)
+                self.assertEqual(target, merge_line[0])
                 result, audit = self.derive(repository, terminal, target)
                 self.assertIsNone(result)
                 self.assertTrue(audit.errors)

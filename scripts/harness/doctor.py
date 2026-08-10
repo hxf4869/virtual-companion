@@ -943,6 +943,64 @@ TASK_0075_PLANNING_REPAIRS = {
         "newDependencies": ["TASK-0075"],
     },
 }
+TASK_0133_CARD_PATH = (
+    "docs/tasks/TASK-0133-harness-default-branch-fixture-portability.md"
+)
+TASK_0133_BASE_COMMIT = "ce8cf00587f7ef76bfbe5cb6ff9e1a198d03f459"
+TASK_0133_DRAFT_COMMIT = "5c0d727f2b8738d12f865ae9329d334027228761"
+TASK_0133_AUTHORIZATION_COMMIT = "1001c7304548d6089cb800fb627cfe998e100fcd"
+TASK_0133_AUTHORIZATION_TREE = "5334cc36968fe4b7fa58d5453a3d10c7c07796d1"
+TASK_0133_AUTHORIZATION_BINDING_COMMIT = (
+    "eb87ec50ce62e12ae488cb990ce121c9005ca589"
+)
+TASK_0133_IN_PROGRESS_COMMIT = "68d3487785ac832273abd1ddfdbb418f113625f4"
+TASK_0133_CANDIDATE_COMMIT = "fca2f55f524952d34223b562a8db88f0e95a9342"
+TASK_0133_CANDIDATE_TREE = "1f025c7f2d088997800d990f808219a00a927918"
+TASK_0133_TERMINAL_COMMIT = "3c30dd693af0574eb160bbbd37b2e8e2b79a9d80"
+TASK_0133_TERMINAL_TREE = "de68fb31bc2f22c725a979e9dda00895fa9af41a"
+TASK_0133_PROTECTED_PATH = "scripts/harness/tests/test_harness.py"
+TASK_0133_INVALID_APPROVAL_SCOPE = (
+    "harness-change-p2-20-default-branch-fixture"
+)
+TASK_0133_APPROVALS_SHA256 = (
+    "ea5cfaa7ef20af469f42b0c0b24b7069825b1c38ebf588ccd9592eabebbb9816"
+)
+TASK_0133_REVIEWERS_SHA256 = (
+    "81e5e8f82ee7047abe5d57e9093d58d53d54d25d5125ab37f2bf0b795a25414f"
+)
+TASK_0133_READY_CARD_SHA256 = (
+    "c6149cf38787315a62b354af7e94e1f7e29f2565adfa62082431fb283c5aa137"
+)
+TASK_0133_CANDIDATE_TEST_SHA256 = (
+    "51e08137927e17e06f18f6b0453d617177fd93b5ec90273efb2bbd0bef7d49d9"
+)
+TASK_0133_FORMAL_PRECHECK_STDOUT_SHA256 = (
+    "4b71cdc57a872ffe8e8225cc0960dd3d505c16ac03c62fa675e4db59114093a7"
+)
+TASK_0133_FORMAL_PRECHECK_STDERR_SHA256 = (
+    "39fb5f5eb43fea0c04139b070352522b455007a5ff59a52dfda8173a50a175eb"
+)
+TASK_0133_FORMAL_PRECHECK_ERROR = (
+    "scripts/harness/tests/test_harness.py requires recorded human approval "
+    "for harness-change"
+)
+TASK_0133_TERMINAL_ARTIFACT_SHA256 = {
+    TASK_0133_CARD_PATH: (
+        "4706a0763dedfac52054c65a734730053733a625b0c956c2bb1f0dcdd36e9ee4"
+    ),
+    "docs/evidence/TASK-0133/evidence-pack.json": (
+        "458d54dcc74866cb194f1def1a3d11a4a3a0b1fad239e0ecd3ac354662865f4a"
+    ),
+    "docs/evidence/TASK-0133/pre-closure-request.json": (
+        "46c71a96b2e02e1de187be1dc677a41239a5e77391b3f6d97c543f864da2246d"
+    ),
+    "docs/evidence/TASK-0133/review-r1.md": (
+        "76f02bba9ece1dd284ed79ecf6114ad479f4f0fbc73afed9eed7dbc54f92ad21"
+    ),
+    "docs/handoffs/TASK-0133.json": (
+        "071b8e31d829302725b2441d5a306e714fee62cfd15d67c12f51ac202dae46a3"
+    ),
+}
 IDLE_PLANNING_PAUSE_NEXT_ACTION = "等待 Owner 决策：当前无可晋级任务"
 AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT = (
     "2a55335e695c8fc5434c0dbc867288842c804e74"
@@ -2152,6 +2210,161 @@ def task0062_rejected_authorization_history_isolated(
                 != expected_hash
             ):
                 return False
+    except (
+        HarnessError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+    ):
+        return False
+    return True
+
+
+def task0133_rejected_harness_approval_isolated(
+    task: dict[str, Any],
+    protected_path: str,
+    target_commit: str | None,
+) -> bool:
+    """Recognize only the frozen TASK-0133 approval-scope failure."""
+    if (
+        task.get("_path") != TASK_0133_CARD_PATH
+        or task.get("taskId") != "TASK-0133"
+        or task.get("state") != "REJECTED"
+        or task.get("riskClass") != "C4"
+        or task.get("baseCommit") != TASK_0133_BASE_COMMIT
+        or task.get("authorizationCommit") != TASK_0133_AUTHORIZATION_COMMIT
+        or protected_path != TASK_0133_PROTECTED_PATH
+        or target_commit
+        not in {TASK_0133_CANDIDATE_COMMIT, TASK_0133_TERMINAL_COMMIT}
+        or canonical_json_sha256(task.get("humanApprovals"))
+        != TASK_0133_APPROVALS_SHA256
+        or canonical_json_sha256(task.get("reviewers"))
+        != TASK_0133_REVIEWERS_SHA256
+    ):
+        return False
+    approvals = task.get("humanApprovals")
+    approvals = approvals if isinstance(approvals, list) else []
+    scopes = [
+        item.get("scope")
+        for item in approvals
+        if isinstance(item, dict)
+    ]
+    if (
+        scopes.count(TASK_0133_INVALID_APPROVAL_SCOPE) != 1
+        or "harness-change" in scopes
+    ):
+        return False
+    try:
+        graph_edges = (
+            (TASK_0133_DRAFT_COMMIT, TASK_0133_BASE_COMMIT),
+            (TASK_0133_AUTHORIZATION_COMMIT, TASK_0133_DRAFT_COMMIT),
+            (
+                TASK_0133_AUTHORIZATION_BINDING_COMMIT,
+                TASK_0133_AUTHORIZATION_COMMIT,
+            ),
+            (TASK_0133_IN_PROGRESS_COMMIT, TASK_0133_AUTHORIZATION_BINDING_COMMIT),
+            (TASK_0133_CANDIDATE_COMMIT, TASK_0133_IN_PROGRESS_COMMIT),
+            (TASK_0133_TERMINAL_COMMIT, TASK_0133_CANDIDATE_COMMIT),
+        )
+        for commit, parent in graph_edges:
+            if git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                commit,
+                check=False,
+            ).stdout.split() != [commit, parent]:
+                return False
+        for commit, expected_tree in (
+            (TASK_0133_AUTHORIZATION_COMMIT, TASK_0133_AUTHORIZATION_TREE),
+            (TASK_0133_CANDIDATE_COMMIT, TASK_0133_CANDIDATE_TREE),
+            (TASK_0133_TERMINAL_COMMIT, TASK_0133_TERMINAL_TREE),
+        ):
+            if git_text(
+                "rev-parse",
+                f"{commit}^{{tree}}",
+                check=False,
+            ).stdout.strip() != expected_tree:
+                return False
+        if (
+            hashlib.sha256(
+                git_object(
+                    TASK_0133_AUTHORIZATION_COMMIT,
+                    TASK_0133_CARD_PATH,
+                )
+            ).hexdigest()
+            != TASK_0133_READY_CARD_SHA256
+            or hashlib.sha256(
+                git_object(
+                    TASK_0133_CANDIDATE_COMMIT,
+                    TASK_0133_PROTECTED_PATH,
+                )
+            ).hexdigest()
+            != TASK_0133_CANDIDATE_TEST_SHA256
+        ):
+            return False
+        ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
+        entries = ledger.get("tasks")
+        if not isinstance(entries, dict) or entries.get("TASK-0133") != {
+            "state": "REJECTED",
+            "contractVersion": 2,
+            "taskCard": TASK_0133_CARD_PATH,
+            "evidence": "docs/evidence/TASK-0133/evidence-pack.json",
+            "handoff": "docs/handoffs/TASK-0133.json",
+        }:
+            return False
+        for path, expected_hash in TASK_0133_TERMINAL_ARTIFACT_SHA256.items():
+            current = read_repository_bytes(ROOT / path)
+            historical = git_object(TASK_0133_TERMINAL_COMMIT, path)
+            if (
+                current != historical
+                or hashlib.sha256(current).hexdigest() != expected_hash
+            ):
+                return False
+        evidence = json.loads(
+            git_object(
+                TASK_0133_TERMINAL_COMMIT,
+                "docs/evidence/TASK-0133/evidence-pack.json",
+            ).decode("utf-8")
+        )
+        handoff = json.loads(
+            git_object(
+                TASK_0133_TERMINAL_COMMIT,
+                "docs/handoffs/TASK-0133.json",
+            ).decode("utf-8")
+        )
+        formal_checks = [
+            check
+            for check in evidence.get("checks", [])
+            if isinstance(check, dict)
+            and check.get("command")
+            == "python scripts/harness/precheck.py --task TASK-0133"
+        ]
+        if (
+            evidence.get("taskId") != "TASK-0133"
+            or evidence.get("baseCommit") != TASK_0133_BASE_COMMIT
+            or evidence.get("headCommit") != TASK_0133_CANDIDATE_COMMIT
+            or canonical_json_sha256(evidence.get("reviewers"))
+            != TASK_0133_REVIEWERS_SHA256
+            or handoff.get("taskId") != "TASK-0133"
+            or handoff.get("state") != "REJECTED"
+            or handoff.get("baseCommit") != TASK_0133_BASE_COMMIT
+            or handoff.get("headCommit") != TASK_0133_CANDIDATE_COMMIT
+            or canonical_json_sha256(handoff.get("reviewers"))
+            != TASK_0133_REVIEWERS_SHA256
+            or len(formal_checks) != 1
+            or formal_checks[0].get("status") != "FAIL"
+            or formal_checks[0].get("exitCode") != 1
+            or formal_checks[0].get("artifactHash")
+            != TASK_0133_FORMAL_PRECHECK_STDOUT_SHA256
+            or TASK_0133_FORMAL_PRECHECK_STDERR_SHA256
+            not in str(formal_checks[0].get("reason", ""))
+            or TASK_0133_FORMAL_PRECHECK_ERROR
+            not in str(formal_checks[0].get("reason", ""))
+        ):
+            return False
     except (
         HarnessError,
         OSError,
@@ -17443,7 +17656,19 @@ def validate_diff_scope(
                     and bool(item.get("evidence").strip())
                     for item in approvals
                 )
-                audit.require(approved, f"{task_id}: {path} requires recorded human approval for {skill_id}")
+                rejected_history_isolated = (
+                    not approved
+                    and skill_id == "harness-change"
+                    and task0133_rejected_harness_approval_isolated(
+                        task,
+                        path,
+                        target_commit,
+                    )
+                )
+                audit.require(
+                    approved or rejected_history_isolated,
+                    f"{task_id}: {path} requires recorded human approval for {skill_id}",
+                )
             if rule.get("independentReview") is True:
                 audit.require(independent_declared, f"{task_id}: {path} requires independentReview")
             if rule.get("generatedOnly") is True:
