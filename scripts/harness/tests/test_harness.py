@@ -8841,6 +8841,8 @@ class ValidationFlowTests(unittest.TestCase):
                 "catalogDrift",
                 "paidFeatureCheck",
                 "betaRosterGate",
+                "openapiValidate",
+                "openapiDrift",
             ],
             config["profiles"]["precheck"],
         )
@@ -8848,6 +8850,60 @@ class ValidationFlowTests(unittest.TestCase):
             len(config["profiles"]["precheck"]),
             len(set(config["profiles"]["precheck"])),
         )
+
+    def test_openapi_commands_are_registered_exactly(self) -> None:
+        config = load_yaml(ROOT / ".harness/commands.yaml")
+        commands = config["commands"]
+        self.assertEqual(
+            ["scripts/dev/openapi_tool.py", "validate"],
+            commands["openapiValidate"]["argv"],
+        )
+        self.assertEqual(
+            ["scripts/dev/openapi_tool.py", "diff", "--fail-on-drift"],
+            commands["openapiDrift"]["argv"],
+        )
+        self.assertEqual(300, commands["openapiValidate"]["timeoutSeconds"])
+        self.assertEqual(300, commands["openapiDrift"]["timeoutSeconds"])
+        self.assertIn("openapiValidate", config["profiles"]["precheck"])
+        self.assertIn("openapiDrift", config["profiles"]["precheck"])
+        # The historical combined-gate profile (TASK-0074..77) keeps its exact
+        # command set; the OpenAPI gate is a precheck-profile-only addition.
+        self.assertNotIn("openapiValidate", config["profiles"]["harnessPortabilityLocal"])
+        self.assertNotIn("openapiDrift", config["profiles"]["harnessPortabilityLocal"])
+
+    def test_openapi_validate_and_drift_pass_on_clean_tree(self) -> None:
+        result_validate = subprocess.run(
+            [sys.executable, "scripts/dev/openapi_tool.py", "validate"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(0, result_validate.returncode, result_validate.stderr)
+        self.assertIn("OpenAPI validation: PASS", result_validate.stdout)
+        result_drift = subprocess.run(
+            [sys.executable, "scripts/dev/openapi_tool.py", "diff", "--fail-on-drift"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(0, result_drift.returncode, result_drift.stderr)
+        self.assertIn("OpenAPI drift check: PASS", result_drift.stdout)
+
+    def test_openapi_drift_fails_closed(self) -> None:
+        dist_file = ROOT / "specs/openapi/dist/openapi.snapshot.json"
+        original = dist_file.read_bytes()
+        try:
+            dist_file.write_bytes(original + b"\n# deliberate drift\n")
+            result = subprocess.run(
+                [sys.executable, "scripts/dev/openapi_tool.py", "diff", "--fail-on-drift"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(1, result.returncode)
+            self.assertIn("DRIFT", result.stderr)
+        finally:
+            dist_file.write_bytes(original)
 
     def test_precheck_reports_command_exit_and_elapsed_time(self) -> None:
         config = {
