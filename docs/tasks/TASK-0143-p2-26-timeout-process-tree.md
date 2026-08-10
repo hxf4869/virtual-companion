@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0143
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -250,7 +250,21 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0142 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0143_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: f5da58a5813b0fcb6d568115374bf6cc207c3b3c
+    evidencePath: docs/evidence/TASK-0143/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份（tree/单父/授权链）、run_command_with_timeout 的 POSIX killpg / Windows taskkill 实现与退出码透传、TIMEOUT 语义（计入 failures、非零退出）、doctor.py 两处投影断言逐字同步、TimeoutTests 真实进程树终止验证（平台门控各一）全部核对；P0/P1/P2=0、P3=3 信息性（R2 关闭）；Reviewer 未运行正式门禁。"
+    candidateTree: 5f073233800c0ceb671adc6beba5fd2614416fc0
+  - id: task0143_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 43ddd106f53d666bf7982397bb5f8aa4c63ce81f
+    evidencePath: docs/evidence/TASK-0143/review-r2.md
+    reason: "R2 FINDING_CLOSURE + DELTA 复核 PASS：delta 仅 precheck.py/harness_common.py（+19/-18）——默认超时说明输出、无用 import 移除、死代码移除；P0/P1/P2/P3=0，无行为变化；Reviewer 未运行正式门禁。"
+    candidateTree: 7d95bfc38e0f852e6c28bd4ec413741825faac5a
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0143
   - python -m unittest scripts.harness.tests.test_harness

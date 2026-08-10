@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0143
-activeTaskCard: docs/tasks/TASK-0143-p2-26-timeout-process-tree.md
-lastAcceptedTask: TASK-0142
-lastAcceptedHandoff: docs/handoffs/TASK-0142.json
-lastTerminalTask: TASK-0142
-lastTerminalHandoff: docs/handoffs/TASK-0142.json
-nextAction: '执行 TASK-0143（P2-26 超时与进程树终止）：为 .harness/commands.yaml 每命令增加 timeoutSeconds（doctor 900/catalogValidate 300/catalogDrift 300/paidFeatureCheck 120/betaRosterGate 120/harnessTests 3600/durableCommand 600），harness_common.py 新增 run_command_with_timeout（POSIX 新进程组 killpg、Windows CREATE_NEW_PROCESS_GROUP + taskkill /T），precheck.py 接入超时并如实输出 TIMEOUT 计入失败，doctor.py harnessTests 精确断言同步，test_harness.py 新增永久阻塞子进程 POSIX/Windows 终止测试，ci.yml 为 backend/frontend 补齐 timeout-minutes；冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0；随后继续 P2-27、Provider DNS、数据库 Owner gates 与条件风险（P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0143
+lastAcceptedHandoff: docs/handoffs/TASK-0143.json
+lastTerminalTask: TASK-0143
+lastTerminalHandoff: docs/handoffs/TASK-0143.json
+nextAction: '创建 P2-27 的 C4 卡（路径感知矩阵 + 移除固定单机 JDK 路径）前，先向 Owner 提交平台支持决策（实现完整矩阵或正式 deferred/not claimed）；P2-25（SBOM/license）仍在 Owner gate 待决策（扫描器、门槛、例外与到期策略）；随后处理 P2-04、P2-12、P3-01、P3-02、P3-05、P3-06、P3-07 独立卡、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
