@@ -332,38 +332,89 @@ requiredCommands:
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。TASK-0111 已按真实失败终态推送；
 > 本卡是 Owner 明确批准的永久 replacement，不修改或删除其 Card、Context、Evidence、Review、Handoff。
 
+> **Owner 范围批准（2026-08-10）**：READY 后定向扫描发现完整 Harness 的 `ContextTests.
+> test_all_context_locks_are_reproducible` 实际失败历史共有三个（TASK-0111、TASK-0124、TASK-0129，
+> 均为 READY 时用带尾随 LF payload 计算 fingerprint、REJECTED 后错误值保留的同类历史；此前被 unittest
+> 在 TASK-0111 处中止而遮蔽）。Owner 明确批准本卡隔离范围扩大为这三个固定历史一次恢复绿线；本卡
+> frontmatter 的 `rejectedHistoryQuarantine` 为 READY 冻结投影（仅 TASK-0111），三个历史的完整固定
+> 身份见下方「TASK-0111/0124/0129 固定身份」节，实现与测试以该节为准。此批准不改写任何历史制品、
+> 不引入通用豁免、不修改 READY 授权字段。
+
 ## 背景与用户可观察目标
 
-TASK-0111 在 READY 时用带尾随 LF 的 payload 计算 Context Fingerprint，与 canonical 无尾随 LF
-算法不一致（expected `deadcf31…`，got `5a2147e0…`）。READY 后 contextFingerprint 不可变，故
-TASK-0111 如实 REJECTED，错误 fingerprint 保留在历史卡上。生产 Doctor（doctor.py:6979）只对
-非终态任务调用 `verify_context_lock`，因此 REJECTED 历史被跳过；但 `ContextTests.
-test_all_context_locks_are_reproducible` 遍历所有任务（除 planning-only）断言空错误，导致
-TASK-0134 的完整 Harness 门禁（261 tests 中唯一失败）在 Base 上即失败——这是 TASK-0111 REJECTED
-以来的 Base 既存失败，已由 /tmp 诊断 clone 在 Base `3c30dd69` 与当前 HEAD 两处复现。
+TASK-0111、TASK-0124、TASK-0129 在 READY 时均用带尾随 LF 的 payload 计算 Context Fingerprint，
+与 canonical 无尾随 LF 算法不一致（TASK-0111: expected `deadcf31…` got `5a2147e0…`；TASK-0124:
+expected `6ac0b7d9…` got `855d3fb3…`；TASK-0129: expected `31abce12…` got `fbdcf399…`）。READY 后
+contextFingerprint 不可变，故三卡均如实 REJECTED，错误 fingerprint 保留在历史卡上。生产 Doctor
+（doctor.py:6979）只对非终态任务调用 `verify_context_lock`，因此这些 REJECTED 历史被跳过；但
+`ContextTests.test_all_context_locks_are_reproducible` 遍历所有任务（除 planning-only）断言空错误，
+导致 TASK-0134 的完整 Harness 门禁（261 tests 中唯一失败）在 Base 上即失败——这是三个 REJECTED
+历史以来的 Base 既存失败，已由 /tmp 诊断 clone 在 Base `3c30dd69` 与当前 HEAD 多处复现。
 
 用户可观察结果：普通 context-lock 校验仍对任何错误、缺失或模糊的 fingerprint/输入失败关闭；
-只有固定 TASK-0111 REJECTED 历史、固定 terminal/tree 和固定制品的这一条已知错误被识别，
+只有三个固定 REJECTED 历史、固定 terminal/tree 和固定制品的这一组已知错误被识别，
 `ContextTests.test_all_context_locks_are_reproducible` 恢复绿线，后续完整 Harness 门禁恢复
 PASS 语义。P2-20（merge fixture 真实双亲断言，TASK-0133/0134 候选实现已在 Base 中）随本卡
 完整 Harness 通过而正式承接。
 
+## TASK-0111/0124/0129 固定身份
+
+每个历史独立绑定以下固定身份，任一漂移失败关闭：
+
+```text
+TASK-0111:  card docs/tasks/TASK-0111-auth-input-hygiene.md
+            base a3a294d19b8024bc52fa08eb052fa7a957b046ee
+            draft 54ae758faac0d1ab30a645cd5400b80cdfaba2d7
+            ready 90e1bc36341c6227966a7c4b96bf1066ab6668ea / tree e4f81f83226efb2a91667b173c0828a7bafc3156
+            binding 3280efb70e04cdb38df635489cd575c7f666a48d
+            terminal 9bfd47eea55aa2a485c77617a2581924d69dbe84 / tree 7ef159f539cb546f4920ac1f4b576f39310d942c
+            invalid deadcf31035ec180393998f0f0abf3ae77a5d3a3d07f49b83033a8242fe9a6a9
+            actual 5a2147e0c5ea53a843aacdab6b4257da18421f7aedcb47f8221f980521f242e7
+            reviewers 7bc25106719b7990918682084225bdb8c5ca524b691989e3250b40f07f99539b
+            artifacts card fdc23db2… / lock 0bc99558… / evidence aa14ca82… / handoff 917d0187…
+TASK-0124:  card docs/tasks/TASK-0124-auth-firewall-envelope-observation.md
+            base 68dc7f0a486e93768112fca856f9456cb7e31a2d
+            draft a726a63a3080cc2f8570ef1c2532e155012b35c0
+            ready 952800e80994c734a7cd40e9631f60110fce85d5 / tree b5214bc22c28c0626bd083df0dfb555439423825
+            binding 2b34658fc6d7a5c2d8c9c4b0827c03ec27b96dc1
+            terminal 098115264879ed1bd99c79e90db2ddca54061c4b / tree 01774a06822aeb53626f18bb66451b686a4c640c
+            invalid 6ac0b7d95a19f7456f20a9496a212deb364a0b1664de1d37a616d41e48d739d2
+            actual 855d3fb37679a185be843c3843fb7a7e035f39c87f9ebd435694881265a6bb46
+            reviewers ddb8f685b3461c9d4406aedd9f7de4303ba7244b0106a668163307d99cd894f7
+            artifacts card a3f9a8d7… / lock 9a08a505… / evidence d441bcd9… / handoff 8c200e77…
+TASK-0129:  card docs/tasks/TASK-0129-anthropic-tool-use-protocol-replacement.md
+            base 603402304b878d939c8381721ff9bc5082561780
+            draft 663b4a3556a3a22723f239a22dd4a8832599a3a9
+            ready bce01149fa4baabe90e8f2112a103e1f3936bf46 / tree 62c01c31910cf558328fd56162e2d4e9ea24e436
+            binding a12b5eaa934f88c983102277d706f179da3dfce8
+            terminal ebc7c2228c5ed4d07ec345d9d33a7d187de00392 / tree 21a8fea6819c0bb6df4ba1ca92be8b0c277daf35
+            invalid 31abce12955f5be0b2f11e0f18170468c2a236f48e546b5879dc6270a76b15cd
+            actual fbdcf3991d84e86450a5a6ee8d22614cd3e8245f61d511dffa5ebba6cb9246c4
+            reviewers 1a69a9642e51f2c90cc890a37c46b336da6de2440831d611ddce3dee2d36257e
+            artifacts card f37a2e9a… / lock 21864fb3… / evidence 88ff47b6… / handoff e9097ef7…
+```
+
+三个历史均验证：完整单父链、READY/terminal Tree、terminal 制品与 Git 对象 byte-for-byte 一致、
+Task Ledger 精确终态条目、Evidence/Handoff reviewers canonical hash 与精确 READY Doctor
+FAIL/exit 1 绑定。
+
 ## 范围内
 
-- 在 Doctor 中新增只接受 TASK-0111 固定 ID、Card path、Base、DRAFT/READY/binding、terminal/tree、
-  错误 fingerprint、Context Lock 路径、terminal artifact hashes 与精确 mismatch 错误文本的隔离
-  predicate。
+- 在 Doctor 中新增只接受 TASK-0111/0124/0129 三个固定 ID、Card path、Base、DRAFT/READY/binding、
+  terminal/tree、错误 fingerprint、Context Lock 路径、terminal artifact hashes 与精确 mismatch
+  错误文本的隔离 predicate（三个固定身份独立绑定，共享同一精确校验实现）。
 - 仅在 `scripts/harness/tests/test_harness.py` 的 `ContextTests.test_all_context_locks_are_reproducible`
-  消费该 predicate：普通任务仍断言 `verify_context_lock` 无错误，只有固定 TASK-0111 REJECTED 历史
-  且 errors 精确等于固定 mismatch 元组时才放行。
+  消费该 predicate：普通任务仍断言 `verify_context_lock` 无错误，只有三个固定 REJECTED 历史
+  且 errors 精确等于各自固定 mismatch 元组时才放行。
 - 增加正例和 fail-closed 负例：任务字段、提交/Tree、path、fingerprint、ledger 或任一终态 artifact
-  漂移都不得获得隔离。
+  漂移都不得获得隔离；三个历史之间互相不得放行。
 - 重新运行完整 Harness（含 P2-20 merge 双亲断言与 TASK-0133/0134 隔离回归）、Reviewer 和正式门禁，
   正式承接 P2-20。
 
 ## 明确范围外
 
-- 不修改 TASK-0111 或任何其他历史 Card、Context、Evidence、Review、Handoff、Ledger entry 或 Git 历史。
+- 不修改 TASK-0111/0124/0129 或任何其他历史 Card、Context、Evidence、Review、Handoff、Ledger entry
+  或 Git 历史。
 - 不把任意 fingerprint mismatch、前缀/后缀/通配、别名或非精确值普遍等同于豁免。
 - 不修改 harness_common.py、protected paths、lifecycle、delivery/CI policy、commands、schemas、Skill、
   AGENTS、workflow 或阈值。
@@ -374,9 +425,9 @@ PASS 语义。P2-20（merge fixture 真实双亲断言，TASK-0133/0134 候选�
 
 - Base `2fe3e470bb499aa1e968d6acd2d23f7421757077` 是 TASK-0134 单父 REJECTED terminal，已 push、
   fetch、`HEAD...origin/main=0/0` 且工作树 clean。
-- TASK-0111 terminal `9bfd47eea55aa2a485c77617a2581924d69dbe84` / tree
-  `7ef159f539cb546f4920ac1f4b576f39310d942c` 保留错误 fingerprint `deadcf31…`；其单父链
-  DRAFT→READY→binding→terminal 与 4 个 terminal artifact hashes 已在 Context Lock 固定。
+- TASK-0111/0124/0129 三个 REJECTED terminal（`9bfd47ee…` / `09811526…` / `ebc7c222…`）与各自
+  tree、单父链、错误 fingerprint 与 terminal artifact hashes 已在「TASK-0111/0124/0129 固定身份」节
+  固定；三者均为 Context Fingerprint 计算错误 REJECTED 的同类历史。
 - Owner 授权 provenance Hash 为 `cc0f91c1ddad24cb89128002439148384e4af8b6c8d056498ba8814a53580e95`。
 
 ## API / 事件 / 数据契约
@@ -394,16 +445,16 @@ pre-READY 代码维护或 override 的情况下真实 PASS；实现只在 IN_PRO
 
 ## 验收标准
 
-- TASK-0111 固定历史正例被识别（errors 精确等于固定 fingerprint mismatch 元组）；错误
-  task/path/state/Base/READY/terminal/Tree/fingerprint/ledger/artifact mutation 全部失败关闭，
-  且其他任务的任何 fingerprint mismatch 仍被拒绝。
-- 隔离不改变普通 context-lock 校验路径（非固定 TASK-0111 历史的任何错误仍失败），不增加通用
+- TASK-0111/0124/0129 三个固定历史正例均被识别（errors 精确等于各自固定 fingerprint mismatch
+  元组）；错误 task/path/state/Base/READY/terminal/Tree/fingerprint/ledger/artifact mutation 全部
+  失败关闭，三个历史之间互相不得放行，且其他任务的任何 fingerprint mismatch 仍被拒绝。
+- 隔离不改变普通 context-lock 校验路径（非三个固定历史的任何错误仍失败），不增加通用
   兼容层；harness_common.py 零改动。
 - 完整 Harness unittest 全部通过（261+ tests），其中 P2-20 merge 双亲断言与 TASK-0133/0134
   隔离回归保持通过。
 - 唯一正式 Precheck、唯一 `git diff --check`、独立 C4 R1、终态 pre-closure、push、fetch、clean
   和远端 `0/0` 全部真实完成；remote unavailable 仍非 PASS。
-- post-terminal Doctor 在最新终态通过，TASK-0111 原始失败产物保持 byte-for-byte 不变。
+- post-terminal Doctor 在最新终态通过，TASK-0111/0124/0129 原始失败产物保持 byte-for-byte 不变。
 
 ## 必跑检查
 

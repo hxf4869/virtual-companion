@@ -2099,7 +2099,143 @@ class ContextTests(unittest.TestCase):
         for task in discover_tasks().values():
             if is_planning_only_task(task):
                 continue
-            self.assertEqual([], verify_context_lock(task), task["taskId"])
+            errors = verify_context_lock(task)
+            if errors and doctor.rejected_fingerprint_history_isolated(
+                task,
+                errors,
+            ):
+                continue
+            self.assertEqual([], errors, task["taskId"])
+
+    def test_rejected_fingerprint_history_isolation_is_exact_and_fail_closed(
+        self,
+    ) -> None:
+        tasks = discover_tasks()
+        identities = (
+            (
+                "TASK-0111",
+                doctor.TASK_0111_EXPECTED_MISMATCH_ERROR,
+                doctor.task0111_rejected_context_lock_isolated,
+            ),
+            (
+                "TASK-0124",
+                doctor.TASK_0124_EXPECTED_MISMATCH_ERROR,
+                doctor.task0124_rejected_context_lock_isolated,
+            ),
+            (
+                "TASK-0129",
+                doctor.TASK_0129_EXPECTED_MISMATCH_ERROR,
+                doctor.task0129_rejected_context_lock_isolated,
+            ),
+        )
+        for task_id, expected_error, predicate in identities:
+            task = tasks[task_id]
+            expected_errors = [expected_error]
+            with self.subTest(task_id=task_id, case="positive"):
+                self.assertTrue(predicate(task, expected_errors))
+            actual_errors = verify_context_lock(task)
+            self.assertEqual(expected_errors, actual_errors)
+            self.assertTrue(predicate(task, actual_errors))
+            self.assertTrue(
+                doctor.rejected_fingerprint_history_isolated(task, actual_errors)
+            )
+
+            for field, value in (
+                ("taskId", "TASK-9999"),
+                ("state", "ACCEPTED"),
+                ("riskClass", "C4"),
+                ("baseCommit", "0" * 40),
+                ("authorizationCommit", "1" * 40),
+                ("contextFingerprint", "2" * 64),
+                ("contextLock", f"docs/tasks/context/{task_id}-other.context-lock.yaml"),
+            ):
+                variant = copy.deepcopy(task)
+                variant[field] = value
+                with self.subTest(task_id=task_id, field=field):
+                    self.assertFalse(predicate(variant, expected_errors))
+
+            wrong_path = copy.deepcopy(task)
+            wrong_path["_path"] = f"docs/tasks/{task_id}-other.md"
+            with self.subTest(task_id=task_id, field="_path"):
+                self.assertFalse(predicate(wrong_path, expected_errors))
+
+            for drifted_errors in (
+                [],
+                expected_errors + ["unexpected extra error"],
+                [
+                    expected_errors[0].replace(
+                        "context fingerprint mismatch",
+                        "context fingerprint drift",
+                    )
+                ],
+            ):
+                with self.subTest(task_id=task_id, errors=drifted_errors):
+                    self.assertFalse(predicate(task, drifted_errors))
+
+            fixed_fingerprint = copy.deepcopy(task)
+            fixed_fingerprint["contextFingerprint"] = {
+                "TASK-0111": doctor.TASK_0111_ACTUAL_FINGERPRINT,
+                "TASK-0124": doctor.TASK_0124_ACTUAL_FINGERPRINT,
+                "TASK-0129": doctor.TASK_0129_ACTUAL_FINGERPRINT,
+            }[task_id]
+            with self.subTest(task_id=task_id, case="fixed-fingerprint"):
+                self.assertFalse(predicate(fixed_fingerprint, expected_errors))
+
+        # 交叉：任一历史的错误文本不得被另一历史 predicate 放行
+        for task_id, expected_error, predicate in identities:
+            for other_id, other_error, _ in identities:
+                if other_id == task_id:
+                    continue
+                task = tasks[task_id]
+                with self.subTest(task_id=task_id, other=other_id):
+                    self.assertFalse(predicate(task, [other_error]))
+
+        task = tasks["TASK-0111"]
+        expected_errors = [doctor.TASK_0111_EXPECTED_MISMATCH_ERROR]
+        with patch.object(doctor, "TASK_0111_TERMINAL_TREE", "3" * 40):
+            self.assertFalse(
+                doctor.task0111_rejected_context_lock_isolated(
+                    task,
+                    expected_errors,
+                )
+            )
+
+        real_load_yaml = doctor.load_yaml
+        ledger_path = ROOT / doctor.TASK_LEDGER_PATH
+        drifted_ledger = copy.deepcopy(load_yaml(ledger_path))
+        drifted_ledger["tasks"]["TASK-0111"]["state"] = "ACCEPTED"
+
+        def load_with_ledger_drift(path: Path) -> dict[str, object]:
+            if Path(path) == ledger_path:
+                return drifted_ledger
+            return real_load_yaml(path)
+
+        with patch.object(doctor, "load_yaml", side_effect=load_with_ledger_drift):
+            self.assertFalse(
+                doctor.task0111_rejected_context_lock_isolated(
+                    task,
+                    expected_errors,
+                )
+            )
+
+        target_path = ROOT / "docs/evidence/TASK-0111/evidence-pack.json"
+        real_read_bytes = doctor.read_repository_bytes
+
+        def read_with_artifact_drift(path: Path) -> bytes:
+            content = real_read_bytes(path)
+            return content + b"\ncorrupt" if Path(path) == target_path else content
+
+        with patch.object(
+            doctor,
+            "read_repository_bytes",
+            side_effect=read_with_artifact_drift,
+        ):
+            self.assertFalse(
+                doctor.task0111_rejected_context_lock_isolated(
+                    task,
+                    expected_errors,
+                )
+            )
 
     def test_context_fingerprint_tampering_is_rejected(self) -> None:
         task = dict(discover_tasks()["TASK-0002"])

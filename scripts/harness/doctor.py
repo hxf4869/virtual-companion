@@ -1001,6 +1001,116 @@ TASK_0133_TERMINAL_ARTIFACT_SHA256 = {
         "071b8e31d829302725b2441d5a306e714fee62cfd15d67c12f51ac202dae46a3"
     ),
 }
+TASK_0111_CARD_PATH = "docs/tasks/TASK-0111-auth-input-hygiene.md"
+TASK_0111_BASE_COMMIT = "a3a294d19b8024bc52fa08eb052fa7a957b046ee"
+TASK_0111_DRAFT_COMMIT = "54ae758faac0d1ab30a645cd5400b80cdfaba2d7"
+TASK_0111_AUTHORIZATION_COMMIT = "90e1bc36341c6227966a7c4b96bf1066ab6668ea"
+TASK_0111_AUTHORIZATION_TREE = "e4f81f83226efb2a91667b173c0828a7bafc3156"
+TASK_0111_AUTHORIZATION_BINDING_COMMIT = "3280efb70e04cdb38df635489cd575c7f666a48d"
+TASK_0111_TERMINAL_COMMIT = "9bfd47eea55aa2a485c77617a2581924d69dbe84"
+TASK_0111_TERMINAL_TREE = "7ef159f539cb546f4920ac1f4b576f39310d942c"
+TASK_0111_CONTEXT_LOCK_PATH = "docs/tasks/context/TASK-0111.context-lock.yaml"
+TASK_0111_INVALID_FINGERPRINT = (
+    "deadcf31035ec180393998f0f0abf3ae77a5d3a3d07f49b83033a8242fe9a6a9"
+)
+TASK_0111_ACTUAL_FINGERPRINT = (
+    "5a2147e0c5ea53a843aacdab6b4257da18421f7aedcb47f8221f980521f242e7"
+)
+TASK_0111_REVIEWERS_SHA256 = (
+    "7bc25106719b7990918682084225bdb8c5ca524b691989e3250b40f07f99539b"
+)
+TASK_0111_EXPECTED_MISMATCH_ERROR = (
+    "TASK-0111: context fingerprint mismatch "
+    f"(expected {TASK_0111_INVALID_FINGERPRINT}, got {TASK_0111_ACTUAL_FINGERPRINT})"
+)
+TASK_0111_TERMINAL_ARTIFACT_SHA256 = {
+    TASK_0111_CARD_PATH: (
+        "fdc23db227d596f68d37cfd7d5c7b84511ef0b5a620146150eb3da1593ec4605"
+    ),
+    TASK_0111_CONTEXT_LOCK_PATH: (
+        "0bc99558fbd65b23116957cff1772780cf94deffb3d2c4c5f4243b5f5efda8d5"
+    ),
+    "docs/evidence/TASK-0111/evidence-pack.json": (
+        "aa14ca8252e385eb505ef1d2521786eb068f6bd993c96fe3605210c62eb931d8"
+    ),
+    "docs/handoffs/TASK-0111.json": (
+        "917d018752ad66e5da9e3d3833d69bdb424736d5fa1700e4b51bec39219c484a"
+    ),
+}
+TASK_0124_CARD_PATH = "docs/tasks/TASK-0124-auth-firewall-envelope-observation.md"
+TASK_0124_BASE_COMMIT = "68dc7f0a486e93768112fca856f9456cb7e31a2d"
+TASK_0124_DRAFT_COMMIT = "a726a63a3080cc2f8570ef1c2532e155012b35c0"
+TASK_0124_AUTHORIZATION_COMMIT = "952800e80994c734a7cd40e9631f60110fce85d5"
+TASK_0124_AUTHORIZATION_TREE = "b5214bc22c28c0626bd083df0dfb555439423825"
+TASK_0124_AUTHORIZATION_BINDING_COMMIT = "2b34658fc6d7a5c2d8c9c4b0827c03ec27b96dc1"
+TASK_0124_TERMINAL_COMMIT = "098115264879ed1bd99c79e90db2ddca54061c4b"
+TASK_0124_TERMINAL_TREE = "01774a06822aeb53626f18bb66451b686a4c640c"
+TASK_0124_CONTEXT_LOCK_PATH = "docs/tasks/context/TASK-0124.context-lock.yaml"
+TASK_0124_INVALID_FINGERPRINT = (
+    "6ac0b7d95a19f7456f20a9496a212deb364a0b1664de1d37a616d41e48d739d2"
+)
+TASK_0124_ACTUAL_FINGERPRINT = (
+    "855d3fb37679a185be843c3843fb7a7e035f39c87f9ebd435694881265a6bb46"
+)
+TASK_0124_REVIEWERS_SHA256 = (
+    "ddb8f685b3461c9d4406aedd9f7de4303ba7244b0106a668163307d99cd894f7"
+)
+TASK_0124_EXPECTED_MISMATCH_ERROR = (
+    "TASK-0124: context fingerprint mismatch "
+    f"(expected {TASK_0124_INVALID_FINGERPRINT}, got {TASK_0124_ACTUAL_FINGERPRINT})"
+)
+TASK_0124_TERMINAL_ARTIFACT_SHA256 = {
+    TASK_0124_CARD_PATH: (
+        "a3f9a8d7340e4d976a62424f072636eb3c73199c5c7f580c0c2c8222f6281df3"
+    ),
+    TASK_0124_CONTEXT_LOCK_PATH: (
+        "9a08a505b3c4601483b3170cd8fbe3929eac9153fa0503e0ed7e033af307a80d"
+    ),
+    "docs/evidence/TASK-0124/evidence-pack.json": (
+        "d441bcd9227fdb283aa776d5dfe0a261323b579262796d1f46495b653f34bf15"
+    ),
+    "docs/handoffs/TASK-0124.json": (
+        "8c200e7737560edc57bea761890145ada949f7946bf0d70bc9e8617184dcf055"
+    ),
+}
+TASK_0129_CARD_PATH = (
+    "docs/tasks/TASK-0129-anthropic-tool-use-protocol-replacement.md"
+)
+TASK_0129_BASE_COMMIT = "603402304b878d939c8381721ff9bc5082561780"
+TASK_0129_DRAFT_COMMIT = "663b4a3556a3a22723f239a22dd4a8832599a3a9"
+TASK_0129_AUTHORIZATION_COMMIT = "bce01149fa4baabe90e8f2112a103e1f3936bf46"
+TASK_0129_AUTHORIZATION_TREE = "62c01c31910cf558328fd56162e2d4e9ea24e436"
+TASK_0129_AUTHORIZATION_BINDING_COMMIT = "a12b5eaa934f88c983102277d706f179da3dfce8"
+TASK_0129_TERMINAL_COMMIT = "ebc7c2228c5ed4d07ec345d9d33a7d187de00392"
+TASK_0129_TERMINAL_TREE = "21a8fea6819c0bb6df4ba1ca92be8b0c277daf35"
+TASK_0129_CONTEXT_LOCK_PATH = "docs/tasks/context/TASK-0129.context-lock.yaml"
+TASK_0129_INVALID_FINGERPRINT = (
+    "31abce12955f5be0b2f11e0f18170468c2a236f48e546b5879dc6270a76b15cd"
+)
+TASK_0129_ACTUAL_FINGERPRINT = (
+    "fbdcf3991d84e86450a5a6ee8d22614cd3e8245f61d511dffa5ebba6cb9246c4"
+)
+TASK_0129_REVIEWERS_SHA256 = (
+    "1a69a9642e51f2c90cc890a37c46b336da6de2440831d611ddce3dee2d36257e"
+)
+TASK_0129_EXPECTED_MISMATCH_ERROR = (
+    "TASK-0129: context fingerprint mismatch "
+    f"(expected {TASK_0129_INVALID_FINGERPRINT}, got {TASK_0129_ACTUAL_FINGERPRINT})"
+)
+TASK_0129_TERMINAL_ARTIFACT_SHA256 = {
+    TASK_0129_CARD_PATH: (
+        "f37a2e9a4d8c138d1604316e5fe8c35019c60aebf90ffba56e847059978e9b90"
+    ),
+    TASK_0129_CONTEXT_LOCK_PATH: (
+        "21864fb349b83fbc0168c6fb905af3f176de0637a4a5f8286dceaf0bfad29dc3"
+    ),
+    "docs/evidence/TASK-0129/evidence-pack.json": (
+        "88ff47b6c5180766098bd56b70ca175024656af3b65ff31cd20acffaec2d860d"
+    ),
+    "docs/handoffs/TASK-0129.json": (
+        "e9097ef72113dc919f0a4bf567aeaea28af31b544d67a51a4d40f74e236ca95b"
+    ),
+}
 IDLE_PLANNING_PAUSE_NEXT_ACTION = "等待 Owner 决策：当前无可晋级任务"
 AUTHORIZATION_AMENDMENT_BOOTSTRAP_PARENT_COMMIT = (
     "2a55335e695c8fc5434c0dbc867288842c804e74"
@@ -2374,6 +2484,242 @@ def task0133_rejected_harness_approval_isolated(
     ):
         return False
     return True
+
+
+def _rejected_fingerprint_identity_exact(
+    task: dict[str, Any],
+    errors: list[str],
+    *,
+    task_id: str,
+    card_path: str,
+    base_commit: str,
+    draft_commit: str,
+    authorization_commit: str,
+    authorization_tree: str,
+    binding_commit: str,
+    terminal_commit: str,
+    terminal_tree: str,
+    context_lock_path: str,
+    invalid_fingerprint: str,
+    actual_fingerprint: str,
+    reviewers_sha256: str,
+    expected_mismatch_error: str,
+    terminal_artifacts: dict[str, str],
+    evidence_path: str,
+    handoff_path: str,
+    ledger_entry: dict[str, Any],
+) -> bool:
+    if (
+        task.get("_path") != card_path
+        or task.get("taskId") != task_id
+        or task.get("state") != "REJECTED"
+        or task.get("riskClass") != "C3"
+        or task.get("baseCommit") != base_commit
+        or task.get("authorizationCommit") != authorization_commit
+        or task.get("contextFingerprint") != invalid_fingerprint
+        or task.get("contextLock") != context_lock_path
+        or canonical_json_sha256(task.get("reviewers")) != reviewers_sha256
+        or errors != [expected_mismatch_error]
+    ):
+        return False
+    try:
+        graph_edges = (
+            (draft_commit, base_commit),
+            (authorization_commit, draft_commit),
+            (binding_commit, authorization_commit),
+            (terminal_commit, binding_commit),
+        )
+        for commit, parent in graph_edges:
+            if git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                commit,
+                check=False,
+            ).stdout.split() != [commit, parent]:
+                return False
+        for commit, expected_tree in (
+            (authorization_commit, authorization_tree),
+            (terminal_commit, terminal_tree),
+        ):
+            if git_text(
+                "rev-parse",
+                f"{commit}^{{tree}}",
+                check=False,
+            ).stdout.strip() != expected_tree:
+                return False
+        ledger = load_yaml(ROOT / TASK_LEDGER_PATH)
+        entries = ledger.get("tasks")
+        if not isinstance(entries, dict) or entries.get(task_id) != ledger_entry:
+            return False
+        for path, expected_hash in terminal_artifacts.items():
+            current = read_repository_bytes(ROOT / path)
+            historical = git_object(terminal_commit, path)
+            if (
+                current != historical
+                or hashlib.sha256(current).hexdigest() != expected_hash
+            ):
+                return False
+        evidence = json.loads(
+            git_object(terminal_commit, evidence_path).decode("utf-8")
+        )
+        handoff = json.loads(
+            git_object(terminal_commit, handoff_path).decode("utf-8")
+        )
+        ready_doctor_checks = [
+            check
+            for check in evidence.get("checks", [])
+            if isinstance(check, dict)
+            and str(check.get("command", ""))
+            in {
+                f"python scripts/harness/doctor.py --task {task_id}",
+                f"python scripts/harness/doctor.py --task {task_id} (READY activation)",
+            }
+        ]
+        if (
+            evidence.get("taskId") != task_id
+            or evidence.get("baseCommit") != base_commit
+            or evidence.get("headCommit") != binding_commit
+            or canonical_json_sha256(evidence.get("reviewers"))
+            != reviewers_sha256
+            or handoff.get("taskId") != task_id
+            or handoff.get("state") != "REJECTED"
+            or handoff.get("baseCommit") != base_commit
+            or handoff.get("headCommit") != binding_commit
+            or canonical_json_sha256(handoff.get("reviewers"))
+            != reviewers_sha256
+            or len(ready_doctor_checks) != 1
+            or ready_doctor_checks[0].get("status") != "FAIL"
+            or ready_doctor_checks[0].get("exitCode") != 1
+        ):
+            return False
+    except (
+        HarnessError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+    ):
+        return False
+    return True
+
+
+def task0111_rejected_context_lock_isolated(
+    task: dict[str, Any],
+    errors: list[str],
+) -> bool:
+    """Recognize only the frozen TASK-0111 context-fingerprint failure."""
+    return _rejected_fingerprint_identity_exact(
+        task,
+        errors,
+        task_id="TASK-0111",
+        card_path=TASK_0111_CARD_PATH,
+        base_commit=TASK_0111_BASE_COMMIT,
+        draft_commit=TASK_0111_DRAFT_COMMIT,
+        authorization_commit=TASK_0111_AUTHORIZATION_COMMIT,
+        authorization_tree=TASK_0111_AUTHORIZATION_TREE,
+        binding_commit=TASK_0111_AUTHORIZATION_BINDING_COMMIT,
+        terminal_commit=TASK_0111_TERMINAL_COMMIT,
+        terminal_tree=TASK_0111_TERMINAL_TREE,
+        context_lock_path=TASK_0111_CONTEXT_LOCK_PATH,
+        invalid_fingerprint=TASK_0111_INVALID_FINGERPRINT,
+        actual_fingerprint=TASK_0111_ACTUAL_FINGERPRINT,
+        reviewers_sha256=TASK_0111_REVIEWERS_SHA256,
+        expected_mismatch_error=TASK_0111_EXPECTED_MISMATCH_ERROR,
+        terminal_artifacts=TASK_0111_TERMINAL_ARTIFACT_SHA256,
+        evidence_path="docs/evidence/TASK-0111/evidence-pack.json",
+        handoff_path="docs/handoffs/TASK-0111.json",
+        ledger_entry={
+            "state": "REJECTED",
+            "contractVersion": 2,
+            "taskCard": TASK_0111_CARD_PATH,
+            "evidence": "docs/evidence/TASK-0111/evidence-pack.json",
+            "handoff": "docs/handoffs/TASK-0111.json",
+        },
+    )
+
+
+def task0124_rejected_context_lock_isolated(
+    task: dict[str, Any],
+    errors: list[str],
+) -> bool:
+    """Recognize only the frozen TASK-0124 context-fingerprint failure."""
+    return _rejected_fingerprint_identity_exact(
+        task,
+        errors,
+        task_id="TASK-0124",
+        card_path=TASK_0124_CARD_PATH,
+        base_commit=TASK_0124_BASE_COMMIT,
+        draft_commit=TASK_0124_DRAFT_COMMIT,
+        authorization_commit=TASK_0124_AUTHORIZATION_COMMIT,
+        authorization_tree=TASK_0124_AUTHORIZATION_TREE,
+        binding_commit=TASK_0124_AUTHORIZATION_BINDING_COMMIT,
+        terminal_commit=TASK_0124_TERMINAL_COMMIT,
+        terminal_tree=TASK_0124_TERMINAL_TREE,
+        context_lock_path=TASK_0124_CONTEXT_LOCK_PATH,
+        invalid_fingerprint=TASK_0124_INVALID_FINGERPRINT,
+        actual_fingerprint=TASK_0124_ACTUAL_FINGERPRINT,
+        reviewers_sha256=TASK_0124_REVIEWERS_SHA256,
+        expected_mismatch_error=TASK_0124_EXPECTED_MISMATCH_ERROR,
+        terminal_artifacts=TASK_0124_TERMINAL_ARTIFACT_SHA256,
+        evidence_path="docs/evidence/TASK-0124/evidence-pack.json",
+        handoff_path="docs/handoffs/TASK-0124.json",
+        ledger_entry={
+            "state": "REJECTED",
+            "contractVersion": 2,
+            "taskCard": TASK_0124_CARD_PATH,
+            "evidence": "docs/evidence/TASK-0124/evidence-pack.json",
+            "handoff": "docs/handoffs/TASK-0124.json",
+        },
+    )
+
+
+def task0129_rejected_context_lock_isolated(
+    task: dict[str, Any],
+    errors: list[str],
+) -> bool:
+    """Recognize only the frozen TASK-0129 context-fingerprint failure."""
+    return _rejected_fingerprint_identity_exact(
+        task,
+        errors,
+        task_id="TASK-0129",
+        card_path=TASK_0129_CARD_PATH,
+        base_commit=TASK_0129_BASE_COMMIT,
+        draft_commit=TASK_0129_DRAFT_COMMIT,
+        authorization_commit=TASK_0129_AUTHORIZATION_COMMIT,
+        authorization_tree=TASK_0129_AUTHORIZATION_TREE,
+        binding_commit=TASK_0129_AUTHORIZATION_BINDING_COMMIT,
+        terminal_commit=TASK_0129_TERMINAL_COMMIT,
+        terminal_tree=TASK_0129_TERMINAL_TREE,
+        context_lock_path=TASK_0129_CONTEXT_LOCK_PATH,
+        invalid_fingerprint=TASK_0129_INVALID_FINGERPRINT,
+        actual_fingerprint=TASK_0129_ACTUAL_FINGERPRINT,
+        reviewers_sha256=TASK_0129_REVIEWERS_SHA256,
+        expected_mismatch_error=TASK_0129_EXPECTED_MISMATCH_ERROR,
+        terminal_artifacts=TASK_0129_TERMINAL_ARTIFACT_SHA256,
+        evidence_path="docs/evidence/TASK-0129/evidence-pack.json",
+        handoff_path="docs/handoffs/TASK-0129.json",
+        ledger_entry={
+            "state": "REJECTED",
+            "contractVersion": 2,
+            "taskCard": TASK_0129_CARD_PATH,
+            "evidence": "docs/evidence/TASK-0129/evidence-pack.json",
+            "handoff": "docs/handoffs/TASK-0129.json",
+        },
+    )
+
+
+def rejected_fingerprint_history_isolated(
+    task: dict[str, Any],
+    errors: list[str],
+) -> bool:
+    """Recognize only the three frozen REJECTED fingerprint histories."""
+    return (
+        task0111_rejected_context_lock_isolated(task, errors)
+        or task0124_rejected_context_lock_isolated(task, errors)
+        or task0129_rejected_context_lock_isolated(task, errors)
+    )
 
 
 def task0063_terminal_missing_reviewer_isolated(task: dict[str, Any]) -> bool:
