@@ -9,7 +9,8 @@
 1. 从仓库根目录读取 `.harness/project-state.yaml`、append-only `.harness/task-ledger.yaml`、
    `.harness/task-backlog.yaml`、`.harness/sources-of-truth.yaml`、`.harness/invariants.yaml`、
    `.harness/protected-paths.yaml` 和 `.harness/task-lifecycle.yaml`。
-2. 运行一次 `python scripts/harness/doctor.py --summary`；只有 `python3` 时使用 `python3`。
+2. 运行一次 `python scripts/harness/doctor.py --summary`；受控 Python 环境由 PATH 前置提供，
+   不依赖 `python3` 字面量。
 3. 读取活动任务、Context Lock、`.harness/skills.yaml` 中任务要求的精确 Skill 版本与路径。
 4. 单卡或长线交付还必须读取机器交付策略与注册的 `task-delivery-flow` Skill。
 5. 只读取本任务需要的 Accepted ADR、机器真源和代码调用链；历史聊天与 `docs/source/**` 不是真源。
