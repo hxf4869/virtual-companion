@@ -7,6 +7,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Thread-safe in-memory {@link AuthorizationSnapshotStore}.
+ *
+ * <p>The snapshot lifecycle is one-way: {@code ACTIVE -> WITHDRAWN} and
+ * {@code ACTIVE -> NARROWED} are the only legal transitions, and a terminal
+ * snapshot can never be resurrected or re-transitioned — aligned with
+ * {@code JdbcAuthorizationSnapshotStore} and the port contract "must not
+ * resurrect withdrawn or narrowed snapshots".
  */
 public final class InMemoryAuthorizationSnapshotStore implements AuthorizationSnapshotStore {
 
@@ -34,6 +40,9 @@ public final class InMemoryAuthorizationSnapshotStore implements AuthorizationSn
     public AuthorizationSnapshot withdraw(AuthorizationSnapshotId id) {
         Objects.requireNonNull(id, "id must not be null");
         AuthorizationSnapshot current = requirePresent(id);
+        if (current.status() != AuthorizationStatus.ACTIVE) {
+            throw transitionFailure(id, "withdrawn", current);
+        }
         AuthorizationSnapshot withdrawn = copyWithStatus(current, AuthorizationStatus.WITHDRAWN);
         snapshots.put(id, withdrawn);
         return withdrawn;
@@ -50,7 +59,10 @@ public final class InMemoryAuthorizationSnapshotStore implements AuthorizationSn
             throw new IllegalArgumentException(
                     "narrowed snapshot id must equal the target id");
         }
-        requirePresent(id);
+        AuthorizationSnapshot current = requirePresent(id);
+        if (current.status() != AuthorizationStatus.ACTIVE) {
+            throw transitionFailure(id, "narrowed", current);
+        }
         AuthorizationSnapshot result = copyWithStatus(narrowed, AuthorizationStatus.NARROWED);
         snapshots.put(id, result);
         return result;
@@ -63,6 +75,17 @@ public final class InMemoryAuthorizationSnapshotStore implements AuthorizationSn
                     "authorization snapshot " + id + " is not stored");
         }
         return current;
+    }
+
+    private IllegalStateException transitionFailure(
+            AuthorizationSnapshotId id,
+            String target,
+            AuthorizationSnapshot current
+    ) {
+        return new IllegalStateException(
+                "authorization snapshot " + id + " cannot be " + target
+                        + " from status " + current.status().name()
+                        + " (only ACTIVE may transition)");
     }
 
     private static AuthorizationSnapshot copyWithStatus(
