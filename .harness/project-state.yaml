@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0140
+activeTaskCard: docs/tasks/TASK-0140-p2-23-supply-chain-reproducibility.md
 lastAcceptedTask: TASK-0139
 lastAcceptedHandoff: docs/handoffs/TASK-0139.json
 lastTerminalTask: TASK-0139
 lastTerminalHandoff: docs/handoffs/TASK-0139.json
-nextAction: '创建 P2-23 的 C4 卡（GitHub Actions 固定完整 commit SHA + Harness Python 依赖精确版本与 hash lock 的可复现供应链）前，先向 Owner 提交该组实现方案与写路径（.github/workflows/ci.yml、requirements-harness.txt 等均在 forbiddenPaths，需从 DRAFT 起纳入 writeAllowlist），获批后完成正式门禁；随后继续 P2-24 至 P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
+nextAction: '执行 TASK-0140：将 .github/workflows/ci.yml 全部 actions 固定为完整 40-char commit SHA（附原 tag 注释与受审升级流程）并将 harness 依赖安装命令收敛为 python -m pip install --require-hashes，requirements-harness.txt 锁定 PyYAML==6.0.3、tzdata==2026.3 精确版本与 sha256 hash lock，test_harness.py 新增锁合同测试并在全新临时 venv 验证可重复安装；冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0；随后继续 P2-25 至 P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
