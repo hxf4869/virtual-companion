@@ -2,7 +2,16 @@
 
 ```yaml
 taskId: TASK-0138
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  唯一正式 Precheck 真实 PASS，但唯一完整 Harness unittest 如实 FAIL（262 tests 中 2 failures）：
+  test_task0066_replacement_is_exact_and_atomic 与 test_task0067_replacement_is_exact_and_atomic
+  断言 TASK-0066/0067 Base 快照的 AGENTS.md 与当前工作树 byte-for-byte 相同（这两个恢复记录
+  测试假定 AGENTS.md 自其 Base 起不可变），而 P2-21 合法修改 AGENTS.md 首次打破该断言。Doctor
+  生产路径与 ci-execution-policy 的 recoveryInput 均不绑定 AGENTS.md（仅测试内断言），但更新该
+  断言不在本卡 READY 冻结范围内，正式门禁非 PASS 即停止 promotion，本卡如实 REJECTED，不改写
+  历史、不删测、不加 skip、不伪造 PASS；P2-21 由新的 C4 治理卡从 DRAFT 起将测试断言更新纳入范围。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -293,7 +302,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0136/0137 的 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0138_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 7f7f44e6a72378abba66c22b07f5fbfe48c4fe5c
+    evidencePath: docs/evidence/TASK-0138/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份、字面量 python 合同 + agent-entrypoints contentSha256 同步验收逐条、INV-HARNESS-001..009 与邻近风险全部核对；contentSha256 独立复算精确一致，wrapper 测试正负例探针实测匹配，方法与 skipIf 数量净持平；P0/P1/P2=0、P3=3 信息性；Reviewer 未运行正式门禁。"
+    candidateTree: 15df2c427917096aff6a7bef6189edf05e9feabd
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0138
   - python -m unittest scripts.harness.tests.test_harness

@@ -730,3 +730,9 @@ tasks:
     taskCard: docs/tasks/TASK-0137-p2-21-canonical-python-literal.md
     evidence: docs/evidence/TASK-0137/evidence-pack.json
     handoff: docs/handoffs/TASK-0137.json
+  TASK-0138:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0138-p2-21-canonical-python-literal-with-entrypoints.md
+    evidence: docs/evidence/TASK-0138/evidence-pack.json
+    handoff: docs/handoffs/TASK-0138.json

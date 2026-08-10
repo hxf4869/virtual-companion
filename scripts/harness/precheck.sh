@@ -2,7 +2,7 @@
 set -eu
 
 HARNESS_PYTHON=
-for candidate in python; do
+for candidate in python3 python; do
   if command -v "$candidate" >/dev/null 2>&1 \
     && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 2)' >/dev/null 2>&1; then
     HARNESS_PYTHON=$candidate
@@ -11,7 +11,7 @@ for candidate in python; do
 done
 
 if [ -z "$HARNESS_PYTHON" ]; then
-  echo "ERROR: Python 3.11+ is required (expected literal 'python' on PATH)" >&2
+  echo "ERROR: Python 3.11+ is required" >&2
   exit 2
 fi
 
