@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0139
-activeTaskCard: docs/tasks/TASK-0139-p2-21-canonical-python-literal-full.md
-lastAcceptedTask: TASK-0136
-lastAcceptedHandoff: docs/handoffs/TASK-0136.json
-lastTerminalTask: TASK-0138
-lastTerminalHandoff: docs/handoffs/TASK-0138.json
-nextAction: '执行 TASK-0139：按 Owner 选定的字面量 python 合同，将 AGENTS.md 会话恢复命令、.harness/agent-entrypoints.yaml 的 contentSha256 绑定与 precheck.sh/precheck.ps1 解释器探测及对应 wrapper 测试统一收敛为字面量 python，并将 TASK-0066/0067 恢复记录测试的 AGENTS.md 断言改为链内固定历史对象绑定；冻结 clean candidate 后取得 15 分钟内独立 C4 Reviewer 终态，再依序完成唯一 Precheck、完整 Harness unittest、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0139
+lastAcceptedHandoff: docs/handoffs/TASK-0139.json
+lastTerminalTask: TASK-0139
+lastTerminalHandoff: docs/handoffs/TASK-0139.json
+nextAction: '创建 P2-23 的 C4 卡（GitHub Actions 固定完整 commit SHA + Harness Python 依赖精确版本与 hash lock 的可复现供应链）前，先向 Owner 提交该组实现方案与写路径（.github/workflows/ci.yml、requirements-harness.txt 等均在 forbiddenPaths，需从 DRAFT 起纳入 writeAllowlist），获批后完成正式门禁；随后继续 P2-24 至 P2-27、Provider DNS、数据库 Owner gates 与条件风险，最后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

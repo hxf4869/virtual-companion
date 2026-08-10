@@ -736,3 +736,9 @@ tasks:
     taskCard: docs/tasks/TASK-0138-p2-21-canonical-python-literal-with-entrypoints.md
     evidence: docs/evidence/TASK-0138/evidence-pack.json
     handoff: docs/handoffs/TASK-0138.json
+  TASK-0139:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0139-p2-21-canonical-python-literal-full.md
+    evidence: docs/evidence/TASK-0139/evidence-pack.json
+    handoff: docs/handoffs/TASK-0139.json

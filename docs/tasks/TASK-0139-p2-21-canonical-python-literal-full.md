@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0139
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -318,7 +318,14 @@ humanApprovals:
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用 TASK-0136/0137/0138 的 Reviewer 或
       命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0139_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 4c19c263ba23d9b43484f818f55f9d956147a6ba
+    evidencePath: docs/evidence/TASK-0139/review-r1.md
+    reason: "R1 完整复核 PASS：候选身份、字面量 python 合同 + agent-entrypoints contentSha256 同步 + TASK-0066/0067 断言链内绑定修复全部核对；contentSha256 独立复算精确一致，三 commit AGENTS.md blob 两两一致，wrapper 测试探针实测匹配，方法与 skipIf 数量持平；P0/P1/P2=0、P3=2 信息性；Reviewer 未运行正式门禁。"
+    candidateTree: 2e06199e4d314acfe71f8a5ec14c02e9d948ec28
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0139
   - python -m unittest scripts.harness.tests.test_harness
