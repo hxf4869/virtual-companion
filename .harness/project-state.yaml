@@ -2,13 +2,15 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0146
+activeTaskCard: docs/tasks/TASK-0146-p2-12-inmemory-authz-snapshot-one-way-alignment.md
 lastAcceptedTask: TASK-0144
 lastAcceptedHandoff: docs/handoffs/TASK-0144.json
 lastTerminalTask: TASK-0144
 lastTerminalHandoff: docs/handoffs/TASK-0144.json
-nextAction: '创建 P2-12 后继的内存实现对齐小卡（InMemoryAuthorizationSnapshotStore 允许终态再转换，与 JDBC 单向语义对齐——R1 P2 记录）；随后串行处理 P3-01（OpenAPI drift gate 接入 canonical/CI）、P3-02/P3-07 独立卡、Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。'
+nextAction: 执行 TASK-0146（P2-12 后继 InMemory 授权快照单向语义对齐）：InMemoryAuthorizationSnapshotStore.withdraw/narrow 改为仅 ACTIVE 可转换（终态再转换抛单向异常），新增 InMemoryAuthorizationSnapshotStoreTest 覆盖全部分支；requiredSkills 含 model-routing-change（service/**/modelruntime/**
+  受保护路径）；冻结 clean candidate 后取得 15 分钟内独立 C3 Reviewer 终态，再依序完成唯一 Precheck、根级 Docker Maven verify、唯一 diff check、Evidence/Handoff、单父终态提交和远端 0/0；随后串行处理 P3-01（OpenAPI drift gate 接入 canonical/CI）、P3-02/P3-07
+  独立卡、Provider DNS、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
