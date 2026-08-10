@@ -112,25 +112,33 @@ forbiddenPaths:
   - docs/tasks/TASK-011*-*
   - docs/tasks/TASK-012*-*
   - docs/tasks/TASK-013*-*
-  - docs/tasks/TASK-014*-*
+  - docs/tasks/TASK-0140-*
+  - docs/tasks/TASK-0141-*
+  - docs/tasks/TASK-0142-*
   - docs/tasks/context/TASK-00*.context-lock.yaml
   - docs/tasks/context/TASK-010*.context-lock.yaml
   - docs/tasks/context/TASK-011*.context-lock.yaml
   - docs/tasks/context/TASK-012*.context-lock.yaml
   - docs/tasks/context/TASK-013*.context-lock.yaml
-  - docs/tasks/context/TASK-014*.context-lock.yaml
+  - docs/tasks/context/TASK-0140.context-lock.yaml
+  - docs/tasks/context/TASK-0141.context-lock.yaml
+  - docs/tasks/context/TASK-0142.context-lock.yaml
   - docs/evidence/TASK-00*/**
   - docs/evidence/TASK-010*/**
   - docs/evidence/TASK-011*/**
   - docs/evidence/TASK-012*/**
   - docs/evidence/TASK-013*/**
-  - docs/evidence/TASK-014*/**
+  - docs/evidence/TASK-0140/**
+  - docs/evidence/TASK-0141/**
+  - docs/evidence/TASK-0142/**
   - docs/handoffs/TASK-00*.json
   - docs/handoffs/TASK-010*.json
   - docs/handoffs/TASK-011*.json
   - docs/handoffs/TASK-012*.json
   - docs/handoffs/TASK-013*.json
-  - docs/handoffs/TASK-014*.json
+  - docs/handoffs/TASK-0140.json
+  - docs/handoffs/TASK-0141.json
+  - docs/handoffs/TASK-0142.json
   - .gitattributes
   - AGENTS.md
   - CLAUDE.md
