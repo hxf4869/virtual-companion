@@ -2,7 +2,14 @@
 
 ```yaml
 taskId: TASK-0133
-state: IN_PROGRESS
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  独立 R1 已确认 P2-20 测试实现本身无 finding，但唯一正式 Precheck 在
+  Diff Scope 阶段发现 READY 冻结的 humanApprovals.scope 误写为细分名称，
+  不等于保护规则要求的精确 harness-change。该授权字段在 READY 后不可修改，
+  因此本卡不伪造 PASS、不改写历史，按 Owner 明确决定 REJECTED，并由新的
+  C4 一次性治理恢复任务前向隔离失败历史和正式承接实现。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -227,7 +234,14 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结
       LOCAL_EXACT_TREE_FALLBACK，远端仍如实非 PASS，不复用历史 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0133_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: fca2f55f524952d34223b562a8db88f0e95a9342
+    evidencePath: docs/evidence/TASK-0133/review-r1.md
+    reason: "R1 完整复核 PASS：候选只修改 test_harness.py；fixture 在无 global config、显式 main、显式 master 三例均查询真实 primary branch，构造真实 --no-ff merge 并断言 derivation 拒绝；环境恢复、不写用户配置、不吞 subprocess 错误，P2-21/生产 Harness/历史制品零 diff，候选 P0/P1/P2/P3=0。"
+    candidateTree: 1f025c7f2d088997800d990f808219a00a927918
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0133
   - python -m unittest scripts.harness.tests.test_harness

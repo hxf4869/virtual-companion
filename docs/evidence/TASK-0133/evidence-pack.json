@@ -1,0 +1,157 @@
+{
+  "taskId": "TASK-0133",
+  "baseCommit": "ce8cf00587f7ef76bfbe5cb6ff9e1a198d03f459",
+  "headCommit": "fca2f55f524952d34223b562a8db88f0e95a9342",
+  "contextFingerprint": "fcfca1f80167a18b028f75f5bd6bd81206938421bbbdf7d99f31e7f21a003687",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5c0d727f2b8738d12f865ae9329d334027228761",
+      "startedAt": "2026-08-10T03:13:48+08:00",
+      "endedAt": "2026-08-10T09:51:00+08:00",
+      "elapsedSeconds": 23832,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5c0d727f2b8738d12f865ae9329d334027228761",
+      "startedAt": "2026-08-10T03:13:48+08:00",
+      "endedAt": "2026-08-10T03:15:29+08:00",
+      "elapsedSeconds": 101,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "68d3487785ac832273abd1ddfdbb418f113625f4",
+      "startedAt": "2026-08-10T03:15:36+08:00",
+      "endedAt": "2026-08-10T09:51:00+08:00",
+      "elapsedSeconds": 23724,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 18324,
+      "readyDoctorPassAt": "2026-08-10T03:15:29+08:00",
+      "inProgressCommit": "68d3487785ac832273abd1ddfdbb418f113625f4",
+      "reason": "Formal Precheck failed at 2026-08-10T03:22:11+08:00 on the immutable approval scope. No implementation, fix batch, Reviewer, canonical retry, full Harness test, diff gate, or CI ran afterward; the remaining elapsed time includes the user-requested pause and authorized closure-only recovery preparation."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0133_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342",
+      "evidencePath": "docs/evidence/TASK-0133/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选只修改 test_harness.py；fixture 在无 global config、显式 main、显式 master 三例均查询真实 primary branch，构造真实 --no-ff merge 并断言 derivation 拒绝；环境恢复、不写用户配置、不吞 subprocess 错误，P2-21/生产 Harness/历史制品零 diff，候选 P0/P1/P2/P3=0。",
+      "candidateTree": "1f025c7f2d088997800d990f808219a00a927918"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0133 (READY activation)",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": "13bd6b5e4aed3d980f40d05e9f72108bf72fe865bd08a3ec613aea0d6d85d80d",
+      "reason": "READY Doctor completed once with 609281 checks in 71.7s; stderr sha256 3b843cead51084373becff679fcacd1e0f753c9dce9048ac0ea23f2be4ee8a68.",
+      "environment": "macOS 26.6.1; controlled Python 3.13.0; stdout /tmp/vc-task0133-ready-doctor.out; stderr /tmp/vc-task0133-ready-doctor.err; 2026-08-10T03:14:17+08:00..2026-08-10T03:15:29+08:00",
+      "verifiedCommit": "eb87ec50ce62e12ae488cb990ce121c9005ca589"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_empty_split_multiple_and_extra_paths scripts.harness.tests.test_harness.IdlePlanningCheckpointTests.test_rejects_merge_on_discovered_primary_branch",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "The two affected tests passed in 7.514s on the implementation snapshot later frozen as the candidate; no full-suite result is inferred.",
+      "environment": "macOS; controlled Python 3.13.0; local temporary Git repositories",
+      "verifiedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342"
+    },
+    {
+      "command": "Independent Reviewer R1 for TASK-0133 frozen candidate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Independent R1 verified candidate identity, Context, exact scope, environment restoration, actual merge construction, rejection semantics, and adjacent risks; P0/P1/P2/P3 are all zero. Reviewer did not run formal gates.",
+      "environment": "Independent read-only Codex reviewer; no source writes or expensive full-suite dispatch",
+      "verifiedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342",
+      "candidateCommit": "fca2f55f524952d34223b562a8db88f0e95a9342",
+      "candidateTree": "1f025c7f2d088997800d990f808219a00a927918"
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0133",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": "4b71cdc57a872ffe8e8225cc0960dd3d505c16ac03c62fa675e4db59114093a7",
+      "reason": "The sole canonical Precheck stopped after Doctor failed with exactly one error: scripts/harness/tests/test_harness.py requires recorded human approval for harness-change. Four parallel non-Doctor commands passed, but Precheck remained FAIL; stderr sha256 39fb5f5eb43fea0c04139b070352522b455007a5ff59a52dfda8173a50a175eb.",
+      "environment": "macOS 26.6.1; controlled Python 3.13.0; stdout /tmp/vc-task0133-formal-precheck.out; stderr /tmp/vc-task0133-formal-precheck.err; 2026-08-10T03:20:58+08:00..2026-08-10T03:22:11+08:00",
+      "verifiedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342"
+    },
+    {
+      "command": "python -m unittest scripts.harness.tests.test_harness",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Formal Precheck failed on the immutable protected-path approval scope, so policy stopped promotion before the frozen full Harness suite. The targeted PASS is not substituted.",
+      "environment": "macOS; deliberately not launched after formal Precheck FAIL",
+      "verifiedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342"
+    },
+    {
+      "command": "git diff --check",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "The unique formal diff gate was reserved for after the full Harness suite and was not launched because formal Precheck failed first.",
+      "environment": "macOS; deliberately not launched after formal Precheck FAIL",
+      "verifiedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342"
+    },
+    {
+      "command": "PRIMARY_REMOTE_EXACT_SHA: GitHub Actions on candidate fca2f55f524952d34223b562a8db88f0e95a9342",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Formal Precheck did not PASS, so no remote exact-SHA dispatch was permitted or attempted.",
+      "environment": "GitHub Actions remote channel; dispatchCount=0; passClaimed=false",
+      "verifiedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0133 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "PENDING_SINGLE_EXECUTION_AT_REJECTED_CLOSURE_FREEZE: runs once after the complete REJECTED closure snapshot is staged; it is expected to preserve the immutable approval-scope failure and is not represented as PASS.",
+      "environment": "macOS; /Users/hxf/.zcode/venvs/vc-harness/bin/python; request docs/evidence/TASK-0133/pre-closure-request.json; one execution reserved",
+      "verifiedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342"
+    }
+  ],
+  "validationChannels": {
+    "policySource": ".harness/ci-execution-policy.yaml",
+    "selectedChannel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateStatus": "REVIEWER_PASS_FORMAL_PRECHECK_FAIL_AUTHORIZATION_SCOPE_MISMATCH",
+    "candidateCommit": "fca2f55f524952d34223b562a8db88f0e95a9342",
+    "candidateTree": "1f025c7f2d088997800d990f808219a00a927918",
+    "passClaimed": false,
+    "localExactTree": {
+      "status": "FAIL",
+      "reason": "Candidate code review passed, but canonical Precheck failed; full Harness and the unique formal diff gate did not run, so no local exact-tree PASS exists.",
+      "exitCode": 1,
+      "stdoutSha256": "4b71cdc57a872ffe8e8225cc0960dd3d505c16ac03c62fa675e4db59114093a7",
+      "stderrSha256": "39fb5f5eb43fea0c04139b070352522b455007a5ff59a52dfda8173a50a175eb"
+    },
+    "remote": {
+      "status": "NOT_RUN",
+      "reason": "Candidate canonical prerequisite failed.",
+      "dispatchCount": 0,
+      "passClaimed": false
+    },
+    "terminalMetadataOnly": {
+      "profile": "TERMINAL_METADATA_ONLY",
+      "commitMarker": "[skip ci]",
+      "representsCiPass": false,
+      "implementationCandidateCreated": true
+    }
+  }
+}

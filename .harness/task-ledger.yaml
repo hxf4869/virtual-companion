@@ -700,3 +700,9 @@ tasks:
     taskCard: docs/tasks/TASK-0132-provider-egress-hostname-case-normalization.md
     evidence: docs/evidence/TASK-0132/evidence-pack.json
     handoff: docs/handoffs/TASK-0132.json
+  TASK-0133:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0133-harness-default-branch-fixture-portability.md
+    evidence: docs/evidence/TASK-0133/evidence-pack.json
+    handoff: docs/handoffs/TASK-0133.json

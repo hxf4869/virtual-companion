@@ -1,0 +1,72 @@
+{
+  "taskId": "TASK-0133",
+  "state": "REJECTED",
+  "baseCommit": "ce8cf00587f7ef76bfbe5cb6ff9e1a198d03f459",
+  "headCommit": "fca2f55f524952d34223b562a8db88f0e95a9342",
+  "evidencePath": "docs/evidence/TASK-0133/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5c0d727f2b8738d12f865ae9329d334027228761",
+      "startedAt": "2026-08-10T03:13:48+08:00",
+      "endedAt": "2026-08-10T09:51:00+08:00",
+      "elapsedSeconds": 23832,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5c0d727f2b8738d12f865ae9329d334027228761",
+      "startedAt": "2026-08-10T03:13:48+08:00",
+      "endedAt": "2026-08-10T03:15:29+08:00",
+      "elapsedSeconds": 101,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "68d3487785ac832273abd1ddfdbb418f113625f4",
+      "startedAt": "2026-08-10T03:15:36+08:00",
+      "endedAt": "2026-08-10T09:51:00+08:00",
+      "elapsedSeconds": 23724,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 18324,
+      "readyDoctorPassAt": "2026-08-10T03:15:29+08:00",
+      "inProgressCommit": "68d3487785ac832273abd1ddfdbb418f113625f4",
+      "reason": "Formal Precheck failed at 2026-08-10T03:22:11+08:00 on the immutable approval scope. No implementation, fix batch, Reviewer, canonical retry, full Harness test, diff gate, or CI ran afterward; the remaining elapsed time includes the user-requested pause and authorized closure-only recovery preparation."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0133_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "fca2f55f524952d34223b562a8db88f0e95a9342",
+      "evidencePath": "docs/evidence/TASK-0133/review-r1.md",
+      "reason": "R1 完整复核 PASS：候选只修改 test_harness.py；fixture 在无 global config、显式 main、显式 master 三例均查询真实 primary branch，构造真实 --no-ff merge 并断言 derivation 拒绝；环境恢复、不写用户配置、不吞 subprocess 错误，P2-21/生产 Harness/历史制品零 diff，候选 P0/P1/P2/P3=0。",
+      "candidateTree": "1f025c7f2d088997800d990f808219a00a927918"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0133 DRAFT、READY、authorization binding、IN_PROGRESS 与冻结候选单父链；READY Doctor 真实 PASS。",
+    "候选移除 merge fixture 的 master 硬编码，覆盖无 global config、显式 main、显式 master，并由两个定向测试和独立 R1 证明实现行为正确。",
+    "唯一正式 Precheck 如实 FAIL：scripts/harness/tests/test_harness.py 缺少 scope 精确等于 harness-change 的保护路径人工批准；未重跑或降级该结果。",
+    "Owner 已明确选择前向恢复：本卡 REJECTED，保留候选与失败历史，不 reset、rebase、force-push 或伪造 PASS。"
+  ],
+  "remaining": [
+    "TASK-0133 的 READY 冻结 humanApprovals.scope 是错误细分名称，不能在本卡修改；显式复核本历史仍会失败关闭。",
+    "新 C4 恢复卡必须以 scope=harness-change 记录 Owner 批准，精确绑定并隔离 TASK-0133 的 Base、READY、candidate、terminal 和产物身份。",
+    "恢复卡须重新验证 retained P2-20 implementation，完成 Doctor、完整 Harness unittest、唯一 diff gate、Evidence/Handoff、push 与远端 0/0，不复用本卡门禁 PASS。",
+    "P2-21 及其余 Harness/CI、Provider DNS、数据库 Owner gates 和最终全项目复审仍待后续串行处理。"
+  ],
+  "knownRisks": [
+    "候选实现本身经 R1 通过，但 TASK-0133 未通过 protected-path authorization gate，因此不得把本卡表示为已验收。",
+    "完整 Harness unittest 与唯一正式 git diff --check 均未运行；定向测试不能替代它们。",
+    "本卡结束时 post-terminal Doctor 预计继续报告精确 approval scope 错误；只有 Owner 已授权的新 C4 前向恢复可消除该机器绿线冲突。"
+  ],
+  "nextAction": "通过 task-intake 创建 TASK-0134 C4 一次性治理恢复：以 Owner 2026-08-10 “按你说的来”授权和 scope=harness-change，精确绑定 TASK-0133 Base/READY/candidate/REJECTED terminal 与产物，隔离其错误 approval scope 历史；前向修复 Doctor 及对应 Harness 测试，不改写历史，重新验证并正式承接 P2-20 后，再继续 P2-21 与其余审计项。"
+}
