@@ -17,8 +17,8 @@ public final class AuthRequests {
 
     /** {@code POST /api/v1/auth/login}. */
     public record LoginRequest(
-            @NotBlank @Size(max = 128) String username,
-            @NotBlank @Size(max = 1024) String password) {
+            @NotBlank @Size(max = 64) String username,
+            @NotBlank @Size(max = 128) String password) {
     }
 
     /**
@@ -26,8 +26,8 @@ public final class AuthRequests {
      * to USER in the service; only an ACTIVE ADMIN can call the endpoint.
      */
     public record CreateAccountRequest(
-            @NotBlank @Size(max = 128) String username,
-            @NotBlank @Size(max = 1024) String password,
+            @NotBlank @Size(max = 64) String username,
+            @NotBlank @Size(max = 128) String password,
             @Size(max = 16)
             @Pattern(regexp = "(?i:ADMIN|USER)") String role,
             @NotBlank @Size(max = 256) String displayName) {

@@ -306,7 +306,7 @@ class AuthAbuseGuardTest {
         assertThat(outcomes.stream()
                         .filter(outcome -> outcome == AdmissionOutcome.BUDGET_REJECTED)
                         .count())
-                .isEqualTo(5);
+                .isEqualTo(25 - AuthAbuseGuard.LOGIN_SOURCE_LIMIT);
     }
 
     private static AdmissionOutcome attemptSourceAdmission(AuthAbuseGuard guard) {

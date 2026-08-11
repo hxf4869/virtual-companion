@@ -29,7 +29,7 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public final class AuthAbuseGuard {
 
-    static final int LOGIN_SOURCE_LIMIT = 20;
+    static final int LOGIN_SOURCE_LIMIT = 10;
     static final int REFRESH_SOURCE_LIMIT = 10;
     static final int INPUT_KEY_LIMIT = 5;
     static final long SOURCE_WINDOW_MILLIS = 60_000L;

@@ -12,9 +12,9 @@ import java.nio.charset.StandardCharsets;
  */
 public final class AuthInputLimits {
 
-    public static final int MAX_REQUEST_BODY_BYTES = 16_384;
-    public static final int MAX_USERNAME_UTF8_BYTES = 512;
-    public static final int MAX_PASSWORD_UTF8_BYTES = 4_096;
+    public static final int MAX_REQUEST_BODY_BYTES = 65_536;
+    public static final int MAX_USERNAME_UTF8_BYTES = 64;
+    public static final int MAX_PASSWORD_UTF8_BYTES = 128;
     public static final int MAX_DISPLAY_NAME_UTF8_BYTES = 1_024;
     public static final int MAX_ROLE_UTF8_BYTES = 64;
     public static final int MAX_REFRESH_TOKEN_UTF8_BYTES = 512;

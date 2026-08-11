@@ -70,7 +70,8 @@ class AuthControllerValidationTest {
                 .andExpect(jsonPath("$.message").value("The request is invalid"))
                 .andReturn();
 
-        assertThat(result.getResponse().getContentAsString()).doesNotContain("16385", "BBBB");
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain(Integer.toString(AuthInputLimits.MAX_REQUEST_BODY_BYTES + 1), "BBBB");
         verifyNoInteractions(authService);
     }
 
@@ -147,8 +148,8 @@ class AuthControllerValidationTest {
     }
 
     private static Stream<Arguments> invalidLoginBodies() {
-        String tooLongUsername = "u".repeat(129);
-        String tooLongPassword = "p".repeat(1025);
+        String tooLongUsername = "u".repeat(65);
+        String tooLongPassword = "p".repeat(129);
         return Stream.of(
                 Arguments.of(null, ""),
                 Arguments.of("null", ""),
@@ -166,8 +167,8 @@ class AuthControllerValidationTest {
     }
 
     private static Stream<Arguments> invalidAccountBodies() {
-        String tooLongUsername = "u".repeat(129);
-        String tooLongPassword = "p".repeat(1025);
+        String tooLongUsername = "u".repeat(65);
+        String tooLongPassword = "p".repeat(129);
         String tooLongDisplayName = "d".repeat(257);
         String tooLongRole = "r".repeat(17);
         return Stream.of(
