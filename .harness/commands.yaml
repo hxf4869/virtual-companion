@@ -26,6 +26,10 @@ commands:
     description: Reject paid-only runtime prerequisites
     argv: [scripts/harness/check_paid_features.py]
     timeoutSeconds: 120
+  licenseCheck:
+    description: Verify all direct dependencies have allowed license families
+    argv: [scripts/harness/check_licenses.py]
+    timeoutSeconds: 120
   betaRosterGate:
     description: Keep generation closed unless the duty-roster structure is complete
     argv: [scripts/harness/check_beta_gate.py]
@@ -46,6 +50,7 @@ profiles:
     - catalogValidate
     - catalogDrift
     - paidFeatureCheck
+    - licenseCheck
     - betaRosterGate
     - openapiValidate
     - openapiDrift

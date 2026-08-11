@@ -1,0 +1,161 @@
+schemaVersion: 1
+policyId: NO_PAID_SOFTWARE_RUNTIME_PREREQUISITE
+description: >-
+  预录 license 清单：声明 Maven 直接依赖和 frontend 直接依赖的 license family，
+  供 scripts/harness/check_licenses.py 与 .harness/license-policy.yaml allowlist 比对。
+  内部模块（com.virtualcompanion:*）标注 INTERNAL。未知或待审查项标注
+  COMMUNITY_FREE_REVIEW_REQUIRED。传递依赖不在此清单（需 cyclonedx SBOM 覆盖）。
+# Maven 直接依赖（跨所有 pom.xml 的 <dependencies> 去重，不含 dependencyManagement BOM import）
+# 实际 = 15 外部 + 9 内部模块 = 24
+mavenDirectDependencies:
+  # --- Spring Boot starters (Apache-2.0) ---
+  - groupId: org.springframework.boot
+    artifactId: spring-boot-starter-actuator
+    licenseFamily: Apache-2.0
+  - groupId: org.springframework.boot
+    artifactId: spring-boot-starter-jdbc
+    licenseFamily: Apache-2.0
+  - groupId: org.springframework.boot
+    artifactId: spring-boot-starter-security
+    licenseFamily: Apache-2.0
+  - groupId: org.springframework.boot
+    artifactId: spring-boot-starter-test
+    licenseFamily: Apache-2.0
+    scope: test
+  - groupId: org.springframework.boot
+    artifactId: spring-boot-starter-validation
+    licenseFamily: Apache-2.0
+  - groupId: org.springframework.boot
+    artifactId: spring-boot-starter-webmvc
+    licenseFamily: Apache-2.0
+  # --- Spring Modulith (Apache-2.0) ---
+  - groupId: org.springframework.modulith
+    artifactId: spring-modulith-starter-test
+    licenseFamily: Apache-2.0
+    scope: test
+  # --- Flyway (Apache-2.0) ---
+  - groupId: org.flywaydb
+    artifactId: flyway-core
+    licenseFamily: Apache-2.0
+  - groupId: org.flywaydb
+    artifactId: flyway-database-postgresql
+    licenseFamily: Apache-2.0
+  # --- PostgreSQL JDBC (BSD-2-Clause) ---
+  - groupId: org.postgresql
+    artifactId: postgresql
+    licenseFamily: BSD-2-Clause
+  # --- JUnit (EPL-2.0) ---
+  - groupId: org.junit.jupiter
+    artifactId: junit-jupiter
+    licenseFamily: EPL-2.0
+    scope: test
+  # --- JJWT (Apache-2.0) ---
+  - groupId: io.jsonwebtoken
+    artifactId: jjwt-api
+    licenseFamily: Apache-2.0
+  - groupId: io.jsonwebtoken
+    artifactId: jjwt-impl
+    licenseFamily: Apache-2.0
+    scope: runtime
+  - groupId: io.jsonwebtoken
+    artifactId: jjwt-jackson
+    licenseFamily: Apache-2.0
+    scope: runtime
+  # --- Jackson (Apache-2.0) ---
+  - groupId: tools.jackson.core
+    artifactId: jackson-databind
+    licenseFamily: Apache-2.0
+  # --- 内部模块（INTERNAL） ---
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-catalog
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-conversation
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-model-anthropic
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-model-failure
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-model-fake
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-model-openai
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-modelruntime
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-persistence
+    licenseFamily: INTERNAL
+  - groupId: com.virtualcompanion
+    artifactId: virtual-companion-safety
+    licenseFamily: INTERNAL
+# frontend 直接依赖（package.json dependencies + devDependencies 去重）
+# 实际 = 6 dependencies + 14 devDependencies = 20
+frontendDirectDependencies:
+  # --- @dcloudio (uni-app, Apache-2.0) ---
+  - name: "@dcloudio/uni-app"
+    licenseFamily: Apache-2.0
+  - name: "@dcloudio/uni-components"
+    licenseFamily: Apache-2.0
+  - name: "@dcloudio/uni-h5"
+    licenseFamily: Apache-2.0
+  - name: "@dcloudio/types"
+    licenseFamily: Apache-2.0
+    scope: dev
+  - name: "@dcloudio/uni-cli-shared"
+    licenseFamily: Apache-2.0
+    scope: dev
+  - name: "@dcloudio/uni-stacktracey"
+    licenseFamily: Apache-2.0
+    scope: dev
+  - name: "@dcloudio/vite-plugin-uni"
+    licenseFamily: Apache-2.0
+    scope: dev
+  # --- Vue (MIT) ---
+  - name: vue
+    licenseFamily: MIT
+  - name: vue-i18n
+    licenseFamily: MIT
+  - name: "@vue/runtime-core"
+    licenseFamily: MIT
+    scope: dev
+  - name: "@vue/tsconfig"
+    licenseFamily: MIT
+    scope: dev
+  - name: "@vue/test-utils"
+    licenseFamily: MIT
+    scope: dev
+  - name: "@vitejs/plugin-vue"
+    licenseFamily: MIT
+    scope: dev
+  # --- Pinia (MIT) ---
+  - name: pinia
+    licenseFamily: MIT
+  # --- TypeScript (Apache-2.0) ---
+  - name: typescript
+    licenseFamily: Apache-2.0
+    scope: dev
+  - name: "@types/node"
+    licenseFamily: MIT
+    scope: dev
+  # --- Vite (MIT，R1 P2 修正) / Vitest (MIT) ---
+  - name: vite
+    licenseFamily: MIT
+    scope: dev
+  - name: vitest
+    licenseFamily: MIT
+    scope: dev
+  # --- vue-tsc (MIT，R1 P2 修正) ---
+  - name: vue-tsc
+    licenseFamily: MIT
+    scope: dev
+  # --- happy-dom (MIT) ---
+  - name: happy-dom
+    licenseFamily: MIT
+    scope: dev
+# 例外账本（有到期日的受控接受；check_licenses.py 校验 expiresAt > 今天才生效）
+exceptions: []

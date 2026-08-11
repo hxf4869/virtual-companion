@@ -26,6 +26,7 @@ sys.path.insert(0, str(HARNESS_DIR))
 
 import catalog_tool  # noqa: E402
 import check_beta_gate  # noqa: E402
+import check_licenses  # noqa: E402
 import doctor  # noqa: E402
 import harness_common  # noqa: E402
 import precheck  # noqa: E402
@@ -8722,6 +8723,257 @@ class DeterminismTests(unittest.TestCase):
         for path in files:
             self.assertFalse(any(part in PRUNED_DIRS for part in path.relative_to(ROOT).parts), path)
 
+    def test_license_check_passes_on_current_inventory(self) -> None:
+        """The license gate must PASS on the current repository: every direct
+        Maven and frontend dependency is covered by license-inventory.yaml with
+        an allowed license family."""
+        result = subprocess.run(
+            [sys.executable, "scripts/harness/check_licenses.py"],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(0, result.returncode, result.stderr.decode("utf-8"))
+        self.assertIn(
+            b"License inventory check: PASS",
+            result.stdout,
+        )
+
+    def test_license_check_detects_uncovered_dependency(self) -> None:
+        """Negative 1/3: a Maven dependency not in the inventory must FAIL."""
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            harness_dir = repository / ".harness"
+            harness_dir.mkdir()
+            (harness_dir / "license-policy.yaml").write_text(
+                "schemaVersion: 1\n"
+                "allowedLicenseFamilies:\n"
+                "  - Apache-2.0\n"
+                "  - INTERNAL\n",
+                encoding="utf-8",
+            )
+            (harness_dir / "license-inventory.yaml").write_text(
+                "schemaVersion: 1\n"
+                "mavenDirectDependencies: []\n"
+                "frontendDirectDependencies: []\n"
+                "exceptions: []\n",
+                encoding="utf-8",
+            )
+            (repository / "pom.xml").write_text(
+                '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
+                "  <modelVersion>4.0.0</modelVersion>\n"
+                "  <groupId>test</groupId>\n"
+                "  <artifactId>test</artifactId>\n"
+                "  <version>1</version>\n"
+                "  <dependencies>\n"
+                "    <dependency>\n"
+                "      <groupId>org.example</groupId>\n"
+                "      <artifactId>uncovered-lib</artifactId>\n"
+                "    </dependency>\n"
+                "  </dependencies>\n"
+                "</project>\n",
+                encoding="utf-8",
+            )
+            original_root = check_licenses.ROOT
+            original_policy = check_licenses.LICENSE_POLICY
+            original_inventory = check_licenses.LICENSE_INVENTORY
+            try:
+                check_licenses.ROOT = repository
+                check_licenses.LICENSE_POLICY = repository / ".harness/license-policy.yaml"
+                check_licenses.LICENSE_INVENTORY = repository / ".harness/license-inventory.yaml"
+                exit_code = check_licenses.main()
+            finally:
+                check_licenses.ROOT = original_root
+                check_licenses.LICENSE_POLICY = original_policy
+                check_licenses.LICENSE_INVENTORY = original_inventory
+            self.assertNotEqual(0, exit_code)
+
+    def test_license_check_rejects_disallowed_family(self) -> None:
+        """Negative 2/3: a dependency whose license family is not in the
+        allowlist must FAIL even though the inventory covers it."""
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            harness_dir = repository / ".harness"
+            harness_dir.mkdir()
+            (harness_dir / "license-policy.yaml").write_text(
+                "schemaVersion: 1\n"
+                "allowedLicenseFamilies:\n"
+                "  - MIT\n"
+                "  - INTERNAL\n",
+                encoding="utf-8",
+            )
+            (harness_dir / "license-inventory.yaml").write_text(
+                "schemaVersion: 1\n"
+                "mavenDirectDependencies:\n"
+                "  - groupId: org.example\n"
+                "    artifactId: gpl-lib\n"
+                "    licenseFamily: GPL-3.0\n"
+                "frontendDirectDependencies: []\n"
+                "exceptions: []\n",
+                encoding="utf-8",
+            )
+            (repository / "pom.xml").write_text(
+                '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
+                "  <modelVersion>4.0.0</modelVersion>\n"
+                "  <groupId>test</groupId>\n"
+                "  <artifactId>test</artifactId>\n"
+                "  <version>1</version>\n"
+                "  <dependencies>\n"
+                "    <dependency>\n"
+                "      <groupId>org.example</groupId>\n"
+                "      <artifactId>gpl-lib</artifactId>\n"
+                "    </dependency>\n"
+                "  </dependencies>\n"
+                "</project>\n",
+                encoding="utf-8",
+            )
+            original_root = check_licenses.ROOT
+            original_policy = check_licenses.LICENSE_POLICY
+            original_inventory = check_licenses.LICENSE_INVENTORY
+            try:
+                check_licenses.ROOT = repository
+                check_licenses.LICENSE_POLICY = repository / ".harness/license-policy.yaml"
+                check_licenses.LICENSE_INVENTORY = repository / ".harness/license-inventory.yaml"
+                exit_code = check_licenses.main()
+            finally:
+                check_licenses.ROOT = original_root
+                check_licenses.LICENSE_POLICY = original_policy
+                check_licenses.LICENSE_INVENTORY = original_inventory
+            self.assertNotEqual(0, exit_code)
+
+    def test_license_check_rejects_malformed_or_expired_exception(self) -> None:
+        """Negative 3/3: an exception with a missing/expired expiresAt must
+        FAIL (never silently pass), and a valid future-dated exception with a
+        disallowed family must be honored."""
+        # 3a: expired exception is an error
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            harness_dir = repository / ".harness"
+            harness_dir.mkdir()
+            (harness_dir / "license-policy.yaml").write_text(
+                "schemaVersion: 1\n"
+                "allowedLicenseFamilies:\n"
+                "  - Apache-2.0\n"
+                "  - INTERNAL\n",
+                encoding="utf-8",
+            )
+            (harness_dir / "license-inventory.yaml").write_text(
+                "schemaVersion: 1\n"
+                "mavenDirectDependencies: []\n"
+                "frontendDirectDependencies: []\n"
+                "exceptions:\n"
+                "  - dependency: org.example:old-lib\n"
+                "    licenseFamily: GPL-3.0\n"
+                "    reason: legacy\n"
+                "    expiresAt: 2020-01-01\n",
+                encoding="utf-8",
+            )
+            original_root = check_licenses.ROOT
+            original_policy = check_licenses.LICENSE_POLICY
+            original_inventory = check_licenses.LICENSE_INVENTORY
+            try:
+                check_licenses.ROOT = repository
+                check_licenses.LICENSE_POLICY = repository / ".harness/license-policy.yaml"
+                check_licenses.LICENSE_INVENTORY = repository / ".harness/license-inventory.yaml"
+                exit_code = check_licenses.main()
+            finally:
+                check_licenses.ROOT = original_root
+                check_licenses.LICENSE_POLICY = original_policy
+                check_licenses.LICENSE_INVENTORY = original_inventory
+            self.assertNotEqual(0, exit_code)
+
+        # 3b: malformed expiresAt is an error
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            harness_dir = repository / ".harness"
+            harness_dir.mkdir()
+            (harness_dir / "license-policy.yaml").write_text(
+                "schemaVersion: 1\n"
+                "allowedLicenseFamilies:\n"
+                "  - Apache-2.0\n"
+                "  - INTERNAL\n",
+                encoding="utf-8",
+            )
+            (harness_dir / "license-inventory.yaml").write_text(
+                "schemaVersion: 1\n"
+                "mavenDirectDependencies: []\n"
+                "frontendDirectDependencies: []\n"
+                "exceptions:\n"
+                "  - dependency: org.example:old-lib\n"
+                "    licenseFamily: GPL-3.0\n"
+                "    reason: legacy\n"
+                "    expiresAt: not-a-date\n",
+                encoding="utf-8",
+            )
+            original_root = check_licenses.ROOT
+            original_policy = check_licenses.LICENSE_POLICY
+            original_inventory = check_licenses.LICENSE_INVENTORY
+            try:
+                check_licenses.ROOT = repository
+                check_licenses.LICENSE_POLICY = repository / ".harness/license-policy.yaml"
+                check_licenses.LICENSE_INVENTORY = repository / ".harness/license-inventory.yaml"
+                exit_code = check_licenses.main()
+            finally:
+                check_licenses.ROOT = original_root
+                check_licenses.LICENSE_POLICY = original_policy
+                check_licenses.LICENSE_INVENTORY = original_inventory
+            self.assertNotEqual(0, exit_code)
+
+        # 3c: a valid future-dated exception for a covered dependency family is honored
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            harness_dir = repository / ".harness"
+            harness_dir.mkdir()
+            (harness_dir / "license-policy.yaml").write_text(
+                "schemaVersion: 1\n"
+                "allowedLicenseFamilies:\n"
+                "  - Apache-2.0\n"
+                "  - INTERNAL\n",
+                encoding="utf-8",
+            )
+            (harness_dir / "license-inventory.yaml").write_text(
+                "schemaVersion: 1\n"
+                "mavenDirectDependencies:\n"
+                "  - groupId: org.example\n"
+                "    artifactId: special-lib\n"
+                "    licenseFamily: GPL-3.0\n"
+                "frontendDirectDependencies: []\n"
+                "exceptions:\n"
+                "  - dependency: org.example:special-lib\n"
+                "    licenseFamily: GPL-3.0\n"
+                "    reason: vendor-mandated\n"
+                "    expiresAt: 2099-12-31\n",
+                encoding="utf-8",
+            )
+            (repository / "pom.xml").write_text(
+                '<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
+                "  <modelVersion>4.0.0</modelVersion>\n"
+                "  <groupId>test</groupId>\n"
+                "  <artifactId>test</artifactId>\n"
+                "  <version>1</version>\n"
+                "  <dependencies>\n"
+                "    <dependency>\n"
+                "      <groupId>org.example</groupId>\n"
+                "      <artifactId>special-lib</artifactId>\n"
+                "    </dependency>\n"
+                "  </dependencies>\n"
+                "</project>\n",
+                encoding="utf-8",
+            )
+            original_root = check_licenses.ROOT
+            original_policy = check_licenses.LICENSE_POLICY
+            original_inventory = check_licenses.LICENSE_INVENTORY
+            try:
+                check_licenses.ROOT = repository
+                check_licenses.LICENSE_POLICY = repository / ".harness/license-policy.yaml"
+                check_licenses.LICENSE_INVENTORY = repository / ".harness/license-inventory.yaml"
+                exit_code = check_licenses.main()
+            finally:
+                check_licenses.ROOT = original_root
+                check_licenses.LICENSE_POLICY = original_policy
+                check_licenses.LICENSE_INVENTORY = original_inventory
+            self.assertEqual(0, exit_code)
+
 
 class CiWorkflowTests(unittest.TestCase):
     def test_ci_always_triggers_without_path_filters(self) -> None:
@@ -8840,6 +9092,7 @@ class ValidationFlowTests(unittest.TestCase):
                 "catalogValidate",
                 "catalogDrift",
                 "paidFeatureCheck",
+                "licenseCheck",
                 "betaRosterGate",
                 "openapiValidate",
                 "openapiDrift",
