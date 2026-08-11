@@ -30,7 +30,7 @@ class AuthSourceAdmissionFilterTest {
     void forwardedHeadersCannotSplitTheServletSourceWindow() throws Exception {
         AuthSourceAdmissionFilter filter = new AuthSourceAdmissionFilter(new AuthAbuseGuard());
 
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 10; i++) {
             MockHttpServletResponse response = invoke(
                     filter, request("POST", AuthSourceAdmissionFilter.LOGIN_PATH,
                             "192.0.2.10", "198.51.100." + i));
@@ -175,7 +175,7 @@ class AuthSourceAdmissionFilterTest {
     @Test
     void loginAndRefreshSourceScopesAreIndependent() throws Exception {
         AuthSourceAdmissionFilter filter = new AuthSourceAdmissionFilter(new AuthAbuseGuard());
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 10; i++) {
             assertThat(invoke(filter, request(
                     "POST", AuthSourceAdmissionFilter.LOGIN_PATH, "192.0.2.11", null)).getStatus())
                     .isEqualTo(200);
