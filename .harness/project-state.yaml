@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0153
-activeTaskCard: docs/tasks/TASK-0153-db-dml-rev-role-attribute-fail-closed.md
-lastAcceptedTask: TASK-0152
-lastAcceptedHandoff: docs/handoffs/TASK-0152.json
-lastTerminalTask: TASK-0152
-lastTerminalHandoff: docs/handoffs/TASK-0152.json
-nextAction: 完成 TASK-0153（P1-05 + P2-29 DB 授权收紧 + 危险 role 属性纠正）：V16 REVOKE 17 张业务状态表的宽泛 DML（保留只读 SELECT）+ ALTER ROLE 强制 NOBYPASSRLS NOLOGIN 并断言失败关闭 + 7 现有测试重构 + 2 新 SQL 负测；之后按 Owner 授权处理 P1-04 SD owner 参数收敛（TASK-0154）、P1-11（TASK-0155）、P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0153
+lastAcceptedHandoff: docs/handoffs/TASK-0153.json
+lastTerminalTask: TASK-0153
+lastTerminalHandoff: docs/handoffs/TASK-0153.json
+nextAction: 完成 TASK-0154（P1-04 SD 函数 owner 参数服务端可信收敛）：V17 所有 ~34 个含 p_owner_user_id 的 SECURITY DEFINER 函数加 current_owner_id 一致性断言（保留参数，Java 调用点不改签名）+ SQL 测试补 caller-mismatch 负测；之后按 Owner 授权处理 P1-11（TASK-0155）、P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

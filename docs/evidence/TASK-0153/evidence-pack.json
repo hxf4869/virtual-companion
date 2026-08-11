@@ -1,0 +1,123 @@
+{
+  "taskId": "TASK-0153",
+  "taskCard": "docs/tasks/TASK-0153-db-dml-rev-role-attribute-fail-closed.md",
+  "baseCommit": "fc8c9b2cb65c50853904e0ab3655889fb0aeb7f2",
+  "candidateCommit": "68da5c8881c1b4f07529c1e9a1d152375fe2511b",
+  "candidateTree": "291af8978166cd24bdb5ed74af66686e04ff7dbe",
+  "authorizationCommit": "1c558e411622d2bc05d487c4cc50adc2fd26a6e8",
+  "inProgressCommit": "3de229022779eb3238a0f5ebff74b4f0f7ab9fc6",
+  "deliveryMode": "single-card",
+  "validationChannel": "LOCAL_EXACT_TREE_FALLBACK",
+  "validationProfile": "precheck",
+  "contextFingerprint": "fb0956d8aa80848fcb9b5aeee43fcf361113a228f7978248f7e6d300725eb584",
+  "riskClass": "C4",
+  "requiredSkills": ["task-delivery-flow", "task-intake", "database-migration"],
+  "humanApprovals": [
+    {"scope": "task-assignment", "approvedBy": "repository-owner", "approvedAt": "2026-08-11"},
+    {"scope": "database-migration", "approvedBy": "repository-owner", "approvedAt": "2026-08-11"},
+    {"scope": "local-exact-tree-fallback", "approvedBy": "repository-owner", "approvedAt": "2026-08-11"}
+  ],
+  "commands": {
+    "canonicalPrecheck": {
+      "argv": ["python", "scripts/harness/precheck.py", "--task", "TASK-0153"],
+      "exitCode": 0,
+      "result": "PASS",
+      "subcommands": {
+        "doctor": {"exitCode": 0, "checks": 716433, "elapsedSeconds": 90.733},
+        "catalogValidate": {"exitCode": 0, "elapsedSeconds": 0.187},
+        "catalogDrift": {"exitCode": 0, "elapsedSeconds": 0.198},
+        "paidFeatureCheck": {"exitCode": 0, "elapsedSeconds": 0.189},
+        "licenseCheck": {"exitCode": 0, "elapsedSeconds": 0},
+        "betaRosterGate": {"exitCode": 0, "elapsedSeconds": 0},
+        "openapiValidate": {"exitCode": 0, "elapsedSeconds": 0.152},
+        "openapiDrift": {"exitCode": 0, "elapsedSeconds": 0.241}
+      },
+      "note": "8/8 commands PASS, sole canonical run"
+    },
+    "harnessUnittest": {
+      "argv": ["python", "scripts/harness/tests/test_harness.py"],
+      "exitCode": 0,
+      "result": "PASS",
+      "testsRun": 261,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "note": "Sole complete Harness unittest run; protected path content change requires it"
+    },
+    "gitDiffCheck": {
+      "argv": ["git", "diff", "--check", "fc8c9b2..68da5c8"],
+      "exitCode": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result": "PASS",
+      "note": "Sole git diff --check run, empty output"
+    },
+    "dbRlsTests": {
+      "argv": ["bash", "infra/db/run-rls-tests.sh"],
+      "exitCode": 0,
+      "result": "PASS",
+      "testsPassed": 53,
+      "note": "Full DB RLS suite via OrbStack pgvector/pgvector:0.8.5-pg18, all 53 tests PASS (49 existing + 7 refactored + 2 new)"
+    },
+    "rootMavenVerify": {
+      "argv": ["./mvnw", "--batch-mode", "--no-transfer-progress", "verify"],
+      "exitCode": 0,
+      "result": "BUILD_SUCCESS",
+      "testsRun": 208,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "note": "Docker JDK 25 (maven:3.9-eclipse-temurin-25-alpine) + vc-maven-cache, 20.2s"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0153_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "68da5c8",
+      "candidateTree": "291af89",
+      "evidencePath": "docs/evidence/TASK-0153/review-r1.md",
+      "reason": "R1 完整复核 PASS：0 P0/P1/P2，2 个 P3 信息项。Reviewer 独立运行 53/53 DB RLS 测试 PASS；V16 migration（17 表 REVOKE + 4 role ALTER NOBYPASSRLS NOLOGIN + 断言）正确；7 现有测试重构 + 2 新测试语义保留。"
+    }
+  ],
+  "remoteExactSha": {
+    "channel": "PRIMARY_REMOTE_EXACT_SHA",
+    "status": "NOT_RUN",
+    "reason": "LOCAL_EXACT_TREE_FALLBACK frozen at READY; GitHub Actions quota exhausted (includedMinutes=usedMinutes=2000, paidBudgetUsd=0, stopUsageEnabled=true, dispatchCount=0)",
+    "passClaimed": false
+  },
+  "localExactTreeFallback": {
+    "channel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateCommit": "68da5c8881c1b4f07529c1e9a1d152375fe2511b",
+    "candidateTree": "291af8978166cd24bdb5ed74af66686e04ff7dbe",
+    "operatingSystem": "macOS",
+    "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python",
+    "cleanWorktree": true,
+    "cleanIndex": true,
+    "passClaimed": true,
+    "coveredCommands": ["canonical precheck (8)", "complete Harness unittest (261)", "git diff --check", "DB RLS suite (53)", "root Maven verify (208)"],
+    "uncoveredPlatforms": ["windows", "wslUbuntu", "githubActions"]
+  },
+  "diffScope": {
+    "baseToCandidateFiles": 13,
+    "allInWriteAllowlist": true,
+    "forbiddenPathsTouched": false,
+    "files": [
+      ".harness/project-state.yaml",
+      "docs/tasks/TASK-0153-db-dml-rev-role-attribute-fail-closed.md",
+      "docs/tasks/context/TASK-0153.context-lock.yaml",
+      "infra/db/tests/02_cross_relationship_reference_denied.sql",
+      "infra/db/tests/03_cross_conversation_reference_denied.sql",
+      "infra/db/tests/05_missing_context_fail_closed.sql",
+      "infra/db/tests/15_cross_owner_generation_reference_denied.sql",
+      "infra/db/tests/19_realtime_ticket_single_use_ttl_hash.sql",
+      "infra/db/tests/50_realtime_event_catalog.sql",
+      "infra/db/tests/51_authorization_snapshot_one_way_lifecycle.sql",
+      "infra/db/tests/52_revoked_runtime_dml_on_business_tables.sql",
+      "infra/db/tests/53_role_attributes_fail_closed.sql",
+      "service/platform/persistence/src/main/resources/db/migration/V16__revoke_business_dml_correct_role_attributes.sql"
+    ]
+  },
+  "invariantsCovered": ["INV-TENANT-001", "INV-WORKER-001", "INV-AUTH-001", "INV-HARNESS-001", "INV-HARNESS-002", "INV-HARNESS-003", "INV-HARNESS-005", "INV-HARNESS-007", "INV-HARNESS-009"]
+}

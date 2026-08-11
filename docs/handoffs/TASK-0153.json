@@ -1,0 +1,82 @@
+{
+  "taskId": "TASK-0153",
+  "state": "ACCEPTED",
+  "baseCommit": "fc8c9b2cb65c50853904e0ab3655889fb0aeb7f2",
+  "headCommit": "68da5c8",
+  "evidencePath": "docs/evidence/TASK-0153/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "b9581b9",
+      "startedAt": "2026-08-11T19:50:00+08:00",
+      "endedAt": "2026-08-11T20:55:00+08:00",
+      "elapsedSeconds": 3900,
+      "reanchored": true,
+      "reanchorReason": "Owner 授权 reset 摘除首批未推送链（fingerprint 算法错误 + planningBacklog 误含 + 后续发现 7 现有测试需重构扩范围）后重建；overallElapsed 从重建后 DRAFT 起算，含两轮完整治理流程。"
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "b9581b9",
+      "startedAt": "2026-08-11T19:50:00+08:00",
+      "endedAt": "2026-08-11T20:10:00+08:00",
+      "elapsedSeconds": 1200,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "3de2290",
+      "startedAt": "2026-08-11T20:10:00+08:00",
+      "endedAt": "2026-08-11T20:55:00+08:00",
+      "elapsedSeconds": 2700,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-11T20:10:00+08:00",
+      "inProgressCommit": "3de2290",
+      "reason": "Implementation V16 (17-table DML REVOKE + 4-role ALTER NOBYPASSRLS NOLOGIN + DO-block assertion) + 7 existing tests refactored (02/03/05/15/19/50/51) + 2 new negative tests (52/53); R1 PASS (0 P0/P1/P2); candidate freeze 68da5c8/291af89; sole Precheck PASS (8 commands, doctor 716433); sole complete Harness unittest PASS (261 tests); sole DB RLS suite PASS (53 tests); sole root Maven verify BUILD SUCCESS (208 tests); sole git diff --check PASS. NOTE: elapsed includes DB test suite + Maven verify + full Harness unittest durations; no reanchoring of the final rebuilt chain."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0153_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "68da5c8",
+      "candidateTree": "291af89",
+      "evidencePath": "docs/evidence/TASK-0153/review-r1.md",
+      "reason": "R1 完整复核 PASS：0 P0/P1/P2，2 个 P3 信息项。Reviewer 独立运行 53/53 DB RLS 测试 PASS。"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0153 DRAFT（b9581b9）、READY 授权（1c558e4）、authorizationCommit 绑定（1ef749c）、IN_PROGRESS（3de2290）；DRAFT 检查点 Doctor 711725 checks PASS，READY Doctor 714596 checks PASS。",
+    "实现 P1-05 + P2-29：新增 V16__revoke_business_dml_correct_role_attributes.sql（ALTER ROLE vc_api/vc_worker/vc_job_coordinator/vc_dispatcher NOBYPASSRLS NOLOGIN + DO 块 pg_roles 断言 fail-closed + REVOKE INSERT/UPDATE/DELETE ON 17 业务状态表 FROM 4 runtime role 保留 SELECT：V2 10表+V3 authorization_snapshot+V7 4表+V8 2表+V15 provider_attempt）。",
+    "新增 test 52_revoked_runtime_dml_on_business_tables.sql（SET ROLE vc_api + 绑 context 后直接 INSERT/UPDATE/DELETE 7 类业务表全部 insufficient_privilege + SELECT sanity）与 test 53_role_attributes_fail_closed.sql（pg_roles 属性断言 + 污染 role 检测 fail-closed）。",
+    "重构 7 现有测试适配 V16 REVOKE：test 02/03/15（FK 测试改超级用户 INSERT，FK 是表级约束不受 REVOKE 影响；15 保留 receive_generation SD 函数 vc_api 路径）；test 05（EXCEPTION 改 insufficient_privilege OR check_violation）；test 19（TTL UPDATE realtime_ticket 改超级用户）；test 50（catalog CHECK INSERT 移 RESET ROLE 后超级用户，权限测试保留 vc_api）；test 51（Phase 1-4 超级用户写 authorization_snapshot，Phase 5 跨 owner RLS 保留 vc_api SELECT）。",
+    "独立 C4 R1 对候选 68da5c8 / tree 291af89 完整复核 PASS（0 P0/P1/P2，2 P3 信息项）；Reviewer 独立运行 DB RLS 套件 53/53 PASS。",
+    "唯一正式 Precheck 真实 PASS（8/8 commands，doctor 716433 checks）。",
+    "唯一完整 Harness unittest 真实 PASS：261 tests OK，exit 0。",
+    "唯一 DB RLS 套件真实 PASS：53 tests（OrbStack pgvector:0.8.5-pg18，含 49 现有 + 7 重构 + 2 新）。",
+    "唯一根级 Maven verify 真实 BUILD SUCCESS：208 tests，0 failures/errors/skipped（docker JDK 25 + vc-maven-cache，20.2s）。",
+    "唯一无参数 git diff --check 真实 PASS（exit 0，输出空，sha256 e3b0c44...）。",
+    "本地 exact-tree 通道在精确候选 Commit/Tree（68da5c8/291af89）PASS；remote exact-SHA 未调度（卡冻结 LOCAL_EXACT_TREE_FALLBACK，remote 保持非 PASS，passClaimed=false）。"
+  ],
+  "remaining": [
+    "P1-04（SD 函数 owner 参数服务端可信收敛）：~34 个 SECURITY DEFINER 函数仍接收 p_owner_user_id 并用它 set_config，caller 可伪造。需 V17 加 current_owner_id 一致性断言（保留参数，Java 调用点不改签名）+ SQL 测试补 caller-mismatch 负测。留 TASK-0154。",
+    "ConversationRepository/MessageRepository/JdbcAuthorizationSnapshotStore 在 runtime 未装配（runtime 用 InMemoryAuthorizationSnapshotStore）；这些类含直接 INSERT 业务表 SQL，未来接线需走 SD 函数或补窄 SD。本卡未改 Java（Handoff remaining item）。",
+    "P1-11（migrator/runtime 分离 + 503 readiness）：依赖 TASK-0154 部署拓扑；显式分离 Flyway migrator datasource 与 runtime datasource + schema_version readiness gate + 缺 schema 503 不伪装 401。留 TASK-0155。",
+    "P2-03（应用内限流 + 锁定收紧）：AuthAbuseGuard 数值收紧（login 10/min/IP + 5/min/account, body 64KiB, username≤64, password≤128, refresh≤512）+ 15 分钟锁定 + AuthRequests/AuthInputLimits 同步。留 TASK-0156。",
+    "P2-27（完整 CI 矩阵）+ RISK-09（search_path vc,pg_catalog + REVOKE CREATE ON SCHEMA public）留 TASK-0157/0158。",
+    "全部修复后须对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（配额耗尽强类型证据，dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 的 passClaimed 限于已记录平台（macOS）/命令（Precheck、完整 Harness unittest、git diff --check、DB RLS 套件、根级 Maven verify）。",
+    "V16 REVOKE 使 7 现有测试的'vc_api 直接 INSERT 测 RLS/FK/CHECK 拒绝'假设失效；重构后这些测试用超级用户验证表级约束（FK/CHECK 是表级，不受 REVOKE 影响），RLS fail-closed 由 test 52（vc_api 全表 DML 拒绝）+ test 05（缺 context 拒绝）覆盖。语义保留但测试形态变化。",
+    "本次执行经一次 reset 重建（首批 DRAFT fingerprint 算法错误 + planningBacklog 误含 + 后续发现 7 现有测试需重构扩范围）；reset 经 Owner 明确授权，未推送链摘除，origin/main 不受影响。重建后整链 DRAFT→READY→IN_PROGRESS→candidate 一次性走通。"
+  ],
+  "nextAction": "完成 TASK-0154（P1-04 SD 函数 owner 参数服务端可信收敛）：V17 所有 ~34 个含 p_owner_user_id 的 SECURITY DEFINER 函数加 current_owner_id 一致性断言（保留参数，Java 调用点不改签名）+ SQL 测试补 caller-mismatch 负测；之后按 Owner 授权处理 P1-11（TASK-0155）、P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+}

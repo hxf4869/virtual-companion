@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0153
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -374,8 +374,26 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
+terminalStateReason: >-
+  P1-05 + P2-29 DB 授权收紧 + 危险 role 属性纠正完成并验证：V16 REVOKE 17 张业务状态表
+  INSERT/UPDATE/DELETE（保留 SELECT）FROM 4 runtime role + ALTER ROLE vc_api/vc_worker/
+  vc_job_coordinator/vc_dispatcher NOBYPASSRLS NOLOGIN + DO 块 pg_roles 断言 fail-closed。
+  新增 test 52（vc_api 直接 DML 17 表全 insufficient_privilege + SELECT sanity）+ test 53
+  （role 属性断言 + 污染检测）；重构 7 现有测试（02/03/05/15/19/50/51）适配 V16。
+  R1 PASS（0 P0/P1/P2）；候选 68da5c8/291af89；唯一 Precheck 8/8 PASS（doctor 716433）；
+  唯一完整 Harness unittest 261 OK；唯一 DB RLS 套件 53 PASS；唯一根级 Maven verify
+  BUILD SUCCESS（208 tests）；唯一 git diff --check PASS；remote 如实非 PASS（dispatchCount=0）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0153_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 68da5c8
+    candidateTree: 291af89
+    evidencePath: docs/evidence/TASK-0153/review-r1.md
+    reason: >-
+      R1 完整复核 PASS：0 P0/P1/P2，2 个 P3 信息项。Reviewer 独立运行 53/53 DB RLS 测试 PASS；
+      V16 REVOKE 17 表 + 4 role ALTER NOBYPASSRLS NOLOGIN + 断言正确；7 现有测试重构 + 2 新测试语义保留。
 ```
 
 ## 背景
