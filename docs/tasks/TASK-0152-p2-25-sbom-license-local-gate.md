@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0152
-state: IN_PROGRESS
+state: ACCEPTED
+terminalStateReason: >-
+  P2-25 SBOM/license 本地工具链 + 严重级阻断完成并验证：新增 .harness/license-inventory.yaml
+  （24 Maven 直接依赖 + 20 frontend 直接依赖 license family 预录，vite/vue-tsc=MIT）与
+  scripts/harness/check_licenses.py（纯 Python gate：dependencyManagement 排除、exceptions
+  到期语义 expiresAt>今天 生效、缺失/过期/格式错误 FAIL），commands.yaml 注册 licenseCheck 并加入
+  precheck profile（8 命令，非 CANONICAL_PRECHECK_COMMANDS），test_harness.py 精确断言 8 命令 +
+  licenseCheck 正例 + 3 负例场景，ci.yml 新增 supply-chain job（cyclonedx 2.9.1 makeAggregateBom
+  → target/*.json 上传 + pnpm audit，SHA pinned）。INV-COST-001 license_scan 首次落地。前身
+  TASK-0151 R1 FAIL（P0 缺 harness-change approval）经 Owner 授权 reset 摘除未推送链后重建，
+  R1 PASS（0 P0/P1/P2，findings 全部闭合）。唯一 Precheck 8/8 PASS（doctor 710573）、唯一完整
+  Harness unittest 277 tests OK、唯一 git diff --check PASS 在候选 06f4cef/89d6414；remote
+  exact-SHA 如实非 PASS（dispatchCount=0），本卡只声明 READY 冻结的 LOCAL_EXACT_TREE_FALLBACK。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -302,7 +314,18 @@ humanApprovals:
       LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用任何跨卡 Reviewer
       或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0152_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 06f4cef
+    candidateTree: 89d6414069e4a5c0684934d4162220ddff8ca55f
+    evidencePath: docs/evidence/TASK-0152/review-r1.md
+    reason: >-
+      R1 完整复核 PASS：前身 TASK-0151 findings 全部闭合（P0 harness-change approval 现存在且
+      doctor 实测 PASS；P1a exceptions 到期语义 + 3 负例场景；P1b SBOM 上传路径 target/*.json；
+      P2 vite/vue-tsc=MIT、24+20 数字、sys.executable、无死代码；P3 managed 去重清理）；候选身份/
+      指纹/范围/验收标准/INV-COST-001/INV-HARNESS 逐条核对；0 P0/P1/P2，2 个 P3 信息项。
 ```
 
 ## 背景

@@ -808,3 +808,9 @@ tasks:
     taskCard: docs/tasks/TASK-0150-provider-egress-dns-connection-layer.md
     evidence: docs/evidence/TASK-0150/evidence-pack.json
     handoff: docs/handoffs/TASK-0150.json
+  TASK-0152:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0152-p2-25-sbom-license-local-gate.md
+    evidence: docs/evidence/TASK-0152/evidence-pack.json
+    handoff: docs/handoffs/TASK-0152.json

@@ -2,12 +2,12 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0152
-activeTaskCard: docs/tasks/TASK-0152-p2-25-sbom-license-local-gate.md
-lastAcceptedTask: TASK-0150
-lastAcceptedHandoff: docs/handoffs/TASK-0150.json
-lastTerminalTask: TASK-0150
-lastTerminalHandoff: docs/handoffs/TASK-0150.json
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0152
+lastAcceptedHandoff: docs/handoffs/TASK-0152.json
+lastTerminalTask: TASK-0152
+lastTerminalHandoff: docs/handoffs/TASK-0152.json
 nextAction: 完成 TASK-0152（P2-25 SBOM/license 本地工具链修正卡）：licenseCheck 纯 Python gate 接入 canonical precheck + CI supply-chain job；之后按 Owner 授权处理数据库 gates（P1-04/05+2-29、P1-11、P2-03）与 P2-27 完整矩阵、RISK-09；全部修复后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
