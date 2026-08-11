@@ -53,8 +53,9 @@ class EgressDnsGuardTest {
     void privateIpv4CategoriesAreBlocked() {
         assertBlocked("api.openai.com", "0.0.0.1");          // any-local 0/8
         assertBlocked("api.openai.com", "10.1.2.3");         // private 10/8
-        assertBlocked("api.openai.com", "100.64.0.1");       // shared/CGNAT
+        assertBlocked("api.openai.com", "100.64.0.1");       // shared/CGNAT lower bound inclusive
         assertBlocked("api.openai.com", "100.100.100.200");  // metadata (CGNAT)
+        assertBlocked("api.openai.com", "100.127.255.255");  // shared/CGNAT upper bound inclusive
         assertBlocked("api.openai.com", "127.0.0.1");        // loopback
         assertBlocked("api.openai.com", "127.0.0.2");        // loopback 127/8
         assertBlocked("api.openai.com", "169.254.169.254");  // metadata link-local
@@ -64,6 +65,16 @@ class EgressDnsGuardTest {
         assertBlocked("api.openai.com", "192.168.1.5");      // private 192.168/16
         assertBlocked("api.openai.com", "224.0.0.1");        // multicast
         assertBlocked("api.openai.com", "255.255.255.255");  // broadcast/reserved
+    }
+
+    @Test
+    void cgnatBoundariesArePublicOutsideTheSharedRange() {
+        // 100.64.0.0/10 covers 100.64.0.0 - 100.127.255.255; addresses just
+        // outside that range are public and must stay reachable.
+        assertDoesNotThrow(() -> guard.requireAllowedResolution(
+                "api.openai.com", addresses("100.63.255.255")));
+        assertDoesNotThrow(() -> guard.requireAllowedResolution(
+                "api.openai.com", addresses("100.128.0.1")));
     }
 
     @Test
@@ -77,6 +88,12 @@ class EgressDnsGuardTest {
         assertBlocked("api.openai.com", "::ffff:127.0.0.1"); // IPv4-mapped loopback
         assertBlocked("api.openai.com", "::ffff:169.254.169.254"); // mapped metadata
         assertBlocked("api.openai.com", "::ffff:192.168.0.1");     // mapped private
+    }
+
+    @Test
+    void ipv4MappedPublicAddressIsAllowed() {
+        assertDoesNotThrow(() -> guard.requireAllowedResolution(
+                "api.openai.com", addresses("::ffff:8.8.8.8")));
     }
 
     @Test

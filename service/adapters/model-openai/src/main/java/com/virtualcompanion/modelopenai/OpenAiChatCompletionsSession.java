@@ -38,7 +38,7 @@ import static java.net.http.HttpResponse.BodyHandlers;
  * One-request, single-consumer asynchronous session with serialized terminal
  * arbitration.
  */
-final class OpenAiChatCompletionsSession implements ModelProtocolSession {
+public final class OpenAiChatCompletionsSession implements ModelProtocolSession {
 
     private static final int MAX_PENDING_OUTPUT_EVENTS = 64;
     private static final int MAX_SUCCESS_TERMINAL_BATCH_EVENTS = 3;
@@ -74,12 +74,36 @@ final class OpenAiChatCompletionsSession implements ModelProtocolSession {
             ModelProtocolRequest request,
             OpenAiChatCompletionsCodec codec
     ) {
+        this(httpClient, httpRequest, request, codec, EgressDnsGuard.defaults());
+    }
+
+    /**
+     * Explicit guard injection exists so contract tests can prove a rejecting
+     * guard never opens a connection. The codec is created internally so the
+     * package-private codec type never leaks across packages.
+     */
+    public OpenAiChatCompletionsSession(
+            HttpClient httpClient,
+            HttpRequest httpRequest,
+            ModelProtocolRequest request,
+            EgressDnsGuard egressDnsGuard
+    ) {
+        this(httpClient, httpRequest, request, new OpenAiChatCompletionsCodec(), egressDnsGuard);
+    }
+
+    private OpenAiChatCompletionsSession(
+            HttpClient httpClient,
+            HttpRequest httpRequest,
+            ModelProtocolRequest request,
+            OpenAiChatCompletionsCodec codec,
+            EgressDnsGuard egressDnsGuard
+    ) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient must not be null");
         this.httpRequest = Objects.requireNonNull(httpRequest, "httpRequest must not be null");
         this.request = Objects.requireNonNull(request, "request must not be null");
         this.binding = request.binding();
         this.codec = Objects.requireNonNull(codec, "codec must not be null");
-        this.egressDnsGuard = EgressDnsGuard.defaults();
+        this.egressDnsGuard = Objects.requireNonNull(egressDnsGuard, "egressDnsGuard must not be null");
         this.startedNanos = System.nanoTime();
         this.totalDeadlineNanos = deadline(
                 startedNanos,

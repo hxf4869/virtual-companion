@@ -2,6 +2,7 @@ package com.virtualcompanion.modelopenai.contract;
 
 import com.virtualcompanion.modelopenai.OpenAiChatCompletionsAdapter;
 import com.virtualcompanion.modelopenai.OpenAiChatCompletionsConfig;
+import com.virtualcompanion.modelopenai.OpenAiChatCompletionsSession;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
@@ -11,6 +12,7 @@ import com.virtualcompanion.modelruntime.contract.ResponseMode;
 import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
+import com.virtualcompanion.modelruntime.port.EgressDnsGuard;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -38,6 +40,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+
+import static java.net.http.HttpRequest.BodyPublishers;
 import javax.net.ssl.SSLSession;
 
 import static com.virtualcompanion.modelopenai.contract.OpenAiContractTestSupport.EXECUTION_AUTH;
@@ -1357,6 +1361,29 @@ class OpenAiChatCompletionsBoundaryContractTest {
                 .map(ModelProtocolEvent.OutputDelta.class::cast)
                 .map(ModelProtocolEvent.OutputDelta::payload)
                 .noneMatch(ModelPayload.TextChunk.class::isInstance));
+    }
+
+    @Test
+    void rejectingEgressGuardNeverOpensAConnection() {
+        var client = new CountingHttpClient();
+        var request = longBudgetRequest(true);
+        var httpRequest = HttpRequest.newBuilder(offlineEndpoint())
+                .header("Authorization", "Bearer sentinel")
+                .header("Content-Type", "application/json")
+                .timeout(request.timeoutBudget().totalTimeout())
+                .POST(BodyPublishers.ofString("{}"))
+                .build();
+        EgressDnsGuard rejecting = new EgressDnsGuard() {
+            @Override
+            public void requireAllowedResolution(java.net.URI endpoint) {
+                throw new IllegalArgumentException("blocked by test guard");
+            }
+        };
+        var session = new OpenAiChatCompletionsSession(client, httpRequest, request, rejecting);
+        var events = drain(session);
+        assertMalformedFailure(events.getLast());
+        assertEquals(0, client.asynchronousCalls(),
+                "a rejecting guard must never reach sendAsync");
     }
 
     private static void assertMalformedFailure(ModelProtocolEvent event) {

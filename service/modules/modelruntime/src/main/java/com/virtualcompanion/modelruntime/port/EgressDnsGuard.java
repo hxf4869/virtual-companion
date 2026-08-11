@@ -22,8 +22,12 @@ import java.util.Objects;
  * without resolving so offline mock-server contract tests keep working. The
  * check is injected before {@code sendAsync} and failure messages never
  * include host, address or credential details.</p>
+ *
+ * <p>The class is non-final so contract tests can inject a deterministic
+ * guard (e.g. one that always rejects) through the Session constructor; the
+ * {@link #defaults()} factory remains the only production instance.</p>
  */
-public final class EgressDnsGuard {
+public class EgressDnsGuard {
 
     /** The literal loopback host allowed without DNS resolution. */
     public static final String LOOPBACK_HOST = "127.0.0.1";

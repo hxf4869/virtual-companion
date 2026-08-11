@@ -2,6 +2,7 @@ package com.virtualcompanion.modelanthropic.contract;
 
 import com.virtualcompanion.modelanthropic.AnthropicMessagesAdapter;
 import com.virtualcompanion.modelanthropic.AnthropicMessagesConfig;
+import com.virtualcompanion.modelanthropic.AnthropicMessagesSession;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
@@ -10,6 +11,7 @@ import com.virtualcompanion.modelruntime.contract.ResponseMode;
 import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
+import com.virtualcompanion.modelruntime.port.EgressDnsGuard;
 import org.junit.jupiter.api.Test;
 
 import javax.net.ssl.SSLContext;
@@ -969,6 +971,30 @@ class AnthropicMessagesBoundaryContractTest {
                 AdapterFailure.MalformedResponse.class,
                 assertInstanceOf(ModelProtocolEvent.AttemptFailed.class, event).failure()
         );
+    }
+
+    @Test
+    void rejectingEgressGuardNeverOpensAConnection() {
+        var client = new CountingHttpClient();
+        var request = longTextRequest(true);
+        var httpRequest = HttpRequest.newBuilder(offlineEndpoint())
+                .header("x-api-key", "sentinel")
+                .header("anthropic-version", "2023-06-01")
+                .header("Content-Type", "application/json")
+                .timeout(request.timeoutBudget().totalTimeout())
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{}"))
+                .build();
+        EgressDnsGuard rejecting = new EgressDnsGuard() {
+            @Override
+            public void requireAllowedResolution(java.net.URI endpoint) {
+                throw new IllegalArgumentException("blocked by test guard");
+            }
+        };
+        var session = new AnthropicMessagesSession(client, httpRequest, request, rejecting);
+        var events = AnthropicContractTestSupport.drain(session);
+        assertMalformedFailure(events.getLast());
+        assertEquals(0, client.asynchronousCalls(),
+                "a rejecting guard must never reach sendAsync");
     }
 
     private static void assertNoSuccessfulEvents(List<ModelProtocolEvent> events) {
