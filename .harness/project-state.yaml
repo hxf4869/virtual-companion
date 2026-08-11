@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0155
+activeTaskCard: docs/tasks/TASK-0155-p1-11-migrator-runtime-separation-and-schema-readiness.md
 lastAcceptedTask: TASK-0154
 lastAcceptedHandoff: docs/handoffs/TASK-0154.json
 lastTerminalTask: TASK-0154
 lastTerminalHandoff: docs/handoffs/TASK-0154.json
-nextAction: 完成 TASK-0155（P1-11 migrator/runtime 分离 + 503 readiness）：显式分离 Flyway migrator datasource 与 runtime datasource + schema_version readiness gate + 缺 schema → 503 不伪装 401；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。
+nextAction: 完成 TASK-0155（P1-11 migrator/runtime 分离 + 503 readiness）：显式分离 Flyway migrator datasource 与 runtime datasource（应用内 Flyway 迁移 principal + runtime vc_* 最小权限连接）+ 新增 schema_version readiness gate（SchemaReadinessHealthIndicator：必需 SD 函数/4 个 runtime 角色/flyway_schema_history 版本与失败行，缺 schema/落后一版/迁移失败 → health DOWN 503）+ AuthExceptionHandler 未定义对象类 SQL 错误 → 503 SCHEMA_UNAVAILABLE 不伪装 401 + RLS 负测 56（runtime role 无 DDL/Flyway 篡改能力）+ 手动 e2e 验证空库/迁移两 boot；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
