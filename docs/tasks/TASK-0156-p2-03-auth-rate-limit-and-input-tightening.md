@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0156
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -370,8 +370,25 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
-terminalStateReason: ""
+reviewers:
+  - id: task0156_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: "48f5e00"
+    candidateTree: "0e4f9e78"
+    evidencePath: docs/evidence/TASK-0156/review-r1.md
+    reason: >-
+      R1 FAIL（P0）：根级 Maven verify 227 tests 中 AuthSourceAdmissionFilterTest 2 个失败
+      （forwardedHeadersCannotSplitTheServletSourceWindow + loginAndRefreshSourceScopesAreIndependent：
+      硬编码 20 次迭代 = 旧 LOGIN_SOURCE_LIMIT，收紧到 10 后第 11 次 429）。该测试在 forbiddenPaths
+      （auth/config/**）中，无法在本卡修复。实现变更本身正确（5 文件 diff 审查无缺陷，225 tests pass）；
+      REJECTED + replacement TASK-0160 将 AuthSourceAdmissionFilterTest 纳入 writeAllowlist。
+terminalStateReason: >-
+  实现正确（48f5e00 完成 5 文件 auth 收紧变更），但根级 Maven verify 发现 AuthSourceAdmissionFilterTest
+  2 个测试失败（forwardedHeadersCannotSplitTheServletSourceWindow + loginAndRefreshSourceScopesAreIndependent：
+  硬编码 20 次迭代 = 旧 LOGIN_SOURCE_LIMIT，收紧到 10 后第 11 次请求收到 429）。AuthSourceAdmissionFilterTest.java
+  在 forbiddenPaths（auth/config/**）中，READY 冻结后无法扩 writeAllowlist。如实 REJECTED，replacement
+  TASK-0160 将 AuthSourceAdmissionFilterTest.java 纳入 writeAllowlist 并修复（2 处 20→AuthAbuseGuard.LOGIN_SOURCE_LIMIT）。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P2-03 审计修复卡：

@@ -838,3 +838,9 @@ tasks:
     taskCard: docs/tasks/TASK-0159-p1-11-license-inventory-registration.md
     evidence: docs/evidence/TASK-0159/evidence-pack.json
     handoff: docs/handoffs/TASK-0159.json
+  TASK-0156:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0156-p2-03-auth-rate-limit-and-input-tightening.md
+    evidence: docs/evidence/TASK-0156/evidence-pack.json
+    handoff: docs/handoffs/TASK-0156.json

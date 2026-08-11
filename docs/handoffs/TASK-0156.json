@@ -1,0 +1,46 @@
+{
+  "taskId": "TASK-0156",
+  "state": "REJECTED",
+  "baseCommit": "c53609be66451d8a9ab976dcbbb2e17240ac6057",
+  "headCommit": "48f5e00efaea81c2f6fe846939ead3fe6be17bb3",
+  "evidencePath": "docs/evidence/TASK-0156/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "d667e02",
+      "startedAt": "2026-08-12T02:00:00+08:00",
+      "endedAt": "2026-08-12T03:10:00+08:00",
+      "elapsedSeconds": 4200,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "20abe8b",
+      "startedAt": "2026-08-12T02:45:00+08:00",
+      "endedAt": "2026-08-12T03:05:00+08:00",
+      "elapsedSeconds": 1200,
+      "outcome": "FAIL",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "2026-08-12T02:40:00+08:00",
+      "inProgressCommit": "20abe8b",
+      "reason": "实现（48f5e00）正确完成全部 auth 收紧变更，但根级 Maven verify 发现 AuthSourceAdmissionFilterTest 2 个测试失败（硬编码 20 次迭代 = 旧 LOGIN_SOURCE_LIMIT，收紧到 10 后第 11 次收到 429）。该测试在 forbiddenPaths（auth/config/**）中，无法在本卡修改。如实 REJECTED。"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "建立 TASK-0156 DRAFT(d667e02)/READY(1f57391)/authorizationCommit(b3504ca)/IN_PROGRESS(20abe8b)；DRAFT Doctor PASS(736009)、READY Doctor PASS(738894)。",
+    "实现（48f5e00）正确完成 5 文件变更：AuthAbuseGuard LOGIN_SOURCE_LIMIT 20→10、AuthRequests @Size、AuthInputLimits constants、AuthAbuseGuardTest budget、AuthControllerValidationTest boundaries。实现变更本身无缺陷。",
+    "根级 Maven verify（Docker JDK 25）：227 tests run，225 pass，2 fail（AuthSourceAdmissionFilterTest，不在 writeAllowlist/forbiddenPaths auth/config/** 中）。"
+  ],
+  "remaining": [
+    "Replacement TASK-0160：以 TASK-0156 REJECTED terminal 为 Base，writeAllowlist 增加 AuthSourceAdmissionFilterTest.java，forbiddenPaths 移除 auth/config/** glob。",
+    "TASK-0160 实现 = TASK-0156 已落地变更（Base 已含）+ AuthSourceAdmissionFilterTest 硬编码 20→AuthAbuseGuard.LOGIN_SOURCE_LIMIT（2 处）。",
+    "之后按 Owner 授权处理 P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "TASK-0156 DRAFT 阶段测试扫描遗漏 AuthSourceAdmissionFilterTest（auth/config/** forbiddenPaths）。修复极简但 READY 冻结后无法扩 writeAllowlist → 必须 REJECTED+replacement。",
+    "TASK-0156 实现（48f5e00）正确且随 REJECTED terminal 进入主分支；TASK-0160 不重复实现，只补测试修复 + 重跑门禁。",
+    "AuthService.MAX_USERNAME_LENGTH=128/MAX_PASSWORD_LENGTH=1024 未改（冗余但无害：字节限制 64B/128B 更紧先生效）。"
+  ],
+  "nextAction": "建立 TASK-0160 replacement（以 TASK-0156 REJECTED terminal 为 Base）：writeAllowlist 增加 AuthSourceAdmissionFilterTest.java，forbiddenPaths 移除 auth/config/** glob；实现 = TASK-0156 已落地变更（Base 已含）+ AuthSourceAdmissionFilterTest 硬编码 20→AuthAbuseGuard.LOGIN_SOURCE_LIMIT（2 处）；跑根级 Maven verify（227 tests 全绿）+ canonical precheck + 独立 R1 + Evidence/Handoff/终态。"
+}
