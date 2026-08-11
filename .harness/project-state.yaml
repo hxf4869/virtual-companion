@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0152
+activeTaskCard: docs/tasks/TASK-0152-p2-25-sbom-license-local-gate.md
 lastAcceptedTask: TASK-0150
 lastAcceptedHandoff: docs/handoffs/TASK-0150.json
 lastTerminalTask: TASK-0150
 lastTerminalHandoff: docs/handoffs/TASK-0150.json
-nextAction: 处理数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29 需 Owner 决策可信 principal/限流/Admin 语义）与 RISK-01..11 条件风险（P2-27/P2-25 待 Owner 决策）；全部修复后对最新 origin/main 做独立全项目复审。
+nextAction: 完成 TASK-0152（P2-25 SBOM/license 本地工具链修正卡）：licenseCheck 纯 Python gate 接入 canonical precheck + CI supply-chain job；之后按 Owner 授权处理数据库 gates（P1-04/05+2-29、P1-11、P2-03）与 P2-27 完整矩阵、RISK-09；全部修复后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
