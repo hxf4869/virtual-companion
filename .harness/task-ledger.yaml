@@ -832,3 +832,9 @@ tasks:
     taskCard: docs/tasks/TASK-0155-p1-11-migrator-runtime-separation-and-schema-readiness.md
     evidence: docs/evidence/TASK-0155/evidence-pack.json
     handoff: docs/handoffs/TASK-0155.json
+  TASK-0159:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0159-p1-11-license-inventory-registration.md
+    evidence: docs/evidence/TASK-0159/evidence-pack.json
+    handoff: docs/handoffs/TASK-0159.json

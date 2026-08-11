@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0159
-activeTaskCard: docs/tasks/TASK-0159-p1-11-license-inventory-registration.md
-lastAcceptedTask: TASK-0154
-lastAcceptedHandoff: docs/handoffs/TASK-0154.json
-lastTerminalTask: TASK-0155
-lastTerminalHandoff: docs/handoffs/TASK-0155.json
-nextAction: '完成 TASK-0159（P1-11 license gate 补登记，TASK-0155 replacement，Base=b748daf）：登记 spring-boot-starter-flyway (Apache-2.0) 到 .harness/license-inventory.yaml + canonical precheck（licenseCheck PASS）+ 完整 Harness unittest + R1 独立复核 + Evidence/Handoff/pre-closure/单父 [skip ci] 终态/push/远端 0/0；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0159
+lastAcceptedHandoff: docs/handoffs/TASK-0159.json
+lastTerminalTask: TASK-0159
+lastTerminalHandoff: docs/handoffs/TASK-0159.json
+nextAction: '完成 TASK-0156（P2-03 应用内限流 + 锁定收紧）：AuthAbuseGuard 数值收紧（login 5/分/账号 + 10/分/IP、锁定 15 分钟、body 64KiB、username ≤64、password ≤128、refresh-token ≤512 字节）+ AuthRequests @Size（当前 username≤128/password≤1024）+ AuthInputLimits（当前 MAX_USERNAME=512B/MAX_PASSWORD=4096B/MAX_BODY=16KB/MAX_REFRESH=512B）同步 + 负测；注意 body 64KiB > 现有 16KB 是放宽，C3 auth；之后按 Owner 授权处理 P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

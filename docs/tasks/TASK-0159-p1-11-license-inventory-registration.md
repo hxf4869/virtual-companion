@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0159
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -360,12 +360,24 @@ independentReview: required
 reviewers:
   - id: task0159_r1
     kind: independent-review-gate
-    verdict: null
-    reviewedCommit: null
-    candidateTree: null
+    verdict: PASS
+    reviewedCommit: "061e370"
+    candidateTree: "80c334c"
     evidencePath: docs/evidence/TASK-0159/review-r1.md
-    reason: ""
-terminalStateReason: ""
+    reason: >-
+      R1 PASS：0 P0/P1/P2，1 P3 文档 nit（license-inventory 第 9 行注释数字 24→25 未更新，非阻塞）。
+      Reviewer 独立运行 canonical precheck 8/8 PASS（licenseCheck PASS, 734850 checks）+ 完整 Harness
+      unittest 261 OK + git diff --check exit 0；context fingerprint 独立复算一致（84c08c8f...）；
+      writeAllowlist/forbiddenPaths 三提交字节一致；diff scope 仅 license-inventory 单文件 +3 行；
+      replacement 合规（Base=TASK-0155 REJECTED terminal，不重复实现，Owner 授权链完整）。
+terminalStateReason: >-
+  P1-11 license gate 补登记完成并验证：.harness/license-inventory.yaml mavenDirectDependencies 追加
+  spring-boot-starter-flyway (Apache-2.0)，承接 TASK-0155 已全绿的 P1-11 实现（Base b748daf 已含
+  pom/yaml/Java/SQL）。唯一 canonical precheck 8/8 PASS（licenseCheck 从 TASK-0155 FAIL 转 PASS，
+  734850 checks）；唯一完整 Harness unittest 261 OK（C4 protected 内容变更）；唯一 git diff --check
+  PASS；R1 PASS（0 P0/P1/P2，1 P3）；候选 061e370/tree 80c334c；remote exact-SHA 如实非 PASS
+  （dispatchCount=0，LOCAL_EXACT_TREE_FALLBACK 冻结于 READY）。P1-11（migrator/runtime 分离 + 503
+  readiness）随本卡 ACCEPTED 正式落地。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 TASK-0155（P1-11）

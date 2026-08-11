@@ -1,0 +1,98 @@
+{
+  "taskId": "TASK-0159",
+  "taskCard": "docs/tasks/TASK-0159-p1-11-license-inventory-registration.md",
+  "baseCommit": "b748daf162527e129969d00a217ed05fb264a537",
+  "candidateCommit": "061e370933a285117d1b459e75e6d0305fd7d994",
+  "candidateTree": "80c334c795c60e7b70b833741f6b5b4fac70913a",
+  "authorizationCommit": "58bf69d04244ed3cd67888740b4363a5ae1cd6a8",
+  "inProgressCommit": "86c31c138f7e4ab1d8df99dd8aab7a6f5af07b4f",
+  "contextFingerprint": "84c08c8fa209b9984cc21325d91f97803f405a78f9dc5b7a12b7d6d76f0146e9",
+  "deliveryMode": "single-card",
+  "validationChannel": "LOCAL_EXACT_TREE_FALLBACK",
+  "validationProfile": "precheck",
+  "riskClass": "C4",
+  "requiredSkills": ["task-delivery-flow", "task-intake", "harness-change"],
+  "humanApprovals": [
+    {"scope": "task-assignment", "approvedBy": "repository-owner", "approvedAt": "2026-08-12"},
+    {"scope": "harness-change", "approvedBy": "repository-owner", "approvedAt": "2026-08-12"},
+    {"scope": "local-exact-tree-fallback", "approvedBy": "repository-owner", "approvedAt": "2026-08-12"}
+  ],
+  "commands": {
+    "canonicalPrecheck": {
+      "argv": ["python", "scripts/harness/precheck.py", "--task", "TASK-0159"],
+      "exitCode": 0,
+      "result": "PASS",
+      "subcommands": {
+        "doctor": {"exitCode": 0, "checks": 734850, "elapsedSeconds": 107.1},
+        "catalogValidate": {"exitCode": 0},
+        "catalogDrift": {"exitCode": 0},
+        "paidFeatureCheck": {"exitCode": 0},
+        "licenseCheck": {"exitCode": 0, "note": "License inventory check: PASS (71 direct dependencies, 15 pom files)——spring-boot-starter-flyway 现命中 inventory，从 TASK-0155 的 FAIL 转为 PASS"},
+        "betaRosterGate": {"exitCode": 0},
+        "openapiValidate": {"exitCode": 0},
+        "openapiDrift": {"exitCode": 0}
+      },
+      "note": "8/8 PASS, sole canonical run (R1 Reviewer 独立运行结果一致: 734850 checks, licenseCheck PASS)"
+    },
+    "harnessUnittest": {
+      "argv": ["python", "scripts/harness/tests/test_harness.py"],
+      "exitCode": 0,
+      "result": "PASS",
+      "testsRun": 261,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "note": "Sole complete Harness unittest run; 261 tests across 27 classes with 10 workers OK; C4 protected path 内容变更要求；输出中的 doctor FAIL 行为隔离临时仓库夹具测试（test_harness.py 内）非真实失败；R1 Reviewer 独立运行 261 OK 一致"
+    },
+    "gitDiffCheck": {
+      "argv": ["git", "diff", "--check", "b748daf..061e370"],
+      "exitCode": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result": "PASS"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0159_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "061e370",
+      "candidateTree": "80c334c",
+      "evidencePath": "docs/evidence/TASK-0159/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，1 P3 文档 nit（license-inventory 第 9 行注释数字 24→25 未更新，非阻塞）。Reviewer 独立运行 canonical precheck 8/8 PASS（licenseCheck PASS, 734850 checks）+ 完整 Harness unittest 261 OK + git diff --check exit 0；context fingerprint 独立复算一致（84c08c8f...）；writeAllowlist/forbiddenPaths 三提交字节一致；diff scope 仅 license-inventory 单文件 +3 行；replacement 合规（Base=TASK-0155 REJECTED terminal，不重复实现，Owner 授权链完整）。"
+    }
+  ],
+  "remoteExactSha": {
+    "channel": "PRIMARY_REMOTE_EXACT_SHA",
+    "status": "NOT_RUN",
+    "reason": "LOCAL_EXACT_TREE_FALLBACK frozen at READY; GitHub Actions quota exhausted (includedMinutes=usedMinutes=2000, paidBudgetUsd=0, stopUsageEnabled=true, dispatchCount=0)",
+    "passClaimed": false
+  },
+  "localExactTreeFallback": {
+    "channel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateCommit": "061e370933a285117d1b459e75e6d0305fd7d994",
+    "candidateTree": "80c334c795c60e7b70b833741f6b5b4fac70913a",
+    "operatingSystem": "macOS",
+    "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python",
+    "cleanWorktree": true,
+    "cleanIndex": true,
+    "passClaimed": true,
+    "coveredCommands": ["canonical precheck (8)", "complete Harness unittest (261)", "git diff --check"],
+    "uncoveredPlatforms": ["windows", "wslUbuntu", "githubActions"]
+  },
+  "diffScope": {
+    "baseToCandidateFiles": 4,
+    "allInWriteAllowlist": true,
+    "forbiddenPathsTouched": false,
+    "files": [
+      ".harness/license-inventory.yaml",
+      ".harness/project-state.yaml",
+      "docs/tasks/TASK-0159-p1-11-license-inventory-registration.md",
+      "docs/tasks/context/TASK-0159.context-lock.yaml"
+    ],
+    "implementationFilesChanged": 1,
+    "implementationFile": ".harness/license-inventory.yaml (+3 行: spring-boot-starter-flyway/Apache-2.0)"
+  },
+  "invariantsCovered": ["INV-HARNESS-001", "INV-HARNESS-002", "INV-HARNESS-003", "INV-HARNESS-005", "INV-HARNESS-007", "INV-HARNESS-009"]
+}

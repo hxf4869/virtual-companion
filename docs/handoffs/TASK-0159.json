@@ -1,0 +1,62 @@
+{
+  "taskId": "TASK-0159",
+  "state": "ACCEPTED",
+  "baseCommit": "b748daf162527e129969d00a217ed05fb264a537",
+  "headCommit": "061e370933a285117d1b459e75e6d0305fd7d994",
+  "evidencePath": "docs/evidence/TASK-0159/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "8afa800",
+      "startedAt": "2026-08-12T00:15:00+08:00",
+      "endedAt": "2026-08-12T01:30:00+08:00",
+      "elapsedSeconds": 4500,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "86c31c1",
+      "startedAt": "2026-08-12T00:45:00+08:00",
+      "endedAt": "2026-08-12T01:30:00+08:00",
+      "elapsedSeconds": 2700,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "2026-08-12T00:44:00+08:00",
+      "inProgressCommit": "86c31c1",
+      "reason": "Implementation = license-inventory 单行追加 spring-boot-starter-flyway (Apache-2.0)；canonical precheck 8/8 PASS（licenseCheck 从 TASK-0155 FAIL 转 PASS）；完整 Harness unittest 261 OK（C4 protected 内容变更）；git diff --check exit 0。R1 PASS（0 P0/P1/P2，1 P3）。候选冻结 061e370/80c334c。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0159_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "061e370",
+      "candidateTree": "80c334c",
+      "evidencePath": "docs/evidence/TASK-0159/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，1 P3（license-inventory 注释数字 24→25 未更新，非阻塞）。独立运行 canonical precheck 8/8 + unittest 261 OK + diff --check exit 0；context fingerprint 一致；replacement 合规。"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0159 DRAFT(8afa800)/READY(58bf69d)/authorizationCommit(079d016)/IN_PROGRESS(86c31c1)；DRAFT Doctor PASS(730243)、READY Doctor PASS(734530)。",
+    "实现：.harness/license-inventory.yaml mavenDirectDependencies Spring Boot starters 段追加 org.springframework.boot:spring-boot-starter-flyway / Apache-2.0（+3 行，格式与既有 starter 一致），承接 TASK-0155 已全绿的 P1-11 实现（Base b748daf 已含 pom/yaml/Java/SQL，本卡不重复实现）。",
+    "唯一 canonical precheck 8/8 PASS（licenseCheck 从 TASK-0155 的 FAIL 转为 PASS：71 direct dependencies, 15 pom files；doctor 734850 checks）。",
+    "唯一完整 Harness unittest 真实 PASS：261 tests OK（27 classes, 10 workers），exit 0；C4 protected 内容变更要求；R1 Reviewer 独立运行一致。",
+    "唯一无参数 git diff --check 真实 PASS（exit 0，输出空）。",
+    "独立 C4 R1 完整复核 PASS（0 P0/P1/P2，1 P3 文档 nit）；Reviewer 独立运行 canonical precheck + unittest + diff + doctor 全绿；context fingerprint 独立复算一致；writeAllowlist/forbiddenPaths 三提交字节一致；replacement 合规（Base=TASK-0155 REJECTED terminal，Owner 授权链完整）。",
+    "本地 exact-tree 通道在精确候选 Commit/Tree（061e370/80c334c）PASS；remote exact-SHA 未调度（LOCAL_EXACT_TREE_FALLBACK frozen，dispatchCount=0，远端如实非 PASS）。"
+  ],
+  "remaining": [
+    "P2-03（应用内限流 + 锁定收紧）：AuthAbuseGuard 数值收紧（login 5/分/账号 + 10/分/IP、锁定 15 分钟、body 64KiB、username ≤64、password ≤128、refresh-token ≤512 字节）+ AuthRequests @Size + AuthInputLimits 同步 + 负测。留 TASK-0156。",
+    "P2-27（完整 CI 矩阵）+ RISK-09（search_path 收紧）留 TASK-0157/0158。",
+    "ConversationRepository/MessageRepository/JdbcAuthorizationSnapshotStore 在 runtime 未装配（runtime 用 InMemoryAuthorizationSnapshotStore）；这些类含直接 INSERT 业务表 SQL，未来接线需走 SD 函数或补窄 SD。",
+    "全部修复后须对最新 origin/main 做独立全项目复审。",
+    "P3 收尾（非阻塞）：license-inventory.yaml 第 9 行注释数字 24→25（未来触及该文件时顺手更新）。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（配额耗尽强类型证据，dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 的 passClaimed 限于已记录平台（macOS）/命令（canonical precheck、完整 Harness unittest、git diff --check）。",
+    "本卡为 TASK-0155 replacement；TASK-0155 REJECTED 历史（b748daf）不可改写，其候选 2bc38c6 的 P1-11 实现随 b748daf 进入主分支并由本卡 ACCEPTED 正式落地。P1-11 已闭环（migrator/runtime 分离 + 503 readiness 全部验证）。",
+    "工程适配（TASK-0155）：Spring 7 无 Undefined*Exception 子类 + 3F000 为 UncategorizedSQLException → AuthExceptionHandler 改 SQLSTATE cause 链判定；已由 TASK-0155 R1 批准，行为等价且更强（覆盖 3F000）。"
+  ],
+  "nextAction": "完成 TASK-0156（P2-03 应用内限流 + 锁定收紧）：AuthAbuseGuard 数值收紧（login 5/分/账号 + 10/分/IP、锁定 15 分钟、body 64KiB、username ≤64、password ≤128、refresh-token ≤512 字节）+ AuthRequests @Size（当前 username≤128/password≤1024）+ AuthInputLimits（当前 MAX_USERNAME=512B/MAX_PASSWORD=4096B/MAX_BODY=16KB/MAX_REFRESH=512B）同步 + 负测；注意 body 64KiB > 现有 16KB 是放宽，C3 auth；之后按 Owner 授权处理 P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+}
