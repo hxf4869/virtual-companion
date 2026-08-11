@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0160
+activeTaskCard: docs/tasks/TASK-0160-p2-03-auth-source-admission-test-fix.md
 lastAcceptedTask: TASK-0159
 lastAcceptedHandoff: docs/handoffs/TASK-0159.json
 lastTerminalTask: TASK-0156
 lastTerminalHandoff: docs/handoffs/TASK-0156.json
-nextAction: '建立 TASK-0160 replacement（以 TASK-0156 REJECTED terminal 为 Base）：writeAllowlist 增加 AuthSourceAdmissionFilterTest.java，forbiddenPaths 移除 auth/config/** glob；实现 = TASK-0156 已落地变更（Base 已含 48f5e00 内容）+ AuthSourceAdmissionFilterTest 硬编码 20→AuthAbuseGuard.LOGIN_SOURCE_LIMIT（2 处）；跑根级 Maven verify（227 tests 全绿）+ canonical precheck + 独立 R1 + Evidence/Handoff/终态；之后按 Owner 授权处理 P2-27（TASK-0157）、RISK-09（TASK-0158）。'
+nextAction: '实现 TASK-0160（P2-03 replacement，READY 已授权）：AuthSourceAdmissionFilterTest 硬编码 20→AuthAbuseGuard.LOGIN_SOURCE_LIMIT（2 处）+ 根级 Maven verify（227 tests 全绿）+ canonical precheck + 独立 R1 + Evidence/Handoff/终态；之后按 Owner 授权处理 P2-27（TASK-0157）、RISK-09（TASK-0158）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
