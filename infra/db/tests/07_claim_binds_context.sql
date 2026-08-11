@@ -11,6 +11,9 @@ INSERT INTO vc.work_item(owner_user_id, id, kind, ref_id, payload) VALUES
 
 SET ROLE vc_worker;
 BEGIN;
+-- V17: claim_work_items now requires a server-trusted owner context that
+-- matches p_owner_user_id (P1-04 fail-closed). The caller establishes it.
+SET LOCAL vc.owner_user_id = '1';
 SELECT count(*) AS claimed FROM vc.claim_work_items(1, 'FENCE-A', 30, 16);
 DO $$
 DECLARE o bigint; f text; n int;

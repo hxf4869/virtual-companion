@@ -25,12 +25,16 @@ VALUES (1, 5001, 100, 'gen-ct-1', 'IN_PROGRESS');
 DO $$
 BEGIN
     PERFORM dblink_connect('sess_l', 'dbname=vc');
+    -- V17: dblink session calls insert_generation_candidate, which asserts owner context (P1-04).
     PERFORM dblink_exec('sess_l', 'SET ROLE vc_api');
+    PERFORM dblink_exec('sess_l', 'SET vc.owner_user_id = ''1''');
 END $$;
 
 -- Phase 1: hold the generation row lock, launch an in-flight candidate insert
 -- that blocks on the lock, then let terminalize_generation win inside the lock.
 BEGIN;
+-- V17: terminalize_generation requires server-trusted owner context (P1-04).
+SET LOCAL vc.owner_user_id = '1';
 SELECT 1 FROM vc.generation g WHERE g.owner_user_id = 1 AND g.id = 5001 FOR UPDATE;
 DO $$
 BEGIN

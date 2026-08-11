@@ -32,12 +32,17 @@ CREATE TEMP TABLE t_cid(cid bigint);
 DO $$
 DECLARE cid bigint;
 BEGIN
+    -- V17: insert_generation_candidate requires server-trusted owner context (P1-04).
+    PERFORM set_config('vc.owner_user_id', '1', true);
     SELECT out_candidate_id INTO cid FROM vc.insert_generation_candidate(1, 5000, 'draft', false);
     INSERT INTO t_cid VALUES (cid);
     PERFORM dblink_connect('sess_a', 'dbname=vc');
     PERFORM dblink_connect('sess_b', 'dbname=vc');
+    -- V17: dblink sessions call finalize_generation, which asserts owner context (P1-04).
     PERFORM dblink_exec('sess_a', 'SET ROLE vc_api');
+    PERFORM dblink_exec('sess_a', 'SET vc.owner_user_id = ''1''');
     PERFORM dblink_exec('sess_b', 'SET ROLE vc_api');
+    PERFORM dblink_exec('sess_b', 'SET vc.owner_user_id = ''1''');
 END $$;
 
 DO $$

@@ -160,6 +160,8 @@ RESET ROLE;
 DO $$
 DECLARE ref text;
 BEGIN
+    -- V17: list_memory_evidence requires server-trusted owner context (P1-04).
+    PERFORM set_config('vc.owner_user_id', '1', true);
     SELECT out_source_ref INTO ref FROM vc.list_memory_evidence(1, current_setting('app.pend')::bigint)
      ORDER BY out_id LIMIT 1;
     IF ref IS DISTINCT FROM 'ev-1' THEN RAISE EXCEPTION 'first evidence source must be ev-1, got %', ref; END IF;

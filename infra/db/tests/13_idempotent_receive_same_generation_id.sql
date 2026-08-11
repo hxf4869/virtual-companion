@@ -19,6 +19,8 @@ VALUES (1, 100, 10, 'alice-conv');
 -- vc.owner_user_id for the transaction, so later reads stay scoped to owner 1.
 SET ROLE vc_api;
 BEGIN;
+-- V17: receive_generation now requires a server-trusted owner context (P1-04).
+SET LOCAL vc.owner_user_id = '1';
 DO $$
 DECLARE
     v_logical1 text;

@@ -30,8 +30,11 @@ DO $$
 BEGIN
     PERFORM dblink_connect('sess_a', 'dbname=vc');
     PERFORM dblink_connect('sess_b', 'dbname=vc');
+    -- V17: dblink sessions call append_realtime_event/advance_realtime_seq, which assert owner context (P1-04).
     PERFORM dblink_exec('sess_a', 'SET ROLE vc_api');
+    PERFORM dblink_exec('sess_a', 'SET vc.owner_user_id = ''1''');
     PERFORM dblink_exec('sess_b', 'SET ROLE vc_api');
+    PERFORM dblink_exec('sess_b', 'SET vc.owner_user_id = ''1''');
 END $$;
 
 DO $$

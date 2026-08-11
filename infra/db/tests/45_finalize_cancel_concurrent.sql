@@ -28,15 +28,21 @@ CREATE TEMP TABLE t_cid(cid bigint);
 DO $$
 DECLARE cid bigint;
 BEGIN
+    -- V17: insert_generation_candidate requires server-trusted owner context (P1-04).
+    PERFORM set_config('vc.owner_user_id', '1', true);
     SELECT out_candidate_id INTO cid FROM vc.insert_generation_candidate(1, 5000, 'draft', false);
     INSERT INTO t_cid VALUES (cid);
     PERFORM dblink_connect('sess_l', 'dbname=vc');
+    -- V17: dblink session calls finalize_generation, which asserts owner context (P1-04).
     PERFORM dblink_exec('sess_l', 'SET ROLE vc_api');
+    PERFORM dblink_exec('sess_l', 'SET vc.owner_user_id = ''1''');
 END $$;
 
 -- Phase 1: hold the generation row lock, launch an in-flight finalize that
 -- blocks on the lock, then let cancel_generation win inside the lock.
 BEGIN;
+-- V17: cancel_generation requires server-trusted owner context (P1-04).
+SET LOCAL vc.owner_user_id = '1';
 SELECT 1 FROM vc.generation g WHERE g.owner_user_id = 1 AND g.id = 5000 FOR UPDATE;
 DO $$
 DECLARE cid bigint;
