@@ -801,3 +801,10 @@ tasks:
     taskCard: docs/tasks/TASK-0149-db-runner-hygiene.md
     evidence: docs/evidence/TASK-0149/evidence-pack.json
     handoff: docs/handoffs/TASK-0149.json
+
+  TASK-0150:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0150-provider-egress-dns-connection-layer.md
+    evidence: docs/evidence/TASK-0150/evidence-pack.json
+    handoff: docs/handoffs/TASK-0150.json

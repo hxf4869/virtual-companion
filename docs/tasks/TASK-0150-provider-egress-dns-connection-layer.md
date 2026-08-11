@@ -2,7 +2,20 @@
 
 ```yaml
 taskId: TASK-0150
-state: READY
+state: ACCEPTED
+terminalStateReason: >-
+  Provider DNS/连接层威胁边界完成并验证：EgressDnsGuard（modelruntime/port，C3 protected）
+  连接层解析结果类别校验（IPv4 0/8、10/8、100.64/10 CGNAT/metadata、127/8、169.254/16、
+  172.16/12、192.168/16、224/4+；IPv6 ::1、fe80::/10、fc00::/7、::、::ffff: 内嵌阻断 IPv4），
+  任一阻断地址失败关闭，127.0.0.1 字面放行，空解析/解析失败 fail-closed，错误消息不泄露；
+  接入 OpenAiChatCompletionsSession/AnthropicMessagesSession 发送路径（sendAsync 前），
+  normalizeFailure 新增 IAE→MalformedResponse 分支。R1 FAIL（1 P1 证据缺口）→ 一个允许 fix
+  batch（Session public final + public guard 注入构造 + 两个 BoundaryContractTest
+  rejectingEgressGuardNeverOpensAConnection CountingHttpClient 零调用断言 + CGNAT/IPv4-mapped
+  边界测试 + 删除误加 import）→ R2 PASS（无新 P0/P1）。唯一 Precheck 7/7 PASS（doctor 705068
+  checks）、唯一根级 Maven verify BUILD SUCCESS（15 模块）、唯一 git diff --check PASS 在候选
+  48a9179/720fa7c；remote exact-SHA 如实非 PASS（dispatchCount=0），本卡只声明 READY 冻结的
+  LOCAL_EXACT_TREE_FALLBACK。
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -303,7 +316,21 @@ humanApprovals:
       LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用任何跨卡 Reviewer
       或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0150_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: 633090e
+    candidateTree: 5a50f6209c27d5213d72671c75cc2defa8cfd9ed
+    evidencePath: docs/evidence/TASK-0150/review-r1.md
+    reason: 1 blocking P1 (acceptance criterion 2 lacked test evidence; no Session injection seam). Static control-flow confirmed property holds; evidence/scope gap.
+  - id: task0150_r2
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 48a9179
+    candidateTree: 720fa7c101baa32890d8c1c451149b0682b87be6
+    evidencePath: docs/evidence/TASK-0150/review-r2.md
+    reason: R1 P1 closed; R1 P3 closed; no new P0/P1; delta scope compliant; production path semantics zero drift.
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0150
   - docker run --rm -v /Users/hxf/projects/virtual-companion:/workspace -v vc-maven-cache:/root/.m2 -w /workspace maven:3.9-eclipse-temurin-25-alpine ./mvnw --batch-mode --no-transfer-progress verify

@@ -1,0 +1,13 @@
+{
+  "taskId": "TASK-0150",
+  "candidateCommit": "48a9179",
+  "candidateTree": "720fa7c101baa32890d8c1c451149b0682b87be6",
+  "requestedAt": "2026-08-11T10:30:00+08:00",
+  "channel": "LOCAL_EXACT_TREE_FALLBACK",
+  "profile": "precheck",
+  "operatingSystem": "macOS",
+  "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python",
+  "argv": ["python", "scripts/harness/doctor.py", "--task", "TASK-0150", "--pre-closure"],
+  "cwd": "/Users/hxf/projects/virtual-companion",
+  "reason": "ACCEPTED closure freeze: run pre-closure once after the complete ACCEPTED closure snapshot (task card state=ACCEPTED + terminalStateReason + reviewers, project-state terminal, Task Ledger append, Evidence Pack, Handoff) is staged on the verified implementation candidate."
+}
