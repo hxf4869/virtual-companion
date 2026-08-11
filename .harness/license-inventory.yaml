@@ -19,6 +19,9 @@ mavenDirectDependencies:
     artifactId: spring-boot-starter-security
     licenseFamily: Apache-2.0
   - groupId: org.springframework.boot
+    artifactId: spring-boot-starter-flyway
+    licenseFamily: Apache-2.0
+  - groupId: org.springframework.boot
     artifactId: spring-boot-starter-test
     licenseFamily: Apache-2.0
     scope: test
