@@ -110,7 +110,13 @@ COMMIT;
 RESET ROLE;
 
 -- TTL: expire an unconsumed ticket, then consume must fail.
-SET ROLE vc_api;
+-- TASK-0153 V16 note: direct UPDATE on vc.realtime_ticket was revoked from
+-- runtime roles. The whole block runs as the PostgreSQL superuser so the
+-- test-setup UPDATE (forcing expires_at into the past) reaches the table;
+-- consume_realtime_ticket is a SECURITY DEFINER function whose TTL logic is
+-- independent of caller role, so verifying it under the superuser preserves
+-- the original semantics. SET LOCAL vc.owner_user_id still binds the context
+-- the SECURITY DEFINER functions rely on.
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
 DO $$
@@ -120,7 +126,8 @@ DECLARE
 BEGIN
     SELECT out_ticket_id, out_secret INTO v_id, v_secret
       FROM vc.issue_realtime_ticket(1, 5000, 'sess-ttl', 'https://app.example', 'FETCH_SSE', 1, 0);
-    -- Force the ticket past its TTL without consuming it.
+    -- Force the ticket past its TTL without consuming it (superuser UPDATE:
+    -- runtime roles can no longer direct-UPDATE realtime_ticket after V16).
     UPDATE vc.realtime_ticket
        SET expires_at = now() - interval '1 second'
      WHERE owner_user_id = 1 AND id = v_id;
@@ -133,4 +140,3 @@ BEGIN
     END;
 END $$;
 COMMIT;
-RESET ROLE;

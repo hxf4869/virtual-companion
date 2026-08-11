@@ -23,19 +23,19 @@ BEGIN
     END IF;
 END $$;
 
--- Write with no context must also fail closed. User 9 exists so the only thing
--- that can reject this insert is the RLS WITH CHECK, isolating the policy.
+-- Write with no context must also fail closed. TASK-0153 V16 revoked direct
+-- INSERT on vc.relationship from runtime roles, so a vc_api INSERT now fails
+-- with permission denied before the RLS WITH CHECK is consulted. Both failure
+-- modes (REVOKE privilege denial and RLS WITH CHECK denial) are valid
+-- fail-closed outcomes for "a context-less runtime role cannot write".
 DO $$
 BEGIN
     INSERT INTO vc.relationship(owner_user_id, id, persona_ref)
     VALUES (9, 90, 'ghost');
     RAISE EXCEPTION 'missing-context write unexpectedly succeeded';
 EXCEPTION
-    WHEN check_violation OR insufficient_privilege OR others THEN
-        -- RLS WITH CHECK (owner_user_id = NULL) denied the write.
-        IF sqlerrm NOT LIKE '%row-level security%'
-           AND sqlerrm NOT LIKE '%policy%' THEN
-            RAISE;
-        END IF;
+    WHEN insufficient_privilege OR check_violation THEN
+        -- V16 REVOKE (permission denied) or RLS WITH CHECK (owner=NULL) denied
+        -- the write; either is an acceptable fail-closed outcome.
 END $$;
 RESET ROLE;

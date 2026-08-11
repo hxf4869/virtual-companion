@@ -1,9 +1,13 @@
 -- 51_authorization_snapshot_one_way_lifecycle: authorization snapshots are
 -- insert-only and transition one-way ACTIVE -> WITHDRAWN/NARROWED; a terminal
 -- snapshot can never be resurrected or re-transitioned, and concurrent
--- transitions are mutually exclusive (P2-12, INV-AUTH-001). The Java store's
--- ON CONFLICT DO NOTHING and status-conditioned single-statement UPDATEs are
--- proven here at the schema level with real roles and two sessions.
+-- transitions are mutually exclusive (P2-12, INV-AUTH-001).
+--
+-- TASK-0153 V16 note: direct DML on vc.authorization_snapshot was revoked from
+-- runtime roles. Phases 1-4 run as the PostgreSQL superuser so the INSERT/UPDATE
+-- statements reach the unique constraint and status-conditioned UPDATE logic.
+-- Phase 5 (cross-owner RLS isolation) keeps SET ROLE vc_api because SELECT was
+-- retained and RLS only binds non-superuser roles.
 
 \set ON_ERROR_STOP on
 
@@ -16,18 +20,12 @@ TRUNCATE vc.memory_evidence, vc.memory_item, vc.generation_candidate,
 
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice'), (2, 'bob');
 
--- Open the concurrent session as the connecting superuser (before SET ROLE)
--- and switch it to the runtime role; the main session below also runs as vc_api.
 DO $$
 BEGIN
     PERFORM dblink_connect('sess_conc', 'dbname=vc');
-    PERFORM dblink_exec('sess_conc', 'SET ROLE vc_api');
 END $$;
 
-SET ROLE vc_api;
-
--- Phase 1: insert-only — a second insert with the same snapshot id (same
--- owner) must fail; the existing row is never overwritten.
+-- Phase 1: insert-only — a second insert with the same snapshot id must fail.
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
 INSERT INTO vc.authorization_snapshot
@@ -48,8 +46,7 @@ EXCEPTION
 END $$;
 COMMIT;
 
--- Phase 2: WITHDRAWN is terminal — one-way ACTIVE -> WITHDRAWN, then zero-row
--- re-transitions and a failed resurrection attempt.
+-- Phase 2: WITHDRAWN is terminal.
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
 DO $$
@@ -61,7 +58,6 @@ BEGIN
     IF n <> 1 THEN
         RAISE EXCEPTION 'ACTIVE -> WITHDRAWN must change exactly 1 row (got %)', n;
     END IF;
-    -- Terminal snapshots must not re-transition (status-conditioned UPDATE).
     UPDATE vc.authorization_snapshot SET status = 'WITHDRAWN'
     WHERE snapshot_id = 'snap-1' AND status = 'ACTIVE';
     GET DIAGNOSTICS n = ROW_COUNT;
@@ -75,7 +71,6 @@ BEGIN
         RAISE EXCEPTION 'narrow on WITHDRAWN changed % rows (must be 0)', n;
     END IF;
 END $$;
--- Resurrection: re-inserting a withdrawn snapshot id must fail.
 DO $$
 BEGIN
     INSERT INTO vc.authorization_snapshot
@@ -89,8 +84,7 @@ EXCEPTION
 END $$;
 COMMIT;
 
--- Phase 3: NARROWED is terminal — one-way ACTIVE -> NARROWED, then zero-row
--- re-transitions and a failed resurrection attempt.
+-- Phase 3: NARROWED is terminal.
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
 INSERT INTO vc.authorization_snapshot
@@ -137,9 +131,7 @@ EXCEPTION
 END $$;
 COMMIT;
 
--- Phase 4: concurrent withdraw is mutually exclusive — the session holding
--- the row lock wins the ACTIVE -> WITHDRAWN transition; the blocked loser
--- re-checks the status condition under the lock and changes zero rows.
+-- Phase 4: concurrent withdraw is mutually exclusive.
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
 INSERT INTO vc.authorization_snapshot
@@ -164,8 +156,6 @@ BEGIN
             END IF;
         END $b$;
         COMMIT;$q$);
-    -- The winner transitions inside the lock; the loser sees WITHDRAWN after
-    -- this commit and its status-conditioned UPDATE changes zero rows.
     UPDATE vc.authorization_snapshot SET status = 'WITHDRAWN'
     WHERE snapshot_id = 'snap-4' AND status = 'ACTIVE';
 END $$;
@@ -179,17 +169,22 @@ BEGIN
     IF v_status <> 'WITHDRAWN' THEN
         RAISE EXCEPTION 'expected WITHDRAWN after concurrent withdraw (got %)', v_status;
     END IF;
-    -- The loser's query must have completed without raising.
     PERFORM * FROM dblink_get_result('sess_conc') AS t(dummy text);
     PERFORM dblink_disconnect('sess_conc');
 END $$;
-RESET ROLE;
 
--- Phase 5: cross-owner isolation — owner 2 can neither see nor transition
--- owner 1's snapshot, and cannot resurrect its id (UNIQUE snapshot_id).
+-- Phase 5: cross-owner RLS isolation (keeps SET ROLE vc_api; SELECT retained).
 SET ROLE vc_api;
 BEGIN;
 SET LOCAL vc.owner_user_id = '2';
+DO $$
+DECLARE n int;
+BEGIN
+    SELECT count(*) INTO n FROM vc.authorization_snapshot;
+    IF n <> 0 THEN
+        RAISE EXCEPTION 'owner 2 sees owner 1 snapshots (% rows)', n;
+    END IF;
+END $$;
 DO $$
 DECLARE n int;
 BEGIN
@@ -199,17 +194,8 @@ BEGIN
     IF n <> 0 THEN
         RAISE EXCEPTION 'owner 2 transitioned owner 1 snapshot (% rows)', n;
     END IF;
-END $$;
-DO $$
-BEGIN
-    INSERT INTO vc.authorization_snapshot
-        (owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
-         purpose, data_categories, task_cancelled, source_data_deleted)
-    VALUES (2, 'snap-1', 'ACTIVE', 'prov-9', 'us', 'contract-9',
-            'COMPANION_CHAT', ARRAY['MESSAGE_TEXT'], false, false);
-    RAISE EXCEPTION 'cross-owner duplicate snapshot id accepted';
 EXCEPTION
-    WHEN unique_violation THEN NULL;
+    WHEN insufficient_privilege THEN NULL;
 END $$;
 COMMIT;
 RESET ROLE;

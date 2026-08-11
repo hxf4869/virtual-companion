@@ -62,22 +62,12 @@ BEGIN
         NULL;
     END;
 
-    -- P2-08 catalog CHECK: even a direct INSERT of an unknown or non-durable
-    -- type cannot persist.
-    BEGIN
-        INSERT INTO vc.realtime_event(owner_user_id, id, generation_id, event_type, payload, status)
-        VALUES (1, nextval('vc.finalize_row_id_seq'), 5000, 'foo', '{}'::jsonb, 'PENDING');
-        RAISE EXCEPTION 'CHECK must reject unknown event type';
-    EXCEPTION WHEN check_violation THEN
-        NULL;
-    END;
-    BEGIN
-        INSERT INTO vc.realtime_event(owner_user_id, id, generation_id, event_type, payload, status)
-        VALUES (1, nextval('vc.finalize_row_id_seq'), 5000, 'chat.delta', '{}'::jsonb, 'PENDING');
-        RAISE EXCEPTION 'CHECK must reject non-durable chat.delta';
-    EXCEPTION WHEN check_violation THEN
-        NULL;
-    END;
+    -- P2-08 catalog CHECK is verified below as the PostgreSQL superuser
+    -- (after RESET ROLE): TASK-0153 V16 revoked direct DML on realtime_event
+    -- from runtime roles, so a vc_api INSERT would now fail with
+    -- insufficient_privilege before the CHECK could run. The catalog CHECK
+    -- itself is a table constraint independent of the caller's role, so
+    -- verifying it as the superuser preserves the original semantics.
 
     -- P2-09/P2-11: append_terminal_event is NOT granted to vc_api (owner-only),
     -- so terminal events can only be produced by the terminal transitions.
@@ -146,3 +136,27 @@ BEGIN
 END $$;
 COMMIT;
 RESET ROLE;
+
+-- P2-08 catalog CHECK (superuser path): TASK-0153 V16 revoked direct DML on
+-- realtime_event from runtime roles. The catalog CHECK constraint itself is a
+-- table-level constraint independent of caller role; verify it as the
+-- PostgreSQL superuser (no SET ROLE) so the INSERT reaches the CHECK instead
+-- of being rejected at the privilege check. A vc_api INSERT is now expected
+-- to fail with insufficient_privilege, which test 52 covers explicitly.
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO vc.realtime_event(owner_user_id, id, generation_id, event_type, payload, status)
+        VALUES (1, nextval('vc.finalize_row_id_seq'), 5000, 'foo', '{}'::jsonb, 'PENDING');
+        RAISE EXCEPTION 'CHECK must reject unknown event type';
+    EXCEPTION WHEN check_violation THEN
+        NULL;
+    END;
+    BEGIN
+        INSERT INTO vc.realtime_event(owner_user_id, id, generation_id, event_type, payload, status)
+        VALUES (1, nextval('vc.finalize_row_id_seq'), 5000, 'chat.delta', '{}'::jsonb, 'PENDING');
+        RAISE EXCEPTION 'CHECK must reject non-durable chat.delta';
+    EXCEPTION WHEN check_violation THEN
+        NULL;
+    END;
+END $$;

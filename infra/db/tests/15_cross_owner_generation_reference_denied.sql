@@ -17,14 +17,18 @@ VALUES (1, 10, 'persona-a'), (2, 20, 'persona-b');
 INSERT INTO vc.conversation(owner_user_id, id, relationship_id, title)
 VALUES (1, 100, 10, 'alice-conv'), (2, 200, 20, 'bob-conv');
 
-SET ROLE vc_api;
-BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+-- TASK-0153 V16 note: direct INSERT on vc.generation was revoked from runtime
+-- roles. The first DO block (direct INSERT FK check) now runs as the PostgreSQL
+-- superuser so the INSERT reaches the composite FK. The second DO block calls
+-- the SECURITY DEFINER receive_generation function, which is unaffected by the
+-- V16 REVOKE (it runs with definer privileges), so it keeps SET ROLE vc_api to
+-- prove the function cannot escape the FK even when invoked by a runtime role.
+
+-- Direct-insert FK check (superuser path).
 DO $$
-DECLARE r record;
 BEGIN
-    -- Direct insert: owner matches context, but conversation 200 belongs to
-    -- owner 2; the composite FK rejects the cross-owner reference.
+    -- owner_user_id 1, conversation 200 belongs to owner 2; the composite FK
+    -- rejects the cross-owner reference.
     INSERT INTO vc.generation(owner_user_id, id, conversation_id,
                               logical_generation_id, status, idempotency_key)
     VALUES (1, 1000, 200, 'gen-x', 'CREATED', 'req-x');
@@ -34,6 +38,10 @@ EXCEPTION
         -- expected: composite ownership FK denied the cross-owner reference
 END $$;
 
+-- SECURITY DEFINER function FK check (vc_api path).
+SET ROLE vc_api;
+BEGIN;
+SET LOCAL vc.owner_user_id = '1';
 DO $$
 DECLARE r record;
 BEGIN
