@@ -64,6 +64,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- In-app Flyway with an explicit migrator datasource (VC_MIGRATOR_DB_*),
+             fully separate from the runtime datasource (VC_DB_*). This starter
+             activates Boot 4.1.0's FlywayAutoConfiguration (spring-boot-flyway
+             module); the flyway-core version stays managed by the parent. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
 
         <!-- Mature JWT library (jjwt, Apache-2.0). The API jar is compile-time;
              impl/jackson are runtime only. Password hashing uses Spring Security's

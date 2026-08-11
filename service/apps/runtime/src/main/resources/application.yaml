@@ -12,6 +12,21 @@ spring:
       # the auto DataSource excluded means the default context never demands a
       # live database, and a misconfigured deploy fails fast instead of probing.
       - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+  flyway:
+    # In-app Flyway runs with an explicit migrator datasource (VC_MIGRATOR_DB_*),
+    # fully separate from the runtime datasource (VC_DB_*): a migration
+    # principal applies db/migration while runtime code connects as the vc_*
+    # minimal-privilege roles. Off by default so a plain runtime/test context
+    # never requires a migration principal; the production profile forces an
+    # explicit choice (see below). The readiness gate (SchemaReadinessHealth
+    # Indicator) verifies the applied schema version against the classpath
+    # migrations when in-app Flyway is enabled.
+    enabled: ${VC_FLYWAY_ENABLED:false}
+    url: ${VC_MIGRATOR_DB_URL:}
+    user: ${VC_MIGRATOR_DB_USERNAME:}
+    password: ${VC_MIGRATOR_DB_PASSWORD:}
+    locations: classpath:db/migration
+    fail-on-missing-locations: true
 
 management:
   endpoints:
@@ -77,10 +92,18 @@ virtual-companion:
 # 条件风险 3（TASK-0102）：production profile 强制认证与数据源开启。两个开关
 # 在该 profile 下没有默认值——缺少 VC_AUTH_ENABLED / VC_AUTH_DATASOURCE_ENABLED
 # 环境变量时占位符解析失败，应用启动即失败（fail-closed，绝不静默降级为关闭）。
+# P1-11（TASK-0155）：同一 profile 强制显式声明迁移开关与 migrator 凭据——
+# VC_FLYWAY_ENABLED 与 VC_MIGRATOR_DB_URL/USERNAME/PASSWORD 缺失同样启动失败，
+# 不允许「未迁移/无法迁移」的静默部署状态。
 spring:
   config:
     activate:
       on-profile: production
+  flyway:
+    enabled: ${VC_FLYWAY_ENABLED}
+    url: ${VC_MIGRATOR_DB_URL}
+    user: ${VC_MIGRATOR_DB_USERNAME}
+    password: ${VC_MIGRATOR_DB_PASSWORD}
 virtual-companion:
   auth:
     enabled: ${VC_AUTH_ENABLED}
