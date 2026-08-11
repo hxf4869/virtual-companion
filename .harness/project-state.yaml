@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0157
-activeTaskCard: docs/tasks/TASK-0157-p2-27-complete-ci-matrix.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0160
 lastAcceptedHandoff: docs/handoffs/TASK-0160.json
-lastTerminalTask: TASK-0160
-lastTerminalHandoff: docs/handoffs/TASK-0160.json
-nextAction: '完成 TASK-0157（P2-27 完整 CI 矩阵）：backend+frontend 三平台（ubuntu/windows/macos），database 保持 Linux-only；移除 ci-execution-policy.yaml BACKEND_LOCAL.windowsJavaHome 硬编码 G:/ai/hxf/.tools/temurin-25.0.4+7 改 javaToolchain 声明字段；同步 doctor.py 的冻结断言；补 BACKEND_LOCAL/FRONTEND_LOCAL 负测门禁。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
+lastTerminalTask: TASK-0157
+lastTerminalHandoff: docs/handoffs/TASK-0157.json
+nextAction: '建立 TASK-0161 replacement（TASK-0157 REJECTED TIMEOUT）：以 TASK-0157 REJECTED terminal 为 Base，候选 872311a 实现（4 文件 ci-execution-policy.yaml/doctor.py/test_harness.py/ci.yml 改动）已在 Base 中不重复，writeAllowlist 仅治理制品；deliveryBudgets.hardFuseWallMinutes=180（覆盖完整 Harness unittest × 2 串行 + canonical + R1 + closure，避免并行 IO 争用 hung 重演）；只跑完整 Harness unittest（串行）+ canonical precheck + git diff --check + R1 独立复核 + 终态 ACCEPTED 闭环。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

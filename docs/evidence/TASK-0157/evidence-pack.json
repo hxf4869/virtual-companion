@@ -1,0 +1,63 @@
+{
+  "taskId": "TASK-0157",
+  "state": "REJECTED",
+  "baseCommit": "4f7ac713008befcb7babd624e78dbe0e7773ae33",
+  "headCommit": "872311a67705784d180847550639b3ae3f52b418",
+  "evidencePath": "docs/evidence/TASK-0157/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "12b0409",
+      "startedAt": "2026-08-12T02:47:55+08:00",
+      "endedAt": "2026-08-12T05:58:00+08:00",
+      "elapsedSeconds": 11405,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "cc3cf9c",
+      "startedAt": "2026-08-12T02:52:06+08:00",
+      "endedAt": "2026-08-12T05:58:00+08:00",
+      "elapsedSeconds": 11154,
+      "outcome": "TIMEOUT",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "2026-08-12T02:51:30+08:00",
+      "inProgressCommit": "cc3cf9c",
+      "reason": "hardFuseWallMinutes=90 exceeded by ~96 min (candidate elapsed 186 min). Root cause: complete Harness unittest (~30-45 min wall) was run twice (impl agent Evidence + R1 independent); first parallel run hung ~30 min with 0% CPU due to git IO / subprocess pipe contention between the two python processes; serial retry also stalled. Candidate 872311a statically correct (targeted CiExecutionPolicyTests + CiWorkflowTests PASS, doctor 751922/752227 PASS, canonical hash recompute match, git diff --check exit 0, scope/invariants clean) but acceptance criterion #5 (complete Harness unittest PASS) was never independently confirmed within budget. Policy hardFuse.mandatoryTerminalClosure + Owner 2026-08-12 decision: REJECTED + replacement TASK-0161 with hardFuse=180 to cover serial full unittest × 2 + canonical + closure."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0157_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "872311a",
+      "candidateTree": "c70bd0f0",
+      "evidencePath": "docs/evidence/TASK-0157/review-r1.md",
+      "reason": "R1 FAIL/TIMEOUT: 0 P0/P1/P2 static findings; all static gates PASS (doctor 752227, git diff --check exit 0, canonical hash recompute match, diff scope clean, invariants INV-HARNESS-001/002/003/004-improved/005/007/009 compliant); acceptance criterion #5 (complete Harness unittest PASS) NOT_RUN — two unittest runs hung (parallel resource contention first ~30min, serial stall second) before completion; policy hardFuse 90min reached at candidate elapsed ~99min. Per Owner 2026-08-12 decision, REJECTED + replacement TASK-0161 with hardFuse=180."
+    }
+  ],
+  "completed": [
+    "建立 TASK-0157 DRAFT(12b0409)/READY(c302d48)/authorizationCommit(c7571f8 绑定)/IN_PROGRESS(cc3cf9c)；DRAFT Doctor PASS(747551)、READY Doctor PASS(750442)。",
+    "候选实现（872311a/tree c70bd0f0）：4 文件改动 115 insertions / 11 deletions（ci-execution-policy.yaml BACKEND_LOCAL windowsJavaHome→javaToolchain、doctor.py 断言+hash 同步、test_harness.py 新增 7 subTest 负测、ci.yml backend+frontend 三平台 matrix + database Linux-only 注释）。",
+    "doctor --task TASK-0157 PASS（751922 checks, 98.4s，候选 commit 后）；R1 独立 doctor PASS（752227 checks, 144.4s）。",
+    "git diff --check PASS（R1 独立 exit 0）；diff scope 7 文件全在 writeAllowlist，零 forbiddenPaths 冲突；linear history 单父链 12b0409→c302d48→c7571f8→cc3cf9c→872311a。",
+    "canonical hash 独立重算一致：f8f2ea2088cd6075c599fb406de6b1f9c65b52eb39fd14be9fe8ddb122ccd6fe == doctor.py:175 常量。",
+    "目标测试聚焦验证 PASS：CiExecutionPolicyTests（含新增 test_policy_rejects_backend_and_frontend_local_profile_drift 7 subTest）+ CiWorkflowTests.test_ci_backend_and_frontend_jobs_preserved 全绿（2 tests in 364.6s）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest 未在候选 872311a 上独立串行跑通；replacement TASK-0161 须独立串行跑（避免并行 IO 争用）。",
+    "canonical precheck（profile=precheck 8 子命令）未跑（hardFuse 后 policy 禁止）；replacement TASK-0161 须跑。",
+    "R1 独立 Reviewer 未给出 PASS verdict（本卡 R1 verdict=FAIL/TIMEOUT）；replacement TASK-0161 须重新独立 R1。",
+    "终态 ACCEPTED 闭环（pre-closure + 单父 [skip ci] + push + 远端 0/0 + 远端复核）；本卡只做 REJECTED terminal closure。",
+    "全部审计修复后须对最新 origin/main 做独立全项目复审（同 TASK-0160 handoff 留存项）。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（dispatchCount=0，配额耗尽强类型证据）；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical precheck（本卡未跑）/unittest（本卡未独立跑通）。",
+    "候选 872311a 实现本身静态层面无 P0/P1/P2 缺陷，4 文件改动符合任务卡范围；REJECTED 仅因 acceptance #5（完整 unittest PASS）未在 hardFuse 预算内独立确认。replacement TASK-0161 直接复用候选实现（Base 中已含），不重复实现。",
+    "完整 Harness unittest 串行约 30-45 min；R1 独立再跑 30-45 min；二者并行会导致 git IO / subprocess pipe 争用 hung（本卡实测）；后续卡必须串行。",
+    "ci.yml 三平台 matrix 使 GitHub Actions 总分钟消耗上升（backend 1→3 jobs，frontend 1→3 jobs），但 quota 已耗尽（dispatchCount=0），实际 CI 不再调度，仅本地 fallback。",
+    "windowsJavaHome 语义丢失：移除后『本地 Windows 跑 BACKEND_LOCAL profile』场景无 JDK 路径约定；当前实际无此场景（本地 fallback 走 macOS HARNESS_PORTABILITY_LOCAL profile）。"
+  ],
+  "nextAction": "建立 TASK-0161 replacement（以 TASK-0157 REJECTED terminal 为 Base，候选 872311a 实现已在 Base 中不重复）：writeAllowlist 仅治理制品 + 不含 4 个实现文件（已在 Base），deliveryBudgets.hardFuseWallMinutes 调至 180（覆盖完整 unittest × 2 串行 + canonical + R1 + closure）；只跑完整 Harness unittest（串行）+ canonical precheck + git diff --check + R1 独立复核 + 终态 ACCEPTED 闭环。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+}

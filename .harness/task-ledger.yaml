@@ -850,3 +850,9 @@ tasks:
     taskCard: docs/tasks/TASK-0160-p2-03-auth-source-admission-test-fix.md
     evidence: docs/evidence/TASK-0160/evidence-pack.json
     handoff: docs/handoffs/TASK-0160.json
+  TASK-0157:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0157-p2-27-complete-ci-matrix.md
+    evidence: docs/evidence/TASK-0157/evidence-pack.json
+    handoff: docs/handoffs/TASK-0157.json

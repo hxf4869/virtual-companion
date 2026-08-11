@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0157
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -321,7 +321,32 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0157_r1
+    kind: independent-review-gate
+    verdict: FAIL
+    reviewedCommit: "872311a"
+    candidateTree: "c70bd0f0"
+    evidencePath: docs/evidence/TASK-0157/review-r1.md
+    reason: >-
+      R1 FAIL/TIMEOUT：0 P0/P1/P2 静态发现；全部静态门禁 PASS（doctor 752227、git diff --check
+      exit 0、canonical hash 重算一致、diff scope clean、invariants INV-HARNESS-001/002/003/
+      004-improved/005/007/009 合规）；acceptance #5（完整 Harness unittest PASS）NOT_RUN —
+      两次 unittest 均未完成（第一次并行 IO/pipe 争用 hung ~30min，第二次串行仍 stall），
+      policy hardFuse 90min 在 candidate elapsed ~99min 时到达。按 Owner 2026-08-12 决策，
+      REJECTED + replacement TASK-0161 with hardFuse=180。
+terminalStateReason: >-
+  candidate execution TIMEOUT：hardFuseWallMinutes=90 exceeded by ~96 min（candidate elapsed
+  186 min）。根因：完整 Harness unittest（~30-45 min wall）需跑两次（impl agent Evidence +
+  R1 独立）；第一次两进程并行导致 git IO / subprocess pipe 争用 hung ~30 min（0% CPU、RSS 不变、
+  STAT S）；串行重试仍 stall。候选 872311a 静态层面正确（目标测试 CiExecutionPolicyTests +
+  CiWorkflowTests 聚焦 PASS、doctor 751922/752227 PASS、canonical hash 重算一致、diff --check
+  exit 0、scope/invariants clean），但 acceptance criterion #5（完整 Harness unittest PASS）
+  未在 hardFuse 预算内独立确认。policy hardFuse.mandatoryTerminalClosure + Owner 2026-08-12
+  决策「REJECTED + replacement 严格执行 policy」：本卡 REJECTED terminal closure，
+  candidateExecution.outcome=TIMEOUT。replacement TASK-0161 以 REJECTED terminal 为 Base
+  （候选 872311a 实现已在 Base 中不重复），deliveryBudgets.hardFuseWallMinutes=180，只跑
+  完整 unittest（串行）+ canonical precheck + git diff --check + R1 独立复核 + 终态 ACCEPTED。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P2-27 审计修复卡

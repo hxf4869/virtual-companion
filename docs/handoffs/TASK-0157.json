@@ -1,0 +1,60 @@
+{
+  "taskId": "TASK-0157",
+  "state": "REJECTED",
+  "baseCommit": "4f7ac713008befcb7babd624e78dbe0e7773ae33",
+  "headCommit": "872311a67705784d180847550639b3ae3f52b418",
+  "evidencePath": "docs/evidence/TASK-0157/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "12b0409",
+      "startedAt": "2026-08-12T02:47:55+08:00",
+      "endedAt": "2026-08-12T05:58:00+08:00",
+      "elapsedSeconds": 11405,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "cc3cf9c",
+      "startedAt": "2026-08-12T02:52:06+08:00",
+      "endedAt": "2026-08-12T05:58:00+08:00",
+      "elapsedSeconds": 11154,
+      "outcome": "TIMEOUT",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "2026-08-12T02:51:30+08:00",
+      "inProgressCommit": "cc3cf9c",
+      "reason": "hardFuseWallMinutes=90 exceeded by ~96 min (candidate elapsed 186 min). Root cause: complete Harness unittest (~30-45 min wall) was run twice (impl agent Evidence + R1 independent); first parallel run hung ~30 min with 0% CPU due to git IO / subprocess pipe contention between the two python processes; serial retry also stalled. Candidate 872311a statically correct but acceptance #5 (complete unittest PASS) never independently confirmed within budget. Owner 2026-08-12 decision: REJECTED + replacement TASK-0161 with hardFuse=180."
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0157_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "872311a",
+      "candidateTree": "c70bd0f0",
+      "evidencePath": "docs/evidence/TASK-0157/review-r1.md",
+      "reason": "R1 FAIL/TIMEOUT: 0 P0/P1/P2 static findings; all static gates PASS (doctor 752227, diff --check exit 0, hash match, scope clean, invariants compliant); acceptance #5 NOT_RUN — two unittest runs hung (parallel + serial) before completion; hardFuse 90min reached. Per Owner decision, REJECTED + replacement TASK-0161 with hardFuse=180."
+    }
+  ],
+  "completed": [
+    "建立 TASK-0157 DRAFT/READY/authorizationCommit/IN_PROGRESS；DRAFT+READY Doctor PASS。",
+    "候选实现 872311a：4 文件改动（ci-execution-policy.yaml/doctor.py/test_harness.py/ci.yml），静态层面正确，0 P0/P1/P2。",
+    "doctor --task TASK-0157 PASS（候选 commit 后）；R1 独立 doctor PASS（752227 checks）。",
+    "git diff --check PASS（R1 独立 exit 0）；diff scope clean；canonical hash 独立重算一致。",
+    "目标测试聚焦 PASS：CiExecutionPolicyTests（含新增 7 subTest）+ CiWorkflowTests。"
+  ],
+  "remaining": [
+    "Replacement TASK-0161：以 TASK-0157 REJECTED terminal 为 Base，候选 872311a 实现已在 Base 中不重复，writeAllowlist 仅治理制品；deliveryBudgets.hardFuseWallMinutes=180；只跑完整 Harness unittest（串行，避免并行 IO 争用）+ canonical precheck + git diff --check + R1 独立复核 + 终态 ACCEPTED。",
+    "RISK-09（TASK-0158）保留。",
+    "全部修复后对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK 限于 macOS。",
+    "候选 872311a 实现静态无缺陷；REJECTED 仅因 acceptance #5 未在 hardFuse 内独立确认。",
+    "完整 Harness unittest × 2（impl + R1）必须串行；并行导致 git IO / pipe 争用 hung（本卡实测）。",
+    "ci.yml 三平台 matrix 提升 Actions 总分钟消耗，但 quota 已耗尽不影响实际调度。",
+    "windowsJavaHome 语义丢失（当前无本地 Windows BACKEND_LOCAL 场景）。"
+  ],
+  "nextAction": "建立 TASK-0161 replacement（以 TASK-0157 REJECTED terminal 为 Base，候选 872311a 实现已在 Base 中不重复）：writeAllowlist 仅治理制品 + 不含 4 个实现文件（已在 Base），deliveryBudgets.hardFuseWallMinutes 调至 180；只跑完整 Harness unittest（串行）+ canonical precheck + git diff --check + R1 独立复核 + 终态 ACCEPTED 闭环。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+}
