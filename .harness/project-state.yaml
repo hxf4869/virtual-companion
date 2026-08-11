@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0150
+activeTaskCard: docs/tasks/TASK-0150-provider-egress-dns-connection-layer.md
 lastAcceptedTask: TASK-0149
 lastAcceptedHandoff: docs/handoffs/TASK-0149.json
 lastTerminalTask: TASK-0149
 lastTerminalHandoff: docs/handoffs/TASK-0149.json
-nextAction: 处理 Provider DNS/连接层威胁边界（独立调查卡）、数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29 需 Owner 决策可信 principal/限流/Admin 语义）与 RISK-01..11 条件风险（P2-27/P2-25 待 Owner 决策）；全部修复后对最新 origin/main 做独立全项目复审。
+nextAction: 执行 TASK-0150（Provider DNS/连接层威胁边界）：新增 EgressDnsGuard 连接层解析结果校验（DNS 重绑定防护纵深——阻断私网/loopback/link-local/metadata/CGNAT/组播/保留类别解析地址，127.0.0.1 字面放行）并接入 OpenAI/Anthropic Session 发送路径；冻结 clean candidate 后依序完成唯一 Precheck、根级 Maven verify、唯一 diff check、C3 独立 Reviewer、Evidence/Handoff、单父终态提交和远端 0/0；随后数据库 Owner gates（P1-04/05、P1-11、P2-03、P2-13、P2-29 需 Owner 决策可信 principal/限流/Admin 语义）与条件风险（P2-27/P2-25 待 Owner 决策），最后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
