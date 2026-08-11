@@ -13,7 +13,7 @@ requiredSkillVersions:
   task-intake: "1.2.7"
 targetSkillVersions: {}
 baseCommit: c53609be66451d8a9ab976dcbbb2e17240ac6057
-authorizationCommit: ""
+authorizationCommit: "1f57391d49609553e61dbe364ad361b299b1077a"
 contextFingerprint: b889f0acd80f392535626a36d5c95585c6d3f61bc998ee1a2fba15340ff45efc
 contextLock: docs/tasks/context/TASK-0156.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
