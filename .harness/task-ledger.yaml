@@ -820,3 +820,9 @@ tasks:
     taskCard: docs/tasks/TASK-0153-db-dml-rev-role-attribute-fail-closed.md
     evidence: docs/evidence/TASK-0153/evidence-pack.json
     handoff: docs/handoffs/TASK-0153.json
+  TASK-0154:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0154-sd-owner-param-trusted-assertion.md
+    evidence: docs/evidence/TASK-0154/evidence-pack.json
+    handoff: docs/handoffs/TASK-0154.json

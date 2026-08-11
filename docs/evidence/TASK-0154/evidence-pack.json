@@ -1,0 +1,121 @@
+{
+  "taskId": "TASK-0154",
+  "taskCard": "docs/tasks/TASK-0154-sd-owner-param-trusted-assertion.md",
+  "baseCommit": "2c97bad86ce655cc98f5bc70ad99907ab8a2bd16",
+  "candidateCommit": "391cd42a41fc052bf03d48b9bafa862e1b7b67ef",
+  "candidateTree": "4054224b389033166e8f3fb8adaf50945fa7a87a",
+  "authorizationCommit": "0b73b2fd2dbf6ce1cbd7de260a8403aa05d63d63",
+  "inProgressCommit": "55ebb1a6b6cc8441175c53de635a29aa6410e54c",
+  "deliveryMode": "single-card",
+  "validationChannel": "LOCAL_EXACT_TREE_FALLBACK",
+  "validationProfile": "precheck",
+  "contextFingerprint": "0372e2f45e916a3cb63dab273f27c5450292368d77495f1facb391cbdd5bee6f",
+  "riskClass": "C4",
+  "requiredSkills": ["task-delivery-flow", "task-intake", "database-migration"],
+  "humanApprovals": [
+    {"scope": "task-assignment", "approvedBy": "repository-owner", "approvedAt": "2026-08-11"},
+    {"scope": "database-migration", "approvedBy": "repository-owner", "approvedAt": "2026-08-11"},
+    {"scope": "local-exact-tree-fallback", "approvedBy": "repository-owner", "approvedAt": "2026-08-11"}
+  ],
+  "commands": {
+    "canonicalPrecheck": {
+      "argv": ["python", "scripts/harness/precheck.py", "--task", "TASK-0154"],
+      "exitCode": 0,
+      "result": "PASS",
+      "subcommands": {
+        "doctor": {"exitCode": 0, "checks": 722269, "elapsedSeconds": 105.9},
+        "catalogValidate": {"exitCode": 0},
+        "catalogDrift": {"exitCode": 0},
+        "paidFeatureCheck": {"exitCode": 0},
+        "licenseCheck": {"exitCode": 0},
+        "betaRosterGate": {"exitCode": 0},
+        "openapiValidate": {"exitCode": 0},
+        "openapiDrift": {"exitCode": 0}
+      },
+      "note": "8/8 commands PASS, sole canonical run (executed by independent R1 Reviewer on candidate 391cd42)"
+    },
+    "harnessUnittest": {
+      "argv": ["python", "scripts/harness/tests/test_harness.py"],
+      "exitCode": 0,
+      "result": "PASS",
+      "testsRun": 261,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "note": "Sole complete Harness unittest run; 261 tests across 27 classes with 10 workers OK; protected path content change requires it"
+    },
+    "gitDiffCheck": {
+      "argv": ["git", "diff", "--check", "2c97bad..391cd42"],
+      "exitCode": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result": "PASS",
+      "note": "Sole git diff --check run, empty output (implementer + R1 Reviewer both verified exit 0)"
+    },
+    "dbRlsTests": {
+      "argv": ["bash", "infra/db/run-rls-tests.sh"],
+      "exitCode": 0,
+      "result": "PASS",
+      "testsPassed": 55,
+      "note": "Full DB RLS suite via OrbStack pgvector/pgvector:0.8.5-pg18, all 55 tests PASS (46 existing + 9 refactored + 2 new); V1..V17 clean apply; executed independently by R1 Reviewer on candidate 391cd42 and by implementer during iteration"
+    },
+    "rootMavenVerify": {
+      "argv": ["./mvnw", "--batch-mode", "--no-transfer-progress", "verify"],
+      "exitCode": 0,
+      "result": "BUILD_SUCCESS",
+      "note": "Docker JDK 25 (maven:3.9-eclipse-temurin-25-alpine) + vc-maven-cache, 60.0s, 14 modules all SUCCESS"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0154_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "391cd42",
+      "candidateTree": "4054224",
+      "evidencePath": "docs/evidence/TASK-0154/review-r1.md",
+      "reason": "R1 完整复核 PASS：0 P0/P1/P2，1 个 P3 信息项（scope-in 措辞残留 8 测试，humanApprovals/writeAllowlist 权威源为 9 测试）。Reviewer 独立运行 55/55 DB RLS 测试 PASS + canonical precheck 8/8 PASS + doctor PASS（722269 checks）+ git diff --check exit 0。writeAllowlist 自 DRAFT 起含 test 35（三提交字节级一致），首批链的 READY 后扩范围违规已闭环。V17 34 函数断言正确，claim_work_items 保留 fence set_config。"
+    }
+  ],
+  "remoteExactSha": {
+    "channel": "PRIMARY_REMOTE_EXACT_SHA",
+    "status": "NOT_RUN",
+    "reason": "LOCAL_EXACT_TREE_FALLBACK frozen at READY; GitHub Actions quota exhausted (includedMinutes=usedMinutes=2000, paidBudgetUsd=0, stopUsageEnabled=true, dispatchCount=0)",
+    "passClaimed": false
+  },
+  "localExactTreeFallback": {
+    "channel": "LOCAL_EXACT_TREE_FALLBACK",
+    "profile": "precheck",
+    "candidateCommit": "391cd42a41fc052bf03d48b9bafa862e1b7b67ef",
+    "candidateTree": "4054224b389033166e8f3fb8adaf50945fa7a87a",
+    "operatingSystem": "macOS",
+    "interpreter": "/Users/hxf/.zcode/venvs/vc-harness/bin/python",
+    "cleanWorktree": true,
+    "cleanIndex": true,
+    "passClaimed": true,
+    "coveredCommands": ["canonical precheck (8)", "complete Harness unittest (261)", "git diff --check", "DB RLS suite (55)", "root Maven verify"],
+    "uncoveredPlatforms": ["windows", "wslUbuntu", "githubActions"]
+  },
+  "diffScope": {
+    "baseToCandidateFiles": 15,
+    "allInWriteAllowlist": true,
+    "forbiddenPathsTouched": false,
+    "files": [
+      ".harness/project-state.yaml",
+      "docs/tasks/TASK-0154-sd-owner-param-trusted-assertion.md",
+      "docs/tasks/context/TASK-0154.context-lock.yaml",
+      "infra/db/tests/07_claim_binds_context.sql",
+      "infra/db/tests/13_idempotent_receive_same_generation_id.sql",
+      "infra/db/tests/14_idempotent_receive_no_duplicate_message.sql",
+      "infra/db/tests/35_memory_edit_evidence.sql",
+      "infra/db/tests/44_finalize_finalize_concurrent.sql",
+      "infra/db/tests/45_finalize_cancel_concurrent.sql",
+      "infra/db/tests/46_finalize_terminalize_concurrent.sql",
+      "infra/db/tests/47_candidate_terminal_toctou.sql",
+      "infra/db/tests/49_realtime_seq_concurrent.sql",
+      "infra/db/tests/54_sd_owner_mismatch_fail_closed.sql",
+      "infra/db/tests/55_sd_missing_context_fail_closed.sql",
+      "service/platform/persistence/src/main/resources/db/migration/V17__sd_owner_param_trusted_assertion.sql"
+    ]
+  },
+  "invariantsCovered": ["INV-TENANT-001", "INV-WORKER-001", "INV-AUTH-001", "INV-HARNESS-001", "INV-HARNESS-002", "INV-HARNESS-003", "INV-HARNESS-005", "INV-HARNESS-007", "INV-HARNESS-009"]
+}

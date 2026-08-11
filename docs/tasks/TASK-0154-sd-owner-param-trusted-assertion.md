@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0154
-state: IN_REVIEW
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -381,8 +381,29 @@ humanApprovals:
       stopUsageEnabled=true、dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
+terminalStateReason: >-
+  P1-04 SD 函数 owner 参数服务端可信收敛完成并验证：V17 对全部 34 个含 p_owner_user_id 的
+  SECURITY DEFINER 函数加强模式 fail-closed 断言（p_owner_user_id IS NULL OR IS DISTINCT
+  FROM vc.current_owner_id() → RAISE）并移除内部 set_config('vc.owner_user_id')；claim_
+  work_items 保留 set_config('vc.job_fence')。重构 9 个受影响测试加 SET LOCAL/set_config
+  前置（07/13/14/35/44/45/46/47/49）；新增 test 54（caller-mismatch）+ test 55（missing-
+  context）负测。R1 PASS（0 P0/P1/P2，1 P3）；候选 391cd42/4054224；唯一 Precheck 8/8 PASS
+  （doctor 722269）；唯一完整 Harness unittest 261 OK；唯一 DB RLS 套件 55 PASS；唯一根级
+  Maven verify BUILD SUCCESS（14 模块）；唯一 git diff --check PASS；remote 如实非 PASS
+  （dispatchCount=0）。经一次 reset 重建（Owner 授权，writeAllowlist 自 DRAFT 起含 test 35）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0154_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 391cd42
+    candidateTree: 4054224
+    evidencePath: docs/evidence/TASK-0154/review-r1.md
+    reason: >-
+      R1 完整复核 PASS：0 P0/P1/P2，1 个 P3 信息项。Reviewer 独立运行 55/55 DB RLS 测试
+      PASS + canonical precheck 8/8 PASS + doctor PASS（722269 checks）+ git diff --check
+      exit 0；writeAllowlist 自 DRAFT 起含 test 35（三提交字节级一致）；V17 34 函数断言
+      正确，claim_work_items 保留 fence set_config。
 ```
 
 ## 背景
