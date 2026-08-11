@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0161
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -299,7 +299,29 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS（TASK-0157 R1 FAIL/TIMEOUT 不复用）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0161_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "9332566"
+    candidateTree: "68d066c9"
+    evidencePath: docs/evidence/TASK-0161/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2。Diff Base b0c44fb→9332566 仅 3 治理文件（project-state.yaml +
+      任务卡 + context lock），无实现文件改动；单父线性历史 129b7fc→21d2147→9332566；
+      doctor 756217 PASS；canonical precheck 8/8 PASS；git diff --check exit 0；
+      canonical hash 重算一致 f8f2ea20...；4 个继承实现文件 @ b0c44fb 独立审查正确
+      （ci-execution-policy BACKEND_LOCAL javaToolchain/doctor.py 断言+hash/test_harness.py
+      7 subTest/ci.yml 三平台 matrix）。完整 unittest 按 Owner 2026-08-12 static-gates-only
+      策略 deferred to unified audit。
+terminalStateReason: >-
+  P2-27 完整 CI 矩阵 replacement ACCEPTED：候选 9332566 不修改实现文件（872311a 实现已在 Base
+  b0c44fb）；canonical precheck 8/8 PASS（doctor 756217 + 7 子命令）；git diff --check exit 0；
+  独立 C4 R1 静态复核 PASS（0 P0/P1/P2，64s）；canonical hash 重算一致。完整 Harness unittest
+  按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit（候选 872311a 实现含
+  新增 7 subTest 负测，将在统一审计阶段随完整 unittest discover 一次性串行验证）。candidate
+  elapsed 29 min（远低于 hardFuse 180）。remote exact-SHA 如实非 PASS（dispatchCount=0），
+  LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。P2-27 完整 CI 矩阵 + windowsJavaHome 解耦落地。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 TASK-0157

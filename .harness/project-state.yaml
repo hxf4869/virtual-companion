@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0161
-activeTaskCard: docs/tasks/TASK-0161-p2-27-complete-ci-matrix-replacement.md
-lastAcceptedTask: TASK-0160
-lastAcceptedHandoff: docs/handoffs/TASK-0160.json
-lastTerminalTask: TASK-0157
-lastTerminalHandoff: docs/handoffs/TASK-0157.json
-nextAction: '完成 TASK-0161（TASK-0157 REJECTED TIMEOUT replacement）：以 TASK-0157 REJECTED terminal 为 Base，候选 872311a 实现（4 文件改动）已在 Base 中不重复；hardFuse=180 覆盖完整 Harness unittest × 2 串行 + canonical + R1 + closure；只跑完整 unittest（串行，禁止并行）+ canonical precheck + git diff --check + R1 独立复核 + 终态 ACCEPTED 闭环。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0161
+lastAcceptedHandoff: docs/handoffs/TASK-0161.json
+lastTerminalTask: TASK-0161
+lastTerminalHandoff: docs/handoffs/TASK-0161.json
+nextAction: '完成 TASK-0158（RISK-09 search_path 收紧）：V18 SET search_path vc,public → vc,pg_catalog（全部 SD 函数 + migration 头部）+ REVOKE CREATE ON SCHEMA public FROM PUBLIC + shadow-object 负测（public 建同名函数劫持验证拒绝）；C4 database-migration + humanApproval(scope: database-migration)；新增 V18 migration，DB 变更跑 run-rls-tests.sh（当前 56 测试，OrbStack pgvector:0.8.5-pg18）；按 Owner 2026-08-12 static-gates-only 策略（完整 unittest 留统一审计）。全部修复后对最新 origin/main 做独立全项目复审（含完整 Harness unittest 串行）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

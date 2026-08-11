@@ -1,0 +1,60 @@
+{
+  "taskId": "TASK-0161",
+  "state": "ACCEPTED",
+  "baseCommit": "b0c44fb252a1b0ba1ac2c5f7fbae49b49a069b84",
+  "headCommit": "93325661d1909841ad8e7d69f2bf98bb2a69e2f8",
+  "evidencePath": "docs/evidence/TASK-0161/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "129b7fc",
+      "startedAt": "2026-08-12T06:12:50+08:00",
+      "endedAt": "2026-08-12T06:43:48+08:00",
+      "elapsedSeconds": 1858,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "9332566",
+      "startedAt": "2026-08-12T06:14:42+08:00",
+      "endedAt": "2026-08-12T06:43:48+08:00",
+      "elapsedSeconds": 1746,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 90,
+      "readyDoctorPassAt": "2026-08-12T06:14:00+08:00",
+      "inProgressCommit": "9332566",
+      "reason": "Replacement for TASK-0157 REJECTED TIMEOUT. 本卡候选 = IN_PROGRESS commit 9332566（不修改任何实现文件，候选 872311a 实现已在 Base b0c44fb）。Owner 2026-08-12 授权 validation-strategy-adjustment：仅静态门禁（doctor + canonical precheck + git diff --check），完整 Harness unittest 跳过留统一审计阶段。canonical precheck 8/8 PASS（doctor 756217/catalogValidate/catalogDrift/paidFeatureCheck/licenseCheck/betaRosterGate/openapiValidate/openapiDrift）；git diff --check exit 0；R1 独立静态复核 PASS（0 P0/P1/P2，doctor + diff + diff 审查 + 4 文件实现继承验证 + canonical hash 重算一致）。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0161_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "9332566",
+      "candidateTree": "68d066c9",
+      "evidencePath": "docs/evidence/TASK-0161/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2。Diff Base b0c44fb→9332566 仅 3 治理文件（project-state.yaml + 任务卡 + context lock），无实现文件改动；单父线性历史；doctor 756217 PASS；canonical precheck 8/8 PASS；git diff --check exit 0；canonical hash 重算一致 f8f2ea20...；4 个继承实现文件 @ b0c44fb 独立审查正确（ci-execution-policy BACKEND_LOCAL javaToolchain/doctor.py 断言+hash/test_harness.py 7 subTest/ci.yml 三平台 matrix）。完整 unittest 按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit。"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0161 DRAFT(129b7fc)/READY(21d2147)/authorizationCommit 绑定+IN_PROGRESS(9332566)；DRAFT Doctor PASS(753321)、IN_PROGRESS Doctor PASS(756217)。",
+    "候选 9332566/tree 68d066c9：不修改任何实现文件（候选 872311a 实现已在 Base b0c44fb）。",
+    "唯一 canonical precheck 8/8 PASS（doctor 756217/catalogValidate/catalogDrift/paidFeatureCheck/licenseCheck/betaRosterGate/openapiValidate/openapiDrift）。",
+    "唯一无参数 git diff --check PASS（exit 0）。",
+    "独立 C4 R1 静态复核 PASS（0 P0/P1/P2，64s 完成）：doctor + diff + 4 文件实现继承验证 + canonical hash 重算一致 + linear history 单父链 129b7fc→21d2147→9332566。",
+    "local reset 7cb36e0（validation-strategy-adjustment attempt，doctor 拒绝 READY 后字段变更）→ 回到 9332566 干净候选，Owner 授权 reset 摘除未推送链。"
+  ],
+  "remaining": [
+    "完整 Harness unittest deferred to unified audit（Owner 2026-08-12 static-gates-only 策略）；候选 872311a 实现包含新增 7 subTest 负测，将在统一审计阶段随完整 unittest discover 一次性验证。",
+    "RISK-09（TASK-0158 search_path 收紧）按 Owner 授权处理；之后全部修复后对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "完整 Harness unittest 在本卡未独立跑通（Owner 2026-08-12 static-gates-only 策略）；候选 872311a 实现静态层面全 PASS（doctor 751922/752227、canonical hash 重算一致、scope/invariants clean、目标测试 CiExecutionPolicyTests + CiWorkflowTests 聚焦 PASS in TASK-0157），完整 unittest 留统一审计阶段串行跑（避免并行 IO 争用 hung 重演）。",
+    "remote exact-SHA 通道未取得 PASS（dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical precheck/diff --check（unittest 在统一审计阶段补充）。",
+    "ci.yml 三平台 matrix 使 GitHub Actions 总分钟消耗上升（backend 1→3 jobs，frontend 1→3 jobs），但 quota 已耗尽（dispatchCount=0），实际 CI 不再调度。",
+    "windowsJavaHome 语义丢失：移除后『本地 Windows 跑 BACKEND_LOCAL profile』场景无 JDK 路径约定；当前实际无此场景（本地 fallback 走 macOS HARNESS_PORTABILITY_LOCAL profile）。",
+    "AuthService.MAX_USERNAME_LENGTH=128/MAX_PASSWORD_LENGTH=1024 字符常量未改（TASK-0156 留存，冗余但无害）。"
+  ],
+  "nextAction": "完成 TASK-0158（RISK-09 search_path 收紧）：V18 SET search_path vc,public → vc,pg_catalog（全部 SD 函数 + migration 头部）+ REVOKE CREATE ON SCHEMA public FROM PUBLIC + shadow-object 负测（public 建同名函数劫持验证拒绝）；C4 database-migration + humanApproval(scope: database-migration)；新增 V18 migration，DB 变更跑 run-rls-tests.sh（当前 56 测试，OrbStack pgvector:0.8.5-pg18）；按 Owner 2026-08-12 static-gates-only 策略（完整 unittest 留统一审计）。全部修复后对最新 origin/main 做独立全项目复审（含完整 Harness unittest 串行）。"
+}
