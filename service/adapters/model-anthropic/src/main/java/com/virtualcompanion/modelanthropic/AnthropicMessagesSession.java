@@ -10,6 +10,8 @@ import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
+import com.virtualcompanion.modelruntime.contract.Utf8ByteAccumulator;
+import com.virtualcompanion.modelruntime.port.EgressDnsGuard;
 import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
 
 import java.io.IOException;
@@ -52,6 +54,7 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
     private final ModelProtocolRequest request;
     private final InvocationBinding binding;
     private final AnthropicMessagesCodec codec;
+    private final EgressDnsGuard egressDnsGuard;
     private final long startedNanos;
     private final long totalDeadlineNanos;
     private final CompletableFuture<Void> firstContentSeen = new CompletableFuture<>();
@@ -76,6 +79,7 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
         this.request = Objects.requireNonNull(request, "request must not be null");
         this.binding = request.binding();
         this.codec = Objects.requireNonNull(codec, "codec must not be null");
+        this.egressDnsGuard = EgressDnsGuard.defaults();
         this.startedNanos = System.nanoTime();
         this.totalDeadlineNanos = deadline(
                 startedNanos,
@@ -145,6 +149,10 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
 
     private void execute() {
         try {
+            egressDnsGuard.requireAllowedResolution(httpRequest.uri());
+            if (isTerminalQueued()) {
+                return;
+            }
             responseFuture = httpClient.sendAsync(
                     httpRequest,
                     BodyHandlers.ofInputStream()
@@ -679,6 +687,9 @@ final class AnthropicMessagesSession implements ModelProtocolSession {
             return new AdapterFailure.Timeout(AdapterFailure.TimeoutPhase.TOTAL);
         }
         if (cause instanceof AnthropicCodecException) {
+            return new AdapterFailure.MalformedResponse();
+        }
+        if (cause instanceof IllegalArgumentException) {
             return new AdapterFailure.MalformedResponse();
         }
         if (cause instanceof CancellationException) {
