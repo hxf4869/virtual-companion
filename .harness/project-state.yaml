@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0157
+activeTaskCard: docs/tasks/TASK-0157-p2-27-complete-ci-matrix.md
 lastAcceptedTask: TASK-0160
 lastAcceptedHandoff: docs/handoffs/TASK-0160.json
 lastTerminalTask: TASK-0160
 lastTerminalHandoff: docs/handoffs/TASK-0160.json
-nextAction: '完成 TASK-0157（P2-27 完整 CI 矩阵）：backend+frontend 三平台（ubuntu/windows/macos），database 保持 Linux-only；移除 ci-execution-policy.yaml BACKEND_LOCAL.windowsJavaHome 硬编码 G:/ai/hxf/.tools/temurin-25.0.4+7 改可配置；同步 doctor.py 的冻结断言。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
+nextAction: '完成 TASK-0157（P2-27 完整 CI 矩阵）：backend+frontend 三平台（ubuntu/windows/macos），database 保持 Linux-only；移除 ci-execution-policy.yaml BACKEND_LOCAL.windowsJavaHome 硬编码 G:/ai/hxf/.tools/temurin-25.0.4+7 改 javaToolchain 声明字段；同步 doctor.py 的冻结断言；补 BACKEND_LOCAL/FRONTEND_LOCAL 负测门禁。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
