@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0154
+activeTaskCard: docs/tasks/TASK-0154-sd-owner-param-trusted-assertion.md
 lastAcceptedTask: TASK-0153
 lastAcceptedHandoff: docs/handoffs/TASK-0153.json
 lastTerminalTask: TASK-0153
 lastTerminalHandoff: docs/handoffs/TASK-0153.json
-nextAction: 完成 TASK-0154（P1-04 SD 函数 owner 参数服务端可信收敛）：V17 所有 ~34 个含 p_owner_user_id 的 SECURITY DEFINER 函数加 current_owner_id 一致性断言（保留参数，Java 调用点不改签名）+ SQL 测试补 caller-mismatch 负测；之后按 Owner 授权处理 P1-11（TASK-0155）、P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。
+nextAction: 完成 TASK-0154（P1-04 SD 函数 owner 参数服务端可信收敛）：V17 所有 34 个含 p_owner_user_id 的 SECURITY DEFINER 函数加 current_owner_id 一致性断言（强模式 fail-closed：IS DISTINCT FROM 含 NULL 拒绝，移除函数内部 set_config owner，保留参数 Java 调用点不改签名）+ 9 现有测试重构加 SET LOCAL/set_config vc.owner_user_id 前置 + 2 新 SQL 负测（caller-mismatch/missing-context）；之后按 Owner 授权处理 P1-11（TASK-0155）、P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
