@@ -1,0 +1,58 @@
+{
+  "taskId": "TASK-0160",
+  "state": "ACCEPTED",
+  "baseCommit": "662945a219778caf0829582ce60f16747a278453",
+  "headCommit": "7c0e833b1b59552e96cbb9fb854626239533231f",
+  "evidencePath": "docs/evidence/TASK-0160/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "53e2955",
+      "startedAt": "2026-08-12T03:20:00+08:00",
+      "endedAt": "2026-08-12T04:10:00+08:00",
+      "elapsedSeconds": 3000,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "7cb578a",
+      "startedAt": "2026-08-12T03:50:00+08:00",
+      "endedAt": "2026-08-12T04:05:00+08:00",
+      "elapsedSeconds": 900,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "2026-08-12T03:45:00+08:00",
+      "inProgressCommit": "7cb578a",
+      "reason": "实现 = AuthSourceAdmissionFilterTest 2 处 20→10；Maven verify 227 tests 0 failures；canonical precheck 8/8 PASS（746393）；diff --check exit 0。R1 PASS。候选 7c0e833/30686382。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0160_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "7c0e833",
+      "candidateTree": "30686382",
+      "evidencePath": "docs/evidence/TASK-0160/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2。独立运行 Maven verify + precheck + diff 全绿；context fingerprint 一致；replacement 合规。"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0160 DRAFT/READY/authorizationCommit/IN_PROGRESS；DRAFT+READY Doctor PASS。",
+    "实现（7c0e833）：AuthSourceAdmissionFilterTest 2 处硬编码 20→10，匹配 LOGIN_SOURCE_LIMIT 收紧。",
+    "唯一根级 Maven verify BUILD SUCCESS（227 tests 0 failures）。",
+    "唯一 canonical precheck 8/8 PASS（746393 checks）。",
+    "唯一 git diff --check PASS（exit 0）。",
+    "独立 C3 R1 PASS（0 P0/P1/P2）。"
+  ],
+  "remaining": [
+    "P2-27（完整 CI 矩阵）+ RISK-09（search_path 收紧）留 TASK-0157/0158。",
+    "全部修复后须对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical precheck/Maven verify/diff --check。",
+    "本卡为 TASK-0156 replacement；P2-03 实现随 TASK-0156 REJECTED terminal + 本卡 ACCEPTED 正式落地。",
+    "AuthSourceAdmissionFilterTest 硬编码 10（package-private 限制）；若 LOGIN_SOURCE_LIMIT 再次变更需同步更新。"
+  ],
+  "nextAction": "完成 TASK-0157（P2-27 完整 CI 矩阵）：backend+frontend 三平台（ubuntu/windows/macos），database 保持 Linux-only；移除 ci-execution-policy.yaml BACKEND_LOCAL.windowsJavaHome 硬编码改可配置；同步 doctor.py 的冻结断言。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+}

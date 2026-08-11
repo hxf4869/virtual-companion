@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0160
-activeTaskCard: docs/tasks/TASK-0160-p2-03-auth-source-admission-test-fix.md
-lastAcceptedTask: TASK-0159
-lastAcceptedHandoff: docs/handoffs/TASK-0159.json
-lastTerminalTask: TASK-0156
-lastTerminalHandoff: docs/handoffs/TASK-0156.json
-nextAction: '实现 TASK-0160（P2-03 replacement，READY 已授权）：AuthSourceAdmissionFilterTest 硬编码 20→AuthAbuseGuard.LOGIN_SOURCE_LIMIT（2 处）+ 根级 Maven verify（227 tests 全绿）+ canonical precheck + 独立 R1 + Evidence/Handoff/终态；之后按 Owner 授权处理 P2-27（TASK-0157）、RISK-09（TASK-0158）。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0160
+lastAcceptedHandoff: docs/handoffs/TASK-0160.json
+lastTerminalTask: TASK-0160
+lastTerminalHandoff: docs/handoffs/TASK-0160.json
+nextAction: '完成 TASK-0157（P2-27 完整 CI 矩阵）：backend+frontend 三平台（ubuntu/windows/macos），database 保持 Linux-only；移除 ci-execution-policy.yaml BACKEND_LOCAL.windowsJavaHome 硬编码 G:/ai/hxf/.tools/temurin-25.0.4+7 改可配置；同步 doctor.py 的冻结断言。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

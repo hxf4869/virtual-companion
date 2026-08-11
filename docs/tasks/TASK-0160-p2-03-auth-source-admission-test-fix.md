@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0160
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -379,8 +379,23 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
-terminalStateReason: ""
+reviewers:
+  - id: task0160_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "7c0e833"
+    candidateTree: "30686382"
+    evidencePath: docs/evidence/TASK-0160/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2。独立运行 Maven verify BUILD SUCCESS（227 tests 0 failures）+ canonical
+      precheck 8/8 PASS（746393 checks）+ git diff --check exit 0；context fingerprint 332463bf... 一致；
+      writeAllowlist/forbiddenPaths 零冲突；replacement 合规（Base=TASK-0156 REJECTED terminal 662945a）。
+terminalStateReason: >-
+  P2-03 auth 限流收紧完整落地。TASK-0156 实现（48f5e00，5 文件 auth 收紧）+ TASK-0160 补修复
+  （AuthSourceAdmissionFilterTest 2 处 20→10）合并验证：唯一根级 Maven verify BUILD SUCCESS
+  （227 tests 0 failures）；唯一 canonical precheck 8/8 PASS（746393 checks）；唯一 git diff --check
+  PASS；R1 PASS（0 P0/P1/P2）；候选 7c0e833/tree 30686382；remote exact-SHA 如实非 PASS
+  （dispatchCount=0，LOCAL_EXACT_TREE_FALLBACK 冻结于 READY）。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 TASK-0156（P2-03）

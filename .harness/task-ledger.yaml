@@ -844,3 +844,9 @@ tasks:
     taskCard: docs/tasks/TASK-0156-p2-03-auth-rate-limit-and-input-tightening.md
     evidence: docs/evidence/TASK-0156/evidence-pack.json
     handoff: docs/handoffs/TASK-0156.json
+  TASK-0160:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0160-p2-03-auth-source-admission-test-fix.md
+    evidence: docs/evidence/TASK-0160/evidence-pack.json
+    handoff: docs/handoffs/TASK-0160.json

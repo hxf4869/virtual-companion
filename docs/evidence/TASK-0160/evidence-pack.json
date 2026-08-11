@@ -1,0 +1,61 @@
+{
+  "taskId": "TASK-0160",
+  "state": "ACCEPTED",
+  "baseCommit": "662945a219778caf0829582ce60f16747a278453",
+  "headCommit": "7c0e833b1b59552e96cbb9fb854626239533231f",
+  "evidencePath": "docs/evidence/TASK-0160/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "53e2955",
+      "startedAt": "2026-08-12T03:20:00+08:00",
+      "endedAt": "2026-08-12T04:10:00+08:00",
+      "elapsedSeconds": 3000,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "7cb578a",
+      "startedAt": "2026-08-12T03:50:00+08:00",
+      "endedAt": "2026-08-12T04:05:00+08:00",
+      "elapsedSeconds": 900,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "2026-08-12T03:45:00+08:00",
+      "inProgressCommit": "7cb578a",
+      "reason": "实现 = AuthSourceAdmissionFilterTest 2 处硬编码 20→10（匹配 LOGIN_SOURCE_LIMIT 收紧）；Maven verify 227 tests 0 failures BUILD SUCCESS；canonical precheck 8/8 PASS（746393 checks）；git diff --check exit 0。R1 PASS（0 P0/P1/P2）。候选冻结 7c0e833/30686382。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0160_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "7c0e833",
+      "candidateTree": "30686382",
+      "evidencePath": "docs/evidence/TASK-0160/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2。独立运行 Maven verify BUILD SUCCESS（227 tests 0 failures）+ canonical precheck 8/8 PASS + git diff --check exit 0；context fingerprint 332463bf... 一致；writeAllowlist/forbiddenPaths 零冲突；replacement 合规（Base=TASK-0156 REJECTED terminal 662945a，不重复实现，Owner 授权链完整）。"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0160 DRAFT(53e2955)/READY(8331448)/authorizationCommit(375eb29)/IN_PROGRESS(7cb578a)；DRAFT Doctor PASS(741769)、READY Doctor PASS(744658)。",
+    "实现（7c0e833）：AuthSourceAdmissionFilterTest 2 处硬编码 20→10（forwardedHeadersCannotSplitTheServletSourceWindow L33 + loginAndRefreshSourceScopesAreIndependent L178），匹配 TASK-0156 已落地的 LOGIN_SOURCE_LIMIT=10。package-private 常量跨包不可达故硬编码。",
+    "唯一根级 Maven verify BUILD SUCCESS（227 tests，0 failures，Total time 20.820s）；AuthSourceAdmissionFilterTest 先前 2 个失败现 PASS。",
+    "唯一 canonical precheck 8/8 PASS（doctor 746393、catalogValidate、catalogDrift、paidFeatureCheck、licenseCheck 71 deps/15 poms、betaRosterGate、openapiValidate、openapiDrift）。",
+    "唯一无参数 git diff --check PASS（exit 0，输出空）。",
+    "独立 C3 R1 完整复核 PASS（0 P0/P1/P2）；Reviewer 独立运行 Maven verify + precheck + diff + doctor 全绿；context fingerprint 独立复算一致；replacement 合规。",
+    "本地 exact-tree 通道在精确候选 Commit/Tree（7c0e833/30686382）PASS；remote exact-SHA 未调度（LOCAL_EXACT_TREE_FALLBACK frozen，dispatchCount=0，远端如实非 PASS）。"
+  ],
+  "remaining": [
+    "P2-27（完整 CI 矩阵）+ RISK-09（search_path 收紧）留 TASK-0157/0158。",
+    "ConversationRepository/MessageRepository/JdbcAuthorizationSnapshotStore 在 runtime 未装配（runtime 用 InMemoryAuthorizationSnapshotStore）；这些类含直接 INSERT 业务表 SQL，未来接线需走 SD 函数或补窄 SD。",
+    "全部修复后须对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "remote exact-SHA 通道未取得 PASS（配额耗尽强类型证据，dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 的 passClaimed 限于已记录平台（macOS）/命令（canonical precheck、Maven verify、git diff --check）。",
+    "本卡为 TASK-0156 replacement；TASK-0156 REJECTED 历史（662945a）不可改写，其候选 48f5e00 的 P2-03 实现随 662945a 进入主分支并由本卡 ACCEPTED 正式落地。",
+    "AuthSourceAdmissionFilterTest 硬编码 10 而非常量引用（package-private 限制）；若未来 LOGIN_SOURCE_LIMIT 再次变更，需同步更新此测试。",
+    "AuthService.MAX_USERNAME_LENGTH=128/MAX_PASSWORD_LENGTH=1024 字符常量未改（冗余但无害：AuthInputLimits 字节限制 64B/128B 更紧先生效；AuthServiceTest 全量审查无断裂）。"
+  ],
+  "nextAction": "完成 TASK-0157（P2-27 完整 CI 矩阵）：backend+frontend 三平台（ubuntu/windows/macos），database 保持 Linux-only；移除 ci-execution-policy.yaml BACKEND_LOCAL.windowsJavaHome 硬编码改可配置；同步 doctor.py 的冻结断言。C4 harness-change + humanApproval(scope: harness-change)；之后按 Owner 授权处理 RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+}
