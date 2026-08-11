@@ -17,6 +17,7 @@ targetSkillVersions: {}
 baseCommit: 26131834ce239608116f34cd87ce65a5750310f9
 contextFingerprint: 3aa7fdd4cdc976477da15d25f06df832db0848dc67900f8ab0afd6d1d46dc703
 contextLock: docs/tasks/context/TASK-0152.context-lock.yaml
+authorizationCommit: 3656508351a8b2d6397b827203a6a75cc78110ea
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
 deliveryMode: single-card
 deliveryBudgets:
