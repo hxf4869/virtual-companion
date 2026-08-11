@@ -2558,6 +2558,76 @@ class CiExecutionPolicyTests(unittest.TestCase):
                     validate_ci_execution_policy(audit)
                 self.assertTrue(audit.errors)
 
+    def test_policy_rejects_backend_and_frontend_local_profile_drift(
+        self,
+    ) -> None:
+        policy_path = ROOT / ".harness/ci-execution-policy.yaml"
+        real_load_yaml = doctor.load_yaml
+        variants = []
+
+        windows_java_home_returned = copy.deepcopy(load_yaml(policy_path))
+        windows_java_home_returned["profiles"]["BACKEND_LOCAL"]["windowsJavaHome"] = (
+            "G:/ai/hxf/.tools/temurin-25.0.4+7/jdk-25.0.4+7"
+        )
+        variants.append(("windowsJavaHome_returned", windows_java_home_returned))
+
+        missing_java_toolchain = copy.deepcopy(load_yaml(policy_path))
+        missing_java_toolchain["profiles"]["BACKEND_LOCAL"].pop(
+            "javaToolchain", None
+        )
+        variants.append(("missing_javaToolchain", missing_java_toolchain))
+
+        wrong_toolchain_version = copy.deepcopy(load_yaml(policy_path))
+        wrong_toolchain_version["profiles"]["BACKEND_LOCAL"]["javaToolchain"][
+            "versionLine"
+        ] = "21-LTS"
+        variants.append(
+            ("javaToolchain_versionLine_drift", wrong_toolchain_version)
+        )
+
+        wrong_toolchain_resolver = copy.deepcopy(load_yaml(policy_path))
+        wrong_toolchain_resolver["profiles"]["BACKEND_LOCAL"]["javaToolchain"][
+            "resolver"
+        ] = "LOCAL_PATH"
+        variants.append(
+            ("javaToolchain_resolver_unsupported", wrong_toolchain_resolver)
+        )
+
+        wrong_backend_distribution = copy.deepcopy(load_yaml(policy_path))
+        wrong_backend_distribution["profiles"]["BACKEND_LOCAL"]["javaToolchain"][
+            "distribution"
+        ] = "oracle"
+        variants.append(
+            ("javaToolchain_distribution_drift", wrong_backend_distribution)
+        )
+
+        wrong_frontend_pnpm = copy.deepcopy(load_yaml(policy_path))
+        wrong_frontend_pnpm["profiles"]["FRONTEND_LOCAL"]["pnpmVersion"] = "10.0.0"
+        variants.append(("frontend_pnpmVersion_drift", wrong_frontend_pnpm))
+
+        wrong_frontend_node = copy.deepcopy(load_yaml(policy_path))
+        wrong_frontend_node["profiles"]["FRONTEND_LOCAL"]["nodeVersion"] = "20"
+        variants.append(("frontend_nodeVersion_drift", wrong_frontend_node))
+
+        for label, variant in variants:
+            with self.subTest(variant=label):
+                def load_with_variant(path: Path) -> dict[str, object]:
+                    if Path(path) == policy_path:
+                        return variant
+                    return real_load_yaml(path)
+
+                audit = Audit()
+                with patch.object(
+                    doctor,
+                    "load_yaml",
+                    side_effect=load_with_variant,
+                ):
+                    validate_ci_execution_policy(audit)
+                self.assertTrue(
+                    audit.errors,
+                    f"expected policy drift detection for {label}",
+                )
+
     def test_task0069_remote_unknown_local_recovery_is_exact_and_fail_closed(
         self,
     ) -> None:

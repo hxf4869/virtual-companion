@@ -192,7 +192,10 @@ profiles:
       - pom.xml
       - .harness/tools.lock.yaml
       - .github/workflows/ci.yml
-    windowsJavaHome: G:/ai/hxf/.tools/temurin-25.0.4+7/jdk-25.0.4+7
+    javaToolchain:
+      distribution: temurin
+      versionLine: "25-LTS"
+      resolver: ACTIONS_SETUP_JAVA
     modifySystemJava: false
   FRONTEND_LOCAL:
     affectedPaths:

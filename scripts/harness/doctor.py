@@ -173,7 +173,7 @@ TASK_0075_CI_POLICY_PROJECTION_HASH = (
     "fc6622dfad6fba0aa15d3af403faedc28ee69b0ff93f89fd1886953d2b1ce8eb"
 )
 CI_EXECUTION_POLICY_CANONICAL_HASH = (
-    "e04d3c6dab7ebcc3d6253683bcb05fbac4bb274a8d07976b5b5ae69e15a05170"
+    "f8f2ea2088cd6075c599fb406de6b1f9c65b52eb39fd14be9fe8ddb122ccd6fe"
 )
 TASK_0073_CI_POLICY_PROJECTION_HASH = (
     "3a253a215a88d4b9bd987d7dd2cbf0b2400f93fbd7086b071eb511f81f9cf8a1"
@@ -13105,8 +13105,13 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "-am",
             "verify",
         ]
-        and backend.get("windowsJavaHome")
-        == "G:/ai/hxf/.tools/temurin-25.0.4+7/jdk-25.0.4+7"
+        and "windowsJavaHome" not in backend
+        and backend.get("javaToolchain")
+        == {
+            "distribution": "temurin",
+            "versionLine": "25-LTS",
+            "resolver": "ACTIONS_SETUP_JAVA",
+        }
         and backend.get("modifySystemJava") is False
         and isinstance(frontend, dict)
         and frontend.get("affectedModulesOnly") is True

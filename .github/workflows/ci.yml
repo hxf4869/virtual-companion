@@ -82,9 +82,22 @@ jobs:
         run: bash scripts/harness/precheck.sh
 
   backend:
-    name: Backend
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: Backend (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            timeoutMinutes: 30
+          - os: windows-latest
+            timeoutMinutes: 30
+          - os: macos-latest
+            timeoutMinutes: 30
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeoutMinutes }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         # actions/checkout@v6 -> d23441a48e516b6c34aea4fa41551a30e30af803
@@ -104,7 +117,7 @@ jobs:
         run: ./mvnw --batch-mode --no-transfer-progress verify
 
   database:
-    name: Database (PostgreSQL 18 + pgvector)
+    name: Database (PostgreSQL 18 + pgvector) - Linux-only reference platform
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -127,9 +140,22 @@ jobs:
           if-no-files-found: ignore
 
   frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Frontend (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            timeoutMinutes: 20
+          - os: windows-latest
+            timeoutMinutes: 25
+          - os: macos-latest
+            timeoutMinutes: 20
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeoutMinutes }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         # actions/checkout@v6 -> d23441a48e516b6c34aea4fa41551a30e30af803
