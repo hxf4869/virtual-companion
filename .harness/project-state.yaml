@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0159
+activeTaskCard: docs/tasks/TASK-0159-p1-11-license-inventory-registration.md
 lastAcceptedTask: TASK-0154
 lastAcceptedHandoff: docs/handoffs/TASK-0154.json
 lastTerminalTask: TASK-0155
 lastTerminalHandoff: docs/handoffs/TASK-0155.json
-nextAction: '完成 TASK-0159（P1-11 migrator/runtime 分离 + 503 readiness 的 replacement 卡，Base=TASK-0155 REJECTED terminal）：writeAllowlist 自 DRAFT 起含 .harness/license-inventory.yaml + 声明 scope: harness-change C4 + humanApproval，登记 spring-boot-starter-flyway (Apache-2.0) 后重跑 canonical precheck（licenseCheck PASS）+ 完整 Harness unittest + R1 独立复核 + Evidence/Handoff + pre-closure + 单父 [skip ci] 终态 + push + 远端 0/0；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
+nextAction: '完成 TASK-0159（P1-11 license gate 补登记，TASK-0155 replacement，Base=b748daf）：登记 spring-boot-starter-flyway (Apache-2.0) 到 .harness/license-inventory.yaml + canonical precheck（licenseCheck PASS）+ 完整 Harness unittest + R1 独立复核 + Evidence/Handoff/pre-closure/单父 [skip ci] 终态/push/远端 0/0；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
