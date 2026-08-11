@@ -1,0 +1,41 @@
+{
+  "taskId": "TASK-0155",
+  "state": "REJECTED",
+  "baseCommit": "2ba482966cf3812629c1e8dfd111a798dba9cd96",
+  "headCommit": "2bc38c6e070533678f4df35e5b6d79c21efd97c3",
+  "evidencePath": "docs/evidence/TASK-0155/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {"anchor": "DRAFT_COMMIT", "anchorCommit": "2e722ad", "elapsedSeconds": 5100, "reanchored": false},
+    "candidateExecution": {"anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT", "anchorCommit": "dd0f0ad", "elapsedSeconds": 3300, "outcome": "FAIL", "reason": "R1 licenseCheck P0 阻塞"}
+  },
+  "reviewers": [
+    {
+      "id": "task0155_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "2bc38c6",
+      "candidateTree": "b85ab881",
+      "evidencePath": "docs/evidence/TASK-0155/review-r1.md",
+      "reason": "R1 FAIL（P0）：canonical precheck 7/8，licenseCheck 因 spring-boot-starter-flyway 未登记 license-inventory.yaml 失败。实现与静态矩阵整体合格，唯一阻塞为 license gate 流程性遗漏。"
+    }
+  ],
+  "completed": [
+    "TASK-0155 DRAFT(2e722ad)/READY(a2e92ec)/authorizationCommit(f16291b)/IN_PROGRESS(dd0f0ad) 链；DRAFT Doctor PASS(724424)、READY Doctor PASS(728708)。",
+    "实现 P1-11：service/apps/runtime/pom.xml 新增 spring-boot-starter-flyway；application.yaml 新增 spring.flyway.* 块（enabled 默认 false、locations=classpath:db/migration、fail-on-missing-locations=true）+ production profile 强制 4 个 flyway 属性；AuthDataSourceConfig 新增 flywayMigratorCredentialsGuard（fail-fast）+ schemaReadinessHealthIndicator bean；新类 SchemaReadinessHealthIndicator（pg_proc 必需 SD 函数 + 4 runtime 角色 + flyway_schema_history 版本/失败行，fail-closed DOWN）；AuthExceptionHandler SQLSTATE 3F000/42883/42P01/42703 → 503 SCHEMA_UNAVAILABLE（工程适配：Spring 7 无 Undefined*Exception 子类，3F000 为 UncategorizedSQLException，改 cause 链判定）。",
+    "测试：SchemaReadinessHealthIndicatorTest 9 例（矩阵）+ AuthExceptionHandlerTest 8 例 + ProductionProfileFailClosedTest 增 2 例（缺 migrator 凭据 fail-fast；migrator 端口 5433/runtime 59999 分离证明）+ infra/db/tests/56_runtime_role_cannot_migrate.sql（runtime role DDL/Flyway 篡改全拒绝）。",
+    "迭代验证全绿：定向单测 24/24 PASS；RLS 套件 56/56 PASS（含 test 56）；根级 Maven verify BUILD SUCCESS（14 模块，runtime 227 tests 0 失败）；手动 e2e（pgvector 空库两 boot）BOOT A health 503 + login 503 SCHEMA_UNAVAILABLE，BOOT B V1..V17 迁移 + health UP + history version=17 + roles=4；git diff --check exit 0。",
+    "R1 独立复核完整执行（diff/doctor/precheck/RLS/Maven 全独立运行）；工程适配（SQLSTATE cause 链）获 R1 批准。",
+    "唯一未达成：canonical precheck 7/8（licenseCheck FAIL——spring-boot-starter-flyway 未登记 license-inventory.yaml）。"
+  ],
+  "remaining": [
+    "P1-11（migrator/runtime 分离 + 503 readiness）实现已全绿，仅差 license gate 登记：replacement 卡 TASK-0159 以本 REJECTED terminal 为 Base，writeAllowlist 自 DRAFT 起含 .harness/license-inventory.yaml + 声明 scope: harness-change C4 + humanApproval，登记 spring-boot-starter-flyway (Apache-2.0) 后重跑 canonical precheck（licenseCheck PASS）+ 完整 Harness unittest（C4 protected 内容变更，约 261+ tests）+ git diff --check + R1 独立复核（C4 必须）+ Evidence/Handoff + pre-closure + 单父 [skip ci] 终态 + push + 远端 0/0。",
+    "P2-03（应用内限流 + 锁定收紧）→ TASK-0156；P2-27（完整 CI 矩阵）→ TASK-0157；RISK-09（search_path 收紧）→ TASK-0158。",
+    "全部修复后对最新 origin/main 做独立全项目复审。"
+  ],
+  "knownRisks": [
+    "TASK-0155 候选 2bc38c6/tree b85ab881 实现已全绿（24 单测/RLS 56/56/Maven verify/e2e），仅 license gate 流程性遗漏；replacement 卡 TASK-0159 承接相同实现（Base 即本 REJECTED terminal），不应重复实现，只登记依赖 + 重跑门禁。",
+    "Remote exact-SHA 通道未取得 PASS（R1 阻塞未进入 exact-tree）；LOCAL_EXACT_TREE_FALLBACK 远端如实非 PASS（dispatchCount=0）。",
+    "工程适配（SQLSTATE cause 链判定替代 Undefined*Exception 子类 handler）已由 R1 批准；replacement 卡正文范围内/验收措辞建议同步统一为「SQLSTATE cause 链」措辞，避免文档/实现偏差（P3）。"
+  ],
+  "nextAction": "完成 TASK-0159（P1-11 migrator/runtime 分离 + 503 readiness 的 replacement 卡，Base=TASK-0155 REJECTED terminal）：writeAllowlist 自 DRAFT 起含 .harness/license-inventory.yaml + 声明 scope: harness-change C4 + humanApproval，登记 spring-boot-starter-flyway (Apache-2.0) 后重跑 canonical precheck（licenseCheck PASS）+ 完整 Harness unittest + R1 独立复核 + Evidence/Handoff + pre-closure + 单父 [skip ci] 终态 + push + 远端 0/0；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。"
+}

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0155
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -384,12 +384,26 @@ independentReview: required
 reviewers:
   - id: task0155_r1
     kind: independent-review-gate
-    verdict: null
-    reviewedCommit: null
-    candidateTree: null
+    verdict: FAIL
+    reviewedCommit: 2bc38c6
+    candidateTree: b85ab881
     evidencePath: docs/evidence/TASK-0155/review-r1.md
-    reason: ""
-terminalStateReason: ""
+    reason: >-
+      R1 FAIL（P0）：唯一 canonical precheck 7/8——licenseCheck 因 service/apps/runtime/pom.xml 新增
+      spring-boot-starter-flyway 未登记 .harness/license-inventory.yaml 失败（该文件为本卡 forbiddenPath
+      + C4 protected，候选身份无法自修；amendment 机制无法授权，doctor 硬校验 addedWriteAllowlist
+      与 forbiddenPaths 零冲突且 READY 后 forbiddenPaths 不可改）。实现与静态矩阵整体合格（A-E PASS，
+      验收 1-8/10 PASS 或 NOT_RUN，24 单测/RLS 56/56/Maven verify BUILD SUCCESS/e2e 全绿）。Owner 决议
+      本卡如实 REJECTED，由 replacement 卡 TASK-0159 在 writeAllowlist 纳入 license-inventory +
+      声明 C4 harness-change + humanApproval 后承接相同实现 + 登记依赖 + 重跑全部门禁收尾。
+terminalStateReason: >-
+  P1-11 实现已全绿但 canonical precheck licenseCheck 阻塞（P0）：spring-boot-starter-flyway 未登记
+  license-inventory.yaml。该文件为本卡 forbiddenPath + C4 protected，候选无法自修；amendment 亦无法
+  授权（forbiddenPaths 冲突 + READY 冻结）。经 Owner 2026-08-11 决议：本卡如实 REJECTED（保留失败历史
+  与全绿验证证据），replacement 卡 TASK-0159 以本 REJECTED terminal 为 Base 承接相同实现 + 仅登记依赖 +
+  重跑全部门禁。R1 verdict FAIL；候选 2bc38c6/tree b85ab881；24 单测/RLS 56/56/根级 Maven verify BUILD
+  SUCCESS/手动 e2e 全绿；canonical 7/8（licenseCheck FAIL）；git diff --check PASS；remote exact-SHA
+  未进入（R1 阻塞）。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。P1-11 是

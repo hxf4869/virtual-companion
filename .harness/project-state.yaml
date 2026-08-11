@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0155
-activeTaskCard: docs/tasks/TASK-0155-p1-11-migrator-runtime-separation-and-schema-readiness.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0154
 lastAcceptedHandoff: docs/handoffs/TASK-0154.json
-lastTerminalTask: TASK-0154
-lastTerminalHandoff: docs/handoffs/TASK-0154.json
-nextAction: 完成 TASK-0155（P1-11 migrator/runtime 分离 + 503 readiness）：显式分离 Flyway migrator datasource 与 runtime datasource（应用内 Flyway 迁移 principal + runtime vc_* 最小权限连接）+ 新增 schema_version readiness gate（SchemaReadinessHealthIndicator：必需 SD 函数/4 个 runtime 角色/flyway_schema_history 版本与失败行，缺 schema/落后一版/迁移失败 → health DOWN 503）+ AuthExceptionHandler 未定义对象类 SQL 错误 → 503 SCHEMA_UNAVAILABLE 不伪装 401 + RLS 负测 56（runtime role 无 DDL/Flyway 篡改能力）+ 手动 e2e 验证空库/迁移两 boot；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。
+lastTerminalTask: TASK-0155
+lastTerminalHandoff: docs/handoffs/TASK-0155.json
+nextAction: '完成 TASK-0159（P1-11 migrator/runtime 分离 + 503 readiness 的 replacement 卡，Base=TASK-0155 REJECTED terminal）：writeAllowlist 自 DRAFT 起含 .harness/license-inventory.yaml + 声明 scope: harness-change C4 + humanApproval，登记 spring-boot-starter-flyway (Apache-2.0) 后重跑 canonical precheck（licenseCheck PASS）+ 完整 Harness unittest + R1 独立复核 + Evidence/Handoff + pre-closure + 单父 [skip ci] 终态 + push + 远端 0/0；之后按 Owner 授权处理 P2-03（TASK-0156）、P2-27（TASK-0157）、RISK-09（TASK-0158）；全部修复后对最新 origin/main 做独立全项目复审。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-11'
+updatedAt: '2026-08-12'

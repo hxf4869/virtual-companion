@@ -1,0 +1,105 @@
+{
+  "taskId": "TASK-0155",
+  "state": "REJECTED",
+  "baseCommit": "2ba482966cf3812629c1e8dfd111a798dba9cd96",
+  "headCommit": "2bc38c6e070533678f4df35e5b6d79c21efd97c3",
+  "headTree": "b85ab8819f381cdc1fedadcc311b7371f93ea238",
+  "authorizationCommit": "a2e92ecf923af6affd516b699d36870fbe33249d",
+  "inProgressCommit": "dd0f0adc7f714e5763ed6e3d2f0493b41fe45178",
+  "contextFingerprint": "523497cf7051ab4818c0d7ee28caf1ca634cadef9089dba41a2a8c0de379a0f7",
+  "deliveryMode": "single-card",
+  "validationChannel": "LOCAL_EXACT_TREE_FALLBACK",
+  "validationProfile": "precheck",
+  "riskClass": "C2",
+  "rejectionReason": "R1 阻塞（P0）：唯一 canonical precheck 7/8 FAIL——licenseCheck 因 service/apps/runtime/pom.xml 新增 org.springframework.boot:spring-boot-starter-flyway 未登记 .harness/license-inventory.yaml 而失败。该文件为本卡 forbiddenPath + C4 protected，候选身份下无法自修；amendment 机制亦无法授权（doctor 硬校验 addedWriteAllowlist 与 forbiddenPaths 零冲突，且 READY 后 forbiddenPaths 不可改）。经 Owner 决议：本卡如实 REJECTED，replacement 卡 TASK-0159 从 DRAFT 起把 license-inventory 纳入 writeAllowlist + 声明 C4 harness-change + humanApproval，承接相同已全绿实现 + 登记依赖 + 重跑全部门禁。实现质量与静态矩阵全 PASS（验收 1-8/10 PASS 或 NOT_RUN）；唯一阻塞为 license gate 流程性遗漏。",
+  "commands": {
+    "canonicalPrecheck": {
+      "argv": ["python", "scripts/harness/precheck.py", "--task", "TASK-0155"],
+      "exitCode": 1,
+      "result": "FAIL",
+      "subcommands": {
+        "doctor": {"exitCode": 0, "checks": 729152},
+        "catalogValidate": {"exitCode": 0},
+        "catalogDrift": {"exitCode": 0},
+        "paidFeatureCheck": {"exitCode": 0},
+        "licenseCheck": {"exitCode": 1, "reason": "service/apps/runtime/pom.xml: dependency org.springframework.boot:spring-boot-starter-flyway (scope=compile) is not in license-inventory.yaml"},
+        "betaRosterGate": {"exitCode": 0},
+        "openapiValidate": {"exitCode": 0},
+        "openapiDrift": {"exitCode": 0}
+      },
+      "note": "7/8 PASS, licenseCheck FAIL (唯一 canonical 运行, R1 Reviewer 独立运行于候选 2bc38c6)"
+    },
+    "gitDiffCheck": {
+      "argv": ["git", "diff", "--check", "2ba4829..2bc38c6"],
+      "exitCode": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result": "PASS"
+    },
+    "dbRlsTests": {
+      "argv": ["bash", "infra/db/run-rls-tests.sh"],
+      "exitCode": 0,
+      "result": "PASS",
+      "testsPassed": 56,
+      "note": "含新 test 56_runtime_role_cannot_migrate.sql；OrbStack pgvector/pgvector:0.8.5-pg18；R1 Reviewer 独立运行 + 实施者迭代"
+    },
+    "rootMavenVerify": {
+      "argv": ["./mvnw", "--batch-mode", "--no-transfer-progress", "verify"],
+      "exitCode": 0,
+      "result": "BUILD_SUCCESS",
+      "note": "Docker JDK 25 (maven:3.9-eclipse-temurin-25-alpine) + vc-maven-cache，14 模块 SUCCESS，runtime 227 tests 0 失败；R1 Reviewer 独立运行"
+    },
+    "manualE2e": {
+      "argv": ["bash", "/tmp/e2e-155.sh"],
+      "exitCode": 0,
+      "result": "PASS",
+      "note": "迭代验证（非 canonical）：digest-pinned pgvector 空库 + maven --network host 两 boot。BOOT A (空库 + VC_FLYWAY_ENABLED=false)：/actuator/health 503 DOWN + POST /api/v1/auth/login 503 SCHEMA_UNAVAILABLE（非 401）。BOOT B (同库 + VC_FLYWAY_ENABLED=true)：V1..V17 干净迁移、/actuator/health 200 UP、flyway_schema_history 最后一条 version=17 success=t、applied_ok=17、4 runtime roles。日志 /tmp/vc-e2e-155/e2e.log（749B）。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0155_r1",
+      "kind": "independent-review-gate",
+      "verdict": "FAIL",
+      "reviewedCommit": "2bc38c6",
+      "candidateTree": "b85ab881",
+      "evidencePath": "docs/evidence/TASK-0155/review-r1.md",
+      "reason": "R1 FAIL（P0）：canonical precheck 7/8，licenseCheck 因 spring-boot-starter-flyway 未登记 license-inventory.yaml 失败。实现与静态矩阵整体合格（A-E PASS，验收 1-8/10 PASS 或 NOT_RUN），唯一阻塞为 license gate 流程性遗漏；amendment 无法授权（forbiddenPaths 冲突 + READY 冻结）。Owner 决议 REJECTED + replacement（TASK-0159）。"
+    }
+  ],
+  "remoteExactSha": {
+    "channel": "PRIMARY_REMOTE_EXACT_SHA",
+    "status": "NOT_RUN",
+    "reason": "R1 FAIL 阻塞，canonical 未通过，未进入 exact-tree 通道",
+    "passClaimed": false
+  },
+  "checks": [
+    {"name": "contextFingerprint", "result": "PASS", "value": "523497cf7051ab4818c0d7ee28caf1ca634cadef9089dba41a2a8c0de379a0f7"},
+    {"name": "writeAllowlistScope", "result": "PASS", "baseToCandidateFiles": 12, "allInWriteAllowlist": true, "forbiddenPathsTouched": false},
+    {"name": "gitDiffCheck", "result": "PASS", "exitCode": 0},
+    {"name": "canonicalPrecheck", "result": "FAIL", "exitCode": 1, "passed": 7, "failed": 1, "failedCommand": "licenseCheck"},
+    {"name": "dbRlsTests", "result": "PASS", "testsPassed": 56},
+    {"name": "rootMavenVerify", "result": "BUILD_SUCCESS"},
+    {"name": "r1IndependentReview", "result": "FAIL", "blockingFindings": ["P0 licenseCheck"]}
+  ],
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2e722ad",
+      "startedAt": "2026-08-11T22:45:00+08:00",
+      "endedAt": "2026-08-12T00:10:00+08:00",
+      "elapsedSeconds": 5100,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "dd0f0ad",
+      "startedAt": "2026-08-11T23:15:00+08:00",
+      "endedAt": "2026-08-12T00:10:00+08:00",
+      "elapsedSeconds": 3300,
+      "outcome": "FAIL",
+      "reason": "R1 licenseCheck P0 阻塞",
+      "readyDoctorPassAt": "2026-08-11T23:14:00+08:00",
+      "inProgressCommit": "dd0f0ad"
+    }
+  }
+}
