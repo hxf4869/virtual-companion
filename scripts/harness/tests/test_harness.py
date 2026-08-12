@@ -85,6 +85,7 @@ from doctor import (  # noqa: E402
     validate_ledger_history,
     validate_ledger_edge,
     validate_nonblank_text,
+    validate_nextaction_registered_references,
     validate_portable_path_collisions,
     validate_pending_draft_limit,
     validate_project_state,
@@ -8172,6 +8173,26 @@ class StateTests(unittest.TestCase):
         self.assertIn("realPayment must remain FORBIDDEN", messages)
         self.assertIn("gate realUserBeta has invalid state", messages)
         self.assertIn("gate businessImplementation.reason: must be a non-blank string", messages)
+
+    def test_nextaction_advisory_text_without_task_reference_passes(self) -> None:
+        state = {"nextAction": "先通过 task-intake 创建 DRAFT 后继续"}
+        audit = Audit()
+        validate_nextaction_registered_references(audit, state, discover_tasks())
+        self.assertEqual([], audit.errors)
+
+    def test_nextaction_registered_task_reference_passes(self) -> None:
+        state = {"nextAction": "TASK-0171 已闭环 ACCEPTED，继续剩余 Owner-gate"}
+        audit = Audit()
+        validate_nextaction_registered_references(audit, state, discover_tasks())
+        self.assertEqual([], audit.errors)
+
+    def test_nextaction_unregistered_task_reference_fails_closed(self) -> None:
+        state = {"nextAction": "将 TASK-9999 晋级为唯一 DRAFT"}
+        audit = Audit()
+        validate_nextaction_registered_references(audit, state, discover_tasks())
+        messages = "\n".join(audit.errors)
+        self.assertIn("references unregistered task IDs", messages)
+        self.assertIn("TASK-9999", messages)
 
 
 class EnforcementTests(unittest.TestCase):

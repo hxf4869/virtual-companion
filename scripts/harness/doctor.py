@@ -8369,6 +8369,29 @@ def _latest_task_by_terminal_history(
     return best_id
 
 
+def validate_nextaction_registered_references(
+    audit: Audit,
+    state: dict[str, Any],
+    tasks: dict[str, dict[str, Any]],
+) -> None:
+    """P2-22: nextAction may be advisory text or reference registered task IDs only.
+
+    An unregistered TASK-xxxx reference would let an Agent treat a planning
+    document as ready authorization. Advisory text (e.g. "先通过 task-intake
+    创建 DRAFT") carries no task reference and stays allowed; every referenced
+    ID must resolve to a task card discovered by discover_tasks() (execution
+    ledger chain, backlog PLANNED projection, or idle DRAFT exception).
+    """
+    next_action = str(state.get("nextAction", ""))
+    referenced = sorted(set(re.findall(r"TASK-[0-9]{4,}", next_action)))
+    unregistered = [task_id for task_id in referenced if task_id not in tasks]
+    audit.require(
+        not unregistered,
+        "project-state: nextAction references unregistered task IDs: "
+        + ", ".join(unregistered),
+    )
+
+
 def validate_project_state(
     audit: Audit,
     state: dict[str, Any],
@@ -8493,6 +8516,7 @@ def validate_project_state(
             f"project-state: missing {terminal_handoff}",
         )
     validate_nonblank_text(audit, "project-state: nextAction", state.get("nextAction"))
+    validate_nextaction_registered_references(audit, state, tasks)
     gates = state.get("capabilityGates")
     audit.require(isinstance(gates, dict) and bool(gates), "project-state: capabilityGates are required")
     required_gates = {"businessImplementation", "realUserBeta", "realPayment"}
