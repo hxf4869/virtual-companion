@@ -2,7 +2,7 @@
   "taskId": "TASK-0185",
   "state": "ACCEPTED",
   "baseCommit": "a323cddf4c20027afc42d97d370168591b4b2abb",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "b1d5d5765456f98efe0cc0f007c650aef2a714b1",
   "evidencePath": "docs/evidence/TASK-0185/evidence-pack.json",
   "completed": [
     "frontend/src/api/realtime-transport.ts（新）：提取对齐 0184 resume endpoint 契约。createBrowserRealtimeDeps({sessionId,origin},fetchImpl?) → RealtimeDeps；resume mint ticket（POST /api/v1/realtime/tickets body 5 字段 owner/transport 不入 body；401/403/404→null 存在性隐藏）→ GET /api/v1/realtime/streams/{generationId}?ticketId&secret&sessionId&origin&streamEpoch + Last-Event-ID:afterSeq header → readSseFrames → mapFrames 5 disposition（stream.gap→GAP_EXPIRED；stream.reset→RESET_REQUIRED+nextEpoch；stream.denied→NOT_FOUND_OR_FORBIDDEN；snapshot→TERMINAL_SNAPSHOT；durable envelope→RESUMED）；401/403/404→NOT_FOUND_OR_FORBIDDEN；5xx→throw；SseAbortedError 透传。fetchSnapshot GET /generations/{id}/snapshot。每次 resume 重 mint（ticket 单次 45s）。",

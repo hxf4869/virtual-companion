@@ -2,8 +2,8 @@
 
 - taskId: TASK-0185
 - reviewer: self-review (C2 independentReview not-required)
-- reviewedCommit: 0000000000000000000000000000000000000000
-- candidateTree: 0000000000000000000000000000000000000000
+- reviewedCommit: b1d5d5765456f98efe0cc0f007c650aef2a714b1
+- candidateTree: 835c8d55031afd93f7ee058ab151c6acfc6156dd
 - evidencePath: docs/evidence/TASK-0185/review-r1.md
 - verdict: PASS
 

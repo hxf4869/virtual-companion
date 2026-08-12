@@ -1,7 +1,7 @@
 {
   "taskId": "TASK-0185",
   "baseCommit": "a323cddf4c20027afc42d97d370168591b4b2abb",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "b1d5d5765456f98efe0cc0f007c650aef2a714b1",
   "contextFingerprint": "072a97e13576ec6e45596e9cab83634b43a1860b91536ea103594c86f8f77d23",
   "checks": [
     {
