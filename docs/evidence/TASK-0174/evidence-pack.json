@@ -2,15 +2,47 @@
   "taskId": "TASK-0174",
   "state": "ACCEPTED",
   "baseCommit": "a36b36e2ab76b66ad410c2f568468f8bd3fc850a",
-  "headCommit": "pending-terminal-commit",
+  "headCommit": "e4acdbfbec1eebddf478394d9cbdac2597ca6c6e",
+  "contextFingerprint": "9965b6e69a7f642be2d260ab2ebba2e68c34d1f4f8cd842ec157b0356d6b67c0",
   "evidencePath": "docs/evidence/TASK-0174/evidence-pack.json",
   "reviewers": [
     {
       "id": "task0174_r1",
       "kind": "independent-review-gate",
       "verdict": "PASS",
+      "reviewedCommit": "e4acdbfbec1eebddf478394d9cbdac2597ca6c6e",
+      "candidateTree": "3b41146ada088ac5ce346b4afe8ee0689e376140",
       "evidencePath": "docs/evidence/TASK-0174/review-r1.md",
-      "reason": "R1 PASS：0 P0/P1/P2，3 P3 informational。V25 四 SD 函数+两 sequence GRANT vc_api SET search_path=vc,pg_catalog（V18 模式）+V17 trusted-owner 断言+promote 合法边断言；3 persistence service 照 GenerationReceiveService 模式；2 HTTP 端点用 @AuthenticationPrincipal(expression=accountId) 解决 Modulith 跨模块依赖；GenerationWorkItemHandler 替换 stub（promote IN_PROGRESS→terminalize FAILED_FINAL 降级）。run-rls 65/65 + runtime mvn 254/0/0 + diff exit0。"
+      "reason": "R1 PASS：0 P0/P1/P2，3 P3 informational。V25 四 SD 函数+两 sequence GRANT vc_api SET search_path=vc,pg_catalog（V18 模式）+V17 trusted-owner 断言+promote 合法边断言；3 persistence service 照 GenerationReceiveService 模式；2 HTTP 端点用 @AuthenticationPrincipal(expression=accountId) 解决 Modulith 跨模块依赖；GenerationWorkItemHandler 替换 stub（promote IN_PROGRESS→terminalize FAILED_FINAL 降级）。run-rls 65/65 + runtime mvn 254/0/0 + diff exit0。本 review 由 TASK-0175 治理补救卡补记 reviewedCommit/candidateTree 并扩为结构化（原精简卡流程遗漏独立 review 字段绑定）。"
+    }
+  ],
+  "checks": [
+    {
+      "id": "run-rls-tests",
+      "command": "bash infra/db/run-rls-tests.sh",
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "65/65（含 test 65 create_conversation/enqueue_work_item/promote_generation 正负 + 无 context RAISE）"
+    },
+    {
+      "id": "runtime-module-tests",
+      "command": "JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test",
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "254/0/0（含 GenerationWorkItemHandlerTest 4 + SchemaReadiness 9 断言 25 + RuntimeModuleStructure Modulith 验证）"
+    },
+    {
+      "id": "diff-check",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "id": "canonical-precheck",
+      "command": "python scripts/harness/precheck.py --task TASK-0174",
+      "exitCode": null,
+      "result": "NOT_RUN",
+      "detail": "deferred per Owner 2026-08-12 static-gates-only（暂时不跑长时间检查）；TASK-0175 补救卡期间 doctor --summary 复跑"
     }
   ],
   "completed": [
@@ -30,7 +62,8 @@
   "knownRisks": [
     "handler 当前降级路径（FAILED_FINAL）——真实模型调用未接线，所有 generation 终态为 FAILED_FINAL。",
     "canonical precheck / 完整 unittest discover 未独立跑通（Owner static-gates-only）。",
-    "ID 编码 Long.parseLong 暴露真实 id（alpha 可接受，生产前需 codec）。"
+    "ID 编码 Long.parseLong 暴露真实 id（alpha 可接受，生产前需 codec）。",
+    "authorizationCommit 为占位符字符串（非 40-hex SHA）：精简流未造真实 READY 授权提交，历史不可改写无法补合法 SHA；当前 doctor ACCEPTED 早退不产生 error，留作已知残留。"
   ],
   "nextAction": "TASK-0174（Generation HTTP 纵切，C4）闭环 ACCEPTED：V25 create_conversation/enqueue_work_item/promote_generation 三 SD 函数 + conversation_id_seq/work_item_id_seq 授 vc_api + 3 persistence service（WorkItemEnqueue/ConversationCreate/GenerationState）+ 2 HTTP 端点（POST /conversations + POST intake + GET snapshot，@AuthenticationPrincipal expression 避免 Modulith 跨模块依赖）+ GenerationWorkItemHandler 替换 LoggingWorkItemHandler（promote IN_PROGRESS→terminalize FAILED_FINAL 降级）+ AuthDataSourceConfig bean 装配 + test 65（create/enqueue/promote 正负）+ handler unit 4 场景 + SchemaReadiness 24→25；run-rls 65/65 + runtime mvn 254/0/0 + diff exit0。真实模型调用（LiveModelInvoker.invoke 构建 LiveInvocationRequest）+ SSE + listMessages/cancel/relationship 端点留后续卡。下一步：开后续卡——LiveModelInvoker 成功路径接线（routing inputs 设计）解锁 generation COMPLETED；其余端点按序开卡。"
 }

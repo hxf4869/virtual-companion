@@ -918,3 +918,9 @@ tasks:
     taskCard: docs/tasks/TASK-0174-generation-http-vertical-slice.md
     evidence: docs/evidence/TASK-0174/evidence-pack.json
     handoff: docs/handoffs/TASK-0174.json
+  TASK-0175:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0175-task0174-governance-remediation.md
+    evidence: docs/evidence/TASK-0175/evidence-pack.json
+    handoff: docs/handoffs/TASK-0175.json

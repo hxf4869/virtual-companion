@@ -4,11 +4,11 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0174
-lastAcceptedHandoff: docs/handoffs/TASK-0174.json
-lastTerminalTask: TASK-0174
-lastTerminalHandoff: docs/handoffs/TASK-0174.json
-nextAction: TASK-0174（Generation HTTP 纵切，C4）闭环 ACCEPTED：V25 create_conversation/enqueue_work_item/promote_generation 三 SD 函数 + conversation_id_seq/work_item_id_seq 授 vc_api + 3 persistence service（WorkItemEnqueue/ConversationCreate/GenerationState）+ 2 HTTP 端点（POST /conversations + POST intake + GET snapshot，@AuthenticationPrincipal expression 避免 Modulith 跨模块依赖）+ GenerationWorkItemHandler 替换 LoggingWorkItemHandler（promote IN_PROGRESS→terminalize FAILED_FINAL 降级）+ AuthDataSourceConfig bean 装配 + test 65（create/enqueue/promote 正负）+ handler unit 4 场景 + SchemaReadiness 24→25；run-rls 65/65 + runtime mvn 254/0/0 + diff exit0。真实模型调用（LiveModelInvoker.invoke 构建 LiveInvocationRequest）+ SSE + listMessages/cancel/relationship 端点留后续卡。下一步：开后续卡——LiveModelInvoker 成功路径接线（routing inputs 设计）解锁 generation COMPLETED；其余端点按序开卡。
+lastAcceptedTask: TASK-0175
+lastAcceptedHandoff: docs/handoffs/TASK-0175.json
+lastTerminalTask: TASK-0175
+lastTerminalHandoff: docs/handoffs/TASK-0175.json
+nextAction: TASK-0175（TASK-0174 治理补救，C1）闭环 ACCEPTED：TASK-0174 doctor 13 errors 静态修复（每条对应 doctor.py 具体校验点，Explore 精读确认）——补 context-lock/fingerprint(9965b6e6,66 inputs)+卡 7 缺字段(contextFingerprint/contextLock/readAllowlist/requiredInvariants/reviewers/sourcesOfTruth)+task-intake 声明+forbiddenPaths 移除 persistence main/java/** 自冲突 glob+humanApprovals(task-assignment/database-migration)+independentReview+evidence/handoff headCommit 回填 e4acdbf+reviewer reviewedCommit/candidateTree+review-r1 扩结构化(A/B/E/F 节)；doctor 未跑 per Owner static-gates-only，run-rls 65/65+mvn 254/0/0+diff exit0 回归绿，业务代码未动。下一步：开 TASK-0176——generation ZERO_LLM 确定性完成路径接线（handler→LiveModelInvoker.invoke DeterministicSourceBinding→finalize COMPLETED），建 request assembler+fence 契约+ownership/messages 加载基础设施；外部 provider 成功路径留 TASK-0177+。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
