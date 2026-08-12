@@ -916,3 +916,9 @@ tasks:
     taskCard: docs/tasks/TASK-0169-p2-03-password-minimum-policy-and-complexity.md
     evidence: docs/evidence/TASK-0169/evidence-pack.json
     handoff: docs/handoffs/TASK-0169.json
+  TASK-0170:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0170-p2-03-audit-event-retention-purge.md
+    evidence: docs/evidence/TASK-0170/evidence-pack.json
+    handoff: docs/handoffs/TASK-0170.json

@@ -1,0 +1,63 @@
+{
+  "taskId": "TASK-0170",
+  "state": "ACCEPTED",
+  "baseCommit": "d44a854a2f9d4a923c5a0c460eba4e36baafde20",
+  "headCommit": "7ea650259a6ee3fd75b44ed330850d7e149063b6",
+  "evidencePath": "docs/evidence/TASK-0170/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f7adb5990868ff9a6cb7e0b4334abccbf29bd8bf",
+      "startedAt": "2026-08-12T13:43:36+08:00",
+      "endedAt": "2026-08-12T13:48:48+08:00",
+      "elapsedSeconds": 312,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "7ea650259a6ee3fd75b44ed330850d7e149063b6",
+      "startedAt": "2026-08-12T13:44:01+08:00",
+      "endedAt": "2026-08-12T13:48:48+08:00",
+      "elapsedSeconds": 287,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "",
+      "inProgressCommit": "7ea650259a6ee3fd75b44ed330850d7e149063b6",
+      "reason": "P2-03 审计事件保留与定时清理；候选 7ea6502（V22 identity_auth_event_purge SECURITY DEFINER search_path=vc,pg_catalog + null fail-closed + GET DIAGNOSTICS ROW_COUNT + GRANT EXECUTE vc_api/REVOKE PUBLIC；AuthDataSourceConfig @EnableScheduling + IdentityAuthEventPurgeScheduler @Scheduled 每日 03:17 retention 默认 180 天 @Value 可配置；IdentityAuthEventPurgeSchedulerTest 2 测试；SchemaReadinessHealthIndicatorTest 21→22；test 62 正测删旧留新/幂等 + 负测 vc_api 直接 DELETE insufficient_privilege）；mvn -pl service/apps/runtime -am test 240/0 + run-rls-tests.sh 62/62 + canonical 8/8（doctor 815811）+ diff exit0 + R1 PASS（0 P0/P1/P2，3 P3）；完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0170_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "7ea650259a6ee3fd75b44ed330850d7e149063b6",
+      "candidateTree": "8780730d2e8d16c1be0ed55dac931760e5900c3c",
+      "evidencePath": "docs/evidence/TASK-0170/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，3 P3 informational（SchedulerTest cutoff 窗口 ±5s 极端慢 CI 理论 flaky；audit-retention-days ≤0 属 operator 配置责任 purge 幂等无数据损坏；默认单线程 TaskScheduler 极大数据量单日删不完次日续删幂等无害）。V22 identity_auth_event_purge SECURITY DEFINER + search_path=vc,pg_catalog 匹配 V18 基线（test 57 语义保持）+ null fail-closed + GET DIAGNOSTICS ROW_COUNT + REVOKE PUBLIC/GRANT EXECUTE vc_api；vc_api 仍无表级 DML（负测 insufficient_privilege 实证）；AuthDataSourceConfig @EnableScheduling 条件激活 + IdentityAuthEventPurgeScheduler @Scheduled 每日 03:17（retention 默认 180 天 @Value 可配置）；test 62 删旧留新/幂等+ superuser 表状态验证；SchemaReadinessHealthIndicatorTest 21→22（加 migration 必然附带变更）。静态门禁全 PASS（mvn 240/0；run-rls-tests.sh 62/62；canonical 8/8 doctor 815811；diff exit0）。9 改动文件全在 writeAllowlist，V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  ],
+  "completed": [
+    "TASK-0170 DRAFT/READY/绑定/IN_PROGRESS；standalone Doctor 按 acceleration 跳过，canonical precheck doctor 子命令（815811 checks）为唯一 doctor 门禁。",
+    "Owner 2026-08-12 授权 reset 未推送链（范围遗漏：V22 使 SchemaReadinessHealthIndicatorTest expectedSchemaVersionFromClasspath 21→22 需更新，writeAllowlist 原遗漏该文件、forbiddenPaths 原漏禁 auth/config 目录）；reset --mixed d44a854 后修卡重走 DRAFT→READY→绑定→IN_PROGRESS，context-lock 未变 fingerprint 继续有效。",
+    "V22__identity_auth_event_retention_purge.sql：vc.identity_auth_event_purge(p_cutoff timestamptz) SECURITY DEFINER + SET search_path=vc,pg_catalog（V18 基线）+ p_cutoff null fail-closed + DELETE occurred_at<p_cutoff + GET DIAGNOSTICS ROW_COUNT + REVOKE EXECUTE PUBLIC + GRANT EXECUTE vc_api；不改 V1-V21、不改任何既有函数（全新 CREATE FUNCTION）。",
+    "AuthDataSourceConfig：+@EnableScheduling（@ConditionalOnProperty auth.enabled+datasource-enabled 条件激活，默认/测试无调度）+ @Bean identityAuthEventPurgeScheduler(authJdbcTemplate, @Value audit-retention-days 默认 180)。",
+    "IdentityAuthEventPurgeScheduler（plain class，镜像 AdminSeedRunner 装配风格）：@Scheduled(cron=${virtual-companion.auth.audit-purge-cron:0 17 3 * * *}) purgeExpiredAuthEvents() 以 SELECT vc.identity_auth_event_purge(?) + Timestamp cutoff（Instant.now()-retentionDays）调用；null 防御归 0；info 日志无 PII；异常向上传播不吞。",
+    "IdentityAuthEventPurgeSchedulerTest 2 测试（精确 SQL + Integer.class + Timestamp cutoff 捕获 + retention 窗口验证；null 返回不抛）；SchemaReadinessHealthIndicatorTest expectedSchemaVersionFromClasspath 21→22。",
+    "infra/db/tests/62_identity_auth_event_purge.sql：superuser fixture + SET ROLE vc_api 正测 purge 返回 2/幂等返回 0 + 负测直接 DELETE insufficient_privilege fail-closed + RESET ROLE 后 superuser 表状态验证（旧行 0、总行 2 保留）。",
+    "mvn -pl service/apps/runtime -am test BUILD SUCCESS 240/0；bash infra/db/run-rls-tests.sh ALL TESTS PASS 62/62；canonical precheck 8/8 PASS（doctor 815811）；git diff --check exit 0；R1 PASS（0 P0/P1/P2，3 P3 informational）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest + 根级 Maven verify 留统一审计阶段（Owner static-gates-only 策略）。",
+    "继续推进剩余 Owner-gate：§5.1.2 worker claim lease/fence（依赖 coordinator 落地，P1-04 worker 半边未装配）、P2-22 nextAction 未注册任务。",
+    "全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical + 根级 Maven verify）。"
+  ],
+  "knownRisks": [
+    "完整 unittest 与根级 Maven verify 在本卡未独立跑通（static-gates-only）；purge 行为由 run-rls-tests.sh 62 项直接验证。",
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical/rls/mvn/diff。",
+    "@Scheduled 默认单线程 TaskScheduler：极大数据量单日可能删不完，次日续删（幂等无害）；Technical Alpha 规模可接受（P3）。",
+    "virtual-companion.auth.audit-retention-days 配置 ≤0 时 cutoff=now 删几乎所有行：operator 配置责任，purge 幂等无数据损坏（P3）。",
+    "IdentityAuthEventPurgeSchedulerTest cutoff 窗口断言 ±5s：极端慢 CI 机器理论 flaky（P3）。"
+  ],
+  "nextAction": "TASK-0170（P2-03 审计事件保留与定时清理，C4 DB）闭环 ACCEPTED。P2-03 核心（限流/锁定/输入收紧 TASK-0156+0160）+ 密码最低策略（TASK-0169）+ 审计保留（本卡：V22 identity_auth_event_purge SECURITY DEFINER + @Scheduled 每日自动清理 >180 天）均已闭合。下一步：继续逐项解锁剩余 Owner-gate（§5.1.2 worker claim lease/fence 依赖 coordinator 落地、P2-22 nextAction 未注册任务）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}

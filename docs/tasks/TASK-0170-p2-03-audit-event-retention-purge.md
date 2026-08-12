@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0170
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -289,7 +289,36 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0170_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 7ea650259a6ee3fd75b44ed330850d7e149063b6
+    candidateTree: 8780730d2e8d16c1be0ed55dac931760e5900c3c
+    evidencePath: docs/evidence/TASK-0170/review-r1.md
+    reason: >-
+      R1 PASS（0 P0/P1/P2，3 P3 informational：SchedulerTest cutoff 窗口 ±5s 极端慢 CI 理论 flaky；
+      audit-retention-days ≤0 属 operator 配置责任 purge 幂等无数据损坏；默认单线程 TaskScheduler
+      极大数据量单日删不完次日续删幂等无害）。V22 identity_auth_event_purge SECURITY DEFINER +
+      search_path=vc,pg_catalog 匹配 V18 基线（test 57 语义保持）+ null fail-closed + GET DIAGNOSTICS
+      ROW_COUNT + REVOKE PUBLIC/GRANT EXECUTE vc_api；vc_api 仍无表级 DML（负测 insufficient_privilege
+      实证）；AuthDataSourceConfig @EnableScheduling 条件激活 + IdentityAuthEventPurgeScheduler @Scheduled
+      每日 03:17（retention 默认 180 天 @Value 可配置）；test 62 删旧留新/幂等 + superuser 表状态验证；
+      SchemaReadinessHealthIndicatorTest 21→22（加 migration 必然附带变更）。静态门禁全 PASS
+      （mvn 240/0；run-rls-tests.sh 62/62；canonical 8/8 doctor 815811；diff exit0）。9 改动文件全在
+      writeAllowlist，V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest
+      + 根级 verify deferred per Owner static-gates-only。
+terminalStateReason: >-
+  P2-03 审计事件保留与定时清理（180 天 + 自动定时清理）实现闭环。候选 7ea6502/tree 8780730d；
+  mvn -pl service/apps/runtime -am test 240/0；bash infra/db/run-rls-tests.sh 62/62 ALL TESTS PASS；
+  canonical precheck 8/8 PASS（doctor 815811 checks）；git diff --check exit 0；R1 PASS（0 P0/P1/P2，
+  3 P3 informational）。V22 identity_auth_event_purge SECURITY DEFINER（search_path=vc,pg_catalog 匹配
+  V18 基线、null fail-closed、GRANT EXECUTE vc_api/REVOKE PUBLIC、vc_api 无表级 DML）；runtime
+  AuthDataSourceConfig @EnableScheduling 条件激活 + IdentityAuthEventPurgeScheduler @Scheduled 每日
+  03:17（retention 默认 180 天 @Value 可配置）+ 2 单测；test 62 正测删旧留新/幂等 + 负测直接 DELETE
+  fail-closed；SchemaReadinessHealthIndicatorTest 21→22。Owner 2026-08-12 授权 reset 未推送链修
+  writeAllowlist 范围遗漏后重走 DRAFT→READY→绑定→IN_PROGRESS。完整 unittest + 根级 Maven verify 按
+  Owner static-gates-only 策略 deferred to 统一审计。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P2-03 审计修复续卡
