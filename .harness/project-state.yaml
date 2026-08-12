@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0166
+activeTaskCard: docs/tasks/TASK-0166-v8-v11-legacy-upgrade-fail-closed-test.md
 lastAcceptedTask: TASK-0165
 lastAcceptedHandoff: docs/handoffs/TASK-0165.json
 lastTerminalTask: TASK-0165
 lastTerminalHandoff: docs/handoffs/TASK-0165.json
-nextAction: 'TASK-0165（§5.1.4 quota 非负 CHECK + release 幂等）闭环。下一步：继续推进剩余 §5.1 审计候选（§5.1.2 worker claim lease/fence，依赖 P1-04 OWNER_GATE 需读 claim_work_items/begin_job_context + WorkItemClaimService；§5.1.6 V8/V11 存量 migration 兼容，大概率是带存量数据升级测试覆盖缺口）；Java 侧 ProviderAttemptAudit/LiveModelInvoker audit 投影一致性 + 内存 QuotaLedger.release 收 reservationId 做 reservation 级幂等可作后续独立 C3 卡或并入 P2-12 JDBC 层；P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（0155 REJECTED 待重做）需 Owner 拓扑决策；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+nextAction: 'TASK-0166（§5.1.6/RISK-10 V8/V11 存量升级 fail-closed 测试覆盖）进行中：纯测试覆盖卡 C2，新增 test 61 用 drop/recreate 事务化模拟证明 V8/V11 在不兼容存量数据上升级 fail-closed（V8 唯一索引 backfill 碰撞 unique_violation + V11 CHECK 存量 SESSION 无 conversation check_violation + V11 FK dangling conversation foreign_key_violation），不触任何 migration（V1-V21 frozen）/Java/catalog/contract。infra/db/tests 不匹配 **/db/migration 故 C2 非 C4。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
