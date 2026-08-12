@@ -322,6 +322,7 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS（TASK-0158 R1 PASS 不复用）。
 independentReview: required
+reviewers: []
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P2-13 审计修复卡
