@@ -1,0 +1,62 @@
+{
+  "taskId": "TASK-0168",
+  "state": "ACCEPTED",
+  "baseCommit": "b465e73b91347c257f3ab64e78aa960ce810f1ef",
+  "headCommit": "f59fadc3db0ad9519e971e7a304e8cb55e9a43f0",
+  "evidencePath": "docs/evidence/TASK-0168/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5aeb30c43c644b6a9ee07e86f02eba0da8f0ffda",
+      "startedAt": "2026-08-12T12:42:46+08:00",
+      "endedAt": "2026-08-12T12:46:41+08:00",
+      "elapsedSeconds": 235,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f59fadc3db0ad9519e971e7a304e8cb55e9a43f0",
+      "startedAt": "2026-08-12T12:44:05+08:00",
+      "endedAt": "2026-08-12T12:46:41+08:00",
+      "elapsedSeconds": 156,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "",
+      "inProgressCommit": "f59fadc3db0ad9519e971e7a304e8cb55e9a43f0",
+      "reason": "§4.1 P1-04 应用侧 owner 注入；候选 f59fadc（OwnerInjectionFilter OncePerRequestFilter 在 JwtAuthenticationFilter 之后用 OwnerContext.asOwner 事务级 set_config 注入 principal.accountId() + InternalMeController GET /api/internal/me 测试载体 + OwnerInjectionFilterTest 4 场景 + AuthSecurityIntegrationTest filter 顺序+MockMvc + SchemaReadinessHealthIndicatorTest stale 断言 17→21 修复）；mvn -pl service/apps/runtime -am test 234/0 + canonical 8/8（doctor 804165）+ diff exit0 + R1 PASS（0 P0/P1/P2，2 P3）；完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0168_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "f59fadc3db0ad9519e971e7a304e8cb55e9a43f0",
+      "candidateTree": "6a071b5466090ad2abb99e91e42ad7058b4360e3",
+      "evidencePath": "docs/evidence/TASK-0168/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，2 P3 informational（请求级事务语义 Technical Alpha 可接受；owner 注入只闭合 HTTP 半边，worker 依赖 coordinator 留后续）。OwnerInjectionFilter 四分支全覆盖（认证 Principal→asOwner 事务级 set_config；匿名/非 Principal/OwnerContext 缺失→no-op 不伪造 owner），checked exception holder 捕获+rethrow 正确；filter 注册于 JwtAuthenticationFilter 之后（admission 之后）；InternalMeController 受保护不进 OpenAPI；SchemaReadinessHealthIndicatorTest stale 断言 17→21 修复最小（不动 readiness 决策逻辑）。静态门禁全 PASS（mvn 234/0；canonical 8/8 doctor 804165；diff exit0）。6 文件全在 writeAllowlist，V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  ],
+  "completed": [
+    "TASK-0168 DRAFT/READY/绑定/IN_PROGRESS；standalone Doctor 按 acceleration 跳过，canonical precheck doctor 子命令（804165 checks）为唯一 doctor 门禁。",
+    "OwnerInjectionFilter（OncePerRequestFilter）实现：认证 JwtTokenService.Principal + OwnerContext 存在 → asOwner(accountId, ()->filterChain) 事务级 set_config('vc.owner_user_id',?,true) 注入 commit 自清；匿名/非 Principal/OwnerContext 缺失 → no-op 不伪造 owner；checked exception holder 捕获+rethrow。",
+    "AuthSecurityConfig 注册 OwnerInjectionFilter bean（ObjectProvider<OwnerContext> 可选注入，datasource-enabled=false 时 no-op）+ addFilterAfter(JwtAuthenticationFilter.class)。",
+    "InternalMeController GET /api/internal/me 受保护测试载体回显 principal.accountId()，/api/internal 不进 OpenAPI（specs/openapi 只枚举 /api/v1/**）。",
+    "OwnerInjectionFilterTest 4 场景（认证注入/匿名跳过/非 Principal 跳过/OwnerContext 缺失 no-op）+ AuthSecurityIntegrationTest filter 注册顺序 + MockMvc /api/internal/me 2 测试。",
+    "SchemaReadinessHealthIndicatorTest:143-146 stale 断言修复（V1..V17→V1..V21 注释 + 期望 17→21）；V18 起潜伏，本卡首个跑 runtime 全模块（mvn -pl service/apps/runtime -am test）暴露并修复；不动 readiness 决策逻辑与构造参数。",
+    "mvn -pl service/apps/runtime -am test BUILD SUCCESS 234/0；canonical precheck 8/8 PASS（doctor 804165）；git diff --check exit 0；R1 PASS（0 P0/P1/P2，2 P3 informational）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest + 根级 Maven verify 留统一审计阶段（Owner static-gates-only 策略）。",
+    "继续推进剩余 Owner-gate：P1-11 readiness 决策逻辑+expectedVersion 跟随策略、§5.1.2 worker claim lease/fence（依赖 coordinator 落地）、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务。",
+    "owner 注入 worker 半边（WorkItemClaimService 装配 + fence Java 签发）依赖 coordinator/dispatcher 整体未落地，留后续独立卡。",
+    "全部修复后对最新 origin/main 做独立全项目复审（含完整 unittest 串行 + canonical + 根级 Maven verify）。"
+  ],
+  "knownRisks": [
+    "完整 unittest 与根级 Maven verify 在本卡未独立跑通（static-gates-only）；owner 注入行为由 mvn runtime 234 tests 直接验证。",
+    "请求级事务语义：asOwner 包整个 doFilter = 整个请求单一 DB 事务；Technical Alpha 可接受，生产高并发需评估细粒度（P3，后续业务端点卡演进）。",
+    "owner 注入只闭合 HTTP 请求半边；worker/coordinator 路径依赖 coordinator 未落地（P3）。",
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical/mvn/diff。"
+  ],
+  "nextAction": "TASK-0168（§4.1 P1-04 应用侧 owner 注入 OncePerRequestFilter 绑定可信 principal 到 DB session）闭环 ACCEPTED。下一步：继续逐项解锁剩余 Owner-gate（P1-11 readiness 决策逻辑+expectedVersion 跟随策略、§5.1.2 worker claim lease/fence 依赖 P1-04+coordinator 落地、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务）；P1-04 应用半边（HTTP 请求 owner 注入）已闭合，DB 半边 V17+role 拓扑 V16 早已闭合，剩 worker 半边依赖 coordinator；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}

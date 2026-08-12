@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0168
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -258,7 +258,36 @@ humanApprovals:
       dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结 LOCAL_EXACT_TREE_FALLBACK
       （profile=precheck），远端仍如实非 PASS，不复用任何跨卡 Reviewer 或命令 PASS（TASK-0167 R1 PASS 不复用）。
 independentReview: true
-reviewers: []
+reviewers:
+  - id: task0168_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "f59fadc3db0ad9519e971e7a304e8cb55e9a43f0"
+    candidateTree: "6a071b5466090ad2abb99e91e42ad7058b4360e3"
+    evidencePath: docs/evidence/TASK-0168/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2，2 P3 informational（请求级事务语义 Technical Alpha 可接受；owner 注入只闭合 HTTP 半边，
+      worker 依赖 coordinator 留后续）。OwnerInjectionFilter 四分支全覆盖（认证 Principal→asOwner 事务级 set_config；
+      匿名/非 Principal/OwnerContext 缺失→no-op 不伪造 owner），checked exception holder 捕获+rethrow 正确；
+      filter 注册于 JwtAuthenticationFilter 之后（admission 之后）；InternalMeController 受保护不进 OpenAPI；
+      SchemaReadinessHealthIndicatorTest stale 断言 17→21 修复最小（不动 readiness 决策逻辑）。静态门禁全 PASS
+      （mvn -pl service/apps/runtime -am test 234/0；canonical 8/8 doctor 804165；diff exit0）。6 文件全在
+      writeAllowlist，V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级
+      Maven verify deferred per Owner static-gates-only。candidate elapsed ~2.5 min（远低于 hardFuse 90）。
+      remote exact-SHA 如实非 PASS（dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。
+terminalStateReason: >-
+  §4.1 P1-04 应用侧 owner 注入 ACCEPTED：OwnerInjectionFilter（OncePerRequestFilter）在 JwtAuthenticationFilter 之后
+  用 OwnerContext.asOwner 事务级 set_config('vc.owner_user_id',?,true) 注入 principal.accountId()（认证 Principal +
+  OwnerContext 存在）；匿名/非 Principal/OwnerContext 缺失→no-op 不伪造 owner；checked exception holder 捕获+rethrow。
+  AuthSecurityConfig addFilterAfter 注册 + ObjectProvider<OwnerContext> 可选注入（datasource-enabled=false no-op）。
+  InternalMeController GET /api/internal/me 受保护测试载体（/api/internal 不进 OpenAPI）。OwnerInjectionFilterTest 4 场景
+  + AuthSecurityIntegrationTest filter 顺序+MockMvc。附带修 SchemaReadinessHealthIndicatorTest stale 断言 17→21
+  （V18 起潜伏，本卡首个跑 runtime 全模块暴露）。mvn -pl service/apps/runtime -am test 234/0；canonical 8/8（doctor 804165）；
+  diff exit0；R1 PASS（0 P0/P1/P2，2 P3：请求级事务语义 + HTTP 半边闭合）。6 文件全在 writeAllowlist（service/apps/runtime/**），
+  V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级 Maven verify deferred per
+  Owner static-gates-only。本卡 DRAFT 初版 writeAllowlist 未含 SchemaReadinessHealthIndicatorTest（5 Java），mvn 暴露 stale
+  test 阻塞；经 Owner 2026-08-12 授权 git reset --mixed b465e73 撤销 3 未推送 commit 扩范围重做（实现文件保留）。remote
+  exact-SHA 如实非 PASS（dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 §4.1 P1-04（caller 可伪造 owner context）
