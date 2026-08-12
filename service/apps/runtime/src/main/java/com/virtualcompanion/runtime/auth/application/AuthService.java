@@ -52,6 +52,7 @@ public class AuthService {
     private static final int MAX_PASSWORD_LENGTH = 1024;
     private static final int MAX_DISPLAY_NAME_LENGTH = 256;
     private static final int MAX_ROLE_LENGTH = 16;
+    private static final int MIN_PASSWORD_LENGTH = 8;
 
     private final IdentityAccountRepository accounts;
     private final IdentityRefreshTokenRepository sessions;
@@ -220,6 +221,7 @@ public class AuthService {
                 || displayName.length() > MAX_DISPLAY_NAME_LENGTH) {
             throw invalidRequestError();
         }
+        validatePasswordPolicy(password);
         validateNormalizedInput(canonicalUsername, canonicalDisplayName, ROLE_ADMIN);
         return accounts.seedAdmin(
                 canonicalUsername, passwordEncoder.encode(password), canonicalDisplayName);
@@ -287,6 +289,42 @@ public class AuthService {
                 || !AuthInputLimits.withinUtf8Bytes(
                         displayName, AuthInputLimits.MAX_DISPLAY_NAME_UTF8_BYTES)
                 || displayName.length() > MAX_DISPLAY_NAME_LENGTH) {
+            throw invalidRequestError();
+        }
+        validatePasswordPolicy(password);
+    }
+
+    /**
+     * P2-03 password minimum policy (Owner 2026-08-12): a password set at account
+     * creation or admin bootstrap must be at least {@value MIN_PASSWORD_LENGTH}
+     * characters and contain all four character classes — uppercase, lowercase,
+     * digit, and symbol (any non-letter non-digit character). A violation maps to
+     * the same non-disclosing {@code INVALID_REQUEST} as every other input failure;
+     * the missing class is never named, so the policy cannot be probed for an
+     * enumeration side channel. Login does not call this — it authenticates an
+     * existing account and never re-validates password strength.
+     */
+    private static void validatePasswordPolicy(String password) {
+        if (password.length() < MIN_PASSWORD_LENGTH) {
+            throw invalidRequestError();
+        }
+        boolean uppercase = false;
+        boolean lowercase = false;
+        boolean digit = false;
+        boolean symbol = false;
+        for (int i = 0; i < password.length(); i++) {
+            char c = password.charAt(i);
+            if (Character.isUpperCase(c)) {
+                uppercase = true;
+            } else if (Character.isLowerCase(c)) {
+                lowercase = true;
+            } else if (Character.isDigit(c)) {
+                digit = true;
+            } else {
+                symbol = true;
+            }
+        }
+        if (!(uppercase && lowercase && digit && symbol)) {
             throw invalidRequestError();
         }
     }

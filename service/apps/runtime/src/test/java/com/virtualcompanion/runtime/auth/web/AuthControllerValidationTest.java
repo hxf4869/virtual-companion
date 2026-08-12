@@ -16,6 +16,7 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -92,6 +93,19 @@ class AuthControllerValidationTest {
                 .andReturn();
 
         assertThat(result.getResponse().getContentAsString()).doesNotContain("bob", "password");
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void createAccountRejectsPasswordShorterThanMinimumBeforeService() throws Exception {
+        // 7 characters: Bean Validation @Size(min = 8) rejects before AuthService
+        mockMvc.perform(post("/api/v1/auth/admin/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"bob\",\"password\":\"Str0ng!\",\"displayName\":\"Bob\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("The request is invalid"));
         verifyNoInteractions(authService);
     }
 

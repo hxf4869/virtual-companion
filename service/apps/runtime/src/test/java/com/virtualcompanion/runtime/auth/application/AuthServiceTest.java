@@ -229,13 +229,13 @@ class AuthServiceTest {
                 .thenReturn(42L);
 
         AccountResponse response = service.createAccount(
-                admin, new CreateAccountRequest("  Bob  ", "s3cret", null, "  Bob User  "));
+                admin, new CreateAccountRequest("  Bob  ", "Str0ng!Pw", null, "  Bob User  "));
 
         assertThat(response.accountId()).isEqualTo("42");
         assertThat(response.username()).isEqualTo("bob");
         assertThat(response.role()).isEqualTo("USER");
         assertThat(response.status()).isEqualTo("ACTIVE");
-        verify(passwordEncoder).encode("s3cret");
+        verify(passwordEncoder).encode("Str0ng!Pw");
     }
 
     @Test
@@ -245,7 +245,7 @@ class AuthServiceTest {
                 .thenReturn(43L);
 
         AccountResponse response = service.createAccount(
-                admin, new CreateAccountRequest("  Ops  ", "pw", "admin", "  Ops  "));
+                admin, new CreateAccountRequest("  Ops  ", "Str0ng!Pw", "admin", "  Ops  "));
 
         assertThat(response.role()).isEqualTo("ADMIN");
     }
@@ -271,7 +271,7 @@ class AuthServiceTest {
                 .thenThrow(new DataIntegrityViolationException("duplicate key"));
 
         assertThatThrownBy(() -> service.createAccount(
-                        admin, new CreateAccountRequest("Bob", "pw", "USER", "Bob")))
+                        admin, new CreateAccountRequest("Bob", "Str0ng!Pw", "USER", "Bob")))
                 .isInstanceOf(AuthErrorException.class)
                 .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("NOT_FOUND_OR_FORBIDDEN"));
     }
@@ -281,7 +281,7 @@ class AuthServiceTest {
         JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
 
         assertThatThrownBy(() -> service.createAccount(
-                        admin, new CreateAccountRequest("Bob", "pw", "SUPERUSER", "Bob")))
+                        admin, new CreateAccountRequest("Bob", "Str0ng!Pw", "SUPERUSER", "Bob")))
                 .isInstanceOf(AuthErrorException.class)
                 .satisfies(e -> {
                     assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");
@@ -375,10 +375,35 @@ class AuthServiceTest {
     void seedAdminHashesPasswordBeforePersisting() {
         when(accounts.seedAdmin(eq("root"), anyString(), eq("Root Admin"))).thenReturn(9L);
 
-        long id = service.seedAdmin("  ROOT  ", "secret", "  Root Admin  ");
+        long id = service.seedAdmin("  ROOT  ", "Str0ng!Pw", "  Root Admin  ");
 
         assertThat(id).isEqualTo(9);
-        verify(passwordEncoder).encode("secret");
+        verify(passwordEncoder).encode("Str0ng!Pw");
+    }
+
+    @Test
+    void createAccountRejectsPasswordBelowMinimumLength() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        // 7 chars but otherwise all four classes present -> too short
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "Str0ng!", null, "Bob"));
+    }
+
+    @Test
+    void createAccountRejectsPasswordMissingEachComplexityClass() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "str0ng!pw", null, "Bob")); // no uppercase
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "STR0NG!PW", null, "Bob")); // no lowercase
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "Strong!pw", null, "Bob")); // no digit
+        assertInvalidAccount(admin, new CreateAccountRequest("bob", "Str0ngPw", null, "Bob"));  // no symbol
+    }
+
+    @Test
+    void seedAdminRejectsPasswordBelowMinimumPolicy() {
+        assertInvalidSeed("root", "Str0ng!", "Root Admin");   // too short
+        assertInvalidSeed("root", "str0ng!pw", "Root Admin"); // no uppercase
+        assertInvalidSeed("root", "STR0NG!PW", "Root Admin"); // no lowercase
+        assertInvalidSeed("root", "Strong!pw", "Root Admin"); // no digit
+        assertInvalidSeed("root", "Str0ngPw", "Root Admin");  // no symbol
     }
 
     private void assertInvalidLogin(String username, String password) {
