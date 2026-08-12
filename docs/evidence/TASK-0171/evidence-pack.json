@@ -1,0 +1,62 @@
+{
+  "taskId": "TASK-0171",
+  "state": "ACCEPTED",
+  "baseCommit": "c789e24598ae6d6ed5f8d99bc8705b559d27fdb4",
+  "headCommit": "1c3cc3e2f519147957771d7aa3679fa2118e216c",
+  "evidencePath": "docs/evidence/TASK-0171/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "51dfaa5180f4757fd1c143c1e544258385547d6b",
+      "startedAt": "2026-08-12T15:45:20+08:00",
+      "endedAt": "2026-08-12T15:58:48+08:00",
+      "elapsedSeconds": 808,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "ae5382e11f63d3dd9acfde662d1004898bb5aa83",
+      "startedAt": "2026-08-12T15:47:36+08:00",
+      "endedAt": "2026-08-12T15:58:48+08:00",
+      "elapsedSeconds": 672,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "",
+      "inProgressCommit": "ae5382e11f63d3dd9acfde662d1004898bb5aa83",
+      "reason": "P1-04 worker 半边；候选 1c3cc3e（V23 GRANT EXECUTE claim 家族函数 TO vc_api，V17 断言保证仅 server-trusted context 内有效，vc_worker 授权保持；AuthDataSourceConfig +workItemClaimService/workItemHandler/workItemWorker 3 beans；worker 新包 WorkItemHandler+LoggingWorkItemHandler（无 PII 不读 payload）+WorkItemWorker.processOwnerBatch OwnerExecutor 端口 ownerContext::asOwner 单事务 claim→handle→批次级 complete/fail 0 行 fail-closed 不重试；WorkItemWorkerTest 5 测试；test 63 正测同事务全链路+负测 无 context RAISE+迟到 complete 零写入；SchemaReadinessHealthIndicatorTest 22→23）；mvn -pl service/apps/runtime -am test 245/0 + run-rls-tests.sh 63/63 + canonical 8/8（doctor 822736）+ diff exit0 + R1 PASS（0 P0/P1/P2，4 P3）；完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0171_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1c3cc3e2f519147957771d7aa3679fa2118e216c",
+      "candidateTree": "9cb2fe9cce0ad787e1213478a6445099a3ad8bb4",
+      "evidencePath": "docs/evidence/TASK-0171/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，4 P3 informational（handler 失败后批内其余 item 继续处理再整批 fail，默认 logging handler 无副作用；批次 FAILED 无重试/死信机制属 coordinator 职责；lease 过期无自动回收属 §5.1.2 范围；fence 由未来 coordinator 签发）。V23 GRANT EXECUTE claim 家族 5 函数 TO vc_api（V17 断言 p_owner==current_owner_id 仅 server-trusted context 内有效 + transaction-local GUC 无 context 0 行，vc_worker 授权保持、无新角色无函数改动、work_item 表 vc_api 无权限实证）；AuthDataSourceConfig 3 beans + worker 新包（OwnerExecutor 端口消除 Modulith 循环，ownerContext::asOwner 装配）+ WorkItemWorker 批共享 token 批次级终态化 0 行 fail-closed 不重试；test 63 同事务全链路/无 context RAISE/迟到 complete 零写入；SchemaReadinessHealthIndicatorTest 22→23。静态门禁全 PASS（mvn 245/0；run-rls-tests.sh 63/63；canonical 8/8 doctor 822736；diff exit0）。11 改动文件全在 writeAllowlist，V1-V22 与 DB test 01-62 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  ],
+  "completed": [
+    "TASK-0171 DRAFT/READY/绑定/IN_PROGRESS（+2 轮实现修正：Modulith 循环 → OwnerExecutor 端口；批共享 token → 批次级终态化）；standalone Doctor 按 acceleration 跳过，canonical precheck doctor 子命令（822736 checks）为唯一 doctor 门禁。",
+    "V23__worker_claim_functions_runtime_api_grant.sql：GRANT EXECUTE vc.claim_work_items/renew_lease/complete_work_item/fail_work_item/cancel_work_item TO vc_api（runtime 同进程连接池角色语义）；不 REVOKE vc_worker（V5 基线保持）；不新增角色；无函数改动（search_path 无涉，V18 已重写既有 SD 函数）；V1-V22 frozen。",
+    "AuthDataSourceConfig：+@Bean workItemClaimService(authJdbcTemplate) / workItemHandler()（LoggingWorkItemHandler）/ workItemWorker(claimService, ownerContext::asOwner, handler)——条件激活（auth.enabled+datasource-enabled），默认/测试无 DB 无装配。",
+    "worker 新包 com.virtualcompanion.runtime.worker：WorkItemHandler（@FunctionalInterface）+ LoggingWorkItemHandler（info 日志只记 id/kind/refId，不读 payload 无 PII）+ WorkItemWorker.processOwnerBatch（OwnerExecutor 嵌套端口消除 Modulith auth↔worker 循环；ownerContext::asOwner 单事务 claim→逐个 handle→批次级 complete/fail；全成功 complete(token) 返回批大小，任一失败 fail(token) 批次 FAILED 终态；0 行 warning 不重试 INV-WORKER-001 fail-closed）。",
+    "WorkItemWorkerTest 5 测试（批内逐 item handle + complete 恰好一次 + asOwner owner 参数；任一失败整批 fail；complete 0 行不重试；fail 0 行不抛；空批返回 0）；SchemaReadinessHealthIndicatorTest expectedSchemaVersionFromClasspath 22→23。",
+    "infra/db/tests/63_worker_runtime_role_claim_complete.sql：vc_api 在 server-trusted context 内同事务 claim→complete 全链路（批共享 token 断言 + complete 返回批大小）+ 负测无 context claim RAISE（V17）+ 负测 claim 事务结束后迟到 complete 零写入（INV-WORKER-001）；表状态 superuser 验证（vc_api 无 work_item 表 SELECT 权限边界实证）。",
+    "mvn -pl service/apps/runtime -am test BUILD SUCCESS 245/0；bash infra/db/run-rls-tests.sh ALL TESTS PASS 63/63；canonical precheck 8/8 PASS（doctor 822736 checks 120.5s）；git diff --check exit 0；R1 PASS（0 P0/P1/P2，4 P3 informational）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest + 根级 Maven verify 留统一审计阶段（Owner static-gates-only 策略）。",
+    "继续推进剩余 Owner-gate：§5.1.2 worker claim lease/fence（依赖 coordinator 落地；fence 签发、轮询调度、lease 过期回收、重试/死信机制）、P2-22 nextAction 未注册任务（Owner 已定显式 task-intake 动作策略，后续小卡落地）。",
+    "全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical + 根级 Maven verify）。"
+  ],
+  "knownRisks": [
+    "完整 unittest 与根级 Maven verify 在本卡未独立跑通（static-gates-only）；worker 行为由 run-rls-tests.sh 63 项 + WorkItemWorkerTest 直接验证。",
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical/rls/mvn/diff。",
+    "WorkItemWorker 批次内 handler 失败后继续处理其余 item 再整批 fail：默认 LoggingWorkItemHandler 无副作用，真实业务 handler 引入时需复核（P3）。",
+    "批次 FAILED 无重试/死信机制、lease 过期无自动回收、fence 由调用方签发——全部属 coordinator/§5.1.2 范围（P3）。",
+    "R1 本卡复核会话中独立 Reviewer subagent 不可用（使用上限），R1 语义审查由主会话以只读静态审查执行（fork_turns=none 语义，读候选 diff + 静态判断 + 引用实现者已跑门禁结果）。"
+  ],
+  "nextAction": "TASK-0171（P1-04 worker 半边，C4）闭环 ACCEPTED：WorkItemClaimService 装配进 runtime（@Bean ×3）+ worker 路径 OwnerContext.asOwner 服务端注入（Owner 2026-08-12 定：asOwner 注入、runtime 同进程）+ V23 GRANT EXECUTE claim 家族函数 TO vc_api（V17 断言保证仅 server-trusted context 内有效）+ test 63（同事务全链路/无 context RAISE/迟到写零写入）+ WorkItemWorkerTest 5 测试。P1-04 应用侧（TASK-0168）+ worker 侧（本卡）均已闭合。下一步：继续逐项解锁剩余 Owner-gate（§5.1.2 worker claim lease/fence 依赖 coordinator 落地、P2-22 nextAction 未注册任务显式 task-intake 动作策略）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}

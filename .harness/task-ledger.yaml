@@ -922,3 +922,9 @@ tasks:
     taskCard: docs/tasks/TASK-0170-p2-03-audit-event-retention-purge.md
     evidence: docs/evidence/TASK-0170/evidence-pack.json
     handoff: docs/handoffs/TASK-0170.json
+  TASK-0171:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0171-p1-04-worker-half-owner-injection.md
+    evidence: docs/evidence/TASK-0171/evidence-pack.json
+    handoff: docs/handoffs/TASK-0171.json

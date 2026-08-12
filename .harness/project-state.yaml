@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0171
-activeTaskCard: docs/tasks/TASK-0171-p1-04-worker-half-owner-injection.md
-lastAcceptedTask: TASK-0170
-lastAcceptedHandoff: docs/handoffs/TASK-0170.json
-lastTerminalTask: TASK-0170
-lastTerminalHandoff: docs/handoffs/TASK-0170.json
-nextAction: 'TASK-0171（P1-04 worker 半边，C4）READY 授权中：WorkItemClaimService 装配进 runtime + worker 路径 OwnerContext.asOwner 服务端注入（Owner 2026-08-12 已定：asOwner 服务端注入、runtime 同进程）+ V23 授权 vc_api EXECUTE claim 家族函数 + test 63。下一步：IN_PROGRESS 实现后最小验证（mvn runtime 定向测试 + run-rls-tests.sh + canonical precheck + diff check）+ R1 语义审查 + 终态闭环；闭环后继续剩余 Owner-gate（§5.1.2 worker claim lease/fence 依赖 coordinator 落地、P2-22 nextAction 未注册任务显式 task-intake 动作策略）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0171
+lastAcceptedHandoff: docs/handoffs/TASK-0171.json
+lastTerminalTask: TASK-0171
+lastTerminalHandoff: docs/handoffs/TASK-0171.json
+nextAction: 'TASK-0171（P1-04 worker 半边，C4）闭环 ACCEPTED：WorkItemClaimService 装配进 runtime（@Bean ×3）+ worker 路径 OwnerContext.asOwner 服务端注入（Owner 2026-08-12 定：asOwner 注入、runtime 同进程）+ V23 GRANT EXECUTE claim 家族函数 TO vc_api（V17 断言保证仅 server-trusted context 内有效）+ test 63（同事务全链路/无 context RAISE/迟到写零写入）+ WorkItemWorkerTest 5 测试。P1-04 应用侧（TASK-0168）+ worker 侧（本卡）均已闭合。下一步：继续逐项解锁剩余 Owner-gate（§5.1.2 worker claim lease/fence 依赖 coordinator 落地、P2-22 nextAction 未注册任务显式 task-intake 动作策略）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

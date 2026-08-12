@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0171
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -323,7 +323,41 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0171_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1c3cc3e2f519147957771d7aa3679fa2118e216c
+    candidateTree: 9cb2fe9cce0ad787e1213478a6445099a3ad8bb4
+    evidencePath: docs/evidence/TASK-0171/review-r1.md
+    reason: >-
+      R1 PASS（0 P0/P1/P2，4 P3 informational：handler 失败后批内其余 item 继续处理再整批
+      fail 默认 logging handler 无副作用；批次 FAILED 无重试/死信机制属 coordinator 职责；
+      lease 过期无自动回收属 §5.1.2 范围；fence 由未来 coordinator 签发）。V23 GRANT EXECUTE
+      claim 家族 5 函数 TO vc_api（V17 断言 p_owner==current_owner_id 仅 server-trusted
+      context 内有效 + transaction-local GUC 无 context 0 行，vc_worker 授权保持、无新角色
+      无函数改动、work_item 表 vc_api 无权限实证）；AuthDataSourceConfig 3 beans + worker
+      新包（OwnerExecutor 端口消除 Modulith 循环，ownerContext::asOwner 装配）+
+      WorkItemWorker 批共享 token 批次级终态化 0 行 fail-closed 不重试；test 63 同事务
+      全链路/无 context RAISE/迟到 complete 零写入；SchemaReadinessHealthIndicatorTest
+      22→23。静态门禁全 PASS（mvn 245/0；run-rls-tests.sh 63/63；canonical 8/8 doctor
+      822736；diff exit0）。11 改动文件全在 writeAllowlist，V1-V22 与 DB test 01-62 frozen，
+      无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级 verify deferred per Owner
+      static-gates-only。
+terminalStateReason: >-
+  P1-04 worker 半边实现闭环。候选 1c3cc3e/tree 9cb2fe9c；mvn -pl service/apps/runtime -am
+  test 245/0；bash infra/db/run-rls-tests.sh 63/63 ALL TESTS PASS；canonical precheck 8/8
+  PASS（doctor 822736 checks 120.5s）；git diff --check exit 0；R1 PASS（0 P0/P1/P2，4 P3
+  informational）。V23 GRANT EXECUTE claim 家族 5 函数 TO vc_api（V17 断言保证仅
+  server-trusted context 内有效，vc_worker 授权保持，无新角色无函数改动）；runtime
+  AuthDataSourceConfig +3 beans（workItemClaimService/workItemHandler/workItemWorker）；
+  worker 新包 WorkItemHandler + LoggingWorkItemHandler（无 PII 不读 payload）+
+  WorkItemWorker.processOwnerBatch（OwnerExecutor 端口 ownerContext::asOwner 单事务
+  claim→handle→批次级 complete/fail，0 行 fail-closed 不重试）+ WorkItemWorkerTest 5 测试；
+  test 63 正测同事务全链路 + 负测无 context RAISE + 迟到 complete 零写入；
+  SchemaReadinessHealthIndicatorTest 22→23。实现过程 2 轮修正（Modulith 循环 → OwnerExecutor
+  端口；批共享 token → 批次级终态化）均在候选内闭环且被测试实证。完整 unittest + 根级
+  Maven verify 按 Owner static-gates-only 策略 deferred to 统一审计。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P1-04 审计修复
