@@ -1,0 +1,32 @@
+{
+  "taskId": "TASK-0186",
+  "state": "ACCEPTED",
+  "baseCommit": "bbb1b487317df24a3f62a5c0e07efd4dc2786249",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0186/evidence-pack.json",
+  "completed": [
+    "frontend/src/api/chat.ts（新）：typed chat API client 照 memory.ts 模式。ChatTransport（兼容 AuthTransport）；Generation/Message/CreateConversationResponse；ChatHttpError；createConversation/sendGeneration/listMessages/cancelGeneration；403/404→null 存在性隐藏；401/5xx→throw；asId string|number 归一。",
+    "frontend/src/api/authed-fetch.ts（新）：createAuthedFetch(getAccessToken): typeof fetch。Bearer+CSRF+credentials:include。注入 realtime-transport fetchImpl（不改模块）。",
+    "frontend/src/api/chat.spec.ts（新 17 项）：4 函数 wire+解析+存在性隐藏+throw+listMessages 空数组。",
+    "frontend/src/stores/chat.ts（改）：send/loadHistory/initConversation + conversationId/messages state + displayMessages getter；保留 run/cancel/reset 不变。",
+    "frontend/src/stores/chat.spec.ts（改 14 项 = 原 7 + 新 7）。",
+    "frontend/src/pages/chat/chat.vue（改）：真实发送流程（消息输入+发送+历史+sessionId UUID+认证 realtime）；移除 demo gen-alpha-1。",
+    "frontend/src/pages/chat/chat.spec.ts（改 5 项 glue）。",
+    "specs/openapi/virtual-companion.yaml（改）：POST /api/v1/conversations + CreateConversationRequest/ConversationResponse schema。specs/openapi/dist/** 重新生成。",
+    "context-lock 48 inputs（47 read+1 provenance，base bbb1b48，fingerprint 869ff0d5），复刻自验 0185 072a97e1 通过；C2 治理闭环；ledger 完整 5 字段；nextAction 三处 sha256 f5d8c931 一致。"
+  ],
+  "remaining": [
+    "relationship 选择器 UI（当前 DEMO_RELATIONSHIP_ID=\"1\" 固定值，真实来源待 UI 卡）。",
+    "CiExecutionPolicyTests 卡住独立排查。",
+    "ID hashid 编码（当前 decimal string + asId 归一）。",
+    "长连接订阅模式（当前一次性 resume）。"
+  ],
+  "knownRisks": [
+    "doctor / canonical precheck / 完整 unittest deferred per Owner 2026-08-13 策略（不标 PASS；最小验证 vitest 196 + type-check + openapi validate/diff + diff check 全 PASS）。",
+    "authorizationCommit 占位符（plan-approved-2026-08-13-h5-chat-send-flow，长线流残留，与 0173..0185 同）。",
+    "DEMO_RELATIONSHIP_ID=\"1\" 固定值（真实来源待 relationship 选择器 UI 卡）。sessionId=crypto.randomUUID() 客户端 UUID。",
+    "OpenAPI type:string vs Java long wire number：asId 归一两端；hashid 编码待候选方向 C。",
+    "CiExecutionPolicyTests 卡住（独立未修，本卡不碰）。"
+  ],
+  "nextAction": "TASK-0186（H5 Chat 发送流程 + 历史 API 消费纵切）闭环 ACCEPTED：chat.ts typed API client（createConversation/sendGeneration/listMessages/cancelGeneration + ChatHttpError 存在性隐藏 + asId string|number 归一）+ authed-fetch.ts（Bearer+CSRF fetch wrapper 注入 realtime-transport 不改模块）+ stores/chat.ts send/loadHistory/initConversation（crypto.randomUUID 幂等键 → sendGeneration → stream → reload history）+ chat.vue 真实发送 UI（消息输入+发送+历史显示+sessionId UUID+认证 realtime）+ OpenAPI POST /api/v1/conversations 端点（补后端已有 drift）+ CreateConversationRequest/ConversationResponse schema + dist 重新生成；frontend vitest 196/0/0 + type-check exit0 + openapi validate/diff PASS + diff exit0。下一步：开卡时分配下一永久 ID，方向待 Owner 决策（候选：relationship 选择器 UI / e2e 纵切 / memory 纵切 / ID hashid 编码）。"
+}

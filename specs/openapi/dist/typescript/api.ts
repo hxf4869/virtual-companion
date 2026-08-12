@@ -71,6 +71,14 @@ export interface SendGenerationRequest {
   userContent?: string
 }
 
+export interface CreateConversationRequest {
+  relationshipId: string
+}
+
+export interface ConversationResponse {
+  conversationId: string
+}
+
 export interface Memory {
   memoryId: string
   scope: string
@@ -135,6 +143,7 @@ export interface VirtualCompanionApiClient {
   getRelationship(): Promise<VersionResponse>
   activateRelationship(): Promise<VersionResponse>
   deactivateRelationship(): Promise<VersionResponse>
+  createConversation(): Promise<VersionResponse>
   sendGeneration(): Promise<VersionResponse>
   listMessages(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>

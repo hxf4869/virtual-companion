@@ -1,28 +1,48 @@
 // @vitest-environment happy-dom
-// TASK-0106 (P2-19): chat page component glue test -- the status region
-// carries role=status + aria-live, the cancel button aria-busy while
-// streaming, and a failed resume surfaces the typed "恢复失败，请重试" text
-// instead of an empty/disconnected-looking stream.
+// TASK-0186: chat page component glue test — verifies the send-flow UI renders
+// the message input, send button, status region (role=status + aria-live) and
+// that the send button is disabled until the user types. The page no longer
+// auto-starts a stream on mount (TASK-0185 demo mode removed); instead it
+// creates a conversation on mount and waits for user input.
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPage from "./chat.vue";
 
+/** Stub fetch to satisfy the mount-time conversation creation + history load. */
+function stubFetch(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/conversations") {
+        return { ok: true, status: 200, json: async () => ({ conversationId: 1 }) };
+      }
+      if (url.includes("/messages")) {
+        return { ok: true, status: 200, json: async () => [] };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }),
+  );
+}
+
 function mountPage() {
   return mount(ChatPage, { attachTo: document.body });
 }
 
-describe("chat page glue (P2-19 component test)", () => {
+describe("chat page glue (TASK-0186 send flow)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", undefined);
-    // The page starts a resume on mount; stub fetch so no real network call
-    // happens. A plain rejection exercises the exhausted path (P1-07): the
-    // page shows a typed failure, never a fake terminal or empty stream.
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      throw new Error("network down");
-    }));
+    stubFetch();
+  });
+
+  it("renders the message input and send button", () => {
+    const wrapper = mountPage();
+    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="send"]').exists()).toBe(true);
+    wrapper.unmount();
   });
 
   it("renders the status region with role=status and aria-live=polite", () => {
@@ -33,25 +53,27 @@ describe("chat page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("binds aria-busy on the cancel button to the streaming state", async () => {
+  it("disables the send button when the input is empty", () => {
     const wrapper = mountPage();
-    const cancel = wrapper.find('button[data-testid="cancel"]');
-    // The page starts a run on mount; while the (stubbed, failing) stream is
-    // in flight the button is busy, and after the typed failure it settles.
-    expect(cancel.attributes("aria-busy")).toBe("true");
-    await vi.waitFor(() => {
-      expect(cancel.attributes("aria-busy")).toBe("false");
-    });
+    const send = wrapper.find('button[data-testid="send"]');
+    expect(send.attributes("disabled")).toBeDefined();
     wrapper.unmount();
   });
 
-  it("surfaces a typed failure instead of an empty stream", async () => {
+  it("enables the send button after the user types", async () => {
     const wrapper = mountPage();
-    const status = wrapper.find('[data-testid="status"]');
-    await vi.waitFor(() => {
-      expect(status.text()).toContain("恢复失败");
-    });
-    expect(status.text()).toContain("请重试");
+    const input = wrapper.find('input[data-testid="message-input"]');
+    const send = wrapper.find('button[data-testid="send"]');
+
+    await input.setValue("Hello world");
+    expect(send.attributes("disabled")).toBeUndefined();
+
+    wrapper.unmount();
+  });
+
+  it("renders the message history container", () => {
+    const wrapper = mountPage();
+    expect(wrapper.find('[data-testid="history"]').exists()).toBe(true);
     wrapper.unmount();
   });
 });

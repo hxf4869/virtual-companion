@@ -7,6 +7,7 @@
     "getRelationship",
     "activateRelationship",
     "deactivateRelationship",
+    "createConversation",
     "sendGeneration",
     "listMessages",
     "cancelGeneration",
@@ -28,6 +29,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "7b090d5e94587e96250238a6b96a3a86eab6459f2957871b01c3a1d6fc444a27"
+    "sha256": "167c4d0d89fe7dc61beff833a7aa72808f5f6541270bbd8bdabf1f74c46ddacf"
   }
 }

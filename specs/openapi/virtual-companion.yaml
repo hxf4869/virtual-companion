@@ -177,6 +177,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations:
+    post:
+      operationId: createConversation
+      summary: Open a conversation under a relationship
+      description: >-
+        Creates a conversation row under one of the caller's relationships
+        (vc.create_conversation). The caller identity is the owner;
+        owner_user_id is never a request field. A foreign or absent relationship
+        maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
+        server-verified authentication context.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '200':
+          description: The newly created conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/conversations/{conversationId}/generations:
     post:
       operationId: sendGeneration
@@ -1118,6 +1155,24 @@ components:
         userContent:
           type: string
           description: The user's chat content for this turn
+    CreateConversationRequest:
+      type: object
+      description: Body for creating a conversation under a relationship.
+      required:
+        - relationshipId
+      properties:
+        relationshipId:
+          type: string
+          description: The relationship under which to open the conversation
+    ConversationResponse:
+      type: object
+      description: The newly created conversation.
+      required:
+        - conversationId
+      properties:
+        conversationId:
+          type: string
+          description: Stable owner-scoped conversation identifier
     Memory:
       type: object
       description: >-

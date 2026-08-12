@@ -972,3 +972,9 @@ tasks:
     taskCard: docs/tasks/TASK-0185-h5-realtime-transport-contract-align.md
     evidence: docs/evidence/TASK-0185/evidence-pack.json
     handoff: docs/handoffs/TASK-0185.json
+  TASK-0186:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0186-h5-chat-send-flow-history-api.md
+    evidence: docs/evidence/TASK-0186/evidence-pack.json
+    handoff: docs/handoffs/TASK-0186.json

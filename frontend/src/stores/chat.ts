@@ -12,10 +12,25 @@
 // fetch. A run sequence guards single-writer semantics: a stale run that
 // finishes late is dropped and can never overwrite the state of a newer
 // generation or a reset.
+//
+// TASK-0186: adds the send flow (idempotent generation creation → stream →
+// history reload) on top of the existing consumption-only run(). The low-level
+// run() is unchanged so existing stream tests still pass. send() mints a UUID
+// idempotency key, calls sendGeneration, starts the stream, and reloads message
+// history on completion. sessionId is supplied by the page (client-generated
+// UUID per chat session).
 
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
+import {
+  createConversation,
+  listMessages,
+  sendGeneration,
+  type ChatTransport,
+  type CreateConversationResponse,
+  type Message,
+} from "@/api/chat";
 import {
   createStreamHandle,
   streamGeneration,
@@ -36,6 +51,8 @@ export const useChatStore = defineStore("h5-chat", () => {
   const generationId = ref<string>("");
   const stream = ref<StreamState>(initialState(0));
   const outcome = ref<StreamOutcome | null>(null);
+  const conversationId = ref<string>("");
+  const messages = ref<Message[]>([]);
   let handle: StreamHandle | null = null;
   let runSequence = 0;
 
@@ -49,6 +66,23 @@ export const useChatStore = defineStore("h5-chat", () => {
 
   const isStreaming = computed(() => phase.value === "streaming");
   const isTerminal = computed(() => stream.value.terminal);
+
+  /**
+   * Messages to display: committed history plus the live streaming draft as a
+   * pending assistant message (so the user sees incremental output in context).
+   */
+  const displayMessages = computed<Message[]>(() => {
+    const msgs = [...messages.value];
+    if (isStreaming.value && draft.value) {
+      msgs.push({
+        messageId: "__streaming__",
+        conversationId: conversationId.value,
+        role: "assistant",
+        content: draft.value,
+      });
+    }
+    return msgs;
+  });
 
   async function run(
     deps: RealtimeDeps,
@@ -104,7 +138,67 @@ export const useChatStore = defineStore("h5-chat", () => {
     generationId.value = "";
     stream.value = initialState(0);
     outcome.value = null;
+    conversationId.value = "";
+    messages.value = [];
     handle = null;
+  }
+
+  /**
+   * Create a conversation under a relationship and load its message history.
+   * The page calls this on mount to establish the chat context.
+   */
+  async function initConversation(
+    transport: ChatTransport,
+    relationshipId: string,
+  ): Promise<CreateConversationResponse | null> {
+    const result = await createConversation(transport, relationshipId);
+    if (result) {
+      conversationId.value = result.conversationId;
+      await loadHistory(transport);
+    }
+    return result;
+  }
+
+  /** Reload message history for the current conversation. */
+  async function loadHistory(transport: ChatTransport): Promise<void> {
+    if (!conversationId.value) return;
+    try {
+      messages.value = await listMessages(transport, conversationId.value);
+    } catch {
+      // History load failure is non-fatal — the stream result is already
+      // committed and the user can retry. Do not surface as a phase change.
+    }
+  }
+
+  /**
+   * Send a chat turn: mint an idempotency key, create the generation, stream it
+   * to a terminal state, then reload history to pick up the final assistant
+   * message. If sendGeneration returns null (existence-hidden failure), the
+   * phase transitions to "failed" without faking success.
+   */
+  async function send(
+    transport: ChatTransport,
+    deps: RealtimeDeps,
+    content: string,
+  ): Promise<void> {
+    if (!conversationId.value) {
+      phase.value = "failed";
+      return;
+    }
+    const idempotencyKey = crypto.randomUUID();
+    const generation = await sendGeneration(
+      transport,
+      conversationId.value,
+      idempotencyKey,
+      content,
+    );
+    if (!generation) {
+      phase.value = "failed";
+      outcome.value = null;
+      return;
+    }
+    await run(deps, generation.generationId, 1);
+    await loadHistory(transport);
   }
 
   return {
@@ -112,11 +206,17 @@ export const useChatStore = defineStore("h5-chat", () => {
     generationId,
     stream,
     outcome,
+    conversationId,
+    messages,
     draft,
     isStreaming,
     isTerminal,
+    displayMessages,
     run,
     cancel,
     reset,
+    initConversation,
+    send,
+    loadHistory,
   };
 });

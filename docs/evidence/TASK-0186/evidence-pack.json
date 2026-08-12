@@ -1,0 +1,101 @@
+{
+  "taskId": "TASK-0186",
+  "baseCommit": "bbb1b487317df24a3f62a5c0e07efd4dc2786249",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "contextFingerprint": "869ff0d52cdc2d43fbc957e977613d9a6affcd8af7adbf57a537084947539845",
+  "checks": [
+    {
+      "id": "frontend-vitest-run",
+      "command": "pnpm --dir frontend test:run",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "darwin 25.6.0 arm64, node v22.23.1, pnpm 11.9.0, vitest 3.2.6",
+      "detail": "Test Files 18 passed (18); Tests 196 passed (196)。含新增 chat.spec.ts 17 项（createConversation/sendGeneration/listMessages/cancelGeneration wire+解析+存在性隐藏+401/5xx throw+listMessages 空数组）；stores/chat.spec.ts 14 项（原 7 项 run/cancel/reset/gap/stale 不变 + 新 7 项 send/history/initConversation/displayMessages/reset）；pages/chat/chat.spec.ts 5 项（消息输入+发送按钮渲染/status role+aria-live/send 禁用启用/history 容器）。"
+    },
+    {
+      "id": "frontend-type-check",
+      "command": "pnpm --dir frontend type-check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "darwin, vue-tsc 1.0.24 + typescript 4.9.4",
+      "detail": "vue-tsc --noEmit exit 0。chat.ts/authed-fetch.ts/stores/chat.ts/chat.vue 全类型通过；ChatTransport 结构兼容 AuthTransport（createAuthenticatedTransport 返回值可直接传入 store.send）。"
+    },
+    {
+      "id": "openapi-validate",
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/dev/openapi_tool.py validate",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "darwin, Python vc-harness venv",
+      "detail": "OpenAPI validation: PASS。新增 POST /api/v1/conversations + CreateConversationRequest/ConversationResponse schema 通过校验。"
+    },
+    {
+      "id": "openapi-diff",
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/dev/openapi_tool.py diff",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "darwin, Python vc-harness venv",
+      "detail": "OpenAPI drift check: PASS。dist 重新生成后 source 与 dist 无漂移。"
+    },
+    {
+      "id": "diff-check",
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "git"
+    },
+    {
+      "id": "doctor-canonical-precheck",
+      "command": "python scripts/harness/doctor.py --task TASK-0186 ; python scripts/harness/precheck.py --task TASK-0186",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "deferred per Owner 2026-08-13 策略（跳过长检查只完成任务；doctor/precheck 单次约 500-560s）。不标 PASS。",
+      "environment": "darwin, Python vc-harness venv"
+    },
+    {
+      "id": "harness-unittest-discover",
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "deferred per Owner 策略；且 CiExecutionPolicyTests 在完整 discover 中卡住（独立未修问题）。不标 PASS。",
+      "environment": "darwin, Python vc-harness venv"
+    }
+  ],
+  "completed": [
+    "frontend/src/api/chat.ts（新）：typed chat API client 照 memory.ts 模式。ChatTransport 接口（结构兼容 AuthTransport）；Generation/Message/CreateConversationResponse 类型；ChatHttpError（unauthorized/server/client/parse）；createConversation（POST /api/v1/conversations body {relationshipId}）/sendGeneration（POST /conversations/{id}/generations body {idempotencyKey,userContent?}）/listMessages（GET /conversations/{id}/messages?after=&limit=）/cancelGeneration（POST /generations/{id}/cancel）；403/404→null 存在性隐藏；401/5xx→throw；asId 接受 string|number 归一 string（Java long wire format）；listMessages foreign/absent→空数组不 throw。",
+    "frontend/src/api/authed-fetch.ts（新）：createAuthedFetch(getAccessToken): typeof fetch。加 Authorization: Bearer header + credentials:include + POST/PUT/PATCH/DELETE 时 X-CSRF-Token from vc_csrf cookie。作为 createBrowserRealtimeDeps 的 fetchImpl 注入（不改 realtime-transport.ts）。",
+    "frontend/src/api/chat.spec.ts（新，17 项）：mock transport 覆盖 4 函数 wire（method+path+body+query）+ response 解析（Generation 4 字段+Message 4 字段+conversationId numeric→string）+ 存在性隐藏（403/404→null）+ 401/5xx throw + listMessages 空数组（foreign 不披露）+ userContent undefined 时 omit from body。",
+    "frontend/src/stores/chat.ts（改）：增 conversationId/messages state；initConversation（createConversation+loadHistory）/send（crypto.randomUUID 幂等键→sendGeneration→run→loadHistory）/loadHistory（listMessages 填 messages，catch 非致命）；displayMessages getter（messages + streaming draft as pending assistant）；reset 清理新 state。保留 run/cancel/reset 不变（现有 7 项 store 测试全绿）。",
+    "frontend/src/stores/chat.spec.ts（改）：保留原 7 项 run/cancel/reset/gap/stale-run 测试；增 7 项（initConversation 创建+loadHistory / send 完整流程 / send null→failed / send 无 conversationId→failed / loadHistory 刷新 / displayMessages / reset 清理）。",
+    "frontend/src/pages/chat/chat.vue（改）：引入 auth store+createAuthenticatedTransport+createAuthedFetch+useChatStore；sessionId=crypto.randomUUID()（真实来源）；onMounted 创建 conversation（DEMO_RELATIONSHIP_ID=\"1\"）+loadHistory（不再自动起流 gen-alpha-1）；消息输入（data-testid=message-input）+发送按钮（data-testid=send，disabled when streaming/empty）+历史列表（data-testid=history）+draft+status（role=status aria-live=polite）+cancel（v-if streaming，aria-busy）；realtime deps 用 authedFetch 注入。",
+    "frontend/src/pages/chat/chat.spec.ts（改，5 项）：stub fetch 路由 conversations/messages 返回成功；测试消息输入+发送按钮渲染 / status role+aria-live / send disabled when empty / send enabled after type / history 容器渲染。",
+    "specs/openapi/virtual-companion.yaml（改）：增 POST /api/v1/conversations endpoint（operationId createConversation，security bearerAuth，request CreateConversationRequest，response ConversationResponse，401/404 ErrorEnvelope）+ CreateConversationRequest schema（relationshipId required string）+ ConversationResponse schema（conversationId required string）。对齐后端 ConversationController（V25 vc.create_conversation）。",
+    "specs/openapi/dist/**（重新生成）：openapi_tool.py generate 生成 dist/api-bundle.yaml + dist/typescript/api.ts + dist/java/* + dist/openapi.snapshot.json；新增 CreateConversationRequest.java/ConversationResponse.java + VirtualCompanionApi.java 增 createConversation 方法。",
+    "context-lock 48 inputs（47 readAllowlist + 1 provenance，base bbb1b48，fingerprint 869ff0d5），复刻 verify_context_lock 先复现 0185 072a97e1 自验通过；C2 治理闭环（task-intake，not-required review，forbiddenPaths 精确未越界）；ledger TASK-0186 完整 5 字段；nextAction 三处 sha256 f5d8c931 一致。"
+  ],
+  "remaining": [
+    "relationship 选择器 UI（当前 chat.vue 用 DEMO_RELATIONSHIP_ID=\"1\" 固定值，真实来源待 relationship 管理 UI 卡）。",
+    "CiExecutionPolicyTests.test_policy_rejects_backend_and_frontend_local_profile_drift 卡住独立排查（unittest discover 改单类规避）。",
+    "ID hashid 编码（当前 OpenAPI 用 decimal string，Java long 序列化为 number，前端 asId 归一为 string）。",
+    "长连接订阅模式（0184/0185 是一次性 resume 积压，非持续推送；未来若需订阅需新卡）。"
+  ],
+  "knownRisks": [
+    "doctor / canonical precheck / 完整 unittest discover deferred per Owner 2026-08-13 策略（不标 PASS；最小验证 frontend vitest 196 + type-check + openapi validate/diff + diff check 全 PASS）。下次跑长检查时应绿（writeAllowlist 合规 + context-lock 48 inputs 钉 base bbb1b48 + ledger 5 字段完整）。",
+    "authorizationCommit 占位符字符串（plan-approved-2026-08-13-h5-chat-send-flow，精简长线流残留，与 TASK-0173..0185 同属已知残留；doctor ACCEPTED 态不校验该格式）。",
+    "DEMO_RELATIONSHIP_ID=\"1\" 固定值（chat.vue onMounted 从此 relationship 创建 conversation；真实来源是 relationship 选择器 UI，待独立卡）。sessionId=crypto.randomUUID() 是客户端 UUID（每次组件实例一个，符合 realtime-contract ticket binding 的 session 语义）。",
+    "OpenAPI ID 类型 drift：OpenAPI 声明 type:string 但 Java backend 序列化 long 为 JSON number；chat.ts asId 接受 string|number 归一 string 处理两端。hashid 编码待候选方向 C。",
+    "CiExecutionPolicyTests.test_policy_rejects_backend_and_frontend_local_profile_drift 在 unittest discover 中卡住（独立未修问题，本卡不碰）。"
+  ],
+  "nextAction": "TASK-0186（H5 Chat 发送流程 + 历史 API 消费纵切）闭环 ACCEPTED：chat.ts typed API client（createConversation/sendGeneration/listMessages/cancelGeneration + ChatHttpError 存在性隐藏 + asId string|number 归一）+ authed-fetch.ts（Bearer+CSRF fetch wrapper 注入 realtime-transport 不改模块）+ stores/chat.ts send/loadHistory/initConversation（crypto.randomUUID 幂等键 → sendGeneration → stream → reload history）+ chat.vue 真实发送 UI（消息输入+发送+历史显示+sessionId UUID+认证 realtime）+ OpenAPI POST /api/v1/conversations 端点（补后端已有 drift）+ CreateConversationRequest/ConversationResponse schema + dist 重新生成；frontend vitest 196/0/0 + type-check exit0 + openapi validate/diff PASS + diff exit0。下一步：开卡时分配下一永久 ID，方向待 Owner 决策（候选：relationship 选择器 UI / e2e 纵切 / memory 纵切 / ID hashid 编码）。"
+}
