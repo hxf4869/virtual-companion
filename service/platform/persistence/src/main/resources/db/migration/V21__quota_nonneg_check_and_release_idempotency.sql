@@ -24,8 +24,10 @@
 -- validation are preserved verbatim; only the idempotency branch is added. The non-negative
 -- guard deliberately stays BEFORE the idempotency check, so a negative-amount call still
 -- raises regardless of whether a RELEASE already exists (preserving the test 43 negative
--- assertion). search_path stays vc, public (the function body is fully schema-qualified, so
--- this is runtime-neutral; §5.1.5 search_path hardening is a separately closed audit item).
+-- assertion). search_path is vc, pg_catalog — the V18 (TASK-0158 RISK-09) baseline for every
+-- vc SECURITY DEFINER function; CREATE OR REPLACE must re-stamp that exact clause (re-stamping
+-- the V17-era `vc, public` would regress test 57 G1). The body is fully schema-qualified, so
+-- this is runtime-neutral.
 
 SET search_path TO vc, pg_catalog;
 
@@ -106,7 +108,7 @@ CREATE OR REPLACE FUNCTION vc.record_quota_release(
     RETURNS TABLE(out_entry_id bigint)
     LANGUAGE plpgsql
     SECURITY DEFINER
-    SET search_path = vc, public
+    SET search_path = vc, pg_catalog
 AS $$
 DECLARE
     v_id       bigint;
