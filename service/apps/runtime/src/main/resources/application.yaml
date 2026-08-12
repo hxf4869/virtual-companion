@@ -102,14 +102,21 @@ virtual-companion:
   external-attempt:
     # TASK-0177: tunes the external-attempt RoutingRequest so the router selects
     # an admitted deployment of this protocol when the external persistence path
-    # is exercised. The dual authorization snapshot creation (provider-id /
-    # region / contract / purpose / data-category) is deferred to TASK-0178: V16
-    # revoked direct INSERT on authorization_snapshot from every runtime role
-    # and no create-snapshot SECURITY DEFINER function exists yet, so the
-    # external branch is not runtime-active until that SD function lands. The
-    # external persistence + audit chain (record_provider_attempt, finalize with
-    # real usage, terminal dispatch) is wired and unit/DB-tested regardless.
+    # is exercised. TASK-0181 completes the runtime path: the dual authorization
+    # snapshot creation now runs through the V26 create_authorization_snapshots
+    # SECURITY DEFINER function (V16 revoked direct INSERT on authorization_snapshot
+    # from every runtime role), so the external branch is runtime-active when
+    # model-providers.enabled=true.
     protocol: ${VC_EXTERNAL_PROTOCOL:OPENAI_CHAT_COMPLETIONS}
+    # TASK-0181: the authorization intent minted into both snapshots. The
+    # provider id is derived at runtime from the registry with the router's
+    # candidate rule (admitted deployments of the configured protocol); these
+    # four values describe the attempt's region / contract / purpose / data
+    # categories. Defaults align with the infra/db test 67/68 fixtures.
+    region: ${VC_EXTERNAL_REGION:us}
+    contract-ref: ${VC_EXTERNAL_CONTRACT:alpha-standard}
+    purpose: ${VC_EXTERNAL_PURPOSE:COMPANION_CHAT}
+    data-categories: ${VC_EXTERNAL_CATEGORIES:MESSAGE_TEXT}
 
 ---
 # 条件风险 3（TASK-0102）：production profile 强制认证与数据源开启。两个开关

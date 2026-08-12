@@ -1,6 +1,11 @@
 package com.virtualcompanion.runtime.auth.config;
 
 import com.virtualcompanion.catalog.ModelProtocol;
+import com.virtualcompanion.modelruntime.authorization.DataCategory;
+import com.virtualcompanion.modelruntime.authorization.InMemoryAuthorizationSnapshotStore;
+import com.virtualcompanion.modelruntime.authorization.ProcessingPurpose;
+import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
+import com.virtualcompanion.modelruntime.authorization.ProviderRegion;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
@@ -12,6 +17,7 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
+import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
@@ -23,6 +29,7 @@ import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
+import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
 import com.virtualcompanion.runtime.worker.GenerationWorkItemHandler;
 import com.virtualcompanion.runtime.worker.LiveInvocationAssembler;
 import com.virtualcompanion.runtime.worker.LoggingWorkItemHandler;
@@ -31,6 +38,8 @@ import com.virtualcompanion.runtime.worker.WorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemWorker;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Duration;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.ObjectProvider;
@@ -298,6 +307,68 @@ public class AuthDataSourceConfig {
     }
 
     /**
+     * TASK-0181: JDBC {@link AuthorizationSnapshotProvider} wiring the V26
+     * {@code create_authorization_snapshots} SECURITY DEFINER function and
+     * mirroring the minted dual snapshots into the in-memory store the
+     * {@code ExecutionAuthorizationGuard} reads. The provider id is derived
+     * from the live registry with the {@code DeterministicRouter} candidate
+     * rule; region / contract / purpose / data categories come from the
+     * {@code virtual-companion.external-attempt} configuration (defaults align
+     * with the infra/db test 67/68 fixtures).
+     *
+     * <p>Active only when the live model-provider runtime is wired
+     * ({@code model-providers.enabled=true}, the same condition as
+     * {@code ApprovedModelProviderConfig}), so the generation handler's
+     * external branch becomes runtime-active exactly when an approved provider
+     * set exists; with the switch off no provider bean exists and the branch
+     * stays inactive (fail closed, no eligible deployment). The runtime
+     * datasource is required for this path, so a model-providers-enabled
+     * runtime without a datasource fails closed at wiring time.
+     */
+    @Bean
+    @ConditionalOnProperty(
+            name = "virtual-companion.model-providers.enabled",
+            havingValue = "true")
+    public AuthorizationSnapshotProvider authorizationSnapshotProvider(
+            JdbcTemplate authJdbcTemplate,
+            InMemoryAuthorizationSnapshotStore authorizationSnapshotStore,
+            ApprovedModelProviders approvedModelProviders,
+            @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol,
+            @Value("${virtual-companion.external-attempt.region:us}") String region,
+            @Value("${virtual-companion.external-attempt.contract-ref:alpha-standard}") String contractRef,
+            @Value("${virtual-companion.external-attempt.purpose:COMPANION_CHAT}") String purpose,
+            @Value("${virtual-companion.external-attempt.data-categories:MESSAGE_TEXT}") String dataCategories) {
+        return new JdbcAuthorizationSnapshotProvider(
+                authJdbcTemplate,
+                authorizationSnapshotStore,
+                approvedModelProviders.registry(),
+                externalProtocol,
+                new ProviderRegion(region),
+                new ProviderContractRef(contractRef),
+                ProcessingPurpose.valueOf(purpose),
+                parseDataCategories(dataCategories));
+    }
+
+    private static Set<DataCategory> parseDataCategories(String csv) {
+        if (csv == null || csv.isBlank()) {
+            throw new IllegalArgumentException(
+                    "virtual-companion.external-attempt.data-categories must not be blank");
+        }
+        Set<DataCategory> result = new LinkedHashSet<>();
+        for (String raw : csv.split(",")) {
+            String name = raw.trim();
+            if (!name.isEmpty()) {
+                result.add(DataCategory.valueOf(name));
+            }
+        }
+        if (result.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "virtual-companion.external-attempt.data-categories must not be empty");
+        }
+        return result;
+    }
+
+    /**
      * TASK-0179: generation cancellation over the V10
      * {@code vc.cancel_generation} SECURITY DEFINER function, consumed by the
      * generation cancel HTTP API controller. Existence is pre-checked through
@@ -363,10 +434,9 @@ public class AuthDataSourceConfig {
      * {@link AuthorizationSnapshotProvider} are both optional
      * ({@code ObjectProvider#getIfAvailable} returns {@code null} when no
      * {@code model-providers.enabled=true} / {@code zero-llm.enabled=true}
-     * runtime is active); the external branch is not runtime-active until the
-     * snapshot-creation SD function lands (TASK-0178). {@link AuthorizationSnapshotProvider}
-     * has no bean in this task, so the external branch is exercised only by unit
-     * tests and reached at runtime once TASK-0178 wires a provider.
+     * runtime is active); the external branch is runtime-active since
+     * TASK-0181 wires the JDBC {@link AuthorizationSnapshotProvider} bean
+     * under the same {@code model-providers.enabled=true} condition.
      */
     @Bean
     public WorkItemHandler workItemHandler(

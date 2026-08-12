@@ -946,3 +946,7 @@ tasks:
     taskCard: docs/tasks/TASK-0180-memory-http-api.md
     evidence: docs/evidence/TASK-0180/evidence-pack.json
     handoff: docs/handoffs/TASK-0180.json
+  TASK-0181:
+    taskCard: docs/tasks/TASK-0181-authorization-snapshot-external-activation.md
+    evidence: docs/evidence/TASK-0181/evidence-pack.json
+    handoff: docs/handoffs/TASK-0181.json

@@ -140,9 +140,10 @@ class SchemaReadinessHealthIndicatorTest {
 
     @Test
     void expectedSchemaVersionFromClasspathFindsNewestMigration() {
-        // The persistence module jar ships db/migration/V1..V25 on the test
-        // classpath, mirroring the runtime deployment.
+        // The persistence module jar ships db/migration/V1..V26 on the test
+        // classpath, mirroring the runtime deployment (V26 = TASK-0181
+        // create_authorization_snapshots).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(25);
+                .isEqualTo(26);
     }
 }

@@ -11,6 +11,7 @@ import com.virtualcompanion.modelruntime.port.ModelProtocolAdapter;
 import com.virtualcompanion.modelruntime.registry.InMemoryProviderRegistry;
 import com.virtualcompanion.modelruntime.registry.ProviderId;
 import com.virtualcompanion.modelruntime.registry.ProviderRegistration;
+import com.virtualcompanion.runtime.loopback.LoopbackModelProtocolAdapter;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -87,10 +88,16 @@ final class ApprovedModelProviderProvisioner {
                                 deployment.model(),
                                 deployment.maxTokens()));
             }
+            // TASK-0181: the operator-configured loopback deployment
+            // (protocol=FAKE) exercises the real external runtime path
+            // in-process; it is network-free and credential-free, and the
+            // catalog FAKE protocol code is reused because no LOOPBACK enum
+            // value exists in the protected specs/generated surface.
+            case FAKE -> new LoopbackModelProtocolAdapter();
             default -> throw new IllegalStateException(
                     "unsupported protocol " + deployment.protocol()
                             + " for deployment " + deployment.providerId()
-                            + "; approved protocols are OPENAI_CHAT_COMPLETIONS and ANTHROPIC_MESSAGES");
+                            + "; approved protocols are OPENAI_CHAT_COMPLETIONS, ANTHROPIC_MESSAGES and FAKE");
         };
     }
 
@@ -101,7 +108,7 @@ final class ApprovedModelProviderProvisioner {
         } catch (IllegalArgumentException unknown) {
             throw new IllegalStateException(
                     "unknown provider protocol " + code
-                            + "; approved protocols are OPENAI_CHAT_COMPLETIONS and ANTHROPIC_MESSAGES",
+                            + "; approved protocols are OPENAI_CHAT_COMPLETIONS, ANTHROPIC_MESSAGES and FAKE",
                     unknown);
         }
     }

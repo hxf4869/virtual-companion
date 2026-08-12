@@ -4,29 +4,28 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0180
-lastAcceptedHandoff: docs/handoffs/TASK-0180.json
-lastTerminalTask: TASK-0180
-lastTerminalHandoff: docs/handoffs/TASK-0180.json
+lastAcceptedTask: TASK-0181
+lastAcceptedHandoff: docs/handoffs/TASK-0181.json
+lastTerminalTask: TASK-0181
+lastTerminalHandoff: docs/handoffs/TASK-0181.json
 nextAction: >-
-  TASK-0180（memory HTTP 端点，C2）闭环 ACCEPTED：实现 OpenAPI 已定义但 Java HTTP 层缺失的 8 个端点——POST
-  /api/v1/relationships/{relationshipId}/memories/candidates（createMemoryCandidate，foreign relationship→404）
-  +GET /api/v1/relationships/{relationshipId}/memories（listMemories，includeDeleted 手解仅 true/false，
-  foreign→200 空数组）+GET /api/v1/memories/{memoryId}（getMemory，foreign/absent/deleted→404）+PATCH
-  /api/v1/memories/{memoryId}（updateMemory，死端状态→404）+DELETE /api/v1/memories/{memoryId}（deleteMemory，
-  alive→200 删除前快照，已软删→404 Owner 拍板）+POST /api/v1/memories/{memoryId}/confirm（confirmMemoryCandidate，
-  非 pending→404）+POST /api/v1/memories/{memoryId}/reject（rejectMemoryCandidate，非 pending→404）+GET
-  /api/v1/memories/{memoryId}/evidence（listMemoryEvidence，foreign/absent→200 空数组）；复用 V11/V12/V13 SD
-  函数（均已 GRANT vc_api，vc_api 无 memory_item 直写）；新 MemoryService+MemoryRecord+MemoryEvidenceRecord
-  （platform.persistence 包：create 经 RelationshipService.get 预检、evidence text[] 经 createArrayOf、
-  BadSqlGrammarException 上抛保 503、业务 RAISE→404——memory 端点 OpenAPI 把状态冲突统一映射
-  NOT_FOUND_OR_FORBIDDEN，与 cancel 的 400 不同）+MemoryController（runtime.memory.web，自带
-  MemoryResponse/MemoryEvidenceResponse/MemoryCandidateCreateRequest/MemoryUpdateRequest DTO）+AuthDataSourceConfig
-  1 bean；复用 runtime.web 错误层（404 NOT_FOUND_OR_FORBIDDEN/400 INVALID_REQUEST）；MemoryServiceTest
-  28+MemoryControllerTest 23 场景；run-rls 67/67+mvn runtime 304/0/0（persistence 94/0/0，Modulith PASS）+diff
-  exit0 全绿。不新增 migration、不改 modelruntime/safety/adapters/specs/auth/conversation/generation/relationship/
-  web/message/cancel 包→不触发 C3/C4。下一步：C4 snapshot SD 函数 V26 create_authorization_snapshots+
-  AuthorizationSnapshotProvider JDBC 实现+loopback adapter e2e（激活 external 运行期路径）按序。
+    TASK-0181（C4 snapshot 卡）闭环 ACCEPTED：激活 external 运行期路径——V26
+    create_authorization_snapshots SECURITY DEFINER 函数（V17 trusted-owner 断言 +
+    generation 存在性校验 + purpose 白名单 + 双 ACTIVE 行 + REVOKE PUBLIC/GRANT vc_api）+
+    JdbcAuthorizationSnapshotProvider （platform.persistence：providerId 按
+    DeterministicRouter 候选规则从 registry 推导、SD 铸造双快照后 mirror 进
+    InMemoryAuthorizationSnapshotStore 供 ExecutionAuthorizationGuard
+    读取、BadSqlGrammarException 上抛保 worker fail closed）+ AuthDataSourceConfig
+    bean（方法级 model-providers.enabled=true 条件）+ external-attempt
+    配置扩展（region/contract-ref/purpose/data-categories 默认
+    us/alpha-standard/COMPANION_CHAT/[MESSAGE_TEXT]）+
+    LoopbackModelProtocolAdapter（runtime/loopback，protocol=FAKE、只接受
+    ExternalAttemptBinding、确定性事件流 usage 42/58）+ ApprovedModelProviderProvisioner
+    FAKE 分支；run-rls 69/69（新增 68 号：vc_api 经 SD 创建双快照走完整 external 链 COMPLETED + 未知
+    generation/跨 owner/空 provider RAISE）+ mvn runtime 311/0/0 （persistence
+    102/0/0，新增 JdbcAuthorizationSnapshotProviderTest 8 + loopback 7 场景）+ diff
+    exit0 全绿；SchemaReadinessHealthIndicatorTest 随 V26 更新为 26。下一步：realtime SSE
+    推送（SseEmitter + V8 resume_stream）按序；ID hashid 编码随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

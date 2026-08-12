@@ -1,0 +1,31 @@
+{
+  "taskId": "TASK-0181",
+  "state": "ACCEPTED",
+  "baseCommit": "aa3d7f7848aeda1c10b37d039d2069e8b6ba1a7a",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0181/evidence-pack.json",
+  "completed": [
+    "V26__authorization_snapshot_runtime_creation.sql（新，db/migration）：vc.create_authorization_snapshots(bigint,bigint,text,text,text,text,text[]) RETURNS TABLE(out_requested_id,out_execution_id)——SECURITY DEFINER + SET search_path=vc,pg_catalog（V18 模式）；NULL/blank 校验 + purpose 白名单（catalog processing-purposes 六值）+ V17 trusted-owner 断言（p_owner_user_id IS DISTINCT FROM current_owner_id RAISE）+ generation 存在性校验（owner 谓词不披露）+ 'snap_'||gen_random_uuid() 双 id + INSERT 双 ACTIVE 行（task_cancelled/source_data_deleted=false）+ REVOKE PUBLIC + GRANT vc_api。",
+    "JdbcAuthorizationSnapshotProvider（新，platform.persistence，implements AuthorizationSnapshotProvider）：注入 JdbcTemplate + AuthorizationSnapshotStore（mirror 目标）+ ProviderRegistry + externalProtocol + region/contractRef/purpose/dataCategories；createFor 按 router 一致规则选 ADMITTED+协议匹配+排序第一个 providerId（无→ISE fail closed）→ SD 调用（text[] 经 createArrayOf + PreparedStatementSetter）→ 行数!=1→ISE → 双 AuthorizationSnapshot（ACTIVE 同内容）→ mirror put ×2 → SnapshotIds；BadSqlGrammarException 上抛（worker catch → safeTerminalize，无 HTTP 层）。",
+    "AuthDataSourceConfig + authorizationSnapshotProvider bean（方法级 @ConditionalOnProperty model-providers.enabled=true，与 ApprovedModelProviderConfig 同条件；注入 authJdbcTemplate + InMemoryAuthorizationSnapshotStore + ApprovedModelProviders + external-attempt 五 @Value 配置；data-categories 逗号分隔 DataCategory 枚举校验 fail closed）；workItemHandler javadoc 更新（TASK-0178 措辞 → 本卡现状）。",
+    "application.yaml external-attempt 扩展：region/contract-ref/purpose/data-categories 四项（VC_EXTERNAL_REGION/CONTRACT/PURPOSE/CATEGORIES 环境变量可覆盖，默认 us/alpha-standard/COMPANION_CHAT/MESSAGE_TEXT 与 test 67/68 fixture 一致）+ 注释更新。",
+    "LoopbackModelProtocolAdapter + LoopbackModelProtocolSession（新，runtime/loopback）：ModelProtocolAdapter 端口实现，protocol()=FAKE（catalog 无 LOOPBACK 枚举且 specs/generated/** 保护）、capabilities 空；open 只接受 ExternalAttemptBinding（否则 AttemptFailed(UnsupportedBinding) 终态）；确定性事件流 OutputDelta(固定文案)+UsageReported(42,58,0)+AttemptEos(STOP)；单消费者 session 照 Fake 模式。ApprovedModelProviderProvisioner buildAdapter + case FAKE + 错误消息更新。",
+    "测试：68_authorization_snapshot_runtime_creation_external_chain.sql（infra/db，新）：vc_api 身份经 SD 创建双快照（替代 67 的 superuser 预置）→ record_provider_attempt 绑定双 id → insert_candidate → promote FINAL_REVIEW → finalize 42/58 → COMPLETED + superuser 断言（双 ACTIVE 行/provider_attempt 绑定/usage/quota SETTLE/1 条 assistant message）+ 负向（未知 generation/跨 owner V17/空 provider_id RAISE）；JdbcAuthorizationSnapshotProviderTest 8（persistence，mock JdbcTemplate：SD SQL 文本+7 参顺序含 text[]、双 id 映射、mirror put 断言、provider 选择与 router 规则一致、无 ADMITTED/0 行 fail closed、BadSqlGrammar 上抛、非法 id/空 categories 拒绝）；LoopbackModelProtocolAdapterTest 4 + LoopbackExternalInvocationTest 3（runtime：进程内 e2e guard→loopback→SUCCEEDED + audit；缺失 execution 快照/provider 漂移 → BLOCKED_BY_AUTHORIZATION 零审计）；SchemaReadinessHealthIndicatorTest 期望 25→26（V26 落地必然影响）。",
+    "C4 治理闭环：database-migration skill 1.0.0 + humanApprovals 2 条（task-assignment + migration scope）+ independentReview required + reviewers 结构化数组（task0181_r1，candidate SHA 回填）；run-rls 69/69 + mvn runtime 311/0/0（persistence 102/0/0）+ diff exit0；不触碰 service/modules/**、service/adapters/**、specs/**、V1-V25、tests 01-67（V26/tests 68 只经 writeAllowlist 放行）。"
+  ],
+  "remaining": [
+    "realtime SSE 推送（SseEmitter + V8 resume_stream）。",
+    "ID hashid 编码。"
+  ],
+  "knownRisks": [
+    "authorizationCommit 为占位符字符串（精简长线流残留，历史不可改写；doctor ACCEPTED 态不校验该格式），与 TASK-0173..0180 同属已知残留。",
+    "provider bean 双条件装配：model-providers.enabled=true 且 auth.datasource-enabled=true 才装配；缺任一 → 无 provider bean（external 分支不激活，fail closed）或装配失败（external 需要 DB 的配置不合法）。",
+    "createFor 的 providerId 与 DeterministicRouter 选择的一致性依赖运行期 registry 状态稳定（ADMITTED + external-attempt.protocol 匹配 + providerId 排序取第一个）——单测锁定过滤/排序规则；若 operator 配置多协议多部署，快照 provider 恒为排序最小的匹配部署，与 router 完全一致（LiveModelInvoker 步骤 2 再校验 executionSnapshot.providerId == selectedProviderId，不一致 fail closed 不泄露）。",
+    "loopback adapter 复用 catalog FAKE 协议代码（ModelProtocol 无 LOOPBACK 枚举且 specs/generated/** 是保护路径）——operator 配置 protocol=FAKE 的 deployment 即装配 loopback；与 service/adapters/model-fake 的 Fake adapter（仅 DeterministicSourceBinding）语义互补，registry 运行期互不冲突。",
+    "mvn 无 DB 环境：运行期 external 全链（SD 铸造 → record → finalize → COMPLETED）由 infra/db test 68 证明；进程内链（guard → loopback → terminal）由 LoopbackExternalInvocationTest 证明——分层验证，无单点伪造。",
+    "JdbcAuthorizationSnapshotStore 保持未 wire 状态（本卡经 SD 函数写库；直写 store 在 V16 后 vc_api 不可执行），其 withdraw/narrow 运行期路径留待后续卡。",
+    "SchemaReadinessHealthIndicatorTest 期望值 25→26 随 V26 更新（新增 migration 的必然影响，writeAllowlist 放行）。",
+    "canonical precheck / doctor --summary / 完整 Harness unittest discover / 根级 Maven verify deferred per Owner 2026-08-12 static-gates-only。"
+  ],
+  "nextAction": "TASK-0181（C4 snapshot 卡）闭环 ACCEPTED：激活 external 运行期路径——V26 create_authorization_snapshots SECURITY DEFINER 函数（V17 trusted-owner 断言 + generation 存在性校验 + purpose 白名单 + 双 ACTIVE 行 + REVOKE PUBLIC/GRANT vc_api）+ JdbcAuthorizationSnapshotProvider （platform.persistence：providerId 按 DeterministicRouter 候选规则从 registry 推导、SD 铸造双快照后 mirror 进 InMemoryAuthorizationSnapshotStore 供 ExecutionAuthorizationGuard 读取、BadSqlGrammarException 上抛保 worker fail closed）+ AuthDataSourceConfig bean（方法级 model-providers.enabled=true 条件）+ external-attempt 配置扩展（region/contract-ref/purpose/data-categories 默认 us/alpha-standard/COMPANION_CHAT/[MESSAGE_TEXT]）+ LoopbackModelProtocolAdapter（runtime/loopback，protocol=FAKE、只接受 ExternalAttemptBinding、确定性事件流 usage 42/58）+ ApprovedModelProviderProvisioner FAKE 分支；run-rls 69/69（新增 68 号：vc_api 经 SD 创建双快照走完整 external 链 COMPLETED + 未知 generation/跨 owner/空 provider RAISE）+ mvn runtime 311/0/0 （persistence 102/0/0，新增 JdbcAuthorizationSnapshotProviderTest 8 + loopback 7 场景）+ diff exit0 全绿；SchemaReadinessHealthIndicatorTest 随 V26 更新为 26。下一步：realtime SSE 推送（SseEmitter + V8 resume_stream）按序；ID hashid 编码随后。"
+}
