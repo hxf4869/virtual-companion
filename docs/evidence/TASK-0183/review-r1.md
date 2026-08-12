@@ -1,7 +1,7 @@
 # TASK-0183 R1 独立复核
 
-- **reviewedCommit**: `0000000000000000000000000000000000000000`（candidate 回填）
-- **candidateTree**: `0000000000000000000000000000000000000000`（candidate 回填）
+- **reviewedCommit**: `fde5e14cc6b02af98115e3f48a92c3e069463fbd`（candidate 回填）
+- **candidateTree**: `af933f38f023e3a86175aabf6ab5573573fd886a`（candidate 回填）
 - **reviewer**: independent-review-gate（task0183_r1）
 - **scope**: COMPLETE_MATRIX / ACCEPTANCE / INVARIANTS / ADJACENT_RISK
 - **verdict**: PASS

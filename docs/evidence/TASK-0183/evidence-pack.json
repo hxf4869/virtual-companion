@@ -2,7 +2,7 @@
   "taskId": "TASK-0183",
   "state": "ACCEPTED",
   "baseCommit": "0391c1af3fab1436e2fd7a61df899a0ef1f8656f",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "fde5e14cc6b02af98115e3f48a92c3e069463fbd",
   "contextFingerprint": "4deb540c7346d9ff37225bfec7b5f57ddb6907a08b17ebc2faf34aa685ed4987",
   "evidencePath": "docs/evidence/TASK-0183/evidence-pack.json",
   "reviewers": [
@@ -16,9 +16,9 @@
     {
       "id": "doctor-task",
       "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0183",
-      "exitCode": null,
-      "result": "PENDING",
-      "detail": "待 commit1 后跑（doctor --task 需任务卡已落入 Git 历史），commit2 terminal 回填真实 exitCode/result"
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "doctor --task TASK-0183（commit2 terminal HEAD）PASS：0183 diff scope（9 路径全在 writeAllowlist）+ context-lock fingerprint 4deb540c 匹配 + ledger 0 errors/6 schema-incomplete warnings（0177-0182 grandfather 派生 + 0183 完整 5 字段）+ nextAction 仅引用已注册 task ID（TASK-0177/TASK-0183）+ project-state 指针一致。注：commit1 candidate 阶段 doctor 曾因 nextAction 含未注册 TASK-0184 报 1 error，commit2 terminal 修正 nextAction 后 PASS。"
     },
     {
       "id": "backlog-tests",
@@ -37,9 +37,9 @@
     {
       "id": "precheck",
       "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0183",
-      "exitCode": null,
-      "result": "PENDING",
-      "detail": "待 commit1 后跑，commit2 terminal 回填（预期全 7 命令 PASS：doctor 这次绿 + catalog/openapi/paid/license/beta-gate 不变）"
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "precheck --task TASK-0183（commit2 terminal HEAD）全 7 命令 PASS：doctor + catalogValidate + catalogDrift + openapiValidate + openapiDrift + paidFeatureCheck + licenseCheck + betaRosterGate。修复后第一次完整绿（之前 commit1 precheck 因 nextAction TASK-0184 致 doctor 1 error，本次 commit2 修正后全绿）。"
     },
     {
       "id": "diff-check",
@@ -66,5 +66,5 @@
     "B1 与 harness-change Forbidden '不得降低阈值' 的张力：已论证非为当前任务临时放宽，是修复真实历史 schema 缺陷；派生校验仍严格（state 须与 card 一致、contractVersion 由 authorizationCommit 派生）；warning 保留可见性；获 C4 humanApproval + independentReview 背书。",
     "完整 unittest discover（含 CiExecutionPolicyTests）未跑（卡住），改为 BacklogTests 单类（含所有 validate_task_ledger_entries 调用点的测试类）。"
   ],
-  "nextAction": "TASK-0183（doctor task-ledger grandfather 派生校验卡）闭环 ACCEPTED：长检查补跑发现 task-ledger 的 TASK-0177~0182 漏写 state+contractVersion（doctor 30 errors、unittest 1 FAIL 同源），因 validate_ledger_edge 历史逐字段深比较 append-only 锁死无法回填 ledger，改 doctor validate_task_ledger_entries 加 grandfather 派生分支（恰好缺 state+contractVersion 的 3 字段条目从 task card 派生校验 + warn 而非 error，edge/card/文件存在校验不变）+ test_harness pop 逻辑修复 + 3 个 grandfather 新测试；doctor 0 errors/6 warnings + BacklogTests 全 PASS + precheck 全 7 绿 + diff exit0。下一步：realtime SSE resume 端点（TASK-0184，SseEmitter + V8 resume_stream + 契约补 resume endpoint，C3 contract-change）按序；policy 测试卡住独立排查随后。"
+  "nextAction": "TASK-0183（doctor task-ledger grandfather 派生校验卡）闭环 ACCEPTED：长检查补跑发现 task-ledger 的 TASK-0177~0182 漏写 state+contractVersion（doctor 30 errors、unittest 1 FAIL 同源），因 validate_ledger_edge 历史逐字段深比较 append-only 锁死无法回填 ledger，改 doctor validate_task_ledger_entries 加 grandfather 派生分支（恰好缺 state+contractVersion 的 3 字段条目从 task card 派生校验 + warn 而非 error，edge/card/文件存在校验不变）+ test_harness pop 逻辑修复 + 3 个 grandfather 新测试；doctor 0 errors/6 warnings + BacklogTests 全 PASS + precheck 全 7 绿 + diff exit0。下一步：realtime SSE resume 端点（SseEmitter + V8 resume_stream + 契约补 resume endpoint，C3 contract-change；开卡时分配下一永久 ID）按序；policy 测试卡住独立排查随后。"
 }

@@ -16,8 +16,8 @@ nextAction: >-
     state+contractVersion 的 3 字段条目从 task card 派生校验 + warn 而非
     error，edge/card/文件存在校验不变）+ test_harness pop 逻辑修复 + 3 个 grandfather
     新测试；doctor 0 errors/6 warnings + BacklogTests 全 PASS + precheck 全 7 绿 + diff
-    exit0。下一步：realtime SSE resume 端点（TASK-0184，SseEmitter + V8 resume_stream +
-    契约补 resume endpoint，C3 contract-change）按序；policy 测试卡住独立排查随后。
+    exit0。下一步：realtime SSE resume 端点（SseEmitter + V8 resume_stream + 契约补 resume
+    endpoint，C3 contract-change；开卡时分配下一永久 ID）按序；policy 测试卡住独立排查随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

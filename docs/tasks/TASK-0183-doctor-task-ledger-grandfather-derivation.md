@@ -214,10 +214,10 @@ reviewers:
   - id: task0183_r1
     kind: independent-review-gate
     verdict: PASS
-    reviewedCommit: 0000000000000000000000000000000000000000
+    reviewedCommit: fde5e14cc6b02af98115e3f48a92c3e069463fbd
     evidencePath: docs/evidence/TASK-0183/review-r1.md
     reason: "R1 完整复核 PASS（candidate 回填）：C4 治理字段齐全；grandfather 分支仅对恰好缺 state+contractVersion 的 3 字段历史条目生效，派生判据与 L8081 一致；非 grandfather 路径完全不变（向后兼容）；edge/card/文件存在校验保留；测试 pop 逻辑修复正确；3 个新测试覆盖 grandfather 正/反/边界；doctor ledger 6 warnings/0 errors 验证通过。"
-    candidateTree: 0000000000000000000000000000000000000000
+    candidateTree: af933f38f023e3a86175aabf6ab5573573fd886a
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 generation/companion

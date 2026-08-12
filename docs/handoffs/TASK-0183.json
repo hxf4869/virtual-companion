@@ -2,7 +2,7 @@
   "taskId": "TASK-0183",
   "state": "ACCEPTED",
   "baseCommit": "0391c1af3fab1436e2fd7a61df899a0ef1f8656f",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "fde5e14cc6b02af98115e3f48a92c3e069463fbd",
   "evidencePath": "docs/evidence/TASK-0183/evidence-pack.json",
   "completed": [
     "scripts/harness/doctor.py validate_task_ledger_entries（L8042-8110）加 grandfather 派生分支：恰好缺 state+contractVersion 的 3 字段历史条目（set=={taskCard,evidence,handoff}）从 task card 派生校验（state 须 terminal、contractVersion 由 authorizationCommit 推断）+ audit.warn，跳过 5 条显式 require；5 字段严格路径不变；其他字段组合维持 error。task 提前到 entry_fields 后复用。",
@@ -21,5 +21,5 @@
     "grandfather 未来新卡漏写也会 warn 不阻塞（缓解：交接策略改跑长检查，agent 见 warning 主动补全）。",
     "B1 与 harness-change '不得降低阈值' 张力已论证（修复历史 schema 缺陷非临时放宽，派生校验严格 + warning 可见 + C4 humanApproval/independentReview 背书）。"
   ],
-  "nextAction": "TASK-0183（doctor task-ledger grandfather 派生校验卡）闭环 ACCEPTED：长检查补跑发现 task-ledger 的 TASK-0177~0182 漏写 state+contractVersion（doctor 30 errors、unittest 1 FAIL 同源），因 validate_ledger_edge 历史逐字段深比较 append-only 锁死无法回填 ledger，改 doctor validate_task_ledger_entries 加 grandfather 派生分支（恰好缺 state+contractVersion 的 3 字段条目从 task card 派生校验 + warn 而非 error，edge/card/文件存在校验不变）+ test_harness pop 逻辑修复 + 3 个 grandfather 新测试；doctor 0 errors/6 warnings + BacklogTests 全 PASS + precheck 全 7 绿 + diff exit0。下一步：realtime SSE resume 端点（TASK-0184，SseEmitter + V8 resume_stream + 契约补 resume endpoint，C3 contract-change）按序；policy 测试卡住独立排查随后。"
+  "nextAction": "TASK-0183（doctor task-ledger grandfather 派生校验卡）闭环 ACCEPTED：长检查补跑发现 task-ledger 的 TASK-0177~0182 漏写 state+contractVersion（doctor 30 errors、unittest 1 FAIL 同源），因 validate_ledger_edge 历史逐字段深比较 append-only 锁死无法回填 ledger，改 doctor validate_task_ledger_entries 加 grandfather 派生分支（恰好缺 state+contractVersion 的 3 字段条目从 task card 派生校验 + warn 而非 error，edge/card/文件存在校验不变）+ test_harness pop 逻辑修复 + 3 个 grandfather 新测试；doctor 0 errors/6 warnings + BacklogTests 全 PASS + precheck 全 7 绿 + diff exit0。下一步：realtime SSE resume 端点（SseEmitter + V8 resume_stream + 契约补 resume endpoint，C3 contract-change；开卡时分配下一永久 ID）按序；policy 测试卡住独立排查随后。"
 }
