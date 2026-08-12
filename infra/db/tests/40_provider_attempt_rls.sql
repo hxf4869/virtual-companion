@@ -2,7 +2,8 @@
 -- attempt audit row for the owner only; a cross-tenant session can neither see
 -- nor write it (FORCE RLS owner_isolation). The table carries no credential or
 -- message-content columns (TASK-0035 audit boundary), and unsupported status
--- values and unknown generations fail closed.
+-- values and unknown generations fail closed. Since TASK-0164 every audit row
+-- also binds requested/execution authorization snapshots (INV-AUTH-001).
 
 \set ON_ERROR_STOP on
 
@@ -19,6 +20,15 @@ VALUES (1, 100, 10, 'alice-conv');
 INSERT INTO vc.generation(owner_user_id, id, conversation_id, logical_generation_id, status)
 VALUES (1, 5000, 100, 'gen-att-1', 'IN_PROGRESS');
 
+-- INV-AUTH-001 (TASK-0164): provider_attempt now binds two authorization
+-- snapshots via composite FK, so seed them for owner 1 before recording.
+INSERT INTO vc.authorization_snapshot(
+    owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
+    purpose, data_categories)
+VALUES
+    (1, 'req-snap-1', 'ACTIVE', 'provider-1', 'us-east-1', 'standard', 'chat', ARRAY['text']),
+    (1, 'exec-snap-1', 'ACTIVE', 'provider-1', 'us-east-1', 'standard', 'chat', ARRAY['text']);
+
 SET ROLE vc_api;
 BEGIN;
 SET LOCAL vc.owner_user_id = '1';
@@ -28,12 +38,13 @@ DECLARE
     n  int;
     c  int;
 BEGIN
-    -- The audit table has exactly the five documented columns and NO
-    -- credentials / request body / response text.
+    -- The audit table carries the seven base columns plus the two
+    -- authorization-snapshot columns (INV-AUTH-001) and NO credentials /
+    -- request body / response text.
     SELECT count(*) INTO c FROM information_schema.columns
      WHERE table_schema = 'vc' AND table_name = 'provider_attempt';
-    IF c <> 7 THEN
-        RAISE EXCEPTION 'provider_attempt must have exactly 7 columns (got %)', c;
+    IF c <> 9 THEN
+        RAISE EXCEPTION 'provider_attempt must have exactly 9 columns (got %)', c;
     END IF;
     SELECT count(*) INTO c FROM information_schema.columns
      WHERE table_schema = 'vc' AND table_name = 'provider_attempt'
@@ -43,7 +54,7 @@ BEGIN
     END IF;
 
     -- Record one audit row.
-    SELECT * INTO r FROM vc.record_provider_attempt(1, 5000, 'provider-1', 'openai', 'SUCCEEDED');
+    SELECT * INTO r FROM vc.record_provider_attempt(1, 5000, 'provider-1', 'openai', 'SUCCEEDED', 'req-snap-1', 'exec-snap-1');
     IF r.out_id IS NULL OR r.out_owner_user_id <> 1 THEN
         RAISE EXCEPTION 'record_provider_attempt must return the new id and owner';
     END IF;
@@ -52,14 +63,16 @@ BEGIN
         RAISE EXCEPTION 'exactly one provider_attempt row expected (got %)', n;
     END IF;
     SELECT count(*) INTO n FROM vc.provider_attempt
-     WHERE provider_id = 'provider-1' AND supplier_name = 'openai' AND status = 'SUCCEEDED';
+     WHERE provider_id = 'provider-1' AND supplier_name = 'openai' AND status = 'SUCCEEDED'
+       AND requested_authorization_snapshot = 'req-snap-1'
+       AND execution_authorization_snapshot = 'exec-snap-1';
     IF n <> 1 THEN
-        RAISE EXCEPTION 'audit row must round-trip provider_id/supplier_name/status';
+        RAISE EXCEPTION 'audit row must round-trip provider_id/supplier_name/status and snapshot binding';
     END IF;
 
     -- Unsupported status fails closed.
     BEGIN
-        PERFORM vc.record_provider_attempt(1, 5000, 'provider-1', 'openai', 'MADE_UP');
+        PERFORM vc.record_provider_attempt(1, 5000, 'provider-1', 'openai', 'MADE_UP', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'unsupported status must be rejected';
     EXCEPTION WHEN OTHERS THEN
         -- expected
@@ -67,7 +80,7 @@ BEGIN
 
     -- Blank supplier_name fails closed.
     BEGIN
-        PERFORM vc.record_provider_attempt(1, 5000, 'provider-1', '  ', 'SUCCEEDED');
+        PERFORM vc.record_provider_attempt(1, 5000, 'provider-1', '  ', 'SUCCEEDED', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'blank supplier_name must be rejected';
     EXCEPTION WHEN OTHERS THEN
         -- expected
@@ -75,7 +88,7 @@ BEGIN
 
     -- Unknown generation fails closed (existence hidden).
     BEGIN
-        PERFORM vc.record_provider_attempt(1, 9999, 'provider-1', 'openai', 'SUCCEEDED');
+        PERFORM vc.record_provider_attempt(1, 9999, 'provider-1', 'openai', 'SUCCEEDED', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'unknown generation must be rejected';
     EXCEPTION WHEN OTHERS THEN
         -- expected
@@ -98,7 +111,7 @@ BEGIN
         RAISE EXCEPTION 'cross-tenant read must see zero provider_attempt rows (got %)', n;
     END IF;
     BEGIN
-        PERFORM vc.record_provider_attempt(2, 5000, 'provider-1', 'openai', 'SUCCEEDED');
+        PERFORM vc.record_provider_attempt(2, 5000, 'provider-1', 'openai', 'SUCCEEDED', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'cross-tenant write must be rejected';
     EXCEPTION WHEN OTHERS THEN
         -- expected: generation 5000 does not exist for owner 2

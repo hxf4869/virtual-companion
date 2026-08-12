@@ -119,7 +119,7 @@ BEGIN
     procedure := 'record_provider_attempt';
     BEGIN
         PERFORM * FROM vc.record_provider_attempt(1, 5000, 'prov-a', 'OpenAI',
-                                                  'ATTEMPTED');
+                                                  'ATTEMPTED', 'snap-x', 'snap-y');
         RAISE EXCEPTION '% should reject missing context', procedure;
     EXCEPTION WHEN OTHERS THEN
         IF position(expected in SQLERRM) = 0 THEN
