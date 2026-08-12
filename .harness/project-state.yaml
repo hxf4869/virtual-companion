@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0169
+activeTaskCard: docs/tasks/TASK-0169-p2-03-password-minimum-policy-and-complexity.md
 lastAcceptedTask: TASK-0168
 lastAcceptedHandoff: docs/handoffs/TASK-0168.json
 lastTerminalTask: TASK-0168
 lastTerminalHandoff: docs/handoffs/TASK-0168.json
-nextAction: 'TASK-0168（§4.1 P1-04 应用侧 owner 注入 OncePerRequestFilter 绑定可信 principal 到 DB session）闭环 ACCEPTED。下一步：继续逐项解锁剩余 Owner-gate（P1-11 readiness 决策逻辑+expectedVersion 跟随策略、§5.1.2 worker claim lease/fence 依赖 P1-04+coordinator 落地、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务）；P1-04 应用半边（HTTP 请求 owner 注入）已闭合，DB 半边 V17+role 拓扑 V16 早已闭合，剩 worker 半边依赖 coordinator；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+nextAction: 'TASK-0169（P2-03 密码最低策略与复杂度）进行中：在账号创建路径强制密码策略（min 8 + 大写/小写/数字/符号四类全要；createAccount validateAccountInput + seedAdmin 强制，login 不强制）+ AuthRequests CreateAccountRequest.password @Size(min=8) Bean Validation 早拒；C3 auth 非保护路径 service/apps/runtime/** 不触 migration/catalog/contract/OpenAPI；writeAllowlist 4 Java 文件（AuthService/AuthRequests/AuthServiceTest/AuthControllerValidationTest）。完成后开审计保留独立 C4 DB 卡（V22 purge 函数 + @Scheduled，180 天自动清理），再继续逐项解锁剩余 Owner-gate（§5.1.2 worker claim 依赖 coordinator、P2-22 nextAction 未注册任务），或启动全部修复后统一全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify）作为 longline 收尾。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
