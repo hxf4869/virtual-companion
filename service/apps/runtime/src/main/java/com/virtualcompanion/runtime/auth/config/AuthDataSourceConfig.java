@@ -2,11 +2,15 @@ package com.virtualcompanion.runtime.auth.config;
 
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
+import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
+import com.virtualcompanion.runtime.worker.LoggingWorkItemHandler;
+import com.virtualcompanion.runtime.worker.WorkItemHandler;
+import com.virtualcompanion.runtime.worker.WorkItemWorker;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Duration;
 import javax.sql.DataSource;
@@ -190,5 +194,31 @@ public class AuthDataSourceConfig {
             JdbcTemplate authJdbcTemplate,
             @Value("${virtual-companion.auth.audit-retention-days:180}") int retentionDays) {
         return new IdentityAuthEventPurgeScheduler(authJdbcTemplate, retentionDays);
+    }
+
+    /**
+     * P1-04 worker execution half (Owner 2026-08-12: server-side asOwner
+     * injection, runtime in-process). Wires the claim family of SECURITY
+     * DEFINER functions (V5/V17/V23) plus the worker batch primitive; the
+     * worker reuses this authDataSource connection pool (V23 grants vc_api
+     * EXECUTE). No polling: coordinator (OWNER_GATE) decides which owner
+     * queue to process and issues fences.
+     */
+    @Bean
+    public WorkItemClaimService workItemClaimService(JdbcTemplate authJdbcTemplate) {
+        return new WorkItemClaimService(authJdbcTemplate);
+    }
+
+    @Bean
+    public WorkItemHandler workItemHandler() {
+        return new LoggingWorkItemHandler();
+    }
+
+    @Bean
+    public WorkItemWorker workItemWorker(
+            WorkItemClaimService workItemClaimService,
+            OwnerContext ownerContext,
+            WorkItemHandler workItemHandler) {
+        return new WorkItemWorker(workItemClaimService, ownerContext, workItemHandler);
     }
 }
