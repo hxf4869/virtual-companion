@@ -1,13 +1,21 @@
 package com.virtualcompanion.runtime.auth.config;
 
+import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
+import com.virtualcompanion.platform.persistence.ConversationCreateService;
+import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.GenerationReceiveService;
+import com.virtualcompanion.platform.persistence.GenerationRepository;
+import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.WorkItemClaimService;
+import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
+import com.virtualcompanion.runtime.worker.GenerationWorkItemHandler;
 import com.virtualcompanion.runtime.worker.LoggingWorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemCoordinator;
 import com.virtualcompanion.runtime.worker.WorkItemHandler;
@@ -210,9 +218,57 @@ public class AuthDataSourceConfig {
         return new WorkItemClaimService(authJdbcTemplate);
     }
 
+    /**
+     * TASK-0174: generation HTTP vertical slice persistence services (V25 intake
+     * primitives + existing receive/repository). All bound to the auth
+     * datasource's vc_api JDBC pool and run inside the server-trusted owner
+     * context established upstream.
+     */
     @Bean
-    public WorkItemHandler workItemHandler() {
-        return new LoggingWorkItemHandler();
+    public GenerationReceiveService generationReceiveService(JdbcTemplate authJdbcTemplate) {
+        return new GenerationReceiveService(authJdbcTemplate);
+    }
+
+    @Bean
+    public GenerationRepository generationRepository(JdbcTemplate authJdbcTemplate) {
+        return new GenerationRepository(authJdbcTemplate);
+    }
+
+    @Bean
+    public ConversationRepository conversationRepository(JdbcTemplate authJdbcTemplate) {
+        return new ConversationRepository(authJdbcTemplate);
+    }
+
+    @Bean
+    public WorkItemEnqueueService workItemEnqueueService(JdbcTemplate authJdbcTemplate) {
+        return new WorkItemEnqueueService(authJdbcTemplate);
+    }
+
+    @Bean
+    public ConversationCreateService conversationCreateService(JdbcTemplate authJdbcTemplate) {
+        return new ConversationCreateService(authJdbcTemplate);
+    }
+
+    @Bean
+    public GenerationStateService generationStateService(JdbcTemplate authJdbcTemplate) {
+        return new GenerationStateService(authJdbcTemplate);
+    }
+
+    /**
+     * TASK-0174: generation work-item handler replaces the logging stub. It
+     * promotes a claimed generation through its lifecycle and (when live model
+     * providers are enabled and the invocation wiring is complete) runs the
+     * engine and finalizes; otherwise it degrades to FAILED_FINAL so no
+     * generation is left stuck. {@link LiveModelInvoker} is optional
+     * ({@code model-providers.enabled=false} by default).
+     */
+    @Bean
+    public WorkItemHandler workItemHandler(
+            GenerationStateService generationStateService,
+            JdbcTemplate authJdbcTemplate,
+            ObjectProvider<LiveModelInvoker> liveModelInvokerProvider) {
+        return new GenerationWorkItemHandler(
+                generationStateService, authJdbcTemplate, liveModelInvokerProvider);
     }
 
     @Bean

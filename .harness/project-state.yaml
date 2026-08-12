@@ -4,11 +4,11 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0173
-lastAcceptedHandoff: docs/handoffs/TASK-0173.json
-lastTerminalTask: TASK-0173
-lastTerminalHandoff: docs/handoffs/TASK-0173.json
-nextAction: TASK-0173（§5.1.2 worker claim lease/fence coordinator，C4）闭环 ACCEPTED：@Scheduled 轮询落地——V24 list_pending_owner_ids/recover_expired_claims 两 SD 函数授 vc_api EXECUTE + runtime WorkItemCoordinator（recover→枚举→每 owner 新 fence UUID→processOwnerBatch，单 owner 异常隔离+整轮捕获存活）+ AuthDataSourceConfig workItemCoordinator @Bean + test 64 dblink 双会话完整验证（跨连接伪造拒绝/lease 过期回收+接管/list 正反向）+ WorkItemCoordinatorTest 5 场景 + SchemaReadiness 23→24；canonical 8/8（doctor 835128 checks）+ run-rls-tests 64/64 + runtime mvn 1066 tests 0 failure + diff exit0 + R1 PASS（0 P0/P1/P2）。§5.1.2 coordinator 与完整验证已闭环（重试/死信/长任务续租范围外，FAILED 终态保持）。下一步：继续逐项解锁剩余审计项（P2-20 harness fixture 硬编码 master 复核——开卡前用当前 HEAD 复核 test_harness.py；其余 OPEN 审计项按序开卡）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。
+lastAcceptedTask: TASK-0174
+lastAcceptedHandoff: docs/handoffs/TASK-0174.json
+lastTerminalTask: TASK-0174
+lastTerminalHandoff: docs/handoffs/TASK-0174.json
+nextAction: TASK-0174（Generation HTTP 纵切，C4）闭环 ACCEPTED：V25 create_conversation/enqueue_work_item/promote_generation 三 SD 函数 + conversation_id_seq/work_item_id_seq 授 vc_api + 3 persistence service（WorkItemEnqueue/ConversationCreate/GenerationState）+ 2 HTTP 端点（POST /conversations + POST intake + GET snapshot，@AuthenticationPrincipal expression 避免 Modulith 跨模块依赖）+ GenerationWorkItemHandler 替换 LoggingWorkItemHandler（promote IN_PROGRESS→terminalize FAILED_FINAL 降级）+ AuthDataSourceConfig bean 装配 + test 65（create/enqueue/promote 正负）+ handler unit 4 场景 + SchemaReadiness 24→25；run-rls 65/65 + runtime mvn 254/0/0 + diff exit0。真实模型调用（LiveModelInvoker.invoke 构建 LiveInvocationRequest）+ SSE + listMessages/cancel/relationship 端点留后续卡。下一步：开后续卡——LiveModelInvoker 成功路径接线（routing inputs 设计）解锁 generation COMPLETED；其余端点按序开卡。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

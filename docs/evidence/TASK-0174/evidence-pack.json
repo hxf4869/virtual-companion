@@ -1,0 +1,36 @@
+{
+  "taskId": "TASK-0174",
+  "state": "ACCEPTED",
+  "baseCommit": "a36b36e2ab76b66ad410c2f568468f8bd3fc850a",
+  "headCommit": "pending-terminal-commit",
+  "evidencePath": "docs/evidence/TASK-0174/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task0174_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "evidencePath": "docs/evidence/TASK-0174/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，3 P3 informational。V25 四 SD 函数+两 sequence GRANT vc_api SET search_path=vc,pg_catalog（V18 模式）+V17 trusted-owner 断言+promote 合法边断言；3 persistence service 照 GenerationReceiveService 模式；2 HTTP 端点用 @AuthenticationPrincipal(expression=accountId) 解决 Modulith 跨模块依赖；GenerationWorkItemHandler 替换 stub（promote IN_PROGRESS→terminalize FAILED_FINAL 降级）。run-rls 65/65 + runtime mvn 254/0/0 + diff exit0。"
+    }
+  ],
+  "completed": [
+    "V25 migration：create_conversation + enqueue_work_item + promote_generation 三 SD 函数 + conversation_id_seq/work_item_id_seq，GRANT EXECUTE vc_api，SET search_path=vc,pg_catalog。",
+    "3 persistence service：WorkItemEnqueueService / ConversationCreateService / GenerationStateService（JdbcTemplate + 纯 validate + record）。",
+    "2 HTTP 端点：POST /api/v1/conversations + POST /api/v1/conversations/{id}/generations（intake receive+enqueue）+ GET /api/v1/generations/{id}/snapshot；@AuthenticationPrincipal(expression=accountId) 避免 Modulith 跨模块 non-exposed type 依赖。",
+    "GenerationWorkItemHandler 替换 LoggingWorkItemHandler：GENERATION→promote IN_PROGRESS→terminalize FAILED_FINAL（providers disabled/integration pending 降级）；非 GENERATION skip；异常 best-effort terminalize+rethrow。",
+    "AuthDataSourceConfig：+6 persistence service @Bean + workItemHandler bean 替换（ObjectProvider<LiveModelInvoker>）。",
+    "测试：DB test 65（create/enqueue/promote 正负 + 无 context RAISE）+ handler unit 4 场景 + SchemaReadiness 24→25。"
+  ],
+  "remaining": [
+    "LiveModelInvoker 成功路径（invoke→record_provider_attempt→insert_candidate→finalize COMPLETED）：需 LiveInvocationRequest 构建（RoutingRequest authorization snapshot/entitlement/protocol），留后续卡。",
+    "realtime SSE 推送、listMessages / cancelGeneration / relationship HTTP 端点。",
+    "canonical precheck / 完整 unittest discover（Owner 暂时不跑长时间检查）。",
+    "ID 编码 hashid codec（当前 Long.parseLong，alpha 暴露真实 id）。"
+  ],
+  "knownRisks": [
+    "handler 当前降级路径（FAILED_FINAL）——真实模型调用未接线，所有 generation 终态为 FAILED_FINAL。",
+    "canonical precheck / 完整 unittest discover 未独立跑通（Owner static-gates-only）。",
+    "ID 编码 Long.parseLong 暴露真实 id（alpha 可接受，生产前需 codec）。"
+  ],
+  "nextAction": "TASK-0174（Generation HTTP 纵切，C4）闭环 ACCEPTED：V25 create_conversation/enqueue_work_item/promote_generation 三 SD 函数 + conversation_id_seq/work_item_id_seq 授 vc_api + 3 persistence service（WorkItemEnqueue/ConversationCreate/GenerationState）+ 2 HTTP 端点（POST /conversations + POST intake + GET snapshot，@AuthenticationPrincipal expression 避免 Modulith 跨模块依赖）+ GenerationWorkItemHandler 替换 LoggingWorkItemHandler（promote IN_PROGRESS→terminalize FAILED_FINAL 降级）+ AuthDataSourceConfig bean 装配 + test 65（create/enqueue/promote 正负）+ handler unit 4 场景 + SchemaReadiness 24→25；run-rls 65/65 + runtime mvn 254/0/0 + diff exit0。真实模型调用（LiveModelInvoker.invoke 构建 LiveInvocationRequest）+ SSE + listMessages/cancel/relationship 端点留后续卡。下一步：开后续卡——LiveModelInvoker 成功路径接线（routing inputs 设计）解锁 generation COMPLETED；其余端点按序开卡。"
+}

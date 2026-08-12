@@ -912,3 +912,9 @@ tasks:
     taskCard: docs/tasks/TASK-0173-worker-claim-coordinator-scheduled-polling.md
     evidence: docs/evidence/TASK-0173/evidence-pack.json
     handoff: docs/handoffs/TASK-0173.json
+  TASK-0174:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0174-generation-http-vertical-slice.md
+    evidence: docs/evidence/TASK-0174/evidence-pack.json
+    handoff: docs/handoffs/TASK-0174.json
