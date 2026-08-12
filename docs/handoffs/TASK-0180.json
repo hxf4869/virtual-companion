@@ -2,7 +2,7 @@
   "taskId": "TASK-0180",
   "state": "ACCEPTED",
   "baseCommit": "456e6d7e4802dcdaf198abff01e773649b9f4c7f",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "e75a87f672c6c49e178d414ba62bab85bc91df68",
   "evidencePath": "docs/evidence/TASK-0180/evidence-pack.json",
   "completed": [
     "MemoryRecord + MemoryEvidenceRecord（新，platform.persistence）：get_memory 与 list_memory 两个 out 列集并集（relationshipId/deletedAt 可空）；evidence record 映射 V12 list_memory_evidence out 列；createdAt null→Instant.EPOCH fallback 照 0179。",
