@@ -2,7 +2,7 @@
   "taskId": "TASK-0176",
   "state": "ACCEPTED",
   "baseCommit": "04523bd539dd7550389eb81c94ef1a9576d62854",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "70cd59805cb1a8da64cd1a73485d9f509d7feee4",
   "evidencePath": "docs/evidence/TASK-0176/evidence-pack.json",
   "completed": [
     "接线 generation ZERO_LLM 确定性完成路径：handler 在 zero-llm.enabled=true 且 model-providers.enabled!=true 时走真实 LiveModelInvoker.invoke ZERO_LLM 分支，finalize_generation 落 COMPLETED（确定性输出 DeterministicSafetyResponse.ZERO_LLM_FALLBACK，0 token，outbox=false）。",
