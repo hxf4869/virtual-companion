@@ -9,6 +9,7 @@ import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
 import com.virtualcompanion.runtime.worker.LoggingWorkItemHandler;
+import com.virtualcompanion.runtime.worker.WorkItemCoordinator;
 import com.virtualcompanion.runtime.worker.WorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemWorker;
 import com.zaxxer.hikari.HikariDataSource;
@@ -221,5 +222,22 @@ public class AuthDataSourceConfig {
             WorkItemHandler workItemHandler) {
         return new WorkItemWorker(
                 workItemClaimService, ownerContext::asOwner, workItemHandler);
+    }
+
+    /**
+     * §5.1.2 worker coordinator (Owner 2026-08-12: @Scheduled polling, runtime
+     * in-process). Each poll round recovers expired claim leases (V24
+     * {@code vc.recover_expired_claims}), enumerates owners with PENDING items
+     * (V24 {@code vc.list_pending_owner_ids} -- vc_api has no table-level
+     * SELECT on {@code work_item}) and runs one owner-bound worker batch per
+     * owner under a freshly issued fence. {@link EnableScheduling} above
+     * activates the polling only while this conditional configuration is live,
+     * so no worker polling runs without a real database.
+     */
+    @Bean
+    public WorkItemCoordinator workItemCoordinator(
+            WorkItemWorker workItemWorker,
+            JdbcTemplate authJdbcTemplate) {
+        return new WorkItemCoordinator(workItemWorker, authJdbcTemplate);
     }
 }
