@@ -219,6 +219,7 @@ public class AuthDataSourceConfig {
             WorkItemClaimService workItemClaimService,
             OwnerContext ownerContext,
             WorkItemHandler workItemHandler) {
-        return new WorkItemWorker(workItemClaimService, ownerContext, workItemHandler);
+        return new WorkItemWorker(
+                workItemClaimService, ownerContext::asOwner, workItemHandler);
     }
 }

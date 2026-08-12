@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
 import com.virtualcompanion.platform.persistence.WorkItemClaimService;
-import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +25,7 @@ import org.junit.jupiter.api.Test;
 class WorkItemWorkerTest {
 
     private final WorkItemClaimService claimService = mock(WorkItemClaimService.class);
-    private final OwnerContext ownerContext = mock(OwnerContext.class);
+    private final WorkItemWorker.OwnerExecutor ownerExecutor = mock(WorkItemWorker.OwnerExecutor.class);
     private final WorkItemHandler handler = mock(WorkItemHandler.class);
 
     /** Run the Runnable argument of asOwner synchronously (mock has no transaction). */
@@ -34,7 +33,7 @@ class WorkItemWorkerTest {
         doAnswer(invocation -> {
             invocation.getArgument(1, Runnable.class).run();
             return null;
-        }).when(ownerContext).asOwner(anyLong(), any(Runnable.class));
+        }).when(ownerExecutor).asOwner(anyLong(), any(Runnable.class));
     }
 
     private WorkItemClaim claim(long id, String token) {
@@ -49,11 +48,11 @@ class WorkItemWorkerTest {
         when(claimService.complete("tok-1")).thenReturn(1);
         when(claimService.complete("tok-2")).thenReturn(1);
 
-        WorkItemWorker worker = new WorkItemWorker(claimService, ownerContext, handler);
+        WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(2, processed);
-        verify(ownerContext).asOwner(eq(7L), any(Runnable.class));
+        verify(ownerExecutor).asOwner(eq(7L), any(Runnable.class));
         verify(handler).handle(claims.get(0));
         verify(handler).handle(claims.get(1));
         verify(claimService).complete("tok-1");
@@ -70,7 +69,7 @@ class WorkItemWorkerTest {
         }).when(handler).handle(item);
         when(claimService.fail("tok-1")).thenReturn(1);
 
-        WorkItemWorker worker = new WorkItemWorker(claimService, ownerContext, handler);
+        WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(0, processed);
@@ -85,7 +84,7 @@ class WorkItemWorkerTest {
         when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(List.of(item));
         when(claimService.complete("tok-1")).thenReturn(0);
 
-        WorkItemWorker worker = new WorkItemWorker(claimService, ownerContext, handler);
+        WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(0, processed);
@@ -103,7 +102,7 @@ class WorkItemWorkerTest {
         }).when(handler).handle(item);
         when(claimService.fail("tok-1")).thenReturn(0);
 
-        WorkItemWorker worker = new WorkItemWorker(claimService, ownerContext, handler);
+        WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(0, processed);
@@ -115,7 +114,7 @@ class WorkItemWorkerTest {
         runAsOwnerSynchronously();
         when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(List.of());
 
-        WorkItemWorker worker = new WorkItemWorker(claimService, ownerContext, handler);
+        WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(0, processed);
