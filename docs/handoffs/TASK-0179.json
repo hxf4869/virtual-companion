@@ -1,0 +1,29 @@
+{
+  "taskId": "TASK-0179",
+  "state": "ACCEPTED",
+  "baseCommit": "ce12b488a34bf8064d68579a1549e474a9355cb0",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0179/evidence-pack.json",
+  "completed": [
+    "MessageHistoryService（新，platform.persistence）：包 V10 vc.list_messages(?, ?, ?, ?) 4 参透传（after/limit null 由 SD 默认/clamp）+RowMapper；MessageHistoryRecord(id,role,content,createdAt)。",
+    "GenerationCancelService（新，platform.persistence）：包 V10 vc.cancel_generation；GenerationRepository.find 预检存在性（foreign/absent→Optional.empty→404）与可取消状态（镜像 catalog 集合→400）；DataAccessException 翻译（BadSqlGrammarException 上抛保 503，业务 RAISE→400，避免 AuthExceptionHandler 误映射 401）。",
+    "MessageHistoryController（新，runtime.message.web）：GET /api/v1/conversations/{conversationId}/messages；after/limit String 手解（非数字→400）；foreign/absent→200 空数组（OpenAPI 无 404）；MessageResponse(messageId,conversationId,role,content,createdAt)。",
+    "GenerationCancelController（新，runtime.cancel.web）：POST /api/v1/generations/{generationId}/cancel；empty→ResourceNotFoundException→404 NOT_FOUND_OR_FORBIDDEN；不可取消态→400 INVALID_REQUEST；自带同构 GenerationResponse（Modulith 禁止跨模块依赖 web 子包类型）。",
+    "AuthDataSourceConfig + MessageHistoryService、GenerationCancelService 两个 bean；Controller 组件扫描注册（@ConditionalOnProperty auth.datasource-enabled=true）。",
+    "测试：MessageHistoryServiceTest 5 + GenerationCancelServiceTest 7（persistence）+ MessageHistoryControllerTest 6 + GenerationCancelControllerTest 4（runtime，standalone MockMvc+Principal resolver）；RuntimeModuleStructureTest Modulith PASS。",
+    "不新增 DB migration、不改 modelruntime/safety/adapters/specs/auth/conversation/generation 包（只消费 V10 SD 公共函数）→ 不触发 C3/C4；卡片定 C2。"
+  ],
+  "remaining": [
+    "memory HTTP 端点（createMemoryCandidate/listMemories/get/update/delete/confirm/reject/evidence，OpenAPI 已定义，V11/V12/V13 SD 已就绪）。",
+    "TASK-0180+：create_authorization_snapshots SD 函数（C4 migration）+ AuthorizationSnapshotProvider JDBC 实现 + loopback adapter e2e；realtime SSE 推送；ID hashid 编码。"
+  ],
+  "knownRisks": [
+    "authorizationCommit 为占位符字符串（精简长线流残留，历史不可改写；doctor ACCEPTED 态不校验该格式），与 TASK-0173..0178 同属已知残留。",
+    "GenerationResponse 在 runtime.cancel.web 与 runtime.generation.web 各有一份同构 record：Modulith 应用结构禁止跨模块依赖 web 子包类型，runtime/generation/** 是保护路径不可加 exposes；wire 格式一致，无第二套 wire 语义（与 ErrorEnvelope 双份同理）。",
+    "cancel 不可取消态映射为 400 INVALID_REQUEST：OpenAPI cancelGeneration 仅声明 200/401/404（无 409 先例），ErrorCode catalog 有 INVALID_REQUEST 无专门码；specs/** 保护路径不改 catalog。",
+    "GenerationCancelService 依赖 find 预检 + SD 兜底：Java 侧可取消集合镜像 V10 catalog（SD 仍权威，FOR UPDATE + catalog 双跳）；并发竞态（预检后终态化）由 catch DataAccessException 翻译为 400 失败关闭。",
+    "DTO id 仍为 long（OpenAPI 各 id 是 string；long 序列化为数字字符串，与 TASK-0174/0178 一致）；hashid 编码 deferred。",
+    "canonical precheck / doctor --summary / 完整 Harness unittest discover / 根级 Maven verify deferred per Owner 2026-08-12 static-gates-only。"
+  ],
+  "nextAction": "TASK-0179（listMessages + cancelGeneration HTTP 端点，C2）闭环 ACCEPTED：实现 OpenAPI 已定义但 Java HTTP 层缺失的 2 个端点——GET /api/v1/conversations/{conversationId}/messages（listMessages，after 游标分页+limit clamp 1-100，foreign/absent→200 空数组不泄露存在性）+ POST /api/v1/generations/{generationId}/cancel（cancelGeneration，可取消态→CANCELLED，foreign/absent→404 NOT_FOUND_OR_FORBIDDEN，不可取消态→400 INVALID_REQUEST）；复用 V10 SD 函数（vc.list_messages/vc.cancel_generation，均已 GRANT vc_api）；新 MessageHistoryService+MessageHistoryRecord+GenerationCancelService（platform.persistence 包 V10：find 预检存在性与可取消状态、DataAccessException 翻译避免 AuthExceptionHandler 误映射 401、BadSqlGrammarException 上抛保 503）+MessageHistoryController（runtime.message.web）+GenerationCancelController（runtime.cancel.web，自带同构 GenerationResponse——Modulith 禁止跨模块依赖 web 子包类型）+AuthDataSourceConfig 2 bean；复用 runtime.web 错误层（404 NOT_FOUND_OR_FORBIDDEN/400 INVALID_REQUEST）；MessageHistoryServiceTest 5+GenerationCancelServiceTest 7+MessageHistoryControllerTest 6+GenerationCancelControllerTest 4 场景；run-rls 67/67+mvn runtime 281/0/0+diff exit0 全绿。不新增 migration、不改 modelruntime/safety/adapters/specs/auth/conversation/generation 包→不触发 C3/C4。下一步：memory HTTP 端点（OpenAPI L315-570，V11/V12/V13 SD 已就绪）按序。"
+}

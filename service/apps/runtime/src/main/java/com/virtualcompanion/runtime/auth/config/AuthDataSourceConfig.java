@@ -5,14 +5,16 @@ import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
-import com.virtualcompanion.platform.persistence.RelationshipService;
+import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
+import com.virtualcompanion.platform.persistence.MessageHistoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
@@ -269,6 +271,30 @@ public class AuthDataSourceConfig {
     @Bean
     public RelationshipService relationshipService(JdbcTemplate authJdbcTemplate) {
         return new RelationshipService(authJdbcTemplate);
+    }
+
+    /**
+     * TASK-0179: paginated message history over the V10
+     * {@code vc.list_messages} SECURITY DEFINER function, consumed by the
+     * message history HTTP API controller.
+     */
+    @Bean
+    public MessageHistoryService messageHistoryService(JdbcTemplate authJdbcTemplate) {
+        return new MessageHistoryService(authJdbcTemplate);
+    }
+
+    /**
+     * TASK-0179: generation cancellation over the V10
+     * {@code vc.cancel_generation} SECURITY DEFINER function, consumed by the
+     * generation cancel HTTP API controller. Existence is pre-checked through
+     * {@link GenerationRepository} so the not-owned / absent case maps to 404
+     * without leaking existence.
+     */
+    @Bean
+    public GenerationCancelService generationCancelService(
+            JdbcTemplate authJdbcTemplate,
+            GenerationRepository generationRepository) {
+        return new GenerationCancelService(authJdbcTemplate, generationRepository);
     }
 
     /**

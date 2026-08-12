@@ -1,0 +1,68 @@
+{
+  "taskId": "TASK-0179",
+  "state": "ACCEPTED",
+  "baseCommit": "ce12b488a34bf8064d68579a1549e474a9355cb0",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "contextFingerprint": "751b235407e7861e2cfa0fe7ce8654e4018e0c9b986f7a6eb1b1a550d083097c",
+  "evidencePath": "docs/evidence/TASK-0179/evidence-pack.json",
+  "reviewers": [],
+  "checks": [
+    {
+      "id": "doctor-summary",
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --summary",
+      "exitCode": null,
+      "result": "NOT_RUN",
+      "detail": "deferred per Owner 2026-08-12 static-gates-only（不跑 doctor/precheck 长检查）；卡片治理字段照 TASK-0178 全标准填写，context-lock fingerprint 经权威 verify_context_lock 函数验证 PASS（round-trip 先复现 TASK-0178 f496f774 通过，再生 0179 751b2354）"
+    },
+    {
+      "id": "run-rls-tests",
+      "command": "bash infra/db/run-rls-tests.sh",
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "67/67（regression；V10 未改，既有 test 30/31/41/45 覆盖 cancel/list_messages 语义）"
+    },
+    {
+      "id": "runtime-module-tests",
+      "command": "JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test",
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "281/0/0（+10：MessageHistoryControllerTest 6 场景——happy page/foreign→200 空/默认透传/after 非法→400/limit 非法→400/非法 conversationId→400；GenerationCancelControllerTest 4 场景——happy→200 CANCELLED/foreign→404/不可取消→400/非法 id→400；persistence 模块 MessageHistoryServiceTest 5 + GenerationCancelServiceTest 7 同样全 PASS；RuntimeModuleStructureTest Modulith 结构 PASS）"
+    },
+    {
+      "id": "diff-check",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "id": "canonical-precheck",
+      "command": "python scripts/harness/precheck.py --task TASK-0179",
+      "exitCode": null,
+      "result": "NOT_RUN",
+      "detail": "deferred per Owner 2026-08-12 static-gates-only"
+    }
+  ],
+  "completed": [
+    "MessageHistoryRecord（新，platform.persistence）：record(id, role, content, createdAt)，映射 V10 list_messages out 列。",
+    "MessageHistoryService（新，platform.persistence）：包 V10 vc.list_messages(?, ?, ?, ?) 4 参透传（after/limit null 由 SD 默认/clamp，SQL 精确不重复 SD 逻辑）+ RowMapper；owner/conversationId 正数校验。",
+    "GenerationCancelService（新，platform.persistence）：包 V10 vc.cancel_generation；GenerationRepository.find 预检存在性（foreign/absent→Optional.empty→404）与可取消状态（镜像 catalog 集合，终态/COMMITTING→IllegalArgumentException→400）；DataAccessException 翻译（BadSqlGrammarException 上抛保 503 SCHEMA_UNAVAILABLE，业务 RAISE→400）——不翻译会被 AuthExceptionHandler 误映射为 401 AUTHENTICATION_REQUIRED。",
+    "MessageHistoryController（新，runtime.message.web）：GET /api/v1/conversations/{conversationId}/messages；@AuthenticationPrincipal(expression=accountId)；after/limit String 手解（非数字→400，避免 MethodArgumentTypeMismatchException 无处理→500）；MessageResponse(messageId,conversationId,role,content,createdAt)；foreign/absent→200 空数组（OpenAPI 无 404）。",
+    "GenerationCancelController（新，runtime.cancel.web）：POST /api/v1/generations/{generationId}/cancel；empty→ResourceNotFoundException→404；自带同构 GenerationResponse（generation/web 保护路径+Modulith 禁止跨模块依赖 web 子包类型）。",
+    "AuthDataSourceConfig + MessageHistoryService、GenerationCancelService 两个 bean；Controller 组件扫描注册（@ConditionalOnProperty auth.datasource-enabled=true，与 TASK-0178 同模式）。",
+    "测试：MessageHistoryServiceTest 5 + GenerationCancelServiceTest 7（persistence）+ MessageHistoryControllerTest 6 + GenerationCancelControllerTest 4（runtime，standalone MockMvc+Principal resolver）；RuntimeModuleStructureTest Modulith PASS。",
+    "不新增 DB migration、不改 modelruntime/safety/adapters/specs/auth/conversation/generation/worker 包（只消费 V10 SD 公共函数）→ 不触发 C3 model-routing-change / C4 database-migration；卡片定 C2。"
+  ],
+  "remaining": [
+    "memory HTTP 端点（createMemoryCandidate/listMemories/get/update/delete/confirm/reject/evidence，OpenAPI 已定义，V11/V12/V13 SD 已就绪）。",
+    "TASK-0180+：create_authorization_snapshots SD 函数（C4 migration）+ AuthorizationSnapshotProvider JDBC 实现 + loopback adapter e2e；realtime SSE 推送；ID hashid 编码。"
+  ],
+  "knownRisks": [
+    "authorizationCommit 为占位符字符串（精简长线流残留，历史不可改写；doctor ACCEPTED 态不校验该格式），与 TASK-0173..0178 同属已知残留。",
+    "GenerationResponse 在 runtime.cancel.web 与 runtime.generation.web 各有一份同构 record：Modulith 应用结构禁止跨模块依赖 web 子包类型，runtime/generation/** 是保护路径不可加 exposes；wire 格式（generationId/conversationId/logicalGenerationId/status）与 GenerationController 一致，无第二套 wire 语义（与 ErrorEnvelope 双份同理）。",
+    "cancel 不可取消态映射为 400 INVALID_REQUEST：OpenAPI cancelGeneration 仅声明 200/401/404（无 409 先例），ErrorCode catalog 有 INVALID_REQUEST 无专门码；specs/** 保护路径不改 catalog，400 沿用 TASK-0178 runtime.web 错误层既有形状。",
+    "GenerationCancelService 依赖 find 预检 + SD 兜底：Java 侧可取消集合镜像 V10 catalog（SD 仍权威，FOR UPDATE + catalog 双跳）；并发竞态（预检后终态化）由 catch DataAccessException 翻译为 400 失败关闭。",
+    "DTO id 仍为 long（OpenAPI 各 id 是 string；long 序列化为数字字符串，与 TASK-0174/0178 一致）；hashid 编码 deferred。",
+    "canonical precheck / doctor --summary / 完整 Harness unittest discover / 根级 Maven verify deferred per Owner 2026-08-12 static-gates-only。"
+  ],
+  "nextAction": "TASK-0179（listMessages + cancelGeneration HTTP 端点，C2）闭环 ACCEPTED：实现 OpenAPI 已定义但 Java HTTP 层缺失的 2 个端点——GET /api/v1/conversations/{conversationId}/messages（listMessages，after 游标分页+limit clamp 1-100，foreign/absent→200 空数组不泄露存在性）+ POST /api/v1/generations/{generationId}/cancel（cancelGeneration，可取消态→CANCELLED，foreign/absent→404 NOT_FOUND_OR_FORBIDDEN，不可取消态→400 INVALID_REQUEST）；复用 V10 SD 函数（vc.list_messages/vc.cancel_generation，均已 GRANT vc_api）；新 MessageHistoryService+MessageHistoryRecord+GenerationCancelService（platform.persistence 包 V10：find 预检存在性与可取消状态、DataAccessException 翻译避免 AuthExceptionHandler 误映射 401、BadSqlGrammarException 上抛保 503）+MessageHistoryController（runtime.message.web）+GenerationCancelController（runtime.cancel.web，自带同构 GenerationResponse——Modulith 禁止跨模块依赖 web 子包类型）+AuthDataSourceConfig 2 bean；复用 runtime.web 错误层（404 NOT_FOUND_OR_FORBIDDEN/400 INVALID_REQUEST）；MessageHistoryServiceTest 5+GenerationCancelServiceTest 7+MessageHistoryControllerTest 6+GenerationCancelControllerTest 4 场景；run-rls 67/67+mvn runtime 281/0/0+diff exit0 全绿。不新增 migration、不改 modelruntime/safety/adapters/specs/auth/conversation/generation 包→不触发 C3/C4。下一步：memory HTTP 端点（OpenAPI L315-570，V11/V12/V13 SD 已就绪）按序。"
+}

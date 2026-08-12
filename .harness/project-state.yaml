@@ -4,11 +4,11 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0178
-lastAcceptedHandoff: docs/handoffs/TASK-0178.json
-lastTerminalTask: TASK-0178
-lastTerminalHandoff: docs/handoffs/TASK-0178.json
-nextAction: TASK-0178（Relationship HTTP API，C2）闭环 ACCEPTED：实现 OpenAPI 已定义但 Java HTTP 层缺失的 5 个relationship 端点（POST/GET /api/v1/relationships、GET+POST /api/v1/relationships/{id}、POST /{id}/deactivate），复用 V9 SD 函数（create/list/get/activate/deactivate_relationship，均已 GRANT vc_api）；新 RelationshipService(platform.persistence 包 V9)+RelationshipRecord+RelationshipController(runtime.relationship.web，组件扫描+@ConditionalOnProperty auth.datasource-enabled，@AuthenticationPrincipal(expression=accountId))+runtime.web 共享错误层(ResourceNotFoundException/ErrorEnvelope/RuntimeApiExceptionHandler：404 NOT_FOUND_OR_FORBIDDEN 不泄露存在性+400 INVALID_REQUEST；Modulith 禁止 web→auth 未暴露类型依赖故 ErrorEnvelope 独立于 auth 模块，wire 格式不变)+AuthDataSourceConfig 加 RelationshipService bean；DTO id 沿用 long（hashid deferred）；RelationshipServiceTest 7+RelationshipControllerTest 10 场景；run-rls 67/67+mvn runtime 271/0/0+diff exit0 全绿。不新增 migration、不改 modelruntime/safety/adapters/specs/auth 包→不触发 C3/C4。下一步：开 TASK-0179——listMessages（GET /conversations/{id}/messages）+ cancelGeneration（POST /generations/{id}/cancel）端点（V10 SD 已就绪），随后 memory HTTP 端点、C4 snapshot SD 函数+loopback adapter e2e、realtime SSE 推送按序。
+lastAcceptedTask: TASK-0179
+lastAcceptedHandoff: docs/handoffs/TASK-0179.json
+lastTerminalTask: TASK-0179
+lastTerminalHandoff: docs/handoffs/TASK-0179.json
+nextAction: TASK-0179（listMessages + cancelGeneration HTTP 端点，C2）闭环 ACCEPTED：实现 OpenAPI 已定义但 Java HTTP 层缺失的 2 个端点——GET /api/v1/conversations/{conversationId}/messages（listMessages，after 游标分页+limit clamp 1-100，foreign/absent→200 空数组不泄露存在性）+ POST /api/v1/generations/{generationId}/cancel（cancelGeneration，可取消态→CANCELLED，foreign/absent→404 NOT_FOUND_OR_FORBIDDEN，不可取消态→400 INVALID_REQUEST）；复用 V10 SD 函数（vc.list_messages/vc.cancel_generation，均已 GRANT vc_api）；新 MessageHistoryService+MessageHistoryRecord+GenerationCancelService（platform.persistence 包 V10：find 预检存在性与可取消状态、DataAccessException 翻译避免 AuthExceptionHandler 误映射 401、BadSqlGrammarException 上抛保 503）+MessageHistoryController（runtime.message.web）+GenerationCancelController（runtime.cancel.web，自带同构 GenerationResponse——Modulith 禁止跨模块依赖 web 子包类型）+AuthDataSourceConfig 2 bean；复用 runtime.web 错误层（404 NOT_FOUND_OR_FORBIDDEN/400 INVALID_REQUEST）；MessageHistoryServiceTest 5+GenerationCancelServiceTest 7+MessageHistoryControllerTest 6+GenerationCancelControllerTest 4 场景；run-rls 67/67+mvn runtime 281/0/0+diff exit0 全绿。不新增 migration、不改 modelruntime/safety/adapters/specs/auth/conversation/generation 包→不触发 C3/C4。下一步：memory HTTP 端点（OpenAPI L315-570，V11/V12/V13 SD 已就绪）按序。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
