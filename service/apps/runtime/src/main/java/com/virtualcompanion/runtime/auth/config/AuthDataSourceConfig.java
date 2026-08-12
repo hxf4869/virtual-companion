@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -38,6 +39,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * of any database requirement.
  */
 @Configuration
+@EnableScheduling
 @ConditionalOnProperty(
         name = {"virtual-companion.auth.enabled", "virtual-companion.auth.datasource-enabled"},
         havingValue = "true")
@@ -172,5 +174,21 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.auth.admin-seed.password:}") String password,
             @Value("${virtual-companion.auth.admin-seed.display-name:}") String displayName) {
         return new AdminSeedRunner(authService, username, password, displayName);
+    }
+
+    /**
+     * P2-03 audit retention (Owner 2026-08-12: 180-day retention with an
+     * automated purge). The scheduler calls the V22
+     * {@code vc.identity_auth_event_purge} SECURITY DEFINER function daily to
+     * delete {@code identity_auth_event} rows older than the configured window.
+     * {@link EnableScheduling} above activates Spring's scheduler only while
+     * this conditional configuration (auth + datasource enabled) is live, so
+     * no purge runs without a real database.
+     */
+    @Bean
+    public IdentityAuthEventPurgeScheduler identityAuthEventPurgeScheduler(
+            JdbcTemplate authJdbcTemplate,
+            @Value("${virtual-companion.auth.audit-retention-days:180}") int retentionDays) {
+        return new IdentityAuthEventPurgeScheduler(authJdbcTemplate, retentionDays);
     }
 }
