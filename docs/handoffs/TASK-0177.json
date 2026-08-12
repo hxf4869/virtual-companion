@@ -2,7 +2,7 @@
   "taskId": "TASK-0177",
   "state": "ACCEPTED",
   "baseCommit": "885b5e262f97f8773a0b6b5ea5ed835cc7445fc7",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "ba6503c4ce48db5e1fff5f4f55346aca79ebdf9d",
   "evidencePath": "docs/evidence/TASK-0177/evidence-pack.json",
   "completed": [
     "接线 generation 外部 provider 成功持久化/审计链：handler external 分支 SUCCEEDED 时 record_provider_attempt(V20 绑 dual authorization snapshot, INV-AUTH-001)+insert_generation_candidate+promote FINAL_REVIEW+finalize_generation(真实 token)；degraded 已外发先 record 再 FAILED_FINAL，未外发直接 FAILED_FINAL。",
