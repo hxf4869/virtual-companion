@@ -2,7 +2,7 @@
   "taskId": "TASK-0182",
   "state": "ACCEPTED",
   "baseCommit": "241b8d6d92c5a539a1523545c113a8f0e0c8791d",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "b24119fd4934bafaee2c470eed0075d30e6b2406",
   "evidencePath": "docs/evidence/TASK-0182/evidence-pack.json",
   "completed": [
     "specs/openapi/virtual-companion.yaml（修改）：新增 POST /api/v1/realtime/tickets（operationId createRealtimeTicket，200 RealtimeTicket / 400 INVALID_REQUEST / 401 / 404 NOT_FOUND_OR_FORBIDDEN）+ schema RealtimeTicketCreateRequest{generationId,sessionId,origin,streamEpoch,afterSeq}（string 必填）+ RealtimeTicket{ticketId,secret}（string 必填）；prose 明确 owner 来自 principal、transport 服务端固定 FETCH_SSE、secret 一次性 sha256-only、foreign generation→404 不披露。",
