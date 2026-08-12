@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0168
+activeTaskCard: docs/tasks/TASK-0168-owner-injection-filter-trusted-principal-binding.md
 lastAcceptedTask: TASK-0167
 lastAcceptedHandoff: docs/handoffs/TASK-0167.json
 lastTerminalTask: TASK-0167
 lastTerminalHandoff: docs/handoffs/TASK-0167.json
-nextAction: 'TASK-0167（§5.1.4 内存 QuotaLedger.release 收 reservationId 做 reservation 级幂等）闭环。下一步：继续推进剩余审计候选（§5.1.2 worker claim lease/fence 依赖 P1-04 OWNER_GATE；ProviderAttemptAudit 投影属 P2-12 JDBC 接线；P1-04/05 DB principal、P1-11 readiness/migrator 分离、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务均需 Owner 决策）；剩余 Java 侧无非 Owner-gated 可推进项已基本穷尽；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+nextAction: 'TASK-0168（§4.1 P1-04 应用侧 owner 注入 OncePerRequestFilter 绑定可信 principal 到 DB session）进行中：闭合 P1-04 应用半边（DB 半边 V17 SD owner 可信断言已由 TASK-0154 闭合、③runtime role 窄命令+只读已由 TASK-0153 V16 闭合），新增 OwnerInjectionFilter 在 JwtAuthenticationFilter 之后用 OwnerContext.asOwner 事务级 set_config 注入 principal.accountId() + 受保护测试载体 GET /api/internal/me + 单元/集成测试 + 附带修 SchemaReadinessHealthIndicatorTest stale 断言 17→21；service/apps/runtime/** C2 非保护路径不触 migration/catalog/contract/OpenAPI。完成后继续逐项解锁剩余 Owner-gate（P1-11 readiness、§5.1.2 worker claim lease/fence、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务），或启动全部修复后统一全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify）作为 longline 收尾。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
