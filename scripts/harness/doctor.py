@@ -8051,21 +8051,45 @@ def validate_task_ledger_entries(
         audit.require(isinstance(raw_entry, dict), f"{label}: entry must be an object")
         if not isinstance(raw_entry, dict):
             continue
-        audit.require(
-            set(raw_entry) == TASK_LEDGER_FIELDS,
-            f"{label}: fields must be exactly {sorted(TASK_LEDGER_FIELDS)}",
-        )
-        audit.require(
-            raw_entry.get("state") in terminal_states,
-            f"{label}: state must be terminal",
-        )
-        contract_version = raw_entry.get("contractVersion")
-        audit.require(
-            isinstance(contract_version, int)
-            and not isinstance(contract_version, bool)
-            and contract_version in {1, 2},
-            f"{label}: contractVersion must be a supported version (1 or 2)",
-        )
+        entry_fields = set(raw_entry)
+        task = tasks.get(str(task_id))
+        # Historical terminal entries introduced before the schema required
+        # state and contractVersion cannot be amended: validate_ledger_parent_
+        # edges makes every terminal entry immutable from its introduction
+        # commit. Such schema-incomplete entries are grandfathered by deriving
+        # the two missing fields from the bound task card instead of failing
+        # closed, while still emitting a visible warning.
+        grandfathered = entry_fields == {"taskCard", "evidence", "handoff"}
+        if grandfathered:
+            audit.warn(
+                f"task-ledger: {task_id} schema-incomplete historical entry "
+                "(missing state/contractVersion); validated by derivation "
+                "from the bound task card"
+            )
+        else:
+            audit.require(
+                entry_fields == TASK_LEDGER_FIELDS,
+                f"{label}: fields must be exactly {sorted(TASK_LEDGER_FIELDS)}",
+            )
+        if grandfathered:
+            audit.require(
+                task is not None
+                and str(task.get("state", "")) in terminal_states,
+                f"{label}: derived state must be terminal",
+            )
+            contract_version = 2 if (task and task.get("authorizationCommit")) else 1
+        else:
+            audit.require(
+                raw_entry.get("state") in terminal_states,
+                f"{label}: state must be terminal",
+            )
+            contract_version = raw_entry.get("contractVersion")
+            audit.require(
+                isinstance(contract_version, int)
+                and not isinstance(contract_version, bool)
+                and contract_version in {1, 2},
+                f"{label}: contractVersion must be a supported version (1 or 2)",
+            )
         expected_paths = {
             "evidence": f"docs/evidence/{task_id}/evidence-pack.json",
             "handoff": f"docs/handoffs/{task_id}.json",
@@ -8075,22 +8099,23 @@ def validate_task_ledger_entries(
                 raw_entry.get(field) == expected,
                 f"{label}: {field} must be {expected}",
             )
-        task = tasks.get(str(task_id))
         audit.require(task is not None, f"{label}: task card is missing")
         if task is not None:
             expected_contract_version = 2 if task.get("authorizationCommit") else 1
-            audit.require(
-                contract_version == expected_contract_version,
-                f"{label}: contractVersion must be {expected_contract_version} for this task",
-            )
+            if not grandfathered:
+                audit.require(
+                    contract_version == expected_contract_version,
+                    f"{label}: contractVersion must be {expected_contract_version} for this task",
+                )
             audit.require(
                 raw_entry.get("taskCard") == task.get("_path"),
                 f"{label}: taskCard does not match the discovered task",
             )
-            audit.require(
-                raw_entry.get("state") == task.get("state"),
-                f"{label}: state disagrees with the task card",
-            )
+            if not grandfathered:
+                audit.require(
+                    raw_entry.get("state") == task.get("state"),
+                    f"{label}: state disagrees with the task card",
+                )
         for field in ("taskCard", "evidence", "handoff"):
             path = str(raw_entry.get(field, ""))
             audit.require(is_repository_relative(path), f"{label}: {field} must be repository-relative")

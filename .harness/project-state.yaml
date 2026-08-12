@@ -4,26 +4,20 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0182
-lastAcceptedHandoff: docs/handoffs/TASK-0182.json
-lastTerminalTask: TASK-0182
-lastTerminalHandoff: docs/handoffs/TASK-0182.json
+lastAcceptedTask: TASK-0183
+lastAcceptedHandoff: docs/handoffs/TASK-0183.json
+lastTerminalTask: TASK-0183
+lastTerminalHandoff: docs/handoffs/TASK-0183.json
 nextAction: >-
-    TASK-0182（realtime ticket HTTP 端点卡）闭环 ACCEPTED：把契约（realtime-contract.yaml
-    L7）已定义的 POST /api/v1/realtime/tickets 端点同步进 OpenAPI 源（specs/openapi 非保护路径）+
-    openapi_tool.py generate 重建 dist
-    生成物（api-bundle/snapshot/VirtualCompanionApi.java/typescript/2 个 record，drift
-    PASS）+ RealtimeTicketController（runtime/realtime/web：owner 取自 principal 不在
-    body、transport 服务端固定 FETCH_SSE、generation foreign/absent 经
-    ensure_realtime_stream raise → DataAccessException 映射 404
-    不披露、BadSqlGrammarException 上抛保 503、parseId/parseNonNegative 校验→400）+
-    AuthDataSourceConfig wire 3 个 realtime
-    bean（RealtimeTicketRepository/RealtimeResumeService/RealtimeEventRepository，resume/event
-    为 SSE 卡铺路）+ RealtimeTicketControllerTest 9 场景（happy/404/503 上抛/非法 id/零
-    streamEpoch/负 afterSeq/缺 sessionId/缺 origin）；run-rls 69/69 + mvn runtime
-    320/0/0（persistence 102/0/0，+9 controller test）+ openapi diff PASS + diff
-    exit0 全绿。下一步：realtime SSE resume 端点（SseEmitter + V8 resume_stream + 契约补
-    resume endpoint，C3 contract-change）按序；ID hashid 编码随后。
+    TASK-0183（doctor task-ledger grandfather 派生校验卡）闭环 ACCEPTED：长检查补跑发现
+    task-ledger 的 TASK-0177~0182 漏写 state+contractVersion（doctor 30
+    errors、unittest 1 FAIL 同源），因 validate_ledger_edge 历史逐字段深比较 append-only
+    锁死无法回填 ledger，改 doctor validate_task_ledger_entries 加 grandfather 派生分支（恰好缺
+    state+contractVersion 的 3 字段条目从 task card 派生校验 + warn 而非
+    error，edge/card/文件存在校验不变）+ test_harness pop 逻辑修复 + 3 个 grandfather
+    新测试；doctor 0 errors/6 warnings + BacklogTests 全 PASS + precheck 全 7 绿 + diff
+    exit0。下一步：realtime SSE resume 端点（TASK-0184，SseEmitter + V8 resume_stream +
+    契约补 resume endpoint，C3 contract-change）按序；policy 测试卡住独立排查随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

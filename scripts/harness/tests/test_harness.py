@@ -7341,21 +7341,23 @@ class BacklogTests(unittest.TestCase):
         # both diverge from their live execution ledger entries. Generalized so
         # a new backlog product card reaching the ledger needs no per-id pop,
         # while every agreeing entry is still fully validated.
+        terminal_states = set(lifecycle["terminalStates"])
         ledger_tasks = dict(ledger.get("tasks", {}))
         for ledger_tid in list(ledger_tasks):
             restored = resolved_tasks.get(ledger_tid)
-            ledger_state = str(ledger_tasks[ledger_tid].get("state", ""))
-            if (
-                isinstance(restored, dict)
-                and str(restored.get("state", "")) != ledger_state
-            ):
-                ledger_tasks.pop(ledger_tid, None)
+            if isinstance(restored, dict):
+                restored_state = str(restored.get("state", ""))
+                if (
+                    restored_state not in terminal_states
+                    or is_planning_only_task(restored)
+                ):
+                    ledger_tasks.pop(ledger_tid, None)
         audit = Audit()
         validate_task_ledger_entries(
             audit,
             ledger_tasks,
             resolved_tasks,
-            set(lifecycle["terminalStates"]),
+            terminal_states,
         )
         self.assertEqual([], audit.errors)
 
@@ -7367,6 +7369,66 @@ class BacklogTests(unittest.TestCase):
             resolved_tasks,
         )
         self.assertEqual([], audit.errors)
+
+    def test_grandfather_ledger_entry_missing_state_and_contract_version(self) -> None:
+        # TASK-0177 is a real schema-incomplete historical entry (only
+        # taskCard/evidence/handoff). Append-only edge validation locks it,
+        # so doctor must grandfather it by deriving state/contractVersion
+        # from the bound task card and emit a visible warning.
+        _, tasks, lifecycle, _ = self.load_inputs()
+        terminal_states = set(lifecycle["terminalStates"])
+        ledger = load_yaml(ROOT / ".harness/task-ledger.yaml")
+        task_id = "TASK-0177"
+        entries = {task_id: dict(ledger["tasks"][task_id])}
+        audit = Audit()
+        validate_task_ledger_entries(
+            audit, entries, {task_id: tasks[task_id]}, terminal_states
+        )
+        self.assertEqual([], audit.errors)
+        self.assertTrue(
+            any("schema-incomplete" in w for w in audit.warnings),
+            f"expected grandfather warning, got {audit.warnings}",
+        )
+
+    def test_grandfather_rejects_non_terminal_derived_state(self) -> None:
+        terminal_states = {"ACCEPTED", "REJECTED", "SUPERSEDED"}
+        task_id = "TASK-9002"
+        entries = {
+            task_id: {
+                "taskCard": f"docs/tasks/{task_id}-fixture.md",
+                "evidence": f"docs/evidence/{task_id}/evidence-pack.json",
+                "handoff": f"docs/handoffs/{task_id}.json",
+            }
+        }
+        tasks = {
+            task_id: {
+                "state": "PLANNED",
+                "_path": f"docs/tasks/{task_id}-fixture.md",
+            }
+        }
+        audit = Audit()
+        validate_task_ledger_entries(audit, entries, tasks, terminal_states)
+        self.assertTrue(
+            any("derived state must be terminal" in e for e in audit.errors),
+            f"expected derived-state-terminal error, got {audit.errors}",
+        )
+
+    def test_grandfather_only_tolerates_missing_state_and_contract_version(self) -> None:
+        terminal_states = {"ACCEPTED", "REJECTED", "SUPERSEDED"}
+        task_id = "TASK-9003"
+        # Missing taskCard (not state/contractVersion) is NOT grandfathered.
+        entries = {
+            task_id: {
+                "evidence": f"docs/evidence/{task_id}/evidence-pack.json",
+                "handoff": f"docs/handoffs/{task_id}.json",
+            }
+        }
+        audit = Audit()
+        validate_task_ledger_entries(audit, entries, {}, terminal_states)
+        self.assertTrue(
+            any("fields must be exactly" in e for e in audit.errors),
+            f"expected fields-must-be-exactly error, got {audit.errors}",
+        )
 
     def test_planned_task_metadata_rejects_any_dynamic_field(self) -> None:
         _, tasks, lifecycle, _ = self.load_inputs()

@@ -954,3 +954,9 @@ tasks:
     taskCard: docs/tasks/TASK-0182-realtime-ticket-http-api.md
     evidence: docs/evidence/TASK-0182/evidence-pack.json
     handoff: docs/handoffs/TASK-0182.json
+  TASK-0183:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0183-doctor-task-ledger-grandfather-derivation.md
+    evidence: docs/evidence/TASK-0183/evidence-pack.json
+    handoff: docs/handoffs/TASK-0183.json
