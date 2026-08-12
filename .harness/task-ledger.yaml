@@ -942,3 +942,7 @@ tasks:
     taskCard: docs/tasks/TASK-0179-list-messages-cancel-generation-http-api.md
     evidence: docs/evidence/TASK-0179/evidence-pack.json
     handoff: docs/handoffs/TASK-0179.json
+  TASK-0180:
+    taskCard: docs/tasks/TASK-0180-memory-http-api.md
+    evidence: docs/evidence/TASK-0180/evidence-pack.json
+    handoff: docs/handoffs/TASK-0180.json

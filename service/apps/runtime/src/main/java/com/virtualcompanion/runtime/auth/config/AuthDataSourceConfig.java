@@ -12,6 +12,7 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
+import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
 import com.virtualcompanion.platform.persistence.RelationshipService;
@@ -281,6 +282,19 @@ public class AuthDataSourceConfig {
     @Bean
     public MessageHistoryService messageHistoryService(JdbcTemplate authJdbcTemplate) {
         return new MessageHistoryService(authJdbcTemplate);
+    }
+
+    /**
+     * TASK-0180: Canonical Memory management over the V11/V12/V13 SECURITY
+     * DEFINER functions (create/list/get/update/delete/confirm/reject/evidence),
+     * consumed by the memory HTTP API controller. The relationship existence
+     * pre-check for candidate creation reuses {@link RelationshipService}.
+     */
+    @Bean
+    public MemoryService memoryService(
+            JdbcTemplate authJdbcTemplate,
+            RelationshipService relationshipService) {
+        return new MemoryService(authJdbcTemplate, relationshipService);
     }
 
     /**
