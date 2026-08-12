@@ -906,3 +906,9 @@ tasks:
     taskCard: docs/tasks/TASK-0172-p2-22-nextaction-task-reference-governance.md
     evidence: docs/evidence/TASK-0172/evidence-pack.json
     handoff: docs/handoffs/TASK-0172.json
+  TASK-0173:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0173-worker-claim-coordinator-scheduled-polling.md
+    evidence: docs/evidence/TASK-0173/evidence-pack.json
+    handoff: docs/handoffs/TASK-0173.json

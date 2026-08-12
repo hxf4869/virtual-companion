@@ -2,19 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0173
-activeTaskCard: docs/tasks/TASK-0173-worker-claim-coordinator-scheduled-polling.md
-lastAcceptedTask: TASK-0172
-lastAcceptedHandoff: docs/handoffs/TASK-0172.json
-lastTerminalTask: TASK-0172
-lastTerminalHandoff: docs/handoffs/TASK-0172.json
-nextAction: TASK-0173（§5.1.2 worker claim lease/fence coordinator，C4，@Scheduled 轮询）实现中：V24
-  list_pending_owner_ids/recover_expired_claims 授 vc_api + test 64 双会话（跨连接/过期回收/接管/旧 fence
-  零写入）+ runtime WorkItemCoordinator（recover → 枚举 → 每 owner 新 fence + processOwnerBatch）+
-  AuthDataSourceConfig bean + WorkItemCoordinatorTest + SchemaReadiness 23→24；重试/死信范围外。P2-22 已
-  闭环。下一步：本卡 ACCEPTED 后继续逐项解锁剩余审计项（P2-20 验收卡、P2-26/P3-01 等按序开卡）；全部修复
-  后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级
-  Maven verify，作为 longline 收尾总 PASS）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0173
+lastAcceptedHandoff: docs/handoffs/TASK-0173.json
+lastTerminalTask: TASK-0173
+lastTerminalHandoff: docs/handoffs/TASK-0173.json
+nextAction: TASK-0173（§5.1.2 worker claim lease/fence coordinator，C4）闭环 ACCEPTED：@Scheduled 轮询落地——V24 list_pending_owner_ids/recover_expired_claims 两 SD 函数授 vc_api EXECUTE + runtime WorkItemCoordinator（recover→枚举→每 owner 新 fence UUID→processOwnerBatch，单 owner 异常隔离+整轮捕获存活）+ AuthDataSourceConfig workItemCoordinator @Bean + test 64 dblink 双会话完整验证（跨连接伪造拒绝/lease 过期回收+接管/list 正反向）+ WorkItemCoordinatorTest 5 场景 + SchemaReadiness 23→24；canonical 8/8（doctor 835128 checks）+ run-rls-tests 64/64 + runtime mvn 1066 tests 0 failure + diff exit0 + R1 PASS（0 P0/P1/P2）。§5.1.2 coordinator 与完整验证已闭环（重试/死信/长任务续租范围外，FAILED 终态保持）。下一步：继续逐项解锁剩余审计项（P2-20 harness fixture 硬编码 master 复核——开卡前用当前 HEAD 复核 test_harness.py；其余 OPEN 审计项按序开卡）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

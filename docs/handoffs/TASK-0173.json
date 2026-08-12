@@ -1,0 +1,65 @@
+{
+  "taskId": "TASK-0173",
+  "state": "ACCEPTED",
+  "baseCommit": "77431d45c976ecc84bbd7b39b754236ed4fb0aed",
+  "headCommit": "e612c5fe975f0b2ff3746531a02b05a255d228d0",
+  "evidencePath": "docs/evidence/TASK-0173/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5362ca5c6b910ae5d2b7b7d5f93c935fa49c3508",
+      "startedAt": "2026-08-12T17:00:28+08:00",
+      "endedAt": "2026-08-12T17:30:00+08:00",
+      "elapsedSeconds": 1772,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "d6b532d3ee4ca7c3c984f471ef56f469ca0188ac",
+      "startedAt": "2026-08-12T17:13:58+08:00",
+      "endedAt": "2026-08-12T17:30:00+08:00",
+      "elapsedSeconds": 962,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "",
+      "inProgressCommit": "d6b532d3ee4ca7c3c984f471ef56f469ca0188ac",
+      "reason": "§5.1.2 worker claim coordinator；候选 e612c5f（V24 list_pending_owner_ids/recover_expired_claims 两 SD 函数 SET search_path=vc,pg_catalog + GRANT EXECUTE vc_api 不 REVOKE + test 64 dblink 双会话照 test 58/63 PL/pgSQL 模式：跨连接伪造 complete 0 行/lease 过期 recover_expired_claims 2 行回 PENDING/sess_b 接管新 token 旧 token 0 行/list 正反向 + runtime WorkItemCoordinator @Scheduled fixedDelay 轮询 recover→list→每 owner 新 fence UUID→processOwnerBatch 单 owner 异常隔离+整轮捕获存活 + AuthDataSourceConfig workItemCoordinator @Bean + WorkItemCoordinatorTest 5 场景 + SchemaReadiness 23→24；重试/死信/续租范围外 FAILED 终态保持）；run-rls-tests 64/64 + runtime mvn -pl runtime -am BUILD SUCCESS 1066 tests 0 failure 0 skip + canonical 8/8（doctor 835128 checks，基线 827795 + ~7333）+ diff exit0 + R1 PASS（0 P0/P1/P2，5 P3 informational）；完整 unittest discover + 根级 Maven verify deferred per Owner static-gates-only。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0173_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "e612c5fe975f0b2ff3746531a02b05a255d228d0",
+      "candidateTree": "4ab70ce65b062dd171800200342553c2b8e09363",
+      "evidencePath": "docs/evidence/TASK-0173/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，5 P3 informational（test 64 初版 psql \\gset 在 run-rls stdin 多语句下变量替换不可靠，fix batch 照 test 58/63 重写为 PL/pgSQL DO 块已闭环 64/64；coordinator poll-delay 经 @Value 默认 5000ms application.yaml 不在范围；重试/死信/续租范围外 FAILED 终态保持；canonical checks 835128 增量 ~7333 同量级无异常；R1 由主会话只读静态审查执行）。V24 两 SD 函数 SET search_path=vc,pg_catalog + GRANT EXECUTE vc_api 不 REVOKE/不改既有函数表列约束状态；list 只返回 owner_user_id（无 payload/token），recover 只重置过期 CLAIMED 回 PENDING（不触他状态/不建 context/不产生新 claim），无 p_owner_user_id 参数不涉 V17 断言面（等同 V22 retention purge 系统级清理模式）。WorkItemCoordinator @Scheduled recover→list→每 owner 新 fence UUID→processOwnerBatch 单 owner 异常隔离 + 整轮捕获存活；processOwnerBatch(long,String) 签名匹配；@EnableScheduling @ConditionalOnProperty 仅 datasource-enabled 激活。静态门禁全 PASS（run-rls 64/64；runtime mvn 1066/0/0；canonical 8/8 doctor 835128；diff exit0）。9 改动文件全在 writeAllowlist，**/db/migration/** protected path 满足 database-migration 1.0.0 + humanApproval scope:database-migration + independentReview:required；V1-V23/DB test 01-63/WorkItemWorker/OwnerContext/application.yaml/specs 零触碰。完整 unittest discover + 根级 Maven verify deferred per Owner static-gates-only。"
+    }
+  ],
+  "completed": [
+    "TASK-0173 DRAFT/READY/绑定/修正/IN_PROGRESS/实现/test64-fix（§5.1.2 worker claim lease/fence coordinator @Scheduled 轮询，longline 授权 idle DRAFT→READY Owner 已确认部署形态）；standalone Doctor 按 acceleration 跳过，canonical precheck doctor 子命令（835128 checks）为唯一 doctor 门禁。",
+    "V24__worker_coordinator_functions_runtime_api.sql：+vc.list_pending_owner_ids()（RETURNS TABLE(owner_user_id bigint) LANGUAGE sql SD，SELECT DISTINCT owner WHERE status=PENDING，仅 owner ID 不暴露 payload/token）+ vc.recover_expired_claims(integer)（RETURNS integer LANGUAGE plpgsql SD，UPDATE 过期 CLAIMED 回 PENDING 清 token/fence/时间戳，GET DIAGNOSTICS ROW_COUNT 返回回收行数）；两函数 SET search_path=vc,pg_catalog（V18 模式）；GRANT EXECUTE TO vc_api 不 REVOKE/不新增角色/不改既有函数表列约束状态；V1-V23 frozen。",
+    "64_worker_coordinator_cross_session_recovery.sql：照 test 58/63 PL/pgSQL DO 块模式（SELECT INTO 局部变量 + 临时表 coord_token 跨事务传 token + dblink() 同步单语句 + dblink_exec 会话级 GUC，$q$ tag 避 $$ 嵌套）；实证 (0) seed 后 list 返回 owner 1 正向；(1) 跨连接伪造 complete 0 行；(2) lease 过期 recover_expired_claims 2 行回 PENDING；(3) sess_b 接管新 token + 旧 token 0 行 + 新 token 2 DONE；(4) 全终态后 list 返回空反向。run-rls-tests.sh 64/64 PASS。",
+    "service/apps/runtime/.../worker/WorkItemCoordinator.java：@Scheduled(fixedDelayString=${virtual-companion.worker.coordinator-poll-delay-ms:5000}) pollOwnerQueues()——recoverExpiredClaims→listPendingOwnerIds→每 owner UUID.randomUUID fence + processOwnerBatch；单 owner RuntimeException error 日志（ownerId，不含 token/fence）继续下一 owner；整轮 RuntimeException 捕获不抛出（@Scheduled 单线程循环存活）。SQL 常量包级可见供测试断言。",
+    "service/apps/runtime/.../auth/config/AuthDataSourceConfig.java：+@Bean workItemCoordinator(WorkItemWorker, JdbcTemplate authJdbcTemplate)（by-name 注入既有 authJdbcTemplate bean）；@EnableScheduling @ConditionalOnProperty 已在该类（仅 datasource-enabled 激活，无数据库无轮询）。",
+    "WorkItemCoordinatorTest.java：plain + Mockito 5 场景（轮询顺序/fence 每 owner 唯一/空列表 no-op/单 owner 异常隔离/recover 异常存活 + null 安全）；5/0/0 PASS。SchemaReadinessHealthIndicatorTest 断言 23→24（9/0/0 PASS）。",
+    "canonical precheck 8/8 PASS（doctor 835128 checks 119.1s：基线 827795 + ~7333；context-lock fingerprint 90bbebd5 校验通过；writeAllowlist/forbiddenPaths 零冲突；authorization projection；selected task diff scope；catalogDrift/openapiDrift/paidFeatureCheck PASS）；git diff --check exit 0；run-rls-tests.sh 64/64 ALL PASS；runtime mvn -pl service/apps/runtime -am test BUILD SUCCESS（1066 tests 0 failure 0 skip）。",
+    "R1 PASS（0 P0/P1/P2，5 P3 informational）；终态文件（卡 state→ACCEPTED + reviewers 填充、project-state activeTask→null lastAccepted/lastTerminal→TASK-0173 nextAction 三处一致、task-ledger append TASK-0173、evidence-pack.json、review-r1.md、handoff.json）+ pre-closure 跳过（加速模式）+ 单父 [skip ci] + push + 远端 0/0/clean。"
+  ],
+  "remaining": [
+    "重试/死信机制 + 长任务续租明确范围外（FAILED 终态保持，V5 _terminalize 语义不变）：自动重试（FAILED→PENDING）/重试次数上限/死信队列/告警是产品/运维语义，需 Owner 另定后开后续卡；coordinator 不自动 renew lease、不跨轮续租。",
+    "完整 Harness unittest discover + 根级 Maven verify 留统一审计阶段（Owner static-gates-only 策略；本卡 Evidence 如实标注）。",
+    "继续推进剩余审计项：P2-20 harness fixture 硬编码 master 复核（OPEN；开卡前用当前 HEAD 复核 test_harness.py 是否仍硬编码 master——DRAFT 前已复核 test_rejects_merge_on_discovered_primary_branch 等已显式覆盖 main/master，唯一 master 是显式分支测试用例）；其余 OPEN 审计项按序开卡。",
+    "全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+  ],
+  "knownRisks": [
+    "完整 unittest discover 与根级 Maven verify 在本卡未独立跑通（static-gates-only）；V24/Coordinator/test 64 由 run-rls-tests 64/64 + runtime mvn 1066 tests 0 failure + canonical doctor 835128 checks 直接验证。",
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK frozen at READY，限于 macOS/canonical/run-rls/runtime mvn 定向测试/diff。",
+    "重试/死信/长任务续租范围外：FAILED 保持终态（V5 _terminalize 语义不变），coordinator 不自动 renew lease、不跨轮续租；后续扩展卡需 Owner 定产品/运维语义。",
+    "test 64 初版（d6b532d）使用 psql \\gset+:'var' 模式，在 run-rls-tests.sh 的 psql -v ON_ERROR_STOP=1 -q < stdin 多语句执行下变量替换不可靠致 syntax error；fix batch（e612c5f）照 test 58/63 重写为纯 PL/pgSQL DO 块模式，64/64 PASS 闭环。",
+    "coordinator poll-delay 经 @Value 默认 5000ms；application.yaml 不在本卡 writeAllowlist（forbiddenPaths src/main/resources/**），未添加配置键——部署调参由运维经 application.yaml 覆盖（默认值开箱即用）。",
+    "R1 本卡复核会话中独立 Reviewer subagent 由主会话以只读静态审查执行（fork_turns=none 语义，读候选 diff + 静态判断 + 引用实现者已跑门禁结果），不 fresh TMPDIR 重跑（Owner static-gates-only 策略）。"
+  ],
+  "nextAction": "TASK-0173（§5.1.2 worker claim lease/fence coordinator，C4）闭环 ACCEPTED：@Scheduled 轮询落地——V24 list_pending_owner_ids/recover_expired_claims 两 SD 函数授 vc_api EXECUTE + runtime WorkItemCoordinator（recover→枚举→每 owner 新 fence UUID→processOwnerBatch，单 owner 异常隔离+整轮捕获存活）+ AuthDataSourceConfig workItemCoordinator @Bean + test 64 dblink 双会话完整验证（跨连接伪造拒绝/lease 过期回收+接管/list 正反向）+ WorkItemCoordinatorTest 5 场景 + SchemaReadiness 23→24；canonical 8/8（doctor 835128 checks）+ run-rls-tests 64/64 + runtime mvn 1066 tests 0 failure + diff exit0 + R1 PASS（0 P0/P1/P2）。§5.1.2 coordinator 与完整验证已闭环（重试/死信/长任务续租范围外，FAILED 终态保持）。下一步：继续逐项解锁剩余审计项（P2-20 harness fixture 硬编码 master 复核——开卡前用当前 HEAD 复核 test_harness.py；其余 OPEN 审计项按序开卡）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}
