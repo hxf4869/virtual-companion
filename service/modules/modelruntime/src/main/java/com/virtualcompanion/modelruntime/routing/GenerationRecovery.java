@@ -112,7 +112,7 @@ public final class GenerationRecovery {
 
     private void releaseIfPresent(QuotaReservation reservation) {
         if (reservation != null) {
-            quotaLedger.release(reservation.ownerUserId(), reservation.reservedUnits());
+            quotaLedger.release(reservation);
         }
     }
 }

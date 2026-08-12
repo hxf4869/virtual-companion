@@ -3,6 +3,7 @@ package com.virtualcompanion.modelruntime.routing;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -19,11 +20,22 @@ import java.util.concurrent.atomic.AtomicReference;
  * Reservation is atomic per owner (via {@link ConcurrentHashMap#compute}) so
  * concurrent reservations cannot double-reserve the same budget, matching the
  * fail-closed integrity of the sibling in-memory stores.
+ *
+ * <p>Release is reservation-scoped and idempotent: each successful reservation
+ * carries a unique {@code reservationId}, and a repeated release of the same
+ * reservation is a no-op (it never restores units a second time). This keeps
+ * the quota boundary fail-closed when a recovery path retries or re-enters
+ * release for an already-released reservation — the per-owner ceiling cap
+ * alone cannot distinguish which reservation a restore belongs to, so without
+ * reservation-level idempotency a repeated release could incorrectly refund
+ * units still held by another active reservation and re-open over-reservation.
  */
 public final class QuotaLedger {
 
     private final ConcurrentHashMap<String, Long> remainingByOwner = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> ceilingByOwner = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Boolean> releasedReservations = new ConcurrentHashMap<>();
+    private final AtomicLong reservationSequence = new AtomicLong();
 
     /**
      * Seed or refresh an owner's reservable budget.
@@ -59,6 +71,13 @@ public final class QuotaLedger {
      * decrement run atomically per owner, so concurrent reservations cannot
      * observe the same stale balance and over-reserve.
      *
+     * <p>Each successful reservation is assigned a ledger-unique
+     * {@code reservationId} (a per-ledger sequence prefix plus the deterministic
+     * hash of the reservation event). The sequence makes successive reservations
+     * distinct within one ledger — so release can idempotently deduplicate a
+     * repeated release by {@code reservationId} — while two fresh ledgers that
+     * observe the same first reservation event still produce the same id.
+     *
      * @throws IllegalArgumentException if {@code units} is negative
      */
     public Optional<QuotaReservation> reserve(String ownerUserId, long units) {
@@ -72,7 +91,8 @@ public final class QuotaLedger {
                 return current;
             }
             long after = current - units;
-            String reservationId = "qr-" + DecisionHash.hex(ownerUserId + "|" + current + "|" + units);
+            String reservationId = "qr-" + reservationSequence.incrementAndGet()
+                    + "-" + DecisionHash.hex(ownerUserId + "|" + current + "|" + units);
             outcome.set(new QuotaReservation(reservationId, ownerUserId, units, after));
             return after;
         });
@@ -80,33 +100,48 @@ public final class QuotaLedger {
     }
 
     /**
-     * Release (restore) {@code units} back to an owner's budget.
+     * Release (restore) the units carried by a reservation back to its owner's
+     * budget.
      *
-     * <p>The restore is atomic per owner (via {@link ConcurrentHashMap#compute}) and capped at
-     * the provisioned ceiling, so an over-release or repeated release can never inflate the
-     * balance beyond what was ever provisioned. Unknown owners are left absent and the method
-     * returns {@code 0} — release is a no-op for an owner with no budget, mirroring the
-     * fail-closed symmetry of {@link #reserve}.
+     * <p>The release is reservation-scoped and idempotent: the check that decides
+     * whether this reservation has already been released, the restore, and the
+     * marking of the reservation as released all run atomically per owner (via
+     * {@link ConcurrentHashMap#compute}), so a concurrent or repeated release of
+     * the same reservation restores the units exactly once. A repeated release is
+     * a no-op and returns the current remaining balance unchanged.
      *
-     * @return the owner's remaining budget after the release, or {@code 0} when unknown
-     * @throws IllegalArgumentException if {@code units} is negative
+     * <p>The restore is still capped at the provisioned ceiling, so an over-release
+     * can never inflate the balance beyond what was ever provisioned. An owner
+     * with no provisioned budget is left absent and the method returns {@code 0} —
+     * release is a no-op for an owner with no budget, mirroring the fail-closed
+     * symmetry of {@link #reserve}.
+     *
+     * @return the owner's remaining budget after the release, or {@code 0} when
+     *         the owner has no provisioned budget
+     * @throws NullPointerException if {@code reservation} is null
      */
-    public long release(String ownerUserId, long units) {
-        Objects.requireNonNull(ownerUserId, "ownerUserId must not be null");
-        if (units < 0) {
-            throw new IllegalArgumentException("units must not be negative");
-        }
-        if (units == 0) {
-            return remainingByOwner.getOrDefault(ownerUserId, 0L);
-        }
-        java.util.concurrent.atomic.AtomicLong newRemaining = new java.util.concurrent.atomic.AtomicLong();
+    public long release(QuotaReservation reservation) {
+        Objects.requireNonNull(reservation, "reservation must not be null");
+        String ownerUserId = reservation.ownerUserId();
+        long units = reservation.reservedUnits();
+        String reservationId = reservation.reservationId();
+        AtomicLong newRemaining = new AtomicLong();
         remainingByOwner.compute(ownerUserId, (key, current) -> {
+            if (current == null) {
+                newRemaining.set(0L);
+                return null;
+            }
+            if (releasedReservations.containsKey(reservationId)) {
+                newRemaining.set(current);
+                return current;
+            }
             Long ceiling = ceilingByOwner.get(key);
-            if (current == null || ceiling == null) {
+            if (ceiling == null) {
                 newRemaining.set(0L);
                 return null;
             }
             long after = Math.min(ceiling, current + units);
+            releasedReservations.put(reservationId, Boolean.TRUE);
             newRemaining.set(after);
             return after;
         });
