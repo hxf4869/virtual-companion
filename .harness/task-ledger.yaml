@@ -868,3 +868,9 @@ tasks:
     taskCard: docs/tasks/TASK-0158-risk-09-search-path-hardening.md
     evidence: docs/evidence/TASK-0158/evidence-pack.json
     handoff: docs/handoffs/TASK-0158.json
+  TASK-0162:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0162-p2-13-admin-seed-concurrency-guard.md
+    evidence: docs/evidence/TASK-0162/evidence-pack.json
+    handoff: docs/handoffs/TASK-0162.json

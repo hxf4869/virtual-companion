@@ -1,0 +1,60 @@
+{
+  "taskId": "TASK-0162",
+  "state": "ACCEPTED",
+  "baseCommit": "0e0fd69bf9c506b38443b455554862ba83e1153f",
+  "headCommit": "1d2be92d62c3e4b7d32c75faffdef78d4436ae44",
+  "evidencePath": "docs/evidence/TASK-0162/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5266b98",
+      "startedAt": "2026-08-12T09:28:23+08:00",
+      "endedAt": "2026-08-12T09:41:00+08:00",
+      "elapsedSeconds": 757,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "1d2be92",
+      "startedAt": "2026-08-12T09:34:33+08:00",
+      "endedAt": "2026-08-12T09:41:00+08:00",
+      "elapsedSeconds": 387,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 60,
+      "readyDoctorPassAt": "2026-08-12T09:34:30+08:00",
+      "inProgressCommit": "1d2be92",
+      "reason": "P2-13 admin seed 并发保护。候选实现 = V19 migration（CREATE OR REPLACE FUNCTION vc.identity_admin_seed 重定义：函数体开头加 PERFORM pg_advisory_xact_lock(hashtext('vc.identity_admin_seed.bootstrap')) 串行化 bootstrap check-then-insert，search_path=vc,pg_catalog，其余逻辑与 V14 逐行等价）+ 58 号 dblink 并发负测（两 session 同时 seed，断言 count(ADMIN)=1 + 两返回值相同 + vc_user/audit 一次）。无前向修复（所有门禁首跑 PASS）。候选 1d2be92/tree 4b13062a 验证全 PASS：run-rls-tests.sh 58/58（V1..V19 应用 + 含新增 58）、canonical precheck 8/8（doctor 769584/catalogValidate/catalogDrift/paidFeatureCheck/licenseCheck 71 deps/betaRosterGate/openapiValidate/openapiDrift）、git diff --check exit 0、R1 独立静态复核 PASS（0 P0/P1/P2，fresh TMPDIR 独立重跑全部静态门禁）。方案经代码分析确认：不采用 partial unique index（identity_account_create 允许 ACTIVE ADMIN 经 API 创建第二个 ADMIN，V14 line 305-350），advisory lock 语义中立，对 single-bootstrap + 之后可经 API 增加 ADMIN 的现有语义零变更。完整 Harness unittest 按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit（不转换为 PASS）。remote exact-SHA 如实非 PASS（dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK profile=precheck 冻结于 READY。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0162_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1d2be92d62c3e4b7d32c75faffdef78d4436ae44",
+      "candidateTree": "4b13062a98030c28718459aacdc7e4683c18faff",
+      "evidencePath": "docs/evidence/TASK-0162/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2。独立重跑全部静态门禁 PASS（fresh TMPDIR）：doctor 769584 checks、canonical precheck 8/8、run-rls-tests.sh 58/58（V1..V19 应用 + 58_admin_seed_concurrent PASS）、git diff --check exit 0（worktree + base..1d2be92）。Diff scope 精确 5 文件全在 writeAllowlist；V1-V18 未改（Flyway checksum 安全）。V19 仅 CREATE OR REPLACE identity_admin_seed 加事务级 advisory lock（不动签名/返回/SECURITY DEFINER/GRANT/INSERT/audit 逻辑）+ search_path=vc,pg_catalog；test 58 dblink 两 session 真并发证明单 bootstrap ADMIN 唯一确定。advisory lock 方案对现有语义零变更（partial unique index 会破坏 identity_account_create 创建第二个 ADMIN）。完整 unittest 按 Owner static-gates-only 策略 deferred to unified audit。"
+    }
+  ],
+  "completed": [
+    "建立 TASK-0162 DRAFT(5266b98 + 字段补全)/READY(4b06b5e 授权 + authorizationCommit 绑定)/IN_PROGRESS(1d2be92)；DRAFT Doctor PASS(765218)、READY Doctor PASS(768127)。",
+    "V19 migration（CREATE OR REPLACE FUNCTION vc.identity_admin_seed：函数体开头加 pg_advisory_xact_lock 串行化 bootstrap check-then-insert + search_path=vc,pg_catalog；其余与 V14 逐行等价），不改 V1-V18。",
+    "58 号 dblink 并发负测（两 session 同时 seed；断言 count(ADMIN)=1 + 两返回值相同 + winner 是两 username 之一 + vc_user 存在 + ACCOUNT_CREATE audit 一次）。",
+    "run-rls-tests.sh PASS：V1..V19 应用成功 + 58/58 测试 PASS（含新增 58），exit 0。",
+    "canonical precheck 8/8 PASS（doctor 769584 + 7 子命令）；git diff --check exit 0（worktree + base..1d2be92）。",
+    "独立 C4 R1 静态复核 PASS（0 P0/P1/P2；fresh TMPDIR 独立重跑 doctor/canonical/RLS/diff 全 PASS）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest deferred to unified audit（Owner 2026-08-12 static-gates-only 策略）；V19 + test 58 将在统一审计阶段随完整 unittest discover 一次性串行验证。",
+    "评估剩余 OPEN/OWNER_GATE 审计项：P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（0155 REJECTED 待重做）、§5.1 新审计候选（quota/release 幂等、worker claim fence、provider attempt snapshot 需当前 HEAD 复核）。",
+    "全部修复后对最新 origin/main 做独立全项目复审（含完整 unittest 串行 + canonical + 根级 Maven verify）。"
+  ],
+  "knownRisks": [
+    "完整 Harness unittest 在本卡未独立跑通（static-gates-only 策略）；V19+test 58 静态层面全 PASS（doctor/canonical/diff/R1），DB 行为由 run-rls-tests.sh 58 测试（含 test 58 真并发）直接验证。",
+    "remote exact-SHA 通道未取得 PASS（dispatchCount=0）；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical precheck/diff/run-rls-tests（unittest 在统一审计阶段补充）。",
+    "advisory lock key hashtext('vc.identity_admin_seed.bootstrap') 为运行时 int4 哈希；与既有 hashtext('vc.relationship.active:'||owner)（V9/V17）字符串不同，无 key 冲突；hashtext 跨 PG 版本稳定（与 V9/V17 同一机制）。",
+    "未采用 partial unique index WHERE role='ADMIN'（会破坏 identity_account_create 经 API 创建第二个 ADMIN 的能力）；若 Owner 未来要求 DB 层强制永远单 ADMIN，需另建卡评估 partial index 与 API 语义冲突。"
+  ],
+  "nextAction": "TASK-0162（P2-13 admin seed 并发保护）闭环。下一步：评估剩余 OPEN/OWNER_GATE 审计项（P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离 0155 REJECTED 待重做、§5.1 新审计候选 quota/release 幂等/worker claim fence/provider attempt snapshot 需当前 HEAD 复核），选下一个 single-card 一次一张推进；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}

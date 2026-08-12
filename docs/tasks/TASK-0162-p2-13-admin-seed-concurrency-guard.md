@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0162
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -323,7 +323,32 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS（TASK-0158 R1 PASS 不复用）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0162_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "1d2be92d62c3e4b7d32c75faffdef78d4436ae44"
+    candidateTree: "4b13062a98030c28718459aacdc7e4683c18faff"
+    evidencePath: docs/evidence/TASK-0162/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2。独立重跑全部静态门禁 PASS（fresh TMPDIR）：doctor 769584 checks、
+      canonical precheck 8/8、run-rls-tests.sh 58/58（V1..V19 应用 + 58_admin_seed_concurrent PASS）、
+      git diff --check exit 0。Diff scope 精确 5 文件全在 writeAllowlist；V1-V18 未改（Flyway checksum
+      安全）。V19 仅 CREATE OR REPLACE identity_admin_seed 加事务级 advisory lock + search_path=vc,pg_catalog
+      （不动签名/返回/SECURITY DEFINER/GRANT/INSERT/audit 逻辑）；test 58 dblink 两 session 真并发证明
+      单 bootstrap ADMIN 唯一确定。advisory lock 方案对现有语义零变更。完整 unittest deferred per Owner
+      static-gates-only 策略。
+terminalStateReason: >-
+  P2-13 admin seed 并发保护 ACCEPTED：新增 V19 migration（CREATE OR REPLACE FUNCTION vc.identity_admin_seed
+  函数体开头加 pg_advisory_xact_lock(hashtext('vc.identity_admin_seed.bootstrap')) 串行化 bootstrap
+  check-then-insert + search_path=vc,pg_catalog，其余逻辑与 V14 逐行等价，不改 V1-V18 历史）；58 号
+  dblink 并发负测（两 session 同时 seed，断言 count(ADMIN)=1 + 两返回值相同 + vc_user/audit 一次）。
+  run-rls-tests.sh 58/58 PASS（V1..V19 应用 + 含新增 58）；canonical precheck 8/8 PASS（doctor 769584 +
+  7 子命令）；git diff --check exit 0；独立 C4 R1 静态复核 PASS（0 P0/P1/P2，fresh TMPDIR 独立重跑全部
+  静态门禁）。无前向修复（所有门禁首跑 PASS）。完整 Harness unittest 按 Owner 2026-08-12 static-gates-only
+  策略 deferred to unified audit（V19+test 58 静态全 PASS，DB 行为由 run-rls-tests.sh 58 测试直接验证）。
+  candidate elapsed ~7 min（远低于 hardFuse 120）。remote exact-SHA 如实非 PASS（dispatchCount=0），
+  LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。P2-13（admin seed bootstrap 并发保护）完整落地。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P2-13 审计修复卡
