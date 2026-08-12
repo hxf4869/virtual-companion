@@ -1,0 +1,28 @@
+{
+  "taskId": "TASK-0185",
+  "state": "ACCEPTED",
+  "baseCommit": "a323cddf4c20027afc42d97d370168591b4b2abb",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0185/evidence-pack.json",
+  "completed": [
+    "frontend/src/api/realtime-transport.ts（新）：提取对齐 0184 resume endpoint 契约。createBrowserRealtimeDeps({sessionId,origin},fetchImpl?) → RealtimeDeps；resume mint ticket（POST /api/v1/realtime/tickets body 5 字段 owner/transport 不入 body；401/403/404→null 存在性隐藏）→ GET /api/v1/realtime/streams/{generationId}?ticketId&secret&sessionId&origin&streamEpoch + Last-Event-ID:afterSeq header → readSseFrames → mapFrames 5 disposition（stream.gap→GAP_EXPIRED；stream.reset→RESET_REQUIRED+nextEpoch；stream.denied→NOT_FOUND_OR_FORBIDDEN；snapshot→TERMINAL_SNAPSHOT；durable envelope→RESUMED）；401/403/404→NOT_FOUND_OR_FORBIDDEN；5xx→throw；SseAbortedError 透传。fetchSnapshot GET /generations/{id}/snapshot。每次 resume 重 mint（ticket 单次 45s）。",
+    "frontend/src/api/sse-parser.ts：SseFrame 加 event 字段；flushFrame 解析 event: 行；控制事件帧（有 event 无 data）保留；comment/keepalive（无 event 无 data）仍跳过。修复关键 gap：原实现丢弃所有 0184 控制事件。",
+    "frontend/src/api/realtime-transport.spec.ts（新 19 项）+ sse-parser.spec.ts（+3 项）；frontend vitest 170 passed（17 files）。",
+    "frontend/src/pages/chat/chat.vue：移除内联 transport，import 新模块；origin=location.origin fallback，sessionId=demo session-alpha-1。",
+    "context-lock 43 inputs（42 readAllowlist+1 provenance，base a323cddf，fingerprint 072a97e1），复刻 verify_context_lock 先复现 0184 2aebe476 自验通过；C2 治理闭环（task-intake，not-required review，forbiddenPaths 精确未越界）；ledger TASK-0185 完整 5 字段；nextAction 三处 sha256 b747317c 一致。"
+  ],
+  "remaining": [
+    "TASK-0025 Chat/Generation/History API 纵切（发送幂等 POST generation + sessionId 真实来源 + 分页 history API；本卡 sessionId demo，真实流程待此卡）。",
+    "CiExecutionPolicyTests.test_policy_rejects_backend_and_frontend_local_profile_drift 卡住独立排查（unittest discover 改单类规避）。",
+    "ID hashid 编码（当前 OpenAPI 用 decimal string）。",
+    "长连接订阅模式（本卡一次性 resume，非持续推送；未来若需订阅需新卡）。"
+  ],
+  "knownRisks": [
+    "doctor / canonical precheck / 完整 unittest deferred per Owner 2026-08-13 策略（不标 PASS；最小验证 frontend vitest + type-check + diff check 全 PASS）。下次跑长检查应绿（writeAllowlist 合规 + context-lock 43 inputs 钉 base a323cddf + ledger 5 字段完整）。",
+    "authorizationCommit 占位符（plan-approved-2026-08-13-h5-realtime-transport，精简长线流残留，与 0173..0184 同）。",
+    "sessionId 用 demo 固定值 session-alpha-1（frontend 无 session concept；真实来源是 generation 创建流程 TASK-0025 范围）。",
+    "stream.reset 无 data → transport 拿不到 nextEpoch → reducer fallback epoch+1（realtime.ts 已处理）；精确 nextEpoch 需后端补字段（超本卡 frontend 范围）。",
+    "CiExecutionPolicyTests 卡住（独立未修，本卡不碰）。"
+  ],
+  "nextAction": "TASK-0185（H5 realtime transport 对齐 0184 resume endpoint 契约）闭环 ACCEPTED：realtime-transport.ts（mint ticket POST /tickets→GET /streams/{id}?ticket query+Last-Event-ID header+mapFrames 5 disposition；存在性隐藏 NOT_FOUND_OR_FORBIDDEN；5xx throw；abort 透传）+ sse-parser 扩展 event: 行解析（控制事件 stream.gap/reset/denied 不再丢弃）+ chat.vue 移除内联 transport 用新模块 + 19 项 transport spec + 3 项 sse-parser event spec；frontend vitest 170/0/0 + type-check exit0 + diff exit0。下一步：TASK-0025 Chat/Generation/History API（发送幂等+sessionId 真实来源+history 分页）纵切按序（开卡时分配下一永久 ID）；policy 测试卡住独立排查随后。"
+}

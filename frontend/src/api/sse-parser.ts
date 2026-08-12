@@ -6,18 +6,30 @@
 //     ("\r\n\r\n") boundaries are supported (P2-15: CRLF frames were silently
 //     lost before, surfacing as an empty stream).
 //   - Each frame carries one or more "data:" lines joined by "\n" and parsed as
-//     JSON; an optional top-level "disposition" field is surfaced.
+//     JSON; an optional "event:" line is surfaced as SseFrame.event and an
+//     optional top-level "disposition" field as SseFrame.disposition.
 //   - A final unclosed frame at stream end is flushed (SSE EOF dispatch).
-//   - A frame without a data: line (comment/keepalive, e.g. ": ping") carries
-//     no event and is skipped; a frame whose data is non-JSON or a non-object
-//     payload throws SseParseError -- a typed failure, never a silent empty
-//     stream.
+//   - TASK-0185: a control event frame with an "event:" line but no data: line
+//     (stream.gap / stream.reset / stream.denied, as the 0184 controller emits)
+//     is surfaced as { event, data: null }; only a frame with neither an event
+//     nor a data line (comment/keepalive, e.g. ": ping") is skipped. A frame
+//     whose data is non-JSON or a non-object payload throws SseParseError -- a
+//     typed failure, never a silent empty stream.
 //   - An aborted signal throws SseAbortedError so the caller can distinguish
 //     cancellation from a transport failure.
 
 export interface SseFrame {
-  /** Optional top-level disposition field of the parsed payload. */
+  /**
+   * Optional SSE event name (the `event:` field). TASK-0185: the 0184
+   * RealtimeStreamController encodes the resume disposition as the SSE event
+   * name — durable events carry their type (chat.delta, ...), the terminal
+   * snapshot carries "snapshot", and the control events stream.gap /
+   * stream.reset / stream.denied carry no data: line at all.
+   */
+  event?: string;
+  /** Optional top-level disposition field of the parsed payload (legacy shape). */
   disposition?: string;
+  /** The parsed JSON payload, or null for a control event with no data: line. */
   data: unknown;
 }
 
@@ -42,13 +54,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function flushFrame(raw: string, frames: SseFrame[]): void {
-  const dataLines = raw
-    .split(/\r?\n/)
+  const lines = raw.split(/\r?\n/);
+  const dataLines = lines
     .filter((line) => line.startsWith("data:"))
     .map((line) => line.slice(5).replace(/^\s+/, ""));
+  const eventLine = lines.find((line) => line.startsWith("event:"));
+  const eventName = eventLine ? eventLine.slice(6).replace(/^\s+/, "") : undefined;
+
   if (dataLines.length === 0) {
-    // Comment/keepalive frames (": ping") carry no event; they are valid SSE
-    // and must not fail the stream (R1 P3).
+    // TASK-0185: a control event frame (event: stream.gap / stream.reset /
+    // stream.denied, as emitted by the 0184 RealtimeStreamController) carries an
+    // SSE event name but no data: line. It is a real event and must be surfaced
+    // so the transport can map it to a resume disposition. Only a frame with
+    // neither an event nor a data line (a comment/keepalive, e.g. ": ping")
+    // carries no event and is skipped (R1 P3).
+    if (eventName) {
+      frames.push({ event: eventName, data: null });
+    }
     return;
   }
   let payload: unknown;
@@ -61,6 +83,9 @@ function flushFrame(raw: string, frames: SseFrame[]): void {
     throw new SseParseError("SSE frame data is not a JSON object");
   }
   const frame: SseFrame = { data: payload };
+  if (eventName) {
+    frame.event = eventName;
+  }
   if (typeof payload.disposition === "string") {
     frame.disposition = payload.disposition;
   }

@@ -4,21 +4,20 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0184
-lastAcceptedHandoff: docs/handoffs/TASK-0184.json
-lastTerminalTask: TASK-0184
-lastTerminalHandoff: docs/handoffs/TASK-0184.json
+lastAcceptedTask: TASK-0185
+lastAcceptedHandoff: docs/handoffs/TASK-0185.json
+lastTerminalTask: TASK-0185
+lastTerminalHandoff: docs/handoffs/TASK-0185.json
 nextAction: >-
-    TASK-0184（realtime SSE resume 端点）闭环 ACCEPTED：realtime-contract.yaml
-    resume 段补 endpoint=GET /api/v1/realtime/streams/{generationId} +
-    ticketBinding/ticketBoundTo/deniedEvent；OpenAPI 加该 SSE
-    端点（text/event-stream）+ RealtimeStreamEvent schema + generate 重建
-    dist；RealtimeStreamController（SseEmitter + consume ticket + resume 5
-    disposition 映射逐个 id=eventSeq；ticket 失败/越权 fail closed stream.denied
-    不披露；BadSqlGrammar re-throw 503；建连前参数错 400）+ pom 加 jackson-databind
-    compile + 12 项 asyncDispatch 测试；runtime mvn 332/0/0 + openapi diff
-    PASS + diff exit0。下一步：H5 离线聊天/流式显示与断线恢复（Fetch-SSE 客户端，开卡时分配下一永久
-    ID）按序；policy 测试卡住独立排查随后。
+    TASK-0185（H5 realtime transport 对齐 0184 resume endpoint 契约）闭环
+    ACCEPTED：realtime-transport.ts（mint ticket POST /tickets→GET
+    /streams/{id}?ticket query+Last-Event-ID header+mapFrames 5
+    disposition；存在性隐藏 NOT_FOUND_OR_FORBIDDEN；5xx throw；abort 透传）+
+    sse-parser 扩展 event: 行解析（控制事件 stream.gap/reset/denied 不再丢弃）+ chat.vue
+    移除内联 transport 用新模块 + 19 项 transport spec + 3 项 sse-parser event
+    spec；frontend vitest 170/0/0 + type-check exit0 + diff
+    exit0。下一步：TASK-0025 Chat/Generation/History API（发送幂等+sessionId
+    真实来源+history 分页）纵切按序（开卡时分配下一永久 ID）；policy 测试卡住独立排查随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

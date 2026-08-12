@@ -109,6 +109,42 @@ describe("readSseFrames (P2-15)", () => {
     await expect(readSseFrames(body)).rejects.toBeInstanceOf(SseParseError);
   });
 
+  it("surfaces the SSE event: name alongside the data (TASK-0185)", async () => {
+    const body = streamOf([
+      "event: chat.delta\n",
+      'data: {"event":"chat.delta","eventSeq":1}\n\n',
+    ]);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0].event).toBe("chat.delta");
+    expect(frames[0].data).toEqual({ event: "chat.delta", eventSeq: 1 });
+  });
+
+  it("keeps a control event frame that has event: but no data: line (TASK-0185)", async () => {
+    const body = streamOf([
+      "event: stream.gap\n\n",
+      "event: stream.reset\n\n",
+      "event: stream.denied\n\n",
+    ]);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames.map((f) => f.event)).toEqual(["stream.gap", "stream.reset", "stream.denied"]);
+    expect(frames.every((f) => f.data === null)).toBe(true);
+  });
+
+  it("keeps a snapshot control frame with its data payload (TASK-0185)", async () => {
+    const body = streamOf(["event: snapshot\n", 'data: {"streamEpoch":1,"events":[]}\n\n']);
+
+    const frames = await readSseFrames(body);
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0].event).toBe("snapshot");
+    expect((frames[0].data as { streamEpoch: number }).streamEpoch).toBe(1);
+  });
+
   it("returns [] for a null body (empty-but-valid)", async () => {
     expect(await readSseFrames(null)).toEqual([]);
   });

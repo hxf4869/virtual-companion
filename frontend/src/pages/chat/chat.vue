@@ -26,120 +26,33 @@
 
 <script lang="ts">
 // TASK-0026/TASK-0104 H5 chat page. Presentation only; the load-bearing stream
-// logic lives in the tested domain/api/stores modules. The transport factory
-// below wires the Fetch-SSE resume + snapshot endpoints for production. No
-// WebSocket, no media, no long-lived token in localStorage (per
-// realtime-contract h5Security).
+// logic lives in the tested domain/api/stores modules. The realtime transport
+// (ticket mint + resume + snapshot) is the tested realtime-transport module
+// wired here for production. No WebSocket, no media, no long-lived token in
+// localStorage (per realtime-contract h5Security).
 //
-// TASK-0104 (P2-14/P2-15): the SSE frame parser is the tested
-// sse-parser module (LF/CRLF, tail flush, typed SseParseError); resume and
-// snapshot fetches receive the per-run AbortSignal from the stream handle, so
-// cancel / new run / unmount truly abort the underlying fetch. 5xx / network
-// failures surface as typed exhausted failures instead of empty streams or
-// fake terminal snapshots.
+// TASK-0185: the transport is aligned to the 0184 resume endpoint contract
+// (POST /api/v1/realtime/tickets → GET /api/v1/realtime/streams/{id}?ticket…
+// + Last-Event-ID header). sessionId is a demo placeholder until TASK-0025
+// wires the generation-creation flow that mints it; origin is the page origin
+// the SSE resume is opened from.
 //
 // TASK-0105 (P3-04): the status region carries role="status" +
 // aria-live="polite" and the cancel button aria-busy while streaming, so
 // async phase changes are announced to assistive technology.
 import { computed, defineComponent, onUnmounted, ref } from "vue";
 
+import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import { useChatStore } from "@/stores/chat";
-import type {
-  RealtimeDeps,
-  ResumeDisposition,
-  ResumeRequest,
-  ResumeResult,
-  SnapshotResult,
-} from "@/api/realtime";
-import { readSseFrames, SseParseError, SseAbortedError } from "@/api/sse-parser";
-// TASK-0163 (§5.1.1): the wire envelope → StreamEvent parser lives in the tested
-// realtime-envelope module and reads the catalog's authoritative `event` field
-// (not `eventType`), so real backend envelopes are no longer silently dropped.
-import { parseStreamEvent } from "@/api/realtime-envelope";
-import type { StreamEvent } from "@/domain/stream-reducer";
 
-const RESUME_ENDPOINT = "/api/v1/realtime/resume";
-const SNAPSHOT_ENDPOINT = "/api/v1/generations";
+// Alpha demo: sessionId is fixed until the generation-creation flow (TASK-0025)
+// supplies it. origin is the H5 page origin the resume is opened from.
+const DEMO_SESSION_ID = "session-alpha-1";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function createBrowserRealtimeDeps(): RealtimeDeps {
-  return {
-    resume: async (request: ResumeRequest, signal?: AbortSignal): Promise<ResumeResult> => {
-      const url = `${RESUME_ENDPOINT}?generationId=${encodeURIComponent(
-        request.generationId,
-      )}&afterSeq=${request.afterSeq}&streamEpoch=${request.streamEpoch}`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { Accept: "text/event-stream" },
-        signal,
-      });
-      if (response.status === 401 || response.status === 403 || response.status === 404) {
-        // Existence is never disclosed.
-        return { disposition: "NOT_FOUND_OR_FORBIDDEN", events: [] };
-      }
-      if (!response.ok) {
-        // 5xx and other failures are typed transport failures (exhausted),
-        // never an empty stream that looks like a disconnect.
-        throw new Error(`resume failed with status ${response.status}`);
-      }
-      let frames;
-      try {
-        frames = await readSseFrames(response.body, signal);
-      } catch (error) {
-        if (error instanceof SseAbortedError) {
-          throw error; // cancellation surfaces through the handle
-        }
-        throw error instanceof SseParseError
-          ? error
-          : new SseParseError("resume stream failed");
-      }
-      const events: StreamEvent[] = [];
-      let disposition: ResumeDisposition = "RESUMED";
-      for (const frame of frames) {
-        if (frame.disposition) {
-          disposition = frame.disposition as ResumeDisposition;
-        }
-        // Envelope frames carry {"disposition":...,"events":[...]}; a bare
-        // event object is treated as a single-event frame (R1 P2: restore the
-        // envelope shape so TERMINAL_SNAPSHOT event batches are not dropped).
-        const payload = frame.data as Record<string, unknown>;
-        const candidates = Array.isArray(payload.events) ? payload.events : [frame.data];
-        for (const candidate of candidates) {
-          const event = parseStreamEvent(candidate, request.streamEpoch);
-          if (event) {
-            events.push(event);
-          }
-        }
-      }
-      return { disposition, events };
-    },
-    fetchSnapshot: async (generationId: string, signal?: AbortSignal): Promise<SnapshotResult> => {
-      const response = await fetch(
-        `${SNAPSHOT_ENDPOINT}/${encodeURIComponent(generationId)}/snapshot`,
-        { method: "GET", signal },
-      );
-      if (!response.ok) {
-        // P1-07: a failed snapshot is a typed failure, never a fake terminal.
-        return { ok: false, status: response.status, events: [] };
-      }
-      const data = (await response.json().catch(() => null)) as unknown;
-      if (!isRecord(data) || !Array.isArray(data.events)) {
-        return { ok: false, status: response.status, events: [] };
-      }
-      const epoch = Number((data as { streamEpoch?: unknown }).streamEpoch ?? 1);
-      const events: StreamEvent[] = [];
-      for (const candidate of data.events) {
-        const event = parseStreamEvent(candidate, epoch);
-        if (event) {
-          events.push(event);
-        }
-      }
-      return { ok: true, status: response.status, events };
-    },
-  };
+function resolveOrigin(): string {
+  return typeof window !== "undefined" && window.location && window.location.origin
+    ? window.location.origin
+    : "http://localhost:5173";
 }
 
 export default defineComponent({
@@ -147,7 +60,10 @@ export default defineComponent({
   setup() {
     const store = useChatStore();
     const generationId = ref("gen-alpha-1");
-    const deps = createBrowserRealtimeDeps();
+    const deps = createBrowserRealtimeDeps({
+      sessionId: DEMO_SESSION_ID,
+      origin: resolveOrigin(),
+    });
 
     const draft = computed(() => store.draft);
     const isStreaming = computed(() => store.isStreaming);

@@ -966,3 +966,9 @@ tasks:
     taskCard: docs/tasks/TASK-0184-realtime-sse-resume-stream.md
     evidence: docs/evidence/TASK-0184/evidence-pack.json
     handoff: docs/handoffs/TASK-0184.json
+  TASK-0185:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0185-h5-realtime-transport-contract-align.md
+    evidence: docs/evidence/TASK-0185/evidence-pack.json
+    handoff: docs/handoffs/TASK-0185.json
