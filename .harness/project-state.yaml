@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0167
-activeTaskCard: docs/tasks/TASK-0167-quota-ledger-release-reservation-idempotency.md
-lastAcceptedTask: TASK-0166
-lastAcceptedHandoff: docs/handoffs/TASK-0166.json
-lastTerminalTask: TASK-0166
-lastTerminalHandoff: docs/handoffs/TASK-0166.json
-nextAction: 'TASK-0167（§5.1.4 内存 QuotaLedger.release 收 reservationId 做 reservation 级幂等）进行中：C3 model-routing-change Java 卡，修复 release 收 QuotaReservation + releasedReservations 原子幂等去重 + reserve 加 sequence 前缀使单 ledger 内 reservationId 唯一（跨 fresh ledger 同 event 仍 deterministic），GenerationRecovery 调用方同步传 reservation，QuotaLedgerTest 加幂等负测；完成后继续推进剩余 §5.1 候选（§5.1.2 worker fence 依赖 P1-04 OWNER_GATE；ProviderAttemptAudit 投影属 P2-12 JDBC 接线；P1-04/05/11、P2-03、P2-22 需 Owner 决策），全部修复后统一全项目复审（串行完整 unittest + canonical + 根级 Maven verify）。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0167
+lastAcceptedHandoff: docs/handoffs/TASK-0167.json
+lastTerminalTask: TASK-0167
+lastTerminalHandoff: docs/handoffs/TASK-0167.json
+nextAction: 'TASK-0167（§5.1.4 内存 QuotaLedger.release 收 reservationId 做 reservation 级幂等）闭环。下一步：继续推进剩余审计候选（§5.1.2 worker claim lease/fence 依赖 P1-04 OWNER_GATE；ProviderAttemptAudit 投影属 P2-12 JDBC 接线；P1-04/05 DB principal、P1-11 readiness/migrator 分离、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务均需 Owner 决策）；剩余 Java 侧无非 Owner-gated 可推进项已基本穷尽；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

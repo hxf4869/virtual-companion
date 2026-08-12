@@ -1,0 +1,62 @@
+{
+  "taskId": "TASK-0167",
+  "state": "ACCEPTED",
+  "baseCommit": "afb43f730189006a371181dbca5413b5cd42cce3",
+  "headCommit": "723e9bcf6346f6c843a5ee42df6aa4ee39df4b6b",
+  "evidencePath": "docs/evidence/TASK-0167/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0b8dc91928a7abdfd83fe50d642ef5b1538fd665",
+      "startedAt": "2026-08-12T12:07:19+08:00",
+      "endedAt": "2026-08-12T12:10:53+08:00",
+      "elapsedSeconds": 214,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "723e9bcf6346f6c843a5ee42df6aa4ee39df4b6b",
+      "startedAt": "2026-08-12T12:07:51+08:00",
+      "endedAt": "2026-08-12T12:10:53+08:00",
+      "elapsedSeconds": 182,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "",
+      "inProgressCommit": "723e9bcf6346f6c843a5ee42df6aa4ee39df4b6b",
+      "reason": "§5.1.4 内存 QuotaLedger.release reservation 级幂等；候选 723e9bc（release 收 QuotaReservation + releasedReservations 原子幂等 + reserve sequence 前缀唯一 id + GenerationRecovery 传完整 reservation + 3 幂等负测）；mvn modelruntime 173/0 + canonical 8/8（doctor 798315）+ diff exit0 + R1 PASS（0 P0/P1/P2，2 P3）；完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0167_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "723e9bcf6346f6c843a5ee42df6aa4ee39df4b6b",
+      "candidateTree": "ead8cb398c2c33ac606e0eff97569d723d893215",
+      "evidencePath": "docs/evidence/TASK-0167/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，2 P3 informational（QuotaReservation javadoc drift 在本卡 writeAllowlist 外不可修；releasedReservations 无界增长 Technical Alpha 可接受，持久化时清理）。release 幂等 check-and-mark 在同一 per-owner compute 内原子串行化，reserve 加 reservationSequence 前缀使单 ledger 内 id 唯一（跨 fresh ledger 同 event 仍 deterministic，reservationIdIsDeterministicForTheSameEvent PASS），3 新增幂等负测机器证明 over-reserve 缺口闭合（重复 release r1 no-op 不释放 r2/r3 额度，releaseIdempotencyPreventsOverReserve 断言 reserve 50 被正确拒绝）。静态门禁全 PASS（mvn -pl service/modules/modelruntime -am test 173/0 含 QuotaLedgerTest 18/GenerationRecoveryTest 13/DeterministicRouterTest 21 无回归；canonical precheck 8/8 doctor 798315；diff exit0）。6 文件全在 writeAllowlist，V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom 改动。完整 unittest + 根级 Maven verify deferred per Owner static-gates-only。"
+    }
+  ],
+  "completed": [
+    "TASK-0167 DRAFT/READY/authorizationCommit/IN_PROGRESS；standalone Doctor 按 acceleration 跳过，canonical precheck doctor 子命令（798315 checks）为唯一 doctor 门禁。",
+    "QuotaLedger.release 改收 QuotaReservation + releasedReservations 原子幂等去重集（check-and-mark 同一 per-owner compute 串行化）+ reserve 加 reservationSequence 前缀使单 ledger 内 reservationId 唯一（跨 fresh ledger 同 event 仍 deterministic）。",
+    "GenerationRecovery.releaseIfPresent 改传完整 QuotaReservation（已持有，无新依赖）；旧 release(String,long) 删除。",
+    "QuotaLedgerTest 适配新签名（保留全部既有断言语义，不删测不弱化）+ 新增 3 幂等负测 releaseRepeatedForSameReservationIsIdempotent / releaseIdempotencyPreventsOverReserve / distinctReservationsReleaseIndependently。",
+    "mvn -pl service/modules/modelruntime -am test BUILD SUCCESS 173 tests 0 failures（QuotaLedgerTest 18/GenerationRecoveryTest 13/DeterministicRouterTest 21 无回归）；canonical precheck 8/8 PASS（doctor 798315）；git diff --check exit 0。",
+    "R1 独立静态复核 PASS（0 P0/P1/P2，2 P3 informational）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest + 根级 Maven verify 留统一审计阶段（Owner static-gates-only 策略）。",
+    "继续推进剩余审计候选：§5.1.2 worker claim lease/fence（依赖 P1-04 OWNER_GATE）。",
+    "ProviderAttemptAudit 投影 snapshot 属 P2-12 JDBC 持久化接线范围（需先实现 JDBC 写入端）。",
+    "P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（TASK-0155 REJECTED 待重做）、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务需 Owner 决策。",
+    "全部修复后对最新 origin/main 做独立全项目复审（含完整 unittest 串行 + canonical + 根级 Maven verify）。"
+  ],
+  "knownRisks": [
+    "完整 unittest 与根级 Maven verify 在本卡未独立跑通（static-gates-only）；Java 行为由 mvn modelruntime 173 tests 直接验证。",
+    "QuotaReservation.java javadoc 仍称 reservationId 可从 record 字段重算，新 sequence 前缀使完整 id 不再可重算（hash 后缀仍可）；功能不受影响，建议后续清理卡更新（P3，本卡 writeAllowlist 外不可修）。",
+    "releasedReservations 无界增长，Technical Alpha 模拟器可接受，持久化时需清理策略（P3）。",
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical/mvn/diff。"
+  ],
+  "nextAction": "TASK-0167（§5.1.4 内存 QuotaLedger.release 收 reservationId 做 reservation 级幂等）闭环。下一步：继续推进剩余审计候选（§5.1.2 worker claim lease/fence 依赖 P1-04 OWNER_GATE；ProviderAttemptAudit 投影属 P2-12 JDBC 接线；P1-04/05 DB principal、P1-11 readiness/migrator 分离、P2-03 login/refresh 限流、P2-22 nextAction 未注册任务均需 Owner 决策）；剩余 Java 侧无非 Owner-gated 可推进项已基本穷尽；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}

@@ -898,3 +898,9 @@ tasks:
     taskCard: docs/tasks/TASK-0166-v8-v11-legacy-upgrade-fail-closed-test.md
     evidence: docs/evidence/TASK-0166/evidence-pack.json
     handoff: docs/handoffs/TASK-0166.json
+  TASK-0167:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0167-quota-ledger-release-reservation-idempotency.md
+    evidence: docs/evidence/TASK-0167/evidence-pack.json
+    handoff: docs/handoffs/TASK-0167.json

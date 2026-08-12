@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0167
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -253,8 +253,36 @@ humanApprovals:
       dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结 LOCAL_EXACT_TREE_FALLBACK
       （profile=precheck），远端仍如实非 PASS，不复用任何跨卡 Reviewer 或命令 PASS（TASK-0166 R1 PASS 不复用）。
 independentReview: required
-reviewers: []
-terminalStateReason: ""
+reviewers:
+  - id: task0167_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "723e9bcf6346f6c843a5ee42df6aa4ee39df4b6b"
+    candidateTree: "ead8cb398c2c33ac606e0eff97569d723d893215"
+    evidencePath: docs/evidence/TASK-0167/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2，2 P3 informational（QuotaReservation javadoc drift 在本卡 writeAllowlist 外不可修；
+      releasedReservations 无界增长 Technical Alpha 可接受，持久化时清理）。release 幂等 check-and-mark 在
+      同一 per-owner compute 原子串行化；reserve 加 reservationSequence 前缀使单 ledger 内 id 唯一
+      （跨 fresh ledger 同 event 仍 deterministic，reservationIdIsDeterministicForTheSameEvent PASS）；
+      3 新增幂等负测机器证明 over-reserve 缺口闭合（releaseIdempotencyPreventsOverReserve 断言重复 release
+      r1 no-op 不释放 r2/r3 额度，reserve 50 被正确拒绝）。静态门禁全 PASS（mvn modelruntime 173/0 含
+      QuotaLedgerTest 18/GenerationRecoveryTest 13/DeterministicRouterTest 21 无回归；canonical 8/8 doctor
+      798315；diff exit0）。6 文件全在 writeAllowlist，V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom
+      改动。完整 unittest + 根级 verify deferred per Owner static-gates-only。
+terminalStateReason: >-
+  §5.1.4 内存 QuotaLedger.release reservation 级幂等 ACCEPTED：QuotaLedger.release 改收 QuotaReservation
+  + releasedReservations 原子幂等去重集（check-and-mark 同一 per-owner compute 串行化）+ reserve 加
+  reservationSequence 前缀使单 ledger 内 reservationId 唯一（跨 fresh ledger 同 event 仍 deterministic）；
+  GenerationRecovery.releaseIfPresent 改传完整 reservation；QuotaLedgerTest 适配新签名 + 新增 3 幂等负测
+  （releaseRepeatedForSameReservationIsIdempotent/releaseIdempotencyPreventsOverReserve/distinctReservationsReleaseIndependently）。
+  mvn -pl service/modules/modelruntime -am test BUILD SUCCESS 173/0（QuotaLedgerTest 18/GenerationRecoveryTest 13/
+  DeterministicRouterTest 21 无回归）；canonical precheck 8/8 PASS（doctor 798315）；git diff --check exit 0；
+  R1 PASS（0 P0/P1/P2，2 P3 informational：QuotaReservation javadoc drift 在 writeAllowlist 外不可修 +
+  releasedReservations 无界增长 Technical Alpha 可接受）。6 文件全在 writeAllowlist（3 Java 在
+  service/**/modelruntime/** + 任务制品）。完整 unittest + 根级 Maven verify 按 Owner static-gates-only
+  策略 deferred to unified audit。candidate elapsed ~3 min（远低于 hardFuse 90）。remote exact-SHA 如实
+  非 PASS（dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 §5.1.4 审计修复 Java 侧卡
