@@ -17,10 +17,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit tests for {@link WorkItemWorker}: the worker batch must run inside
- * {@code OwnerContext#asOwner(ownerUserId, ...)} and terminalize every claim
- * exactly once; a {@code 0} terminal result is a rejected late write and is
- * never retried (INV-WORKER-001 fail-closed).
+ * Unit tests for {@link WorkItemWorker}: the worker batch must run inside the
+ * owner-bound executor ({@code OwnerContext#asOwner} at assembly) and
+ * terminalize the batch exactly once through its shared token; a {@code 0}
+ * terminal result is a rejected late write and is never retried
+ * (INV-WORKER-001 fail-closed).
  */
 class WorkItemWorkerTest {
 
@@ -28,7 +29,7 @@ class WorkItemWorkerTest {
     private final WorkItemWorker.OwnerExecutor ownerExecutor = mock(WorkItemWorker.OwnerExecutor.class);
     private final WorkItemHandler handler = mock(WorkItemHandler.class);
 
-    /** Run the Runnable argument of asOwner synchronously (mock has no transaction). */
+    /** Run the Runnable argument of the owner executor synchronously (mock has no transaction). */
     private void runAsOwnerSynchronously() {
         doAnswer(invocation -> {
             invocation.getArgument(1, Runnable.class).run();
@@ -36,17 +37,16 @@ class WorkItemWorkerTest {
         }).when(ownerExecutor).asOwner(anyLong(), any(Runnable.class));
     }
 
-    private WorkItemClaim claim(long id, String token) {
-        return new WorkItemClaim(7L, id, "GENERATION", id * 10, null, token);
+    private WorkItemClaim claim(long id) {
+        return new WorkItemClaim(7L, id, "GENERATION", id * 10, null, "batch-tok");
     }
 
     @Test
-    void processesEveryClaimInsideAsOwnerAndCompletes() {
+    void processesEveryClaimInsideOwnerExecutorAndCompletesBatchOnce() {
         runAsOwnerSynchronously();
-        List<WorkItemClaim> claims = List.of(claim(1L, "tok-1"), claim(2L, "tok-2"));
+        List<WorkItemClaim> claims = List.of(claim(1L), claim(2L));
         when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(claims);
-        when(claimService.complete("tok-1")).thenReturn(1);
-        when(claimService.complete("tok-2")).thenReturn(1);
+        when(claimService.complete("batch-tok")).thenReturn(2);
 
         WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
@@ -55,58 +55,58 @@ class WorkItemWorkerTest {
         verify(ownerExecutor).asOwner(eq(7L), any(Runnable.class));
         verify(handler).handle(claims.get(0));
         verify(handler).handle(claims.get(1));
-        verify(claimService).complete("tok-1");
-        verify(claimService).complete("tok-2");
+        verify(claimService, times(1)).complete("batch-tok"); // one batch-level write
+        verify(claimService, never()).fail(any());
     }
 
     @Test
-    void handlerFailureFailsTheItemAndIsNotCounted() {
+    void anyHandlerFailureFailsTheWholeBatchAndIsNotCounted() {
         runAsOwnerSynchronously();
-        WorkItemClaim item = claim(1L, "tok-1");
-        when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(List.of(item));
+        List<WorkItemClaim> claims = List.of(claim(1L), claim(2L));
+        when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(claims);
         doAnswer(invocation -> {
             throw new IllegalStateException("boom");
-        }).when(handler).handle(item);
-        when(claimService.fail("tok-1")).thenReturn(1);
+        }).when(handler).handle(claims.get(1));
+        when(claimService.fail("batch-tok")).thenReturn(2);
 
         WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(0, processed);
-        verify(claimService, never()).complete("tok-1");
-        verify(claimService).fail("tok-1");
+        verify(handler).handle(claims.get(0));
+        verify(handler).handle(claims.get(1));
+        verify(claimService, never()).complete(any());
+        verify(claimService, times(1)).fail("batch-tok");
     }
 
     @Test
     void completeZeroRowsIsRejectedLateWriteNeverRetried() {
         runAsOwnerSynchronously();
-        WorkItemClaim item = claim(1L, "tok-1");
-        when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(List.of(item));
-        when(claimService.complete("tok-1")).thenReturn(0);
+        when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(List.of(claim(1L)));
+        when(claimService.complete("batch-tok")).thenReturn(0);
 
         WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(0, processed);
-        verify(claimService, times(1)).complete("tok-1"); // no retry
+        verify(claimService, times(1)).complete("batch-tok"); // no retry
         verify(claimService, never()).fail(any());
     }
 
     @Test
     void failZeroRowsIsNotCountedAndDoesNotThrow() {
         runAsOwnerSynchronously();
-        WorkItemClaim item = claim(1L, "tok-1");
-        when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(List.of(item));
+        when(claimService.claim(eq(7L), eq("FENCE-A"))).thenReturn(List.of(claim(1L)));
         doAnswer(invocation -> {
             throw new IllegalStateException("boom");
-        }).when(handler).handle(item);
-        when(claimService.fail("tok-1")).thenReturn(0);
+        }).when(handler).handle(any());
+        when(claimService.fail("batch-tok")).thenReturn(0);
 
         WorkItemWorker worker = new WorkItemWorker(claimService, ownerExecutor, handler);
         int processed = worker.processOwnerBatch(7L, "FENCE-A");
 
         assertEquals(0, processed);
-        verify(claimService).fail("tok-1");
+        verify(claimService).fail("batch-tok");
     }
 
     @Test

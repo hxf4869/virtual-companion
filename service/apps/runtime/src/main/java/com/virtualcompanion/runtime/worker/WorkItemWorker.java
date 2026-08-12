@@ -9,17 +9,20 @@ import org.slf4j.LoggerFactory;
 /**
  * P1-04 worker execution half (Owner 2026-08-12 decisions: server-side owner
  * injection, runtime in-process). Processes a batch of pending work items for
- * one owner inside a single owner-bound transaction: claim -> handle ->
- * complete/fail.
+ * one owner inside a single owner-bound transaction: claim -> handle each ->
+ * one batch-level terminal write.
  *
  * <p>The single-transaction shape is required by V5: the claim family of
  * SECURITY DEFINER functions bind the tenant context through transaction-local
  * GUCs ({@code vc.owner_user_id} + {@code vc.job_fence}); a terminal write
- * outside the claiming transaction loses the context and updates zero rows. A
- * {@code 0} return therefore means the claim was rejected (stale fence,
- * expired lease, wrong token, missing context) and is never retried
- * (INV-WORKER-001 fail-closed). Handler failures terminalize to FAILED so the
- * item does not loop back into PENDING indefinitely.
+ * outside the claiming transaction loses the context and updates zero rows.
+ * One {@code claim_work_items} call issues one opaque token shared by the whole
+ * batch, so terminalization is batch-level: all handlers succeeded ->
+ * {@code complete(token)} (rows = batch size), any handler failure ->
+ * {@code fail(token)} (the batch gets a FAILED terminal state instead of
+ * looping back into PENDING). A {@code 0} return means the batch was rejected
+ * (stale fence, expired lease, wrong token, missing context) and is never
+ * retried (INV-WORKER-001 fail-closed).
  *
  * <p>No polling schedule here: deciding which owner's queue to process and
  * issuing fences is coordinator responsibility (§5.1.2, OWNER_GATE).
@@ -58,36 +61,40 @@ public class WorkItemWorker {
      * Claim up to the default limit of pending items for {@code ownerUserId}
      * under {@code fence} and process them inside one owner-bound transaction.
      *
-     * @return number of items terminalized to DONE (handler success); items
-     *     terminalized to FAILED or rejected late writes are not counted
+     * @return number of items terminalized to DONE (all handlers succeeded);
+     *     a FAILED batch or a rejected late write yields {@code 0}
      */
     public int processOwnerBatch(long ownerUserId, String fence) {
         final int[] processed = {0};
         ownerExecutor.asOwner(ownerUserId, () -> {
             List<WorkItemClaim> claims = claimService.claim(ownerUserId, fence);
+            if (claims.isEmpty()) {
+                return;
+            }
+            boolean allSucceeded = true;
             for (WorkItemClaim claim : claims) {
-                processed[0] += handleOne(claim);
+                try {
+                    handler.handle(claim);
+                } catch (RuntimeException e) {
+                    allSucceeded = false;
+                }
+            }
+            String token = claims.get(0).claimToken();
+            if (allSucceeded) {
+                processed[0] = terminalize(claimService.complete(token), token, "complete");
+            } else {
+                terminalize(claimService.fail(token), token, "fail");
             }
         });
         return processed[0];
     }
 
-    private int handleOne(WorkItemClaim claim) {
-        try {
-            handler.handle(claim);
-            return terminalize(claimService.complete(claim.claimToken()), claim, "complete");
-        } catch (RuntimeException e) {
-            terminalize(claimService.fail(claim.claimToken()), claim, "fail");
-            return 0;
-        }
-    }
-
-    private int terminalize(int rows, WorkItemClaim claim, String action) {
+    private int terminalize(int rows, String token, String action) {
         if (rows == 0) {
             log.warn(
-                    "work item id={} {} rejected "
+                    "work item batch token={} {} rejected "
                             + "(stale fence / expired lease / wrong token / missing context); not retried",
-                    claim.id(),
+                    token,
                     action);
             return 0;
         }
