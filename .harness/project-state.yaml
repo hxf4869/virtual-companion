@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0163
+activeTaskCard: docs/tasks/TASK-0163-frontend-realtime-envelope-event-field.md
 lastAcceptedTask: TASK-0162
 lastAcceptedHandoff: docs/handoffs/TASK-0162.json
 lastTerminalTask: TASK-0162
 lastTerminalHandoff: docs/handoffs/TASK-0162.json
-nextAction: 'TASK-0162（P2-13 admin seed 并发保护）闭环。下一步：评估剩余 OPEN/OWNER_GATE 审计项（P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离 0155 REJECTED 待重做、§5.1 新审计候选 quota/release 幂等/worker claim fence/provider attempt snapshot 需当前 HEAD 复核），选下一个 single-card 一次一张推进；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+nextAction: 'TASK-0163（§5.1.1 前端 realtime envelope event 字段修复）执行中：实现 frontend/src/api/realtime-envelope.ts 纯函数读 catalog 权威字段 event + glue 测试 + chat.vue 引用；static-gates-only 验证（pnpm -C frontend run type-check/test:run + canonical precheck + git diff --check + R1 静态独立复核；完整 Harness unittest deferred to unified audit）；C2 纯前端不触保护路径。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
