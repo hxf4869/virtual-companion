@@ -52,6 +52,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
+        <!-- Jackson JSON parser for the realtime SSE controller to split the
+             resume_stream durable-events envelope into individual SSE events
+             (TASK-0184). jackson-databind is otherwise runtime-only here
+             (transitively via jjwt-jackson); the HTTP layer parses event JSON at
+             compile time, so the dependency is promoted to compile. Version stays
+             managed by the Spring Boot BOM. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>

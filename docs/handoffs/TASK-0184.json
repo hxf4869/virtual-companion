@@ -1,0 +1,29 @@
+{
+  "taskId": "TASK-0184",
+  "state": "ACCEPTED",
+  "baseCommit": "1879ab722ac37ec140539b413e7f1150bd23df7e",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0184/evidence-pack.json",
+  "completed": [
+    "specs/contracts/realtime-contract.yaml resume 段补 endpoint=GET /api/v1/realtime/streams/{generationId} + ticketBinding: query + ticketBoundTo[ticketId,secret,sessionId,origin,streamEpoch] + deniedEvent: stream.denied（contract-change '先改契约真源'；resume 段原缺 endpoint 字段）。",
+    "specs/openapi/virtual-companion.yaml 加 GET /api/v1/realtime/streams/{generationId}（text/event-stream；GenerationId path + 5 query required + Last-Event-ID header optional→afterSeq；200/400/401）+ RealtimeStreamEvent schema；generate 重建 dist（含新增 RealtimeStreamEvent.java），diff/validate PASS。",
+    "RealtimeStreamController.java（新，SseEmitter）：consume ticket（BadSqlGrammar re-throw 503；其他 RuntimeException→stream.denied 不披露）→ resume 5 disposition 映射（RESUMED/TERMINAL_SNAPSHOT 发 durable events 逐个 id=eventSeq+snapshot；GAP_EXPIRED→stream.gap；RESET_REQUIRED→stream.reset；NOT_FOUND_OR_FORBIDDEN/default→stream.denied）→ complete；建连前参数错→400 INVALID_REQUEST。",
+    "runtime pom.xml 显式声明 jackson-databind compile（原 runtime scope 经 jjwt-jackson 传递，compile 期不可见；SSE controller 解析 envelope JSON 需要）。",
+    "RealtimeStreamControllerTest.java（新，12 项 asyncDispatch）：5 disposition + ticket 失败 stream.denied（resume never called）+ Last-Event-ID cursor + 4 项 400 + BadSqlGrammar re-throw；runtime mvn 332/0/0。",
+    "context-lock 44 inputs（43 readAllowlist+1 provenance，base 1879ab7，fingerprint 2aebe476），复刻 verify_context_lock 先复现 0183 4deb540c 自验通过；C3 治理闭环（contract-change 1.0.0 + independentReview required + 结构化 reviewers + task-assignment humanApproval）；ledger TASK-0184 完整 5 字段；nextAction 三处 sha256 bd27fbcc 一致。"
+  ],
+  "remaining": [
+    "H5 离线聊天/流式显示与断线恢复（Fetch-SSE 客户端消费本端点，TASK-0026 范围；开卡时分配下一永久 ID）。",
+    "CiExecutionPolicyTests.test_policy_rejects_backend_and_frontend_local_profile_drift 卡住独立排查（unittest discover 改单类规避）。",
+    "ID hashid 编码（当前 OpenAPI 用 decimal string）。",
+    "长连接订阅模式（本卡一次性 resume 积压，非持续推送；未来若需订阅需新卡）。"
+  ],
+  "knownRisks": [
+    "doctor / canonical precheck / 完整 unittest deferred per Owner 2026-08-13 策略（不标 PASS；最小验证 runtime mvn + openapi diff + diff check 全 PASS）。下次跑长检查应绿（writeAllowlist 合规 + context-lock 44 inputs 钉 base 1879ab7 + ledger 5 字段完整）。",
+    "authorizationCommit 占位符（plan-approved-2026-08-13-realtime-sse-resume，精简长线流残留，与 0173..0183 同）。",
+    "ticket secret 走 query string（EventSource 原生不能设 header）；45s 单次短期凭据不违反 longLivedTokenInRealtimeQueryForbidden，但建议运行期 access log 对 streams 端点 query 脱敏（部署运维事项，非本卡代码）。",
+    "runtime pom 新增 jackson-databind compile（Boot BOM 管理 2.21.4），仅用于 SSE envelope 解析。",
+    "CiExecutionPolicyTests 卡住（独立未修，本卡不碰）。"
+  ],
+  "nextAction": "TASK-0184（realtime SSE resume 端点）闭环 ACCEPTED：realtime-contract.yaml resume 段补 endpoint=GET /api/v1/realtime/streams/{generationId} + ticketBinding/ticketBoundTo/deniedEvent；OpenAPI 加该 SSE 端点（text/event-stream）+ RealtimeStreamEvent schema + generate 重建 dist；RealtimeStreamController（SseEmitter + consume ticket + resume 5 disposition 映射逐个 id=eventSeq；ticket 失败/越权 fail closed stream.denied 不披露；BadSqlGrammar re-throw 503；建连前参数错 400）+ pom 加 jackson-databind compile + 12 项 asyncDispatch 测试；runtime mvn 332/0/0 + openapi diff PASS + diff exit0。下一步：H5 离线聊天/流式显示与断线恢复（Fetch-SSE 客户端，开卡时分配下一永久 ID）按序；policy 测试卡住独立排查随后。"
+}

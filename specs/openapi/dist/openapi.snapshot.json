@@ -12,6 +12,7 @@
     "cancelGeneration",
     "getGenerationSnapshot",
     "createRealtimeTicket",
+    "openRealtimeStream",
     "createMemoryCandidate",
     "listMemories",
     "getMemory",
@@ -27,6 +28,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "fdffb746b6f137ae067375a66ad098ab606b27c6f744c633904ea6b38bd0dc2d"
+    "sha256": "7b090d5e94587e96250238a6b96a3a86eab6459f2957871b01c3a1d6fc444a27"
   }
 }

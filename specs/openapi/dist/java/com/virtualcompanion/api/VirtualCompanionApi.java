@@ -35,6 +35,9 @@ public interface VirtualCompanionApi {
     /** Mint a single-use Fetch-SSE resume ticket bound to the caller's generation. */
     RealtimeTicket createRealtimeTicket();
 
+    /** Open the Fetch-SSE resume stream for a generation. */
+    Void openRealtimeStream();
+
     /** Create a memory candidate from model extraction (PENDING_CONFIRMATION). */
     Memory createMemoryCandidate();
 

@@ -52,6 +52,12 @@ export interface RealtimeTicket {
   secret: string
 }
 
+export interface RealtimeStreamEvent {
+  event: string
+  id?: string
+  data?: string
+}
+
 export interface Message {
   messageId: string
   conversationId: string
@@ -134,6 +140,7 @@ export interface VirtualCompanionApiClient {
   cancelGeneration(): Promise<VersionResponse>
   getGenerationSnapshot(): Promise<VersionResponse>
   createRealtimeTicket(): Promise<VersionResponse>
+  openRealtimeStream(): Promise<VersionResponse>
   createMemoryCandidate(): Promise<VersionResponse>
   listMemories(): Promise<VersionResponse>
   getMemory(): Promise<VersionResponse>

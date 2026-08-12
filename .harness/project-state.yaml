@@ -4,20 +4,21 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0183
-lastAcceptedHandoff: docs/handoffs/TASK-0183.json
-lastTerminalTask: TASK-0183
-lastTerminalHandoff: docs/handoffs/TASK-0183.json
+lastAcceptedTask: TASK-0184
+lastAcceptedHandoff: docs/handoffs/TASK-0184.json
+lastTerminalTask: TASK-0184
+lastTerminalHandoff: docs/handoffs/TASK-0184.json
 nextAction: >-
-    TASK-0183（doctor task-ledger grandfather 派生校验卡）闭环 ACCEPTED：长检查补跑发现
-    task-ledger 的 TASK-0177~0182 漏写 state+contractVersion（doctor 30
-    errors、unittest 1 FAIL 同源），因 validate_ledger_edge 历史逐字段深比较 append-only
-    锁死无法回填 ledger，改 doctor validate_task_ledger_entries 加 grandfather 派生分支（恰好缺
-    state+contractVersion 的 3 字段条目从 task card 派生校验 + warn 而非
-    error，edge/card/文件存在校验不变）+ test_harness pop 逻辑修复 + 3 个 grandfather
-    新测试；doctor 0 errors/6 warnings + BacklogTests 全 PASS + precheck 全 7 绿 + diff
-    exit0。下一步：realtime SSE resume 端点（SseEmitter + V8 resume_stream + 契约补 resume
-    endpoint，C3 contract-change；开卡时分配下一永久 ID）按序；policy 测试卡住独立排查随后。
+    TASK-0184（realtime SSE resume 端点）闭环 ACCEPTED：realtime-contract.yaml
+    resume 段补 endpoint=GET /api/v1/realtime/streams/{generationId} +
+    ticketBinding/ticketBoundTo/deniedEvent；OpenAPI 加该 SSE
+    端点（text/event-stream）+ RealtimeStreamEvent schema + generate 重建
+    dist；RealtimeStreamController（SseEmitter + consume ticket + resume 5
+    disposition 映射逐个 id=eventSeq；ticket 失败/越权 fail closed stream.denied
+    不披露；BadSqlGrammar re-throw 503；建连前参数错 400）+ pom 加 jackson-databind
+    compile + 12 项 asyncDispatch 测试；runtime mvn 332/0/0 + openapi diff
+    PASS + diff exit0。下一步：H5 离线聊天/流式显示与断线恢复（Fetch-SSE 客户端，开卡时分配下一永久
+    ID）按序；policy 测试卡住独立排查随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -28,4 +29,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-12'
+updatedAt: '2026-08-13'

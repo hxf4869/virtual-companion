@@ -357,6 +357,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/realtime/streams/{generationId}:
+    get:
+      operationId: openRealtimeStream
+      summary: Open the Fetch-SSE resume stream for a generation
+      description: >-
+        Opens the single Alpha realtime transport (FETCH_SSE) resume stream.
+        The caller binds the connection to a single-use resume ticket minted by
+        POST /api/v1/realtime/tickets: vc.consume_realtime_ticket validates the
+        secret (sha256-only stored), the boundTo seven-tuple, single-use and the
+        45s TTL, failing closed on any mismatch. The owner is taken from the
+        server-verified principal and never from the query; transport is fixed
+        to FETCH_SSE. The resume cursor afterSeq is carried by the SSE-standard
+        Last-Event-ID header (defaulting to 0 when absent); ticketId, secret,
+        sessionId, origin and streamEpoch are bound via query parameters — the
+        secret is a short-lived single-use credential, not the long-lived token
+        forbidden in the realtime query (h5Security). vc.resume_stream returns
+        one of five dispositions, mapped to SSE events: RESUMED and
+        TERMINAL_SNAPSHOT emit the ordered durable events (and the committed
+        snapshot for a terminal generation) then complete; GAP_EXPIRED emits
+        stream.gap; RESET_REQUIRED emits stream.reset; a foreign or absent
+        generation, or any ticket-consume failure, emits stream.denied so
+        existence is never disclosed. A 400 INVALID_REQUEST is returned only
+        before the stream opens, for a malformed or missing parameter.
+      parameters:
+        - $ref: '#/components/parameters/GenerationId'
+        - name: ticketId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The server-assigned id of the resume ticket to consume
+        - name: secret
+          in: query
+          required: true
+          schema:
+            type: string
+          description: One-time plaintext ticket secret (sha256-only persisted)
+        - name: sessionId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The caller's realtime session id (must match the ticket binding)
+        - name: origin
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The origin the SSE resume is opened from (must match the ticket binding)
+        - name: streamEpoch
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The stream epoch the caller last observed (must match the ticket binding)
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The last contiguous eventSeq the caller advanced to (defaults to 0)
+      responses:
+        '200':
+          description: The Fetch-SSE resume stream opened (text/event-stream)
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/RealtimeStreamEvent'
+        '400':
+          description: Malformed or missing parameter before the stream opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships/{relationshipId}/memories/candidates:
     post:
       operationId: createMemoryCandidate
@@ -977,6 +1057,30 @@ components:
         secret:
           type: string
           description: One-time plaintext secret (sha256-only persisted)
+    RealtimeStreamEvent:
+      type: object
+      description: >-
+        A single Server-Sent Event on the resume stream (text/event-stream).
+        event is one of the durable realtime event types (chat.accepted,
+        safety.notice, ...), snapshot for a terminal generation, or the control
+        events stream.gap, stream.reset and stream.denied. id carries the
+        eventSeq for a durable event so the client advances only the last
+        contiguous sequence (INV-RT-001); the data payload is the envelope
+        object produced by vc.resume_stream. stream.denied never discloses
+        whether the cause was a ticket failure or a foreign/absent generation.
+      required:
+        - event
+      properties:
+        event:
+          type: string
+          description: The SSE event name (durable event type, snapshot, or stream.gap/reset/denied)
+        id:
+          type: string
+          description: The eventSeq for a durable event (the Last-Event-ID cursor)
+        data:
+          type: object
+          additionalProperties: true
+          description: The event payload (envelope-encoded) or the snapshot object
     Message:
       type: object
       description: A chat message owned by exactly one user within a conversation.

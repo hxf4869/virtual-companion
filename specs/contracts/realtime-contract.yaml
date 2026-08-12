@@ -18,9 +18,17 @@ ticket:
     - afterSeq
   mayContainLongLivedCredential: false
 resume:
+  endpoint: GET /api/v1/realtime/streams/{generationId}
   cursor: eventSeq
   epoch: streamEpoch
   sseHeader: Last-Event-ID
+  ticketBinding: query
+  ticketBoundTo:
+    - ticketId
+    - secret
+    - sessionId
+    - origin
+    - streamEpoch
   dispositions:
     - RESUMED
     - TERMINAL_SNAPSHOT
@@ -29,6 +37,7 @@ resume:
     - NOT_FOUND_OR_FORBIDDEN
   gapEvent: stream.gap
   resetEvent: stream.reset
+  deniedEvent: stream.denied
   snapshotEndpoint: GET /api/v1/generations/{generationId}/snapshot
 retention:
   reviewedDraftAfterTerminalMinutes: 30

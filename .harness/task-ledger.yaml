@@ -960,3 +960,9 @@ tasks:
     taskCard: docs/tasks/TASK-0183-doctor-task-ledger-grandfather-derivation.md
     evidence: docs/evidence/TASK-0183/evidence-pack.json
     handoff: docs/handoffs/TASK-0183.json
+  TASK-0184:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0184-realtime-sse-resume-stream.md
+    evidence: docs/evidence/TASK-0184/evidence-pack.json
+    handoff: docs/handoffs/TASK-0184.json
