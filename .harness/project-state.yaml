@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0158
-activeTaskCard: docs/tasks/TASK-0158-risk-09-search-path-hardening.md
-lastAcceptedTask: TASK-0161
-lastAcceptedHandoff: docs/handoffs/TASK-0161.json
-lastTerminalTask: TASK-0161
-lastTerminalHandoff: docs/handoffs/TASK-0161.json
-nextAction: '执行 TASK-0158（RISK-09 search_path 收紧）：新增 V18 migration（ALTER FUNCTION 把 schema vc 全部 SECURITY DEFINER 函数 search_path 改为 vc,pg_catalog + REVOKE CREATE ON SCHEMA public FROM PUBLIC，不改 V1-V17 历史）+ 57 号 cross-tenant 负测（G1 SD proconfig=vc,pg_catalog 无 public 计数≥37 / G2 runtime 角色与 PUBLIC 对 public 无 CREATE 且 vc_api 建 public 函数被拒 / G3 public 同名函数 shadow 不可劫持 SD 解析）；C4 database-migration + humanApproval(scope: database-migration) + 独立 Reviewer；DB 变更跑 run-rls-tests.sh（OrbStack pgvector:0.8.5-pg18 digest-pinned，56→57 测试）+ canonical precheck 8/8 + git diff --check + R1 静态（Owner 2026-08-12 static-gates-only，完整 Harness unittest 留统一审计）。终态单父 [skip ci] ACCEPTED + push + 远端 0/0/clean。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0158
+lastAcceptedHandoff: docs/handoffs/TASK-0158.json
+lastTerminalTask: TASK-0158
+lastTerminalHandoff: docs/handoffs/TASK-0158.json
+nextAction: 'TASK-0158 闭环。下一步：按 docs/evidence/TASK-0109/zcode-remediation-handoff.md §3-6 评估剩余 OPEN/OWNER_GATE 审计项（P1-04/05 DB principal、P1-11 readiness、P2-04/P3-05/P3-06 auth hygiene、P2-12 JDBC snapshot、P2-13 admin seed、P2-20..P2-26 Harness/CI 组、P3-01..P3-08），选下一个 single-card 一次一张推进；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

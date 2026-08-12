@@ -862,3 +862,9 @@ tasks:
     taskCard: docs/tasks/TASK-0161-p2-27-complete-ci-matrix-replacement.md
     evidence: docs/evidence/TASK-0161/evidence-pack.json
     handoff: docs/handoffs/TASK-0161.json
+  TASK-0158:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0158-risk-09-search-path-hardening.md
+    evidence: docs/evidence/TASK-0158/evidence-pack.json
+    handoff: docs/handoffs/TASK-0158.json

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0158
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -316,7 +316,34 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS（TASK-0161 R1 PASS 不复用）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0158_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "a4281c5"
+    candidateTree: "e78fe31d"
+    evidencePath: docs/evidence/TASK-0158/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2。独立重跑全部静态门禁 PASS：doctor 762679（receipt c95e62895234）、
+      canonical precheck 8/8、run-rls-tests.sh 57/57（V1..V18 应用 + 57_search_path... PASS）、
+      git diff --check exit 0（worktree + base..a4281c5）。Diff scope 精确 5 文件全在 writeAllowlist；
+      V1-V17 未改（Flyway checksum 安全）。V18 仅 ALTER FUNCTION SET search_path=vc,pg_catalog
+      + REVOKE CREATE ON SCHEMA public FROM PUBLIC（不动签名/函数体/owner/GRANT/RLS/表/角色）；
+      test 57 覆盖 G1（SD proconfig=vc,pg_catalog 无 public 计数≥37）/G2（runtime 角色+PUBLIC
+      对 public 无 CREATE 且 vc_api 建函数被拒）/G3（public.current_owner_id shadow 999999
+      不可劫持 SD 解析）。完整 unittest 按 Owner 2026-08-12 static-gates-only 策略 deferred
+      to unified audit。
+terminalStateReason: >-
+  RISK-09 search_path 收紧 ACCEPTED：新增 V18 migration（ALTER FUNCTION DO 块把 schema vc
+  全部 37 个 SECURITY DEFINER 函数 search_path 改为 vc,pg_catalog + REVOKE CREATE ON SCHEMA
+  public FROM PUBLIC，不改 V1-V17 历史）；57 号 cross-tenant 负测（G1/G2/G3）。run-rls-tests.sh
+  57/57 PASS（V1..V18 应用 + 含新增 57）；canonical precheck 8/8 PASS（doctor 762679 + 7 子命令）；
+  git diff --check exit 0；独立 C4 R1 静态复核 PASS（0 P0/P1/P2，独立重跑全部静态门禁）。前向修复
+  test 57 G2 嵌套 dollar-quote（首跑发现，提交 a4281c5，不 amend/reset 历史）。完整 Harness unittest
+  按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit（V18+test 57 静态全 PASS，
+  DB 行为由 run-rls-tests.sh 57 测试直接验证）。candidate elapsed ~6 min（远低于 hardFuse 120）。
+  remote exact-SHA 如实非 PASS（dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。
+  RISK-09（SD search_path 收紧 + public CREATE 撤销 + shadow-object 负测）完整落地。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 RISK-09 审计修复卡
