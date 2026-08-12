@@ -2,7 +2,7 @@
   "taskId": "TASK-0179",
   "state": "ACCEPTED",
   "baseCommit": "ce12b488a34bf8064d68579a1549e474a9355cb0",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "47b644d6dcc1f1f90c7a25f19eb92f820cddc979",
   "evidencePath": "docs/evidence/TASK-0179/evidence-pack.json",
   "completed": [
     "MessageHistoryService（新，platform.persistence）：包 V10 vc.list_messages(?, ?, ?, ?) 4 参透传（after/limit null 由 SD 默认/clamp）+RowMapper；MessageHistoryRecord(id,role,content,createdAt)。",
