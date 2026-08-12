@@ -3,8 +3,11 @@ package com.virtualcompanion.runtime.auth.config;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.jwt.JwtAuthenticationFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
+import com.virtualcompanion.runtime.auth.tenant.OwnerInjectionFilter;
 import java.time.Duration;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -66,6 +69,19 @@ public class AuthSecurityConfig {
         return new JwtAuthenticationFilter(jwtTokenService);
     }
 
+    /**
+     * P1-04 owner injector (TASK-0168). Registered after {@link JwtAuthenticationFilter}
+     * so the server-verified principal's accountId is bound to the
+     * {@code vc.owner_user_id} GUC before any FORCE-RLS business query. Uses an
+     * {@link ObjectProvider} so the filter bean exists even when the
+     * DataSource is disabled (it then no-ops), keeping the database-free
+     * test/baseline context starting cleanly.
+     */
+    @Bean
+    public OwnerInjectionFilter ownerInjectionFilter(ObjectProvider<OwnerContext> ownerContext) {
+        return new OwnerInjectionFilter(ownerContext);
+    }
+
     @Bean
     public AuthAbuseGuard authAbuseGuard() {
         return new AuthAbuseGuard();
@@ -89,7 +105,8 @@ public class AuthSecurityConfig {
             HttpSecurity http,
             @Value("${virtual-companion.auth.cors-allowed-origins:}") List<String> allowedOrigins,
             AuthAbuseGuard authAbuseGuard,
-            JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            OwnerInjectionFilter ownerInjectionFilter) throws Exception {
         CookieCsrfGuardFilter cookieCsrfGuardFilter = new CookieCsrfGuardFilter(allowedOrigins);
         AuthSourceAdmissionFilter authSourceAdmissionFilter =
                 new AuthSourceAdmissionFilter(authAbuseGuard);
@@ -113,6 +130,7 @@ public class AuthSecurityConfig {
                                             + "\"message\":\"A valid bearer token is required\"}");
                         }))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(ownerInjectionFilter, JwtAuthenticationFilter.class)
                 .addFilterBefore(authRequestBodyLimitFilter, JwtAuthenticationFilter.class)
                 .addFilterBefore(authSourceAdmissionFilter, AuthRequestBodyLimitFilter.class)
                 .addFilterBefore(cookieCsrfGuardFilter, AuthSourceAdmissionFilter.class);

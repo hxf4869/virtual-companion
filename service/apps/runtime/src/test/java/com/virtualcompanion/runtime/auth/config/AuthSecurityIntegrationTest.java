@@ -9,7 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
+import com.virtualcompanion.runtime.auth.jwt.JwtAuthenticationFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import com.virtualcompanion.runtime.auth.tenant.OwnerInjectionFilter;
 import com.virtualcompanion.runtime.auth.web.AuthController;
 import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
 import jakarta.servlet.Filter;
@@ -166,6 +168,40 @@ class AuthSecurityIntegrationTest {
         assertThat(context.getBeansOfType(CookieCsrfGuardFilter.class)).isEmpty();
         assertThat(context.getBeansOfType(AuthSourceAdmissionFilter.class)).isEmpty();
         assertThat(context.getBeansOfType(AuthRequestBodyLimitFilter.class)).isEmpty();
+    }
+
+    @Test
+    void ownerInjectionFilterIsRegisteredAfterJwtAuthenticationFilter() {
+        List<Filter> filters = springSecurityFilterChain.getFilterChains().stream()
+                .flatMap(chain -> chain.getFilters().stream())
+                .toList();
+
+        int jwtIndex = indexOf(filters, JwtAuthenticationFilter.class);
+        int ownerIndex = indexOf(filters, OwnerInjectionFilter.class);
+        assertThat(jwtIndex).isGreaterThanOrEqualTo(0);
+        assertThat(ownerIndex).isGreaterThan(jwtIndex);
+        assertThat(count(filters, OwnerInjectionFilter.class)).isEqualTo(1);
+    }
+
+    @Test
+    void internalMeEchoesAuthenticatedPrincipal() throws Exception {
+        // auth.enabled=true without a DataSource: OwnerContext bean is absent so
+        // OwnerInjectionFilter no-ops, but the principal still flows to the
+        // controller -- proving the filter -> principal -> controller wiring.
+        String token = jwtTokenService.issueAccessToken(7L, "USER", "alice");
+
+        mockMvc.perform(get("/api/internal/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ownerUserId").value(7))
+                .andExpect(jsonPath("$.role").value("USER"));
+    }
+
+    @Test
+    void internalMeRejectsUnauthenticatedRequest() throws Exception {
+        mockMvc.perform(get("/api/internal/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
     }
 
     @Test
