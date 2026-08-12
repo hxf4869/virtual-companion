@@ -62,7 +62,7 @@ DO $$
 BEGIN
     BEGIN
         CREATE FUNCTION public.g2_evil_shadow() RETURNS integer
-            LANGUAGE sql AS $$ SELECT 1 $$;
+            LANGUAGE sql AS $body$ SELECT 1 $body$;
         RAISE EXCEPTION 'G2: vc_api CREATE FUNCTION in public must be denied';
     EXCEPTION WHEN OTHERS THEN
         IF position('permission' in SQLERRM) = 0 THEN
