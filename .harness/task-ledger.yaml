@@ -886,3 +886,9 @@ tasks:
     taskCard: docs/tasks/TASK-0164-provider-attempt-authorization-snapshot-db-enforcement.md
     evidence: docs/evidence/TASK-0164/evidence-pack.json
     handoff: docs/handoffs/TASK-0164.json
+  TASK-0165:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0165-quota-nonneg-check-and-release-idempotency.md
+    evidence: docs/evidence/TASK-0165/evidence-pack.json
+    handoff: docs/handoffs/TASK-0165.json

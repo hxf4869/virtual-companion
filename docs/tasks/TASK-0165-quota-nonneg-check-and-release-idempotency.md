@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0165
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -345,8 +345,37 @@ humanApprovals:
       dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结 LOCAL_EXACT_TREE_FALLBACK
       （profile=precheck），远端仍如实非 PASS，不复用任何跨卡 Reviewer 或命令 PASS（TASK-0164 R1 PASS 不复用）。
 independentReview: required
-reviewers: []
-terminalStateReason: ""
+reviewers:
+  - id: task0165_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "8d5ac69462cf2a723e6e79a7ec0a2f8352a6b91d"
+    candidateTree: "3ce5bd6cfd90ee8db30b335271d3c1e1c1472dac"
+    evidencePath: docs/evidence/TASK-0165/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2；1 P3（卡散文 search_path 取值 vc,public 与 V18 RISK-09 基线 vc,pg_catalog
+      出入，非阻塞——scope intent 满足、实现 provably correct 经 test 57 G1 强制、normative projection
+      正确不变；post-READY 无法修正散文因 doctor 扫描每 commit projection）。静态门禁全 PASS（run-rls-tests
+      60/60 含 test 57 无回归 + test 60 新增、canonical precheck 8/8 doctor 787021、git diff --check exit 0）。
+      §5.1.4 双腿 DB 层落地（4 列 CHECK(>=0) + per-generation 单 RELEASE partial unique index +
+      record_quota_release 幂等守卫），test 60 机器证明五场景；V17 trusted-context 逐行保留，非负守卫先于
+      幂等保 test 43 负向语义；CREATE OR REPLACE 签名不变保留 V15 EXECUTE 权限；纯 DB 卡无 Java 改动，
+      5 路径全在 writeAllowlist，V1-V20 冻结。完整 unittest deferred per Owner static-gates-only 策略。
+terminalStateReason: >-
+  §5.1.4 quota 非负 CHECK + release 幂等 ACCEPTED：新增 V21 migration（generation_usage.{input_tokens,
+  output_tokens,actual_cost} + quota_ledger_entry.quota_amount 四条 CHECK(>=0) DO 守卫幂等 + partial unique
+  index quota_ledger_release_one_per_generation ON (owner_user_id,generation_id) WHERE kind=RELEASE +
+  CREATE OR REPLACE record_quota_release 幂等守卫签名 (bigint,bigint,integer,text) 不变保留 V15 EXECUTE
+  权限 + V17 trusted-context 校验逐行 + 非负守卫先于幂等 + search_path vc,pg_catalog 对齐 V18 RISK-09）；
+  新增 test 60（§5.1.4 integration_test：finalize 负 input check_violation 原子回滚 + 直接 DML 负 quota_amount
+  CHECK backstop + 二次 RELEASE 幂等 no-op 仅一行 + 非负守卫先于幂等 + 未知 gen 仍 fail-closed）。含 1 fix
+  batch（record_quota_release search_path vc,public→vc,pg_catalog 修 test 57 G1 回退，仅改 V21 实现文件
+  卡 body 不动保持 READY projection 冻结）。run-rls-tests.sh 60/60 PASS（V1..V21，test 1-59 无回归含
+  test 43/57）；canonical precheck 8/8 PASS（doctor 787021）；git diff --check exit 0；独立 C4 R1 静态复核
+  PASS（0 P0/P1/P2，1 P3 卡散文 search_path 取值出入非阻塞）。纯 DB 卡无 Java/catalog/contract 改动。
+  完整 Harness unittest 按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit（V21+test 60
+  静态全 PASS，DB 行为由 run-rls-tests.sh 60 测试直接验证）。candidate elapsed ~15 min（远低于 hardFuse 120）。
+  remote exact-SHA 如实非 PASS（dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 §5.1.4 审计修复卡
