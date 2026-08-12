@@ -880,3 +880,9 @@ tasks:
     taskCard: docs/tasks/TASK-0163-frontend-realtime-envelope-event-field.md
     evidence: docs/evidence/TASK-0163/evidence-pack.json
     handoff: docs/handoffs/TASK-0163.json
+  TASK-0164:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0164-provider-attempt-authorization-snapshot-db-enforcement.md
+    evidence: docs/evidence/TASK-0164/evidence-pack.json
+    handoff: docs/handoffs/TASK-0164.json

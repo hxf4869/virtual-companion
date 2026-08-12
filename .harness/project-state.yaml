@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0164
-activeTaskCard: docs/tasks/TASK-0164-provider-attempt-authorization-snapshot-db-enforcement.md
-lastAcceptedTask: TASK-0163
-lastAcceptedHandoff: docs/handoffs/TASK-0163.json
-lastTerminalTask: TASK-0163
-lastTerminalHandoff: docs/handoffs/TASK-0163.json
-nextAction: 'TASK-0164（§5.1.3 provider_attempt 授权快照 DB 强制 INV-AUTH-001）READY 已授权，待 IN_PROGRESS 实现：V20 migration（provider_attempt 加 requested/execution_authorization_snapshot 两 text NOT NULL 列 + 两条复合 FK 指向 authorization_snapshot(owner_user_id,snapshot_id) 复合 PK + DROP/CREATE record_provider_attempt 拓宽签名保留 V17 trusted-context + GRANT/REVOKE）+ 改 test 40（列数 7→9 + 调用签名）/54/55（调用签名）+ 新增 test 59（INV-AUTH-001 integration_test：FK 正向/未知 snapshot fail-closed/跨 owner 借用被拒）；纯 DB 卡不触 Java（audit 投影留后续）；C4 database-migration + humanApproval scope:database-migration + 独立 Reviewer + static-gates-only；完成后继续 §5.1.4 quota 非负+release 幂等（C4 DB）、§5.1.2/§5.1.6 复核；P1-04/05 DB principal、P1-11 readiness/migrator 分离需 Owner 决策；全部修复后做独立全项目复审（串行完整 unittest + canonical + 根级 Maven verify）。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0164
+lastAcceptedHandoff: docs/handoffs/TASK-0164.json
+lastTerminalTask: TASK-0164
+lastTerminalHandoff: docs/handoffs/TASK-0164.json
+nextAction: 'TASK-0164（§5.1.3 provider_attempt 授权快照 DB 强制 INV-AUTH-001）闭环。下一步：继续推进剩余 §5.1 审计候选（§5.1.4 quota 非负 CHECK + release 幂等，C4 DB 已确认缺陷；§5.1.2 worker claim fence、§5.1.6 V8/V11 存量升级待补复核）；Java 侧 ProviderAttemptAudit/LiveModelInvoker audit 投影一致性可作后续独立 C3 卡或并入 P2-12 JDBC 层；P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（0155 REJECTED 待重做）需 Owner 拓扑决策；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED

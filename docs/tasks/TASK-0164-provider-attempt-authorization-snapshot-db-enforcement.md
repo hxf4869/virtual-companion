@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0164
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -347,7 +347,37 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS（TASK-0163 R1 PASS 不复用）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0164_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "0161ca773669a41fffff1d46bc576bd17b909dc1"
+    candidateTree: "32c9c6a7d08a30589aef6919109dddaccaf63af8"
+    evidencePath: docs/evidence/TASK-0164/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2。独立重跑全部静态门禁 PASS（fresh TMPDIR /tmp/r1-task0164.LpilmK）：
+      doctor 780916 checks、canonical precheck 8/8、run-rls-tests.sh 59/59（V1..V20 应用 +
+      含新增/改后 40/54/55/59）、git diff --check exit 0。Diff scope 精确 8 文件全在 writeAllowlist；
+      V1-V19 未改（Flyway checksum 安全）。V20 仅 ALTER 加两 text NOT NULL 列 + 两复合 FK 指向
+      authorization_snapshot 复合 PK + DROP/CREATE record_provider_attempt 拓宽签名（保留 V17
+      trusted-context 校验逐行 + search_path vc,pg_catalog）；test 59 机器证明 INV-AUTH-001 正向
+      round-trip + 负向 A 未知 snapshot + 负向 B 跨 owner composite FK foreign_key_violation。
+      无 Java 改动（纯 DB 卡）。完整 unittest deferred per Owner static-gates-only 策略。
+terminalStateReason: >-
+  §5.1.3 provider_attempt 授权快照 DB 强制 ACCEPTED：新增 V20 migration（provider_attempt 加
+  requested/execution_authorization_snapshot 两 text NOT NULL 列 + 两条复合 FK 指向
+  vc.authorization_snapshot(owner_user_id, snapshot_id) 复合 PK + DROP/CREATE record_provider_attempt
+  拓宽签名 7 参数保留 V17 trusted-context 校验 + search_path=vc,pg_catalog + GRANT/REVOKE）；改
+  test 40（列数 7→9 + seed snapshot + 调用签名 + 正向 round-trip）、test 54/55（调用签名）；新增
+  test 59（INV-AUTH-001 integration_test：正向 FK + 负向 A 未知 snapshot + 负向 B 跨 owner
+  foreign_key_violation）。run-rls-tests.sh 59/59 PASS（V1..V20 + 含新增/改后测试，test 1-58 无回归）；
+  canonical precheck 8/8 PASS（doctor 780916）；git diff --check exit 0；独立 C4 R1 静态复核 PASS
+  （0 P0/P1/P2，fresh TMPDIR 独立重跑全部静态门禁）。无前向修复（所有门禁首跑 PASS）。完整 Harness
+  unittest 按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit（V20+test 59 静态全
+  PASS，DB 行为由 run-rls-tests.sh 59 测试直接验证，含 INV-AUTH-001 integration_test）。candidate
+  elapsed ~3 min（远低于 hardFuse 120）。remote exact-SHA 如实非 PASS（dispatchCount=0），
+  LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。INV-AUTH-001 的 not_null_constraint + composite_foreign_key
+  在 DB 层强制落地，integration_test 由 test 59 机器证明。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 §5.1.3 审计修复卡
