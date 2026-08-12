@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0170
+activeTaskCard: docs/tasks/TASK-0170-p2-03-audit-event-retention-purge.md
 lastAcceptedTask: TASK-0169
 lastAcceptedHandoff: docs/handoffs/TASK-0169.json
 lastTerminalTask: TASK-0169
 lastTerminalHandoff: docs/handoffs/TASK-0169.json
-nextAction: 'TASK-0169（P2-03 密码最低策略与复杂度：min 8 + 大写/小写/数字/符号四类全要，createAccount validateAccountInput + seedAdmin 强制，login 不强制，AuthRequests @Size(min=8) Bean Validation 早拒）闭环 ACCEPTED。P2-03 核心（限流/锁定/输入收紧 TASK-0156+0160）+ 密码最低策略（本卡）均已闭合。下一步：开审计保留独立 C4 DB 卡（V22 purge 函数 + @Scheduled 每日自动清理 identity_auth_event >180 天，Owner 已定机制=自动定时清理），再继续逐项解锁剩余 Owner-gate（§5.1.2 worker claim lease/fence 依赖 coordinator、P2-22 nextAction 未注册任务）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+nextAction: 'TASK-0170（P2-03 审计事件保留与定时清理，C4 DB）执行中：V22 新增 SECURITY DEFINER purge 函数 identity_auth_event_purge(p_cutoff timestamptz) DELETE occurred_at<cutoff RETURN count + SET search_path=vc,pg_catalog 匹配 V18 基线 + GRANT EXECUTE vc_api/REVOKE PUBLIC；runtime AuthDataSourceConfig 加 @EnableScheduling + IdentityAuthEventPurgeScheduler plain class @Scheduled 每日 03:17 调用（retention 默认 180 天/cron 经 @Value 可配置）+ 单测；infra/db test 62 正测 purge 删旧留新 + 负测 vc_api 无表级 DELETE fail-closed。触 **/db/migration/** C4+database-migration+humanApproval scope:database-migration+independentReview:required。完成后继续逐项解锁剩余 Owner-gate（§5.1.2 worker claim lease/fence 依赖 coordinator、P2-22 nextAction 未注册任务）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
