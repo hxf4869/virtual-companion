@@ -4,11 +4,11 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0175
-lastAcceptedHandoff: docs/handoffs/TASK-0175.json
-lastTerminalTask: TASK-0175
-lastTerminalHandoff: docs/handoffs/TASK-0175.json
-nextAction: TASK-0175（TASK-0174 治理补救，C1）闭环 ACCEPTED：TASK-0174 doctor 13 errors 静态修复（每条对应 doctor.py 具体校验点，Explore 精读确认）——补 context-lock/fingerprint(9965b6e6,66 inputs)+卡 7 缺字段(contextFingerprint/contextLock/readAllowlist/requiredInvariants/reviewers/sourcesOfTruth)+task-intake 声明+forbiddenPaths 移除 persistence main/java/** 自冲突 glob+humanApprovals(task-assignment/database-migration)+independentReview+evidence/handoff headCommit 回填 e4acdbf+reviewer reviewedCommit/candidateTree+review-r1 扩结构化(A/B/E/F 节)；doctor 未跑 per Owner static-gates-only，run-rls 65/65+mvn 254/0/0+diff exit0 回归绿，业务代码未动。下一步：开 TASK-0176——generation ZERO_LLM 确定性完成路径接线（handler→LiveModelInvoker.invoke DeterministicSourceBinding→finalize COMPLETED），建 request assembler+fence 契约+ownership/messages 加载基础设施；外部 provider 成功路径留 TASK-0177+。
+lastAcceptedTask: TASK-0176
+lastAcceptedHandoff: docs/handoffs/TASK-0176.json
+lastTerminalTask: TASK-0176
+lastTerminalHandoff: docs/handoffs/TASK-0176.json
+nextAction: TASK-0176（generation ZERO_LLM 确定性完成路径接线，C2）闭环 ACCEPTED：GenerationWorkItemHandler 在 zero-llm.enabled=true 且 model-providers.enabled!=true 时走真实 LiveModelInvoker.invoke ZERO_LLM 分支（router 选 DeterministicSourceBinding→recovery.completeZeroLlm→zeroLlmCompleted）→ 把确定性输出(DeterministicSafetyResponse.ZERO_LLM_FALLBACK)经 promote IN_PROGRESS→FINAL_REVIEW→insert_generation_candidate→finalize_generation 落为 COMPLETED；新 ZeroLlmModelRuntimeConfig(空 InMemory* 协作者装配 LiveModelInvoker，@ConditionalOnExpression 互斥 model-providers)+LiveInvocationAssembler(ownership 两跳+messages+fence GUC)+GenerationFinalizeService+MessageRepository.listByConversation+application.yaml zero-llm 节；复用既有 V7/V15/V25 SD 函数(均已 GRANT vc_api)，不新增 migration、不改 modelruntime/safety 源码→不触发 C3/C4；DB test 66(全 SD COMPLETED 链实证)+handler test 重写(5 场景)+assembler test(2)；run-rls 66/66+mvn runtime 257/0/0+diff exit0 全绿。下一步：开 TASK-0177——外部 provider 成功路径（authorization snapshot 创建/safety 流水线/adapter 装配/fence 契约/messages 加载），realtime SSE 推送与 listMessages/cancel/relationship 端点按序随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

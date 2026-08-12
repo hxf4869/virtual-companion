@@ -1,0 +1,109 @@
+package com.virtualcompanion.runtime.worker;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.virtualcompanion.catalog.ModelProtocol;
+import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
+import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
+import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
+import com.virtualcompanion.modelruntime.execution.LiveInvocationRequest;
+import com.virtualcompanion.modelruntime.routing.Entitlement;
+import com.virtualcompanion.modelruntime.routing.RoutingRequest;
+import com.virtualcompanion.modelruntime.routing.ServiceClass;
+import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.GenerationRecord;
+import com.virtualcompanion.platform.persistence.GenerationRepository;
+import com.virtualcompanion.platform.persistence.MessageRepository;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+/**
+ * Unit tests for {@link LiveInvocationAssembler} (TASK-0176). Verifies the
+ * two-hop ownership resolution (generation → conversation → relationship),
+ * fence derivation from the {@code vc.job_fence} GUC, the ZERO_LLM routing
+ * tuning, and the message mapping with placeholder fallback.
+ */
+class LiveInvocationAssemblerTest {
+
+    private final GenerationRepository generationRepository = mock(GenerationRepository.class);
+    private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
+    private final MessageRepository messageRepository = mock(MessageRepository.class);
+    private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+
+    private LiveInvocationAssembler assembler(String sourceId) {
+        return new LiveInvocationAssembler(
+                generationRepository, conversationRepository, messageRepository,
+                jdbcTemplate, sourceId);
+    }
+
+    @Test
+    void assemblesZeroLlmRequestWithTwoHopOwnershipAndFence() {
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
+                new ConversationRepository.Conversation(1L, 5L, 9L, null)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello"),
+                new MessageRepository.Message(1L, 101L, 5L, "assistant", "hi there")));
+        String fenceUuid = "12345678-1234-1234-1234-123456789abc";
+        long expectedFence =
+                UUID.fromString(fenceUuid).getMostSignificantBits() & Long.MAX_VALUE;
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
+                .thenReturn(fenceUuid);
+
+        LiveInvocationRequest request = assembler("ZERO_LLM_FALLBACK").assemble(1L, 10L);
+
+        RoutingRequest routing = request.routingRequest();
+        OwnershipTuple ownership = routing.ownership();
+        assertEquals("1", ownership.ownerUserId());
+        assertEquals("9", ownership.relationshipId());
+        assertEquals("5", ownership.conversationId());
+        assertEquals("10", ownership.generationId());
+
+        Entitlement entitlement = routing.entitlement();
+        assertEquals("1", entitlement.ownerUserId());
+        assertEquals(ServiceClass.zeroLlmOnly(), entitlement.serviceClass());
+        assertTrue(entitlement.serviceClass().zeroLlmFallbackAllowed());
+        assertEquals(ModelProtocol.ZERO_LLM, routing.requiredProtocol());
+        assertTrue(routing.requiredCapabilities().values().isEmpty());
+        assertEquals("ZERO_LLM_FALLBACK", routing.zeroLlmSourceId());
+        assertEquals(expectedFence, routing.fence());
+
+        assertEquals(2, request.messages().size());
+        assertEquals(ProtocolMessage.Role.USER, request.messages().get(0).role());
+        assertEquals(ProtocolMessage.Role.ASSISTANT, request.messages().get(1).role());
+    }
+
+    @Test
+    void usesPlaceholderAndZeroFenceWhenNoMessagesAndNoGuc() {
+        when(generationRepository.find(anyLong(), anyLong())).thenReturn(Optional.of(
+                new GenerationRecord(2L, 20L, 7L, "gen-2", "IN_PROGRESS", "idem-2")));
+        when(conversationRepository.find(anyLong(), anyLong())).thenReturn(Optional.of(
+                new ConversationRepository.Conversation(2L, 7L, 11L, null)));
+        when(messageRepository.listByConversation(anyLong(), anyLong())).thenReturn(List.of());
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
+                .thenReturn(null);
+
+        LiveInvocationRequest request = assembler("SRC").assemble(2L, 20L);
+
+        // Placeholder keeps the request valid; ZERO_LLM never reads it.
+        assertEquals(1, request.messages().size());
+        assertNotNull(request.messages().get(0).content());
+        assertEquals(0L, request.routingRequest().fence());
+        assertEquals("SRC", request.routingRequest().zeroLlmSourceId());
+        // Capability set stays empty but non-null.
+        assertTrue(request.routingRequest()
+                .requiredCapabilities() instanceof ModelProtocolCapabilities);
+    }
+}

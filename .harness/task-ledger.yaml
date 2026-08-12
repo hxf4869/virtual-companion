@@ -924,3 +924,9 @@ tasks:
     taskCard: docs/tasks/TASK-0175-task0174-governance-remediation.md
     evidence: docs/evidence/TASK-0175/evidence-pack.json
     handoff: docs/handoffs/TASK-0175.json
+  TASK-0176:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0176-generation-zero-llm-completion.md
+    evidence: docs/evidence/TASK-0176/evidence-pack.json
+    handoff: docs/handoffs/TASK-0176.json

@@ -1,5 +1,8 @@
 package com.virtualcompanion.platform.persistence;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -78,5 +81,34 @@ public class MessageRepository {
                 ownerUserId,
                 conversationId);
         return count == null ? 0 : count;
+    }
+
+    /**
+     * List the most recent messages of one conversation in chronological order
+     * (RLS-scoped). Capped at {@code 64} rows (the {@code LiveInvocationRequest}
+     * message bound) by selecting the newest ids first and reversing back to
+     * ascending order, so the caller never assembles an oversized request and
+     * never loads the full history (TASK-0176 ZERO_LLM assembler).
+     */
+    public List<Message> listByConversation(long ownerUserId, long conversationId) {
+        List<Message> recent = jdbc.query(
+                "SELECT owner_user_id, id, conversation_id, role, content "
+                        + "FROM vc.message "
+                        + "WHERE owner_user_id = ? AND conversation_id = ? "
+                        + "ORDER BY id DESC LIMIT 64",
+                (rs, rowNum) -> new Message(
+                        rs.getLong("owner_user_id"),
+                        rs.getLong("id"),
+                        rs.getLong("conversation_id"),
+                        rs.getString("role"),
+                        rs.getString("content")),
+                ownerUserId,
+                conversationId);
+        if (recent.size() <= 1) {
+            return recent;
+        }
+        ArrayList<Message> chronological = new ArrayList<>(recent);
+        Collections.reverse(chronological);
+        return chronological;
     }
 }

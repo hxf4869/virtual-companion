@@ -3,11 +3,13 @@ package com.virtualcompanion.runtime.auth.config;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
+import com.virtualcompanion.platform.persistence.MessageRepository;
 import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
@@ -16,6 +18,7 @@ import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
 import com.virtualcompanion.runtime.worker.GenerationWorkItemHandler;
+import com.virtualcompanion.runtime.worker.LiveInvocationAssembler;
 import com.virtualcompanion.runtime.worker.LoggingWorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemCoordinator;
 import com.virtualcompanion.runtime.worker.WorkItemHandler;
@@ -255,20 +258,65 @@ public class AuthDataSourceConfig {
     }
 
     /**
-     * TASK-0174: generation work-item handler replaces the logging stub. It
-     * promotes a claimed generation through its lifecycle and (when live model
-     * providers are enabled and the invocation wiring is complete) runs the
-     * engine and finalizes; otherwise it degrades to FAILED_FINAL so no
-     * generation is left stuck. {@link LiveModelInvoker} is optional
-     * ({@code model-providers.enabled=false} by default).
+     * TASK-0176: message read access for the ZERO_LLM invocation assembler
+     * (and the future external-provider request assembly). RLS-scoped reads
+     * under the active tenant context.
+     */
+    @Bean
+    public MessageRepository messageRepository(JdbcTemplate authJdbcTemplate) {
+        return new MessageRepository(authJdbcTemplate);
+    }
+
+    /**
+     * TASK-0176: generation finalize / candidate / terminalize service wrapping
+     * the V7 {@code finalize_generation}, V15 {@code insert_generation_candidate}
+     * and {@code terminalize_generation} SECURITY DEFINER functions.
+     */
+    @Bean
+    public GenerationFinalizeService generationFinalizeService(JdbcTemplate authJdbcTemplate) {
+        return new GenerationFinalizeService(authJdbcTemplate);
+    }
+
+    /**
+     * TASK-0176: assembles the ZERO_LLM {@code LiveInvocationRequest} from the
+     * generation snapshot (ownership two-hop + messages + fence GUC + configured
+     * zero-llm source id).
+     */
+    @Bean
+    public LiveInvocationAssembler liveInvocationAssembler(
+            GenerationRepository generationRepository,
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            JdbcTemplate authJdbcTemplate,
+            @Value("${virtual-companion.zero-llm.source-id:ZERO_LLM_FALLBACK}") String zeroLlmSourceId) {
+        return new LiveInvocationAssembler(
+                generationRepository,
+                conversationRepository,
+                messageRepository,
+                authJdbcTemplate,
+                zeroLlmSourceId);
+    }
+
+    /**
+     * TASK-0174 wiring (TASK-0176 completion path): generation work-item handler
+     * promotes a claimed generation, and when a {@link LiveModelInvoker} bean is
+     * available runs the ZERO_LLM deterministic path to {@code COMPLETED};
+     * otherwise it degrades to {@code FAILED_FINAL} so no generation is left
+     * stuck. {@link LiveModelInvoker} is optional
+     * ({@code model-providers.enabled} and {@code zero-llm.enabled} both default
+     * to false).
      */
     @Bean
     public WorkItemHandler workItemHandler(
             GenerationStateService generationStateService,
-            JdbcTemplate authJdbcTemplate,
+            GenerationFinalizeService generationFinalizeService,
+            LiveInvocationAssembler liveInvocationAssembler,
             ObjectProvider<LiveModelInvoker> liveModelInvokerProvider) {
         return new GenerationWorkItemHandler(
-                generationStateService, authJdbcTemplate, liveModelInvokerProvider);
+                generationStateService,
+                generationFinalizeService,
+                liveInvocationAssembler,
+                liveModelInvokerProvider);
     }
 
     @Bean

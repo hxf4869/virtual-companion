@@ -87,6 +87,18 @@ virtual-companion:
     # The concrete approved deployments (provider-id / protocol /
     # supplier-name / model / endpoint / credential-secret / ...) are supplied
     # by the operator at deploy time, never committed here.
+  zero-llm:
+    # TASK-0176: deterministic ZERO_LLM completion path. When true (and
+    # model-providers.enabled != true) the runtime wires a LiveModelInvoker whose
+    # only reachable branch is the deterministic source, so a claimed generation
+    # finalizes to COMPLETED with the fixed safety fallback response and no real
+    # provider call. Off by default so a plain runtime context stays free of any
+    # model runtime beans; mutually exclusive with model-providers.enabled=true
+    # (real providers take precedence when enabled).
+    enabled: ${VC_ZERO_LLM_ENABLED:false}
+    # Stable identifier recorded as the deterministic source id / decision
+    # identity (audit only; never a credential or model name).
+    source-id: ${VC_ZERO_LLM_SOURCE_ID:ZERO_LLM_FALLBACK}
 
 ---
 # 条件风险 3（TASK-0102）：production profile 强制认证与数据源开启。两个开关

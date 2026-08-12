@@ -1,0 +1,27 @@
+{
+  "taskId": "TASK-0176",
+  "state": "ACCEPTED",
+  "baseCommit": "04523bd539dd7550389eb81c94ef1a9576d62854",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0176/evidence-pack.json",
+  "completed": [
+    "接线 generation ZERO_LLM 确定性完成路径：handler 在 zero-llm.enabled=true 且 model-providers.enabled!=true 时走真实 LiveModelInvoker.invoke ZERO_LLM 分支，finalize_generation 落 COMPLETED（确定性输出 DeterministicSafetyResponse.ZERO_LLM_FALLBACK，0 token，outbox=false）。",
+    "新 ZeroLlmModelRuntimeConfig（@ConditionalOnExpression 互斥 model-providers，空 InMemory* 协作者装配 LiveModelInvoker bean——逐类型核实可空装配，不改 modelruntime 源码）。",
+    "新 LiveInvocationAssembler（ownership 两跳 + messages + 读 vc.job_fence GUC 派生 fence + ZERO_LLM-tuned RoutingRequest）。",
+    "新 GenerationFinalizeService（封装 insert_generation_candidate/finalize_generation/terminalize_generation）。",
+    "MessageRepository.listByConversation（新，RLS 最近 64）；AuthDataSourceConfig 加 3 bean + workItemHandler 构造改注入；application.yaml 加 zero-llm 节。",
+    "复用既有 V7/V15/V25 SD 函数（均已 GRANT vc_api），不新增 migration、不改 modelruntime/safety→不触发 C3/C4；卡片 C2。"
+  ],
+  "remaining": [
+    "TASK-0177+：真实外部 provider 成功路径（authorization snapshot 创建服务 / safety 流水线 / adapter 装配 / 真实 record_provider_attempt / fence 契约精化 / messages 真实加载）。",
+    "realtime SSE 推送；listMessages / cancelGeneration / relationship HTTP 端点。",
+    "memory Java 域；ID hashid 编码；重试/死信机制。"
+  ],
+  "knownRisks": [
+    "authorizationCommit 占位符（精简长线流残留，与 TASK-0173/0174/0175 同；历史不可改写）。",
+    "doctor/precheck/完整 unittest/根级 mvn verify deferred per Owner static-gates-only；卡片治理照 TASK-0173 全标准，context-lock 经算法 round-trip 自验。",
+    "zero-llm.enabled 与 model-providers.enabled 同时 true 不属验收：@ConditionalOnExpression 互斥，真实 provider 优先。",
+    "ZERO_LLM 固定串不经 safety 流水线、不写 memory（finalize outbox=false）；真实 provider 的 safety/memory 处理留 TASK-0177+。"
+  ],
+  "nextAction": "TASK-0176（generation ZERO_LLM 确定性完成路径接线，C2）闭环 ACCEPTED：GenerationWorkItemHandler 在 zero-llm.enabled=true 且 model-providers.enabled!=true 时走真实 LiveModelInvoker.invoke ZERO_LLM 分支（router 选 DeterministicSourceBinding→recovery.completeZeroLlm→zeroLlmCompleted）→ 把确定性输出(DeterministicSafetyResponse.ZERO_LLM_FALLBACK)经 promote IN_PROGRESS→FINAL_REVIEW→insert_generation_candidate→finalize_generation 落为 COMPLETED；新 ZeroLlmModelRuntimeConfig(空 InMemory* 协作者装配 LiveModelInvoker，@ConditionalOnExpression 互斥 model-providers)+LiveInvocationAssembler(ownership 两跳+messages+fence GUC)+GenerationFinalizeService+MessageRepository.listByConversation+application.yaml zero-llm 节；复用既有 V7/V15/V25 SD 函数(均已 GRANT vc_api)，不新增 migration、不改 modelruntime/safety 源码→不触发 C3/C4；DB test 66(全 SD COMPLETED 链实证)+handler test 重写(5 场景)+assembler test(2)；run-rls 66/66+mvn runtime 257/0/0+diff exit0 全绿。下一步：开 TASK-0177——外部 provider 成功路径（authorization snapshot 创建/safety 流水线/adapter 装配/fence 契约/messages 加载），realtime SSE 推送与 listMessages/cancel/relationship 端点按序随后。"
+}
