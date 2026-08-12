@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0172
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -251,7 +251,38 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0172_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 030f5ad78f9bdc60972fe59caf3f406ea631ab83
+    candidateTree: 7c1d714815931aa1238b30dd9844ebfb68275ab3
+    evidencePath: docs/evidence/TASK-0172/review-r1.md
+    reason: >-
+      R1 PASS（0 P0/P1/P2，4 P3 informational：新校验仅作用于 validate_project_state 当前 HEAD
+      路径、gate 边校验独立并存；nextAction 解释性文本提及历史未注册 ID 会触发 ERROR 属 P2-22
+      治理目标非缺陷；注册集合=discover_tasks 卡集合单调无退化为未注册风险；canonical checks
+      827795 增量 ~5059 同量级无异常）。doctor.py +validate_nextaction_registered_references
+      （re.findall TASK-[0-9]{4,} 引用集合 - discover_tasks 全量卡 → 未注册 ERROR；advisory
+      无引用放行）挂载 validate_project_state L8495 后；test_harness.py import + StateTests
+      3 测试（advisory/已注册/TASK-9999 拒绝）。静态门禁全 PASS（定向 StateTests 10/10 +
+      BacklogTests/EnforcementTests 96/0；canonical 8/8 doctor 827795；diff exit0）。
+      5 改动文件全在 writeAllowlist，scripts/harness/** protected path 满足 harness-change
+      1.1.7 + humanApproval scope:harness-change + independentReview:required；
+      harness_common.py/precheck*/skills/**/AGENTS.md 零触碰。完整 unittest discover +
+      根级 verify deferred per Owner static-gates-only。
+terminalStateReason: >-
+  P2-22 nextAction 治理实现闭环。候选 030f5ad/tree 7c1d7148；canonical precheck 8/8 PASS
+  （doctor 827795 checks 112.3s，基线 822736 + ~5059）；git diff --check exit 0；定向 harness
+  StateTests 10/10（含新 3）+ BacklogTests/EnforcementTests 96/0 无回归；R1 PASS（0 P0/P1/P2，
+  4 P3 informational）。doctor.py +validate_nextaction_registered_references：nextAction 引用
+  未注册 TASK ID 失败关闭、advisory 文本放行（P2-22 Owner 2026-08-12 定「显式 task-intake
+  动作」策略的机器落点），挂载 validate_project_state 非空校验之后，tasks=discover_tasks 全量
+  卡（ledger/backlog PLANNED/idle DRAFT 例外，含本卡自身）；test_harness.py import + StateTests
+  3 测试。scripts/harness/** protected path 满足 harness-change skill + humanApproval
+  scope:harness-change + independentReview:required；harness_common.py/precheck*/skills/**/
+  AGENTS.md 零触碰。完整 unittest discover + 根级 Maven verify 按 Owner static-gates-only 策略
+  deferred to 统一审计。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P2-22 审计修复卡

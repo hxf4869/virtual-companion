@@ -300,154 +300,132 @@ tasks:
     taskCard: docs/tasks/TASK-0015-postgresql-flyway-force-rls.md
     evidence: docs/evidence/TASK-0015/evidence-pack.json
     handoff: docs/handoffs/TASK-0015.json
-
   TASK-0087:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0087-harness-fixture-backlog-ledger-coupling.md
     evidence: docs/evidence/TASK-0087/evidence-pack.json
     handoff: docs/handoffs/TASK-0087.json
-
   TASK-0088:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0088-persistence-providerid-import-fix.md
     evidence: docs/evidence/TASK-0088/evidence-pack.json
     handoff: docs/handoffs/TASK-0088.json
-
   TASK-0016:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0016-worker-claim-lease-fence.md
     evidence: docs/evidence/TASK-0016/evidence-pack.json
     handoff: docs/handoffs/TASK-0016.json
-
   TASK-0017:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0017-conversation-generation-persistence.md
     evidence: docs/evidence/TASK-0017/evidence-pack.json
     handoff: docs/handoffs/TASK-0017.json
-
   TASK-0018:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0018-finalization-usage-quota-outbox.md
     evidence: docs/evidence/TASK-0018/evidence-pack.json
     handoff: docs/handoffs/TASK-0018.json
-
   TASK-0019:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0019-context-plan-persona-listen-discuss.md
     evidence: docs/evidence/TASK-0019/evidence-pack.json
     handoff: docs/handoffs/TASK-0019.json
-
   TASK-0020:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0020-safety-pipeline.md
     evidence: docs/evidence/TASK-0020/evidence-pack.json
     handoff: docs/handoffs/TASK-0020.json
-
   TASK-0022:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0022-fake-failure-offline-e2e-slice.md
     evidence: docs/evidence/TASK-0022/evidence-pack.json
     handoff: docs/handoffs/TASK-0022.json
-
   TASK-0023:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0023-openapi-client-generation-drift.md
     evidence: docs/evidence/TASK-0023/evidence-pack.json
     handoff: docs/handoffs/TASK-0023.json
-
   TASK-0021:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0021-fetch-sse-resume-gap-reset-snapshot.md
     evidence: docs/evidence/TASK-0021/evidence-pack.json
     handoff: docs/handoffs/TASK-0021.json
-
   TASK-0024:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0024-relationship-active-companion.md
     evidence: docs/evidence/TASK-0024/evidence-pack.json
     handoff: docs/handoffs/TASK-0024.json
-
   TASK-0025:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0025-chat-generation-history-api.md
     evidence: docs/evidence/TASK-0025/evidence-pack.json
     handoff: docs/handoffs/TASK-0025.json
-
   TASK-0026:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0026-h5-offline-chat-stream-recovery.md
     evidence: docs/evidence/TASK-0026/evidence-pack.json
     handoff: docs/handoffs/TASK-0026.json
-
   TASK-0027:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0027-canonical-memory-persistence.md
     evidence: docs/evidence/TASK-0027/evidence-pack.json
     handoff: docs/handoffs/TASK-0027.json
-
   TASK-0028:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0028-memory-candidate-management-api.md
     evidence: docs/evidence/TASK-0028/evidence-pack.json
     handoff: docs/handoffs/TASK-0028.json
-
   TASK-0029:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0029-memory-recall-context-tombstone.md
     evidence: docs/evidence/TASK-0029/evidence-pack.json
     handoff: docs/handoffs/TASK-0029.json
-
   TASK-0030:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0030-h5-memory-management.md
     evidence: docs/evidence/TASK-0030/evidence-pack.json
     handoff: docs/handoffs/TASK-0030.json
-
   TASK-0031:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0031-entitlement-service-class-routing.md
     evidence: docs/evidence/TASK-0031/evidence-pack.json
     handoff: docs/handoffs/TASK-0031.json
-
   TASK-0032:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0032-zero-llm-quota-failure-recovery.md
     evidence: docs/evidence/TASK-0032/evidence-pack.json
     handoff: docs/handoffs/TASK-0032.json
-
   TASK-0033:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0033-anthropic-messages-offline-contract.md
     evidence: docs/evidence/TASK-0033/evidence-pack.json
     handoff: docs/handoffs/TASK-0033.json
-
   TASK-0034:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0034-identity-component-internal-accounts.md
     evidence: docs/evidence/TASK-0034/evidence-pack.json
     handoff: docs/handoffs/TASK-0034.json
-
   TASK-0035:
     state: ACCEPTED
     contractVersion: 2
@@ -766,42 +744,36 @@ tasks:
     taskCard: docs/tasks/TASK-0143-p2-26-timeout-process-tree.md
     evidence: docs/evidence/TASK-0143/evidence-pack.json
     handoff: docs/handoffs/TASK-0143.json
-
   TASK-0144:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0144-p2-12-jdbc-authorization-snapshot-one-way.md
     evidence: docs/evidence/TASK-0144/evidence-pack.json
     handoff: docs/handoffs/TASK-0144.json
-
   TASK-0146:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0146-p2-12-inmemory-authz-snapshot-one-way-alignment.md
     evidence: docs/evidence/TASK-0146/evidence-pack.json
     handoff: docs/handoffs/TASK-0146.json
-
   TASK-0147:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0147-openapi-drift-gate-canonical.md
     evidence: docs/evidence/TASK-0147/evidence-pack.json
     handoff: docs/handoffs/TASK-0147.json
-
   TASK-0148:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0148-readme-status-endpoints-audit.md
     evidence: docs/evidence/TASK-0148/evidence-pack.json
     handoff: docs/handoffs/TASK-0148.json
-
   TASK-0149:
     state: ACCEPTED
     contractVersion: 2
     taskCard: docs/tasks/TASK-0149-db-runner-hygiene.md
     evidence: docs/evidence/TASK-0149/evidence-pack.json
     handoff: docs/handoffs/TASK-0149.json
-
   TASK-0150:
     state: ACCEPTED
     contractVersion: 2
@@ -928,3 +900,9 @@ tasks:
     taskCard: docs/tasks/TASK-0171-p1-04-worker-half-owner-injection.md
     evidence: docs/evidence/TASK-0171/evidence-pack.json
     handoff: docs/handoffs/TASK-0171.json
+  TASK-0172:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0172-p2-22-nextaction-task-reference-governance.md
+    evidence: docs/evidence/TASK-0172/evidence-pack.json
+    handoff: docs/handoffs/TASK-0172.json
