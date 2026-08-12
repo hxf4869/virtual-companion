@@ -1,0 +1,73 @@
+{
+  "taskId": "TASK-0182",
+  "state": "ACCEPTED",
+  "baseCommit": "241b8d6d92c5a539a1523545c113a8f0e0c8791d",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "contextFingerprint": "b717b548e21ff84c225ba6ea1b97c851895d6b6664b2784c2f7b9be7e629b76b",
+  "evidencePath": "docs/evidence/TASK-0182/evidence-pack.json",
+  "reviewers": [],
+  "checks": [
+    {
+      "id": "doctor-summary",
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --summary",
+      "exitCode": null,
+      "result": "NOT_RUN",
+      "detail": "deferred per Owner 2026-08-12 static-gates-only（不跑 doctor/precheck 长检查）；卡片治理字段照 TASK-0180 全标准填写（C2：task-delivery-flow + task-intake，independentReview not-required，仍产出 review-r1），context-lock fingerprint 经权威 verify_context_lock 算法验证（round-trip 先复现 TASK-0181 4661a263 通过，再生 0182 b717b548）"
+    },
+    {
+      "id": "run-rls-tests",
+      "command": "bash infra/db/run-rls-tests.sh",
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "69/69 regression（V8 未改；test 19-25/49/50/61 realtime resume 状态机 + 67/68 external 链全 PASS）"
+    },
+    {
+      "id": "runtime-module-tests",
+      "command": "JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test",
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "runtime 320/0/0（+9：RealtimeTicketControllerTest——happy/404 foreign generation/503 BadSqlGrammar 上抛/非法 id/零 streamEpoch/负 afterSeq/缺 sessionId/缺 origin）+ persistence 102/0/0（不变）+ modelruntime 173/0/0；RuntimeModuleStructureTest Modulith PASS；BUILD SUCCESS 0 failure 0 skip"
+    },
+    {
+      "id": "openapi-diff",
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin python scripts/dev/openapi_tool.py diff",
+      "exitCode": 0,
+      "result": "PASS",
+      "detail": "OpenAPI 源（+ticket 端点 +2 schema）与 dist 生成物（generate 重建）一致；validate PASS"
+    },
+    {
+      "id": "diff-check",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "id": "canonical-precheck",
+      "command": "python scripts/harness/precheck.py --task TASK-0182",
+      "exitCode": null,
+      "result": "NOT_RUN",
+      "detail": "deferred per Owner 2026-08-12 static-gates-only"
+    }
+  ],
+  "completed": [
+    "specs/openapi/virtual-companion.yaml（修改）：新增 POST /api/v1/realtime/tickets（operationId createRealtimeTicket，200 RealtimeTicket / 400 INVALID_REQUEST / 401 / 404 NOT_FOUND_OR_FORBIDDEN）+ schema RealtimeTicketCreateRequest{generationId,sessionId,origin,streamEpoch,afterSeq}（string 必填）+ RealtimeTicket{ticketId,secret}（string 必填）；prose 明确 owner 来自 principal、transport 服务端固定 FETCH_SSE、secret 一次性 sha256-only、foreign generation→404 不披露。",
+    "specs/openapi/dist/**（generate 重建）：api-bundle.yaml +82、openapi.snapshot.json（operations +createRealtimeTicket）、java/VirtualCompanionApi.java（+createRealtimeTicket 方法）、typescript/api.ts（+类型/函数）、新 java/RealtimeTicket.java + RealtimeTicketCreateRequest.java record；ErrorCode.java 不变（复用 NOT_FOUND_OR_FORBIDDEN/INVALID_REQUEST）；openapi_tool.py diff PASS。",
+    "RealtimeTicketController（新，runtime/realtime/web）：@RestController @RequestMapping(/api/v1) @ConditionalOnProperty(auth.datasource-enabled=true)；单端点 createTicket；owner 取自 @AuthenticationPrincipal(accountId)；transport 常量 FETCH_SSE（服务端固定，契约 alpha 唯一值，不从 body）；parseId(generationId/streamEpoch 正数)+parseNonNegative(afterSeq≥0)；调 ticketRepository.issue → IssuedTicket → RealtimeTicketResponse(ticketId,secret)；catch BadSqlGrammarException 上抛保 503、DataAccessException → ResourceNotFoundException(generation) 404 不披露（避免全局 AuthExceptionHandler 误映射 401）。",
+    "AuthDataSourceConfig（修改）：+ 3 个 @Bean realtimeTicketRepository/realtimeResumeService/realtimeEventRepository（均 new X(authJdbcTemplate)，照既有 persistence bean 模式 L246-307）；本卡 controller 注入 ticketRepository，resume/event 为 SSE 卡铺路（纯 repository 无 init，wire 无消费者不报错）。",
+    "测试：RealtimeTicketControllerTest 9 场景（runtime/realtime/web，standalone MockMvc + mock RealtimeTicketRepository + @AuthenticationPrincipal resolver + RuntimeApiExceptionHandler）：happy（200 + ticketId/secret + verify issue 参数 ownerUserId=1/transport=FETCH_SSE 固定）、generation foreign→DataAccessException→404 NOT_FOUND_OR_FORBIDDEN、BadSqlGrammarException→上抛（assertThrows + cause 链断言，不误映射 404）、非法 generationId（非数字/0）→400、零 streamEpoch→400、负 afterSeq→400、缺 sessionId→400、缺 origin→400、afterSeq=0 合法（happy）。",
+    "C2 治理闭环：requiredSkills task-delivery-flow + task-intake（无 contract-change——不碰 specs/contracts/）；independentReview not-required（仍产出 review-r1）；forbiddenPaths 精确禁 specs/catalog|contracts|generated（放行 specs/openapi）+ 0170-0181 产物 + migration V1-V29 + tests + modelruntime/safety/adapters/auth/worker/web 等包；run-rls 69/69 + mvn runtime 320/0/0 + openapi diff PASS + diff exit0。"
+  ],
+  "remaining": [
+    "realtime SSE resume 端点（SseEmitter + V8 resume_stream + consume_realtime_ticket + 契约补 resume endpoint path，C3 contract-change skill + independentReview）。",
+    "ID hashid 编码。"
+  ],
+  "knownRisks": [
+    "authorizationCommit 为占位符字符串（plan-approved-2026-08-12-realtime-ticket-http-api，精简长线流残留，历史不可改写；doctor ACCEPTED 态不校验该格式），与 TASK-0173..0181 同属已知残留。",
+    "realtime SSE resume 端点 path 在 realtime-contract.yaml resume 段未命名（契约只定义 header/disposition），TASK-0183 需补 resume endpoint 字段（改 specs/contracts/ → C3 contract-change skill + independentReview）。",
+    "controller 直接注入 RealtimeTicketRepository 并在 controller 翻译 DataAccessException→404（无中间 service 层）——单端点最简，照 GenerationController 直接调 GenerationStateService 模式；异常翻译集中在 createTicket 一个方法，Review 可审计。",
+    "resume/eventRepository bean wire 后本卡无消费者（为 TASK-0183 SSE 卡铺路）；纯 repository 无 @PostConstruct，wire 不触发副作用，Spring 允许未使用 bean。",
+    "dist 生成物经 openapi_tool.py generate 重建（确定性，同源字节稳定）；frontend 手写 src/api 不自动消费 dist/typescript（不影响前端源码）。",
+    "canonical precheck / doctor --summary / 完整 Harness unittest discover / 根级 Maven verify deferred per Owner 2026-08-12 static-gates-only。"
+  ],
+  "nextAction": "TASK-0182（realtime ticket HTTP 端点卡）闭环 ACCEPTED：把契约（realtime-contract.yaml L7）已定义的 POST /api/v1/realtime/tickets 端点同步进 OpenAPI 源（specs/openapi 非保护路径）+ openapi_tool.py generate 重建 dist 生成物（api-bundle/snapshot/VirtualCompanionApi.java/typescript/2 个 record，drift PASS）+ RealtimeTicketController（runtime/realtime/web：owner 取自 principal 不在 body、transport 服务端固定 FETCH_SSE、generation foreign/absent 经 ensure_realtime_stream raise → DataAccessException 映射 404 不披露、BadSqlGrammarException 上抛保 503、parseId/parseNonNegative 校验→400）+ AuthDataSourceConfig wire 3 个 realtime bean（RealtimeTicketRepository/RealtimeResumeService/RealtimeEventRepository，resume/event 为 SSE 卡铺路）+ RealtimeTicketControllerTest 9 场景（happy/404/503 上抛/非法 id/零 streamEpoch/负 afterSeq/缺 sessionId/缺 origin）；run-rls 69/69 + mvn runtime 320/0/0（persistence 102/0/0，+9 controller test）+ openapi diff PASS + diff exit0 全绿。下一步：realtime SSE resume 端点（SseEmitter + V8 resume_stream + 契约补 resume endpoint，C3 contract-change）按序；ID hashid 编码随后。"
+}

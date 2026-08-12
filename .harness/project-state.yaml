@@ -4,28 +4,26 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0181
-lastAcceptedHandoff: docs/handoffs/TASK-0181.json
-lastTerminalTask: TASK-0181
-lastTerminalHandoff: docs/handoffs/TASK-0181.json
+lastAcceptedTask: TASK-0182
+lastAcceptedHandoff: docs/handoffs/TASK-0182.json
+lastTerminalTask: TASK-0182
+lastTerminalHandoff: docs/handoffs/TASK-0182.json
 nextAction: >-
-    TASK-0181（C4 snapshot 卡）闭环 ACCEPTED：激活 external 运行期路径——V26
-    create_authorization_snapshots SECURITY DEFINER 函数（V17 trusted-owner 断言 +
-    generation 存在性校验 + purpose 白名单 + 双 ACTIVE 行 + REVOKE PUBLIC/GRANT vc_api）+
-    JdbcAuthorizationSnapshotProvider （platform.persistence：providerId 按
-    DeterministicRouter 候选规则从 registry 推导、SD 铸造双快照后 mirror 进
-    InMemoryAuthorizationSnapshotStore 供 ExecutionAuthorizationGuard
-    读取、BadSqlGrammarException 上抛保 worker fail closed）+ AuthDataSourceConfig
-    bean（方法级 model-providers.enabled=true 条件）+ external-attempt
-    配置扩展（region/contract-ref/purpose/data-categories 默认
-    us/alpha-standard/COMPANION_CHAT/[MESSAGE_TEXT]）+
-    LoopbackModelProtocolAdapter（runtime/loopback，protocol=FAKE、只接受
-    ExternalAttemptBinding、确定性事件流 usage 42/58）+ ApprovedModelProviderProvisioner
-    FAKE 分支；run-rls 69/69（新增 68 号：vc_api 经 SD 创建双快照走完整 external 链 COMPLETED + 未知
-    generation/跨 owner/空 provider RAISE）+ mvn runtime 311/0/0 （persistence
-    102/0/0，新增 JdbcAuthorizationSnapshotProviderTest 8 + loopback 7 场景）+ diff
-    exit0 全绿；SchemaReadinessHealthIndicatorTest 随 V26 更新为 26。下一步：realtime SSE
-    推送（SseEmitter + V8 resume_stream）按序；ID hashid 编码随后。
+    TASK-0182（realtime ticket HTTP 端点卡）闭环 ACCEPTED：把契约（realtime-contract.yaml
+    L7）已定义的 POST /api/v1/realtime/tickets 端点同步进 OpenAPI 源（specs/openapi 非保护路径）+
+    openapi_tool.py generate 重建 dist
+    生成物（api-bundle/snapshot/VirtualCompanionApi.java/typescript/2 个 record，drift
+    PASS）+ RealtimeTicketController（runtime/realtime/web：owner 取自 principal 不在
+    body、transport 服务端固定 FETCH_SSE、generation foreign/absent 经
+    ensure_realtime_stream raise → DataAccessException 映射 404
+    不披露、BadSqlGrammarException 上抛保 503、parseId/parseNonNegative 校验→400）+
+    AuthDataSourceConfig wire 3 个 realtime
+    bean（RealtimeTicketRepository/RealtimeResumeService/RealtimeEventRepository，resume/event
+    为 SSE 卡铺路）+ RealtimeTicketControllerTest 9 场景（happy/404/503 上抛/非法 id/零
+    streamEpoch/负 afterSeq/缺 sessionId/缺 origin）；run-rls 69/69 + mvn runtime
+    320/0/0（persistence 102/0/0，+9 controller test）+ openapi diff PASS + diff
+    exit0 全绿。下一步：realtime SSE resume 端点（SseEmitter + V8 resume_stream + 契约补
+    resume endpoint，C3 contract-change）按序；ID hashid 编码随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

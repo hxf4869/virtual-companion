@@ -950,3 +950,7 @@ tasks:
     taskCard: docs/tasks/TASK-0181-authorization-snapshot-external-activation.md
     evidence: docs/evidence/TASK-0181/evidence-pack.json
     handoff: docs/handoffs/TASK-0181.json
+  TASK-0182:
+    taskCard: docs/tasks/TASK-0182-realtime-ticket-http-api.md
+    evidence: docs/evidence/TASK-0182/evidence-pack.json
+    handoff: docs/handoffs/TASK-0182.json

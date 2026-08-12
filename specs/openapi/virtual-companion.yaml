@@ -312,6 +312,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/realtime/tickets:
+    post:
+      operationId: createRealtimeTicket
+      summary: Mint a single-use Fetch-SSE resume ticket bound to the caller's generation
+      description: >-
+        Mints a short-lived single-use resume ticket via vc.issue_realtime_ticket,
+        bound to the seven-tuple (owner, generation, session, origin, transport,
+        streamEpoch, afterSeq). The owner is taken from the server-verified
+        principal and never from the body; transport is fixed to FETCH_SSE (the
+        only Alpha realtime transport) and is also not accepted from the body.
+        The server stores only sha256(secret); the plaintext secret is returned
+        exactly once and must be consumed within the 45s TTL when opening the
+        SSE resume stream (separate task). A foreign or absent generation maps
+        to NOT_FOUND_OR_FORBIDDEN so existence is never disclosed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeTicketCreateRequest'
+      responses:
+        '200':
+          description: The minted ticket with its one-time plaintext secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeTicket'
+        '400':
+          description: Malformed body or non-positive identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships/{relationshipId}/memories/candidates:
     post:
       operationId: createMemoryCandidate
@@ -887,6 +932,51 @@ components:
           items:
             type: object
             additionalProperties: true
+    RealtimeTicketCreateRequest:
+      type: object
+      description: >-
+        Resume cursor the caller binds a ticket to. Identifiers and counters are
+        decimal strings (hashid encoding is deferred); the server parses them
+        into 64-bit integers. Transport is not accepted here; the server fixes
+        it to FETCH_SSE.
+      required:
+        - generationId
+        - sessionId
+        - origin
+        - streamEpoch
+        - afterSeq
+      properties:
+        generationId:
+          type: string
+          description: The generation the ticket will resume
+        sessionId:
+          type: string
+          description: The caller's realtime session id
+        origin:
+          type: string
+          description: The origin the SSE resume will be opened from
+        streamEpoch:
+          type: string
+          description: The stream epoch the caller last observed
+        afterSeq:
+          type: string
+          description: The last contiguous eventSeq the caller advanced to (0 resumes from the start)
+    RealtimeTicket:
+      type: object
+      description: >-
+        A freshly minted single-use resume ticket. The secret is returned exactly
+        once; only its sha256 is persisted. Consume it within the 45s TTL when
+        opening the SSE resume stream.
+      required:
+        - ticketId
+        - secret
+      properties:
+        ticketId:
+          type: string
+          description: The server-assigned ticket identifier
+        secret:
+          type: string
+          description: One-time plaintext secret (sha256-only persisted)
     Message:
       type: object
       description: A chat message owned by exactly one user within a conversation.

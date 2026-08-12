@@ -21,6 +21,9 @@ import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvid
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
+import com.virtualcompanion.platform.persistence.RealtimeResumeService;
+import com.virtualcompanion.platform.persistence.RealtimeTicketRepository;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
@@ -304,6 +307,30 @@ public class AuthDataSourceConfig {
             JdbcTemplate authJdbcTemplate,
             RelationshipService relationshipService) {
         return new MemoryService(authJdbcTemplate, relationshipService);
+    }
+
+    /**
+     * TASK-0182: realtime resume / ticket / event persistence over the V8
+     * SECURITY DEFINER functions (issue_realtime_ticket, resume_stream,
+     * read_generation_snapshot, append_realtime_event), all already GRANTed to
+     * vc_api. The ticket repository backs the {@code POST /api/v1/realtime/tickets}
+     * HTTP endpoint; resume and event repositories are wired ahead of the SSE
+     * resume endpoint (separate task). All run inside the server-trusted owner
+     * context established upstream.
+     */
+    @Bean
+    public RealtimeTicketRepository realtimeTicketRepository(JdbcTemplate authJdbcTemplate) {
+        return new RealtimeTicketRepository(authJdbcTemplate);
+    }
+
+    @Bean
+    public RealtimeResumeService realtimeResumeService(JdbcTemplate authJdbcTemplate) {
+        return new RealtimeResumeService(authJdbcTemplate);
+    }
+
+    @Bean
+    public RealtimeEventRepository realtimeEventRepository(JdbcTemplate authJdbcTemplate) {
+        return new RealtimeEventRepository(authJdbcTemplate);
     }
 
     /**

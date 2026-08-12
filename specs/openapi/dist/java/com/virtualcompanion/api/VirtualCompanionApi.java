@@ -32,6 +32,9 @@ public interface VirtualCompanionApi {
     /** Read a consistent generation snapshot. */
     GenerationSnapshot getGenerationSnapshot();
 
+    /** Mint a single-use Fetch-SSE resume ticket bound to the caller's generation. */
+    RealtimeTicket createRealtimeTicket();
+
     /** Create a memory candidate from model extraction (PENDING_CONFIRMATION). */
     Memory createMemoryCandidate();
 

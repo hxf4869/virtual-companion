@@ -39,6 +39,19 @@ export interface GenerationSnapshot {
   events: string
 }
 
+export interface RealtimeTicketCreateRequest {
+  generationId: string
+  sessionId: string
+  origin: string
+  streamEpoch: string
+  afterSeq: string
+}
+
+export interface RealtimeTicket {
+  ticketId: string
+  secret: string
+}
+
 export interface Message {
   messageId: string
   conversationId: string
@@ -120,6 +133,7 @@ export interface VirtualCompanionApiClient {
   listMessages(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>
   getGenerationSnapshot(): Promise<VersionResponse>
+  createRealtimeTicket(): Promise<VersionResponse>
   createMemoryCandidate(): Promise<VersionResponse>
   listMemories(): Promise<VersionResponse>
   getMemory(): Promise<VersionResponse>
