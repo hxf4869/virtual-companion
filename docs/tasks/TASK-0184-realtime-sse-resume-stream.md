@@ -260,10 +260,10 @@ reviewers:
   - id: task0184_r1
     kind: independent-review-gate
     verdict: PASS
-    reviewedCommit: 0000000000000000000000000000000000000000
+    reviewedCommit: 7bca79c98cc3ae1e9bdc3326220f769519333191
     evidencePath: docs/evidence/TASK-0184/review-r1.md
-    reason: "candidate 回填占位"
-    candidateTree: 0000000000000000000000000000000000000000
+    reason: "R1 完整复核 PASS（candidate 回填）：C3 contract-change 先改契约真源（resume 段补 endpoint）+ OpenAPI 同步无漂移；controller 5 disposition 全映射 + fail-closed stream.denied 不披露 + 建连前后错误分离 + BadSqlGrammar re-throw 503；INV-RT-001/TX-001/GEN-003 保持；context-lock 44 inputs 钉 base 1879ab7 + ledger 5 字段完整 + nextAction 三处 sha256 bd27fbcc 一致；forbiddenPaths 精确未越界。"
+    candidateTree: 1649713c798b038c50879dcae210b160ebebf3a6
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 generation/companion

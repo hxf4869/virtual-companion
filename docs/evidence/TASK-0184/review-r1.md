@@ -2,8 +2,8 @@
 
 - taskId: TASK-0184
 - reviewer: independent-review-gate (task0184_r1)
-- reviewedCommit: 0000000000000000000000000000000000000000（candidate 回填占位）
-- candidateTree: 0000000000000000000000000000000000000000（candidate 回填占位）
+- reviewedCommit: 7bca79c98cc3ae1e9bdc3326220f769519333191
+- candidateTree: 1649713c798b038c50879dcae210b160ebebf3a6
 - evidencePath: docs/evidence/TASK-0184/review-r1.md
 - verdict: PASS
 

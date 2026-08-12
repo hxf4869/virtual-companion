@@ -2,7 +2,7 @@
   "taskId": "TASK-0184",
   "state": "ACCEPTED",
   "baseCommit": "1879ab722ac37ec140539b413e7f1150bd23df7e",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "7bca79c98cc3ae1e9bdc3326220f769519333191",
   "evidencePath": "docs/evidence/TASK-0184/evidence-pack.json",
   "completed": [
     "specs/contracts/realtime-contract.yaml resume 段补 endpoint=GET /api/v1/realtime/streams/{generationId} + ticketBinding: query + ticketBoundTo[ticketId,secret,sessionId,origin,streamEpoch] + deniedEvent: stream.denied（contract-change '先改契约真源'；resume 段原缺 endpoint 字段）。",
