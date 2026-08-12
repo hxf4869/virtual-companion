@@ -2,7 +2,7 @@
   "taskId": "TASK-0178",
   "state": "ACCEPTED",
   "baseCommit": "a8db88c2d3a62606823f45e11410faf924ffcd12",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "b1e0f6ce52452292f8780fcb62294e0efde5c253",
   "evidencePath": "docs/evidence/TASK-0178/evidence-pack.json",
   "completed": [
     "RelationshipService（新，platform.persistence）：包 V9 SD——create_relationship/list_relationships/get_relationship/activate_relationship/deactivate_relationship；activate 先 get 判存在（empty→Optional.empty），deactivate false→empty，NOT_FOUND_OR_FORBIDDEN 语义。",
