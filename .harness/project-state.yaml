@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0165
+activeTaskCard: docs/tasks/TASK-0165-quota-nonneg-check-and-release-idempotency.md
 lastAcceptedTask: TASK-0164
 lastAcceptedHandoff: docs/handoffs/TASK-0164.json
 lastTerminalTask: TASK-0164
 lastTerminalHandoff: docs/handoffs/TASK-0164.json
-nextAction: 'TASK-0164（§5.1.3 provider_attempt 授权快照 DB 强制 INV-AUTH-001）闭环。下一步：继续推进剩余 §5.1 审计候选（§5.1.4 quota 非负 CHECK + release 幂等，C4 DB 已确认缺陷；§5.1.2 worker claim fence、§5.1.6 V8/V11 存量升级待补复核）；Java 侧 ProviderAttemptAudit/LiveModelInvoker audit 投影一致性可作后续独立 C3 卡或并入 P2-12 JDBC 层；P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（0155 REJECTED 待重做）需 Owner 拓扑决策；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+nextAction: 'TASK-0165（§5.1.4 quota 非负 CHECK + release 幂等）READY/IN_PROGRESS：纯 DB V21（generation_usage.{input_tokens,output_tokens,actual_cost} + quota_ledger_entry.quota_amount 四条 CHECK(>=0) + partial unique index quota_ledger_release_one_per_generation ON (owner_user_id,generation_id) WHERE kind=RELEASE + CREATE OR REPLACE record_quota_release 加幂等守卫签名不变保留 V17 trusted-context）+ 新 test 60 integration_test；C4 database-migration + static-gates-only 验证（run-rls-tests.sh 59→60 + canonical precheck 8/8 + diff，完整 Harness unittest 留统一审计）。完成后回写终态 nextAction。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
