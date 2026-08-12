@@ -930,3 +930,7 @@ tasks:
     taskCard: docs/tasks/TASK-0176-generation-zero-llm-completion.md
     evidence: docs/evidence/TASK-0176/evidence-pack.json
     handoff: docs/handoffs/TASK-0176.json
+  TASK-0177:
+    taskCard: docs/tasks/TASK-0177-generation-external-provider-persistence-chain.md
+    evidence: docs/evidence/TASK-0177/evidence-pack.json
+    handoff: docs/handoffs/TASK-0177.json

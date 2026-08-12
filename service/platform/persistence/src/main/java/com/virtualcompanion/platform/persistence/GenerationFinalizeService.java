@@ -92,6 +92,96 @@ public class GenerationFinalizeService {
     }
 
     /**
+     * Record one real outbound provider attempt bound to its dual authorization
+     * snapshots (V20 {@code record_provider_attempt}, INV-AUTH-001). The
+     * generation must exist for the owner (existence is hidden otherwise); both
+     * snapshot ids must already reference {@code authorization_snapshot} rows
+     * for this owner (the composite FK enforces it). Returns the new
+     * {@code provider_attempt.id}. Used by the external-provider success and
+     * degraded-outcome paths (TASK-0177).
+     */
+    public long recordProviderAttempt(
+            long ownerUserId,
+            long generationId,
+            String providerId,
+            String supplierName,
+            String status,
+            String requestedSnapshotId,
+            String executionSnapshotId) {
+        validateIds(ownerUserId, generationId);
+        requireNonBlank(providerId, "providerId");
+        requireNonBlank(supplierName, "supplierName");
+        requireNonBlank(status, "status");
+        requireNonBlank(requestedSnapshotId, "requestedSnapshotId");
+        requireNonBlank(executionSnapshotId, "executionSnapshotId");
+        Long id = jdbc.queryForObject(
+                "SELECT out_id FROM vc.record_provider_attempt(?, ?, ?, ?, ?, ?, ?)",
+                Long.class,
+                ownerUserId,
+                generationId,
+                providerId,
+                supplierName,
+                status,
+                requestedSnapshotId,
+                executionSnapshotId);
+        if (id == null) {
+            throw new IllegalStateException("record_provider_attempt returned no id");
+        }
+        return id;
+    }
+
+    /**
+     * Atomically finalize a FINAL_REVIEW generation to COMPLETED with the real
+     * provider usage and cost reported by the external adapter session (V7
+     * {@code finalize_generation}). {@code providerRef} is the
+     * {@code generation_usage.provider_ref} (the provider attempt id for a real
+     * external attempt); {@code quotaAmount} is the SETTLE quota units.
+     * {@code outboxEligible=false} suppresses the {@code memory.extract}
+     * outbox row (the memory Java domain is not yet wired; avoid a dangling
+     * PENDING outbox). (TASK-0177)
+     */
+    public void finalizeCompletedWithUsage(
+            long ownerUserId,
+            long generationId,
+            long candidateId,
+            String content,
+            String providerRef,
+            long inputTokens,
+            long outputTokens,
+            double actualCost,
+            String currency,
+            int quotaAmount,
+            boolean outboxEligible) {
+        validateIds(ownerUserId, generationId);
+        if (candidateId <= 0) {
+            throw new IllegalArgumentException("candidateId must be positive");
+        }
+        if (content == null) {
+            throw new IllegalArgumentException("content must not be null");
+        }
+        String ref = providerRef == null ? "" : providerRef;
+        String cur = (currency == null || currency.isBlank()) ? "USD" : currency;
+        Boolean finalized = jdbc.queryForObject(
+                "SELECT out_finalized FROM vc.finalize_generation(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+                Boolean.class,
+                ownerUserId,
+                generationId,
+                candidateId,
+                content,
+                ref,
+                inputTokens,
+                outputTokens,
+                actualCost,
+                cur,
+                quotaAmount,
+                outboxEligible);
+        if (!Boolean.TRUE.equals(finalized)) {
+            throw new IllegalStateException(
+                    "finalize_generation did not finalize generation " + generationId);
+        }
+    }
+
+    /**
      * Best-effort terminalization to FAILED_FINAL with a {@code chat.failed}
      * event carrying the fault string (V15). Used by the degradation and
      * exception paths so no generation is left stuck.
@@ -133,6 +223,13 @@ public class GenerationFinalizeService {
         }
         if (generationId <= 0) {
             throw new IllegalArgumentException("generationId must be positive");
+        }
+    }
+
+    private static void requireNonBlank(String value, String name) {
+        Objects.requireNonNull(value, name + " must not be null");
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(name + " must not be blank");
         }
     }
 }

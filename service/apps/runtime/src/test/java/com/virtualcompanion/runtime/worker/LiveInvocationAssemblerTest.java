@@ -42,7 +42,7 @@ class LiveInvocationAssemblerTest {
     private LiveInvocationAssembler assembler(String sourceId) {
         return new LiveInvocationAssembler(
                 generationRepository, conversationRepository, messageRepository,
-                jdbcTemplate, sourceId);
+                jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS);
     }
 
     @Test
@@ -105,5 +105,35 @@ class LiveInvocationAssemblerTest {
         // Capability set stays empty but non-null.
         assertTrue(request.routingRequest()
                 .requiredCapabilities() instanceof ModelProtocolCapabilities);
+    }
+
+    @Test
+    void assemblesExternalRequestWithSimulatedEntitlementAndSnapshots() {
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
+                new ConversationRepository.Conversation(1L, 5L, 9L, null)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
+                .thenReturn(null);
+
+        LiveInvocationRequest request = assembler("ZERO_LLM_FALLBACK")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        RoutingRequest routing = request.routingRequest();
+        // simulated entitlement: external allowed + ZERO_LLM fallback allowed.
+        assertEquals(ServiceClass.simulated(), routing.entitlement().serviceClass());
+        assertTrue(routing.entitlement().serviceClass().externalAttemptAllowed());
+        // both snapshot ids bound for the external binding selection.
+        assertEquals("snap-10-req", routing.requestedAuthorizationSnapshotId());
+        assertEquals("snap-10-exec", routing.executionAuthorizationSnapshotId());
+        // configured external protocol + fallback ZERO_LLM source carried.
+        assertEquals(ModelProtocol.OPENAI_CHAT_COMPLETIONS, routing.requiredProtocol());
+        assertEquals("ZERO_LLM_FALLBACK", routing.zeroLlmSourceId());
+        // two-hop ownership reused.
+        assertEquals("10", routing.ownership().generationId());
+        assertEquals(0L, routing.fence());
     }
 }

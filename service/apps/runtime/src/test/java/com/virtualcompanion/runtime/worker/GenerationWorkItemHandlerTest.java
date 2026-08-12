@@ -2,6 +2,9 @@ package com.virtualcompanion.runtime.worker;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -11,23 +14,31 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.virtualcompanion.catalog.ModelProtocol;
+import com.virtualcompanion.catalog.ProviderAttemptStatus;
 import com.virtualcompanion.catalog.SafetyClassifierOutcome;
+import com.virtualcompanion.modelruntime.contract.AdapterFailure;
 import com.virtualcompanion.modelruntime.contract.InvocationBinding;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
 import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
+import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.execution.LiveAttemptOutcome;
+import com.virtualcompanion.modelruntime.execution.LiveAttemptTerminal;
 import com.virtualcompanion.modelruntime.execution.LiveInvocationRequest;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
+import com.virtualcompanion.modelruntime.execution.ProviderAttemptAudit;
+import com.virtualcompanion.modelruntime.registry.ProviderId;
 import com.virtualcompanion.modelruntime.routing.Entitlement;
 import com.virtualcompanion.modelruntime.routing.QuotaDisposition;
+import com.virtualcompanion.modelruntime.routing.QuotaReservation;
 import com.virtualcompanion.modelruntime.routing.RecoveryOutcome;
 import com.virtualcompanion.modelruntime.routing.RecoveryTerminal;
 import com.virtualcompanion.modelruntime.routing.RouteDecision;
 import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.modelruntime.routing.ServiceClass;
+import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
@@ -59,13 +70,17 @@ class GenerationWorkItemHandlerTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LiveModelInvoker> invokerProvider = mock(ObjectProvider.class);
 
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<AuthorizationSnapshotProvider> snapshotProvider = mock(ObjectProvider.class);
+
     private GenerationWorkItemHandler handler;
 
     @BeforeEach
     void setUp() {
         handler = new GenerationWorkItemHandler(
-                stateService, finalizeService, assembler, invokerProvider);
+                stateService, finalizeService, assembler, invokerProvider, snapshotProvider);
         when(invokerProvider.getIfAvailable()).thenReturn(null);
+        when(snapshotProvider.getIfAvailable()).thenReturn(null);
     }
 
     private static WorkItemClaim generationClaim(long ownerId, long genId) {
@@ -179,5 +194,142 @@ class GenerationWorkItemHandlerTest {
         // Best-effort terminalize is attempted even after the promotion failure.
         verify(finalizeService).terminalizeAsFailed(3L, 30L, "handler-exception");
         verify(assembler, never()).assemble(anyLong(), anyLong());
+    }
+
+    // ---- External provider path (TASK-0177) ----
+
+    private static final OwnershipTuple OWN = new OwnershipTuple("1", "9", "5", "10");
+    private static final QuotaReservation RES = new QuotaReservation("qr-1", "1", 1L, 99L);
+
+    private static InvocationBinding.ExternalAttemptBinding externalBinding(String req, String exec) {
+        return new InvocationBinding.ExternalAttemptBinding(OWN, "pa-test-1", 0L, req, exec);
+    }
+
+    private static RouteDecision externalDecision(InvocationBinding.ExternalAttemptBinding binding) {
+        return RouteDecision.selected(OWN, "SIMULATED", new ProviderId("alpha-loopback"),
+                binding, RES, List.of());
+    }
+
+    private static LiveInvocationRequest externalRequest(String req, String exec) {
+        RoutingRequest routing = new RoutingRequest(
+                OWN,
+                new Entitlement("1", ServiceClass.simulated()),
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                new ModelProtocolCapabilities(Set.of()),
+                req, exec, "ZERO_LLM_FALLBACK", 0L);
+        return new LiveInvocationRequest(
+                routing,
+                List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hi")),
+                new ResponseMode.Text(),
+                false,
+                new TimeoutBudget(Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)),
+                List.of(),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80));
+    }
+
+    private static LiveAttemptOutcome succeededOutcome(String req, String exec) {
+        InvocationBinding.ExternalAttemptBinding binding = externalBinding(req, exec);
+        ProviderAttemptAudit audit = new ProviderAttemptAudit(
+                "pa-test-1", OWN, "alpha-loopback", "alpha-supplier",
+                ProviderAttemptStatus.SUCCEEDED);
+        return LiveAttemptOutcome.succeeded(externalDecision(binding), binding, audit,
+                "real output", new TokenUsage(42L, 58L, 100L), RES);
+    }
+
+    private static LiveAttemptOutcome failedOutcome(String req, String exec) {
+        InvocationBinding.ExternalAttemptBinding binding = externalBinding(req, exec);
+        ProviderAttemptAudit audit = new ProviderAttemptAudit(
+                "pa-test-1", OWN, "alpha-loopback", "alpha-supplier",
+                ProviderAttemptStatus.NON_RETRYABLE_FAILED);
+        RecoveryOutcome recovery = RecoveryOutcome.of(OWN, RecoveryTerminal.ALL_FAILURE_BLOCKED,
+                QuotaDisposition.RELEASED, "");
+        return LiveAttemptOutcome.failed(externalDecision(binding), binding, audit,
+                new AdapterFailure.UpstreamUnavailable(), recovery, LiveAttemptTerminal.FAILED);
+    }
+
+    private static LiveAttemptOutcome blockedBySafetyOutcome() {
+        RecoveryOutcome recovery = RecoveryOutcome.of(OWN, RecoveryTerminal.ALL_FAILURE_BLOCKED,
+                QuotaDisposition.RELEASED, "safety fallback");
+        // blockedBySafety carries the decision but no binding/audit (no outbound).
+        return LiveAttemptOutcome.blockedBySafety(
+                externalDecision(externalBinding("snap-10-req", "snap-10-exec")), recovery);
+    }
+
+    @Test
+    void completesViaExternalProviderWhenConfigured() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec"))
+                .thenReturn(externalRequest("snap-10-req", "snap-10-exec"));
+        when(invoker.invoke(any())).thenReturn(succeededOutcome("snap-10-req", "snap-10-exec"));
+        when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
+
+        handler.handle(generationClaim(1L, 10L));
+
+        verify(stateService).promote(1L, 10L, GenerationStateService.IN_PROGRESS);
+        verify(snapshots).createFor(1L, 10L);
+        verify(assembler).assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+        verify(invoker).invoke(any());
+        verify(finalizeService).recordProviderAttempt(
+                1L, 10L, "alpha-loopback", "alpha-supplier", "SUCCEEDED",
+                "snap-10-req", "snap-10-exec");
+        verify(finalizeService).insertCandidate(1L, 10L, "real output");
+        verify(stateService).promote(1L, 10L, GenerationStateService.FINAL_REVIEW);
+        verify(finalizeService).finalizeCompletedWithUsage(
+                1L, 10L, 888L, "real output", "pa-test-1", 42L, 58L, 0d, "USD", 1, false);
+        verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void recordsAttemptAndTerminalizesOnExternalProviderFailure() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec"))
+                .thenReturn(externalRequest("snap-10-req", "snap-10-exec"));
+        when(invoker.invoke(any())).thenReturn(failedOutcome("snap-10-req", "snap-10-exec"));
+
+        handler.handle(generationClaim(1L, 10L));
+
+        verify(stateService).promote(1L, 10L, GenerationStateService.IN_PROGRESS);
+        // A real outbound attempt happened (FAILED carries an audit): record it
+        // bound to both snapshots before terminalizing (INV-AUTH-001 audit chain).
+        verify(finalizeService).recordProviderAttempt(
+                1L, 10L, "alpha-loopback", "alpha-supplier", "NON_RETRYABLE_FAILED",
+                "snap-10-req", "snap-10-exec");
+        verify(finalizeService).terminalizeAsFailed(1L, 10L, "external-failed");
+        verify(finalizeService, never()).insertCandidate(anyLong(), anyLong(), anyString());
+        verify(finalizeService, never()).finalizeCompletedWithUsage(
+                anyLong(), anyLong(), anyLong(), any(), any(),
+                anyLong(), anyLong(), anyDouble(), any(), anyInt(), anyBoolean());
+    }
+
+    @Test
+    void terminalizesWithoutRecordOnSafetyBlock() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec"))
+                .thenReturn(externalRequest("snap-10-req", "snap-10-exec"));
+        when(invoker.invoke(any())).thenReturn(blockedBySafetyOutcome());
+
+        handler.handle(generationClaim(1L, 10L));
+
+        verify(stateService).promote(1L, 10L, GenerationStateService.IN_PROGRESS);
+        // Safety denial happens before any outbound transfer: no provider_attempt.
+        verify(finalizeService, never()).recordProviderAttempt(
+                anyLong(), anyLong(), any(), any(), any(), any(), any());
+        verify(finalizeService).terminalizeAsFailed(1L, 10L, "external-blocked_by_safety");
+        verify(finalizeService, never()).insertCandidate(anyLong(), anyLong(), anyString());
     }
 }

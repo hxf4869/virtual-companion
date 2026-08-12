@@ -1,6 +1,8 @@
 package com.virtualcompanion.runtime.auth.config;
 
+import com.virtualcompanion.catalog.ModelProtocol;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
+import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
@@ -278,9 +280,11 @@ public class AuthDataSourceConfig {
     }
 
     /**
-     * TASK-0176: assembles the ZERO_LLM {@code LiveInvocationRequest} from the
-     * generation snapshot (ownership two-hop + messages + fence GUC + configured
-     * zero-llm source id).
+     * TASK-0176 / TASK-0177: assembles the {@code LiveInvocationRequest} from
+     * the generation snapshot (ownership two-hop + messages + fence GUC). The
+     * ZERO_LLM source id tunes the deterministic path; the external protocol
+     * tunes the external-attempt path so the router selects an admitted
+     * deployment of the configured protocol.
      */
     @Bean
     public LiveInvocationAssembler liveInvocationAssembler(
@@ -288,35 +292,43 @@ public class AuthDataSourceConfig {
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             JdbcTemplate authJdbcTemplate,
-            @Value("${virtual-companion.zero-llm.source-id:ZERO_LLM_FALLBACK}") String zeroLlmSourceId) {
+            @Value("${virtual-companion.zero-llm.source-id:ZERO_LLM_FALLBACK}") String zeroLlmSourceId,
+            @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol) {
         return new LiveInvocationAssembler(
                 generationRepository,
                 conversationRepository,
                 messageRepository,
                 authJdbcTemplate,
-                zeroLlmSourceId);
+                zeroLlmSourceId,
+                externalProtocol);
     }
 
     /**
-     * TASK-0174 wiring (TASK-0176 completion path): generation work-item handler
-     * promotes a claimed generation, and when a {@link LiveModelInvoker} bean is
-     * available runs the ZERO_LLM deterministic path to {@code COMPLETED};
-     * otherwise it degrades to {@code FAILED_FINAL} so no generation is left
-     * stuck. {@link LiveModelInvoker} is optional
-     * ({@code model-providers.enabled} and {@code zero-llm.enabled} both default
-     * to false).
+     * TASK-0174 wiring (TASK-0176 ZERO_LLM / TASK-0177 external persistence
+     * path): the generation work-item handler promotes a claimed generation and,
+     * when a {@link LiveModelInvoker} bean is available, runs the active
+     * completion path to a terminal. {@link LiveModelInvoker} and
+     * {@link AuthorizationSnapshotProvider} are both optional
+     * ({@code ObjectProvider#getIfAvailable} returns {@code null} when no
+     * {@code model-providers.enabled=true} / {@code zero-llm.enabled=true}
+     * runtime is active); the external branch is not runtime-active until the
+     * snapshot-creation SD function lands (TASK-0178). {@link AuthorizationSnapshotProvider}
+     * has no bean in this task, so the external branch is exercised only by unit
+     * tests and reached at runtime once TASK-0178 wires a provider.
      */
     @Bean
     public WorkItemHandler workItemHandler(
             GenerationStateService generationStateService,
             GenerationFinalizeService generationFinalizeService,
             LiveInvocationAssembler liveInvocationAssembler,
-            ObjectProvider<LiveModelInvoker> liveModelInvokerProvider) {
+            ObjectProvider<LiveModelInvoker> liveModelInvokerProvider,
+            ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider) {
         return new GenerationWorkItemHandler(
                 generationStateService,
                 generationFinalizeService,
                 liveInvocationAssembler,
-                liveModelInvokerProvider);
+                liveModelInvokerProvider,
+                authorizationSnapshotServiceProvider);
     }
 
     @Bean

@@ -1,0 +1,27 @@
+{
+  "taskId": "TASK-0177",
+  "state": "ACCEPTED",
+  "baseCommit": "885b5e262f97f8773a0b6b5ea5ed835cc7445fc7",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0177/evidence-pack.json",
+  "completed": [
+    "接线 generation 外部 provider 成功持久化/审计链：handler external 分支 SUCCEEDED 时 record_provider_attempt(V20 绑 dual authorization snapshot, INV-AUTH-001)+insert_generation_candidate+promote FINAL_REVIEW+finalize_generation(真实 token)；degraded 已外发先 record 再 FAILED_FINAL，未外发直接 FAILED_FINAL。",
+    "GenerationFinalizeService +recordProviderAttempt(V20 7 参数 record_provider_attempt 包装)+finalizeCompletedWithUsage(V7 真实 token/cost/quota SETTLE 包装)；既有 ZERO_LLM 0-token finalizeCompleted/insertCandidate/terminalizeAsFailed 不变。",
+    "AuthorizationSnapshotProvider 新接口（platform.persistence）：SnapshotIds createFor(owner, gen) seam；javadoc 明示无运行期 bean（V16 撤 vc_api 直写 + 无 create-snapshot SD 函数 → 运行期 snapshot 创建留 TASK-0178 C4）。外部模式运行期不激活，与无 loopback adapter 一致。",
+    "LiveInvocationAssembler +assembleExternal（复用 loadOwnership/messages/fence；simulated entitlement+双 snapshot id+配置 protocol+ZERO_LLM fallback source+空 hardRules+adequate ClassifierReport）；+externalProtocol ctor 参数。",
+    "GenerationWorkItemHandler +ObjectProvider<AuthorizationSnapshotProvider>（external 模式信号）；external SUCCEEDED/degraded 终态分派；保留 ZERO_LLM 既有路径与 invoker-缺失降级。AuthDataSourceConfig assembler +externalProtocol @Value、handler +ObjectProvider（不装 provider bean）；application.yaml +external-attempt.protocol。",
+    "不新增 DB migration、不改 modelruntime/safety/adapters 源码（只消费公共 API + 复用既有 V3/V7/V15/V20 SD 函数）→ 不触发 C3 model-routing-change / C4 database-migration；卡片定 C2。"
+  ],
+  "remaining": [
+    "TASK-0178：create_authorization_snapshots SECURITY DEFINER 函数（C4 migration，绕过 V16 vc_api 直写限制）+ AuthorizationSnapshotProvider JDBC 实现（运行期 external 模式激活）。",
+    "TASK-0178+：loopback adapter 接受 ExternalAttemptBinding 的 e2e；真实安全分类器接入；真实外部模型调用（Alpha FORBIDDEN，需 GATE-LIVE-MODEL-PROVIDER 解锁 TASK-0035）。",
+    "realtime SSE 推送（SseEmitter + RealtimeResumeService）；listMessages / cancelGeneration / relationship HTTP 端点；memory Java 域（external 成功 finalize outbox_eligible=true 待 memory 消费者）；ID hashid；重试/死信。"
+  ],
+  "knownRisks": [
+    "authorizationCommit 为占位符字符串（精简长线流残留，历史不可改写；doctor ACCEPTED 态不校验该格式），与 TASK-0173..0176 同属已知残留。",
+    "运行期 authorization_snapshot 写路径未建：V16 撤销 vc_api 等所有运行期角色对该表的 INSERT/UPDATE/DELETE，全仓库无 create-snapshot SECURITY DEFINER 函数（JdbcAuthorizationSnapshotStore 自述 persistence skeleton）。本卡 AuthorizationSnapshotProvider 仅接口 seam，无运行期 bean → external 分支运行期不激活；DB test 67 由 superuser 预置 snapshot 实证 SD 链。运行期激活需 TASK-0178（C4 migration）。",
+    "无 fake/loopback adapter 接受 ExternalAttemptBinding（service/adapters/** 禁改 + provisioner 不支持 FAKE 协议）→ external SUCCEEDED 在 Alpha 运行期不可达；本卡持久化/审计链经 mock invoker 单测 + DB test 实证（与 TASK-0176 ZERO_LLM 同形态）。",
+    "canonical precheck / doctor --summary / 完整 Harness unittest discover / 根级 Maven verify deferred per Owner 2026-08-12 static-gates-only；external finalize outbox_eligible=false 避免悬挂 memory.extract outbox（memory Java 域未接）。"
+  ],
+  "nextAction": "TASK-0177（generation 外部 provider 成功持久化/审计链，C2）闭环 ACCEPTED：GenerationWorkItemHandler 加 ObjectProvider<AuthorizationSnapshotProvider> 经 external 分支，SUCCEEDED 时 record_provider_attempt(V20 绑双 snapshot, INV-AUTH-001)+insert_generation_candidate+promote FINAL_REVIEW+finalize_generation(真实 token)；degraded 已外发(FAILED/TIMED_OUT/CANCELLED)先 record 再 terminalize FAILED_FINAL，未外发(BLOCKED_BY_SAFETY/AUTH/NO_ELIGIBLE)直接 terminalize；GenerationFinalizeService +recordProviderAttempt(V20 7参)+finalizeCompletedWithUsage(V7 真实 token/cost/quota)；LiveInvocationAssembler +assembleExternal(simulated entitlement+双 snapshot id+配置 protocol+ZERO_LLM fallback source)；AuthorizationSnapshotProvider 接口 seam(无运行期 bean；运行期 snapshot 创建需 create-snapshot SD 函数留 TASK-0178 C4)；application.yaml +external-attempt.protocol；复用既有 V3/V7/V15/V20 SD 函数，不新增 migration、不改 modelruntime/safety/adapters 源码→不触发 C3/C4；DB test 67(superuser 预置 snapshot 实证 record_provider_attempt+insert_candidate+finalize 全链 COMPLETED+provider_attempt SUCCEEDED 绑双 snapshot+usage 42/58+FK 负测)+handler test(+3 external 场景)+assembler test(+assembleExternal)；run-rls 67/67+mvn runtime 261/0/0+diff exit0 全绿。下一步：开 TASK-0178——create_authorization_snapshots SECURITY DEFINER 函数(C4 migration)+AuthorizationSnapshotProvider JDBC 实现+loopback adapter e2e，realtime SSE 推送与 listMessages/cancel/relationship 端点按序随后。"
+}

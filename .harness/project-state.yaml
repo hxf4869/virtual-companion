@@ -4,11 +4,11 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0176
-lastAcceptedHandoff: docs/handoffs/TASK-0176.json
-lastTerminalTask: TASK-0176
-lastTerminalHandoff: docs/handoffs/TASK-0176.json
-nextAction: TASK-0176（generation ZERO_LLM 确定性完成路径接线，C2）闭环 ACCEPTED：GenerationWorkItemHandler 在 zero-llm.enabled=true 且 model-providers.enabled!=true 时走真实 LiveModelInvoker.invoke ZERO_LLM 分支（router 选 DeterministicSourceBinding→recovery.completeZeroLlm→zeroLlmCompleted）→ 把确定性输出(DeterministicSafetyResponse.ZERO_LLM_FALLBACK)经 promote IN_PROGRESS→FINAL_REVIEW→insert_generation_candidate→finalize_generation 落为 COMPLETED；新 ZeroLlmModelRuntimeConfig(空 InMemory* 协作者装配 LiveModelInvoker，@ConditionalOnExpression 互斥 model-providers)+LiveInvocationAssembler(ownership 两跳+messages+fence GUC)+GenerationFinalizeService+MessageRepository.listByConversation+application.yaml zero-llm 节；复用既有 V7/V15/V25 SD 函数(均已 GRANT vc_api)，不新增 migration、不改 modelruntime/safety 源码→不触发 C3/C4；DB test 66(全 SD COMPLETED 链实证)+handler test 重写(5 场景)+assembler test(2)；run-rls 66/66+mvn runtime 257/0/0+diff exit0 全绿。下一步：开 TASK-0177——外部 provider 成功路径（authorization snapshot 创建/safety 流水线/adapter 装配/fence 契约/messages 加载），realtime SSE 推送与 listMessages/cancel/relationship 端点按序随后。
+lastAcceptedTask: TASK-0177
+lastAcceptedHandoff: docs/handoffs/TASK-0177.json
+lastTerminalTask: TASK-0177
+lastTerminalHandoff: docs/handoffs/TASK-0177.json
+nextAction: TASK-0177（generation 外部 provider 成功持久化/审计链，C2）闭环 ACCEPTED：GenerationWorkItemHandler 加 ObjectProvider<AuthorizationSnapshotProvider> 经 external 分支，SUCCEEDED 时 record_provider_attempt(V20 绑双 snapshot, INV-AUTH-001)+insert_generation_candidate+promote FINAL_REVIEW+finalize_generation(真实 token)；degraded 已外发(FAILED/TIMED_OUT/CANCELLED)先 record 再 terminalize FAILED_FINAL，未外发(BLOCKED_BY_SAFETY/AUTH/NO_ELIGIBLE)直接 terminalize；GenerationFinalizeService +recordProviderAttempt(V20 7参)+finalizeCompletedWithUsage(V7 真实 token/cost/quota)；LiveInvocationAssembler +assembleExternal(simulated entitlement+双 snapshot id+配置 protocol+ZERO_LLM fallback source)；AuthorizationSnapshotProvider 接口 seam(无运行期 bean；运行期 snapshot 创建需 create-snapshot SD 函数留 TASK-0178 C4)；application.yaml +external-attempt.protocol；复用既有 V3/V7/V15/V20 SD 函数，不新增 migration、不改 modelruntime/safety/adapters 源码→不触发 C3/C4；DB test 67(superuser 预置 snapshot 实证 record_provider_attempt+insert_candidate+finalize 全链 COMPLETED+provider_attempt SUCCEEDED 绑双 snapshot+usage 42/58+FK 负测)+handler test(+3 external 场景)+assembler test(+assembleExternal)；run-rls 67/67+mvn runtime 261/0/0+diff exit0 全绿。下一步：开 TASK-0178——create_authorization_snapshots SECURITY DEFINER 函数(C4 migration)+AuthorizationSnapshotProvider JDBC 实现+loopback adapter e2e，realtime SSE 推送与 listMessages/cancel/relationship 端点按序随后。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

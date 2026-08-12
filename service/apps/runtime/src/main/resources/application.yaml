@@ -99,6 +99,17 @@ virtual-companion:
     # Stable identifier recorded as the deterministic source id / decision
     # identity (audit only; never a credential or model name).
     source-id: ${VC_ZERO_LLM_SOURCE_ID:ZERO_LLM_FALLBACK}
+  external-attempt:
+    # TASK-0177: tunes the external-attempt RoutingRequest so the router selects
+    # an admitted deployment of this protocol when the external persistence path
+    # is exercised. The dual authorization snapshot creation (provider-id /
+    # region / contract / purpose / data-category) is deferred to TASK-0178: V16
+    # revoked direct INSERT on authorization_snapshot from every runtime role
+    # and no create-snapshot SECURITY DEFINER function exists yet, so the
+    # external branch is not runtime-active until that SD function lands. The
+    # external persistence + audit chain (record_provider_attempt, finalize with
+    # real usage, terminal dispatch) is wired and unit/DB-tested regardless.
+    protocol: ${VC_EXTERNAL_PROTOCOL:OPENAI_CHAT_COMPLETIONS}
 
 ---
 # 条件风险 3（TASK-0102）：production profile 强制认证与数据源开启。两个开关

@@ -58,18 +58,21 @@ public class LiveInvocationAssembler {
     private final MessageRepository messageRepository;
     private final JdbcTemplate jdbcTemplate;
     private final String zeroLlmSourceId;
+    private final ModelProtocol externalProtocol;
 
     public LiveInvocationAssembler(
             GenerationRepository generationRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             JdbcTemplate jdbcTemplate,
-            String zeroLlmSourceId) {
+            String zeroLlmSourceId,
+            ModelProtocol externalProtocol) {
         this.generationRepository = Objects.requireNonNull(generationRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate);
         this.zeroLlmSourceId = requireSourceId(zeroLlmSourceId);
+        this.externalProtocol = Objects.requireNonNull(externalProtocol, "externalProtocol must not be null");
     }
 
     /**
@@ -92,6 +95,64 @@ public class LiveInvocationAssembler {
                 new ModelProtocolCapabilities(java.util.Set.of()),
                 null,
                 null,
+                zeroLlmSourceId,
+                fence);
+
+        return new LiveInvocationRequest(
+                routing,
+                messages,
+                new ResponseMode.Text(),
+                false,
+                new TimeoutBudget(
+                        Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)),
+                List.of(),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80));
+    }
+
+    /**
+     * Assemble the external-provider {@code LiveInvocationRequest} for one
+     * generation (TASK-0177).
+     *
+     * <p>Tuned so the {@code DeterministicRouter} selects an
+     * {@code ExternalAttemptBinding} for an admitted deployment: the entitlement
+     * is {@link ServiceClass#simulated()} (external allowed, ZERO_LLM fallback
+     * allowed), both authorization snapshot ids are non-null, the required
+     * protocol matches the configured deployment, and the configured ZERO_LLM
+     * source id is carried as the fallback source. The safety gate receives an
+     * adequate classifier report and no hard-rule violations so a simulated /
+     * loopback attempt is released (the real classifier integration is a later
+     * safety-domain task).
+     *
+     * @param requestedSnapshotId   the requested authorization snapshot id
+     *     ({@link AuthorizationSnapshotService#createFor} minted the row)
+     * @param executionSnapshotId   the execution authorization snapshot id
+     * @throws IllegalStateException if the generation or conversation cannot be
+     *     resolved for the owner (fail closed; the handler terminalizes)
+     */
+    public LiveInvocationRequest assembleExternal(
+            long ownerUserId,
+            long generationId,
+            String requestedSnapshotId,
+            String executionSnapshotId) {
+        Objects.requireNonNull(requestedSnapshotId, "requestedSnapshotId must not be null");
+        Objects.requireNonNull(executionSnapshotId, "executionSnapshotId must not be null");
+        if (requestedSnapshotId.isBlank() || executionSnapshotId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "requestedSnapshotId and executionSnapshotId must not be blank");
+        }
+        OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
+        List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
+        long fence = readFence();
+
+        Entitlement entitlement = new Entitlement(
+                ownership.ownerUserId(), ServiceClass.simulated());
+        RoutingRequest routing = new RoutingRequest(
+                ownership,
+                entitlement,
+                externalProtocol,
+                new ModelProtocolCapabilities(java.util.Set.of()),
+                requestedSnapshotId,
+                executionSnapshotId,
                 zeroLlmSourceId,
                 fence);
 
