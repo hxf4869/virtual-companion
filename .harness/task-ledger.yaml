@@ -892,3 +892,9 @@ tasks:
     taskCard: docs/tasks/TASK-0165-quota-nonneg-check-and-release-idempotency.md
     evidence: docs/evidence/TASK-0165/evidence-pack.json
     handoff: docs/handoffs/TASK-0165.json
+  TASK-0166:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0166-v8-v11-legacy-upgrade-fail-closed-test.md
+    evidence: docs/evidence/TASK-0166/evidence-pack.json
+    handoff: docs/handoffs/TASK-0166.json

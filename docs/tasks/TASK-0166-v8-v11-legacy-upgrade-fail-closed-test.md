@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0166
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -333,7 +333,33 @@ humanApprovals:
       dispatchCount=0 与无 runner exact-SHA 事实保持不变。本卡重新冻结 LOCAL_EXACT_TREE_FALLBACK
       （profile=precheck），远端仍如实非 PASS，不复用任何跨卡 Reviewer 或命令 PASS（TASK-0165 R1 PASS 不复用）。
 independentReview: conditional
-reviewers: []
+reviewers:
+  - id: task0166_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "bae036cfd471637d89dbaec998c4bfb1c2f89a31"
+    candidateTree: "317aa143dbdfdb4560bf97baabe6e8acc1cbf647"
+    evidencePath: docs/evidence/TASK-0166/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2/P3。test 61 四场景忠实复现 V8/V11 在不兼容存量数据上的升级步骤
+      （V8:38-53 DEFAULT 0 backfill + CREATE UNIQUE INDEX；V11:36-47 nullable conversation_id + ADD CHECK
+      + ADD FK），用 V7/V2 原始列形状的碰撞数据机器证明三者 fail-closed（unique_violation /
+      check_violation / foreign_key_violation）+ V8 post-migration 守卫持续强制 INV-RT-001。全
+      BEGIN/ROLLBACK 事务化清理，schema 终态不变。静态门禁全 PASS（rls 61/61、canonical 8/8 doctor
+      792478、diff exit0）。纯测试覆盖卡不触任何 migration/Java/catalog/contract，4 路径全在
+      writeAllowlist，V1-V21 与 test 01-60 冻结。§5.1.6/RISK-10 升级 fail-closed 证据要求闭合。
+terminalStateReason: >-
+  §5.1.6/RISK-10 V8/V11 存量升级 fail-closed 测试覆盖 ACCEPTED：新增 test 61（4 场景：V8 升级 unique
+  碰撞 CREATE UNIQUE INDEX 在 DEFAULT 0 backfill 碰撞数据上 unique_violation + 正向控制 distinct gen
+  不碰撞 + V8 post-migration 守卫 existing index 拒绝重复 + V11 升级 CHECK 碰撞 ADD CONSTRAINT 在
+  SESSION-without-conversation 上 check_violation + V11 升级 FK 碰撞 ADD CONSTRAINT 在 dangling
+  conversation 上 foreign_key_violation；全 BEGIN/ROLLBACK 事务化恢复 schema 终态不变，超管插入绕过
+  V16 运行角色 DML 撤销参照 test 50）。run-rls-tests.sh 61/61 PASS（test 1-60 无回归含 50/57/60）；
+  canonical precheck 8/8 PASS（doctor 792478）；git diff --check exit 0；R1 PASS（0 P0/P1/P2/P3）。
+  纯测试覆盖卡 C2 不触任何 migration（V1-V21 frozen）/Java/catalog/contract，4 路径全在 writeAllowlist。
+  完整 Harness unittest 按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit。candidate
+  elapsed ~6 min（远低于 hardFuse 90）。remote exact-SHA 如实非 PASS（dispatchCount=0），
+  LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 §5.1.6 / RISK-10 审计修复卡
