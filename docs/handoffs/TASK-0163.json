@@ -1,0 +1,61 @@
+{
+  "taskId": "TASK-0163",
+  "state": "ACCEPTED",
+  "baseCommit": "8db787e3dfe71a1e17f8fb912bb968ba7216f996",
+  "headCommit": "91f654eae6709fa3b139bac0773ca9a7e8388594",
+  "evidencePath": "docs/evidence/TASK-0163/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "174141a",
+      "startedAt": "2026-08-12T10:06:36+08:00",
+      "endedAt": "2026-08-12T10:15:00+08:00",
+      "elapsedSeconds": 504,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "91f654e",
+      "startedAt": "2026-08-12T10:10:36+08:00",
+      "endedAt": "2026-08-12T10:15:00+08:00",
+      "elapsedSeconds": 264,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "2026-08-12T10:08:55+08:00",
+      "inProgressCommit": "91f654e",
+      "reason": "§5.1.1 前端 realtime envelope event 字段修复；候选 91f654e（realtime-envelope.ts 纯函数读 catalog 权威字段 event + 10 glue 测试 + chat.vue 引用，无前向修复）；canonical precheck 8/8 PASS + pnpm type-check exit 0 + vitest 148/148 PASS + git diff --check exit 0 + R1 静态 PASS；完整 unittest 按 Owner 2026-08-12 static-gates-only 策略 deferred to unified audit。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0163_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "91f654eae6709fa3b139bac0773ca9a7e8388594",
+      "candidateTree": "7f88592813d01d69f0421af80c218e25dabd8983",
+      "evidencePath": "docs/evidence/TASK-0163/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2；静态门禁全 PASS（fresh TMPDIR doctor 775074、canonical 8/8、type-check exit 0、vitest 148/148、diff exit 0）；parseStreamEvent 读 catalog 权威字段 event，失败语义与原 parseEvent 等价，reducer/transport 契约不变；回归门禁覆盖旧 eventType bug 形状。完整 unittest deferred per Owner strategy。"
+    }
+  ],
+  "completed": [
+    "TASK-0163 DRAFT/READY/authorizationCommit/IN_PROGRESS；DRAFT+READY Doctor PASS。",
+    "新增 frontend/src/api/realtime-envelope.ts：parseStreamEvent 读 catalog 权威 wire 字段 event（非 eventType），映射到内部 StreamEvent.eventType；失败语义与原内联 parseEvent 逐行等价。",
+    "新增 frontend/src/api/realtime-envelope.spec.ts（10 glue 测试）：真实 catalog envelope 覆盖 delta/terminal/batch/仅 eventType 旧 bug 回归/缺 event/epoch 回退/非 record。",
+    "改 chat.vue：移除内联 parseEvent，import parseStreamEvent，两处调用点替换；candidates/null 过滤逻辑不变。",
+    "pnpm type-check exit 0；vitest 16 files/148 tests PASS（含新增 10）；canonical precheck 8/8 PASS（doctor 775074）；git diff --check exit 0。",
+    "R1 独立静态复核 PASS（0 P0/P1/P2，fresh TMPDIR 独立重跑全部静态门禁）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest 留统一审计阶段（Owner static-gates-only 策略）。",
+    "继续推进剩余 §5.1 审计候选：§5.1.3 provider_attempt 授权快照（INV-AUTH-001 DB 强制）/ §5.1.4 quota 非负 + release 幂等（均 C4 DB，已确认缺陷）；§5.1.2/§5.1.6 待补复核。",
+    "P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（0155 REJECTED）需 Owner 决策。",
+    "全部修复后对最新 origin/main 做独立全项目复审（含完整 unittest 串行 + canonical + 根级 Maven verify）。"
+  ],
+  "knownRisks": [
+    "完整 unittest 在本卡未独立跑通（static-gates-only）；前端修复由 type-check + vitest 148 测试（含新增真实 envelope glue + 旧 bug 回归门禁）直接验证。",
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical/type-check/vitest/diff。",
+    "parseStreamEvent 不保留 eventType 回退（会掩盖契约漂移）；catalog wire 字段 event 是唯一权威，前端对齐之，不改 catalog/contract/service/DB。",
+    "isRecord 在前端三处重复（既有模式，非本卡引入）；未跑 pnpm build（留 unified audit）。"
+  ],
+  "nextAction": "TASK-0163（§5.1.1 前端 realtime envelope event 字段修复）闭环。下一步：继续推进剩余 §5.1 审计候选（§5.1.3 provider_attempt 授权快照 INV-AUTH-001 DB 强制 / §5.1.4 quota 非负 CHECK + release 幂等，均 C4 DB 卡需当前 HEAD 已确认缺陷；§5.1.2 worker claim fence、§5.1.6 V8/V11 存量升级待补复核），选下一个 single-card 一次一张推进；P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（0155 REJECTED 待重做）需 Owner 拓扑决策；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}

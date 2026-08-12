@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0163
-activeTaskCard: docs/tasks/TASK-0163-frontend-realtime-envelope-event-field.md
-lastAcceptedTask: TASK-0162
-lastAcceptedHandoff: docs/handoffs/TASK-0162.json
-lastTerminalTask: TASK-0162
-lastTerminalHandoff: docs/handoffs/TASK-0162.json
-nextAction: 'TASK-0163（§5.1.1 前端 realtime envelope event 字段修复）执行中：实现 frontend/src/api/realtime-envelope.ts 纯函数读 catalog 权威字段 event + glue 测试 + chat.vue 引用；static-gates-only 验证（pnpm -C frontend run type-check/test:run + canonical precheck + git diff --check + R1 静态独立复核；完整 Harness unittest deferred to unified audit）；C2 纯前端不触保护路径。'
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0163
+lastAcceptedHandoff: docs/handoffs/TASK-0163.json
+lastTerminalTask: TASK-0163
+lastTerminalHandoff: docs/handoffs/TASK-0163.json
+nextAction: 'TASK-0163（§5.1.1 前端 realtime envelope event 字段修复）闭环。下一步：继续推进剩余 §5.1 审计候选（§5.1.3 provider_attempt 授权快照 INV-AUTH-001 DB 强制 / §5.1.4 quota 非负 CHECK + release 幂等，均 C4 DB 卡需当前 HEAD 已确认缺陷；§5.1.2 worker claim fence、§5.1.6 V8/V11 存量升级待补复核），选下一个 single-card 一次一张推进；P1-04/05 DB principal 架构决策、P1-11 readiness/migrator 分离（0155 REJECTED 待重做）需 Owner 拓扑决策；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -20,3 +20,4 @@ capabilityGates:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
 updatedAt: '2026-08-12'
+

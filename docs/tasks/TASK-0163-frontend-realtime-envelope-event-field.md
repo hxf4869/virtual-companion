@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0163
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -334,7 +334,36 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS（TASK-0162 R1 PASS 不复用）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0163_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: "91f654eae6709fa3b139bac0773ca9a7e8388594"
+    candidateTree: "7f88592813d01d69f0421af80c218e25dabd8983"
+    evidencePath: docs/evidence/TASK-0163/review-r1.md
+    reason: >-
+      R1 PASS：0 P0/P1/P2。独立重跑全部静态门禁 PASS（fresh TMPDIR /tmp/vc_t0163_r1.afx2A0）：
+      doctor 775074 checks（103.9s 全量非 receipt）、canonical precheck 8/8、pnpm -C frontend run
+      type-check exit 0、pnpm -C frontend run test:run（16 files/148 tests，含新增 realtime-envelope.spec.ts
+      10）、git diff --check exit 0。Diff scope 精确 6 文件全在 writeAllowlist（4 治理 + 3 前端），无
+      forbidden 触碰、无 protected-path。parseStreamEvent 读 catalog 权威字段 event（specs/catalog/
+      realtime-events.yaml envelopeRequired + V8 SQL jsonb_build_object('event',...) + 测试 50/23 佐证），
+      失败语义与原内联 parseEvent 逐行等价，故 reducer/transport gap/reset/terminal 行为零变更；内部
+      StreamEvent.eventType 属性保留。回归门禁：spec 含仅 eventType envelope 必须 null 用例。INV-RT-001
+      维护（消除事件静默丢弃隐性回归）。完整 unittest deferred per Owner static-gates-only 策略。
+terminalStateReason: >-
+  §5.1.1 前端 realtime envelope event 字段修复 ACCEPTED：新增 frontend/src/api/realtime-envelope.ts
+  导出纯函数 parseStreamEvent（读 catalog 权威 wire 字段 event 而非 eventType，映射到内部
+  StreamEvent.eventType；失败语义与原内联 parseEvent 逐行等价）+ 10 个真实 catalog envelope glue 测试
+  （含仅 eventType 旧 bug 形状回归门禁）；chat.vue 移除内联 parseEvent 改引用 parseStreamEvent
+  （resume + fetchSnapshot 两处，isRecord 保留，candidates/null 过滤不变）。修复对齐 catalog 契约
+  （不改 catalog/contract/service/DB）。验证全 PASS：pnpm type-check exit 0、vitest 16 files/148 tests
+  （含新增 10）、canonical precheck 8/8（doctor 775074）、git diff --check exit 0、独立 C2 R1 静态复核
+  PASS（0 P0/P1/P2，fresh TMPDIR 独立重跑全部静态门禁）。无前向修复（所有门禁首跑 PASS）。candidate
+  elapsed ~4.4 min（远低于 hardFuse 90）。完整 Harness unittest 按 Owner 2026-08-12 static-gates-only
+  策略 deferred to unified audit（前端行为由 type-check + vitest 148 测试直接验证）。remote exact-SHA
+  如实非 PASS（dispatchCount=0），LOCAL_EXACT_TREE_FALLBACK 冻结于 READY。§5.1.1（前端 realtime
+  envelope event 字段映射）完整落地，真实后端 catalog 事件不再被前端静默丢弃。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 §5.1.1 审计修复卡
