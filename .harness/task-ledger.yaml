@@ -934,3 +934,7 @@ tasks:
     taskCard: docs/tasks/TASK-0177-generation-external-provider-persistence-chain.md
     evidence: docs/evidence/TASK-0177/evidence-pack.json
     handoff: docs/handoffs/TASK-0177.json
+  TASK-0178:
+    taskCard: docs/tasks/TASK-0178-relationship-http-api.md
+    evidence: docs/evidence/TASK-0178/evidence-pack.json
+    handoff: docs/handoffs/TASK-0178.json

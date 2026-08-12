@@ -5,6 +5,7 @@ import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
@@ -257,6 +258,17 @@ public class AuthDataSourceConfig {
     @Bean
     public GenerationStateService generationStateService(JdbcTemplate authJdbcTemplate) {
         return new GenerationStateService(authJdbcTemplate);
+    }
+
+    /**
+     * TASK-0178: relationship lifecycle over the V9 SECURITY DEFINER functions
+     * (create/list/get/activate/deactivate), consumed by the Relationship HTTP
+     * API controller. Runs inside the server-trusted owner context established
+     * by the owner-injection filter.
+     */
+    @Bean
+    public RelationshipService relationshipService(JdbcTemplate authJdbcTemplate) {
+        return new RelationshipService(authJdbcTemplate);
     }
 
     /**

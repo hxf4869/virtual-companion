@@ -4,11 +4,11 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0177
-lastAcceptedHandoff: docs/handoffs/TASK-0177.json
-lastTerminalTask: TASK-0177
-lastTerminalHandoff: docs/handoffs/TASK-0177.json
-nextAction: TASK-0177（generation 外部 provider 成功持久化/审计链，C2）闭环 ACCEPTED：GenerationWorkItemHandler 加 ObjectProvider<AuthorizationSnapshotProvider> 经 external 分支，SUCCEEDED 时 record_provider_attempt(V20 绑双 snapshot, INV-AUTH-001)+insert_generation_candidate+promote FINAL_REVIEW+finalize_generation(真实 token)；degraded 已外发(FAILED/TIMED_OUT/CANCELLED)先 record 再 terminalize FAILED_FINAL，未外发(BLOCKED_BY_SAFETY/AUTH/NO_ELIGIBLE)直接 terminalize；GenerationFinalizeService +recordProviderAttempt(V20 7参)+finalizeCompletedWithUsage(V7 真实 token/cost/quota)；LiveInvocationAssembler +assembleExternal(simulated entitlement+双 snapshot id+配置 protocol+ZERO_LLM fallback source)；AuthorizationSnapshotProvider 接口 seam(无运行期 bean；运行期 snapshot 创建需 create-snapshot SD 函数留 TASK-0178 C4)；application.yaml +external-attempt.protocol；复用既有 V3/V7/V15/V20 SD 函数，不新增 migration、不改 modelruntime/safety/adapters 源码→不触发 C3/C4；DB test 67(superuser 预置 snapshot 实证 record_provider_attempt+insert_candidate+finalize 全链 COMPLETED+provider_attempt SUCCEEDED 绑双 snapshot+usage 42/58+FK 负测)+handler test(+3 external 场景)+assembler test(+assembleExternal)；run-rls 67/67+mvn runtime 261/0/0+diff exit0 全绿。下一步：开 TASK-0178——create_authorization_snapshots SECURITY DEFINER 函数(C4 migration)+AuthorizationSnapshotProvider JDBC 实现+loopback adapter e2e，realtime SSE 推送与 listMessages/cancel/relationship 端点按序随后。
+lastAcceptedTask: TASK-0178
+lastAcceptedHandoff: docs/handoffs/TASK-0178.json
+lastTerminalTask: TASK-0178
+lastTerminalHandoff: docs/handoffs/TASK-0178.json
+nextAction: TASK-0178（Relationship HTTP API，C2）闭环 ACCEPTED：实现 OpenAPI 已定义但 Java HTTP 层缺失的 5 个relationship 端点（POST/GET /api/v1/relationships、GET+POST /api/v1/relationships/{id}、POST /{id}/deactivate），复用 V9 SD 函数（create/list/get/activate/deactivate_relationship，均已 GRANT vc_api）；新 RelationshipService(platform.persistence 包 V9)+RelationshipRecord+RelationshipController(runtime.relationship.web，组件扫描+@ConditionalOnProperty auth.datasource-enabled，@AuthenticationPrincipal(expression=accountId))+runtime.web 共享错误层(ResourceNotFoundException/ErrorEnvelope/RuntimeApiExceptionHandler：404 NOT_FOUND_OR_FORBIDDEN 不泄露存在性+400 INVALID_REQUEST；Modulith 禁止 web→auth 未暴露类型依赖故 ErrorEnvelope 独立于 auth 模块，wire 格式不变)+AuthDataSourceConfig 加 RelationshipService bean；DTO id 沿用 long（hashid deferred）；RelationshipServiceTest 7+RelationshipControllerTest 10 场景；run-rls 67/67+mvn runtime 271/0/0+diff exit0 全绿。不新增 migration、不改 modelruntime/safety/adapters/specs/auth 包→不触发 C3/C4。下一步：开 TASK-0179——listMessages（GET /conversations/{id}/messages）+ cancelGeneration（POST /generations/{id}/cancel）端点（V10 SD 已就绪），随后 memory HTTP 端点、C4 snapshot SD 函数+loopback adapter e2e、realtime SSE 推送按序。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
