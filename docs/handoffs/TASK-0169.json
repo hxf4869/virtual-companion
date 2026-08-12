@@ -1,0 +1,62 @@
+{
+  "taskId": "TASK-0169",
+  "state": "ACCEPTED",
+  "baseCommit": "fe1341253bec6b42c8053d1924ed40634c6221c3",
+  "headCommit": "2eaa9843da1402ddff0784efe4c2a88399f9505b",
+  "evidencePath": "docs/evidence/TASK-0169/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c5b2b3c43c644b6a9ee07e86f02eba0da8f0ffda",
+      "startedAt": "2026-08-12T13:16:03+08:00",
+      "endedAt": "2026-08-12T13:19:35+08:00",
+      "elapsedSeconds": 212,
+      "reanchored": false
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "2eaa9843da1402ddff0784efe4c2a88399f9505b",
+      "startedAt": "2026-08-12T13:16:32+08:00",
+      "endedAt": "2026-08-12T13:19:35+08:00",
+      "elapsedSeconds": 183,
+      "outcome": "PASS",
+      "candidateDeadlineMinutes": 45,
+      "readyDoctorPassAt": "",
+      "inProgressCommit": "2eaa9843da1402ddff0784efe4c2a88399f9505b",
+      "reason": "P2-03 密码最低策略与复杂度；候选 2eaa984（AuthService validatePasswordPolicy min 8 + 大写/小写/数字/符号四类全要，注入 createAccount validateAccountInput + seedAdmin，login 不强制；AuthRequests CreateAccountRequest.password @Size(min=8) Bean Validation 早拒；AuthServiceTest 正向弱密码→Str0ng!Pw + 3 策略矩阵测试；AuthControllerValidationTest @Size(min=8) 测试）；mvn -pl service/apps/runtime -am test 238/0 + canonical 8/8（doctor 809949）+ diff exit0 + R1 PASS（0 P0/P1/P2，3 P3）；完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0169_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "2eaa9843da1402ddff0784efe4c2a88399f9505b",
+      "candidateTree": "d4b7377588accf20f4cd86ca7c3ac652794d7f9d",
+      "evidencePath": "docs/evidence/TASK-0169/review-r1.md",
+      "reason": "R1 PASS：0 P0/P1/P2，3 P3 informational（非 BMP 代理对计为符号无害；符号定义=非字母非数字含空格，标准 password-policy 语义；directAccountValidation role-only 用例字段隔离度降低但测试目的仍成立）。validatePasswordPolicy length<8 或缺四类任一→非泄露 INVALID_REQUEST，与既有输入校验一致；注入 validateAccountInput（createAccount）+ seedAdmin，login 不强制；seedAdmin absent-return-0 早于策略；createAccount role 门先于策略。AuthRequests @Size(min=8) Bean Validation 早拒。静态门禁全 PASS（mvn 238/0；canonical 8/8 doctor 809949；diff exit0）。7 改动文件全在 writeAllowlist，V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级 verify deferred per Owner static-gates-only。"
+    }
+  ],
+  "completed": [
+    "TASK-0169 DRAFT/READY/绑定/IN_PROGRESS；standalone Doctor 按 acceleration 跳过，canonical precheck doctor 子命令（809949 checks）为唯一 doctor 门禁。",
+    "DRAFT 前跑 mvn -pl service/apps/runtime -am test 234/0 确认无 pre-existing 失败（TASK-0168 教训：先确认受影响模块基线绿再定 writeAllowlist）。",
+    "AuthService.validatePasswordPolicy：min 8 + 大写/小写/数字/符号四类全要（Character.isUpperCase/isLowerCase/isDigit，else=符号），缺任一→invalidRequestError() 非泄露 400 INVALID_REQUEST。",
+    "validatePasswordPolicy 注入 validateAccountInput（createAccount 路径，既有校验后）+ seedAdmin（absent-return-0 与 byte/max 后、validateNormalizedInput 前）；validateLoginInput 未改，login 不强制策略。",
+    "AuthRequests.CreateAccountRequest.password @Size(max=128)→@Size(min=8,max=128) Bean Validation 早拒；LoginRequest.password 不变。",
+    "AuthServiceTest 正向用例弱密码（s3cret/pw/secret）→Str0ng!Pw + verify encode 同步；3 策略矩阵测试（createAccount 太短/缺各类 + seedAdmin 矩阵）；AuthControllerValidationTest @Size(min=8) Bean Validation 测试。",
+    "mvn -pl service/apps/runtime -am test BUILD SUCCESS 238/0；canonical precheck 8/8 PASS（doctor 809949）；git diff --check exit 0；R1 PASS（0 P0/P1/P2，3 P3 informational）。"
+  ],
+  "remaining": [
+    "完整 Harness unittest + 根级 Maven verify 留统一审计阶段（Owner static-gates-only 策略）。",
+    "开审计保留独立 C4 DB 卡（V22 purge 函数 + @Scheduled 每日自动清理 identity_auth_event >180 天；Owner 已定机制=自动定时清理；需 humanApproval scope:database-migration + independentReview:required）。",
+    "继续推进剩余 Owner-gate：§5.1.2 worker claim lease/fence（依赖 coordinator 落地）、P2-22 nextAction 未注册任务。",
+    "全部修复后对最新 origin/main 做独立全项目复审（含完整 unittest 串行 + canonical + 根级 Maven verify）。"
+  ],
+  "knownRisks": [
+    "完整 unittest 与根级 Maven verify 在本卡未独立跑通（static-gates-only）；密码策略行为由 mvn runtime 238 tests 直接验证。",
+    "符号定义=任何非字母非数字（含空格），标准 password-policy 语义；若需收紧为仅标点可用 Character.getType 限定（P3，Technical Alpha 无需）。",
+    "非 BMP 代理对字符计为符号（逐 char 分类）；密码通常 BMP，无害（P3）。",
+    "remote exact-SHA dispatchCount=0；LOCAL_EXACT_TREE_FALLBACK 限于 macOS/canonical/mvn/diff。"
+  ],
+  "nextAction": "TASK-0169（P2-03 密码最低策略与复杂度：min 8 + 大写/小写/数字/符号四类全要，createAccount validateAccountInput + seedAdmin 强制，login 不强制，AuthRequests @Size(min=8) Bean Validation 早拒）闭环 ACCEPTED。P2-03 核心（限流/锁定/输入收紧 TASK-0156+0160）+ 密码最低策略（本卡）均已闭合。下一步：开审计保留独立 C4 DB 卡（V22 purge 函数 + @Scheduled 每日自动清理 identity_auth_event >180 天，Owner 已定机制=自动定时清理），再继续逐项解锁剩余 Owner-gate（§5.1.2 worker claim lease/fence 依赖 coordinator、P2-22 nextAction 未注册任务）；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。"
+}

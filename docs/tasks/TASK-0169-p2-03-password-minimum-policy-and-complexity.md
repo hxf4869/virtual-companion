@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0169
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C3
 requiredSkills:
@@ -254,7 +254,30 @@ humanApprovals:
       重新冻结 LOCAL_EXACT_TREE_FALLBACK（profile=precheck），远端仍如实非 PASS，不复用
       任何跨卡 Reviewer 或命令 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0169_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 2eaa9843da1402ddff0784efe4c2a88399f9505b
+    candidateTree: d4b7377588accf20f4cd86ca7c3ac652794d7f9d
+    evidencePath: docs/evidence/TASK-0169/review-r1.md
+    reason: >-
+      R1 PASS（0 P0/P1/P2，3 P3 informational：非 BMP 代理对计为符号无害；符号定义=非字母非数字含空格标准
+      password-policy 语义；directAccountValidation role-only 用例字段隔离度降低但测试目的仍成立）。validatePasswordPolicy
+      min 8 + 大写/小写/数字/符号四类全要，缺任一→非泄露 INVALID_REQUEST 与既有输入校验一致；注入
+      validateAccountInput（createAccount）+ seedAdmin，login 不强制；seedAdmin absent-return-0 早于策略；
+      createAccount role 门先于策略。AuthRequests @Size(min=8) Bean Validation 早拒。静态门禁全 PASS
+      （mvn runtime 238/0；canonical 8/8 doctor 809949；diff exit0）。7 改动文件全在 writeAllowlist，
+      V1-V21 与 DB test 01-61 frozen，无 catalog/contract/pom/OpenAPI 改动。完整 unittest + 根级 verify
+      deferred per Owner static-gates-only。
+terminalStateReason: >-
+  P2-03 密码最低策略与复杂度（min 8 + 大写/小写/数字/符号四类全要）实现闭环。候选 2eaa984/tree
+  d4b73775；mvn -pl service/apps/runtime -am test 238/0；canonical precheck 8/8 PASS（doctor 809949
+  checks）；git diff --check exit 0；R1 PASS（0 P0/P1/P2，3 P3 informational）。validatePasswordPolicy
+  注入 createAccount（validateAccountInput）+ seedAdmin，login 不强制；AuthRequests @Size(min=8)
+  Bean Validation 早拒；正向用例弱密码更新 + 3 策略矩阵测试 + 1 Bean Validation 测试。完整 unittest
+  + 根级 Maven verify 按 Owner static-gates-only 策略 deferred to 统一审计。审计保留 180 天拆独立
+  C4 DB 卡（V22 purge 函数 + @Scheduled）。
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 P2-03 审计修复续卡

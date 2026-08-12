@@ -910,3 +910,9 @@ tasks:
     taskCard: docs/tasks/TASK-0168-owner-injection-filter-trusted-principal-binding.md
     evidence: docs/evidence/TASK-0168/evidence-pack.json
     handoff: docs/handoffs/TASK-0168.json
+  TASK-0169:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0169-p2-03-password-minimum-policy-and-complexity.md
+    evidence: docs/evidence/TASK-0169/evidence-pack.json
+    handoff: docs/handoffs/TASK-0169.json
