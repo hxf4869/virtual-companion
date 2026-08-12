@@ -52,6 +52,10 @@ import type {
   SnapshotResult,
 } from "@/api/realtime";
 import { readSseFrames, SseParseError, SseAbortedError } from "@/api/sse-parser";
+// TASK-0163 (§5.1.1): the wire envelope → StreamEvent parser lives in the tested
+// realtime-envelope module and reads the catalog's authoritative `event` field
+// (not `eventType`), so real backend envelopes are no longer silently dropped.
+import { parseStreamEvent } from "@/api/realtime-envelope";
 import type { StreamEvent } from "@/domain/stream-reducer";
 
 const RESUME_ENDPOINT = "/api/v1/realtime/resume";
@@ -59,19 +63,6 @@ const SNAPSHOT_ENDPOINT = "/api/v1/generations";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseEvent(value: unknown, epoch: number): StreamEvent | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const eventSeq = Number(value.eventSeq);
-  const streamEpoch = Number(value.streamEpoch ?? epoch);
-  const eventType = String(value.eventType ?? "");
-  if (!Number.isFinite(eventSeq) || !Number.isFinite(streamEpoch) || eventType === "") {
-    return null;
-  }
-  return { eventSeq, streamEpoch, eventType, payload: value.payload };
 }
 
 function createBrowserRealtimeDeps(): RealtimeDeps {
@@ -117,7 +108,7 @@ function createBrowserRealtimeDeps(): RealtimeDeps {
         const payload = frame.data as Record<string, unknown>;
         const candidates = Array.isArray(payload.events) ? payload.events : [frame.data];
         for (const candidate of candidates) {
-          const event = parseEvent(candidate, request.streamEpoch);
+          const event = parseStreamEvent(candidate, request.streamEpoch);
           if (event) {
             events.push(event);
           }
@@ -141,7 +132,7 @@ function createBrowserRealtimeDeps(): RealtimeDeps {
       const epoch = Number((data as { streamEpoch?: unknown }).streamEpoch ?? 1);
       const events: StreamEvent[] = [];
       for (const candidate of data.events) {
-        const event = parseEvent(candidate, epoch);
+        const event = parseStreamEvent(candidate, epoch);
         if (event) {
           events.push(event);
         }
