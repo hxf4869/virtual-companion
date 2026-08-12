@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0162
+activeTaskCard: docs/tasks/TASK-0162-p2-13-admin-seed-concurrency-guard.md
 lastAcceptedTask: TASK-0158
 lastAcceptedHandoff: docs/handoffs/TASK-0158.json
 lastTerminalTask: TASK-0158
 lastTerminalHandoff: docs/handoffs/TASK-0158.json
-nextAction: 'TASK-0158 闭环。下一步：按 docs/evidence/TASK-0109/zcode-remediation-handoff.md §3-6 评估剩余 OPEN/OWNER_GATE 审计项（P1-04/05 DB principal、P1-11 readiness、P2-04/P3-05/P3-06 auth hygiene、P2-12 JDBC snapshot、P2-13 admin seed、P2-20..P2-26 Harness/CI 组、P3-01..P3-08），选下一个 single-card 一次一张推进；全部修复后对最新 origin/main 做独立全项目复审（串行完整 Harness unittest discover + canonical precheck + 根级 Maven verify，作为 longline 收尾总 PASS）。'
+nextAction: '执行 TASK-0162（P2-13 admin seed 并发保护）：新增 V19 migration 给 vc.identity_admin_seed 加 pg_advisory_xact_lock 串行化 bootstrap check-then-insert + 58 号 dblink 并发负测（count(ADMIN)=1 + 两返回值相同）；C4 database-migration + static-gates-only 验证（doctor + canonical precheck + run-rls-tests.sh + git diff --check + R1 独立静态）；完成后更新 nextAction 评估剩余 OPEN/OWNER_GATE 项选下一卡。'
 capabilityGates:
   businessImplementation:
     state: BLOCKED
