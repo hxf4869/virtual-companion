@@ -420,10 +420,10 @@ reviewers:
   - id: task0181_r1
     kind: independent-review-gate
     verdict: PASS
-    reviewedCommit: PLACEHOLDER_CANDIDATE_SHA
+    reviewedCommit: d1d97a3086cb8b326d1ef451a9981db80db06222
     evidencePath: docs/evidence/TASK-0181/review-r1.md
     reason: "R1 完整复核 PASS（candidate 回填）：C4 治理字段齐全；V26 SD 函数符合 V17/V18 硬化模式（trusted-owner 断言、search_path=vc,pg_catalog、REVOKE PUBLIC+GRANT vc_api、generation 存在性校验）；provider 选择与 DeterministicRouter 候选规则一致；loopback adapter 只接受 ExternalAttemptBinding 且 protocol=FAKE；装配条件与 ApprovedModelProviderConfig 一致；Diff 未越 writeAllowlist。"
-    candidateTree: PLACEHOLDER_CANDIDATE_TREE
+    candidateTree: 3042daf90020b3d5127f69133eab89fb79ccfed4
 ```
 
 > 本卡不在 Backlog 中，不写 `planningBacklog` 或 `planningContractHash`。它是 generation/companion 纵切的

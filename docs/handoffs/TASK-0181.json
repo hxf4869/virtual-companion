@@ -2,7 +2,7 @@
   "taskId": "TASK-0181",
   "state": "ACCEPTED",
   "baseCommit": "aa3d7f7848aeda1c10b37d039d2069e8b6ba1a7a",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "d1d97a3086cb8b326d1ef451a9981db80db06222",
   "evidencePath": "docs/evidence/TASK-0181/evidence-pack.json",
   "completed": [
     "V26__authorization_snapshot_runtime_creation.sql（新，db/migration）：vc.create_authorization_snapshots(bigint,bigint,text,text,text,text,text[]) RETURNS TABLE(out_requested_id,out_execution_id)——SECURITY DEFINER + SET search_path=vc,pg_catalog（V18 模式）；NULL/blank 校验 + purpose 白名单（catalog processing-purposes 六值）+ V17 trusted-owner 断言（p_owner_user_id IS DISTINCT FROM current_owner_id RAISE）+ generation 存在性校验（owner 谓词不披露）+ 'snap_'||gen_random_uuid() 双 id + INSERT 双 ACTIVE 行（task_cancelled/source_data_deleted=false）+ REVOKE PUBLIC + GRANT vc_api。",
