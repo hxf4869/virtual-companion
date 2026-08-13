@@ -2,7 +2,7 @@
   "taskId": "TASK-0187",
   "state": "ACCEPTED",
   "baseCommit": "5259515a79af140dac761de1ae2f97d52e1f9e59",
-  "headCommit": "0000000000000000000000000000000000000000",
+  "headCommit": "7f9f9e3be0dd9285e80a78707445d2ea7f7153ff",
   "evidencePath": "docs/evidence/TASK-0187/evidence-pack.json",
   "completed": [
     "frontend/src/api/relationship.ts（新）：typed relationship API client 照 chat.ts/memory.ts 模式。RelationshipTransport 接口（结构兼容 AuthTransport/ChatTransport）；Relationship 类型（relationshipId/personaRef/active/createdAt）；RelationshipHttpError（unauthorized/server/client）；createRelationship（POST /api/v1/relationships body {personaRef}）/listRelationships（GET /api/v1/relationships）/getRelationship（GET /{id}）/activateRelationship（POST /{id}）/deactivateRelationship（POST /{id}/deactivate）；403/404→null/空数组存在性隐藏（INV-TENANT-001）；401/5xx→throw；asId 接受 string|number 归一 string（Java long wire format）。",
