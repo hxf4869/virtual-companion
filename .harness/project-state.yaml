@@ -4,23 +4,21 @@ phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
 activeTask: null
 activeTaskCard: null
-lastAcceptedTask: TASK-0186
-lastAcceptedHandoff: docs/handoffs/TASK-0186.json
-lastTerminalTask: TASK-0186
-lastTerminalHandoff: docs/handoffs/TASK-0186.json
+lastAcceptedTask: TASK-0187
+lastAcceptedHandoff: docs/handoffs/TASK-0187.json
+lastTerminalTask: TASK-0187
+lastTerminalHandoff: docs/handoffs/TASK-0187.json
 nextAction: >-
-    TASK-0186（H5 Chat 发送流程 + 历史 API 消费纵切）闭环 ACCEPTED：chat.ts typed API
-    client（createConversation/sendGeneration/listMessages/cancelGeneration
-    + ChatHttpError 存在性隐藏 + asId string|number 归一）+
-    authed-fetch.ts（Bearer+CSRF fetch wrapper 注入 realtime-transport 不改模块）+
-    stores/chat.ts send/loadHistory/initConversation（crypto.randomUUID 幂等键
-    → sendGeneration → stream → reload history）+ chat.vue 真实发送
-    UI（消息输入+发送+历史显示+sessionId UUID+认证 realtime）+ OpenAPI POST
-    /api/v1/conversations 端点（补后端已有 drift）+
-    CreateConversationRequest/ConversationResponse schema + dist
-    重新生成；frontend vitest 196/0/0 + type-check exit0 + openapi
-    validate/diff PASS + diff exit0。下一步：开卡时分配下一永久 ID，方向待 Owner
-    决策（候选：relationship 选择器 UI / e2e 纵切 / memory 纵切 / ID hashid 编码）。
+    TASK-0187（Relationship 选择器 UI 纵切）闭环 ACCEPTED：relationship.ts typed API
+    client（createRelationship/listRelationships/getRelationship/activateRelationship/deactivateRelationship
+    + RelationshipHttpError 存在性隐藏 + asId 归一）+
+    stores/relationship.ts（load/create/activate/deactivate + current 选择 +
+    status/error）+ RelationshipSelector.vue 选择器组件（下拉 activate + personaRef
+    创建 + a11y role=alert/status）+ chat.vue 移除 DEMO_RELATIONSHIP_ID 接
+    relationship store（mount load 选 active 关系→initConversation，无关系显示选择器）+
+    chat.spec.ts 异步 glue + selector 组件 spec；frontend vitest 234/0/0 +
+    type-check exit0 + diff exit0。下一步：开卡时分配下一永久 ID，方向待 Owner 决策（候选：memory
+    纵切 / e2e 纵切 / ID hashid 编码 / 回 backlog 其他卡）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

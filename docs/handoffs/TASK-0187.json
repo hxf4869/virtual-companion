@@ -1,0 +1,34 @@
+{
+  "taskId": "TASK-0187",
+  "state": "ACCEPTED",
+  "baseCommit": "5259515a79af140dac761de1ae2f97d52e1f9e59",
+  "headCommit": "0000000000000000000000000000000000000000",
+  "evidencePath": "docs/evidence/TASK-0187/evidence-pack.json",
+  "completed": [
+    "frontend/src/api/relationship.ts（新）：typed relationship API client 照 chat.ts/memory.ts 模式。RelationshipTransport 接口（结构兼容 AuthTransport/ChatTransport）；Relationship 类型（relationshipId/personaRef/active/createdAt）；RelationshipHttpError（unauthorized/server/client）；createRelationship（POST /api/v1/relationships body {personaRef}）/listRelationships（GET /api/v1/relationships）/getRelationship（GET /{id}）/activateRelationship（POST /{id}）/deactivateRelationship（POST /{id}/deactivate）；403/404→null/空数组存在性隐藏（INV-TENANT-001）；401/5xx→throw；asId 接受 string|number 归一 string（Java long wire format）。",
+    "frontend/src/api/relationship.spec.ts（新，19 项）：mock transport 覆盖 5 函数 wire（method+path+body）+ response 解析（relationshipId numeric→string + active boolean + createdAt）+ 存在性隐藏（403/404→null/空数组）+ 401/5xx throw + listRelationships 跳过 malformed 条目 + create body 解析失败→null。",
+    "frontend/src/stores/relationship.ts（新）：Pinia h5-relationship，setup 风格。relationships/currentRelationshipId/status/error state；current getter（按 id 查找）；load（listRelationships→填 relationships→current 取 active 那条，activeCompanionLimit=1）/create（createRelationship→load→set current）/activate（activateRelationship→load→set current）/deactivate（deactivateRelationship→load→清 current）/reset；catch→status=error 不伪成功。Transport 注入（照 stores/chat.ts 模式）。",
+    "frontend/src/stores/relationship.spec.ts（新，11 项）：mock RelationshipTransport 路由 by path。load 选 active 为 current / load 无 active 留 null / load 空 / load 401→status error / create 创建+reload+set current / create 404→null / activate 设 current+reload / activate 404→null / deactivate 清 current / deactivate 404→null / reset。",
+    "frontend/src/components/RelationshipSelector.vue（新，新建 components 目录）：纯展示组件。props relationships/currentId/status/busy；emits activate(id)/create(personaRef)。原生 <select>+<option> 列关系（change→emit activate，显示 personaRef + 活跃标记）+ <input data-testid=persona-ref> + <button data-testid=create-relationship>（disabled 空/busy）+ error role=alert + loading role=status aria-live=polite。显式 import 无需 easycom。",
+    "frontend/src/components/RelationshipSelector.spec.ts（新，7 项）：options 渲染（placeholder+每关系一项）/ activate emit 选中 id / create disabled 空 / create emit trim 后 personaRef / create disabled busy / error role=alert / loading role=status+aria-live。",
+    "frontend/src/pages/chat/chat.vue（改）：移除 DEMO_RELATIONSHIP_ID=\"1\" 硬编码；引入 useRelationshipStore + RelationshipSelector 组件 + 复用 createAuthenticatedTransport（同一 transport 喂 relationship 与 chat store，结构类型兼容）；onMounted relStore.load(transport)→若 currentRelationshipId 则 startConversation（reset+initConversation）；onRelActivate/onRelCreate 回调→relStore.activate/create→startConversation；模板 v-if=\"!hasRelationship\" 显示 RelationshipSelector，v-else 显示原 chat UI（history/draft/status/input/cancel 不变）。",
+    "frontend/src/pages/chat/chat.spec.ts（改，6 项）：stubFetch 增 /api/v1/relationships 分支（返回 active 关系）；5 项原断言改异步 flushPromises（message-input/send/status role+aria-live/send 禁用启用/history 容器）；新增 1 项无 active 关系时显示 RelationshipSelector 且隐藏 chat input。",
+    "context-lock 44 inputs（43 readAllowlist + 1 provenance，base 5259515，fingerprint 2e83fbdf），复刻 verify_context_lock 先复现 0186 869ff0d5 自验通过再生 0187；C2 治理闭环（task-intake，not-required review，forbiddenPaths 精确未越界）；ledger TASK-0187 完整 5 字段；nextAction 三处 sha256 一致。"
+  ],
+  "remaining": [
+    "memory.vue relationshipId 仍是自由文本输入（未接 relationship store/选择器；独立卡统一）。",
+    "CiExecutionPolicyTests.test_policy_rejects_backend_and_frontend_local_profile_drift 卡住独立排查（unittest discover 改单类规避）。",
+    "ID hashid 编码（当前 OpenAPI 用 decimal string，Java long 序列化为 number，前端 asId 归一为 string）。",
+    "长连接订阅模式（0184/0185 是一次性 resume 积压，非持续推送；未来若需订阅需新卡）。",
+    "e2e 纵切 TASK-0022 / memory 纵切 TASK-0027-0028（候选后续方向，待 Owner 决策）。"
+  ],
+  "knownRisks": [
+    "doctor / canonical precheck / 完整 unittest discover deferred per Owner 2026-08-13 策略（不标 PASS；最小验证 frontend vitest 234 + type-check + diff check 全 PASS）。下次跑长检查时应绿（writeAllowlist 合规 + context-lock 44 inputs 钉 base 5259515 + ledger 5 字段完整）。",
+    "authorizationCommit 占位符字符串（plan-approved-2026-08-13-relationship-selector-ui，精简长线流残留，与 TASK-0173..0186 同属已知残留；doctor ACCEPTED 态不校验该格式）。",
+    "relationship.create() 创建后仅 set current 不强制 activate（activeCompanionLimit=1 由后端约束；前端 current 是 chat 选择语义，与 server active 标记独立）。chat 在 current 关系下 createConversation，不要求该关系必须 active。",
+    "OpenAPI ID 类型 drift：OpenAPI 声明 type:string 但 Java backend 序列化 long 为 JSON number；relationship.ts asId 接受 string|number 归一 string 处理两端。hashid 编码待候选方向。",
+    "CiExecutionPolicyTests.test_policy_rejects_backend_and_frontend_local_profile_drift 在 unittest discover 中卡住（独立未修问题，本卡不碰）。",
+    "RelationshipSelector 用原生 <select>（happy-dom 可靠渲染）而非 uni-app <picker>；H5 端原生 select 可用，真机小程序端若需 <picker> 待独立卡。"
+  ],
+  "nextAction": "TASK-0187（Relationship 选择器 UI 纵切）闭环 ACCEPTED：relationship.ts typed API client（createRelationship/listRelationships/getRelationship/activateRelationship/deactivateRelationship + RelationshipHttpError 存在性隐藏 + asId 归一）+ stores/relationship.ts（load/create/activate/deactivate + current 选择 + status/error）+ RelationshipSelector.vue 选择器组件（下拉 activate + personaRef 创建 + a11y role=alert/status）+ chat.vue 移除 DEMO_RELATIONSHIP_ID 接 relationship store（mount load 选 active 关系→initConversation，无关系显示选择器）+ chat.spec.ts 异步 glue + selector 组件 spec；frontend vitest 234/0/0 + type-check exit0 + diff exit0。下一步：开卡时分配下一永久 ID，方向待 Owner 决策（候选：memory 纵切 / e2e 纵切 / ID hashid 编码 / 回 backlog 其他卡）。"
+}

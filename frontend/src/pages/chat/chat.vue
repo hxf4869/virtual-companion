@@ -7,53 +7,65 @@
     </view>
 
     <template v-else>
-      <view class="chat-history" data-testid="history">
-        <view
-          v-for="msg in messages"
-          :key="msg.messageId"
-          class="chat-message"
-          :class="msg.role"
-        >
-          <text class="role-tag">{{ roleLabel(msg.role) }}</text>
-          <text class="msg-content">{{ msg.content }}</text>
+      <RelationshipSelector
+        v-if="!hasRelationship"
+        :relationships="relStore.relationships"
+        :current-id="relStore.currentRelationshipId"
+        :status="relStore.status"
+        :busy="relStore.status === 'loading'"
+        @activate="onRelActivate"
+        @create="onRelCreate"
+      />
+
+      <template v-else>
+        <view class="chat-history" data-testid="history">
+          <view
+            v-for="msg in messages"
+            :key="msg.messageId"
+            class="chat-message"
+            :class="msg.role"
+          >
+            <text class="role-tag">{{ roleLabel(msg.role) }}</text>
+            <text class="msg-content">{{ msg.content }}</text>
+          </view>
         </view>
-      </view>
 
-      <view v-if="draft" class="chat-draft" data-testid="draft">
-        <text>{{ draft }}</text>
-      </view>
+        <view v-if="draft" class="chat-draft" data-testid="draft">
+          <text>{{ draft }}</text>
+        </view>
 
-      <view class="chat-status" data-testid="status" role="status" aria-live="polite">
-        <text>{{ statusText }}</text>
-      </view>
+        <view class="chat-status" data-testid="status" role="status" aria-live="polite">
+          <text>{{ statusText }}</text>
+        </view>
 
-      <view class="chat-input-area">
-        <input
-          v-model="inputText"
-          class="chat-input"
-          data-testid="message-input"
-          placeholder="输入消息…"
-          :disabled="isStreaming"
-          @keydown.enter="onSend"
-        />
-        <button
-          data-testid="send"
-          class="chat-send"
-          :disabled="isStreaming || !canSend"
-          @click="onSend"
-        >
-          发送
-        </button>
-        <button
-          v-if="isStreaming"
-          data-testid="cancel"
-          class="chat-cancel"
-          :aria-busy="isStreaming"
-          @click="onCancel"
-        >
-          取消
-        </button>
-      </view>
+        <view class="chat-input-area">
+          <input
+            v-model="inputText"
+            class="chat-input"
+            data-testid="message-input"
+            placeholder="输入消息…"
+            :disabled="isStreaming"
+            @keydown.enter="onSend"
+          />
+          <button
+            data-testid="send"
+            class="chat-send"
+            :disabled="isStreaming || !canSend"
+            @click="onSend"
+          >
+            发送
+          </button>
+          <button
+            v-if="isStreaming"
+            data-testid="cancel"
+            class="chat-cancel"
+            :aria-busy="isStreaming"
+            @click="onCancel"
+          >
+            取消
+          </button>
+        </view>
+      </template>
     </template>
   </view>
 </template>
@@ -66,11 +78,19 @@
 // no long-lived token in localStorage (per realtime-contract h5Security).
 //
 // TASK-0186: replaces the demo auto-start stream with a real send flow — the
-// page creates a conversation from a demo relationship, loads message history,
-// and lets the user type + send idempotent chat turns. sessionId is a client-
-// generated UUID (crypto.randomUUID) — the real source TASK-0025 deferred. The
-// realtime transport now carries the Bearer token + CSRF via createAuthedFetch
-// so ticket mint and stream resume authenticate against the server.
+// page creates a conversation, loads message history, and lets the user type +
+// send idempotent chat turns. sessionId is a client-generated UUID
+// (crypto.randomUUID) — the real source TASK-0025 deferred. The realtime
+// transport now carries the Bearer token + CSRF via createAuthedFetch so ticket
+// mint and stream resume authenticate against the server.
+//
+// TASK-0187: removes the hardcoded DEMO_RELATIONSHIP_ID. The page loads the
+// owner's relationships on mount (relationship store + typed relationship API
+// client) and creates the conversation under the active relationship. When no
+// relationship is active, the RelationshipSelector lets the user activate or
+// create one; the chat UI renders only after a relationship is selected. The
+// shared authenticated transport satisfies both the relationship and chat API
+// clients by structural typing.
 //
 // The status region carries role="status" + aria-live="polite" and the cancel
 // button aria-busy while streaming, so async phase changes are announced to
@@ -81,12 +101,10 @@ import { createAuthedFetch } from "@/api/authed-fetch";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import type { RealtimeDeps } from "@/api/realtime";
+import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
-
-// Alpha demo: relationshipId is fixed until a relationship selector is built.
-// The conversation is created on mount from this relationship.
-const DEMO_RELATIONSHIP_ID = "1";
+import { useRelationshipStore } from "@/stores/relationship";
 
 function resolveOrigin(): string {
   return typeof window !== "undefined" && window.location && window.location.origin
@@ -96,8 +114,10 @@ function resolveOrigin(): string {
 
 export default defineComponent({
   name: "ChatPage",
+  components: { RelationshipSelector },
   setup() {
     const store = useChatStore();
+    const relStore = useRelationshipStore();
     const auth = useAuthStore();
     const inputText = ref("");
     const initError = ref(false);
@@ -106,6 +126,8 @@ export default defineComponent({
     // the realtime ticket binding (mint body carries it).
     const sessionId = crypto.randomUUID();
 
+    // One authenticated transport serves both the relationship and chat API
+    // clients (identical {request → {ok,status,json}} structural shape).
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       onUnauthorized: () => auth.onUnauthorized(),
@@ -120,6 +142,7 @@ export default defineComponent({
     const draft = computed(() => store.draft);
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
+    const hasRelationship = computed(() => relStore.currentRelationshipId !== null);
 
     function roleLabel(role: string): string {
       if (role === "assistant") return "AI";
@@ -163,11 +186,44 @@ export default defineComponent({
       store.cancel();
     }
 
-    onMounted(async () => {
+    /**
+     * Reset the chat store and create a fresh conversation under the currently
+     * selected relationship. Used on mount (when an active relationship exists)
+     * and whenever the user activates/creates a relationship.
+     */
+    async function startConversation(): Promise<void> {
+      const relationshipId = relStore.currentRelationshipId;
+      if (!relationshipId) return;
+      store.reset();
       try {
-        await store.initConversation(transport, DEMO_RELATIONSHIP_ID);
+        await store.initConversation(transport, relationshipId);
       } catch {
         initError.value = true;
+      }
+    }
+
+    async function onRelActivate(relationshipId: string): Promise<void> {
+      const result = await relStore.activate(transport, relationshipId);
+      if (result) {
+        initError.value = false;
+        await startConversation();
+      }
+    }
+
+    async function onRelCreate(personaRef: string): Promise<void> {
+      const result = await relStore.create(transport, personaRef);
+      if (result) {
+        initError.value = false;
+        await startConversation();
+      }
+    }
+
+    onMounted(async () => {
+      // load() catches its own failures (status="error", no throw); the
+      // selector surfaces them without faking success.
+      await relStore.load(transport);
+      if (relStore.currentRelationshipId) {
+        await startConversation();
       }
     });
 
@@ -177,16 +233,20 @@ export default defineComponent({
     });
 
     return {
+      relStore,
       messages,
       draft,
       isStreaming,
       canSend,
+      hasRelationship,
       inputText,
       initError,
       statusText,
       roleLabel,
       onSend,
       onCancel,
+      onRelActivate,
+      onRelCreate,
     };
   },
 });
