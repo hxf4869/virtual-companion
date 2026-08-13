@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0189
-state: IN_PROGRESS
+state: BLOCKED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
