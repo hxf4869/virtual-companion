@@ -1,0 +1,119 @@
+{
+  "taskId": "TASK-0191",
+  "baseCommit": "3c7fd0b5b306325d51464053e7b3382044c3dd4b",
+  "headCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0",
+  "contextFingerprint": "56ca64e24e6fd668fa90bac08c53c6ce133c152a1859a29fdefc79edd1c1756e",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ef0507311891b6fdaaae94b86aca8fb56c47e0b1",
+      "startedAt": "2026-08-13T18:55:40+08:00",
+      "endedAt": "2026-08-13T23:36:13+08:00",
+      "elapsedSeconds": 16833,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ef0507311891b6fdaaae94b86aca8fb56c47e0b1",
+      "startedAt": "2026-08-13T18:55:40+08:00",
+      "endedAt": "2026-08-13T20:17:24+08:00",
+      "elapsedSeconds": 4904,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T20:17:24+08:00",
+      "inProgressCommit": "3fe5244f865d46b59a535cd25e5f52793366e28f"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "3fe5244f865d46b59a535cd25e5f52793366e28f",
+      "startedAt": "2026-08-13T20:17:24+08:00",
+      "endedAt": "2026-08-13T23:36:13+08:00",
+      "elapsedSeconds": 11929,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T20:17:24+08:00",
+      "inProgressCommit": "3fe5244f865d46b59a535cd25e5f52793366e28f"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0191_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0",
+      "evidencePath": "docs/evidence/TASK-0191/review-r1.md",
+      "reason": "R1 独立复核 6/6 PASS 并裁决 APPROVE（同意按真实结果 REJECTED 闭合）：诚实性（无 PASS 伪装、工作树干净）、实现正确性（V27 四元域分离绑定/每调用重校验/双 REVOKE 防 minting-oracle/无密钥明文；Java 无秘密泄漏）、amendment 合规（2668949 单父恰 6 路径、合同逐字一致、contractHash e97473f9 复算相符）、验证真实性（Reviewer 独立重跑 mvn 340/340 exit0、doctor exit1 恰 3 errors、precheck exit1、RLS 74 PASS/0 FAIL、diff --check exit0）、范围事实（例外恰为 backlog 与 00-seed 两条）、REJECTED 依据成立；P0/P1/P2=0。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0191",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor（bind 66ab033 后）PASS 877500 checks，108.0s",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 8f08bb1 真实执行：74/74 全 PASS（00 seed + 01-68 改造后 + 69-73 新增正负隔离测试），exit 0；实现者与独立 Reviewer 各验证一次（Reviewer 复核 74 PASS/0 FAIL）",
+      "verifiedCommit": null,
+      "candidateCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0"
+    },
+    {
+      "command": "JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 8f08bb1：Tests run 340, Failures 0, Errors 0, BUILD SUCCESS；实现者与独立 Reviewer 各跑一次均 exit 0",
+      "verifiedCommit": null,
+      "candidateCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "3c7fd0b..8f08bb1 全量 range 与工作树均无 whitespace 错误；Reviewer 独立复跑 exit 0",
+      "verifiedCommit": null,
+      "candidateCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0191",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "doctor 子命令 FAIL（exit 1，882594 checks），恰 3 项范围 error 原样记录：① changed path is outside writeAllowlist: .harness/task-backlog.yaml ② changed path is forbidden: .harness/task-backlog.yaml（amendment 边 2668949 按 validate_amendment_introduction 必须原子含 backlog，但本卡冻结 forbiddenPaths 含 backlog，diff-scope 联合检查重复拒绝——doctor 在 amendment 机制与 diff-scope 联合检查间的设计缺口，TASK-0037 先例因卡 writeAllowlist 本含 backlog 未触发）③ changed path is outside writeAllowlist: infra/db/tests/00_owner_binding_secret_seed.sql（READY 冻结清单遗漏测试 fixture）。其余 7 项命令（licenseCheck/catalog/openapi/beta/paid 等）全部 PASS。根因与修复路径已由 Owner 裁决移交后续 C4 Harness 恢复卡。",
+      "verifiedCommit": null,
+      "candidateCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0191 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "终态闭包前真实执行 exit 1（167.2s），与候选同源同因恰 3 项范围 error；按 Owner 2026-08-13 裁决（修正版 A）以真实 FAIL 记录并闭合 REJECTED，未转换、未省略",
+      "verifiedCommit": null,
+      "candidateCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0"
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "完整 discover 未执行（NOT_RUN）：CiExecutionPolicyTests 单类本地约 34 分钟远超 CI full job 10 分钟预算（TASK-0189/0190 已记录），本卡延续如实保留，不表述为 CI 兼容",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    }
+  ]
+}

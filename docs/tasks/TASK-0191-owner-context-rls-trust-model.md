@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0191
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -289,7 +289,30 @@ humanApprovals:
       隔离另卡处理，本卡不得声称已解决应用进程或 migrator 凭据完全失陷；
       完整 discover NOT_RUN 与 34 分钟 CI 预算风险继续如实记录。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0191_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 8f08bb1d197c2787d91080aa33684a8444b8b7b0
+    evidencePath: docs/evidence/TASK-0191/review-r1.md
+    reason: >-
+      R1 独立复核 6/6 PASS 并裁决 APPROVE（同意按真实结果 REJECTED 闭合）：
+      诚实性、实现正确性（V27 四元域分离绑定/每调用重校验/双 REVOKE/无
+      密钥明文）、amendment 合规（2668949 单父恰 6 路径、合同逐字一致、
+      contractHash e97473f9 复算相符）、验证真实性（独立重跑 mvn 340/340、
+      doctor exit1 恰 3 errors、precheck exit1、RLS 74 PASS/0 FAIL、diff
+      --check exit0）、范围事实（例外恰为 backlog 与 00-seed）、REJECTED
+      依据成立；P0/P1/P2=0。
+terminalStateReason: >-
+  canonical precheck 真实 FAIL（exit 1，恰 3 项范围 error，原样记录于
+  Evidence）：amendment 边的 .harness/task-backlog.yaml 变更被 diff-scope
+  联合检查重复拒绝（doctor 在 validate_amendment_introduction 与
+  validate_diff_scope 间的设计缺口；本卡 forbiddenPaths 冻结含 backlog 属
+  卡设计错误），infra/db/tests/00_owner_binding_secret_seed.sql 为 READY
+  冻结清单遗漏且已被先行引入不可追溯授权。按 Owner 2026-08-13 修正版 A
+  裁决以真实 FAIL 闭合 REJECTED；RLS 74/74、mvn 340/340、git diff --check
+  与 C4 独立复核均真实 PASS 并完整记录；实现不以 ACCEPTED 描述，后续经
+  C4 Harness 恢复卡修复缺口后由独立任务卡正式接纳。
 scopeAmendments:
   - schemaVersion: 2
     amendmentId: owner-amendment-20260813-task-0191-scope-01

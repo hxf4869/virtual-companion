@@ -996,3 +996,9 @@ tasks:
     taskCard: docs/tasks/TASK-0190-license-inventory-jackson-databind.md
     evidence: docs/evidence/TASK-0190/evidence-pack.json
     handoff: docs/handoffs/TASK-0190.json
+  TASK-0191:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0191-owner-context-rls-trust-model.md
+    evidence: docs/evidence/TASK-0191/evidence-pack.json
+    handoff: docs/handoffs/TASK-0191.json
