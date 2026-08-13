@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01",
+  "decisionId": "TASK-0189-POST-TERMINAL-TAIL-ACCEPTANCE-20260813",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_POST_TERMINAL_TAIL_ACCEPTANCE",
+  "targetTask": "TASK-0189",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-13",
+  "sourceThreadId": "zcode-audit-20260813",
+  "terminalCommit": "7f9f9e3be0dd9285e80a78707445d2ea7f7153ff",
+  "terminalTaskId": "TASK-0187",
+  "terminalState": "ACCEPTED",
+  "tailCommit": "c6260059f09cd69595a70aee7ef39de45e99ca78",
+  "tailChangedPaths": [
+    "docs/evidence/TASK-0187/evidence-pack.json",
+    "docs/handoffs/TASK-0187.json"
+  ],
+  "draftAnchorBaseCommit": "c6260059f09cd69595a70aee7ef39de45e99ca78",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false,
+  "remoteDispatchAuthorized": false,
+  "evidence": "Owner 于 2026-08-13 按审计交接决策正式授权 TASK-0189 恢复 canonical greenline：唯一 pre-READY maintenance 边 OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01 机器绑定接受 7f9f9e3→c626005（TASK-0187 canonical terminal 后的 evidence/handoff headCommit 回填 metadata tail，仅改 docs/evidence/TASK-0187/evidence-pack.json 与 docs/handoffs/TASK-0187.json，每文件恰将 headCommit 占位 0000000000000000000000000000000000000000 回填为 7f9f9e3be0dd9285e80a78707445d2ea7f7153ff）作为 TASK-0189 DRAFT 锚（baseCommit=c626005）；同时实现严格限定的 legacy reviewers compatibility：仅终态（ACCEPTED/REJECTED/SUPERSEDED）C1/C2 且 independentReview: not-required 的任务允许缺省 reviewers 字段，其余情况失败关闭；不得补写 TASK-0185/0186/0187 历史卡；维护边只允许 6 个冻结路径（.harness/ci-execution-policy.yaml、docs/evidence/TASK-0189/pre-ready-maintenance-authorization.json、scripts/harness/doctor.py、scripts/harness/tests/test_harness.py、skills/task-delivery-flow/SKILL.md、skills/task-intake/SKILL.md）、一次性消费、不可复用、禁止历史改写/通用 override；TASK-0185/0186/0187 的 authorizationCommit 占位（plan-approved-...）接受为不可逆死债并在 Evidence/Handoff 如实记录。"
+}

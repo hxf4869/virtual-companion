@@ -187,6 +187,35 @@ description: Execute one governed repository task or coordinate a strictly seria
   Ordinary READY authorization and a real READY Doctor PASS remain mandatory;
   afterwards the P1-03/P2-10 database implementation proceeds on TASK-0098.
 
+## TASK-0189 one-time post-terminal tail acceptance + legacy reviewers compatibility
+
+- The only TASK-0189 pre-READY maintenance record is
+  `OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01`. Accept exactly one
+  direct single-parent child of the frozen TASK-0189 DRAFT and bind its Base
+  tail `c626005`, DRAFT, derived Commit and Tree, the frozen 6-path set,
+  mode/type/blob/content identities, and the exact Owner authorization.
+- Machine-bind the pushed post-terminal edge `7f9f9e3 -> c626005`
+  (TASK-0187 canonical terminal -> evidence/handoff headCommit backfill
+  metadata tail changing only `docs/evidence/TASK-0187/evidence-pack.json`
+  and `docs/handoffs/TASK-0187.json`) as the DRAFT anchor: baseCommit =
+  `c626005`. Validate that `c626005` is the direct single-parent child of
+  `7f9f9e3` and that each file's `headCommit` is backfilled from the
+  placeholder `0000...` to the terminal commit byte-for-byte.
+- The same maintenance boundary implements the strictly limited legacy
+  reviewers compatibility: only terminal-state C1/C2 tasks with
+  `independentReview: not-required` may omit the `reviewers` field; every
+  other omission (active state, C3/C4, required review) fails closed. It
+  must not add `reviewers` to the historical TASK-0185/0186/0187 cards.
+- The record is one-time, consumed when TASK-0189's READY authorization is
+  committed, inert after terminal, and never reusable by another task.
+  A copied record, a second consumption, an extra commit or path, or any
+  changed identity fails closed. No environment variable, CLI flag, Git note,
+  replace, graft, history rewrite, configurable allowlist, or generalized
+  override is authorized.
+- Ordinary READY authorization and a real READY Doctor PASS remain
+  mandatory; afterwards canonical greenline is restored so that later cards
+  can use `c626005` as their Base.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from

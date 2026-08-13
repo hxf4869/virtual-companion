@@ -173,7 +173,7 @@ TASK_0075_CI_POLICY_PROJECTION_HASH = (
     "fc6622dfad6fba0aa15d3af403faedc28ee69b0ff93f89fd1886953d2b1ce8eb"
 )
 CI_EXECUTION_POLICY_CANONICAL_HASH = (
-    "f8f2ea2088cd6075c599fb406de6b1f9c65b52eb39fd14be9fe8ddb122ccd6fe"
+    "6f0d97679d5488dc321f38950e5fb09c57a962c18d8ce7b8b7ddc23e153324be"
 )
 TASK_0073_CI_POLICY_PROJECTION_HASH = (
     "3a253a215a88d4b9bd987d7dd2cbf0b2400f93fbd7086b071eb511f81f9cf8a1"
@@ -383,6 +383,70 @@ TASK_0098_EXACT_OWNER_AUTHORIZATION = (
     "通用 override；落地后继续 P1-03+P2-10 终态并发修复。"
 )
 TASK_0098_CI_POLICY_PROJECTION_HASH = "e04d3c6dab7ebcc3d6253683bcb05fbac4bb274a8d07976b5b5ae69e15a05170"
+TASK_0189_MAINTENANCE_RECORD_ID = ("OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01")
+TASK_0189_TASK_ID = "TASK-0189"
+TASK_0189_CARD_PATH = "docs/tasks/TASK-0189-canonical-greenline-restore.md"
+TASK_0189_CONTEXT_PATH = "docs/tasks/context/TASK-0189.context-lock.yaml"
+TASK_0189_MAINTENANCE_AUTHORIZATION_PATH = "docs/evidence/TASK-0189/pre-ready-maintenance-authorization.json"
+TASK_0189_TERMINAL_COMMIT = "7f9f9e3be0dd9285e80a78707445d2ea7f7153ff"
+TASK_0189_TERMINAL_TREE = "a0b261b5b85f022c98e536e2f45da007a5b8e10d"
+TASK_0189_TAIL_COMMIT = "c6260059f09cd69595a70aee7ef39de45e99ca78"
+TASK_0189_TAIL_TREE = "886378903a5e141c26427b2fd3666a015cfc1abe"
+TASK_0189_TAIL_CHANGED_PATHS = (
+    "docs/evidence/TASK-0187/evidence-pack.json",
+    "docs/handoffs/TASK-0187.json",
+)
+TASK_0189_HEADCOMMIT_PLACEHOLDER = "0000000000000000000000000000000000000000"
+# headCommit backfill identities: blob OID at the terminal commit (placeholder)
+# and at the tail commit (real headCommit), plus the tail blob content sha256.
+TASK_0189_TAIL_FILES = {
+    "docs/evidence/TASK-0187/evidence-pack.json": {
+        "terminalBlob": "4d253954df8c83d7abc08061efe1005a49c1cf3b",
+        "tailBlob": "93ee33e3e30272842aa907066a5140c741770636",
+        "tailSha256": "4b239c672f6c212bd406c199863d790ba59d4bc1e69e9aef746e25794f477041",
+    },
+    "docs/handoffs/TASK-0187.json": {
+        "terminalBlob": "4f2357a79ef33538eae7cee25fa1cf57504e114e",
+        "tailBlob": "878951e2fee0ae7964caf20556a88bb98e790795",
+        "tailSha256": "18357061bb33f9a4a85f1867ff6e37357980ede28a9b60e6db949550815331e9",
+    },
+}
+TASK_0189_DRAFT_COMMIT = "3b5e5566be094f0780d13a7a81dafa1b9faf790c"
+TASK_0189_DRAFT_TREE = "93ff10d2de6351aceba4c054e83bee90d74e33c6"
+TASK_0189_DRAFT_FILES = {
+    TASK_0189_CARD_PATH: {
+        "blobOid": "7971887d6b7c0665e753764a238cb0da9b586686",
+        "sha256": "8e5a67735c3313faefe57521ac4982bb2204511cc62dbffc0863c6c0a81024cf",
+    },
+    TASK_0189_CONTEXT_PATH: {
+        "blobOid": "bdfb97957a1a82d8e52e3e5eb1773c0c507da111",
+        "sha256": "136cf15195f315daa514d044ea1467eabe8e9f76581218725839146cfbee3b84",
+    },
+}
+TASK_0189_PRE_READY_MAINTENANCE_PATHS = {
+    ".harness/ci-execution-policy.yaml",
+    "docs/evidence/TASK-0189/pre-ready-maintenance-authorization.json",
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+    "skills/task-delivery-flow/SKILL.md",
+    "skills/task-intake/SKILL.md",
+}
+TASK_0189_EXACT_OWNER_AUTHORIZATION = (
+    "Owner 于 2026-08-13 按审计交接决策正式授权 TASK-0189 恢复 canonical greenline：唯一 "
+    "pre-READY maintenance 边 OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01 机器绑定"
+    "接受 7f9f9e3→c626005（TASK-0187 canonical terminal 后的 evidence/handoff headCommit "
+    "回填 metadata tail，仅改 docs/evidence/TASK-0187/evidence-pack.json 与 "
+    "docs/handoffs/TASK-0187.json，每文件恰将 headCommit 占位 "
+    "0000000000000000000000000000000000000000 回填为 "
+    "7f9f9e3be0dd9285e80a78707445d2ea7f7153ff）作为 TASK-0189 DRAFT 锚"
+    "（baseCommit=c626005）；同时实现严格限定的 legacy reviewers compatibility：仅终态"
+    "（ACCEPTED/REJECTED/SUPERSEDED）C1/C2 且 independentReview: not-required 的任务允许"
+    "缺省 reviewers 字段，其余情况失败关闭；不得补写 TASK-0185/0186/0187 历史卡；维护边只"
+    "允许 6 个冻结路径、一次性消费、不可复用、禁止历史改写/通用 override；"
+    "TASK-0185/0186/0187 的 authorizationCommit 占位接受为不可逆死债并在 Evidence/Handoff "
+    "如实记录。"
+)
+TASK_0189_CI_POLICY_PROJECTION_HASH = "6f0d97679d5488dc321f38950e5fb09c57a962c18d8ce7b8b7ddc23e153324be"
 TASK_0073_MAINTENANCE_COMMIT = "b1c37678ab773eca150bdbb273ddafa5d14b781f"
 TASK_0073_MAINTENANCE_TREE = "6d0c9f5852313219af370ba411dd192afafd0f73"
 TASK_0073_MAINTENANCE_CI_POLICY_BLOB = "9efc2356531f515b3bfc758044863bfe8c998eca"
@@ -3597,6 +3661,14 @@ def validate_ready_project_state_checkpoint(
             draft_paths | TASK_0077_PRE_READY_MAINTENANCE_PATHS,
             f"{task_id}: pre-READY history",
         )
+    elif task_id == TASK_0189_TASK_ID:
+        audit.require(
+            parent_commit != authorization_commit
+            and task0189_post_terminal_tail_boundary_candidate(parent_commit),
+            "TASK-0189 post-terminal tail acceptance: READY parent must be the "
+            "exact single-parent maintenance boundary",
+        )
+        validate_task0189_post_terminal_tail_boundary(audit, parent_commit)
     elif task_id == TASK_0098_TASK_ID:
         audit.require(
             parent_commit != authorization_commit
@@ -4454,6 +4526,7 @@ def ci_execution_policy_projection(policy: dict[str, Any]) -> dict[str, Any]:
         "task0075PreReadyMaintenance",
         "task0076PreReadyMaintenance",
         "task0098PostTerminalTail",
+        "task0189PostTerminalTail",
     ):
         try:
             doctor_identity = projection[record_name]["boundary"]["files"]["doctor"]
@@ -6054,6 +6127,528 @@ def validate_task0076_pre_ready_maintenance_boundary(
             audit.error(f"{label}: authorization file is not valid JSON")
 
 
+def validate_task0189_post_terminal_tail_record(
+    audit: Audit,
+    policy: dict[str, Any],
+) -> dict[str, Any] | None:
+    """TASK-0189 one-time post-terminal tail acceptance record.
+
+    Machine-binds the pushed post-terminal edge 7f9f9e3 -> c626005 (TASK-0187
+    canonical terminal -> evidence/handoff headCommit backfill metadata tail
+    changing only docs/evidence/TASK-0187/evidence-pack.json and
+    docs/handoffs/TASK-0187.json, each replacing the headCommit placeholder
+    0000... with the real terminal SHA) as the TASK-0189 DRAFT anchor so the
+    DRAFT can legitimately use baseCommit = c626005. The tail headCommit of
+    each file must equal the terminal commit byte-for-byte.
+    """
+    record = policy.get("task0189PostTerminalTail")
+    label = "TASK-0189 post-terminal tail acceptance"
+    audit.require(
+        isinstance(record, dict),
+        f"{label}: machine record is missing or not an object",
+    )
+    if not isinstance(record, dict):
+        return None
+    audit.require(
+        set(record)
+        == {
+            "schemaVersion",
+            "recordId",
+            "decisionId",
+            "kind",
+            "targetTask",
+            "sourceThreadId",
+            "authorization",
+            "terminal",
+            "tail",
+            "draft",
+            "boundary",
+            "activation",
+            "consumption",
+            "validationChannel",
+            "forbiddenInterfaces",
+        },
+        f"{label}: record fields do not match the exact schema",
+    )
+    audit.require(
+        record.get("schemaVersion") == 1
+        and record.get("recordId") == TASK_0189_MAINTENANCE_RECORD_ID
+        and record.get("decisionId")
+        == "TASK-0189-POST-TERMINAL-TAIL-ACCEPTANCE-20260813"
+        and record.get("kind")
+        == "OWNER_AUTHORIZED_EXACT_ONE_TIME_POST_TERMINAL_TAIL_ACCEPTANCE"
+        and record.get("targetTask") == TASK_0189_TASK_ID
+        and record.get("sourceThreadId") == "zcode-audit-20260813",
+        f"{label}: record identity drifted",
+    )
+    audit.require(
+        record.get("terminal")
+        == {
+            "commit": TASK_0189_TERMINAL_COMMIT,
+            "tree": TASK_0189_TERMINAL_TREE,
+            "taskId": "TASK-0187",
+            "state": "ACCEPTED",
+        },
+        f"{label}: terminal binding drifted",
+    )
+    authorization = record.get("authorization")
+    audit.require(
+        isinstance(authorization, dict)
+        and set(authorization) == {"path", "sha256"}
+        and authorization.get("path") == TASK_0189_MAINTENANCE_AUTHORIZATION_PATH
+        and bool(
+            re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(authorization.get("sha256", "")),
+            )
+        ),
+        f"{label}: Owner authorization binding drifted",
+    )
+    tail = record.get("tail")
+    audit.require(
+        isinstance(tail, dict)
+        and set(tail)
+        == {"commit", "tree", "parent", "changedPaths", "headCommitBackfill", "files"}
+        and tail.get("commit") == TASK_0189_TAIL_COMMIT
+        and tail.get("tree") == TASK_0189_TAIL_TREE
+        and tail.get("parent") == TASK_0189_TERMINAL_COMMIT
+        and tail.get("changedPaths") == list(TASK_0189_TAIL_CHANGED_PATHS),
+        f"{label}: tail binding drifted",
+    )
+    backfill = tail.get("headCommitBackfill")
+    tail_files = tail.get("files")
+    audit.require(
+        isinstance(backfill, dict)
+        and set(backfill) == {"placeholder", "actual"}
+        and backfill.get("placeholder") == TASK_0189_HEADCOMMIT_PLACEHOLDER
+        and backfill.get("actual") == TASK_0189_TERMINAL_COMMIT,
+        f"{label}: headCommit backfill binding drifted",
+    )
+    audit.require(
+        isinstance(tail_files, dict)
+        and set(tail_files) == set(TASK_0189_TAIL_CHANGED_PATHS),
+        f"{label}: tail file set drifted",
+    )
+    for path, identity in tail_files.items():
+        expected = TASK_0189_TAIL_FILES[path]
+        audit.require(
+            isinstance(identity, dict)
+            and set(identity) == {"tailBlob", "tailSha256"}
+            and identity.get("tailBlob") == expected["tailBlob"]
+            and identity.get("tailSha256") == expected["tailSha256"],
+            f"{label}: tail file identity drifted: {path}",
+        )
+    draft = record.get("draft")
+    audit.require(
+        isinstance(draft, dict)
+        and set(draft) == {"commit", "tree", "parent", "changedFiles"}
+        and draft.get("commit") == TASK_0189_DRAFT_COMMIT
+        and draft.get("tree") == TASK_0189_DRAFT_TREE
+        and draft.get("parent") == TASK_0189_TAIL_COMMIT
+        and isinstance(draft.get("changedFiles"), dict)
+        and set(draft.get("changedFiles", {}))
+        == {TASK_0189_CARD_PATH, TASK_0189_CONTEXT_PATH},
+        f"{label}: DRAFT binding drifted",
+    )
+    for path, identity in (draft.get("changedFiles") or {}).items():
+        expected = TASK_0189_DRAFT_FILES[path]
+        audit.require(
+            isinstance(identity, dict)
+            and set(identity) == {"mode", "type", "blobOid", "sha256"}
+            and identity.get("mode") == "100644"
+            and identity.get("type") == "blob"
+            and identity.get("blobOid") == expected["blobOid"]
+            and identity.get("sha256") == expected["sha256"],
+            f"{label}: DRAFT file identity drifted: {path}",
+        )
+    boundary = record.get("boundary")
+    audit.require(
+        isinstance(boundary, dict)
+        and set(boundary)
+        == {
+            "directParentCommit",
+            "directParentTree",
+            "singleParentRequired",
+            "identityBinding",
+            "changedPaths",
+            "requiredMode",
+            "requiredType",
+            "policyContentBinding",
+            "files",
+        }
+        and boundary.get("directParentCommit") == TASK_0189_DRAFT_COMMIT
+        and boundary.get("directParentTree") == TASK_0189_DRAFT_TREE
+        and boundary.get("singleParentRequired") is True
+        and boundary.get("identityBinding")
+        == "COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT"
+        and boundary.get("requiredMode") == "100644"
+        and boundary.get("requiredType") == "blob"
+        and boundary.get("policyContentBinding")
+        == "CANONICAL_JSON_REDACT_TASK0189_BOUNDARY_DOCTOR_IDENTITY"
+        and boundary.get("changedPaths")
+        == sorted(TASK_0189_PRE_READY_MAINTENANCE_PATHS),
+        f"{label}: boundary contract drifted",
+    )
+    audit.require(
+        record.get("activation")
+        == {
+            "allowedState": "DRAFT",
+            "readyDoctorPassRequired": True,
+            "copiedRecordForbidden": True,
+            "extraCommitOrPathForbidden": True,
+        },
+        f"{label}: activation contract drifted",
+    )
+    audit.require(
+        record.get("consumption")
+        == {
+            "consumedByTask": TASK_0189_TASK_ID,
+            "consumedWhen": "READY_AUTHORIZATION_COMMITTED",
+            "inertAfterConsumption": True,
+            "reusableByOtherTask": False,
+        },
+        f"{label}: consumption contract drifted",
+    )
+    audit.require(
+        record.get("validationChannel")
+        == {
+            "channel": "LOCAL_EXACT_TREE_FALLBACK",
+            "profile": "precheck",
+            "remote": "UNKNOWN_NOT_RUN",
+            "dispatchCount": 0,
+            "passClaimed": False,
+        },
+        f"{label}: validation channel binding drifted",
+    )
+    audit.require(
+        record.get("forbiddenInterfaces")
+        == {
+            "cliFlag": False,
+            "environmentVariable": False,
+            "gitNote": False,
+            "gitReplace": False,
+            "gitGraft": False,
+            "historyRewrite": False,
+            "configurableAllowlist": False,
+            "wildcardWritePath": False,
+            "generalizedOverride": False,
+            "branchOrWorktree": False,
+            "githubActionsDispatch": False,
+        },
+        f"{label}: forbidden-interface contract drifted",
+    )
+    audit.require(
+        not any(
+            key != "task0189PostTerminalTail" and value == record
+            for key, value in policy.items()
+        ),
+        f"{label}: copied machine record is forbidden",
+    )
+    # Live tail edge facts: c626005 must be the direct single-parent child of
+    # the terminal commit 7f9f9e3, changing exactly the two evidence/handoff
+    # files, and each file must backfill headCommit from the placeholder to
+    # the terminal commit.
+    graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        TASK_0189_TAIL_COMMIT,
+    ).stdout.split()
+    audit.require(
+        graph == [TASK_0189_TAIL_COMMIT, TASK_0189_TERMINAL_COMMIT],
+        f"{label}: tail must be a direct single-parent child of the terminal commit",
+    )
+    audit.require(
+        changed_paths_between(
+            TASK_0189_TERMINAL_COMMIT,
+            TASK_0189_TAIL_COMMIT,
+        )
+        == list(TASK_0189_TAIL_CHANGED_PATHS),
+        f"{label}: tail changed paths drifted",
+    )
+    tail_tree = git_text(
+        "show",
+        "-s",
+        "--format=%T",
+        TASK_0189_TAIL_COMMIT,
+    ).stdout.strip()
+    audit.require(
+        tail_tree == TASK_0189_TAIL_TREE,
+        f"{label}: tail tree drifted",
+    )
+    for path, identity in TASK_0189_TAIL_FILES.items():
+        try:
+            terminal_head = str(
+                json.loads(
+                    git_object(TASK_0189_TERMINAL_COMMIT, path).decode("utf-8")
+                ).get("headCommit", "")
+            )
+            tail_head = str(
+                json.loads(
+                    git_object(TASK_0189_TAIL_COMMIT, path).decode("utf-8")
+                ).get("headCommit", "")
+            )
+        except (HarnessError, json.JSONDecodeError, UnicodeError) as exc:
+            audit.error(f"{label}: cannot read {path} headCommit: {exc}")
+            terminal_head = ""
+            tail_head = ""
+        audit.require(
+            terminal_head == TASK_0189_HEADCOMMIT_PLACEHOLDER
+            and tail_head == TASK_0189_TERMINAL_COMMIT,
+            f"{label}: headCommit backfill drifted: {path}",
+        )
+        entry = git_tree_entry(TASK_0189_TAIL_COMMIT, path)
+        audit.require(
+            entry is not None
+            and entry[:2] == ("100644", "blob")
+            and entry[2] == identity["tailBlob"]
+            and hashlib.sha256(
+                git_object(TASK_0189_TAIL_COMMIT, path)
+            ).hexdigest()
+            == identity["tailSha256"],
+            f"{label}: tail file blob/content drifted: {path}",
+        )
+    return record
+
+
+def task0189_post_terminal_tail_boundary_candidate(commit: str) -> bool:
+    if not commit or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        return False
+    parent_result = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", commit],
+        capture_output=True,
+        text=True,
+    )
+    if parent_result.returncode != 0:
+        return False
+    parts = parent_result.stdout.split()
+    return len(parts) == 2 and parts[0] == commit and parts[1] == TASK_0189_DRAFT_COMMIT
+
+
+def validate_task0189_post_terminal_tail_boundary(
+    audit: Audit,
+    parent_commit: str,
+) -> None:
+    label = "TASK-0189 post-terminal tail acceptance"
+    audit.require(
+        bool(parent_commit) and bool(re.fullmatch(r"[0-9a-f]{40}", parent_commit)),
+        f"{label}: boundary must be a full Git commit",
+    )
+    if not (parent_commit and re.fullmatch(r"[0-9a-f]{40}", parent_commit)):
+        return
+    boundary_commit = parent_commit
+    audit.require(
+        task0189_post_terminal_tail_boundary_candidate(boundary_commit),
+        f"{label}: boundary must be the direct single-parent child of the frozen DRAFT",
+    )
+    if not task0189_post_terminal_tail_boundary_candidate(boundary_commit):
+        return
+    tail_tree = git_text(
+        "show",
+        "-s",
+        "--format=%T",
+        TASK_0189_TAIL_COMMIT,
+    ).stdout.strip()
+    audit.require(
+        tail_tree == TASK_0189_TAIL_TREE,
+        f"{label}: tail tree drifted",
+    )
+    draft_graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        TASK_0189_DRAFT_COMMIT,
+    ).stdout.split()
+    draft_tree = git_text(
+        "show",
+        "-s",
+        "--format=%T",
+        TASK_0189_DRAFT_COMMIT,
+    ).stdout.strip()
+    audit.require(
+        draft_graph == [TASK_0189_DRAFT_COMMIT, TASK_0189_TAIL_COMMIT]
+        and draft_tree == TASK_0189_DRAFT_TREE,
+        f"{label}: DRAFT binding drifted",
+    )
+    ancestry = git_text(
+        "rev-list",
+        "--reverse",
+        "--ancestry-path",
+        f"{TASK_0189_TAIL_COMMIT}..{boundary_commit}",
+    ).stdout.splitlines()
+    audit.require(
+        ancestry == [TASK_0189_DRAFT_COMMIT, boundary_commit],
+        f"{label}: pre-READY ancestry contains an intervening commit",
+    )
+    draft_diff = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", "-z", TASK_0189_TAIL_COMMIT, TASK_0189_DRAFT_COMMIT],
+        capture_output=True,
+    )
+    actual_draft_paths = {p.decode("utf-8") for p in draft_diff.stdout.split(b"\0") if p}
+    audit.require(
+        actual_draft_paths == {TASK_0189_CARD_PATH, TASK_0189_CONTEXT_PATH},
+        f"{label}: DRAFT path set drifted",
+    )
+    boundary_diff = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", "-z", TASK_0189_DRAFT_COMMIT, boundary_commit],
+        capture_output=True,
+    )
+    actual_paths = {p.decode("utf-8") for p in boundary_diff.stdout.split(b"\0") if p}
+    audit.require(
+        actual_paths == TASK_0189_PRE_READY_MAINTENANCE_PATHS,
+        f"{label}: boundary paths must be exact",
+    )
+    audit.require(
+        not (actual_paths - TASK_0189_PRE_READY_MAINTENANCE_PATHS),
+        f"{label}: boundary contains extra path",
+    )
+    audit.require(
+        not (TASK_0189_PRE_READY_MAINTENANCE_PATHS - actual_paths),
+        f"{label}: boundary is missing a required path",
+    )
+    for path in sorted(TASK_0189_PRE_READY_MAINTENANCE_PATHS):
+        entry = git_tree_entry(boundary_commit, path)
+        audit.require(
+            entry is not None
+            and entry[:2]
+            == ("100644", "blob"),
+            f"{label}: boundary mode/type drifted: {path}",
+        )
+    try:
+        policy = yaml_at_commit(boundary_commit, CI_EXECUTION_POLICY_PATH)
+    except HarnessError as exc:
+        audit.error(f"{label}: cannot read boundary CI policy: {exc}")
+        return
+    record = validate_task0189_post_terminal_tail_record(audit, policy)
+    if record is None:
+        return
+    boundary = record.get("boundary")
+    boundary = boundary if isinstance(boundary, dict) else {}
+    files = boundary.get("files")
+    files = files if isinstance(files, dict) else {}
+    audit.require(
+        set(files) == {"doctor", "exactFiles"},
+        f"{label}: boundary file schema drifted",
+    )
+    doctor_identity = files.get("doctor")
+    doctor_identity = doctor_identity if isinstance(doctor_identity, dict) else {}
+    exact_files = files.get("exactFiles")
+    exact_files = exact_files if isinstance(exact_files, dict) else {}
+    doctor_path = str(doctor_identity.get("path", ""))
+    audit.require(
+        set(exact_files)
+        == set(TASK_0189_PRE_READY_MAINTENANCE_PATHS)
+        - {CI_EXECUTION_POLICY_PATH, doctor_path},
+        f"{label}: exact boundary file set drifted",
+    )
+    doctor_entry = git_tree_entry(boundary_commit, doctor_path)
+    audit.require(
+        set(doctor_identity) == {"path", "blobOid", "sha256"}
+        and doctor_path == "scripts/harness/doctor.py"
+        and doctor_entry is not None
+        and doctor_entry[2] == doctor_identity.get("blobOid")
+        and hashlib.sha256(git_object(boundary_commit, doctor_path)).hexdigest()
+        == doctor_identity.get("sha256"),
+        f"{label}: Doctor blob/content binding drifted",
+    )
+    for path, identity in exact_files.items():
+        audit.require(
+            isinstance(identity, dict)
+            and set(identity) == {"blobOid", "sha256"},
+            f"{label}: exact file identity schema drifted: {path}",
+        )
+        if not isinstance(identity, dict):
+            continue
+        entry = git_tree_entry(boundary_commit, path)
+        audit.require(
+            entry is not None
+            and entry[2] == identity.get("blobOid")
+            and hashlib.sha256(git_object(boundary_commit, path)).hexdigest()
+            == identity.get("sha256"),
+            f"{label}: exact file blob/content drifted: {path}",
+        )
+    audit.require(
+        canonical_json_sha256(ci_execution_policy_projection(policy))
+        == TASK_0189_CI_POLICY_PROJECTION_HASH,
+        f"{label}: CI policy canonical binding drifted",
+    )
+    authorization = record.get("authorization")
+    authorization = authorization if isinstance(authorization, dict) else {}
+    authorization_path = str(authorization.get("path", ""))
+    audit.require(
+        authorization_path == TASK_0189_MAINTENANCE_AUTHORIZATION_PATH
+        and hashlib.sha256(
+            git_object(boundary_commit, authorization_path)
+        ).hexdigest()
+        == str(authorization.get("sha256", "")),
+        f"{label}: Owner authorization blob drifted",
+    )
+
+
+def validate_task0189_card_maintenance_contract(audit: Audit) -> None:
+    label = "TASK-0189 post-terminal tail card"
+    try:
+        task = task_metadata_from_text(
+            read_repository_text(ROOT / TASK_0189_CARD_PATH),
+            TASK_0189_CARD_PATH,
+        )
+    except (HarnessError, OSError, UnicodeError, yaml.YAMLError) as exc:
+        audit.error(f"{label}: cannot read exact task card: {exc}")
+        return
+    audit.require(
+        task.get("taskId") == TASK_0189_TASK_ID
+        and task.get("baseCommit") == TASK_0189_TAIL_COMMIT
+        and task.get("contextLock") == TASK_0189_CONTEXT_PATH
+        and task.get("requiredSkillVersions")
+        == {
+            "task-delivery-flow": "1.3.7",
+            "task-intake": "1.2.7",
+            "harness-change": "1.1.7",
+        }
+        and task.get("targetSkillVersions") == {},
+        f"{label}: identity or Skill binding drifted",
+    )
+    maintenance = task.get("preReadyMaintenancePlan")
+    maintenance = maintenance if isinstance(maintenance, dict) else {}
+    audit.require(
+        maintenance.get("recordId") == TASK_0189_MAINTENANCE_RECORD_ID
+        and maintenance.get("recordPath") == TASK_0189_MAINTENANCE_AUTHORIZATION_PATH
+        and maintenance.get("kind")
+        == "OWNER_AUTHORIZED_EXACT_ONE_TIME_POST_TERMINAL_TAIL_ACCEPTANCE"
+        and maintenance.get("directSingleParentFromDraftRequired") is True
+        and maintenance.get("pathSetFrozenAtDraft") is True
+        and maintenance.get("additionsOrRemovalsForbidden") is True
+        and maintenance.get("oneTimeOnly") is True
+        and maintenance.get("reusable") is False
+        and maintenance.get("consumedRecordMustBecomeInert") is True
+        and isinstance(maintenance.get("exactPaths"), list)
+        and set(maintenance.get("exactPaths", []))
+        == TASK_0189_PRE_READY_MAINTENANCE_PATHS
+        and len(maintenance.get("exactPaths", []))
+        == len(TASK_0189_PRE_READY_MAINTENANCE_PATHS),
+        f"{label}: frozen maintenance contract drifted",
+    )
+    approvals = task.get("humanApprovals")
+    approvals = approvals if isinstance(approvals, list) else []
+    harness_approval = next(
+        (
+            item
+            for item in approvals
+            if isinstance(item, dict) and item.get("scope") == "harness-change"
+        ),
+        None,
+    )
+    audit.require(
+        isinstance(harness_approval, dict)
+        and harness_approval.get("approvedBy") == "repository-owner"
+        and harness_approval.get("approvedAt") == "2026-08-13"
+        and harness_approval.get("evidence") == TASK_0189_EXACT_OWNER_AUTHORIZATION,
+        f"{label}: exact Owner authorization drifted",
+    )
+
+
 def validate_task0098_post_terminal_tail_record(
     audit: Audit,
     policy: dict[str, Any],
@@ -7066,6 +7661,27 @@ def is_planning_only_task(task: dict[str, Any]) -> bool:
     )
 
 
+def legacy_terminal_c1_c2_reviewers_omission_allowed(
+    task: dict[str, Any],
+) -> bool:
+    """Strictly limited legacy compatibility for the reviewers field.
+
+    Only a terminal-state (ACCEPTED/REJECTED/SUPERSEDED) task whose riskClass
+    is C1 or C2 and whose independentReview is exactly "not-required" may omit
+    the reviewers field. This covers the historical compressed-delivery cards
+    (TASK-0185/0186/0187) created under the 2026-08-13 Owner "skip long
+    checks" policy. Every other shape (active state, C3/C4, required review,
+    or an explicit non-not-required value) fails closed.
+    """
+    if not isinstance(task, dict):
+        return False
+    if task.get("state") not in ("ACCEPTED", "REJECTED", "SUPERSEDED"):
+        return False
+    if task.get("riskClass") not in ("C1", "C2"):
+        return False
+    return str(task.get("independentReview", "")).strip().lower() == "not-required"
+
+
 def validate_planned_task_metadata(
     audit: Audit,
     task_id: str,
@@ -7239,6 +7855,16 @@ def validate_tasks(
             "an execution task must close as ACCEPTED or REJECTED",
         )
         missing = sorted(required - task.keys())
+        if (
+            "reviewers" in missing
+            and legacy_terminal_c1_c2_reviewers_omission_allowed(task)
+        ):
+            # Strictly limited legacy compatibility: only terminal-state C1/C2
+            # tasks with independentReview: not-required may omit the
+            # reviewers field (historical compressed-delivery cards under the
+            # 2026-08-13 "skip long checks" Owner policy). Every other
+            # omission still fails closed.
+            missing.remove("reviewers")
         audit.require(not missing, f"{path}: missing task fields: {missing}")
         audit.require(bool(TASK_ID_RE.fullmatch(task_id)), f"{path}: invalid taskId {task_id!r}")
         audit.require(
@@ -8240,6 +8866,10 @@ def validate_task_base_handoff_anchors(
                 task_id == TASK_0098_TASK_ID
                 and base_commit == TASK_0098_TAIL_COMMIT
             )
+            task0189_tail_anchor = (
+                task_id == TASK_0189_TASK_ID
+                and base_commit == TASK_0189_TAIL_COMMIT
+            )
             if task0098_tail_anchor:
                 # TASK-0098 one-time post-terminal tail acceptance: the tail
                 # edge 1696739 -> d335159 is not a canonical idle planning
@@ -8248,6 +8878,16 @@ def validate_task_base_handoff_anchors(
                 # it does not emit non-applicable resolution-edge errors).
                 policy = load_yaml(ROOT / CI_EXECUTION_POLICY_PATH)
                 record = validate_task0098_post_terminal_tail_record(audit, policy)
+                if record is not None:
+                    effective_boundary = base_commit
+            elif task0189_tail_anchor:
+                # TASK-0189 one-time post-terminal tail acceptance: the tail
+                # edge 7f9f9e3 -> c626005 is not a canonical idle planning
+                # checkpoint; the machine record validates and accepts it as
+                # the DRAFT anchor instead (skip the checkpoint derivation so
+                # it does not emit non-applicable resolution-edge errors).
+                policy = load_yaml(ROOT / CI_EXECUTION_POLICY_PATH)
+                record = validate_task0189_post_terminal_tail_record(audit, policy)
                 if record is not None:
                     effective_boundary = base_commit
             elif (
@@ -13570,6 +14210,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
     validate_task0073_pre_ready_maintenance_record(audit, policy)
     validate_task0076_pre_ready_maintenance_record(audit, policy)
     validate_task0098_post_terminal_tail_record(audit, policy)
+    validate_task0189_post_terminal_tail_record(audit, policy)
     task0074_record = validate_task0074_pre_ready_maintenance_record(audit, policy)
     if isinstance(task0074_record, dict):
         validate_task0073_historical_unknown_quarantine(audit, task0074_record)
@@ -14367,6 +15008,7 @@ def validate_task_delivery_policy(audit: Audit) -> None:
     validate_task0074_card_recovery_contract(audit)
     validate_task0075_card_recovery_contract(audit)
     validate_task0098_card_maintenance_contract(audit)
+    validate_task0189_card_maintenance_contract(audit)
 
     sources = load_yaml(ROOT / ".harness/sources-of-truth.yaml").get("sources")
     audit.require(
@@ -17802,6 +18444,10 @@ def validate_draft_checkpoint(
         task_id == TASK_0098_TASK_ID
         and base_commit_str == TASK_0098_TAIL_COMMIT
     )
+    task0189_tail_anchor = (
+        task_id == TASK_0189_TASK_ID
+        and base_commit_str == TASK_0189_TAIL_COMMIT
+    )
     if task0098_tail_anchor:
         # TASK-0098 one-time post-terminal tail acceptance: skip the idle
         # planning checkpoint derivation (the tail is not a canonical
@@ -17809,6 +18455,15 @@ def validate_draft_checkpoint(
         # effective DRAFT boundary.
         policy = load_yaml(ROOT / CI_EXECUTION_POLICY_PATH)
         record = validate_task0098_post_terminal_tail_record(audit, policy)
+        if record is not None:
+            effective_terminal = base_commit_str
+    elif task0189_tail_anchor:
+        # TASK-0189 one-time post-terminal tail acceptance: skip the idle
+        # planning checkpoint derivation (the tail is not a canonical
+        # resolution edge); the machine record accepts the tail as the
+        # effective DRAFT boundary.
+        policy = load_yaml(ROOT / CI_EXECUTION_POLICY_PATH)
+        record = validate_task0189_post_terminal_tail_record(audit, policy)
         if record is not None:
             effective_terminal = base_commit_str
     elif (

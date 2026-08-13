@@ -89,6 +89,15 @@ metadata:
    project-state 对齐修复边 1696739→d335159（baseCommit=d335159），维护边是 DRAFT
    的直接单父子提交且只允许冻结路径集，消费后惰化，禁止复制记录/二次消费/额外路径/
    历史改写/通用 override。
+   TASK-0189: recordId=OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01,
+   6 paths；唯一一次性 post-terminal tail acceptance：DRAFT 锚绑定被接受的
+   evidence/handoff headCommit 回填 metadata tail 7f9f9e3→c626005
+   （baseCommit=c626005，每文件恰将 headCommit 占位 0000... 回填为
+   7f9f9e3...），维护边是 DRAFT 的直接单父子提交且只允许冻结路径集，消费后惰化，
+   禁止复制记录/二次消费/额外路径/历史改写/通用 override；同一维护边同时实现严格
+   限定的 legacy reviewers compatibility（仅终态 C1/C2 且 independentReview:
+   not-required 允许缺省 reviewers，其余失败关闭），不得补写 TASK-0185/0186/0187
+   历史卡。
 10. READY 后确需 Owner 修订时，不重写授权提交或放宽原合同：先在 `.harness/task-backlog.yaml` 建立强类型 amendment 合同，并在任务卡 `scopeAmendments` 保存完整 Hash 绑定投影。合同逐项记录 `supersedes` 原条款稳定 ID/原文 Hash 与 `replacement` 原文/Hash；未列条款仍受原授权投影约束。新增写路径只能是规范 POSIX 精确路径，不能是 glob；amendment 必须由 `repository-owner` 批准、append-only，并在只改 Backlog 与任务卡的单父原子治理提交中先落入 Git 历史，未提交 worktree/index 不得自授权。
 11. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。

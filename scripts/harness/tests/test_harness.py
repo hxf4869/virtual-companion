@@ -10704,6 +10704,170 @@ class Task0098PostTerminalTailTests(unittest.TestCase):
         doctor.validate_task0098_post_terminal_tail_record(audit, policy)
         self.assertTrue(audit.errors)
 
+class Task0189PostTerminalTailTests(unittest.TestCase):
+    def test_exact_machine_record_is_accepted(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0189_post_terminal_tail_record(audit, policy)
+        self.assertFalse(audit.errors)
+        self.assertIsNotNone(record)
+
+    def test_tail_edge_facts_are_bound(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0189_post_terminal_tail_record(audit, policy)
+        self.assertIsNotNone(record)
+        self.assertEqual(record["terminal"]["commit"], doctor.TASK_0189_TERMINAL_COMMIT)
+        self.assertEqual(record["tail"]["commit"], doctor.TASK_0189_TAIL_COMMIT)
+        self.assertEqual(record["tail"]["parent"], doctor.TASK_0189_TERMINAL_COMMIT)
+        self.assertEqual(
+            record["tail"]["changedPaths"],
+            list(doctor.TASK_0189_TAIL_CHANGED_PATHS),
+        )
+        self.assertEqual(
+            record["tail"]["headCommitBackfill"]["actual"],
+            doctor.TASK_0189_TERMINAL_COMMIT,
+        )
+
+    def test_mutated_tail_commit_fails_closed(self):
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        record = policy["task0189PostTerminalTail"]
+        record["tail"]["commit"] = "0" * 40
+        doctor.validate_task0189_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_mutated_headcommit_backfill_fails_closed(self):
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        record = policy["task0189PostTerminalTail"]
+        record["tail"]["headCommitBackfill"]["actual"] = "1" * 40
+        doctor.validate_task0189_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_copied_record_is_forbidden(self):
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0189PostTerminalTailCopy"] = copy.deepcopy(
+            policy["task0189PostTerminalTail"]
+        )
+        doctor.validate_task0189_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_other_task_cannot_use_the_anchor(self):
+        # The tail anchor only applies when the task id is TASK-0189 and the
+        # base commit equals the tail commit; the record validator rejects any
+        # other identity shape.
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        record = policy["task0189PostTerminalTail"]
+        record["targetTask"] = "TASK-0190"
+        doctor.validate_task0189_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+
+class LegacyReviewersCompatibilityTests(unittest.TestCase):
+    def test_terminal_c1_c2_not_required_allows_omission(self):
+        self.assertTrue(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "ACCEPTED",
+                    "riskClass": "C2",
+                    "independentReview": "not-required",
+                }
+            )
+        )
+        self.assertTrue(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "REJECTED",
+                    "riskClass": "C1",
+                    "independentReview": "not-required",
+                }
+            )
+        )
+
+    def test_active_state_fails_closed(self):
+        self.assertFalse(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "READY",
+                    "riskClass": "C2",
+                    "independentReview": "not-required",
+                }
+            )
+        )
+        self.assertFalse(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "IN_PROGRESS",
+                    "riskClass": "C2",
+                    "independentReview": "not-required",
+                }
+            )
+        )
+
+    def test_c3_c4_fail_closed(self):
+        self.assertFalse(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "ACCEPTED",
+                    "riskClass": "C3",
+                    "independentReview": "not-required",
+                }
+            )
+        )
+        self.assertFalse(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "ACCEPTED",
+                    "riskClass": "C4",
+                    "independentReview": "not-required",
+                }
+            )
+        )
+
+    def test_required_review_fails_closed(self):
+        self.assertFalse(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "ACCEPTED",
+                    "riskClass": "C2",
+                    "independentReview": "required",
+                }
+            )
+        )
+        self.assertFalse(
+            doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(
+                {
+                    "state": "ACCEPTED",
+                    "riskClass": "C2",
+                }
+            )
+        )
+
+    def test_historical_cards_are_covered(self):
+        # TASK-0185/0186/0187 are terminal C2 cards with
+        # independentReview: not-required and no reviewers field.
+        for task_id in ("TASK-0185", "TASK-0186", "TASK-0187"):
+            with self.subTest(task_id=task_id):
+                card = next(ROOT.joinpath("docs/tasks").glob(f"{task_id}-*.md"))
+                task = doctor.task_metadata_from_text(
+                    card.read_text("utf-8"),
+                    str(card),
+                )
+                self.assertEqual(task["state"], "ACCEPTED")
+                self.assertIn(task["riskClass"], ("C1", "C2"))
+                self.assertEqual(task["independentReview"], "not-required")
+                self.assertNotIn("reviewers", task)
+                self.assertTrue(
+                    doctor.legacy_terminal_c1_c2_reviewers_omission_allowed(task)
+                )
+
 class IntegrationTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX fake-PATH behavior is exercised on Linux/macOS CI")
     def test_posix_wrapper_selects_literal_python_and_fails_closed_without_it(
