@@ -1008,3 +1008,9 @@ tasks:
     taskCard: docs/tasks/TASK-0192-harness-amendment-diffscope-recovery.md
     evidence: docs/evidence/TASK-0192/evidence-pack.json
     handoff: docs/handoffs/TASK-0192.json
+  TASK-0193:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0193-p0-owner-context-rls-inherited-adoption.md
+    evidence: docs/evidence/TASK-0193/evidence-pack.json
+    handoff: docs/handoffs/TASK-0193.json

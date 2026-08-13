@@ -1,0 +1,510 @@
+{
+ "schemaVersion": 1,
+ "taskId": "TASK-0193",
+ "kind": "INHERITED_STATE_ADOPTION_MANIFEST",
+ "algorithm": "SHA256_MANIFEST_V1",
+ "binding": {
+  "preImplementationBaseline": "3c7fd0b5b306325d51464053e7b3382044c3dd4b",
+  "rejectedTerminal": "2abc531bde888d7f9689d199fb8b092b3341b226",
+  "rejectedTerminalTree": "d60e437be565221344e67d59cc182b08328aff84",
+  "adoptionBase": "9a9c77caeb65a3f44eb9aa77368b20f87b4ec5cf",
+  "adoptionBaseTree": "7e2dd00183e2838c2799dc0ed3f2ce8169eb5c29",
+  "implementationCommit": "bfc6a62d53eb55c22dc257216b1db8592f50c667",
+  "fixCommit": "8f08bb1d197c2787d91080aa33684a8444b8b7b0",
+  "scopeAmendmentCommit": "26689494cfe560cd1b388d2a1a6c44adadb1e8d2"
+ },
+ "derivation": {
+  "windowDiffCommand": "git diff --name-only 3c7fd0b5b306325d51464053e7b3382044c3dd4b 2abc531bde888d7f9689d199fb8b092b3341b226",
+  "windowDiffPathCount": 78,
+  "governanceExcludedPaths": [
+   ".harness/project-state.yaml",
+   ".harness/task-backlog.yaml",
+   ".harness/task-ledger.yaml",
+   "docs/evidence/TASK-0191/evidence-pack.json",
+   "docs/evidence/TASK-0191/review-r1.md",
+   "docs/handoffs/TASK-0191.json",
+   "docs/tasks/TASK-0191-owner-context-rls-trust-model.md",
+   "docs/tasks/context/TASK-0191.context-lock.yaml"
+  ],
+  "inheritedPathCount": 70
+ },
+ "orderedPathSetSha256": "b9f027776723d4c5803d1e02991c9669ee37a23756b8ea430936142626b16615",
+ "manifestSha256": "d19579012582dd565648fbd899499c3a8e52597fe18280c4ef90c407bdf4629a",
+ "manifestCanonicalization": "entries=[{blob:<40hex>, mode:\"100644\", path:<posix>}...] sorted by path (codepoint); canonical=json.dumps({algorithm:SHA256_MANIFEST_V1, baseCommit:<adoptionBase>, paths:entries}, ensure_ascii=False, sort_keys=True, separators=(\",\",\":\")); manifestSha256=sha256(canonical utf-8).hex(); orderedPathSetSha256=sha256(concat of sorted path each followed by LF).utf-8).hex()",
+ "paths": [
+  {
+   "path": "infra/db/tests/00_owner_binding_secret_seed.sql",
+   "mode": "100644",
+   "blob": "5f8493983834c2a207141be6fbf5ac2181c9a1c2"
+  },
+  {
+   "path": "infra/db/tests/01_cross_user_read_denied.sql",
+   "mode": "100644",
+   "blob": "6b8c7e2d8d72eefac7b839a3ec5f4fd6cd54e25d"
+  },
+  {
+   "path": "infra/db/tests/04_stale_worker_fence_denied.sql",
+   "mode": "100644",
+   "blob": "94a63df0b8c717214c0b6c47ceece9900965752e"
+  },
+  {
+   "path": "infra/db/tests/06_authorization_snapshot_isolation.sql",
+   "mode": "100644",
+   "blob": "f115b171bb53b70638d25ccffa9187b3f50b3938"
+  },
+  {
+   "path": "infra/db/tests/07_claim_binds_context.sql",
+   "mode": "100644",
+   "blob": "673066ba728bdf63328ca7925d068476d488e898"
+  },
+  {
+   "path": "infra/db/tests/08_expired_lease_zero_write.sql",
+   "mode": "100644",
+   "blob": "dd7b27d842836b5a37c874a936b06855b63f42ea"
+  },
+  {
+   "path": "infra/db/tests/09_wrong_token_zero_write.sql",
+   "mode": "100644",
+   "blob": "e0d54192ff18ed0ab29b1f63ffcb7a6184993b8f"
+  },
+  {
+   "path": "infra/db/tests/10_stale_fence_zero_write.sql",
+   "mode": "100644",
+   "blob": "4332c7e4f968b41a5a544ee300ff2babdfeace60"
+  },
+  {
+   "path": "infra/db/tests/12_coordinator_reads_only_metadata.sql",
+   "mode": "100644",
+   "blob": "b9de56d275d7e365a9a1977f73a7c66e5d0a697b"
+  },
+  {
+   "path": "infra/db/tests/13_idempotent_receive_same_generation_id.sql",
+   "mode": "100644",
+   "blob": "b2278f915adcef7262f35070f1410d01277cd23e"
+  },
+  {
+   "path": "infra/db/tests/14_idempotent_receive_no_duplicate_message.sql",
+   "mode": "100644",
+   "blob": "4afce8a205f1eac5773a3bc70f0bc5662570cc33"
+  },
+  {
+   "path": "infra/db/tests/15_cross_owner_generation_reference_denied.sql",
+   "mode": "100644",
+   "blob": "d6504ce4a46b90faececd8365d4cc463a9160d4d"
+  },
+  {
+   "path": "infra/db/tests/16_atomic_finalize_commits_all.sql",
+   "mode": "100644",
+   "blob": "d891a3616a5a1f491d8f89c8ac591b263182ec62"
+  },
+  {
+   "path": "infra/db/tests/17_fault_injection_rolls_back_all.sql",
+   "mode": "100644",
+   "blob": "05f54bc31ec6524e90a6e95a17a0535ca19ce265"
+  },
+  {
+   "path": "infra/db/tests/18_provider_eos_cannot_complete.sql",
+   "mode": "100644",
+   "blob": "8dab9b34c5a8b20935dfc5f19885e7a0088e1ac6"
+  },
+  {
+   "path": "infra/db/tests/19_realtime_ticket_single_use_ttl_hash.sql",
+   "mode": "100644",
+   "blob": "7d7f4c76f1f5d7671af163698633fbddd062996c"
+  },
+  {
+   "path": "infra/db/tests/20_resume_resumed_contiguous_cursor.sql",
+   "mode": "100644",
+   "blob": "d7558a1fa7a9adb31f3b70c626e394b2cf5a6841"
+  },
+  {
+   "path": "infra/db/tests/21_resume_gap_expired_window.sql",
+   "mode": "100644",
+   "blob": "39f8b03775a8bccc28b117704680b5bf1ca7afca"
+  },
+  {
+   "path": "infra/db/tests/22_resume_reset_required_epoch.sql",
+   "mode": "100644",
+   "blob": "2c1f504cfc0d098620692a7233720860afc3ae3e"
+  },
+  {
+   "path": "infra/db/tests/23_resume_terminal_snapshot.sql",
+   "mode": "100644",
+   "blob": "20b11bacf8caa4d41e305aac3ed86d1b3a4e0733"
+  },
+  {
+   "path": "infra/db/tests/24_resume_not_found_or_forbidden.sql",
+   "mode": "100644",
+   "blob": "cf28f8fc809b4a40bc87f4e2bf658b56b0c2121f"
+  },
+  {
+   "path": "infra/db/tests/25_realtime_event_rls_owner_isolation.sql",
+   "mode": "100644",
+   "blob": "a850d0b93ef0dd3aa1e17ac6752ed5f32acfc9e7"
+  },
+  {
+   "path": "infra/db/tests/26_relationship_active_limit_enforced.sql",
+   "mode": "100644",
+   "blob": "7e2730d367f19cc5b9198d1f74f228b0aecfd826"
+  },
+  {
+   "path": "infra/db/tests/28_relationship_not_found_or_forbidden.sql",
+   "mode": "100644",
+   "blob": "c7c2596e01cd09bd868a3a4c20d81d0231b5fa8a"
+  },
+  {
+   "path": "infra/db/tests/29_relationship_lifecycle_activate_deactivate.sql",
+   "mode": "100644",
+   "blob": "8b8bbe7661cfdd814228e2ded138da94d7cbc1ed"
+  },
+  {
+   "path": "infra/db/tests/30_generation_cancel.sql",
+   "mode": "100644",
+   "blob": "ceb3e93d476ac1c4943d1eec3f0b0cd4cf8bccab"
+  },
+  {
+   "path": "infra/db/tests/31_message_history_pagination.sql",
+   "mode": "100644",
+   "blob": "de05863f1d25facc6784504c3d5a1c82c20644e8"
+  },
+  {
+   "path": "infra/db/tests/32_memory_confirmation_path_only.sql",
+   "mode": "100644",
+   "blob": "3ee7db43d9f8b4d6124a7f64071da3fb9ddcca35"
+  },
+  {
+   "path": "infra/db/tests/33_memory_cross_isolation_fail_closed.sql",
+   "mode": "100644",
+   "blob": "d4de1470bbfaf250d33b5306e441edfea371d4c3"
+  },
+  {
+   "path": "infra/db/tests/34_memory_lifecycle_evidence_scope.sql",
+   "mode": "100644",
+   "blob": "b362dd7287832825c44b1cb6f3a560597173f343"
+  },
+  {
+   "path": "infra/db/tests/35_memory_edit_evidence.sql",
+   "mode": "100644",
+   "blob": "1f77da12a74f2d85db052f20181040f912e4b213"
+  },
+  {
+   "path": "infra/db/tests/36_memory_idempotency.sql",
+   "mode": "100644",
+   "blob": "b418cd2f129999f1350698eb5380aebf525d76cb"
+  },
+  {
+   "path": "infra/db/tests/37_memory_recall_scope_budget.sql",
+   "mode": "100644",
+   "blob": "e0daf57dce146d82a819a77668ec81ff27d16877"
+  },
+  {
+   "path": "infra/db/tests/38_memory_recall_tombstone_determinism.sql",
+   "mode": "100644",
+   "blob": "3354143e791ad9b1db0cf1b2d3dc2c7897c8e443"
+  },
+  {
+   "path": "infra/db/tests/40_provider_attempt_rls.sql",
+   "mode": "100644",
+   "blob": "4aba9830574346a011f9072a220b4adae0a2f42f"
+  },
+  {
+   "path": "infra/db/tests/41_generation_terminal_transitions.sql",
+   "mode": "100644",
+   "blob": "c3817b992f5a5ef0e21be7e3eeb2fe3779ea7720"
+  },
+  {
+   "path": "infra/db/tests/42_terminal_event_atomic.sql",
+   "mode": "100644",
+   "blob": "329372fd2de6f8c6349320069c2d2694ebd36910"
+  },
+  {
+   "path": "infra/db/tests/43_candidate_and_quota_release.sql",
+   "mode": "100644",
+   "blob": "9c4ce7cd9432af6f7983f604c16495dda855b60c"
+  },
+  {
+   "path": "infra/db/tests/44_finalize_finalize_concurrent.sql",
+   "mode": "100644",
+   "blob": "4716e3a32202e8926363c1a9464d2fe8a39215c7"
+  },
+  {
+   "path": "infra/db/tests/45_finalize_cancel_concurrent.sql",
+   "mode": "100644",
+   "blob": "d67639a6aaf48fbbf7062e311c9f84915e1b7c5d"
+  },
+  {
+   "path": "infra/db/tests/46_finalize_terminalize_concurrent.sql",
+   "mode": "100644",
+   "blob": "1a83b7e4fedac65c6dc727649a5883d61035498e"
+  },
+  {
+   "path": "infra/db/tests/47_candidate_terminal_toctou.sql",
+   "mode": "100644",
+   "blob": "875b38d9139e29b31f3649175d926729dcaf13f2"
+  },
+  {
+   "path": "infra/db/tests/49_realtime_seq_concurrent.sql",
+   "mode": "100644",
+   "blob": "53fca902d73f9ad63b9a89d755620b3f9fb74473"
+  },
+  {
+   "path": "infra/db/tests/50_realtime_event_catalog.sql",
+   "mode": "100644",
+   "blob": "73cd341576358397443270244a37b43d186b9a2c"
+  },
+  {
+   "path": "infra/db/tests/51_authorization_snapshot_one_way_lifecycle.sql",
+   "mode": "100644",
+   "blob": "af301c57e1f6b129c6a031e92299c6fbd026dd26"
+  },
+  {
+   "path": "infra/db/tests/52_revoked_runtime_dml_on_business_tables.sql",
+   "mode": "100644",
+   "blob": "27e9677e95cb83c0ca1276c85788457494f045bf"
+  },
+  {
+   "path": "infra/db/tests/54_sd_owner_mismatch_fail_closed.sql",
+   "mode": "100644",
+   "blob": "80bafc9314b6c4d063ff76d9fa85403bdfd41740"
+  },
+  {
+   "path": "infra/db/tests/57_search_path_public_create_fail_closed.sql",
+   "mode": "100644",
+   "blob": "85facd704d3dd4ff99ff2ec4c8a070bc2bf9d153"
+  },
+  {
+   "path": "infra/db/tests/59_provider_attempt_authorization_snapshot_fk.sql",
+   "mode": "100644",
+   "blob": "577005c4b515fbe79729f6f79386e77399b2b55c"
+  },
+  {
+   "path": "infra/db/tests/60_quota_nonneg_check_and_release_idempotency.sql",
+   "mode": "100644",
+   "blob": "cb8e9ff6baf5c57fda4dce43f98fb2bb2716b7a6"
+  },
+  {
+   "path": "infra/db/tests/63_worker_runtime_role_claim_complete.sql",
+   "mode": "100644",
+   "blob": "4b6ba2aa1a5754a02f704849eb143c485a7af0a9"
+  },
+  {
+   "path": "infra/db/tests/64_worker_coordinator_cross_session_recovery.sql",
+   "mode": "100644",
+   "blob": "19f636fe18bf46cf8315fe278512e9d821b7061d"
+  },
+  {
+   "path": "infra/db/tests/65_generation_intake_workitem_promotion.sql",
+   "mode": "100644",
+   "blob": "76d4a61d672c64e6caa24b6403215a8ccf3ebf16"
+  },
+  {
+   "path": "infra/db/tests/66_generation_zero_llm_completed_chain.sql",
+   "mode": "100644",
+   "blob": "a613dce75b2412b7bdc8e71bf2f7e0c23085cab3"
+  },
+  {
+   "path": "infra/db/tests/67_generation_external_attempt_completed_chain.sql",
+   "mode": "100644",
+   "blob": "7e6f4f32c10b87db5b25ab325dc4751108897a32"
+  },
+  {
+   "path": "infra/db/tests/68_authorization_snapshot_runtime_creation_external_chain.sql",
+   "mode": "100644",
+   "blob": "2ccfb590b069c70338938d7ca87001d90b96e37e"
+  },
+  {
+   "path": "infra/db/tests/69_owner_guc_direct_set_fail_closed.sql",
+   "mode": "100644",
+   "blob": "315ff0a7e491398fdbe49dc3945b016d0c984c8e"
+  },
+  {
+   "path": "infra/db/tests/70_owner_forged_binding_denied.sql",
+   "mode": "100644",
+   "blob": "c648e2ee2340b75844a3a983f770a28f34558d41"
+  },
+  {
+   "path": "infra/db/tests/71_begin_job_context_permission_denied.sql",
+   "mode": "100644",
+   "blob": "f215ca5b8119682dce3afbea9c7d3a720dbfdd1e"
+  },
+  {
+   "path": "infra/db/tests/72_owner_binding_replay_and_legit_path.sql",
+   "mode": "100644",
+   "blob": "ab2d2b4ce54f57a57838de433623ea93d0a9cacd"
+  },
+  {
+   "path": "infra/db/tests/73_owner_secret_table_invisible_to_runtime_roles.sql",
+   "mode": "100644",
+   "blob": "62e4f8b44f3272eb3cefe08bd2ac72ede233d28f"
+  },
+  {
+   "path": "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/AuthDataSourceConfig.java",
+   "mode": "100644",
+   "blob": "05aa41e066c35109793776671c9d6368e6c32b45"
+  },
+  {
+   "path": "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/OwnerBindingSecretBootstrap.java",
+   "mode": "100644",
+   "blob": "bbb3ded72b8fc60b968c7d3153efc8c4e28fd0e1"
+  },
+  {
+   "path": "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/tenant/OwnerContext.java",
+   "mode": "100644",
+   "blob": "fefa6ee1f2fc85a9da58d3ebe0f27780a2701aac"
+  },
+  {
+   "path": "service/apps/runtime/src/main/resources/application.yaml",
+   "mode": "100644",
+   "blob": "41167decb36e6b510646b236ff0d6be47f4dee9f"
+  },
+  {
+   "path": "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/ProductionProfileFailClosedTest.java",
+   "mode": "100644",
+   "blob": "adc9fbc8371337ebcaa5eb2b0775e312e050ee13"
+  },
+  {
+   "path": "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/OwnerBindingSecretBootstrapTest.java",
+   "mode": "100644",
+   "blob": "22d21c63abe244e6f0ae49c100cc8d5b706ced2c"
+  },
+  {
+   "path": "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/SchemaReadinessHealthIndicatorTest.java",
+   "mode": "100644",
+   "blob": "bb374b08df426ba003b51dcb11b9ff9f6884e21d"
+  },
+  {
+   "path": "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/tenant/OwnerContextTest.java",
+   "mode": "100644",
+   "blob": "c3fd0dc38f0500aa43b6a1bb48975f4fe4eef090"
+  },
+  {
+   "path": "service/platform/persistence/src/main/resources/db/migration/V27__owner_context_cryptographic_binding.sql",
+   "mode": "100644",
+   "blob": "55f1ef47f47fd28a32b0b11d4782541b0baa3f29"
+  }
+ ],
+ "implementerVerification": {
+  "checks": [
+   {
+    "check": "preImplementationBaseline exists",
+    "result": "PASS",
+    "detail": "3c7fd0b5b306325d51464053e7b3382044c3dd4b"
+   },
+   {
+    "check": "rejectedTerminal exists",
+    "result": "PASS",
+    "detail": "2abc531bde888d7f9689d199fb8b092b3341b226"
+   },
+   {
+    "check": "rejectedTerminal tree matches",
+    "result": "PASS",
+    "detail": "d60e437be565221344e67d59cc182b08328aff84"
+   },
+   {
+    "check": "adoptionBase exists",
+    "result": "PASS",
+    "detail": "9a9c77caeb65a3f44eb9aa77368b20f87b4ec5cf"
+   },
+   {
+    "check": "adoptionBase tree matches",
+    "result": "PASS",
+    "detail": "7e2dd00183e2838c2799dc0ed3f2ce8169eb5c29"
+   },
+   {
+    "check": "implementationCommit exists",
+    "result": "PASS",
+    "detail": "bfc6a62d53eb55c22dc257216b1db8592f50c667"
+   },
+   {
+    "check": "fixCommit exists",
+    "result": "PASS",
+    "detail": "8f08bb1d197c2787d91080aa33684a8444b8b7b0"
+   },
+   {
+    "check": "scopeAmendmentCommit exists",
+    "result": "PASS",
+    "detail": "26689494cfe560cd1b388d2a1a6c44adadb1e8d2"
+   },
+   {
+    "check": "windowDiffPathCount == 78",
+    "result": "PASS",
+    "detail": "actual 78"
+   },
+   {
+    "check": "governanceExclusionCount == 8",
+    "result": "PASS",
+    "detail": ""
+   },
+   {
+    "check": "78 - 8 == 70",
+    "result": "PASS",
+    "detail": "actual 70"
+   },
+   {
+    "check": "manifest path set == diff-minus-governance",
+    "result": "PASS",
+    "detail": ""
+   },
+   {
+    "check": "inheritedPathCount == 70",
+    "result": "PASS",
+    "detail": ""
+   },
+   {
+    "check": "per-path mode/blob match adoptionBase",
+    "result": "PASS",
+    "detail": "bad=[]"
+   },
+   {
+    "check": "manifestSha256 recomputed",
+    "result": "PASS",
+    "detail": ""
+   },
+   {
+    "check": "orderedPathSetSha256 recomputed",
+    "result": "PASS",
+    "detail": ""
+   },
+   {
+    "check": "70 blobs identical rejectedTerminal vs adoptionBase (zero drift)",
+    "result": "PASS",
+    "detail": "drift=[]"
+   },
+   {
+    "check": "parent(2668949) == 3fe5244",
+    "result": "PASS",
+    "detail": "actual 3fe5244"
+   },
+   {
+    "check": "parent(bfc6a62) == 2668949",
+    "result": "PASS",
+    "detail": "actual 2668949"
+   },
+   {
+    "check": "parent(8f08bb1) == bfc6a62",
+    "result": "PASS",
+    "detail": "actual bfc6a62"
+   },
+   {
+    "check": "card baseCommit == adoptionBase",
+    "result": "PASS",
+    "detail": ""
+   }
+  ],
+  "allPass": true
+ },
+ "integrityFacts": {
+  "blobsIdenticalRejectedTerminalVsAdoptionBase": true,
+  "chainParents": {
+   "26689494cfe560cd1b388d2a1a6c44adadb1e8d2": "3fe5244f865d46b59a535cd25e5f52793366e28f",
+   "bfc6a62d53eb55c22dc257216b1db8592f50c667": "26689494cfe560cd1b388d2a1a6c44adadb1e8d2",
+   "8f08bb1d197c2787d91080aa33684a8444b8b7b0": "bfc6a62d53eb55c22dc257216b1db8592f50c667"
+  }
+ },
+ "reviewerIndependentVerification": {
+  "reviewer": "task0193_r1",
+  "evidencePath": "docs/evidence/TASK-0193/review-r1.md",
+  "sectionA": "PASS（78/8/70、70/70 mode/blob、两个 hash 独立重算一致、两棵树一致、零漂移、单父链实测）",
+  "verdict": "APPROVE"
+ }
+}

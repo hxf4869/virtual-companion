@@ -1,0 +1,65 @@
+{
+  "taskId": "TASK-0193",
+  "state": "ACCEPTED",
+  "baseCommit": "9a9c77caeb65a3f44eb9aa77368b20f87b4ec5cf",
+  "headCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1",
+  "evidencePath": "docs/evidence/TASK-0193/evidence-pack.json",
+  "reviewers": [
+    {
+      "id": "task0193_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1",
+      "evidencePath": "docs/evidence/TASK-0193/review-r1.md"
+    }
+  ],
+  "completed": [
+    "TASK-0193 以 base=9a9c77c 完成继承实现正式接纳：inheritedStateManifest 机器绑定（绑定提交 3c7fd0b/2abc531/bfc6a62/8f08bb1/2668949、窗口 diff 78、排除 8 治理路径后恰 70、逐路径 mode=100644/blob、orderedPathSetSha256 b9f02777、manifestSha256 d1957901、实现树 d60e437）实现者 21 项核验 + Reviewer 独立复算全部 PASS；70 路径在继承终态 2abc531 与当前 Base 9a9c77c blob 逐项零漂移（接纳对象 = 当前树中机器绑定的继承实现，非重新实现）",
+    "四条冻结验收命令以同一候选 SHA 1d2cf97 真实 PASS（真实退出码，未复用 TASK-0191 旧 PASS）：canonical precheck 8 commands（doctor PASS 892570 checks）exit0/117s；mvn runtime 340（全 reactor 1356）0 失败 exit0/14s；RLS 74/74 ALL TESTS PASS exit0/37s；git diff --check exit0；C4 Reviewer 独立重跑四条同样全部 exit 0",
+    "Owner 安全复验矩阵 11 项全部实证覆盖：直接 SET GUC 失败关闭（69）、伪造 proof 失败（70）、跨 owner/事务/backend 重放失败 + 合法路径成功 + 跨租户 RLS 隔离（72）、secret 表对 runtime 角色零权限（73）、mint helper 非 minting oracle（V27 双 REVOKE + 73）、begin_job_context 四角色 42501（71）、secret 缺失/过短/不一致启动失败与日志/异常无泄漏（OwnerBindingSecretBootstrapTest/OwnerContextTest/ProductionProfileFailClosedTest）",
+    "C4 独立 Reviewer 审查实际继承实现范围 3c7fd0b..2abc531（实读 V27/OwnerContext/Bootstrap/tests 源码，非仅治理 diff），独立核对 manifest/blob/tree 并重跑四条验收命令，裁决 APPROVE（P0/P1/P2=0，4 条信息性 P3 记录于 review-r1.md）",
+    "治理闭环：状态链 DRAFT→READY→IN_PROGRESS→IN_REVIEW→ACCEPTED 全单父原子提交；Ledger 追加 TASK-0193；project-state lastAccepted=lastTerminal=TASK-0193；TASK-0191/0192 历史制品与 V1-V26 migration 零修改"
+  ],
+  "remaining": [
+    "完整 harness unittest discover 保持 NOT_RUN（既有 34 分钟 CI 预算风险，TASK-0189/0190/0191/0192 延续如实记录；不代表 CI 完全兼容）",
+    "本地 main 相对 refs/remotes/origin/main 领先多个提交未推送、未合并（按 Owner 指令保持；终态后实际 ahead 数见最终报告）",
+    "外部审计遗留修复项尚未开卡：P1-01 lease/fence 业务写入保护与 job_fence 绑定改造；P2 应用进程/migrator 凭据完全失陷隔离（TASK-0191 明确范围外的 T3 威胁）",
+    "Reviewer 4 条信息性 P3（V27 set_owner_context proof 比较非常量时间、migration 内 DO 块仅断言 SELECT 权限边、Bootstrap US_ASCII 比对、current_owner_id 保留 PUBLIC EXECUTE 的设计说明）供后续任务参考，不阻断"
+  ],
+  "knownRisks": [
+    "本地 .git/packed-refs 存在指向已不存在对象（04523bd5）的陈旧 refs/heads/main 与 refs/remotes/origin/main 条目，使裸短名 origin/main 解析歧义（git status 与完整 ref 名 refs/remotes/origin/main 计算正常；ahead 数以完整 ref 名为准）；不影响治理与远端状态，如需清理（git pack-refs --prune）先与 Owner 确认",
+    "完整 unittest discover NOT_RUN：Harness 全量测试兼容性未全面实证，仅定向/canonical/验收命令范围已验证",
+    "T3 威胁（应用进程完全失陷、migrator/superuser 凭据）仍未解决：数据库无法区分，需后续任务卡处理"
+  ],
+  "nextAction": "TASK-0193 ACCEPTED：P0 owner-context/RLS 继承实现已按 inheritedStateManifest 机器绑定正式接纳（70 路径零漂移、四条冻结验收命令与 C4 独立复核全 PASS；TASK-0191 保持 REJECTED）；本地 main 保持未推送未合并，由 Owner 决策是否推送或继续外部审计后续修复项（lease/fence 业务写入保护与 runtime/migrator 身份隔离另开任务卡）。",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ed02c4d1ca3c2665d5fc0f7774cd1364849f64c9",
+      "startedAt": "2026-08-14T02:29:05+08:00",
+      "endedAt": "2026-08-14T02:47:00+08:00",
+      "elapsedSeconds": 1075,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ed02c4d1ca3c2665d5fc0f7774cd1364849f64c9",
+      "startedAt": "2026-08-14T02:29:05+08:00",
+      "endedAt": "2026-08-14T02:31:43+08:00",
+      "elapsedSeconds": 158,
+      "outcome": "PASS",
+      "readyDoctorPassAt": "2026-08-14T02:31:43+08:00",
+      "inProgressCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1",
+      "startedAt": "2026-08-14T02:31:54+08:00",
+      "endedAt": "2026-08-14T02:39:30+08:00",
+      "elapsedSeconds": 456,
+      "outcome": "PASS",
+      "readyDoctorPassAt": "2026-08-14T02:31:43+08:00",
+      "inProgressCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    }
+  }
+}

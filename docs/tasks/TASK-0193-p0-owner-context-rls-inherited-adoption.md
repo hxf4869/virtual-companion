@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0193
-state: IN_REVIEW
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -436,6 +436,14 @@ requiredCommands:
   - JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test
   - bash infra/db/run-rls-tests.sh
   - git diff --check
+terminalStateReason: >-
+  四条冻结验收命令以同一候选 SHA 1d2cf97 全部真实 PASS（exit 0：canonical
+  precheck 8 commands 含 doctor 892570 checks、mvn runtime 340/全 reactor 1356、
+  RLS 74/74、git diff --check）；inheritedStateManifest 21 项机器核验与 C4 独立
+  Reviewer（审查实际继承实现范围 3c7fd0b..2abc531 并重跑四条命令，APPROVE，
+  0 P0/P1/P2）全部通过；70 继承路径零修改零漂移；TASK-0191 保持 REJECTED，
+  本卡接纳的是当前树中机器绑定的继承实现；完整 unittest discover 保持
+  NOT_RUN。
 ```
 
 > 本卡为独立延续单卡（前一合法终态：TASK-0192 ACCEPTED `9a9c77c`）。本卡是

@@ -1,0 +1,119 @@
+{
+  "taskId": "TASK-0193",
+  "baseCommit": "9a9c77caeb65a3f44eb9aa77368b20f87b4ec5cf",
+  "headCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1",
+  "contextFingerprint": "75d2a34582387b48dad5ec9809ff2d7abd5cfaa5ad47b489d63a752c70b0dadc",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ed02c4d1ca3c2665d5fc0f7774cd1364849f64c9",
+      "startedAt": "2026-08-14T02:29:05+08:00",
+      "endedAt": "2026-08-14T02:47:00+08:00",
+      "elapsedSeconds": 1075,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ed02c4d1ca3c2665d5fc0f7774cd1364849f64c9",
+      "startedAt": "2026-08-14T02:29:05+08:00",
+      "endedAt": "2026-08-14T02:31:43+08:00",
+      "elapsedSeconds": 158,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T02:31:43+08:00",
+      "inProgressCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1",
+      "startedAt": "2026-08-14T02:31:54+08:00",
+      "endedAt": "2026-08-14T02:39:30+08:00",
+      "elapsedSeconds": 456,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T02:31:43+08:00",
+      "inProgressCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0193_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1",
+      "evidencePath": "docs/evidence/TASK-0193/review-r1.md",
+      "reason": "R1 独立复核 A-D 全 PASS 并裁决 APPROVE（P0/P1/P2=0，仅 4 条信息性 P3）：manifest 独立重算 78/8/70、70/70 逐路径 mode/blob、orderedPathSetSha256/manifestSha256、两棵树、3fe5244→2668949→bfc6a62→8f08bb1 单父链与 70 路径零漂移全部吻合；继承实现实读源码审查（V27 域分离四元绑定/每调用重校验/服务端重算/双 REVOKE/秘密表与 mint helper 零权限、OwnerContext/Bootstrap fail-closed、tests 69-73+00 真实 runtime 角色断言）确认 Owner 安全矩阵 11 项全部实证覆盖；治理 diff 逐提交单父且 writeAllowlist 恰 70 精确路径；四条冻结验收命令独立重跑全部 exit 0（precheck 8 commands、reactor 1356 tests/runtime 340、RLS 74 PASS、diff --check clean）。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0193",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor（bind d64f2de 后）PASS 891088 checks，105.6s；无新 blocker（未创建 pre-READY maintenance boundary）",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    },
+    {
+      "command": "inheritedStateManifest 机器核验（21 项，python 脚本，git 对象独立推导）",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "绑定提交/树全部存在且一致；窗口 diff=78；排除恰 8 治理路径后=70；manifest 集合与 diff-minus-governance 完全相等；70/70 mode=100644/blob 逐项匹配 adoptionBase；manifestSha256=d1957901…、orderedPathSetSha256=b9f02777… 重算一致；70 blob 在 2abc531 与 9a9c77c 零漂移；单父链实测成立；结果固化于 docs/evidence/TASK-0193/inherited-manifest.json；Reviewer A 段独立复算一致",
+      "verifiedCommit": null,
+      "candidateCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0193",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 1d2cf97：canonical precheck 8 commands 全 PASS exit 0（doctor PASS 892570 checks + licenseCheck + catalog/openapi/beta/paid），117s；实现者与独立 Reviewer 各跑一次均 exit 0；未复用 TASK-0191 旧 PASS",
+      "verifiedCommit": null,
+      "candidateCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    },
+    {
+      "command": "JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 1d2cf97：BUILD SUCCESS，runtime 模块 Tests run=340 Failures=0 Errors=0 Skipped=0（全 reactor 1356），14s；Reviewer 独立重跑同样 exit 0",
+      "verifiedCommit": null,
+      "candidateCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 1d2cf97：一次性 PostgreSQL 18+pgvector 容器（OrbStack docker 29.4.0）74/74 PASS（含 69-73 owner-context 安全矩阵与 00 seed），37s，ALL TESTS PASS；Reviewer 独立重跑同样 74 PASS exit 0",
+      "verifiedCommit": null,
+      "candidateCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 1d2cf97：工作树与 9a9c77c..HEAD 全量 range 均无 whitespace 错误；Reviewer 独立复核 clean",
+      "verifiedCommit": null,
+      "candidateCommit": "1d2cf97f084c4afad75abdd65621482aae859dc1"
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "既有 34 分钟 CI 预算风险（TASK-0189/0190/0191/0192 延续的 CiPolicy 风险记录）；本次未运行，保持 NOT_RUN，不代表 CI 完全兼容",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    }
+  ]
+}

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0193
-activeTaskCard: docs/tasks/TASK-0193-p0-owner-context-rls-inherited-adoption.md
-lastAcceptedTask: TASK-0192
-lastAcceptedHandoff: docs/handoffs/TASK-0192.json
-lastTerminalTask: TASK-0192
-lastTerminalHandoff: docs/handoffs/TASK-0192.json
-nextAction: TASK-0193 已 READY：执行 inheritedStateManifest 机器核验（78/8/70、逐路径 mode/blob、path-set hash、manifest hash、实现树）后以同一真实候选 SHA 运行四条冻结验收命令（canonical precheck + Maven runtime 全量 + RLS 全套 + git diff --check），完成 C4 独立复核（审查 3c7fd0b..2abc531 实际继承实现范围并重跑验收命令）后终态闭环；在此之前保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0193
+lastAcceptedHandoff: docs/handoffs/TASK-0193.json
+lastTerminalTask: TASK-0193
+lastTerminalHandoff: docs/handoffs/TASK-0193.json
+nextAction: TASK-0193 ACCEPTED：P0 owner-context/RLS 继承实现已按 inheritedStateManifest 机器绑定正式接纳（70 路径零漂移、四条冻结验收命令与 C4 独立复核全 PASS；TASK-0191 保持 REJECTED）；本地 main 保持未推送未合并，由 Owner 决策是否推送或继续外部审计后续修复项（lease/fence 业务写入保护与 runtime/migrator 身份隔离另开任务卡）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
