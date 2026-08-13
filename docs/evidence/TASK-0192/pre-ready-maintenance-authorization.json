@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260813-TASK-0192-PRE-READY-01",
+  "decisionId": "TASK-0192-PRE-READY-HARNESS-RECOVERY-20260814",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0192",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-14",
+  "sourceThreadId": "zcode-audit-20260813",
+  "draftCommit": "cab8311c4d6a7d19fcfaf5d6684a4a5da2a5cc4b",
+  "draftCorrectionCommit": "b9aa1c7f4fe9d4b6fec6d4494a6fc56f95b87c3d",
+  "draftAnchorBaseCommit": "2abc531bde888d7f9689d199fb8b092b3341b226",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "directSingleParentFromDraftRequired": true,
+  "pathSetFrozenAtDraft": true,
+  "additionsOrRemovalsForbidden": true,
+  "consumedRecordMustBecomeInert": true,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false,
+  "remoteDispatchAuthorized": false,
+  "exactPaths": [
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+    "docs/evidence/TASK-0192/pre-ready-maintenance-authorization.json"
+  ],
+  "amendmentCompanionEdge": {
+    "parent": "3fe5244f865d46b59a535cd25e5f52793366e28f",
+    "parentTree": "d6b2ed710be62ffcd4b6bc612edc99f1a2c64de2",
+    "commit": "26689494cfe560cd1b388d2a1a6c44adadb1e8d2",
+    "tree": "5b5745e80d5472a8d974aaa626697836fd122a17",
+    "changedPathsSha256": "ae79436097f6d4ba2cbc5b8d4a7dd2aec2d6847300cd190df927746ed628c879",
+    "changedPathsCount": 6
+  },
+  "seedRecoveryEdge": {
+    "parent": "26689494cfe560cd1b388d2a1a6c44adadb1e8d2",
+    "parentTree": "5b5745e80d5472a8d974aaa626697836fd122a17",
+    "commit": "bfc6a62d53eb55c22dc257216b1db8592f50c667",
+    "tree": "19ac0333904dcb46f879f2076a232c33be7e9ac1",
+    "changedPathsSha256": "c355d48eeb601c081a7a5efd230c0de71567915b554891e2df48e42775fa024f",
+    "changedPathsCount": 66,
+    "path": "infra/db/tests/00_owner_binding_secret_seed.sql",
+    "mode": "100644",
+    "blob": "5f8493983834c2a207141be6fbf5ac2181c9a1c2",
+    "contentSha256": "0203668d07791e99f83ddd4a340db83a61430f2bdca89ac5e6a016f661a5c166"
+  },
+  "targetTaskIdentity": {
+    "taskId": "TASK-0191",
+    "baseCommit": "3c7fd0b5b306325d51464053e7b3382044c3dd4b",
+    "baseTree": "21dddce6f1f61960d6647ffa9aaadc992e1f01d6",
+    "authorizationCommit": "9aa3221a25d4eedc77377ff07d0bfff46a4e7c63",
+    "authorizationTree": "4e7f600e9244cd2aef346cc1bfc97205e5ed0ba7"
+  },
+  "evidence": "Owner 2026-08-14 条件批准 TASK-0192 一次性 pre-READY maintenance boundary（recordId OWNER-MAINT-20260813-TASK-0192-PRE-READY-01）：前提为 DRAFT 机器绑定修正提交（amendment 伴随边绑定 3fe5244→2668949；seed 一次性恢复绑定引入边 2668949→bfc6a62，不得把 3fe5244 写成其直接父；绑定 TASK-0191 base、authorization commit、完整 parent/commit/tree、精确 changed-path set、seed 100644 mode、blob/content hash；仅允许 TASK-0191 这一条历史边命中；通用规则只能豁免已由隔离校验得到零错误的 amendment edge 上的 .harness/task-backlog.yaml，不得全局忽略 Backlog，也不得豁免 task card、added paths 或其他错误；正负测试覆盖错误父提交、错误 tree/blob、额外路径、多父、其他任务复制及重复消费）。边界必须是修正后 DRAFT 的直接单父提交，仅允许修改 scripts/harness/doctor.py、scripts/harness/tests/test_harness.py、docs/evidence/TASK-0192/pre-ready-maintenance-authorization.json；oneTimeOnly: true、不可复用、消费后惰化，路径不得增删；批准日期 2026-08-14；原 cab8311 不再作为 boundary 的直接父锚。完成后自主推进 READY、候选验证、C4 独立复核和终态闭环，必须真实证明 TASK-0191 Doctor/summary 恢复 PASS。"
+}

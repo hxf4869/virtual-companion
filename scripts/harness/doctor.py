@@ -431,6 +431,106 @@ TASK_0189_PRE_READY_MAINTENANCE_PATHS = {
     "skills/task-delivery-flow/SKILL.md",
     "skills/task-intake/SKILL.md",
 }
+# ---------------------------------------------------------------------------
+# TASK-0192 (2026-08-14): amendment-diff-scope recovery bindings.
+#
+# General rule: an amendment-introducing parent edge that passes the FULL
+# isolated validate_amendment_introduction validation with zero errors carries
+# .harness/task-backlog.yaml as a mandatory governance companion path -- that
+# one path on that one edge is exempt from the ordinary diff-scope
+# allowlist/forbidden re-rejection. Nothing else is exempted (task card, added
+# paths and every other error keep failing closed) and Backlog is never
+# globally ignored.
+#
+# One-time recovery (TASK-0191 seed fixture omission): the exact introduction
+# edge 2668949 -> bfc6a62 of infra/db/tests/00_owner_binding_secret_seed.sql
+# is machine-bound below; only TASK-0191 with its exact base/authorization
+# identity can ever hit it. This is NOT a general retroactive authorization.
+# ---------------------------------------------------------------------------
+TASK_0192_SEED_RECOVERY_TASK_ID = "TASK-0191"
+TASK_0192_SEED_RECOVERY_TASK_BASE = "3c7fd0b5b306325d51464053e7b3382044c3dd4b"
+TASK_0192_SEED_RECOVERY_TASK_BASE_TREE = "21dddce6f1f61960d6647ffa9aaadc992e1f01d6"
+TASK_0192_SEED_RECOVERY_TASK_AUTHORIZATION = "9aa3221a25d4eedc77377ff07d0bfff46a4e7c63"
+TASK_0192_SEED_RECOVERY_TASK_AUTHORIZATION_TREE = "4e7f600e9244cd2aef346cc1bfc97205e5ed0ba7"
+TASK_0192_SEED_RECOVERY_PARENT = "26689494cfe560cd1b388d2a1a6c44adadb1e8d2"
+TASK_0192_SEED_RECOVERY_PARENT_TREE = "5b5745e80d5472a8d974aaa626697836fd122a17"
+TASK_0192_SEED_RECOVERY_COMMIT = "bfc6a62d53eb55c22dc257216b1db8592f50c667"
+TASK_0192_SEED_RECOVERY_COMMIT_TREE = "19ac0333904dcb46f879f2076a232c33be7e9ac1"
+TASK_0192_SEED_RECOVERY_PATH = "infra/db/tests/00_owner_binding_secret_seed.sql"
+TASK_0192_SEED_RECOVERY_MODE = "100644"
+TASK_0192_SEED_RECOVERY_BLOB = "5f8493983834c2a207141be6fbf5ac2181c9a1c2"
+TASK_0192_SEED_RECOVERY_CONTENT_SHA256 = (
+    "0203668d07791e99f83ddd4a340db83a61430f2bdca89ac5e6a016f661a5c166"
+)
+TASK_0192_SEED_RECOVERY_CHANGED_PATHS = frozenset({
+    "infra/db/tests/00_owner_binding_secret_seed.sql",
+    "infra/db/tests/01_cross_user_read_denied.sql",
+    "infra/db/tests/04_stale_worker_fence_denied.sql",
+    "infra/db/tests/06_authorization_snapshot_isolation.sql",
+    "infra/db/tests/07_claim_binds_context.sql",
+    "infra/db/tests/08_expired_lease_zero_write.sql",
+    "infra/db/tests/09_wrong_token_zero_write.sql",
+    "infra/db/tests/10_stale_fence_zero_write.sql",
+    "infra/db/tests/12_coordinator_reads_only_metadata.sql",
+    "infra/db/tests/13_idempotent_receive_same_generation_id.sql",
+    "infra/db/tests/14_idempotent_receive_no_duplicate_message.sql",
+    "infra/db/tests/15_cross_owner_generation_reference_denied.sql",
+    "infra/db/tests/16_atomic_finalize_commits_all.sql",
+    "infra/db/tests/17_fault_injection_rolls_back_all.sql",
+    "infra/db/tests/18_provider_eos_cannot_complete.sql",
+    "infra/db/tests/19_realtime_ticket_single_use_ttl_hash.sql",
+    "infra/db/tests/20_resume_resumed_contiguous_cursor.sql",
+    "infra/db/tests/21_resume_gap_expired_window.sql",
+    "infra/db/tests/22_resume_reset_required_epoch.sql",
+    "infra/db/tests/23_resume_terminal_snapshot.sql",
+    "infra/db/tests/24_resume_not_found_or_forbidden.sql",
+    "infra/db/tests/25_realtime_event_rls_owner_isolation.sql",
+    "infra/db/tests/26_relationship_active_limit_enforced.sql",
+    "infra/db/tests/28_relationship_not_found_or_forbidden.sql",
+    "infra/db/tests/29_relationship_lifecycle_activate_deactivate.sql",
+    "infra/db/tests/30_generation_cancel.sql",
+    "infra/db/tests/31_message_history_pagination.sql",
+    "infra/db/tests/32_memory_confirmation_path_only.sql",
+    "infra/db/tests/33_memory_cross_isolation_fail_closed.sql",
+    "infra/db/tests/34_memory_lifecycle_evidence_scope.sql",
+    "infra/db/tests/35_memory_edit_evidence.sql",
+    "infra/db/tests/36_memory_idempotency.sql",
+    "infra/db/tests/37_memory_recall_scope_budget.sql",
+    "infra/db/tests/38_memory_recall_tombstone_determinism.sql",
+    "infra/db/tests/40_provider_attempt_rls.sql",
+    "infra/db/tests/41_generation_terminal_transitions.sql",
+    "infra/db/tests/42_terminal_event_atomic.sql",
+    "infra/db/tests/43_candidate_and_quota_release.sql",
+    "infra/db/tests/44_finalize_finalize_concurrent.sql",
+    "infra/db/tests/45_finalize_cancel_concurrent.sql",
+    "infra/db/tests/46_finalize_terminalize_concurrent.sql",
+    "infra/db/tests/47_candidate_terminal_toctou.sql",
+    "infra/db/tests/50_realtime_event_catalog.sql",
+    "infra/db/tests/51_authorization_snapshot_one_way_lifecycle.sql",
+    "infra/db/tests/52_revoked_runtime_dml_on_business_tables.sql",
+    "infra/db/tests/54_sd_owner_mismatch_fail_closed.sql",
+    "infra/db/tests/59_provider_attempt_authorization_snapshot_fk.sql",
+    "infra/db/tests/60_quota_nonneg_check_and_release_idempotency.sql",
+    "infra/db/tests/63_worker_runtime_role_claim_complete.sql",
+    "infra/db/tests/64_worker_coordinator_cross_session_recovery.sql",
+    "infra/db/tests/65_generation_intake_workitem_promotion.sql",
+    "infra/db/tests/66_generation_zero_llm_completed_chain.sql",
+    "infra/db/tests/67_generation_external_attempt_completed_chain.sql",
+    "infra/db/tests/68_authorization_snapshot_runtime_creation_external_chain.sql",
+    "infra/db/tests/69_owner_guc_direct_set_fail_closed.sql",
+    "infra/db/tests/70_owner_forged_binding_denied.sql",
+    "infra/db/tests/71_begin_job_context_permission_denied.sql",
+    "infra/db/tests/72_owner_binding_replay_and_legit_path.sql",
+    "infra/db/tests/73_owner_secret_table_invisible_to_runtime_roles.sql",
+    "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/AuthDataSourceConfig.java",
+    "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/config/OwnerBindingSecretBootstrap.java",
+    "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/tenant/OwnerContext.java",
+    "service/apps/runtime/src/main/resources/application.yaml",
+    "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/OwnerBindingSecretBootstrapTest.java",
+    "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/tenant/OwnerContextTest.java",
+    "service/platform/persistence/src/main/resources/db/migration/V27__owner_context_cryptographic_binding.sql",
+})
+
 TASK_0189_EXACT_OWNER_AUTHORIZATION = (
     'Owner 按 2026-08-13 审计交接决策正式授权 TASK-0189 恢复 canonical greenline： 唯一 pre-READY maintenance 边（recordId OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01） 机器绑定接受 7f9f9e3→c626005（TASK-0187 canonical terminal 后的 evidence/handoff headCommit 回填 metadata tail，仅改 docs/evidence/TASK-0187/evidence-pack.json 与 docs/handoffs/TASK-0187.json）作为 DRAFT 锚（baseCommit=c626005）；同时实现严格 限定的 legacy reviewers compatibility：仅终态（ACCEPTED/REJECTED/SUPERSEDED）C1/C2 且 independentReview: not-required 的任务允许缺省 reviewers 字段，其余情况失败 关闭；不得补写 TASK-0185/0186/0187 历史卡；维护边只允许 6 个冻结路径、一次性消费、 不可复用、禁止历史改写/通用 override；authorizationCommit 占位（plan-approved-...） 接受为不可逆死债并在 Evidence/Handoff 如实记录。'
 )
@@ -4302,6 +4402,150 @@ def validate_amendment_introduction(
         "Backlog and its explicitly authorized new paths; "
         f"changed={sorted(changed)}",
     )
+
+
+def amendment_edge_introduces_without_errors(
+    task_id: str,
+    task_path: str,
+    base_commit: str,
+    parent: str,
+    commit: str,
+    parents: list[str],
+) -> tuple[bool, Any]:
+    """TASK-0192: isolated zero-error validation of one amendment edge.
+
+    Runs the full validate_amendment_introduction contract on a throwaway
+    Audit for the single scopeAmendments entry the child task card introduced
+    across this edge. Returns (True, amendment) only when the isolated audit
+    recorded zero errors -- i.e. the edge really is a single-parent atomic
+    governance introduction (exact path set, bound parent commit, atomic
+    Backlog contract, no retroactive authorization).
+    """
+    try:
+        child_metadata = task_metadata_at_commit(commit, task_path)
+    except (HarnessError, UnicodeError, yaml.YAMLError):
+        return (False, None)
+    child_amendments = child_metadata.get("scopeAmendments")
+    child_amendments = child_amendments if isinstance(child_amendments, list) else []
+    parent_amendments: list[Any] = []
+    parent_card_exists = git_text(
+        "cat-file", "-e", f"{parent}:{task_path}", check=False
+    ).returncode == 0
+    if parent_card_exists:
+        try:
+            parent_metadata = task_metadata_at_commit(parent, task_path)
+        except (HarnessError, UnicodeError, yaml.YAMLError):
+            return (False, None)
+        raw = parent_metadata.get("scopeAmendments")
+        parent_amendments = raw if isinstance(raw, list) else []
+    introduced = [a for a in child_amendments if a not in parent_amendments]
+    if len(introduced) != 1:
+        return (False, None)
+    audit = Audit()
+    validate_amendment_introduction(
+        audit, task_id, task_path, base_commit, parent, commit, parents,
+        introduced[0],
+    )
+    return (not audit.errors, introduced[0])
+
+
+def amendment_governance_companion_paths(
+    task_id: str,
+    task_path: str,
+    base_commit: str,
+    head_commit: str,
+) -> set[str]:
+    """TASK-0192: Backlog paths carried by fully validated amendment edges.
+
+    Walks base..head and returns {TASK_BACKLOG_PATH} for each single-parent
+    edge that introduces a scope amendment with zero isolated-validation
+    errors. The returned set is the ONLY diff-scope exemption (the Backlog
+    path on those edges); Backlog is never globally ignored and no other path
+    or error is exempted.
+    """
+    companions: set[str] = set()
+    ancestor = git_text(
+        "merge-base", "--is-ancestor", base_commit, head_commit, check=False
+    )
+    if ancestor.returncode != 0:
+        return companions
+    graph = git_text(
+        "rev-list",
+        "--parents",
+        "--topo-order",
+        "--reverse",
+        f"{base_commit}..{head_commit}",
+    ).stdout.splitlines()
+    for graph_line in graph:
+        tokens = graph_line.split()
+        if not tokens:
+            continue
+        commit = tokens[0]
+        parents = tokens[1:]
+        if len(parents) != 1:
+            continue
+        qualifies, _amendment = amendment_edge_introduces_without_errors(
+            task_id, task_path, base_commit, parents[0], commit, parents
+        )
+        if qualifies:
+            companions.add(TASK_BACKLOG_PATH)
+    return companions
+
+
+def task0191_seed_recovery_applies(task: dict[str, Any]) -> bool:
+    """TASK-0192 one-time machine-bound recovery (Owner 2026-08-14).
+
+    Accepts exactly one historical fact pattern: TASK-0191 (with its exact
+    base/authorization identity) whose seed fixture was introduced by commit
+    bfc6a62 on the edge from the scope-amendment commit 2668949, with the full
+    66-path change set, mode 100644, the exact blob/content hash, and no later
+    drift of that blob up to HEAD. Any mismatch fails closed. This grants no
+    general retroactive authorization: only this single TASK-0191 edge can
+    ever match.
+    """
+    if task.get("taskId") != TASK_0192_SEED_RECOVERY_TASK_ID:
+        return False
+    if str(task.get("baseCommit", "")) != TASK_0192_SEED_RECOVERY_TASK_BASE:
+        return False
+    authorization = str(task.get("authorizationCommit", ""))
+    if authorization != TASK_0192_SEED_RECOVERY_TASK_AUTHORIZATION:
+        return False
+    try:
+        if git_text("rev-parse", f"{TASK_0192_SEED_RECOVERY_TASK_BASE}^{{tree}}").stdout.strip() != TASK_0192_SEED_RECOVERY_TASK_BASE_TREE:
+            return False
+        if git_text("rev-parse", f"{authorization}^{{tree}}").stdout.strip() != TASK_0192_SEED_RECOVERY_TASK_AUTHORIZATION_TREE:
+            return False
+        parents = git_text(
+            "rev-list", "--parents", "-n", "1",
+            TASK_0192_SEED_RECOVERY_COMMIT,
+        ).stdout.split()
+        if len(parents) != 2 or parents[1] != TASK_0192_SEED_RECOVERY_PARENT:
+            return False
+        if git_text("rev-parse", f"{TASK_0192_SEED_RECOVERY_COMMIT}^{{tree}}").stdout.strip() != TASK_0192_SEED_RECOVERY_COMMIT_TREE:
+            return False
+        if git_text("rev-parse", f"{TASK_0192_SEED_RECOVERY_PARENT}^{{tree}}").stdout.strip() != TASK_0192_SEED_RECOVERY_PARENT_TREE:
+            return False
+        entry = git_tree_entry(TASK_0192_SEED_RECOVERY_COMMIT, TASK_0192_SEED_RECOVERY_PATH)
+        if entry is None or tuple(entry) != (
+            TASK_0192_SEED_RECOVERY_MODE, "blob", TASK_0192_SEED_RECOVERY_BLOB,
+        ):
+            return False
+        content = git_object(TASK_0192_SEED_RECOVERY_COMMIT, TASK_0192_SEED_RECOVERY_PATH)
+        if hashlib.sha256(content).hexdigest() != TASK_0192_SEED_RECOVERY_CONTENT_SHA256:
+            return False
+        changed = set(
+            changed_paths_between(
+                TASK_0192_SEED_RECOVERY_PARENT, TASK_0192_SEED_RECOVERY_COMMIT
+            )
+        )
+        if changed != set(TASK_0192_SEED_RECOVERY_CHANGED_PATHS):
+            return False
+        head_entry = git_tree_entry("HEAD", TASK_0192_SEED_RECOVERY_PATH)
+        if head_entry is None or head_entry[2] != TASK_0192_SEED_RECOVERY_BLOB:
+            return False
+    except (HarnessError, OSError):
+        return False
+    return True
 
 
 def validate_task_authorization_history(
@@ -18649,6 +18893,27 @@ def validate_diff_scope(
     )
     allowlist, amendment_exact_paths = effective_task_write_scope(task)
     forbidden = [str(item) for item in task.get("forbiddenPaths", [])]
+    # TASK-0192 (2026-08-14): two strictly scoped exemptions. (1) Backlog on a
+    # parent edge whose amendment introduction passed the FULL isolated
+    # validation with zero errors is a mandatory governance companion path --
+    # exempt from the ordinary allowlist/forbidden re-rejection only. (2) The
+    # one-time machine-bound TASK-0191 seed-fixture recovery. Nothing else is
+    # exempted; every other path and error keeps failing closed.
+    governance_companion_paths: set[str] = set()
+    task_amendments = task.get("scopeAmendments")
+    if isinstance(task_amendments, list) and task_amendments:
+        try:
+            governance_companion_paths = amendment_governance_companion_paths(
+                str(task.get("taskId", "")),
+                str(task.get("_path", "")),
+                str(task.get("baseCommit", "")),
+                target_commit or "HEAD",
+            )
+        except (HarnessError, OSError):
+            governance_companion_paths = set()
+    seed_recovery_paths: set[str] = set()
+    if task0191_seed_recovery_applies(task):
+        seed_recovery_paths = {TASK_0192_SEED_RECOVERY_PATH}
     required_skills = set(task_required_skills(task))
     approvals = task.get("humanApprovals")
     approvals = approvals if isinstance(approvals, list) else []
@@ -18659,15 +18924,17 @@ def validate_diff_scope(
         validate_project_state_mutation_policy(audit, task, target_commit)
 
     for path in changed:
-        audit.require(
-            path in amendment_exact_paths
-            or any(glob_matches(path, pattern) for pattern in allowlist),
-            f"{task_id}: changed path is outside writeAllowlist: {path}",
-        )
-        audit.require(
-            not any(glob_matches(path, pattern) for pattern in forbidden),
-            f"{task_id}: changed path is forbidden: {path}",
-        )
+        exempted = path in governance_companion_paths or path in seed_recovery_paths
+        if not exempted:
+            audit.require(
+                path in amendment_exact_paths
+                or any(glob_matches(path, pattern) for pattern in allowlist),
+                f"{task_id}: changed path is outside writeAllowlist: {path}",
+            )
+            audit.require(
+                not any(glob_matches(path, pattern) for pattern in forbidden),
+                f"{task_id}: changed path is forbidden: {path}",
+            )
         for rule in protected_rules:
             if not glob_matches(path, str(rule.get("glob", ""))):
                 continue

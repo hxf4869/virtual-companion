@@ -11282,3 +11282,258 @@ class TimeoutTests(unittest.TestCase):
         self.assertEqual(900, precheck.command_timeout_seconds({"timeoutSeconds": 900}))
         self.assertEqual(1800, precheck.command_timeout_seconds({"argv": []}))
         self.assertEqual(1800, precheck.command_timeout_seconds({"timeoutSeconds": 0}))
+
+
+class Task0192AmendmentDiffScopeRecoveryTests(unittest.TestCase):
+    """TASK-0192: Backlog governance companion path on fully validated
+    amendment edges only (Owner 2026-08-14). Negatives prove nothing else is
+    exempted and that malformed edges fail closed."""
+
+    TASK_0191_CARD = "docs/tasks/TASK-0191-owner-context-rls-trust-model.md"
+    TASK_0191_BASE = "3c7fd0b5b306325d51464053e7b3382044c3dd4b"
+    AMENDMENT_PARENT = "3fe5244f865d46b59a535cd25e5f52793366e28f"
+    AMENDMENT_COMMIT = "26689494cfe560cd1b388d2a1a6c44adadb1e8d2"
+
+    def test_real_amendment_edge_qualifies_with_zero_errors(self):
+        qualifies, amendment = doctor.amendment_edge_introduces_without_errors(
+            "TASK-0191",
+            self.TASK_0191_CARD,
+            self.TASK_0191_BASE,
+            self.AMENDMENT_PARENT,
+            self.AMENDMENT_COMMIT,
+            [self.AMENDMENT_PARENT],
+        )
+        self.assertTrue(qualifies)
+        self.assertIsInstance(amendment, dict)
+
+    def test_real_repo_companion_set_is_exactly_backlog(self):
+        companions = doctor.amendment_governance_companion_paths(
+            "TASK-0191",
+            self.TASK_0191_CARD,
+            self.TASK_0191_BASE,
+            "HEAD",
+        )
+        self.assertEqual(companions, {".harness/task-backlog.yaml"})
+
+    def test_wrong_parent_commit_fails_closed(self):
+        qualifies, _ = doctor.amendment_edge_introduces_without_errors(
+            "TASK-0191",
+            self.TASK_0191_CARD,
+            self.TASK_0191_BASE,
+            "3c7fd0b5b306325d51464053e7b3382044c3dd4b",
+            self.AMENDMENT_COMMIT,
+            ["3c7fd0b5b306325d51464053e7b3382044c3dd4b"],
+        )
+        self.assertFalse(qualifies)
+
+    def test_multi_parent_edge_fails_closed(self):
+        audit = doctor.Audit()
+        child_metadata = doctor.task_metadata_at_commit(
+            self.AMENDMENT_COMMIT, self.TASK_0191_CARD
+        )
+        amendment = child_metadata["scopeAmendments"][0]
+        doctor.validate_amendment_introduction(
+            audit,
+            "TASK-0191",
+            self.TASK_0191_CARD,
+            self.TASK_0191_BASE,
+            self.AMENDMENT_PARENT,
+            self.AMENDMENT_COMMIT,
+            [self.AMENDMENT_PARENT, "3c7fd0b5b306325d51464053e7b3382044c3dd4b"],
+            amendment,
+        )
+        self.assertTrue(audit.errors)
+
+    def test_extra_changed_path_fails_closed(self):
+        audit = doctor.Audit()
+        child_metadata = doctor.task_metadata_at_commit(
+            self.AMENDMENT_COMMIT, self.TASK_0191_CARD
+        )
+        amendment = copy.deepcopy(child_metadata["scopeAmendments"][0])
+        amendment["contract"]["addedWriteAllowlist"] = list(
+            amendment["contract"]["addedWriteAllowlist"]
+        ) + ["infra/db/tests/99_extra.sql"]
+        doctor.validate_amendment_introduction(
+            audit,
+            "TASK-0191",
+            self.TASK_0191_CARD,
+            self.TASK_0191_BASE,
+            self.AMENDMENT_PARENT,
+            self.AMENDMENT_COMMIT,
+            [self.AMENDMENT_PARENT],
+            amendment,
+        )
+        self.assertTrue(audit.errors)
+
+    def test_double_consumption_fails_closed(self):
+        # The amendment id already exists in the parent's Backlog: the
+        # introduction contract must reject (no second consumption).
+        audit = doctor.Audit()
+        child_metadata = doctor.task_metadata_at_commit(
+            self.AMENDMENT_COMMIT, self.TASK_0191_CARD
+        )
+        amendment = child_metadata["scopeAmendments"][0]
+        doctor.validate_amendment_introduction(
+            audit,
+            "TASK-0191",
+            self.TASK_0191_CARD,
+            self.TASK_0191_BASE,
+            self.AMENDMENT_COMMIT,
+            "bfc6a62d53eb55c22dc257216b1db8592f50c667",
+            [self.AMENDMENT_COMMIT],
+            amendment,
+        )
+        self.assertTrue(audit.errors)
+
+    def test_no_amendment_edge_yields_no_companion(self):
+        qualifies, amendment = doctor.amendment_edge_introduces_without_errors(
+            "TASK-0191",
+            self.TASK_0191_CARD,
+            self.TASK_0191_BASE,
+            self.AMENDMENT_COMMIT,
+            "bfc6a62d53eb55c22dc257216b1db8592f50c667",
+            [self.AMENDMENT_COMMIT],
+        )
+        self.assertFalse(qualifies)
+        self.assertIsNone(amendment)
+
+    def test_other_task_copy_use_fails_closed(self):
+        # The same amendment facts presented under a different task identity
+        # must not qualify (card path and identity binding both mismatch).
+        qualifies, _ = doctor.amendment_edge_introduces_without_errors(
+            "TASK-0190",
+            "docs/tasks/TASK-0190-license-inventory-jackson-databind.md",
+            "3c7fd0b5b306325d51464053e7b3382044c3dd4b",
+            self.AMENDMENT_PARENT,
+            self.AMENDMENT_COMMIT,
+            [self.AMENDMENT_PARENT],
+        )
+        self.assertFalse(qualifies)
+
+    def test_backlog_change_without_amendment_grants_no_companion(self):
+        # Real historical negative: the edge that CREATED task-backlog.yaml
+        # carries no amendment introduction, so its Backlog change gets no
+        # companion exemption (unvalidated Backlog changes keep failing
+        # closed).
+        creation = doctor.git_text(
+            "log", "--diff-filter=A", "--format=%H", "--",
+            ".harness/task-backlog.yaml",
+        ).stdout.split()
+        self.assertTrue(creation)
+        first_creation = creation[-1]
+        parent = doctor.git_text(
+            "rev-list", "--parents", "-n", "1", first_creation
+        ).stdout.split()[1]
+        companions = doctor.amendment_governance_companion_paths(
+            "TASK-0012",
+            "docs/tasks/TASK-0012-planned-backlog-harness-governance.md",
+            parent,
+            first_creation,
+        )
+        self.assertEqual(companions, set())
+
+    def test_task0012_valid_amendment_edge_qualifies(self):
+        # Real historical positive: 1b9eafd atomically introduced the
+        # task-0012-owner-formalize-task-0037 amendment (backlog + TASK-0012
+        # card + the amendment's added path TASK-0037 card), so the general
+        # rule grants it the Backlog companion path too.
+        parent = doctor.git_text(
+            "rev-list", "--parents", "-n", "1", "1b9eafd"
+        ).stdout.split()[1]
+        companions = doctor.amendment_governance_companion_paths(
+            "TASK-0012",
+            "docs/tasks/TASK-0012-planned-backlog-harness-governance.md",
+            parent,
+            "1b9eafd",
+        )
+        self.assertEqual(companions, {".harness/task-backlog.yaml"})
+
+
+class Task0191SeedRecoveryTests(unittest.TestCase):
+    """TASK-0192 one-time machine-bound recovery for the TASK-0191 seed
+    fixture omission (Owner 2026-08-14). Negatives mutate one binding at a
+    time and must all fail closed."""
+
+    @staticmethod
+    def _task0191_metadata() -> dict:
+        text = (ROOT / "docs/tasks/TASK-0191-owner-context-rls-trust-model.md").read_text(
+            encoding="utf-8"
+        )
+        match = doctor.TASK_BLOCK_RE.search(text)
+        return doctor.strict_yaml_load(match.group(1))
+
+    def test_real_repo_recovery_applies(self):
+        self.assertTrue(doctor.task0191_seed_recovery_applies(self._task0191_metadata()))
+
+    def test_other_task_cannot_copy_the_recovery(self):
+        task = dict(self._task0191_metadata())
+        task["taskId"] = "TASK-0190"
+        self.assertFalse(doctor.task0191_seed_recovery_applies(task))
+
+    def test_wrong_base_fails_closed(self):
+        task = dict(self._task0191_metadata())
+        task["baseCommit"] = "2abc531bde888d7f9689d199fb8b092b3341b226"
+        self.assertFalse(doctor.task0191_seed_recovery_applies(task))
+
+    def test_wrong_authorization_commit_fails_closed(self):
+        task = dict(self._task0191_metadata())
+        task["authorizationCommit"] = "3fe5244f865d46b59a535cd25e5f52793366e28f"
+        self.assertFalse(doctor.task0191_seed_recovery_applies(task))
+
+    def _with_constant(self, name: str, value):
+        original = getattr(doctor, name)
+        setattr(doctor, name, value)
+        try:
+            return doctor.task0191_seed_recovery_applies(self._task0191_metadata())
+        finally:
+            setattr(doctor, name, original)
+
+    def test_wrong_parent_binding_fails_closed(self):
+        # The mistaken DRAFT cab8311 binding (3fe5244 as the introduction
+        # edge parent) must never validate.
+        self.assertFalse(
+            self._with_constant(
+                "TASK_0192_SEED_RECOVERY_PARENT",
+                "3fe5244f865d46b59a535cd25e5f52793366e28f",
+            )
+        )
+
+    def test_wrong_commit_tree_fails_closed(self):
+        self.assertFalse(
+            self._with_constant(
+                "TASK_0192_SEED_RECOVERY_COMMIT_TREE",
+                "d6b2ed710be62ffcd4b6bc612edc99f1a2c64de2",
+            )
+        )
+
+    def test_wrong_blob_fails_closed(self):
+        self.assertFalse(
+            self._with_constant(
+                "TASK_0192_SEED_RECOVERY_BLOB",
+                "0" * 40,
+            )
+        )
+
+    def test_wrong_content_hash_fails_closed(self):
+        self.assertFalse(
+            self._with_constant(
+                "TASK_0192_SEED_RECOVERY_CONTENT_SHA256",
+                "f" * 64,
+            )
+        )
+
+    def test_extra_changed_path_fails_closed(self):
+        mutated = set(doctor.TASK_0192_SEED_RECOVERY_CHANGED_PATHS) | {
+            "infra/db/tests/99_extra.sql"
+        }
+        self.assertFalse(
+            self._with_constant(
+                "TASK_0192_SEED_RECOVERY_CHANGED_PATHS",
+                frozenset(mutated),
+            )
+        )
+
+    def test_wrong_mode_fails_closed(self):
+        self.assertFalse(
+            self._with_constant("TASK_0192_SEED_RECOVERY_MODE", "100755")
+        )
