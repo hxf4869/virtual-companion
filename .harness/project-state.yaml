@@ -2,13 +2,17 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0191
+activeTaskCard: docs/tasks/TASK-0191-owner-context-rls-trust-model.md
 lastAcceptedTask: TASK-0190
 lastAcceptedHandoff: docs/handoffs/TASK-0190.json
 lastTerminalTask: TASK-0190
 lastTerminalHandoff: docs/handoffs/TASK-0190.json
-nextAction: 以 TASK-0190 ACCEPTED 终态提交为 baseCommit 开下一永久任务卡，处理 2026-08-13 审计报告的 P0 业务 findings（begin_job_context 可伪造等）及其余 P1/P2/P3 项；后续任务 Base 始终使用最新合法终态提交。
+nextAction: >-
+  执行 TASK-0191（P0 owner context/RLS 信任模型修复）：V27 域分离
+  owner|nonce|pid|xact_id 绑定 + set_owner_context + begin_job_context
+  撤销 + OwnerContext/bootstrap 运行时适配 + 53 测试机械改造与 5 新测试，
+  四条验收命令同候选 SHA 真实 PASS 后 C4 复核与 ACCEPTED 闭合。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
