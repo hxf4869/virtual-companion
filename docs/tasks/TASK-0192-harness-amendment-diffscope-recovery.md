@@ -237,39 +237,69 @@ idle summary 恢复 PASS（greenline 恢复），为后续独立接纳 TASK-0191
 doctor 的 3 项 error 在本卡 READY Doctor 时即会阻塞（全局任务校验含
 lastTerminal），因此修复必须先于 READY 落地（TASK-0073/0098/0189 同型边界）：
 
-- 唯一边 `OWNER-MAINT-20260813-TASK-0192-PRE-READY-01`，DRAFT 的直接单父
-  提交，恰 3 个冻结路径：`scripts/harness/doctor.py`、
+- 唯一边 `OWNER-MAINT-20260813-TASK-0192-PRE-READY-01`（Owner 2026-08-14
+  条件批准），**修正后 DRAFT**（非 cab8311）的直接单父提交，恰 3 个冻结
+  路径：`scripts/harness/doctor.py`、
   `scripts/harness/tests/test_harness.py`、
-  `docs/evidence/TASK-0192/pre-ready-maintenance-authorization.json`。
-- oneTimeOnly、不可复用、消费后惰化；边界即实现。
+  `docs/evidence/TASK-0192/pre-ready-maintenance-authorization.json`
+  （approvedAt 2026-08-14）。
+- oneTimeOnly、不可复用、消费后惰化、路径不得增删；边界即实现。
 
-## 实现设计（Owner 冻结边界内）
+## 实现设计（Owner 冻结边界内，2026-08-14 修正版机器绑定）
+
+提交链事实（修正 DRAFT cab8311 中把 seed 引入提交直接父误写为 3fe5244 的
+错误；实际链为 3fe5244 → 2668949（scope amendment）→ bfc6a62（引入 seed））：
+
+- TASK-0191：baseCommit `3c7fd0b5b306325d51464053e7b3382044c3dd4b`（tree
+  `21dddce6f1f61960d6647ffa9aaadc992e1f01d6`）、authorizationCommit
+  `9aa3221a25d4eedc77377ff07d0bfff46a4e7c63`（tree
+  `4e7f600e9244cd2aef346cc1bfc97205e5ed0ba7`）。
+- **amendment 伴随边**：`3fe5244f865d46b59a535cd25e5f52793366e28f`（tree
+  `d6b2ed710be62ffcd4b6bc612edc99f1a2c64de2`）→
+  `26689494cfe560cd1b388d2a1a6c44adadb1e8d2`（tree
+  `5b5745e80d5472a8d974aaa626697836fd122a17`），精确 changed-path set =
+  6 路径（backlog + 卡 + 4 amendment 路径；sorted-set sha256
+  `ae79436097f6d4ba2cbc5b8d4a7dd2aec2d6847300cd190df927746ed628c879`）。
+- **seed 引入边**：`26689494cfe560cd1b388d2a1a6c44adadb1e8d2` →
+  `bfc6a62d53eb55c22dc257216b1db8592f50c667`（tree
+  `19ac0333904dcb46f879f2076a232c33be7e9ac1`），精确 changed-path set =
+  66 路径（sorted-set sha256
+  `c355d48eeb601c081a7a5efd230c0de71567915b554891e2df48e42775fa024f`）；
+  seed 路径 `infra/db/tests/00_owner_binding_secret_seed.sql` mode `100644`、
+  blob `5f8493983834c2a207141be6fbf5ac2181c9a1c2`、content sha256
+  `0203668d07791e99f83ddd4a340db83a61430f2bdca89ac5e6a016f661a5c166`，
+  且当前 HEAD blob 必须仍等于引入 blob（防漂移）。
 
 1. **通用 amendment 伴随路径规则**（doctor.py）：新增纯函数
    `amendment_edge_is_governance_introduction(...)` 与
    `amendment_governance_companion_paths(task_id, task_path, base_commit,
    head_commit)`；在 `validate_diff_scope` 的逐路径检查中，当且仅当某父边
-   **完整通过** amendment 引入校验（单父、changed 恰为
-   {卡, backlog, *addedWriteAllowlist}、合同 authorizedParentCommit==父、
-   子提交原子引入而父提交没有、卡投影与 backlog 合同一致）时，把该边的
-   `.harness/task-backlog.yaml` 视为强制治理伴随路径，跳过普通
-   allowlist/forbidden 重复拒绝。**不全局忽略 Backlog**：任何未通过完整
-   校验的 backlog 变更仍按原规则失败关闭。
-2. **TASK-0191 seed 一次性恢复**（doctor.py 常量，精确绑定）：
-   `TASK_0192_SEED_RECOVERY_*` 绑定 task=TASK-0191、base=`3c7fd0b…`、
-   parent=`3fe5244…`（amendment 授权父）、引入提交 `bfc6a62…` 及其 tree、
-   路径 `infra/db/tests/00_owner_binding_secret_seed.sql`、mode `100644`、
-   引入时 blob 与当前 HEAD blob（防漂移）。恢复仅对 TASK-0191 的 diff-scope
-   生效，任何字段不匹配即不生效（失败关闭）；不实现通用追溯授权。
+   **已由隔离校验得到零错误**（单父；changed 恰为
+   {task card, .harness/task-backlog.yaml, *addedWriteAllowlist}；合同
+   authorizedParentCommit==该边父提交；子提交原子引入而父提交没有；卡
+   scopeAmendments 投影与 backlog 合同逐字一致且 contractHash 正确）时，
+   **仅**把该边上的 `.harness/task-backlog.yaml` 视为强制治理伴随路径，
+   跳过普通 allowlist/forbidden 重复拒绝。**不得全局忽略 Backlog**，也
+   **不得豁免 task card、added paths 或其他任何路径的错误**——它们仍按
+   原规则失败关闭。
+2. **TASK-0191 seed 一次性恢复**（doctor.py 常量
+   `TASK_0192_SEED_RECOVERY_*`，精确绑定上表事实）：task=TASK-0191、
+   TASK-0191 base/authorization commit、引入边父 `26689494…` 与引入提交
+   `bfc6a62…`（含各自 tree）、精确 changed-path set（66 路径）、seed 路径、
+   mode `100644`、引入 blob 与 content sha256、HEAD blob 一致性。恢复仅使
+   **这一条** TASK-0191 历史边命中（其余任何任务/边/字段不匹配即不生效，
+   失败关闭）；不实现通用追溯授权。
 3. **正负测试**（test_harness.py 新增
    `Task0192AmendmentDiffScopeRecoveryTests` 与
    `Task0191SeedRecoveryTests`）：
-   - 正：真实仓库中 TASK-0191 的 amendment 边（3fe5244→2668949）识别为治理
-     伴随路径；seed 恢复命中；TASK-0191 diff-scope 3 项 error 消除（doctor
-     --task TASK-0191 恢复 PASS 由 canonical precheck 实证）。
-   - 负（均 FAIL）：额外 Backlog 内容（changed 含第 4 路径）、错误父提交、
-     blob 漂移、tree 漂移、多父边、二次消费（父已含 amendment id）、其他
-     任务复制使用（task_id 不匹配）、未通过完整校验的 backlog 变更仍拒绝。
+   - 正：真实仓库中 amendment 边（3fe5244→2668949）识别为治理伴随路径；
+     seed 引入边（2668949→bfc6a62）恢复命中；TASK-0191 diff-scope 3 项
+     error 消除（doctor --task TASK-0191 恢复 PASS 由 canonical precheck
+     与显式重跑实证）。
+   - 负（均 FAIL）：错误父提交（含把 3fe5244 当 seed 边直接父）、错误
+     tree、错误 blob/content hash、额外路径、多父边、二次消费（父已含
+     amendment id）、其他任务复制使用（task_id 不匹配）、未通过隔离零错误
+     校验的 backlog 变更仍拒绝。
    - 回归：TASK-0098/TASK-0189 tail 测试类保持 PASS（requiredCommands 定向）。
 
 ## 范围内
