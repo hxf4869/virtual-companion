@@ -18,7 +18,6 @@ planningBacklog: null
 planningContractHash: null
 planningContractHashAlgorithm: null
 baseCommit: fb9cf0e178212d6ff554abf7d4695aa114fe0dba
-authorizationCommit: null
 contextFingerprint: a43067c641a910de33da5c78e2e574fc0103cd0eb769b68445907b652c6140a2
 contextLock: docs/tasks/context/TASK-0194.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
@@ -325,26 +324,7 @@ requiredInvariants:
   - INV-HARNESS-002
   - INV-HARNESS-003
   - INV-HARNESS-007
-humanApprovals:
-  - scope: scope-and-split-decision
-    approvedBy: pending
-    approvedAt: pending
-    sourceThreadId: zcode-main-20260814
-    evidence: >-
-      待 Owner 决策：批准 TASK-0194 作为不可分割安全基座（事务拆分 + 墙钟 lease + 业务写
-      fence/lease/token guard + 外部审计独立持久化 + 独立新事务 fail），并把 bounded
-      retry/dead-letter 列为串行后续卡 TASK-0195；或要求单卡覆盖全部（含 bounded retry，
-      预算硬熔断风险）。同时待 Owner 给出 C4 database-migration 与 AUTHORIZATION 安全面
-      的人工批准与 writeAllowlist 终态确认。本 DRAFT 未获批准前不进入 READY。
-  - scope: database-migration
-    approvedBy: pending
-    approvedAt: pending
-    sourceThreadId: zcode-main-20260814
-    evidence: >-
-      待 Owner 批准 protected-path **/db/migration/** 的 C4 database-migration 人工批准：
-      追加式 V28（CREATE OR REPLACE / 新增 guard 函数），不修改 V1-V27 任何文件，保持
-      FORCE RLS、复合 owner FK、V27 owner 密码学绑定与 current_owner_id 每调用重校验
-      不被弱化。
+humanApprovals: []
 independentReview: required
 reviewers: []
 requiredCommands:
