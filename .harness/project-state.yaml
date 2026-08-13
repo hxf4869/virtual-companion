@@ -2,17 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0190
-activeTaskCard: docs/tasks/TASK-0190-license-inventory-jackson-databind.md
-lastAcceptedTask: TASK-0187
-lastAcceptedHandoff: docs/handoffs/TASK-0187.json
-lastTerminalTask: TASK-0189
-lastTerminalHandoff: docs/handoffs/TASK-0189.json
-nextAction: >-
-  执行 TASK-0190（license inventory 补齐）：实现已完成于 pre-READY maintenance
-  边界（license-inventory.yaml 补 com.fasterxml.jackson.core:jackson-databind
-  Apache-2.0），以同一真实候选 SHA 跑通 canonical precheck（真实退出码）与
-  git diff --check，C4 独立复核后 ACCEPTED 闭合。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0190
+lastAcceptedHandoff: docs/handoffs/TASK-0190.json
+lastTerminalTask: TASK-0190
+lastTerminalHandoff: docs/handoffs/TASK-0190.json
+nextAction: 以 TASK-0190 ACCEPTED 终态提交为 baseCommit 开下一永久任务卡，处理 2026-08-13 审计报告的 P0 业务 findings（begin_job_context 可伪造等）及其余 P1/P2/P3 项；后续任务 Base 始终使用最新合法终态提交。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

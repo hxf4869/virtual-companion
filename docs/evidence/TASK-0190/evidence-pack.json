@@ -1,0 +1,92 @@
+{
+  "taskId": "TASK-0190",
+  "baseCommit": "f3cbecfeabc1247a107606cb4c3a375d300fba3c",
+  "headCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1",
+  "contextFingerprint": "b3a9aceedc4122018f2d4b109036f02d41334137601e59a875e29f41c7089499",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a60276e9210d9f10dd2cf2e6c0f3fd3c5032197c",
+      "startedAt": "2026-08-13T17:18:58+08:00",
+      "endedAt": "2026-08-13T17:46:16+08:00",
+      "elapsedSeconds": 1638,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a60276e9210d9f10dd2cf2e6c0f3fd3c5032197c",
+      "startedAt": "2026-08-13T17:18:58+08:00",
+      "endedAt": "2026-08-13T17:41:58+08:00",
+      "elapsedSeconds": 1380,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T17:41:58+08:00",
+      "inProgressCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1",
+      "startedAt": "2026-08-13T17:41:58+08:00",
+      "endedAt": "2026-08-13T17:46:16+08:00",
+      "elapsedSeconds": 258,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T17:41:58+08:00",
+      "inProgressCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0190_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1",
+      "evidencePath": "docs/evidence/TASK-0190/review-r1.md",
+      "reason": "R1 独立复核 9/9 项 PASS：提交链单父结构、boundary 路径精确性（c664f89 恰 2 路径）、inventory 改动（仅增 com.fasterxml.jackson.core:jackson-databind Apache-2.0，tools.jackson.core 未动，与 POM compile/BOM 管理一致）、owner 授权记录三处一致、任务卡契约（baseCommit/authorizationCommit/fingerprint/preReadyMaintenancePlan/humanApprovals）、范围合规（f3cbecfe..HEAD 仅 5 writeAllowlist 路径，TASK-0184/0189 历史制品与 TASK-0189 的 6 实现路径零修改）、context-lock 39 inputs、验证真实性（独立重跑 canonical precheck exit=0，8 commands 全 PASS）、git diff --check PASS；P0/P1/P2=0。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0190",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor（bind 04a1e60 后）PASS 870967 checks，114.6s",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    },
+    {
+      "command": "python scripts/harness/precheck.py --task TASK-0190",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "canonical precheck 8 commands 全 PASS：doctor 872443 checks + licenseCheck（72 direct deps 全入 inventory，含新增 com.fasterxml.jackson.core:jackson-databind）+ catalogDrift + openapiDrift + betaGate + paidFeatureCheck，真实退出码 0（实现者与独立 Reviewer 各跑一次，均 exit=0）",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "f3cbecfe..HEAD 全量 range 与工作树均无 whitespace 错误",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "完整 discover 未执行（NOT_RUN）：CiExecutionPolicyTests 单类本地约 34 分钟远超 CI full job 10 分钟预算，完整 discover 预计更久；本卡不将其列为验收条件，不表述为 CI 完全兼容（TASK-0190 卡已声明）",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    }
+  ]
+}

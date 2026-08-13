@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0190
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -222,7 +222,21 @@ humanApprovals:
       P0/P1/预算超限/不可逆操作才暂停；CiExecutionPolicyTests 约 34 分钟耗时继续
       作为 CI 预算风险记录，不得表述为 CI 兼容 PASS。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0190_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 2d10e9f364bf29cfd569ca35e4239be07e01eab1
+    evidencePath: docs/evidence/TASK-0190/review-r1.md
+    reason: >-
+      R1 独立复核 9/9 项 PASS：提交链单父结构、boundary 路径精确性（c664f89 恰 2
+      路径）、inventory 改动（仅增 com.fasterxml.jackson.core:jackson-databind
+      Apache-2.0，tools.jackson.core 未动，与 POM compile/BOM 管理一致）、owner
+      授权记录三处一致、任务卡契约（baseCommit/authorizationCommit/fingerprint/
+      preReadyMaintenancePlan/humanApprovals）、范围合规（f3cbecfe..HEAD 仅 5
+      writeAllowlist 路径，TASK-0184/0189 历史制品与 TASK-0189 的 6 实现路径零
+      修改）、context-lock 39 inputs、验证真实性（独立重跑 canonical precheck
+      exit=0，8 commands 全 PASS）、git diff --check PASS；P0/P1/P2=0。
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0190
   - git diff --check

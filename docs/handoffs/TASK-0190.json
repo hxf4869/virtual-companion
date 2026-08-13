@@ -1,0 +1,75 @@
+{
+  "taskId": "TASK-0190",
+  "state": "ACCEPTED",
+  "baseCommit": "f3cbecfeabc1247a107606cb4c3a375d300fba3c",
+  "headCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1",
+  "evidencePath": "docs/evidence/TASK-0190/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a60276e9210d9f10dd2cf2e6c0f3fd3c5032197c",
+      "startedAt": "2026-08-13T17:18:58+08:00",
+      "endedAt": "2026-08-13T17:46:16+08:00",
+      "elapsedSeconds": 1638,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "a60276e9210d9f10dd2cf2e6c0f3fd3c5032197c",
+      "startedAt": "2026-08-13T17:18:58+08:00",
+      "endedAt": "2026-08-13T17:41:58+08:00",
+      "elapsedSeconds": 1380,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T17:41:58+08:00",
+      "inProgressCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1",
+      "startedAt": "2026-08-13T17:41:58+08:00",
+      "endedAt": "2026-08-13T17:46:16+08:00",
+      "elapsedSeconds": 258,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T17:41:58+08:00",
+      "inProgressCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0190_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "2d10e9f364bf29cfd569ca35e4239be07e01eab1",
+      "evidencePath": "docs/evidence/TASK-0190/review-r1.md",
+      "reason": "R1 独立复核 9/9 项 PASS：提交链单父结构、boundary 路径精确性（c664f89 恰 2 路径）、inventory 改动（仅增 com.fasterxml.jackson.core:jackson-databind Apache-2.0，tools.jackson.core 未动，与 POM compile/BOM 管理一致）、owner 授权记录三处一致、任务卡契约（baseCommit/authorizationCommit/fingerprint/preReadyMaintenancePlan/humanApprovals）、范围合规（f3cbecfe..HEAD 仅 5 writeAllowlist 路径，TASK-0184/0189 历史制品与 TASK-0189 的 6 实现路径零修改）、context-lock 39 inputs、验证真实性（独立重跑 canonical precheck exit=0，8 commands 全 PASS）、git diff --check PASS；P0/P1/P2=0。"
+    }
+  ],
+  "completed": [
+    "一次性 pre-READY maintenance boundary OWNER-MAINT-20260813-TASK-0190-PRE-READY-01（c664f89，直接单父，恰 2 冻结路径）：.harness/license-inventory.yaml 补 com.fasterxml.jackson.core:jackson-databind（Apache-2.0，POM 核验 compile/Spring Boot BOM 管理），tools.jackson.core（Jackson 3）条目保留；新建 pre-ready-maintenance-authorization.json 绑定 draftCommit a60276e9/draftMaintenancePlanCommit 3e1bcfd/base f3cbecfe",
+    "DRAFT 按 task-intake 合法方式修正（3e1bcfd，只改卡）：冻结 preReadyMaintenancePlan（recordId/kind/oneTimeOnly/reusable/consumedRecordMustBecomeInert/directSingleParentFromDraftRequired/pathSetFrozenAtDraft/additionsOrRemovalsForbidden/exactPaths 2 路径），humanApprovals.evidence 合并追加 Owner 2026-08-13 边界授权",
+    "全链提交（f3cbecfe → a60276e9 DRAFT → 3e1bcfd 修正 → c664f89 boundary → ec769e4 READY → 04a1e60 bind → 2d10e9f IN_PROGRESS），全部单父、无 merge、未推送",
+    "READY Doctor PASS 870967 checks；canonical precheck 8 commands 全 PASS exit=0（doctor 872443 checks + licenseCheck 72 direct deps 全入 inventory + catalog/openapi/beta/paid）；git diff --check PASS",
+    "C4 独立复核 APPROVE（review-r1.md，9/9 项 PASS，P0/P1/P2=0），Reviewer 独立重跑 canonical precheck exit=0",
+    "范围合规：f3cbecfe..HEAD 仅 5 个 writeAllowlist 路径；TASK-0184/0189 历史制品与 TASK-0189 的 6 个实现路径零修改"
+  ],
+  "remaining": [
+    "完整 harness unittest discover 未执行（NOT_RUN）：CiExecutionPolicyTests 单类本地约 34 分钟远超 CI full job 10 分钟预算，不表述为 CI 完全兼容",
+    "origin/main 未推送（本地 10+ 提交，推送时需 git remote set-url 清除 token 后再 push）",
+    "2026-08-13 审计报告的业务 findings 未处理（P0: begin_job_context 可伪造等；P1: lease/safety/quota；frontend/CI P2/P3），需以本卡 ACCEPTED 终态提交为 baseCommit 开后续任务卡"
+  ],
+  "knownRisks": [
+    "CiExecutionPolicyTests 本地 20 项 PASS 但耗时约 34 分钟，远超 CI full job 10 分钟预算；完整 discover 可能触发 CI 超时，不能表述为 CI 完全兼容（TASK-0189/TASK-0190 均如实记录）",
+    "一次性 pre-READY maintenance boundary 为机器绑定的一次性授权（治标）：未来新增 license inventory 条目应随依赖引入在同一任务卡内同步，避免再次产生跨卡遗漏",
+    "TASK-0185/0186/0187 的 authorizationCommit 为占位字符串（非 SHA），属既有不可逆死债，doctor 容忍，不在本卡范围",
+    "审计业务 findings（P0/P1/P2/P3）全部未修，本卡只恢复 canonical greenline 的 licenseCheck 环节"
+  ],
+  "nextAction": "以 TASK-0190 ACCEPTED 终态提交为 baseCommit 开下一永久任务卡，处理 2026-08-13 审计报告的 P0 业务 findings（begin_job_context 可伪造等）及其余 P1/P2/P3 项；后续任务 Base 始终使用最新合法终态提交。"
+}
