@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0193
-state: IN_PROGRESS
+state: IN_REVIEW
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -417,7 +417,20 @@ humanApprovals:
       2026-08-13 的 database-migration 安全边界批准（域分离四元绑定、GUC transaction-local、
       current_owner_id 每调用重校验、begin_job_context 双 REVOKE、秘密表零权限）继续有效。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0193_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 1d2cf97f084c4afad75abdd65621482aae859dc1
+    evidencePath: docs/evidence/TASK-0193/review-r1.md
+    reason: >-
+      R1 独立复核 A-D 全 PASS 并裁决 APPROVE（P0/P1/P2=0，仅 4 条信息性 P3）：
+      manifest 独立重算 78/8/70、逐路径 mode/blob、orderedPathSetSha256/
+      manifestSha256、两棵树、单父链与 70 路径零漂移全部吻合；继承实现安全
+      审查（V27/OwnerContext/Bootstrap/tests 69-73 实读源码）确认 Owner 安全
+      矩阵 11 项全部实证覆盖；治理 diff 仅含授权文件且 writeAllowlist 恰 70
+      精确路径；四条冻结验收命令独立重跑全部 exit 0（precheck 8 commands、
+      reactor 1356 tests、RLS 74 PASS、diff --check clean）。
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0193
   - JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test
