@@ -27,7 +27,7 @@ END $$;
 
 -- Phase 1: insert-only — a second insert with the same snapshot id must fail.
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 INSERT INTO vc.authorization_snapshot
     (owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
      purpose, data_categories, task_cancelled, source_data_deleted)
@@ -48,7 +48,7 @@ COMMIT;
 
 -- Phase 2: WITHDRAWN is terminal.
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 DO $$
 DECLARE n int;
 BEGIN
@@ -86,7 +86,7 @@ COMMIT;
 
 -- Phase 3: NARROWED is terminal.
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n3', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n3', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 INSERT INTO vc.authorization_snapshot
     (owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
      purpose, data_categories, task_cancelled, source_data_deleted)
@@ -133,7 +133,7 @@ COMMIT;
 
 -- Phase 4: concurrent withdraw is mutually exclusive.
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n4', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n4', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 INSERT INTO vc.authorization_snapshot
     (owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
      purpose, data_categories, task_cancelled, source_data_deleted)
@@ -144,7 +144,7 @@ DO $$
 BEGIN
     PERFORM dblink_send_query('sess_conc',
         $q$BEGIN;
-        SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n5', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n5', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
         DO $b$
         DECLARE n int;
         BEGIN
@@ -174,9 +174,10 @@ BEGIN
 END $$;
 
 -- Phase 5: cross-owner RLS isolation (keeps SET ROLE vc_api; SELECT retained).
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '2';
+SELECT vc.set_owner_context(2, 'n6', encode(vc.hmac(convert_to('vc-owner-binding-v1|2|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n6', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE n int;
 BEGIN

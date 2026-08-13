@@ -29,9 +29,10 @@ VALUES
     (1, 'req-snap-1', 'ACTIVE', 'provider-1', 'us-east-1', 'standard', 'chat', ARRAY['text']),
     (1, 'exec-snap-1', 'ACTIVE', 'provider-1', 'us-east-1', 'standard', 'chat', ARRAY['text']);
 
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     r  record;
@@ -99,9 +100,10 @@ RESET ROLE;
 
 -- Cross-tenant: bob cannot see alice's attempt row nor record one on her
 -- generation (FORCE RLS WITH CHECK owner_isolation).
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '2';
+SELECT vc.set_owner_context(2, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|2|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     n int;
@@ -121,9 +123,10 @@ COMMIT;
 RESET ROLE;
 
 -- Owner 1 can still read her row afterwards.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n3', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n3', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     n int;

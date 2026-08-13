@@ -23,9 +23,10 @@ INSERT INTO vc.conversation(owner_user_id, id, relationship_id, title) VALUES (1
 
 -- Seed candidates for owner 1: a pending one, an accepted one (each with
 -- evidence), a rejected one, and a no-evidence accepted one.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     v_pend bigint; v_acc bigint; v_rej bigint; v_noop bigint;
@@ -46,9 +47,10 @@ COMMIT;
 RESET ROLE;
 
 -- update_memory: status-preserving content edit on PENDING and ACCEPTED.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE v_ok boolean;
 BEGIN
@@ -69,9 +71,10 @@ RESET ROLE;
 
 -- update_memory: rejected status, blank summary and a foreign/absent id all fail
 -- closed without disclosing existence.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n3', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n3', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 BEGIN
     BEGIN
@@ -98,9 +101,10 @@ RESET ROLE;
 
 -- update_memory on a soft-deleted memory fails; list_memory_evidence returns no
 -- rows for it.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n4', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n4', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE v_ok boolean; n int;
 BEGIN
@@ -119,9 +123,10 @@ RESET ROLE;
 
 -- Cross-owner isolation (owner 2): update and evidence-read on owner 1's memory
 -- fail / return empty and never disclose existence.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '2';
+SELECT vc.set_owner_context(2, 'n5', encode(vc.hmac(convert_to('vc-owner-binding-v1|2|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n5', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE n int;
 BEGIN
@@ -141,9 +146,10 @@ RESET ROLE;
 
 -- list_memory_evidence: returns the ordered evidence chain for an owned live
 -- memory; a no-evidence memory returns 0 (indistinguishable from foreign).
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n6', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n6', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE n int;
 BEGIN
@@ -161,7 +167,7 @@ DO $$
 DECLARE ref text;
 BEGIN
     -- V17: list_memory_evidence requires server-trusted owner context (P1-04).
-    PERFORM set_config('vc.owner_user_id', '1', true);
+    PERFORM vc.set_owner_context(1, 'n7', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n7', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
     SELECT out_source_ref INTO ref FROM vc.list_memory_evidence(1, current_setting('app.pend')::bigint)
      ORDER BY out_id LIMIT 1;
     IF ref IS DISTINCT FROM 'ev-1' THEN RAISE EXCEPTION 'first evidence source must be ev-1, got %', ref; END IF;

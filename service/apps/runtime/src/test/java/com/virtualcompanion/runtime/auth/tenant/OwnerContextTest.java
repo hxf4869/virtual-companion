@@ -3,10 +3,15 @@ package com.virtualcompanion.runtime.auth.tenant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
@@ -15,47 +20,123 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 class OwnerContextTest {
 
+    private static final String TEST_KEY =
+            "0123456789abcdef0123456789abcdef";
+
     @Test
-    void ownerMappingIsDirectUserToOwnerId() {
-        // user_id == owner_user_id: the account id maps straight to the RLS GUC.
-        assertThat(OwnerContext.ownerSettingValue(42L)).isEqualTo("42");
-        assertThat(OwnerContext.ownerSettingValue(1000001L)).isEqualTo("1000001");
+    void bindingMessageIsDomainSeparatedAndBindsAllFourComponents() {
+        String message = OwnerContext.bindingMessage(42L, "1234", "5678", "abcdef");
+        assertThat(message).isEqualTo("vc-owner-binding-v1|42|1234|5678|abcdef");
+        // Every component changes the message: owner, pid, xact, nonce.
+        assertThat(OwnerContext.bindingMessage(43L, "1234", "5678", "abcdef"))
+                .isNotEqualTo(message);
+        assertThat(OwnerContext.bindingMessage(42L, "1235", "5678", "abcdef"))
+                .isNotEqualTo(message);
+        assertThat(OwnerContext.bindingMessage(42L, "1234", "5679", "abcdef"))
+                .isNotEqualTo(message);
+        assertThat(OwnerContext.bindingMessage(42L, "1234", "5678", "abcdeg"))
+                .isNotEqualTo(message);
     }
 
     @Test
-    void rejectsNonPositiveOwnerId() {
-        assertThatThrownBy(() -> OwnerContext.ownerSettingValue(0L))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> OwnerContext.ownerSettingValue(-1L))
-                .isInstanceOf(IllegalArgumentException.class);
+    void proofIsDeterministicHmacAndNeverContainsTheKey() {
+        OwnerContext ownerContext = new OwnerContext(mock(JdbcTemplate.class), mock(TransactionTemplate.class), TEST_KEY);
+        String proof = ownerContext.proofFor(42L, "1234", "5678", "abcdef");
+        assertThat(proof).hasSize(64).matches("[0-9a-f]{64}");
+        assertThat(proof).isEqualTo(ownerContext.proofFor(42L, "1234", "5678", "abcdef"));
+        assertThat(proof).isNotEqualTo(ownerContext.proofFor(43L, "1234", "5678", "abcdef"));
+        assertThat(proof).doesNotContain(TEST_KEY);
     }
 
     @Test
-    void asOwnerBindsTransactionScopedContextAndRunsWork() {
+    void rejectsMissingOrTooShortBindingSecret() {
+        assertThatThrownBy(() -> new OwnerContext(
+                mock(JdbcTemplate.class), mock(TransactionTemplate.class), null))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new OwnerContext(
+                mock(JdbcTemplate.class), mock(TransactionTemplate.class), ""))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new OwnerContext(
+                mock(JdbcTemplate.class), mock(TransactionTemplate.class), "short"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("32 bytes");
+    }
+
+    @Test
+    void asOwnerBindsContextThroughSetOwnerContextWithFreshProof() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         TransactionTemplate transactions = mock(TransactionTemplate.class);
+        when(jdbc.queryForMap(anyString())).thenReturn(Map.of("pid", 4321, "xact", "87654321"));
         doAnswer(invocation -> {
             Consumer<?> consumer = invocation.getArgument(0);
             consumer.accept(null);
             return null;
         }).when(transactions).executeWithoutResult(any());
-        OwnerContext ownerContext = new OwnerContext(jdbc, transactions);
-        AtomicBoolean ran = new AtomicBoolean(false);
+        OwnerContext ownerContext = new OwnerContext(jdbc, transactions, TEST_KEY);
 
+        String[] seenNonce = new String[1];
+        doAnswer(invocation -> {
+            seenNonce[0] = invocation.getArgument(2);
+            return 1;
+        }).when(jdbc).update(
+                eq("SELECT vc.set_owner_context(?, ?, ?)"),
+                eq(42L), anyString(), anyString());
+
+        AtomicBoolean ran = new AtomicBoolean(false);
         ownerContext.asOwner(42L, () -> ran.set(true));
 
         assertThat(ran.get()).isTrue();
-        verify(jdbc).update("SELECT set_config('vc.owner_user_id', ?, true)", "42");
+        verify(jdbc).queryForMap("SELECT pg_backend_pid() AS pid, pg_current_xact_id()::text AS xact");
+        // The proof passed to the database verifies against the same tuple the
+        // server will recompute (owner 42, this pid, this xact, this nonce) and
+        // never carries the key material.
+        var args = org.mockito.Mockito.mockingDetails(jdbc).getInvocations().stream()
+                .filter(inv -> "update".equals(inv.getMethod().getName()))
+                .findFirst().orElseThrow();
+        Long owner = args.getArgument(1);
+        String nonce = args.getArgument(2);
+        String proof = args.getArgument(3);
+        assertThat(owner).isEqualTo(42L);
+        assertThat(nonce).matches("[0-9a-f]{32}");
+        assertThat(proof).isEqualTo(ownerContext.proofFor(42L, "4321", "87654321", nonce));
+        assertThat(proof).doesNotContain(TEST_KEY);
+        seenNonce[0] = nonce;
+    }
+
+    @Test
+    void asOwnerGeneratesAFreshNoncePerCall() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        TransactionTemplate transactions = mock(TransactionTemplate.class);
+        when(jdbc.queryForMap(anyString())).thenReturn(Map.of("pid", 1, "xact", "1"));
+        doAnswer(invocation -> {
+            Consumer<?> consumer = invocation.getArgument(0);
+            consumer.accept(null);
+            return null;
+        }).when(transactions).executeWithoutResult(any());
+        OwnerContext ownerContext = new OwnerContext(jdbc, transactions, TEST_KEY);
+
+        java.util.Set<String> nonces = new java.util.HashSet<>();
+        doAnswer(invocation -> {
+            nonces.add(invocation.getArgument(2));
+            return 1;
+        }).when(jdbc).update(
+                eq("SELECT vc.set_owner_context(?, ?, ?)"),
+                eq(42L), anyString(), anyString());
+
+        ownerContext.asOwner(42L, () -> { });
+        ownerContext.asOwner(42L, () -> { });
+
+        assertThat(nonces).hasSize(2);
     }
 
     @Test
     void asOwnerRejectsNonPositiveOwnerBeforeAnyWork() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         TransactionTemplate transactions = mock(TransactionTemplate.class);
-        OwnerContext ownerContext = new OwnerContext(jdbc, transactions);
+        OwnerContext ownerContext = new OwnerContext(jdbc, transactions, TEST_KEY);
 
         assertThatThrownBy(() -> ownerContext.asOwner(0L, () -> { }))
                 .isInstanceOf(IllegalArgumentException.class);
-        verify(transactions, org.mockito.Mockito.never()).executeWithoutResult(any());
+        verify(transactions, never()).executeWithoutResult(any());
     }
 }

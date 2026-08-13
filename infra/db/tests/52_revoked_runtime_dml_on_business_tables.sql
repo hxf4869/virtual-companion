@@ -35,9 +35,10 @@ VALUES (1, 1000, 100, 'lgid-1', 'PENDING');
 -- Switch to the vc_api runtime role. Without V16, vc_api retained the broad
 -- V2/V3/V7/V15 DML grants and could direct-write; after V16, every write
 -- below must be denied at the privilege check (before RLS is consulted).
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 
 -- Helper: assert a SQL statement is rejected as insufficient_privilege.
 -- psql ON_ERROR_STOP would abort on the first error, so each rejection is

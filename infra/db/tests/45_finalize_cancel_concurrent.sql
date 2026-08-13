@@ -29,27 +29,38 @@ DO $$
 DECLARE cid bigint;
 BEGIN
     -- V17: insert_generation_candidate requires server-trusted owner context (P1-04).
-    PERFORM set_config('vc.owner_user_id', '1', true);
+    PERFORM vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
     SELECT out_candidate_id INTO cid FROM vc.insert_generation_candidate(1, 5000, 'draft', false);
     INSERT INTO t_cid VALUES (cid);
     PERFORM dblink_connect('sess_l', 'dbname=vc');
-    -- V17: dblink session calls finalize_generation, which asserts owner context (P1-04).
-    PERFORM dblink_exec('sess_l', 'SET ROLE vc_api');
-    PERFORM dblink_exec('sess_l', 'SET vc.owner_user_id = ''1''');
+    -- V17/V27 (TASK-0191): the remote finalize runs as a self-contained
+    -- transaction that establishes the owner context with a valid proof (the
+    -- remote session is the superuser fixture connection) and then narrows to
+    -- the real runtime role for the asserted call.
 END $$;
 
 -- Phase 1: hold the generation row lock, launch an in-flight finalize that
 -- blocks on the lock, then let cancel_generation win inside the lock.
 BEGIN;
 -- V17: cancel_generation requires server-trusted owner context (P1-04).
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 SELECT 1 FROM vc.generation g WHERE g.owner_user_id = 1 AND g.id = 5000 FOR UPDATE;
 DO $$
 DECLARE cid bigint;
 BEGIN
     SELECT t.cid INTO cid FROM t_cid t LIMIT 1;
     PERFORM dblink_send_query('sess_l',
-        $q$SELECT * FROM vc.finalize_generation(1, 5000, $q$ || cid::text || $q$, 'late-final', 'provider-a', 10, 5, 0.0010, 'USD', 1, true, NULL)$q$);
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 'fcx', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'fcx', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+DO $b$
+BEGIN
+    PERFORM * FROM vc.finalize_generation(1, 5000, $q$ || cid::text || $q$, 'late-final', 'provider-a', 10, 5, 0.0010, 'USD', 1, true, NULL);
+END
+$b$;$q$);
     -- cancel wins inside the lock (same transaction already holds it).
     PERFORM vc.cancel_generation(1, 5000);
 END $$;
@@ -66,12 +77,27 @@ BEGIN
     IF v_status <> 'CANCELLED' THEN
         RAISE EXCEPTION 'expected CANCELLED (got %)', v_status;
     END IF;
+    DECLARE
+        failed  boolean := false;
+        err_msg text := '';
     BEGIN
-        PERFORM * FROM dblink_get_result('sess_l') AS t(out_generation_id bigint, out_assistant_message_id bigint, out_finalized boolean);
-        RAISE EXCEPTION 'in-flight finalize must fail after cancel won';
-    EXCEPTION WHEN OTHERS THEN
-        IF position('must be in FINAL_REVIEW (current CANCELLED)' in SQLERRM) = 0 THEN
-            RAISE EXCEPTION 'unexpected loser error: %', SQLERRM;
+        -- Drain the multi-statement result stream until the remote finalize's
+        -- error surfaces (BEGIN/establish/role tags precede it).
+        LOOP
+            BEGIN
+                PERFORM * FROM dblink_get_result('sess_l') AS t(dummy text);
+            EXCEPTION WHEN OTHERS THEN
+                failed := true;
+                err_msg := SQLERRM;
+                EXIT;
+            END;
+            EXIT WHEN NOT found;
+        END LOOP;
+        IF NOT failed THEN
+            RAISE EXCEPTION 'in-flight finalize must fail after cancel won';
+        END IF;
+        IF position('must be in FINAL_REVIEW (current CANCELLED)' in err_msg) = 0 THEN
+            RAISE EXCEPTION 'unexpected loser error: %', err_msg;
         END IF;
     END;
     SELECT count(*) INTO n FROM vc.message WHERE owner_user_id = 1 AND generation_id = 5000;

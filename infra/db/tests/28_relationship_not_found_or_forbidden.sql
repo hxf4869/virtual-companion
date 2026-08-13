@@ -16,9 +16,10 @@ INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active) VALUES (1, 1
 INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active) VALUES (2, 20, 'persona-bob', true);
 
 -- Owner 1 reads its own relationship but cannot see or act on owner 2's.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     v_hit boolean;
@@ -68,9 +69,10 @@ RESET ROLE;
 
 -- Owner 2 still sees exactly its own active Companion (unaffected by owner 1's
 -- failed cross-owner attempts).
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '2';
+SELECT vc.set_owner_context(2, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|2|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE n int;
 BEGIN

@@ -60,9 +60,10 @@ RESET ROLE;
 -- 1) 跨连接伪造拒绝：主会话（vc_api + SET LOCAL context）同事务 claim 拿 batch
 --    token；会话 B（独立连接，无 transaction-local GUC）用该 token complete → 0 行。
 -- ---------------------------------------------------------------------------
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 SET LOCAL vc.job_fence = 'FENCE-A';
 DO $$
 DECLARE tok_a text;
@@ -128,24 +129,26 @@ END $$;
 --    complete → 0 行（token 已被 recover 清空 + 接管后旧持有者零写入）；会话 B
 --    完成接管批次 → 2 行 DONE。
 -- ---------------------------------------------------------------------------
--- 会话 B 建立 server-trusted context（session 级 GUC，模拟 OwnerContext.asOwner 在
--- 该连接建立的信任 context）。claim_work_items 内部 set_config(...,true) 是 local，
--- 仅在 claim 的 dblink autocommit 事务内覆盖；事务结束后回到 session 级值，使后续
--- complete 的 owner/fence 守卫匹配 claim_fence。
+-- 会话 B 建立 server-trusted context（TASK-0191：每个远端业务调用都是自含事务
+-- ——BEGIN + 合法证明 establish + SET LOCAL ROLE vc_api +（complete 前）显式
+-- SET LOCAL vc.job_fence + COMMIT；transaction-local context 不跨语句泄漏，
+-- 模拟 OwnerContext.asOwner 在该连接建立的信任 context）。
 DO $$
 DECLARE tok_old text; tok_new text; rows_old int; rows_new int; done_n int;
 BEGIN
     SELECT token INTO tok_old FROM coord_token WHERE key = 'a';
 
-    PERFORM dblink_exec('sess_b', 'SET ROLE vc_api');
-    PERFORM dblink_exec('sess_b', $q$SET vc.owner_user_id = '1'$q$);
-    PERFORM dblink_exec('sess_b', $q$SET vc.job_fence = 'FENCE-C'$q$);
-
-    -- 会话 B 接管 claim（新 fence FENCE-C，新 token）。
+    -- 会话 B 接管 claim（新 fence FENCE-C，新 token）：establish 以 superuser
+    -- fixture 连接计算，业务调用收窄到真实 runtime 角色。
+    PERFORM dblink_exec('sess_b',
+        $e$BEGIN;
+SELECT vc.set_owner_context(1, 'cx1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'cx1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;$e$);
     SELECT t.token INTO tok_new FROM dblink('sess_b',
         $q$SELECT claim_token AS token
             FROM vc.claim_work_items(1, 'FENCE-C', 30, 16)
             LIMIT 1$q$) AS t(token text);
+    PERFORM dblink_exec('sess_b', 'COMMIT');
     IF tok_new IS NULL OR tok_new = tok_old THEN
         RAISE EXCEPTION 'takeover claim must issue a fresh token (old=% new=%)', tok_old, tok_new;
     END IF;
@@ -156,9 +159,16 @@ BEGIN
         RAISE EXCEPTION 'old holder complete after takeover must write 0 rows, got %', rows_old;
     END IF;
 
-    -- 会话 B（owner=1 fence=FENCE-C）完成接管批次 → 2 行 DONE。
+    -- 会话 B（owner=1 fence=FENCE-C）完成接管批次 → 2 行 DONE。complete 的
+    -- owner/fence 守卫读取事务级 GUC，因此本事务显式重设 job_fence。
+    PERFORM dblink_exec('sess_b',
+        $e$BEGIN;
+SELECT vc.set_owner_context(1, 'cx2', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'cx2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
+SET LOCAL vc.job_fence = 'FENCE-C';$e$);
     SELECT t.rows INTO rows_new FROM dblink('sess_b',
         format('SELECT vc.complete_work_item(%L) AS rows', tok_new)) AS t(rows int);
+    PERFORM dblink_exec('sess_b', 'COMMIT');
     IF rows_new <> 2 THEN
         RAISE EXCEPTION 'takeover batch complete expected 2 rows, got %', rows_new;
     END IF;

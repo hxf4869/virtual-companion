@@ -22,9 +22,10 @@ INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice'), (2, 'bob');
 -- claim_work_items is granted to vc_worker (V5). Trusted context = 1, caller
 -- passes p_owner_user_id = 2; the stale-fence guard passes (FENCE-A is valid),
 -- then the V17 owner assertion must RAISE before any row is claimed.
-SET ROLE vc_worker;
+-- SET ROLE vc_worker;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_worker;
 DO $$
 BEGIN
     BEGIN
@@ -41,9 +42,10 @@ RESET ROLE;
 
 -- The remaining functions are granted to vc_api. Trusted context = 1, each
 -- caller passes p_owner_user_id = 2; V17 must RAISE on every call.
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     expected text := 'does not match server-trusted';

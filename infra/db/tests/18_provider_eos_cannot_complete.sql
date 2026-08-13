@@ -20,9 +20,10 @@ VALUES (1, 5001, 100, 'gen-eos-1', 'IN_PROGRESS');
 INSERT INTO vc.generation_candidate(owner_user_id, id, generation_id, content, is_final)
 VALUES (1, 6001, 5001, 'partial answer', false);
 
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     n int;

@@ -26,20 +26,31 @@ DO $$
 BEGIN
     PERFORM dblink_connect('sess_l', 'dbname=vc');
     -- V17: dblink session calls insert_generation_candidate, which asserts owner context (P1-04).
-    PERFORM dblink_exec('sess_l', 'SET ROLE vc_api');
-    PERFORM dblink_exec('sess_l', 'SET vc.owner_user_id = ''1''');
+    -- V17/V27 (TASK-0191): the remote candidate insert runs as a
+    -- self-contained transaction with a valid proof (superuser fixture
+    -- connection) and then narrows to the real runtime role.
 END $$;
 
 -- Phase 1: hold the generation row lock, launch an in-flight candidate insert
 -- that blocks on the lock, then let terminalize_generation win inside the lock.
 BEGIN;
 -- V17: terminalize_generation requires server-trusted owner context (P1-04).
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 SELECT 1 FROM vc.generation g WHERE g.owner_user_id = 1 AND g.id = 5001 FOR UPDATE;
 DO $$
 BEGIN
     PERFORM dblink_send_query('sess_l',
-        $q$SELECT * FROM vc.insert_generation_candidate(1, 5001, 'late candidate', false)$q$);
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 'ttx', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'ttx', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+DO $b$
+BEGIN
+    PERFORM * FROM vc.insert_generation_candidate(1, 5001, 'late candidate', false);
+END
+$b$;$q$);
     -- terminalize wins inside the lock (same transaction already holds it).
     PERFORM vc.terminalize_generation(1, 5001, 'FAILED_FINAL', 'chat.failed', '{"reason":"provider error"}'::jsonb);
 END $$;
@@ -56,12 +67,25 @@ BEGIN
     IF v_status <> 'FAILED_FINAL' THEN
         RAISE EXCEPTION 'expected FAILED_FINAL (got %)', v_status;
     END IF;
+    DECLARE
+        failed  boolean := false;
+        err_msg text := '';
     BEGIN
-        PERFORM * FROM dblink_get_result('sess_l') AS t(out_candidate_id bigint);
-        RAISE EXCEPTION 'late candidate insert must be rejected';
-    EXCEPTION WHEN OTHERS THEN
-        IF position('cannot insert into a terminal generation' in SQLERRM) = 0 THEN
-            RAISE EXCEPTION 'unexpected loser error: %', SQLERRM;
+        LOOP
+            BEGIN
+                PERFORM * FROM dblink_get_result('sess_l') AS t(dummy text);
+            EXCEPTION WHEN OTHERS THEN
+                failed := true;
+                err_msg := SQLERRM;
+                EXIT;
+            END;
+            EXIT WHEN NOT found;
+        END LOOP;
+        IF NOT failed THEN
+            RAISE EXCEPTION 'late candidate insert must be rejected';
+        END IF;
+        IF position('cannot insert into a terminal generation' in err_msg) = 0 THEN
+            RAISE EXCEPTION 'unexpected loser error: %', err_msg;
         END IF;
     END;
     SELECT count(*) INTO n FROM vc.generation_candidate WHERE owner_user_id = 1 AND generation_id = 5001;

@@ -33,16 +33,16 @@ DO $$
 DECLARE cid bigint;
 BEGIN
     -- V17: insert_generation_candidate requires server-trusted owner context (P1-04).
-    PERFORM set_config('vc.owner_user_id', '1', true);
+    PERFORM vc.set_owner_context(1, 'q1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'q1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
     SELECT out_candidate_id INTO cid FROM vc.insert_generation_candidate(1, 5000, 'draft', false);
     INSERT INTO t_cid VALUES (cid);
     PERFORM dblink_connect('sess_a', 'dbname=vc');
     PERFORM dblink_connect('sess_b', 'dbname=vc');
-    -- V17: dblink sessions call finalize_generation, which asserts owner context (P1-04).
-    PERFORM dblink_exec('sess_a', 'SET ROLE vc_api');
-    PERFORM dblink_exec('sess_a', 'SET vc.owner_user_id = ''1''');
-    PERFORM dblink_exec('sess_b', 'SET ROLE vc_api');
-    PERFORM dblink_exec('sess_b', 'SET vc.owner_user_id = ''1''');
+    -- V17/V27 (TASK-0191): each remote business statement is a self-contained
+    -- transaction that establishes the owner context with a valid proof (the
+    -- remote session is the superuser fixture connection) and then narrows to
+    -- the real runtime role for the asserted call. The transaction-local
+    -- context cannot leak across the statement boundary.
 END $$;
 
 DO $$
@@ -61,18 +61,48 @@ BEGIN
     -- session holds no generation lock here, so both remote finalizes race
     -- for the row lock and exactly one wins.
     PERFORM dblink_send_query('sess_a',
-        $q$SELECT * FROM vc.finalize_generation(1, 5000, $q$ || cid::text || $q$, 'winner-a', 'provider-a', 10, 5, 0.0010, 'USD', 1, true, NULL)$q$);
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 'fna', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'fna', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+DO $b$
+BEGIN
+    PERFORM * FROM vc.finalize_generation(1, 5000, $q$ || cid::text || $q$, 'winner-a', 'provider-a', 10, 5, 0.0010, 'USD', 1, true, NULL);
+END
+$b$;$q$);
     PERFORM dblink_send_query('sess_b',
-        $q$SELECT * FROM vc.finalize_generation(1, 5000, $q$ || cid::text || $q$, 'winner-b', 'provider-a', 11, 6, 0.0020, 'USD', 1, true, NULL)$q$);
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 'fnb', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'fnb', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+DO $b$
+BEGIN
+    PERFORM * FROM vc.finalize_generation(1, 5000, $q$ || cid::text || $q$, 'winner-b', 'provider-a', 11, 6, 0.0020, 'USD', 1, true, NULL);
+END
+$b$;$q$);
 
     BEGIN
-        PERFORM * FROM dblink_get_result('sess_a') AS t(out_generation_id bigint, out_assistant_message_id bigint, out_finalized boolean);
+        -- Every statement of the remote string is a DO block, so each result
+        -- is a single status row; drain the whole stream and only then count
+        -- the session as the winner (the loser's business error surfaces
+        -- mid-stream and is captured here).
+        LOOP
+            PERFORM * FROM dblink_get_result('sess_a') AS t(dummy text);
+            EXIT WHEN NOT FOUND;
+        END LOOP;
         ok_a := true;
     EXCEPTION WHEN OTHERS THEN
         err_a := SQLERRM;
     END;
     BEGIN
-        PERFORM * FROM dblink_get_result('sess_b') AS t(out_generation_id bigint, out_assistant_message_id bigint, out_finalized boolean);
+        LOOP
+            PERFORM * FROM dblink_get_result('sess_b') AS t(dummy text);
+            EXIT WHEN NOT FOUND;
+        END LOOP;
         ok_b := true;
     EXCEPTION WHEN OTHERS THEN
         err_b := SQLERRM;

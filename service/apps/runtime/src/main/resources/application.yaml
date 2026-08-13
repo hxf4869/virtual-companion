@@ -55,6 +55,12 @@ virtual-companion:
     # HMAC-SHA256 signing secret (>= 256 bits). Injected via env/secrets; never
     # committed. An empty value fails closed at bean creation.
     jwt-secret: ${VC_JWT_SECRET:}
+    # TASK-0191: key material (>= 32 bytes, independent random value, never
+    # derived from the DB password) for the V27 owner-context HMAC binding the
+    # runtime proves to vc.set_owner_context. The same value seeds/verifies the
+    # restricted vc._owner_binding_secret table via bound parameters during the
+    # migrator startup phase. Never logged, never committed.
+    owner-binding-secret: ${VC_OWNER_BINDING_SECRET:}
     access-token-ttl: ${VC_ACCESS_TOKEN_TTL:2h}
     refresh-token-ttl: ${VC_REFRESH_TOKEN_TTL:7d}
     issuer: ${VC_AUTH_ISSUER:virtual-companion}
@@ -138,3 +144,6 @@ virtual-companion:
   auth:
     enabled: ${VC_AUTH_ENABLED}
     datasource-enabled: ${VC_AUTH_DATASOURCE_ENABLED}
+    # TASK-0191: production has no default -- a missing VC_OWNER_BINDING_SECRET
+    # fails startup (fail-closed), matching the jwt/migrator pattern above.
+    owner-binding-secret: ${VC_OWNER_BINDING_SECRET}

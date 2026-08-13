@@ -28,9 +28,10 @@ INSERT INTO vc.generation(owner_user_id, id, conversation_id, logical_generation
     (1, 5006, 100, 'gen-t6', 'COMPLETED'),
     (1, 5007, 100, 'gen-t7', 'FINAL_REVIEW');
 
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE
     v text;

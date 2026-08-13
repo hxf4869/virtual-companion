@@ -24,9 +24,10 @@ INSERT INTO vc.work_item(owner_user_id, id, kind, ref_id, payload) VALUES
 --    即终态化整个批次（返回批大小）。验证只经函数返回值，不查 work_item 表
 --    （vc_api 无表 SELECT，V5 只授 vc_worker——权限边界本身即是预期）。
 -- ---------------------------------------------------------------------------
-SET ROLE vc_api;
+-- SET ROLE vc_api;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 DO $$
 DECLARE tokens text[]; rows int;
 BEGIN
@@ -83,8 +84,10 @@ INSERT INTO vc.work_item(owner_user_id, id, kind, ref_id, payload) VALUES
 
 SET ROLE vc_api;
 CREATE TEMP TABLE claimed_token(token text) ON COMMIT PRESERVE ROWS;
+RESET ROLE;
 BEGIN;
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n2', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n2', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_api;
 INSERT INTO claimed_token
     SELECT claim_token
       FROM vc.claim_work_items(1, 'FENCE-C', 30, 16)

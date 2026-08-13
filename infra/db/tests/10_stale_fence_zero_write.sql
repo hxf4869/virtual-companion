@@ -9,11 +9,12 @@ INSERT INTO vc.work_item(owner_user_id, id, kind, ref_id, status,
                          claim_token, claim_fence, claimed_at, lease_expires_at)
 VALUES (1, 1, 'GENERATION', 10, 'CLAIMED', 'TOK', 'OLD-FENCE', now(), now() + interval '5 minutes');
 
-SET ROLE vc_worker;
+-- SET ROLE vc_worker;  (moved below establish as SET LOCAL ROLE, TASK-0191)
 BEGIN;
 -- The active fence is NEW-FENCE; the claim was made under OLD-FENCE, so the
 -- item is stale relative to the current job context.
-SET LOCAL vc.owner_user_id = '1';
+SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+SET LOCAL ROLE vc_worker;
 SET LOCAL vc.job_fence = 'NEW-FENCE';
 DO $$
 DECLARE r int;

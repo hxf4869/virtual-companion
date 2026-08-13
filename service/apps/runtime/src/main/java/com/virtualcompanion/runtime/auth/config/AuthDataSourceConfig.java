@@ -130,6 +130,32 @@ public class AuthDataSourceConfig {
     }
 
     /**
+     * TASK-0191: after Flyway applies the migrations (including the V27
+     * owner-binding schema) and before the application serves traffic, the
+     * migrator principal idempotently seeds/verifies the owner-binding secret
+     * with bound JDBC parameters -- the key is never expanded into versioned
+     * SQL. A missing, too-short or inconsistent {@code VC_OWNER_BINDING_SECRET}
+     * fails startup here, ahead of any readiness signal.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "spring.flyway.enabled", havingValue = "true")
+    public org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy
+            ownerBindingSecretBootstrapStrategy(
+                    @Value("${spring.flyway.url:}") String url,
+                    @Value("${spring.flyway.user:}") String username,
+                    @Value("${spring.flyway.password:}") String password,
+                    @Value("${virtual-companion.auth.owner-binding-secret:}") String secret) {
+        DataSource migratorDataSource =
+                new org.springframework.jdbc.datasource.DriverManagerDataSource(url, username, password);
+        OwnerBindingSecretBootstrap bootstrap =
+                new OwnerBindingSecretBootstrap(secret, migratorDataSource);
+        return flyway -> {
+            flyway.migrate();
+            bootstrap.initializeAndVerify();
+        };
+    }
+
+    /**
      * P1-11 schema readiness gate (see {@link SchemaReadinessHealthIndicator}).
      * Registered whenever the auth datasource is enabled; when in-app Flyway is
      * enabled the version check runs through the Flyway (migrator) connection,
@@ -177,8 +203,9 @@ public class AuthDataSourceConfig {
     @Bean
     public OwnerContext ownerContext(
             JdbcTemplate authJdbcTemplate,
-            TransactionTemplate authTransactionTemplate) {
-        return new OwnerContext(authJdbcTemplate, authTransactionTemplate);
+            TransactionTemplate authTransactionTemplate,
+            @Value("${virtual-companion.auth.owner-binding-secret:}") String ownerBindingSecret) {
+        return new OwnerContext(authJdbcTemplate, authTransactionTemplate, ownerBindingSecret);
     }
 
     @Bean
