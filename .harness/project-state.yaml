@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0193
+activeTaskCard: docs/tasks/TASK-0193-p0-owner-context-rls-inherited-adoption.md
 lastAcceptedTask: TASK-0192
 lastAcceptedHandoff: docs/handoffs/TASK-0192.json
 lastTerminalTask: TASK-0192
 lastTerminalHandoff: docs/handoffs/TASK-0192.json
-nextAction: greenline 已恢复（TASK-0192 ACCEPTED）：以 TASK-0192 终态提交为 baseCommit 单独创建任务卡，对 TASK-0191 窗口内已验证的 P0 owner context/RLS 实现进行明确授权、同一候选 SHA 全量复验（canonical precheck + RLS 全套 + Maven 全套 + git diff --check）与独立复核后完成正式接纳；在此之前保持不推送不合并。
+nextAction: TASK-0193 已 READY：执行 inheritedStateManifest 机器核验（78/8/70、逐路径 mode/blob、path-set hash、manifest hash、实现树）后以同一真实候选 SHA 运行四条冻结验收命令（canonical precheck + Maven runtime 全量 + RLS 全套 + git diff --check），完成 C4 独立复核（审查 3c7fd0b..2abc531 实际继承实现范围并重跑验收命令）后终态闭环；在此之前保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-13'
+updatedAt: '2026-08-14'
