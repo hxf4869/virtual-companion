@@ -48,6 +48,19 @@ complexityAssessment:
   thresholdsTriggered: []
   splitRequired: false
   ownerIndivisibleAuthorization: false
+preReadyMaintenancePlan:
+  recordId: OWNER-MAINT-20260813-TASK-0190-PRE-READY-01
+  recordPath: docs/evidence/TASK-0190/pre-ready-maintenance-authorization.json
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE
+  directSingleParentFromDraftRequired: true
+  pathSetFrozenAtDraft: true
+  additionsOrRemovalsForbidden: true
+  oneTimeOnly: true
+  reusable: false
+  consumedRecordMustBecomeInert: true
+  exactPaths:
+    - .harness/license-inventory.yaml
+    - docs/evidence/TASK-0190/pre-ready-maintenance-authorization.json
 readAllowlist:
   - .gitattributes
   - AGENTS.md
@@ -198,7 +211,16 @@ humanApprovals:
       SKILL/owner-auth json）只读不写；补经 POM 核验的 com.fasterxml.jackson.core:
       jackson-databind（Apache-2.0）条目；不修改 TASK-0184、TASK-0189 历史制品；
       冻结完整 canonical precheck、git diff --check 与 C4 独立复核；最终结果绑定
-      同一真实候选 SHA；后续任务 Base 始终使用最新合法终态提交。
+      同一真实候选 SHA；后续任务 Base 始终使用最新合法终态提交。Owner 追加批准
+      一次性 pre-READY maintenance boundary（recordId OWNER-MAINT-20260813-TASK-
+      0190-PRE-READY-01）：仅允许修改两个精确路径 .harness/license-inventory.yaml
+      与 docs/evidence/TASK-0190/pre-ready-maintenance-authorization.json，必须为
+      DRAFT 的直接单父提交，oneTimeOnly: true、不可复用、消费后惰化；只增加经 POM
+      核验的 Jackson 2 license 条目，不修改任何历史制品；边界完成后自主推进 READY
+      Doctor、IN_PROGRESS、同一候选 SHA 的完整 canonical precheck、C4 独立复核及
+      ACCEPTED 闭合，只有路径扩展/历史改写/策略或生命周期变更/非 PASS/Reviewer
+      P0/P1/预算超限/不可逆操作才暂停；CiExecutionPolicyTests 约 34 分钟耗时继续
+      作为 CI 预算风险记录，不得表述为 CI 兼容 PASS。
 independentReview: required
 reviewers: []
 requiredCommands:
@@ -225,6 +247,10 @@ precheck 恢复全绿，完成 greenline 恢复的最后一块。
   `groupId: com.fasterxml.jackson.core`、`artifactId: jackson-databind`、
   `licenseFamily: Apache-2.0`（与 POM `service/apps/runtime/pom.xml` 的实际依赖一致；
   与既有 `tools.jackson.core:jackson-databind`（Jackson 3）条目并列，两者都保留）。
+- 唯一一次性 pre-READY maintenance boundary（recordId `OWNER-MAINT-20260813-TASK-0190-PRE-READY-01`）
+  在 DRAFT 后、READY 前以直接单父提交落地：只改 `.harness/license-inventory.yaml` 与
+  `docs/evidence/TASK-0190/pre-ready-maintenance-authorization.json`，oneTimeOnly、
+  不可复用、消费后惰化，不修改任何历史制品。
 - 以同一真实候选 SHA 跑通完整 canonical precheck（真实退出码）与 `git diff --check`。
 - C4 独立复核（review-r1.md）+ Evidence Pack + Handoff + project-state + Task Ledger，
   ACCEPTED 闭合。
