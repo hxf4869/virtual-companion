@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260813-TASK-0190-PRE-READY-01",
+  "decisionId": "TASK-0190-PRE-READY-LICENSE-INVENTORY-20260813",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0190",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-13",
+  "sourceThreadId": "zcode-audit-20260813",
+  "draftCommit": "a60276e9210d9f10dd2cf2e6c0f3fd3c5032197c",
+  "draftMaintenancePlanCommit": "3e1bcfda6c9e8bae7b245d24d455c08c8cb7beaa",
+  "draftAnchorBaseCommit": "f3cbecfeabc1247a107606cb4c3a375d300fba3c",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "directSingleParentFromDraftRequired": true,
+  "pathSetFrozenAtDraft": true,
+  "additionsOrRemovalsForbidden": true,
+  "consumedRecordMustBecomeInert": true,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false,
+  "remoteDispatchAuthorized": false,
+  "exactPaths": [
+    ".harness/license-inventory.yaml",
+    "docs/evidence/TASK-0190/pre-ready-maintenance-authorization.json"
+  ],
+  "evidence": "Owner 于 2026-08-13 批准 TASK-0190 DRAFT 并追加批准一次性 pre-READY maintenance boundary（recordId OWNER-MAINT-20260813-TASK-0190-PRE-READY-01）：仅允许修改两个精确路径 .harness/license-inventory.yaml 与 docs/evidence/TASK-0190/pre-ready-maintenance-authorization.json；该边界必须是 DRAFT 的直接单父提交，oneTimeOnly: true、不可复用、消费后惰化；只增加经 POM 核验的 Jackson 2 license 条目（com.fasterxml.jackson.core:jackson-databind，Apache-2.0），不修改任何历史制品；若 DRAFT 未冻结该计划，按 task-intake 合法方式修正后一次性报告；boundary 完成后自主推进 READY Doctor、IN_PROGRESS、同一候选 SHA 的完整 canonical precheck、C4 独立复核及 ACCEPTED 闭合，只有路径扩展、历史改写、策略/生命周期变更、非 PASS、Reviewer P0/P1、预算超限或不可逆操作才暂停并合并提问；CiExecutionPolicyTests 约 34 分钟耗时继续作为 CI 预算风险记录，不得表述为 CI 兼容 PASS。"
+}
