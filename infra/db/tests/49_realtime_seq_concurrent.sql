@@ -48,22 +48,33 @@ BEGIN
     -- strictly unique seqs {1,2}; no unique-key collision is possible. Each
     -- connection is drained (dblink_get_result until NULL) before reuse: a
     -- connection with an undrained result rejects the next send.
-    PERFORM dblink_exec('sess_a', '$e$BEGIN;
-SELECT vc.set_owner_context(1, 's49a', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49a', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
-SET LOCAL ROLE vc_api;$e$');
-    PERFORM dblink_exec('sess_b', '$e$BEGIN;
-SELECT vc.set_owner_context(1, 's49b', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49b', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
-SET LOCAL ROLE vc_api;$e$');
+    -- TASK-0191: each racing statement is one multi-statement string whose
+    -- IMPLICIT transaction (establish + role + business call) commits at the
+    -- end of the string, so row locks release exactly like the original
+    -- autocommit statements and the two sessions cannot deadlock the drain.
     PERFORM dblink_send_query('sess_a',
-        $q$SELECT vc.append_realtime_event(1, 5000, 1, 'chat.accepted', '{"s":"a"}'::jsonb)$q$);
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 's49a', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49a', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+SELECT vc.append_realtime_event(1, 5000, 1, 'chat.accepted', '{"s":"a"}'::jsonb);$q$);
     PERFORM dblink_send_query('sess_b',
-        $q$SELECT vc.append_realtime_event(1, 5000, 1, 'safety.notice', '{"s":"b"}'::jsonb)$q$);
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 's49b', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49b', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+SELECT vc.append_realtime_event(1, 5000, 1, 'safety.notice', '{"s":"b"}'::jsonb);$q$);
+    -- Result 1 is the establish DO tag (status row); result 2 is the call.
+    PERFORM * FROM dblink_get_result('sess_a') AS t(dummy text);
     SELECT t.cnt INTO seq_a FROM dblink_get_result('sess_a') AS t(cnt bigint);
-    PERFORM dblink_get_result('sess_a');
-    PERFORM dblink_exec('sess_a', 'COMMIT');
+    PERFORM * FROM dblink_get_result('sess_a') AS t(dummy text);
+    PERFORM * FROM dblink_get_result('sess_b') AS t(dummy text);
     SELECT t.cnt INTO seq_b FROM dblink_get_result('sess_b') AS t(cnt bigint);
-    PERFORM dblink_get_result('sess_b');
-    PERFORM dblink_exec('sess_b', 'COMMIT');
+    PERFORM * FROM dblink_get_result('sess_b') AS t(dummy text);
     IF seq_a IS NULL OR seq_b IS NULL THEN
         RAISE EXCEPTION 'both concurrent appends must succeed (a=%, b=%)', seq_a, seq_b;
     END IF;
@@ -79,20 +90,28 @@ SET LOCAL ROLE vc_api;$e$');
 
     -- Two concurrent advances of +2 each: every increment accumulates. The
     -- atomic UPDATE yields next_seq 5 and 7 (in either order); +4 total.
-    PERFORM dblink_exec('sess_a', '$e$BEGIN;
-SELECT vc.set_owner_context(1, 's49c', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49c', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
-SET LOCAL ROLE vc_api;$e$');
-    PERFORM dblink_exec('sess_b', '$e$BEGIN;
-SELECT vc.set_owner_context(1, 's49d', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49d', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
-SET LOCAL ROLE vc_api;$e$');
-    PERFORM dblink_send_query('sess_a', $q$SELECT vc.advance_realtime_seq(1, 5000, 2)$q$);
-    PERFORM dblink_send_query('sess_b', $q$SELECT vc.advance_realtime_seq(1, 5000, 2)$q$);
+    PERFORM dblink_send_query('sess_a',
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 's49c', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49c', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+SELECT vc.advance_realtime_seq(1, 5000, 2);$q$);
+    PERFORM dblink_send_query('sess_b',
+        $q$DO $e$
+BEGIN
+    PERFORM vc.set_owner_context(1, 's49d', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 's49d', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
+    PERFORM set_config('role', 'vc_api', true);
+END
+$e$;
+SELECT vc.advance_realtime_seq(1, 5000, 2);$q$);
+    PERFORM * FROM dblink_get_result('sess_a') AS t(dummy text);
     SELECT t.cnt INTO seq_a FROM dblink_get_result('sess_a') AS t(cnt bigint);
-    PERFORM dblink_get_result('sess_a');
-    PERFORM dblink_exec('sess_a', 'COMMIT');
+    PERFORM * FROM dblink_get_result('sess_a') AS t(dummy text);
+    PERFORM * FROM dblink_get_result('sess_b') AS t(dummy text);
     SELECT t.cnt INTO seq_b FROM dblink_get_result('sess_b') AS t(cnt bigint);
-    PERFORM dblink_get_result('sess_b');
-    PERFORM dblink_exec('sess_b', 'COMMIT');
+    PERFORM * FROM dblink_get_result('sess_b') AS t(dummy text);
     IF NOT ((seq_a = 5 AND seq_b = 7) OR (seq_a = 7 AND seq_b = 5)) THEN
         RAISE EXCEPTION 'concurrent advances must yield 5 and 7 (a=%, b=%)', seq_a, seq_b;
     END IF;
