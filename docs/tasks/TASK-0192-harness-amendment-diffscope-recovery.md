@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0192
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -205,7 +205,20 @@ humanApprovals:
       候选 SHA 全量复验和独立复核后完成正式接纳；在此之前不得推送或合并。
       仅在 TASK-0192 的精确 pre-READY 边界需要 Owner 批准时合并为一次提问。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0192_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: d24d77e27512cf666127cd8ad9a283fade93eec8
+    evidencePath: docs/evidence/TASK-0192/review-r1.md
+    reason: >-
+      R1 独立复核 6/6 PASS 并裁决 APPROVE（无 P0/P1，仅 3 条不阻断 P2）：
+      边界合规（a89afdf 单父 b9aa1c7 恰 3 冻结路径、全部 git 绑定独立核对
+      相符、消费后惰化）、实现正确性（仅隔离零错误 amendment 边豁免 backlog
+      重复拒绝、无全局忽略；seed 恢复全字段绑定失败关闭仅 TASK-0191 命中）、
+      测试覆盖 Owner 清单全项、验证真实性（独立重跑 summary/precheck 29 项
+      测试/diff --check 全一致）、范围合规（TASK-0191 历史零修改、历史线性）、
+      未越权（TASK-0191 仍 REJECTED）。
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0192
   - PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0192AmendmentDiffScopeRecoveryTests test_harness.Task0191SeedRecoveryTests test_harness.Task0098PostTerminalTailTests test_harness.Task0189PostTerminalTailTests

@@ -1,0 +1,110 @@
+{
+  "taskId": "TASK-0192",
+  "baseCommit": "2abc531bde888d7f9689d199fb8b092b3341b226",
+  "headCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8",
+  "contextFingerprint": "0027e99094ba7321200a1baf45fb5f41da154ddd84cf8c439ee513a6bc9d65c6",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "cab8311c4d6a7d19fcfaf5d6684a4a5da2a5cc4b",
+      "startedAt": "2026-08-14T00:01:13+08:00",
+      "endedAt": "2026-08-14T01:02:21+08:00",
+      "elapsedSeconds": 3668,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "cab8311c4d6a7d19fcfaf5d6684a4a5da2a5cc4b",
+      "startedAt": "2026-08-14T00:01:13+08:00",
+      "endedAt": "2026-08-14T00:46:43+08:00",
+      "elapsedSeconds": 2730,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T00:46:43+08:00",
+      "inProgressCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8",
+      "startedAt": "2026-08-14T00:46:43+08:00",
+      "endedAt": "2026-08-14T01:02:21+08:00",
+      "elapsedSeconds": 938,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T00:46:43+08:00",
+      "inProgressCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0192_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8",
+      "evidencePath": "docs/evidence/TASK-0192/review-r1.md",
+      "reason": "R1 独立复核 6/6 PASS 并裁决 APPROVE（无 P0/P1，仅 3 条不阻断 P2 备注）：边界合规（a89afdf 单父 b9aa1c7、恰 3 冻结路径、owner-auth json 与卡与 Owner 批准逐字段一致、全部 git 绑定独立核对相符、消费后惰化零改动）、实现正确性（仅隔离零错误 amendment 边豁免 backlog 的 allowlist/forbidden 重复拒绝、无全局忽略、其余检查不受影响；seed 恢复全字段绑定失败关闭仅 TASK-0191 身份命中；66 路径常量与 git diff 输出逐字节一致）、测试覆盖 Owner 清单全项（正 10 负 10）、验证真实性（独立重跑 summary PASS 887523/precheck 8 commands exit0/定向 29/29/diff --check clean）、范围合规（6 路径全在 writeAllowlist、TASK-0191 历史制品逐字节无差异、历史线性无 rebase）、未越权（TASK-0191 仍 REJECTED、lastAccepted 仍 TASK-0190）。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0192",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor（bind 0553e05 后）PASS 886041 checks，125.6s",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0192",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 d24d77e：canonical precheck 8 commands 全 PASS exit 0（doctor 887523 checks + licenseCheck + catalog/openapi/beta/paid）；实现者与独立 Reviewer 各跑一次均 exit 0",
+      "verifiedCommit": null,
+      "candidateCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8"
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0192AmendmentDiffScopeRecoveryTests test_harness.Task0191SeedRecoveryTests test_harness.Task0098PostTerminalTailTests test_harness.Task0189PostTerminalTailTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 d24d77e：29/29 OK（191.1s；新增正负 20 项 + 0098/0189 回归 9 项）；Reviewer 独立重跑 29/29（178.98s）",
+      "verifiedCommit": null,
+      "candidateCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "2abc531..d24d77e 全量 range 与工作树均无 whitespace 错误；Reviewer 独立复核 clean",
+      "verifiedCommit": null,
+      "candidateCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8"
+    },
+    {
+      "command": "python scripts/harness/doctor.py --summary",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "greenline 恢复实证（边界 a89afdf 后）：idle summary PASS 883012 checks 0 errors——TASK-0191 的 3 项 diff-scope error 全部消除；Reviewer 独立重跑 PASS 887523",
+      "verifiedCommit": "a89afdf072ea6926bbff0976b9106ef77101abe2",
+      "candidateCommit": "a89afdf072ea6926bbff0976b9106ef77101abe2"
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "完整 discover 未执行（NOT_RUN）：CiExecutionPolicyTests 单类本地约 34 分钟远超 CI full job 10 分钟预算（TASK-0189/0190/0191 均已如实记录），本卡延续保留，不表述为 CI 兼容",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    }
+  ]
+}

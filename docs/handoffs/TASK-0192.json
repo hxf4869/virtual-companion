@@ -1,0 +1,78 @@
+{
+  "taskId": "TASK-0192",
+  "state": "ACCEPTED",
+  "baseCommit": "2abc531bde888d7f9689d199fb8b092b3341b226",
+  "headCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8",
+  "evidencePath": "docs/evidence/TASK-0192/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "cab8311c4d6a7d19fcfaf5d6684a4a5da2a5cc4b",
+      "startedAt": "2026-08-14T00:01:13+08:00",
+      "endedAt": "2026-08-14T01:02:21+08:00",
+      "elapsedSeconds": 3668,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "cab8311c4d6a7d19fcfaf5d6684a4a5da2a5cc4b",
+      "startedAt": "2026-08-14T00:01:13+08:00",
+      "endedAt": "2026-08-14T00:46:43+08:00",
+      "elapsedSeconds": 2730,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T00:46:43+08:00",
+      "inProgressCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8",
+      "startedAt": "2026-08-14T00:46:43+08:00",
+      "endedAt": "2026-08-14T01:02:21+08:00",
+      "elapsedSeconds": 938,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T00:46:43+08:00",
+      "inProgressCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0192_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "d24d77e27512cf666127cd8ad9a283fade93eec8",
+      "evidencePath": "docs/evidence/TASK-0192/review-r1.md",
+      "reason": "R1 独立复核 6/6 PASS 并裁决 APPROVE（无 P0/P1，仅 3 条不阻断 P2）；全部 git 绑定与验证独立重推/重跑。"
+    }
+  ],
+  "completed": [
+    "DRAFT 机器绑定修正提交 b9aa1c7（只改任务卡；Owner 2026-08-14 前提条件）：amendment 伴随边绑定 3fe5244(tree d6b2ed71)→2668949(tree 5b5745e8) 6 路径 set sha ae794360；seed 恢复绑定引入边 2668949→bfc6a62(tree 19ac0333) 66 路径 set sha c355d48e（修正 cab8311 误把 3fe5244 写作 seed 边直接父的错误）；补绑 TASK-0191 base 3c7fd0b/tree、authorizationCommit 9aa3221/tree、seed mode 100644/blob 5f849398/content sha 0203668d/HEAD 防漂移",
+    "一次性 pre-READY maintenance boundary OWNER-MAINT-20260813-TASK-0192-PRE-READY-01（a89afdf，Owner 2026-08-14 批准，修正后 DRAFT b9aa1c7 的直接单父，恰 3 冻结路径，oneTimeOnly 不可复用消费后惰化）",
+    "通用 amendment-diff-scope 修复：amendment_governance_companion_paths 仅对经隔离零错误 validate_amendment_introduction 全量校验的单父边，把该边 .harness/task-backlog.yaml 视为强制治理伴随路径跳过 allowlist/forbidden 重复拒绝；不全局忽略 Backlog，不豁免 task card/added paths/其它错误，protected-path/modes/snapshot 检查不受影响",
+    "TASK-0191 seed 一次性机器绑定恢复：task0191_seed_recovery_applies 全字段绑定（仅 TASK-0191 身份命中，任一不匹配失败关闭），无通用追溯授权",
+    "正负测试 20 项新增（真实仓库正例：TASK-0191 amendment 边/companion={backlog}/seed 命中/TASK-0012 历史边 1b9eafd 合法命中；负例：错误父提交（含 3fe5244 误绑）/错误 tree/错误 blob/错误 content sha/额外路径/多父/二次消费/他任务复制/backlog 创建边零豁免）+ 0098/0189 回归，定向 29/29 PASS（实现者与 Reviewer 双跑）",
+    "greenline 恢复实证：idle doctor --summary PASS（边界后 883012 checks 0 errors；候选后 Reviewer 复跑 887523）——TASK-0191 的 3 项 diff-scope error 全部消除",
+    "候选 d24d77e 三条 requiredCommands 真实 PASS：canonical precheck 8 commands exit0（doctor 887523）、定向 unittest 29/29、git diff --check；C4 独立复核 APPROVE 6/6（无 P0/P1）",
+    "边界与约束遵守：TASK-0191 历史制品逐字节零修改、无 rebase/reset/filter、ledger TASK-0191 保持 REJECTED、lastAccepted 保持 TASK-0190（未把 TASK-0191 业务实现声明为 ACCEPTED）"
+  ],
+  "remaining": [
+    "TASK-0191 继承的 P0 实现正式接纳：须单独创建任务卡，对 TASK-0191 窗口内已验证实现（RLS 74/74、mvn 340/340）进行明确授权、同一候选 SHA 全量复验（canonical precheck + RLS + mvn + diff --check）和独立复核后完成；在此之前不得推送或合并",
+    "完整 harness unittest discover NOT_RUN（CiPolicy 单类约 34 分钟 CI 预算风险，TASK-0189/0190/0191 延续如实记录）",
+    "本地 31 提交未推送（按 Owner 指令保持不推送不合并）",
+    "审计报告其余 findings 全部未处理（P1 lease/safety/quota、P2 运行时身份隔离等）"
+  ],
+  "knownRisks": [
+    "通用伴随路径规则依赖 validate_amendment_introduction 的全量合同（隔离零错误），未来若该合同放宽需同步评审伴随路径语义",
+    "seed 恢复为一次性硬编码绑定（治标）：未来测试 fixture 新增路径应在 READY 冻结清单内完成，避免再次跨卡遗漏",
+    "TASK-0182 等历史 ledger WARN 为预存在告警（Reviewer P2 备注，与本卡无关）",
+    "origin/main 未推送；审计业务 findings 待后续任务"
+  ],
+  "nextAction": "greenline 已恢复（TASK-0192 ACCEPTED）：以 TASK-0192 终态提交为 baseCommit 单独创建任务卡，对 TASK-0191 窗口内已验证的 P0 owner context/RLS 实现进行明确授权、同一候选 SHA 全量复验（canonical precheck + RLS 全套 + Maven 全套 + git diff --check）与独立复核后完成正式接纳；在此之前保持不推送不合并。"
+}

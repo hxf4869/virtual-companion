@@ -1002,3 +1002,9 @@ tasks:
     taskCard: docs/tasks/TASK-0191-owner-context-rls-trust-model.md
     evidence: docs/evidence/TASK-0191/evidence-pack.json
     handoff: docs/handoffs/TASK-0191.json
+  TASK-0192:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0192-harness-amendment-diffscope-recovery.md
+    evidence: docs/evidence/TASK-0192/evidence-pack.json
+    handoff: docs/handoffs/TASK-0192.json
