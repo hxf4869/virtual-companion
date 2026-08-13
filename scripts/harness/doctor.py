@@ -167,7 +167,7 @@ TASK_DELIVERY_POLICY_CANONICAL_HASH = (
     "ed26c40b35b131dba1a325e59a6b803d4ba0ace4e9663b05adad6056a0d6218b"
 )
 TASK_DELIVERY_SKILL_CANONICAL_HASH = (
-    "9993e863360e181f7f13c1c058868196c69bf49d85c2ba128787ca6e8a95481b"
+    "ed487482694a2f42e5b90cf0f8cb92d3f43af587e08ef4dba6e0d10e27fcb07f"
 )
 TASK_0075_CI_POLICY_PROJECTION_HASH = (
     "fc6622dfad6fba0aa15d3af403faedc28ee69b0ff93f89fd1886953d2b1ce8eb"
@@ -432,19 +432,7 @@ TASK_0189_PRE_READY_MAINTENANCE_PATHS = {
     "skills/task-intake/SKILL.md",
 }
 TASK_0189_EXACT_OWNER_AUTHORIZATION = (
-    "Owner 于 2026-08-13 按审计交接决策正式授权 TASK-0189 恢复 canonical greenline：唯一 "
-    "pre-READY maintenance 边 OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01 机器绑定"
-    "接受 7f9f9e3→c626005（TASK-0187 canonical terminal 后的 evidence/handoff headCommit "
-    "回填 metadata tail，仅改 docs/evidence/TASK-0187/evidence-pack.json 与 "
-    "docs/handoffs/TASK-0187.json，每文件恰将 headCommit 占位 "
-    "0000000000000000000000000000000000000000 回填为 "
-    "7f9f9e3be0dd9285e80a78707445d2ea7f7153ff）作为 TASK-0189 DRAFT 锚"
-    "（baseCommit=c626005）；同时实现严格限定的 legacy reviewers compatibility：仅终态"
-    "（ACCEPTED/REJECTED/SUPERSEDED）C1/C2 且 independentReview: not-required 的任务允许"
-    "缺省 reviewers 字段，其余情况失败关闭；不得补写 TASK-0185/0186/0187 历史卡；维护边只"
-    "允许 6 个冻结路径、一次性消费、不可复用、禁止历史改写/通用 override；"
-    "TASK-0185/0186/0187 的 authorizationCommit 占位接受为不可逆死债并在 Evidence/Handoff "
-    "如实记录。"
+    'Owner 按 2026-08-13 审计交接决策正式授权 TASK-0189 恢复 canonical greenline： 唯一 pre-READY maintenance 边（recordId OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01） 机器绑定接受 7f9f9e3→c626005（TASK-0187 canonical terminal 后的 evidence/handoff headCommit 回填 metadata tail，仅改 docs/evidence/TASK-0187/evidence-pack.json 与 docs/handoffs/TASK-0187.json）作为 DRAFT 锚（baseCommit=c626005）；同时实现严格 限定的 legacy reviewers compatibility：仅终态（ACCEPTED/REJECTED/SUPERSEDED）C1/C2 且 independentReview: not-required 的任务允许缺省 reviewers 字段，其余情况失败 关闭；不得补写 TASK-0185/0186/0187 历史卡；维护边只允许 6 个冻结路径、一次性消费、 不可复用、禁止历史改写/通用 override；authorizationCommit 占位（plan-approved-...） 接受为不可逆死债并在 Evidence/Handoff 如实记录。'
 )
 TASK_0189_CI_POLICY_PROJECTION_HASH = "6f0d97679d5488dc321f38950e5fb09c57a962c18d8ce7b8b7ddc23e153324be"
 TASK_0073_MAINTENANCE_COMMIT = "b1c37678ab773eca150bdbb273ddafa5d14b781f"
@@ -13560,6 +13548,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "task0075PreReadyMaintenance",
             "task0076PreReadyMaintenance",
             "task0098PostTerminalTail",
+            "task0189PostTerminalTail",
             "rules",
         },
         "ci-execution-policy: root fields do not match the frozen machine contract",
