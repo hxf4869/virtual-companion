@@ -984,3 +984,9 @@ tasks:
     taskCard: docs/tasks/TASK-0187-relationship-selector-ui.md
     evidence: docs/evidence/TASK-0187/evidence-pack.json
     handoff: docs/handoffs/TASK-0187.json
+  TASK-0189:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0189-canonical-greenline-restore.md
+    evidence: docs/evidence/TASK-0189/evidence-pack.json
+    handoff: docs/handoffs/TASK-0189.json

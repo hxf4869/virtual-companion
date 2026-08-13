@@ -1,0 +1,125 @@
+{
+  "taskId": "TASK-0189",
+  "baseCommit": "c6260059f09cd69595a70aee7ef39de45e99ca78",
+  "headCommit": "80fd3e67618c2bcec94d984c404d292079fd79f9",
+  "contextFingerprint": "5c145bf85c90965ac61d95047fb8f8009c5d2521d3bfc3ccc390031cd7410907",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "3b5e5566be094f0780d13a7a81dafa1b9faf790c",
+      "startedAt": "2026-08-13T14:04:24+08:00",
+      "endedAt": "2026-08-13T15:38:28+08:00",
+      "elapsedSeconds": 5644,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "3b5e5566be094f0780d13a7a81dafa1b9faf790c",
+      "startedAt": "2026-08-13T14:04:24+08:00",
+      "endedAt": "2026-08-13T14:28:59+08:00",
+      "elapsedSeconds": 1475,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T14:28:59+08:00",
+      "inProgressCommit": "ae80a7ef95726eef2c908b7777c79092a65ddb90"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "ae80a7ef95726eef2c908b7777c79092a65ddb90",
+      "startedAt": "2026-08-13T14:28:59+08:00",
+      "endedAt": "2026-08-13T15:38:28+08:00",
+      "elapsedSeconds": 4169,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T14:28:59+08:00",
+      "inProgressCommit": "ae80a7ef95726eef2c908b7777c79092a65ddb90"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0189_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "80fd3e67618c2bcec94d984c404d292079fd79f9",
+      "evidencePath": "docs/evidence/TASK-0189/review-r1.md",
+      "reason": "R1 独立复核 PASS：tail acceptance 7f9f9e3→c626005 机器绑定（单父/恰 2 路径/headCommit 占位→真实回填/逐文件 blob+sha）与 legacy reviewers compatibility（仅终态 C1/C2 not-required 允许缺省）实现正确；6 调用点全在位；diff 全在 writeAllowlist、forbiddenPaths 零触碰；tail 不泛化/legacy 严格限定经 mutation 抽查验证；doctor 866040 checks PASS；定向 unittest 14 项 OK；licenseCheck FAIL 与 CiExecutionPolicyTests 34 分钟超预算如实记录未转 PASS。"
+    }
+  ],
+  "checks": [
+    {
+      "id": "doctor-readydoctor-pass",
+      "command": "python scripts/harness/doctor.py --task TASK-0189",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "darwin 25.6.0 arm64, Python vc-harness venv (python3.13)",
+      "detail": "READY Doctor PASS（863084 checks, 113.7s，bind 提交 ae66f88 后）；BLOCKED 状态复验 PASS（866040 checks, 119.6s）。tail acceptance + legacy reviewers compatibility + boundary 校验 + canonical hash 全部通过；TASK-0185/0186/0187 reviewers 缺失 error 消除。"
+    },
+    {
+      "id": "targeted-unittest-0189",
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0189PostTerminalTailTests test_harness.LegacyReviewersCompatibilityTests test_harness.Task0098PostTerminalTailTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "darwin, Python vc-harness venv",
+      "detail": "14 项 OK：Task0189PostTerminalTailTests 6 项（exact record 接受/tail 事实绑定/tail commit 突变失败/headCommit backfill 突变失败/copied record 禁止/other task anchor 拒绝）；LegacyReviewersCompatibilityTests 5 项（终态 C1/C2 not-required 允许/活动态失败/C3/C4 失败/required 失败/0185-0187 历史卡现状断言）；Task0098PostTerminalTailTests 3 项回归。"
+    },
+    {
+      "id": "ci-execution-policy-tests",
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.CiExecutionPolicyTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "耗时 2043.57s（约 34 分钟）远超 CI job 10 分钟预算；本地 PASS 不能表述为 CI 完全兼容。",
+      "environment": "darwin, Python vc-harness venv",
+      "detail": "20 项 OK（含审计报告标记为卡住的 test_policy_rejects_backend_and_frontend_local_profile_drift，本次运行完成未卡住）。已知风险：完整 discover 在该测试组合下可能触发 CI full job 10 分钟超时。"
+    },
+    {
+      "id": "precheck-catalog-openapi-beta-paid",
+      "command": "python scripts/harness/precheck.py --task TASK-0189",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "仅列出 precheck 中 PASS 的子阶段；precheck 整体 FAIL 见 licenseCheck 条目。",
+      "environment": "darwin, Python vc-harness venv",
+      "detail": "catalogValidate/catalogDrift/openapiValidate/openapiDrift/betaRosterGate/paidFeatureCheck 均 PASS；doctor PASS（864562 checks, 123.9s）。"
+    },
+    {
+      "id": "precheck-licensecheck",
+      "command": "python scripts/harness/precheck.py --task TASK-0189 (licenseCheck 子阶段)",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "com.fasterxml.jackson.core:jackson-databind（scope=compile）不在 .harness/license-inventory.yaml（仅记录 Jackson 3 的 tools.jackson.core:jackson-databind）。TASK-0184 引入该依赖时未同步 inventory（其 doctor/precheck 当年 NOT_RUN）。修复需修改 license-inventory.yaml，超出 TASK-0189 writeAllowlist，amendment 需改 task-backlog.yaml（本卡 forbiddenPaths）不可行。",
+      "environment": "darwin, Python vc-harness venv",
+      "detail": "precheck 整体 FAIL（1 commands：licenseCheck exited 1）。这是 TASK-0189 REJECTED 的直接原因。"
+    },
+    {
+      "id": "harness-unittest-discover",
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "完整 discover 预计远超 30 分钟（CiExecutionPolicyTests 单类即 34 分钟），超本机会话可承受预算；且已知 CI full job 10 分钟预算风险。不标 PASS。",
+      "environment": "darwin, Python vc-harness venv"
+    },
+    {
+      "id": "diff-check",
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": null,
+      "environment": "git",
+      "detail": "worktree 无 whitespace error。"
+    }
+  ]
+}

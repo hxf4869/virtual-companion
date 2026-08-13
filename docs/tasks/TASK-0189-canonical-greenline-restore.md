@@ -2,7 +2,19 @@
 
 ```yaml
 taskId: TASK-0189
-state: BLOCKED
+state: REJECTED
+terminalStateReason: >-
+  READY Doctor PASS（863084 checks）与 BLOCKED 状态复验 PASS（866040 checks）；
+  定向 unittest 14 项 + CiExecutionPolicyTests 20 项 PASS；C4 独立复核 PASS。
+  但 canonical precheck 的 licenseCheck FAIL（exit 1）：com.fasterxml.jackson.core:
+  jackson-databind（TASK-0184 引入，compile scope）不在 .harness/license-inventory.yaml
+  （仅记录 Jackson 3 的 tools.jackson.core），属 TASK-0184 历史遗漏（其当年
+  doctor/precheck NOT_RUN）。修复需修改 license-inventory.yaml，不在本卡
+  writeAllowlist；amendment 需改 task-backlog.yaml（本卡 forbiddenPaths）不可行。
+  按 Owner 决策（2026-08-13）以真实失败状态 REJECTED 闭合；实现与验证结果
+  （tail acceptance + legacy compatibility + doctor PASS）完整保留，由新卡
+  TASK-0190 以本卡 REJECTED 终态提交为 baseCommit 承接补 inventory 后跑通
+  canonical precheck。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -221,7 +233,19 @@ humanApprovals:
       不可复用、禁止历史改写/通用 override；authorizationCommit 占位（plan-approved-...）
       接受为不可逆死债并在 Evidence/Handoff 如实记录。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0189_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 80fd3e67618c2bcec94d984c404d292079fd79f9
+    evidencePath: docs/evidence/TASK-0189/review-r1.md
+    reason: >-
+      R1 独立复核 PASS：tail acceptance 机器绑定（单父/恰 2 路径/headCommit
+      占位→真实回填/逐文件 blob+sha）与 legacy reviewers compatibility（仅终态
+      C1/C2 not-required 允许缺省）实现正确；6 调用点全在位；diff 全在
+      writeAllowlist、forbiddenPaths 零触碰；mutation 抽查失败关闭；doctor
+      866040 checks PASS；定向 unittest 14 项 OK；licenseCheck FAIL 与
+      CiExecutionPolicyTests 34 分钟超预算如实记录未转 PASS。
 requiredCommands:
   - python scripts/harness/precheck.py --task TASK-0189
   - git diff --check

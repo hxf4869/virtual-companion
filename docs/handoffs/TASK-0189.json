@@ -1,0 +1,77 @@
+{
+  "taskId": "TASK-0189",
+  "state": "REJECTED",
+  "baseCommit": "c6260059f09cd69595a70aee7ef39de45e99ca78",
+  "headCommit": "80fd3e67618c2bcec94d984c404d292079fd79f9",
+  "evidencePath": "docs/evidence/TASK-0189/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "3b5e5566be094f0780d13a7a81dafa1b9faf790c",
+      "startedAt": "2026-08-13T14:04:24+08:00",
+      "endedAt": "2026-08-13T15:38:28+08:00",
+      "elapsedSeconds": 5644,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "3b5e5566be094f0780d13a7a81dafa1b9faf790c",
+      "startedAt": "2026-08-13T14:04:24+08:00",
+      "endedAt": "2026-08-13T14:28:59+08:00",
+      "elapsedSeconds": 1475,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T14:28:59+08:00",
+      "inProgressCommit": "ae80a7ef95726eef2c908b7777c79092a65ddb90"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "ae80a7ef95726eef2c908b7777c79092a65ddb90",
+      "startedAt": "2026-08-13T14:28:59+08:00",
+      "endedAt": "2026-08-13T15:38:28+08:00",
+      "elapsedSeconds": 4169,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-13T14:28:59+08:00",
+      "inProgressCommit": "ae80a7ef95726eef2c908b7777c79092a65ddb90"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0189_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "80fd3e67618c2bcec94d984c404d292079fd79f9",
+      "evidencePath": "docs/evidence/TASK-0189/review-r1.md",
+      "reason": "R1 独立复核 PASS：实现正确（tail acceptance 机器绑定 + legacy compat 严格限定）、6 调用点全在位、diff 全在 writeAllowlist、forbiddenPaths 零触碰、mutation 抽查失败关闭、doctor 866040 checks PASS、定向 unittest 14 项 OK；licenseCheck FAIL 与 CiExecutionPolicyTests 超预算如实记录。"
+    }
+  ],
+  "completed": [
+    "TASK-0189 全链提交（DRAFT 3b5e5566 → pre-READY maintenance b6229b6d → READY 39d81445 → bind ae66f88 → fix 092a4f2 → IN_PROGRESS ae80a7e → BLOCKED 80fd3e6，全部单父、未推送）",
+    "post-terminal tail acceptance 7f9f9e3→c626005：task0189PostTerminalTail 机器记录 + doctor 常量/4 validator/6 调用点，接受 headCommit 回填 metadata tail 作为 DRAFT 锚（baseCommit=c626005），严格不泛化",
+    "legacy reviewers compatibility：仅终态 C1/C2 且 independentReview: not-required 允许缺省 reviewers，其余失败关闭；TASK-0185/0186/0187 的 3 个 schema error 消除",
+    "README Doctor PASS（863084 checks）+ BLOCKED 状态复验 PASS（866040 checks）",
+    "定向 unittest 14 项 PASS（Task0189 正负 11 项 + Task0098 回归 3 项）+ CiExecutionPolicyTests 20 项 PASS（含原卡住测试，耗时 34 分钟）",
+    "precheck 子阶段 catalog/openapi/beta/paid/doctor 全部 PASS",
+    "C4 独立复核 PASS（review-r1.md）"
+  ],
+  "remaining": [
+    "canonical precheck 的 licenseCheck 失败：com.fasterxml.jackson.core:jackson-databind 不在 .harness/license-inventory.yaml（TASK-0184 引入该依赖时未同步 inventory；其当年 precheck NOT_RUN）。修复需修改 license-inventory.yaml（补一条 groupId: com.fasterxml.jackson.core, artifactId: jackson-databind, licenseFamily: Apache-2.0），超出本卡 writeAllowlist；amendment 需改 task-backlog.yaml（本卡 forbiddenPaths）不可行 → 本卡 REJECTED",
+    "完整 harness unittest discover 未执行（NOT_RUN；CiExecutionPolicyTests 单类 34 分钟，完整 discover 预计更久，超本机会话与 CI 10 分钟预算）",
+    "TASK-0190 需以本卡 REJECTED 终态提交为 baseCommit（非 BLOCKED checkpoint 80fd3e6），补 inventory 后以同一真实候选 SHA 跑通 canonical precheck（真实退出码）",
+    "authorizationCommit 占位（TASK-0185/0186/0187）为不可逆死债（压缩交付无独立 READY 提交），doctor 容忍，不作为修复目标"
+  ],
+  "knownRisks": [
+    "CiExecutionPolicyTests 本地 20 项 PASS 但耗时约 34 分钟，远超 CI full job 10 分钟预算；完整 discover 可能触发 CI 超时，不能表述为 CI 完全兼容",
+    "TASK-0189 的 tail acceptance 是一次性硬编码绑定（治标）：未来每个 ACCEPTED 任务若再产生 headCommit 回填 tail，需再开同类卡；消除根因的治本改造（terminal 流程）未做",
+    "BLOCKED 提交 80fd3e6 仅改 state（blockedReason 字段曾误加后经 reset --soft 重做移除，未推送、无外部消费方）",
+    "TASK-0185/0186/0187 的 authorizationCommit 为占位字符串（非 SHA），其 ancestry/base 校验被 doctor 跳过，属既有行为"
+  ],
+  "nextAction": "以 TASK-0189 REJECTED 终态提交为 baseCommit 开下一永久任务卡：writeAllowlist 含 TASK-0189 已验证的 6 路径（doctor.py/test_harness.py/ci-execution-policy.yaml/两个 SKILL/owner-auth）与 .harness/license-inventory.yaml（及必要 Evidence/Handoff 路径），补 com.fasterxml.jackson.core:jackson-databind（Apache-2.0）条目，不改 TASK-0184 历史制品、不改写 TASK-0189 已验证实现，以同一真实候选 SHA 跑通 canonical precheck（真实退出码）后 ACCEPTED 闭合。"
+}

@@ -2,19 +2,19 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0189
-activeTaskCard: docs/tasks/TASK-0189-canonical-greenline-restore.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0187
 lastAcceptedHandoff: docs/handoffs/TASK-0187.json
-lastTerminalTask: TASK-0187
-lastTerminalHandoff: docs/handoffs/TASK-0187.json
+lastTerminalTask: TASK-0189
+lastTerminalHandoff: docs/handoffs/TASK-0189.json
 nextAction: >-
-    TASK-0189（恢复 canonical greenline）READY：post-terminal tail acceptance
-    7f9f9e3→c626005（headCommit 回填 metadata tail）+ 严格限定 legacy reviewers
-    compatibility（仅终态 C1/C2 not-required 允许缺省 reviewers）已实现于
-    pre-READY maintenance 边 b6229b6d（6 冻结路径）；下一步：READY Doctor PASS 后
-    进入 IN_PROGRESS，完成 canonical precheck 与定向 unittest，并以 ACCEPTED 终态
-    闭合恢复 greenline，使后续业务修复卡可正常以 c626005 为 Base。
+  以 TASK-0189 REJECTED 终态提交为 baseCommit 开下一永久任务卡：writeAllowlist
+  含 TASK-0189 已验证的 6 路径（doctor.py/test_harness.py/ci-execution-policy.yaml/两个
+  SKILL/owner-auth）与 .harness/license-inventory.yaml（及必要 Evidence/Handoff
+  路径），补 com.fasterxml.jackson.core:jackson-databind（Apache-2.0）条目，不改
+  TASK-0184 历史制品、不改写 TASK-0189 已验证实现，以同一真实候选 SHA 跑通
+  canonical precheck（真实退出码）后 ACCEPTED 闭合。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
