@@ -41,6 +41,7 @@ class ProductionProfileFailClosedTest {
                                 "VC_AUTH_DATASOURCE_ENABLED=true",
                                 "VC_FLYWAY_ENABLED=false",
                                 "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                                "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                                 "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
                                 "VC_DB_USERNAME=vc",
                                 "VC_DB_PASSWORD=vc")
@@ -61,6 +62,7 @@ class ProductionProfileFailClosedTest {
                         "VC_AUTH_DATASOURCE_ENABLED=true",
                         "VC_FLYWAY_ENABLED=true",
                         "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                        "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
                         "VC_DB_USERNAME=vc",
                         "VC_DB_PASSWORD=vc")
@@ -85,6 +87,7 @@ class ProductionProfileFailClosedTest {
                         "VC_DB_URL=jdbc:postgresql://127.0.0.1:59999/vc",
                         "VC_DB_USERNAME=vc",
                         "VC_DB_PASSWORD=vc",
+                        "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_MIGRATOR_DB_URL=jdbc:postgresql://127.0.0.1:5433/vc",
                         "VC_MIGRATOR_DB_USERNAME=postgres",
                         "VC_MIGRATOR_DB_PASSWORD=vc")

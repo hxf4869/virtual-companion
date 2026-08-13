@@ -224,6 +224,33 @@ decisionGates:
           value: "① 外发仅允许 Registry 启用+获批部署+Authorization Guard 双授权通过；② SafetyGate 失败关闭，分类非 adequate 一律不 ALLOW/不外发，硬规则绝对优先；③ ZERO_LLM 固定降级、全故障不外发不伪造；④ Quota 每 owner 预留/释放、超限与 NO_CAPACITY 失败关闭；⑤ 生成单终态、取消/超时/撤销失败关闭、外发留 provider_attempt+usage+realtime_event 审计链；⑥ 凭据仅经批准渠道注入，不进仓库/日志/业务类型/OpenAPI/catalog；⑦ 不接未获批供应商、不公开注册、无真实支付、无 Beta 外放"
           evidence: "Owner 在闸门2 讨论批准该 7 条安全政策，全部落在既有代码约束上（TASK-0020/0031/0032）"
 authorizationAmendments:
+  # TASK-0191 Owner scope amendment (2026-08-13): four exact added write
+  # paths, append-only, strong-typed; the task card holds the hash-bound
+  # projection. Bound to parent 3fe5244f865d46b59a535cd25e5f52793366e28f.
+  owner-amendment-20260813-task-0191-scope-01:
+    schemaVersion: 1
+    taskId: TASK-0191
+    amendmentType: OWNER_CLAUSE_REPLACEMENT
+    approvedBy: repository-owner
+    approvedAt: '2026-08-13'
+    evidence: Owner 2026-08-13 批复：4 个文件全部授权，但必须通过 READY 后的强类型 Owner scope amendment 落地，不得直接改写 READY 冻结的原始 writeAllowlist；本次批准仅新增 4 个精确写路径（infra/db/tests/49_realtime_seq_concurrent.sql、infra/db/tests/57_search_path_public_create_fail_closed.sql、service/apps/runtime/src/test/java/com/virtualcompanion/runtime/ProductionProfileFailClosedTest.java、service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/SchemaReadinessHealthIndicatorTest.java）；修改范围严格限定：49 按既有 dblink 测试模式建立事务内合法 owner binding；57 使用测试 fixture 生成合法证明并保留 search-path fail-closed 原测试目标；ProductionProfileFailClosedTest 仅给原本应正常启动的测试补充不少于 32 字节测试 secret 且缺失 secret 的负向测试继续失败关闭；SchemaReadinessHealthIndicatorTest 迁移数断言仅从 26 更新为 27；amendment 绑定父提交 3fe5244f865d46b59a535cd25e5f52793366e28f，单父原子提交只含 backlog、任务卡与 4 个新增路径，其他未提交实现不得混入，不得追溯授权既有改动，也不得增加第五个路径。
+    reason: V27 owner-context 密码学绑定落地后，49（dblink 会话级 SET vc.owner_user_id）与 57（裸 SET 后断言 current_owner_id=1）必然失败，ProductionProfileFailClosedTest 两个正向启动测试被新的 production fail-closed 正确拦截，SchemaReadinessHealthIndicatorTest 的迁移数字面断言需 26→27；四者均为最小机械修复类，且冻结 writeAllowlist 时按 SET LOCAL 形态扫描遗漏了会话级 SET 形态。
+    authorizedParentCommit: 3fe5244f865d46b59a535cd25e5f52793366e28f
+    baseAuthorizationProjectionHash: a822643239dacd688ab8eab21f219c5d3d36fa909e5096c357034edeba982482
+    scopeGrantAmendmentId: null
+    addedWriteAllowlist:
+    - infra/db/tests/49_realtime_seq_concurrent.sql
+    - infra/db/tests/57_search_path_public_create_fail_closed.sql
+    - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/ProductionProfileFailClosedTest.java
+    - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/SchemaReadinessHealthIndicatorTest.java
+    replacements:
+    - supersedes:
+        clauseId: TASK-0191-ACCEPTANCE-001
+        statement: V27 落地后：直接 SET GUC、伪造 binding、调 begin_job_context 均无法建立 有效 owner 上下文（69-71/73 实证，断言在真实 runtime 角色下）；重放矩阵 跨 owner/事务/连接全部失败，合法证明路径成功且跨租户 RLS 隔离保持（72 实证）；runtime 角色读密钥表 permission denied（73）；密钥缺失/过短/不一 致启动失败（BootstrapTest 实证）。
+        statementHash: ad86187571906c090b7a6df99e1a480f4882ac5e1d9936f900f455a1d21fa379
+      replacement:
+        statement: V27 落地后：直接 SET GUC、伪造 binding、调 begin_job_context 均无法建立 有效 owner 上下文（69-71/73 实证，断言在真实 runtime 角色下）；重放矩阵 跨 owner/事务/连接全部失败，合法证明路径成功且跨租户 RLS 隔离保持（72 实证）；runtime 角色读密钥表 permission denied（73）；密钥缺失/过短/不一 致启动失败（BootstrapTest 实证）。 Owner 2026-08-13 scope amendment（owner-amendment-20260813-task-0191-scope-01）新增四个精确写路径并授权其最小机械修复：infra/db/tests/49_realtime_seq_concurrent.sql（按既有 dblink 测试模式建立事务内合法 owner binding）、infra/db/tests/57_search_path_public_create_fail_closed.sql（测试 fixture 生成合法证明，保留 search-path fail-closed 原测试目标）、service/apps/runtime/src/test/java/com/virtualcompanion/runtime/ProductionProfileFailClosedTest.java（仅给原本应正常启动的测试补充不少于 32 字节测试 secret，缺失 secret 的负向测试继续失败关闭）、service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/SchemaReadinessHealthIndicatorTest.java（迁移数断言仅 26→27）。
+        statementHash: 514dc197ce66fc436482848bd58bc5e15acab11455daaa410381fe121b4c3150
   task-0012-owner-formalize-task-0037:
     schemaVersion: 1
     taskId: TASK-0012

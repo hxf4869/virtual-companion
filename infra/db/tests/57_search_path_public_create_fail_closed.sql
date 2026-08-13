@@ -83,9 +83,6 @@ DROP FUNCTION IF EXISTS public.current_owner_id();
 CREATE FUNCTION public.current_owner_id() RETURNS bigint
     LANGUAGE sql AS $$ SELECT 999999::bigint $$;
 
--- Establish a concrete trusted owner context so vc.current_owner_id() returns 1.
-SET vc.owner_user_id = '1';
-
 -- A throwaway SECURITY DEFINER probe in vc with the V18-hardened search_path that
 -- calls current_owner_id() UNQUALIFIEDly. Ephemeral test object (container is --rm).
 CREATE OR REPLACE FUNCTION vc.__rls_probe_unqual_owner() RETURNS bigint
@@ -93,6 +90,14 @@ CREATE OR REPLACE FUNCTION vc.__rls_probe_unqual_owner() RETURNS bigint
     SECURITY DEFINER
     SET search_path = vc, pg_catalog
 AS $$ SELECT current_owner_id() $$;
+
+-- TASK-0191: the V27 binding is transaction-local, so the trusted owner
+-- context for owner 1 (so vc.current_owner_id() returns 1) is established
+-- with a fixture-minted proof INSIDE one transaction that also runs the G3
+-- assertions. The G3 objective (unqualified resolution pinned to vc, public
+-- shadow never consulted) is unchanged.
+BEGIN;
+SELECT vc.set_owner_context(1, 'g3x', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'g3x', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 
 DO $$
 DECLARE
@@ -111,9 +116,9 @@ BEGIN
         RAISE EXCEPTION 'G3: vc.current_owner_id() returned unexpected value % (expected 1)', via_qualified;
     END IF;
 END $$;
+COMMIT;
 
 -- Cleanup throwaway probe objects so the migrated schema is left pristine.
 DROP FUNCTION IF EXISTS vc.__rls_probe_unqual_owner();
 DROP FUNCTION IF EXISTS public.current_owner_id();
 RESET ROLE;
-RESET vc.owner_user_id;
