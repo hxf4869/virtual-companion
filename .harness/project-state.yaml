@@ -2,19 +2,17 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0190
+activeTaskCard: docs/tasks/TASK-0190-license-inventory-jackson-databind.md
 lastAcceptedTask: TASK-0187
 lastAcceptedHandoff: docs/handoffs/TASK-0187.json
 lastTerminalTask: TASK-0189
 lastTerminalHandoff: docs/handoffs/TASK-0189.json
 nextAction: >-
-  以 TASK-0189 REJECTED 终态提交为 baseCommit 开下一永久任务卡：writeAllowlist
-  含 TASK-0189 已验证的 6 路径（doctor.py/test_harness.py/ci-execution-policy.yaml/两个
-  SKILL/owner-auth）与 .harness/license-inventory.yaml（及必要 Evidence/Handoff
-  路径），补 com.fasterxml.jackson.core:jackson-databind（Apache-2.0）条目，不改
-  TASK-0184 历史制品、不改写 TASK-0189 已验证实现，以同一真实候选 SHA 跑通
-  canonical precheck（真实退出码）后 ACCEPTED 闭合。
+  执行 TASK-0190（license inventory 补齐）：实现已完成于 pre-READY maintenance
+  边界（license-inventory.yaml 补 com.fasterxml.jackson.core:jackson-databind
+  Apache-2.0），以同一真实候选 SHA 跑通 canonical precheck（真实退出码）与
+  git diff --check，C4 独立复核后 ACCEPTED 闭合。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
