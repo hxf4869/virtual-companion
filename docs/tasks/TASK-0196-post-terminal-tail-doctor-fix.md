@@ -88,6 +88,26 @@ postTerminalTailAcceptance:
         blob: d00ec0dfd535ce0480444db45a0d8cff7c06e5fd
         contentSha256: ea23f12deb5d724de90b10f91d04a759ba19b92b2d3616640c1e98ddbb2c6749
   draftAnchorBaseCommit: 751cb9db547df2ba33d55d310276bc14e1fbd5eb
+  uniqueHistoricalException: true
+  legacyHealingException: true
+  exactPaths:
+    - .harness/ci-execution-policy.yaml
+    - docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json
+    - scripts/harness/doctor.py
+    - scripts/harness/tests/test_harness.py
+    - skills/task-delivery-flow/SKILL.md
+    - skills/task-intake/SKILL.md
+preReadyMaintenancePlan:
+  recordId: OWNER-MAINT-20260814-TASK-0196-PRE-READY-01
+  recordPath: docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE
+  directSingleParentFromDraftRequired: true
+  pathSetFrozenAtDraft: true
+  additionsOrRemovalsForbidden: true
+  oneTimeOnly: true
+  reusable: false
+  consumedRecordMustBecomeInert: true
+  provenanceRetainedForHistoryVerification: true
   exactPaths:
     - .harness/ci-execution-policy.yaml
     - docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json
@@ -281,6 +301,15 @@ humanApprovals:
       OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01），并修复 Doctor
       post-terminal 默认失败关闭与深度校验短路；禁止 amend/rebase/删除/重写
       fe0253f/751cb9d，禁止本轮进入 READY 或修改实现。
+      Owner 2026-08-14 追加批准（冻结修正）：fe0253f→751cb9d 是唯一历史例外，
+      不得形成"终态后发现不一致即可补一个 tail"的通用流程；canonical terminal
+      mismatch 仅 OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01 可作为
+      一次性 legacy healing exception，且必须同时验证 fe0253f 的原始不一致、
+      751cb9d 的唯一改动与 751cb9d 后的最终一致状态，不得把 canonical terminal
+      commit 本身追述为原本一致；新任务 base 位于 canonical terminal 后时，仅在
+      canonical terminal→base 的每一条父边均被正式登记、精确匹配且连续覆盖时
+      放行，本卡只允许精确链 fe0253f→751cb9d，不得退化为 baseCommit=HEAD、
+      同卡 writeAllowlist 或"Doctor 当前 PASS"即可放行。
   - scope: harness-change
     approvedBy: repository-owner
     approvedAt: "2026-08-14"
@@ -291,7 +320,18 @@ humanApprovals:
       skills/task-delivery-flow/SKILL.md、skills/task-intake/SKILL.md 六条
       冻结 maintenance 路径 + 本卡治理路径）在 READY 后实施 Doctor 修复；
       DRAFT 阶段只建卡与 Context Lock，不修改任何实现。
-independentReview: required
+      Owner 2026-08-14 追加批准 pre-READY maintenance 边界
+      （recordId OWNER-MAINT-20260814-TASK-0196-PRE-READY-01）：maintenance
+      边必须是修订后最终 DRAFT 提交的直接单父提交；恰好只能修改 6 个冻结
+      路径，不得增删；oneTimeOnly；绑定 DRAFT commit/tree、直接父、精确路径
+      集合及各路径 mode/blob/content hash；消费后不可复用，但历史验证证明必须
+      继续保留；禁止环境变量、CLI flag、git notes/replace/graft、通配
+      allowlist、分支/worktree 差异或通用 override；不得修改 TASK-0098/0189/
+      0191–0195 的任何历史制品；不得改写 fe0253f 或 751cb9d；maintenance 边
+      落地后运行冻结的定向正负测试及 TASK-0098/0189 回归与 Doctor，只有
+      READY Doctor 真实 PASS 才可进入 READY；修复 ACCEPTED/REJECTED blanket
+      continue，但不得用当前 schema 无差别重判全部不可变历史制品，应校验
+      terminal 后新增父边、当前 terminal artifact 一致性及版本化稳定不变量。independentReview: required
 reviewers: []
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0196
@@ -334,6 +374,32 @@ Owner 定性（2026-08-14）：这是治理缺陷而非合法 closure；Doctor �
 6. 保持 TASK-0098、TASK-0189 已登记 tail 的兼容性，不全局忽略历史 tail。
 7. 不弱化 authorization projection、diff-scope、protected paths、单父原子提交或历史
    不可变规则。
+
+## Owner 冻结修正（2026-08-14，追加批准）
+
+Owner 批准一次性 pre-READY maintenance 边界（recordId
+`OWNER-MAINT-20260814-TASK-0196-PRE-READY-01`）并附带以下冻结修正，全部纳入本卡
+范围与验收；不扩展现有 11 项 writeAllowlist 与 6 条 maintenance 路径：
+
+1. **fe0253f→751cb9d 是唯一历史例外**：接纳记录只证明这一条既存父边；不得形成
+   "终态后发现不一致即可补一个 tail"的通用流程；新任务的 terminal commit 若
+   nextAction 不一致，必须在终态闭合时失败，不得依赖事后修正。
+2. **canonical terminal mismatch 处理**：对未来及未登记记录，canonical terminal
+   commit 当下 nextAction 不一致必须失败；对 fe0253f→751cb9d，仅
+   `OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01` 可作为一次性 legacy
+   healing exception；该例外必须同时验证 (a) fe0253f 的原始不一致（handoff
+   nextAction 缺"（继承实现正式接纳完成）"措辞，与 project-state 不一致）、
+   (b) 751cb9d 的唯一改动（恰为 `docs/handoffs/TASK-0195.json` 该一行措辞）、
+   (c) 751cb9d 后的最终一致状态（handoff.nextAction 与 project-state.nextAction
+   逐字一致）；不得把 canonical terminal commit 本身追述为原本一致。
+3. **baseCommit 规则**：新任务 base 位于 canonical terminal 后时，只能在 canonical
+   terminal→base 的每一条父边均被正式登记、精确匹配且连续覆盖时放行；不得退化为
+   baseCommit=HEAD、同卡 writeAllowlist 或"Doctor 当前 PASS"即可放行；本卡只允许
+   精确链 fe0253f→751cb9d（单边、连续、完整覆盖）。
+4. **校验范围**：修复 ACCEPTED/REJECTED blanket continue，但不得用当前 schema
+   无差别重判全部不可变历史制品；应校验 terminal 后新增父边、当前 terminal
+   artifact 一致性及版本化稳定不变量；TASK-0098/0189 的既有登记 tail 必须继续
+   通过；未登记历史 tail 必须失败关闭。
 
 ## 范围内
 
@@ -414,15 +480,26 @@ Owner 定性（2026-08-14）：这是治理缺陷而非合法 closure；Doctor �
 
 ## 状态机和失败行为
 
-- 一次性 tail 记录消费后惰化；复制记录、二次消费、附加路径、多父、任何身份漂移、
-  泛化到其他 tail 均失败关闭。
+- 一次性 tail 记录消费后惰化（`consumedRecordMustBecomeInert: true`），但历史验证
+  证明必须继续保留（`provenanceRetainedForHistoryVerification: true`——消费后不可
+  复用不等于删除或弱化记录，Doctor 仍须能验证其不可变历史 provenance）；复制记录、
+  二次消费、附加路径、多父、任何身份漂移、泛化到其他 tail 均失败关闭。
 - 修复后的 Doctor 对 canonical terminal commit 之后的新父边默认失败关闭；未登记 tail
   （如未来再造的任意 post-terminal 边）必须 FAIL，不得静默放行。
+- canonical terminal mismatch：未来及未登记记录——terminal commit 当下
+  handoff.nextAction 与 project-state.nextAction 不一致必须失败；仅
+  `OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01` 的一次性 legacy healing
+  exception 可豁免 fe0253f→751cb9d，且必须通过三态验证（原始不一致 + 唯一改动 +
+  最终一致），不得把 fe0253f 追述为原本一致。
+- baseCommit：canonical terminal→base 每一条父边必须正式登记、精确匹配且连续覆盖；
+  本卡只允许精确链 fe0253f→751cb9d；baseCommit=HEAD、同卡 writeAllowlist、Doctor
+  当前 PASS 均不构成放行理由。
 - 若 `CI_EXECUTION_POLICY_CANONICAL_HASH` 计算或维护边自校验失败，按维护边校验 FAIL
   停止，不得以任何方式绕过。
-- ACCEPTED/REJECTED blanket continue 消除后，历史任务的既有兼容路径（无
-  authorizationCommit 轻量校验）不得被当作 PASS 伪装；任何新增校验缺口不得以
-  NOT_RUN/DEFERRED 冒充 PASS。
+- ACCEPTED/REJECTED blanket continue 消除后，深度校验限定为 terminal 后新增父边、
+  terminal artifact 一致性、版本化稳定不变量；不可变历史制品不做当前 schema 无差别
+  重判（占位 authorizationCommit/headCommit 的历史压缩交付卡维持既有轻量路径）；
+  任何校验缺口不得以 NOT_RUN/DEFERRED 冒充 PASS。
 
 ## 模型、Prompt、记忆和安全边界
 
@@ -444,21 +521,47 @@ Owner 定性（2026-08-14）：这是治理缺陷而非合法 closure；Doctor �
 | mode/type/blob/content | `100644`/`blob`/`d00ec0df…`/`ea23f12d…`（751cb9d 侧） |
 | 单父约束 | `singleParentRequired: true`，tail 必须是 terminal 的直接单父子 |
 | 一次消费 | `oneTimeOnly: true`，READY 授权提交后惰化，`reusable: false` |
+| 唯一历史例外 | `uniqueHistoricalException: true`——只证明 fe0253f→751cb9d 这一条既存父边，不构成通用流程 |
+| legacy healing | `legacyHealingException: true`——仅本记录可豁免 canonical terminal mismatch，且必须三态验证（见下） |
 | 禁止接口 | CLI flag/env var/git note/replace/graft/历史改写/可配置 allowlist/通配写路径/通用 override/分支或 worktree/GitHub Actions dispatch 全部 false |
+
+**三态验证（legacy healing exception 的必要充分条件）**：
+1. **原始不一致**：fe0253f 处 `docs/handoffs/TASK-0195.json` 的 nextAction 与 fe0253f
+   处 `.harness/project-state.yaml` 的 nextAction 逐字不一致（handoff 缺
+   "（继承实现正式接纳完成）"措辞）——记录该事实，不得把 fe0253f 追述为原本一致；
+2. **唯一改动**：`git diff --name-only fe0253f 751cb9d` 恰为
+   `docs/handoffs/TASK-0195.json`，且该文件 751cb9d 侧为 mode `100644`/blob
+   `d00ec0df…`/content sha256 `ea23f12d…`，改动内容恰为 nextAction 一行措辞
+   （"终态提交后" → "终态（继承实现正式接纳完成）后"）；
+3. **最终一致**：751cb9d 处 handoff.nextAction 与 751cb9d 处
+   project-state.nextAction 逐字一致。
+
+三态缺一或任一漂移即失败关闭。该例外只覆盖本记录，未来任何 terminal mismatch
+（包括新任务的 terminal commit）都必须失败，不得事后修正。
+
+**baseCommit 连续覆盖规则**：canonical terminal→base 的每一条父边必须被正式登记的
+记录精确匹配且连续覆盖（本卡：单边 fe0253f→751cb9d，被
+`OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01` 完整覆盖）；不满足连续覆盖
+时 baseCommit 校验失败关闭。baseCommit=HEAD、同卡 writeAllowlist 或"Doctor 当前
+PASS"均不构成放行理由。
 
 Doctor 实现约束（READY 后）：
 - 记录 identity/字段集合/逐字段值全部硬绑定（对标 `validate_task0098_post_terminal_tail_record` 的 exact-schema 校验）；
 - live edge facts 实时从 Git 复核：`rev-list --parents` 单父、`changed_paths_between`
-  精确路径、tail tree、逐文件 blob/content、tail 处 project-state.nextAction 与
-  handoff.nextAction 逐字一致；
+  精确路径、tail tree、逐文件 blob/content、三态 nextAction 验证（fe0253f 原始
+  不一致 → 751cb9d 唯一改动 → 751cb9d 最终一致）；
 - 复制到其他任务（`copiedRecordForbidden`）与二次消费（consumed 后仍放行）必须 FAIL；
 - 修复后默认失败关闭路径不得豁免 TASK-0196 自身 tail——TASK-0196 的放行必须来自其
-  登记记录精确匹配，而非"因为它是 TASK-0196"。
+  登记记录精确匹配，而非"因为它是 TASK-0196"；
+- 校验范围限定：terminal 后新增父边、当前 terminal artifact 一致性、版本化稳定
+  不变量（nextAction 逐字、project-state 闭包投影、terminal 制品冻结）；不得用当前
+  schema 无差别重判全部不可变历史制品（占位 authorizationCommit/headCommit 的
+  历史压缩交付卡维持既有轻量路径，不做 schema 重判）。
 
 ## 正负测试清单（DRAFT 冻结，READY 后全部落 `scripts/harness/tests/test_harness.py`）
 
 1. **唯一正例**：TASK-0196 记录精确匹配 `fe0253f→751cb9d`（单父、精确路径、mode/
-   blob/content/tree 全部一致、tail nextAction 逐字一致）→ Doctor 接受
+   blob/content/tree 全部一致、三态 nextAction 验证通过）→ Doctor 接受
    `baseCommit=751cb9d` 锚，PASS。
 2. **负例**：同卡 writeAllowlist 含 `docs/handoffs/TASK-0195.json` 但无记录匹配的
    post-terminal 修改（如改 content）→ FAIL（writeAllowlist 不构成终态后持续写授权）。
@@ -469,26 +572,39 @@ Doctor 实现约束（READY 后）：
 7. **负例**：他卡复制记录（copiedRecordForbidden；其他任务卡声明同 recordId）→ FAIL。
 8. **负例**：二次消费（记录已消费后再次作为锚）→ FAIL。
 9. **负例**：未登记 terminal tail（任意新造的 post-terminal 边，即使路径在旧卡
-   writeAllowlist 内）→ FAIL（默认失败关闭）。
+   writeAllowlist 内）→ FAIL（默认失败关闭；不得形成"事后补 tail"通用流程）。
 10. **正例回归**：TASK-0098（1696739→d335159）与 TASK-0189（7f9f9e3→c626005）已登记
     tail 的既有放行仍 PASS，不全局忽略历史 tail。
 11. **负例**：canonical terminal commit 当下 handoff.nextAction 与 project-state.nextAction
-    不一致（如构造不一致终态）→ FAIL（逐字一致校验覆盖 ACCEPTED/REJECTED）。
+    不一致（如构造不一致终态）→ FAIL（逐字一致校验覆盖 ACCEPTED/REJECTED；未来
+    mismatch 必须在终态闭合时失败，不得依赖事后修正）。
+
+Owner 冻结修正映射：①→测试 1/9（唯一历史例外）；②→测试 11 + 三态验证断言（原始
+不一致、唯一改动、最终一致，缺一 FAIL）；③→测试 1/9/10（baseCommit 连续覆盖）；
+④→测试 10/11 + 历史压缩交付卡（占位 authorizationCommit/headCommit）轻量路径
+回归断言（不做 schema 无差别重判）。
 
 ## 验收标准
 
 1. 一次性绑定机器校验通过：terminal/tail commit·tree·parent·精确路径·逐文件
-   mode/type/blob/content·单父·nextAction 逐字一致全部精确匹配；复制/二次消费/附加
-   路径/多父/漂移全部失败关闭。
+   mode/type/blob/content·单父·三态 nextAction 验证（fe0253f 原始不一致、751cb9d
+   唯一改动、751cb9d 最终一致）全部精确匹配；复制/二次消费/附加路径/多父/漂移
+   全部失败关闭；fe0253f 不被追述为原本一致。
 2. `doctor.py --task TASK-0196` READY Doctor 0 errors PASS（含 base-handoff 边界接受
-   tail 锚 751cb9d）。
+   tail 锚 751cb9d——仅经记录精确匹配放行）。
 3. 负向测试证明：未登记 post-terminal 边默认失败关闭；writeAllowlist 不单独授权
-   post-terminal 修改；终态 nextAction 不一致 FAIL。
-4. TASK-0098/0189 既有记录回归 PASS；`doctor --summary` 无新增 error。
+   post-terminal 修改；未来 terminal mismatch 在闭合时 FAIL；baseCommit 无连续覆盖
+   记录时 FAIL。
+4. TASK-0098/0189 既有记录回归 PASS；`doctor --summary` 无新增 error；占位
+   authorizationCommit/headCommit 的历史压缩交付卡维持轻量路径（不做 schema 无差别
+   重判，零新增 error）。
 5. 正负测试清单 11 项全部落地并真实 PASS/FAIL（无 NOT_RUN 冒充）。
-6. 历史零修改：`git diff` 不含 TASK-0191..0195 任何卡/context/evidence/handoff，
-   `fe0253f`/`751cb9d` 原样保留。
-7. 交付闭环：canonical Precheck PASS（doctor 0 errors）；C4 独立 Reviewer PASS；Handoff
+6. 历史零修改：`git diff` 不含 TASK-0098/0189/0191..0195 任何卡/context/evidence/
+   handoff，`fe0253f`/`751cb9d` 原样保留。
+7. pre-READY maintenance 边（OWNER-MAINT-20260814-TASK-0196-PRE-READY-01）满足：
+   修订后最终 DRAFT 的直接单父、恰好 6 个冻结路径、oneTimeOnly、消费后惰化且
+   provenance 保留、禁止接口全部 false。
+8. 交付闭环：canonical Precheck PASS（doctor 0 errors）；C4 独立 Reviewer PASS；Handoff
    `nextAction` 与终态 project-state 逐字一致；不推送、不合并。
 
 ## 必跑检查
