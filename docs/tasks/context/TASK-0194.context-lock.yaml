@@ -1,7 +1,7 @@
 schemaVersion: 1
 taskId: TASK-0194
 baseCommit: fb9cf0e178212d6ff554abf7d4695aa114fe0dba
-contextFingerprint: a43067c641a910de33da5c78e2e574fc0103cd0eb769b68445907b652c6140a2
+contextFingerprint: 69aa493b81c570f60be1d60ab5bd28454a3afd2e5041d37c79ba72034756faf7
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
 pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
 inputs:
@@ -153,6 +153,8 @@ inputs:
   sha256: 05823c754210b5c9eb9e4e18f6f18e8ac80acbfe1373ccfaf37327940360897b
 - path: service/apps/runtime/src/main/resources/application.yaml
   sha256: b624a91504f6692088b0e78d5c683a8f61e488f471ec100ffa177a875fff5363
+- path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/tenant/OwnerContextTest.java
+  sha256: e2497c0b75f85012bc461ec3e22f6ee814dc74e361681a85c0c40440835b28c2
 - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/GenerationWorkItemHandlerTest.java
   sha256: 2ed4ddabea5bea985a804a5f64fdb68a4f07744cd67fb855aae308522f097fcd
 - path: service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/LiveInvocationAssemblerTest.java
@@ -179,6 +181,10 @@ inputs:
   sha256: 65478408b61eb8e4cd09049c5e45beb0058ddac976e59d42a84a0d19cd6b4d62
 - path: service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/routing/QuotaLedger.java
   sha256: e8b7fd8f67d35d5e1f639d31cb83f8a26ae43a59aeb4d7ea2b81bec52ac0a76b
+- path: service/modules/modelruntime/src/test/java/com/virtualcompanion/modelruntime/execution/LiveModelInvokerTest.java
+  sha256: 4a6f2ee3b3d5b3e00fde8b0b18d73851b3625f02788f551a8b6f486801b8f343
+- path: service/modules/modelruntime/src/test/java/com/virtualcompanion/modelruntime/execution/ScriptedAdapter.java
+  sha256: 4e0ef00c08f68b5f876149d77c3093cf5acc239785e5ee92fa7069d0cc834151
 - path: service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/FinalizeGenerationService.java
   sha256: 0fc8fe23c0a3653368ee60fd5fc00569cae7fe009c82c3f3d4459c8debc6e50f
 - path: service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/GenerationCancelService.java
@@ -251,6 +257,10 @@ inputs:
   sha256: 68207ef94eb20e2d82eb6ed2ed5b9b76a07eb2d5f447fe902bf6558167d5d60a
 - path: service/platform/persistence/src/main/resources/db/migration/V9__relationship_active_companion_limit.sql
   sha256: 31c21c658215f6efa9dc9f3429b5d526b04d891c9b00e6a783dc553194fc6e1c
+- path: service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/FinalizeGenerationServiceTest.java
+  sha256: 294dbb92dbcc6915c1c7a321e2a2d15a4e392f80f3ab37be29fb20fd08335c13
+- path: service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/WorkItemClaimServiceTest.java
+  sha256: 07d2fe345030f314db84caa882a8a91a8b81357d54c8b932570b779268ca95e8
 - path: skills/database-migration/SKILL.md
   sha256: 0a2f4720d5b236b115526b309a1f551ca3051d8f37762a9b025c984a43386948
 - path: skills/task-delivery-flow/SKILL.md

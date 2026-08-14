@@ -18,7 +18,7 @@ planningBacklog: null
 planningContractHash: null
 planningContractHashAlgorithm: null
 baseCommit: fb9cf0e178212d6ff554abf7d4695aa114fe0dba
-contextFingerprint: a43067c641a910de33da5c78e2e574fc0103cd0eb769b68445907b652c6140a2
+contextFingerprint: 69aa493b81c570f60be1d60ab5bd28454a3afd2e5041d37c79ba72034756faf7
 contextLock: docs/tasks/context/TASK-0194.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
 deliveryMode: single-card
@@ -46,14 +46,15 @@ complexityAssessment:
   estimatedWallMinutes: 90
   thresholdsTriggered: [reviewerMinutesGreaterThan15, terminalCheckMinutesGreaterThan20, estimatedWallMinutesGreaterThan90]
   splitRecommended: true
-  splitProposal: TASK-0194 承载不可分割的事务模型/墙钟 lease/业务写 fence guard 基座；bounded retry/dead-letter 列为串行后续卡 TASK-0195（本轮不创建）
+  splitProposal: TASK-0194 承载不可分割安全基座（prepare/external 分离 + attempt intent + 显式 claim guard + 墙钟 lease + per-item terminalize + 独立 fail）；bounded retry/dead-letter 列串行后续 TASK-0195（本轮不创建）
   ownerIndivisibleAuthorization: true
   indivisibleReason: >-
-    事务拆分（claim 提交释放行锁）一旦落地就使 coordinator 可接管同一 work item，必须与
-    业务写 fence/lease/token guard 同卡生效，否则会把当前"未证实的 split-brain"变成真实
-    split-brain；墙钟 lease 仅在 claim 提交后才有意义；外部调用移出事务依赖前两者。因此
-    事务拆分 + 墙钟 lease + fence guard + 外部审计独立持久化 + 独立新事务 fail 构成一个
-    不可分割的安全基座，缺任一项都会引入比现状更严重的回归。
+    claim 一旦独立提交就释放行锁、使 coordinator 接管成为可能，必须与"业务写显式校验
+    work_item_id+claim_token+claim_fence"同卡生效；attempt intent 必须在 outbound 前独立
+    持久化才能保证"外发已发生则审计不丢"，且 intent 写失败须禁止外发；prepare 阶段必须
+    把 invoker 内的 JDBC（authorization snapshot 读取）收敛到 prepare-tx，使 external 阶段
+    仅消费不可变 PreparedInvocation、无 JDBC/TransactionTemplate。这些互为前提，缺任一项都
+    会把"未证实的 split-brain"变成真实 split-brain 或令外发审计/失败状态不可靠落库。
 readAllowlist:
   - .gitattributes
   - .harness/agent-entrypoints.yaml
@@ -129,6 +130,7 @@ readAllowlist:
   - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/WorkItemHandler.java
   - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/WorkItemWorker.java
   - service/apps/runtime/src/main/resources/application.yaml
+  - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/tenant/OwnerContextTest.java
   - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/GenerationWorkItemHandlerTest.java
   - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/LiveInvocationAssemblerTest.java
   - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/WorkItemCoordinatorTest.java
@@ -142,6 +144,8 @@ readAllowlist:
   - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/port/ModelProtocolSession.java
   - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/routing/DeterministicRouter.java
   - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/routing/QuotaLedger.java
+  - service/modules/modelruntime/src/test/java/com/virtualcompanion/modelruntime/execution/LiveModelInvokerTest.java
+  - service/modules/modelruntime/src/test/java/com/virtualcompanion/modelruntime/execution/ScriptedAdapter.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/FinalizeGenerationService.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/GenerationCancelService.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/GenerationFinalizeService.java
@@ -178,6 +182,8 @@ readAllowlist:
   - service/platform/persistence/src/main/resources/db/migration/V7__finalize_generation_usage_quota_outbox.sql
   - service/platform/persistence/src/main/resources/db/migration/V8__realtime_resume_ticket_gap_reset_snapshot.sql
   - service/platform/persistence/src/main/resources/db/migration/V9__relationship_active_companion_limit.sql
+  - service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/FinalizeGenerationServiceTest.java
+  - service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/WorkItemClaimServiceTest.java
   - skills/database-migration/SKILL.md
   - skills/task-delivery-flow/SKILL.md
   - skills/task-intake/SKILL.md
@@ -193,25 +199,36 @@ readAllowlist:
   - specs/contracts/realtime-contract.yaml
   - specs/contracts/worker-lease-contract.yaml
 writeAllowlist:
-  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/WorkItemCoordinator.java
-  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/WorkItemWorker.java
-  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/GenerationWorkItemHandler.java
-  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/LiveInvocationAssembler.java
-  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/tenant/OwnerContext.java
+  - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/execution/LiveModelInvoker.java
+  - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/execution/PreparedInvocation.java
+  - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/contract/ExternalAttemptBinding.java
+  - service/modules/modelruntime/src/test/java/com/virtualcompanion/modelruntime/execution/LiveModelInvokerTest.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/WorkItemClaimService.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/WorkItemClaim.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/GenerationFinalizeService.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/FinalizeGenerationService.java
   - service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/GenerationStateService.java
-  - service/platform/persistence/src/main/resources/db/migration/V28__worker_lease_fence_business_guard.sql
+  - service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/WorkItemClaimServiceTest.java
+  - service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/FinalizeGenerationServiceTest.java
+  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/WorkItemCoordinator.java
+  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/WorkItemWorker.java
+  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/GenerationWorkItemHandler.java
+  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/LiveInvocationAssembler.java
+  - service/apps/runtime/src/main/java/com/virtualcompanion/runtime/auth/tenant/OwnerContext.java
   - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/WorkItemWorkerTest.java
   - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/GenerationWorkItemHandlerTest.java
-  - infra/db/tests/74_wall_clock_lease_expires.sql
-  - infra/db/tests/75_stale_worker_business_write_denied.sql
-  - infra/db/tests/76_overtaken_claim_finalize_zero_write.sql
-  - infra/db/tests/77_external_audit_survives_finalize_rollback.sql
-  - infra/db/tests/78_aborted_tx_independent_fail.sql
-  - infra/db/tests/79_fenced_finalize_happy_path.sql
+  - service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/tenant/OwnerContextTest.java
+  - service/platform/persistence/src/main/resources/db/migration/V28__worker_lease_fence_business_guard.sql
+  - infra/db/tests/74_attempt_intent_created_before_outbound.sql
+  - infra/db/tests/75_wall_clock_lease_expires.sql
+  - infra/db/tests/76_guarded_finalize_requires_explicit_claim.sql
+  - infra/db/tests/77_stale_worker_only_closes_intent.sql
+  - infra/db/tests/78_overtaken_claim_zero_business_write.sql
+  - infra/db/tests/79_external_audit_survives_finalize_rollback.sql
+  - infra/db/tests/80_aborted_tx_independent_per_item_fail.sql
+  - infra/db/tests/81_batch_per_item_terminalize_no_pollution.sql
+  - infra/db/tests/82_expired_claim_with_intent_not_resent.sql
+  - infra/db/tests/83_fenced_finalize_happy_path.sql
   - docs/tasks/TASK-0194-worker-lease-fence-transaction-boundary.md
   - docs/tasks/context/TASK-0194.context-lock.yaml
   - .harness/project-state.yaml
@@ -246,7 +263,8 @@ forbiddenPaths:
   - service/platform/persistence/src/main/resources/db/migration/V7__finalize_generation_usage_quota_outbox.sql
   - service/platform/persistence/src/main/resources/db/migration/V8__realtime_resume_ticket_gap_reset_snapshot.sql
   - service/platform/persistence/src/main/resources/db/migration/V9__relationship_active_companion_limit.sql
-  - service/modules/modelruntime/**
+  - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/port/ModelProtocolAdapter.java
+  - service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/port/ModelProtocolSession.java
   - service/**/safety/**
   - service/**/memory/**
   - frontend/**
@@ -284,6 +302,7 @@ forbiddenPaths:
   - pom.xml
   - service/apps/runtime/pom.xml
   - service/platform/persistence/pom.xml
+  - service/modules/modelruntime/pom.xml
   - docs/tasks/TASK-0191-owner-context-rls-trust-model.md
   - docs/tasks/TASK-0192-harness-amendment-diffscope-recovery.md
   - docs/tasks/TASK-0193-p0-owner-context-rls-inherited-adoption.md
@@ -336,137 +355,139 @@ terminalStateReason: ""
 ```
 
 > 本卡为外部审计 P1 修复的首张延续单卡（前一合法终态：TASK-0193 ACCEPTED `fb9cf0e`）。
-> 目标：修正 worker lease/fence 墙钟失效、provider 外部调用持有长数据库事务与 claim 行锁、
-> 业务结果写入缺少 fence/lease guard、PostgreSQL aborted transaction 后失败状态无法落库并
-> 回到 PENDING 形成 5 秒热循环与重复外发。**这不是重新实现**，是对现有 worker/generation/
-> finalize 调用链与 lease 模型的受控加固。TASK-0191 保持 REJECTED，V27 owner-context 密码学
-> 绑定保持不变且不被弱化。
+> Owner 2026-08-14 批准拆卡：TASK-0194 承载不可分割安全基座，bounded retry/dead-letter 列串行
+> 后续 TASK-0195（本轮不创建）。Owner 同日原则批准 C4 database-migration 与 AUTHORIZATION 范围，
+> 并给定 5 项设计修正（本卡已逐项落入设计）。TASK-0191 保持 REJECTED，V27 owner-context 密码学
+> 绑定保持不变且不被弱化。**这不是重新实现**，是对现有 worker/generation/finalize 调用链与
+> lease 模型的受控加固。
 
 ## 已确认边界（不误报）
 
-1. 当前 claim、provider 调用、业务写入和 terminalize 位于 `OwnerContext.asOwner` 的**单一
-   长事务**内（`OwnerContext.java:65-77`；`WorkItemWorker.java:67-90`）。
-2. claim 的 `UPDATE ... FOR UPDATE SKIP LOCKED`（V5 L82）行锁在该长事务提交前不释放；因此
-   coordinator 看不到未提交的 CLAIMED 行，**当前不是已证实的"双 worker 同时提交 split-brain"**。
-3. PostgreSQL `now()` 是事务开始时间戳：claim 写 `lease_expires_at = now() + interval`（V5 L90 /
-   V17 L66）、`_terminalize` 校验 `lease_expires_at > now()`（V5 L152）、`recover_expired_claims`
-   用 `now()`（V24 L60）。全仓 migration 无 `clock_timestamp()`。故同一长事务内 30 秒 lease 不
-   会按墙钟过期。
-4. 生产 `WorkItemWorker` 从不调用 `renewLease`（全仓仅定义处命中）。
-5. 业务写函数（`record_provider_attempt` V20 L52-117 / `insert_generation_candidate` V17 L1846-1899 /
-   `finalize_generation` V17 L164-317 / `append_terminal_event` / `record_quota_release` V17 L1904-1950）
-   **只校验 `current_owner_id()` 与 generation 状态机，不校验 claim token/fence/lease**；只有 V5
-   的 5 个 worker 函数校验 token/fence/lease。`GenerationWorkItemHandler` 从不读取 `claim.claimToken()`。
+1. 当前 claim、provider 调用、业务写入和 terminalize 位于 `OwnerContext.asOwner` 的**单一长事务**内
+   （`OwnerContext.java:65-77`；`WorkItemWorker.java:67-90`）。
+2. claim 的 `UPDATE ... FOR UPDATE SKIP LOCKED`（V5 L82）行锁在该长事务提交前不释放；coordinator
+   看不到未提交的 CLAIMED 行，**当前不是已证实的"双 worker 同时提交 split-brain"**。
+3. PostgreSQL `now()` 是事务开始时间戳；全仓 migration 无 `clock_timestamp()`。故同一长事务内 30 秒
+   lease 不会按墙钟过期。生产 `WorkItemWorker` 从不调用 `renewLease`。
+4. 业务写函数（`record_provider_attempt`/`insert_generation_candidate`/`finalize_generation`/
+   `append_terminal_event`/`record_quota_release`）只校验 `current_owner_id()` 与 generation 状态机，
+   **不校验 claim token/fence/lease**；`GenerationWorkItemHandler` 从不读取 `claim.claimToken()`。
+5. V27 owner proof 是 transaction-local；`LiveModelInvoker` 内仍含 JDBC（authorization snapshot 读取）。
+   因此"external-no-tx"不得直接调用完整 invoker——必须先有 prepare-tx 物化不可变输入。
 
-## 1. 完整根因与文字时序
+## 1. 完整根因与修复后文字时序（Owner 修正版）
 
-### 1.1 当前失败时序（单事务模型）
+### 1.1 当前失败时序（单事务模型，已核实）
 
 ```
 coordinator poll(5s) ── list_pending_owner_ids / recover_expired_claims(0) [独立连接, autocommit]
-        │
-        ▼
 WorkItemWorker.processOwnerBatch ── OwnerContext.asOwner = 单一 TransactionTemplate(Tx-main)
-        │  (Tx-main 内)
-        ├─ claim_work_items(FOR UPDATE SKIP LOCKED) → CLAIMED + lease_expires_at=now()+30s [行锁持有]
-        ├─ handler.handle(claim)
-        │     ├─ promote_generation(IN_PROGRESS)  [V25 FOR UPDATE]
-        │     ├─ LiveModelInvoker.invoke → adapter.open + session.next  ★阻塞网络往返★
-        │     │     (provider 调用期间 Tx-main 与 claim 行锁一直持有; now() 冻结, lease 不按墙钟过期)
-        │     ├─ record_provider_attempt            [普通 INSERT, 无 fence guard]
-        │     ├─ insert_generation_candidate        [无 fence guard]
-        │     ├─ promote(FINAL_REVIEW)
-        │     └─ finalize_generation(usage/quota/event/outbox)  [无 fence guard]
-        └─ complete_work_item(token) / fail_work_item(token)   [仅此处校验 lease_expires_at>now()]
+  (Tx-main 内)
+  claim_work_items(FOR UPDATE SKIP LOCKED) → CLAIMED + lease=now()+30s [行锁持有]
+  handler.handle(claim)
+    promote(IN_PROGRESS); LiveModelInvoker.invoke(含 JDBC 读 auth snapshot + adapter.open/session.next) ★阻塞网络★
+    record_provider_attempt / insert_candidate / promote(FINAL_REVIEW) / finalize_generation [无 fence guard]
+  complete/fail_work_item(token) [仅此处校验 lease_expires_at>now()]
 ```
+风险：A 外部调用持长事务+行锁且 lease 墙钟失效；B 业务写无 fence guard（违反 lateWorkerRule）；
+C 任一业务 SQL 抛 PG 错误→Tx-main aborted→同事务 safeTerminalize/fail 全失败→整体回滚→PENDING→
+约 5 秒后再 claim 再外发（重复外发/成本热循环）。
 
-### 1.2 三类真实风险（已核实，见外部审计 database P1-01/P1-03、generation P2 #3、independent-verification #2/#4）
-
-- **A. 外部调用持长事务 + lease 墙钟失效**：provider 网络往返期间 `Tx-main` 与 claim 行锁不释放；
-  `now()` 冻结使 30 秒 lease 在事务内永不过期；`renewLease` 从不调用。
-- **B. 业务写无 fence guard（违反 lateWorkerRule）**：`worker-lease-contract.yaml:51` 要求"stale fence
-  不能写 result/usage/final message/event/memory job"，但业务写函数不校验 claim token/fence/lease。
-- **C. aborted tx → 失败无法落库 → 5 秒热循环**：任一业务 SQL 抛 PostgreSQL 错误 → `Tx-main` 进入
-  aborted 状态 → 同事务内 `safeTerminalize` 与 `fail_work_item` 的 SQL 全部因 `current transaction
-  is aborted` 失败 → 异常逃出 `TransactionTemplate` → **整体回滚**（claim、provider_attempt、candidate、
-  finalize、fail 全部消失）→ work item 回到 PENDING → coordinator 约 5 秒后再次 claim 并**再次发起
-  provider 调用**。外部网络副作用不可随数据库事务回滚，故为重复外发与供应商成本热循环。
-
-### 1.3 修复后目标时序（分段事务模型）
+### 1.2 修复后时序（prepare 与网络真正分离）
 
 ```
-segment-A claim-tx(短, 提交):  claim_work_items → COMMIT → CLAIMED 行已提交, 行锁释放
-segment-B external-no-tx:      establish owner proof 仅用于只读校验; LiveModelInvoker.invoke
-                                ★无数据库事务、不持 claim 行锁★ (provider 网络往返期间 DB 空闲)
-segment-B' audit-tx(独立, 提交): record_provider_attempt(audit) → COMMIT  (外部副作用审计先落库)
-segment-C finalize-tx(新):      assert_active_claim(owner, work_item, token, fence) ★墙钟+token+fence★
-                                → candidate / promote(FINAL_REVIEW) / finalize_generation / complete_work_item
-independent fail-tx(新):        若任一段 PostgreSQL aborted → 用全新事务记录 fail/terminal, 不依赖 aborted 事务
+claim-tx(短,提交):        claim_work_items → COMMIT → CLAIMED 已提交, 行锁释放; 每项返回 token/fence
+prepare-tx(短,提交):      owner proof(V27,事务本地); 读 message/snapshot; route/auth/safety 预检;
+                          创建 attempt intent(CREATED) 绑定 owner+work_item+generation+token_hash+fence
+                          +providerAttemptId+requested/execution snapshot+provider/deployment identity;
+                          物化不可变 PreparedInvocation(含 ModelProtocolRequest+binding+attemptId, 不再需 JDBC)
+                          → COMMIT
+                          ★intent 写入失败 → 禁止外发（不进入 external）★
+external-no-db:           仅 adapter.open(preparedRequest)/session.next, 消费 PreparedInvocation;
+                          ★禁止 JDBC / TransactionTemplate; 测试证明此阶段无活动数据库事务、无 claim 行锁★
+audit-outcome-tx(短,提交): UPDATE 同一 intent 的 outcome(SUCCEEDED/FAILED/TIMED_OUT); ★不另插一行★
+guarded-finalize-tx(单一): assert_active_claim(work_item_id, token, fence) ★显式参数, 非 GUC★
+                          → candidate + promote(FINAL_REVIEW) + finalize(usage/quota/event)
+                          + per-work-item terminalize 全部在此同一事务
+independent-fail-tx(新):  仅当上述任一事务 aborted → 用全新事务仅终止原 work_item_id/token/fence;
+                          ★绝不误伤接管后的新 claim★
 ```
 
-## 2. 方案比较
+## 2. 方案比较与矛盾消解
 
-| 方案 | 描述 | 采用？ | 理由 |
-|---|---|---|---|
-| (1) 仅把 `now()` 改 `clock_timestamp()` | 单点改 lease 时间源 | **不** | 用户明确排除：事务与持锁模型不变时，长事务内 provider 调用仍持锁、业务写仍无 fence guard、aborted tx 仍无法 fail；只是让 `_terminalize` 的 lease 判断变墙钟，反而让在途批次的 complete 更易返回 0 而业务写已落库，放大不一致。不能冒充完整修复。 |
-| (2) 拆分 claim/external/finalize 事务（推荐基座） | claim 独立提交、external 无事务、finalize 新事务 | **采用** | 释放 provider 调用期间的 DB 事务与行锁；为墙钟 lease 与 fence guard 提供前提。 |
-| (3) 业务写传播并校验 claim token/fence/lease（推荐基座） | finalize-tx 起首 `assert_active_claim`，业务写无有效 claim 即 RAISE | **采用** | 落地 `lateWorkerRule`；claim 提交后 coordinator 可接管，必须靠 fence guard 防止 stale/overtaken worker 写 result/usage/final/event。 |
-| (4) attempt/outbox/幂等记录在外部调用前后独立持久化（推荐基座） | provider 返回后先用独立 audit-tx 落 `provider_attempt`，再 finalize | **采用** | 外部副作用已发生时，审计不随 finalize-tx 回滚消失（修复 generation P2 #3 / INV-AUTH-001）。 |
-| (5) SQL aborted tx 后用独立新事务可靠 fail/retry（推荐基座） | 失败记录走全新事务，不依赖 aborted 事务 | **采用** | 修复 database P1-03 / independent-verification #4：失败状态可靠落库，永久错误转 terminal 而非回到 PENDING 热循环。 |
-| (6) bounded retry/dead-letter 同卡完成 | work_item 增 attempt_count/max_attempts + DEAD_LETTERED | **不（本卡）** | 使本卡远超 90 分钟硬熔断与 R3 禁令；列为串行后续 TASK-0195。本卡先以"永久错误可靠 terminal fail-closed"止住无限热循环；bounded retry 留 TASK-0195 为瞬态错误加有界重试。 |
+| 方案 | 采用？ | 理由 |
+|---|---|---|
+| (1) 仅 `now()`→`clock_timestamp()` | 否 | 事务/持锁模型不变时仍持长事务、业务写仍无 guard、aborted tx 仍无法 fail；不能冒充完整修复。 |
+| (2) prepare-tx/external-no-db/audit/finalize 分段 + 物化 PreparedInvocation | **是** | 真正把 invoker 内 JDBC 收敛到 prepare；external 仅消费不可变输入，证明网络期无 DB 事务/行锁。 |
+| (3) outbound 前独立短事务创建 CREATED attempt intent + UNIQUE providerAttemptId；外发后仅更新同行 outcome | **是** | 保证"外发已发生则审计不丢"；intent 写失败禁止外发。 |
+| (4) 业务写显式接收并校验 work_item_id+claim_token+claim_fence（非 GUC 标记） | **是** | 运行时角色可自行 set GUC，故不接受 transaction-local GUC 作 active_claim；必须显式参数或同等不可伪造绑定。 |
+| (5) per-work-item terminalize/renew（V28），废除共享 token 整批 fail | **是** | 修当前"同批一项失败把成功项一起标 FAILED"的污染。 |
+| (6) bounded retry/dead-letter 同卡 | 否（本卡） | 远超 90min 硬熔断与 R3；列 TASK-0195。本卡以"可靠 terminal fail-closed"止住无限热循环。 |
 
-### 推荐方案
-
-**TASK-0194 = (2)+(3)+(4)+(5) 不可分割安全基座**。理由见 `complexityAssessment.indivisibleReason`：
-(2) 一旦提交 claim 就释放行锁、使 coordinator 接管成为可能，必须与 (3) 同卡，否则把"未证实的
-split-brain"变成真实 split-brain；(1) 的墙钟语义只在 (2) 之后才有意义；(4)(5) 是 (2) 的直接推论
-且必须同卡以避免回归（拆分会令审计丢失与 fail 不可落库更易发生）。(6) 可安全延后。
+### 矛盾消解：stale worker 与外发审计保留
+- **outbound 前**以独立短事务创建 CREATED intent → 外发**已发生**时审计必然已落库（不依赖 finalize）。
+- lease 已失效的**旧 worker**：可把**已存在**的 intent 更新为 `ABANDONED_LATE`（审计终态），但**不得**新建
+  attempt、**不得**写 candidate/final/usage/quota/event（业务写经显式 claim guard 拒绝）。
+- 故"stale worker 不能写 provider attempt（新建/业务结果）"与"外发审计必须保留（intent+outcome）"不再矛盾：
+  新建 attempt 与业务结果被 guard 拒绝；既有 intent 的 outcome/ABANDONED_LATE 更新被允许（仅审计闭合）。
 
 ## 3. 追加式 migration 设计（V28，不改 V1-V27）
 
-- 新增 `V28__worker_lease_fence_business_guard.sql`（唯一允许的 migration 写路径）。
-- **不编辑 V1-V27 任何文件**；通过 `CREATE OR REPLACE FUNCTION` / 新增 guard 函数在 V28 内演进：
-  - 新增 `vc.assert_active_claim(p_owner, p_work_item_id, p_token, p_fence)`：校验 work_item 仍为
-    `CLAIMED`、token/fence 精确匹配、`lease_expires_at > clock_timestamp()`，失败即 `RAISE`；成功后
-    设置事务本地标记（如 `vc.active_claim`），供业务写函数 fail-closed 复核。
-  - `CREATE OR REPLACE` 业务写入口（`finalize_generation`、`insert_generation_candidate`、
-    `record_provider_attempt`、`append_terminal_event`、`record_quota_release`）增加"有效 active claim"
-    fail-closed 复核；或以受信 guard + 事务本地标记实现等价语义（实现期择一，必须满足 lateWorkerRule）。
-  - `CREATE OR REPLACE` claim/renew/`_terminalize`/`recover_expired_claims` 的 lease 时间源由 `now()`
-    改为 `clock_timestamp()`，使墙钟真实生效。
-- 保持 FORCE RLS、复合 owner FK、`vc_api`/`vc_worker` `NOBYPASSRLS`、V27 owner 密码学绑定与
-  `current_owner_id()` 每调用重校验**不被弱化**；迁移末尾 fail-closed DO 块断言关键不变量。
-- 不引入 retry_count/dead-letter 字段（属 TASK-0195）。
+- 新增 `V28__worker_lease_fence_business_guard.sql`（唯一 migration 写路径）；**不编辑 V1-V27 任何文件**。
+- `CREATE OR REPLACE` / 新增函数在 V28 内演进：
+  - 新增 `vc.create_attempt_intent(owner, work_item_id, generation_id, claim_token_hash, claim_fence,
+    provider_attempt_id, requested_snapshot, execution_snapshot, provider/deployment identity)`：创建
+    `CREATED` intent；`provider_attempt_id` 唯一约束；claim token/fence 仅以 hash 形式绑定（不存原始 token/proof/secret）。
+  - 新增 `vc.record_attempt_outcome(...)`/`vc.abandon_late_attempt(...)`：仅 `UPDATE` 同一 intent 行。
+  - 新增 `vc.assert_active_claim(owner, work_item_id, claim_token, claim_fence)`：逐项直接校验 work_item 仍
+    `CLAIMED`、token/fence 精确匹配、`lease_expires_at > clock_timestamp()`；**不读取也不信任任何 transaction-local
+    GUC 作为授权标记**；失败 `RAISE`。业务写入口（candidate/promote/finalize/usage/quota/event）须在该断言通过后、
+    同一 guarded finalize 事务内执行。
+  - `CREATE OR REPLACE` claim/renew/terminalize/recover_expired_claims：lease 时间源 `now()`→`clock_timestamp()`；
+    提供**逐 work-item** complete/fail/renew（按 work_item_id+token+fence），不再仅按共享 token 整批更新。
+  - `recover_expired_claims` 区分：**已有 outbound attempt intent** 的过期 claim → 终止/标记 `ABANDONED_LATE`，
+    不回 PENDING；**可证明无 outbound intent** 的过期 claim → 回 PENDING 可重试。
+- 保持 FORCE RLS、复合 owner FK、`NOBYPASSRLS`、V27 owner 密码学绑定与 `current_owner_id()` 每调用重校验**不被弱化**；
+  迁移末尾 fail-closed DO 块断言关键不变量。不引入 retry_count/dead-letter 字段（属 TASK-0195）。
+- intent/attempt 状态复用既有 `specs/catalog/provider-attempt-statuses.yaml`（`CREATED`/`ABANDONED_LATE`/
+  `SUCCEEDED`/`TIMED_OUT` 等已存在，**catalog 只读不改**）。
 
-## 4. 并发 / 崩溃 / 重试状态矩阵
+## 4. 并发 / 崩溃 / 重试状态矩阵（Owner 追加场景已纳入）
 
 | # | 场景 | 修复后期望（可测） |
 |---|---|---|
-| 1 | claim 后进程崩溃 | claim-tx 已提交→CLAIMED；coordinator 墙钟到期后 `recover_expired_claims` 回收为 PENDING，重新 claim；无业务写发生。 |
-| 2 | provider 调用超时 | external-no-tx 不持 DB 事务/行锁；超时后无 audit-tx 写入；lease 墙钟过期后回收 PENDING 重试；不形成长事务挂起。 |
-| 3 | provider 成功但 audit-tx 写入失败 | audit-tx 独立失败不污染 finalize；按失败路径走 independent fail-tx 记录 terminal 失败；provider 已成功但审计未落库时，不进入 COMPLETED。 |
-| 4 | audit 成功但 finalize-tx 失败 | finalize-tx 回滚仅回滚 finalize 内写；audit 行已独立提交存活（77 测试）；independent fail-tx 记录失败。 |
-| 5 | lease 墙钟过期后旧 worker 恢复写 | `assert_active_claim` 用 clock_timestamp 判定过期→RAISE；candidate/final/usage/quota/event 零写入（75 测试）。 |
-| 6 | coordinator 回收与旧 worker 并发 | 新 worker claim 成功（token/fence 新）；旧 worker finalize 的 `assert_active_claim` 因 token/fence 不匹配或状态非 CLAIMED→RAISE 零写（76 测试）；新 worker 正常完成。 |
-| 7 | stale token/fence 写 attempt/candidate/final/usage/event | 业务写函数 fail-closed 复核 active claim→零写；仅 V5 worker 函数族曾校验，现扩至全部业务写。 |
-| 8 | permanent DB error | 当前事务 aborted→independent fail-tx（全新事务）可靠记录 terminal FAILED；coordinator 不再枚举 terminal，**停止每 5 秒热循环与重复外发**（78 测试）。 |
-| 9 | 重复 provider response | 同一 generation 经 `finalize_generation` 幂等 guard（`assistant_message_id IS NOT NULL` RAISE）+ fence guard；第二次 finalize 零写。 |
-| 10 | cancel 与 active provider 调用并发 | cancel 落 CANCELLED 后，late finalize 经状态 guard + fence guard 零写（保持 45 测试语义）；cooperative 中断 in-flight session 属另一审计发现（generation P2 #8），本卡不实现、保持 modelruntime 只读。 |
+| 1 | claim 后进程崩溃 | claim-tx 已提交→CLAIMED；墙钟到期后 recover（无 intent→PENDING）重新 claim；无业务写。 |
+| 2 | provider 调用超时 | external-no-db 不持 DB 事务/行锁；audit-outcome-tx 记 `TIMED_OUT`；fail-closed terminal（TASK-0195 前不无限 PENDING retry）。 |
+| 3 | **intent 提交失败** | prepare-tx 失败→**adapter 零调用**（74 + Java LiveModelInvokerTest/HandlerTest 实证）。 |
+| 4 | intent 成功，进程在外发**前/中/后**崩溃 | 前：intent=CREATED 残留，过期 claim 有 intent→ABANDONED_LATE 不重发；中/后：外部副作用已发生，intent+outcome 已/可补落库（77/82）。 |
+| 5 | lease 墙钟过期后旧 worker 写业务结果 | `assert_active_claim` 用 clock_timestamp 判过期→RAISE；candidate/final/usage/quota/event 零写（76/77）。 |
+| 6 | coordinator 回收与旧 worker 并发（overtaken） | 新 worker claim 成功（新 token/fence）；旧 worker finalize 的显式 claim guard 失败→零写；新 worker 正常完成（78）。 |
+| 7 | **stale worker 只能闭合既存审计** | 旧 worker 可把既有 intent→`ABANDONED_LATE`，但新建 attempt/candidate/final/usage/event 全被 guard 拒绝（77）。 |
+| 8 | permanent DB error | 当前事务 aborted→**independent-fail-tx（全新事务）仅终止原 work_item_id/token/fence**→terminal 可靠落库；coordinator 不枚举 terminal，停止热循环（80）。**仅在 DB 重新可写且该 fail 事务成功边界内声明**；DB 整体不可用不虚构落库保证。 |
+| 9 | 重复 provider response | finalize 幂等 guard（`assistant_message_id IS NOT NULL` RAISE）+ 显式 claim guard；第二次零写。 |
+| 10 | cancel 与 active provider 并发 | cancel 落 CANCELLED 后 late finalize 经状态 guard + 显式 claim guard 零写；cooperative 中断 in-flight session 属另一发现（generation P2 #8），本卡不实现、adapter 公共契约只读。 |
+| 11 | **同批一项成功、一项失败** | per-work-item terminalize：成功项 DONE、失败项 FAILED，终态互不污染（81）。 |
+| 12 | **过期 claim 已有 outbound intent** | 不回 PENDING、不再次外发；终止/标记 `ABANDONED_LATE`；仅无 intent 的过期 claim 回 PENDING（82）。 |
 
 ## 5. 精确 allowlist（无宽泛 glob）
 
-- `readAllowlist`：见上方 YAML（137 个精确仓库相对路径，与 Context Lock 输入一一对应）。
-- `writeAllowlist`：见上方 YAML（精确 Java/migration/test/治理路径）。
-- `forbiddenPaths`：见上方 YAML（V1-V27 逐文件、modelruntime/safety/memory、前端、CI、治理真源、
-  历史 TASK-0191/0192/0193 制品等）。
+- `readAllowlist`：见上方 YAML（142 个精确仓库相对路径，与 Context Lock 输入一一对应；含 modelruntime/
+  persistence/runtime 相关测试）。
+- `writeAllowlist`：见上方 YAML（36 精确路径：LiveModelInvoker+PreparedInvocation+ExternalAttemptBinding
+  新类型、persistence claim/finalize/state、runtime worker/handler/OwnerContext、V28、10 个新 SQL 测试、
+  Java 测试与治理路径）。
+- `forbiddenPaths`：见上方 YAML（V1-V27 逐文件；**公共 adapter 契约** `ModelProtocolAdapter/ModelProtocolSession`
+  逐文件禁止以守"不改公共 provider adapter 契约"；safety/memory/前端/CI/治理真源/TASK-0191-0193 历史）。
+- modelruntime 不再整体 forbidden：仅 LiveModelInvoker 及 attempt lifecycle 相关新类型/测试可写（Owner 明示），
+  公共 port 契约只读；该子树受 protected-path `service/**/modelruntime/**` C3 model-routing-change 约束，
+  已由本卡 `independentReview: required` 覆盖。
 
 ## 6. 风险等级、所需 Skill、独立 Reviewer
 
-- 风险等级：**C4**（含 protected-path `**/db/migration/**` C4 database-migration + AUTHORIZATION 安全面）。
-- 所需 Skill：`task-delivery-flow@1.3.7`、`task-intake@1.2.7`、`database-migration@1.0.0`。
-- 人工批准：database-migration C4 + AUTHORIZATION 安全面（`humanApprovals` 待 Owner）。
-- 独立 Reviewer：**必需**（C3/C4 强制 + AUTHORIZATION 安全面）。R1 覆盖完整状态矩阵、验收、不变量
-  与相邻风险；至多 1 次修正批次、至多 R2；R3 禁止。
+- 风险等级 **C4**（`**/db/migration/**` C4 database-migration + AUTHORIZATION 安全面 + modelruntime C3）。
+- Skill：`task-delivery-flow@1.3.7`、`task-intake@1.2.7`、`database-migration@1.0.0`。
+- 人工批准：database-migration C4 + AUTHORIZATION 安全面（Owner 2026-08-14 已原则批准，READY 时落 `humanApprovals`）。
+- 独立 Reviewer：**必需**（C3/C4 + AUTHORIZATION）。R1 覆盖完整状态矩阵、验收、不变量与相邻风险；至多 1 次修正批次、至多 R2；R3 禁止。
 
 ## 7. 精确验收命令与测试文件计划
 
@@ -476,71 +497,63 @@ split-brain"变成真实 split-brain；(1) 的墙钟语义只在 (2) 之后才�
 3. `bash infra/db/run-rls-tests.sh`
 4. `git diff --check`
 
-新增测试文件计划（writeAllowlist 已列）：
-- `74_wall_clock_lease_expires.sql`：claim 后 `pg_sleep` 越过 lease 墙钟→`_terminalize`/guard 判定过期。
-- `75_stale_worker_business_write_denied.sql`：过期/错 fence worker 调业务写函数→attempt/candidate/
-  final/usage/event 全零写。
-- `76_overtaken_claim_finalize_zero_write.sql`：dblink 双会话，B 接管后 A 的 finalize 零写、B 正常完成。
-- `77_external_audit_survives_finalize_rollback.sql`：audit-tx 提交后 finalize-tx 注错回滚→audit 行存活。
-- `78_aborted_tx_independent_fail.sql`：业务 SQL 报错致事务 aborted→新事务可靠记录 terminal 失败、
-  work item 不回 PENDING 热循环。
-- `79_fenced_finalize_happy_path.sql`：合法 claim + 有效 fence→finalize 原子完成 final/usage/quota/event。
-- Java：`WorkItemWorkerTest`/`GenerationWorkItemHandlerTest` 增分段事务、external-no-tx、audit 独立持久化、
-  independent fail 的 mock/契约断言（不伪造真实 PG；真实 PG 由 SQL 测试覆盖）。
+新增测试（writeAllowlist 已列）：
+- SQL：74 intent-before-outbound（含 providerAttemptId 唯一、intent 失败禁外发）；75 墙钟 lease 过期；
+  76 显式 claim guard（GUC-only 失败、显式 work_item+token+fence 通过）；77 stale worker 仅闭合 intent；
+  78 overtaken 零业务写；79 intent+outcome 在 finalize 回滚后存活；80 aborted tx→独立新事务仅终止原项；
+  81 per-item terminalize 无污染；82 有 intent 的过期 claim 不重发；83 guarded happy path 原子完成。
+- Java：`LiveModelInvokerTest`（prepare/external 分离、external 阶段断言无活动事务 `TransactionSynchronizationManager`、
+  intent 失败→adapter 零调用）；`WorkItemWorkerTest`/`GenerationWorkItemHandlerTest`（分段事务、per-item、
+  independent fail 仅原项、intent lifecycle）；`OwnerContextTest`（per-segment owner proof）；
+  `WorkItemClaimServiceTest`/`FinalizeGenerationServiceTest`（显式 claim guard、attempt intent create/update）。
+  真实 PostgreSQL 行为由 SQL 测试覆盖，Java 侧重 mock/契约断言。
 
 ## 8. 是否拆卡
 
-- **建议拆卡**：TASK-0194（不可分割安全基座，见上）+ 串行后续 **TASK-0195**（bounded retry/dead-letter：
-  `work_item` 增 `attempt_count/max_attempts` 与 `DEAD_LETTERED` terminal，coordinator 跳过 dead-letter，
-  为瞬态错误加有界重试）。依赖顺序：TASK-0195 依赖 TASK-0194 ACCEPTED。
-- **本轮只创建 TASK-0194 一个 DRAFT**；TASK-0195 待 Owner 在 TASK-0194 终态后另行授权。
-- 拆卡理由：单卡覆盖 (2)-(6) 远超 `hardFuseWallMinutes=90` 与 R3 禁令；TASK-0194 单独已能满足最低
-  验收（永久错误可靠 terminal，止住无限热循环），TASK-0195 是质量增强而非安全必需。
+- **已拆**：TASK-0194（不可分割安全基座）+ 串行后续 TASK-0195（bounded retry/dead-letter）。本轮只创建 TASK-0194。
+- TASK-0194 单独满足"永久错误可靠 terminal、止住 5 秒热循环与重复外发"；TASK-0195 为瞬态错误加有界重试，安全非必需。
 
 ## 9. 最低验收设计（必须证明）
 
-1. provider 网络调用期间不保持长数据库事务和 claim 行锁（external-no-tx，79/77 实证）。
-2. lease 按墙钟真实生效（clock_timestamp，74 实证）。
-3. stale worker 无法写 provider attempt、candidate、final message、usage、quota 或 terminal event（75 实证）。
-4. 已过期或已被接管的 worker terminalize 为零写入（76 实证）。
-5. 外部调用已经发生后，audit/幂等记录不会因最终化事务回滚而完全消失（77 实证）。
-6. SQL aborted transaction 后 failure/retry 状态由独立新事务可靠落库（78 实证）。
-7. 永久错误不会每 5 秒无限热循环（78 实证：terminal fail 可靠落库，coordinator 不枚举 terminal）。
-8. 合法 happy path 仍保持 final message、usage、quota 和 terminal event 的原子性（79 + 16/44 实证）。
-9. tenant/RLS 与刚接纳的 V27 owner binding 不被弱化（不修改 V1-V27；V28 保持 FORCE RLS、复合 owner FK、
-   owner 密码学绑定、current_owner_id 每调用重校验；53/54/55/69-73 回归绿）。
-10. 不记录 claim token、proof、secret 或 provider credential（沿用 V27/OwnerContext 脱敏；warning 不含原始 token）。
+1. provider 网络调用期间无活动数据库事务、无 claim 行锁（external-no-db + PreparedInvocation，Java+75 实证）。
+2. lease 按墙钟真实生效（clock_timestamp，75 实证）。
+3. stale/overtaken worker 无法新建 attempt 或写 candidate/final/usage/quota/event（显式 claim guard，76/77/78 实证）。
+4. 已过期或已被接管的 worker terminalize 为零写入（78 实证）。
+5. 外部调用已经发生后，审计/幂等记录（intent+outcome）不会因最终化事务回滚而完全消失（outbound 前 intent，79 实证）。
+6. SQL aborted transaction 后 failure/retry 状态由独立新事务可靠落库（80 实证；DB 整体不可用边界如实保留）。
+7. 永久错误不会每 5 秒无限热循环（80：independent fail 仅终止原项→terminal，coordinator 不枚举 terminal）。
+8. 合法 happy path 仍保持 final/usage/quota/event 原子性（83 + 16/44 实证）。
+9. tenant/RLS 与 V27 owner binding 不被弱化（不改 V1-V27；V28 保持 FORCE RLS、复合 owner FK、owner 密码学绑定、
+   current_owner_id 每调用重校验；53/54/55/69-73 回归绿）。
+10. 不记录 claim token 原值、proof、secret 或 provider credential（intent 仅存 token hash；日志不含原始 token）。
 
-## 10. 回滚 / 前向修复策略与部署兼容性
+## 10. 回滚 / 前向修复 / 部署兼容性
 
-- 回滚：V28 为追加式 `CREATE OR REPLACE`/新增函数；如需回滚，以新的后续 migration（V29+）恢复旧函数
-  语义，不删除 V28、不改写 V1-V27、不回滚历史。
-- 前向修复：若 R1 发现 fence guard 语义缺陷，仅可在 writeAllowlist 内至多 1 次修正批次修复 V28 自身
-  与 Java/test；不得扩到 modelruntime、safety、memory 或 V1-V27。
-- 部署兼容性：分段事务不改变对外 HTTP/SSE 契约与 generation 状态机；V28 在现有 V1-V27 之上执行；
-  claim 提交后 coordinator 接管依赖 fence guard，二者必须同批部署（不可灰度拆分 fence guard）。
-- 预算风险：完整 Harness discover 约 34 分钟 CI 预算风险保留；Evidence 未运行时如实 NOT_RUN，不以
-  旧 PASS 代替。
+- 回滚：V28 追加式 `CREATE OR REPLACE`/新增函数；如需回滚以 V29+ 恢复旧语义，不删 V28、不改 V1-V27、不回滚历史。
+- 前向修复：R1 发现缺陷仅可在 writeAllowlist 内至多 1 次修正批次修复 V28 自身与 Java/test；不得扩到公共 adapter
+  契约、safety、memory 或 V1-V27。
+- 部署兼容性：分段事务不改变对外 HTTP/SSE 契约与 generation 状态机；V28 在 V1-V27 之上执行；claim 提交 +
+  fence guard + attempt intent 必须**同批部署**（不可灰度拆分 guard）。
+- 预算风险：完整 Harness discover 约 34 分钟 CI 预算风险保留；discover 未运行时 Evidence 保持 NOT_RUN。
 
 ## 范围内
 
-- 实现分段事务模型（claim-tx / external-no-tx / audit-tx / finalize-tx / independent fail-tx）。
-- V28 墙钟 lease + 业务写 fence/lease/token guard（追加式，不改 V1-V27）。
-- 外部副作用审计独立持久化；aborted tx 后独立新事务可靠 fail。
+- 分段事务（claim/prepare/external-no-db/audit-outcome/guarded-finalize/independent-fail）+ PreparedInvocation 物化。
+- V28：墙钟 lease + attempt intent（outbound 前创建）+ 显式 claim guard（非 GUC）+ per-item terminalize + 有 intent 的过期 claim 不重发。
 - 本卡 task card / Context Lock / Evidence / Handoff / project-state / ledger。
 
 ## 明确范围外
 
-- 不修改 V1-V27 migration、TASK-0191/0192/0193 历史制品与治理真源。
-- 不实现 bounded retry/dead-letter（TASK-0195）；不实现 cooperative 中断 in-flight provider session
-  （generation P2 #8，另开任务）；不改 modelruntime/safety/memory。
-- 不推送、不合并、不 rebase、不 reset、不改写历史。不进入 READY（本轮仅 DRAFT）。
+- 不修改 V1-V27、TASK-0191/0192/0193 历史制品与治理真源；不改公共 provider adapter 契约（ModelProtocolAdapter/ModelProtocolSession）。
+- 不实现 bounded retry/dead-letter（TASK-0195）；不实现 cooperative 中断 in-flight session（generation P2 #8，另卡）。
+- 不推送、不合并、不 rebase、不 reset、不改写历史。
 
 ## 状态机和失败行为
 
-- READY Doctor 因新 blocker 非 PASS → 暂停并合并为一次 Owner 提问，不自行扩权。
+- READY Doctor 因新 blocker 非 PASS → 暂停合并上报，不自行扩权。
 - 任一验收命令非 PASS → 真实退出码记录，至多 1 次修正批次（仅 writeAllowlist 内）后重跑；仍非 PASS → REJECTED/暂停。
-- Reviewer P0/P1 → 停止并合并为一次 Owner 提问。
+- Reviewer P0/P1 → 停止合并上报。
+- 若实现必须改公共 adapter 契约、路径超出上述模块、或预计无法遵守 90 分钟 hard fuse → 合并暂停上报。
 - 完整 unittest discover 因预算未运行时保持 NOT_RUN，不得表述为 PASS。
 
 ## Evidence Pack
