@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0195
+activeTaskCard: docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md
 lastAcceptedTask: TASK-0193
 lastAcceptedHandoff: docs/handoffs/TASK-0193.json
 lastTerminalTask: TASK-0194
 lastTerminalHandoff: docs/handoffs/TASK-0194.json
-nextAction: 以 TASK-0194 REJECTED 终态提交为 baseCommit，按 Owner 2026-08-14 预授权开 TASK-0193 同型继承接纳后继卡：READY 冻结 requiredSkills 含 model-routing-change@1.0.0 与 humanApprovals 含 scope database-migration，writeAllowlist 增 service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/SchemaReadinessHealthIndicatorTest.java（仅迁移数断言 27→28），机器绑定继承实现（候选 a4118b0 路径集/mode/blob/tree/hash 单父链零漂移，TASK-0194 历史只读 forbidden）后，在同一真实候选 SHA 重新执行四条冻结命令与 C4 独立 Reviewer、pre-closure Doctor 正式接纳；在此之前不推送不合并。
+nextAction: TASK-0195 READY（P1 worker lease/fence 继承实现独立接纳：Owner 2026-08-14 预授权 inherited-state-adoption + database-migration 双 scope，requiredSkills 冻结 model-routing-change@1.0.0，26 继承路径 manifest 零漂移绑定全 forbidden，唯一业务写路径 SchemaReadinessHealthIndicatorTest.java 仅 27→28；待 authorizationCommit 回填且 READY Doctor PASS 后进入 IN_PROGRESS，完成机械修复并以同一真实候选 SHA 重新执行四条冻结命令与 C4 独立复核、pre-closure Doctor 后闭合；bounded retry/dead-letter 后续卡暂不创建）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

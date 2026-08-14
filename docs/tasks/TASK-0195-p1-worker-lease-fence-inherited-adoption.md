@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0195
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -332,7 +332,39 @@ requiredInvariants:
   - INV-HARNESS-002
   - INV-HARNESS-003
   - INV-HARNESS-007
-humanApprovals: []
+humanApprovals:
+  - scope: inherited-state-adoption
+    approvedBy: repository-owner
+    approvedAt: "2026-08-14"
+    sourceThreadId: zcode-main-20260814
+    evidence: >-
+      Owner 2026-08-14 方案 2 决策原文要点：TASK-0194 以真实结果闭合 REJECTED 后，通
+      过 canonical task-intake 分配后继永久任务 ID（机器真源派生：现存最大编号 0194，
+      下一顺序即 TASK-0195；TASK-0194 卡内同名 advisory 规划文本顺延至后续编号）；后继
+      采用 TASK-0193 同型"继承实现正式接纳"——baseCommit 必须为 TASK-0194 真实 REJECTED
+      终态提交 d1941c9a3b93dcc97a40275f80e65883e511594e；精确绑定并审计 TASK-0194 留在
+      当前树中的继承实现、候选提交 a4118b0、路径集合、mode/blob/tree/hash 和单父链；
+      TASK-0194 历史卡、Evidence、Handoff、amendment 与终态结论全部只读 forbidden，
+      TASK-0194 必须继续保持 REJECTED；writeAllowlist 含后继治理路径与
+      SchemaReadinessHealthIndicatorTest.java（该文件只允许迁移数量断言 27 机械更新为
+      28）；业务实现路径作为继承状态绑定并禁止漂移，不得借后继卡重新设计或扩大实现；
+      后继候选必须在同一真实 SHA 重新执行 canonical precheck、Maven runtime reactor
+      tests、RLS 全套、git diff --check、C4 独立 Reviewer、pre-closure Doctor，不得复用
+      TASK-0194 的 PASS 作为后继 Evidence；若 DRAFT、Context Lock、Doctor 和机器合同均
+      PASS 且路径没有扩展，可自主进入 READY、完成机械修复、重新形成候选并执行完整验
+      收，无需再次请求过程确认。
+  - scope: database-migration
+    approvedBy: repository-owner
+    approvedAt: "2026-08-14"
+    sourceThreadId: zcode-main-20260814
+    evidence: >-
+      Owner 2026-08-14：后继卡 READY 前必须正确冻结 humanApprovals 包含机器 gate 精确
+      要求的 scope database-migration；本卡不修改任何 migration（V1-V28 全部 forbidden，
+      26 继承路径含 V28 零漂移绑定），该批准用于满足既有 database migration
+      protected-path gate 并正式接纳继承的 V28 worker lease/fence 业务守卫迁移；
+      TASK-0194 2026-08-14 的 database-migration 安全边界批准（追加式 V28、不改
+      V1-V27、保持 FORCE RLS、复合 owner FK、V27 owner 密码学绑定与 current_owner_id
+      每调用重校验、业务写显式 work_item_id+claim_token+claim_fence 非 GUC）继续有效。
 independentReview: required
 reviewers: []
 requiredCommands:
