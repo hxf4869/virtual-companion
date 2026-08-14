@@ -1557,6 +1557,114 @@ task0189PostTerminalTail:
     generalizedOverride: false
     branchOrWorktree: false
     githubActionsDispatch: false
+task0196PostTerminalTail:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01
+  decisionId: TASK-0196-POST-TERMINAL-TAIL-ACCEPTANCE-20260814
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_POST_TERMINAL_TAIL_ACCEPTANCE
+  targetTask: TASK-0196
+  sourceThreadId: zcode-main-20260814
+  authorization:
+    path: docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json
+    sha256: 05429435167d2764c8211926af60666be553b9ca62eec15938f033d0c0b3b680
+  terminal:
+    commit: fe0253fc9cfd0b3d88c11a18273c25b2a8e9274f
+    tree: e1356cd6b521ae68d6b21f7e7f8e0b8f49dc4b71
+    taskId: TASK-0195
+    state: ACCEPTED
+  tail:
+    commit: 751cb9db547df2ba33d55d310276bc14e1fbd5eb
+    tree: adfe981041de9027b9d5b2b83697dd2500fe3c3f
+    parent: fe0253fc9cfd0b3d88c11a18273c25b2a8e9274f
+    changedPaths:
+      - docs/handoffs/TASK-0195.json
+    nextActionStates:
+      terminalHandoff: "TASK-0195 ACCEPTED 终态提交后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。"
+      terminalState: "TASK-0195 ACCEPTED 终态（继承实现正式接纳完成）后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。"
+      tailNextAction: "TASK-0195 ACCEPTED 终态（继承实现正式接纳完成）后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。"
+    files:
+      docs/handoffs/TASK-0195.json:
+        terminalBlob: af6f12600a30648a7a46e7715b1c0e998146b856
+        terminalSha256: 573fe84594087ac869a2cca7a9406d67a41753c43984511a71a88d080ef6e898
+        tailBlob: d00ec0dfd535ce0480444db45a0d8cff7c06e5fd
+        tailSha256: ea23f12deb5d724de90b10f91d04a759ba19b92b2d3616640c1e98ddbb2c6749
+  draft:
+    commit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+    tree: 01f09d44f6d93aa84200cc526b9bc3ef2be1a0d5
+    parent: 751cb9db547df2ba33d55d310276bc14e1fbd5eb
+    changedFiles:
+      docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md:
+        mode: "100644"
+        type: blob
+        blobOid: 63de5894953924918e54b1a8874d9449fcadb803
+        sha256: 9860522e6964b8e50c91c798cf69f802953e1658da780e7a366fa8d00e55b314
+      docs/tasks/context/TASK-0196.context-lock.yaml:
+        mode: "100644"
+        type: blob
+        blobOid: 98b80c4879738822c9ae4cf2d1f6683ac40bceb8
+        sha256: 94f7cdac9d3fe30c474e0815f3d62883b260a001cd9ad06cdcc645efdaa077f4
+  boundary:
+    directParentCommit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+    directParentTree: 01f09d44f6d93aa84200cc526b9bc3ef2be1a0d5
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      - skills/task-delivery-flow/SKILL.md
+      - skills/task-intake/SKILL.md
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0196_BOUNDARY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: 30c5c002b92a41c50ac1e31e14808675ba0ef325
+        sha256: ff10a9dce0915115206e3f21a10e21323578943901ec5f6336cd6d9eecfdf3fa
+      exactFiles:
+        docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json:
+          blobOid: 5990530d2bdb2bbd0aa59d98779174e7dd337d66
+          sha256: 05429435167d2764c8211926af60666be553b9ca62eec15938f033d0c0b3b680
+        scripts/harness/tests/test_harness.py:
+          blobOid: 13dec27c0ae49760ade2471695ddc01bb3c2f5b9
+          sha256: 7b452c8925f8e684f3acc2e7dbc9bdfe13361e906dc07047446197d45932e43d
+        skills/task-delivery-flow/SKILL.md:
+          blobOid: 30e13ad05471faa4cfb90e2028304a8ef2f15e07
+          sha256: 4ca91d054366c1c387221e6f97cb09ce8616d2f909c544ed25a69e231026a26b
+        skills/task-intake/SKILL.md:
+          blobOid: 40546be0d2dd6d7007e895c2a3b776b95487403a
+          sha256: baba49740c24b5e60bb39168d2075c96c19276850cd20dfe4f80fb7d17d1bfd3
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0196
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    provenanceRetainedForHistoryVerification: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: precheck
+    remote: UNKNOWN_NOT_RUN
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    wildcardWritePath: false
+    generalizedOverride: false
+    branchOrWorktree: false
+    githubActionsDispatch: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

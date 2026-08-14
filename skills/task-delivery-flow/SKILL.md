@@ -216,6 +216,49 @@ description: Execute one governed repository task or coordinate a strictly seria
   mandatory; afterwards canonical greenline is restored so that later cards
   can use `c626005` as their Base.
 
+## TASK-0196 one-time post-terminal tail acceptance + Doctor post-terminal fail-closed
+
+- The pre-READY maintenance record is
+  `OWNER-MAINT-20260814-TASK-0196-PRE-READY-01` (6 frozen paths) and the tail
+  acceptance record is
+  `OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01`. Accept exactly one
+  direct single-parent child of the revised final TASK-0196 DRAFT
+  (`ea129d1b9ffbfee98a8a67aefccce1b1bf854254`) and bind its Base tail
+  `751cb9d`, DRAFT, derived Commit and Tree, the frozen 6-path set,
+  mode/type/blob/content identities, and the exact Owner authorization.
+- Machine-bind the unregistered post-terminal edge `fe0253f -> 751cb9d`
+  (TASK-0195 canonical terminal -> handoff nextAction wording alignment tail
+  changing only `docs/handoffs/TASK-0195.json`) as the DRAFT anchor:
+  baseCommit = `751cb9d`. It is the **unique historical exception**: the
+  record proves only this one existing parent edge and never becomes a
+  general "fix the mismatch with a tail afterwards" process. Legacy healing
+  requires the three-state verification: (a) at `fe0253f` the handoff
+  nextAction and project-state nextAction are byte-for-byte different
+  (original mismatch, never restated as originally consistent); (b) the only
+  change of `751cb9d` is that one nextAction wording line of
+  `docs/handoffs/TASK-0195.json`; (c) at `751cb9d` the handoff nextAction and
+  project-state nextAction are byte-for-byte identical.
+- A new task Base after a canonical terminal is accepted only when every
+  parent edge canonical terminal -> Base is formally registered, exactly
+  matched, and continuously covered; baseCommit=HEAD, the same card's
+  writeAllowlist, or a current Doctor PASS alone never authorize it.
+- The same maintenance boundary fixes Doctor: post-terminal new parent edges
+  after a canonical terminal commit fail closed by default (only formally
+  registered records pass), the ACCEPTED/REJECTED blanket continue that
+  short-circuits terminal Evidence/Handoff/history deep validation is removed
+  without re-judging immutable historical artifacts against the current
+  schema, and terminal nextAction consistency is validated at the canonical
+  terminal commit itself. TASK-0098/0189 registered tails keep passing;
+  unregistered historical tails fail closed.
+- The record is one-time, consumed when TASK-0196's READY authorization is
+  committed, inert after consumption but its provenance stays verifiable, and
+  never reusable by another task. A copied record, a second consumption, an
+  extra commit or path, a multi-parent edge, or any changed identity fails
+  closed. No environment variable, CLI flag, Git note, replace, graft,
+  history rewrite, configurable allowlist, or generalized override is
+  authorized. Ordinary READY authorization and a real READY Doctor PASS
+  remain mandatory.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from

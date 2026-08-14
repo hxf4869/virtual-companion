@@ -11284,6 +11284,243 @@ class TimeoutTests(unittest.TestCase):
         self.assertEqual(1800, precheck.command_timeout_seconds({"timeoutSeconds": 0}))
 
 
+class Task0196PostTerminalTailTests(unittest.TestCase):
+    """TASK-0196: one-time post-terminal tail acceptance for the unregistered
+    edge fe0253f -> 751cb9d (unique historical exception) plus Doctor
+    post-terminal fail-closed and ACCEPTED/REJECTED deep-validation recovery.
+    Owner 2026-08-14 froze the positive/negative matrix below."""
+
+    def test_exact_machine_record_is_accepted(self):
+        # Positive #1: the exact record matching fe0253f -> 751cb9d passes.
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertFalse(audit.errors, audit.errors)
+        self.assertIsNotNone(record)
+
+    def test_tail_edge_facts_are_bound(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertIsNotNone(record)
+        self.assertEqual(record["terminal"]["commit"], doctor.TASK_0196_TERMINAL_COMMIT)
+        self.assertEqual(record["tail"]["commit"], doctor.TASK_0196_TAIL_COMMIT)
+        self.assertEqual(record["tail"]["parent"], doctor.TASK_0196_TERMINAL_COMMIT)
+        self.assertEqual(
+            record["tail"]["changedPaths"],
+            list(doctor.TASK_0196_TAIL_CHANGED_PATHS),
+        )
+        # Single-parent live fact: 751cb9d is the direct single-parent child.
+        graph = doctor.git_text(
+            "rev-list", "--parents", "-n", "1", doctor.TASK_0196_TAIL_COMMIT
+        ).stdout.split()
+        self.assertEqual(
+            graph, [doctor.TASK_0196_TAIL_COMMIT, doctor.TASK_0196_TERMINAL_COMMIT]
+        )
+        # Unique change live fact: exactly one path changed.
+        self.assertEqual(
+            doctor.changed_paths_between(
+                doctor.TASK_0196_TERMINAL_COMMIT, doctor.TASK_0196_TAIL_COMMIT
+            ),
+            list(doctor.TASK_0196_TAIL_CHANGED_PATHS),
+        )
+
+    def test_three_state_legacy_healing_verification(self):
+        # The legacy healing exception requires: original mismatch at
+        # fe0253f, unique wording change, final byte-for-byte consistency at
+        # 751cb9d; the terminal commit is never restated as consistent.
+        import json as _json
+
+        terminal_handoff = _json.loads(
+            doctor.git_object(
+                doctor.TASK_0196_TERMINAL_COMMIT,
+                "docs/handoffs/TASK-0195.json",
+            ).decode("utf-8")
+        )
+        terminal_state = doctor.yaml_at_commit(
+            doctor.TASK_0196_TERMINAL_COMMIT, ".harness/project-state.yaml"
+        )
+        tail_handoff = _json.loads(
+            doctor.git_object(
+                doctor.TASK_0196_TAIL_COMMIT, "docs/handoffs/TASK-0195.json"
+            ).decode("utf-8")
+        )
+        tail_state = doctor.yaml_at_commit(
+            doctor.TASK_0196_TAIL_COMMIT, ".harness/project-state.yaml"
+        )
+        self.assertEqual(
+            terminal_handoff["nextAction"], doctor.TASK_0196_TERMINAL_HANDOFF_NEXT_ACTION
+        )
+        self.assertEqual(
+            terminal_state["nextAction"], doctor.TASK_0196_TERMINAL_STATE_NEXT_ACTION
+        )
+        self.assertNotEqual(
+            terminal_handoff["nextAction"], terminal_state["nextAction"],
+            "terminal original mismatch must stay byte-for-byte different",
+        )
+        self.assertEqual(
+            tail_handoff["nextAction"], doctor.TASK_0196_TERMINAL_STATE_NEXT_ACTION
+        )
+        self.assertEqual(tail_handoff["nextAction"], tail_state["nextAction"],
+                         "tail final consistency must be byte-for-byte identical")
+
+    def test_negative_wrong_parent_commit_fails_closed(self):
+        # Negative #3: wrong parent commit.
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTail"]["tail"]["parent"] = "0" * 40
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_negative_identity_drift_fails_closed(self):
+        # Negative #4: commit/tree/blob/content/mode drift.
+        import copy
+        for field in ("commit", "tree"):
+            audit = doctor.Audit()
+            policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+            policy["task0196PostTerminalTail"]["tail"][field] = "1" * 40
+            doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+            self.assertTrue(audit.errors, field)
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        files = policy["task0196PostTerminalTail"]["tail"]["files"]
+        files["docs/handoffs/TASK-0195.json"]["tailBlob"] = "2" * 40
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_negative_extra_path_fails_closed(self):
+        # Negative #5: extra path in changedPaths.
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTail"]["tail"]["changedPaths"].append(
+            "docs/handoffs/TASK-0194.json"
+        )
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_negative_multi_parent_fails_closed(self):
+        # Negative #6: multi-parent tail (live edge fact or record drift).
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTail"]["tail"]["parent"] = (
+            doctor.TASK_0196_TERMINAL_COMMIT + " " + "0" * 40
+        )
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_negative_copied_record_is_forbidden(self):
+        # Negative #7: copied to another key.
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTailCopy"] = copy.deepcopy(
+            policy["task0196PostTerminalTail"]
+        )
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_negative_second_consumption_fails_closed(self):
+        # Negative #8: second consumption / consumed-record reuse.
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTail"]["consumption"]["consumedWhen"] = (
+            "READY_AUTHORIZATION_COMMITTED_TWICE"
+        )
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_negative_unregistered_tail_fails_closed(self):
+        # Negative #9: an unregistered terminal tail must fail closed; the
+        # record id is unique and no generic tail path exists. Negative #2:
+        # the same card's writeAllowlist alone never authorizes a
+        # post-terminal change (TASK-0195's writeAllowlist includes
+        # docs/handoffs/TASK-0195.json yet the tail needs the exact record).
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTail"]["recordId"] = (
+            "OWNER-MAINT-20990101-FAKE-POST-TERMINAL-TAIL-99"
+        )
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+        task = doctor.task_metadata_from_text(
+            doctor.read_repository_text(ROOT / "docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md"),
+            "docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md",
+        )
+        self.assertIn("docs/handoffs/TASK-0195.json", task.get("writeAllowlist", []))
+        self.assertNotIn("postTerminalTailAcceptance", task)
+
+    def test_negative_next_action_mismatch_fails_closed(self):
+        # Negative #11: terminal mismatch is validated; a drifted state
+        # constant (or a future terminal with a mismatch) fails closed.
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTail"]["tail"]["nextActionStates"][
+            "tailNextAction"
+        ] = "future-mismatched-next-action"
+        doctor.validate_task0196_post_terminal_tail_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_regression_0098_0189_registered_tails_still_pass(self):
+        # Positive #10 regression: TASK-0098/0189 registered tails keep
+        # passing; the fix does not globally ignore historical tails.
+        for validator in (
+            doctor.validate_task0098_post_terminal_tail_record,
+            doctor.validate_task0189_post_terminal_tail_record,
+        ):
+            audit = doctor.Audit()
+            policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+            record = validator(audit, policy)
+            self.assertFalse(audit.errors, audit.errors)
+            self.assertIsNotNone(record)
+
+    def test_deep_validation_reaches_terminal_tasks(self):
+        # The ACCEPTED/REJECTED blanket continue is removed for tasks with
+        # full authorizationCommit + headCommit (e.g. TASK-0195): the deep
+        # terminal validation must run instead of being short-circuited.
+        import json as _json
+        import re as _re
+
+        task = doctor.task_metadata_from_text(
+            doctor.read_repository_text(ROOT / "docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md"),
+            "docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md",
+        )
+        self.assertTrue(
+            _re.fullmatch(r"[0-9a-f]{40}", str(task.get("authorizationCommit", "")))
+        )
+        with open(ROOT / "docs/evidence/TASK-0195/evidence-pack.json", encoding="utf-8") as f:
+            head_commit = _json.load(f).get("headCommit", "")
+        self.assertTrue(
+            _re.fullmatch(r"[0-9a-f]{40}", str(head_commit)),
+            "TASK-0195 must be deep-validated after the blanket-continue fix",
+        )
+        # Historical compressed-delivery cards with placeholder
+        # authorizationCommit keep their lightweight path (no schema
+        # re-judging of immutable history): their placeholders are real.
+        for card in (
+            "docs/tasks/TASK-0185-h5-realtime-transport-contract-align.md",
+            "docs/tasks/TASK-0186-h5-chat-send-flow-history-api.md",
+            "docs/tasks/TASK-0187-relationship-selector-ui.md",
+        ):
+            t = doctor.task_metadata_from_text(
+                doctor.read_repository_text(ROOT / card), card
+            )
+            self.assertFalse(
+                _re.fullmatch(r"[0-9a-f]{40}", str(t.get("authorizationCommit", ""))),
+                card,
+            )
+
+    def test_card_maintenance_contract_is_exact(self):
+        audit = doctor.Audit()
+        doctor.validate_task0196_card_maintenance_contract(audit)
+        self.assertFalse(audit.errors, audit.errors)
+
+
 class Task0192AmendmentDiffScopeRecoveryTests(unittest.TestCase):
     """TASK-0192: Backlog governance companion path on fully validated
     amendment edges only (Owner 2026-08-14). Negatives prove nothing else is

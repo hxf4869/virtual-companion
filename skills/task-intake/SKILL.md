@@ -98,6 +98,19 @@ metadata:
    限定的 legacy reviewers compatibility（仅终态 C1/C2 且 independentReview:
    not-required 允许缺省 reviewers，其余失败关闭），不得补写 TASK-0185/0186/0187
    历史卡。
+   TASK-0196: 记录 OWNER-MAINT-20260814-TASK-0196-PRE-READY-01（pre-READY
+   maintenance 边，6 冻结路径）与 OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01
+   （tail 接纳）。唯一历史例外：未登记 post-terminal correction fe0253f→751cb9d
+   （TASK-0195 canonical terminal 后仅改 docs/handoffs/TASK-0195.json 的 nextAction
+   一行措辞，使 handoff 与 project-state nextAction 逐字一致）作为 TASK-0196 DRAFT
+   锚（baseCommit=751cb9d）；legacy healing 三态验证——fe0253f 原始不一致、751cb9d
+   唯一改动、751cb9d 后最终一致，不得把 fe0253f 追述为原本一致；maintenance 边是
+   修订后最终 DRAFT 的直接单父子提交且只允许冻结路径集，消费后惰化但 provenance
+   保留；禁止复制记录/二次消费/额外路径/多父/历史改写/通用 override；不得形成
+   "终态后发现不一致即可补一个 tail"的通用流程；新任务 base 位于 canonical
+   terminal 后时，仅当 canonical terminal→base 每条父边均被正式登记、精确匹配且
+   连续覆盖才放行；Doctor 修复 ACCEPTED/REJECTED blanket continue 时不得用当前
+   schema 无差别重判不可变历史制品。
 10. READY 后确需 Owner 修订时，不重写授权提交或放宽原合同：先在 `.harness/task-backlog.yaml` 建立强类型 amendment 合同，并在任务卡 `scopeAmendments` 保存完整 Hash 绑定投影。合同逐项记录 `supersedes` 原条款稳定 ID/原文 Hash 与 `replacement` 原文/Hash；未列条款仍受原授权投影约束。新增写路径只能是规范 POSIX 精确路径，不能是 glob；amendment 必须由 `repository-owner` 批准、append-only，并在只改 Backlog 与任务卡的单父原子治理提交中先落入 Git 历史，未提交 worktree/index 不得自授权。
 11. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。

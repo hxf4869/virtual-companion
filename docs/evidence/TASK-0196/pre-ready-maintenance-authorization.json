@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260814-TASK-0196-PRE-READY-01",
+  "tailRecordId": "OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01",
+  "decisionId": "TASK-0196-PRE-READY-ACCEPTANCE-20260814",
+  "kind": "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_MAINTENANCE",
+  "targetTask": "TASK-0196",
+  "approvedBy": "repository-owner",
+  "approvedAt": "2026-08-14",
+  "sourceThreadId": "zcode-main-20260814",
+  "terminalCommit": "fe0253fc9cfd0b3d88c11a18273c25b2a8e9274f",
+  "terminalTaskId": "TASK-0195",
+  "terminalState": "ACCEPTED",
+  "tailCommit": "751cb9db547df2ba33d55d310276bc14e1fbd5eb",
+  "tailChangedPaths": [
+    "docs/handoffs/TASK-0195.json"
+  ],
+  "draftAnchorBaseCommit": "751cb9db547df2ba33d55d310276bc14e1fbd5eb",
+  "finalDraftCommit": "ea129d1b9ffbfee98a8a67aefccce1b1bf854254",
+  "oneTimeOnly": true,
+  "reusable": false,
+  "generalOverrideAuthorized": false,
+  "historyRewriteAuthorized": false,
+  "remoteDispatchAuthorized": false,
+  "evidence": "Owner 2026-08-14 批准 TASK-0196 的一次性 pre-READY maintenance 边界（recordId OWNER-MAINT-20260814-TASK-0196-PRE-READY-01）：maintenance 边必须是修订后最终 DRAFT 提交（ea129d1b9ffbfee98a8a67aefccce1b1bf854254）的直接单父提交；恰好只能修改 6 个冻结路径（.harness/ci-execution-policy.yaml、docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json、scripts/harness/doctor.py、scripts/harness/tests/test_harness.py、skills/task-delivery-flow/SKILL.md、skills/task-intake/SKILL.md），不得增删；oneTimeOnly；绑定 DRAFT commit/tree、直接父、精确路径集合及各路径 mode/blob/content hash；消费后不可复用，但历史验证证明必须继续保留；禁止环境变量、CLI flag、git notes/replace/graft、通配 allowlist、分支/worktree 差异或通用 override；不得修改 TASK-0098/0189/0191–0195 的任何历史制品；不得改写 fe0253f 或 751cb9d。同时批准一次性 tail 接纳记录 OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01（fe0253f→751cb9d 唯一历史例外，legacy healing 三态验证：fe0253f 原始 nextAction 不一致——handoff 缺（继承实现正式接纳完成）措辞；751cb9d 唯一改动 docs/handoffs/TASK-0195.json 的 nextAction 一行措辞；751cb9d 后 handoff 与 project-state nextAction 逐字一致；不得把 fe0253f 追述为原本一致）。"
+}
