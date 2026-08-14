@@ -1020,3 +1020,9 @@ tasks:
     taskCard: docs/tasks/TASK-0194-worker-lease-fence-transaction-boundary.md
     evidence: docs/evidence/TASK-0194/evidence-pack.json
     handoff: docs/handoffs/TASK-0194.json
+  TASK-0195:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md
+    evidence: docs/evidence/TASK-0195/evidence-pack.json
+    handoff: docs/handoffs/TASK-0195.json

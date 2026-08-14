@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0195
-activeTaskCard: docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md
-lastAcceptedTask: TASK-0193
-lastAcceptedHandoff: docs/handoffs/TASK-0193.json
-lastTerminalTask: TASK-0194
-lastTerminalHandoff: docs/handoffs/TASK-0194.json
-nextAction: TASK-0195 READY（P1 worker lease/fence 继承实现独立接纳：Owner 2026-08-14 预授权 inherited-state-adoption + database-migration 双 scope，requiredSkills 冻结 model-routing-change@1.0.0，26 继承路径 manifest 零漂移绑定全 forbidden，唯一业务写路径 SchemaReadinessHealthIndicatorTest.java 仅 27→28；待 authorizationCommit 回填且 READY Doctor PASS 后进入 IN_PROGRESS，完成机械修复并以同一真实候选 SHA 重新执行四条冻结命令与 C4 独立复核、pre-closure Doctor 后闭合；bounded retry/dead-letter 后续卡暂不创建）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0195
+lastAcceptedHandoff: docs/handoffs/TASK-0195.json
+lastTerminalTask: TASK-0195
+lastTerminalHandoff: docs/handoffs/TASK-0195.json
+nextAction: TASK-0195 ACCEPTED 终态（继承实现正式接纳完成）后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

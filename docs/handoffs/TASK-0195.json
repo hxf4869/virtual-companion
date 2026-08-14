@@ -1,0 +1,74 @@
+{
+  "taskId": "TASK-0195",
+  "state": "ACCEPTED",
+  "baseCommit": "d1941c9a3b93dcc97a40275f80e65883e511594e",
+  "headCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66",
+  "evidencePath": "docs/evidence/TASK-0195/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "6c599fb26b2f129a5734e392e2ed9db85c4475bf",
+      "startedAt": "2026-08-14T13:51:52+08:00",
+      "endedAt": "2026-08-14T14:12:30+08:00",
+      "elapsedSeconds": 1240,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "6c599fb26b2f129a5734e392e2ed9db85c4475bf",
+      "startedAt": "2026-08-14T13:51:52+08:00",
+      "endedAt": "2026-08-14T13:55:27+08:00",
+      "elapsedSeconds": 215,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T13:53:31+08:00",
+      "inProgressCommit": "f2649d4d38bee9799ab8abe45c7201ffc32ae77e"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f2649d4d38bee9799ab8abe45c7201ffc32ae77e",
+      "startedAt": "2026-08-14T13:55:27+08:00",
+      "endedAt": "2026-08-14T14:12:30+08:00",
+      "elapsedSeconds": 1023,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T13:53:31+08:00",
+      "inProgressCommit": "f2649d4d38bee9799ab8abe45c7201ffc32ae77e"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0195_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66",
+      "evidencePath": "docs/evidence/TASK-0195/review-r1.md",
+      "reason": "R1 独立复核 APPROVE：manifest 17 项独立重算全中（33/7/26、26/26 mode/blob、双 SHA、双 tree、9 提交单父、26 路径双端零漂移、候选 4 路径精确）；V28 与 Java 三层实现逐项核对符合卡内设计（assert_active_claim 显式参数非 GUC、per-item terminalize、prepare-external 零 DB、五段事务、74-83 存在）；纯净候选 doctor 独立复现 PASS 908028 checks 与 Evidence 精确吻合；mvn 345/RLS 84/diff --check 复核通过；TASK-0194 保持 REJECTED 未被顺带接纳；无 PASS 伪装。P0=0，P1=0，P2=2（均闭包期制品：handoff 占位 state 与 evidence verifiedCommit null——终态闭包时按真实值落盘自洽，与 TASK-0193 先例结构一致），P3=2（信息性）。"
+    }
+  ],
+  "completed": [
+    "继承实现正式接纳（TASK-0193 同型）：TASK-0194 REJECTED 终态 d1941c9 承载的 26 个业务/迁移/测试路径（V28 worker lease/fence 业务守卫 + worker/handler 分段事务 + modelruntime prepare-external 拆分 + SQL 74-83）经 inheritedStateManifest 机器绑定（33/7/26、mode/blob/树/hash/单父链 17 项核验全 PASS）确认为当前树中零漂移继承实现并获正式授权",
+    "唯一获准机械修复：SchemaReadinessHealthIndicatorTest.expectedSchemaVersionFromClasspath 迁移数断言 27→28（注释同步 V28=TASK-0194 worker lease/fence 业务守卫事实；+4/−3 行，无其他语义变更）；26 继承路径零接触零漂移",
+    "四条冻结命令以候选 00ecd18 同一真实 SHA 全部 PASS：canonical precheck 8 commands exit 0（doctor 908028 checks）；Maven runtime reactor Tests run 345 Failures 0 Errors 0 BUILD SUCCESS exit 0；RLS 84/84 ALL TESTS PASS exit 0；git diff --check exit 0",
+    "READY Doctor PASS 906148 checks exit 0（TASK-0194 遗留 5 项 gate error 全部消除：model-routing-change Skill + database-migration approval 已正确冻结）",
+    "C4 独立 Reviewer 审查实际继承实现范围 fb9cf0e..d1941c9 并独立重算 manifest、重跑快速验收命令，裁决 APPROVE（P0/P1/P2=0）",
+    "TASK-0194 保持 REJECTED（历史卡/Evidence/Handoff 零修改零漂移），本卡接纳的是当前树中机器绑定的继承实现"
+  ],
+  "remaining": [
+    "bounded retry/dead-letter 与 cooperative 中断 in-flight session（原规划串行后续）仍未创建，待后续规划",
+    "完整 harness unittest discover 保持 NOT_RUN（CiPolicy 单类 34 分钟 CI 预算风险延续如实记录）",
+    "本地提交未推送（按 Owner 指令保持不推送不合并）"
+  ],
+  "knownRisks": [
+    "TASK-0194 REJECTED 结论与 TASK-0195 ACCEPTED 接纳为两个独立治理事实：TASK-0194 的 5 项 gate error（授权冻结缺口）已由本卡在 READY 时正确冻结消除，TASK-0194 本身保持 REJECTED",
+    "V28 追加式迁移已由本卡接纳；Flyway checksum 随 V28 blob 固化，后续任何 V1-V28 修改都将触发校验失败关闭",
+    "审计报告其余 findings 全部未处理"
+  ],
+  "nextAction": "TASK-0195 ACCEPTED 终态提交后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。"
+}

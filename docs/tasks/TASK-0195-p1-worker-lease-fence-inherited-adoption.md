@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0195
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -367,13 +367,34 @@ humanApprovals:
       V1-V27、保持 FORCE RLS、复合 owner FK、V27 owner 密码学绑定与 current_owner_id
       每调用重校验、业务写显式 work_item_id+claim_token+claim_fence 非 GUC）继续有效。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0195_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 00ecd186c75f0123a13e996b52df3494e5ce8a66
+    evidencePath: docs/evidence/TASK-0195/review-r1.md
+    reason: >-
+      R1 独立复核 APPROVE：manifest 17 项独立重算全中（33/7/26、26/26
+      mode/blob、双 SHA、双 tree、9 提交单父、26 路径双端零漂移、候选 4
+      路径精确）；V28 与 Java 三层实现逐项核对符合卡内设计（assert_active_claim
+      显式参数非 GUC、per-item terminalize、prepare-external 零 DB、五段事务、
+      74-83 存在）；纯净候选 doctor 独立复现 PASS 908028 checks 与 Evidence
+      精确吻合；mvn 345/RLS 84/diff --check 复核通过；TASK-0194 保持 REJECTED
+      未被顺带接纳；无 PASS 伪装。P0=0，P1=0，P2=2（均闭包期制品，终态闭包时
+      按真实值落盘自洽），P3=2（信息性）。
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0195
   - JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test
   - bash infra/db/run-rls-tests.sh
   - git diff --check
-terminalStateReason: ""
+terminalStateReason: >-
+  四条冻结验收命令以同一候选 SHA 00ecd18 全部真实 PASS（exit 0：canonical
+  precheck 8 commands 含 doctor 908028 checks、Maven runtime 345/345、
+  RLS 84/84、git diff --check）；inheritedStateManifest 17 项机器核验与 C4 独立
+  Reviewer（审查实际继承实现范围 fb9cf0e..d1941c9 并独立重算 manifest、重跑
+  快速验收命令，APPROVE，0 P0/P1）全部通过；唯一机械修复（迁移数断言 27→28）
+  落于候选 00ecd18；26 继承路径零修改零漂移；TASK-0194 保持 REJECTED，本卡
+  接纳的是当前树中机器绑定的继承实现；完整 unittest discover 保持 NOT_RUN。
 ```
 
 > 本卡为独立延续单卡（前一合法终态：TASK-0194 REJECTED `d1941c9`）。本卡是

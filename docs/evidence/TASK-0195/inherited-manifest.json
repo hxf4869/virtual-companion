@@ -1,0 +1,165 @@
+{
+ "schemaVersion": 1,
+ "taskId": "TASK-0195",
+ "kind": "INHERITED_STATE_ADOPTION_MANIFEST",
+ "algorithm": "SHA256_MANIFEST_V1",
+ "binding": {
+  "preImplementationBaseline": "fb9cf0e178212d6ff554abf7d4695aa114fe0dba",
+  "rejectedTerminal": "d1941c9a3b93dcc97a40275f80e65883e511594e",
+  "rejectedTerminalTree": "540a8a71e08fb95a50c931ba2988bb63bed91e92",
+  "adoptionBase": "d1941c9a3b93dcc97a40275f80e65883e511594e",
+  "adoptionBaseTree": "540a8a71e08fb95a50c931ba2988bb63bed91e92",
+  "implementationCommit": "a4118b0c67eeff285a7c211df15e69de76943ede",
+  "fixCommit": null,
+  "scopeAmendmentCommit": null
+ },
+ "derivation": {
+  "windowDiffCommand": "git diff --name-only fb9cf0e178212d6ff554abf7d4695aa114fe0dba d1941c9a3b93dcc97a40275f80e65883e511594e",
+  "windowDiffPathCount": 33,
+  "governanceExcludedPaths": [
+   ".harness/project-state.yaml",
+   ".harness/task-ledger.yaml",
+   "docs/evidence/TASK-0194/evidence-pack.json",
+   "docs/evidence/TASK-0194/review-r1.md",
+   "docs/handoffs/TASK-0194.json",
+   "docs/tasks/TASK-0194-worker-lease-fence-transaction-boundary.md",
+   "docs/tasks/context/TASK-0194.context-lock.yaml"
+  ],
+  "inheritedPathCount": 26
+ },
+ "orderedPathSetSha256": "d6ff85629e82b9c2f0e6c33d3aee15800fd98bc206eb0a6d868f6fd2276f6333",
+ "manifestSha256": "e94e66680ffe8c32070009fcf194c0e5278faf52dd97a100ec6213244cfd9b79",
+ "manifestCanonicalization": "entries=[{blob:<40hex>, mode:\"100644\", path:<posix>}...] sorted by path (codepoint); canonical=json.dumps({algorithm:SHA256_MANIFEST_V1, baseCommit:<adoptionBase>, paths:entries}, ensure_ascii=False, sort_keys=True, separators=(\",\",\":\")); manifestSha256=sha256(canonical utf-8).hex(); orderedPathSetSha256=sha256(concat of sorted path each followed by LF).utf-8).hex()",
+ "paths": [
+  {
+   "blob": "2e1d6203da4d7b1513a778e46c89570864a880ed",
+   "mode": "100644",
+   "path": "infra/db/tests/74_attempt_intent_created_before_outbound.sql"
+  },
+  {
+   "blob": "86a8b00403218d8638c2e1f2cc946945ba99630b",
+   "mode": "100644",
+   "path": "infra/db/tests/75_wall_clock_lease_expires.sql"
+  },
+  {
+   "blob": "fc292cd7e6406c545e592c09495efd959aa8db12",
+   "mode": "100644",
+   "path": "infra/db/tests/76_guarded_finalize_requires_explicit_claim.sql"
+  },
+  {
+   "blob": "77c0ecc83f6acb7831f47ccfd76997b0e257533b",
+   "mode": "100644",
+   "path": "infra/db/tests/77_stale_worker_only_closes_intent.sql"
+  },
+  {
+   "blob": "820e68b5d835d1e9159b6dc823a4f9e9ff159972",
+   "mode": "100644",
+   "path": "infra/db/tests/78_overtaken_claim_zero_business_write.sql"
+  },
+  {
+   "blob": "5950cab8af0b155398cff79719b5b4c6572adcb1",
+   "mode": "100644",
+   "path": "infra/db/tests/79_external_audit_survives_finalize_rollback.sql"
+  },
+  {
+   "blob": "f4a661760a52b7a58965e605a73d33d3deb392f3",
+   "mode": "100644",
+   "path": "infra/db/tests/80_aborted_tx_independent_per_item_fail.sql"
+  },
+  {
+   "blob": "c8b6603d59a75fcc686d0954efcd043eebdc5726",
+   "mode": "100644",
+   "path": "infra/db/tests/81_batch_per_item_terminalize_no_pollution.sql"
+  },
+  {
+   "blob": "7743733ce2373a8376d0c54f0041e3ba206c535c",
+   "mode": "100644",
+   "path": "infra/db/tests/82_expired_claim_with_intent_not_resent.sql"
+  },
+  {
+   "blob": "a290f9b330abdeb6ab48498e9b289a15ac377809",
+   "mode": "100644",
+   "path": "infra/db/tests/83_fenced_finalize_happy_path.sql"
+  },
+  {
+   "blob": "5e24eabb1e149d0383d545026cdbc9b5716af2d9",
+   "mode": "100644",
+   "path": "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/GenerationWorkItemHandler.java"
+  },
+  {
+   "blob": "6ef233408e86e035f75a822db24aa9be120f74df",
+   "mode": "100644",
+   "path": "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/LiveInvocationAssembler.java"
+  },
+  {
+   "blob": "b55d41e39dda9694166bc98cdac4eec32d254cfa",
+   "mode": "100644",
+   "path": "service/apps/runtime/src/main/java/com/virtualcompanion/runtime/worker/WorkItemWorker.java"
+  },
+  {
+   "blob": "98b718c3b34ddabfa0a0ec7839764ff9f04e623f",
+   "mode": "100644",
+   "path": "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/tenant/OwnerContextTest.java"
+  },
+  {
+   "blob": "8b77e98c3f53c11aceb20d76b0e7ca0616bfc8db",
+   "mode": "100644",
+   "path": "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/GenerationWorkItemHandlerTest.java"
+  },
+  {
+   "blob": "5635218c8cbe623c0fc31acf8578f62d215a8d79",
+   "mode": "100644",
+   "path": "service/apps/runtime/src/test/java/com/virtualcompanion/runtime/worker/WorkItemWorkerTest.java"
+  },
+  {
+   "blob": "0fd0a01d5d1ca31477812314b28d97745fb7cf63",
+   "mode": "100644",
+   "path": "service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/contract/ExternalAttemptBinding.java"
+  },
+  {
+   "blob": "7f70a68ce8043d01a8bbfbd6b257fa8c3d884e18",
+   "mode": "100644",
+   "path": "service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/execution/LiveModelInvoker.java"
+  },
+  {
+   "blob": "02a07d9e6c9d0dcd7f9ad833074cba7ea3507d12",
+   "mode": "100644",
+   "path": "service/modules/modelruntime/src/main/java/com/virtualcompanion/modelruntime/execution/PreparedInvocation.java"
+  },
+  {
+   "blob": "898de718de111a857a449d77f1f2d74ac9d61533",
+   "mode": "100644",
+   "path": "service/modules/modelruntime/src/test/java/com/virtualcompanion/modelruntime/execution/LiveModelInvokerTest.java"
+  },
+  {
+   "blob": "d2e8176a481157d913079b7df6532d17dcd4c608",
+   "mode": "100644",
+   "path": "service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/GenerationFinalizeService.java"
+  },
+  {
+   "blob": "a4966b83272f60de81d36a92ee274b948d0a5b29",
+   "mode": "100644",
+   "path": "service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/WorkItemClaim.java"
+  },
+  {
+   "blob": "6de72b292a6ae942134d4180cec45c6c39e9e993",
+   "mode": "100644",
+   "path": "service/platform/persistence/src/main/java/com/virtualcompanion/platform/persistence/WorkItemClaimService.java"
+  },
+  {
+   "blob": "386ab92bcc39b11e0bac1b77eb4abb81e794fdd2",
+   "mode": "100644",
+   "path": "service/platform/persistence/src/main/resources/db/migration/V28__worker_lease_fence_business_guard.sql"
+  },
+  {
+   "blob": "ceb2ec6c9ce9caa254e64674624d5f109d2da421",
+   "mode": "100644",
+   "path": "service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/FinalizeGenerationServiceTest.java"
+  },
+  {
+   "blob": "e6af09cda7ad383dd5a1280eb350c01443592024",
+   "mode": "100644",
+   "path": "service/platform/persistence/src/test/java/com/virtualcompanion/platform/persistence/WorkItemClaimServiceTest.java"
+  }
+ ]
+}

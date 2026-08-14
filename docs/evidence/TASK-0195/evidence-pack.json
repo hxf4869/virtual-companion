@@ -1,0 +1,128 @@
+{
+  "taskId": "TASK-0195",
+  "baseCommit": "d1941c9a3b93dcc97a40275f80e65883e511594e",
+  "headCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66",
+  "contextFingerprint": "7befc35a88c6531ca17a9818e1c8a5bd60656bb4426a305f26b130223cdd7bdb",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "6c599fb26b2f129a5734e392e2ed9db85c4475bf",
+      "startedAt": "2026-08-14T13:51:52+08:00",
+      "endedAt": "2026-08-14T14:12:30+08:00",
+      "elapsedSeconds": 1240,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "6c599fb26b2f129a5734e392e2ed9db85c4475bf",
+      "startedAt": "2026-08-14T13:51:52+08:00",
+      "endedAt": "2026-08-14T13:55:27+08:00",
+      "elapsedSeconds": 215,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T13:53:31+08:00",
+      "inProgressCommit": "f2649d4d38bee9799ab8abe45c7201ffc32ae77e"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f2649d4d38bee9799ab8abe45c7201ffc32ae77e",
+      "startedAt": "2026-08-14T13:55:27+08:00",
+      "endedAt": "2026-08-14T14:12:30+08:00",
+      "elapsedSeconds": 1023,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T13:53:31+08:00",
+      "inProgressCommit": "f2649d4d38bee9799ab8abe45c7201ffc32ae77e"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0195_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66",
+      "evidencePath": "docs/evidence/TASK-0195/review-r1.md",
+      "reason": "R1 独立复核 APPROVE：manifest 17 项独立重算全中（33/7/26、26/26 mode/blob、双 SHA、双 tree、9 提交单父、26 路径双端零漂移、候选 4 路径精确）；V28 与 Java 三层实现逐项核对符合卡内设计（assert_active_claim 显式参数非 GUC、per-item terminalize、prepare-external 零 DB、五段事务、74-83 存在）；纯净候选 doctor 独立复现 PASS 908028 checks 与 Evidence 精确吻合；mvn 345/RLS 84/diff --check 复核通过；TASK-0194 保持 REJECTED 未被顺带接纳；无 PASS 伪装。P0=0，P1=0，P2=2（均闭包期制品：handoff 占位 state 与 evidence verifiedCommit null——终态闭包时按真实值落盘自洽，与 TASK-0193 先例结构一致），P3=2（信息性）。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "python scripts/harness/doctor.py --task TASK-0195",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor（bind 27c4c09 后）PASS 906148 checks exit 0，113.1s；5 项 TASK-0194 遗留 gate error（model-routing-change Skill + database-migration approval）全部消除；未创建 pre-READY maintenance boundary",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    },
+    {
+      "command": "inheritedStateManifest 机器核验（17 项，python 脚本，git 对象独立推导）",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "窗口 diff fb9cf0e..d1941c9=33；治理排除恰 7；继承路径恰 26；26/26 mode=100644/blob 逐项匹配 adoptionBase d1941c9；orderedPathSetSha256=d6ff8562… 与 manifestSha256=e94e6668… 独立重算一致；rejectedTerminalTree=adoptionBaseTree=540a8a71…；implementationCommit=a4118b0（tree 7c5a6e70…）；窗口 9 提交全单父；26 路径 a4118b0→d1941c9 blob 零漂移；候选 00ecd18 相对 base 恰 4 路径（TASK-0195 3 治理 + Java），26 继承路径候选零漂移零 blob 变更；Java 仅断言 27 删 28 增（+4/−3 行注释同步）；结果固化于 docs/evidence/TASK-0195/inherited-manifest.json",
+      "verifiedCommit": null,
+      "candidateCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0195",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 00ecd18 真实执行：precheck 8 commands 全 PASS exit 0（doctor PASS 908028 checks 116.6s + licenseCheck + catalog/openapi/beta/paid 等），116.8s；未复用 TASK-0194 旧结果",
+      "verifiedCommit": null,
+      "candidateCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66"
+    },
+    {
+      "command": "JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 00ecd18 真实执行：BUILD SUCCESS，Tests run=345 Failures=0 Errors=0 Skipped=0，exit 0；TASK-0194 遗留的唯一 failure（SchemaReadiness 27→28）已消除，345/345 全绿",
+      "verifiedCommit": null,
+      "candidateCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 00ecd18 真实执行：一次性 PostgreSQL 18+pgvector 容器（OrbStack docker）84/84 全 PASS（含 74-83 worker lease/fence 业务守卫矩阵），ALL TESTS PASS exit 0",
+      "verifiedCommit": null,
+      "candidateCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 00ecd18 真实执行 exit 0，无 whitespace 错误",
+      "verifiedCommit": null,
+      "candidateCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0195 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "终态闭包前真实执行（精确暂存 7 路径闭合候选快照，2026-08-14 约 14:10-14:18）：Harness doctor PASS（1122577 checks, 508.1s）exit 0；闭合制品（卡 ACCEPTED+reviewers/ledger/project-state/evidence/handoff/manifest）零 error；候选 00ecd18 全部验收绑定同一真实 SHA",
+      "verifiedCommit": null,
+      "candidateCommit": "00ecd186c75f0123a13e996b52df3494e5ce8a66"
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "完整 discover 未执行（NOT_RUN）：CiExecutionPolicyTests 单类本地约 34 分钟远超 CI full job 10 分钟预算（TASK-0189/0190/0191/0192/0193/0194 延续），如实保留，不代表 CI 完全兼容",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    }
+  ]
+}
