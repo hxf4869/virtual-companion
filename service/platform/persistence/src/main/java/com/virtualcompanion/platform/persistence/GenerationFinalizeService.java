@@ -1,25 +1,28 @@
 package com.virtualcompanion.platform.persistence;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Objects;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Drives the generation finalize / candidate / terminalize SECURITY DEFINER
- * functions (V7 {@code finalize_generation}, V15 {@code insert_generation_candidate}
- * and {@code terminalize_generation}), bound to the runtime {@code vc_api} JDBC
- * pool (TASK-0176).
+ * Drives the generation finalize / candidate / terminalize / attempt-intent
+ * SECURITY DEFINER functions (V7 {@code finalize_generation}, V15
+ * {@code insert_generation_candidate} and {@code terminalize_generation}, V20
+ * {@code record_provider_attempt}, V28 intent/guard/per-item family), bound to
+ * the runtime {@code vc_api} JDBC pool (TASK-0176, TASK-0194).
  *
- * <p>Runs inside the worker's owner-bound transaction so every {@code vc.*}
- * call executes in the correct server-trusted tenant context. The ZERO_LLM
- * deterministic completion path uses {@link #insertCandidate} + {@link
- * #finalizeCompleted}; the degradation path uses {@link #terminalizeAsFailed}.
+ * <p>TASK-0194 segmented flow: the worker runs each segment in its own
+ * owner-bound short transaction — {@code createAttemptIntent} persists the
+ * {@code CREATED} attempt intent BEFORE any outbound (intent failure forbids
+ * the outbound), {@code recordAttemptOutcome} updates the same row after the
+ * external phase, and the guarded finalize transaction calls
+ * {@link #assertActiveClaim} (explicit work_item_id + claim_token +
+ * claim_fence, never a GUC) as its first statement, then candidate + promote +
+ * finalize + per-item work-item terminalize atomically.</p>
  *
- * <p>{@code finalizeCompleted} binds the final assistant content, marks the
- * candidate final and atomically writes the final message, COMPLETED terminal
- * state, zero-token usage, zero SETTLE quota, the {@code chat.completed}
- * realtime event and (optionally) the memory-extract outbox. ZERO_LLM callers
- * pass {@code outboxEligible=false} because the deterministic fallback string
- * must not produce a memory candidate (INV-MEM semantics).
+ * <p>The raw claim token/fence are never persisted: only SHA-256 hashes reach
+ * the database intent row.</p>
  */
 public class GenerationFinalizeService {
 
@@ -197,6 +200,160 @@ public class GenerationFinalizeService {
                 generationId,
                 TERMINAL_EVENT_FAILED,
                 jsonEscape(detail));
+    }
+
+    /**
+     * TASK-0194: persist the {@code CREATED} attempt intent BEFORE any outbound
+     * (V28 {@code vc.create_attempt_intent}). The intent binds owner, work
+     * item, generation, SHA-256 hashes of the claim token/fence, the unique
+     * {@code providerAttemptId}, the dual authorization snapshots and the
+     * provider/deployment identity. Only the hashes are stored — the raw claim
+     * token/fence never leave the worker. A failure here aborts the prepare
+     * transaction and forbids the outbound (adapter zero calls).
+     *
+     * @return the persisted {@code providerAttemptId}
+     */
+    public String createAttemptIntent(
+            long ownerUserId,
+            long workItemId,
+            long generationId,
+            String claimToken,
+            String claimFence,
+            String providerAttemptId,
+            String providerId,
+            String supplierName,
+            String requestedSnapshotId,
+            String executionSnapshotId) {
+        validateIds(ownerUserId, generationId);
+        if (workItemId <= 0) {
+            throw new IllegalArgumentException("workItemId must be positive");
+        }
+        requireNonBlank(claimToken, "claimToken");
+        requireNonBlank(claimFence, "claimFence");
+        requireNonBlank(providerAttemptId, "providerAttemptId");
+        requireNonBlank(providerId, "providerId");
+        requireNonBlank(supplierName, "supplierName");
+        requireNonBlank(requestedSnapshotId, "requestedSnapshotId");
+        requireNonBlank(executionSnapshotId, "executionSnapshotId");
+        String attemptId = jdbc.queryForObject(
+                "SELECT out_provider_attempt_id FROM vc.create_attempt_intent(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                String.class,
+                ownerUserId,
+                workItemId,
+                generationId,
+                sha256Hex(claimToken),
+                sha256Hex(claimFence),
+                providerAttemptId,
+                providerId,
+                supplierName,
+                requestedSnapshotId,
+                executionSnapshotId);
+        if (attemptId == null || attemptId.isBlank()) {
+            throw new IllegalStateException("create_attempt_intent returned no provider_attempt_id");
+        }
+        return attemptId;
+    }
+
+    /**
+     * TASK-0194: update the SAME intent row's outcome after the external phase
+     * (V28 {@code vc.record_attempt_outcome}, {@code CREATED} → terminal only,
+     * never a second row). Returns rows updated; 0 means the intent was already
+     * terminal (idempotent fail-closed).
+     */
+    public int recordAttemptOutcome(long ownerUserId, String providerAttemptId, String status) {
+        requireNonBlank(providerAttemptId, "providerAttemptId");
+        requireNonBlank(status, "status");
+        Integer rows = jdbc.queryForObject(
+                "SELECT vc.record_attempt_outcome(?, ?, ?)",
+                Integer.class,
+                ownerUserId,
+                providerAttemptId,
+                status);
+        return rows == null ? 0 : rows;
+    }
+
+    /**
+     * TASK-0194: close a still-{@code CREATED} intent as {@code ABANDONED_LATE}
+     * (V28 {@code vc.abandon_late_attempt}). Audit closure only — never creates
+     * an attempt and never writes business results.
+     */
+    public int abandonLateAttempt(long ownerUserId, String providerAttemptId) {
+        requireNonBlank(providerAttemptId, "providerAttemptId");
+        Integer rows = jdbc.queryForObject(
+                "SELECT vc.abandon_late_attempt(?, ?)",
+                Integer.class,
+                ownerUserId,
+                providerAttemptId);
+        return rows == null ? 0 : rows;
+    }
+
+    /**
+     * TASK-0194: explicit per-work-item claim guard (V28
+     * {@code vc.assert_active_claim}). Validates the work item is still
+     * {@code CLAIMED}, the presented token/fence match exactly and the
+     * wall-clock lease has not expired; any failure RAISEs, so the caller's
+     * guarded transaction aborts with zero business writes. This must be the
+     * first statement of every guarded finalize/fail transaction; a
+     * transaction-local GUC is never accepted as the active-claim
+     * authorization.
+     */
+    public void assertActiveClaim(long ownerUserId, long workItemId, String claimToken, String claimFence) {
+        requireNonBlank(claimToken, "claimToken");
+        requireNonBlank(claimFence, "claimFence");
+        jdbc.queryForObject(
+                "SELECT vc.assert_active_claim(?, ?, ?, ?)",
+                Object.class,
+                ownerUserId,
+                workItemId,
+                claimToken,
+                claimFence);
+    }
+
+    /**
+     * TASK-0194: per-item work-item completion inside the guarded finalize
+     * transaction (V28 {@code vc.complete_work_item(bigint, text, text)}).
+     * Returns rows terminalized (1 on success, 0 when the claim is no longer
+     * live).
+     */
+    public int completeWorkItem(long workItemId, String claimToken, String claimFence) {
+        return terminalizePerItem("SELECT vc.complete_work_item(?, ?, ?)",
+                workItemId, claimToken, claimFence);
+    }
+
+    /**
+     * TASK-0194: per-item work-item failure inside the guarded fail transaction
+     * (V28 {@code vc.fail_work_item(bigint, text, text)}). Returns rows
+     * terminalized (1 on success, 0 when the claim is no longer live).
+     */
+    public int failWorkItem(long workItemId, String claimToken, String claimFence) {
+        return terminalizePerItem("SELECT vc.fail_work_item(?, ?, ?)",
+                workItemId, claimToken, claimFence);
+    }
+
+    private int terminalizePerItem(String sql, long workItemId, String claimToken, String claimFence) {
+        requireNonBlank(claimToken, "claimToken");
+        requireNonBlank(claimFence, "claimFence");
+        if (workItemId <= 0) {
+            throw new IllegalArgumentException("workItemId must be positive");
+        }
+        Integer rows = jdbc.queryForObject(
+                sql, Integer.class, workItemId, claimToken, claimFence);
+        return rows == null ? 0 : rows;
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
     }
 
     private static String jsonEscape(String value) {

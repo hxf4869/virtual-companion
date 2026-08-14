@@ -82,9 +82,23 @@ public class LiveInvocationAssembler {
      *     be resolved for the owner (fail closed; the handler terminalizes).
      */
     public LiveInvocationRequest assemble(long ownerUserId, long generationId) {
+        return assemble(ownerUserId, generationId, null);
+    }
+
+    /**
+     * Assemble the ZERO_LLM {@code LiveInvocationRequest} for one generation
+     * with the claim fence passed explicitly (TASK-0194). The fence is read
+     * from the caller's claim (V28 returns it from {@code claim_work_items})
+     * because it is transaction-local in the claim transaction and therefore
+     * no longer visible in the segmented prepare transaction.
+     *
+     * @param claimFence the claim fence issued by the coordinator (may be null
+     *     for legacy callers, which fall back to the transaction-local GUC)
+     */
+    public LiveInvocationRequest assemble(long ownerUserId, long generationId, String claimFence) {
         OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
         List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
-        long fence = readFence();
+        long fence = fenceValue(claimFence, readFence());
 
         Entitlement entitlement = new Entitlement(
                 ownership.ownerUserId(), ServiceClass.zeroLlmOnly());
@@ -134,6 +148,25 @@ public class LiveInvocationAssembler {
             long generationId,
             String requestedSnapshotId,
             String executionSnapshotId) {
+        return assembleExternal(
+                ownerUserId, generationId, requestedSnapshotId, executionSnapshotId, null);
+    }
+
+    /**
+     * Assemble the external-provider {@code LiveInvocationRequest} for one
+     * generation with the claim fence passed explicitly (TASK-0194; see
+     * {@link #assemble(long, long, String)} for why the fence cannot be read
+     * from the transaction-local GUC in the segmented prepare transaction).
+     *
+     * @param claimFence the claim fence issued by the coordinator (may be null
+     *     for legacy callers, which fall back to the transaction-local GUC)
+     */
+    public LiveInvocationRequest assembleExternal(
+            long ownerUserId,
+            long generationId,
+            String requestedSnapshotId,
+            String executionSnapshotId,
+            String claimFence) {
         Objects.requireNonNull(requestedSnapshotId, "requestedSnapshotId must not be null");
         Objects.requireNonNull(executionSnapshotId, "executionSnapshotId must not be null");
         if (requestedSnapshotId.isBlank() || executionSnapshotId.isBlank()) {
@@ -142,7 +175,7 @@ public class LiveInvocationAssembler {
         }
         OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
         List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
-        long fence = readFence();
+        long fence = fenceValue(claimFence, readFence());
 
         Entitlement entitlement = new Entitlement(
                 ownership.ownerUserId(), ServiceClass.simulated());
@@ -211,15 +244,25 @@ public class LiveInvocationAssembler {
     private long readFence() {
         String value = jdbcTemplate.queryForObject(
                 "SELECT current_setting('vc.job_fence', true)", String.class);
-        if (value == null || value.isBlank()) {
-            return 0L;
+        return fenceValue(value, 0L);
+    }
+
+    /**
+     * Parse the explicit claim fence (a coordinator-issued UUID) into the
+     * non-negative long the router uses as decision identity/audit. Falls back
+     * to {@code fallback} when the fence is missing/unparseable, mirroring the
+     * legacy GUC-read behavior.
+     */
+    private static long fenceValue(String claimFence, long fallback) {
+        if (claimFence == null || claimFence.isBlank()) {
+            return fallback;
         }
         try {
             // Mask the sign bit so the result is always non-negative (the router
             // only requires fence >= 0 and uses it as decision identity/audit).
-            return UUID.fromString(value).getMostSignificantBits() & Long.MAX_VALUE;
+            return UUID.fromString(claimFence).getMostSignificantBits() & Long.MAX_VALUE;
         } catch (IllegalArgumentException notAUuid) {
-            return 0L;
+            return fallback;
         }
     }
 

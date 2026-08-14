@@ -130,6 +130,54 @@ class OwnerContextTest {
     }
 
     @Test
+    void perSegmentOwnerProofIsReEstablishedForEverySegmentTransaction() {
+        // TASK-0194: every short segment transaction must re-establish the V27
+        // owner proof (the proof binds pg_current_xact_id, which changes per
+        // transaction). Two segments must produce two distinct
+        // (xact, nonce, proof) tuples and bind the context before each segment's
+        // work runs.
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        TransactionTemplate transactions = mock(TransactionTemplate.class);
+        java.util.List<String> ranSegments = new java.util.ArrayList<>();
+        java.util.List<String> observedProofs = new java.util.ArrayList<>();
+        java.util.List<String> observedNonces = new java.util.ArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger segmentIndex = new java.util.concurrent.atomic.AtomicInteger();
+        // Each segment transaction runs under its own transaction id; the proof
+        // minted for the segment must bind exactly that id.
+        when(jdbc.queryForMap("SELECT pg_backend_pid() AS pid, pg_current_xact_id()::text AS xact"))
+                .thenAnswer(invocation ->
+                        Map.of("pid", 7, "xact", "xact-" + segmentIndex.get()));
+        doAnswer(invocation -> {
+            Consumer<?> consumer = invocation.getArgument(0);
+            consumer.accept(null);
+            return null;
+        }).when(transactions).executeWithoutResult(any());
+        doAnswer(invocation -> {
+            observedNonces.add(invocation.getArgument(2));
+            observedProofs.add(invocation.getArgument(3));
+            segmentIndex.incrementAndGet();
+            return 1;
+        }).when(jdbc).update(
+                eq("SELECT vc.set_owner_context(?, ?, ?)"),
+                eq(42L), anyString(), anyString());
+        OwnerContext ownerContext = new OwnerContext(jdbc, transactions, TEST_KEY);
+
+        ownerContext.asOwner(42L, () -> ranSegments.add("segment-0"));
+        ownerContext.asOwner(42L, () -> ranSegments.add("segment-1"));
+
+        // Both segments ran, each after its own fresh proof for its own
+        // transaction id — no proof reuse across segments.
+        assertThat(ranSegments).containsExactly("segment-0", "segment-1");
+        assertThat(observedProofs).hasSize(2);
+        assertThat(observedProofs.get(0)).isNotEqualTo(observedProofs.get(1));
+        assertThat(observedProofs.get(0))
+                .isEqualTo(ownerContext.proofFor(42L, "7", "xact-0", observedNonces.get(0)));
+        assertThat(observedProofs.get(1))
+                .isEqualTo(ownerContext.proofFor(42L, "7", "xact-1", observedNonces.get(1)));
+        assertThat(observedNonces.get(0)).isNotEqualTo(observedNonces.get(1));
+    }
+
+    @Test
     void asOwnerRejectsNonPositiveOwnerBeforeAnyWork() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         TransactionTemplate transactions = mock(TransactionTemplate.class);

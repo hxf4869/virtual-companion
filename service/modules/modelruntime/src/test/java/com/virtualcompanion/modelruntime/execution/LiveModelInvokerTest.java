@@ -44,7 +44,9 @@ import com.virtualcompanion.safety.DeterministicSafetyResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
@@ -600,6 +602,166 @@ class LiveModelInvokerTest {
         assertFalse(outcome.externalAttemptCreated());
         assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
         assertEquals(0L, quota.remaining("owner-1"));
+    }
+
+    // ---- TASK-0194: prepare / execute split (transaction boundary) ----
+
+    @Test
+    void prepareMaterializesExternalAttemptThenExecuteRunsOnlyTheAdapter() {
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
+
+        PreparedInvocation prepared = harness.invoker.prepare(adequateRequest());
+
+        // Prepare materialized the immutable attempt identity + protocol request
+        // (all DB reads confined to prepare); nothing was sent yet.
+        assertTrue(prepared.isExternal());
+        assertEquals("openai-approved", prepared.attempt().providerId());
+        assertEquals("OpenAI", prepared.attempt().supplierName());
+        assertEquals("snap-req", prepared.attempt().requestedAuthorizationSnapshotId());
+        assertEquals("snap-exec", prepared.attempt().executionAuthorizationSnapshotId());
+        assertTrue(prepared.attempt().providerAttemptId().startsWith("pa-"));
+        org.junit.jupiter.api.Assertions.assertNotNull(prepared.protocolRequest());
+        assertEquals(0, harness.adapter.openCount());
+
+        // Execute consumes only the immutable object (adapter/session).
+        LiveAttemptOutcome outcome = harness.invoker.execute(prepared);
+
+        assertEquals(LiveAttemptTerminal.SUCCEEDED, outcome.terminal());
+        assertEquals("Hello world", outcome.response());
+        assertEquals(1, harness.adapter.openCount());
+        assertEquals(1, outcome.audits().size());
+        assertEquals("OpenAI", outcome.audits().getFirst().supplierName());
+    }
+
+    @Test
+    void executeNeverPerformsAuthorizationStoreReads() {
+        // The only database read of the invocation path (execution-snapshot
+        // lookup) must happen inside prepare; execute must add none.
+        AtomicInteger finds = new AtomicInteger();
+        InMemoryAuthorizationSnapshotStore inner = new InMemoryAuthorizationSnapshotStore();
+        inner.put(snapshot("snap-req", AuthorizationStatus.ACTIVE, PROVIDER));
+        inner.put(snapshot("snap-exec", AuthorizationStatus.ACTIVE, PROVIDER));
+        com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore countingStore =
+                new com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore() {
+                    @Override
+                    public Optional<AuthorizationSnapshot> find(AuthorizationSnapshotId id) {
+                        finds.incrementAndGet();
+                        return inner.find(id);
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot put(AuthorizationSnapshot snapshot) {
+                        return inner.put(snapshot);
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot withdraw(AuthorizationSnapshotId id) {
+                        return inner.withdraw(id);
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot narrow(
+                            AuthorizationSnapshotId id, AuthorizationSnapshot narrowed) {
+                        return inner.narrow(id, narrowed);
+                    }
+                };
+
+        quota.provision("owner-1", 5);
+        ScriptedAdapter adapter = new ScriptedAdapter(
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                CAPABILITIES,
+                Scripts.success("world"));
+        InMemoryProviderRegistry registry = new InMemoryProviderRegistry();
+        ProviderRegistration registration = new ProviderRegistration(
+                PROVIDER, adapter.protocol(), CAPABILITIES, adapter);
+        registry.register(registration);
+        ExecutionAuthorizationGuard guard = new ExecutionAuthorizationGuard(countingStore, registry);
+        DeterministicRouter router = new DeterministicRouter(registry, quota);
+        GenerationRecovery recovery = new GenerationRecovery(quota);
+        LiveModelInvoker invoker = new LiveModelInvoker(
+                router,
+                guard,
+                countingStore,
+                new InMemoryAdapterLocator(List.of(registration)),
+                recovery,
+                Map.of(PROVIDER, "OpenAI"));
+
+        PreparedInvocation prepared = invoker.prepare(adequateRequest());
+        int findsAfterPrepare = finds.get();
+        assertTrue(findsAfterPrepare >= 1);
+
+        LiveAttemptOutcome outcome = invoker.execute(prepared);
+
+        assertEquals(LiveAttemptTerminal.SUCCEEDED, outcome.terminal());
+        assertEquals(findsAfterPrepare, finds.get()); // execute added no store reads
+    }
+
+    @Test
+    void prepareBlocksBeforeOutboundWhenExecutionSnapshotMissing() {
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
+
+        // The execution snapshot id is absent from the store: the guard must
+        // deny inside prepare, before the adapter is ever opened.
+        PreparedInvocation prepared = harness.invoker.prepare(request(
+                routingWithSnapshots("snap-req", "snap-exec-missing"),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95)));
+
+        assertFalse(prepared.isExternal());
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, prepared.terminal());
+        assertEquals(0, harness.adapter.openCount());
+
+        LiveAttemptOutcome outcome = harness.invoker.execute(prepared);
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome.terminal());
+        assertTrue(outcome.audits().isEmpty());
+        assertEquals(0, harness.adapter.openCount());
+    }
+
+    @Test
+    void prepareBlocksBeforeOutboundOnProviderDrift() {
+        Harness harness = harness(
+                false,
+                Scripts.success("world"),
+                Map.of(PROVIDER, "OpenAI"),
+                false,
+                OTHER_PROVIDER);
+
+        PreparedInvocation prepared = harness.invoker.prepare(adequateRequest());
+
+        // The execution snapshot names a different provider: prepare fails
+        // closed with no outbound transfer.
+        assertFalse(prepared.isExternal());
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, prepared.terminal());
+        assertEquals(0, harness.adapter.openCount());
+    }
+
+    @Test
+    void prepareDeniesAdapterMisconfigurationWithoutOutbound() {
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"), true);
+
+        PreparedInvocation prepared = harness.invoker.prepare(adequateRequest());
+
+        // Adapter resolution failure happens in prepare: terminal-only FAILED,
+        // no outbound, no audit (no provider_attempt was created).
+        assertFalse(prepared.isExternal());
+        assertEquals(LiveAttemptTerminal.FAILED, prepared.terminal());
+        assertEquals(0, harness.adapter.openCount());
+
+        LiveAttemptOutcome outcome = harness.invoker.execute(prepared);
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.audits().isEmpty());
+        assertEquals(0, harness.adapter.openCount());
+    }
+
+    private static RoutingRequest routingWithSnapshots(String requestedId, String executionId) {
+        return new RoutingRequest(
+                OWNERSHIP,
+                new Entitlement("owner-1", ServiceClass.simulated()),
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                CAPABILITIES,
+                requestedId,
+                executionId,
+                "zero-llm-src",
+                42L);
     }
 
     private Harness harness(

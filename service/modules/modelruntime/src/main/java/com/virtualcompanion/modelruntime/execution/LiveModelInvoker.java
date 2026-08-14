@@ -8,6 +8,7 @@ import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStor
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationDecision;
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationGuard;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
+import com.virtualcompanion.modelruntime.contract.ExternalAttemptBinding;
 import com.virtualcompanion.modelruntime.contract.InvocationBinding;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
@@ -31,19 +32,34 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Controlled real-model invocation path.
+ * Controlled real-model invocation path (TASK-0194 prepare/external split).
  *
- * <p>Runs one {@link RouteDecision} through the full guarded chain: the
- * {@link DeterministicRouter} selects an admitted registry deployment and
- * reserves quota; the {@link ExecutionAuthorizationGuard} authorizes the
- * dual-snapshot binding; the {@link SafetyGate} releases only an adequate
- * ALLOW; the {@link AdapterLocator} resolves the approved adapter; the
- * session is consumed to exactly one terminal. Every degraded path (denied
- * authorization, non-adequate safety, adapter missing, provider failure,
- * timeout, cancellation, ZERO_LLM, no-eligible) is fail-closed, releases the
- * reserved quota through {@link GenerationRecovery}, never fabricates a
- * success, and records a {@link ProviderAttemptAudit} only for real outbound
- * attempts.</p>
+ * <p>The invocation is split into two phases with a hard transaction boundary:
+ * <ul>
+ *   <li>{@link #prepare}: runs the full guarded chain — {@link DeterministicRouter}
+ *       route + quota reservation, dual-snapshot {@link ExecutionAuthorizationGuard},
+ *       execution-snapshot provider identity check (the ONLY database read of the
+ *       whole invocation path, through {@link AuthorizationSnapshotStore#find}),
+ *       {@link SafetyGate} ALLOW and adapter resolution — and materializes an
+ *       immutable {@link PreparedInvocation} (attempt identity +
+ *       {@link ModelProtocolRequest}). The worker persists the {@code CREATED}
+ *       attempt intent inside this same prepare transaction; an intent write
+ *       failure aborts the transaction and forbids the outbound (adapter zero
+ *       calls).</li>
+ *   <li>{@link #execute}: consumes ONLY the immutable {@link PreparedInvocation}
+ *       and runs the adapter session to exactly one terminal. It has no database
+ *       access path at all (no JDBC, no snapshot store, no transaction template),
+ *       so the network phase never holds a database transaction or a claim row
+ *       lock.</li>
+ * </ul>
+ * {@link #invoke} composes both phases for callers that do not need the split
+ * (loopback integration tests, ZERO_LLM-only runtime).</p>
+ *
+ * <p>Every degraded path (denied authorization, non-adequate safety, adapter
+ * missing, provider failure, timeout, cancellation, ZERO_LLM, no-eligible) is
+ * fail-closed, releases the reserved quota through {@link GenerationRecovery}
+ * (in-memory ledger, no database), never fabricates a success, and records a
+ * {@link ProviderAttemptAudit} only for real outbound attempts.</p>
  *
  * <p>Credentials, request bodies and response text never leave the adapter
  * boundary into a business type; {@link ProviderAttemptAudit} deliberately
@@ -77,31 +93,59 @@ public final class LiveModelInvoker {
     }
 
     /**
-     * Invoke one controlled model attempt.
+     * Prepare one controlled model attempt: the guarded chain up to (and
+     * including) adapter resolution and attempt-identity materialization. All
+     * database reads happen here; the caller must run this inside the prepare
+     * transaction and persist the attempt intent before calling
+     * {@link #execute}.
      */
-    public LiveAttemptOutcome invoke(LiveInvocationRequest request) {
+    public PreparedInvocation prepare(LiveInvocationRequest request) {
         Objects.requireNonNull(request, "request must not be null");
         RouteDecision decision = router.decide(request.routingRequest());
         if (decision.status() != RouteDecisionStatus.SELECTED) {
             RecoveryOutcome outcome = recovery.recover(
                     decision.ownership(), RecoveryScenario.NO_CAPACITY,
                     decision.quotaReservation());
-            return LiveAttemptOutcome.noEligibleDeployment(decision, outcome);
+            return PreparedInvocation.terminalOnly(
+                    decision, null, LiveAttemptTerminal.NO_ELIGIBLE_DEPLOYMENT, outcome, null);
         }
         InvocationBinding binding = decision.binding();
         Objects.requireNonNull(binding, "SELECTED decision must carry a binding");
         if (binding instanceof InvocationBinding.DeterministicSourceBinding) {
             RecoveryOutcome outcome = recovery.completeZeroLlm(
                     decision.ownership(), decision.quotaReservation());
-            return LiveAttemptOutcome.zeroLlmCompleted(decision, binding, outcome);
+            return PreparedInvocation.terminalOnly(
+                    decision, binding, LiveAttemptTerminal.ZERO_LLM_COMPLETED, outcome, null);
         }
         if (binding instanceof InvocationBinding.ExternalAttemptBinding external) {
-            return invokeExternal(request, decision, external);
+            return prepareExternal(request, decision, external);
         }
         throw new IllegalStateException("unexpected SELECTED binding type: " + binding);
     }
 
-    private LiveAttemptOutcome invokeExternal(
+    /**
+     * Execute a prepared invocation. For an external prepared invocation this
+     * runs ONLY the adapter session (no database access); for a terminal-only
+     * prepared invocation it reproduces the exact terminal outcome captured by
+     * the prepare phase.
+     */
+    public LiveAttemptOutcome execute(PreparedInvocation prepared) {
+        Objects.requireNonNull(prepared, "prepared must not be null");
+        if (!prepared.isExternal()) {
+            return terminalOutcome(prepared);
+        }
+        return executeExternal(prepared);
+    }
+
+    /**
+     * Composed convenience entry point (prepare + execute) kept for callers
+     * that do not need the explicit transaction boundary.
+     */
+    public LiveAttemptOutcome invoke(LiveInvocationRequest request) {
+        return execute(prepare(request));
+    }
+
+    private PreparedInvocation prepareExternal(
             LiveInvocationRequest request,
             RouteDecision decision,
             InvocationBinding.ExternalAttemptBinding binding) {
@@ -111,12 +155,15 @@ public final class LiveModelInvoker {
             RecoveryOutcome outcome = recovery.recover(
                     decision.ownership(), RecoveryScenario.CANCELLED,
                     decision.quotaReservation());
-            return LiveAttemptOutcome.blockedByAuthorization(decision, outcome);
+            return PreparedInvocation.terminalOnly(
+                    decision, null, LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome, null);
         }
 
         // 2. The selected deployment must be exactly the one the execution
         //    snapshot authorized; otherwise a request authorized for provider Y
         //    could be routed to provider X (INV-AUTH-001). Fail closed.
+        //    This store lookup is the only database read of the invocation path
+        //    and is therefore confined to the prepare phase (TASK-0194).
         ProviderId providerId = Objects.requireNonNull(
                 decision.selectedProviderId(),
                 "external SELECTED decision must carry a provider id");
@@ -129,7 +176,8 @@ public final class LiveModelInvoker {
             RecoveryOutcome outcome = recovery.recover(
                     decision.ownership(), RecoveryScenario.CANCELLED,
                     decision.quotaReservation());
-            return LiveAttemptOutcome.blockedByAuthorization(decision, outcome);
+            return PreparedInvocation.terminalOnly(
+                    decision, null, LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome, null);
         }
 
         // 3. Safety gate: only an adequate ALLOW releases an external attempt.
@@ -139,22 +187,25 @@ public final class LiveModelInvoker {
             RecoveryOutcome outcome = recovery.recover(
                     decision.ownership(), RecoveryScenario.ALL_FAILURE,
                     decision.quotaReservation());
-            return LiveAttemptOutcome.blockedBySafety(decision, outcome);
+            return PreparedInvocation.terminalOnly(
+                    decision, null, LiveAttemptTerminal.BLOCKED_BY_SAFETY, outcome, null);
         }
 
         // 4. Resolve the approved adapter (fail-closed; never a guessed default).
+        //    Failure happens before any outbound and before any intent row, so
+        //    the outcome carries no audit (no provider_attempt was created).
         final ModelProtocolAdapter adapter;
         final String supplierName;
         try {
             adapter = adapterLocator.adapterFor(providerId);
             supplierName = supplierName(providerId);
         } catch (IllegalStateException misconfigured) {
-            // No outbound transfer happened; no provider_attempt row exists.
             RecoveryOutcome outcome = recovery.recover(
                     decision.ownership(), RecoveryScenario.ALL_FAILURE,
                     decision.quotaReservation());
-            return LiveAttemptOutcome.failed(decision, binding, null,
-                    new AdapterFailure.UpstreamUnavailable(), outcome, LiveAttemptTerminal.FAILED);
+            return PreparedInvocation.terminalOnly(
+                    decision, binding, LiveAttemptTerminal.FAILED, outcome,
+                    new AdapterFailure.UpstreamUnavailable());
         }
 
         ModelProtocolRequest protocolRequest = new ModelProtocolRequest(
@@ -163,6 +214,47 @@ public final class LiveModelInvoker {
                 request.responseMode(),
                 request.streaming(),
                 request.timeoutBudget());
+
+        ExternalAttemptBinding attempt = new ExternalAttemptBinding(
+                binding.ownership(),
+                binding.providerAttemptId(),
+                binding.fence(),
+                providerId.value(),
+                supplierName,
+                binding.requestedAuthorizationSnapshotId(),
+                binding.executionAuthorizationSnapshotId());
+
+        return PreparedInvocation.external(
+                decision, binding, attempt, protocolRequest, adapter);
+    }
+
+    private LiveAttemptOutcome terminalOutcome(PreparedInvocation prepared) {
+        RouteDecision decision = prepared.decision();
+        RecoveryOutcome outcome = prepared.recovery();
+        return switch (prepared.terminal()) {
+            case NO_ELIGIBLE_DEPLOYMENT ->
+                    LiveAttemptOutcome.noEligibleDeployment(decision, outcome);
+            case ZERO_LLM_COMPLETED ->
+                    LiveAttemptOutcome.zeroLlmCompleted(decision, prepared.binding(), outcome);
+            case BLOCKED_BY_AUTHORIZATION ->
+                    LiveAttemptOutcome.blockedByAuthorization(decision, outcome);
+            case BLOCKED_BY_SAFETY ->
+                    LiveAttemptOutcome.blockedBySafety(decision, outcome);
+            case FAILED ->
+                    LiveAttemptOutcome.failed(decision, prepared.binding(), null,
+                            prepared.failure(), outcome, LiveAttemptTerminal.FAILED);
+            default -> throw new IllegalStateException(
+                    "unexpected terminal-only terminal: " + prepared.terminal());
+        };
+    }
+
+    private LiveAttemptOutcome executeExternal(PreparedInvocation prepared) {
+        ExternalAttemptBinding attempt = prepared.attempt();
+        ModelProtocolRequest protocolRequest = prepared.protocolRequest();
+        ModelProtocolAdapter adapter = prepared.adapter();
+        RouteDecision decision = prepared.decision();
+        InvocationBinding binding = prepared.binding();
+        ProviderId providerId = new ProviderId(attempt.providerId());
 
         String output = "";
         TokenUsage usage = new TokenUsage(0, 0, 0);
@@ -181,7 +273,7 @@ public final class LiveModelInvoker {
                     // A read failure can happen after partial provider output;
                     // cancel before returning the normalized fail-closed result.
                     session.cancel();
-                    return fenceViolationOutcome(decision, binding, providerId, supplierName);
+                    return fenceViolationOutcome(decision, binding, attempt, providerId);
                 }
                 if (next.isEmpty()) {
                     // close() is not a substitute for cancelling an incomplete
@@ -197,7 +289,7 @@ public final class LiveModelInvoker {
                     // usage, EOS without output): fail the whole attempt closed
                     // so a late or wrong event can never pollute output/usage.
                     session.cancel();
-                    return fenceViolationOutcome(decision, binding, providerId, supplierName);
+                    return fenceViolationOutcome(decision, binding, attempt, providerId);
                 }
                 if (event instanceof ModelProtocolEvent.OutputDelta delta) {
                     final String content;
@@ -210,9 +302,7 @@ public final class LiveModelInvoker {
                     }
                     if (!outputBytes.tryAppend(content)) {
                         session.cancel();
-                        return fenceViolationOutcome(
-                                decision, binding, providerId, supplierName
-                        );
+                        return fenceViolationOutcome(decision, binding, attempt, providerId);
                     }
                     builder.append(content);
                 } else if (event instanceof ModelProtocolEvent.UsageReported reported) {
@@ -230,14 +320,12 @@ public final class LiveModelInvoker {
             RecoveryOutcome outcome = recovery.recover(
                     decision.ownership(), RecoveryScenario.ALL_FAILURE,
                     decision.quotaReservation());
-            ProviderAttemptAudit audit = audit(binding, providerId, supplierName,
-                    ProviderAttemptStatus.NON_RETRYABLE_FAILED);
+            ProviderAttemptAudit audit = audit(attempt, ProviderAttemptStatus.NON_RETRYABLE_FAILED);
             return LiveAttemptOutcome.failed(decision, binding, audit,
                     new AdapterFailure.MalformedResponse(), outcome, LiveAttemptTerminal.FAILED);
         }
         if (terminalEvent instanceof ModelProtocolEvent.AttemptEos) {
-            ProviderAttemptAudit audit = audit(binding, providerId, supplierName,
-                    ProviderAttemptStatus.SUCCEEDED);
+            ProviderAttemptAudit audit = audit(attempt, ProviderAttemptStatus.SUCCEEDED);
             return LiveAttemptOutcome.succeeded(decision, binding, audit, output, usage,
                     decision.quotaReservation());
         }
@@ -245,35 +333,33 @@ public final class LiveModelInvoker {
             RecoveryOutcome outcome = recovery.recover(
                     decision.ownership(), RecoveryScenario.CANCELLED,
                     decision.quotaReservation());
-            ProviderAttemptAudit audit = audit(binding, providerId, supplierName,
-                    ProviderAttemptStatus.CANCELLED);
+            ProviderAttemptAudit audit = audit(attempt, ProviderAttemptStatus.CANCELLED);
             return LiveAttemptOutcome.cancelled(decision, binding, audit, outcome);
         }
         if (terminalEvent instanceof ModelProtocolEvent.AttemptFailed failed) {
-            return handleFailure(decision, binding, providerId, supplierName, failed.failure());
+            return handleFailure(decision, binding, attempt, providerId, failed.failure());
         }
         throw new IllegalStateException("unexpected terminal event: " + terminalEvent);
     }
 
     private LiveAttemptOutcome fenceViolationOutcome(
             RouteDecision decision,
-            InvocationBinding.ExternalAttemptBinding binding,
-            ProviderId providerId,
-            String supplierName) {
+            InvocationBinding binding,
+            ExternalAttemptBinding attempt,
+            ProviderId providerId) {
         RecoveryOutcome outcome = recovery.recover(
                 decision.ownership(), RecoveryScenario.ALL_FAILURE,
                 decision.quotaReservation());
-        ProviderAttemptAudit audit = audit(binding, providerId, supplierName,
-                ProviderAttemptStatus.NON_RETRYABLE_FAILED);
+        ProviderAttemptAudit audit = audit(attempt, ProviderAttemptStatus.NON_RETRYABLE_FAILED);
         return LiveAttemptOutcome.failed(decision, binding, audit,
                 new AdapterFailure.MalformedResponse(), outcome, LiveAttemptTerminal.FAILED);
     }
 
     private LiveAttemptOutcome handleFailure(
             RouteDecision decision,
-            InvocationBinding.ExternalAttemptBinding binding,
+            InvocationBinding binding,
+            ExternalAttemptBinding attempt,
             ProviderId providerId,
-            String supplierName,
             AdapterFailure failure) {
         boolean timeout = failure instanceof AdapterFailure.Timeout;
         RecoveryScenario scenario = timeout ? RecoveryScenario.TIMEOUT : RecoveryScenario.ALL_FAILURE;
@@ -283,21 +369,19 @@ public final class LiveModelInvoker {
                 ? ProviderAttemptStatus.RETRYABLE_FAILED
                 : timeout ? ProviderAttemptStatus.TIMED_OUT
                 : ProviderAttemptStatus.NON_RETRYABLE_FAILED;
-        ProviderAttemptAudit audit = audit(binding, providerId, supplierName, status);
+        ProviderAttemptAudit audit = audit(attempt, status);
         LiveAttemptTerminal terminal = timeout ? LiveAttemptTerminal.TIMED_OUT : LiveAttemptTerminal.FAILED;
         return LiveAttemptOutcome.failed(decision, binding, audit, failure, outcome, terminal);
     }
 
     private ProviderAttemptAudit audit(
-            InvocationBinding.ExternalAttemptBinding binding,
-            ProviderId providerId,
-            String supplierName,
+            ExternalAttemptBinding attempt,
             ProviderAttemptStatus status) {
         return new ProviderAttemptAudit(
-                binding.providerAttemptId(),
-                binding.ownership(),
-                providerId.value(),
-                supplierName,
+                attempt.providerAttemptId(),
+                attempt.ownership(),
+                attempt.providerId(),
+                attempt.supplierName(),
                 status);
     }
 
