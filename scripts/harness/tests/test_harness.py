@@ -11676,11 +11676,14 @@ class Task0196PreReadyCompletionTests(unittest.TestCase):
 
     def test_exact_chain_positive(self):
         # Positive: the exact machine record and the card contract pass with
-        # zero errors, and the fully staged candidate already satisfies every
-        # per-file identity binding of the completion record (worktree content
-        # hashes and blobs). The committed chain ea129d1 -> 8114da2 -> e1a7588
-        # is exact. Once the completion boundary commit exists (post-commit),
-        # the full live boundary validation also passes with zero errors.
+        # zero errors. While HEAD is exactly the completion boundary commit,
+        # the fully staged candidate also satisfies every per-file identity
+        # binding of the completion record (worktree content hashes and
+        # blobs); after later legitimate state transitions (READY,
+        # authorizationCommit backfill) those files legitimately evolve, so
+        # the immutable live boundary validation against the committed tree
+        # remains the durable positive. The committed chain
+        # ea129d1 -> 8114da2 -> e1a7588 is exact.
         import hashlib as _h
         import json as _json
 
@@ -11694,36 +11697,43 @@ class Task0196PreReadyCompletionTests(unittest.TestCase):
         audit = doctor.Audit()
         doctor.validate_task0196_card_maintenance_contract(audit)
         self.assertFalse(audit.errors, audit.errors)
-        exact = record["boundary"]["files"]["exactFiles"]
-        for path, identity in exact.items():
+        children = self._completion_boundary_commits()
+        head_commit = doctor.git_text("rev-parse", "HEAD").stdout.strip()
+        if head_commit in children:
+            # Boundary-moment identity: the fully staged candidate matches
+            # every per-file binding of the completion record.
+            exact = record["boundary"]["files"]["exactFiles"]
+            for path, identity in exact.items():
+                self.assertEqual(
+                    _h.sha256((ROOT / path).read_bytes()).hexdigest(),
+                    identity["sha256"],
+                    path,
+                )
+                self.assertEqual(
+                    doctor.git_worktree_blob_oid(path),
+                    identity["blobOid"],
+                    path,
+                )
+            doctor_identity = record["boundary"]["files"]["doctor"]
             self.assertEqual(
-                _h.sha256((ROOT / path).read_bytes()).hexdigest(),
-                identity["sha256"],
-                path,
+                _h.sha256(
+                    (ROOT / "scripts/harness/doctor.py").read_bytes()
+                ).hexdigest(),
+                doctor_identity["sha256"],
             )
             self.assertEqual(
-                doctor.git_worktree_blob_oid(path),
-                identity["blobOid"],
-                path,
+                doctor.git_worktree_blob_oid("scripts/harness/doctor.py"),
+                doctor_identity["blobOid"],
             )
-        doctor_identity = record["boundary"]["files"]["doctor"]
-        self.assertEqual(
-            _h.sha256(
-                (ROOT / "scripts/harness/doctor.py").read_bytes()
-            ).hexdigest(),
-            doctor_identity["sha256"],
-        )
-        self.assertEqual(
-            doctor.git_worktree_blob_oid("scripts/harness/doctor.py"),
-            doctor_identity["blobOid"],
-        )
-        authz_path = record["authorization"]["path"]
-        authz = _json.loads((ROOT / authz_path).read_bytes().decode("utf-8"))
-        self.assertEqual(authz["recordId"], doctor.TASK_0196_COMPLETION_RECORD_ID)
-        self.assertEqual(
-            _h.sha256((ROOT / authz_path).read_bytes()).hexdigest(),
-            record["authorization"]["sha256"],
-        )
+            authz_path = record["authorization"]["path"]
+            authz = _json.loads((ROOT / authz_path).read_bytes().decode("utf-8"))
+            self.assertEqual(
+                authz["recordId"], doctor.TASK_0196_COMPLETION_RECORD_ID
+            )
+            self.assertEqual(
+                _h.sha256((ROOT / authz_path).read_bytes()).hexdigest(),
+                record["authorization"]["sha256"],
+            )
         # Committed chain facts (both failed edges are already in history).
         self.assertEqual(
             doctor.git_text(
@@ -11753,7 +11763,6 @@ class Task0196PreReadyCompletionTests(unittest.TestCase):
         )
         # Post-commit: the live completion boundary (direct child of e1a7588)
         # passes the full boundary validation.
-        children = self._completion_boundary_commits()
         if children:
             for child in children:
                 self.assertTrue(
@@ -12073,6 +12082,31 @@ class Task0196PreReadyCompletionTests(unittest.TestCase):
             doctor.task0196_completion_boundary_candidate(
                 doctor.TASK_0196_ORIGINAL_DRAFT_COMMIT
             )
+        )
+
+    def test_ready_checkpoint_allowed_paths_cover_all_frozen_edges(self):
+        # The READY authorization checkpoint diff spans baseCommit .. the
+        # READY commit and therefore includes every frozen pre-READY edge
+        # path; the TASK-0196-scoped helper admits exactly the maintenance
+        # 01 / recovery 02 / completion 03 frozen plan paths and nothing else
+        # (no generic multi-maintenance or writeAllowlist release).
+        task = doctor.task_metadata_from_text(
+            doctor.read_repository_text(ROOT / doctor.TASK_0196_CARD_PATH),
+            doctor.TASK_0196_CARD_PATH,
+        )
+        allowed = doctor.task0196_ready_checkpoint_allowed_paths(task)
+        self.assertEqual(
+            allowed,
+            doctor.TASK_0196_PRE_READY_MAINTENANCE_PATHS
+            | doctor.TASK_0196_RECOVERY_PATHS
+            | doctor.TASK_0196_COMPLETION_PATHS,
+        )
+        self.assertNotIn("docs/planning/x.md", allowed)
+        self.assertNotIn("docs/handoffs/TASK-0195.json", allowed)
+        # A task without the frozen plans gets no admission.
+        self.assertEqual(
+            doctor.task0196_ready_checkpoint_allowed_paths({}),
+            set(),
         )
 
 

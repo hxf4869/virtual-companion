@@ -3833,6 +3833,29 @@ def validate_ready_parent_projection(
         )
 
 
+def task0196_ready_checkpoint_allowed_paths(task: dict[str, Any]) -> set[str]:
+    """TASK-0196 READY authorization checkpoint allowed path set.
+
+    The authorization-commit diff spans baseCommit .. the READY commit and
+    therefore includes every frozen pre-READY edge path (maintenance 01,
+    recovery 02 and completion 03 plans). This helper admits exactly the
+    frozen plan exact paths; it is TASK-0196-scoped and never becomes a
+    generic multi-maintenance or writeAllowlist release capability.
+    """
+    paths: set[str] = set()
+    for key in (
+        "preReadyMaintenancePlan",
+        "preReadyMaintenanceRecoveryPlan",
+        "preReadyMaintenanceCompletionPlan",
+    ):
+        plan = task.get(key)
+        if isinstance(plan, dict):
+            plan_paths = plan.get("exactPaths", [])
+            if isinstance(plan_paths, list):
+                paths.update(str(p) for p in plan_paths)
+    return paths
+
+
 def validate_ready_project_state_checkpoint(
     audit: Audit,
     task: dict[str, Any],
@@ -9944,12 +9967,9 @@ def validate_tasks(
                     for p in maintenance_plan_auth.get("exactPaths", []):
                         allowed_checkpoint_paths.add(str(p))
                 if task_id == TASK_0196_TASK_ID:
-                    completion_plan_auth = task.get(
-                        "preReadyMaintenanceCompletionPlan"
+                    allowed_checkpoint_paths |= (
+                        task0196_ready_checkpoint_allowed_paths(task)
                     )
-                    if isinstance(completion_plan_auth, dict):
-                        for p in completion_plan_auth.get("exactPaths", []):
-                            allowed_checkpoint_paths.add(str(p))
                 audit.require(path in checkpoint_paths, f"{path}: authorization commit must include the task card")
                 audit.require(
                     checkpoint_paths <= allowed_checkpoint_paths,
