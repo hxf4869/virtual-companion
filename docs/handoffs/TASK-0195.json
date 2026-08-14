@@ -70,5 +70,5 @@
     "V28 追加式迁移已由本卡接纳；Flyway checksum 随 V28 blob 固化，后续任何 V1-V28 修改都将触发校验失败关闭",
     "审计报告其余 findings 全部未处理"
   ],
-  "nextAction": "TASK-0195 ACCEPTED 终态提交后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。"
+  "nextAction": "TASK-0195 ACCEPTED 终态（继承实现正式接纳完成）后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。"
 }
