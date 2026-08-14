@@ -108,6 +108,15 @@ preReadyMaintenancePlan:
   reusable: false
   consumedRecordMustBecomeInert: true
   provenanceRetainedForHistoryVerification: true
+  attemptOutcome: CONSUMED_IMPLEMENTATION_FAILED
+  attemptCommit: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+  attemptTree: 623262a623308fdfd088cd807f04de7b411638de
+  inertReason: >-
+    Owner 2026-08-14 方案 D 定性：8114da2 为"已消费但实现失败的 pre-READY
+    maintenance attempt"（定向测试 PASS；Doctor FAIL 1169 errors；不产生 READY
+    授权；不得再次作为任何 maintenance 授权使用）。本计划记录保留可审计但惰化，
+    不覆盖、不改写其历史含义；恢复由 preReadyMaintenanceRecoveryPlan
+    （OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-02）承载。
   exactPaths:
     - .harness/ci-execution-policy.yaml
     - docs/evidence/TASK-0196/pre-ready-maintenance-authorization.json
@@ -115,6 +124,29 @@ preReadyMaintenancePlan:
     - scripts/harness/tests/test_harness.py
     - skills/task-delivery-flow/SKILL.md
     - skills/task-intake/SKILL.md
+preReadyMaintenanceRecoveryPlan:
+  recordId: OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-02
+  recordPath: docs/evidence/TASK-0196/pre-ready-maintenance-recovery-authorization.json
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_RECOVERY_MAINTENANCE
+  directParentCommitRequired: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+  failedAttemptCommit: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+  failedAttemptTree: 623262a623308fdfd088cd807f04de7b411638de
+  originalDraftCommit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+  oneTimeOnly: true
+  reusable: false
+  consumedRecordMustBecomeInert: true
+  provenanceRetainedForHistoryVerification: true
+  firstRecordInerted: true
+  secondRecordFixesKnownFailureOnly: true
+  generalizationForbidden: true
+  exactPaths:
+    - .harness/ci-execution-policy.yaml
+    - docs/evidence/TASK-0196/pre-ready-maintenance-recovery-authorization.json
+    - scripts/harness/doctor.py
+    - scripts/harness/tests/test_harness.py
+    - skills/task-delivery-flow/SKILL.md
+    - skills/task-intake/SKILL.md
+    - docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md
 validationPlan: {frozenBefore: READY, policySource: .harness/ci-execution-policy.yaml, selectedChannel: LOCAL_EXACT_TREE_FALLBACK, profile: precheck}
 readAllowlist:
   - .gitattributes
@@ -331,7 +363,29 @@ humanApprovals:
       落地后运行冻结的定向正负测试及 TASK-0098/0189 回归与 Doctor，只有
       READY Doctor 真实 PASS 才可进入 READY；修复 ACCEPTED/REJECTED blanket
       continue，但不得用当前 schema 无差别重判全部不可变历史制品，应校验
-      terminal 后新增父边、当前 terminal artifact 一致性及版本化稳定不变量。independentReview: required
+      terminal 后新增父边、当前 terminal artifact 一致性及版本化稳定不变量。
+      Owner 2026-08-14 方案 D 追加批准（recordId
+      OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-02）：保留 8114da2
+      （已消费但实现失败的 pre-READY maintenance attempt，不再作为任何
+      maintenance 授权使用）；第二份一次性恢复边必须是 8114da2 的直接单父提交，
+      恰好修改 7 个冻结路径（原 6 路径中 authorization json 换为
+      pre-ready-maintenance-recovery-authorization.json，并新增任务卡路径），
+      不得增删；原 pre-ready-maintenance-authorization.json 与原 policy 记录
+      保留不覆盖、不改写其历史含义（第一份记录保持可审计但惰化）；第二份记录
+      只允许修复本次已知失败（撤回 blanket terminal evidence 全历史重判，改为
+      独立定向 post-terminal edge validator），不得形成通用"maintenance 后再补
+      maintenance"能力；Context Lock 仅当机器验证证明卡修复改变其冻结输入时才
+      可修改（机器验证：34 项 inputs 不含任务卡，指纹 76803c8d 不变，无需修改）；
+      TASK-0141 定性为 enforcement activation 前已存在且无 post-terminal edge
+      的历史 nextAction 不一致——本卡不追溯阻塞、不称 PASS、不改其历史制品，
+      在 Evidence/Handoff 记录为独立 legacy governance finding 后续另卡处理，
+      不引入通用 quarantine/ignore 机制；恢复边提交后必须重跑全部正负测试、
+      0098/0189/0196 回归、IdlePlanningCheckpoint 与 Enforcement 回归、
+      git diff --check、doctor --task TASK-0196 与 doctor --summary，两次 Doctor
+      均真实 PASS 才可继续 READY；任何 Doctor error、新历史异常、第 8 个路径、
+      记录契约变化或 Reviewer P0/P1 立即暂停；不 push、merge、rebase、reset、
+      不改写历史。
+independentReview: required
 reviewers: []
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0196

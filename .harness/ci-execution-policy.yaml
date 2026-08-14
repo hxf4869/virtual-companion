@@ -1665,6 +1665,95 @@ task0196PostTerminalTail:
     generalizedOverride: false
     branchOrWorktree: false
     githubActionsDispatch: false
+task0196PostTerminalTailRecovery:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-02
+  decisionId: TASK-0196-PRE-READY-RECOVERY-ACCEPTANCE-20260814
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_RECOVERY_MAINTENANCE
+  targetTask: TASK-0196
+  sourceThreadId: zcode-main-20260814
+  authorization:
+    path: docs/evidence/TASK-0196/pre-ready-maintenance-recovery-authorization.json
+    sha256: 2018058a7db10ffb1548dbd326d992fdfe256ace8d84db89f9ced5c214c012d3
+  failedAttempt:
+    commit: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+    tree: 623262a623308fdfd088cd807f04de7b411638de
+    outcome: CONSUMED_IMPLEMENTATION_FAILED
+    doctorResult: "FAIL 1169 errors / 2397168 checks"
+    originalDraftCommit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+    originalDraftTree: 01f09d44f6d93aa84200cc526b9bc3ef2be1a0d5
+    firstRecordInerted: true
+    generalizationForbidden: true
+  draft:
+    commit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+    tree: 01f09d44f6d93aa84200cc526b9bc3ef2be1a0d5
+    parent: 751cb9db547df2ba33d55d310276bc14e1fbd5eb
+  boundary:
+    directParentCommit: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+    directParentTree: 623262a623308fdfd088cd807f04de7b411638de
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - docs/evidence/TASK-0196/pre-ready-maintenance-recovery-authorization.json
+      - docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+      - skills/task-delivery-flow/SKILL.md
+      - skills/task-intake/SKILL.md
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0196_RECOVERY_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: ae361f9b226bb4283377195ab5357f85e6242988
+        sha256: de4afaf95178cda58dd4fe225025e07648e6c250de04380639ffddd7a596f4b5
+      exactFiles:
+        docs/evidence/TASK-0196/pre-ready-maintenance-recovery-authorization.json:
+          blobOid: 9d66052f291aa723cb882d406d86adec4423d99c
+          sha256: 2018058a7db10ffb1548dbd326d992fdfe256ace8d84db89f9ced5c214c012d3
+        docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md:
+          blobOid: 778d071cfc6420cd7c8bd33763efbe3bd4905053
+          sha256: 07ba68df494c14f06777bd778fe7410397991f950d823c558b69ffc6f3fadca6
+        scripts/harness/tests/test_harness.py:
+          blobOid: bae9a8fa97056562c870035ff847e3a3a322af61
+          sha256: 3ee355da1bf013edce5023bda287ab027cf943f7b45afbd169589b8831b8ff45
+        skills/task-delivery-flow/SKILL.md:
+          blobOid: 56f84da2427921f9e1ac14634f853f43c16c454d
+          sha256: 341b241653a7f1f8fd8ad4f48a0bf10d5fc5546d631f484d128022f19bd092fb
+        skills/task-intake/SKILL.md:
+          blobOid: 9580e96d43306144b28bd2f81d94cdbbd7127441
+          sha256: 6fd28d64c5afde5cc427609091e261f7bc0024776a32612d1735b37df3536aae
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0196
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    provenanceRetainedForHistoryVerification: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: precheck
+    remote: UNKNOWN_NOT_RUN
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    wildcardWritePath: false
+    generalizedOverride: false
+    branchOrWorktree: false
+    githubActionsDispatch: false
 rules:
   profileMustBeFrozenBeforeReady: true
   resultBasedProfileDowngradeForbidden: true

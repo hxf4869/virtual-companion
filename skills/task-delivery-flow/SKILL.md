@@ -259,6 +259,39 @@ description: Execute one governed repository task or coordinate a strictly seria
   authorized. Ordinary READY authorization and a real READY Doctor PASS
   remain mandatory.
 
+## TASK-0196 append-only recovery edge (RECOVERY-02)
+
+- Record `OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-02` is the second
+  one-time recovery edge: it must be the direct single-parent child of
+  `8114da2` (the consumed-but-failed pre-READY maintenance attempt, Doctor FAIL
+  1169 errors, never again usable as any maintenance authorization) and change
+  exactly 7 frozen paths (the original 6 with the authorization json replaced
+  by `pre-ready-maintenance-recovery-authorization.json`, plus the task card).
+  The original `pre-ready-maintenance-authorization.json` and the original
+  policy record are retained unmodified with their historical meaning (first
+  record stays auditable but inert). The second record fixes only the known
+  failure: blanket terminal-evidence re-judging of historical tasks is
+  withdrawn and replaced by a dedicated post-terminal edge validator where
+  unregistered parent edges fail closed, registered edges must exactly match a
+  one-time record, and the original card writeAllowlist never authorizes a
+  post-terminal change. No generalized "maintenance after maintenance"
+  capability is created. Context Lock changes only when machine verification
+  proves the card fix alters its frozen inputs (verified: 34 inputs, unchanged
+  fingerprint). TASK-0141 is a pre-activation historical nextAction mismatch
+  with no post-terminal edge: not retroactively blocked, not called PASS, its
+  artifacts untouched, recorded as a separate legacy governance finding, and
+  no general quarantine/ignore mechanism is introduced. Terminal commits
+  produced after activation must fail when project-state.nextAction and
+  handoff.nextAction disagree at the terminal commit itself; ordinary
+  post-hoc fix commits are forbidden.
+- After the recovery edge is committed, rerun all positive/negative tests,
+  TASK-0098/0189/0196 regression, IdlePlanningCheckpoint and Enforcement
+  regression, `git diff --check`, `doctor.py --task TASK-0196` and
+  `doctor.py --summary`; continue to READY only after both Doctors really
+  PASS. Any Doctor error, new historical anomaly, an 8th path, record-contract
+  change, or Reviewer P0/P1 pauses immediately. No push, merge, rebase, reset,
+  or history rewrite.
+
 ## Run a longline
 
 1. Derive order, dependencies, and hard decision gates only from

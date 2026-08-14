@@ -111,6 +111,21 @@ metadata:
    terminal 后时，仅当 canonical terminal→base 每条父边均被正式登记、精确匹配且
    连续覆盖才放行；Doctor 修复 ACCEPTED/REJECTED blanket continue 时不得用当前
    schema 无差别重判不可变历史制品。
+   TASK-0196 RECOVERY-02（append-only 精确恢复边）：记录
+   OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-02 是 8114da2（已消费但实现
+   失败的 pre-READY maintenance attempt，Doctor FAIL 1169 errors）的直接单父子
+   提交，恰好修改 7 个冻结路径（原 6 路径中 authorization json 换为
+   pre-ready-maintenance-recovery-authorization.json，并新增任务卡路径）；原
+   pre-ready-maintenance-authorization.json 与原 policy 记录保留不覆盖、不改写其
+   历史含义（第一份记录保持可审计但惰化）；第二份记录只允许修复本次已知失败
+   （撤回 blanket terminal evidence 全历史重判，改为独立定向 post-terminal edge
+   validator：未登记父边默认失败、登记父边精确匹配一次性记录、原卡 writeAllowlist
+   不能授权 post-terminal 修改），不得形成通用 maintenance 后再补 maintenance
+   能力；Context Lock 仅当机器验证证明卡修复改变冻结输入时才可修改；TASK-0141
+   为 enforcement activation 前已存在且无 post-terminal edge 的历史 nextAction
+   不一致——不追溯阻塞、不称 PASS、不改历史制品、记录为独立 legacy governance
+   finding 另卡处理、不引入通用 quarantine/ignore 机制；激活后新终态的 nextAction
+   当下不一致必须失败，不允许普通事后提交修复。
 10. READY 后确需 Owner 修订时，不重写授权提交或放宽原合同：先在 `.harness/task-backlog.yaml` 建立强类型 amendment 合同，并在任务卡 `scopeAmendments` 保存完整 Hash 绑定投影。合同逐项记录 `supersedes` 原条款稳定 ID/原文 Hash 与 `replacement` 原文/Hash；未列条款仍受原授权投影约束。新增写路径只能是规范 POSIX 精确路径，不能是 glob；amendment 必须由 `repository-owner` 批准、append-only，并在只改 Backlog 与任务卡的单父原子治理提交中先落入 Git 历史，未提交 worktree/index 不得自授权。
 11. PLANNED 在进入 DRAFT 前被取消或替代时，不伪造动态执行证据；保留原卡和 Backlog 条目，把原卡 state 与
     append-only `resolutions` 原子登记为同一 REJECTED/SUPERSEDED，并记录非空原因、决策人、时间和替代 ID。

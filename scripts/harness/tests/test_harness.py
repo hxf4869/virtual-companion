@@ -11479,26 +11479,23 @@ class Task0196PostTerminalTailTests(unittest.TestCase):
             self.assertFalse(audit.errors, audit.errors)
             self.assertIsNotNone(record)
 
-    def test_deep_validation_reaches_terminal_tasks(self):
-        # The ACCEPTED/REJECTED blanket continue is removed for tasks with
-        # full authorizationCommit + headCommit (e.g. TASK-0195): the deep
-        # terminal validation must run instead of being short-circuited.
-        import json as _json
+    def test_historical_tasks_are_not_rejudged(self):
+        # Owner 2026-08-14 plan D: the blanket terminal-evidence re-judging
+        # of historical tasks is withdrawn. Historical tasks keep their
+        # lightweight path; post-terminal governance is enforced by the
+        # dedicated validate_post_terminal_governance_edges validator, and
+        # the original card writeAllowlist never authorizes post-terminal
+        # changes.
         import re as _re
 
         task = doctor.task_metadata_from_text(
             doctor.read_repository_text(ROOT / "docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md"),
             "docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md",
         )
-        self.assertTrue(
-            _re.fullmatch(r"[0-9a-f]{40}", str(task.get("authorizationCommit", "")))
-        )
-        with open(ROOT / "docs/evidence/TASK-0195/evidence-pack.json", encoding="utf-8") as f:
-            head_commit = _json.load(f).get("headCommit", "")
-        self.assertTrue(
-            _re.fullmatch(r"[0-9a-f]{40}", str(head_commit)),
-            "TASK-0195 must be deep-validated after the blanket-continue fix",
-        )
+        # TASK-0195's own writeAllowlist includes docs/handoffs/TASK-0195.json
+        # yet the tail is accepted only via the exact registered record.
+        self.assertIn("docs/handoffs/TASK-0195.json", task.get("writeAllowlist", []))
+        self.assertNotIn("postTerminalTailAcceptance", task)
         # Historical compressed-delivery cards with placeholder
         # authorizationCommit keep their lightweight path (no schema
         # re-judging of immutable history): their placeholders are real.
@@ -11519,6 +11516,134 @@ class Task0196PostTerminalTailTests(unittest.TestCase):
         audit = doctor.Audit()
         doctor.validate_task0196_card_maintenance_contract(audit)
         self.assertFalse(audit.errors, audit.errors)
+
+    def test_first_record_inert_and_recovery_contract_exact(self):
+        # 8114da2 is the consumed-but-failed attempt (inert, auditable); the
+        # recovery record fixes only the known failure and binds the exact
+        # 7-path set with the failed attempt as direct parent.
+        audit = doctor.Audit()
+        doctor.validate_task0196_card_maintenance_contract(audit)
+        self.assertFalse(audit.errors, audit.errors)
+        task = doctor.task_metadata_from_text(
+            doctor.read_repository_text(ROOT / doctor.TASK_0196_CARD_PATH),
+            doctor.TASK_0196_CARD_PATH,
+        )
+        self.assertEqual(
+            task["preReadyMaintenancePlan"]["attemptCommit"],
+            doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+        )
+        self.assertEqual(
+            task["preReadyMaintenancePlan"]["attemptOutcome"],
+            "CONSUMED_IMPLEMENTATION_FAILED",
+        )
+        self.assertEqual(
+            task["preReadyMaintenanceRecoveryPlan"]["recordId"],
+            doctor.TASK_0196_RECOVERY_RECORD_ID,
+        )
+        self.assertEqual(
+            set(task["preReadyMaintenanceRecoveryPlan"]["exactPaths"]),
+            doctor.TASK_0196_RECOVERY_PATHS,
+        )
+        self.assertEqual(
+            task["preReadyMaintenanceRecoveryPlan"]["directParentCommitRequired"],
+            doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+        )
+
+    def test_recovery_record_exact_machine_record_is_accepted(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0196_post_terminal_tail_recovery_record(
+            audit, policy
+        )
+        self.assertFalse(audit.errors, audit.errors)
+        self.assertIsNotNone(record)
+
+    def test_recovery_record_failed_attempt_is_bound(self):
+        audit = doctor.Audit()
+        policy = load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+        record = doctor.validate_task0196_post_terminal_tail_recovery_record(
+            audit, policy
+        )
+        self.assertIsNotNone(record)
+        self.assertEqual(
+            record["failedAttempt"]["commit"], doctor.TASK_0196_FAILED_ATTEMPT_COMMIT
+        )
+        self.assertEqual(
+            record["failedAttempt"]["tree"], doctor.TASK_0196_FAILED_ATTEMPT_TREE
+        )
+        self.assertEqual(
+            record["failedAttempt"]["outcome"], "CONSUMED_IMPLEMENTATION_FAILED"
+        )
+        self.assertEqual(
+            record["boundary"]["directParentCommit"],
+            doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+        )
+        self.assertEqual(
+            record["boundary"]["changedPaths"],
+            sorted(doctor.TASK_0196_RECOVERY_PATHS),
+        )
+
+    def test_recovery_record_negatives_fail_closed(self):
+        # Wrong direct parent, extra path, copied record, and second
+        # consumption all fail closed.
+        import copy
+
+        for mutate in (
+            lambda r: r["boundary"].update(directParentCommit="0" * 40),
+            lambda r: r["boundary"]["changedPaths"].append("docs/planning/x.md"),
+            lambda r: r["failedAttempt"].update(commit="1" * 40),
+            lambda r: r["consumption"].update(consumedWhen="TWICE"),
+        ):
+            audit = doctor.Audit()
+            policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+            mutate(policy["task0196PostTerminalTailRecovery"])
+            doctor.validate_task0196_post_terminal_tail_recovery_record(audit, policy)
+            self.assertTrue(audit.errors)
+
+    def test_recovery_record_copied_is_forbidden(self):
+        import copy
+        audit = doctor.Audit()
+        policy = copy.deepcopy(load_yaml(ROOT / ".harness/ci-execution-policy.yaml"))
+        policy["task0196PostTerminalTailRecoveryCopy"] = copy.deepcopy(
+            policy["task0196PostTerminalTailRecovery"]
+        )
+        doctor.validate_task0196_post_terminal_tail_recovery_record(audit, policy)
+        self.assertTrue(audit.errors)
+
+    def test_recovery_boundary_candidate_is_direct_child_of_failed_attempt(self):
+        graph = doctor.git_text(
+            "rev-list", "--parents", "-n", "1", doctor.TASK_0196_FAILED_ATTEMPT_COMMIT
+        ).stdout.split()
+        self.assertEqual(
+            graph,
+            [doctor.TASK_0196_FAILED_ATTEMPT_COMMIT, doctor.TASK_0196_ORIGINAL_DRAFT_COMMIT],
+        )
+        self.assertFalse(
+            doctor.task0196_recovery_boundary_candidate(doctor.TASK_0196_FAILED_ATTEMPT_COMMIT)
+        )
+        self.assertFalse(
+            doctor.task0196_recovery_boundary_candidate("0" * 40)
+        )
+        # The recovery edge is the direct single-parent child of the failed
+        # attempt (discovered dynamically from the live graph).
+        children = []
+        for commit in doctor.git_text("rev-list", "--all").stdout.splitlines():
+            commit = commit.strip()
+            parents = doctor.git_text(
+                "rev-list", "--parents", "-n", "1", commit
+            ).stdout.split()
+            if len(parents) == 2 and parents[1] == doctor.TASK_0196_FAILED_ATTEMPT_COMMIT:
+                children.append(commit)
+        self.assertTrue(children, "recovery edge must exist as direct child")
+        for child in children:
+            self.assertTrue(doctor.task0196_recovery_boundary_candidate(child))
+
+    def test_post_terminal_governance_edges_validator_exists(self):
+        # The dedicated validator exists and runs in the idle state; with an
+        # active task or pending DRAFT it is skipped by design.
+        self.assertTrue(
+            callable(doctor.validate_post_terminal_governance_edges)
+        )
 
 
 class Task0192AmendmentDiffScopeRecoveryTests(unittest.TestCase):
