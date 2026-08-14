@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0194
+activeTaskCard: docs/tasks/TASK-0194-worker-lease-fence-transaction-boundary.md
 lastAcceptedTask: TASK-0193
 lastAcceptedHandoff: docs/handoffs/TASK-0193.json
 lastTerminalTask: TASK-0193
 lastTerminalHandoff: docs/handoffs/TASK-0193.json
-nextAction: TASK-0193 ACCEPTED：P0 owner-context/RLS 继承实现已按 inheritedStateManifest 机器绑定正式接纳（70 路径零漂移、四条冻结验收命令与 C4 独立复核全 PASS；TASK-0191 保持 REJECTED）；本地 main 保持未推送未合并，由 Owner 决策是否推送或继续外部审计后续修复项（lease/fence 业务写入保护与 runtime/migrator 身份隔离另开任务卡）。
+nextAction: TASK-0194 READY（外部审计 P1 修复首卡：worker lease/fence 墙钟生效、prepare/external 事务分离、outbound 前 attempt intent、显式 claim guard、per-item terminalize、独立 fail；Owner 2026-08-14 批准拆卡与 C4 database-migration/AUTHORIZATION 范围并给定 5 项设计修正已落入 DRAFT 879da12；baseCommit=fb9cf0e TASK-0193 ACCEPTED 终态；待 READY Doctor PASS 后进入 IN_PROGRESS 实现；TASK-0195 bounded retry/dead-letter 后续串行暂不创建）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

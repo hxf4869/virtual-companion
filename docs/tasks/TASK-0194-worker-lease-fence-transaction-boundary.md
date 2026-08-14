@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0194
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -343,7 +343,25 @@ requiredInvariants:
   - INV-HARNESS-002
   - INV-HARNESS-003
   - INV-HARNESS-007
-humanApprovals: []
+humanApprovals:
+  - scope: scope-and-split-decision
+    approvedBy: repository-owner
+    approvedAt: "2026-08-14"
+    sourceThreadId: zcode-main-20260814
+    evidence: >-
+      Owner 2026-08-14 批准拆卡：TASK-0194 承载不可分割安全基座（prepare/external 事务分离 +
+      outbound 前 attempt intent + 显式 claim guard + 墙钟 lease + per-item terminalize +
+      独立 fail），bounded retry/dead-letter 列串行后续 TASK-0195（暂不创建）；并给定 5 项设计
+      修正（已逐项落入 DRAFT 修正 879da12）。授权据此自主进入 READY。
+  - scope: database-migration-and-authorization
+    approvedBy: repository-owner
+    approvedAt: "2026-08-14"
+    sourceThreadId: zcode-main-20260814
+    evidence: >-
+      Owner 2026-08-14 原则批准 TASK-0194 的 C4 database-migration 与 AUTHORIZATION 安全面范围：
+      追加式 V28（CREATE OR REPLACE/新增 guard 函数，不改 V1-V27），保持 FORCE RLS、复合 owner FK、
+      V27 owner 密码学绑定与 current_owner_id 每调用重校验不被弱化；业务写显式校验
+      work_item_id+claim_token+claim_fence（非可伪造 GUC）。
 independentReview: required
 reviewers: []
 requiredCommands:
