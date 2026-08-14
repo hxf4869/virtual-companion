@@ -147,6 +147,31 @@ preReadyMaintenanceRecoveryPlan:
     - skills/task-delivery-flow/SKILL.md
     - skills/task-intake/SKILL.md
     - docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md
+preReadyMaintenanceCompletionPlan:
+  recordId: OWNER-MAINT-20260814-TASK-0196-PRE-READY-COMPLETION-03
+  recordPath: docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_COMPLETION_MAINTENANCE
+  directParentCommitRequired: e1a75883f51eedda362a4c4fbd76002ac9f9bcda
+  recoveryCommit: e1a75883f51eedda362a4c4fbd76002ac9f9bcda
+  recoveryTree: f627a29612a0d64ef6bd1c299e1eb6eb5517c926
+  failedAttemptCommit: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+  failedAttemptTree: 623262a623308fdfd088cd807f04de7b411638de
+  originalDraftCommit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+  originalDraftTree: 01f09d44f6d93aa84200cc526b9bc3ef2be1a0d5
+  oneTimeOnly: true
+  reusable: false
+  consumedRecordMustBecomeInert: true
+  provenanceRetainedForHistoryVerification: true
+  generalizationForbidden: true
+  completionFixesKnownFailureOnly: true
+  furtherRecoveryForbidden: true
+  terminalRecord: true
+  exactPaths:
+    - .harness/ci-execution-policy.yaml
+    - docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json
+    - scripts/harness/doctor.py
+    - scripts/harness/tests/test_harness.py
+    - docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md
 validationPlan: {frozenBefore: READY, policySource: .harness/ci-execution-policy.yaml, selectedChannel: LOCAL_EXACT_TREE_FALLBACK, profile: precheck}
 readAllowlist:
   - .gitattributes
@@ -385,6 +410,32 @@ humanApprovals:
       均真实 PASS 才可继续 READY；任何 Doctor error、新历史异常、第 8 个路径、
       记录契约变化或 Reviewer P0/P1 立即暂停；不 push、merge、rebase、reset、
       不改写历史。
+      Owner 2026-08-14 追加批准第三份、也是最后一份一次性 completion 边
+      （recordId OWNER-MAINT-20260814-TASK-0196-PRE-READY-COMPLETION-03）：
+      RECOVERY-03 必须是 e1a7588（RECOVERY-02 恢复边，提交态 Doctor FAIL
+      4 errors，必须保留）的直接单父提交，恰好只能修改 5 个冻结路径
+      （.harness/ci-execution-policy.yaml、docs/evidence/TASK-0196/
+      pre-ready-maintenance-completion-authorization.json、scripts/harness/
+      doctor.py、scripts/harness/tests/test_harness.py、docs/tasks/
+      TASK-0196-post-terminal-tail-doctor-fix.md），不得增删；不得修改两个
+      Skill、Context Lock、原 RECOVERY-01/02 authorization JSON 或任何第 6 个
+      路径；不得把 e1a7588 追述为 PASS；不得修改、删除或重写两条失败边及旧
+      authorization 记录；Doctor 仅精确接受完整单父链 ea129d1 → 8114da2 →
+      e1a7588 → RECOVERY-03；正负测试矩阵（精确链正例；错误父提交；跳过任一
+      失败边；额外路径；commit/tree/blob/content/mode 漂移；多父；他卡复制；
+      二次消费；RECOVERY-04 尝试）全部失败关闭；不得产生通用多 maintenance、
+      任意 child、HEAD 或旧 writeAllowlist 放行能力；提交前对完整暂存候选真实
+      执行全部定向测试、0098/0189/0196 回归、IdlePlanningCheckpoint 与
+      Enforcement 回归、git diff --check、doctor --task TASK-0196 与
+      doctor --summary，全部 PASS 才允许创建 RECOVERY-03 单父原子提交；提交后
+      在 clean HEAD 上重新运行同一组验证（提交前 PASS 不能代替提交后 PASS）；
+      若提交前任一检查 FAIL 不提交暂停，若提交后任一检查 FAIL 保留真实历史并
+      暂停，不得创建 RECOVERY-04；提交态全部 PASS 后按本卡原冻结范围进入
+      READY（READY Doctor → IN_PROGRESS → 同一候选 SHA requiredCommands →
+      C4 独立 Reviewer → pre-closure Doctor → Evidence/Handoff/Ledger/
+      project-state 原子终态闭合）；TASK-0141 只记录为 activation 前 legacy
+      governance finding，不修改、不宣称修复；全程禁止 push、merge、rebase、
+      reset 或历史改写。
 independentReview: required
 reviewers: []
 requiredCommands:

@@ -11646,6 +11646,436 @@ class Task0196PostTerminalTailTests(unittest.TestCase):
         )
 
 
+class Task0196PreReadyCompletionTests(unittest.TestCase):
+    """TASK-0196 RECOVERY-03: the third and final one-time completion edge
+    (recordId OWNER-MAINT-20260814-TASK-0196-PRE-READY-COMPLETION-03).
+
+    Doctor accepts only the exact full single-parent chain
+    ea129d1 -> 8114da2 -> e1a7588 -> completion. Wrong parent, a skipped
+    failed edge, an extra path, commit/tree/blob/content/mode drift,
+    multi-parent, a copied record, a second consumption and any RECOVERY-04
+    attempt all fail closed. No generic multi-maintenance, arbitrary-child,
+    HEAD or old writeAllowlist release capability exists (the completion
+    record is terminal)."""
+
+    def _live_policy(self):
+        return load_yaml(ROOT / ".harness/ci-execution-policy.yaml")
+
+    def _completion_boundary_commits(self):
+        # The completion boundary is the (single) direct child of e1a7588,
+        # discovered dynamically from the live graph.
+        children = []
+        for commit in doctor.git_text("rev-list", "--all").stdout.splitlines():
+            commit = commit.strip()
+            parents = doctor.git_text(
+                "rev-list", "--parents", "-n", "1", commit
+            ).stdout.split()
+            if len(parents) == 2 and parents[1] == doctor.TASK_0196_RECOVERY_COMMIT:
+                children.append(commit)
+        return children
+
+    def test_exact_chain_positive(self):
+        # Positive: the exact machine record and the card contract pass with
+        # zero errors, and the fully staged candidate already satisfies every
+        # per-file identity binding of the completion record (worktree content
+        # hashes and blobs). The committed chain ea129d1 -> 8114da2 -> e1a7588
+        # is exact. Once the completion boundary commit exists (post-commit),
+        # the full live boundary validation also passes with zero errors.
+        import hashlib as _h
+        import json as _json
+
+        audit = doctor.Audit()
+        policy = self._live_policy()
+        record = doctor.validate_task0196_post_terminal_tail_completion_record(
+            audit, policy
+        )
+        self.assertFalse(audit.errors, audit.errors)
+        self.assertIsNotNone(record)
+        audit = doctor.Audit()
+        doctor.validate_task0196_card_maintenance_contract(audit)
+        self.assertFalse(audit.errors, audit.errors)
+        exact = record["boundary"]["files"]["exactFiles"]
+        for path, identity in exact.items():
+            self.assertEqual(
+                _h.sha256((ROOT / path).read_bytes()).hexdigest(),
+                identity["sha256"],
+                path,
+            )
+            self.assertEqual(
+                doctor.git_worktree_blob_oid(path),
+                identity["blobOid"],
+                path,
+            )
+        doctor_identity = record["boundary"]["files"]["doctor"]
+        self.assertEqual(
+            _h.sha256(
+                (ROOT / "scripts/harness/doctor.py").read_bytes()
+            ).hexdigest(),
+            doctor_identity["sha256"],
+        )
+        self.assertEqual(
+            doctor.git_worktree_blob_oid("scripts/harness/doctor.py"),
+            doctor_identity["blobOid"],
+        )
+        authz_path = record["authorization"]["path"]
+        authz = _json.loads((ROOT / authz_path).read_bytes().decode("utf-8"))
+        self.assertEqual(authz["recordId"], doctor.TASK_0196_COMPLETION_RECORD_ID)
+        self.assertEqual(
+            _h.sha256((ROOT / authz_path).read_bytes()).hexdigest(),
+            record["authorization"]["sha256"],
+        )
+        # Committed chain facts (both failed edges are already in history).
+        self.assertEqual(
+            doctor.git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+            ).stdout.split(),
+            [
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+                doctor.TASK_0196_ORIGINAL_DRAFT_COMMIT,
+            ],
+        )
+        self.assertEqual(
+            doctor.git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                doctor.TASK_0196_RECOVERY_COMMIT,
+            ).stdout.split(),
+            [
+                doctor.TASK_0196_RECOVERY_COMMIT,
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+            ],
+        )
+        # Post-commit: the live completion boundary (direct child of e1a7588)
+        # passes the full boundary validation.
+        children = self._completion_boundary_commits()
+        if children:
+            for child in children:
+                self.assertTrue(
+                    doctor.task0196_completion_boundary_candidate(child)
+                )
+                audit = doctor.Audit()
+                doctor.validate_task0196_completion_boundary(audit, child)
+                self.assertFalse(audit.errors, audit.errors)
+
+    def test_completion_record_is_terminal_and_bound(self):
+        # The record binds the failed attempt 8114da2, the recovery edge
+        # e1a7588, the direct parent and the exact 5-path set; the card and
+        # authorization payload declare the terminal no-further-recovery
+        # contract.
+        audit = doctor.Audit()
+        policy = self._live_policy()
+        record = doctor.validate_task0196_post_terminal_tail_completion_record(
+            audit, policy
+        )
+        self.assertIsNotNone(record)
+        self.assertEqual(
+            record["recordId"],
+            doctor.TASK_0196_COMPLETION_RECORD_ID,
+        )
+        self.assertEqual(
+            record["failedAttempt"]["commit"],
+            doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+        )
+        self.assertEqual(
+            record["recoveryEdge"]["commit"],
+            doctor.TASK_0196_RECOVERY_COMMIT,
+        )
+        self.assertEqual(
+            record["boundary"]["directParentCommit"],
+            doctor.TASK_0196_RECOVERY_COMMIT,
+        )
+        self.assertEqual(
+            record["boundary"]["changedPaths"],
+            sorted(doctor.TASK_0196_COMPLETION_PATHS),
+        )
+        self.assertEqual(
+            record["boundary"]["singleParentRequired"], True
+        )
+        task = doctor.task_metadata_from_text(
+            doctor.read_repository_text(ROOT / doctor.TASK_0196_CARD_PATH),
+            doctor.TASK_0196_CARD_PATH,
+        )
+        completion = task["preReadyMaintenanceCompletionPlan"]
+        self.assertEqual(completion["recordId"], doctor.TASK_0196_COMPLETION_RECORD_ID)
+        self.assertEqual(
+            completion["directParentCommitRequired"],
+            doctor.TASK_0196_RECOVERY_COMMIT,
+        )
+        self.assertTrue(completion["furtherRecoveryForbidden"])
+        self.assertTrue(completion["terminalRecord"])
+        self.assertEqual(
+            set(completion["exactPaths"]),
+            doctor.TASK_0196_COMPLETION_PATHS,
+        )
+        import json as _json
+
+        authz = _json.loads(
+            doctor.read_repository_text(
+                ROOT / doctor.TASK_0196_COMPLETION_AUTHORIZATION_PATH
+            )
+        )
+        self.assertEqual(authz["recordId"], doctor.TASK_0196_COMPLETION_RECORD_ID)
+        self.assertTrue(authz["furtherRecoveryForbidden"])
+        self.assertTrue(authz["terminalRecord"])
+        self.assertEqual(authz["oneTimeOnly"], True)
+        self.assertEqual(authz["reusable"], False)
+
+    def test_negative_wrong_parent_commit_fails_closed(self):
+        import copy
+
+        for field in ("directParentCommit", "directParentTree"):
+            audit = doctor.Audit()
+            policy = copy.deepcopy(self._live_policy())
+            policy["task0196PostTerminalTailCompletion"]["boundary"][field] = (
+                "0" * 40
+            )
+            doctor.validate_task0196_post_terminal_tail_completion_record(
+                audit, policy
+            )
+            self.assertTrue(audit.errors, field)
+        # The boundary must be the direct single-parent child of e1a7588
+        # specifically; e1a7588 itself or any other commit is not a candidate.
+        self.assertFalse(
+            doctor.task0196_completion_boundary_candidate(
+                doctor.TASK_0196_RECOVERY_COMMIT
+            )
+        )
+        self.assertFalse(
+            doctor.task0196_completion_boundary_candidate(
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT
+            )
+        )
+        self.assertFalse(doctor.task0196_completion_boundary_candidate("0" * 40))
+
+    def test_negative_skipped_failed_edge_fails_closed(self):
+        # Skipping either failed edge fails: the record binds the failed
+        # attempt 8114da2 and the recovery edge e1a7588, and the live chain
+        # must be exactly continuous.
+        import copy
+
+        for mutate in (
+            lambda r: r["failedAttempt"].update(commit="1" * 40),
+            lambda r: r["failedAttempt"].update(tree="1" * 40),
+            lambda r: r["failedAttempt"].update(originalDraftCommit="1" * 40),
+            lambda r: r["recoveryEdge"].update(commit="2" * 40),
+            lambda r: r["recoveryEdge"].update(tree="2" * 40),
+            lambda r: r["recoveryEdge"].update(directParentCommit="3" * 40),
+            lambda r: r["recoveryEdge"].update(recordId="OWNER-MAINT-20990101-FAKE"),
+            lambda r: r["draft"].update(commit="4" * 40),
+        ):
+            audit = doctor.Audit()
+            policy = copy.deepcopy(self._live_policy())
+            mutate(policy["task0196PostTerminalTailCompletion"])
+            doctor.validate_task0196_post_terminal_tail_completion_record(
+                audit, policy
+            )
+            self.assertTrue(audit.errors)
+        # Live chain facts: 8114da2 is the direct child of ea129d1 and e1a7588
+        # is the direct child of 8114da2; neither the failed attempt nor the
+        # recovery edge can masquerade as a completion boundary.
+        self.assertEqual(
+            doctor.git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+            ).stdout.split(),
+            [
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+                doctor.TASK_0196_ORIGINAL_DRAFT_COMMIT,
+            ],
+        )
+        self.assertEqual(
+            doctor.git_text(
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                doctor.TASK_0196_RECOVERY_COMMIT,
+            ).stdout.split(),
+            [
+                doctor.TASK_0196_RECOVERY_COMMIT,
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT,
+            ],
+        )
+        self.assertTrue(
+            doctor.task0196_recovery_boundary_candidate(
+                doctor.TASK_0196_RECOVERY_COMMIT
+            )
+        )
+        self.assertFalse(
+            doctor.task0196_recovery_boundary_candidate(
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT
+            )
+        )
+        self.assertFalse(
+            doctor.task0196_completion_boundary_candidate(
+                doctor.TASK_0196_RECOVERY_COMMIT
+            )
+        )
+        self.assertFalse(
+            doctor.task0196_completion_boundary_candidate(
+                doctor.TASK_0196_FAILED_ATTEMPT_COMMIT
+            )
+        )
+
+    def test_negative_extra_path_fails_closed(self):
+        import copy
+
+        audit = doctor.Audit()
+        policy = copy.deepcopy(self._live_policy())
+        policy["task0196PostTerminalTailCompletion"]["boundary"][
+            "changedPaths"
+        ].append("docs/planning/x.md")
+        doctor.validate_task0196_post_terminal_tail_completion_record(
+            audit, policy
+        )
+        self.assertTrue(audit.errors)
+
+    def test_negative_identity_drift_fails_closed(self):
+        # commit/tree/blob/content/mode and binding drift all fail closed.
+        import copy
+
+        for mutate in (
+            lambda r: r["boundary"].update(singleParentRequired=False),
+            lambda r: r["boundary"].update(requiredMode="100755"),
+            lambda r: r["boundary"].update(requiredType="tree"),
+            lambda r: r["boundary"].update(
+                identityBinding="GENERIC_ANY_CHILD_ALLOWED"
+            ),
+            lambda r: r["boundary"].update(
+                policyContentBinding="GENERIC_REDACT"
+            ),
+            lambda r: r["boundary"]["files"]["exactFiles"][
+                "docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md"
+            ].update(blobOid="a" * 40),
+            lambda r: r["boundary"]["files"]["exactFiles"][
+                "docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json"
+            ].update(sha256="b" * 64),
+            lambda r: r["authorization"].update(path="docs/evidence/TASK-0196/fake.json"),
+            lambda r: r["authorization"].update(sha256="c" * 64),
+        ):
+            audit = doctor.Audit()
+            policy = copy.deepcopy(self._live_policy())
+            mutate(policy["task0196PostTerminalTailCompletion"])
+            doctor.validate_task0196_post_terminal_tail_completion_record(
+                audit, policy
+            )
+            self.assertTrue(audit.errors)
+
+    def test_negative_multi_parent_fails_closed(self):
+        import copy
+
+        audit = doctor.Audit()
+        policy = copy.deepcopy(self._live_policy())
+        policy["task0196PostTerminalTailCompletion"]["boundary"][
+            "singleParentRequired"
+        ] = False
+        doctor.validate_task0196_post_terminal_tail_completion_record(
+            audit, policy
+        )
+        self.assertTrue(audit.errors)
+        # The live candidate check requires exactly one parent.
+        self.assertFalse(doctor.task0196_completion_boundary_candidate("0" * 40))
+
+    def test_negative_copied_record_is_forbidden(self):
+        import copy
+
+        audit = doctor.Audit()
+        policy = copy.deepcopy(self._live_policy())
+        policy["task0196PostTerminalTailCompletionCopy"] = copy.deepcopy(
+            policy["task0196PostTerminalTailCompletion"]
+        )
+        doctor.validate_task0196_post_terminal_tail_completion_record(
+            audit, policy
+        )
+        self.assertTrue(audit.errors)
+
+    def test_negative_second_consumption_fails_closed(self):
+        import copy
+
+        audit = doctor.Audit()
+        policy = copy.deepcopy(self._live_policy())
+        policy["task0196PostTerminalTailCompletion"]["consumption"][
+            "consumedWhen"
+        ] = "READY_AUTHORIZATION_COMMITTED_TWICE"
+        doctor.validate_task0196_post_terminal_tail_completion_record(
+            audit, policy
+        )
+        self.assertTrue(audit.errors)
+
+    def test_negative_recovery04_attempt_fails_closed(self):
+        # A RECOVERY-04 attempt fails closed: a further recovery record id, a
+        # fourth completion record id, or an extra 4th record key.
+        import copy
+
+        for record_id in (
+            "OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-04",
+            "OWNER-MAINT-20260814-TASK-0196-PRE-READY-COMPLETION-04",
+        ):
+            audit = doctor.Audit()
+            policy = copy.deepcopy(self._live_policy())
+            policy["task0196PostTerminalTailCompletion"]["recordId"] = record_id
+            doctor.validate_task0196_post_terminal_tail_completion_record(
+                audit, policy
+            )
+            self.assertTrue(audit.errors, record_id)
+        audit = doctor.Audit()
+        policy = copy.deepcopy(self._live_policy())
+        policy["task0196PostTerminalTailRecovery04"] = copy.deepcopy(
+            policy["task0196PostTerminalTailCompletion"]
+        )
+        doctor.validate_task0196_post_terminal_tail_completion_record(
+            audit, policy
+        )
+        self.assertTrue(audit.errors)
+
+    def test_no_generic_release_capability(self):
+        # No generic multi-maintenance, arbitrary child, HEAD or old
+        # writeAllowlist release: the completion record kind and identity
+        # bindings are exact, the record is terminal, and only the exact
+        # single-parent chain is accepted.
+        task = doctor.task_metadata_from_text(
+            doctor.read_repository_text(ROOT / doctor.TASK_0196_CARD_PATH),
+            doctor.TASK_0196_CARD_PATH,
+        )
+        completion = task["preReadyMaintenanceCompletionPlan"]
+        self.assertEqual(
+            completion["kind"],
+            "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_COMPLETION_MAINTENANCE",
+        )
+        self.assertTrue(completion["generalizationForbidden"])
+        self.assertTrue(completion["consumedRecordMustBecomeInert"])
+        self.assertTrue(completion["provenanceRetainedForHistoryVerification"])
+        # The old card writeAllowlist never authorizes a post-terminal change:
+        # the completion record paths come from the frozen plan, not the
+        # writeAllowlist.
+        self.assertNotIn(
+            "pre-ready-maintenance-completion-authorization.json",
+            task.get("writeAllowlist", []),
+        )
+        # The completion boundary is not HEAD in general: the candidate check
+        # binds the exact parent commit, and the DRAFT history allowlist only
+        # admits the frozen plan paths.
+        self.assertFalse(
+            doctor.task0196_completion_boundary_candidate(
+                doctor.TASK_0196_RECOVERY_COMMIT
+            )
+        )
+        self.assertFalse(
+            doctor.task0196_completion_boundary_candidate(
+                doctor.TASK_0196_ORIGINAL_DRAFT_COMMIT
+            )
+        )
+
+
 class Task0192AmendmentDiffScopeRecoveryTests(unittest.TestCase):
     """TASK-0192: Backlog governance companion path on fully validated
     amendment edges only (Owner 2026-08-14). Negatives prove nothing else is

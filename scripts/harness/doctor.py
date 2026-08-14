@@ -167,13 +167,13 @@ TASK_DELIVERY_POLICY_CANONICAL_HASH = (
     "ed26c40b35b131dba1a325e59a6b803d4ba0ace4e9663b05adad6056a0d6218b"
 )
 TASK_DELIVERY_SKILL_CANONICAL_HASH = (
-    "ed487482694a2f42e5b90cf0f8cb92d3f43af587e08ef4dba6e0d10e27fcb07f"
+    "341b241653a7f1f8fd8ad4f48a0bf10d5fc5546d631f484d128022f19bd092fb"
 )
 TASK_0075_CI_POLICY_PROJECTION_HASH = (
     "fc6622dfad6fba0aa15d3af403faedc28ee69b0ff93f89fd1886953d2b1ce8eb"
 )
 CI_EXECUTION_POLICY_CANONICAL_HASH = (
-    "d4f9b83424bfbda64b78f3d2217e3bace8c3444aa7bd03dfe4317bafb3c0d92f"
+    "c65c62b60699f4a0ae5a8c66b9d1a793ee8662e1022e9fd281fe776bb7d536e6"
 )
 TASK_0073_CI_POLICY_PROJECTION_HASH = (
     "3a253a215a88d4b9bd987d7dd2cbf0b2400f93fbd7086b071eb511f81f9cf8a1"
@@ -545,6 +545,65 @@ TASK_0196_RECOVERY_PATHS = {
 }
 TASK_0196_RECOVERY_PROJECTION_HASH = (
     "d4f9b83424bfbda64b78f3d2217e3bace8c3444aa7bd03dfe4317bafb3c0d92f"
+)
+# TASK-0196 final append-only completion edge (Owner 2026-08-14 RECOVERY-03,
+# recordId OWNER-MAINT-20260814-TASK-0196-PRE-READY-COMPLETION-03): the third
+# and LAST one-time edge. It must be the direct single-parent child of the
+# RECOVERY-02 edge e1a7588 and change exactly 5 frozen paths
+# (.harness/ci-execution-policy.yaml,
+# docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json,
+# scripts/harness/doctor.py, scripts/harness/tests/test_harness.py,
+# docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md). Doctor accepts only
+# the exact full single-parent chain ea129d1 -> 8114da2 -> e1a7588 -> the
+# completion boundary. e1a7588 keeps its committed-state FAIL 4 errors and is
+# never restated as PASS; both failed edges and the old authorization records
+# keep their historical meaning. The completion record is terminal: a
+# RECOVERY-04 attempt or any generic multi-maintenance, arbitrary-child, HEAD
+# or old writeAllowlist release capability fails closed.
+TASK_0196_COMPLETION_RECORD_ID = (
+    "OWNER-MAINT-20260814-TASK-0196-PRE-READY-COMPLETION-03"
+)
+TASK_0196_COMPLETION_AUTHORIZATION_PATH = (
+    "docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json"
+)
+TASK_0196_RECOVERY_COMMIT = "e1a75883f51eedda362a4c4fbd76002ac9f9bcda"
+TASK_0196_RECOVERY_TREE = "f627a29612a0d64ef6bd1c299e1eb6eb5517c926"
+TASK_0196_COMPLETION_PATHS = {
+    ".harness/ci-execution-policy.yaml",
+    "docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json",
+    "docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md",
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py",
+}
+# Exact per-file identities of the completion candidate (mode/type 100644
+# blob required). The record validator binds these values directly so that
+# any commit/tree/blob/content/mode drift fails closed at record level,
+# mirroring the TASK-0196 tail record precedent.
+TASK_0196_COMPLETION_AUTHORIZATION_SHA256 = (
+    "c9ff3145343880fc603a055858157b7dc3f158e397ac4bc54b88ab9c11716f13"
+)
+TASK_0196_COMPLETION_EXACT_FILES = {
+    "docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json": {
+        "blobOid": "58057cbae64dd502109cd42cbf4bc955795013c0",
+        "sha256": (
+            "c9ff3145343880fc603a055858157b7dc3f158e397ac4bc54b88ab9c11716f13"
+        ),
+    },
+    "docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md": {
+        "blobOid": "6ae5c3d142bde383d0441ffbf61e60fa68655874",
+        "sha256": (
+            "e82cd1b6a7c3125d1fc74295dc6bc71d40ca0d38bef410aee363924c3ea8b4eb"
+        ),
+    },
+    "scripts/harness/tests/test_harness.py": {
+        "blobOid": "b57837597fdb42d0063dce645ab7315838937cbf",
+        "sha256": (
+            "a04c9cbee7b9aba228e9615489098ea2d31802bdeaa4568572a49fe279b04a18"
+        ),
+    },
+}
+TASK_0196_COMPLETION_PROJECTION_HASH = (
+    "c65c62b60699f4a0ae5a8c66b9d1a793ee8662e1022e9fd281fe776bb7d536e6"
 )
 # ---------------------------------------------------------------------------
 # TASK-0192 (2026-08-14): amendment-diff-scope recovery bindings.
@@ -3875,11 +3934,11 @@ def validate_ready_project_state_checkpoint(
     elif task_id == TASK_0196_TASK_ID:
         audit.require(
             parent_commit != authorization_commit
-            and task0196_recovery_boundary_candidate(parent_commit),
-            "TASK-0196 pre-READY recovery edge: READY parent must be the "
-            "exact single-parent recovery boundary",
+            and task0196_completion_boundary_candidate(parent_commit),
+            "TASK-0196 pre-READY completion edge: READY parent must be the "
+            "exact single-parent completion boundary",
         )
-        validate_task0196_recovery_boundary(audit, parent_commit)
+        validate_task0196_completion_boundary(audit, parent_commit)
     elif task_id == TASK_0098_TASK_ID:
         audit.require(
             parent_commit != authorization_commit
@@ -4884,6 +4943,7 @@ def ci_execution_policy_projection(policy: dict[str, Any]) -> dict[str, Any]:
         "task0189PostTerminalTail",
         "task0196PostTerminalTail",
         "task0196PostTerminalTailRecovery",
+        "task0196PostTerminalTailCompletion",
     ):
         try:
             doctor_identity = projection[record_name]["boundary"]["files"]["doctor"]
@@ -7659,6 +7719,39 @@ def validate_task0196_card_maintenance_contract(audit: Audit) -> None:
         and "方案 D" in harness_approval["evidence"],
         f"{label}: exact Owner recovery authorization drifted",
     )
+    completion = task.get("preReadyMaintenanceCompletionPlan")
+    completion = completion if isinstance(completion, dict) else {}
+    audit.require(
+        completion.get("recordId") == TASK_0196_COMPLETION_RECORD_ID
+        and completion.get("recordPath") == TASK_0196_COMPLETION_AUTHORIZATION_PATH
+        and completion.get("kind")
+        == "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_COMPLETION_MAINTENANCE"
+        and completion.get("directParentCommitRequired") == TASK_0196_RECOVERY_COMMIT
+        and completion.get("recoveryCommit") == TASK_0196_RECOVERY_COMMIT
+        and completion.get("recoveryTree") == TASK_0196_RECOVERY_TREE
+        and completion.get("failedAttemptCommit") == TASK_0196_FAILED_ATTEMPT_COMMIT
+        and completion.get("failedAttemptTree") == TASK_0196_FAILED_ATTEMPT_TREE
+        and completion.get("originalDraftCommit") == TASK_0196_ORIGINAL_DRAFT_COMMIT
+        and completion.get("originalDraftTree") == TASK_0196_ORIGINAL_DRAFT_TREE
+        and completion.get("oneTimeOnly") is True
+        and completion.get("reusable") is False
+        and completion.get("consumedRecordMustBecomeInert") is True
+        and completion.get("provenanceRetainedForHistoryVerification") is True
+        and completion.get("generalizationForbidden") is True
+        and completion.get("completionFixesKnownFailureOnly") is True
+        and completion.get("furtherRecoveryForbidden") is True
+        and completion.get("terminalRecord") is True
+        and isinstance(completion.get("exactPaths"), list)
+        and set(completion.get("exactPaths", [])) == TASK_0196_COMPLETION_PATHS
+        and len(completion.get("exactPaths", [])) == len(TASK_0196_COMPLETION_PATHS),
+        f"{label}: frozen completion maintenance contract drifted",
+    )
+    audit.require(
+        isinstance(harness_approval, dict)
+        and TASK_0196_COMPLETION_RECORD_ID in harness_approval["evidence"]
+        and "COMPLETION-03" in harness_approval["evidence"],
+        f"{label}: exact Owner completion authorization drifted",
+    )
 
 
 def validate_task0196_post_terminal_tail_recovery_record(
@@ -8000,6 +8093,428 @@ def validate_task0196_recovery_boundary(
     authorization_path = str(authorization.get("path", ""))
     audit.require(
         authorization_path == TASK_0196_RECOVERY_AUTHORIZATION_PATH
+        and hashlib.sha256(
+            git_object(boundary_commit, authorization_path)
+        ).hexdigest()
+        == str(authorization.get("sha256", "")),
+        f"{label}: Owner authorization blob drifted",
+    )
+
+
+def validate_task0196_post_terminal_tail_completion_record(
+    audit: Audit,
+    policy: dict[str, Any],
+) -> dict[str, Any] | None:
+    """TASK-0196 final append-only completion edge record (RECOVERY-03).
+
+    The third and last one-time edge must be the direct single-parent child of
+    the RECOVERY-02 edge e1a7588, changing exactly the 5 frozen completion
+    paths. It binds TASK-0196, the original DRAFT ea129d1, the failed attempt
+    8114da2, the recovery edge e1a7588 with commit/tree, the direct parent,
+    the exact path set and per-path mode/blob/content hashes. The completion
+    record is terminal (furtherRecoveryForbidden / terminalRecord): a
+    RECOVERY-04 attempt, a copied record, a second consumption, an extra
+    commit or path, a multi-parent edge or any identity drift fails closed.
+    """
+    record = policy.get("task0196PostTerminalTailCompletion")
+    label = "TASK-0196 pre-READY completion edge"
+    audit.require(
+        isinstance(record, dict),
+        f"{label}: machine record is missing or not an object",
+    )
+    if not isinstance(record, dict):
+        return None
+    audit.require(
+        set(record)
+        == {
+            "schemaVersion",
+            "recordId",
+            "decisionId",
+            "kind",
+            "targetTask",
+            "sourceThreadId",
+            "authorization",
+            "failedAttempt",
+            "recoveryEdge",
+            "draft",
+            "boundary",
+            "activation",
+            "consumption",
+            "validationChannel",
+            "forbiddenInterfaces",
+        },
+        f"{label}: record fields do not match the exact schema",
+    )
+    audit.require(
+        record.get("schemaVersion") == 1
+        and record.get("recordId") == TASK_0196_COMPLETION_RECORD_ID
+        and record.get("decisionId")
+        == "TASK-0196-PRE-READY-COMPLETION-ACCEPTANCE-20260814"
+        and record.get("kind")
+        == "OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_COMPLETION_MAINTENANCE"
+        and record.get("targetTask") == TASK_0196_TASK_ID
+        and record.get("sourceThreadId") == "zcode-main-20260814",
+        f"{label}: record identity drifted",
+    )
+    authorization = record.get("authorization")
+    audit.require(
+        isinstance(authorization, dict)
+        and set(authorization) == {"path", "sha256"}
+        and authorization.get("path") == TASK_0196_COMPLETION_AUTHORIZATION_PATH
+        and authorization.get("sha256") == TASK_0196_COMPLETION_AUTHORIZATION_SHA256,
+        f"{label}: Owner authorization binding drifted",
+    )
+    failed = record.get("failedAttempt")
+    audit.require(
+        isinstance(failed, dict)
+        and set(failed)
+        == {
+            "commit",
+            "tree",
+            "outcome",
+            "doctorResult",
+            "originalDraftCommit",
+            "originalDraftTree",
+            "firstRecordInerted",
+            "secondRecordInerted",
+            "generalizationForbidden",
+        }
+        and failed.get("commit") == TASK_0196_FAILED_ATTEMPT_COMMIT
+        and failed.get("tree") == TASK_0196_FAILED_ATTEMPT_TREE
+        and failed.get("outcome") == "CONSUMED_IMPLEMENTATION_FAILED"
+        and failed.get("doctorResult") == "FAIL 1169 errors / 2397168 checks"
+        and failed.get("originalDraftCommit") == TASK_0196_ORIGINAL_DRAFT_COMMIT
+        and failed.get("originalDraftTree") == TASK_0196_ORIGINAL_DRAFT_TREE
+        and failed.get("firstRecordInerted") is True
+        and failed.get("secondRecordInerted") is True
+        and failed.get("generalizationForbidden") is True,
+        f"{label}: failed-attempt binding drifted",
+    )
+    recovery_edge = record.get("recoveryEdge")
+    audit.require(
+        isinstance(recovery_edge, dict)
+        and set(recovery_edge)
+        == {
+            "recordId",
+            "commit",
+            "tree",
+            "directParentCommit",
+            "doctorResult",
+            "committedStatePASSNeverReused",
+        }
+        and recovery_edge.get("recordId") == TASK_0196_RECOVERY_RECORD_ID
+        and recovery_edge.get("commit") == TASK_0196_RECOVERY_COMMIT
+        and recovery_edge.get("tree") == TASK_0196_RECOVERY_TREE
+        and recovery_edge.get("directParentCommit") == TASK_0196_FAILED_ATTEMPT_COMMIT
+        and recovery_edge.get("doctorResult") == "FAIL 4 errors / 912482 checks"
+        and recovery_edge.get("committedStatePASSNeverReused") is True,
+        f"{label}: recovery-edge binding drifted",
+    )
+    draft = record.get("draft")
+    audit.require(
+        isinstance(draft, dict)
+        and set(draft) == {"commit", "tree", "parent"}
+        and draft.get("commit") == TASK_0196_ORIGINAL_DRAFT_COMMIT
+        and draft.get("tree") == TASK_0196_ORIGINAL_DRAFT_TREE
+        and draft.get("parent") == TASK_0196_TAIL_COMMIT,
+        f"{label}: original DRAFT binding drifted",
+    )
+    boundary = record.get("boundary")
+    audit.require(
+        isinstance(boundary, dict)
+        and set(boundary)
+        == {
+            "directParentCommit",
+            "directParentTree",
+            "singleParentRequired",
+            "identityBinding",
+            "changedPaths",
+            "requiredMode",
+            "requiredType",
+            "policyContentBinding",
+            "files",
+        }
+        and boundary.get("directParentCommit") == TASK_0196_RECOVERY_COMMIT
+        and boundary.get("directParentTree") == TASK_0196_RECOVERY_TREE
+        and boundary.get("singleParentRequired") is True
+        and boundary.get("identityBinding")
+        == "COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT"
+        and boundary.get("requiredMode") == "100644"
+        and boundary.get("requiredType") == "blob"
+        and boundary.get("policyContentBinding")
+        == "CANONICAL_JSON_REDACT_TASK0196_COMPLETION_DOCTOR_IDENTITY"
+        and boundary.get("changedPaths") == sorted(TASK_0196_COMPLETION_PATHS),
+        f"{label}: completion boundary contract drifted",
+    )
+    boundary_files = boundary.get("files")
+    boundary_files = boundary_files if isinstance(boundary_files, dict) else {}
+    exact_files = boundary_files.get("exactFiles")
+    exact_files = exact_files if isinstance(exact_files, dict) else {}
+    audit.require(
+        exact_files == TASK_0196_COMPLETION_EXACT_FILES,
+        f"{label}: exact boundary file identities drifted",
+    )
+    audit.require(
+        record.get("activation")
+        == {
+            "allowedState": "DRAFT",
+            "readyDoctorPassRequired": True,
+            "copiedRecordForbidden": True,
+            "extraCommitOrPathForbidden": True,
+        },
+        f"{label}: activation contract drifted",
+    )
+    audit.require(
+        record.get("consumption")
+        == {
+            "consumedByTask": TASK_0196_TASK_ID,
+            "consumedWhen": "READY_AUTHORIZATION_COMMITTED",
+            "inertAfterConsumption": True,
+            "provenanceRetainedForHistoryVerification": True,
+            "reusableByOtherTask": False,
+        },
+        f"{label}: consumption contract drifted",
+    )
+    audit.require(
+        record.get("validationChannel")
+        == {
+            "channel": "LOCAL_EXACT_TREE_FALLBACK",
+            "profile": "precheck",
+            "remote": "UNKNOWN_NOT_RUN",
+            "dispatchCount": 0,
+            "passClaimed": False,
+        },
+        f"{label}: validation channel binding drifted",
+    )
+    audit.require(
+        record.get("forbiddenInterfaces")
+        == {
+            "cliFlag": False,
+            "environmentVariable": False,
+            "gitNote": False,
+            "gitReplace": False,
+            "gitGraft": False,
+            "historyRewrite": False,
+            "configurableAllowlist": False,
+            "wildcardWritePath": False,
+            "generalizedOverride": False,
+            "branchOrWorktree": False,
+            "githubActionsDispatch": False,
+        },
+        f"{label}: forbidden-interface contract drifted",
+    )
+    audit.require(
+        not any(
+            key != "task0196PostTerminalTailCompletion" and value == record
+            for key, value in policy.items()
+        ),
+        f"{label}: copied machine record is forbidden",
+    )
+    # Live edge facts are validated by validate_task0196_completion_boundary
+    # against the actual READY-parent commit (the completion-edge SHA cannot be
+    # known before the boundary commit exists): direct single-parent child of
+    # the recovery edge, exact 5-path diff, per-path mode/blob/content, and the
+    # full accepted chain ea129d1 -> 8114da2 -> e1a7588 -> completion.
+    return record
+
+
+def task0196_completion_boundary_candidate(commit: str) -> bool:
+    if not commit or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        return False
+    parent_result = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", commit],
+        capture_output=True,
+        text=True,
+    )
+    if parent_result.returncode != 0:
+        return False
+    parts = parent_result.stdout.split()
+    return (
+        len(parts) == 2
+        and parts[0] == commit
+        and parts[1] == TASK_0196_RECOVERY_COMMIT
+    )
+
+
+def validate_task0196_completion_boundary(
+    audit: Audit,
+    parent_commit: str,
+) -> None:
+    label = "TASK-0196 pre-READY completion edge"
+    audit.require(
+        bool(parent_commit) and bool(re.fullmatch(r"[0-9a-f]{40}", parent_commit)),
+        f"{label}: boundary must be a full Git commit",
+    )
+    if not (parent_commit and re.fullmatch(r"[0-9a-f]{40}", parent_commit)):
+        return
+    boundary_commit = parent_commit
+    audit.require(
+        task0196_completion_boundary_candidate(boundary_commit),
+        f"{label}: boundary must be the direct single-parent child of the recovery edge",
+    )
+    if not task0196_completion_boundary_candidate(boundary_commit):
+        return
+    # The complete accepted single-parent chain is exactly
+    # ea129d1 -> 8114da2 -> e1a7588 -> completion. Skipping either failed edge
+    # (8114da2 or e1a7588) or inserting any intervening commit fails closed.
+    failed_graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        TASK_0196_FAILED_ATTEMPT_COMMIT,
+    ).stdout.split()
+    failed_tree = git_text(
+        "show",
+        "-s",
+        "--format=%T",
+        TASK_0196_FAILED_ATTEMPT_COMMIT,
+    ).stdout.strip()
+    audit.require(
+        failed_graph
+        == [TASK_0196_FAILED_ATTEMPT_COMMIT, TASK_0196_ORIGINAL_DRAFT_COMMIT]
+        and failed_tree == TASK_0196_FAILED_ATTEMPT_TREE,
+        f"{label}: failed attempt binding drifted",
+    )
+    recovery_graph = git_text(
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        TASK_0196_RECOVERY_COMMIT,
+    ).stdout.split()
+    recovery_tree = git_text(
+        "show",
+        "-s",
+        "--format=%T",
+        TASK_0196_RECOVERY_COMMIT,
+    ).stdout.strip()
+    audit.require(
+        task0196_recovery_boundary_candidate(TASK_0196_RECOVERY_COMMIT)
+        and recovery_graph
+        == [TASK_0196_RECOVERY_COMMIT, TASK_0196_FAILED_ATTEMPT_COMMIT]
+        and recovery_tree == TASK_0196_RECOVERY_TREE,
+        f"{label}: recovery edge binding drifted",
+    )
+    ancestry = git_text(
+        "rev-list",
+        "--reverse",
+        "--ancestry-path",
+        f"{TASK_0196_ORIGINAL_DRAFT_COMMIT}..{boundary_commit}",
+    ).stdout.splitlines()
+    audit.require(
+        ancestry == [
+            TASK_0196_FAILED_ATTEMPT_COMMIT,
+            TASK_0196_RECOVERY_COMMIT,
+            boundary_commit,
+        ],
+        f"{label}: completion ancestry contains an intervening commit",
+    )
+    failed_diff = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", "-z", TASK_0196_ORIGINAL_DRAFT_COMMIT, TASK_0196_FAILED_ATTEMPT_COMMIT],
+        capture_output=True,
+    )
+    actual_failed_paths = {
+        p.decode("utf-8") for p in failed_diff.stdout.split(b"\0") if p
+    }
+    audit.require(
+        actual_failed_paths == TASK_0196_PRE_READY_MAINTENANCE_PATHS,
+        f"{label}: failed-attempt boundary paths must be exact",
+    )
+    recovery_diff = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", "-z", TASK_0196_FAILED_ATTEMPT_COMMIT, TASK_0196_RECOVERY_COMMIT],
+        capture_output=True,
+    )
+    actual_recovery_paths = {
+        p.decode("utf-8") for p in recovery_diff.stdout.split(b"\0") if p
+    }
+    audit.require(
+        actual_recovery_paths == TASK_0196_RECOVERY_PATHS,
+        f"{label}: recovery boundary paths must be exact",
+    )
+    boundary_diff = subprocess.run(
+        ["git", "diff", "--name-only", "--no-renames", "-z", TASK_0196_RECOVERY_COMMIT, boundary_commit],
+        capture_output=True,
+    )
+    actual_paths = {p.decode("utf-8") for p in boundary_diff.stdout.split(b"\0") if p}
+    audit.require(
+        actual_paths == TASK_0196_COMPLETION_PATHS,
+        f"{label}: completion boundary paths must be exact",
+    )
+    audit.require(
+        not (actual_paths - TASK_0196_COMPLETION_PATHS),
+        f"{label}: completion boundary contains extra path",
+    )
+    audit.require(
+        not (TASK_0196_COMPLETION_PATHS - actual_paths),
+        f"{label}: completion boundary is missing a required path",
+    )
+    for path in sorted(TASK_0196_COMPLETION_PATHS):
+        entry = git_tree_entry(boundary_commit, path)
+        audit.require(
+            entry is not None
+            and entry[:2] == ("100644", "blob"),
+            f"{label}: completion boundary mode/type drifted: {path}",
+        )
+    try:
+        policy = yaml_at_commit(boundary_commit, CI_EXECUTION_POLICY_PATH)
+    except HarnessError as exc:
+        audit.error(f"{label}: cannot read boundary CI policy: {exc}")
+        return
+    record = validate_task0196_post_terminal_tail_completion_record(audit, policy)
+    if record is None:
+        return
+    boundary = record.get("boundary")
+    boundary = boundary if isinstance(boundary, dict) else {}
+    files = boundary.get("files")
+    files = files if isinstance(files, dict) else {}
+    doctor_identity = files.get("doctor")
+    doctor_identity = doctor_identity if isinstance(doctor_identity, dict) else {}
+    exact_files = files.get("exactFiles")
+    exact_files = exact_files if isinstance(exact_files, dict) else {}
+    doctor_path = str(doctor_identity.get("path", ""))
+    audit.require(
+        set(exact_files)
+        == set(TASK_0196_COMPLETION_PATHS)
+        - {CI_EXECUTION_POLICY_PATH, doctor_path},
+        f"{label}: exact boundary file set drifted",
+    )
+    doctor_entry = git_tree_entry(boundary_commit, doctor_path)
+    audit.require(
+        set(doctor_identity) == {"path", "blobOid", "sha256"}
+        and doctor_path == "scripts/harness/doctor.py"
+        and doctor_entry is not None
+        and doctor_entry[2] == doctor_identity.get("blobOid")
+        and hashlib.sha256(git_object(boundary_commit, doctor_path)).hexdigest()
+        == doctor_identity.get("sha256"),
+        f"{label}: Doctor blob/content binding drifted",
+    )
+    for path, identity in exact_files.items():
+        audit.require(
+            isinstance(identity, dict)
+            and set(identity) == {"blobOid", "sha256"},
+            f"{label}: exact file identity schema drifted: {path}",
+        )
+        if not isinstance(identity, dict):
+            continue
+        entry = git_tree_entry(boundary_commit, path)
+        audit.require(
+            entry is not None
+            and entry[2] == identity.get("blobOid")
+            and hashlib.sha256(git_object(boundary_commit, path)).hexdigest()
+            == identity.get("sha256"),
+            f"{label}: exact file blob/content drifted: {path}",
+        )
+    audit.require(
+        canonical_json_sha256(ci_execution_policy_projection(policy))
+        == TASK_0196_COMPLETION_PROJECTION_HASH,
+        f"{label}: CI policy canonical binding drifted",
+    )
+    authorization = record.get("authorization")
+    authorization = authorization if isinstance(authorization, dict) else {}
+    authorization_path = str(authorization.get("path", ""))
+    audit.require(
+        authorization_path == TASK_0196_COMPLETION_AUTHORIZATION_PATH
         and hashlib.sha256(
             git_object(boundary_commit, authorization_path)
         ).hexdigest()
@@ -9428,6 +9943,13 @@ def validate_tasks(
                 if isinstance(maintenance_plan_auth, dict):
                     for p in maintenance_plan_auth.get("exactPaths", []):
                         allowed_checkpoint_paths.add(str(p))
+                if task_id == TASK_0196_TASK_ID:
+                    completion_plan_auth = task.get(
+                        "preReadyMaintenanceCompletionPlan"
+                    )
+                    if isinstance(completion_plan_auth, dict):
+                        for p in completion_plan_auth.get("exactPaths", []):
+                            allowed_checkpoint_paths.add(str(p))
                 audit.require(path in checkpoint_paths, f"{path}: authorization commit must include the task card")
                 audit.require(
                     checkpoint_paths <= allowed_checkpoint_paths,
@@ -14934,6 +15456,9 @@ def validate_ci_execution_policy(audit: Audit) -> None:
             "task0076PreReadyMaintenance",
             "task0098PostTerminalTail",
             "task0189PostTerminalTail",
+            "task0196PostTerminalTail",
+            "task0196PostTerminalTailRecovery",
+            "task0196PostTerminalTailCompletion",
             "rules",
         },
         "ci-execution-policy: root fields do not match the frozen machine contract",
@@ -15587,6 +16112,7 @@ def validate_ci_execution_policy(audit: Audit) -> None:
     validate_task0189_post_terminal_tail_record(audit, policy)
     validate_task0196_post_terminal_tail_record(audit, policy)
     validate_task0196_post_terminal_tail_recovery_record(audit, policy)
+    validate_task0196_post_terminal_tail_completion_record(audit, policy)
     task0074_record = validate_task0074_pre_ready_maintenance_record(audit, policy)
     if isinstance(task0074_record, dict):
         validate_task0073_historical_unknown_quarantine(audit, task0074_record)
@@ -20054,6 +20580,17 @@ def validate_draft_checkpoint(
         maintenance_paths = maintenance_plan.get("exactPaths", [])
         if isinstance(maintenance_paths, list):
             allowed.update(str(p) for p in maintenance_paths)
+    recovery_plan = task.get("preReadyMaintenanceRecoveryPlan")
+    if isinstance(recovery_plan, dict):
+        recovery_paths = recovery_plan.get("exactPaths", [])
+        if isinstance(recovery_paths, list):
+            allowed.update(str(p) for p in recovery_paths)
+    if task_id == TASK_0196_TASK_ID:
+        completion_plan = task.get("preReadyMaintenanceCompletionPlan")
+        if isinstance(completion_plan, dict):
+            completion_paths = completion_plan.get("exactPaths", [])
+            if isinstance(completion_paths, list):
+                allowed.update(str(p) for p in completion_paths)
     audit.require(task_path in changed, f"{task_id}: DRAFT checkpoint must include the task card")
     audit.require(
         set(changed) <= allowed,

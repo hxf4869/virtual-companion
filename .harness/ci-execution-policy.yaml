@@ -1707,8 +1707,8 @@ task0196PostTerminalTailRecovery:
     files:
       doctor:
         path: scripts/harness/doctor.py
-        blobOid: ae361f9b226bb4283377195ab5357f85e6242988
-        sha256: de4afaf95178cda58dd4fe225025e07648e6c250de04380639ffddd7a596f4b5
+        blobOid: 17d86c7e075418ddd46479e8b94ab5d23766e458
+        sha256: 086fe9f106574d34ee1ed1ad103ed8ece12c702845a731c00e9617b1b9d9f836
       exactFiles:
         docs/evidence/TASK-0196/pre-ready-maintenance-recovery-authorization.json:
           blobOid: 9d66052f291aa723cb882d406d86adec4423d99c
@@ -1760,3 +1760,92 @@ rules:
   unknownRemoteAvailabilityCannotSkip: true
   notRunOrDeferredNeverPass: true
   githubDispatchOwnedByFollowUpTask: TASK-0065
+task0196PostTerminalTailCompletion:
+  schemaVersion: 1
+  recordId: OWNER-MAINT-20260814-TASK-0196-PRE-READY-COMPLETION-03
+  decisionId: TASK-0196-PRE-READY-COMPLETION-ACCEPTANCE-20260814
+  kind: OWNER_AUTHORIZED_EXACT_ONE_TIME_PRE_READY_COMPLETION_MAINTENANCE
+  targetTask: TASK-0196
+  sourceThreadId: zcode-main-20260814
+  authorization:
+    path: docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json
+    sha256: c9ff3145343880fc603a055858157b7dc3f158e397ac4bc54b88ab9c11716f13
+  failedAttempt:
+    commit: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+    tree: 623262a623308fdfd088cd807f04de7b411638de
+    outcome: CONSUMED_IMPLEMENTATION_FAILED
+    doctorResult: "FAIL 1169 errors / 2397168 checks"
+    originalDraftCommit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+    originalDraftTree: 01f09d44f6d93aa84200cc526b9bc3ef2be1a0d5
+    firstRecordInerted: true
+    secondRecordInerted: true
+    generalizationForbidden: true
+  recoveryEdge:
+    recordId: OWNER-MAINT-20260814-TASK-0196-PRE-READY-RECOVERY-02
+    commit: e1a75883f51eedda362a4c4fbd76002ac9f9bcda
+    tree: f627a29612a0d64ef6bd1c299e1eb6eb5517c926
+    directParentCommit: 8114da22959af5f7e2dcb966da8bce6d83a14d3c
+    doctorResult: "FAIL 4 errors / 912482 checks"
+    committedStatePASSNeverReused: true
+  draft:
+    commit: ea129d1b9ffbfee98a8a67aefccce1b1bf854254
+    tree: 01f09d44f6d93aa84200cc526b9bc3ef2be1a0d5
+    parent: 751cb9db547df2ba33d55d310276bc14e1fbd5eb
+  boundary:
+    directParentCommit: e1a75883f51eedda362a4c4fbd76002ac9f9bcda
+    directParentTree: f627a29612a0d64ef6bd1c299e1eb6eb5517c926
+    singleParentRequired: true
+    identityBinding: COMMIT_AND_TREE_DERIVED_FROM_EXACT_SINGLE_PARENT_CONTENT
+    changedPaths:
+      - .harness/ci-execution-policy.yaml
+      - docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json
+      - docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md
+      - scripts/harness/doctor.py
+      - scripts/harness/tests/test_harness.py
+    requiredMode: "100644"
+    requiredType: blob
+    policyContentBinding: CANONICAL_JSON_REDACT_TASK0196_COMPLETION_DOCTOR_IDENTITY
+    files:
+      doctor:
+        path: scripts/harness/doctor.py
+        blobOid: 17d86c7e075418ddd46479e8b94ab5d23766e458
+        sha256: 086fe9f106574d34ee1ed1ad103ed8ece12c702845a731c00e9617b1b9d9f836
+      exactFiles:
+        docs/evidence/TASK-0196/pre-ready-maintenance-completion-authorization.json:
+          blobOid: 58057cbae64dd502109cd42cbf4bc955795013c0
+          sha256: c9ff3145343880fc603a055858157b7dc3f158e397ac4bc54b88ab9c11716f13
+        docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md:
+          blobOid: 6ae5c3d142bde383d0441ffbf61e60fa68655874
+          sha256: e82cd1b6a7c3125d1fc74295dc6bc71d40ca0d38bef410aee363924c3ea8b4eb
+        scripts/harness/tests/test_harness.py:
+          blobOid: b57837597fdb42d0063dce645ab7315838937cbf
+          sha256: a04c9cbee7b9aba228e9615489098ea2d31802bdeaa4568572a49fe279b04a18
+  activation:
+    allowedState: DRAFT
+    readyDoctorPassRequired: true
+    copiedRecordForbidden: true
+    extraCommitOrPathForbidden: true
+  consumption:
+    consumedByTask: TASK-0196
+    consumedWhen: READY_AUTHORIZATION_COMMITTED
+    inertAfterConsumption: true
+    provenanceRetainedForHistoryVerification: true
+    reusableByOtherTask: false
+  validationChannel:
+    channel: LOCAL_EXACT_TREE_FALLBACK
+    profile: precheck
+    remote: UNKNOWN_NOT_RUN
+    dispatchCount: 0
+    passClaimed: false
+  forbiddenInterfaces:
+    cliFlag: false
+    environmentVariable: false
+    gitNote: false
+    gitReplace: false
+    gitGraft: false
+    historyRewrite: false
+    configurableAllowlist: false
+    wildcardWritePath: false
+    generalizedOverride: false
+    branchOrWorktree: false
+    githubActionsDispatch: false
