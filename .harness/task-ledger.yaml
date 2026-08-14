@@ -1026,3 +1026,9 @@ tasks:
     taskCard: docs/tasks/TASK-0195-p1-worker-lease-fence-inherited-adoption.md
     evidence: docs/evidence/TASK-0195/evidence-pack.json
     handoff: docs/handoffs/TASK-0195.json
+  TASK-0196:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md
+    evidence: docs/evidence/TASK-0196/evidence-pack.json
+    handoff: docs/handoffs/TASK-0196.json

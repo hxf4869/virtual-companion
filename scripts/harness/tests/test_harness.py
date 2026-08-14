@@ -12109,6 +12109,40 @@ class Task0196PreReadyCompletionTests(unittest.TestCase):
             set(),
         )
 
+    def test_record_bound_skill_paths_are_exempt_from_target_versions(self):
+        # The ACCEPTED-state targetSkillVersions check must not double-flag
+        # skill changes already machine-bound by the registered one-time
+        # pre-READY maintenance/recovery/completion plans (TASK-0196 added
+        # record entries to the two Skill files with unchanged versions).
+        task = doctor.task_metadata_from_text(
+            doctor.read_repository_text(ROOT / doctor.TASK_0196_CARD_PATH),
+            doctor.TASK_0196_CARD_PATH,
+        )
+        bound = doctor.task_record_bound_skill_paths(task)
+        self.assertEqual(
+            bound,
+            {
+                "skills/task-delivery-flow/SKILL.md",
+                "skills/task-intake/SKILL.md",
+            },
+        )
+        self.assertNotIn(".harness/ci-execution-policy.yaml", bound)
+        self.assertNotIn("scripts/harness/doctor.py", bound)
+        self.assertEqual(doctor.task_record_bound_skill_paths({}), set())
+        self.assertEqual(
+            doctor.task_record_bound_skill_paths(
+                {"preReadyMaintenanceCompletionPlan": {"exactPaths": ["skills/x/SKILL.md"]}}
+            ),
+            {"skills/x/SKILL.md"},
+        )
+        # A generic writeAllowlist-like path is never admitted.
+        self.assertEqual(
+            doctor.task_record_bound_skill_paths(
+                {"preReadyMaintenanceCompletionPlan": {"exactPaths": ["docs/tasks/*"]}}
+            ),
+            set(),
+        )
+
 
 class Task0192AmendmentDiffScopeRecoveryTests(unittest.TestCase):
     """TASK-0192: Backlog governance companion path on fully validated

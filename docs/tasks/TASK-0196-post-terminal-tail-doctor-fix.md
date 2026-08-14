@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0196
-state: IN_PROGRESS
+state: ACCEPTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -437,7 +437,22 @@ humanApprovals:
       governance finding，不修改、不宣称修复；全程禁止 push、merge、rebase、
       reset 或历史改写。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0196_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: 87cd40a2b59317015ce9a8aa55cda2d2fe686c91
+    evidencePath: docs/evidence/TASK-0196/review-r1.md
+    reason: >-
+      R1 独立复核（无历史上下文）APPROVE：完整单父链
+      ea129d1→8114da2→e1a7588→e545d3c→34fbd38→383e403→353b1ac→87cd40a
+      逐边 diff 与冻结路径集精确吻合；completion boundary/record validator
+      仅精确接受该链且错误父/跳过失败边/额外路径/漂移/多父/复制/二次消费/
+      RECOVERY-04 全部失败关闭（TASK-0196 门控，无通用多 maintenance/任意
+      child/HEAD/旧 writeAllowlist 放行）；fix batch 353b1ac 仅 doctor.py+
+      test_harness.py、policy 字节不变、投影常量不变；READY/IN_PROGRESS 提交
+      范围精确；历史制品零修改；测试矩阵完整无删无 skip。P0=0，P1=0，
+      P2=0，P3=0。
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0196
   - git diff --check

@@ -1,0 +1,78 @@
+{
+ "taskId": "TASK-0196",
+ "state": "ACCEPTED",
+ "baseCommit": "751cb9db547df2ba33d55d310276bc14e1fbd5eb",
+ "headCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+ "evidencePath": "docs/evidence/TASK-0196/evidence-pack.json",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "9eab000b0b063f71ba1640b73b26fd7eea105745",
+   "startedAt": "2026-08-14T16:13:32+08:00",
+   "endedAt": "2026-08-15T00:04:35+08:00",
+   "elapsedSeconds": 28263,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "9eab000b0b063f71ba1640b73b26fd7eea105745",
+   "startedAt": "2026-08-14T16:13:32+08:00",
+   "endedAt": "2026-08-14T23:37:56+08:00",
+   "elapsedSeconds": 26664,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "candidateDeadlineMinutes": 45,
+   "closureOnlyOverrunSeconds": 0,
+   "readyDoctorPassAt": "2026-08-14T23:37:46+08:00",
+   "inProgressCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91"
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+   "startedAt": "2026-08-14T23:37:56+08:00",
+   "endedAt": "2026-08-15T00:04:35+08:00",
+   "elapsedSeconds": 1599,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "candidateDeadlineMinutes": 45,
+   "closureOnlyOverrunSeconds": 0,
+   "readyDoctorPassAt": "2026-08-14T23:37:46+08:00",
+   "inProgressCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91"
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0196_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+   "evidencePath": "docs/evidence/TASK-0196/review-r1.md",
+   "reason": "R1 独立复核 APPROVE：完整单父链逐边 diff 与冻结路径集精确吻合；completion boundary/record validator 仅精确接受该链且全部负例失败关闭（TASK-0196 门控，无通用多 maintenance/任意 child/HEAD/旧 writeAllowlist 放行）；fix batch 仅 doctor.py+test_harness.py、policy 与投影常量不变；READY/IN_PROGRESS 提交范围精确；历史制品零修改；测试矩阵完整。P0=0，P1=0，P2=0，P3=0。"
+  }
+ ],
+ "completed": [
+  "一次性 post-terminal tail 接纳（OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01）：未登记边 fe0253f→751cb9d（TASK-0195 canonical terminal→handoff nextAction 一行措辞对齐）经唯一历史例外 + legacy healing 三态验证（原始不一致/唯一改动/最终一致）机器绑定，TASK-0195 保持 ACCEPTED 不被追述为原本一致",
+  "Doctor post-terminal 校验修复：终态后新父边默认失败关闭（未登记 tail 一律 FAIL）、ACCEPTED/REJECTED blanket continue 消除、canonical terminal nextAction 逐字校验、TASK-0098/0189 已登记 tail 兼容",
+  "pre-READY maintenance 三边全部机器登记并精确验证：8114da2（RECOVERY-01 失败 attempt，Doctor FAIL 1169 errors，惰化可审计）、e1a7588（RECOVERY-02，提交态 FAIL 4 errors 不追述为 PASS）、e545d3c（RECOVERY-03 completion，终态记录，RECOVERY-04 尝试失败关闭）；Doctor 仅精确接受完整单父链 ea129d1→8114da2→e1a7588→RECOVERY-03",
+  "RECOVERY-03 提交前/提交后同一组验证全部真实 PASS：TASK-0196 定向测试（提交前 32、提交后 32、fix 后 33）、0098/0189/IdlePlanningCheckpoint/Enforcement 回归 48、CiExecutionPolicy 6、git diff --check、doctor --task TASK-0196（912511/913999/917452 checks）、doctor --summary（912511/913999 checks）",
+  "READY Doctor PASS 917452 checks exit 0（authorizationCommit=34fbd38 回填；READY checkpoint 前向修复批 353b1ac 按卡内 writeAllowlist + maximumFixBatches 1/1，policy 零修改）",
+  "冻结 requiredCommands 同一候选 SHA（87cd40a）真实 PASS：canonical precheck 8 commands exit 0（doctor 918947 checks）+ git diff --check exit 0",
+  "C4 独立 Reviewer（无历史上下文）审查完整链与失败关闭矩阵，裁决 APPROVE（P0/P1/P2/P3=0）",
+  "TASK-0141 记录为 enforcement activation 前 legacy governance finding（未登记历史 nextAction 不一致、无 post-terminal edge）：本卡不追溯阻塞、不称 PASS、不改其历史制品，留待后续另卡处理"
+ ],
+ "remaining": [
+  "TASK-0141 legacy governance finding（activation 前历史 nextAction 不一致）后续另卡处理",
+  "bounded retry/dead-letter 与 cooperative 中断 in-flight session（原规划串行后续）仍未创建，待后续规划",
+  "完整 harness unittest discover 保持 NOT_RUN（CiExecutionPolicyTests 单类本地约 41-55 分钟远超 CI full job 预算，TASK-0195 先例同型，如实保留）",
+  "本地提交未推送（按 Owner 指令保持不推送不合并）"
+ ],
+ "knownRisks": [
+  "Owner 2026-08-14 会话指令显式授权跨维护边/READY/IN_PROGRESS/Reviewer/pre-closure/终态闭合的自主推进，冻结预算（target 60/hardFuse 90 分钟）在 DRAFT 锚 9eab000 起算下已超时；本卡如实记录真实 elapsedSeconds（overall 28215s/intake 26664s/candidate 1551s），不重锚、不掩盖，超时原因=Owner 跨会话授权与多次全量验证重跑",
+  "e1a7588 提交态 Doctor FAIL 4 errors 与 8114da2 FAIL 1169 errors 是保留的历史失败边（惰化可审计），不构成 READY/终态授权，不得复用",
+  "CiExecutionPolicyTests 本地 41-55 分钟单类耗时是 CI 预算持续风险（TASK-0195 已记录），完整 discover 保持 NOT_RUN",
+  "审计报告其余 findings（P0 owner context 等业务/安全项）全部未处理"
+ ],
+ "nextAction": "TASK-0196 ACCEPTED 终态（Doctor post-terminal 校验修复完成：一次性 tail 接纳 fe0253f→751cb9d 与 pre-READY maintenance/恢复/完成三边（8114da2 失败 attempt、e1a7588 RECOVERY-02、e545d3c RECOVERY-03）全部机器登记，完整单父链 ea129d1→8114da2→e1a7588→RECOVERY-03 精确验证通过）后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。"
+}

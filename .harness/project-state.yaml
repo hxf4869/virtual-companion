@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0196
-activeTaskCard: docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md
-lastAcceptedTask: TASK-0195
-lastAcceptedHandoff: docs/handoffs/TASK-0195.json
-lastTerminalTask: TASK-0195
-lastTerminalHandoff: docs/handoffs/TASK-0195.json
-nextAction: TASK-0196 READY（Doctor post-terminal 校验修复收尾：一次性 tail 接纳 fe0253f→751cb9d 与 pre-READY 三边（8114da2 失败 attempt、e1a7588 RECOVERY-02、e545d3c RECOVERY-03）均已机器登记，Doctor 仅精确接受完整单父链 ea129d1 → 8114da2 → e1a7588 → RECOVERY-03；待 authorizationCommit 回填且 READY Doctor PASS 后进入 IN_PROGRESS，以同一候选 SHA 执行冻结 requiredCommands（canonical precheck + git diff --check）与 C4 独立复核、pre-closure Doctor，随后 Evidence/Handoff/Ledger/project-state 原子终态闭合；bounded retry/dead-letter 后续卡暂不创建）。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0196
+lastAcceptedHandoff: docs/handoffs/TASK-0196.json
+lastTerminalTask: TASK-0196
+lastTerminalHandoff: docs/handoffs/TASK-0196.json
+nextAction: TASK-0196 ACCEPTED 终态（Doctor post-terminal 校验修复完成：一次性 tail 接纳 fe0253f→751cb9d 与 pre-READY maintenance/恢复/完成三边（8114da2 失败 attempt、e1a7588 RECOVERY-02、e545d3c RECOVERY-03）全部机器登记，完整单父链 ea129d1→8114da2→e1a7588→RECOVERY-03 精确验证通过）后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

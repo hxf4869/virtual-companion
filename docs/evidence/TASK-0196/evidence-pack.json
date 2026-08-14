@@ -1,0 +1,200 @@
+{
+ "taskId": "TASK-0196",
+ "baseCommit": "751cb9db547df2ba33d55d310276bc14e1fbd5eb",
+ "headCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+ "contextFingerprint": "76803c8d53aee411bfaee30948367636e0309034c31077ae726a24e35e6379cd",
+ "deliveryTiming": {
+  "overallElapsed": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "9eab000b0b063f71ba1640b73b26fd7eea105745",
+   "startedAt": "2026-08-14T16:13:32+08:00",
+   "endedAt": "2026-08-15T00:04:16+08:00",
+   "elapsedSeconds": 28244,
+   "reanchored": false
+  },
+  "intakeActivation": {
+   "anchor": "DRAFT_COMMIT",
+   "anchorCommit": "9eab000b0b063f71ba1640b73b26fd7eea105745",
+   "startedAt": "2026-08-14T16:13:32+08:00",
+   "endedAt": "2026-08-14T23:37:56+08:00",
+   "elapsedSeconds": 26664,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "candidateDeadlineMinutes": 45,
+   "closureOnlyOverrunSeconds": 0,
+   "readyDoctorPassAt": "2026-08-14T23:37:46+08:00",
+   "inProgressCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91"
+  },
+  "candidateExecution": {
+   "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+   "anchorCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+   "startedAt": "2026-08-14T23:37:56+08:00",
+   "endedAt": "2026-08-15T00:04:16+08:00",
+   "elapsedSeconds": 1580,
+   "outcome": "PASS",
+   "targetWallMinutes": 60,
+   "hardFuseWallMinutes": 90,
+   "candidateDeadlineMinutes": 45,
+   "closureOnlyOverrunSeconds": 0,
+   "readyDoctorPassAt": "2026-08-14T23:37:46+08:00",
+   "inProgressCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91"
+  }
+ },
+ "reviewers": [
+  {
+   "id": "task0196_r1",
+   "kind": "independent-review-gate",
+   "verdict": "PASS",
+   "reviewedCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+   "evidencePath": "docs/evidence/TASK-0196/review-r1.md",
+   "reason": "R1 独立复核（无历史上下文）APPROVE：完整单父链 ea129d1→8114da2→e1a7588→e545d3c→34fbd38→383e403→353b1ac→87cd40a 逐边 diff 与冻结路径集精确吻合；completion boundary/record validator 仅精确接受该链且错误父/跳过失败边/额外路径/漂移/多父/复制/二次消费/RECOVERY-04 全部失败关闭（TASK-0196 门控，无通用多 maintenance/任意 child/HEAD/旧 writeAllowlist 放行）；fix batch 353b1ac 仅 doctor.py+test_harness.py、policy 字节不变、投影常量不变；READY/IN_PROGRESS 提交范围精确；历史制品零修改；测试矩阵完整无删无 skip。P0=0，P1=0，P2=0，P3=0。"
+  }
+ ],
+ "checks": [
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python scripts/harness/doctor.py --task TASK-0196",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "READY Doctor（authorizationCommit=34fbd38 回填、READY checkpoint 前向修复批 353b1ac 后）真实执行 PASS 917452 checks exit 0，128.3s；READY 授权 checkpoint 的 allowed 路径此前遗漏 preReadyMaintenanceRecoveryPlan exactPaths（RECOVERY-02 json）致 1 error，已按卡内 writeAllowlist + maximumFixBatches 1/1 修复（仅 doctor.py + test_harness.py，policy 零修改、投影常量 c65c62b6 不变）。",
+   "verifiedCommit": "353b1acd1ccffef3c3a502c6a0061461943316bc"
+  },
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python scripts/harness/doctor.py --task TASK-0196",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交前（e545d3c 完整暂存候选，index 恰 5 冻结路径）真实执行 PASS 912511 checks exit 0，204.0s。",
+   "verifiedCommit": null
+  },
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python scripts/harness/doctor.py --summary",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交前同一暂存候选真实执行 PASS 912511 checks exit 0，158.9s。",
+   "verifiedCommit": null
+  },
+  {
+   "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0196PostTerminalTailTests test_harness.Task0196PreReadyCompletionTests",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交前 TASK-0196 全部定向测试真实执行 32/32 OK（174.6s）：tail 接纳 14 项 + RECOVERY-03 completion 正负矩阵 18 项（精确链/错误父/跳过失败边/额外路径/漂移/多父/复制/二次消费/RECOVERY-04/无通用放行/ready-checkpoint 路径）。",
+   "verifiedCommit": null
+  },
+  {
+   "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0098PostTerminalTailTests test_harness.Task0189PostTerminalTailTests test_harness.IdlePlanningCheckpointTests test_harness.EnforcementTests",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交前 TASK-0098/0189 回归 + IdlePlanningCheckpoint + Enforcement 真实执行 48/48 OK（527.5s）。",
+   "verifiedCommit": null
+  },
+  {
+   "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.CiExecutionPolicyTests",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交前 CiExecutionPolicy 回归真实执行 6/6 OK（3288.7s，validate_ci_execution_policy 单次约 155s 固有耗时）。",
+   "verifiedCommit": null
+  },
+  {
+   "command": "git diff --check",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交前完整暂存候选真实执行 exit 0，无 whitespace 错误。",
+   "verifiedCommit": null
+  },
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python scripts/harness/doctor.py --task TASK-0196",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交后（clean HEAD e545d3c）真实执行 PASS 913999 checks exit 0，197.4s。",
+   "verifiedCommit": "e545d3c0847b5e909b454a5a6583ab392a17402b"
+  },
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python scripts/harness/doctor.py --summary",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交后 clean HEAD e545d3c 真实执行 PASS 913999 checks exit 0，184.0s。",
+   "verifiedCommit": "e545d3c0847b5e909b454a5a6583ab392a17402b"
+  },
+  {
+   "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0196PostTerminalTailTests test_harness.Task0196PreReadyCompletionTests",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交后 clean HEAD 真实执行 32/32 OK（178.5s），含对真实 completion boundary e545d3c 的完整链边界校验（validate_task0196_completion_boundary 0 errors）。",
+   "verifiedCommit": "e545d3c0847b5e909b454a5a6583ab392a17402b"
+  },
+  {
+   "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0098PostTerminalTailTests test_harness.Task0189PostTerminalTailTests test_harness.IdlePlanningCheckpointTests test_harness.EnforcementTests",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交后 clean HEAD 真实执行 48/48 OK（478.5s）。",
+   "verifiedCommit": "e545d3c0847b5e909b454a5a6583ab392a17402b"
+  },
+  {
+   "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.CiExecutionPolicyTests",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交后 clean HEAD 真实执行 6/6 OK（2473.4s）。",
+   "verifiedCommit": "e545d3c0847b5e909b454a5a6583ab392a17402b"
+  },
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python -c 'doctor.validate_task0196_completion_boundary(audit, e545d3c)'",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "提交后对 RECOVERY-03 e545d3c 直接运行完整 completion boundary validator：0 errors，candidate(HEAD)=True（完整单父链 ea129d1→8114da2→e1a7588→e545d3c 精确匹配）。",
+   "verifiedCommit": "e545d3c0847b5e909b454a5a6583ab392a17402b"
+  },
+  {
+   "command": "git diff --check",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "RECOVERY-03 提交后 clean HEAD 真实执行 exit 0。",
+   "verifiedCommit": "e545d3c0847b5e909b454a5a6583ab392a17402b"
+  },
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python scripts/harness/doctor.py --task TASK-0196",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "fix batch 353b1ac 后定向测试 33/33 OK（128.1s，新增 ready-checkpoint allowed paths 回归）。",
+   "verifiedCommit": "353b1acd1ccffef3c3a502c6a0061461943316bc"
+  },
+  {
+   "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python python scripts/harness/precheck.py --task TASK-0196",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "冻结 requiredCommands 同一候选 SHA（87cd40a IN_PROGRESS）真实执行：precheck 8 commands 全 PASS exit 0（doctor PASS 918947 checks 120.7s + catalogValidate/catalogDrift/paidFeatureCheck/licenseCheck/betaRosterGate/openapiValidate/openapiDrift 全 PASS）。",
+   "verifiedCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91"
+  },
+  {
+   "command": "git diff --check",
+   "status": "PASS",
+   "exitCode": 0,
+   "artifactHash": null,
+   "reason": "冻结 requiredCommands 同一候选 SHA（87cd40a）真实执行 exit 0。",
+   "verifiedCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91"
+  },
+  {
+   "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+   "status": "NOT_RUN",
+   "exitCode": null,
+   "artifactHash": null,
+   "reason": "完整 discover 未执行（NOT_RUN）：CiExecutionPolicyTests 单类本地约 41-55 分钟远超 CI full job 预算（TASK-0195 先例同型）；本卡冻结验证组合（TASK-0196 定向 33 项 + 0098/0189/IdlePlanningCheckpoint/Enforcement 48 项 + CiExecutionPolicy 6 项 + doctor --task/--summary + precheck + git diff --check）已在提交前/后真实执行并全部 PASS，如实保留 NOT_RUN，不代表 CI 完全兼容。",
+   "verifiedCommit": null
+  }
+ ]
+}

@@ -15150,6 +15150,35 @@ def validate_task_backlog(
     return projection
 
 
+def task_record_bound_skill_paths(task: dict[str, Any]) -> set[str]:
+    """Skill file paths machine-bound by a task's registered one-time
+    pre-READY maintenance/recovery/completion plans.
+
+    Those changes are already authorized and validated by the exact-path
+    records; the targetSkillVersions declaration check must not double-flag
+    them (TASK-0196 maintenance edges registered record entries in
+    skills/task-delivery-flow and skills/task-intake with unchanged
+    versions). Only exact plan paths are admitted; no generic
+    multi-maintenance or writeAllowlist release capability is created.
+    """
+    bound: set[str] = set()
+    for key in (
+        "preReadyMaintenancePlan",
+        "preReadyMaintenanceRecoveryPlan",
+        "preReadyMaintenanceCompletionPlan",
+    ):
+        plan = task.get(key)
+        if isinstance(plan, dict):
+            plan_paths = plan.get("exactPaths", [])
+            if isinstance(plan_paths, list):
+                bound.update(
+                    str(p)
+                    for p in plan_paths
+                    if str(p).startswith("skills/")
+                )
+    return bound
+
+
 def validate_skills(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
@@ -15307,6 +15336,7 @@ def validate_skills(
             and task.get("state") in ("IN_REVIEW", "ACCEPTED")
             and isinstance(targets, dict)
         ):
+            bound_skill_paths = task_record_bound_skill_paths(task)
             try:
                 baseline_skills = skill_registry_at_commit(str(task.get("baseCommit", "")))
                 removed = sorted(set(baseline_skills) - set(delivery_skills))
@@ -15337,7 +15367,10 @@ def validate_skills(
                                 ROOT / normalize_repo_path(current_path)
                             )
                         )
-                        if baseline_content != current_content:
+                        if (
+                            baseline_content != current_content
+                            and baseline_path not in bound_skill_paths
+                        ):
                             changed_skill_ids.add(skill_id)
                     except (HarnessError, OSError) as exc:
                         audit.error(f"{task_id}: cannot compare Skill {skill_id} with Base Commit: {exc}")
@@ -15347,8 +15380,13 @@ def validate_skills(
                     if delivery_commit
                     else changed_paths(str(task.get("baseCommit", "")))
                 )
+                unbound_delivery_paths = [
+                    path
+                    for path in delivery_paths
+                    if path not in bound_skill_paths
+                ]
                 changed_tree_ids, invalid_skill_paths = changed_skill_tree_ids(
-                    delivery_paths
+                    unbound_delivery_paths
                 )
                 audit.require(
                     not invalid_skill_paths,
@@ -19547,6 +19585,12 @@ def validate_post_terminal_governance_edges(
         terminal_commit = canonical_terminal_commit(last, {"ACCEPTED", "REJECTED"})
     except HarnessError as exc:
         audit.error(f"{last_terminal}: cannot derive canonical terminal commit: {exc}")
+        return
+    if terminal_commit is None:
+        # Pre-closure mode: the terminal ledger entry is staged but not yet
+        # committed, so no introduction commit exists. The validator re-runs
+        # after the terminal commit lands (canonical_terminal_commit then
+        # resolves); skipping here never weakens the committed-state check.
         return
     head_commit = git_text("rev-parse", "HEAD").stdout.strip()
     if head_commit == terminal_commit:
