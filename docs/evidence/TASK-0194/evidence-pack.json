@@ -1,0 +1,119 @@
+{
+  "taskId": "TASK-0194",
+  "baseCommit": "fb9cf0e178212d6ff554abf7d4695aa114fe0dba",
+  "headCommit": "a4118b0c67eeff285a7c211df15e69de76943ede",
+  "contextFingerprint": "69aa493b81c570f60be1d60ab5bd28454a3afd2e5041d37c79ba72034756faf7",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f389b1a75dae47073059c85835e8896931f1b27d",
+      "startedAt": "2026-08-14T03:22:46+08:00",
+      "endedAt": "2026-08-14T13:36:30+08:00",
+      "elapsedSeconds": 36824,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f389b1a75dae47073059c85835e8896931f1b27d",
+      "startedAt": "2026-08-14T03:22:46+08:00",
+      "endedAt": "2026-08-14T12:20:14+08:00",
+      "elapsedSeconds": 32248,
+      "outcome": "TIMEOUT",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 26848,
+      "readyDoctorPassAt": "2026-08-14T12:20:14+08:00",
+      "inProgressCommit": "f452180a1757f774a365542136d96476ee04744b"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "f452180a1757f774a365542136d96476ee04744b",
+      "startedAt": "2026-08-14T12:20:14+08:00",
+      "endedAt": "2026-08-14T13:36:30+08:00",
+      "elapsedSeconds": 4576,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-14T12:20:14+08:00",
+      "inProgressCommit": "f452180a1757f774a365542136d96476ee04744b"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0194_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "a4118b0c67eeff285a7c211df15e69de76943ede",
+      "evidencePath": "docs/evidence/TASK-0194/review-r1.md",
+      "reason": "R1 独立复核 APPROVE（同意按真实结果 REJECTED 闭合）：候选结构核实（单父、26 路径、V1-V27 与 TASK-0191/0192/0193 历史零修改）；授权冻结缺口根因独立确认（恰 5 gate errors 为 READY 冻结 requiredSkills/humanApprovals 与 protected-path 机器 gate 不匹配，amendment 合同无法修改 AUTHORIZATION_FIELDS，结构性不可修复）；实现抽查相符（V28 墙钟 clock_timestamp/attempt intent/显式 claim guard 非 GUC/per-item terminalize、LiveModelInvoker prepare-external 拆分 external 零 DB、worker/handler 分段事务）；诚实性核实（Maven 1 failure 系 27→28 迁移数断言属实、无 PASS 伪装、doctor 独立复现同 5 errors）；REJECTED 闭合正当性与 TASK-0193 同型后继继承路径成立。P0=0，P1=0，P2=1（pre-closure 占位须在本次闭合内以真实结果补完），P3=2（信息性）。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0194",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "候选 a4118b0 前一实现会话真实执行 exit 1，恰 5 项 gate error 原样记录：①-④ service/modules/modelruntime/contract/ExternalAttemptBinding.java、execution/LiveModelInvoker.java、execution/PreparedInvocation.java、test/.../LiveModelInvokerTest.java 四路径触发 protected-path C3 model-routing-change Skill gate（READY 冻结 requiredSkills 未含该 Skill）；⑤ V28__worker_lease_fence_business_guard.sql 触发 C4 database-migration 人工批准 gate（冻结 humanApprovals 的 scope 为 database-migration-and-authorization，不满足机器 gate 精确匹配 scope=database-migration）。本闭合会话 13:02 doctor --summary 复核确认同 5 errors（903630 checks）。两者均为 READY 授权冻结缺口而非实现缺陷；amendment 合同（AUTHORIZATION_FIELDS 不可变）无法在卡内修复，Owner 方案 2 裁决以真实结果闭合 REJECTED。",
+      "verifiedCommit": null,
+      "candidateCommit": "a4118b0c67eeff285a7c211df15e69de76943ede"
+    },
+    {
+      "command": "JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "候选 a4118b0 前一实现会话真实执行：Tests run 345，仅 1 failure（唯一失败为 SchemaReadinessHealthIndicatorTest.expectedSchemaVersionFromClasspath 迁移数断言 27 vs V28 落地后实际 28；该测试文件超出本卡冻结 writeAllowlist，Owner 已裁决不由本卡修复），BUILD FAILURE exit 1。定向 Java 测试 32/32 PASS。修复路径移交后继继承接纳卡（仅 27→28 机械更新）。",
+      "verifiedCommit": null,
+      "candidateCommit": "a4118b0c67eeff285a7c211df15e69de76943ede"
+    },
+    {
+      "command": "bash infra/db/run-rls-tests.sh",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 a4118b0 前一实现会话真实执行：84/84 全 PASS（既有 01-73 改造后 + 新增 74-83：intent-before-outbound/墙钟 lease 过期/显式 claim guard/stale 仅闭合 intent/overtaken 零业务写/审计存活 finalize 回滚/aborted tx 独立 fail/per-item 无污染/有 intent 过期不重发/guarded happy path），exit 0。",
+      "verifiedCommit": null,
+      "candidateCommit": "a4118b0c67eeff285a7c211df15e69de76943ede"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "候选 a4118b0 前一实现会话真实执行 exit 0，无 whitespace 错误。",
+      "verifiedCommit": null,
+      "candidateCommit": "a4118b0c67eeff285a7c211df15e69de76943ede"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --summary",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "本闭合会话 2026-08-14 13:02:05 真实执行 exit 1（903630 checks），恰 5 errors 与候选交接一致：4× modelruntime 路径 requires registered Skill model-routing-change + 1× V28 requires recorded human approval for database-migration；同时核实 worktree clean、ahead 45、HEAD=a4118b0 单父候选、TASK-0191 保持 REJECTED、TASK-0193 保持 last accepted/terminal。",
+      "verifiedCommit": null,
+      "candidateCommit": "a4118b0c67eeff285a7c211df15e69de76943ede"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0194 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "终态闭包前真实执行（精确暂存 6 路径闭合候选快照，2026-08-14 13:37:11-13:44:09，约 522s）：Harness doctor FAIL（5 errors, 1114810 checks）exit 1（FAIL→return 1 确定性映射，代码行 19722-19723，同日 13:02 --summary 直接观测同映射）；恰为已知 5 项 gate error（4× modelrouting model-routing-change Skill + 1× V28 database-migration approval），闭合制品（卡 REJECTED+reviewers/project-state/ledger/evidence/handoff）零新增 error；按 Owner 2026-08-14 方案 2 裁决以真实 FAIL 原样进入 Evidence/Handoff 并闭合 REJECTED，未转换、未省略。",
+      "verifiedCommit": null,
+      "candidateCommit": "a4118b0c67eeff285a7c211df15e69de76943ede"
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest discover",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "完整 discover 未执行（NOT_RUN）：CiExecutionPolicyTests 单类本地约 34 分钟远超 CI full job 10 分钟预算（TASK-0189/0190/0191 已记录），本卡延续如实保留，不表述为 CI 兼容；后继继承接纳卡须自行决定并如实记录。",
+      "verifiedCommit": null,
+      "candidateCommit": null
+    }
+  ]
+}

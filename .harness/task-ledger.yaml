@@ -1014,3 +1014,9 @@ tasks:
     taskCard: docs/tasks/TASK-0193-p0-owner-context-rls-inherited-adoption.md
     evidence: docs/evidence/TASK-0193/evidence-pack.json
     handoff: docs/handoffs/TASK-0193.json
+  TASK-0194:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0194-worker-lease-fence-transaction-boundary.md
+    evidence: docs/evidence/TASK-0194/evidence-pack.json
+    handoff: docs/handoffs/TASK-0194.json

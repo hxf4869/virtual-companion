@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0194
-activeTaskCard: docs/tasks/TASK-0194-worker-lease-fence-transaction-boundary.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0193
 lastAcceptedHandoff: docs/handoffs/TASK-0193.json
-lastTerminalTask: TASK-0193
-lastTerminalHandoff: docs/handoffs/TASK-0193.json
-nextAction: TASK-0194 READY（外部审计 P1 修复首卡：worker lease/fence 墙钟生效、prepare/external 事务分离、outbound 前 attempt intent、显式 claim guard、per-item terminalize、独立 fail；Owner 2026-08-14 批准拆卡与 C4 database-migration/AUTHORIZATION 范围并给定 5 项设计修正已落入 DRAFT 879da12；baseCommit=fb9cf0e TASK-0193 ACCEPTED 终态；待 READY Doctor PASS 后进入 IN_PROGRESS 实现；bounded retry/dead-letter 后续串行卡暂不创建）。
+lastTerminalTask: TASK-0194
+lastTerminalHandoff: docs/handoffs/TASK-0194.json
+nextAction: 以 TASK-0194 REJECTED 终态提交为 baseCommit，按 Owner 2026-08-14 预授权开 TASK-0193 同型继承接纳后继卡：READY 冻结 requiredSkills 含 model-routing-change@1.0.0 与 humanApprovals 含 scope database-migration，writeAllowlist 增 service/apps/runtime/src/test/java/com/virtualcompanion/runtime/auth/config/SchemaReadinessHealthIndicatorTest.java（仅迁移数断言 27→28），机器绑定继承实现（候选 a4118b0 路径集/mode/blob/tree/hash 单父链零漂移，TASK-0194 历史只读 forbidden）后，在同一真实候选 SHA 重新执行四条冻结命令与 C4 独立 Reviewer、pre-closure Doctor 正式接纳；在此之前不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

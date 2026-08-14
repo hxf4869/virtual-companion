@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0194
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -364,13 +364,43 @@ humanApprovals:
       V27 owner 密码学绑定与 current_owner_id 每调用重校验不被弱化；业务写显式校验
       work_item_id+claim_token+claim_fence（非可伪造 GUC）。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0194_r1
+    kind: independent-review-gate
+    verdict: PASS
+    reviewedCommit: a4118b0c67eeff285a7c211df15e69de76943ede
+    evidencePath: docs/evidence/TASK-0194/review-r1.md
+    reason: >-
+      R1 独立复核 APPROVE（同意按真实结果 REJECTED 闭合）：候选结构核实
+      （单父、26 路径、V1-V27 与 TASK-0191/0192/0193 历史零修改）；授权冻结
+      缺口根因独立确认（恰 5 gate errors 为 READY 冻结 requiredSkills/
+      humanApprovals 与 protected-path 机器 gate 不匹配，amendment 合同无法
+      修改 AUTHORIZATION_FIELDS，结构性不可修复）；实现抽查相符（V28 墙钟
+      clock_timestamp/attempt intent/显式 claim guard 非 GUC/per-item
+      terminalize、LiveModelInvoker prepare-external 拆分 external 零 DB、
+      worker/handler 分段事务）；诚实性核实（Maven 1 failure 系 27→28 迁移
+      数断言属实、无 PASS 伪装、doctor 独立复现同 5 errors）；REJECTED 闭合
+      正当性与 TASK-0193 同型后继继承路径成立；P0/P1=0，P2=1（pre-closure
+      占位须在闭合内以真实结果补完），P3=2（信息性）。
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0194
   - JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw --batch-mode --no-transfer-progress -pl service/apps/runtime -am test
   - bash infra/db/run-rls-tests.sh
   - git diff --check
-terminalStateReason: ""
+terminalStateReason: >-
+  canonical precheck 真实 FAIL（exit 1，恰 5 项 gate error，原样记录于
+  Evidence）：①-④ service/modules/modelruntime 四路径（ExternalAttemptBinding/
+  LiveModelInvoker/PreparedInvocation/LiveModelInvokerTest）触发 protected-path
+  C3 model-routing-change Skill gate，而 READY 冻结 requiredSkills 未含该
+  Skill；⑤ V28__worker_lease_fence_business_guard.sql 触发 C4
+  database-migration 人工批准 gate，而冻结 humanApprovals 的 scope 为
+  database-migration-and-authorization，不满足机器 gate 精确匹配
+  scope=database-migration。两者均为 READY 授权冻结缺口而非实现缺陷；
+  requiredSkills/humanApprovals 属 AUTHORIZATION_FIELDS 不可变字段，强类型
+  amendment 合同（仅 addedWriteAllowlist+acceptance replacements）无法在卡内
+  修复。Owner 2026-08-14 方案 2 裁决：不再 amendment、不再部分修复、不再业务
+  改动，以候选 a4118b0 真实结果闭合 REJECTED；实现由预授权的后继继承接纳卡
+  （TASK-0193 同型）机器绑定零漂移承接并全量重新验收。
 ```
 
 > 本卡为外部审计 P1 修复的首张延续单卡（前一合法终态：TASK-0193 ACCEPTED `fb9cf0e`）。
