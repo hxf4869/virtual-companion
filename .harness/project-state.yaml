@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0193
 lastAcceptedHandoff: docs/handoffs/TASK-0193.json
 lastTerminalTask: TASK-0193
 lastTerminalHandoff: docs/handoffs/TASK-0193.json
-nextAction: TASK-0194 READY（外部审计 P1 修复首卡：worker lease/fence 墙钟生效、prepare/external 事务分离、outbound 前 attempt intent、显式 claim guard、per-item terminalize、独立 fail；Owner 2026-08-14 批准拆卡与 C4 database-migration/AUTHORIZATION 范围并给定 5 项设计修正已落入 DRAFT 879da12；baseCommit=fb9cf0e TASK-0193 ACCEPTED 终态；待 READY Doctor PASS 后进入 IN_PROGRESS 实现；TASK-0195 bounded retry/dead-letter 后续串行暂不创建）。
+nextAction: TASK-0194 READY（外部审计 P1 修复首卡：worker lease/fence 墙钟生效、prepare/external 事务分离、outbound 前 attempt intent、显式 claim guard、per-item terminalize、独立 fail；Owner 2026-08-14 批准拆卡与 C4 database-migration/AUTHORIZATION 范围并给定 5 项设计修正已落入 DRAFT 879da12；baseCommit=fb9cf0e TASK-0193 ACCEPTED 终态；待 READY Doctor PASS 后进入 IN_PROGRESS 实现；bounded retry/dead-letter 后续串行卡暂不创建）。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
