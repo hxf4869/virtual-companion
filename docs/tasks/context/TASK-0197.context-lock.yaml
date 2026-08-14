@@ -97,7 +97,7 @@ inputs:
   sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
 - path: owner-accepted-task-0196-independent-audit-20260815
   provenanceOnly: true
-  # Owner-accepted independent audit (Codex attachment 9d477c04-84b9-4453-95af-587ae6343460/pasted-text.txt); INVALID conclusion frozen 2026-08-15
+  # Independent audit document recorded at TASK-0197 intake (Codex attachment 9d477c04-84b9-4453-95af-587ae6343460/pasted-text.txt). INVALID is a historical conclusion, not a READY/harness-change/authorization/indivisible approval.
   sha256: bc3f2ad1e019d46c71657c4764a8e05228337861242d05b5b3c02fc611c3ca5f
 - path: requirements-harness.txt
   sha256: 83d1f52f5919c76fa38295e848f732dde28547b617fdadf4ed12159b719dae7c
