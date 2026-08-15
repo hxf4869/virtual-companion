@@ -18398,6 +18398,175 @@ def validate_task0234_exact_tree_channel(
             )
 
 
+TASK_0235_ACTIVATION_COMMIT = "4ed3a78264322ab83f238b137c7bc47e8431c7d2"
+TASK_0235_GAP_TASK_IDS = [
+    "TASK-0213",
+    "TASK-0214",
+    "TASK-0215",
+    "TASK-0216",
+    "TASK-0217",
+    "TASK-0218",
+    "TASK-0219",
+    "TASK-0221",
+    "TASK-0222",
+    "TASK-0223",
+    "TASK-0224",
+    "TASK-0225",
+    "TASK-0226",
+    "TASK-0227",
+]
+TASK_0235_CORE_TRUTHS = {
+    ".harness/project-state.yaml",
+    ".harness/task-ledger.yaml",
+    ".harness/task-lifecycle.yaml",
+}
+
+
+def validate_task0235_accepted_evidence(
+    audit: Audit,
+    task: dict[str, Any],
+    evidence: dict[str, Any],
+) -> None:
+    """TASK-0235 SLICE-GOVERNANCE-C: activation-gated three-piece acceptance
+    evidence (READY Doctor PASS + canonical precheck PASS + pre-closure PASS)."""
+    task_id = str(task.get("taskId", ""))
+    if not task0233_is_ancestor(
+        TASK_0235_ACTIVATION_COMMIT, str(task.get("baseCommit", ""))
+    ) or task.get("state") != "ACCEPTED":
+        return
+    label = f"{task_id}: acceptance evidence"
+    checks = evidence.get("checks") or []
+    if not isinstance(checks, list):
+        audit.error(f"{label}: checks must be a non-empty list")
+        return
+    ready_doctor_pass = any(
+        isinstance(item, dict)
+        and "doctor.py" in str(item.get("command", ""))
+        and "--pre-closure" not in str(item.get("command", ""))
+        and item.get("status") == "PASS"
+        and item.get("exitCode") == 0
+        for item in checks
+    )
+    precheck_pass = any(
+        isinstance(item, dict)
+        and "precheck.py" in str(item.get("command", ""))
+        and item.get("status") == "PASS"
+        and item.get("exitCode") == 0
+        for item in checks
+    )
+    preclosure_pass = any(
+        isinstance(item, dict)
+        and "pre-closure" in str(item.get("command", ""))
+        and item.get("status") == "PASS"
+        and item.get("exitCode") == 0
+        for item in checks
+    )
+    audit.require(
+        ready_doctor_pass,
+        f"{label}: a real READY Doctor PASS entry (exit 0) is required",
+    )
+    audit.require(
+        precheck_pass,
+        f"{label}: a real canonical precheck PASS entry (exit 0) is required",
+    )
+    audit.require(
+        preclosure_pass,
+        f"{label}: a real pre-closure PASS entry (exit 0) is required",
+    )
+
+
+def validate_task0235_gap_recognition(
+    audit: Audit,
+    tasks: dict[str, dict[str, Any]],
+    registry: dict[str, Any] | None = None,
+) -> None:
+    """TASK-0235: canonical recognition that the 14-card validation-gap batch is
+    permanently covered by the TASK-0232 registry and not retroactively rewritten.
+    `registry` is injectable for negative tests; None reads the repository file."""
+    if registry is None:
+        registry = load_json(
+            ROOT / "docs/evidence/TASK-0231/governance-gap-quarantine.json", audit
+        )
+    if not registry:
+        return
+    batch = None
+    for group in registry.get("groups") or []:
+        if isinstance(group, dict) and group.get("groupId") == "LEGACY_VALIDATION_GAP_BATCH":
+            batch = group
+            break
+    audit.require(
+        isinstance(batch, dict),
+        "TASK-0231 quarantine JSON must keep the LEGACY_VALIDATION_GAP_BATCH group",
+    )
+    if not isinstance(batch, dict):
+        return
+    cards = batch.get("cards") or []
+    recorded = {
+        str(item.get("taskId")): item
+        for item in cards
+        if isinstance(item, dict)
+    }
+    audit.require(
+        set(recorded) == set(TASK_0235_GAP_TASK_IDS),
+        f"TASK-0232 registry gap batch must cover exactly {len(TASK_0235_GAP_TASK_IDS)} frozen cards",
+    )
+    for task_id in TASK_0235_GAP_TASK_IDS:
+        item = recorded.get(task_id, {})
+        checks = item.get("checks") or {}
+        audit.require(
+            checks.get("preClosure") == "NOT_RUN",
+            f"{task_id}: registry must record preClosure NOT_RUN",
+        )
+        task = tasks.get(task_id)
+        if task is None or task.get("state") != "ACCEPTED":
+            audit.error(f"{task_id}: must remain ACCEPTED")
+            continue
+        evidence_path = ROOT / "docs" / "evidence" / task_id / "evidence-pack.json"
+        evidence = load_json(evidence_path, audit)
+        if evidence is None:
+            continue
+        live_preclosure = [
+            str(item.get("status"))
+            for item in (evidence.get("checks") or [])
+            if isinstance(item, dict) and "pre-closure" in str(item.get("command", ""))
+        ]
+        audit.require(
+            bool(live_preclosure) and all(status == "NOT_RUN" for status in live_preclosure),
+            f"{task_id}: evidence pre-closure gap must not be retroactively rewritten",
+        )
+
+
+def validate_task0235_sources_of_truth_boundary(
+    audit: Audit,
+    task: dict[str, Any],
+) -> None:
+    """TASK-0235: activation-gated sourcesOfTruth authority boundary."""
+    task_id = str(task.get("taskId", ""))
+    if not task0233_is_ancestor(
+        TASK_0235_ACTIVATION_COMMIT, str(task.get("baseCommit", ""))
+    ):
+        return
+    sources = task.get("sourcesOfTruth")
+    if not isinstance(sources, list) or not sources:
+        audit.error(f"{task_id}: sourcesOfTruth must be a non-empty list")
+        return
+    label = f"{task_id}: sourcesOfTruth boundary"
+    audit.require(
+        TASK_0235_CORE_TRUTHS <= set(str(item) for item in sources),
+        f"{label}: must include .harness/project-state.yaml, task-ledger.yaml, task-lifecycle.yaml",
+    )
+    for item in sources:
+        path = str(item)
+        if path.startswith(("docs/source/", "docs/decisions/", "docs/planning/")):
+            audit.error(f"{label}: {path} is not a machine source of truth")
+            continue
+        if not is_repository_relative(path):
+            audit.error(f"{label}: non-portable path {path}")
+            continue
+        if not current_path_is_file(ROOT / normalize_repo_path(path)):
+            audit.error(f"{label}: source of truth does not exist: {path}")
+
+
 def validate_evidence_and_handoffs(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
@@ -18522,6 +18691,7 @@ def validate_evidence_and_handoffs(
         evidence_packs[task_id] = data
 
     terminal_states = set(str(item) for item in lifecycle.get("terminalStates", []))
+    validate_task0235_gap_recognition(audit, tasks)
     for task_id, task in tasks.items():
         if (
             task.get("state") not in terminal_states
@@ -18551,6 +18721,13 @@ def validate_evidence_and_handoffs(
                     evidence_packs[task_id],
                     allow_uncommitted_terminal,
                 )
+            if evidence_packs.get(task_id) is not None:
+                validate_task0235_accepted_evidence(
+                    audit,
+                    task,
+                    evidence_packs[task_id],
+                )
+            validate_task0235_sources_of_truth_boundary(audit, task)
             # Withdrawn (Owner 2026-08-14 plan D): the earlier blanket
             # re-judging of all historical terminal tasks through the full v2
             # evidence gate produced 1169 false errors and violated the

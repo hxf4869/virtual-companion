@@ -12764,3 +12764,143 @@ class Task0234ExactTreeChannelGovernanceTests(unittest.TestCase):
             False,
         )
         self.assertFalse(audit.errors, audit.errors)
+
+
+class Task0235AcceptanceEvidenceGovernanceTests(unittest.TestCase):
+    """TASK-0235 SLICE-GOVERNANCE-C: three-piece acceptance evidence, 14-card
+    gap recognition, and sourcesOfTruth authority boundary.
+    Owner 2026-08-16 /goal frozen the positive/negative matrix below."""
+
+    BASE = "a16ef61e94df510dcd2b8986bbd61f9d36f42f0f"  # placeholder replaced below
+
+    def _accepted_task(self) -> dict:
+        return {"taskId": "TASK-0997", "state": "ACCEPTED", "baseCommit": self.BASE}
+
+    def _three_piece_checks(self) -> list:
+        return [
+            {"command": "python scripts/harness/doctor.py --task TASK-0997",
+             "status": "PASS", "exitCode": 0},
+            {"command": "python scripts/harness/precheck.py --task TASK-0997",
+             "status": "PASS", "exitCode": 0},
+            {"command": "python scripts/harness/doctor.py --task TASK-0997 --pre-closure",
+             "status": "PASS", "exitCode": 0},
+        ]
+
+    def test_accepted_evidence_positive(self):
+        audit = doctor.Audit()
+        doctor.validate_task0235_accepted_evidence(
+            audit, self._accepted_task(), {"checks": self._three_piece_checks()}
+        )
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_accepted_missing_preclosure_fails(self):
+        audit = doctor.Audit()
+        checks = self._three_piece_checks()[:2]
+        doctor.validate_task0235_accepted_evidence(
+            audit, self._accepted_task(), {"checks": checks}
+        )
+        self.assertTrue(audit.errors, "missing pre-closure PASS must fail")
+        self.assertTrue(
+            any("pre-closure PASS entry" in item for item in audit.errors), audit.errors
+        )
+
+    def test_accepted_preclosure_not_run_fails(self):
+        audit = doctor.Audit()
+        checks = self._three_piece_checks()
+        checks[2]["status"] = "NOT_RUN"
+        checks[2]["exitCode"] = None
+        doctor.validate_task0235_accepted_evidence(
+            audit, self._accepted_task(), {"checks": checks}
+        )
+        self.assertTrue(audit.errors, "NOT_RUN pre-closure must fail")
+        self.assertTrue(
+            any("pre-closure PASS entry" in item for item in audit.errors), audit.errors
+        )
+
+    def _registry(self) -> dict:
+        return json.loads(
+            (ROOT / "docs/evidence/TASK-0231/governance-gap-quarantine.json").read_text(encoding="utf-8")
+        )
+
+    def _gap_tasks(self) -> dict:
+        return {task_id: {"state": "ACCEPTED"} for task_id in doctor.TASK_0235_GAP_TASK_IDS}
+
+    def test_gap_recognition_positive(self):
+        audit = doctor.Audit()
+        doctor.validate_task0235_gap_recognition(audit, self._gap_tasks(), self._registry())
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_gap_registry_missing_card_fails(self):
+        audit = doctor.Audit()
+        registry = self._registry()
+        for group in registry["groups"]:
+            if group.get("groupId") == "LEGACY_VALIDATION_GAP_BATCH":
+                group["cards"] = group["cards"][:-1]
+        doctor.validate_task0235_gap_recognition(audit, self._gap_tasks(), registry)
+        self.assertTrue(audit.errors, "registry missing a card must fail")
+        self.assertTrue(
+            any("must cover exactly" in item for item in audit.errors), audit.errors
+        )
+
+    def test_gap_preclosure_rewrite_fails(self):
+        audit = doctor.Audit()
+        registry = self._registry()
+        for group in registry["groups"]:
+            if group.get("groupId") == "LEGACY_VALIDATION_GAP_BATCH":
+                for card in group["cards"]:
+                    if card.get("taskId") == "TASK-0213":
+                        card["checks"]["preClosure"] = "PASS"
+        doctor.validate_task0235_gap_recognition(audit, self._gap_tasks(), registry)
+        self.assertTrue(audit.errors, "registry must record NOT_RUN")
+        self.assertTrue(
+            any("must record preClosure NOT_RUN" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_sot_boundary_positive(self):
+        audit = doctor.Audit()
+        task = {
+            "taskId": "TASK-0997",
+            "baseCommit": self.BASE,
+            "sourcesOfTruth": [
+                ".harness/project-state.yaml",
+                ".harness/task-ledger.yaml",
+                ".harness/task-lifecycle.yaml",
+                "AGENTS.md",
+            ],
+        }
+        doctor.validate_task0235_sources_of_truth_boundary(audit, task)
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_sot_docs_source_fails(self):
+        audit = doctor.Audit()
+        task = {
+            "taskId": "TASK-0997",
+            "baseCommit": self.BASE,
+            "sourcesOfTruth": [
+                ".harness/project-state.yaml",
+                ".harness/task-ledger.yaml",
+                ".harness/task-lifecycle.yaml",
+                "docs/source/some-notes.md",
+            ],
+        }
+        doctor.validate_task0235_sources_of_truth_boundary(audit, task)
+        self.assertTrue(audit.errors, "docs/source must fail")
+        self.assertTrue(
+            any("is not a machine source of truth" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_sot_missing_core_truths_fails(self):
+        audit = doctor.Audit()
+        task = {
+            "taskId": "TASK-0997",
+            "baseCommit": self.BASE,
+            "sourcesOfTruth": [".harness/project-state.yaml"],
+        }
+        doctor.validate_task0235_sources_of_truth_boundary(audit, task)
+        self.assertTrue(audit.errors, "missing core truths must fail")
+        self.assertTrue(
+            any("must include .harness/project-state.yaml" in item for item in audit.errors),
+            audit.errors,
+        )
