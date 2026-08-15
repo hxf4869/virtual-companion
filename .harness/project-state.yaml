@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0228
-activeTaskCard: docs/tasks/TASK-0228-h5-memory-relationship-load-error.md
-lastAcceptedTask: TASK-0227
-lastAcceptedHandoff: docs/handoffs/TASK-0227.json
-lastTerminalTask: TASK-0227
-lastTerminalHandoff: docs/handoffs/TASK-0227.json
-nextAction: TASK-0228 IN_PROGRESS。下一动作：实现记忆页关系加载失败文案并跑冻结命令与官方 precheck。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0228
+lastAcceptedHandoff: docs/handoffs/TASK-0228.json
+lastTerminalTask: TASK-0228
+lastTerminalHandoff: docs/handoffs/TASK-0228.json
+nextAction: TASK-0228 ACCEPTED（记忆页已展示关系列表加载失败文案，不改变确认/失败语义）。下一动作：继续发现下一张合法卡。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

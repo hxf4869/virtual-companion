@@ -1218,3 +1218,9 @@ tasks:
     taskCard: docs/tasks/TASK-0227-h5-chat-relationship-load-error.md
     evidence: docs/evidence/TASK-0227/evidence-pack.json
     handoff: docs/handoffs/TASK-0227.json
+  TASK-0228:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0228-h5-memory-relationship-load-error.md
+    evidence: docs/evidence/TASK-0228/evidence-pack.json
+    handoff: docs/handoffs/TASK-0228.json
