@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0222
+activeTaskCard: docs/tasks/TASK-0222-h5-index-carry-relationship-id-to-chat.md
 lastAcceptedTask: TASK-0221
 lastAcceptedHandoff: docs/handoffs/TASK-0221.json
 lastTerminalTask: TASK-0221
 lastTerminalHandoff: docs/handoffs/TASK-0221.json
-nextAction: TASK-0221 ACCEPTED（登录页已增加记忆管理入口，不改变登录/失败语义）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。
+nextAction: TASK-0222 READY。下一动作：绑定 authorizationCommit 后转入 IN_PROGRESS；本轮不跑长 Doctor。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
