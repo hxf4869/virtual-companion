@@ -90,4 +90,26 @@ describe("login page glue (P2-19 component test)", () => {
     expect(wrapper.find('button[data-testid="submit"]').attributes("disabled")).toBeUndefined();
     wrapper.unmount();
   });
+
+  it("renders a back-to-index entry before submit", () => {
+    const wrapper = mountPage();
+    const nav = wrapper.find('[data-testid="nav-index"]');
+    expect(nav.exists()).toBe(true);
+    expect(nav.text()).toContain("返回边界台");
+    wrapper.unmount();
+  });
+
+  it("navigates to the index page without calling login", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    const store = useAuthStore();
+    const loginSpy = vi.spyOn(store, "login");
+
+    await wrapper.find('[data-testid="nav-index"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/index/index" });
+    expect(loginSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

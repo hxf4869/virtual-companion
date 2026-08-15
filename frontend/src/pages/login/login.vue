@@ -1,6 +1,16 @@
 <template>
   <view class="login-page">
-    <view class="login-header">Virtual Companion · 登录</view>
+    <view class="login-header">
+      <text>Virtual Companion · 登录</text>
+      <button
+        data-testid="nav-index"
+        class="nav-index"
+        aria-label="返回边界台"
+        @click="goToIndex"
+      >
+        返回边界台
+      </button>
+    </view>
     <view class="login-form">
       <input
         class="login-input"
@@ -73,6 +83,21 @@ export default defineComponent({
       onUnauthorized: () => store.onUnauthorized(),
     });
 
+    function goToIndex(): void {
+      try {
+        const uniApi = (globalThis as Record<string, unknown>).uni as
+          | { navigateTo?: (options: { url: string }) => void }
+          | undefined;
+        if (uniApi?.navigateTo) {
+          uniApi.navigateTo({ url: "/pages/index/index" });
+        } else if (typeof location !== "undefined") {
+          location.href = "/pages/index/index";
+        }
+      } catch {
+        // Presentation-only navigation; never break login submit/fail.
+      }
+    }
+
     function redirectHome(): void {
       try {
         const uniApi = (globalThis as Record<string, unknown>).uni as
@@ -128,6 +153,7 @@ export default defineComponent({
       canSubmit,
       message,
       onSubmit,
+      goToIndex,
     };
   },
 });
@@ -141,9 +167,18 @@ export default defineComponent({
   min-height: 100vh;
 }
 .login-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
   font-size: 36rpx;
   font-weight: 600;
   margin-bottom: 40rpx;
+}
+.nav-index {
+  flex: 0 0 auto;
+  font-size: 26rpx;
+  font-weight: 400;
 }
 .login-form {
   display: flex;
