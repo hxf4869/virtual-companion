@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0213
 lastAcceptedHandoff: docs/handoffs/TASK-0213.json
 lastTerminalTask: TASK-0213
 lastTerminalHandoff: docs/handoffs/TASK-0213.json
-nextAction: TASK-0214 READY：记忆页无关系时提示去聊天新建，不接线 create、不自动 load。保持不推送不合并。
+nextAction: TASK-0214 IN_PROGRESS：记忆页无关系时提示去聊天新建，不接线 create、不自动 load。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
