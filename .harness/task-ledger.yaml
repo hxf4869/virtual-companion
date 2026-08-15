@@ -1062,3 +1062,9 @@ tasks:
     taskCard: docs/tasks/TASK-0201-h5-relationship-empty-status.md
     evidence: docs/evidence/TASK-0201/evidence-pack.json
     handoff: docs/handoffs/TASK-0201.json
+  TASK-0202:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0202-h5-login-empty-submit-guard.md
+    evidence: docs/evidence/TASK-0202/evidence-pack.json
+    handoff: docs/handoffs/TASK-0202.json

@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0202
-activeTaskCard: docs/tasks/TASK-0202-h5-login-empty-submit-guard.md
-lastAcceptedTask: TASK-0201
-lastAcceptedHandoff: docs/handoffs/TASK-0201.json
-lastTerminalTask: TASK-0201
-lastTerminalHandoff: docs/handoffs/TASK-0201.json
-nextAction: TASK-0202 READY：登录页禁止空字段提交，不改变服务端失败关闭语义。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0202
+lastAcceptedHandoff: docs/handoffs/TASK-0202.json
+lastTerminalTask: TASK-0202
+lastTerminalHandoff: docs/handoffs/TASK-0202.json
+nextAction: TASK-0202 ACCEPTED（H5 登录页空字段提交已在页面层拦住，不改变服务端失败关闭语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
