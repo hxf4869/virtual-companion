@@ -19,6 +19,14 @@
         >
           返回边界台
         </button>
+        <button
+          data-testid="nav-login"
+          class="chat-nav-index"
+          aria-label="登录"
+          @click="goTo('/pages/login/login')"
+        >
+          登录
+        </button>
       </view>
     </view>
 

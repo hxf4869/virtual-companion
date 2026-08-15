@@ -251,6 +251,35 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("renders a login entry even before a relationship is selected", async () => {
+    stubFetch({ relationships: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const nav = wrapper.find('[data-testid="nav-login"]');
+    expect(nav.exists()).toBe(true);
+    expect(nav.text()).toContain("登录");
+    wrapper.unmount();
+  });
+
+  it("navigates to the login page without calling send or cancel", async () => {
+    stubFetch({ relationships: [] });
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send");
+    const cancelSpy = vi.spyOn(store, "cancel");
+
+    await wrapper.find('[data-testid="nav-login"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(cancelSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("selects a query relationship locally without activate", async () => {
     stubFetch({
       relationships: [
