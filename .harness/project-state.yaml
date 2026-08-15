@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0216
+activeTaskCard: docs/tasks/TASK-0216-h5-memory-empty-id-select-or-fill.md
 lastAcceptedTask: TASK-0215
 lastAcceptedHandoff: docs/handoffs/TASK-0215.json
 lastTerminalTask: TASK-0215
 lastTerminalHandoff: docs/handoffs/TASK-0215.json
-nextAction: TASK-0215 ACCEPTED（登录页已增加返回边界台入口，不改变登录/失败语义）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。
+nextAction: TASK-0216 READY：记忆页空 id 提示改为选择或填写，不自动 load、不改变确认语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
