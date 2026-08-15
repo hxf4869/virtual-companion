@@ -1122,3 +1122,9 @@ tasks:
     taskCard: docs/tasks/TASK-0211-h5-memory-neutral-filled-hint.md
     evidence: docs/evidence/TASK-0211/evidence-pack.json
     handoff: docs/handoffs/TASK-0211.json
+  TASK-0212:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0212-h5-memory-hide-unwired-create.md
+    evidence: docs/evidence/TASK-0212/evidence-pack.json
+    handoff: docs/handoffs/TASK-0212.json
