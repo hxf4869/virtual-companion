@@ -1,0 +1,88 @@
+{
+  "taskId": "TASK-0211",
+  "baseCommit": "1e8922ca7394655657f68a9379315116f2e6e91b",
+  "headCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+  "contextFingerprint": "c0825cb9d913492175aa44f9715c310d04e29ed7008ff81e0cd704b6c3532a96",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "e948556e7fcf04c5ecde46eb7fc274c1f2ac80ab",
+      "startedAt": "2026-08-15T19:51:14+08:00",
+      "endedAt": "2026-08-15T20:09:02+08:00",
+      "elapsedSeconds": 1068,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "e948556e7fcf04c5ecde46eb7fc274c1f2ac80ab",
+      "startedAt": "2026-08-15T19:51:14+08:00",
+      "endedAt": "2026-08-15T19:53:56+08:00",
+      "elapsedSeconds": 162,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T19:53:56+08:00",
+      "inProgressCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+      "startedAt": "2026-08-15T19:54:49+08:00",
+      "endedAt": "2026-08-15T20:09:02+08:00",
+      "elapsedSeconds": 853,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T19:53:56+08:00",
+      "inProgressCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0211",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Official candidate precheck PASS (8 commands). Inner doctor --task TASK-0211 PASS 1014934 checks / 135.0s / exit 0 on 9418595.",
+      "environment": "macOS; scratch task-0211-precheck.log",
+      "verifiedCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+      "candidateCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+      "candidateTree": "eb39da8d8c23eb0b001605f6e366ea8399005d58"
+    },
+    {
+      "command": "pnpm --dir frontend exec vitest run src/pages/memory/memory.spec.ts",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "18/18 tests PASS on candidate 9418595: neutral filled-relationship hint, selector pick focuses reload without memory.load, existing empty-list/prefill/nav tests still pass.",
+      "environment": "macOS; vitest 3.2.6; scratch task-0211-required-commands.log",
+      "verifiedCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+      "candidateCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+      "candidateTree": "eb39da8d8c23eb0b001605f6e366ea8399005d58"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on candidate 9418595.",
+      "environment": "macOS",
+      "verifiedCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0211 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Official staged-terminal pre-closure PASS 1269710 checks / 647.5s / exit 0.",
+      "environment": "macOS; scratch task-0211-preclosure-1.log",
+      "verifiedCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+      "candidateCommit": "9418595d241a7d9bacee6d98e98f26c0d7ac4a3a",
+      "candidateTree": "eb39da8d8c23eb0b001605f6e366ea8399005d58"
+    }
+  ]
+}

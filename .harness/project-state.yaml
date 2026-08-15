@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0211
-activeTaskCard: docs/tasks/TASK-0211-h5-memory-neutral-filled-hint.md
-lastAcceptedTask: TASK-0210
-lastAcceptedHandoff: docs/handoffs/TASK-0210.json
-lastTerminalTask: TASK-0210
-lastTerminalHandoff: docs/handoffs/TASK-0210.json
-nextAction: TASK-0211 IN_PROGRESS：记忆页填入关系后使用中性提示并聚焦刷新，不自动 load、不改变确认语义。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0211
+lastAcceptedHandoff: docs/handoffs/TASK-0211.json
+lastTerminalTask: TASK-0211
+lastTerminalHandoff: docs/handoffs/TASK-0211.json
+nextAction: TASK-0211 ACCEPTED（记忆页已填入关系时使用中性提示并聚焦刷新，不自动 load、不改变确认语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
