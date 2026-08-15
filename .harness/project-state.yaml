@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0199
+activeTaskCard: docs/tasks/TASK-0199-h5-chat-empty-history-status.md
 lastAcceptedTask: TASK-0198
 lastAcceptedHandoff: docs/handoffs/TASK-0198.json
 lastTerminalTask: TASK-0198
 lastTerminalHandoff: docs/handoffs/TASK-0198.json
-nextAction: TASK-0198 ACCEPTED（SLICE-AUTHORIZATION：1c1dca2 八路径/四项 P0 quarantine JSON 已冻结到 docs/evidence/TASK-0198/，不合法化 TASK-0196）。下一动作：按 AGENTS.md 从机器真源恢复后，选择不依赖 harness-change/保护路径/失败语义变更的下一张合法卡（SLICE-GOVERNANCE 需第 10 条 harness-change 批准，当前不自动开卡）。保持不推送不合并。
+nextAction: TASK-0199 READY：在 H5 聊天页为空历史渲染可见状态提示，不改变取消/重试/安全语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
