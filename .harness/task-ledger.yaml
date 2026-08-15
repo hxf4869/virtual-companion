@@ -1236,3 +1236,9 @@ tasks:
     taskCard: docs/tasks/TASK-0230-h5-memory-hide-prefill-on-rel-error.md
     evidence: docs/evidence/TASK-0230/evidence-pack.json
     handoff: docs/handoffs/TASK-0230.json
+  TASK-0231:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0231-governance-gap-quarantine.md
+    evidence: docs/evidence/TASK-0231/evidence-pack.json
+    handoff: docs/handoffs/TASK-0231.json

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0231
-state: IN_PROGRESS
+state: REJECTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -17,6 +17,12 @@ planningContractHash: null
 planningContractHashAlgorithm: null
 baseCommit: a0d4106ab25de7a59803254cb12d823ca2a5a98c
 authorizationCommit: 0f03e62e34ef2a789ea24a228f5d150f0d7c2383
+resolutionReason: >-
+  已 READY 卡在 IN_PROGRESS 提交中误改 immutable metadata（修正卡内 governanceGapQuarantine.task0210AcceptedCommit
+  猜测 SHA），造成 READY 检查点后授权投影漂移（doctor: authorization projection changed in commit
+  54fe2153/38fdf90）。canonical precheck 真实 FAIL exit 1 恰 3 errors，如实记录不转换。按 TASK-0209
+  REJECTED-with-real-FAIL 先例诚实闭合：quarantine JSON 与 verify 脚本已落地于本卡 Evidence 目录
+  （verify 真实 PASS），实现不以 ACCEPTED 描述；登记接纳由后继治理卡继承。不推送不合并。
 contextFingerprint: 5eca768c2f0ddbfef8ae4c579c6951ce0ef447722827e6e8caf2ca4fdf5499b6
 contextLock: docs/tasks/context/TASK-0231.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1

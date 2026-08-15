@@ -1,0 +1,60 @@
+{
+  "taskId": "TASK-0231",
+  "state": "REJECTED",
+  "baseCommit": "a0d4106ab25de7a59803254cb12d823ca2a5a98c",
+  "headCommit": "38fdf90236f711ff69653a321adfd1249945eafd",
+  "evidencePath": "docs/evidence/TASK-0231/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0ee00e7d3d8d5eb0cce57c1e18db7c39c7de89e6",
+      "startedAt": "2026-08-16T03:05:08+08:00",
+      "endedAt": "2026-08-16T03:16:42+08:00",
+      "elapsedSeconds": 694,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "0ee00e7d3d8d5eb0cce57c1e18db7c39c7de89e6",
+      "startedAt": "2026-08-16T03:05:08+08:00",
+      "endedAt": "2026-08-16T03:14:26+08:00",
+      "elapsedSeconds": 558,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T03:14:26+08:00",
+      "inProgressCommit": "54fe2153d7a6dd1b5abc44e336c95ed5845e61fa"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "54fe2153d7a6dd1b5abc44e336c95ed5845e61fa",
+      "startedAt": "2026-08-16T03:14:26+08:00",
+      "endedAt": "2026-08-16T03:16:42+08:00",
+      "elapsedSeconds": 136,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T03:14:26+08:00",
+      "inProgressCommit": "54fe2153d7a6dd1b5abc44e336c95ed5845e61fa"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "三组治理缺口已冻结到 docs/evidence/TASK-0231/governance-gap-quarantine.json：LEGACY_VALIDATION_GAP_BATCH（14 张卡）、LEGACY_AUTHORIZATION_GAP_0209_0210、LEGACY_EXACT_TREE_EVIDENCE_GAP。",
+    "只读核验脚本 verify_quarantine_contract.py 真实 PASS：正例与仓库证据一致；负例矩阵 5/5 按预期 FAIL。",
+    "READY Doctor 真实 PASS 1141123 checks；git diff --check exit 0。",
+    "本卡不合法化任何历史闭合、不追溯授权、不修改历史制品、不修改 Harness。"
+  ],
+  "remaining": [
+    "官方 canonical precheck FAIL（exit 1，1143167 checks / 3 errors，未转换）：IN_PROGRESS 提交 54fe2153 修正卡内 governanceGapQuarantine.task0210AcceptedCommit（READY 检查点后 immutable metadata），造成授权投影漂移且无法前向修复。",
+    "quarantine 记录与 verify 脚本已落地于本卡 Evidence 目录，但本卡 REJECTED；登记接纳（绑定 blob/sha256 的唯一权威注册）需后继治理卡继承，参照 TASK-0197 REJECTED → TASK-0198 继承先例。"
+  ],
+  "knownRisks": [
+    "卡内 governanceGapQuarantine.task0210AcceptedCommit 保持 READY 检查点投影值（含猜测 SHA 1e8922cb...）；正确 SHA 1e8922ca7394655657f68a9379315116f2e6e91b 已冻结在 quarantine JSON 与 verify 脚本中，由后继登记卡再次绑定。",
+    "pre-closure 预期同样 FAIL（投影漂移在历史中永久存在），如实记录不转换。"
+  ],
+  "nextAction": "TASK-0231 REJECTED（canonical precheck 真实 FAIL exit 1 恰 3 项授权投影漂移 error，未改写成 PASS；quarantine JSON 与 verify 脚本已落地于本卡 Evidence）。下一动作：canonical task-intake 创建继承登记卡（永久 ID 由机器分配）。保持不推送不合并。"
+}
