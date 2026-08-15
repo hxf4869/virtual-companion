@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0232
+activeTaskCard: docs/tasks/TASK-0232-quarantine-registry.md
 lastAcceptedTask: TASK-0230
 lastAcceptedHandoff: docs/handoffs/TASK-0230.json
 lastTerminalTask: TASK-0231
 lastTerminalHandoff: docs/handoffs/TASK-0231.json
-nextAction: TASK-0231 REJECTED（canonical precheck 真实 FAIL exit 1 恰 3 项授权投影漂移 error，未改写成 PASS；quarantine JSON 与 verify 脚本已落地于本卡 Evidence）。下一动作：canonical task-intake 创建继承登记卡（永久 ID 由机器分配）。保持不推送不合并。
+nextAction: TASK-0232 READY（继承登记 TASK-0231 已落地的 quarantine 制品；不复制 recordId、不改历史制品、不追造授权）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
