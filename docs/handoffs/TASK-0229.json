@@ -1,0 +1,57 @@
+{
+  "taskId": "TASK-0229",
+  "state": "ACCEPTED",
+  "baseCommit": "896a992f4c091e7bd5667287ff9b600c1de84b04",
+  "headCommit": "7046a675d7a619bd489098554003e74ba2f86f60",
+  "evidencePath": "docs/evidence/TASK-0229/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ebe9fd1c29f21a5ab6430f53465835a434a77c1f",
+      "startedAt": "2026-08-15T23:56:12+08:00",
+      "endedAt": "2026-08-16T00:14:00+08:00",
+      "elapsedSeconds": 1068,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "ebe9fd1c29f21a5ab6430f53465835a434a77c1f",
+      "startedAt": "2026-08-15T23:56:12+08:00",
+      "endedAt": "2026-08-15T23:58:31+08:00",
+      "elapsedSeconds": 139,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T23:58:31+08:00",
+      "inProgressCommit": "7046a675d7a619bd489098554003e74ba2f86f60"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "7046a675d7a619bd489098554003e74ba2f86f60",
+      "startedAt": "2026-08-15T23:58:56+08:00",
+      "endedAt": "2026-08-16T00:14:00+08:00",
+      "elapsedSeconds": 904,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T23:58:31+08:00",
+      "inProgressCommit": "7046a675d7a619bd489098554003e74ba2f86f60"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "记忆页关系 load error 时不再渲染 empty-relationship-id。",
+    "成功且未填 id 时仍显示空 id 提示。不调用 load/confirm/activate。",
+    "vitest 25/25 PASS；git diff --check PASS；READY Doctor PASS 1127905；官方 precheck 8/8（inner doctor 1129481）；pre-closure PASS 1424414。"
+  ],
+  "remaining": [
+    "SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "只隐藏空 id 提示，选择器自身 error 状态仍可能并存。"
+  ],
+  "nextAction": "TASK-0229 ACCEPTED（记忆页关系失败时已隐藏空 id 提示，不改变确认/失败语义）。下一动作：继续发现下一张合法卡。保持不推送不合并。"
+}

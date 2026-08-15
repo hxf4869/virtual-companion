@@ -1224,3 +1224,9 @@ tasks:
     taskCard: docs/tasks/TASK-0228-h5-memory-relationship-load-error.md
     evidence: docs/evidence/TASK-0228/evidence-pack.json
     handoff: docs/handoffs/TASK-0228.json
+  TASK-0229:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0229-h5-memory-hide-empty-id-on-rel-error.md
+    evidence: docs/evidence/TASK-0229/evidence-pack.json
+    handoff: docs/handoffs/TASK-0229.json
