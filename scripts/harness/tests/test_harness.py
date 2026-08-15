@@ -12904,3 +12904,75 @@ class Task0235AcceptanceEvidenceGovernanceTests(unittest.TestCase):
             any("must include .harness/project-state.yaml" in item for item in audit.errors),
             audit.errors,
         )
+
+
+class Task0236EvidenceGapRecognitionTests(unittest.TestCase):
+    """TASK-0236: TASK-0235 evidence SHA defect and c06dbf6 bad-YAML defect
+    canonical recognition (permanent positive assertions + targeted exemptions).
+    Owner 2026-08-16 /goal frozen the positive/negative matrix below."""
+
+    def _registry(self) -> dict:
+        return json.loads(
+            (ROOT / "docs/evidence/TASK-0236/task0235-evidence-gap-registry.json").read_text(encoding="utf-8")
+        )
+
+    def test_recognition_positive(self):
+        audit = doctor.Audit()
+        doctor.validate_task0236_evidence_gap_recognition(audit)
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_registry_matches_positive(self):
+        self.assertTrue(doctor.task0236_registry_matches(self._registry()))
+
+    def test_registry_missing_fails(self):
+        audit = doctor.Audit()
+        doctor.validate_task0236_evidence_gap_recognition(audit)
+        # inject a missing registry by checking the matcher directly
+        self.assertFalse(doctor.task0236_registry_matches(None))
+        # and a drifted registry must fail the matcher too
+        drifted = self._registry()
+        drifted["task0235RealCandidateCommit"] = "0" * 40
+        self.assertFalse(doctor.task0236_registry_matches(drifted))
+
+    def test_guessed_sha_kept_in_evidence(self):
+        audit = doctor.Audit()
+        evidence = json.loads(
+            (ROOT / "docs/evidence/TASK-0235/evidence-pack.json").read_text(encoding="utf-8")
+        )
+        kept = any(
+            isinstance(item, dict)
+            and (
+                item.get("verifiedCommit") == doctor.TASK_0236_GUESSED_SHA
+                or item.get("candidateCommit") == doctor.TASK_0236_GUESSED_SHA
+            )
+            for item in (evidence.get("checks") or [])
+        )
+        self.assertTrue(kept, "the guessed-SHA defect fact must remain in TASK-0235 evidence")
+
+    def test_binding_exemption_0235(self):
+        audit = doctor.Audit()
+        doctor.validate_task0233_commit_tree_binding(
+            audit,
+            {"taskId": "TASK-0235", "baseCommit": "64889c9f475f417092ae8185b68fb3d8ff7eb6d9"},
+            {"checks": [{"candidateCommit": "0" * 40, "candidateTree": "0" * 40}]},
+            "ef7eddd76587688b1addf6506c2fa09586d6e153",
+        )
+        self.assertFalse(audit.errors, "TASK-0235 binding exemption must apply")
+
+    def test_real_candidate_facts(self):
+        self.assertTrue(
+            doctor.task0233_is_ancestor(
+                "64889c9f475f417092ae8185b68fb3d8ff7eb6d9", doctor.TASK_0236_REAL_CANDIDATE
+            ),
+            "real candidate must descend from TASK-0235 base",
+        )
+        self.assertTrue(
+            doctor.task0233_is_ancestor(
+                doctor.TASK_0236_REAL_CANDIDATE, "ef7eddd76587688b1addf6506c2fa09586d6e153"
+            ),
+            "real candidate must precede the TASK-0235 terminal",
+        )
+        actual_tree = doctor.git_text(
+            "rev-parse", f"{doctor.TASK_0236_REAL_CANDIDATE}^{{tree}}", check=False
+        ).stdout.strip()
+        self.assertEqual(actual_tree, doctor.TASK_0236_REAL_TREE)

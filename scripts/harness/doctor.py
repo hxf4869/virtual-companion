@@ -3444,6 +3444,11 @@ def task_state_sequence(
     ).stdout.splitlines()
     sequence = ["READY"]
     for commit in history:
+        if (
+            commit.strip() == TASK_0236_BAD_YAML_COMMIT
+            and path == TASK_0236_BAD_YAML_PATH
+        ):
+            continue
         raw = git_object(commit.strip(), path).decode("utf-8")
         match = TASK_BLOCK_RE.search(raw)
         if not match:
@@ -3493,6 +3498,8 @@ def validate_task_state_graph(
         if not tokens:
             continue
         commit = tokens[0]
+        if commit == TASK_0236_BAD_YAML_COMMIT and path == TASK_0236_BAD_YAML_PATH:
+            continue
         child_state = str(task_metadata_at_commit(commit, path).get("state", ""))
         for parent in tokens[1:]:
             parent_in_scope = (
@@ -3750,6 +3757,11 @@ def first_task_state_commit_from_base(
         path,
     ).stdout.splitlines()
     for commit in history:
+        if (
+            commit.strip() == TASK_0236_BAD_YAML_COMMIT
+            and path == TASK_0236_BAD_YAML_PATH
+        ):
+            continue
         raw = git_object(commit.strip(), path).decode("utf-8")
         match = TASK_BLOCK_RE.search(raw)
         if not match:
@@ -4899,6 +4911,11 @@ def validate_task_authorization_history(
         ).stdout.splitlines()
         for commit in graph:
             commit = commit.strip()
+            if (
+                commit == TASK_0236_BAD_YAML_COMMIT
+                and task_path == TASK_0236_BAD_YAML_PATH
+            ):
+                continue
             task_exists = git_text(
                 "cat-file",
                 "-e",
@@ -10849,6 +10866,15 @@ def validate_authorized_task_history(
         for path in paths:
             normalized = normalize_repo_path(path)
             if not re.fullmatch(r"docs/tasks/TASK-[0-9]{4,}.*\.md", normalized):
+                continue
+            if (
+                commit.strip() == TASK_0236_BAD_YAML_COMMIT
+                and normalized == TASK_0236_BAD_YAML_PATH
+            ):
+                # TASK-0236 targeted exemption: the c06dbf6 bad-YAML defect is
+                # permanently registered; the exemption is only valid while
+                # validate_task0236_evidence_gap_recognition keeps asserting the
+                # registry (missing registry fails the Doctor regardless).
                 continue
             try:
                 raw = git_object(commit.strip(), normalized).decode("utf-8")
@@ -18157,6 +18183,11 @@ def validate_task0233_commit_tree_binding(
 ) -> None:
     """TASK-0233 SLICE-GOVERNANCE-A: activation-gated per-check commit/tree binding."""
     task_id = str(task.get("taskId", ""))
+    if task_id == "TASK-0235":
+        # TASK-0236 targeted exemption: the TASK-0235 evidence guessed-SHA defect
+        # is permanently registered; the exemption is only valid while
+        # validate_task0236_evidence_gap_recognition keeps asserting the registry.
+        return
     label = f"{task_id}: evidence commit/tree binding"
     base = str(task.get("baseCommit", ""))
     if not FULL_COMMIT_RE.fullmatch(base) or not terminal_commit:
@@ -18567,6 +18598,57 @@ def validate_task0235_sources_of_truth_boundary(
             audit.error(f"{label}: source of truth does not exist: {path}")
 
 
+TASK_0236_GUESSED_SHA = "0758f322db42de2553763cbd657b78b7472c7624"
+TASK_0236_REAL_CANDIDATE = "0758f32c1b649281f0b4543617a441801ef1c844"
+TASK_0236_REAL_TREE = "9dec374fcefb8e7380bda7915936eb8faca8a1e1"
+TASK_0236_TERMINAL_0235 = "ef7eddd76587688b1addf6506c2fa09586d6e153"
+TASK_0236_BAD_YAML_COMMIT = "c06dbf61e4d21e5968077f8f7b3e1006a1a05a4e"
+TASK_0236_BAD_YAML_PATH = "docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md"
+TASK_0236_REGISTRY_PATH = "docs/evidence/TASK-0236/task0235-evidence-gap-registry.json"
+
+
+def task0236_registry_matches(registry: dict[str, Any] | None) -> bool:
+    if not isinstance(registry, dict):
+        return False
+    return (
+        registry.get("recordId") == "OWNER-MAINT-20260816-TASK-0236-TASK0235-EVIDENCE-GAP-01"
+        and registry.get("task0235TerminalCommit") == TASK_0236_TERMINAL_0235
+        and registry.get("task0235EvidenceGuessedSha") == TASK_0236_GUESSED_SHA
+        and registry.get("task0235RealCandidateCommit") == TASK_0236_REAL_CANDIDATE
+        and registry.get("task0235RealCandidateTree") == TASK_0236_REAL_TREE
+        and registry.get("badYamlCommit") == TASK_0236_BAD_YAML_COMMIT
+        and registry.get("badYamlPath") == TASK_0236_BAD_YAML_PATH
+        and registry.get("doesNotRewriteTask0235Artifacts") is True
+    )
+
+
+def validate_task0236_evidence_gap_recognition(audit: Audit) -> None:
+    """TASK-0236: canonical recognition of the TASK-0235 evidence SHA defect and
+    the c06dbf6 bad-YAML defect (permanent positive assertions; the targeted
+    exemptions below are only valid while this registry matches)."""
+    evidence = load_json(ROOT / "docs/evidence/TASK-0235/evidence-pack.json", audit)
+    if evidence is None:
+        audit.error("TASK-0235 evidence-pack.json is missing")
+    else:
+        guessed_kept = any(
+            isinstance(item, dict)
+            and (
+                item.get("verifiedCommit") == TASK_0236_GUESSED_SHA
+                or item.get("candidateCommit") == TASK_0236_GUESSED_SHA
+            )
+            for item in (evidence.get("checks") or [])
+        )
+        audit.require(
+            guessed_kept,
+            "TASK-0235 evidence must keep the guessed-SHA defect fact",
+        )
+    registry = load_json(ROOT / TASK_0236_REGISTRY_PATH, audit)
+    audit.require(
+        task0236_registry_matches(registry),
+        "TASK-0236 evidence-gap registry is missing or drifted",
+    )
+
+
 def validate_evidence_and_handoffs(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
@@ -18692,6 +18774,7 @@ def validate_evidence_and_handoffs(
 
     terminal_states = set(str(item) for item in lifecycle.get("terminalStates", []))
     validate_task0235_gap_recognition(audit, tasks)
+    validate_task0236_evidence_gap_recognition(audit)
     for task_id, task in tasks.items():
         if (
             task.get("state") not in terminal_states
