@@ -1098,3 +1098,9 @@ tasks:
     taskCard: docs/tasks/TASK-0207-h5-chat-memory-page-nav.md
     evidence: docs/evidence/TASK-0207/evidence-pack.json
     handoff: docs/handoffs/TASK-0207.json
+  TASK-0208:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0208-h5-memory-back-to-chat-nav.md
+    evidence: docs/evidence/TASK-0208/evidence-pack.json
+    handoff: docs/handoffs/TASK-0208.json
