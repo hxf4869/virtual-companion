@@ -1,0 +1,57 @@
+{
+  "taskId": "TASK-0230",
+  "state": "ACCEPTED",
+  "baseCommit": "67f8923e8b2a060e053972e5c832d5efa74143dd",
+  "headCommit": "6bfea47d74610e7610d92e588c25a76f05dc677b",
+  "evidencePath": "docs/evidence/TASK-0230/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "3a1d11c651dc8a95fe86dfeddb2acde4e49c5ee5",
+      "startedAt": "2026-08-16T00:41:40+08:00",
+      "endedAt": "2026-08-16T01:00:15+08:00",
+      "elapsedSeconds": 1115,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "3a1d11c651dc8a95fe86dfeddb2acde4e49c5ee5",
+      "startedAt": "2026-08-16T00:41:40+08:00",
+      "endedAt": "2026-08-16T00:43:57+08:00",
+      "elapsedSeconds": 137,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T00:43:57+08:00",
+      "inProgressCommit": "6bfea47d74610e7610d92e588c25a76f05dc677b"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "6bfea47d74610e7610d92e588c25a76f05dc677b",
+      "startedAt": "2026-08-16T00:45:00+08:00",
+      "endedAt": "2026-08-16T01:00:15+08:00",
+      "elapsedSeconds": 915,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T00:43:57+08:00",
+      "inProgressCommit": "6bfea47d74610e7610d92e588c25a76f05dc677b"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "记忆页关系 load error 时不再渲染 prefill-hint，即使 query 已预填 id。",
+    "关系列表成功且已填未刷新时仍显示预填提示。不调用 load/confirm/activate。",
+    "vitest 26/26 PASS；git diff --check PASS；READY Doctor PASS 1133725；官方 precheck 8/8（inner doctor 1135303）；pre-closure PASS 1432440。"
+  ],
+  "remaining": [
+    "SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "只隐藏预填提示，选择器自身 error 状态仍可能并存。"
+  ],
+  "nextAction": "TASK-0230 ACCEPTED（记忆页关系失败时已隐藏预填提示，不改变确认/失败语义）。下一动作：继续发现下一张合法卡。保持不推送不合并。"
+}

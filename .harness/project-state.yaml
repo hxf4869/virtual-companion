@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0230
-activeTaskCard: docs/tasks/TASK-0230-h5-memory-hide-prefill-on-rel-error.md
-lastAcceptedTask: TASK-0229
-lastAcceptedHandoff: docs/handoffs/TASK-0229.json
-lastTerminalTask: TASK-0229
-lastTerminalHandoff: docs/handoffs/TASK-0229.json
-nextAction: TASK-0230 IN_PROGRESS。下一动作：实现记忆页失败时隐藏预填提示并跑冻结命令与官方 precheck。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0230
+lastAcceptedHandoff: docs/handoffs/TASK-0230.json
+lastTerminalTask: TASK-0230
+lastTerminalHandoff: docs/handoffs/TASK-0230.json
+nextAction: TASK-0230 ACCEPTED（记忆页关系失败时已隐藏预填提示，不改变确认/失败语义）。下一动作：继续发现下一张合法卡。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
