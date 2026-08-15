@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0210
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -15,9 +15,9 @@ targetSkillVersions: {}
 planningBacklog: null
 planningContractHash: null
 planningContractHashAlgorithm: null
-baseCommit: 1239f4fa4dc0d2b876699bb8e267743ca6fd268b
+baseCommit: eed0bf6957987ae0adac3f30cc41ce23cf919cf9
 authorizationCommit: ""
-contextFingerprint: 3340c407bcb50a1f8d441547ff298ad4b38e69175fb55f6ccbe81634a236aadb
+contextFingerprint: 8aec3f629931c7162757e88ecb0d11f09a1280b2c65b010720a7d7af953b4ae7
 contextLock: docs/tasks/context/TASK-0210.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
 deliveryMode: single-card
@@ -129,8 +129,8 @@ requiredCommands:
   - git diff --check
 ```
 
-> 本卡为独立延续单卡。永久 ID 由机器派生：Ledger 最大编号 TASK-0209（活动中），intake 分配 TASK-0210。
-> 当前 `activeTask=TASK-0209`。本卡保持 idle DRAFT，不得 READY，不得实施。READY 前必须把 `baseCommit` / Context Lock 重锚到 TASK-0209 终态。
+> 本卡为独立延续单卡。永久 ID 由机器派生：Ledger 最大编号 TASK-0209，intake 分配 TASK-0210。
+> Base 已重锚到 TASK-0209 REJECTED 终态 `eed0bf6`。本提交将本卡转为 READY。
 
 ## 背景与用户可观察目标
 
@@ -153,9 +153,8 @@ requiredCommands:
 
 ## 输入和前置条件
 
-- 规划 Base：`1239f4f`（TASK-0208 ACCEPTED，最后终态）。
-- 实施前必须重锚到 TASK-0209 ACCEPTED。
-- 本卡 DRAFT 期间 `activeTask` 保持 TASK-0209。
+- Base：`eed0bf6957987ae0adac3f30cc41ce23cf919cf9`（TASK-0209 REJECTED 终态）。
+- TASK-0209 实现留在历史上但不得称为 ACCEPTED；本卡只接选择器填 id。
 
 ## API / 事件 / 数据契约
 
@@ -192,4 +191,3 @@ requiredCommands:
 ## 停止条件
 
 - 需要改 store/API/激活/自动 load 立即停止。
-- 在 TASK-0209 仍活动时 READY 或实施立即停止。

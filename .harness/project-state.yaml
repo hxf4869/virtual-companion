@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0210
+activeTaskCard: docs/tasks/TASK-0210-h5-memory-pick-relationship-id.md
 lastAcceptedTask: TASK-0208
 lastAcceptedHandoff: docs/handoffs/TASK-0208.json
 lastTerminalTask: TASK-0209
 lastTerminalHandoff: docs/handoffs/TASK-0209.json
-nextAction: TASK-0209 REJECTED（官方 precheck FAIL：TASK-0210 两路径越出 writeAllowlist，未改写成 PASS）。下一动作：把 TASK-0210 重锚到本终态后 READY。保持不推送不合并。
+nextAction: TASK-0210 READY：记忆页用既有选择器填入 relationship id，不激活、不自动 load、不改变确认语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

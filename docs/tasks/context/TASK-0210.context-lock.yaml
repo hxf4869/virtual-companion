@@ -1,14 +1,14 @@
 schemaVersion: 1
 taskId: TASK-0210
-baseCommit: 1239f4fa4dc0d2b876699bb8e267743ca6fd268b
-contextFingerprint: 3340c407bcb50a1f8d441547ff298ad4b38e69175fb55f6ccbe81634a236aadb
+baseCommit: eed0bf6957987ae0adac3f30cc41ce23cf919cf9
+contextFingerprint: 8aec3f629931c7162757e88ecb0d11f09a1280b2c65b010720a7d7af953b4ae7
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
 pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
 inputs:
 - path: .harness/invariants.yaml
   sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
 - path: .harness/project-state.yaml
-  sha256: a50e34f2e403febf0b96ad7550f257ca4bda10f4863f1173c874a994e112ebdb
+  sha256: 7cb1916f743d06a73ad8a31f8220e4b9d76289da884897e088034d86bca52ca5
 - path: .harness/protected-paths.yaml
   sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
 - path: .harness/skills.yaml
@@ -18,7 +18,7 @@ inputs:
 - path: .harness/task-delivery-policy.yaml
   sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
 - path: .harness/task-ledger.yaml
-  sha256: a7f4eaf3b08836fb4b4cead66651058e11e3139e4c43060cc9ed59db0f0c6bc8
+  sha256: bfae1c8145b024faaa3a9db38993605e29efe68b547065d2a32658e49d6fe174
 - path: .harness/task-lifecycle.yaml
   sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
 - path: AGENTS.md
@@ -38,9 +38,9 @@ inputs:
 - path: frontend/src/components/RelationshipSelector.vue
   sha256: d868fc2dcf4465faeec49098ca56c0044af5e0c4ff4a8d78dd9c766f7b22de85
 - path: frontend/src/pages/memory/memory.spec.ts
-  sha256: c467548ca70e2a21e9876348de343af1ef560c53c1f7e743f87c5f7cd325e109
+  sha256: 6b80f3ba633ad22555b42dd31a4dea2b1d14841b8cbce0c2ece55a2162aa6e6c
 - path: frontend/src/pages/memory/memory.vue
-  sha256: a888ee862fcd330af14eb4ec327f22d8fc9890c4244a630fa10b99b98a8949a4
+  sha256: 99d19e0defbda74144c98850171023fbfaa44d77302dd2b211fea587600c19c9
 - path: frontend/src/stores/memory.ts
   sha256: b34c6415529e755724f388f1a063cb6e1def62e0d8df61e6bfc56a2cd6aded18
 - path: frontend/src/stores/relationship.ts
