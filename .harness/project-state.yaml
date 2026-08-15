@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0225
+activeTaskCard: docs/tasks/TASK-0225-h5-memory-show-current-relationship.md
 lastAcceptedTask: TASK-0224
 lastAcceptedHandoff: docs/handoffs/TASK-0224.json
 lastTerminalTask: TASK-0224
 lastTerminalHandoff: docs/handoffs/TASK-0224.json
-nextAction: TASK-0224 ACCEPTED（聊天页已展示当前关系，不改变发送/取消语义）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。
+nextAction: TASK-0225 READY。下一动作：绑定 authorizationCommit 后转入 IN_PROGRESS；本轮不跑长 Doctor。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
