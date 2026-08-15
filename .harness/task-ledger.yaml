@@ -1152,3 +1152,9 @@ tasks:
     taskCard: docs/tasks/TASK-0216-h5-memory-empty-id-select-or-fill.md
     evidence: docs/evidence/TASK-0216/evidence-pack.json
     handoff: docs/handoffs/TASK-0216.json
+  TASK-0217:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0217-h5-memory-carry-relationship-id-to-chat.md
+    evidence: docs/evidence/TASK-0217/evidence-pack.json
+    handoff: docs/handoffs/TASK-0217.json

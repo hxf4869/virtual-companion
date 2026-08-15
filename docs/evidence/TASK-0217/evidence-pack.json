@@ -1,0 +1,89 @@
+{
+  "taskId": "TASK-0217",
+  "baseCommit": "425597ca44d188e1827462fc22313499d0ce5ea2",
+  "headCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515",
+  "contextFingerprint": "654aa2fb61c4889e37daac301ce592a0edd76a7f381a512e38091357259c9c2c",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "8b65840473659103bdbcf8fbe0d92d730e48eb2b",
+      "startedAt": "2026-08-15T21:08:09+08:00",
+      "endedAt": "2026-08-15T21:10:10+08:00",
+      "elapsedSeconds": 121,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "8b65840473659103bdbcf8fbe0d92d730e48eb2b",
+      "startedAt": "2026-08-15T21:08:09+08:00",
+      "endedAt": "2026-08-15T21:08:24+08:00",
+      "elapsedSeconds": 15,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "inProgressCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515",
+      "startedAt": "2026-08-15T21:09:28+08:00",
+      "endedAt": "2026-08-15T21:10:10+08:00",
+      "elapsedSeconds": 42,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T21:08:24+08:00",
+      "inProgressCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "pnpm --dir frontend exec vitest run src/pages/memory/memory.spec.ts src/pages/chat/chat.spec.ts",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "36/36 tests PASS on candidate b641685 (memory 20 + chat 16): memory carries filled id to chat; chat selects query id locally without activate; existing nav/send tests still pass.",
+      "environment": "macOS; vitest 3.2.6; scratch task-0217-required-commands.log",
+      "verifiedCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515",
+      "candidateCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515",
+      "candidateTree": "559445204e01d3b41011ec53a4b3fcf0c3413a7c"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on candidate b641685.",
+      "environment": "macOS",
+      "verifiedCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0217",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 Doctor。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0217",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 precheck。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0217 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 pre-closure。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    }
+  ]
+}
