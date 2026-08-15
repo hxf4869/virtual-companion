@@ -6,9 +6,9 @@ activeTask: null
 activeTaskCard: null
 lastAcceptedTask: TASK-0196
 lastAcceptedHandoff: docs/handoffs/TASK-0196.json
-lastTerminalTask: TASK-0196
-lastTerminalHandoff: docs/handoffs/TASK-0196.json
-nextAction: TASK-0196 ACCEPTED 终态（Doctor post-terminal 校验修复完成：一次性 tail 接纳 fe0253f→751cb9d 与 pre-READY maintenance/恢复/完成三边（8114da2 失败 attempt、e1a7588 RECOVERY-02、e545d3c RECOVERY-03）全部机器登记，完整单父链 ea129d1→8114da2→e1a7588→RECOVERY-03 精确验证通过）后保持不推送不合并；后续规划（bounded retry/dead-letter 串行卡等）由 Owner 在推送/合并决策与 Backlog 晋级时另行指示，当前无新活动任务。
+lastTerminalTask: TASK-0197
+lastTerminalHandoff: docs/handoffs/TASK-0197.json
+nextAction: TASK-0197 REJECTED 终态（MUST_SPLIT never-READY 诚实闭合：Ledger contractVersion 1、authorizationCommit 空、原因含 MUST_SPLIT；不把 TASK-0196 追述为合法闭合，机器状态保持 ACCEPTED、历史闭合保持 INVALID；不改 Harness）。仓库 idle。下一动作：按 AGENTS.md 从机器真源恢复后，用 canonical task-intake 创建唯一 SLICE-AUTHORIZATION idle DRAFT（永久 ID 由机器分配，不预占），只冻结 1c1dca2 非法终态的精确 quarantine 合同与四项 P0，quarantine JSON 落在后继 Evidence 路径；保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-14'
+updatedAt: '2026-08-15'

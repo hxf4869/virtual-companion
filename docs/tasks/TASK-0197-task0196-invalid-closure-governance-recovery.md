@@ -2,7 +2,15 @@
 
 ```yaml
 taskId: TASK-0197
-state: DRAFT
+state: REJECTED
+closureOnly: true
+terminalStateReason: >-
+  MUST_SPLIT never-READY 诚实闭合。complexityGate.splitDecision=MUST_SPLIT 且
+  readyForbiddenUntilSplit=true，本卡不得进入 READY。按 Goal 采纳的推荐方案 A：以
+  Ledger contractVersion 1、空 authorizationCommit、原因含 MUST_SPLIT 的
+  REJECTED 纯闭合终止本卡；不把 TASK-0196 追述为合法闭合（机器 ACCEPTED，
+  历史闭合 INVALID）；不改 Harness；quarantine JSON 不写入本卡 Evidence。
+  后继 SLICE-AUTHORIZATION 由 canonical task-intake 在 idle 后分配永久 ID。
 owner: repository-owner
 riskClass: C4
 requiredSkills:
@@ -456,7 +464,16 @@ pendingOwnerDecisions:
     status: PENDING
     statement: 第三张后继卡（HISTORY）的已登记 tail 兼容与 quarantine 可验证性范围尚未获可核验批准。
 independentReview: required
-reviewers: []
+reviewers:
+  - id: task0197_r1
+    kind: independent-review-gate
+    verdict: UNKNOWN
+    reviewedCommit: 44bc6aaa9f495268cbddf4606cd058f1fd87ee0d
+    evidencePath: docs/evidence/TASK-0197/review-r1.md
+    reason: "Independent review never launched: MUST_SPLIT readyForbiddenUntilSplit=true stopped promotion before READY. reviewedCommit/candidateTree are the last DRAFT commit and its tree, recorded only to satisfy 40-hex fields; they are not implementation-candidate identity. Honest UNKNOWN, never PASS."
+    candidateTree: d46ec98c2c867c72060fb46fd202acc169d4934c
+    budget: {maximumMinutes: 15, elapsedSeconds: 0, hardLimitReached: false}
+    interruption: {terminalOutputReceived: false, observedStatus: REVIEWER_NEVER_LAUNCHED, action: REJECT_TASK_AT_MUST_SPLIT_NEVER_READY}
 requiredCommands:
   - PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0197
   - PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0197InvalidClosureGovernanceTests test_harness.Task0098PostTerminalTailTests test_harness.Task0189PostTerminalTailTests test_harness.Task0196PostTerminalTailTests
@@ -648,6 +665,10 @@ YAML `requiredCommands` 已冻结完整单行定向 unittest。负例与正例�
 5. 本卡 diff 只含本卡与 Context Lock。历史制品零修改。
 
 本卡没有「实现完成即 ACCEPTED」的验收；实现验收属于后继卡。
+
+本卡已按 MUST_SPLIT 作 never-READY REJECTED 纯闭合：未进入 READY、无
+authorizationCommit、无实现候选、不实施 quarantine、不改 Harness。DRAFT
+阶段验收（拆卡合同冻结、身份绑定、不预占后继 ID）保持为历史事实。
 
 ## 必跑检查
 
