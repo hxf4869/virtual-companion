@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0208
 lastAcceptedHandoff: docs/handoffs/TASK-0208.json
 lastTerminalTask: TASK-0209
 lastTerminalHandoff: docs/handoffs/TASK-0209.json
-nextAction: TASK-0210 READY：记忆页用既有选择器填入 relationship id，不激活、不自动 load、不改变确认语义。保持不推送不合并。
+nextAction: TASK-0210 IN_PROGRESS：记忆页用既有选择器填入 relationship id，不激活、不自动 load、不改变确认语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

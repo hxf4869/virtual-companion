@@ -41,6 +41,14 @@ states carry alert/live a11y semantics. -->
       </button>
     </view>
 
+    <RelationshipSelector
+      :relationships="relStore.relationships"
+      :current-id="relationshipId || null"
+      :status="relStore.status"
+      :busy="relStore.status === 'loading'"
+      @activate="onPickRelationship"
+    />
+
     <view
       v-if="showEmptyRelationshipId"
       class="empty-status"
@@ -157,11 +165,14 @@ states carry alert/live a11y semantics. -->
 import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
 import type { MemoryTransport } from "@/api/memory";
 import { useMemoryStore, type MemoryErrorCode } from "@/stores/memory";
+import { useRelationshipStore } from "@/stores/relationship";
 
 const memory = useMemoryStore();
+const relStore = useRelationshipStore();
 const auth = useAuthStore();
 
 const relationshipId = ref("");
@@ -229,7 +240,13 @@ function readQueryRelationshipId(): string {
   }
 }
 
+function onPickRelationship(id: string): void {
+  if (!id) return;
+  relationshipId.value = id;
+}
+
 onMounted(() => {
+  void relStore.load(transport);
   const prefill = readQueryRelationshipId();
   if (prefill && !relationshipId.value) {
     relationshipId.value = prefill;

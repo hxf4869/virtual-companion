@@ -10,10 +10,33 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import MemoryPage from "./memory.vue";
 import { useMemoryStore } from "@/stores/memory";
+import { useRelationshipStore } from "@/stores/relationship";
 import type { Memory } from "@/api/memory";
 
 function canonicalMemory(id: string, summary = "s"): Memory {
   return { memoryId: id, scope: "RELATIONSHIP", summary, status: "ACCEPTED" };
+}
+
+const PICKABLE_RELATIONSHIP = {
+  relationshipId: "rel-pick-1",
+  personaRef: "gentle-listener",
+  active: false,
+  createdAt: "2026-08-15T00:00:00Z",
+};
+
+function stubRelationshipFetch(
+  relationships: unknown[] = [PICKABLE_RELATIONSHIP],
+): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/relationships") {
+        return { ok: true, status: 200, json: async () => relationships };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }),
+  );
 }
 
 function mountPage() {
@@ -24,6 +47,7 @@ describe("memory page glue (P2-19 component test)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", undefined);
+    stubRelationshipFetch();
   });
 
   it("renders a stable aria-label on the relationship input (P3-04)", () => {
@@ -239,6 +263,49 @@ describe("memory page glue (P2-19 component test)", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("renders the relationship selector", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="relationship-selector"]').exists()).toBe(
+      true,
+    );
+    wrapper.unmount();
+  });
+
+  it("fills the relationship id from the selector without activate, create, or memory load", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const memStore = useMemoryStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const createSpy = vi.spyOn(relStore, "create");
+    const memLoadSpy = vi.spyOn(memStore, "load");
+
+    await wrapper.find('[data-testid="relationship-select"]').setValue("rel-pick-1");
+
+    const input = wrapper.find('input[aria-label="relationship id"]');
+    expect((input.element as HTMLInputElement).value).toBe("rel-pick-1");
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(memLoadSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("does not create a relationship when the selector create control is used", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const createSpy = vi.spyOn(relStore, "create");
+
+    await wrapper.find('[data-testid="persona-ref"]').setValue("new-persona");
+    await wrapper.find('[data-testid="create-relationship"]').trigger("click");
+    await flushPromises();
+
+    expect(createSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });
