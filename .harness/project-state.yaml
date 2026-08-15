@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0236
+activeTaskCard: docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md
 lastAcceptedTask: TASK-0235
 lastAcceptedHandoff: docs/handoffs/TASK-0235.json
 lastTerminalTask: TASK-0235
 lastTerminalHandoff: docs/handoffs/TASK-0235.json
-nextAction: TASK-0235 ACCEPTED（SLICE-GOVERNANCE-C 完成）。下一动作：推送本终态至恢复分支并远端复核、跑正式 Doctor 验证释放绑定，然后 intake 后继 SLICE-HISTORY 卡（永久 ID 由机器分配）。保持不推送 main。
+nextAction: TASK-0236 READY（0235 evidence 缺陷登记与定向识别；不改 0235 历史制品；同 0231→0232 模式）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
