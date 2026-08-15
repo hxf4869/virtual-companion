@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0204
+activeTaskCard: docs/tasks/TASK-0204-h5-index-internal-page-nav.md
 lastAcceptedTask: TASK-0203
 lastAcceptedHandoff: docs/handoffs/TASK-0203.json
 lastTerminalTask: TASK-0203
 lastTerminalHandoff: docs/handoffs/TASK-0203.json
-nextAction: TASK-0203 ACCEPTED（未创建 generation 的发送失败后输入已恢复，不改变取消/失败语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
+nextAction: TASK-0204 READY：边界台增加内部页面入口，不改变鉴权/预检/门禁语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
