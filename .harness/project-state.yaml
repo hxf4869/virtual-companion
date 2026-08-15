@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0198
+activeTaskCard: docs/tasks/TASK-0198-task0196-invalid-closure-authorization-quarantine.md
 lastAcceptedTask: TASK-0196
 lastAcceptedHandoff: docs/handoffs/TASK-0196.json
 lastTerminalTask: TASK-0197
 lastTerminalHandoff: docs/handoffs/TASK-0197.json
-nextAction: TASK-0197 REJECTED 终态（MUST_SPLIT never-READY 诚实闭合：Ledger contractVersion 1、authorizationCommit 空、原因含 MUST_SPLIT；不把 TASK-0196 追述为合法闭合，机器状态保持 ACCEPTED、历史闭合保持 INVALID；不改 Harness）。仓库 idle。下一动作：按 AGENTS.md 从机器真源恢复后，用 canonical task-intake 创建唯一 SLICE-AUTHORIZATION idle DRAFT（永久 ID 由机器分配，不预占），只冻结 1c1dca2 非法终态的精确 quarantine 合同与四项 P0，quarantine JSON 落在后继 Evidence 路径；保持不推送不合并。
+nextAction: TASK-0198 READY：实现 1c1dca2 八路径/四项 P0 的一次性 quarantine JSON 与核验脚本到 docs/evidence/TASK-0198/，不改 Harness，不改写 TASK-0196/0197 历史制品，不把 TASK-0196 追述为合法闭合。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
