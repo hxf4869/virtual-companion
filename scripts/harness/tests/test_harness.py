@@ -12397,3 +12397,206 @@ class Task0191SeedRecoveryTests(unittest.TestCase):
         self.assertFalse(
             self._with_constant("TASK_0192_SEED_RECOVERY_MODE", "100755")
         )
+
+
+class Task0233GovernanceTemporalBindingTests(unittest.TestCase):
+    """TASK-0233 SLICE-GOVERNANCE-A: evidence temporal integrity, per-check
+    commit/tree binding, and TASK-0231/0232 invalidity recognition.
+    Owner 2026-08-16 /goal frozen the positive/negative matrix below."""
+
+    ANCHOR = "5f829b6c6d62c5fb5c03dcdc4474eab3b729d204"  # 2026-08-16T03:52:14+08:00
+    TERMINAL = "e5d88e3ff5529f28cb76bec2d663523f9b1fa9a8"  # 2026-08-16T04:16:52+08:00
+    CANDIDATE = "de6afd20bfc78cd40bfa592d8ae1f6337a933006"  # 2026-08-16T04:00:15+08:00
+    OFF_CHAIN = "a0d4106ab25de7a59803254cb12d823ca2a5a98c"
+
+    def _activated_task(self) -> dict:
+        return {"taskId": "TASK-0999", "baseCommit": self.ANCHOR}
+
+    def _timing(self, started="2026-08-16T03:53:00+08:00", ended="2026-08-16T04:16:00+08:00") -> dict:
+        return {
+            "overallElapsed": {
+                "anchorCommit": self.ANCHOR, "startedAt": started, "endedAt": ended,
+            },
+            "intakeActivation": {
+                "anchorCommit": self.ANCHOR, "startedAt": started, "endedAt": ended,
+                "readyDoctorPassAt": "2026-08-16T03:59:00+08:00",
+                "inProgressCommit": self.CANDIDATE,
+            },
+            "candidateExecution": {
+                "anchorCommit": self.ANCHOR, "startedAt": started, "endedAt": ended,
+            },
+        }
+
+    def _evidence(self, timing: dict | None = None, checks: list | None = None) -> dict:
+        return {"deliveryTiming": timing or self._timing(), "checks": checks or []}
+
+    def test_temporal_integrity_positive(self):
+        audit = doctor.Audit()
+        doctor.validate_task0233_temporal_integrity(
+            audit, self._activated_task(), self._evidence(), self.TERMINAL
+        )
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_temporal_future_ended_at_fails(self):
+        audit = doctor.Audit()
+        ev = self._evidence(
+            self._timing(started="2026-08-16T03:53:00+08:00", ended="2026-08-17T00:00:00+08:00")
+        )
+        doctor.validate_task0233_temporal_integrity(
+            audit, self._activated_task(), ev, self.TERMINAL
+        )
+        self.assertTrue(audit.errors, "future endedAt must fail")
+        self.assertTrue(
+            any("endedAt is later than the terminal commit" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_temporal_predated_started_at_fails(self):
+        audit = doctor.Audit()
+        ev = self._evidence(
+            self._timing(started="2026-08-16T03:50:00+08:00", ended="2026-08-16T04:16:00+08:00")
+        )
+        doctor.validate_task0233_temporal_integrity(
+            audit, self._activated_task(), ev, self.TERMINAL
+        )
+        self.assertTrue(audit.errors, "startedAt before the anchor commit must fail")
+        self.assertTrue(
+            any("startedAt predates its anchor commit" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_binding_positive(self):
+        audit = doctor.Audit()
+        tree = doctor.git_text(
+            "rev-parse", f"{self.CANDIDATE}^{{tree}}", check=False
+        ).stdout.strip()
+        ev = self._evidence(checks=[{
+            "candidateCommit": self.CANDIDATE, "candidateTree": tree,
+            "verifiedCommit": self.CANDIDATE,
+        }])
+        doctor.validate_task0233_commit_tree_binding(
+            audit, self._activated_task(), ev, self.TERMINAL
+        )
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_binding_wrong_tree_fails(self):
+        audit = doctor.Audit()
+        ev = self._evidence(checks=[{
+            "candidateCommit": self.CANDIDATE, "candidateTree": "0" * 40,
+        }])
+        doctor.validate_task0233_commit_tree_binding(
+            audit, self._activated_task(), ev, self.TERMINAL
+        )
+        self.assertTrue(audit.errors, "wrong candidateTree must fail")
+        self.assertTrue(
+            any("candidateTree does not belong" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_binding_off_chain_candidate_fails(self):
+        audit = doctor.Audit()
+        # TASK-0230 terminal is an ancestor of the base, not on base..terminal.
+        ev = self._evidence(checks=[{"candidateCommit": self.OFF_CHAIN}])
+        doctor.validate_task0233_commit_tree_binding(
+            audit, self._activated_task(), ev, self.TERMINAL
+        )
+        self.assertTrue(audit.errors, "off-chain candidateCommit must fail")
+        self.assertTrue(
+            any("candidateCommit is not on the base..terminal chain" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_binding_off_chain_verified_fails(self):
+        audit = doctor.Audit()
+        ev = self._evidence(checks=[{"verifiedCommit": self.OFF_CHAIN}])
+        doctor.validate_task0233_commit_tree_binding(
+            audit, self._activated_task(), ev, self.TERMINAL
+        )
+        self.assertTrue(audit.errors, "off-chain verifiedCommit must fail")
+        self.assertTrue(
+            any("verifiedCommit is not on the base..terminal chain" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_recognition_0231_positive(self):
+        audit = doctor.Audit()
+        evidence = json.loads(
+            (ROOT / "docs/evidence/TASK-0231/evidence-pack.json").read_text(encoding="utf-8")
+        )
+        doctor.validate_task0231_0232_invalidity_recognition(
+            audit,
+            {"taskId": "TASK-0231", "state": "REJECTED", "resolutionReason": "授权投影漂移如实记录"},
+            evidence,
+            None,
+        )
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_recognition_0231_missing_reason_fails(self):
+        audit = doctor.Audit()
+        evidence = json.loads(
+            (ROOT / "docs/evidence/TASK-0231/evidence-pack.json").read_text(encoding="utf-8")
+        )
+        doctor.validate_task0231_0232_invalidity_recognition(
+            audit,
+            {"taskId": "TASK-0231", "state": "REJECTED", "resolutionReason": ""},
+            evidence,
+            None,
+        )
+        self.assertTrue(audit.errors, "missing resolutionReason must fail")
+
+    def test_recognition_0232_positive(self):
+        audit = doctor.Audit()
+        registry = json.loads(
+            (ROOT / "docs/evidence/TASK-0232/quarantine-registry.json").read_text(encoding="utf-8")
+        )
+        handoff = json.loads(
+            (ROOT / "docs/handoffs/TASK-0232.json").read_text(encoding="utf-8")
+        )
+        doctor.validate_task0231_0232_invalidity_recognition(
+            audit,
+            {"taskId": "TASK-0232", "state": "ACCEPTED"},
+            None,
+            handoff,
+            registry,
+        )
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_recognition_0232_blob_drift_fails(self):
+        audit = doctor.Audit()
+        registry = json.loads(
+            (ROOT / "docs/evidence/TASK-0232/quarantine-registry.json").read_text(encoding="utf-8")
+        )
+        registry["predecessor"]["quarantineBlob"] = "0" * 40
+        handoff = json.loads(
+            (ROOT / "docs/handoffs/TASK-0232.json").read_text(encoding="utf-8")
+        )
+        doctor.validate_task0231_0232_invalidity_recognition(
+            audit,
+            {"taskId": "TASK-0232", "state": "ACCEPTED"},
+            None,
+            handoff,
+            registry,
+        )
+        self.assertTrue(audit.errors, "registry blob drift must fail")
+        self.assertTrue(
+            any("must bind TASK-0231 terminal quarantine artifacts" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_recognition_0232_missing_gap_declaration_fails(self):
+        audit = doctor.Audit()
+        registry = json.loads(
+            (ROOT / "docs/evidence/TASK-0232/quarantine-registry.json").read_text(encoding="utf-8")
+        )
+        doctor.validate_task0231_0232_invalidity_recognition(
+            audit,
+            {"taskId": "TASK-0232", "state": "ACCEPTED"},
+            None,
+            {"knownRisks": ["no gap declared"]},
+            registry,
+        )
+        self.assertTrue(audit.errors, "missing fallback gap declaration must fail")
+        self.assertTrue(
+            any("LOCAL_EXACT_TREE_FALLBACK evidence gap" in item for item in audit.errors),
+            audit.errors,
+        )

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import functools
 import hashlib
 import importlib.metadata
@@ -18056,6 +18056,213 @@ def validate_task0064_terminal_commit_marker(
     )
 
 
+TASK_0233_ACTIVATION_COMMIT = "fd87ac44d4b02a5aba285fae284f95b92314180a"
+TASK_0231_TERMINAL_COMMIT = "5f829b6c6d62c5fb5c03dcdc4474eab3b729d204"
+TASK_0232_REGISTRY_RECORD_ID = "OWNER-MAINT-20260816-TASK-0232-QUARANTINE-REGISTRY-01"
+
+
+def task0233_commit_timestamp(commit: str) -> datetime | None:
+    if not FULL_COMMIT_RE.fullmatch(commit):
+        return None
+    out = git_text("show", "-s", "--format=%cI", commit, check=False)
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    try:
+        return datetime.fromisoformat(out.stdout.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def task0233_is_ancestor(ancestor: str, descendant: str) -> bool:
+    if not (FULL_COMMIT_RE.fullmatch(ancestor) and FULL_COMMIT_RE.fullmatch(descendant)):
+        return False
+    return (
+        git_text(
+            "merge-base", "--is-ancestor", ancestor, descendant, check=False
+        ).returncode
+        == 0
+    )
+
+
+def task0233_is_activated(task: dict[str, Any]) -> bool:
+    return task0233_is_ancestor(
+        TASK_0233_ACTIVATION_COMMIT, str(task.get("baseCommit", ""))
+    )
+
+
+def validate_task0233_temporal_integrity(
+    audit: Audit,
+    task: dict[str, Any],
+    evidence: dict[str, Any],
+    terminal_commit: str | None,
+) -> None:
+    """TASK-0233 SLICE-GOVERNANCE-A: activation-gated evidence temporal integrity.
+
+    For terminal tasks whose baseCommit descends from TASK_0233_ACTIVATION_COMMIT,
+    every deliveryTiming section must not start before its anchor commit and must
+    not end (or pass READY Doctor) later than the terminal / IN_PROGRESS commit
+    plus a 600-second recording allowance.
+    """
+    task_id = str(task.get("taskId", ""))
+    label = f"{task_id}: evidence temporal integrity"
+    timing = evidence.get("deliveryTiming")
+    if not isinstance(timing, dict):
+        audit.error(f"{label}: deliveryTiming must be an object")
+        return
+    terminal_ts = task0233_commit_timestamp(terminal_commit or "")
+    for name in ("overallElapsed", "intakeActivation", "candidateExecution"):
+        section = timing.get(name)
+        if not isinstance(section, dict):
+            audit.error(f"{label}: {name} must be an object")
+            continue
+        started = evidence_timestamp(
+            audit, f"{label}.{name}.startedAt", section.get("startedAt")
+        )
+        ended = evidence_timestamp(
+            audit, f"{label}.{name}.endedAt", section.get("endedAt")
+        )
+        anchor_ts = task0233_commit_timestamp(str(section.get("anchorCommit", "")))
+        if started is not None and anchor_ts is not None:
+            audit.require(
+                started >= anchor_ts,
+                f"{label}: {name}.startedAt predates its anchor commit",
+            )
+        if ended is not None and terminal_ts is not None:
+            audit.require(
+                ended <= terminal_ts + timedelta(seconds=600),
+                f"{label}: {name}.endedAt is later than the terminal commit + 600s",
+            )
+        if name == "intakeActivation":
+            ready = evidence_timestamp(
+                audit,
+                f"{label}.{name}.readyDoctorPassAt",
+                section.get("readyDoctorPassAt"),
+            )
+            in_progress_ts = task0233_commit_timestamp(
+                str(section.get("inProgressCommit", ""))
+            )
+            if ready is not None and in_progress_ts is not None:
+                audit.require(
+                    ready <= in_progress_ts + timedelta(seconds=600),
+                    f"{label}: {name}.readyDoctorPassAt is later than the "
+                    "IN_PROGRESS commit + 600s",
+                )
+
+
+def validate_task0233_commit_tree_binding(
+    audit: Audit,
+    task: dict[str, Any],
+    evidence: dict[str, Any],
+    terminal_commit: str | None,
+) -> None:
+    """TASK-0233 SLICE-GOVERNANCE-A: activation-gated per-check commit/tree binding."""
+    task_id = str(task.get("taskId", ""))
+    label = f"{task_id}: evidence commit/tree binding"
+    base = str(task.get("baseCommit", ""))
+    if not FULL_COMMIT_RE.fullmatch(base) or not terminal_commit:
+        return
+    for index, check in enumerate(evidence.get("checks") or []):
+        if not isinstance(check, dict):
+            continue
+        cl = f"{label} checks[{index}]"
+        candidate = str(check.get("candidateCommit", "") or "")
+        tree = str(check.get("candidateTree", "") or "")
+        verified = str(check.get("verifiedCommit", "") or "")
+        if FULL_COMMIT_RE.fullmatch(candidate):
+            audit.require(
+                task0233_is_ancestor(base, candidate)
+                and task0233_is_ancestor(candidate, terminal_commit),
+                f"{cl}: candidateCommit is not on the base..terminal chain",
+            )
+            if FULL_COMMIT_RE.fullmatch(tree):
+                actual = git_text(
+                    "rev-parse", f"{candidate}^{{tree}}", check=False
+                ).stdout.strip()
+                audit.require(
+                    actual == tree,
+                    f"{cl}: candidateTree does not belong to candidateCommit",
+                )
+        if FULL_COMMIT_RE.fullmatch(verified):
+            audit.require(
+                task0233_is_ancestor(base, verified)
+                and task0233_is_ancestor(verified, terminal_commit),
+                f"{cl}: verifiedCommit is not on the base..terminal chain",
+            )
+
+
+def validate_task0231_0232_invalidity_recognition(
+    audit: Audit,
+    task: dict[str, Any],
+    evidence: dict[str, Any] | None,
+    handoff: dict[str, Any] | None,
+    registry: dict[str, Any] | None = None,
+) -> None:
+    """TASK-0233: canonical recognition that the TASK-0231/0232 closure defects
+    are permanently machine-recorded (positive assertions only; no re-judging).
+    `registry` is injectable for negative tests; None reads the repository file."""
+    task_id = str(task.get("taskId", ""))
+    if task_id == "TASK-0231":
+        audit.require(
+            task.get("state") == "REJECTED",
+            "TASK-0231 must remain REJECTED (projection-drift closure)",
+        )
+        audit.require(
+            "投影漂移" in str(task.get("resolutionReason", "")),
+            "TASK-0231 resolutionReason must record the authorization projection drift",
+        )
+        checks = (evidence or {}).get("checks") or []
+        real_fail = any(
+            isinstance(item, dict)
+            and "precheck.py" in str(item.get("command", ""))
+            and item.get("status") == "FAIL"
+            and item.get("exitCode") == 1
+            for item in checks
+        )
+        audit.require(
+            real_fail,
+            "TASK-0231 evidence must keep the real canonical precheck FAIL exit 1",
+        )
+        return
+    if task_id == "TASK-0232":
+        audit.require(
+            task.get("state") == "ACCEPTED",
+            "TASK-0232 must remain ACCEPTED (inheritance registry)",
+        )
+        if registry is None:
+            registry = load_json(
+                ROOT / "docs/evidence/TASK-0232/quarantine-registry.json", audit
+            )
+        if registry:
+            audit.require(
+                registry.get("recordId") == TASK_0232_REGISTRY_RECORD_ID,
+                "TASK-0232 registry recordId drifted",
+            )
+            pred = registry.get("predecessor") or {}
+            try:
+                blob = git_text(
+                    "rev-parse",
+                    f"{TASK_0231_TERMINAL_COMMIT}:docs/evidence/TASK-0231/governance-gap-quarantine.json",
+                    check=True,
+                ).stdout.strip()
+                digest = hashlib.sha256(
+                    git_bytes("cat-file", "blob", blob, check=True).stdout
+                ).hexdigest()
+            except HarnessError:
+                audit.error("TASK-0232 registry: cannot read TASK-0231 terminal artifacts")
+                return
+            audit.require(
+                pred.get("quarantineBlob") == blob
+                and pred.get("quarantineSha256") == digest,
+                "TASK-0232 registry must bind TASK-0231 terminal quarantine artifacts",
+            )
+        risks = " ".join(str(item) for item in (handoff or {}).get("knownRisks", []))
+        audit.require(
+            "LOCAL_EXACT_TREE_FALLBACK" in risks,
+            "TASK-0232 handoff must declare its LOCAL_EXACT_TREE_FALLBACK evidence gap",
+        )
+        return
+
+
 def validate_evidence_and_handoffs(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
@@ -18186,6 +18393,21 @@ def validate_evidence_and_handoffs(
         ):
             continue
         if task.get("state") in ("ACCEPTED", "REJECTED"):
+            if task_id in {"TASK-0231", "TASK-0232"}:
+                validate_task0231_0232_invalidity_recognition(
+                    audit,
+                    task,
+                    evidence_packs.get(task_id),
+                    handoffs.get(task_id),
+                )
+            elif task0233_is_activated(task) and evidence_packs.get(task_id) is not None:
+                terminal_commit = first_terminal_commit(task, terminal_states)
+                validate_task0233_temporal_integrity(
+                    audit, task, evidence_packs[task_id], terminal_commit
+                )
+                validate_task0233_commit_tree_binding(
+                    audit, task, evidence_packs[task_id], terminal_commit
+                )
             # Withdrawn (Owner 2026-08-14 plan D): the earlier blanket
             # re-judging of all historical terminal tasks through the full v2
             # evidence gate produced 1169 false errors and violated the
