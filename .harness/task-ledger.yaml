@@ -1074,3 +1074,9 @@ tasks:
     taskCard: docs/tasks/TASK-0203-h5-chat-restore-input-on-prestream-fail.md
     evidence: docs/evidence/TASK-0203/evidence-pack.json
     handoff: docs/handoffs/TASK-0203.json
+  TASK-0204:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0204-h5-index-internal-page-nav.md
+    evidence: docs/evidence/TASK-0204/evidence-pack.json
+    handoff: docs/handoffs/TASK-0204.json
