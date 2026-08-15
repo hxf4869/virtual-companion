@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0210
 lastAcceptedHandoff: docs/handoffs/TASK-0210.json
 lastTerminalTask: TASK-0210
 lastTerminalHandoff: docs/handoffs/TASK-0210.json
-nextAction: TASK-0211 READY：记忆页填入关系后使用中性提示并聚焦刷新，不自动 load、不改变确认语义。保持不推送不合并。
+nextAction: TASK-0211 IN_PROGRESS：记忆页填入关系后使用中性提示并聚焦刷新，不自动 load、不改变确认语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

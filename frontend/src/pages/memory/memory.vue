@@ -63,7 +63,7 @@ states carry alert/live a11y semantics. -->
       data-testid="prefill-hint"
       role="status"
     >
-      <text>已从聊天带入关系，请点击刷新记忆。</text>
+      <text>已填入关系，请点击刷新记忆。</text>
     </view>
 
     <view
@@ -240,9 +240,24 @@ function readQueryRelationshipId(): string {
   }
 }
 
+function focusReload(): void {
+  void nextTick(() => {
+    try {
+      if (typeof document !== "undefined") {
+        document
+          .querySelector<HTMLButtonElement>('[data-testid="reload"]')
+          ?.focus();
+      }
+    } catch {
+      // Best-effort a11y; never auto-load.
+    }
+  });
+}
+
 function onPickRelationship(id: string): void {
   if (!id) return;
   relationshipId.value = id;
+  focusReload();
 }
 
 onMounted(() => {
@@ -250,17 +265,7 @@ onMounted(() => {
   const prefill = readQueryRelationshipId();
   if (prefill && !relationshipId.value) {
     relationshipId.value = prefill;
-    void nextTick(() => {
-      try {
-        if (typeof document !== "undefined") {
-          document
-            .querySelector<HTMLButtonElement>('[data-testid="reload"]')
-            ?.focus();
-        }
-      } catch {
-        // Best-effort a11y; never auto-load.
-      }
-    });
+    focusReload();
   }
 });
 

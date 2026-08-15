@@ -235,7 +235,9 @@ describe("memory page glue (P2-19 component test)", () => {
     );
     const hint = wrapper.find('[data-testid="prefill-hint"]');
     expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain("已填入关系");
     expect(hint.text()).toContain("刷新记忆");
+    expect(hint.text()).not.toContain("聊天");
     await wrapper.vm.$nextTick();
     expect(document.activeElement?.getAttribute("data-testid")).toBe("reload");
     wrapper.unmount();
@@ -285,6 +287,7 @@ describe("memory page glue (P2-19 component test)", () => {
     const memLoadSpy = vi.spyOn(memStore, "load");
 
     await wrapper.find('[data-testid="relationship-select"]').setValue("rel-pick-1");
+    await wrapper.vm.$nextTick();
 
     const input = wrapper.find('input[aria-label="relationship id"]');
     expect((input.element as HTMLInputElement).value).toBe("rel-pick-1");
@@ -292,6 +295,11 @@ describe("memory page glue (P2-19 component test)", () => {
     expect(createSpy).not.toHaveBeenCalled();
     expect(memLoadSpy).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
+    const hint = wrapper.find('[data-testid="prefill-hint"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain("已填入关系");
+    expect(hint.text()).not.toContain("聊天");
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("reload");
     wrapper.unmount();
   });
 
