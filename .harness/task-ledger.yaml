@@ -1170,3 +1170,9 @@ tasks:
     taskCard: docs/tasks/TASK-0219-h5-memory-login-nav.md
     evidence: docs/evidence/TASK-0219/evidence-pack.json
     handoff: docs/handoffs/TASK-0219.json
+  TASK-0220:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0220-h5-login-chat-nav.md
+    evidence: docs/evidence/TASK-0220/evidence-pack.json
+    handoff: docs/handoffs/TASK-0220.json

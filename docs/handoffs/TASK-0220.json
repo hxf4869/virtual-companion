@@ -1,0 +1,57 @@
+{
+  "taskId": "TASK-0220",
+  "state": "ACCEPTED",
+  "baseCommit": "8f29c773e55da8c6dc30746d4ae9717928ccd973",
+  "headCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+  "evidencePath": "docs/evidence/TASK-0220/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c46bddf55904e230a32074ee172cda4ef2ad9b61",
+      "startedAt": "2026-08-15T21:34:32+08:00",
+      "endedAt": "2026-08-15T21:54:30+08:00",
+      "elapsedSeconds": 1198,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c46bddf55904e230a32074ee172cda4ef2ad9b61",
+      "startedAt": "2026-08-15T21:34:32+08:00",
+      "endedAt": "2026-08-15T21:37:25+08:00",
+      "elapsedSeconds": 173,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T21:37:25+08:00",
+      "inProgressCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "startedAt": "2026-08-15T21:38:26+08:00",
+      "endedAt": "2026-08-15T21:54:30+08:00",
+      "elapsedSeconds": 964,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T21:37:25+08:00",
+      "inProgressCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "登录页增加 data-testid=nav-chat「离线聊天」，提交前可见。",
+    "点击导航到 /pages/chat/chat，不携带 relationship id，不调用 login。",
+    "vitest 9/9 PASS；git diff --check PASS；READY Doctor PASS 1075570；官方 precheck 8/8（inner doctor 1077128）；pre-closure PASS 1352675。"
+  ],
+  "remaining": [
+    "SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "登录页聊天入口不携带 relationship id；聊天页仍按自身 load/query 逻辑处理。"
+  ],
+  "nextAction": "TASK-0220 ACCEPTED（登录页已增加离线聊天入口，不改变登录/失败语义）。下一动作：继续发现下一张合法卡。保持不推送不合并。"
+}

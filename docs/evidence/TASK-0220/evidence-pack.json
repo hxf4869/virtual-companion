@@ -1,0 +1,97 @@
+{
+  "taskId": "TASK-0220",
+  "baseCommit": "8f29c773e55da8c6dc30746d4ae9717928ccd973",
+  "headCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+  "contextFingerprint": "47a04f52a4310c7ff38197a466acd91da9a465bbd6831cff3f5cc497cc47c6bb",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c46bddf55904e230a32074ee172cda4ef2ad9b61",
+      "startedAt": "2026-08-15T21:34:32+08:00",
+      "endedAt": "2026-08-15T21:54:30+08:00",
+      "elapsedSeconds": 1198,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "c46bddf55904e230a32074ee172cda4ef2ad9b61",
+      "startedAt": "2026-08-15T21:34:32+08:00",
+      "endedAt": "2026-08-15T21:37:25+08:00",
+      "elapsedSeconds": 173,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T21:37:25+08:00",
+      "inProgressCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "startedAt": "2026-08-15T21:38:26+08:00",
+      "endedAt": "2026-08-15T21:54:30+08:00",
+      "elapsedSeconds": 964,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T21:37:25+08:00",
+      "inProgressCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0220",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor PASS 1075570 checks / 137.1s / exit 0 on bind commit a31f691.",
+      "environment": "macOS; scratch task-0220-doctor-ready.log",
+      "verifiedCommit": "a31f691ec5b8e2dab9c5d2cba02a89477c5f96f8"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0220",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Official candidate precheck PASS (8 commands). Inner doctor --task TASK-0220 PASS 1077128 checks / 132.4s / exit 0 on 23f8e12.",
+      "environment": "macOS; scratch task-0220-precheck.log",
+      "verifiedCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "candidateCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "candidateTree": "afb80301aa1b8a813ac7705050d1b5acf2dcc349"
+    },
+    {
+      "command": "pnpm --dir frontend exec vitest run src/pages/login/login.spec.ts",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "9/9 tests PASS: nav-chat visible before submit, click navigates to /pages/chat/chat without login, existing index-nav and fail-focus tests still pass.",
+      "environment": "macOS; vitest 3.2.6",
+      "verifiedCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "candidateCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "candidateTree": "afb80301aa1b8a813ac7705050d1b5acf2dcc349"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on candidate 23f8e12.",
+      "environment": "macOS",
+      "verifiedCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0220 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Official staged-terminal pre-closure PASS 1352675 checks / 686.8s / exit 0.",
+      "environment": "macOS; scratch task-0220-preclosure-1.log",
+      "verifiedCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "candidateCommit": "23f8e124c30ac2b3c242dfe1ba88315f3e37ecca",
+      "candidateTree": "afb80301aa1b8a813ac7705050d1b5acf2dcc349"
+    }
+  ]
+}
