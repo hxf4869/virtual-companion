@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0228
+activeTaskCard: docs/tasks/TASK-0228-h5-memory-relationship-load-error.md
 lastAcceptedTask: TASK-0227
 lastAcceptedHandoff: docs/handoffs/TASK-0227.json
 lastTerminalTask: TASK-0227
 lastTerminalHandoff: docs/handoffs/TASK-0227.json
-nextAction: TASK-0227 ACCEPTED（聊天页已展示关系列表加载失败文案，不改变发送/取消语义）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。
+nextAction: TASK-0228 READY。下一动作：绑定 authorizationCommit 后真实跑 doctor --task TASK-0228；PASS 后转入 IN_PROGRESS。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
