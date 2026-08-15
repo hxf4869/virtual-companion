@@ -1,0 +1,58 @@
+{
+  "taskId": "TASK-0210",
+  "state": "ACCEPTED",
+  "baseCommit": "eed0bf6957987ae0adac3f30cc41ce23cf919cf9",
+  "headCommit": "7bb8690edf28debada1c6ffb86331ceaa512eb74",
+  "evidencePath": "docs/evidence/TASK-0210/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4eca4526faf986ea3f294ca97135b9b36247dc59",
+      "startedAt": "2026-08-15T18:43:24+08:00",
+      "endedAt": "2026-08-15T19:37:04+08:00",
+      "elapsedSeconds": 3220,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "4eca4526faf986ea3f294ca97135b9b36247dc59",
+      "startedAt": "2026-08-15T18:43:24+08:00",
+      "endedAt": "2026-08-15T19:19:55+08:00",
+      "elapsedSeconds": 2191,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T19:19:55+08:00",
+      "inProgressCommit": "7bb8690edf28debada1c6ffb86331ceaa512eb74"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "7bb8690edf28debada1c6ffb86331ceaa512eb74",
+      "startedAt": "2026-08-15T19:22:06+08:00",
+      "endedAt": "2026-08-15T19:37:04+08:00",
+      "elapsedSeconds": 898,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T19:19:55+08:00",
+      "inProgressCommit": "7bb8690edf28debada1c6ffb86331ceaa512eb74"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "记忆页复用既有 RelationshipSelector：选中只写入 relationship id 输入框。",
+    "挂载时 relStore.load 仅填充列表；不调用 activate/create，不自动 memory.load。",
+    "vitest 18/18 PASS；canonical precheck 8/8（doctor 1007621）；git diff --check PASS。未改 store/API/确认语义。"
+  ],
+  "remaining": [
+    "选择器仍展示新建关系控件，本卡故意不接线。SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "TASK-0209 聊天带 query 的实现留在 main，但是 REJECTED 授权投影，不得称为 ACCEPTED。",
+    "选择器 load 失败走既有 selector error，不会伪造关系。"
+  ],
+  "nextAction": "TASK-0210 ACCEPTED（记忆页可用既有选择器填入 relationship id，不激活、不自动 load、不改变确认语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。"
+}

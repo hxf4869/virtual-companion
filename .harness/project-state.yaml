@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0210
-activeTaskCard: docs/tasks/TASK-0210-h5-memory-pick-relationship-id.md
-lastAcceptedTask: TASK-0208
-lastAcceptedHandoff: docs/handoffs/TASK-0208.json
-lastTerminalTask: TASK-0209
-lastTerminalHandoff: docs/handoffs/TASK-0209.json
-nextAction: TASK-0210 IN_PROGRESS：记忆页用既有选择器填入 relationship id，不激活、不自动 load、不改变确认语义。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0210
+lastAcceptedHandoff: docs/handoffs/TASK-0210.json
+lastTerminalTask: TASK-0210
+lastTerminalHandoff: docs/handoffs/TASK-0210.json
+nextAction: TASK-0210 ACCEPTED（记忆页可用既有选择器填入 relationship id，不激活、不自动 load、不改变确认语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
