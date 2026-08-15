@@ -1,0 +1,87 @@
+{
+  "taskId": "TASK-0209",
+  "baseCommit": "1239f4fa4dc0d2b876699bb8e267743ca6fd268b",
+  "headCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+  "contextFingerprint": "483f6eceaf43cc059f066b07bbbed907c7020ec31ea8fdfdabb26e923632e7dd",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2c8e37c9e9191fc378ef62b902666ba1af258a96",
+      "startedAt": "2026-08-15T18:36:49+08:00",
+      "endedAt": "2026-08-15T19:11:58+08:00",
+      "elapsedSeconds": 2109,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "2c8e37c9e9191fc378ef62b902666ba1af258a96",
+      "startedAt": "2026-08-15T18:36:49+08:00",
+      "endedAt": "2026-08-15T18:36:49+08:00",
+      "elapsedSeconds": 0,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "inProgressCommit": "e09d73285daf7bb91deeba1f747da1b74bf823f4"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "e09d73285daf7bb91deeba1f747da1b74bf823f4",
+      "startedAt": "2026-08-15T18:37:32+08:00",
+      "endedAt": "2026-08-15T19:11:58+08:00",
+      "elapsedSeconds": 2066,
+      "outcome": "FAIL",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T18:36:49+08:00",
+      "inProgressCommit": "e09d73285daf7bb91deeba1f747da1b74bf823f4"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "pnpm --dir frontend exec vitest run src/pages/chat/chat.spec.ts src/pages/memory/memory.spec.ts",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "30/30 tests PASS on candidate b50a5ef (chat 15 + memory 15): query carry, prefill without auto-load, empty-id status, prefill hint, reload focus.",
+      "environment": "macOS; vitest 3.2.6; scratch task-0209-required-commands.log",
+      "verifiedCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+      "candidateCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+      "candidateTree": "a833498918d08f5fbab679337e5d6411fec71d06"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on candidate b50a5ef.",
+      "environment": "macOS",
+      "verifiedCommit": "b50a5efddd20d139f4de763084908ff2618ccf82"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0209",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "Official precheck FAIL (exit 1). Inner doctor FAIL 1004264 checks / 2 errors, not converted to PASS: changed path outside writeAllowlist docs/tasks/TASK-0210-h5-memory-pick-relationship-id.md and docs/tasks/context/TASK-0210.context-lock.yaml. Those idle-DRAFT files sit on 1239f4f..HEAD and cannot be retroactively authorized.",
+      "environment": "macOS; scratch task-0209-precheck.log",
+      "verifiedCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+      "candidateCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+      "candidateTree": "a833498918d08f5fbab679337e5d6411fec71d06"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0209 --pre-closure",
+      "status": "FAIL",
+      "exitCode": 1,
+      "artifactHash": null,
+      "reason": "Official staged-terminal pre-closure FAIL (exit 1, 1004670 checks, 116s). Honest 15 errors, not converted to PASS. After REJECTED staging activeTask=null, --task TASK-0209 cannot replace selected idle DRAFT TASK-0210; remaining errors are TASK-0210 DRAFT base/checkpoint/history/allowlist against the 0209 window. Distinct from the already-recorded official precheck FAIL (exit 1, 1004264 checks, 2 writeAllowlist errors on the two TASK-0210 paths).",
+      "environment": "macOS; scratch task-0209-preclosure-1.log",
+      "verifiedCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+      "candidateCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+      "candidateTree": "a833498918d08f5fbab679337e5d6411fec71d06"
+    }
+  ]
+}

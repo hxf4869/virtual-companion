@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0209
-activeTaskCard: docs/tasks/TASK-0209-h5-carry-relationship-id-to-memory.md
+activeTask: null
+activeTaskCard: null
 lastAcceptedTask: TASK-0208
 lastAcceptedHandoff: docs/handoffs/TASK-0208.json
-lastTerminalTask: TASK-0208
-lastTerminalHandoff: docs/handoffs/TASK-0208.json
-nextAction: TASK-0209 IN_PROGRESS：聊天进入记忆页已预填 relationship id，不自动 load；终态 Doctor/pre-closure 按 Owner 要求延后。保持不推送不合并。
+lastTerminalTask: TASK-0209
+lastTerminalHandoff: docs/handoffs/TASK-0209.json
+nextAction: TASK-0209 REJECTED（官方 precheck FAIL：TASK-0210 两路径越出 writeAllowlist，未改写成 PASS）。下一动作：把 TASK-0210 重锚到本终态后 READY。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

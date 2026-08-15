@@ -1104,3 +1104,9 @@ tasks:
     taskCard: docs/tasks/TASK-0208-h5-memory-back-to-chat-nav.md
     evidence: docs/evidence/TASK-0208/evidence-pack.json
     handoff: docs/handoffs/TASK-0208.json
+  TASK-0209:
+    state: REJECTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0209-h5-carry-relationship-id-to-memory.md
+    evidence: docs/evidence/TASK-0209/evidence-pack.json
+    handoff: docs/handoffs/TASK-0209.json
