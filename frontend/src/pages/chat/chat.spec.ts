@@ -130,6 +130,44 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("restores the input when send fails before a generation exists", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    vi.spyOn(store, "send").mockImplementation(async () => {
+      store.phase = "failed";
+      store.generationId = "";
+    });
+
+    const input = wrapper.find('input[data-testid="message-input"]');
+    await input.setValue("  请再听我说一次  ");
+    await wrapper.find('button[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    expect((input.element as HTMLInputElement).value).toBe("请再听我说一次");
+    wrapper.unmount();
+  });
+
+  it("does not restore the input when send fails after a generation id exists", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    vi.spyOn(store, "send").mockImplementation(async () => {
+      store.phase = "failed";
+      store.generationId = "gen-1";
+    });
+
+    const input = wrapper.find('input[data-testid="message-input"]');
+    await input.setValue("已经发出去的话");
+    await wrapper.find('button[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    expect((input.element as HTMLInputElement).value).toBe("");
+    wrapper.unmount();
+  });
+
   it("shows the relationship selector and hides the chat input when no relationship is active", async () => {
     stubFetch({ relationships: [] });
 

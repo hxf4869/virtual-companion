@@ -195,6 +195,9 @@ export default defineComponent({
       if (!text || store.isStreaming) return;
       inputText.value = "";
       await store.send(transport, deps, text);
+      if (store.phase === "failed" && !store.generationId) {
+        inputText.value = text;
+      }
     }
 
     function onCancel(): void {
