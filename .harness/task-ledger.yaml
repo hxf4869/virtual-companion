@@ -1128,3 +1128,9 @@ tasks:
     taskCard: docs/tasks/TASK-0212-h5-memory-hide-unwired-create.md
     evidence: docs/evidence/TASK-0212/evidence-pack.json
     handoff: docs/handoffs/TASK-0212.json
+  TASK-0213:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0213-h5-index-carry-relationship-id-to-memory.md
+    evidence: docs/evidence/TASK-0213/evidence-pack.json
+    handoff: docs/handoffs/TASK-0213.json
