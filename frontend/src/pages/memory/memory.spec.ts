@@ -398,6 +398,32 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("hides the prefill hint when the relationship list fails", async () => {
+    vi.stubGlobal("location", { search: "?relationshipId=rel-1" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/relationships") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const memStore = useMemoryStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const memLoadSpy = vi.spyOn(memStore, "load");
+
+    expect(wrapper.find('[data-testid="relationship-load-error"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(memLoadSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("shows the filled relationship id after a selector pick", async () => {
     const wrapper = mountPage();
     await flushPromises();

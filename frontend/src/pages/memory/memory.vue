@@ -224,7 +224,8 @@ const showPrefillHint = computed(
   () =>
     relationshipId.value.trim().length > 0 &&
     !hasLoaded.value &&
-    memory.error === null,
+    memory.error === null &&
+    relStore.status !== "error",
 );
 
 // TASK-0105 (P2-16): shared authenticated transport -- the single place where
