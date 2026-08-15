@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0234
-activeTaskCard: docs/tasks/TASK-0234-exact-tree-channel-governance.md
-lastAcceptedTask: TASK-0233
-lastAcceptedHandoff: docs/handoffs/TASK-0233.json
-lastTerminalTask: TASK-0233
-lastTerminalHandoff: docs/handoffs/TASK-0233.json
-nextAction: TASK-0234 READY（SLICE-GOVERNANCE-B：ordinary-card exact-tree 通道强制校验——fallback 激活条件与远端释放绑定；新终态激活、历史/特判卡不重判）。保持不推送 main。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0234
+lastAcceptedHandoff: docs/handoffs/TASK-0234.json
+lastTerminalTask: TASK-0234
+lastTerminalHandoff: docs/handoffs/TASK-0234.json
+nextAction: TASK-0234 ACCEPTED（SLICE-GOVERNANCE-B exact-tree 通道强制校验完成）。下一动作：推送本终态至恢复分支并远端复核、跑正式 Doctor 验证释放绑定，然后 intake 后继 SLICE-GOVERNANCE-C 卡（永久 ID 由机器分配）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

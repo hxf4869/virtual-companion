@@ -1,0 +1,69 @@
+{
+  "taskId": "TASK-0234",
+  "state": "ACCEPTED",
+  "baseCommit": "494146bd614c6516dcbcfaa5ca7e658a90272a12",
+  "headCommit": "b425898ddce3261eb682fffd85682afefbde1237",
+  "evidencePath": "docs/evidence/TASK-0234/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f454a904e11a3c6ec622703f56dda2d739c1850b",
+      "startedAt": "2026-08-16T05:33:49+08:00",
+      "endedAt": "2026-08-16T05:56:00+08:00",
+      "elapsedSeconds": 1331,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "f454a904e11a3c6ec622703f56dda2d739c1850b",
+      "startedAt": "2026-08-16T05:33:49+08:00",
+      "endedAt": "2026-08-16T05:38:30+08:00",
+      "elapsedSeconds": 281,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T05:38:30+08:00",
+      "inProgressCommit": "ed6ee2c405722e619de727f87a16d765ef81f8bc"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "ed6ee2c405722e619de727f87a16d765ef81f8bc",
+      "startedAt": "2026-08-16T05:39:30+08:00",
+      "endedAt": "2026-08-16T05:56:00+08:00",
+      "elapsedSeconds": 1050,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T05:38:30+08:00",
+      "inProgressCommit": "ed6ee2c405722e619de727f87a16d765ef81f8bc"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0234_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "b425898ddce3261eb682fffd85682afefbde1237",
+      "evidencePath": "docs/evidence/TASK-0234/review-r1.md",
+      "reason": "R1 独立复核 APPROVE：实现范围恰为冻结两条路径；两组校验落地；历史卡与特判卡不重判（summary PASS 1160307 / 0 errors）；负例矩阵 6/6。P0=0，P1=0，P2=0，P3=0。"
+    }
+  ],
+  "completed": [
+    "LOCAL_FALLBACK_ACTIVATION_REQUIRED 落地：激活后 fallback 卡必须携带完整 validationChannels 记录（强类型远端不可用证据 6 字段 + results 覆盖 20 个 resultRecordRequiredFields + notCovered 显式）。",
+    "PRIMARY_REMOTE_RELEASE_BOUND 落地：激活后远端通道卡在正式提交态 Doctor 必须证明 evidence.headCommit 已推送到专用恢复分支（remote-tracking ref 存在且 headCommit 为其 tip 祖先）；pre-closure 暂存态豁免。",
+    "定向测试 8/8（正例 2 + 负例 6）；TASK-0233 回归 12/12；READY Doctor PASS 1158255；canonical precheck 8/8；实现后全量 summary PASS 1160307 / 0 errors；git diff --check exit 0。",
+    "C4 独立 Reviewer（R1）APPROVE，P0/P1/P2/P3=0。"
+  ],
+  "remaining": [
+    "SLICE-GOVERNANCE-C（ACCEPTED 验证证据强制 + 14 卡定向识别）、SLICE-HISTORY、14 张卡补偿验证批次、0209/0210 追认记录由后继卡严格串行完成。",
+    "本卡终态推送至恢复分支与远端 SHA/Tree 复核、正式 Doctor 释放验证在终态提交后立即执行。"
+  ],
+  "knownRisks": [
+    "远端校验依赖本地 remote-tracking ref 的新鲜度；正式 Doctor 前必须 fetch。",
+    "激活锚为 bind 提交 f8cc840（与 TASK-0233 同一先例：严格单活动卡串行下等价于终态激活）。"
+  ],
+  "nextAction": "TASK-0234 ACCEPTED（SLICE-GOVERNANCE-B exact-tree 通道强制校验完成）。下一动作：推送本终态至 refs/heads/codex/governance-recovery-20260816、fetch 并远端精确 SHA/Tree 复核，跑正式 Doctor 验证释放绑定，然后 intake 后继 SLICE-GOVERNANCE-C 卡（永久 ID 由机器分配）。保持不推送 main。"
+}
