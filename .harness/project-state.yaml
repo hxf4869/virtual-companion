@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0229
+activeTaskCard: docs/tasks/TASK-0229-h5-memory-hide-empty-id-on-rel-error.md
 lastAcceptedTask: TASK-0228
 lastAcceptedHandoff: docs/handoffs/TASK-0228.json
 lastTerminalTask: TASK-0228
 lastTerminalHandoff: docs/handoffs/TASK-0228.json
-nextAction: TASK-0228 ACCEPTED（记忆页已展示关系列表加载失败文案，不改变确认/失败语义）。下一动作：继续发现下一张合法卡。保持不推送不合并。
+nextAction: TASK-0229 READY。下一动作：绑定 authorizationCommit 后真实跑 doctor --task TASK-0229；PASS 后转入 IN_PROGRESS。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
