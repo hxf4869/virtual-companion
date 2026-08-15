@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0231
-state: READY
+state: IN_PROGRESS
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -82,7 +82,7 @@ governanceGapQuarantine:
     - groupId: LEGACY_AUTHORIZATION_GAP_0209_0210
       task0209RejectedCommit: eed0bf6957987ae0adac3f30cc41ce23cf919cf9
       task0210ReadyCommit: ecc35f7feb208686ebd8233e4533f5ce7ebc2d07
-      task0210AcceptedCommit: 1e8922cb0637e594e0e9aa2fd24386a40d0c48ee
+      task0210AcceptedCommit: 1e8922ca7394655657f68a9379315116f2e6e91b
       task0209PrecheckStatus: FAIL
       task0209PreclosureStatus: FAIL
     - groupId: LEGACY_EXACT_TREE_EVIDENCE_GAP
