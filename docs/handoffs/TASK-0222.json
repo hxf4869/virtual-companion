@@ -1,0 +1,56 @@
+{
+  "taskId": "TASK-0222",
+  "state": "ACCEPTED",
+  "baseCommit": "98796c05ab2dee73eadb1e42a6f59df019274755",
+  "headCommit": "56f08b721deccc6a773e311a065f113ee6eb53f6",
+  "evidencePath": "docs/evidence/TASK-0222/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "41077d7acbafec3e024706473c5da1492567c63a",
+      "startedAt": "2026-08-15T22:35:58+08:00",
+      "endedAt": "2026-08-15T22:36:40+08:00",
+      "elapsedSeconds": 42,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "41077d7acbafec3e024706473c5da1492567c63a",
+      "startedAt": "2026-08-15T22:35:58+08:00",
+      "endedAt": "2026-08-15T22:36:00+08:00",
+      "elapsedSeconds": 2,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "inProgressCommit": "56f08b721deccc6a773e311a065f113ee6eb53f6"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "56f08b721deccc6a773e311a065f113ee6eb53f6",
+      "startedAt": "2026-08-15T22:36:25+08:00",
+      "endedAt": "2026-08-15T22:36:40+08:00",
+      "elapsedSeconds": 15,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T22:36:00+08:00",
+      "inProgressCommit": "56f08b721deccc6a773e311a065f113ee6eb53f6"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "边界台 chatHref() 在 load 后携带 currentRelationshipId。",
+    "无当前关系时保持 /pages/chat/chat。不调用 activate/create。",
+    "vitest 6/6 PASS；git diff --check PASS。Doctor/precheck/pre-closure 按 Owner 本轮不跑，记 NOT_RUN。"
+  ],
+  "remaining": [
+    "官方长检查未跑（NOT_RUN）。SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "READY Doctor 未跑，intakeActivation 记 UNKNOWN，不称 PASS。"
+  ],
+  "nextAction": "TASK-0222 ACCEPTED（边界台聊天入口已携带当前关系，不调用 activate）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。"
+}
