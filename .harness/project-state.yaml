@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0208
 lastAcceptedHandoff: docs/handoffs/TASK-0208.json
 lastTerminalTask: TASK-0208
 lastTerminalHandoff: docs/handoffs/TASK-0208.json
-nextAction: TASK-0209 READY：聊天进入记忆页预填 relationship id，不自动 load。保持不推送不合并。
+nextAction: TASK-0209 IN_PROGRESS：聊天进入记忆页已预填 relationship id，不自动 load；终态 Doctor/pre-closure 按 Owner 要求延后。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

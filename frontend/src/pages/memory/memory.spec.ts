@@ -206,6 +206,37 @@ describe("memory page glue (P2-19 component test)", () => {
     expect((input.element as HTMLInputElement).value).toBe("rel-1");
     expect(loadSpy).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="empty-relationship-id"]').exists()).toBe(
+      false,
+    );
+    const hint = wrapper.find('[data-testid="prefill-hint"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain("刷新记忆");
+    wrapper.unmount();
+  });
+
+  it("shows an empty-relationship-id status when the field is blank", () => {
+    const wrapper = mountPage();
+    const empty = wrapper.find('[data-testid="empty-relationship-id"]');
+    expect(empty.exists()).toBe(true);
+    expect(empty.attributes("role")).toBe("status");
+    expect(empty.text()).toContain("relationship id");
+    expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("hides the prefill hint after a successful load", async () => {
+    vi.stubGlobal("location", { search: "?relationshipId=rel-1" });
+    const store = useMemoryStore();
+    vi.spyOn(store, "load").mockResolvedValue();
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(true);
+
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

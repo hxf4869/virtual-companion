@@ -41,6 +41,23 @@ states carry alert/live a11y semantics. -->
     </view>
 
     <view
+      v-if="showEmptyRelationshipId"
+      class="empty-status"
+      data-testid="empty-relationship-id"
+      role="status"
+    >
+      <text>请先填写 relationship id 再刷新记忆。</text>
+    </view>
+    <view
+      v-if="showPrefillHint"
+      class="empty-status"
+      data-testid="prefill-hint"
+      role="status"
+    >
+      <text>已从聊天带入关系，请点击刷新记忆。</text>
+    </view>
+
+    <view
       v-if="memory.error"
       class="error"
       role="alert"
@@ -156,6 +173,15 @@ const showEmptyPending = computed(
 );
 const showEmptyCanonical = computed(
   () => hasLoaded.value && memory.canonicalCount === 0,
+);
+const showEmptyRelationshipId = computed(
+  () => relationshipId.value.trim().length === 0,
+);
+const showPrefillHint = computed(
+  () =>
+    relationshipId.value.trim().length > 0 &&
+    !hasLoaded.value &&
+    memory.error === null,
 );
 
 // TASK-0105 (P2-16): shared authenticated transport -- the single place where
