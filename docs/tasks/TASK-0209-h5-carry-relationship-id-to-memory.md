@@ -16,7 +16,7 @@ planningBacklog: null
 planningContractHash: null
 planningContractHashAlgorithm: null
 baseCommit: 1239f4fa4dc0d2b876699bb8e267743ca6fd268b
-authorizationCommit: ""
+authorizationCommit: c84f2e51481d6a7fd821038a0950ad45bb19fd9e
 contextFingerprint: 483f6eceaf43cc059f066b07bbbed907c7020ec31ea8fdfdabb26e923632e7dd
 contextLock: docs/tasks/context/TASK-0209.context-lock.yaml
 contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
