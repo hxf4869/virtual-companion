@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0214
+activeTaskCard: docs/tasks/TASK-0214-h5-memory-empty-point-to-chat.md
 lastAcceptedTask: TASK-0213
 lastAcceptedHandoff: docs/handoffs/TASK-0213.json
 lastTerminalTask: TASK-0213
 lastTerminalHandoff: docs/handoffs/TASK-0213.json
-nextAction: TASK-0213 ACCEPTED（边界台进入记忆页时可携带已有 relationship id，不激活、不自动 load）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。
+nextAction: TASK-0214 READY：记忆页无关系时提示去聊天新建，不接线 create、不自动 load。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
