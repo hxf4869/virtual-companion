@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0201
-activeTaskCard: docs/tasks/TASK-0201-h5-relationship-empty-status.md
-lastAcceptedTask: TASK-0200
-lastAcceptedHandoff: docs/handoffs/TASK-0200.json
-lastTerminalTask: TASK-0200
-lastTerminalHandoff: docs/handoffs/TASK-0200.json
-nextAction: TASK-0201 READY：在关系选择器空列表渲染可见状态，不改变激活/新建语义。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0201
+lastAcceptedHandoff: docs/handoffs/TASK-0201.json
+lastTerminalTask: TASK-0201
+lastTerminalHandoff: docs/handoffs/TASK-0201.json
+nextAction: TASK-0201 ACCEPTED（H5 关系选择器空列表可见状态已落地，不改变激活/新建语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
