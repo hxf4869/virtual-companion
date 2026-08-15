@@ -7,7 +7,7 @@
           data-testid="nav-memory"
           class="chat-nav-index"
           aria-label="记忆管理"
-          @click="goTo('/pages/memory/memory')"
+          @click="goTo(memoryHref())"
         >
           记忆管理
         </button>
@@ -239,6 +239,12 @@ export default defineComponent({
       }
     }
 
+    function memoryHref(): string {
+      const id = relStore.currentRelationshipId;
+      if (!id) return "/pages/memory/memory";
+      return `/pages/memory/memory?relationshipId=${encodeURIComponent(id)}`;
+    }
+
     /**
      * Reset the chat store and create a fresh conversation under the currently
      * selected relationship. Used on mount (when an active relationship exists)
@@ -300,6 +306,7 @@ export default defineComponent({
       onSend,
       onCancel,
       goTo,
+      memoryHref,
       onRelActivate,
       onRelCreate,
     };

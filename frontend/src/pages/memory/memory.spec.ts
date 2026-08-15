@@ -194,4 +194,18 @@ describe("memory page glue (P2-19 component test)", () => {
     expect(confirmSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it("prefills relationship id from the query and does not auto-load", async () => {
+    vi.stubGlobal("location", { search: "?relationshipId=rel-1" });
+    const store = useMemoryStore();
+    const loadSpy = vi.spyOn(store, "load");
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+
+    const input = wrapper.find('input[aria-label="relationship id"]');
+    expect((input.element as HTMLInputElement).value).toBe("rel-1");
+    expect(loadSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
 });

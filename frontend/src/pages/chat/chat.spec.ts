@@ -229,9 +229,24 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     await wrapper.find('[data-testid="nav-memory"]').trigger("click");
 
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/memory/memory?relationshipId=1",
+    });
     expect(sendSpy).not.toHaveBeenCalled();
     expect(cancelSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("omits relationshipId from the memory href when none is selected", async () => {
+    stubFetch({ relationships: [] });
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
     wrapper.unmount();
   });
 });

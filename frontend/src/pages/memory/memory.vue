@@ -136,7 +136,7 @@ states carry alert/live a11y semantics. -->
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
@@ -188,6 +188,26 @@ function hasEvidence(memoryId: string): boolean {
   const list = memory.evidence[memoryId];
   return Array.isArray(list) && list.length > 0;
 }
+
+function readQueryRelationshipId(): string {
+  try {
+    if (typeof location === "undefined") return "";
+    return (
+      new URLSearchParams(String(location.search || ""))
+        .get("relationshipId")
+        ?.trim() ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+onMounted(() => {
+  const prefill = readQueryRelationshipId();
+  if (prefill && !relationshipId.value) {
+    relationshipId.value = prefill;
+  }
+});
 
 async function reload(): Promise<void> {
   if (!relationshipId.value) return;
