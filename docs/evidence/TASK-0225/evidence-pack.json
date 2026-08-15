@@ -1,0 +1,89 @@
+{
+  "taskId": "TASK-0225",
+  "baseCommit": "12c19137e04a288171849e72a00c3408b4ad35fc",
+  "headCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6",
+  "contextFingerprint": "943a9180d2668408729b2667c66f5ed18df8fbd3e1371f23a29bdaff6a10150a",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "eff4cd8a40ca9dca00280d73b6d19bd8471a3b1e",
+      "startedAt": "2026-08-15T22:46:24+08:00",
+      "endedAt": "2026-08-15T22:47:15+08:00",
+      "elapsedSeconds": 51,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "eff4cd8a40ca9dca00280d73b6d19bd8471a3b1e",
+      "startedAt": "2026-08-15T22:46:24+08:00",
+      "endedAt": "2026-08-15T22:46:26+08:00",
+      "elapsedSeconds": 2,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "inProgressCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6",
+      "startedAt": "2026-08-15T22:47:05+08:00",
+      "endedAt": "2026-08-15T22:47:15+08:00",
+      "elapsedSeconds": 10,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T22:46:26+08:00",
+      "inProgressCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "pnpm --dir frontend exec vitest run src/pages/memory/memory.spec.ts",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "24/24 tests PASS on candidate c880925: ready state shows filled relationship id or empty copy, no load/confirm/activate, existing prefill/nav tests still pass.",
+      "environment": "macOS; vitest 3.2.6",
+      "verifiedCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6",
+      "candidateCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6",
+      "candidateTree": "4f57b774820e96b33f9310735520a9ee92161889"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on candidate c880925.",
+      "environment": "macOS",
+      "verifiedCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0225",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 Doctor。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0225",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 precheck。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0225 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 pre-closure。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    }
+  ]
+}

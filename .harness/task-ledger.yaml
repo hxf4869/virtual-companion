@@ -1200,3 +1200,9 @@ tasks:
     taskCard: docs/tasks/TASK-0224-h5-chat-show-current-relationship.md
     evidence: docs/evidence/TASK-0224/evidence-pack.json
     handoff: docs/handoffs/TASK-0224.json
+  TASK-0225:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0225-h5-memory-show-current-relationship.md
+    evidence: docs/evidence/TASK-0225/evidence-pack.json
+    handoff: docs/handoffs/TASK-0225.json
