@@ -307,6 +307,35 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("shows a relationship load error without calling send or activate", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/relationships") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send");
+    const cancelSpy = vi.spyOn(store, "cancel");
+
+    const err = wrapper.find('[data-testid="relationship-load-error"]');
+    expect(err.exists()).toBe(true);
+    expect(err.text()).toContain("关系列表加载失败。");
+    expect(wrapper.find('[data-testid="current-relationship"]').exists()).toBe(false);
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(cancelSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("selects a query relationship locally without activate", async () => {
     stubFetch({
       relationships: [
