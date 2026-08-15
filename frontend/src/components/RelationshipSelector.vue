@@ -25,7 +25,7 @@
       </select>
     </view>
 
-    <view class="rel-create">
+    <view v-if="showCreate" class="rel-create">
       <input
         v-model="personaRef"
         class="rel-input"
@@ -61,7 +61,7 @@
       data-testid="empty-relationships"
       role="status"
     >
-      <text>还没有关系。请先新建一条陪伴关系。</text>
+      <text>{{ emptyRelationshipsText }}</text>
     </view>
   </view>
 </template>
@@ -97,6 +97,10 @@ export default defineComponent({
       type: Boolean,
       default: false,
     },
+    showCreate: {
+      type: Boolean,
+      default: true,
+    },
   },
   emits: {
     activate: (id: string) => typeof id === "string",
@@ -111,6 +115,11 @@ export default defineComponent({
         props.status !== "loading" &&
         props.status !== "error" &&
         props.relationships.length === 0,
+    );
+    const emptyRelationshipsText = computed(() =>
+      props.showCreate
+        ? "还没有关系。请先新建一条陪伴关系。"
+        : "还没有关系。",
     );
 
     function onSelect(event: Event): void {
@@ -127,7 +136,14 @@ export default defineComponent({
       personaRef.value = "";
     }
 
-    return { personaRef, canCreate, showEmptyRelationships, onSelect, onCreate };
+    return {
+      personaRef,
+      canCreate,
+      showEmptyRelationships,
+      emptyRelationshipsText,
+      onSelect,
+      onCreate,
+    };
   },
 });
 </script>

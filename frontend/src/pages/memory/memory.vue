@@ -46,6 +46,7 @@ states carry alert/live a11y semantics. -->
       :current-id="relationshipId || null"
       :status="relStore.status"
       :busy="relStore.status === 'loading'"
+      :show-create="false"
       @activate="onPickRelationship"
     />
 

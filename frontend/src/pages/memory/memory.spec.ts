@@ -303,16 +303,16 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("does not create a relationship when the selector create control is used", async () => {
+  it("does not render the unwired create controls", async () => {
     const wrapper = mountPage();
     await flushPromises();
     const relStore = useRelationshipStore();
     const createSpy = vi.spyOn(relStore, "create");
 
-    await wrapper.find('[data-testid="persona-ref"]').setValue("new-persona");
-    await wrapper.find('[data-testid="create-relationship"]').trigger("click");
-    await flushPromises();
-
+    expect(wrapper.find('[data-testid="persona-ref"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="create-relationship"]').exists()).toBe(
+      false,
+    );
     expect(createSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });

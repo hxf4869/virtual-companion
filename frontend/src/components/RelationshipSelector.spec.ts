@@ -91,6 +91,30 @@ describe("RelationshipSelector (TASK-0187)", () => {
     expect(empty.exists()).toBe(true);
     expect(empty.attributes("role")).toBe("status");
     expect(empty.text()).toContain("还没有关系");
+    expect(empty.text()).toContain("新建");
+  });
+
+  it("hides create controls when showCreate is false", () => {
+    const wrapper = mountSelector({ showCreate: false });
+
+    expect(wrapper.find('[data-testid="persona-ref"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="create-relationship"]').exists()).toBe(
+      false,
+    );
+    wrapper.unmount();
+  });
+
+  it("uses a create-free empty message when showCreate is false", () => {
+    const wrapper = mountSelector({
+      relationships: [],
+      status: "idle",
+      showCreate: false,
+    });
+    const empty = wrapper.find('[data-testid="empty-relationships"]');
+
+    expect(empty.exists()).toBe(true);
+    expect(empty.text()).toBe("还没有关系。");
+    wrapper.unmount();
   });
 
   it("hides the empty-relationships status when loading, on error, or when items exist", () => {
