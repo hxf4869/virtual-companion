@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260816-TASK-0232-QUARANTINE-REGISTRY-01",
+  "kind": "EXACT_ONE_TIME_QUARANTINE_REGISTRY",
+  "taskId": "TASK-0232",
+  "createdAt": "2026-08-16",
+  "historicalVerifiabilityOnly": true,
+  "doesNotLegitimizeAnyClosure": true,
+  "doesNotRetroactivelyAuthorize": true,
+  "reusable": false,
+  "oneTimeOnly": true,
+  "copiedRecordForbidden": true,
+  "secondConsumptionForbidden": true,
+  "predecessor": {
+    "taskId": "TASK-0231",
+    "state": "REJECTED",
+    "terminalCommit": "5f829b6c6d62c5fb5c03dcdc4474eab3b729d204",
+    "terminalTree": "0ea212fefb12080ec850a37f76bd9ffd23f5f9ee",
+    "quarantinePath": "docs/evidence/TASK-0231/governance-gap-quarantine.json",
+    "quarantineBlob": "ccadd0f1d6fc3098e3475e2c4c053fac9ea1198f",
+    "quarantineSha256": "b3d647d84fad7fcd5b8bac1542b2e6f4b3bbca3b7b9de88270b1b6dbaa72d883",
+    "verifyPath": "docs/evidence/TASK-0231/verify_quarantine_contract.py",
+    "verifyBlob": "8bee29fe17377301ad822f5fdadf13a994d7bccc",
+    "verifySha256": "0eb77612d40d0b37a3647129c626199f1de4b09c494ddc100a562b72890c9f25",
+    "recordIdNotCopied": "OWNER-MAINT-20260816-TASK-0231-GOVERNANCE-GAP-QUARANTINE-01",
+    "rejectionRootCause": "canonical precheck 真实 FAIL exit 1 恰 3 项授权投影漂移 error：IN_PROGRESS 提交误改 immutable metadata（修正卡内 governanceGapQuarantine.task0210AcceptedCommit 猜测 SHA），未改写成 PASS"
+  },
+  "registry": {
+    "statement": "本登记把 TASK-0231 REJECTED 终态已落地的治理制品（governance-gap-quarantine.json 与 verify_quarantine_contract.py）以 blob/contentSha256 精确绑定为唯一权威治理记录。TASK-0231 的 recordId 保持绑定 TASK-0231，本卡使用新 recordId，不复制、不二次消费。三组缺口（14 张卡验证缺口、0209/0210 授权缺口、local exact-tree fallback 证据缺口）自此处于机器可验证的登记状态。",
+    "groupIds": [
+      "LEGACY_VALIDATION_GAP_BATCH",
+      "LEGACY_AUTHORIZATION_GAP_0209_0210",
+      "LEGACY_EXACT_TREE_EVIDENCE_GAP"
+    ],
+    "task0210AcceptedCommitCorrectSha": "1e8922ca7394655657f68a9379315116f2e6e91b",
+    "remediationOptions": [
+      "OWNER-ACCEPT-QUARANTINE: Owner 接受 0231 记录作为永久缺口声明。",
+      "OWNER-POST-HOC-VERIFICATION: Owner 授权一张新治理卡，对 14 张卡在当前 HEAD 上真实重跑 doctor/precheck/pre-closure 作为补偿性验证记录（不追溯改写原卡 Evidence）。",
+      "OWNER-SLICE-GOVERNANCE: Owner 批准 SLICE-GOVERNANCE harness-change 卡收紧 Doctor（普通 ACCEPTED 卡必须存在 READY Doctor/canonical precheck/pre-closure PASS 证据，普通卡 LOCAL_EXACT_TREE_FALLBACK 必须满足激活条件与 resultRecordRequiredFields）。",
+      "OWNER-RATIFY-0209-0210: Owner 追溯确认 2026-08-15 晚间的 REJECTED-with-real-FAIL 处理或接受授权缺口声明。"
+    ]
+  }
+}
