@@ -1,0 +1,97 @@
+{
+  "taskId": "TASK-0232",
+  "baseCommit": "5f829b6c6d62c5fb5c03dcdc4474eab3b729d204",
+  "headCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006",
+  "contextFingerprint": "385d905b89c0dd2392790a7d9709b36a5cb65b64b5b917acb548d42acc030516",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "421aa895c627794ea4870b0e5dcb2d77fab6fdec",
+      "startedAt": "2026-08-16T03:53:46+08:00",
+      "endedAt": "2026-08-16T04:00:15+08:00",
+      "elapsedSeconds": 389,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "421aa895c627794ea4870b0e5dcb2d77fab6fdec",
+      "startedAt": "2026-08-16T03:53:46+08:00",
+      "endedAt": "2026-08-16T03:59:20+08:00",
+      "elapsedSeconds": 334,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T03:59:20+08:00",
+      "inProgressCommit": "a74b29f309f6eabf9e95f0099a53862edbd4ee45"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "a74b29f309f6eabf9e95f0099a53862edbd4ee45",
+      "startedAt": "2026-08-16T03:59:20+08:00",
+      "endedAt": "2026-08-16T04:00:15+08:00",
+      "elapsedSeconds": 55,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T03:59:20+08:00",
+      "inProgressCommit": "a74b29f309f6eabf9e95f0099a53862edbd4ee45"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0232",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor PASS 1146516 checks / 171.3s / exit 0 on bind commit 2f4ac22.",
+      "environment": "macOS; scratch task-0232-doctor-ready.log",
+      "verifiedCommit": "2f4ac22d51ea1ad748737e750630cc2b6c561191"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python docs/evidence/TASK-0232/verify_registry.py",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "正例 PASS：登记身份字段与卡合同、TASK-0231 终态 Git 对象（blob/contentSha256）一致；负例矩阵 5/5 按预期 FAIL（legitimacy/authorization/copy/blob/group drift）。",
+      "environment": "macOS; Python 3.13.0 (vc-harness venv)",
+      "verifiedCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006",
+      "candidateCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006",
+      "candidateTree": "50cdcd475f2da18941f172b90af8e395734fb311"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on clean worktree after implementation commit de6afd2.",
+      "environment": "macOS",
+      "verifiedCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0232",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Official canonical precheck PASS (8 commands). Inner doctor --task TASK-0232 PASS 1148564 checks / 171.7s / exit 0 on de6afd2.",
+      "environment": "macOS; scratch task-0232-precheck.log",
+      "verifiedCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006",
+      "candidateCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006",
+      "candidateTree": "50cdcd475f2da18941f172b90af8e395734fb311"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0232 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Official staged-terminal pre-closure PASS 1451023 checks / 742.5s / exit 0。",
+      "environment": "macOS; scratch task-0232-preclosure-1.log",
+      "verifiedCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006",
+      "candidateCommit": "de6afd20bfc78cd40bfa592d8ae1f6337a933006",
+      "candidateTree": "50cdcd475f2da18941f172b90af8e395734fb311"
+    }
+  ]
+}

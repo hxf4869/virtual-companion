@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0232
-activeTaskCard: docs/tasks/TASK-0232-quarantine-registry.md
-lastAcceptedTask: TASK-0230
-lastAcceptedHandoff: docs/handoffs/TASK-0230.json
-lastTerminalTask: TASK-0231
-lastTerminalHandoff: docs/handoffs/TASK-0231.json
-nextAction: TASK-0232 READY（继承登记 TASK-0231 已落地的 quarantine 制品；不复制 recordId、不改历史制品、不追造授权）。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0232
+lastAcceptedHandoff: docs/handoffs/TASK-0232.json
+lastTerminalTask: TASK-0232
+lastTerminalHandoff: docs/handoffs/TASK-0232.json
+nextAction: TASK-0232 ACCEPTED（TASK-0231 治理制品已登记为唯一权威记录）。下一动作：等待 Owner 对登记 JSON remediationOptions 的决策（接受 quarantine / 补验证 / SLICE-GOVERNANCE / 0209-0210 追认 / 推送与远端复核）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

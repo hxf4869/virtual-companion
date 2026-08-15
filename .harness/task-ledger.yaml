@@ -1242,3 +1242,9 @@ tasks:
     taskCard: docs/tasks/TASK-0231-governance-gap-quarantine.md
     evidence: docs/evidence/TASK-0231/evidence-pack.json
     handoff: docs/handoffs/TASK-0231.json
+  TASK-0232:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0232-quarantine-registry.md
+    evidence: docs/evidence/TASK-0232/evidence-pack.json
+    handoff: docs/handoffs/TASK-0232.json
