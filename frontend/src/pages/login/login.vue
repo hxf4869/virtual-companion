@@ -22,7 +22,7 @@
       <button
         class="login-submit"
         data-testid="submit"
-        :disabled="submitting"
+        :disabled="!canSubmit || submitting"
         :aria-busy="submitting"
         @click="onSubmit"
       >
@@ -51,7 +51,7 @@
 // TASK-0105 (P3-04): stable aria-labels, alert semantics on the error region,
 // aria-busy while submitting, and focus returns to the username field after a
 // failed attempt so keyboard/screen-reader users can correct and resubmit.
-import { defineComponent, ref } from "vue";
+import { computed, defineComponent, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
@@ -64,6 +64,9 @@ export default defineComponent({
     const password = ref("");
     const submitting = ref(false);
     const message = ref("");
+    const canSubmit = computed(
+      () => username.value.trim().length > 0 && password.value.length > 0,
+    );
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => store.accessToken,
@@ -100,7 +103,7 @@ export default defineComponent({
     }
 
     async function onSubmit(): Promise<void> {
-      if (submitting.value) {
+      if (submitting.value || !canSubmit.value) {
         return;
       }
       submitting.value = true;
@@ -122,6 +125,7 @@ export default defineComponent({
       username,
       password,
       submitting,
+      canSubmit,
       message,
       onSubmit,
     };

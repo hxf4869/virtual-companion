@@ -53,6 +53,8 @@ describe("login page glue (P2-19 component test)", () => {
       }),
     );
     const wrapper = mountPage();
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    await wrapper.find('input[aria-label="密码"]').setValue("secret");
     await wrapper.find('button[data-testid="submit"]').trigger("click");
     await wrapper.vm.$nextTick();
     expect(wrapper.find('button[data-testid="submit"]').attributes("aria-busy")).toBe("true");
@@ -60,6 +62,32 @@ describe("login page glue (P2-19 component test)", () => {
     await vi.waitFor(() => {
       expect(wrapper.find('button[data-testid="submit"]').attributes("aria-busy")).toBe("false");
     });
+    wrapper.unmount();
+  });
+
+  it("disables submit and does not call login when a field is empty", async () => {
+    const store = useAuthStore();
+    const loginSpy = vi.spyOn(store, "login").mockResolvedValue(false);
+    const wrapper = mountPage();
+
+    expect(wrapper.find('button[data-testid="submit"]').attributes("disabled")).toBeDefined();
+    await wrapper.find('button[data-testid="submit"]').trigger("click");
+    expect(loginSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    expect(wrapper.find('button[data-testid="submit"]').attributes("disabled")).toBeDefined();
+    await wrapper.find('button[data-testid="submit"]').trigger("click");
+    expect(loginSpy).not.toHaveBeenCalled();
+
+    wrapper.unmount();
+  });
+
+  it("enables submit after both fields are filled", async () => {
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    await wrapper.find('input[aria-label="密码"]').setValue("secret");
+    expect(wrapper.find('button[data-testid="submit"]').attributes("disabled")).toBeUndefined();
     wrapper.unmount();
   });
 });
