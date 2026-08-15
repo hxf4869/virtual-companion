@@ -70,6 +70,14 @@ states carry alert/live a11y semantics. -->
           : "还没有当前关系。"
       }}</text>
     </view>
+    <view
+      v-else-if="relStore.status === 'error'"
+      class="current-relationship"
+      data-testid="relationship-load-error"
+      role="status"
+    >
+      <text>关系列表加载失败。</text>
+    </view>
 
     <view
       v-if="showEmptyRelationshipId"
