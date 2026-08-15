@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0235
+activeTaskCard: docs/tasks/TASK-0235-acceptance-evidence-governance.md
 lastAcceptedTask: TASK-0234
 lastAcceptedHandoff: docs/handoffs/TASK-0234.json
 lastTerminalTask: TASK-0234
 lastTerminalHandoff: docs/handoffs/TASK-0234.json
-nextAction: TASK-0234 ACCEPTED（SLICE-GOVERNANCE-B exact-tree 通道强制校验完成）。下一动作：推送本终态至恢复分支并远端复核、跑正式 Doctor 验证释放绑定，然后 intake 后继 SLICE-GOVERNANCE-C 卡（永久 ID 由机器分配）。保持不推送 main。
+nextAction: TASK-0235 READY（SLICE-GOVERNANCE-C：ACCEPTED 三件套验证证据强制 + 14 卡缺口 canonical 识别 + sources-of-truth 权威边界；新终态激活、历史不重判）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
