@@ -30,6 +30,14 @@ states carry alert/live a11y semantics. -->
       >
         返回边界台
       </button>
+      <button
+        data-testid="nav-chat"
+        class="nav-index"
+        aria-label="离线聊天"
+        @click="goTo('/pages/chat/chat')"
+      >
+        离线聊天
+      </button>
     </view>
 
     <view

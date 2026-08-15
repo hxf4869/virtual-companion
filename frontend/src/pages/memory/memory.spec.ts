@@ -170,4 +170,28 @@ describe("memory page glue (P2-19 component test)", () => {
     expect(confirmSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it("renders a back-to-chat entry before a relationship id is entered", () => {
+    const wrapper = mountPage();
+    const nav = wrapper.find('[data-testid="nav-chat"]');
+    expect(nav.exists()).toBe(true);
+    expect(nav.text()).toContain("离线聊天");
+    wrapper.unmount();
+  });
+
+  it("navigates to the chat page without calling load or confirm", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    const store = useMemoryStore();
+    const loadSpy = vi.spyOn(store, "load");
+    const confirmSpy = vi.spyOn(store, "confirm");
+
+    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
+    expect(loadSpy).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });
