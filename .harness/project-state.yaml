@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0226
+activeTaskCard: docs/tasks/TASK-0226-h5-index-relationship-load-error.md
 lastAcceptedTask: TASK-0225
 lastAcceptedHandoff: docs/handoffs/TASK-0225.json
 lastTerminalTask: TASK-0225
 lastTerminalHandoff: docs/handoffs/TASK-0225.json
-nextAction: TASK-0225 ACCEPTED（记忆页已展示当前关系，不改变确认/失败语义）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。
+nextAction: TASK-0226 READY。下一动作：绑定 authorizationCommit 后转入 IN_PROGRESS；本轮不跑长 Doctor。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
