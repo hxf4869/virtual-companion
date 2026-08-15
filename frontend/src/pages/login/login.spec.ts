@@ -134,4 +134,26 @@ describe("login page glue (P2-19 component test)", () => {
     expect(loginSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it("renders a memory entry before submit", () => {
+    const wrapper = mountPage();
+    const nav = wrapper.find('[data-testid="nav-memory"]');
+    expect(nav.exists()).toBe(true);
+    expect(nav.text()).toContain("记忆管理");
+    wrapper.unmount();
+  });
+
+  it("navigates to the memory page without calling login", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    const store = useAuthStore();
+    const loginSpy = vi.spyOn(store, "login");
+
+    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
+    expect(loginSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

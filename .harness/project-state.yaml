@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0220
 lastAcceptedHandoff: docs/handoffs/TASK-0220.json
 lastTerminalTask: TASK-0220
 lastTerminalHandoff: docs/handoffs/TASK-0220.json
-nextAction: TASK-0221 READY。下一动作：绑定 authorizationCommit 后真实跑 doctor --task TASK-0221；PASS 后转入 IN_PROGRESS 实现登录页记忆入口。保持不推送不合并。
+nextAction: TASK-0221 IN_PROGRESS。下一动作：实现登录页记忆入口并跑冻结命令与官方 precheck。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

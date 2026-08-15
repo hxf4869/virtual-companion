@@ -19,6 +19,14 @@
         >
           离线聊天
         </button>
+        <button
+          data-testid="nav-memory"
+          class="nav-index"
+          aria-label="记忆管理"
+          @click="goToMemory"
+        >
+          记忆管理
+        </button>
       </view>
     </view>
     <view class="login-form">
@@ -101,6 +109,10 @@ export default defineComponent({
       navigatePresentation("/pages/chat/chat");
     }
 
+    function goToMemory(): void {
+      navigatePresentation("/pages/memory/memory");
+    }
+
     function navigatePresentation(url: string): void {
       try {
         const uniApi = (globalThis as Record<string, unknown>).uni as
@@ -173,6 +185,7 @@ export default defineComponent({
       onSubmit,
       goToIndex,
       goToChat,
+      goToMemory,
     };
   },
 });
