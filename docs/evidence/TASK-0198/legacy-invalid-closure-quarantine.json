@@ -1,0 +1,137 @@
+{
+  "recordId": "OWNER-MAINT-20260815-TASK-0198-LEGACY-INVALID-CLOSURE-01",
+  "kind": "EXACT_ONE_TIME_LEGACY_INVALID_CLOSURE_QUARANTINE",
+  "authorizationStatus": "GOAL_AUTHORIZED_SLICE_AUTHORIZATION",
+  "historicalVerifiabilityOnly": true,
+  "doesNotLegitimizeInvalidClosure": true,
+  "reusable": false,
+  "oneTimeOnly": true,
+  "copiedRecordForbidden": true,
+  "secondConsumptionForbidden": true,
+  "generalizedHistoricalExemptionForbidden": true,
+  "inheritedFrom": "TASK-0197",
+  "predecessor": {
+    "taskId": "TASK-0196",
+    "machineState": "ACCEPTED",
+    "historicalClosureValidity": "INVALID",
+    "successorRecoveryTask": "TASK-0197",
+    "authorizationSliceTask": "TASK-0198",
+    "rewriteOrRestateAsValidForbidden": true
+  },
+  "claimedCandidate": {
+    "commit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+    "tree": "83deb6e913b47bd51cb07cdaf444d8b1afcbdeca",
+    "parent": "353b1acd1ccffef3c3a502c6a0061461943316bc",
+    "role": "REVIEWER_AND_REQUIRED_COMMANDS_CLAIMED_CANDIDATE",
+    "evidenceHeadCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+    "reviewerReviewedCommit": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91"
+  },
+  "actualTerminal": {
+    "commit": "1c1dca2f423ea9935000189e86789201cb859832",
+    "tree": "15fa2ef0d7fceda45fe7102fede24469313c9427",
+    "parent": "87cd40a2b59317015ce9a8aa55cda2d2fe686c91",
+    "singleParentRequired": true,
+    "role": "ACTUAL_LEDGER_INTRODUCTION_TERMINAL_ANCHOR",
+    "mixedImplementationAndClosure": true
+  },
+  "readyStateImplementation": {
+    "commit": "353b1acd1ccffef3c3a502c6a0061461943316bc",
+    "tree": "77c378b749ac2eeff564b0b6976c57f097e695dc",
+    "parent": "383e4032b3ad8cd7ae2fa0f028ac311b8c35cf78",
+    "cardState": "READY",
+    "changedPaths": [
+      "scripts/harness/doctor.py",
+      "scripts/harness/tests/test_harness.py"
+    ]
+  },
+  "p0Findings": [
+    {
+      "id": "P0-1",
+      "title": "终态原子性违规",
+      "statement": "1c1dca2 混合 doctor.py/test_harness.py 实现修改与终态闭合制品，违反终态只允许卡、project-state、ledger、Evidence、Handoff。"
+    },
+    {
+      "id": "P0-2",
+      "title": "候选身份违规",
+      "statement": "requiredCommands 与 C4 Reviewer 均绑定 87cd40a，未覆盖 1c1dca2 的实现变化。"
+    },
+    {
+      "id": "P0-3",
+      "title": "pre-closure 缺失",
+      "statement": "没有可核验的修复后 pre-closure receipt；Doctor 提交态 PASS 不能代替 pre-closure。"
+    },
+    {
+      "id": "P0-4",
+      "title": "授权违规",
+      "statement": "第二修复批次无先提交的 Backlog 强类型 Owner amendment，且超过 maximumFixBatches=1；提交消息或聊天声明不构成授权。"
+    }
+  ],
+  "exactPaths": [
+    ".harness/project-state.yaml",
+    ".harness/task-ledger.yaml",
+    "docs/evidence/TASK-0196/evidence-pack.json",
+    "docs/evidence/TASK-0196/review-r1.md",
+    "docs/handoffs/TASK-0196.json",
+    "docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md",
+    "scripts/harness/doctor.py",
+    "scripts/harness/tests/test_harness.py"
+  ],
+  "files": [
+    {
+      "path": ".harness/project-state.yaml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "8bec7912ca22fd5b84ea503c42cf65d6682a6414",
+      "contentSha256": "43fd74543240449bfdbc125598c2c706a7652e19da779e09a58c492b35afc9bc"
+    },
+    {
+      "path": ".harness/task-ledger.yaml",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "1a44ec2430a5d7acd616a7a6a22f3167c3bc9573",
+      "contentSha256": "b360ddbfc69101dfd4b0d99249d2aa19850aac1716c9a9ad24a484c1c611514e"
+    },
+    {
+      "path": "docs/evidence/TASK-0196/evidence-pack.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "2a09edab5b2298bf2bf86f12ab3272e7a471a036",
+      "contentSha256": "5917ebd6e250fd059f02d46b12491ad106ad549b852de39156bf7cfd43dba446"
+    },
+    {
+      "path": "docs/evidence/TASK-0196/review-r1.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "0cad34253717c75581b3db62f7c17f46fbc67990",
+      "contentSha256": "9b2a8be3cd1cf0b964c9999bb32d0b7b2f474f99ff065ac8387cba21547510f1"
+    },
+    {
+      "path": "docs/handoffs/TASK-0196.json",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "f1485ecde9d7af763cd4c79b6ecda98fbfc82d6f",
+      "contentSha256": "623935fb65f37f0d6e1d585e77d5c24af4b6a2b1d553b6a22684b3310caebb4a"
+    },
+    {
+      "path": "docs/tasks/TASK-0196-post-terminal-tail-doctor-fix.md",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "82990b70e27f5923df799ccb4baf17bfc7c552fc",
+      "contentSha256": "b99e119417ea99f4ca18404c99e7667564aad6bd1f45ba1311770a212dada8e5"
+    },
+    {
+      "path": "scripts/harness/doctor.py",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "3734b5e9c4445818025a55f988813b0df22f9e41",
+      "contentSha256": "b5a3f027f8934ea3d9f4ee31e1c9802c86bf708a3e30cde81eacb55a26e33951"
+    },
+    {
+      "path": "scripts/harness/tests/test_harness.py",
+      "mode": "100644",
+      "type": "blob",
+      "blob": "ce8ece2070cffc81f6a9cf03194e41f53b8917c6",
+      "contentSha256": "3ef12cdd024c481cf243ea3d9ee119d9f84cc9852cf2e1bea2898316aa84160d"
+    }
+  ]
+}
