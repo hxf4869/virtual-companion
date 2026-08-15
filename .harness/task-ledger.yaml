@@ -1140,3 +1140,9 @@ tasks:
     taskCard: docs/tasks/TASK-0214-h5-memory-empty-point-to-chat.md
     evidence: docs/evidence/TASK-0214/evidence-pack.json
     handoff: docs/handoffs/TASK-0214.json
+  TASK-0215:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0215-h5-login-back-to-index-nav.md
+    evidence: docs/evidence/TASK-0215/evidence-pack.json
+    handoff: docs/handoffs/TASK-0215.json
