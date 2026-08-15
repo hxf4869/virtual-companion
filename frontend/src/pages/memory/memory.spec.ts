@@ -248,6 +248,7 @@ describe("memory page glue (P2-19 component test)", () => {
     const empty = wrapper.find('[data-testid="empty-relationship-id"]');
     expect(empty.exists()).toBe(true);
     expect(empty.attributes("role")).toBe("status");
+    expect(empty.text()).toContain("选择或填写");
     expect(empty.text()).toContain("relationship id");
     expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
     wrapper.unmount();

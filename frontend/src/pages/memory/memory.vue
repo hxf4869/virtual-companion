@@ -56,7 +56,7 @@ states carry alert/live a11y semantics. -->
       data-testid="empty-relationship-id"
       role="status"
     >
-      <text>请先填写 relationship id 再刷新记忆。</text>
+      <text>请先选择或填写 relationship id 再刷新记忆。</text>
     </view>
     <view
       v-if="showPrefillHint"

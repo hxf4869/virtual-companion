@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0215
 lastAcceptedHandoff: docs/handoffs/TASK-0215.json
 lastTerminalTask: TASK-0215
 lastTerminalHandoff: docs/handoffs/TASK-0215.json
-nextAction: TASK-0216 READY：记忆页空 id 提示改为选择或填写，不自动 load、不改变确认语义。保持不推送不合并。
+nextAction: TASK-0216 IN_PROGRESS：记忆页空 id 提示改为选择或填写，不自动 load、不改变确认语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
