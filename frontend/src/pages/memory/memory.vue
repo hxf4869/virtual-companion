@@ -39,6 +39,14 @@ states carry alert/live a11y semantics. -->
       >
         离线聊天
       </button>
+      <button
+        data-testid="nav-login"
+        class="nav-index"
+        aria-label="登录"
+        @click="goTo('/pages/login/login')"
+      >
+        登录
+      </button>
     </view>
 
     <RelationshipSelector
