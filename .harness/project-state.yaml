@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0213
+activeTaskCard: docs/tasks/TASK-0213-h5-index-carry-relationship-id-to-memory.md
 lastAcceptedTask: TASK-0212
 lastAcceptedHandoff: docs/handoffs/TASK-0212.json
 lastTerminalTask: TASK-0212
 lastTerminalHandoff: docs/handoffs/TASK-0212.json
-nextAction: TASK-0212 ACCEPTED（记忆页已隐藏未接线的新建关系控件，不接线 create、不自动 load、不改变确认语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
+nextAction: TASK-0213 READY：边界台进入记忆页时携带已有 relationship id，不激活、不自动 load。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
