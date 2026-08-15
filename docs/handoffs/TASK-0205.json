@@ -1,0 +1,57 @@
+{
+  "taskId": "TASK-0205",
+  "state": "ACCEPTED",
+  "baseCommit": "1a2278b522d3f8b65f347d46ff030497f22b168a",
+  "headCommit": "b744726b74085aa4f42fe315baf3fec6d6a7bfd2",
+  "evidencePath": "docs/evidence/TASK-0205/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "89928795a31adfece23dd120b4e6919a192531d8",
+      "startedAt": "2026-08-15T16:06:56+08:00",
+      "endedAt": "2026-08-15T16:15:41+08:00",
+      "elapsedSeconds": 525,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "89928795a31adfece23dd120b4e6919a192531d8",
+      "startedAt": "2026-08-15T16:06:56+08:00",
+      "endedAt": "2026-08-15T16:12:52+08:00",
+      "elapsedSeconds": 356,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T16:12:52+08:00",
+      "inProgressCommit": "b744726b74085aa4f42fe315baf3fec6d6a7bfd2"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "b744726b74085aa4f42fe315baf3fec6d6a7bfd2",
+      "startedAt": "2026-08-15T16:13:29+08:00",
+      "endedAt": "2026-08-15T16:15:41+08:00",
+      "elapsedSeconds": 132,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T16:12:52+08:00",
+      "inProgressCommit": "b744726b74085aa4f42fe315baf3fec6d6a7bfd2"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "聊天页头增加 data-testid=nav-index「返回边界台」，初始化失败与关系选择态也可见。",
+    "点击走 uni.navigateTo，否则回退 location；不调用 send/cancel。",
+    "chat.spec.ts 12/12 PASS；canonical precheck 8/8（doctor 974620）；git diff --check PASS。未改 store/API/取消。"
+  ],
+  "remaining": [
+    "记忆页仍无返回导航。SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "入口只做页面跳转，不检查登录态；目标页沿用既有预检语义。"
+  ],
+  "nextAction": "TASK-0205 ACCEPTED（聊天页已增加返回边界台入口，不改变发送/取消/失败语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。"
+}

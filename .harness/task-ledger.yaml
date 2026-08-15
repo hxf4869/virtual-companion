@@ -1080,3 +1080,9 @@ tasks:
     taskCard: docs/tasks/TASK-0204-h5-index-internal-page-nav.md
     evidence: docs/evidence/TASK-0204/evidence-pack.json
     handoff: docs/handoffs/TASK-0204.json
+  TASK-0205:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0205-h5-chat-back-to-index-nav.md
+    evidence: docs/evidence/TASK-0205/evidence-pack.json
+    handoff: docs/handoffs/TASK-0205.json
