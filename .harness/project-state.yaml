@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0199
-activeTaskCard: docs/tasks/TASK-0199-h5-chat-empty-history-status.md
-lastAcceptedTask: TASK-0198
-lastAcceptedHandoff: docs/handoffs/TASK-0198.json
-lastTerminalTask: TASK-0198
-lastTerminalHandoff: docs/handoffs/TASK-0198.json
-nextAction: TASK-0199 READY：在 H5 聊天页为空历史渲染可见状态提示，不改变取消/重试/安全语义。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0199
+lastAcceptedHandoff: docs/handoffs/TASK-0199.json
+lastTerminalTask: TASK-0199
+lastTerminalHandoff: docs/handoffs/TASK-0199.json
+nextAction: TASK-0199 ACCEPTED（H5 聊天空历史可见状态已落地，不改变取消/重试/安全语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0199
-state: IN_REVIEW
+state: ACCEPTED
 owner: repository-owner
 riskClass: C2
 requiredSkills:
