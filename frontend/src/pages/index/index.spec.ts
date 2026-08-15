@@ -170,4 +170,29 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(status.text()).toContain("还没有当前关系。");
     wrapper.unmount();
   });
+
+  it("shows a relationship load error without changing preflight or calling activate", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/relationships") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+
+    const err = wrapper.find('[data-testid="relationship-load-error"]');
+    expect(err.exists()).toBe(true);
+    expect(err.text()).toContain("关系列表加载失败。");
+    expect(wrapper.find('[data-testid="current-relationship"]').exists()).toBe(false);
+    expect(wrapper.find(".connection").exists()).toBe(true);
+    expect(activateSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });
