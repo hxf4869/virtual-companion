@@ -1,6 +1,16 @@
 <template>
   <view class="chat-page">
-    <view class="chat-header">Technical Alpha · 离线聊天</view>
+    <view class="chat-header">
+      <text>Technical Alpha · 离线聊天</text>
+      <button
+        data-testid="nav-index"
+        class="chat-nav-index"
+        aria-label="返回边界台"
+        @click="goTo('/pages/index/index')"
+      >
+        返回边界台
+      </button>
+    </view>
 
     <view v-if="initError" class="chat-error" role="alert">
       <text>初始化失败，请刷新重试</text>
@@ -204,6 +214,21 @@ export default defineComponent({
       store.cancel();
     }
 
+    function goTo(url: string): void {
+      try {
+        const uniApi = (globalThis as Record<string, unknown>).uni as
+          | { navigateTo?: (options: { url: string }) => void }
+          | undefined;
+        if (uniApi?.navigateTo) {
+          uniApi.navigateTo({ url });
+        } else if (typeof location !== "undefined") {
+          location.href = url;
+        }
+      } catch {
+        // Presentation-only navigation; never break send/cancel.
+      }
+    }
+
     /**
      * Reset the chat store and create a fresh conversation under the currently
      * selected relationship. Used on mount (when an active relationship exists)
@@ -264,6 +289,7 @@ export default defineComponent({
       roleLabel,
       onSend,
       onCancel,
+      goTo,
       onRelActivate,
       onRelCreate,
     };
@@ -281,9 +307,20 @@ export default defineComponent({
   flex-direction: column;
 }
 .chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
   font-size: 32rpx;
   font-weight: 600;
   margin-bottom: 24rpx;
+}
+.chat-nav-index {
+  flex: 0 0 auto;
+  background-color: #2a3a5a;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 600;
 }
 .chat-error {
   padding: 24rpx;
