@@ -391,6 +391,7 @@ describe("memory page glue (P2-19 component test)", () => {
     expect(err.exists()).toBe(true);
     expect(err.text()).toContain("关系列表加载失败。");
     expect(wrapper.find('[data-testid="current-relationship"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="empty-relationship-id"]').exists()).toBe(false);
     expect(activateSpy).not.toHaveBeenCalled();
     expect(memLoadSpy).not.toHaveBeenCalled();
     expect(confirmSpy).not.toHaveBeenCalled();

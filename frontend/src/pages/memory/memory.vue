@@ -217,7 +217,8 @@ const showEmptyCanonical = computed(
   () => hasLoaded.value && memory.canonicalCount === 0,
 );
 const showEmptyRelationshipId = computed(
-  () => relationshipId.value.trim().length === 0,
+  () =>
+    relationshipId.value.trim().length === 0 && relStore.status !== "error",
 );
 const showPrefillHint = computed(
   () =>
