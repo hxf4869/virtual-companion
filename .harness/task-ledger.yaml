@@ -1188,3 +1188,9 @@ tasks:
     taskCard: docs/tasks/TASK-0222-h5-index-carry-relationship-id-to-chat.md
     evidence: docs/evidence/TASK-0222/evidence-pack.json
     handoff: docs/handoffs/TASK-0222.json
+  TASK-0223:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0223-h5-index-show-current-relationship.md
+    evidence: docs/evidence/TASK-0223/evidence-pack.json
+    handoff: docs/handoffs/TASK-0223.json
