@@ -90,8 +90,7 @@ governanceContract:
     - recognition: 0235 evidence 中猜测 SHA 被改写（构造）→ FAIL
     - recognition: 登记 JSON 缺失（注入 None）→ FAIL
     - recognition: 登记 JSON 的 realCandidateCommit 漂移 → FAIL
-    - exemption: 登记缺失时绑定校验对 0235 恢复报错（由 recognition FAIL 保证，
-      测试断言 recognition error 存在）
+    - exemption: 登记缺失时绑定校验对 0235 恢复报错（由 recognition FAIL 保证，测试断言 recognition error 存在）
   historicalCompatibility:
     - TASK-0235 的卡/Evidence/Handoff/Ledger 历史制品零修改；仅新增登记与
       定向识别；其余全部历史卡不重判。
