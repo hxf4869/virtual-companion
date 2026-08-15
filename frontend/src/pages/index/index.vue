@@ -64,6 +64,19 @@
       </view>
 
       <view
+        v-if="relStore.status === 'ready'"
+        class="current-relationship"
+        data-testid="current-relationship"
+        role="status"
+      >
+        <text>{{
+          relStore.currentRelationshipId
+            ? `当前关系：${relStore.currentRelationshipId}`
+            : "还没有当前关系。"
+        }}</text>
+      </view>
+
+      <view
         class="connection"
         :class="`connection--${state}`"
         role="status"
@@ -500,6 +513,12 @@ onMounted(() => {
 .alpha-nav__link:focus-visible {
   outline: 3px solid #ffffff;
   outline-offset: 3px;
+}
+
+.current-relationship {
+  margin: -8px 0 20px;
+  color: rgba(238, 243, 249, 0.78);
+  font-size: 13px;
 }
 
 .technical__toggle:focus-visible {

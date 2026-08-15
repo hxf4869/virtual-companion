@@ -145,4 +145,29 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
     wrapper.unmount();
   });
+
+  it("shows the current relationship id after a successful load", async () => {
+    stubRelationshipFetch([ACTIVE_RELATIONSHIP]);
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("当前关系：rel-index-1");
+    expect(activateSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("shows an empty current-relationship copy when none is selected", async () => {
+    stubRelationshipFetch([]);
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("还没有当前关系。");
+    wrapper.unmount();
+  });
 });

@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0222
 lastAcceptedHandoff: docs/handoffs/TASK-0222.json
 lastTerminalTask: TASK-0222
 lastTerminalHandoff: docs/handoffs/TASK-0222.json
-nextAction: TASK-0223 READY。下一动作：绑定 authorizationCommit 后转入 IN_PROGRESS；本轮不跑长 Doctor。保持不推送不合并。
+nextAction: TASK-0223 IN_PROGRESS。下一动作：实现边界台当前关系展示并跑冻结命令；本轮不跑长 Doctor。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
