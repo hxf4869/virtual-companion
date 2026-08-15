@@ -212,6 +212,8 @@ describe("memory page glue (P2-19 component test)", () => {
     const hint = wrapper.find('[data-testid="prefill-hint"]');
     expect(hint.exists()).toBe(true);
     expect(hint.text()).toContain("刷新记忆");
+    await wrapper.vm.$nextTick();
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("reload");
     wrapper.unmount();
   });
 

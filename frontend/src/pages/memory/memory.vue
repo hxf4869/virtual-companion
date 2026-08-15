@@ -16,6 +16,7 @@ states carry alert/live a11y semantics. -->
         aria-label="relationship id"
       />
       <button
+        data-testid="reload"
         :disabled="!relationshipId || busy"
         :aria-busy="busy"
         @click="reload"
@@ -153,7 +154,7 @@ states carry alert/live a11y semantics. -->
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
@@ -232,6 +233,17 @@ onMounted(() => {
   const prefill = readQueryRelationshipId();
   if (prefill && !relationshipId.value) {
     relationshipId.value = prefill;
+    void nextTick(() => {
+      try {
+        if (typeof document !== "undefined") {
+          document
+            .querySelector<HTMLButtonElement>('[data-testid="reload"]')
+            ?.focus();
+        }
+      } catch {
+        // Best-effort a11y; never auto-load.
+      }
+    });
   }
 });
 
