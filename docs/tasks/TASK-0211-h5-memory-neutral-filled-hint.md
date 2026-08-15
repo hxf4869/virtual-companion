@@ -2,7 +2,7 @@
 
 ```yaml
 taskId: TASK-0211
-state: DRAFT
+state: READY
 owner: repository-owner
 riskClass: C2
 requiredSkills:
@@ -126,7 +126,7 @@ requiredCommands:
 ```
 
 > 本卡为独立延续单卡。永久 ID 由机器派生：Ledger 最大编号 TASK-0210，intake 分配 TASK-0211。
-> 仓库 idle，`activeTask` 保持 null。本提交只落 DRAFT 卡与 Context Lock。
+> Base 为 TASK-0210 ACCEPTED `1e8922c`。本提交将本卡转为 READY。
 
 ## 背景与用户可观察目标
 
