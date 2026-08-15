@@ -29,6 +29,41 @@
       </view>
 
       <view
+        class="alpha-nav"
+        data-testid="alpha-nav"
+        role="navigation"
+        aria-label="内部页面"
+      >
+        <button
+          data-testid="nav-chat"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="离线聊天"
+          @click="goTo('/pages/chat/chat')"
+        >
+          <text>离线聊天</text>
+        </button>
+        <button
+          data-testid="nav-memory"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="记忆管理"
+          @click="goTo('/pages/memory/memory')"
+        >
+          <text>记忆管理</text>
+        </button>
+        <button
+          data-testid="nav-login"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="登录"
+          @click="goTo('/pages/login/login')"
+        >
+          <text>登录</text>
+        </button>
+      </view>
+
+      <view
         class="connection"
         :class="`connection--${state}`"
         role="status"
@@ -253,6 +288,21 @@ function retryLoad(): void {
   }
 }
 
+function goTo(url: string): void {
+  try {
+    const uniApi = (globalThis as Record<string, unknown>).uni as
+      | { navigateTo?: (options: { url: string }) => void }
+      | undefined;
+    if (uniApi?.navigateTo) {
+      uniApi.navigateTo({ url });
+    } else if (typeof location !== "undefined") {
+      location.href = url;
+    }
+  } catch {
+    // Presentation-only navigation; never break the preflight console.
+  }
+}
+
 function toggleTechnicalDetails(): void {
   if (state.value === "ready") {
     detailsOpen.value = !detailsOpen.value;
@@ -399,6 +449,35 @@ onMounted(() => {
 .retry:focus-visible {
   outline: 3px solid #ffffff;
   outline-offset: 4px;
+}
+
+.alpha-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+
+.alpha-nav__link {
+  box-sizing: border-box;
+  margin: 0;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(238, 243, 249, 0.28);
+  border-radius: 8px;
+  color: var(--paper);
+  background: rgba(251, 252, 254, 0.08);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.alpha-nav__link::after {
+  border: 0;
+}
+
+.alpha-nav__link:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 3px;
 }
 
 .technical__toggle:focus-visible {
