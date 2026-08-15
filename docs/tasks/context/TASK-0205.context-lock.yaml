@@ -1,0 +1,45 @@
+schemaVersion: 1
+taskId: TASK-0205
+baseCommit: 1a2278b522d3f8b65f347d46ff030497f22b168a
+contextFingerprint: 77a0aa12c54a888028d9d49840207b9fbe6ec07406d2a00175f8de6c74ac2fc6
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+- path: .harness/invariants.yaml
+  sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+- path: .harness/project-state.yaml
+  sha256: 8f0ab483a404462d92fb909cdca0b0dcfa28e9fb4485e4a7b50b8c0a97b72bdc
+- path: .harness/protected-paths.yaml
+  sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+- path: .harness/skills.yaml
+  sha256: ff2688b1c3e4620906f6d9da2eed7e6b663d0d9adc4d4f2a47c5fad672a35fad
+- path: .harness/sources-of-truth.yaml
+  sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+- path: .harness/task-delivery-policy.yaml
+  sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
+- path: .harness/task-ledger.yaml
+  sha256: 14e824cd6ff2d23c482d0fd1777f1bcdbf090cdb1bb16a8bd320d4fd53a0c5ad
+- path: .harness/task-lifecycle.yaml
+  sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+- path: AGENTS.md
+  sha256: 3342044d137a5a2416aa77eb760ebdc177f24e75a6c5d961454bf97cdd19969c
+- path: CLAUDE.md
+  sha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+- path: docs/schemas/evidence-pack.schema.json
+  sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+- path: docs/schemas/handoff.schema.json
+  sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+- path: docs/tasks/task-card-template.md
+  sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+- path: frontend/package.json
+  sha256: cdfa3fb54f0968139a508b6cd60b868306f242ccc54d126e05bef0cb6e7726be
+- path: frontend/src/pages/chat/chat.spec.ts
+  sha256: 60d3dbaa264db76a012d833ba4cd41fe8fa99748effc206bce3b4b0160e66cf1
+- path: frontend/src/pages/chat/chat.vue
+  sha256: f568ce7abb155a17a8a4320d11b9289778b31ed22e9fa9a1709e996995c464a5
+- path: frontend/src/stores/chat.ts
+  sha256: c5ce97f6746baed25a273b3124336de80b437fe69938ffcf4afc85e384695ef0
+- path: skills/task-delivery-flow/SKILL.md
+  sha256: 341b241653a7f1f8fd8ad4f48a0bf10d5fc5546d631f484d128022f19bd092fb
+- path: skills/task-intake/SKILL.md
+  sha256: 6fd28d64c5afde5cc427609091e261f7bc0024776a32612d1735b37df3536aae
