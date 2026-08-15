@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260816-TASK-0236-TASK0235-EVIDENCE-GAP-01",
+  "kind": "EXACT_ONE_TIME_EVIDENCE_GAP_REGISTRY",
+  "taskId": "TASK-0236",
+  "createdAt": "2026-08-16",
+  "historicalVerifiabilityOnly": true,
+  "doesNotRewriteTask0235Artifacts": true,
+  "reusable": false,
+  "oneTimeOnly": true,
+  "task0235TerminalCommit": "ef7eddd76587688b1addf6506c2fa09586d6e153",
+  "task0235EvidenceGuessedSha": "0758f322db42de2553763cbd657b78b7472c7624",
+  "task0235RealCandidateCommit": "0758f32c1b649281f0b4543617a441801ef1c844",
+  "task0235RealCandidateTree": "9dec374fcefb8e7380bda7915936eb8faca8a1e1",
+  "badYamlCommit": "c06dbf61e4d21e5968077f8f7b3e1006a1a05a4e",
+  "badYamlPath": "docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md",
+  "statement": "TASK-0235 Evidence 的 verifiedCommit/candidateCommit 使用了猜测的完整 SHA（0758f322db42...，仓库中不存在）；真实候选提交为 0758f32c1b649281f0b4543617a441801ef1c844（其 tree 9dec374f 与 Evidence 一致）。TASK-0233 COMMIT_TREE_BINDING 在正式提交态 Doctor 中正确识别该缺陷（3 errors）。TASK-0235 终态制品不可改写，本记录按 TASK-0231→0232 同型登记缺陷事实；Doctor 恒启用正向断言（缺陷保持 + 本记录存在），并在本记录存在的条件下对 TASK-0235 定向豁免绑定校验、对 c06dbf6 坏 YAML 提交定向豁免解析。本记录缺失或漂移即 Doctor FAIL。",
+  "bindingExemption": {
+    "taskId": "TASK-0235",
+    "condition": "本记录存在且字段与 Doctor 冻结常量一致"
+  },
+  "badYamlExemption": {
+    "commit": "c06dbf61e4d21e5968077f8f7b3e1006a1a05a4e",
+    "path": "docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md",
+    "condition": "本记录存在且字段与 Doctor 冻结常量一致"
+  }
+}
