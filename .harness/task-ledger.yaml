@@ -1194,3 +1194,9 @@ tasks:
     taskCard: docs/tasks/TASK-0223-h5-index-show-current-relationship.md
     evidence: docs/evidence/TASK-0223/evidence-pack.json
     handoff: docs/handoffs/TASK-0223.json
+  TASK-0224:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0224-h5-chat-show-current-relationship.md
+    evidence: docs/evidence/TASK-0224/evidence-pack.json
+    handoff: docs/handoffs/TASK-0224.json
