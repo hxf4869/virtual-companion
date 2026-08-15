@@ -356,6 +356,36 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("shows an empty current-relationship copy when none is filled", async () => {
+    stubRelationshipFetch([]);
+    vi.stubGlobal("location", { search: "" });
+    const wrapper = mountPage();
+    await flushPromises();
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("还没有当前关系。");
+    wrapper.unmount();
+  });
+
+  it("shows the filled relationship id after a selector pick", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const memStore = useMemoryStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const memLoadSpy = vi.spyOn(memStore, "load");
+
+    await wrapper.find('[data-testid="relationship-select"]').setValue("rel-pick-1");
+    await wrapper.vm.$nextTick();
+
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("当前关系：rel-pick-1");
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(memLoadSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("does not render the unwired create controls", async () => {
     const wrapper = mountPage();
     await flushPromises();

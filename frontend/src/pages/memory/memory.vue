@@ -59,6 +59,19 @@ states carry alert/live a11y semantics. -->
     />
 
     <view
+      v-if="relStore.status === 'ready'"
+      class="current-relationship"
+      data-testid="current-relationship"
+      role="status"
+    >
+      <text>{{
+        relationshipId.trim()
+          ? `当前关系：${relationshipId.trim()}`
+          : "还没有当前关系。"
+      }}</text>
+    </view>
+
+    <view
       v-if="showEmptyRelationshipId"
       class="empty-status"
       data-testid="empty-relationship-id"
@@ -394,6 +407,11 @@ function goTo(url: string): void {
 }
 .empty-status {
   color: #666;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.current-relationship {
+  color: #555;
   font-size: 13px;
   margin-bottom: 8px;
 }
