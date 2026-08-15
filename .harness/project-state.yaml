@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0233
+activeTaskCard: docs/tasks/TASK-0233-doctor-temporal-binding-governance.md
 lastAcceptedTask: TASK-0232
 lastAcceptedHandoff: docs/handoffs/TASK-0232.json
 lastTerminalTask: TASK-0232
 lastTerminalHandoff: docs/handoffs/TASK-0232.json
-nextAction: TASK-0232 ACCEPTED（TASK-0231 治理制品已登记为唯一权威记录）。下一动作：等待 Owner 对登记 JSON remediationOptions 的决策（接受 quarantine / 补验证 / SLICE-GOVERNANCE / 0209-0210 追认 / 推送与远端复核）。保持不推送不合并。
+nextAction: TASK-0233 READY（SLICE-GOVERNANCE-A：Doctor 收紧——evidence 时间真实性、taskId/Commit/Tree 绑定、0231/0232 无效性 canonical 识别；新终态激活、历史不重判）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
