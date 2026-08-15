@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0231
+activeTaskCard: docs/tasks/TASK-0231-governance-gap-quarantine.md
 lastAcceptedTask: TASK-0230
 lastAcceptedHandoff: docs/handoffs/TASK-0230.json
 lastTerminalTask: TASK-0230
 lastTerminalHandoff: docs/handoffs/TASK-0230.json
-nextAction: TASK-0230 ACCEPTED（记忆页关系失败时已隐藏预填提示，不改变确认/失败语义）。下一动作：继续发现下一张合法卡。保持不推送不合并。
+nextAction: TASK-0231 READY（治理收尾 quarantine：14 卡验证缺口 + 0209/0210 授权缺口 + exact-tree fallback 证据缺口；不实现 Harness、不改历史制品、不追造授权）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
@@ -19,4 +19,4 @@ capabilityGates:
   realPayment:
     state: FORBIDDEN
     reason: Technical Alpha 范围明确禁止真实支付
-updatedAt: '2026-08-15'
+updatedAt: '2026-08-16'
