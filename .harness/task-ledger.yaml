@@ -1260,3 +1260,9 @@ tasks:
     taskCard: docs/tasks/TASK-0234-exact-tree-channel-governance.md
     evidence: docs/evidence/TASK-0234/evidence-pack.json
     handoff: docs/handoffs/TASK-0234.json
+  TASK-0235:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0235-acceptance-evidence-governance.md
+    evidence: docs/evidence/TASK-0235/evidence-pack.json
+    handoff: docs/handoffs/TASK-0235.json

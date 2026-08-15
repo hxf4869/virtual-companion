@@ -1,0 +1,115 @@
+{
+  "taskId": "TASK-0235",
+  "baseCommit": "64889c9f475f417092ae8185b68fb3d8ff7eb6d9",
+  "headCommit": "0758f32c1b649281f0b4543617a441801ef1c844",
+  "contextFingerprint": "b6baa4b00dd08934ff9e30c2373a48a8cbea60a46c1336907e74d9ad2b5695c8",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "059c69f93c35b919bf8c7556dcd016c79d1e3bcc",
+      "startedAt": "2026-08-16T06:29:54+08:00",
+      "endedAt": "2026-08-16T06:52:00+08:00",
+      "elapsedSeconds": 1326,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "059c69f93c35b919bf8c7556dcd016c79d1e3bcc",
+      "startedAt": "2026-08-16T06:29:54+08:00",
+      "endedAt": "2026-08-16T06:34:20+08:00",
+      "elapsedSeconds": 266,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T06:34:20+08:00",
+      "inProgressCommit": "a16ef61e94df510dcd2b8986bbd61f9d36f42f0f"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "a16ef61e94df510dcd2b8986bbd61f9d36f42f0f",
+      "startedAt": "2026-08-16T06:35:10+08:00",
+      "endedAt": "2026-08-16T06:52:00+08:00",
+      "elapsedSeconds": 1010,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T06:34:20+08:00",
+      "inProgressCommit": "a16ef61e94df510dcd2b8986bbd61f9d36f42f0f"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0235_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "0758f32c1b649281f0b4543617a441801ef1c844",
+      "evidencePath": "docs/evidence/TASK-0235/review-r1.md",
+      "reason": "R1 独立复核（无历史上下文）APPROVE：实现范围恰为冻结两条路径；三组校验落地；历史卡不重判（summary PASS 1166236 / 0 errors 证明）；负例矩阵 6/6 全部按预期 FAIL。P0=0，P1=0，P2=0，P3=0。"
+    }
+  ],
+  "checks": [
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0235",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "READY Doctor PASS 1164150 checks / 149.9s / exit 0 on bind commit 4ed3a78.",
+      "environment": "macOS; scratch task-0235-doctor-ready.log",
+      "verifiedCommit": "4ed3a78264322ab83f238b137c7bc47e8431c7d2"
+    },
+    {
+      "command": "PYTHONPATH=scripts/harness:scripts/harness/tests python -m unittest test_harness.Task0235AcceptanceEvidenceGovernanceTests",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "9/9 OK：正例 3 项 + 负例矩阵 6 项（accepted 缺 pre-closure / pre-closure NOT_RUN / gap registry 缺卡 / gap preClosure 登记 PASS / sot 引用 docs/source / sot 缺核心真源）全部按预期。",
+      "environment": "macOS; Python 3.13.0 (vc-harness venv)",
+      "verifiedCommit": "0758f32c1b649281f0b4543617a441801ef1c844",
+      "candidateCommit": "0758f32c1b649281f0b4543617a441801ef1c844",
+      "candidateTree": "9dec374fcefb8e7380bda7915936eb8faca8a1e1"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0235",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "Official canonical precheck PASS (8 commands). Inner doctor exit 0 / 161.0s on 0758f32.",
+      "environment": "macOS; scratch task-0235-precheck.log",
+      "verifiedCommit": "0758f32c1b649281f0b4543617a441801ef1c844",
+      "candidateCommit": "0758f32c1b649281f0b4543617a441801ef1c844",
+      "candidateTree": "9dec374fcefb8e7380bda7915936eb8faca8a1e1"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on implementation commit 0758f32.",
+      "environment": "macOS",
+      "verifiedCommit": "0758f32c1b649281f0b4543617a441801ef1c844"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --summary",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "实现后全量回归 PASS 1166236 checks / 159.7s / exit 0 / 0 errors：历史卡（含 14 张缺口卡）不因新校验出现任何新 error。",
+      "environment": "macOS; scratch 0235-summary-2.log",
+      "verifiedCommit": "0758f32c1b649281f0b4543617a441801ef1c844"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0235 --pre-closure",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "终态暂存候选 pre-closure PASS 1476800 checks / 767.3s / exit 0。",
+      "environment": "macOS; scratch task-0235-preclosure-1.log",
+      "verifiedCommit": "0758f322db42de2553763cbd657b78b7472c7624",
+      "candidateCommit": "0758f322db42de2553763cbd657b78b7472c7624",
+      "candidateTree": "9dec374fcefb8e7380bda7915936eb8faca8a1e1"
+    }
+  ]
+}
