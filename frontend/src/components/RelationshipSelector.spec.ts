@@ -83,4 +83,27 @@ describe("RelationshipSelector (TASK-0187)", () => {
     expect(status.attributes("role")).toBe("status");
     expect(status.attributes("aria-live")).toBe("polite");
   });
+
+  it("shows an empty-relationships status when the list is empty and idle", () => {
+    const wrapper = mountSelector({ relationships: [], status: "idle" });
+    const empty = wrapper.find('[data-testid="empty-relationships"]');
+
+    expect(empty.exists()).toBe(true);
+    expect(empty.attributes("role")).toBe("status");
+    expect(empty.text()).toContain("还没有关系");
+  });
+
+  it("hides the empty-relationships status when loading, on error, or when items exist", () => {
+    const loading = mountSelector({ relationships: [], status: "loading" });
+    expect(loading.find('[data-testid="empty-relationships"]').exists()).toBe(false);
+    loading.unmount();
+
+    const errored = mountSelector({ relationships: [], status: "error" });
+    expect(errored.find('[data-testid="empty-relationships"]').exists()).toBe(false);
+    errored.unmount();
+
+    const filled = mountSelector({ status: "idle" });
+    expect(filled.find('[data-testid="empty-relationships"]').exists()).toBe(false);
+    filled.unmount();
+  });
 });

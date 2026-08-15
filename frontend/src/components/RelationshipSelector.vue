@@ -54,6 +54,15 @@
     >
       <text>正在加载关系…</text>
     </view>
+
+    <view
+      v-if="showEmptyRelationships"
+      class="rel-empty"
+      data-testid="empty-relationships"
+      role="status"
+    >
+      <text>还没有关系。请先新建一条陪伴关系。</text>
+    </view>
   </view>
 </template>
 
@@ -97,6 +106,12 @@ export default defineComponent({
     const personaRef = ref("");
 
     const canCreate = computed(() => personaRef.value.trim().length > 0);
+    const showEmptyRelationships = computed(
+      () =>
+        props.status !== "loading" &&
+        props.status !== "error" &&
+        props.relationships.length === 0,
+    );
 
     function onSelect(event: Event): void {
       const value = (event.target as HTMLSelectElement).value;
@@ -112,7 +127,7 @@ export default defineComponent({
       personaRef.value = "";
     }
 
-    return { personaRef, canCreate, onSelect, onCreate };
+    return { personaRef, canCreate, showEmptyRelationships, onSelect, onCreate };
   },
 });
 </script>
@@ -161,6 +176,11 @@ export default defineComponent({
   color: #ffffff;
 }
 .rel-status {
+  font-size: 26rpx;
+  opacity: 0.85;
+  margin-top: 16rpx;
+}
+.rel-empty {
   font-size: 26rpx;
   opacity: 0.85;
   margin-top: 16rpx;
