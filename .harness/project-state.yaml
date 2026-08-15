@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0205
+activeTaskCard: docs/tasks/TASK-0205-h5-chat-back-to-index-nav.md
 lastAcceptedTask: TASK-0204
 lastAcceptedHandoff: docs/handoffs/TASK-0204.json
 lastTerminalTask: TASK-0204
 lastTerminalHandoff: docs/handoffs/TASK-0204.json
-nextAction: TASK-0204 ACCEPTED（边界台已增加聊天/记忆/登录入口，不改变鉴权/预检/门禁语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
+nextAction: TASK-0205 READY：聊天页增加返回边界台入口，不改变发送/取消/失败语义。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
