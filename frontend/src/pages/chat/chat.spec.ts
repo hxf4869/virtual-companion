@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPage from "./chat.vue";
 import { useChatStore } from "@/stores/chat";
+import { useRelationshipStore } from "@/stores/relationship";
 
 const ACTIVE_RELATIONSHIP = {
   relationshipId: 1,
@@ -247,6 +248,30 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     await wrapper.find('[data-testid="nav-memory"]').trigger("click");
 
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
+    wrapper.unmount();
+  });
+
+  it("selects a query relationship locally without activate", async () => {
+    stubFetch({
+      relationships: [
+        ACTIVE_RELATIONSHIP,
+        {
+          relationshipId: "2",
+          personaRef: "other",
+          active: false,
+          createdAt: "2026-08-13T02:00:00Z",
+        },
+      ],
+    });
+    vi.stubGlobal("location", { search: "?relationshipId=2" });
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(relStore.currentRelationshipId).toBe("2");
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(true);
     wrapper.unmount();
   });
 });

@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0216
 lastAcceptedHandoff: docs/handoffs/TASK-0216.json
 lastTerminalTask: TASK-0216
 lastTerminalHandoff: docs/handoffs/TASK-0216.json
-nextAction: TASK-0217 READY：记忆页进入聊天时携带 relationship id，不 activate。保持不推送不合并。
+nextAction: TASK-0217 IN_PROGRESS：记忆页进入聊天时携带 relationship id，不 activate。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

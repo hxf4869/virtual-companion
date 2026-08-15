@@ -219,6 +219,23 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("carries a filled relationship id to chat without loading memory", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    const store = useMemoryStore();
+    const loadSpy = vi.spyOn(store, "load");
+
+    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
+    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/chat/chat?relationshipId=rel-1",
+    });
+    expect(loadSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("prefills relationship id from the query and does not auto-load", async () => {
     vi.stubGlobal("location", { search: "?relationshipId=rel-1" });
     const store = useMemoryStore();

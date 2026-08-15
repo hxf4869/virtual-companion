@@ -245,6 +245,19 @@ export default defineComponent({
       return `/pages/memory/memory?relationshipId=${encodeURIComponent(id)}`;
     }
 
+    function readQueryRelationshipId(): string {
+      try {
+        if (typeof location === "undefined") return "";
+        return (
+          new URLSearchParams(String(location.search || ""))
+            .get("relationshipId")
+            ?.trim() ?? ""
+        );
+      } catch {
+        return "";
+      }
+    }
+
     /**
      * Reset the chat store and create a fresh conversation under the currently
      * selected relationship. Used on mount (when an active relationship exists)
@@ -281,6 +294,13 @@ export default defineComponent({
       // load() catches its own failures (status="error", no throw); the
       // selector surfaces them without faking success.
       await relStore.load(transport);
+      const queryId = readQueryRelationshipId();
+      if (
+        queryId &&
+        relStore.relationships.some((rel) => rel.relationshipId === queryId)
+      ) {
+        relStore.currentRelationshipId = queryId;
+      }
       if (relStore.currentRelationshipId) {
         await startConversation();
       }

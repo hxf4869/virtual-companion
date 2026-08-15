@@ -35,7 +35,7 @@ states carry alert/live a11y semantics. -->
         data-testid="nav-chat"
         class="nav-index"
         aria-label="离线聊天"
-        @click="goTo('/pages/chat/chat')"
+        @click="goTo(chatHref())"
       >
         离线聊天
       </button>
@@ -329,6 +329,12 @@ async function onDelete(id: string): Promise<void> {
 
 async function onEvidence(id: string): Promise<void> {
   await memory.loadEvidence(transport, id);
+}
+
+function chatHref(): string {
+  const id = relationshipId.value.trim();
+  if (!id) return "/pages/chat/chat";
+  return `/pages/chat/chat?relationshipId=${encodeURIComponent(id)}`;
 }
 
 function goTo(url: string): void {
