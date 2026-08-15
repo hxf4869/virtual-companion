@@ -61,6 +61,13 @@ governanceContract:
     task0235EvidenceGuessedSha: 0758f322db42de2553763cbd657b78b7472c7624
     task0235RealCandidateCommit: 0758f32c1b649281f0b4543617a441801ef1c844
     task0235RealCandidateTree: 9dec374fcefb8e7380bda7915936eb8faca8a1e1
+    badYamlCommit: c06dbf61e4d21e5968077f8f7b3e1006a1a05a4e
+    badYamlPath: docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md
+    badYamlStatement: >-
+      本卡首个 idle DRAFT 提交 c06dbf6 中的任务卡 YAML 存在 negativeMatrix 折行
+      语法错误（while scanning a simple key），已在 29caf89 修正。c06dbf6 是
+      不可变历史提交，Doctor 的 authorized-task-history 对该 (commit, path)
+      组合定向豁免解析（豁免以本卡登记存在为前置）。
     statement: >-
       TASK-0235 Evidence 的 verifiedCommit/candidateCommit 使用了猜测的完整 SHA
       （0758f322db42...，实际不存在于仓库）；真实候选提交为
@@ -81,6 +88,12 @@ governanceContract:
         task0235-evidence-gap-registry.json 存在且其 task0235RealCandidateCommit/
         task0235RealCandidateTree/guessedSha 与卡内 defectFacts 一致；
         (3) 任一断言不成立 → error。
+    - id: AUTHORIZED_HISTORY_BAD_YAML_EXEMPTION
+      rule: >-
+        validate_authorized_task_history 对 (commit=c06dbf61e4d21e5968077f8f7b
+        3e1006a1a05a4e, path=docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md)
+        定向豁免解析（该提交的坏 YAML 缺陷已由本卡登记）；豁免前置为
+        TASK0235_EVIDENCE_GAP_RECOGNITION 登记存在，登记缺失即 FAIL。
     - id: TASK0235_BINDING_EXEMPTION
       rule: >-
         validate_task0233_commit_tree_binding 对 taskId=TASK-0235 跳过（定向豁免），
@@ -91,6 +104,7 @@ governanceContract:
     - recognition: 登记 JSON 缺失（注入 None）→ FAIL
     - recognition: 登记 JSON 的 realCandidateCommit 漂移 → FAIL
     - exemption: 登记缺失时绑定校验对 0235 恢复报错（由 recognition FAIL 保证，测试断言 recognition error 存在）
+    - badyaml: 坏 YAML 豁免条件（登记缺失）→ FAIL
   historicalCompatibility:
     - TASK-0235 的卡/Evidence/Handoff/Ledger 历史制品零修改；仅新增登记与
       定向识别；其余全部历史卡不重判。
