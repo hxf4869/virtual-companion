@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260816-TASK-0231-GOVERNANCE-GAP-QUARANTINE-01",
+  "kind": "EXACT_ONE_TIME_GOVERNANCE_GAP_QUARANTINE",
+  "taskId": "TASK-0231",
+  "createdAt": "2026-08-16",
+  "historicalVerifiabilityOnly": true,
+  "doesNotLegitimizeAnyClosure": true,
+  "doesNotRetroactivelyAuthorize": true,
+  "reusable": false,
+  "oneTimeOnly": true,
+  "copiedRecordForbidden": true,
+  "secondConsumptionForbidden": true,
+  "generalizedHistoricalExemptionForbidden": true,
+  "groups": [
+    {
+      "groupId": "LEGACY_VALIDATION_GAP_BATCH",
+      "statement": "14 张 ACCEPTED 卡在机器要求的验证缺口下闭合：除 TASK-0221 的 READY Doctor 与 canonical precheck 真实 PASS 外，其余 13 张卡的 READY Doctor、canonical precheck 与 pre-closure 均为 NOT_RUN；TASK-0221 的 pre-closure 也为 NOT_RUN。直接原因是 Owner 2026-08-15 10:34 会话指令「太长的检查都不跑了，以完成任务计划为主」，但机器真源（AGENTS.md「提交前运行 doctor.py --task TASK-ID --pre-closure」、task-delivery-flow Skill 步骤 9、INV-HARNESS-005/009）未作相应修改，「后面统一跑」对这 14 张卡从未兑现。本记录不合法化这些闭合，只维持历史可验证性。",
+      "violatedRules": [
+        "AGENTS.md: 提交前运行 doctor.py --task TASK-ID --pre-closure",
+        "skills/task-delivery-flow/SKILL.md 步骤 9: stage the closure exactly, run pre-closure",
+        "skills/task-intake/SKILL.md 步骤 9: 运行 doctor.py --task TASK-ID，通过后才允许实施者转为 IN_PROGRESS",
+        ".harness/invariants.yaml INV-HARNESS-005: evidence never converts an unexecuted or failed check into PASS",
+        ".harness/invariants.yaml INV-HARNESS-009: NOT_RUN or DEFERRED gaps are never represented as PASS"
+      ],
+      "cards": [
+        {
+          "taskId": "TASK-0213",
+          "state": "ACCEPTED",
+          "terminalCommit": "14a8f4efba69b77e7f4d629bd73a1e6a68980ae1",
+          "evidenceHeadCommit": "827fb8a6fb57441aad8a9ebc841a2514c2e128e9",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0214",
+          "state": "ACCEPTED",
+          "terminalCommit": "e69c00b4a12d6291dadf5e890aa2738d8e2c8229",
+          "evidenceHeadCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0215",
+          "state": "ACCEPTED",
+          "terminalCommit": "41b0f8215eb64f3ddea68a748fe5f94a0fcfd8c4",
+          "evidenceHeadCommit": "3c4d0352cd591b09f0bdebf7566da65bc3a46fde",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0216",
+          "state": "ACCEPTED",
+          "terminalCommit": "425597ca44d188e1827462fc22313499d0ce5ea2",
+          "evidenceHeadCommit": "952c472b5bcd9e9d1c0c21a9e362da6abb60f060",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0217",
+          "state": "ACCEPTED",
+          "terminalCommit": "fb5656ee3d9491cc304fe2f70601362cb3cfa176",
+          "evidenceHeadCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0218",
+          "state": "ACCEPTED",
+          "terminalCommit": "bcf182590310135e67a0faf28fe4f7b94dff7e74",
+          "evidenceHeadCommit": "8a3aa182bbe41412b30b8b17130500b17a740810",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0219",
+          "state": "ACCEPTED",
+          "terminalCommit": "8f29c773e55da8c6dc30746d4ae9717928ccd973",
+          "evidenceHeadCommit": "d024ab5cec3d55b98a4d95750455a4bc42812a64",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0221",
+          "state": "ACCEPTED",
+          "terminalCommit": "98796c05ab2dee73eadb1e42a6f59df019274755",
+          "evidenceHeadCommit": "2e04d19a4d896978f37f94012ec9c31e5c7a9ffe",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "PASS",
+            "precheck": "PASS",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0222",
+          "state": "ACCEPTED",
+          "terminalCommit": "8f18627997b4f230351b34883a0e42161f44c093",
+          "evidenceHeadCommit": "56f08b721deccc6a773e311a065f113ee6eb53f6",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0223",
+          "state": "ACCEPTED",
+          "terminalCommit": "99a19a995d617a4e07926646354beef4cbe63a06",
+          "evidenceHeadCommit": "62a81da34b4bc94f00d6235fb49efd9638314c61",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0224",
+          "state": "ACCEPTED",
+          "terminalCommit": "12c19137e04a288171849e72a00c3408b4ad35fc",
+          "evidenceHeadCommit": "4d8332f3bd2cb60adeac8356d828564932d278e6",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0225",
+          "state": "ACCEPTED",
+          "terminalCommit": "377b95fd7314b44b6db2e32ba8766abd07b62b07",
+          "evidenceHeadCommit": "c8809251b3ac5f8f8477b06be422509b939fb1c6",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0226",
+          "state": "ACCEPTED",
+          "terminalCommit": "568ba6cc5951895b25227eeef4df5922b1283154",
+          "evidenceHeadCommit": "2771d6a58f3a9d00414435ae61616a73abf8d549",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        },
+        {
+          "taskId": "TASK-0227",
+          "state": "ACCEPTED",
+          "terminalCommit": "d8cae708f0ad59ac07898729d55f7e185c53a159",
+          "evidenceHeadCommit": "7ec43a465c2c478468ce841166b8378613b05dcc",
+          "checks": {
+            "vitest": "PASS",
+            "diffCheck": "PASS",
+            "readyDoctor": "NOT_RUN",
+            "precheck": "NOT_RUN",
+            "preClosure": "NOT_RUN"
+          }
+        }
+      ],
+      "remediationOptions": [
+        "OPTION-OWNER-ACCEPT-QUARANTINE: Owner 接受本 quarantine 作为这些闭合的永久缺口声明；14 张卡保持 ACCEPTED 机器状态，历史验证缺口由本记录固定。",
+        "OPTION-OWNER-POST-HOC-VERIFICATION: Owner 授权一张新治理卡，对 14 张卡在当前 HEAD 上真实重跑 doctor --task、canonical precheck 与 pre-closure，结果作为补偿性验证记录写入新卡 Evidence（不追溯改写原卡 Evidence，不把 NOT_RUN 改成 PASS）。",
+        "OPTION-OWNER-SLICE-GOVERNANCE: Owner 批准 SLICE-GOVERNANCE harness-change 卡收紧 Doctor，使普通 ACCEPTED 卡必须存在 READY Doctor PASS、canonical precheck PASS 与 pre-closure PASS 证据；历史卡缺口仍由本记录覆盖。"
+      ]
+    },
+    {
+      "groupId": "LEGACY_AUTHORIZATION_GAP_0209_0210",
+      "statement": "owner-gates 2026-08-15 18:55 条目要求 Owner 在 harness-change（方案 B）与 REJECTED-with-real-FAIL 之间作出精确二选一并给出「精确授权句」。仓库外待决队列之后没有可核验的 Owner 逐字授权记录；TASK-0209 以 REJECTED 闭合（Evidence 真实记录 precheck FAIL exit 1 与 pre-closure FAIL exit 1，未改写为 PASS），TASK-0210 随后 READY 并 ACCEPTED。对照先例 TASK-0191 的 REJECTED 有「Owner 2026-08-13 修正版 A 裁决」精确授权，TASK-0209/0210 没有同等级授权。本记录不追溯授权，追认只能由 Owner 作出。",
+      "facts": {
+        "ownerGatesEntry": "2026-08-15 18:55 +0800 - TASK-0209/0210 只剩两项 Owner 专属决定（A 已机器否决）",
+        "ownerGatesRequiredDecision": "B harness-change 或 REJECTED-with-real-FAIL 二选一，并给出该选项的精确授权句",
+        "ownerGatesFile": "external:/Users/hxf/projects/virtual-companion-owner-gates.md（仓库外待决队列，不是机器真源）",
+        "task0209RejectedCommit": "eed0bf6957987ae0adac3f30cc41ce23cf919cf9",
+        "task0209EvidenceHeadCommit": "b50a5efddd20d139f4de763084908ff2618ccf82",
+        "task0209PrecheckStatus": "FAIL",
+        "task0209PrecheckExitCode": 1,
+        "task0209PreclosureStatus": "FAIL",
+        "task0209PreclosureExitCode": 1,
+        "task0210ReadyCommit": "ecc35f7feb208686ebd8233e4533f5ce7ebc2d07",
+        "task0210AcceptedCommit": "1e8922ca7394655657f68a9379315116f2e6e91b",
+        "task0210PrecheckStatus": "PASS",
+        "task0210PreclosureStatus": "PASS",
+        "precedentTask0191": "TASK-0191 REJECTED 由「Owner 2026-08-13 修正版 A 裁决」精确授权；TASK-0209 无同等级 Owner 逐字授权",
+        "notRetroactivelyAuthorized": true
+      },
+      "remediationOptions": [
+        "OPTION-OWNER-RATIFY: Owner 追溯确认 2026-08-15 晚间的 REJECTED-with-real-FAIL 处理（在 owner-gates 文件或本卡后继记录中给出可核验授权句）。",
+        "OPTION-OWNER-QUARANTINE: Owner 接受本记录作为永久授权缺口声明，不追认、不改写。"
+      ]
+    },
+    {
+      "groupId": "LEGACY_EXACT_TREE_EVIDENCE_GAP",
+      "statement": "以 TASK-0230 为代表的普通卡在卡内声明 validationPlan.selectedChannel=LOCAL_EXACT_TREE_FALLBACK，但 Evidence 缺少 ci-execution-policy 要求的 STRONG_TYPED_REMOTE_UNAVAILABLE_EVIDENCE（OWNER_SUPPLIED_QUOTA_EXHAUSTED 强类型字段）、OWNER_AUTHORIZED_SCOPE、resultRecordRequiredFields（cleanWorktree/cleanIndex/cwd/interpreter/toolchain/dependencies/stdoutSha256/stderrSha256/receiptSha256/startedAt/completedAt）与 notCovered 未覆盖平台记录。因此这些卡的 precheck/pre-closure PASS 是普通本地验证结果，不能构成 exact-tree release gate（INV-HARNESS-009）。当前 Doctor 对普通卡不验证上述字段，属验证覆盖缺口。",
+      "facts": {
+        "representativeTaskId": "TASK-0230",
+        "task0230AcceptedCommit": "a0d4106ab25de7a59803254cb12d823ca2a5a98c",
+        "task0230EvidenceHeadCommit": "6bfea47d74610e7610d92e588c25a76f05dc677b",
+        "task0230CandidateTree": "4671254906540112be4955a82405f3e12d30d79e",
+        "task0230PrecheckStatus": "PASS",
+        "task0230PreclosureStatus": "PASS",
+        "missingStrongTypedRemoteUnavailableEvidence": true,
+        "missingOwnerAuthorizedScope": true,
+        "missingResultRecordRequiredFields": true,
+        "missingUncoveredPlatformsRecord": true,
+        "doctorOrdinaryCardCoverage": "Doctor 的 LOCAL_EXACT_TREE_FALLBACK 深验证仅覆盖 TASK-0064/0066/0067/0074/0075/0076/0077 的 validationChannels 记录；普通卡只有卡内 validationPlan 声明，无深验证（验证覆盖缺口）"
+      },
+      "remediationOptions": [
+        "OPTION-OWNER-SUPPLY-EVIDENCE: Owner 提供 OWNER_SUPPLIED_QUOTA_EXHAUSTED 强类型字段并授权 fallback 范围，由后继卡为受影响卡补记强类型记录（不追溯改写原 Evidence）。",
+        "OPTION-OWNER-SLICE-GOVERNANCE: Owner 批准 SLICE-GOVERNANCE harness-change 卡，使 Doctor 对普通卡强制验证 fallback 激活条件与 resultRecordRequiredFields。"
+      ]
+    }
+  ]
+}
