@@ -1158,3 +1158,9 @@ tasks:
     taskCard: docs/tasks/TASK-0217-h5-memory-carry-relationship-id-to-chat.md
     evidence: docs/evidence/TASK-0217/evidence-pack.json
     handoff: docs/handoffs/TASK-0217.json
+  TASK-0218:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0218-h5-chat-login-nav.md
+    evidence: docs/evidence/TASK-0218/evidence-pack.json
+    handoff: docs/handoffs/TASK-0218.json

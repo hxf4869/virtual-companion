@@ -1,0 +1,56 @@
+{
+  "taskId": "TASK-0218",
+  "state": "ACCEPTED",
+  "baseCommit": "fb5656ee3d9491cc304fe2f70601362cb3cfa176",
+  "headCommit": "8a3aa182bbe41412b30b8b17130500b17a740810",
+  "evidencePath": "docs/evidence/TASK-0218/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "730aa5abb93e2de2d1a8615aa0374c3053828704",
+      "startedAt": "2026-08-15T21:12:53+08:00",
+      "endedAt": "2026-08-15T21:14:20+08:00",
+      "elapsedSeconds": 87,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "730aa5abb93e2de2d1a8615aa0374c3053828704",
+      "startedAt": "2026-08-15T21:12:53+08:00",
+      "endedAt": "2026-08-15T21:13:04+08:00",
+      "elapsedSeconds": 11,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "inProgressCommit": "8a3aa182bbe41412b30b8b17130500b17a740810"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "8a3aa182bbe41412b30b8b17130500b17a740810",
+      "startedAt": "2026-08-15T21:13:37+08:00",
+      "endedAt": "2026-08-15T21:14:20+08:00",
+      "elapsedSeconds": 43,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T21:13:04+08:00",
+      "inProgressCommit": "8a3aa182bbe41412b30b8b17130500b17a740810"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "聊天页增加 data-testid=nav-login「登录」，无关系时也可见。",
+    "点击导航到 /pages/login/login，不调用 send/cancel。",
+    "vitest 18/18 PASS；git diff --check PASS。Doctor/precheck/pre-closure 按 Owner 本轮不跑，记 NOT_RUN。"
+  ],
+  "remaining": [
+    "官方长检查未跑（NOT_RUN）。SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "READY Doctor 未跑，intakeActivation 记 UNKNOWN，不称 PASS。"
+  ],
+  "nextAction": "TASK-0218 ACCEPTED（聊天页已增加登录入口，不改变发送/取消语义）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。"
+}

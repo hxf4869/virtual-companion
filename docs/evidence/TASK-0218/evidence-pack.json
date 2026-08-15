@@ -1,0 +1,89 @@
+{
+  "taskId": "TASK-0218",
+  "baseCommit": "fb5656ee3d9491cc304fe2f70601362cb3cfa176",
+  "headCommit": "8a3aa182bbe41412b30b8b17130500b17a740810",
+  "contextFingerprint": "a2da8a6f8555f2a11d804c95b13ce923811e2226685435c1dfb552649f9343f6",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "730aa5abb93e2de2d1a8615aa0374c3053828704",
+      "startedAt": "2026-08-15T21:12:53+08:00",
+      "endedAt": "2026-08-15T21:14:20+08:00",
+      "elapsedSeconds": 87,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "730aa5abb93e2de2d1a8615aa0374c3053828704",
+      "startedAt": "2026-08-15T21:12:53+08:00",
+      "endedAt": "2026-08-15T21:13:04+08:00",
+      "elapsedSeconds": 11,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "inProgressCommit": "8a3aa182bbe41412b30b8b17130500b17a740810"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "8a3aa182bbe41412b30b8b17130500b17a740810",
+      "startedAt": "2026-08-15T21:13:37+08:00",
+      "endedAt": "2026-08-15T21:14:20+08:00",
+      "elapsedSeconds": 43,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T21:13:04+08:00",
+      "inProgressCommit": "8a3aa182bbe41412b30b8b17130500b17a740810"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "pnpm --dir frontend exec vitest run src/pages/chat/chat.spec.ts",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "18/18 tests PASS on candidate 8a3aa18: nav-login visible before relationship, click navigates to login without send/cancel, existing send/memory nav tests still pass.",
+      "environment": "macOS; vitest 3.2.6; scratch task-0218-required-commands.log",
+      "verifiedCommit": "8a3aa182bbe41412b30b8b17130500b17a740810",
+      "candidateCommit": "8a3aa182bbe41412b30b8b17130500b17a740810",
+      "candidateTree": "e406f39e1f5fc06e26426b8100b15c74dffd172d"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on candidate 8a3aa18.",
+      "environment": "macOS",
+      "verifiedCommit": "8a3aa182bbe41412b30b8b17130500b17a740810"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0218",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 Doctor。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0218",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 precheck。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0218 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 pre-closure。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    }
+  ]
+}

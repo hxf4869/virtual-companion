@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0218
-activeTaskCard: docs/tasks/TASK-0218-h5-chat-login-nav.md
-lastAcceptedTask: TASK-0217
-lastAcceptedHandoff: docs/handoffs/TASK-0217.json
-lastTerminalTask: TASK-0217
-lastTerminalHandoff: docs/handoffs/TASK-0217.json
-nextAction: TASK-0218 IN_PROGRESS：聊天页增加登录入口，不改变发送/取消语义。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0218
+lastAcceptedHandoff: docs/handoffs/TASK-0218.json
+lastTerminalTask: TASK-0218
+lastTerminalHandoff: docs/handoffs/TASK-0218.json
+nextAction: TASK-0218 ACCEPTED（聊天页已增加登录入口，不改变发送/取消语义）。下一动作：继续发现下一张合法卡；本轮不跑长 Doctor。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
