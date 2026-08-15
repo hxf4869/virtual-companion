@@ -146,4 +146,28 @@ describe("memory page glue (P2-19 component test)", () => {
     expect(wrapper.find('[data-testid="empty-canonical"]').exists()).toBe(false);
     wrapper.unmount();
   });
+
+  it("renders a back-to-index entry before a relationship id is entered", () => {
+    const wrapper = mountPage();
+    const nav = wrapper.find('[data-testid="nav-index"]');
+    expect(nav.exists()).toBe(true);
+    expect(nav.text()).toContain("返回边界台");
+    wrapper.unmount();
+  });
+
+  it("navigates to the preflight index without calling load or confirm", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    const store = useMemoryStore();
+    const loadSpy = vi.spyOn(store, "load");
+    const confirmSpy = vi.spyOn(store, "confirm");
+
+    await wrapper.find('[data-testid="nav-index"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/index/index" });
+    expect(loadSpy).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

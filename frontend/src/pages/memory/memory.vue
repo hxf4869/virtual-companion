@@ -22,6 +22,14 @@ states carry alert/live a11y semantics. -->
       >
         刷新记忆
       </button>
+      <button
+        data-testid="nav-index"
+        class="nav-index"
+        aria-label="返回边界台"
+        @click="goTo('/pages/index/index')"
+      >
+        返回边界台
+      </button>
     </view>
 
     <view
@@ -233,6 +241,21 @@ async function onDelete(id: string): Promise<void> {
 async function onEvidence(id: string): Promise<void> {
   await memory.loadEvidence(transport, id);
 }
+
+function goTo(url: string): void {
+  try {
+    const uniApi = (globalThis as Record<string, unknown>).uni as
+      | { navigateTo?: (options: { url: string }) => void }
+      | undefined;
+    if (uniApi?.navigateTo) {
+      uniApi.navigateTo({ url });
+    } else if (typeof location !== "undefined") {
+      location.href = url;
+    }
+  } catch {
+    // Presentation-only navigation; never break memory confirm/load.
+  }
+}
 </script>
 
 <style scoped>
@@ -248,6 +271,9 @@ async function onEvidence(id: string): Promise<void> {
   flex: 1;
   border: 1px solid #ccc;
   padding: 6px;
+}
+.nav-index {
+  flex: 0 0 auto;
 }
 .section {
   margin-bottom: 16px;
