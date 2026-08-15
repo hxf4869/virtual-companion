@@ -34,6 +34,14 @@ states carry alert/live a11y semantics. -->
       <text class="section-title">待确认候选（{{ memory.pendingCount }}）</text>
       <text class="hint">候选未经确认，不作为已保存事实。</text>
       <view
+        v-if="showEmptyPending"
+        class="empty-status"
+        data-testid="empty-pending"
+        role="status"
+      >
+        <text>还没有待确认候选。模型提取的内容需你确认后才会成为记忆。</text>
+      </view>
+      <view
         v-for="m in memory.pending"
         :key="m.memoryId"
         class="card pending"
@@ -61,6 +69,14 @@ states carry alert/live a11y semantics. -->
 
     <view class="section" aria-live="polite">
       <text class="section-title">Canonical 记忆（{{ memory.canonicalCount }}）</text>
+      <view
+        v-if="showEmptyCanonical"
+        class="empty-status"
+        data-testid="empty-canonical"
+        role="status"
+      >
+        <text>还没有已保存记忆。</text>
+      </view>
       <view
         v-for="m in memory.canonical"
         :key="m.memoryId"
@@ -118,6 +134,13 @@ const relationshipId = ref("");
 const busy = ref(false);
 const editingId = ref<string | null>(null);
 const draftSummary = ref("");
+const hasLoaded = ref(false);
+const showEmptyPending = computed(
+  () => hasLoaded.value && memory.pendingCount === 0,
+);
+const showEmptyCanonical = computed(
+  () => hasLoaded.value && memory.canonicalCount === 0,
+);
 
 // TASK-0105 (P2-16): shared authenticated transport -- the single place where
 // credentials/CSRF are attached; an HTTP 401 routes to the auth store's
@@ -155,6 +178,7 @@ async function reload(): Promise<void> {
   busy.value = true;
   try {
     await memory.load(transport, relationshipId.value);
+    hasLoaded.value = memory.error === null;
   } finally {
     busy.value = false;
   }
@@ -237,6 +261,11 @@ async function onEvidence(id: string): Promise<void> {
   color: #888;
   font-size: 12px;
   display: block;
+  margin-bottom: 8px;
+}
+.empty-status {
+  color: #666;
+  font-size: 13px;
   margin-bottom: 8px;
 }
 .card {

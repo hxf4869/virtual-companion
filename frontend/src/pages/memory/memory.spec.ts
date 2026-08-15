@@ -4,7 +4,7 @@
 // api/store specs cannot: aria-label on the relationship input, the
 // role=alert error region, empty-evidence container gating and
 // exit-edit-only-on-confirmed-save.
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,6 +80,70 @@ describe("memory page glue (P2-19 component test)", () => {
     await wrapper.find(".edit-row button").trigger("click");
     await wrapper.vm.$nextTick();
     expect(wrapper.find(".edit-row").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("does not claim empty lists before a successful load", () => {
+    const wrapper = mountPage();
+    expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="empty-canonical"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows empty pending and canonical statuses after a successful empty load", async () => {
+    const store = useMemoryStore();
+    vi.spyOn(store, "load").mockResolvedValue();
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+
+    const pending = wrapper.find('[data-testid="empty-pending"]');
+    const canonical = wrapper.find('[data-testid="empty-canonical"]');
+    expect(pending.exists()).toBe(true);
+    expect(pending.attributes("role")).toBe("status");
+    expect(pending.text()).not.toContain("已保存");
+    expect(canonical.exists()).toBe(true);
+    expect(canonical.attributes("role")).toBe("status");
+    expect(canonical.text()).toContain("已保存记忆");
+    wrapper.unmount();
+  });
+
+  it("hides a side's empty status when that list has items", async () => {
+    const store = useMemoryStore();
+    vi.spyOn(store, "load").mockImplementation(async () => {
+      store.pending = [
+        {
+          memoryId: "p1",
+          scope: "RELATIONSHIP",
+          summary: "candidate",
+          status: "PENDING_CONFIRMATION",
+        },
+      ];
+      store.canonical = [canonicalMemory("c1")];
+    });
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="empty-canonical"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("does not treat a failed load as an empty-list confirmation", async () => {
+    const store = useMemoryStore();
+    vi.spyOn(store, "load").mockImplementation(async () => {
+      store.error = "load-failed";
+    });
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="empty-canonical"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });
