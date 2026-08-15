@@ -280,6 +280,33 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("shows the current relationship id after a successful load", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send");
+
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("当前关系：1");
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("shows an empty current-relationship copy when none is selected", async () => {
+    stubFetch({ relationships: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.exists()).toBe(true);
+    expect(status.text()).toContain("还没有当前关系。");
+    wrapper.unmount();
+  });
+
   it("selects a query relationship locally without activate", async () => {
     stubFetch({
       relationships: [

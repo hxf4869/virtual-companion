@@ -30,6 +30,19 @@
       </view>
     </view>
 
+    <view
+      v-if="relStore.status === 'ready'"
+      class="current-relationship"
+      data-testid="current-relationship"
+      role="status"
+    >
+      <text>{{
+        relStore.currentRelationshipId
+          ? `当前关系：${relStore.currentRelationshipId}`
+          : "还没有当前关系。"
+      }}</text>
+    </view>
+
     <view v-if="initError" class="chat-error" role="alert">
       <text>初始化失败，请刷新重试</text>
     </view>
@@ -371,6 +384,12 @@ export default defineComponent({
   color: #ffffff;
   font-size: 24rpx;
   font-weight: 600;
+}
+.current-relationship {
+  margin: -8rpx 0 24rpx;
+  font-size: 24rpx;
+  font-weight: 400;
+  opacity: 0.78;
 }
 .chat-error {
   padding: 24rpx;
