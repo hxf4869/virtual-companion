@@ -112,4 +112,26 @@ describe("login page glue (P2-19 component test)", () => {
     expect(loginSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it("renders a chat entry before submit", () => {
+    const wrapper = mountPage();
+    const nav = wrapper.find('[data-testid="nav-chat"]');
+    expect(nav.exists()).toBe(true);
+    expect(nav.text()).toContain("离线聊天");
+    wrapper.unmount();
+  });
+
+  it("navigates to the chat page without calling login", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    const store = useAuthStore();
+    const loginSpy = vi.spyOn(store, "login");
+
+    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
+    expect(loginSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

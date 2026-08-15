@@ -2,14 +2,24 @@
   <view class="login-page">
     <view class="login-header">
       <text>Virtual Companion · 登录</text>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goToIndex"
-      >
-        返回边界台
-      </button>
+      <view class="login-header-nav">
+        <button
+          data-testid="nav-index"
+          class="nav-index"
+          aria-label="返回边界台"
+          @click="goToIndex"
+        >
+          返回边界台
+        </button>
+        <button
+          data-testid="nav-chat"
+          class="nav-index"
+          aria-label="离线聊天"
+          @click="goToChat"
+        >
+          离线聊天
+        </button>
+      </view>
     </view>
     <view class="login-form">
       <input
@@ -84,14 +94,22 @@ export default defineComponent({
     });
 
     function goToIndex(): void {
+      navigatePresentation("/pages/index/index");
+    }
+
+    function goToChat(): void {
+      navigatePresentation("/pages/chat/chat");
+    }
+
+    function navigatePresentation(url: string): void {
       try {
         const uniApi = (globalThis as Record<string, unknown>).uni as
           | { navigateTo?: (options: { url: string }) => void }
           | undefined;
         if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url: "/pages/index/index" });
+          uniApi.navigateTo({ url });
         } else if (typeof location !== "undefined") {
-          location.href = "/pages/index/index";
+          location.href = url;
         }
       } catch {
         // Presentation-only navigation; never break login submit/fail.
@@ -154,6 +172,7 @@ export default defineComponent({
       message,
       onSubmit,
       goToIndex,
+      goToChat,
     };
   },
 });
@@ -174,6 +193,11 @@ export default defineComponent({
   font-size: 36rpx;
   font-weight: 600;
   margin-bottom: 40rpx;
+}
+.login-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
 }
 .nav-index {
   flex: 0 0 auto;
