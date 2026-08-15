@@ -18263,12 +18263,148 @@ def validate_task0231_0232_invalidity_recognition(
         return
 
 
+TASK_0234_ACTIVATION_COMMIT = "f8cc840a2887d7201100e34a82ef7cc92a9887e6"
+TASK_0234_REMOTE_TRACKING_REF = "refs/remotes/origin/codex/governance-recovery-20260816"
+TASK_0234_SPECIAL_TASKS = {
+    "TASK-0064",
+    "TASK-0066",
+    "TASK-0067",
+    "TASK-0074",
+    "TASK-0075",
+    "TASK-0076",
+    "TASK-0077",
+}
+TASK_0234_RESULT_FIELDS = {
+    "platform",
+    "status",
+    "taskId",
+    "candidateCommit",
+    "candidateTree",
+    "cleanWorktree",
+    "cleanIndex",
+    "argv",
+    "cwd",
+    "operatingSystem",
+    "interpreter",
+    "toolchain",
+    "dependencies",
+    "environment",
+    "stdoutSha256",
+    "stderrSha256",
+    "receiptSha256",
+    "exitCode",
+    "startedAt",
+    "completedAt",
+}
+TASK_0234_REMOTE_UNAVAILABLE_FIELDS = {
+    "includedMinutes",
+    "usedMinutes",
+    "paidBudgetUsd",
+    "stopUsageEnabled",
+    "resetDate",
+    "dispatchCount",
+}
+
+
+def validate_task0234_exact_tree_channel(
+    audit: Audit,
+    task: dict[str, Any],
+    evidence: dict[str, Any],
+    allow_uncommitted_terminal: bool,
+) -> None:
+    """TASK-0234 SLICE-GOVERNANCE-B: activation-gated exact-tree channel enforcement.
+
+    - LOCAL_EXACT_TREE_FALLBACK cards must carry a complete validationChannels
+      record (strong typed remote unavailability + full result records + explicit
+      notCovered).
+    - PRIMARY_REMOTE_EXACT_SHA cards must, in committed (non-staged) Doctor runs,
+      have their evidence headCommit pushed to the dedicated recovery branch
+      (remote-tracking ref present and headCommit an ancestor of its tip).
+    Historical and special-cased tasks keep their existing treatment.
+    """
+    task_id = str(task.get("taskId", ""))
+    if not task0233_is_ancestor(
+        TASK_0234_ACTIVATION_COMMIT, str(task.get("baseCommit", ""))
+    ) or task_id in TASK_0234_SPECIAL_TASKS:
+        return
+    validation = task.get("validationPlan")
+    validation = validation if isinstance(validation, dict) else {}
+    channel = str(validation.get("selectedChannel", ""))
+    label = f"{task_id}: exact-tree channel"
+    if channel == "LOCAL_EXACT_TREE_FALLBACK":
+        record = evidence.get("validationChannels")
+        if not isinstance(record, dict):
+            audit.error(
+                f"{label}: LOCAL_EXACT_TREE_FALLBACK requires a validationChannels record"
+            )
+            return
+        audit.require(
+            record.get("policySource") == CI_EXECUTION_POLICY_PATH
+            and record.get("channel") == "LOCAL_EXACT_TREE_FALLBACK",
+            f"{label}: validationChannels policy/channel binding drifted",
+        )
+        remote = record.get("remote")
+        remote = remote if isinstance(remote, dict) else {}
+        audit.require(
+            remote.get("reasonType") == "OWNER_SUPPLIED_QUOTA_EXHAUSTED"
+            and TASK_0234_REMOTE_UNAVAILABLE_FIELDS <= set(remote),
+            f"{label}: strong typed remote unavailable evidence is required",
+        )
+        results = record.get("results")
+        audit.require(
+            isinstance(results, list) and bool(results),
+            f"{label}: platform results are required",
+        )
+        if isinstance(results, list):
+            for index, result in enumerate(results):
+                if not isinstance(result, dict):
+                    audit.error(f"{label}: results[{index}] must be an object")
+                    continue
+                missing = TASK_0234_RESULT_FIELDS - set(result)
+                audit.require(
+                    not missing,
+                    f"{label}: results[{index}] misses exact-tree receipt fields: {sorted(missing)}",
+                )
+        audit.require(
+            "notCovered" in record,
+            f"{label}: notCovered must be explicit even when empty",
+        )
+    elif channel == "PRIMARY_REMOTE_EXACT_SHA":
+        if allow_uncommitted_terminal:
+            # Staged pre-closure runs before the terminal commit is pushed;
+            # remote release is verified after the real push + fetch.
+            return
+        out = git_text(
+            "show-ref", "--verify", TASK_0234_REMOTE_TRACKING_REF, check=False
+        )
+        audit.require(
+            out.returncode == 0 and bool(out.stdout.strip()),
+            f"{label}: remote-tracking ref {TASK_0234_REMOTE_TRACKING_REF} is required "
+            "(push the terminal commit to the recovery branch and fetch before the "
+            "formal Doctor)",
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            tip = out.stdout.strip().split()[0]
+            audit.require(
+                git_text("rev-parse", "--verify", f"{tip}^{{commit}}", check=False).returncode
+                == 0,
+                f"{label}: remote tip must exist locally",
+            )
+            head = str(evidence.get("headCommit", ""))
+            audit.require(
+                task0233_is_ancestor(head, tip),
+                f"{label}: evidence headCommit must be pushed to the recovery branch "
+                "(is-ancestor of the remote tip)",
+            )
+
+
 def validate_evidence_and_handoffs(
     audit: Audit,
     tasks: dict[str, dict[str, Any]],
     lifecycle: dict[str, Any],
     current_protected_rules: list[dict[str, Any]],
     allow_pending_draft: bool = False,
+    allow_uncommitted_terminal: bool = False,
 ) -> None:
     handoff_schema = load_json(ROOT / "docs/schemas/handoff.schema.json", audit)
     evidence_schema = load_json(ROOT / "docs/schemas/evidence-pack.schema.json", audit)
@@ -18407,6 +18543,13 @@ def validate_evidence_and_handoffs(
                 )
                 validate_task0233_commit_tree_binding(
                     audit, task, evidence_packs[task_id], terminal_commit
+                )
+            if evidence_packs.get(task_id) is not None:
+                validate_task0234_exact_tree_channel(
+                    audit,
+                    task,
+                    evidence_packs[task_id],
+                    allow_uncommitted_terminal,
                 )
             # Withdrawn (Owner 2026-08-14 plan D): the earlier blanket
             # re-judging of all historical terminal tasks through the full v2
@@ -21769,6 +21912,7 @@ def main() -> int:
                         lifecycle,
                         protected_rules,
                         allow_pending_draft=pending_draft is not None,
+                        allow_uncommitted_terminal=args.pre_closure,
                     )
 
                 with timed_phase("post-terminal governance edges"):

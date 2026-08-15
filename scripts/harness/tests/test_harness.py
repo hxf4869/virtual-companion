@@ -12600,3 +12600,167 @@ class Task0233GovernanceTemporalBindingTests(unittest.TestCase):
             any("LOCAL_EXACT_TREE_FALLBACK evidence gap" in item for item in audit.errors),
             audit.errors,
         )
+
+
+class Task0234ExactTreeChannelGovernanceTests(unittest.TestCase):
+    """TASK-0234 SLICE-GOVERNANCE-B: ordinary-card exact-tree channel enforcement.
+    Owner 2026-08-16 /goal frozen the positive/negative matrix below."""
+
+    BASE = "ed6ee2c405722e619de727f87a16d765ef81f8bc"  # descends from f8cc840 (activation anchor)
+    HEAD = "ed6ee2c405722e619de727f87a16d765ef81f8bc"
+
+    def _task(self, channel: str) -> dict:
+        return {
+            "taskId": "TASK-0998",
+            "baseCommit": self.BASE,
+            "validationPlan": {
+                "frozenBefore": "READY",
+                "policySource": ".harness/ci-execution-policy.yaml",
+                "selectedChannel": channel,
+                "profile": "precheck",
+            },
+        }
+
+    def _full_channels_record(self) -> dict:
+        return {
+            "policySource": ".harness/ci-execution-policy.yaml",
+            "channel": "LOCAL_EXACT_TREE_FALLBACK",
+            "remote": {
+                "platform": "githubActions",
+                "status": "NOT_RUN_QUOTA",
+                "reasonType": "OWNER_SUPPLIED_QUOTA_EXHAUSTED",
+                "includedMinutes": 2000,
+                "usedMinutes": 2000,
+                "paidBudgetUsd": 0,
+                "stopUsageEnabled": True,
+                "resetDate": "2026-08-01",
+                "dispatchCount": 0,
+            },
+            "results": [
+                {
+                    "platform": "windows",
+                    "status": "PASS",
+                    "taskId": "TASK-0998",
+                    "candidateCommit": self.HEAD,
+                    "candidateTree": "0" * 40,
+                    "cleanWorktree": True,
+                    "cleanIndex": True,
+                    "argv": ["python", "scripts/harness/precheck.py"],
+                    "cwd": "/tmp",
+                    "operatingSystem": "Windows-NT-10.0.26200",
+                    "interpreter": "Python 3.12.9",
+                    "toolchain": {},
+                    "dependencies": {},
+                    "environment": {},
+                    "stdoutSha256": "a" * 64,
+                    "stderrSha256": "b" * 64,
+                    "receiptSha256": "c" * 64,
+                    "exitCode": 0,
+                    "startedAt": "2026-08-16T06:00:00+08:00",
+                    "completedAt": "2026-08-16T06:01:00+08:00",
+                }
+            ],
+            "notCovered": [],
+        }
+
+    def test_fallback_missing_record_fails(self):
+        audit = doctor.Audit()
+        doctor.validate_task0234_exact_tree_channel(
+            audit, self._task("LOCAL_EXACT_TREE_FALLBACK"), {}, False
+        )
+        self.assertTrue(audit.errors, "missing validationChannels must fail")
+        self.assertTrue(
+            any("requires a validationChannels record" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_fallback_missing_result_fields_fails(self):
+        audit = doctor.Audit()
+        record = self._full_channels_record()
+        del record["results"][0]["receiptSha256"]
+        del record["results"][0]["stdoutSha256"]
+        doctor.validate_task0234_exact_tree_channel(
+            audit, self._task("LOCAL_EXACT_TREE_FALLBACK"), {"validationChannels": record}, False
+        )
+        self.assertTrue(audit.errors, "missing receipt fields must fail")
+        self.assertTrue(
+            any("misses exact-tree receipt fields" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_fallback_missing_remote_evidence_fails(self):
+        audit = doctor.Audit()
+        record = self._full_channels_record()
+        record["remote"] = {"platform": "githubActions", "status": "NOT_RUN"}
+        doctor.validate_task0234_exact_tree_channel(
+            audit, self._task("LOCAL_EXACT_TREE_FALLBACK"), {"validationChannels": record}, False
+        )
+        self.assertTrue(audit.errors, "missing strong typed remote evidence must fail")
+        self.assertTrue(
+            any("strong typed remote unavailable evidence is required" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_fallback_missing_not_covered_fails(self):
+        audit = doctor.Audit()
+        record = self._full_channels_record()
+        del record["notCovered"]
+        doctor.validate_task0234_exact_tree_channel(
+            audit, self._task("LOCAL_EXACT_TREE_FALLBACK"), {"validationChannels": record}, False
+        )
+        self.assertTrue(audit.errors, "missing notCovered must fail")
+        self.assertTrue(
+            any("notCovered must be explicit" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_primary_unpushed_head_fails(self):
+        audit = doctor.Audit()
+        doctor.validate_task0234_exact_tree_channel(
+            audit,
+            self._task("PRIMARY_REMOTE_EXACT_SHA"),
+            {"headCommit": "0" * 40},
+            False,
+        )
+        self.assertTrue(audit.errors, "unpushed headCommit must fail")
+        self.assertTrue(
+            any("must be pushed to the recovery branch" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_primary_missing_remote_tracking_ref_fails(self):
+        original = doctor.TASK_0234_REMOTE_TRACKING_REF
+        doctor.TASK_0234_REMOTE_TRACKING_REF = "refs/remotes/origin/does-not-exist"
+        self.addCleanup(setattr, doctor, "TASK_0234_REMOTE_TRACKING_REF", original)
+        audit = doctor.Audit()
+        doctor.validate_task0234_exact_tree_channel(
+            audit,
+            self._task("PRIMARY_REMOTE_EXACT_SHA"),
+            {"headCommit": self.HEAD},
+            False,
+        )
+        self.assertTrue(audit.errors, "missing remote-tracking ref must fail")
+        self.assertTrue(
+            any("remote-tracking ref" in item for item in audit.errors),
+            audit.errors,
+        )
+
+    def test_primary_staged_preclosure_exempt(self):
+        audit = doctor.Audit()
+        doctor.validate_task0234_exact_tree_channel(
+            audit,
+            self._task("PRIMARY_REMOTE_EXACT_SHA"),
+            {"headCommit": self.HEAD},
+            True,
+        )
+        self.assertFalse(audit.errors, audit.errors)
+
+    def test_fallback_full_record_positive(self):
+        audit = doctor.Audit()
+        doctor.validate_task0234_exact_tree_channel(
+            audit,
+            self._task("LOCAL_EXACT_TREE_FALLBACK"),
+            {"validationChannels": self._full_channels_record()},
+            False,
+        )
+        self.assertFalse(audit.errors, audit.errors)
