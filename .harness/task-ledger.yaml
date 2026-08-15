@@ -1134,3 +1134,9 @@ tasks:
     taskCard: docs/tasks/TASK-0213-h5-index-carry-relationship-id-to-memory.md
     evidence: docs/evidence/TASK-0213/evidence-pack.json
     handoff: docs/handoffs/TASK-0213.json
+  TASK-0214:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0214-h5-memory-empty-point-to-chat.md
+    evidence: docs/evidence/TASK-0214/evidence-pack.json
+    handoff: docs/handoffs/TASK-0214.json

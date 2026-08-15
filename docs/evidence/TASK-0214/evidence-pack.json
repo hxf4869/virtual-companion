@@ -1,0 +1,89 @@
+{
+  "taskId": "TASK-0214",
+  "baseCommit": "14a8f4efba69b77e7f4d629bd73a1e6a68980ae1",
+  "headCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4",
+  "contextFingerprint": "a6e50dedd1bf8f4b0c9eaae63bc76d40765a5b091b79db552380b3aa88bb47e4",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "044dbb9595304d06f51b3509c037ee5a21fa41e3",
+      "startedAt": "2026-08-15T20:54:27+08:00",
+      "endedAt": "2026-08-15T20:56:10+08:00",
+      "elapsedSeconds": 103,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "044dbb9595304d06f51b3509c037ee5a21fa41e3",
+      "startedAt": "2026-08-15T20:54:27+08:00",
+      "endedAt": "2026-08-15T20:54:39+08:00",
+      "elapsedSeconds": 12,
+      "outcome": "UNKNOWN",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "inProgressCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4",
+      "startedAt": "2026-08-15T20:55:34+08:00",
+      "endedAt": "2026-08-15T20:56:10+08:00",
+      "elapsedSeconds": 36,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T20:54:39+08:00",
+      "inProgressCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4"
+    }
+  },
+  "reviewers": [],
+  "checks": [
+    {
+      "command": "pnpm --dir frontend exec vitest run src/components/RelationshipSelector.spec.ts src/pages/memory/memory.spec.ts",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "30/30 tests PASS on candidate 5264542 (selector 11 + memory 19): hide-create empty copy points to offline chat; default create copy unchanged; existing pick/prefill/nav tests still pass.",
+      "environment": "macOS; vitest 3.2.6; scratch task-0214-required-commands.log",
+      "verifiedCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4",
+      "candidateCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4",
+      "candidateTree": "f896a91f221ad056cc996f72a001874937bc4f71"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exitCode": 0,
+      "artifactHash": null,
+      "reason": "git diff --check exit 0 on candidate 5264542.",
+      "environment": "macOS",
+      "verifiedCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0214",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 Doctor。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/precheck.py --task TASK-0214",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 precheck。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    },
+    {
+      "command": "PATH=/Users/hxf/.zcode/venvs/vc-harness/bin:$PATH python scripts/harness/doctor.py --task TASK-0214 --pre-closure",
+      "status": "NOT_RUN",
+      "exitCode": null,
+      "artifactHash": null,
+      "reason": "Owner 本轮 Goal 明确不跑长 pre-closure。Honest NOT_RUN, never PASS.",
+      "environment": "macOS; skipped"
+    }
+  ]
+}
