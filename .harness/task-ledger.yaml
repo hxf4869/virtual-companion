@@ -1248,3 +1248,9 @@ tasks:
     taskCard: docs/tasks/TASK-0232-quarantine-registry.md
     evidence: docs/evidence/TASK-0232/evidence-pack.json
     handoff: docs/handoffs/TASK-0232.json
+  TASK-0233:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0233-doctor-temporal-binding-governance.md
+    evidence: docs/evidence/TASK-0233/evidence-pack.json
+    handoff: docs/handoffs/TASK-0233.json

@@ -1,0 +1,68 @@
+{
+  "taskId": "TASK-0233",
+  "state": "ACCEPTED",
+  "baseCommit": "e5d88e3ff5529f28cb76bec2d663523f9b1fa9a8",
+  "headCommit": "a0914b1bd5adefd93048406d7990ecb25bdaf729",
+  "evidencePath": "docs/evidence/TASK-0233/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5636f2c044899ef357475c85da30b9cdd0d92745",
+      "startedAt": "2026-08-16T04:46:23+08:00",
+      "endedAt": "2026-08-16T05:19:30+08:00",
+      "elapsedSeconds": 1987,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "5636f2c044899ef357475c85da30b9cdd0d92745",
+      "startedAt": "2026-08-16T04:46:23+08:00",
+      "endedAt": "2026-08-16T04:52:30+08:00",
+      "elapsedSeconds": 367,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T04:52:30+08:00",
+      "inProgressCommit": "cc927fadc2768782d98f344248d93460358d17b5"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "cc927fadc2768782d98f344248d93460358d17b5",
+      "startedAt": "2026-08-16T04:52:30+08:00",
+      "endedAt": "2026-08-16T05:19:30+08:00",
+      "elapsedSeconds": 1620,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T04:52:30+08:00",
+      "inProgressCommit": "cc927fadc2768782d98f344248d93460358d17b5"
+    }
+  },
+  "reviewers": [
+    {
+      "id": "task0233_r1",
+      "kind": "independent-review-gate",
+      "verdict": "PASS",
+      "reviewedCommit": "a0914b1bd5adefd93048406d7990ecb25bdaf729",
+      "evidencePath": "docs/evidence/TASK-0233/review-r1.md",
+      "reason": "R1 独立复核 APPROVE：实现范围恰为冻结两条路径；三组校验落地；历史卡不重判（summary PASS 1154444 / 0 errors）；负例矩阵 8/8；0231/0232 未被追溯改写。P0=0，P1=0，P2=0，P3=0。"
+    }
+  ],
+  "completed": [
+    "Doctor 收紧 A 落地：TEMPORAL_INTEGRITY（startedAt ≥ anchor 提交时间、endedAt ≤ 终态提交 + 600s、readyDoctorPassAt ≤ IN_PROGRESS 提交 + 600s）与 COMMIT_TREE_BINDING（candidateCommit/verifiedCommit 必须在 base..terminal 链、candidateTree 必须等于 candidateCommit^{tree}）对新终态卡激活（锚 fd87ac4），历史卡不重判。",
+    "TASK-0231/0232 无效性 canonical 识别恒启用：0231 必须保持 REJECTED + resolutionReason 含「投影漂移」+ Evidence 保留真实 precheck FAIL exit 1；0232 必须保持 ACCEPTED + registry 绑定 0231 终态制品 blob/sha256 + handoff 声明 fallback 证据缺口。",
+    "定向测试 12/12（正例 4 + 负例 8）；READY Doctor PASS 1152389；canonical precheck 8/8（inner doctor 1154444）；实现后全量 summary PASS 1154444 / 0 errors；git diff --check exit 0。",
+    "C4 独立 Reviewer（R1）APPROVE，P0/P1/P2/P3=0。"
+  ],
+  "remaining": [
+    "SLICE-GOVERNANCE-B（ordinary-card exact-tree fallback 强制校验）、SLICE-GOVERNANCE-C（ACCEPTED 验证证据强制 + 14 卡定向识别）、SLICE-HISTORY、14 张卡补偿验证批次、0209/0210 追认记录由后继卡严格串行完成。"
+  ],
+  "knownRisks": [
+    "激活锚为 READY bind 提交 fd87ac4（严格单活动卡串行下等价于终态激活且更早生效）。",
+    "600 秒容差是 Evidence 记录窗口，不是豁免；超容差即 error。"
+  ],
+  "nextAction": "TASK-0233 ACCEPTED（SLICE-GOVERNANCE-A Doctor 收紧完成）。下一动作：推送本终态至 refs/heads/codex/governance-recovery-20260816 并远端精确 SHA/Tree 复核，然后 intake 后继 SLICE-GOVERNANCE-B 卡（永久 ID 由机器分配）。保持不推送 main。"
+}

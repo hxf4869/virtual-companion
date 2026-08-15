@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0233
-activeTaskCard: docs/tasks/TASK-0233-doctor-temporal-binding-governance.md
-lastAcceptedTask: TASK-0232
-lastAcceptedHandoff: docs/handoffs/TASK-0232.json
-lastTerminalTask: TASK-0232
-lastTerminalHandoff: docs/handoffs/TASK-0232.json
-nextAction: TASK-0233 READY（SLICE-GOVERNANCE-A：Doctor 收紧——evidence 时间真实性、taskId/Commit/Tree 绑定、0231/0232 无效性 canonical 识别；新终态激活、历史不重判）。保持不推送 main。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0233
+lastAcceptedHandoff: docs/handoffs/TASK-0233.json
+lastTerminalTask: TASK-0233
+lastTerminalHandoff: docs/handoffs/TASK-0233.json
+nextAction: TASK-0233 ACCEPTED（SLICE-GOVERNANCE-A Doctor 收紧完成）。下一动作：推送本终态至恢复分支并远端复核，然后 intake 后继 SLICE-GOVERNANCE-B 卡（永久 ID 由机器分配）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
