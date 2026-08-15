@@ -8,7 +8,7 @@ lastAcceptedTask: TASK-0212
 lastAcceptedHandoff: docs/handoffs/TASK-0212.json
 lastTerminalTask: TASK-0212
 lastTerminalHandoff: docs/handoffs/TASK-0212.json
-nextAction: TASK-0213 READY：边界台进入记忆页时携带已有 relationship id，不激活、不自动 load。保持不推送不合并。
+nextAction: TASK-0213 IN_PROGRESS：边界台进入记忆页时携带已有 relationship id，不激活、不自动 load。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

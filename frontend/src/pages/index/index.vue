@@ -48,7 +48,7 @@
           class="alpha-nav__link"
           role="button"
           aria-label="记忆管理"
-          @click="goTo('/pages/memory/memory')"
+          @click="goTo(memoryHref())"
         >
           <text>记忆管理</text>
         </button>
@@ -209,9 +209,18 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 
+import { createAuthenticatedTransport } from "@/api/transport";
+import { useAuthStore } from "@/stores/auth";
 import { useBaselineStore } from "@/stores/baseline";
+import { useRelationshipStore } from "@/stores/relationship";
 
 const store = useBaselineStore();
+const auth = useAuthStore();
+const relStore = useRelationshipStore();
+const transport = createAuthenticatedTransport({
+  getAccessToken: () => auth.accessToken,
+  onUnauthorized: () => auth.onUnauthorized(),
+});
 const {
   state,
   baseline,
@@ -288,6 +297,12 @@ function retryLoad(): void {
   }
 }
 
+function memoryHref(): string {
+  const id = relStore.currentRelationshipId;
+  if (!id) return "/pages/memory/memory";
+  return `/pages/memory/memory?relationshipId=${encodeURIComponent(id)}`;
+}
+
 function goTo(url: string): void {
   try {
     const uniApi = (globalThis as Record<string, unknown>).uni as
@@ -317,6 +332,7 @@ watch(state, (nextState) => {
 
 onMounted(() => {
   void load();
+  void relStore.load(transport);
 });
 </script>
 

@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 // TASK-0204: index page glue test -- internal page entries navigate to the
 // existing chat/memory/login routes without changing baseline preflight.
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { useRelationshipStore } from "@/stores/relationship";
 
 vi.mock("@/api/baseline", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/baseline")>();
@@ -21,12 +23,33 @@ function mountPage() {
   return mount(IndexPage, { attachTo: document.body });
 }
 
+const ACTIVE_RELATIONSHIP = {
+  relationshipId: "rel-index-1",
+  personaRef: "gentle-listener",
+  active: true,
+  createdAt: "2026-08-15T00:00:00Z",
+};
+
+function stubRelationshipFetch(relationships: unknown[] = []): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/relationships") {
+        return { ok: true, status: 200, json: async () => relationships };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }),
+  );
+}
+
 describe("index page glue (TASK-0204 internal page nav)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", {
       navigateTo: vi.fn(),
     });
+    stubRelationshipFetch();
   });
 
   it("renders internal entries for chat, memory, and login", () => {
@@ -54,6 +77,39 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
       { url: "/pages/memory/memory" },
       { url: "/pages/login/login" },
     ]);
+    wrapper.unmount();
+  });
+
+  it("carries current relationship id to memory after load", async () => {
+    stubRelationshipFetch([ACTIVE_RELATIONSHIP]);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const createSpy = vi.spyOn(relStore, "create");
+
+    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/memory/memory?relationshipId=rel-index-1",
+    });
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps a bare memory path when there is no current relationship", async () => {
+    stubRelationshipFetch([]);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
     wrapper.unmount();
   });
 });
