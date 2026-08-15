@@ -1,0 +1,45 @@
+schemaVersion: 1
+taskId: TASK-0222
+baseCommit: 98796c05ab2dee73eadb1e42a6f59df019274755
+contextFingerprint: dd36d27592347835a697c215c1c5706ba79d0e283b05672de98276afb797ad69
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+- path: .harness/invariants.yaml
+  sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+- path: .harness/project-state.yaml
+  sha256: ed2436ff6a5b23e0216f991cf1e164274b9dc9e1f49f42a3945dc1d5f5741d41
+- path: .harness/protected-paths.yaml
+  sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+- path: .harness/skills.yaml
+  sha256: ff2688b1c3e4620906f6d9da2eed7e6b663d0d9adc4d4f2a47c5fad672a35fad
+- path: .harness/sources-of-truth.yaml
+  sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+- path: .harness/task-delivery-policy.yaml
+  sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
+- path: .harness/task-ledger.yaml
+  sha256: 9a80ae6c970a527a49828dba3edfa4943cf683c5a30021e002d67e59cdb19ce2
+- path: .harness/task-lifecycle.yaml
+  sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+- path: AGENTS.md
+  sha256: 3342044d137a5a2416aa77eb760ebdc177f24e75a6c5d961454bf97cdd19969c
+- path: CLAUDE.md
+  sha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+- path: docs/schemas/evidence-pack.schema.json
+  sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+- path: docs/schemas/handoff.schema.json
+  sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+- path: docs/tasks/task-card-template.md
+  sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+- path: frontend/package.json
+  sha256: cdfa3fb54f0968139a508b6cd60b868306f242ccc54d126e05bef0cb6e7726be
+- path: frontend/src/pages/index/index.spec.ts
+  sha256: 857b4d3bc7f8cd1794cdd4cdc32049382460a29b6f11bdf2c416006d32e75e3f
+- path: frontend/src/pages/index/index.vue
+  sha256: 6ffad9564221490c94b61b3f3eaf224a7ab47b2507117a6e5b8cac39d86f2a2b
+- path: frontend/src/stores/relationship.ts
+  sha256: 3f72c1d17e78caf1a5a823230a78b923dc8a89bc52985e98e63d43423576757e
+- path: skills/task-delivery-flow/SKILL.md
+  sha256: 341b241653a7f1f8fd8ad4f48a0bf10d5fc5546d631f484d128022f19bd092fb
+- path: skills/task-intake/SKILL.md
+  sha256: 6fd28d64c5afde5cc427609091e261f7bc0024776a32612d1735b37df3536aae
