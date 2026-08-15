@@ -1,0 +1,47 @@
+schemaVersion: 1
+taskId: TASK-0214
+baseCommit: 14a8f4efba69b77e7f4d629bd73a1e6a68980ae1
+contextFingerprint: a6e50dedd1bf8f4b0c9eaae63bc76d40765a5b091b79db552380b3aa88bb47e4
+contextFingerprintAlgorithm: SHA256_ORDINAL_SORTED_PATH_EQUALS_HASH_LF_V1
+pathMode: REPOSITORY_RELATIVE_AT_BASE_COMMIT
+inputs:
+- path: .harness/invariants.yaml
+  sha256: 4f623c04d31ea87294ba1347b0beeef6e23efccc593779f9857acf8f0f0b7fcb
+- path: .harness/project-state.yaml
+  sha256: c5b187b2c41ef3fa2f24d339dda57533eecb490c148671c118f7a75f0cadf44d
+- path: .harness/protected-paths.yaml
+  sha256: 96b73fbc6f3452ebdbe31253be84e542dd036f08b28adb17edfd0dc10acf5ffd
+- path: .harness/skills.yaml
+  sha256: ff2688b1c3e4620906f6d9da2eed7e6b663d0d9adc4d4f2a47c5fad672a35fad
+- path: .harness/sources-of-truth.yaml
+  sha256: cd9eb034a8fbe4582535d48e0388caaec6b1f4db3d2737746236114fa2637c1d
+- path: .harness/task-delivery-policy.yaml
+  sha256: eff4561ce8271a66fcf76f12a00ab51f46dd6ceb113109bcf8bf2e7435dfe5ea
+- path: .harness/task-ledger.yaml
+  sha256: 1987deb01744b62b969a1bab0fb4c73c79fdcda123659885fb491e1cf9c12c27
+- path: .harness/task-lifecycle.yaml
+  sha256: c284af0eb75c8c1a54f536acf6d5d518c1fdda801aba17ac0eef3441af6f83a5
+- path: AGENTS.md
+  sha256: 3342044d137a5a2416aa77eb760ebdc177f24e75a6c5d961454bf97cdd19969c
+- path: CLAUDE.md
+  sha256: 6c491e544ff5acec1a1cfc9dc2552bad6554cf9376e4c394dcb01c23265b8259
+- path: docs/schemas/evidence-pack.schema.json
+  sha256: d13fadbfff99f2bef07838041785239d4611f464e7bda9ac872ba521dd77e2e6
+- path: docs/schemas/handoff.schema.json
+  sha256: 1b28f75b42aba9c65c9ee6337116c1bb76b611328d29de5618990f715526769b
+- path: docs/tasks/task-card-template.md
+  sha256: 1ed75ef0d0cfd40ac3740e4f32c703582f4b6c427d974fe36ad9a8628fc323d4
+- path: frontend/package.json
+  sha256: cdfa3fb54f0968139a508b6cd60b868306f242ccc54d126e05bef0cb6e7726be
+- path: frontend/src/components/RelationshipSelector.spec.ts
+  sha256: e6e5ba73fadbe0310da56b77064303dd540f6213baca9bce27bf8fceeed5e600
+- path: frontend/src/components/RelationshipSelector.vue
+  sha256: 049a39187a8fab9ebc194e4bb881d9b338c30247b2c2ecc24930bafd2e493344
+- path: frontend/src/pages/memory/memory.spec.ts
+  sha256: 91d563fadb88b0ba54dc181ac9476d07ca88fe3474445ba2450e30d99a1105dc
+- path: frontend/src/pages/memory/memory.vue
+  sha256: ac4054038e51cb1484666c458051905be40b22d7182b0415d05074707a29fced
+- path: skills/task-delivery-flow/SKILL.md
+  sha256: 341b241653a7f1f8fd8ad4f48a0bf10d5fc5546d631f484d128022f19bd092fb
+- path: skills/task-intake/SKILL.md
+  sha256: 6fd28d64c5afde5cc427609091e261f7bc0024776a32612d1735b37df3536aae
