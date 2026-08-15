@@ -1,0 +1,57 @@
+{
+  "taskId": "TASK-0203",
+  "state": "ACCEPTED",
+  "baseCommit": "3fe1189bf9d80435bb5ada8c00cf2d73bdde82ad",
+  "headCommit": "fd4892d52f9836e32c14fce3bc5a55f38d517658",
+  "evidencePath": "docs/evidence/TASK-0203/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "7d00920a02a85cfa8241ecef12488d37cb0743f4",
+      "startedAt": "2026-08-15T14:52:26+08:00",
+      "endedAt": "2026-08-15T14:58:46+08:00",
+      "elapsedSeconds": 380,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "7d00920a02a85cfa8241ecef12488d37cb0743f4",
+      "startedAt": "2026-08-15T14:52:26+08:00",
+      "endedAt": "2026-08-15T14:56:04+08:00",
+      "elapsedSeconds": 218,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T14:56:04+08:00",
+      "inProgressCommit": "fd4892d52f9836e32c14fce3bc5a55f38d517658"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "fd4892d52f9836e32c14fce3bc5a55f38d517658",
+      "startedAt": "2026-08-15T14:56:38+08:00",
+      "endedAt": "2026-08-15T14:58:46+08:00",
+      "elapsedSeconds": 128,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-15T14:56:04+08:00",
+      "inProgressCommit": "fd4892d52f9836e32c14fce3bc5a55f38d517658"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "onSend 在 store.send 之后若 phase=failed 且 generationId 为空，把 trim 后的原文写回输入框。",
+    "已有 generationId 的失败不回填，避免重复发送。",
+    "chat.spec.ts 10/10 PASS；canonical precheck 8/8（doctor 960810）；git diff --check PASS。未改 store/API/取消。"
+  ],
+  "remaining": [
+    "SLICE-GOVERNANCE 与 COORD/SAFETY/QUOTA/TLS/RETRY/CANCEL 仍需第 10 条授权。"
+  ],
+  "knownRisks": [
+    "回填只覆盖未创建 generation 的失败；流失败后用户需自行重打，避免重复 outbound。"
+  ],
+  "nextAction": "TASK-0203 ACCEPTED（未创建 generation 的发送失败后输入已恢复，不改变取消/失败语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。"
+}

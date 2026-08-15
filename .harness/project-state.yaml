@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0203
-activeTaskCard: docs/tasks/TASK-0203-h5-chat-restore-input-on-prestream-fail.md
-lastAcceptedTask: TASK-0202
-lastAcceptedHandoff: docs/handoffs/TASK-0202.json
-lastTerminalTask: TASK-0202
-lastTerminalHandoff: docs/handoffs/TASK-0202.json
-nextAction: TASK-0203 READY：未创建 generation 的发送失败后恢复输入，不改变取消/失败语义。保持不推送不合并。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0203
+lastAcceptedHandoff: docs/handoffs/TASK-0203.json
+lastTerminalTask: TASK-0203
+lastTerminalHandoff: docs/handoffs/TASK-0203.json
+nextAction: TASK-0203 ACCEPTED（未创建 generation 的发送失败后输入已恢复，不改变取消/失败语义）。下一动作：按 AGENTS.md 从机器真源恢复后继续发现下一张合法卡（SLICE-GOVERNANCE / COORD / SAFETY / QUOTA / TLS / RETRY / CANCEL 仍需第 10 条授权，当前不自动开卡）。保持不推送不合并。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

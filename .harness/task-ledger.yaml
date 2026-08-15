@@ -1068,3 +1068,9 @@ tasks:
     taskCard: docs/tasks/TASK-0202-h5-login-empty-submit-guard.md
     evidence: docs/evidence/TASK-0202/evidence-pack.json
     handoff: docs/handoffs/TASK-0202.json
+  TASK-0203:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0203-h5-chat-restore-input-on-prestream-fail.md
+    evidence: docs/evidence/TASK-0203/evidence-pack.json
+    handoff: docs/handoffs/TASK-0203.json
