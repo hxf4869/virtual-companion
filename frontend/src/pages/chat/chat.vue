@@ -2,14 +2,24 @@
   <view class="chat-page">
     <view class="chat-header">
       <text>Technical Alpha · 离线聊天</text>
-      <button
-        data-testid="nav-index"
-        class="chat-nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
+      <view class="chat-header-nav">
+        <button
+          data-testid="nav-memory"
+          class="chat-nav-index"
+          aria-label="记忆管理"
+          @click="goTo('/pages/memory/memory')"
+        >
+          记忆管理
+        </button>
+        <button
+          data-testid="nav-index"
+          class="chat-nav-index"
+          aria-label="返回边界台"
+          @click="goTo('/pages/index/index')"
+        >
+          返回边界台
+        </button>
+      </view>
     </view>
 
     <view v-if="initError" class="chat-error" role="alert">
@@ -314,6 +324,11 @@ export default defineComponent({
   font-size: 32rpx;
   font-weight: 600;
   margin-bottom: 24rpx;
+}
+.chat-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
 }
 .chat-nav-index {
   flex: 0 0 auto;

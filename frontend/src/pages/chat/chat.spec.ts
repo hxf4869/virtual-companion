@@ -206,4 +206,32 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(cancelSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it("renders a memory-page entry even before a relationship is selected", async () => {
+    stubFetch({ relationships: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const nav = wrapper.find('[data-testid="nav-memory"]');
+    expect(nav.exists()).toBe(true);
+    expect(nav.text()).toContain("记忆管理");
+    wrapper.unmount();
+  });
+
+  it("navigates to the memory page without calling send or cancel", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send");
+    const cancelSpy = vi.spyOn(store, "cancel");
+
+    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(cancelSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });
