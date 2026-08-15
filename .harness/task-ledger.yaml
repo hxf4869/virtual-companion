@@ -1038,3 +1038,9 @@ tasks:
     taskCard: docs/tasks/TASK-0197-task0196-invalid-closure-governance-recovery.md
     evidence: docs/evidence/TASK-0197/evidence-pack.json
     handoff: docs/handoffs/TASK-0197.json
+  TASK-0198:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0198-task0196-invalid-closure-authorization-quarantine.md
+    evidence: docs/evidence/TASK-0198/evidence-pack.json
+    handoff: docs/handoffs/TASK-0198.json
