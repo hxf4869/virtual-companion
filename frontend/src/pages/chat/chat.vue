@@ -20,6 +20,14 @@
       <template v-else>
         <view class="chat-history" data-testid="history">
           <view
+            v-if="showEmptyHistory"
+            class="chat-empty"
+            data-testid="empty-history"
+            role="status"
+          >
+            <text>还没有消息。输入一句话开始倾听。</text>
+          </view>
+          <view
             v-for="msg in messages"
             :key="msg.messageId"
             class="chat-message"
@@ -143,6 +151,13 @@ export default defineComponent({
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
     const hasRelationship = computed(() => relStore.currentRelationshipId !== null);
+    const showEmptyHistory = computed(
+      () =>
+        hasRelationship.value &&
+        !isStreaming.value &&
+        !draft.value &&
+        messages.value.length === 0,
+    );
 
     function roleLabel(role: string): string {
       if (role === "assistant") return "AI";
@@ -237,6 +252,7 @@ export default defineComponent({
       messages,
       draft,
       isStreaming,
+      showEmptyHistory,
       canSend,
       hasRelationship,
       inputText,
@@ -275,6 +291,11 @@ export default defineComponent({
   flex: 1;
   overflow-y: auto;
   margin-bottom: 24rpx;
+}
+.chat-empty {
+  padding: 24rpx;
+  opacity: 0.75;
+  font-size: 26rpx;
 }
 .chat-message {
   padding: 16rpx;

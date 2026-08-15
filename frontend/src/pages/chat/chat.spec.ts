@@ -9,6 +9,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPage from "./chat.vue";
+import { useChatStore } from "@/stores/chat";
 
 const ACTIVE_RELATIONSHIP = {
   relationshipId: 1,
@@ -95,6 +96,37 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     await flushPromises();
 
     expect(wrapper.find('[data-testid="history"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("shows an empty-history status when the conversation has no messages", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const empty = wrapper.find('[data-testid="empty-history"]');
+    expect(empty.exists()).toBe(true);
+    expect(empty.attributes("role")).toBe("status");
+    expect(empty.text()).toContain("还没有消息");
+    wrapper.unmount();
+  });
+
+  it("hides the empty-history status after committed messages exist", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "user",
+        content: "你好",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(false);
+    expect(wrapper.find(".msg-content").text()).toContain("你好");
     wrapper.unmount();
   });
 
