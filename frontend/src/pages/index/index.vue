@@ -39,7 +39,7 @@
           class="alpha-nav__link"
           role="button"
           aria-label="离线聊天"
-          @click="goTo('/pages/chat/chat')"
+          @click="goTo(chatHref())"
         >
           <text>离线聊天</text>
         </button>
@@ -301,6 +301,12 @@ function memoryHref(): string {
   const id = relStore.currentRelationshipId;
   if (!id) return "/pages/memory/memory";
   return `/pages/memory/memory?relationshipId=${encodeURIComponent(id)}`;
+}
+
+function chatHref(): string {
+  const id = relStore.currentRelationshipId;
+  if (!id) return "/pages/chat/chat";
+  return `/pages/chat/chat?relationshipId=${encodeURIComponent(id)}`;
 }
 
 function goTo(url: string): void {

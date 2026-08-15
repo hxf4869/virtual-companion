@@ -112,4 +112,37 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
     wrapper.unmount();
   });
+
+  it("carries current relationship id to chat after load", async () => {
+    stubRelationshipFetch([ACTIVE_RELATIONSHIP]);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const activateSpy = vi.spyOn(relStore, "activate");
+    const createSpy = vi.spyOn(relStore, "create");
+
+    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/chat/chat?relationshipId=rel-index-1",
+    });
+    expect(activateSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps a bare chat path when there is no current relationship", async () => {
+    stubRelationshipFetch([]);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
+    wrapper.unmount();
+  });
 });
