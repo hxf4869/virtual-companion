@@ -1206,3 +1206,9 @@ tasks:
     taskCard: docs/tasks/TASK-0225-h5-memory-show-current-relationship.md
     evidence: docs/evidence/TASK-0225/evidence-pack.json
     handoff: docs/handoffs/TASK-0225.json
+  TASK-0226:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0226-h5-index-relationship-load-error.md
+    evidence: docs/evidence/TASK-0226/evidence-pack.json
+    handoff: docs/handoffs/TASK-0226.json
