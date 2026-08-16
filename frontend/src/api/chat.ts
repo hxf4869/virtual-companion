@@ -35,7 +35,18 @@ export interface Generation {
   conversationId: string;
   logicalGenerationId: string;
   status: string;
+  /** CHAT-MODE: frozen reception mode (AUTO | LISTEN | DISCUSS). */
+  mode?: string;
   createdAt?: string;
+}
+
+/** CHAT-MODE: approved turn-level interaction modes (OpenAPI InteractionModeCode). */
+export type ChatMode = "AUTO" | "LISTEN" | "DISCUSS";
+
+/** CHAT-MODE: narrow an arbitrary string to an approved mode or undefined. */
+export function asChatMode(value: unknown): ChatMode | undefined {
+  if (value === "AUTO" || value === "LISTEN" || value === "DISCUSS") return value;
+  return undefined;
 }
 
 export interface Message {
@@ -127,6 +138,8 @@ function asGeneration(json: unknown): Generation | null {
     conversationId,
     logicalGenerationId,
     status,
+    // CHAT-MODE: optional echo of the frozen reception mode.
+    mode: asChatMode(o.mode),
     createdAt: asString(o, "createdAt"),
   };
 }
@@ -277,16 +290,22 @@ export async function listConversations(
 /**
  * Idempotently send a chat turn (vc.receive_generation). Returns the generation
  * (newly created or rejoined) on success, null on 403/404 (existence hidden).
+ * CHAT-MODE: mode selects the turn-level interaction mode; omitted or AUTO
+ * keeps the persona default.
  */
 export async function sendGeneration(
   t: ChatTransport,
   conversationId: string,
   idempotencyKey: string,
   userContent?: string,
+  mode?: ChatMode,
 ): Promise<Generation | null> {
   const body: Record<string, unknown> = { idempotencyKey };
   if (userContent !== undefined) {
     body.userContent = userContent;
+  }
+  if (mode !== undefined && mode !== "AUTO") {
+    body.mode = mode;
   }
   const r = await t.request(
     "POST",

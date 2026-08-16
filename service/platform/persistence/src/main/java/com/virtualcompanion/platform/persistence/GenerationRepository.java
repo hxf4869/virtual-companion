@@ -24,7 +24,7 @@ public class GenerationRepository {
 
     private static final String SELECT_SQL = """
             SELECT owner_user_id, id, conversation_id, logical_generation_id,
-                   status, idempotency_key
+                   status, idempotency_key, mode
             FROM vc.generation
             """;
 
@@ -61,6 +61,7 @@ public class GenerationRepository {
                 rs.getLong("conversation_id"),
                 rs.getString("logical_generation_id"),
                 rs.getString("status"),
-                rs.getString("idempotency_key"));
+                rs.getString("idempotency_key"),
+                rs.getString("mode"));
     }
 }

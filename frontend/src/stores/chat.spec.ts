@@ -37,9 +37,11 @@ function mockChatTransport(opts: {
   messagesJson?: unknown;
   conversationsJson?: unknown;
   conversationOk?: boolean;
+  /** CHAT-MODE: capture every generation request body (in call order). */
+  generationBodies?: unknown[];
 }): ChatTransport {
   return {
-    async request(method: string, path: string): Promise<ChatApiResponse> {
+    async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
       if (path === "/api/v1/conversations") {
         if (method === "GET") {
           return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
@@ -51,6 +53,7 @@ function mockChatTransport(opts: {
         return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
       }
       if (path.includes("/generations")) {
+        opts.generationBodies?.push(body);
         const status = opts.generationStatus ?? 200;
         return {
           ok: status === 200,
@@ -370,6 +373,41 @@ describe("useChatStore", () => {
 
     expect(store.phase).toBe("failed");
     expect(store.outcome).toBeNull();
+  });
+
+  it("CHAT-MODE: send carries the selected mode in the generation body", async () => {
+    const store = useChatStore();
+    const bodies: unknown[] = [];
+    const transport = mockChatTransport({
+      generationBodies: bodies,
+      messagesJson: [
+        { messageId: 10, conversationId: 1, role: "user", content: "Hello" },
+        { messageId: 11, conversationId: 1, role: "assistant", content: "Hi" },
+      ],
+    });
+
+    await store.initConversation(transport, "1");
+    store.setMode("DISCUSS");
+    await store.send(transport, successDeps(), "Hello");
+
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({
+      idempotencyKey: expect.any(String),
+      userContent: "Hello",
+      mode: "DISCUSS",
+    });
+  });
+
+  it("CHAT-MODE: AUTO is the default and setMode narrows unapproved input", async () => {
+    const store = useChatStore();
+    expect(store.selectedMode).toBe("AUTO");
+
+    store.setMode("LISTEN");
+    expect(store.selectedMode).toBe("LISTEN");
+
+    // Unapproved values are ignored, never applied.
+    store.setMode("CASUAL");
+    expect(store.selectedMode).toBe("LISTEN");
   });
 
   it("send without conversationId transitions to failed", async () => {

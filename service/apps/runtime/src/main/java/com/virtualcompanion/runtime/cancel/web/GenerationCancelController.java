@@ -68,7 +68,8 @@ public class GenerationCancelController {
                 record.id(),
                 record.conversationId(),
                 record.logicalGenerationId(),
-                record.status());
+                record.status(),
+                record.mode());
     }
 
     private static long parseId(String raw) {
@@ -90,12 +91,14 @@ public class GenerationCancelController {
      * it is declared here because the Spring Modulith application structure
      * forbids depending on a web-package type of the {@code generation} module
      * (and that package is a protected path that cannot add an exposes). The
-     * wire format is unchanged.
+     * wire format is unchanged; {@code mode} is the frozen reception mode
+     * (CHAT-MODE).
      */
     public record GenerationResponse(
             long generationId,
             long conversationId,
             String logicalGenerationId,
-            String status) {
+            String status,
+            String mode) {
     }
 }

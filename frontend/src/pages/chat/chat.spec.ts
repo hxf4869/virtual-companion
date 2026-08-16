@@ -75,6 +75,27 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("CHAT-MODE: renders the three quick-mode chips and selects on click", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const row = wrapper.find('[data-testid="mode-row"]');
+    expect(row.exists()).toBe(true);
+    for (const mode of ["auto", "listen", "discuss"]) {
+      expect(wrapper.find(`button[data-testid="mode-${mode}"]`).exists()).toBe(true);
+    }
+
+    // AUTO starts active; clicking DISCUSS flips the active chip and the store.
+    expect(wrapper.find('button[data-testid="mode-auto"]').attributes("aria-pressed")).toBe("true");
+    await wrapper.find('button[data-testid="mode-discuss"]').trigger("click");
+    expect(wrapper.find('button[data-testid="mode-discuss"]').attributes("aria-pressed")).toBe("true");
+    expect(wrapper.find('button[data-testid="mode-auto"]').attributes("aria-pressed")).toBe("false");
+
+    const store = useChatStore();
+    expect(store.selectedMode).toBe("DISCUSS");
+    wrapper.unmount();
+  });
+
   it("disables the send button when the input is empty", async () => {
     const wrapper = mountPage();
     await flushPromises();

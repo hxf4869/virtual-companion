@@ -111,4 +111,40 @@ class GenerationReceiveServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> GenerationReceiveService.validateReceive(7L, 9001L, "user", "hi", "  "));
     }
+
+    // ---- CHAT-MODE mode normalization ----
+
+    @Test
+    void generationRecordKeepsModeAndLegacyDefaultsToAuto() {
+        GenerationRecord explicit = new GenerationRecord(
+                7L, 101L, 9001L, "gen-abc", "CREATED", "key-1", "DISCUSS");
+        assertEquals("DISCUSS", explicit.mode());
+        GenerationRecord legacy = new GenerationRecord(7L, 101L, 9001L, "gen-abc", "CREATED", "key-1");
+        assertEquals("AUTO", legacy.mode());
+    }
+
+    @Test
+    void generationRecordRejectsBlankMode() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new GenerationRecord(7L, 101L, 9001L, "gen-abc", "CREATED", null, "  "));
+    }
+
+    @Test
+    void normalizeModeDefaultsBlankToAutoAndKeepsApprovedModes() {
+        assertEquals("AUTO", GenerationReceiveService.normalizeMode(null));
+        assertEquals("AUTO", GenerationReceiveService.normalizeMode("  "));
+        assertEquals("AUTO", GenerationReceiveService.normalizeMode("AUTO"));
+        assertEquals("LISTEN", GenerationReceiveService.normalizeMode("LISTEN"));
+        assertEquals("DISCUSS", GenerationReceiveService.normalizeMode("DISCUSS"));
+    }
+
+    @Test
+    void normalizeModeRejectsUnapprovedModes() {
+        assertThrows(IllegalArgumentException.class,
+                () -> GenerationReceiveService.normalizeMode("CASUAL"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GenerationReceiveService.normalizeMode("listen"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GenerationReceiveService.normalizeMode("DISCUSS; DROP TABLE x"));
+    }
 }

@@ -30,6 +30,7 @@ export interface Generation {
   conversationId: string
   logicalGenerationId: string
   status: string
+  mode: string
   createdAt?: string
 }
 
@@ -75,6 +76,7 @@ export interface Message {
 export interface SendGenerationRequest {
   idempotencyKey: string
   userContent?: string
+  mode?: string
 }
 
 export interface CreateConversationRequest {

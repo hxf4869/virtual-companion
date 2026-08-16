@@ -134,7 +134,8 @@ public class LiveInvocationAssembler {
      *     for legacy callers, which fall back to the transaction-local GUC)
      */
     public LiveInvocationRequest assemble(long ownerUserId, long generationId, String claimFence) {
-        OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
+        ResolvedContext context = loadContext(ownerUserId, generationId);
+        OwnershipTuple ownership = context.ownership();
         // CTX-BUDGET: fixed SYSTEM blocks (recall; the ZERO_LLM path carries no
         // persona) are budgeted first, history takes the remaining tokens.
         String recallBlock = recallBlock(ownerUserId, ownership);
@@ -216,15 +217,17 @@ public class LiveInvocationAssembler {
             throw new IllegalArgumentException(
                     "requestedSnapshotId and executionSnapshotId must not be blank");
         }
-        OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
+        ResolvedContext context = loadContext(ownerUserId, generationId);
+        OwnershipTuple ownership = context.ownership();
         // PERSONA-WIRE: the companion persona is the outermost SYSTEM context
         // (so it prepends BEFORE the recall block); consumed by the external
         // branch only (the ZERO_LLM branch ignores it). Real persona content
         // is approved out of band — only the approved skeleton fields are
-        // rendered, nothing is invented.
+        // rendered, nothing is invented. CHAT-MODE: an explicitly requested
+        // LISTEN/DISCUSS overrides the persona default for this turn.
         // CTX-BUDGET: both SYSTEM blocks are budgeted first, history takes the
         // remaining input tokens (most recent messages kept first).
-        String personaBlock = personaBlock(ownerUserId, ownership);
+        String personaBlock = personaBlock(ownerUserId, ownership, context.mode());
         String recallBlock = recallBlock(ownerUserId, ownership);
         List<ProtocolMessage> messages = loadMessages(
                 ownerUserId, ownership.conversationId(), messageTokenBudget(personaBlock, recallBlock));
@@ -256,7 +259,11 @@ public class LiveInvocationAssembler {
                 new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80));
     }
 
-    private OwnershipTuple loadOwnership(long ownerUserId, long generationId) {
+    /**
+     * CHAT-MODE: resolve the owner-bound ownership tuple together with the
+     * generation's frozen reception mode (a single record fetch serves both).
+     */
+    private ResolvedContext loadContext(long ownerUserId, long generationId) {
         GenerationRecord generation = generationRepository
                 .find(ownerUserId, generationId)
                 .orElseThrow(() -> new IllegalStateException(
@@ -267,11 +274,17 @@ public class LiveInvocationAssembler {
                 .orElseThrow(() -> new IllegalStateException(
                         "conversation " + conversationId + " not found for owner " + ownerUserId))
                 .relationshipId();
-        return new OwnershipTuple(
-                Long.toString(ownerUserId),
-                Long.toString(relationshipId),
-                Long.toString(conversationId),
-                Long.toString(generationId));
+        return new ResolvedContext(
+                new OwnershipTuple(
+                        Long.toString(ownerUserId),
+                        Long.toString(relationshipId),
+                        Long.toString(conversationId),
+                        Long.toString(generationId)),
+                generation.mode());
+    }
+
+    /** Ownership + frozen reception mode for one generation turn. */
+    private record ResolvedContext(OwnershipTuple ownership, String mode) {
     }
 
     /**
@@ -331,8 +344,13 @@ public class LiveInvocationAssembler {
      * approved skeleton fields only (display name, tone, default interaction
      * mode, reflection style). An unknown/absent personaRef yields null — no
      * synthetic persona is invented.
+     *
+     * <p>CHAT-MODE: an explicitly requested {@code LISTEN} or {@code DISCUSS}
+     * appends a fixed, approved turn-mode instruction that overrides the
+     * persona default for this turn. {@code AUTO} (or an absent mode) keeps the
+     * persona default untouched.
      */
-    private String personaBlock(long ownerUserId, OwnershipTuple ownership) {
+    private String personaBlock(long ownerUserId, OwnershipTuple ownership, String mode) {
         long relationshipId = Long.parseLong(ownership.relationshipId());
         RelationshipRecord relationship =
                 relationshipService.get(ownerUserId, relationshipId).orElse(null);
@@ -341,12 +359,30 @@ public class LiveInvocationAssembler {
         if (persona == null) {
             return null;
         }
-        return "Companion persona: %s. Tone: %s. Default interaction mode: %s. Reflection style: %s."
+        String block = "Companion persona: %s. Tone: %s. Default interaction mode: %s. Reflection style: %s."
                 .formatted(
                         persona.displayName(),
                         persona.tone(),
                         persona.defaultMode().name().toLowerCase(java.util.Locale.ROOT),
                         persona.reflectionPromptStyle());
+        String override = modeInstruction(mode);
+        return override == null ? block : block + " " + override;
+    }
+
+    /**
+     * CHAT-MODE: fixed approved turn-mode instruction for an explicit
+     * LISTEN/DISCUSS request; null for AUTO so the persona default rules.
+     */
+    private static String modeInstruction(String mode) {
+        return switch (mode) {
+            case "LISTEN" ->
+                    "User-requested interaction mode for this turn: LISTEN."
+                            + " Listen first and reflect feelings; do not volunteer advice or solutions.";
+            case "DISCUSS" ->
+                    "User-requested interaction mode for this turn: DISCUSS."
+                            + " The user opened an active exchange: ask questions and analyze together.";
+            default -> null;
+        };
     }
 
     /** PERSONA-WIRE: persona-templates catalog id → approved skeleton. */

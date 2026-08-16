@@ -31,6 +31,8 @@ import {
   listMessages,
   renameConversation as apiRenameConversation,
   sendGeneration,
+  asChatMode,
+  type ChatMode,
   type ChatTransport,
   type ConversationListItem,
   type CreateConversationResponse,
@@ -85,6 +87,18 @@ export const useChatStore = defineStore("h5-chat", () => {
   const pendingUserContent = ref("");
   // USAGE-VIZ: settled provider token usage of the last completed generation.
   const usage = ref<{ inputTokens: number; outputTokens: number } | null>(null);
+  // CHAT-MODE: the turn-level interaction mode for the next send. AUTO keeps
+  // the persona default; LISTEN/DISCUSS override it for the turn. Sticky for
+  // the page session (the page's mode chips write it via setMode).
+  const selectedMode = ref<ChatMode>("AUTO");
+
+  /** CHAT-MODE: narrow arbitrary chip input to an approved mode (no-op otherwise). */
+  function setMode(mode: unknown): void {
+    const narrowed = asChatMode(mode);
+    if (narrowed) {
+      selectedMode.value = narrowed;
+    }
+  }
 
   /** The rendered draft: joined delta payloads of the contiguous events only. */
   const draft = computed(() =>
@@ -233,6 +247,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     pendingMemoryCount.value = 0;
     pendingUserContent.value = "";
     usage.value = null;
+    selectedMode.value = "AUTO";
     handle = null;
     lastTransport = null;
   }
@@ -417,6 +432,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       conversationId.value,
       idempotencyKey,
       content,
+      selectedMode.value,
     );
     if (!generation) {
       phase.value = "failed";
@@ -441,6 +457,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     pendingMemoryCount,
     pendingUserContent,
     usage,
+    selectedMode,
+    setMode,
     draft,
     isStreaming,
     isTerminal,

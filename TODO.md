@@ -2,7 +2,21 @@
 
 产品待办（现状声明见 README）：
 
-## 当前里程碑（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
+## 当前里程碑（2026-08-16 第六轮）：对话模式、单条消息删除与反馈（进行中）
+
+> 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+> 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。
+
+- [x] CHAT-MODE 对话模式：OpenAPI SendGenerationRequest.mode
+      （AUTO/LISTEN/DISCUSS，contract-first 重新生成 dist）+ V34 迁移
+      （vc.generation.mode 冻结 + receive_generation p_mode + CHECK 约束 + 仅
+      vc_api 可执行）+ 组装器外部分支把显式模式翻译为固定轮次指令附加到人设
+      SYSTEM 块（AUTO 保持 gentle-listener 默认）+ 前端输入区「自动/只听我说/
+      一起聊聊」快捷 chips + SQL/单元/组件测试（FR-CHAT-002）。
+- [ ] MSG-DELETE 单条消息删除（FR-CHAT-004 / FR-DATA-003）
+- [ ] FEEDBACK 生成反馈（FR-CHAT-003）
+
+## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 
 > 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
 > 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。

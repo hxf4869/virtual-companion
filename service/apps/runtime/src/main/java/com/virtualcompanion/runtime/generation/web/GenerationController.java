@@ -69,12 +69,18 @@ public class GenerationController {
             @Valid @RequestBody SendGenerationRequest request) {
         long conversation = parseId(conversationId, "conversationId");
 
+        // CHAT-MODE: eager validation rejects unapproved modes with a 400
+        // (fail closed toward the persona default; the SD function falls back
+        // to AUTO only for direct callers).
+        String mode = GenerationReceiveService.normalizeMode(request.mode());
+
         ReceivedGeneration received = receiveService.receive(
                 ownerUserId,
                 conversation,
                 request.idempotencyKey(),
                 GenerationReceiveService.DEFAULT_USER_ROLE,
-                request.userContent());
+                request.userContent(),
+                mode);
 
         // Enqueue only on first creation; a duplicate reception resolves to the
         // same logical generation and must not produce a second work item.
@@ -90,7 +96,8 @@ public class GenerationController {
                 record.id(),
                 record.conversationId(),
                 record.logicalGenerationId(),
-                record.status());
+                record.status(),
+                record.mode());
     }
 
     @GetMapping("/generations/{generationId}/snapshot")
@@ -127,7 +134,8 @@ public class GenerationController {
     /** Intake request body (OpenAPI {@code SendGenerationRequest}). */
     public record SendGenerationRequest(
             @NotBlank @Size(max = 128) String idempotencyKey,
-            @Size(max = 4096) String userContent) {
+            @Size(max = 4096) String userContent,
+            String mode) {
     }
 
     /** Generation response (OpenAPI {@code Generation}). */
@@ -135,7 +143,8 @@ public class GenerationController {
             long generationId,
             long conversationId,
             String logicalGenerationId,
-            String status) {
+            String status,
+            String mode) {
     }
 
     /**

@@ -220,6 +220,28 @@
           </button>
         </view>
 
+        <!-- CHAT-MODE: turn-level interaction mode quick switcher (AUTO keeps
+             the persona default; explicit modes ride the next send). -->
+        <view
+          class="chat-mode-row"
+          data-testid="mode-row"
+          role="group"
+          aria-label="选择对话模式"
+        >
+          <button
+            v-for="opt in MODE_OPTIONS"
+            :key="opt.value"
+            class="chat-mode-chip"
+            :class="{ 'chat-mode-chip-active': selectedMode === opt.value }"
+            :data-testid="`mode-${opt.value.toLowerCase()}`"
+            :aria-pressed="selectedMode === opt.value"
+            :disabled="isStreaming"
+            @click="onSelectMode(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </view>
+
         <view class="chat-input-area">
           <input
             v-model="inputText"
@@ -319,6 +341,13 @@ export default defineComponent({
     const confirmDeleteId = ref<string | null>(null);
     const renaming = ref(false);
     const renameInput = ref("");
+    // CHAT-MODE: approved quick-mode options; AUTO keeps the persona default,
+    // LISTEN/DISCUSS override it for the next turn (FR-CHAT-002).
+    const MODE_OPTIONS = [
+      { value: "AUTO", label: "自动" },
+      { value: "LISTEN", label: "只听我说" },
+      { value: "DISCUSS", label: "一起聊聊" },
+    ] as const;
 
     // sessionId: client-generated UUID per chat session — the real source for
     // the realtime ticket binding (mint body carries it).
@@ -353,6 +382,8 @@ export default defineComponent({
     const usage = computed(() => store.usage);
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
+    // CHAT-MODE: mirrors the store's sticky selection for the chip highlight.
+    const selectedMode = computed(() => store.selectedMode);
     const hasRelationship = computed(() => relStore.currentRelationshipId !== null);
     const showEmptyHistory = computed(
       () =>
@@ -489,6 +520,12 @@ export default defineComponent({
 
     function onCancel(): void {
       store.cancel();
+    }
+
+    /** CHAT-MODE: select a quick mode for the next turn (ignored mid-stream). */
+    function onSelectMode(mode: string): void {
+      if (isStreaming.value) return;
+      store.setMode(mode);
     }
 
     /** SESS-REVIVE: revoke the refresh cookie server-side and go to login. */
@@ -713,6 +750,9 @@ export default defineComponent({
       confirmDeleteId,
       renaming,
       renameInput,
+      MODE_OPTIONS,
+      selectedMode,
+      onSelectMode,
       statusText,
       canRetry,
       roleLabel,
@@ -894,6 +934,28 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 12rpx;
+}
+/* CHAT-MODE: quick-mode chips above the input row. */
+.chat-mode-row {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+.chat-mode-chip {
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  color: #b8c4d8;
+  font-size: 24rpx;
+}
+.chat-mode-chip-active {
+  background-color: #2a6a9a;
+  border-color: #2a6a9a;
+  color: #ffffff;
+}
+.chat-mode-chip[disabled] {
+  opacity: 0.5;
 }
 .chat-input {
   flex: 1;

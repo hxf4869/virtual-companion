@@ -142,6 +142,46 @@ describe("sendGeneration", () => {
     expect(calls[0].body).toEqual({ idempotencyKey: "key-abc" });
   });
 
+  it("CHAT-MODE: sends an explicit non-AUTO mode in the body", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: GENERATION_JSON,
+    });
+
+    await sendGeneration(transport, "7", "key-abc", "Hello", "DISCUSS");
+
+    expect(calls[0].body).toEqual({
+      idempotencyKey: "key-abc",
+      userContent: "Hello",
+      mode: "DISCUSS",
+    });
+  });
+
+  it("CHAT-MODE: omits AUTO mode from the body (persona default)", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: GENERATION_JSON,
+    });
+
+    await sendGeneration(transport, "7", "key-abc", "Hello", "AUTO");
+
+    expect(calls[0].body).toEqual({ idempotencyKey: "key-abc", userContent: "Hello" });
+  });
+
+  it("CHAT-MODE: parses the echoed generation mode", async () => {
+    const { transport } = recorder({
+      ok: true,
+      status: 200,
+      json: { ...GENERATION_JSON, mode: "LISTEN" },
+    });
+
+    const result = await sendGeneration(transport, "7", "key-abc", "Hello");
+
+    expect(result?.mode).toBe("LISTEN");
+  });
+
   it("returns null on 404 (foreign conversation, existence hidden)", async () => {
     const { transport } = recorder({
       ok: false,

@@ -6,6 +6,7 @@ public record Generation(
     final String conversationId,
     final String logicalGenerationId,
     final String status,
+    final String mode,
     final String createdAt
 ) {
     public Generation {
@@ -13,6 +14,7 @@ public record Generation(
         java.util.Objects.requireNonNull(conversationId, "conversationId must not be null");
         java.util.Objects.requireNonNull(logicalGenerationId, "logicalGenerationId must not be null");
         java.util.Objects.requireNonNull(status, "status must not be null");
+        java.util.Objects.requireNonNull(mode, "mode must not be null");
         // createdAt is nullable
     }
 }

@@ -14,6 +14,10 @@ import java.util.Objects;
  * <p>The lifecycle status is stored as text (the catalog {@code GenerationState}
  * code) so this persistence skeleton does not depend on the generated catalog
  * types. {@code CREATED} is the value written on first reception.
+ *
+ * <p>CHAT-MODE: {@code mode} is the turn-level interaction mode captured at
+ * reception ({@code AUTO}, {@code LISTEN} or {@code DISCUSS}; V34). It is
+ * frozen on the first reception and never rewritten by an idempotent rejoin.
  */
 public record GenerationRecord(
         long ownerUserId,
@@ -21,7 +25,22 @@ public record GenerationRecord(
         long conversationId,
         String logicalGenerationId,
         String status,
-        String idempotencyKey) {
+        String idempotencyKey,
+        String mode) {
+
+    /** CHAT-MODE: default mode when a caller omits it ({@code AUTO}). */
+    public static final String DEFAULT_MODE = "AUTO";
+
+    /** Legacy 6-arg construction defaults the mode to {@code AUTO}. */
+    public GenerationRecord(
+            long ownerUserId,
+            long id,
+            long conversationId,
+            String logicalGenerationId,
+            String status,
+            String idempotencyKey) {
+        this(ownerUserId, id, conversationId, logicalGenerationId, status, idempotencyKey, DEFAULT_MODE);
+    }
 
     public GenerationRecord {
         if (ownerUserId <= 0) {
@@ -43,6 +62,9 @@ public record GenerationRecord(
         }
         if (idempotencyKey != null && idempotencyKey.isBlank()) {
             throw new IllegalArgumentException("idempotencyKey must not be blank");
+        }
+        if (mode == null || mode.isBlank()) {
+            throw new IllegalArgumentException("mode must not be blank");
         }
     }
 }

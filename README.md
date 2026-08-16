@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V33 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V34 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -48,7 +48,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文）
 - `POST /api/v1/conversations`、`GET /api/v1/conversations`（会话列表，keyset + 最后消息预览）、
   `DELETE/PATCH /api/v1/conversations/{conversationId}`（删除级联清理、重命名写入 title）、
-  `POST /api/v1/conversations/{conversationId}/generations`、
+  `POST /api/v1/conversations/{conversationId}/generations`（CHAT-MODE：请求可带
+  `mode` = AUTO/LISTEN/DISCUSS 的轮次级对话模式，首次接收时冻结在 generation 行并按
+  idempotencyKey 重入不覆盖，AUTO 保持人设默认）、
   `GET /api/v1/conversations/{conversationId}/messages`
 - `GET /api/v1/generations/{generationId}/snapshot`（含 finalize 结算后的 usage：
   输入/输出 token）、`POST /api/v1/generations/{generationId}/cancel`
@@ -62,6 +64,14 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-16 第六轮）：
+
+- 对话模式（CHAT-MODE）：`SendGenerationRequest.mode`（AUTO/LISTEN/DISCUSS）经 V34
+  迁移冻结在 generation 行（幂等重入不覆盖）；组装器在外部 provider 分支把显式
+  LISTEN/DISCUSS 翻译为固定的、经批准的轮次指令附加到人设 SYSTEM 块（AUTO 保持
+  gentle-listener 默认倾听姿态），ZERO_LLM 确定性分支不受影响；前端输入区新增
+  「自动/只听我说/一起聊聊」快捷模式 chips（FR-CHAT-002）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

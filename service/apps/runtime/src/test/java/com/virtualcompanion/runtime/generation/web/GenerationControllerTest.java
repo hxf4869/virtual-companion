@@ -91,7 +91,7 @@ class GenerationControllerTest {
     @Test
     void sendGenerationFirstCreationEnqueuesAndReturnsTheGeneration() throws Exception {
         when(receiveService.receive(1L, 100L, "key-1",
-                GenerationReceiveService.DEFAULT_USER_ROLE, "hello"))
+                GenerationReceiveService.DEFAULT_USER_ROLE, "hello", "AUTO"))
                 .thenReturn(new ReceivedGeneration("gen-55", 55L, 200L, true));
         when(generationRepository.find(1L, 55L))
                 .thenReturn(Optional.of(new GenerationRecord(
@@ -104,15 +104,43 @@ class GenerationControllerTest {
                 .andExpect(jsonPath("$.generationId").value(55))
                 .andExpect(jsonPath("$.conversationId").value(100))
                 .andExpect(jsonPath("$.logicalGenerationId").value("gen-55"))
-                .andExpect(jsonPath("$.status").value("CREATED"));
+                .andExpect(jsonPath("$.status").value("CREATED"))
+                .andExpect(jsonPath("$.mode").value("AUTO"));
 
         verify(enqueueService).enqueue(1L, "GENERATION", 55L);
     }
 
     @Test
+    void sendGenerationExplicitModeIsValidatedAndEchoed() throws Exception {
+        when(receiveService.receive(1L, 100L, "key-1",
+                GenerationReceiveService.DEFAULT_USER_ROLE, "hello", "DISCUSS"))
+                .thenReturn(new ReceivedGeneration("gen-55", 55L, 200L, true));
+        when(generationRepository.find(1L, 55L))
+                .thenReturn(Optional.of(new GenerationRecord(
+                        1L, 55L, 100L, "gen-55", "CREATED", "key-1", "DISCUSS")));
+
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-1\",\"userContent\":\"hello\",\"mode\":\"DISCUSS\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("DISCUSS"));
+
+        verify(enqueueService).enqueue(1L, "GENERATION", 55L);
+    }
+
+    @Test
+    void sendGenerationUnapprovedModeMapsTo400() throws Exception {
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-1\",\"userContent\":\"hello\",\"mode\":\"CASUAL\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
     void sendGenerationDuplicateReceptionDoesNotEnqueueAgain() throws Exception {
         when(receiveService.receive(1L, 100L, "key-1",
-                GenerationReceiveService.DEFAULT_USER_ROLE, "hello"))
+                GenerationReceiveService.DEFAULT_USER_ROLE, "hello", "AUTO"))
                 .thenReturn(new ReceivedGeneration("gen-55", 55L, null, false));
         when(generationRepository.find(1L, 55L))
                 .thenReturn(Optional.of(new GenerationRecord(

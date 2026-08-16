@@ -242,6 +242,66 @@ class LiveInvocationAssemblerTest {
         assertEquals(ProtocolMessage.Role.USER, request.messages().get(0).role());
     }
 
+    // ---- CHAT-MODE turn-mode override ----
+
+    @Test
+    void explicitDiscussModeOverridesPersonaDefaultOnExternalPath() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1", "DISCUSS")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW)));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        // persona SYSTEM first: default mode line plus the fixed DISCUSS
+        // instruction (approved text only, nothing invented).
+        assertEquals(2, request.messages().size());
+        assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
+        String persona = request.messages().get(0).content();
+        assertTrue(persona.contains("Default interaction mode: listen"));
+        assertTrue(persona.contains("User-requested interaction mode for this turn: DISCUSS"));
+    }
+
+    @Test
+    void explicitListenModeAppendsListenInstructionOnExternalPath() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1", "LISTEN")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW)));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        String persona = request.messages().get(0).content();
+        assertTrue(persona.contains("User-requested interaction mode for this turn: LISTEN"));
+        assertTrue(!persona.contains("DISCUSS"));
+    }
+
+    @Test
+    void autoModeKeepsPersonaDefaultUntouched() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1", "AUTO")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW)));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        String persona = request.messages().get(0).content();
+        assertTrue(persona.contains("Default interaction mode: listen"));
+        assertTrue(!persona.contains("User-requested interaction mode"));
+    }
+
     @Test
     void zeroLlmPathDoesNotConsumePersonaContext() {
         stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(

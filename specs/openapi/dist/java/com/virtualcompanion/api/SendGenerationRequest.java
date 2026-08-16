@@ -3,10 +3,12 @@ package com.virtualcompanion.api;
 
 public record SendGenerationRequest(
     final String idempotencyKey,
-    final String userContent
+    final String userContent,
+    final String mode
 ) {
     public SendGenerationRequest {
         java.util.Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
         // userContent is nullable
+        // mode is nullable
     }
 }

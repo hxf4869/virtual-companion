@@ -1178,12 +1178,14 @@ components:
       description: >-
         A generation owned by exactly one user within a conversation. One logical
         request has one stable logicalGenerationId (INV-GEN-001); status follows
-        the generation-states catalog.
+        the generation-states catalog; mode is the interaction mode captured at
+        reception (CHAT-MODE).
       required:
         - generationId
         - conversationId
         - logicalGenerationId
         - status
+        - mode
       properties:
         generationId:
           type: string
@@ -1197,6 +1199,8 @@ components:
         status:
           type: string
           description: Current generation-states catalog code
+        mode:
+          $ref: '#/components/schemas/InteractionModeCode'
         createdAt:
           type: string
           format: date-time
@@ -1338,7 +1342,8 @@ components:
           description: Creation timestamp (RFC 3339)
     SendGenerationRequest:
       type: object
-      description: Body for idempotently sending a Chat turn.
+      description: Body for idempotently sending a Chat turn; mode selects the
+        interaction mode for the turn (CHAT-MODE).
       required:
         - idempotencyKey
       properties:
@@ -1348,6 +1353,21 @@ components:
         userContent:
           type: string
           description: The user's chat content for this turn
+        mode:
+          $ref: '#/components/schemas/InteractionModeCode'
+    InteractionModeCode:
+      type: string
+      description: >-
+        Turn-level interaction mode captured at reception (CHAT-MODE). AUTO lets
+        the persona's default mode rule (gentle-listener: LISTEN); LISTEN asks
+        the companion to listen and reflect without unsolicited advice; DISCUSS
+        opens an active exchange with questions and analysis. Rejoining the same
+        generation via idempotencyKey keeps the first reception's mode.
+      enum:
+        - AUTO
+        - LISTEN
+        - DISCUSS
+      default: AUTO
     CreateConversationRequest:
       type: object
       description: Body for creating a conversation under a relationship.
