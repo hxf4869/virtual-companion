@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "batchId": "COMPENSATION-BATCH-1",
+  "taskId": "TASK-0238",
+  "createdAt": "2026-08-16",
+  "doesNotRewriteHistory": true,
+  "doesNotConvertNotRunToPass": true,
+  "cards": [
+    {
+      "taskId": "TASK-0213",
+      "baseCommit": "5da7d936f7c80c603d15f198101d8894c24867e1",
+      "terminalCommit": "14a8f4efba69b77e7f4d629bd73a1e6a68980ae1",
+      "candidateCommit": "827fb8a6fb57441aad8a9ebc841a2514c2e128e9",
+      "candidateTree": "678b0bfa6f583551f9686de6d7d8513902353f2a"
+    },
+    {
+      "taskId": "TASK-0214",
+      "baseCommit": "14a8f4efba69b77e7f4d629bd73a1e6a68980ae1",
+      "terminalCommit": "e69c00b4a12d6291dadf5e890aa2738d8e2c8229",
+      "candidateCommit": "5264542e6c9797688bbb0562c44d7cf0a6b97bd4",
+      "candidateTree": "f896a91f221ad056cc996f72a001874937bc4f71"
+    },
+    {
+      "taskId": "TASK-0215",
+      "baseCommit": "e69c00b4a12d6291dadf5e890aa2738d8e2c8229",
+      "terminalCommit": "41b0f8215eb64f3ddea68a748fe5f94a0fcfd8c4",
+      "candidateCommit": "3c4d0352cd591b09f0bdebf7566da65bc3a46fde",
+      "candidateTree": "54c8770c85c79adcc2300a2b25f04c1192d536a4"
+    },
+    {
+      "taskId": "TASK-0216",
+      "baseCommit": "41b0f8215eb64f3ddea68a748fe5f94a0fcfd8c4",
+      "terminalCommit": "425597ca44d188e1827462fc22313499d0ce5ea2",
+      "candidateCommit": "952c472b5bcd9e9d1c0c21a9e362da6abb60f060",
+      "candidateTree": "90d7634d4d3a59d3243b494f4ee3dc6fd0aa0769"
+    },
+    {
+      "taskId": "TASK-0217",
+      "baseCommit": "425597ca44d188e1827462fc22313499d0ce5ea2",
+      "terminalCommit": "fb5656ee3d9491cc304fe2f70601362cb3cfa176",
+      "candidateCommit": "b641685109b9cb4fe0d60734ed7d40e903f42515",
+      "candidateTree": "559445204e01d3b41011ec53a4b3fcf0c3413a7c"
+    }
+  ],
+  "statement": "批 1 五张卡的精确历史绑定逐卡验证：chain（base→candidate→terminal 祖先链）、tree（candidateTree==candidate^{tree}）、artifactsIntact（卡/evidence/handoff 当前 blob==terminal 处 blob）、gapKept（preClosure NOT_RUN 缺口保持）。结果由 verify_compensation_batch.py 实时执行并与此记录比对；FAIL 如实保留不转换。"
+}
