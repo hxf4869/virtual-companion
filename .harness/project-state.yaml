@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0238
-activeTaskCard: docs/tasks/TASK-0238-compensation-batch-1.md
-lastAcceptedTask: TASK-0237
-lastAcceptedHandoff: docs/handoffs/TASK-0237.json
-lastTerminalTask: TASK-0237
-lastTerminalHandoff: docs/handoffs/TASK-0237.json
-nextAction: TASK-0238 READY（补偿验证批 1：0213-0217 五卡精确历史绑定；不补跑不追溯）。保持不推送 main。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0238
+lastAcceptedHandoff: docs/handoffs/TASK-0238.json
+lastTerminalTask: TASK-0238
+lastTerminalHandoff: docs/handoffs/TASK-0238.json
+nextAction: TASK-0238 ACCEPTED（补偿验证批 1 完成）。下一动作：推送本终态至恢复分支并远端复核、跑正式 Doctor 验证释放绑定，然后 intake 批 2 卡（永久 ID 由机器分配）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED

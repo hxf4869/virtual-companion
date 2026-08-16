@@ -1,0 +1,58 @@
+{
+  "taskId": "TASK-0238",
+  "state": "ACCEPTED",
+  "baseCommit": "b8512229dd5cb3ba1f8e7019c1dd47d7f0a72bbb",
+  "headCommit": "dc9a6a5f171e05e5cea4cf667f071e8dcaadc6f5",
+  "evidencePath": "docs/evidence/TASK-0238/evidence-pack.json",
+  "deliveryTiming": {
+    "overallElapsed": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "9f7032eeaa3af94518f0717361818d319a36db81",
+      "startedAt": "2026-08-16T09:53:23+08:00",
+      "endedAt": "2026-08-16T10:16:00+08:00",
+      "elapsedSeconds": 1237,
+      "reanchored": false
+    },
+    "intakeActivation": {
+      "anchor": "DRAFT_COMMIT",
+      "anchorCommit": "9f7032eeaa3af94518f0717361818d319a36db81",
+      "startedAt": "2026-08-16T09:53:23+08:00",
+      "endedAt": "2026-08-16T09:58:50+08:00",
+      "elapsedSeconds": 327,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T09:58:50+08:00",
+      "inProgressCommit": "572c0b97d628c176f354eb458c6d05346526d108"
+    },
+    "candidateExecution": {
+      "anchor": "READY_DOCTOR_PASS_AND_IN_PROGRESS_COMMIT",
+      "anchorCommit": "572c0b97d628c176f354eb458c6d05346526d108",
+      "startedAt": "2026-08-16T09:59:20+08:00",
+      "endedAt": "2026-08-16T10:16:00+08:00",
+      "elapsedSeconds": 880,
+      "outcome": "PASS",
+      "targetWallMinutes": 60,
+      "hardFuseWallMinutes": 90,
+      "candidateDeadlineMinutes": 45,
+      "closureOnlyOverrunSeconds": 0,
+      "readyDoctorPassAt": "2026-08-16T09:58:50+08:00",
+      "inProgressCommit": "572c0b97d628c176f354eb458c6d05346526d108"
+    }
+  },
+  "reviewers": [],
+  "completed": [
+    "批 1 五张卡（TASK-0213/0214/0215/0216/0217）精确历史绑定逐卡验证真实执行并全部 PASS：chain（base→candidate→terminal 祖先链）、tree（candidateTree==candidate^{tree}）、artifactsIntact（历史制品未被改写）、gapKept（preClosure NOT_RUN 缺口保持）。",
+    "verify_compensation_batch.py 正例 5 卡 PASS + 负例矩阵 3/3；READY Doctor PASS 1184079；canonical precheck 8/8；git diff --check exit 0。",
+    "不修改任何历史制品；不补跑历史卡 doctor/precheck 追溯写 PASS；NOT_RUN 保持。"
+  ],
+  "remaining": [
+    "批 2（TASK-0218/0219/0221/0222/0223）、批 3（TASK-0224/0225/0226/0227）与 0209/0210 追认记录由后继卡严格串行完成。",
+    "本卡终态推送至恢复分支与远端 SHA/Tree 复核、正式 Doctor 释放验证在终态提交后立即执行。"
+  ],
+  "knownRisks": [
+    "idle 状态下 --task 不能指向历史卡（selected task 机制），补偿验证采用逐卡 Git 对象绑定验证形式；全量 summary 继续覆盖全部终态卡。"
+  ],
+  "nextAction": "TASK-0238 ACCEPTED（补偿验证批 1 完成）。下一动作：推送本终态至 refs/heads/codex/governance-recovery-20260816、fetch 并远端精确 SHA/Tree 复核，跑正式 Doctor 验证释放绑定，然后 intake 批 2 卡（永久 ID 由机器分配）。保持不推送 main。"
+}
