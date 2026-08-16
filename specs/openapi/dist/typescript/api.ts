@@ -321,6 +321,10 @@ export interface DisableAccountResponse {
   status: string
 }
 
+export interface AccountDeletedResponse {
+  ok: string
+}
+
 export interface AuditEventListItem {
   id: string
   eventType: string
@@ -386,6 +390,7 @@ export interface VirtualCompanionApiClient {
   login(): Promise<VersionResponse>
   refresh(): Promise<VersionResponse>
   logout(): Promise<VersionResponse>
+  deleteAccount(): Promise<VersionResponse>
   createInternalAccount(): Promise<VersionResponse>
   listInternalAccounts(): Promise<VersionResponse>
   disableInternalAccount(): Promise<VersionResponse>

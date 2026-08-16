@@ -14,6 +14,7 @@ import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.DisableAccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountDeletedResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.ServiceClassAssignResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.ServiceClassAssignmentItem;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.UsageSummaryResponse;
@@ -30,6 +31,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -105,6 +107,20 @@ public class AuthController {
             HttpServletResponse response) {
         clearSessionCookies(response);
         return authService.logout(principal.accountId(), refreshToken);
+    }
+
+    /**
+     * ACCT-DELETE (FR-AUTH-004): self-service deletion of the caller's own
+     * account. The session cookies are cleared so the client ends up logged
+     * out even before the access token expires; the SD deletion is the
+     * tombstone that blocks login/refresh from then on.
+     */
+    @DeleteMapping("/account")
+    public AccountDeletedResponse deleteAccount(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            HttpServletResponse response) {
+        clearSessionCookies(response);
+        return authService.deleteAccount(principal.accountId());
     }
 
     @PostMapping("/admin/accounts")

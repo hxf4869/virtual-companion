@@ -155,8 +155,8 @@ class SchemaReadinessHealthIndicatorTest {
         // V39 = REMINDER structured reminders; V40 = ENT-SNAP entitlement
         // assignment + minted per-generation snapshots; V41 = CONSENT
         // versioned consent records; V42 = DATA-EXPORT asynchronous user data
-        // export).
+        // export; V43 = ACCT-DELETE self-service account deletion).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(42);
+                .isEqualTo(43);
     }
 }

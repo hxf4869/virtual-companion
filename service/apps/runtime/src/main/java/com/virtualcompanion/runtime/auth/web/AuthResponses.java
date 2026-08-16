@@ -55,6 +55,10 @@ public final class AuthResponses {
     public record DisableAccountResponse(String accountId, String status) {
     }
 
+    /** ACCT-DELETE: {@code DELETE /api/v1/auth/account} (FR-AUTH-004). */
+    public record AccountDeletedResponse(boolean ok) {
+    }
+
     /** ADMIN-OPS: one identity_auth_event audit row (V36). */
     public record AuditEventResponse(
             String id,

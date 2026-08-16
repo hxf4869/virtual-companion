@@ -264,6 +264,49 @@
         </view>
       </view>
 
+      <!-- ACCT-DELETE (FR-AUTH-004): self-service account deletion danger zone.
+           Two-step confirm states the retention honestly before acting. -->
+      <view class="danger-zone">
+        <button
+          data-testid="delete-account-open"
+          class="alpha-nav__link danger-btn"
+          role="button"
+          aria-label="注销账号"
+          @click="deleteOpen = true"
+        >
+          <text>注销账号</text>
+        </button>
+        <view v-if="deleteOpen" class="danger-confirm" data-testid="delete-account-confirm">
+          <text class="danger-copy">
+            注销后：业务数据（聊天、记忆、提醒、同意记录、导出）将立即删除；
+            合规审计日志无法立即清除，将按既定保留期留存；注销后无法恢复登录。
+          </text>
+          <view class="danger-actions">
+            <button
+              data-testid="delete-account-cancel"
+              class="alpha-nav__link"
+              role="button"
+              :disabled="deleteBusy"
+              @click="deleteOpen = false"
+            >
+              <text>取消</text>
+            </button>
+            <button
+              data-testid="delete-account-confirm-btn"
+              class="alpha-nav__link danger-btn"
+              role="button"
+              :disabled="deleteBusy"
+              @click="onConfirmDelete"
+            >
+              <text>{{ deleteBusy ? "注销中…" : "确认注销" }}</text>
+            </button>
+          </view>
+          <text v-if="deleteError" class="danger-error" data-testid="delete-account-error">
+            {{ deleteError }}
+          </text>
+        </view>
+      </view>
+
       <view class="footer-note">
         <text>INTERNAL PREFLIGHT · LOCAL READ ONLY</text>
         <text>失败关闭 / 不缓存读数</text>
@@ -277,6 +320,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import { deleteAccount } from "@/api/auth";
 import { fetchVersion, type VersionInfo } from "@/api/version";
 import { personaDisplayName } from "@/domain/persona";
 import { useAuthStore } from "@/stores/auth";
@@ -306,6 +350,10 @@ const detailsOpen = ref(false);
 // VERSION-UI: build identity for the boundary console stamp (public contract
 // endpoint; a failure degrades to null and the stamp simply stays empty).
 const versionInfo = ref<VersionInfo | null>(null);
+// ACCT-DELETE (FR-AUTH-004): two-step self-service deletion danger zone.
+const deleteOpen = ref(false);
+const deleteBusy = ref(false);
+const deleteError = ref("");
 
 const connectionTitle = computed(() => {
   switch (state.value) {
@@ -401,6 +449,31 @@ function goTo(url: string): void {
 function toggleTechnicalDetails(): void {
   if (state.value === "ready") {
     detailsOpen.value = !detailsOpen.value;
+  }
+}
+
+/**
+ * ACCT-DELETE (FR-AUTH-004): confirm the self-service deletion. On a
+ * confirmed server result the local session is cleared and the page returns
+ * to the login route; the server-side tombstone already blocks login/refresh.
+ */
+async function onConfirmDelete(): Promise<void> {
+  if (deleteBusy.value) return;
+  deleteBusy.value = true;
+  deleteError.value = "";
+  try {
+    const ok = await deleteAccount(transport);
+    if (!ok) {
+      deleteError.value = "注销请求未获确认，请重试。";
+      return;
+    }
+    auth.clear();
+    deleteOpen.value = false;
+    goTo("/pages/login/login");
+  } catch {
+    deleteError.value = "注销失败，请重试。";
+  } finally {
+    deleteBusy.value = false;
   }
 }
 
@@ -1077,6 +1150,42 @@ onMounted(async () => {
   font-size: 9px;
   letter-spacing: 0.1em;
   line-height: 1.5;
+}
+
+.danger-zone {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(217, 93, 85, 0.45);
+  border-radius: 12px;
+  background: rgba(217, 93, 85, 0.08);
+}
+
+.danger-btn {
+  border-color: rgba(217, 93, 85, 0.65);
+  color: #f4aba6;
+}
+
+.danger-confirm {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.danger-copy {
+  color: rgba(238, 243, 249, 0.82);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.danger-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.danger-error {
+  color: #f4aba6;
+  font-size: 12px;
 }
 
 @keyframes signal-pulse {

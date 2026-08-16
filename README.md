@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V42 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V43 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Consent、
@@ -42,6 +42,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
+- `DELETE /api/v1/auth/account`（ACCT-DELETE / FR-AUTH-004：自助注销，删除
+  身份与全部业务数据并保留合规审计日志；注销墓碑使登录/刷新立即失效）
 - `POST /api/v1/auth/admin/accounts`、`GET /api/v1/auth/admin/accounts`（账户列表）、
   `POST /api/v1/auth/admin/accounts/{accountId}/disable`（禁用，幂等；开通受
   betaGate maxEnabledAccounts=30 容量门禁约束）、`GET /api/v1/auth/admin/audit`
@@ -149,6 +151,14 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   过期行并清除 payload（FR-DATA-002：异步、短期有效、一次性/强鉴权、AI 内容
   标识、留痕、过期自动删除）；前端新增「数据导出」页（发起/刷新/下载 +
   内容预览，Alpha 手动轮询不自动轮询）。
+- 账号注销（ACCT-DELETE）：V43 `vc.identity_account_delete`（自助注销 SD：
+  仅删除本人 ACTIVE 账号，先落 ACCOUNT_DELETE 审计再删 `vc_user` 根行——
+  级联清除身份、refresh 会话与全部业务数据；`consent_record` 补 owner FK
+  级联；`identity_auth_event` 无 FK 保留为合规审计）；已删除/已禁用账号
+  返回 FALSE 不披露；登录路径查无此用户、refresh 会话已级联删除，构成
+  删除墓碑使恢复登录不可能；OpenAPI `DELETE /api/v1/auth/account`（同时
+  清除会话 cookie）；边界台新增两步确认「注销账号」危险区，文案说明
+  保留期与无法立即清除的合规日志（FR-AUTH-004）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

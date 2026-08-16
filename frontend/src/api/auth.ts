@@ -86,6 +86,18 @@ export async function logout(t: AuthTransport): Promise<boolean> {
   return r.ok;
 }
 
+/**
+ * ACCT-DELETE (FR-AUTH-004): delete the caller's own account. The server
+ * clears session cookies and the deletion tombstone blocks login/refresh
+ * from then on; business data is removed and the compliance audit trail is
+ * kept. true only on a confirmed deletion; a 404 (absent/already deleted)
+ * also maps to true so the client ends up logged out either way.
+ */
+export async function deleteAccount(t: AuthTransport): Promise<boolean> {
+  const r = await t.request("DELETE", `${AUTH_BASE}/account`);
+  return r.ok;
+}
+
 /** ADMIN-UI: one created internal account (OpenAPI AccountResponse). */
 export interface CreatedAccount {
   accountId: string;

@@ -311,6 +311,51 @@ class AuthServiceTest {
         verify(accounts, never()).disableAccount(anyLong(), anyLong());
     }
 
+    // ---- ACCT-DELETE (V43, FR-AUTH-004): self-service deletion ----
+
+    @Test
+    void accountOwnerDeletesOwnAccount() {
+        when(accounts.deleteAccount(7L)).thenReturn(true);
+
+        var response = service.deleteAccount(7L);
+
+        assertThat(response.ok()).isTrue();
+        verify(accounts).deleteAccount(7L);
+    }
+
+    @Test
+    void deleteAccountRejectsNonPositiveId() {
+        assertThatThrownBy(() -> service.deleteAccount(0L))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+        verify(accounts, never()).deleteAccount(anyLong());
+    }
+
+    @Test
+    void deleteAccountFailsClosedWhenTheSdReportsFalse() {
+        when(accounts.deleteAccount(7L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.deleteAccount(7L))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("NOT_FOUND_OR_FORBIDDEN");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.NOT_FOUND);
+                });
+    }
+
+    @Test
+    void deleteAccountFailsClosedOnDatabaseErrors() {
+        when(accounts.deleteAccount(7L))
+                .thenThrow(new DataIntegrityViolationException("boom"));
+
+        assertThatThrownBy(() -> service.deleteAccount(7L))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
     @Test
     void disableAccountRejectsNonPositiveTarget() {
         JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -144,6 +145,22 @@ class AuthControllerCookieTest {
                 .andExpect(jsonPath("$.ok").value(true))
                 .andExpect(cookie().maxAge(CookieCsrfGuardFilter.REFRESH_COOKIE, 0))
                 .andExpect(cookie().maxAge(CookieCsrfGuardFilter.CSRF_COOKIE, 0));
+    }
+
+    @Test
+    void deleteAccountClearsBothSessionCookies() throws Exception {
+        when(authService.deleteAccount(7))
+                .thenReturn(new AuthResponses.AccountDeletedResponse(true));
+
+        mockMvc.perform(delete("/api/v1/auth/account")
+                        .cookie(
+                                new Cookie(CookieCsrfGuardFilter.REFRESH_COOKIE, "cookie-token"),
+                                new Cookie(CookieCsrfGuardFilter.CSRF_COOKIE, "csrf-value")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(cookie().maxAge(CookieCsrfGuardFilter.REFRESH_COOKIE, 0))
+                .andExpect(cookie().maxAge(CookieCsrfGuardFilter.CSRF_COOKIE, 0));
+        verify(authService).deleteAccount(7);
     }
 
     private static AuthResponse sampleResponse() {

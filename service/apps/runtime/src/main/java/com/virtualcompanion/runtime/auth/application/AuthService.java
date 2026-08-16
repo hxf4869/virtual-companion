@@ -268,6 +268,30 @@ public class AuthService {
     }
 
     /**
+     * ACCT-DELETE (V43): delete the caller's own account (FR-AUTH-004). The
+     * SD function only deletes an ACTIVE account and cascades the vc_user
+     * root, so refresh sessions and all business data disappear while the
+     * append-only compliance audit trail keeps the ACCOUNT_DELETE event. An
+     * absent, already-deleted or disabled account maps to the generic
+     * non-disclosing error.
+     */
+    public AuthResponses.AccountDeletedResponse deleteAccount(long accountId) {
+        if (accountId <= 0) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "A valid account id is required");
+        }
+        try {
+            boolean deleted = accounts.deleteAccount(accountId);
+            if (!deleted) {
+                throw genericError();
+            }
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+        return new AuthResponses.AccountDeletedResponse(true);
+    }
+
+    /**
      * ADMIN-OPS (V36): keyset page of the append-only audit trail, newest
      * first. ADMIN-only in the application layer and re-verified in SQL.
      */

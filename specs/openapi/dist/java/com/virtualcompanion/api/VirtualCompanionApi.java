@@ -125,6 +125,9 @@ public interface VirtualCompanionApi {
     /** Revoke a refresh session. */
     LogoutResponse logout();
 
+    /** Delete the caller's own account (FR-AUTH-004). */
+    AccountDeletedResponse deleteAccount();
+
     /** Create an internal account (ADMIN only). */
     AccountResponse createInternalAccount();
 

@@ -155,6 +155,25 @@ public class IdentityAccountRepository {
         return Boolean.TRUE.equals(disabled);
     }
 
+    /**
+     * ACCT-DELETE (V43): delete the caller's own ACTIVE account
+     * (FR-AUTH-004), bound to {@code vc.identity_account_delete}. The vc_user
+     * root deletion cascades to the account row, its refresh sessions and all
+     * business data; the append-only audit trail keeps the ACCOUNT_DELETE
+     * event. FALSE for an absent, already-deleted or disabled account
+     * (existence is never disclosed).
+     */
+    public boolean deleteAccount(long accountId) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        Boolean deleted = jdbc.queryForObject(
+                "SELECT vc.identity_account_delete(?)",
+                Boolean.class,
+                accountId);
+        return Boolean.TRUE.equals(deleted);
+    }
+
     /** ADMIN-ACCTS (V31): one account registry row (never the password hash). */
     public record AccountRecord(
             long accountId,

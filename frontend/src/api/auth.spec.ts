@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   assignServiceClass,
   createAccount,
+  deleteAccount,
   disableAccount,
   listAccounts,
   listAuditEvents,
@@ -129,6 +130,19 @@ describe("auth api client", () => {
 
     expect(await logout(t)).toBe(true);
     expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/logout");
+  });
+
+  it("deleteAccount sends a DELETE to the account path and is true on OK", async () => {
+    const t = transportFor({ ok: true, status: 200, json: { ok: true } });
+
+    expect(await deleteAccount(t)).toBe(true);
+    expect(t.request).toHaveBeenCalledWith("DELETE", "/api/v1/auth/account");
+  });
+
+  it("deleteAccount maps a non-OK (already deleted) to false", async () => {
+    const t = transportFor({ ok: false, status: 404, json: null });
+
+    expect(await deleteAccount(t)).toBe(false);
   });
 
   it("rejects a malformed token payload without crashing", async () => {

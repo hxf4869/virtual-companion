@@ -57,6 +57,13 @@
       DataExportWorkItemHandler 聚合会话/消息（aiGenerated 标识）/记忆/提醒/
       同意为 JSON + 过期定时清扫（payload 清除）+ 前端「数据导出」页（发起/
       刷新/下载 + 内容预览）+ SQL/单元/组件测试（FR-DATA-002）。
+- [x] ACCT-DELETE 账号注销：V43 identity_account_delete（自助注销 SD：
+      仅本人 ACTIVE 账号、先 ACCOUNT_DELETE 审计后删 vc_user 根行级联清
+      身份/refresh/全部业务数据 + consent_record 补 owner FK 级联 +
+      审计事件表保留）+ OpenAPI DELETE /api/v1/auth/account（清会话
+      cookie）+ 注销墓碑（登录查无此人、refresh 级联失效，恢复不可能）+
+      边界台两步确认「注销账号」危险区（说明保留期与合规日志）+
+      SQL/单元/组件测试（FR-AUTH-004）。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

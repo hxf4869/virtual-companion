@@ -300,4 +300,87 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(values).toContain("abc123");
     wrapper.unmount();
   });
+
+  // ---- ACCT-DELETE (FR-AUTH-004): self-service deletion danger zone ----
+
+  it("two-step deletion confirms, deletes, clears the session and routes to login", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/v1/auth/account" && (init?.method ?? "GET") === "DELETE") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // First step: no confirm panel until the danger zone is opened.
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("合规审计日志无法立即清除");
+
+    // Second step: confirm deletes and clears the local session.
+    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    const deleteCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]) === "/api/v1/auth/account",
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall![1]?.method).toBe("DELETE");
+    expect(auth.accessToken).toBeNull();
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("cancel closes the deletion confirm panel without calling the API", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="delete-account-cancel"]').trigger("click");
+
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]).includes("/auth/account")),
+    ).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("a failed deletion keeps the panel open and shows the error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/auth/account" && (init?.method ?? "GET") === "DELETE") {
+          return { ok: false, status: 500, json: async () => null };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="delete-account-error"]').text()).toContain("未获确认");
+    wrapper.unmount();
+  });
 });

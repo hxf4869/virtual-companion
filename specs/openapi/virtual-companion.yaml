@@ -1446,6 +1446,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/account:
+    delete:
+      operationId: deleteAccount
+      summary: Delete the caller's own account (FR-AUTH-004)
+      description: >-
+        Self-service account deletion (注销受理). The caller's account and
+        refresh sessions are deleted and all business data owned by the
+        account is removed through the vc_user cascade (conversations,
+        messages, memories, reminders, consents, exports, work items). The
+        append-only compliance audit trail (identity_auth_event) is kept —
+        the product explains the retention before confirming. Login with the
+        deleted username and any refresh session stop working immediately
+        (deletion tombstone: the account no longer exists, so recovery is
+        impossible). An already-deleted or disabled account maps to
+        NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a
+        valid Bearer access token.
+      responses:
+        '200':
+          description: The account was deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Account absent, already deleted or disabled; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/admin/accounts:
     post:
       operationId: createInternalAccount
@@ -2745,6 +2780,15 @@ components:
         status:
           type: string
           description: DISABLED
+    AccountDeletedResponse:
+      type: object
+      description: Result of deleting the caller's own account (FR-AUTH-004).
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always true on a confirmed deletion
     AuditEventListItem:
       type: object
       description: One identity_auth_event audit row (ADMIN-OPS).
