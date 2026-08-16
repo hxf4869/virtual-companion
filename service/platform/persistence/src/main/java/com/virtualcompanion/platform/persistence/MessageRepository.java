@@ -24,8 +24,24 @@ public class MessageRepository {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     }
 
-    /** One {@code vc.message} row. */
-    public record Message(long ownerUserId, long id, long conversationId, String role, String content) {
+    /**
+     * One {@code vc.message} row. {@code noMemory} is the MEM-NEG (V44)
+     * negative-memory marker: memory extraction skips messages flagged true.
+     * The legacy 5-arg constructor keeps pre-V44 call sites compiling; the
+     * marker defaults to false.
+     */
+    public record Message(
+            long ownerUserId,
+            long id,
+            long conversationId,
+            String role,
+            String content,
+            boolean noMemory) {
+
+        public Message(long ownerUserId, long id, long conversationId, String role, String content) {
+            this(ownerUserId, id, conversationId, role, content, false);
+        }
+
         public Message {
             if (ownerUserId <= 0) {
                 throw new IllegalArgumentException("ownerUserId must be positive");
@@ -60,14 +76,15 @@ public class MessageRepository {
     /** Find a message by composite owner + id (RLS-scoped). */
     public Optional<Message> find(long ownerUserId, long id) {
         return jdbc.query(
-                "SELECT owner_user_id, id, conversation_id, role, content "
+                "SELECT owner_user_id, id, conversation_id, role, content, no_memory "
                         + "FROM vc.message WHERE owner_user_id = ? AND id = ?",
                 (rs, rowNum) -> new Message(
                         rs.getLong("owner_user_id"),
                         rs.getLong("id"),
                         rs.getLong("conversation_id"),
                         rs.getString("role"),
-                        rs.getString("content")),
+                        rs.getString("content"),
+                        rs.getBoolean("no_memory")),
                 ownerUserId,
                 id).stream().findFirst();
     }
@@ -92,7 +109,7 @@ public class MessageRepository {
      */
     public List<Message> listByConversation(long ownerUserId, long conversationId) {
         List<Message> recent = jdbc.query(
-                "SELECT owner_user_id, id, conversation_id, role, content "
+                "SELECT owner_user_id, id, conversation_id, role, content, no_memory "
                         + "FROM vc.message "
                         + "WHERE owner_user_id = ? AND conversation_id = ? "
                         + "ORDER BY id DESC LIMIT 64",
@@ -101,7 +118,8 @@ public class MessageRepository {
                         rs.getLong("id"),
                         rs.getLong("conversation_id"),
                         rs.getString("role"),
-                        rs.getString("content")),
+                        rs.getString("content"),
+                        rs.getBoolean("no_memory")),
                 ownerUserId,
                 conversationId);
         if (recent.size() <= 1) {
@@ -135,5 +153,31 @@ public class MessageRepository {
                 conversationId,
                 messageId);
         return Boolean.TRUE.equals(deleted);
+    }
+
+    /**
+     * MEM-NEG (V44): flip the negative-memory marker of one owned message
+     * (vc.set_message_no_memory). true only when an owned row changed; a
+     * foreign or absent id returns false so existence is never disclosed.
+     */
+    public boolean setNoMemory(
+            long ownerUserId, long conversationId, long messageId, boolean noMemory) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (conversationId <= 0) {
+            throw new IllegalArgumentException("conversationId must be positive");
+        }
+        if (messageId <= 0) {
+            throw new IllegalArgumentException("messageId must be positive");
+        }
+        Boolean changed = jdbc.queryForObject(
+                "SELECT vc.set_message_no_memory(?, ?, ?, ?)",
+                Boolean.class,
+                ownerUserId,
+                conversationId,
+                messageId,
+                noMemory);
+        return Boolean.TRUE.equals(changed);
     }
 }

@@ -6,7 +6,8 @@ public record Message(
     final String conversationId,
     final String role,
     final String content,
-    final String createdAt
+    final String createdAt,
+    final String noMemory
 ) {
     public Message {
         java.util.Objects.requireNonNull(messageId, "messageId must not be null");
@@ -14,5 +15,6 @@ public record Message(
         java.util.Objects.requireNonNull(role, "role must not be null");
         java.util.Objects.requireNonNull(content, "content must not be null");
         // createdAt is nullable
+        // noMemory is nullable
     }
 }

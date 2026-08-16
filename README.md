@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V43 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V44 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Consent、
@@ -167,6 +167,13 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
 - 消息复制（MSG-COPY）：聊天页每条已持久化消息新增「复制」按钮——异步
   剪贴板 API 优先、legacy textarea 回退，纯前端无网络调用，按钮短暂显示
   「已复制」反馈（streaming 占位行不渲染）。
+- 不记住负向标记（MEM-NEG）：V44 `vc.message.no_memory`（按需求 §16.2.5
+  规格）+ `set_message_no_memory` trusted-owner SD（存在隐藏、可逆）；
+  `vc.list_messages` 追加式重定义并透出 `out_no_memory`（DROP+CREATE 跨
+  OUT 类型变更，权限重新收紧）；记忆提取 worker 跳过 no_memory=true 的
+  用户消息，负向意图在源头生效、不被历史重提取；OpenAPI
+  `PATCH /conversations/{id}/messages/{messageId}`（body {noMemory}）；
+  聊天页用户消息新增「不记住/恢复记忆」按钮（assistant 消息无此操作）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

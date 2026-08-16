@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -19,6 +20,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -172,6 +174,45 @@ class MessageHistoryControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
 
         mockMvc.perform(delete("/api/v1/conversations/100/messages/not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    // ---- MEM-NEG (V44): 不记住 negative-memory marker ----
+
+    @Test
+    void setNoMemoryFlipsTheMarkerAndReturnsTheUpdatedMessage() throws Exception {
+        when(messageRepository.setNoMemory(1L, 100L, 7L, true)).thenReturn(true);
+        when(messageHistoryService.listMessages(1L, 100L, 6L, 1))
+                .thenReturn(List.of(new MessageHistoryRecord(
+                        7L, "user", "这条不要记住", java.time.Instant.parse("2026-08-17T08:00:00Z"), true)));
+
+        mockMvc.perform(patch("/api/v1/conversations/100/messages/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"noMemory\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.messageId").value(7))
+                .andExpect(jsonPath("$.noMemory").value(true));
+
+        verify(messageRepository).setNoMemory(1L, 100L, 7L, true);
+    }
+
+    @Test
+    void setNoMemoryMapsForeignOrAbsentTo404() throws Exception {
+        when(messageRepository.setNoMemory(1L, 100L, 999L, true)).thenReturn(false);
+
+        mockMvc.perform(patch("/api/v1/conversations/100/messages/999")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"noMemory\":true}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void setNoMemoryRejectsMalformedIds() throws Exception {
+        mockMvc.perform(patch("/api/v1/conversations/not-a-number/messages/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"noMemory\":true}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }

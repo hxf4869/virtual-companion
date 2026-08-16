@@ -138,8 +138,7 @@ class MemoryExtractWorkItemHandlerTest {
         handle(extractClaim(1L, 10L));
 
         verify(memoryService, never()).create(
-                anyLong(), anyLong(), anyString(), anyString(), isNull(), any());
-        verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
+                anyLong(), anyLong(), anyString(), anyString(), isNull(), any());        verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
     }
 
     @Test
@@ -161,6 +160,22 @@ class MemoryExtractWorkItemHandlerTest {
                 "长".repeat(MemoryExtractWorkItemHandler.MAX_CANDIDATE_CHARS),
                 null,
                 List.of("message:101"));
+    }
+
+    @Test
+    void skipsUserMessageFlaggedNoMemoryButStillCompletesTheItem() {
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(generation(5L)));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(conversation(9L)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                new MessageRepository.Message(1L, 101L, 5L, "user", "这条不要记住", true),
+                new MessageRepository.Message(1L, 102L, 5L, "assistant", "好的")));
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(extractClaim(1L, 10L));
+
+        verify(memoryService, never()).create(
+                anyLong(), anyLong(), anyString(), anyString(), isNull(), any());
+        verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
     }
 
     @Test

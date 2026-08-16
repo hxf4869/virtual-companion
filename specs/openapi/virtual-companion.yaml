@@ -457,6 +457,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      operationId: setMessageNoMemory
+      summary: Flip the 不记住 negative-memory marker of one message (MEM-NEG)
+      description: >-
+        Marks or unmarks one owned message via vc.set_message_no_memory. A
+        message flagged noMemory is skipped by the memory-extraction worker,
+        so the negative intent survives at the source (message.no_memory per
+        the V0.3 spec). The marker is reversible: false restores extraction.
+        A foreign or absent message maps to NOT_FOUND_OR_FORBIDDEN; existence
+        is never disclosed. Requires a server-verified authentication context.
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageNoMemoryUpdate'
+      responses:
+        '200':
+          description: The updated message with its noMemory marker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          description: Invalid body (noMemory missing)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/generations/{generationId}/cancel:
     post:
       operationId: cancelGeneration
@@ -1948,6 +1992,20 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (RFC 3339)
+        noMemory:
+          type: boolean
+          description: >-
+            MEM-NEG (V44): true while memory extraction skips this message
+            (不记住 marker); false by default
+    MessageNoMemoryUpdate:
+      type: object
+      description: Body for flipping the 不记住 marker of one message (MEM-NEG).
+      required:
+        - noMemory
+      properties:
+        noMemory:
+          type: boolean
+          description: true marks the message so memory extraction skips it; false restores it
     SendGenerationRequest:
       type: object
       description: Body for idempotently sending a Chat turn; mode selects the

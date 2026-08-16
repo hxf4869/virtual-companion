@@ -151,12 +151,19 @@ public class MemoryExtractWorkItemHandler implements WorkItemHandler {
                 List.of("message:" + userMessage.id()));
     }
 
-    /** The most recent non-blank user message (chronological, capped at 64). */
+    /**
+     * The most recent non-blank user message (chronological, capped at 64).
+     * MEM-NEG (V44): a user message flagged no_memory is skipped — the
+     * negative intent survives at the source and is never re-extracted.
+     */
     private static MessageRepository.Message lastUserMessage(
             List<MessageRepository.Message> messages) {
         for (int i = messages.size() - 1; i >= 0; i--) {
             MessageRepository.Message message = messages.get(i);
             if (!"user".equalsIgnoreCase(message.role())) {
+                continue;
+            }
+            if (message.noMemory()) {
                 continue;
             }
             String content = message.content();

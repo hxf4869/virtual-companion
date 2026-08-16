@@ -224,6 +224,22 @@
             >
               {{ copiedMsgId === msg.messageId ? "已复制" : "复制" }}
             </button>
+            <!-- MEM-NEG (V44): 不记住 negative-memory marker, user messages
+                 only (assistant text is never an extraction source). -->
+            <button
+              v-if="
+                msg.role === 'user' &&
+                !msg.messageId.startsWith('__') &&
+                !isStreaming
+              "
+              class="msg-no-memory"
+              :class="{ 'msg-no-memory--on': msg.noMemory }"
+              :data-testid="`msg-no-memory-${msg.messageId}`"
+              :aria-label="msg.noMemory ? '恢复这条消息的记忆提取' : '不记住这条消息'"
+              @click="onToggleNoMemory(msg)"
+            >
+              {{ msg.noMemory ? "恢复记忆" : "不记住" }}
+            </button>
             <!-- MSG-DELETE: two-step delete for persisted messages only
                  (the streaming/pending placeholders are not deletable). -->
             <button
@@ -656,6 +672,17 @@ export default defineComponent({
     }
 
     /**
+     * MEM-NEG (V44): flip the 不记住 marker of one user message through the
+     * store (which only mutates on a confirmed server response).
+     */
+    async function onToggleNoMemory(msg: {
+      messageId: string;
+      noMemory?: boolean;
+    }): Promise<void> {
+      await store.setMessageNoMemory(transport, msg.messageId, !msg.noMemory);
+    }
+
+    /**
      * MSG-COPY: copy the message text to the clipboard (best effort — never
      * breaks the chat). The label flips to "已复制" for a moment as feedback;
      * the timer is cleared on unmount.
@@ -937,6 +964,7 @@ export default defineComponent({
       confirmDeleteMsgId,
       copiedMsgId,
       onCopyMessage,
+      onToggleNoMemory,
       incognitoNext,
       renaming,
       renameInput,
@@ -1211,6 +1239,22 @@ export default defineComponent({
   border: 2rpx solid #16503e;
   background-color: #16503e;
   color: #d8f2ea;
+}
+/* MEM-NEG (V44): 不记住 marker pill; the on state is visually distinct. */
+.msg-no-memory {
+  margin-top: 8rpx;
+  margin-left: 8rpx;
+  align-self: flex-start;
+  padding: 4rpx 14rpx;
+  font-size: 22rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid #5a4a1a;
+  background-color: #4a3d16;
+  color: #e4b96d;
+}
+.msg-no-memory--on {
+  border-color: #8a6a1a;
+  color: #f5d78e;
 }
 /* INC-MODE: incognito badge, notice and toggle. */
 .incognito-badge {

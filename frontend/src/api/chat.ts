@@ -55,6 +55,8 @@ export interface Message {
   role: string;
   content: string;
   createdAt?: string;
+  /** MEM-NEG (V44): true while memory extraction skips this message. */
+  noMemory?: boolean;
 }
 
 /** FEEDBACK (FR-CHAT-003): message-feedback-kinds catalog codes. */
@@ -197,6 +199,7 @@ function asMessage(json: unknown): Message | null {
     role,
     content,
     createdAt: asString(o, "createdAt"),
+    noMemory: typeof o.noMemory === "boolean" ? o.noMemory : undefined,
   };
 }
 
@@ -469,6 +472,28 @@ export async function deleteMessage(
   );
   if (r.ok) return true;
   if (isExistenceHidden(r.status)) return false;
+  throw new ChatHttpError(r.status, classifyStatus(r.status));
+}
+
+/**
+ * MEM-NEG (V44): flip the 不记住 negative-memory marker of one message
+ * (vc.set_message_no_memory). Returns the updated message on a confirmed
+ * PATCH (the server echoes the new noMemory state); 403/404 map to null
+ * (existence never disclosed); other non-OK statuses throw.
+ */
+export async function setMessageNoMemory(
+  t: ChatTransport,
+  conversationId: string,
+  messageId: string,
+  noMemory: boolean,
+): Promise<Message | null> {
+  const r = await t.request(
+    "PATCH",
+    `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
+    { noMemory },
+  );
+  if (r.ok) return asMessage(r.json);
+  if (isExistenceHidden(r.status)) return null;
   throw new ChatHttpError(r.status, classifyStatus(r.status));
 }
 

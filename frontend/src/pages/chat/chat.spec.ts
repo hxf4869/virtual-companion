@@ -267,6 +267,79 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("MEM-NEG: 不记住 flips the marker through the store on a user message", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "user",
+        content: "这条不要记住",
+      },
+    ];
+    const noMemorySpy = vi.spyOn(store, "setMessageNoMemory").mockResolvedValue(true);
+    await wrapper.vm.$nextTick();
+
+    const button = wrapper.find('[data-testid="msg-no-memory-m1"]');
+    expect(button.exists()).toBe(true);
+    expect(button.text()).toContain("不记住");
+
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(noMemorySpy).toHaveBeenCalledWith(expect.anything(), "m1", true);
+    wrapper.unmount();
+  });
+
+  it("MEM-NEG: shows 恢复记忆 on a flagged message and flips it back", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "user",
+        content: "这条不要记住",
+        noMemory: true,
+      },
+    ];
+    const noMemorySpy = vi.spyOn(store, "setMessageNoMemory").mockResolvedValue(true);
+    await wrapper.vm.$nextTick();
+
+    const button = wrapper.find('[data-testid="msg-no-memory-m1"]');
+    expect(button.text()).toContain("恢复记忆");
+
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(noMemorySpy).toHaveBeenCalledWith(expect.anything(), "m1", false);
+    wrapper.unmount();
+  });
+
+  it("MEM-NEG: no 不记住 button on assistant messages", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "assistant",
+        content: "回复内容",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="msg-no-memory-m1"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("SVC-MODE: shows the plain service-mode status line when the API reports one", async () => {
     vi.stubGlobal(
       "fetch",

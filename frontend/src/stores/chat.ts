@@ -34,6 +34,7 @@ import {
   recordFeedback,
   renameConversation as apiRenameConversation,
   sendGeneration,
+  setMessageNoMemory as apiSetMessageNoMemory,
   asChatMode,
   type ChatMode,
   type ChatTransport,
@@ -459,6 +460,31 @@ export const useChatStore = defineStore("h5-chat", () => {
     return deleted;
   }
 
+  /**
+   * MEM-NEG (V44): flip the 不记住 marker of one message of the open
+   * conversation. Only a confirmed server response updates the local row;
+   * an existence-hidden null keeps it unchanged.
+   */
+  async function setMessageNoMemory(
+    transport: ChatTransport,
+    messageId: string,
+    noMemory: boolean,
+  ): Promise<boolean> {
+    if (!conversationId.value) return false;
+    const updated = await apiSetMessageNoMemory(
+      transport,
+      conversationId.value,
+      messageId,
+      noMemory,
+    );
+    if (updated) {
+      messages.value = messages.value.map((m) =>
+        m.messageId === messageId ? { ...m, noMemory: updated.noMemory } : m,
+      );
+    }
+    return !!updated;
+  }
+
   /** Append the next page of history after the last loaded message. */
   async function loadMoreHistory(transport: ChatTransport): Promise<void> {
     if (!conversationId.value || !historyHasMore.value) return;
@@ -554,6 +580,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     openConversation,
     loadMoreHistory,
     removeMessage,
+    setMessageNoMemory,
     refreshPendingMemoryCount,
     removeConversation,
     renameConversation,

@@ -15,6 +15,7 @@ import {
   recordFeedback,
   renameConversation,
   sendGeneration,
+  setMessageNoMemory,
   type ChatTransport,
 } from "./chat";
 
@@ -460,6 +461,45 @@ describe("deleteMessage (MSG-DELETE)", () => {
     const { transport } = recorder({ ok: false, status: 500, json: null });
 
     await expect(deleteMessage(transport, "100", "7")).rejects.toBeInstanceOf(ChatHttpError);
+  });
+});
+
+describe("setMessageNoMemory (MEM-NEG)", () => {
+  const UPDATED = {
+    messageId: 7,
+    conversationId: 100,
+    role: "user",
+    content: "这条不要记住",
+    noMemory: true,
+  };
+
+  it("PATCHes the marker and parses the updated message", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: UPDATED });
+
+    const updated = await setMessageNoMemory(transport, "100", "7", true);
+
+    expect(calls).toEqual([
+      {
+        method: "PATCH",
+        path: "/api/v1/conversations/100/messages/7",
+        body: { noMemory: true },
+      },
+    ]);
+    expect(updated?.messageId).toBe("7");
+    expect(updated?.noMemory).toBe(true);
+  });
+
+  it("maps 403/404 to null (existence never disclosed)", async () => {
+    const t404 = recorder({ ok: false, status: 404, json: null }).transport;
+    expect(await setMessageNoMemory(t404, "100", "999", true)).toBeNull();
+  });
+
+  it("throws a typed error on 5xx", async () => {
+    const { transport } = recorder({ ok: false, status: 500, json: null });
+
+    await expect(setMessageNoMemory(transport, "100", "7", true)).rejects.toBeInstanceOf(
+      ChatHttpError,
+    );
   });
 });
 

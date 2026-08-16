@@ -76,6 +76,11 @@ export interface Message {
   role: string
   content: string
   createdAt?: string
+  noMemory?: string
+}
+
+export interface MessageNoMemoryUpdate {
+  noMemory: string
 }
 
 export interface SendGenerationRequest {
@@ -363,6 +368,7 @@ export interface VirtualCompanionApiClient {
   sendGeneration(): Promise<VersionResponse>
   listMessages(): Promise<VersionResponse>
   deleteMessage(): Promise<VersionResponse>
+  setMessageNoMemory(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>
   getGenerationSnapshot(): Promise<VersionResponse>
   recordGenerationFeedback(): Promise<VersionResponse>

@@ -44,6 +44,9 @@ public interface VirtualCompanionApi {
     /** Delete one message (FR-CHAT-004 / FR-DATA-003). */
     MessageDeletedResponse deleteMessage();
 
+    /** Flip the 不记住 negative-memory marker of one message (MEM-NEG). */
+    Message setMessageNoMemory();
+
     /** Cancel a non-terminal generation. */
     Generation cancelGeneration();
 

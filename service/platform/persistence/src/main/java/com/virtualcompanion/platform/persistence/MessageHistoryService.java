@@ -45,7 +45,7 @@ public class MessageHistoryService {
             throw new IllegalArgumentException("conversationId must be positive");
         }
         return jdbc.query(
-                "SELECT out_id, out_role, out_content, out_created_at "
+                "SELECT out_id, out_role, out_content, out_created_at, out_no_memory "
                         + "FROM vc.list_messages(?, ?, ?, ?)",
                 rowMapper(),
                 ownerUserId,
@@ -62,7 +62,8 @@ public class MessageHistoryService {
                     rs.getLong("out_id"),
                     rs.getString("out_role"),
                     rs.getString("out_content"),
-                    createdAt);
+                    createdAt,
+                    rs.getBoolean("out_no_memory"));
         };
     }
 }

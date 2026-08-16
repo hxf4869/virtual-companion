@@ -69,6 +69,12 @@
       CORS 暴露）+ 单元测试（FR-CHAT-001 的 request_id）。
 - [x] MSG-COPY 消息复制：聊天页已持久化消息「复制」按钮（异步剪贴板 +
       legacy 回退、短暂「已复制」反馈、streaming 占位行不渲染）+ 组件测试。
+- [x] MEM-NEG 不记住负向标记：V44 vc.message.no_memory（§16.2.5 规格）+
+      set_message_no_memory SD（存在隐藏、可逆）+ list_messages 追加式
+      重定义透出 out_no_memory（DROP+CREATE，权限重新收紧）+ 提取 worker
+      跳过 no_memory 用户消息 + OpenAPI PATCH /messages/{messageId}
+      （body {noMemory}）+ 聊天页「不记住/恢复记忆」按钮（仅用户消息）+
+      SQL/单元/组件测试。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

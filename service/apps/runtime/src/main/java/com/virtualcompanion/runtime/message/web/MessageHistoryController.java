@@ -4,12 +4,15 @@ import com.virtualcompanion.platform.persistence.MessageHistoryRecord;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
+import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -84,6 +87,34 @@ public class MessageHistoryController {
         return new MessageDeletedResponse(true);
     }
 
+    /**
+     * MEM-NEG (V44): flip the "不记住" negative-memory marker of one owned
+     * message. A foreign or absent message maps to 404 NOT_FOUND_OR_FORBIDDEN
+     * so existence is never disclosed; the response carries the updated
+     * message state (including noMemory).
+     */
+    @PatchMapping("/conversations/{conversationId}/messages/{messageId}")
+    public MessageResponse setNoMemory(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String conversationId,
+            @PathVariable String messageId,
+            @RequestBody MessageNoMemoryUpdate request) {
+        long conversation = parseId(conversationId, "conversationId");
+        long message = parseId(messageId, "messageId");
+        boolean changed = messageRepository.setNoMemory(
+                ownerUserId, conversation, message, request.noMemory());
+        if (!changed) {
+            throw new ResourceNotFoundException("message");
+        }
+        return messageHistoryService
+                .listMessages(ownerUserId, conversation, message - 1, 1)
+                .stream()
+                .filter(record -> record.id() == message)
+                .findFirst()
+                .map(record -> toResponse(conversation, record))
+                .orElseThrow(() -> new ResourceNotFoundException("message"));
+    }
+
     private static Long parseOptionalLong(String raw, String name) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -124,7 +155,8 @@ public class MessageHistoryController {
                 conversationId,
                 record.role(),
                 record.content(),
-                record.createdAt() == null ? null : record.createdAt().toString());
+                record.createdAt() == null ? null : record.createdAt().toString(),
+                record.noMemory());
     }
 
     /** Response body (OpenAPI {@code Message}). */
@@ -133,7 +165,12 @@ public class MessageHistoryController {
             long conversationId,
             String role,
             String content,
-            String createdAt) {
+            String createdAt,
+            boolean noMemory) {
+    }
+
+    /** MEM-NEG (V44): body (OpenAPI {@code MessageNoMemoryUpdate}). */
+    public record MessageNoMemoryUpdate(@NotNull Boolean noMemory) {
     }
 
     /** MSG-DELETE: response body (OpenAPI {@code MessageDeletedResponse}). */

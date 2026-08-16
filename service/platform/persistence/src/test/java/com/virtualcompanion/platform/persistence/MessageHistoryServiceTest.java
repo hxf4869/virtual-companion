@@ -33,7 +33,7 @@ class MessageHistoryServiceTest {
     @Test
     void listMessagesCallsTheV10FunctionWithAllFourParameters() {
         when(jdbc.query(
-                eq("SELECT out_id, out_role, out_content, out_created_at "
+                eq("SELECT out_id, out_role, out_content, out_created_at, out_no_memory "
                         + "FROM vc.list_messages(?, ?, ?, ?)"),
                 any(RowMapper.class),
                 eq(1L), eq(100L), eq(42L), eq(20)))
@@ -44,7 +44,7 @@ class MessageHistoryServiceTest {
 
         assertEquals(0, records.size());
         verify(jdbc).query(
-                eq("SELECT out_id, out_role, out_content, out_created_at "
+                eq("SELECT out_id, out_role, out_content, out_created_at, out_no_memory "
                         + "FROM vc.list_messages(?, ?, ?, ?)"),
                 any(RowMapper.class),
                 eq(1L), eq(100L), eq(42L), eq(20));
@@ -67,8 +67,12 @@ class MessageHistoryServiceTest {
         when(rs.getString("out_role")).thenReturn("assistant");
         when(rs.getString("out_content")).thenReturn("hello");
         when(rs.getTimestamp("out_created_at")).thenReturn(Timestamp.from(NOW));
+        when(rs.getBoolean("out_no_memory")).thenReturn(true);
         when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(100L), eq(0L), eq(50)))
-                .thenReturn(List.of(new MessageHistoryRecord(7L, "assistant", "hello", NOW)));
+                .thenAnswer(invocation -> {
+                    var mapper = invocation.getArgument(1, RowMapper.class);
+                    return List.of(mapper.mapRow(rs, 1));
+                });
 
         List<MessageHistoryRecord> records = service.listMessages(1L, 100L, 0L, 50);
 
@@ -77,6 +81,7 @@ class MessageHistoryServiceTest {
         assertEquals("assistant", records.get(0).role());
         assertEquals("hello", records.get(0).content());
         assertEquals(NOW, records.get(0).createdAt());
+        assertEquals(true, records.get(0).noMemory());
     }
 
     @Test
