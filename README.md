@@ -31,6 +31,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 
 - `GET /actuator/health`
 - `GET /api/internal/baseline`
+- `GET /api/v1/version`（公开，OpenAPI `getVersion`）
 
 显式开启 Auth 及其 datasource 后，runtime 还提供：
 
@@ -46,8 +47,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE 恢复流）
 - 8 个 memory 端点（candidates/list/get/update/delete/confirm/reject/evidence）
 
-`specs/openapi/virtual-companion.yaml` 的合同面除 `GET /api/v1/version` 外均已由 runtime controller
-实现（relationship、conversation、generation、snapshot、cancel、message、realtime、memory）。
+`specs/openapi/virtual-companion.yaml` 的合同面已全部由 runtime controller 实现（version、
+relationship、conversation、generation、snapshot、cancel、message、realtime、memory）。
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。

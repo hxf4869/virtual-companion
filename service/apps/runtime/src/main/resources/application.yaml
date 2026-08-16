@@ -45,6 +45,12 @@ virtual-companion:
     spring-boot-version: "@spring-boot.version@"
     spring-ai-version: "@spring-ai.version@"
     spring-modulith-version: "@spring-modulith.version@"
+  version:
+    # GET /api/v1/version (OpenAPI getVersion). The version is the filtered
+    # Maven project version; the commit is an optional deploy-time identity
+    # (VC_COMMIT), never required so a local build serves the endpoint too.
+    version: "@project.version@"
+    commit: ${VC_COMMIT:}
   auth:
     # Master switch for the self-hosted identity component. Off by default so a
     # plain runtime context (tests, baseline) needs no secret and no database.

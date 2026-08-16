@@ -38,8 +38,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  *       Origin allow-list); Bearer-only requests without cookies are not
  *       CSRF-bound.</li>
  *   <li>{@code POST /api/v1/auth/login} and {@code /api/v1/auth/refresh} are
- *       public; {@code GET /api/internal/baseline} is public (P1-08, Owner
- *       decision 2026-08-08); the health endpoint stays public; every other
+ *       public; {@code GET /api/v1/version} is public (OpenAPI
+ *       {@code security: []}); {@code GET /api/internal/baseline} is public
+ *       (P1-08, Owner decision 2026-08-08); the health endpoint stays public;
+ *       every other
  *       route requires a valid Bearer token, and an unauthenticated request is
  *       answered with {@code 401 AUTHENTICATION_REQUIRED} (never an existence
  *       hint).</li>
@@ -117,6 +119,7 @@ public class AuthSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/version").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/internal/baseline").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated())
