@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 15 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V15 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V32 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -40,10 +40,14 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
-- `POST /api/v1/auth/admin/accounts`
+- `POST /api/v1/auth/admin/accounts`、`GET /api/v1/auth/admin/accounts`（账户列表）、
+  `POST /api/v1/auth/admin/accounts/{accountId}/disable`（禁用，幂等；开通受
+  betaGate maxEnabledAccounts=30 容量门禁约束）
 - `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
-  `POST /api/v1/relationships/{relationshipId}/deactivate`
+  `POST /api/v1/relationships/{relationshipId}/deactivate`（personaRef 按 persona-templates
+  目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文）
 - `POST /api/v1/conversations`、`GET /api/v1/conversations`（会话列表，keyset + 最后消息预览）、
+  `DELETE/PATCH /api/v1/conversations/{conversationId}`（删除级联清理、重命名写入 title）、
   `POST /api/v1/conversations/{conversationId}/generations`、
   `GET /api/v1/conversations/{conversationId}/messages`
 - `GET /api/v1/generations/{generationId}/snapshot`（含 finalize 结算后的 usage：

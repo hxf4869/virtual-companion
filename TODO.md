@@ -2,7 +2,31 @@
 
 产品待办（现状声明见 README）：
 
-## 当前里程碑（2026-08-16 第三轮）：终态语义、体验与透明度收尾
+## 当前里程碑（2026-08-16 第四轮）：失败原因、会话恢复、管理与人设
+
+> 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+> 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。
+
+- [x] FAIL-REASON 失败原因展示：chat store 暴露终态事件 payload 的 fault，
+      聊天页把内部诊断串映射为固定友好文案（模型未启用/超时/审查阻断/重试耗尽…），
+      不原样透出内部细节。
+- [x] SESS-REVIVE 会话恢复体验：页面挂载接线 tryRefresh（刷新页免登录，7 天
+      refresh cookie 生效）；authed transport 401 时先静默 refresh 一次并重放
+      原请求（防风暴的单次重试）；聊天页/边界台提供登出按钮（吊销 cookie）。
+- [x] PERSONA-WIRE persona 目录与接线：catalog 新增 persona-templates 目录
+      （gentle-listener：显示名/语气/默认模式，只用既有骨架字段不新编人设内容），
+      关系创建按目录校验 personaRef；外部 provider 生成请求注入 persona SYSTEM
+      上下文；前端关系选择改目录下拉、当前关系显示显示名。
+- [x] ADMIN-ACCTS 账户列表与禁用：V31 迁移新增 list_accounts/disable_account
+      SD 函数（trusted-owner 断言 + 存在性不披露），OpenAPI 补 GET /accounts 与
+      POST /accounts/{id}/disable，admin 页补列表与禁用按钮；开通时强制
+      maxEnabledAccounts=30 容量门禁（product-scope 声明但从未强制）。
+- [x] CONV-MGMT 会话删除与重命名：V32 迁移新增 delete_conversation/rename_conversation
+      SD 函数（级联清理已由 FK 保证 + in-flight work item 取消防悬空 ref），
+      OpenAPI 补 DELETE/PATCH /conversations/{id}，前端会话面板补删除（两步确认）
+      与重命名；复用闲置的 conversation.title 列（list_conversations 补 out_title）。
+
+## 已完成（2026-08-16 第三轮）：终态语义、体验与透明度收尾
 
 > 每条验收口径同前两轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
 > 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。
