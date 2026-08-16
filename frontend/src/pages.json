@@ -25,6 +25,12 @@
 			}
 		},
 		{
+			"path": "pages/consent/consent",
+			"style": {
+				"navigationBarTitleText": "同意管理"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"

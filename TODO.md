@@ -42,7 +42,13 @@
       ECONOMY/PREMIUM）+ entitlement_snapshot（每轮不可变，UNIQUE
       owner+generation 重试同一快照）+ 组装器 prepare 段铸造并以快照类路由
       （替代硬编码 SIMULATED）+ admin 页权益分配区（A3-001/FR-ENT-004）。
-- [ ] CONSENT 版本化同意记录（FR-AUTH-003/005）
+- [x] CONSENT 版本化同意记录：V41 vc.consent_record（追加式版本化表 + FORCE
+      RLS owner_isolation + type CHECK + version 1..64）+ record_consent/
+      list_consents trusted-owner SD 函数（owner 上下文强断言、仅 vc_api
+      可执行、list 返回每类最新生效行）+ OpenAPI PUT/GET /api/v1/consents
+      （未批准类型 400 拒绝）+ 前端「同意管理」页（8 类同意目录、生效状态、
+      同意/撤回按钮，版本 2026-08 Alpha 演示，MODEL_TRAINING 注明撤回不影响
+      基本聊天）+ SQL/单元/组件测试（FR-AUTH-003/005）。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

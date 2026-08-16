@@ -101,6 +101,12 @@ public interface VirtualCompanionApi {
     /** List simulated service-class assignments (ADMIN only, ENT-SNAP). */
     Void listServiceClassAssignments();
 
+    /** Record a versioned consent grant or revoke (FR-AUTH-003). */
+    ConsentRecord recordConsent();
+
+    /** The effective consent state per type (FR-AUTH-003). */
+    Void listConsents();
+
     /** Log in with internal-account credentials. */
     AuthTokenResponse login();
 

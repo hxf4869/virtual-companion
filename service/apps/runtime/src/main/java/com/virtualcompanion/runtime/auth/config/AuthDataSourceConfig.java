@@ -12,6 +12,7 @@ import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFeedbackService;
@@ -307,6 +308,12 @@ public class AuthDataSourceConfig {
     @Bean
     public ReminderService reminderService(JdbcTemplate authJdbcTemplate) {
         return new ReminderService(authJdbcTemplate);
+    }
+
+    /** CONSENT (V41): versioned user consent records (FR-AUTH-003). */
+    @Bean
+    public ConsentService consentService(JdbcTemplate authJdbcTemplate) {
+        return new ConsentService(authJdbcTemplate);
     }
 
     @Bean

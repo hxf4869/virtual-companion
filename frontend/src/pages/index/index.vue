@@ -62,6 +62,15 @@
           <text>提醒管理</text>
         </button>
         <button
+          data-testid="nav-consent"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="同意管理"
+          @click="goTo('/pages/consent/consent')"
+        >
+          <text>同意管理</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"

@@ -169,6 +169,21 @@ export interface ServiceClassAssignmentItem {
   updatedAt?: string
 }
 
+export interface ConsentUpsertRequest {
+  consentType: string
+  version: string
+  granted: string
+}
+
+export interface ConsentRecord {
+  consentId: string
+  consentType: string
+  version: string
+  granted: string
+  grantedAt: string
+  revokedAt?: string
+}
+
 export interface ConversationRenamedResponse {
   conversationId: string
   title: string
@@ -299,6 +314,8 @@ export interface VirtualCompanionApiClient {
   deleteReminder(): Promise<VersionResponse>
   assignServiceClass(): Promise<VersionResponse>
   listServiceClassAssignments(): Promise<VersionResponse>
+  recordConsent(): Promise<VersionResponse>
+  listConsents(): Promise<VersionResponse>
   login(): Promise<VersionResponse>
   refresh(): Promise<VersionResponse>
   logout(): Promise<VersionResponse>

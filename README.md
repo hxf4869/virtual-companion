@@ -22,11 +22,11 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V40 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V41 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
-- uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
-  与组件/状态测试；
+- uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Consent、
+  Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -56,6 +56,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   （结构化用户提醒，soonest-first keyset）、`PATCH/DELETE /api/v1/reminders/{reminderId}`
   （REMINDER / FR-NOTIFY-001：提醒是结构化记录而非 Prompt 指令；Alpha 仅存储与
   展示、无主动推送，recurrence=NONE/DAILY/WEEKLY、status=ACTIVE/DISMISSED）
+- `PUT /api/v1/consents`、`GET /api/v1/consents`（CONSENT / FR-AUTH-003/005：
+  版本化同意记录，追加式落库、生效态按类取最新一行；未批准类型 400 拒绝；
+  撤回 MODEL_TRAINING 不影响基本聊天）
 - `POST /api/v1/conversations`（INC-MODE：请求可带 `incognito` 在创建时明确开启
   无痕会话，标志冻结在会话行且不可事后翻转）、`GET /api/v1/conversations`（会话列表，
   keyset + 最后消息预览 + incognito 标记）、
@@ -125,6 +128,13 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   守卫 prepare 事务内铸造快照并以快照类（替代硬编码 SIMULATED）进入确定性
   路由（A3-001/FR-ENT-004 路由审计）；admin 页新增权益分配区（分配表单 +
   注册表）。
+- 版本化同意记录（CONSENT）：V41 `vc.consent_record`（追加式版本化表，FORCE
+  RLS owner_isolation、8 类 type CHECK、version 1..64）+ `record_consent`/
+  `list_consents` trusted-owner SD 函数（owner 上下文强断言、仅 vc_api 可执行、
+  list 返回每类最新生效行，历史不重写）；OpenAPI `PUT/GET /api/v1/consents`
+  （未批准类型 400 拒绝）；前端新增「同意管理」页（8 类同意目录 + 生效状态 +
+  同意/撤回按钮，Alpha 演示版本固定「2026-08」，MODEL_TRAINING 注明撤回不
+  影响基本聊天；FR-AUTH-003/005，授权快照执行时复核机制保持不变）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

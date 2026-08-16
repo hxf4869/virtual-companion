@@ -1159,6 +1159,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/consents:
+    put:
+      operationId: recordConsent
+      summary: Record a versioned consent grant or revoke (FR-AUTH-003)
+      description: >-
+        Appends a versioned consent record for the caller via
+        vc.record_consent (append-only history; the latest row per type is the
+        effective state). consentType follows the FR-AUTH-003 catalogue;
+        version is the policy document version the user saw. Withdrawing
+        MODEL_TRAINING never affects basic chat service. Requires a
+        server-verified authentication context.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentUpsertRequest'
+      responses:
+        '200':
+          description: The appended consent record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRecord'
+        '400':
+          description: Unapproved consent type or an invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listConsents
+      summary: The effective consent state per type (FR-AUTH-003)
+      description: >-
+        The LATEST consent record per type via vc.list_consents (the effective
+        grant/revoke state; the append-only history stays in the database).
+        Requires a server-verified authentication context.
+      responses:
+        '200':
+          description: Effective consent records, one per type
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConsentRecord'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/login:
     post:
       operationId: login
@@ -2073,6 +2131,68 @@ components:
           type: string
           format: date-time
           description: Last assignment timestamp, absent when never assigned
+    ConsentUpsertRequest:
+      type: object
+      description: Body for appending a versioned consent record (FR-AUTH-003).
+      required:
+        - consentType
+        - version
+        - granted
+      properties:
+        consentType:
+          type: string
+          description: >-
+            FR-AUTH-003 catalogue: SERVICE_TERMS, PRIVACY_POLICY,
+            AI_CONTENT_NOTICE, THIRD_PARTY_MODEL_PROCESSING,
+            SENSITIVE_DATA_PROCESSING, EMERGENCY_CONTACT, MODEL_TRAINING,
+            PUSH_NOTIFICATION.
+          enum:
+            - SERVICE_TERMS
+            - PRIVACY_POLICY
+            - AI_CONTENT_NOTICE
+            - THIRD_PARTY_MODEL_PROCESSING
+            - SENSITIVE_DATA_PROCESSING
+            - EMERGENCY_CONTACT
+            - MODEL_TRAINING
+            - PUSH_NOTIFICATION
+        version:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The policy document version the user saw
+        granted:
+          type: boolean
+          description: true grants (or re-grants), false revokes
+    ConsentRecord:
+      type: object
+      description: One versioned consent record (FR-AUTH-003).
+      required:
+        - consentId
+        - consentType
+        - version
+        - granted
+        - grantedAt
+      properties:
+        consentId:
+          type: string
+          description: Stable owner-scoped record identifier
+        consentType:
+          type: string
+          description: The FR-AUTH-003 consent type
+        version:
+          type: string
+          description: The policy document version
+        granted:
+          type: boolean
+          description: true while the consent is granted
+        grantedAt:
+          type: string
+          format: date-time
+          description: Grant/record timestamp (RFC 3339)
+        revokedAt:
+          type: string
+          format: date-time
+          description: Revocation timestamp, present only on a revoke record
     ConversationRenamedResponse:
       type: object
       description: Result of renaming one conversation.
