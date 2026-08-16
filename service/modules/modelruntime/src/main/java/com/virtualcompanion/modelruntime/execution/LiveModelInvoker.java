@@ -30,6 +30,7 @@ import com.virtualcompanion.safety.SafetyVerdict;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Controlled real-model invocation path (TASK-0194 prepare/external split).
@@ -142,14 +143,27 @@ public final class LiveModelInvoker {
      * Execute a prepared invocation. For an external prepared invocation this
      * runs ONLY the adapter session (no database access); for a terminal-only
      * prepared invocation it reproduces the exact terminal outcome captured by
-     * the prepare phase.
+     * the prepare phase. Accepted session events are forwarded to
+     * {@code eventSink} as they pass the fence (STREAM-LIVE); the sink must be
+     * side-effect-light — it runs on the adapter-session loop with no database
+     * transaction.
      */
-    public LiveAttemptOutcome execute(PreparedInvocation prepared) {
+    public LiveAttemptOutcome execute(PreparedInvocation prepared, Consumer<ModelProtocolEvent> eventSink) {
         Objects.requireNonNull(prepared, "prepared must not be null");
+        Objects.requireNonNull(eventSink, "eventSink must not be null");
         if (!prepared.isExternal()) {
             return terminalOutcome(prepared);
         }
-        return executeExternal(prepared);
+        return executeExternal(prepared, eventSink);
+    }
+
+    /**
+     * Execute a prepared invocation without a live event sink (aggregated
+     * completion only). Delegates to {@link #execute(PreparedInvocation,
+     * Consumer)} with a no-op sink.
+     */
+    public LiveAttemptOutcome execute(PreparedInvocation prepared) {
+        return execute(prepared, event -> { });
     }
 
     /**
@@ -263,7 +277,8 @@ public final class LiveModelInvoker {
         };
     }
 
-    private LiveAttemptOutcome executeExternal(PreparedInvocation prepared) {
+    private LiveAttemptOutcome executeExternal(
+            PreparedInvocation prepared, Consumer<ModelProtocolEvent> eventSink) {
         ExternalAttemptBinding attempt = prepared.attempt();
         ModelProtocolRequest protocolRequest = prepared.protocolRequest();
         ModelProtocolAdapter adapter = prepared.adapter();
@@ -280,7 +295,7 @@ public final class LiveModelInvoker {
                 activeInvocations.register(generationId, session);
             }
             try {
-                return runSession(decision, binding, attempt, providerId, session);
+                return runSession(decision, binding, attempt, providerId, session, eventSink);
             } finally {
                 if (generationId != null) {
                     activeInvocations.unregister(generationId, session);
@@ -295,7 +310,8 @@ public final class LiveModelInvoker {
             InvocationBinding binding,
             ExternalAttemptBinding attempt,
             ProviderId providerId,
-            ModelProtocolSession session) {
+            ModelProtocolSession session,
+            Consumer<ModelProtocolEvent> eventSink) {
         TokenUsage usage = new TokenUsage(0, 0, 0);
         ModelProtocolEvent terminalEvent = null;
         ModelProtocolEventFence fence = new ModelProtocolEventFence(binding);
@@ -329,6 +345,10 @@ public final class LiveModelInvoker {
                 session.cancel();
                 return fenceViolationOutcome(decision, binding, attempt, providerId);
             }
+            // STREAM-LIVE: forward the fenced event to the live sink before the
+            // aggregation dispatch. The sink is side-effect-light and runs with
+            // no database transaction (worker segmented model).
+            eventSink.accept(event);
             if (event instanceof ModelProtocolEvent.OutputDelta delta) {
                 final String content;
                 if (delta.payload() instanceof ModelPayload.TextChunk chunk) {

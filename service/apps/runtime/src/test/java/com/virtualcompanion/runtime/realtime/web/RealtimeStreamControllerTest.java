@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.realtime.web;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,12 +14,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.platform.persistence.GenerationRecord;
+import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.RealtimeResumeService;
 import com.virtualcompanion.platform.persistence.ResumeResult;
 import com.virtualcompanion.platform.persistence.RealtimeTicketRepository;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
 import java.sql.SQLException;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -56,14 +61,19 @@ class RealtimeStreamControllerTest {
 
     private RealtimeTicketRepository ticketRepository;
     private RealtimeResumeService resumeService;
+    private GenerationRepository generationRepository;
+    private LiveDeltaBroker deltaBroker;
+    private RealtimeStreamController controller;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         ticketRepository = mock(RealtimeTicketRepository.class);
         resumeService = mock(RealtimeResumeService.class);
-        RealtimeStreamController controller =
-                new RealtimeStreamController(ticketRepository, resumeService);
+        generationRepository = mock(GenerationRepository.class);
+        deltaBroker = mock(LiveDeltaBroker.class);
+        controller = new RealtimeStreamController(
+                ticketRepository, resumeService, generationRepository, deltaBroker);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -85,6 +95,13 @@ class RealtimeStreamControllerTest {
                     }
                 })
                 .build();
+    }
+
+    /** The RESUMED tests run against a TERMINAL generation so the live tail
+     *  completes immediately (no broker subscription). */
+    private void stubTerminalGeneration() {
+        when(generationRepository.find(OWNER, GENERATION)).thenReturn(Optional.of(
+                new GenerationRecord(OWNER, GENERATION, 5L, "lg-7", "COMPLETED", null)));
     }
 
     private MvcResult openStream(String lastEventId) throws Exception {
@@ -127,6 +144,7 @@ class RealtimeStreamControllerTest {
                 "FETCH_SSE", EPOCH, 0L)).thenReturn(true);
         when(resumeService.resume(OWNER, GENERATION, EPOCH, 0L))
                 .thenReturn(new ResumeResult("RESUMED", durableEvents("chat.accepted", 3L), "null"));
+        stubTerminalGeneration();
 
         mockMvc.perform(asyncDispatch(openStream(null)))
                 .andExpect(status().isOk())
@@ -136,6 +154,7 @@ class RealtimeStreamControllerTest {
         verify(ticketRepository).consume(
                 OWNER, TICKET, SECRET, GENERATION, SESSION, ORIGIN, "FETCH_SSE", EPOCH, 0L);
         verify(resumeService).resume(OWNER, GENERATION, EPOCH, 0L);
+        verify(deltaBroker, never()).subscribe(anyLong());
     }
 
     @Test
@@ -220,6 +239,7 @@ class RealtimeStreamControllerTest {
                 "FETCH_SSE", EPOCH, 5L)).thenReturn(true);
         when(resumeService.resume(OWNER, GENERATION, EPOCH, 5L))
                 .thenReturn(new ResumeResult("RESUMED", durableEvents("chat.accepted", 6L), "null"));
+        stubTerminalGeneration();
 
         mockMvc.perform(asyncDispatch(openStream("5")))
                 .andExpect(status().isOk())
@@ -227,6 +247,75 @@ class RealtimeStreamControllerTest {
 
         verify(ticketRepository).consume(
                 OWNER, TICKET, SECRET, GENERATION, SESSION, ORIGIN, "FETCH_SSE", EPOCH, 5L);
+    }
+
+    // ---- STREAM-LIVE: live tail ----
+
+    private void stubRunningGeneration() {
+        when(generationRepository.find(OWNER, GENERATION)).thenReturn(Optional.of(
+                new GenerationRecord(OWNER, GENERATION, 5L, "lg-7", "IN_PROGRESS", null)));
+    }
+
+    @Test
+    void openStreamTailForwardsLiveDeltasUntilTheEndMarker() throws Exception {
+        when(ticketRepository.consume(
+                OWNER, TICKET, SECRET, GENERATION, SESSION, ORIGIN,
+                "FETCH_SSE", EPOCH, 0L)).thenReturn(true);
+        when(resumeService.resume(OWNER, GENERATION, EPOCH, 0L))
+                .thenReturn(new ResumeResult("RESUMED", durableEvents("chat.accepted", 1L), "null"));
+        stubRunningGeneration();
+        LiveDeltaBroker.Subscriber subscriber = mock(LiveDeltaBroker.Subscriber.class);
+        when(deltaBroker.subscribe(GENERATION)).thenReturn(subscriber);
+        when(subscriber.poll(anyLong())).thenReturn(
+                new LiveDeltaBroker.LiveEvent(EPOCH, 2L, "chat.delta", "Hel"),
+                new LiveDeltaBroker.LiveEvent(EPOCH, 3L, "chat.delta", "lo"),
+                LiveDeltaBroker.LiveEvent.end(),
+                null);
+
+        mockMvc.perform(asyncDispatch(openStream(null)))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:chat.delta")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id:2")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"payload\":\"Hel\"")));
+
+        verify(deltaBroker).subscribe(GENERATION);
+    }
+
+    @Test
+    void openStreamTailCompletesWhenTheDeadlineExpiresWithoutEnd() throws Exception {
+        when(ticketRepository.consume(
+                OWNER, TICKET, SECRET, GENERATION, SESSION, ORIGIN,
+                "FETCH_SSE", EPOCH, 0L)).thenReturn(true);
+        when(resumeService.resume(OWNER, GENERATION, EPOCH, 0L))
+                .thenReturn(new ResumeResult("RESUMED", durableEvents("chat.accepted", 1L), "null"));
+        stubRunningGeneration();
+        LiveDeltaBroker.Subscriber subscriber = mock(LiveDeltaBroker.Subscriber.class);
+        when(deltaBroker.subscribe(GENERATION)).thenReturn(subscriber);
+        when(subscriber.poll(anyLong())).thenReturn(null);
+        // Test hook: an already-expired deadline completes without waiting the
+        // full 120s; the poll may run once, then the loop exits.
+        controller.liveTailTimeoutMillis = 1L;
+
+        mockMvc.perform(asyncDispatch(openStream(null)))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:chat.accepted")));
+
+        verify(deltaBroker).subscribe(GENERATION);
+    }
+
+    @Test
+    void openStreamTailCompletesImmediatelyForAnAbsentGeneration() throws Exception {
+        when(ticketRepository.consume(
+                OWNER, TICKET, SECRET, GENERATION, SESSION, ORIGIN,
+                "FETCH_SSE", EPOCH, 0L)).thenReturn(true);
+        when(resumeService.resume(OWNER, GENERATION, EPOCH, 0L))
+                .thenReturn(new ResumeResult("RESUMED", durableEvents("chat.accepted", 1L), "null"));
+        when(generationRepository.find(OWNER, GENERATION)).thenReturn(Optional.empty());
+
+        mockMvc.perform(asyncDispatch(openStream(null)))
+                .andExpect(status().isOk());
+
+        verify(deltaBroker, never()).subscribe(anyLong());
     }
 
     @Test

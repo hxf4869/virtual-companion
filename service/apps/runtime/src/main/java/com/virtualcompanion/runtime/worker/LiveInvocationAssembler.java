@@ -207,11 +207,13 @@ public class LiveInvocationAssembler {
                 zeroLlmSourceId,
                 fence);
 
+        // STREAM-LIVE: the external attempt streams — the adapter emits
+        // incremental deltas forwarded live by the worker's event sink.
         return new LiveInvocationRequest(
                 routing,
                 messages,
                 new ResponseMode.Text(),
-                false,
+                true,
                 new TimeoutBudget(
                         Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)),
                 List.of(),

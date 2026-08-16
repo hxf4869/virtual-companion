@@ -48,6 +48,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
@@ -118,6 +119,23 @@ class LiveModelInvokerTest {
         assertEquals("owner-1", audit.ownership().ownerUserId());
         // Success keeps the reservation for upstream finalization to settle.
         assertEquals(4L, quota.remaining("owner-1"));
+    }
+
+    @Test
+    void sinkReceivesEveryFencedEventInSessionOrder() {
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
+        java.util.ArrayList<String> seen = new java.util.ArrayList<>();
+
+        LiveAttemptOutcome outcome = harness.invokeWithSink(adequateRequest(), event -> {
+            if (event instanceof ModelProtocolEvent.OutputDelta delta) {
+                seen.add(((ModelPayload.TextChunk) delta.payload()).text());
+            }
+        });
+
+        assertEquals(LiveAttemptTerminal.SUCCEEDED, outcome.terminal());
+        assertEquals(List.of("Hello ", "world"), seen);
+        // The aggregation is untouched: the sink observes without consuming.
+        assertEquals("Hello world", outcome.response());
     }
 
     @Test
@@ -1072,6 +1090,11 @@ class LiveModelInvokerTest {
 
         LiveAttemptOutcome invoke(LiveInvocationRequest request) {
             return invoker.invoke(request);
+        }
+
+        LiveAttemptOutcome invokeWithSink(
+                LiveInvocationRequest request, Consumer<ModelProtocolEvent> sink) {
+            return invoker.execute(invoker.prepare(request), sink);
         }
     }
 }

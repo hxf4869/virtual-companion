@@ -20,7 +20,9 @@ import com.virtualcompanion.catalog.SafetyClassifierOutcome;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
 import com.virtualcompanion.modelruntime.contract.ExternalAttemptBinding;
 import com.virtualcompanion.modelruntime.contract.InvocationBinding;
+import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
+import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
@@ -46,13 +48,16 @@ import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
+import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.safety.ClassifierReport;
 import com.virtualcompanion.safety.DeterministicSafetyResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -78,6 +83,8 @@ class GenerationWorkItemHandlerTest {
     private final GenerationFinalizeService finalizeService = mock(GenerationFinalizeService.class);
     private final LiveInvocationAssembler assembler = mock(LiveInvocationAssembler.class);
     private final WorkItemEnqueueService enqueueService = mock(WorkItemEnqueueService.class);
+    private final RealtimeEventRepository realtimeEventRepository = mock(RealtimeEventRepository.class);
+    private final LiveDeltaBroker deltaBroker = mock(LiveDeltaBroker.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LiveModelInvoker> invokerProvider = mock(ObjectProvider.class);
@@ -94,7 +101,7 @@ class GenerationWorkItemHandlerTest {
     void setUp() {
         handler = new GenerationWorkItemHandler(
                 stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
-                enqueueService);
+                enqueueService, realtimeEventRepository, deltaBroker);
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
     }
@@ -252,7 +259,7 @@ class GenerationWorkItemHandlerTest {
         when(invokerProvider.getIfAvailable()).thenReturn(invoker);
         when(assembler.assemble(1L, 10L, "FENCE-A")).thenReturn(request());
         when(invoker.prepare(any())).thenReturn(zeroLlmPrepared());
-        when(invoker.execute(any())).thenReturn(zeroLlmOutcome());
+        when(invoker.execute(any(), any())).thenReturn(zeroLlmOutcome());
         when(finalizeService.insertCandidate(1L, 10L, FALLBACK)).thenReturn(777L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
@@ -261,7 +268,7 @@ class GenerationWorkItemHandlerTest {
         verify(stateService).promote(1L, 10L, GenerationStateService.IN_PROGRESS);
         verify(assembler).assemble(1L, 10L, "FENCE-A");
         verify(invoker).prepare(any());
-        verify(invoker).execute(any());
+        verify(invoker).execute(any(), any());
         verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
         verify(finalizeService).insertCandidate(1L, 10L, FALLBACK);
         verify(stateService).promote(1L, 10L, GenerationStateService.FINAL_REVIEW);
@@ -269,6 +276,12 @@ class GenerationWorkItemHandlerTest {
         verify(enqueueService).enqueue(1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
+        // STREAM-LIVE: the accepted event is durable; no delta block on the
+        // deterministic path; the live tail always ends.
+        verify(realtimeEventRepository).appendDurableEvent(
+                1L, 10L, 0L, "chat.accepted", "{\"generation_id\":10}");
+        verify(realtimeEventRepository, never()).advanceSeq(anyLong(), anyLong(), anyInt());
+        verify(deltaBroker).publishEnd(10L);
     }
 
     @Test
@@ -277,7 +290,7 @@ class GenerationWorkItemHandlerTest {
         when(invokerProvider.getIfAvailable()).thenReturn(invoker);
         when(assembler.assemble(2L, 20L, "FENCE-A")).thenReturn(request());
         when(invoker.prepare(any())).thenReturn(noEligiblePrepared());
-        when(invoker.execute(any())).thenReturn(
+        when(invoker.execute(any(), any())).thenReturn(
                 LiveAttemptOutcome.noEligibleDeployment(
                         RouteDecision.noEligible(OWN, "DISABLED", List.of()),
                         RecoveryOutcome.of(OWN, RecoveryTerminal.NO_CAPACITY_TERMINAL,
@@ -310,7 +323,7 @@ class GenerationWorkItemHandlerTest {
         when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
-        when(invoker.execute(any())).thenReturn(succeededOutcome());
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
         when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
@@ -327,7 +340,7 @@ class GenerationWorkItemHandlerTest {
                 eq("pa-test-1"), eq("alpha-loopback"), eq("alpha-supplier"),
                 eq("snap-10-req"), eq("snap-10-exec"));
         // external-no-db + audit-outcome-tx.
-        verify(invoker).execute(any());
+        verify(invoker).execute(any(), any());
         verify(finalizeService).recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED");
         // guarded-finalize-tx: guard first, then candidate/promote/finalize/complete.
         verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
@@ -338,6 +351,11 @@ class GenerationWorkItemHandlerTest {
         verify(enqueueService).enqueue(1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
+        // STREAM-LIVE: accepted + the delta seq block are prepared before the outbound.
+        verify(realtimeEventRepository).appendDurableEvent(
+                1L, 10L, 0L, "chat.accepted", "{\"generation_id\":10}");
+        verify(realtimeEventRepository).advanceSeq(1L, 10L, 64);
+        verify(deltaBroker).publishEnd(10L);
     }
 
     @Test
@@ -361,7 +379,7 @@ class GenerationWorkItemHandlerTest {
         assertThrows(IllegalStateException.class,
                 () -> handle(generationClaim(1L, 10L)));
 
-        verify(invoker, never()).execute(any());
+        verify(invoker, never()).execute(any(), any());
         verify(finalizeService, never()).recordAttemptOutcome(anyLong(), anyString(), anyString());
         verify(finalizeService, never()).assertActiveClaim(anyLong(), anyLong(), anyString(), anyString());
     }
@@ -386,7 +404,7 @@ class GenerationWorkItemHandlerTest {
                             .isActualTransactionActive(),
                     "external phase must run with no active database transaction");
             return succeededOutcome();
-        }).when(invoker).execute(any());
+        }).when(invoker).execute(any(), any());
         when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
@@ -400,7 +418,7 @@ class GenerationWorkItemHandlerTest {
                     .clearSynchronization();
         }
 
-        verify(invoker).execute(any());
+        verify(invoker).execute(any(), any());
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
     }
 
@@ -415,7 +433,7 @@ class GenerationWorkItemHandlerTest {
         when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
-        when(invoker.execute(any())).thenReturn(failedOutcome());
+        when(invoker.execute(any(), any())).thenReturn(failedOutcome());
         when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "NON_RETRYABLE_FAILED"))
                 .thenReturn(1);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
@@ -449,7 +467,7 @@ class GenerationWorkItemHandlerTest {
         when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
-        when(invoker.execute(any())).thenReturn(retryableFailedOutcome());
+        when(invoker.execute(any(), any())).thenReturn(retryableFailedOutcome());
         when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED"))
                 .thenReturn(1);
         when(finalizeService.requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3))
@@ -479,7 +497,7 @@ class GenerationWorkItemHandlerTest {
         when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
-        when(invoker.execute(any())).thenReturn(retryableFailedOutcome());
+        when(invoker.execute(any(), any())).thenReturn(retryableFailedOutcome());
         when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED"))
                 .thenReturn(1);
         when(finalizeService.requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3))
@@ -506,7 +524,7 @@ class GenerationWorkItemHandlerTest {
         when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
-        when(invoker.execute(any())).thenReturn(succeededOutcome());
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
         when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         doAnswer(invocation -> {
             throw new IllegalStateException("claim not active");
@@ -522,5 +540,86 @@ class GenerationWorkItemHandlerTest {
                 anyLong(), anyLong(), anyLong(), any(), any(),
                 anyLong(), anyLong(), anyDouble(), any(), anyInt(), anyBoolean());
         verify(finalizeService, never()).completeWorkItem(anyLong(), anyString(), anyString());
+    }
+
+    // ---- STREAM-LIVE: live delta publication ----
+
+    @Test
+    void publishesLiveDeltasThroughTheSinkUsingTheReservedSeqBlockAndEndsTheTail() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(realtimeEventRepository.streamEpoch(1L, 10L)).thenReturn(3L);
+        // The block [2, 66) is reserved: deltas get seqs 2, 3, ...
+        when(realtimeEventRepository.advanceSeq(1L, 10L, 64)).thenReturn(66L);
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+        InvocationBinding.ExternalAttemptBinding binding =
+                new InvocationBinding.ExternalAttemptBinding(
+                        OWN, "pa-test-1", 42L, "snap-10-req", "snap-10-exec");
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<ModelProtocolEvent> sink = invocation.getArgument(1);
+            sink.accept(new ModelProtocolEvent.OutputDelta(
+                    binding, 0, new ModelPayload.TextChunk("Hel")));
+            sink.accept(new ModelProtocolEvent.OutputDelta(
+                    binding, 1, new ModelPayload.TextChunk("lo")));
+            return succeededOutcome();
+        }).when(invoker).execute(any(), any());
+
+        handle(generationClaim(1L, 10L));
+
+        verify(realtimeEventRepository).appendDurableEvent(
+                1L, 10L, 3L, "chat.accepted", "{\"generation_id\":10}");
+        verify(deltaBroker).publish(
+                eq(10L), eq(new LiveDeltaBroker.LiveEvent(3L, 2L, "chat.delta", "Hel")));
+        verify(deltaBroker).publish(
+                eq(10L), eq(new LiveDeltaBroker.LiveEvent(3L, 3L, "chat.delta", "lo")));
+        verify(deltaBroker).publishEnd(10L);
+    }
+
+    @Test
+    void stopsPublishingWhenTheReservedSeqBlockIsExhausted() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(realtimeEventRepository.advanceSeq(1L, 10L, 64)).thenReturn(2L);
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+        InvocationBinding.ExternalAttemptBinding binding =
+                new InvocationBinding.ExternalAttemptBinding(
+                        OWN, "pa-test-1", 42L, "snap-10-req", "snap-10-exec");
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<ModelProtocolEvent> sink = invocation.getArgument(1);
+            // More chunks than the reserved block: everything beyond the block
+            // is dropped (the client recovers via snapshot — never fabricated).
+            for (int i = 0; i < 128; i++) {
+                sink.accept(new ModelProtocolEvent.OutputDelta(
+                        binding, i, new ModelPayload.TextChunk("x")));
+            }
+            return succeededOutcome();
+        }).when(invoker).execute(any(), any());
+
+        handle(generationClaim(1L, 10L));
+
+        // Exactly DELTA_SEQ_BLOCK publishes (all the reserved seqs consumed).
+        verify(deltaBroker, org.mockito.Mockito.times(
+                GenerationWorkItemHandler.DELTA_SEQ_BLOCK))
+                .publish(eq(10L), any(LiveDeltaBroker.LiveEvent.class));
     }
 }

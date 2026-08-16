@@ -2,10 +2,16 @@ package com.virtualcompanion.runtime.realtime.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.virtualcompanion.platform.persistence.GenerationRecord;
+import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.RealtimeResumeService;
 import com.virtualcompanion.platform.persistence.ResumeResult;
 import com.virtualcompanion.platform.persistence.RealtimeTicketRepository;
+import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.BadSqlGrammarException;
@@ -48,10 +54,14 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEvent
  * the ticket controller. The five {@code resume_stream} dispositions map to SSE
  * events: RESUMED / TERMINAL_SNAPSHOT emit the ordered durable events (and the
  * committed snapshot for a terminal generation); GAP_EXPIRED emits
- * {@code stream.gap}; RESET_REQUIRED emits {@code stream.reset}. The stream is a
- * one-shot resume of the currently buffered durable events (INV-RT-001), not a
- * long-lived subscription, so the emitter completes once the buffered events are
- * flushed.
+ * {@code stream.gap}; RESET_REQUIRED emits {@code stream.reset}.
+ *
+ * <p>STREAM-LIVE: for a non-terminal generation the RESUMED stream does not
+ * complete after the buffered durable events — it subscribes to the
+ * process-local {@link LiveDeltaBroker} and forwards {@code chat.delta} chunks
+ * as the worker publishes them, until the generation finishes or the tail
+ * deadline expires. Missing deltas are never fabricated (INV-RT-001): a
+ * reconnect answers from the durable resume path and gap recovery.
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -69,14 +79,32 @@ public class RealtimeStreamController {
     private static final String EVENT_RESET = "stream.reset";
     private static final String EVENT_DENIED = "stream.denied";
 
+    /** STREAM-LIVE: live-tail poll cadence and hard deadline (millis). */
+    static final long LIVE_TAIL_POLL_MILLIS = 1000L;
+    static final long LIVE_TAIL_TIMEOUT_MILLIS = 120_000L;
+
+    /** Generation statuses that can never emit live deltas again. */
+    private static final Set<String> TERMINAL_STATUSES = Set.of(
+            "INPUT_BLOCKED", "COMPLETED", "COMPLETED_FALLBACK", "CANCELLED",
+            "OUTPUT_BLOCKED", "FAILED_FINAL");
+
     private final RealtimeTicketRepository ticketRepository;
     private final RealtimeResumeService resumeService;
+    private final GenerationRepository generationRepository;
+    private final LiveDeltaBroker deltaBroker;
+
+    /** Overridable in tests: the live-tail hard deadline (millis). */
+    long liveTailTimeoutMillis = LIVE_TAIL_TIMEOUT_MILLIS;
 
     public RealtimeStreamController(
             RealtimeTicketRepository ticketRepository,
-            RealtimeResumeService resumeService) {
+            RealtimeResumeService resumeService,
+            GenerationRepository generationRepository,
+            LiveDeltaBroker deltaBroker) {
         this.ticketRepository = ticketRepository;
         this.resumeService = resumeService;
+        this.generationRepository = generationRepository;
+        this.deltaBroker = deltaBroker;
     }
 
     @GetMapping(value = "/realtime/streams/{generationId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -133,14 +161,21 @@ public class RealtimeStreamController {
         } catch (BadSqlGrammarException e) {
             throw e;
         }
-        dispatch(emitter, result);
+        dispatch(emitter, result, ownerUserId, genId);
         return emitter;
     }
 
-    private void dispatch(SseEmitter emitter, ResumeResult result) {
+    private void dispatch(SseEmitter emitter, ResumeResult result, long ownerUserId, long genId) {
         try {
             switch (result.disposition()) {
-                case ResumeResult.DISPOSITION_RESUMED -> sendDurableEvents(emitter, result.eventsJson());
+                case ResumeResult.DISPOSITION_RESUMED -> {
+                    sendDurableEvents(emitter, result.eventsJson());
+                    // STREAM-LIVE: while the generation is still running the
+                    // stream stays open and forwards live deltas; the tail
+                    // completes the emitter itself.
+                    liveTail(emitter, ownerUserId, genId);
+                    return;
+                }
                 case ResumeResult.DISPOSITION_TERMINAL_SNAPSHOT -> {
                     sendSnapshot(emitter, result.snapshotJson());
                     sendDurableEvents(emitter, result.eventsJson());
@@ -155,6 +190,51 @@ public class RealtimeStreamController {
         } catch (IOException e) {
             emitter.completeWithError(e);
         }
+    }
+
+    /**
+     * STREAM-LIVE: keep the resume stream open while the generation runs and
+     * forward the process-local broker's deltas (catalog envelope shape, same
+     * {@code id}/{@code data} conventions as durable events). Completes when the
+     * broker marks the generation finished, when the generation turns terminal,
+     * or after the hard deadline — the client's next resume attempt then
+     * delivers the durable terminal event/snapshot. Deltas published before
+     * this subscription are lost and surface as the sanctioned gap recovery.
+     */
+    private void liveTail(SseEmitter emitter, long ownerUserId, long genId) {
+        GenerationRecord record = generationRepository.find(ownerUserId, genId).orElse(null);
+        if (record == null || TERMINAL_STATUSES.contains(record.status())) {
+            emitter.complete();
+            return;
+        }
+        try (LiveDeltaBroker.Subscriber subscriber = deltaBroker.subscribe(genId)) {
+            long deadline = System.currentTimeMillis() + liveTailTimeoutMillis;
+            while (System.currentTimeMillis() < deadline) {
+                LiveDeltaBroker.LiveEvent event = subscriber.poll(LIVE_TAIL_POLL_MILLIS);
+                if (event == null) {
+                    continue;
+                }
+                if (event.isEnd()) {
+                    break;
+                }
+                Map<String, Object> envelope = new LinkedHashMap<>();
+                envelope.put("event", event.eventType());
+                envelope.put("generationId", Long.toString(genId));
+                envelope.put("streamEpoch", event.streamEpoch());
+                envelope.put("eventSeq", event.eventSeq());
+                envelope.put("payload", event.payload());
+                emitter.send(SseEmitter.event()
+                        .name(event.eventType())
+                        .id(String.valueOf(event.eventSeq()))
+                        .data(envelope));
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+            return;
+        }
+        emitter.complete();
     }
 
     /** Fail-closed single event: emit stream.denied and complete without reason. */

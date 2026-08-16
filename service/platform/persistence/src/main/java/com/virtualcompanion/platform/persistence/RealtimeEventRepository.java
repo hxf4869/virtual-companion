@@ -52,6 +52,58 @@ public class RealtimeEventRepository {
     }
 
     /**
+     * STREAM-LIVE: read the current stream epoch for a generation, ensuring the
+     * per-generation stream row exists (V8 {@code vc.ensure_realtime_stream}).
+     * Used before the first durable append so the epoch is known to the caller.
+     */
+    public long streamEpoch(long ownerUserId, long generationId) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (generationId <= 0) {
+            throw new IllegalArgumentException("generationId must be positive");
+        }
+        Long epoch = jdbc.query(
+                "SELECT out_stream_epoch FROM vc.ensure_realtime_stream(?, ?)",
+                (rs, rowNum) -> rs.getLong("out_stream_epoch"),
+                ownerUserId,
+                generationId).stream().findFirst().orElse(null);
+        if (epoch == null) {
+            throw new IllegalStateException("ensure_realtime_stream returned no epoch");
+        }
+        return epoch;
+    }
+
+    /**
+     * STREAM-LIVE: reserve {@code count} seq slots for non-durable live deltas
+     * (V8 {@code vc.advance_realtime_seq} — deltas consume seq without
+     * persisting). Returns the post-increment high water mark, so the reserved
+     * block is {@code [next - count, next)}. Must run in the prepare segment
+     * while the generation is non-terminal.
+     */
+    public long advanceSeq(long ownerUserId, long generationId, int count) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (generationId <= 0) {
+            throw new IllegalArgumentException("generationId must be positive");
+        }
+        if (count < 0) {
+            throw new IllegalArgumentException("count must be non-negative");
+        }
+        Long next = jdbc.queryForObject(
+                "SELECT vc.advance_realtime_seq(?, ?, ?)",
+                Long.class,
+                ownerUserId,
+                generationId,
+                count);
+        if (next == null) {
+            throw new IllegalStateException("advance_realtime_seq returned no high water mark");
+        }
+        return next;
+    }
+
+    /**
      * Pure argument validation for a durable append. Exposed for unit testing;
      * throws {@link IllegalArgumentException} on any invalid combination.
      */

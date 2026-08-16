@@ -34,6 +34,7 @@ import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
 import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
+import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.runtime.worker.DispatchingWorkItemHandler;
 import com.virtualcompanion.runtime.worker.GenerationWorkItemHandler;
 import com.virtualcompanion.runtime.worker.LiveInvocationAssembler;
@@ -371,6 +372,16 @@ public class AuthDataSourceConfig {
     }
 
     /**
+     * STREAM-LIVE: process-local live delta broker shared by the generation
+     * worker (publish) and the Fetch-SSE stream controller (subscribe).
+     * In-memory only — deltas are non-durable per the realtime-events catalog.
+     */
+    @Bean
+    public LiveDeltaBroker liveDeltaBroker() {
+        return new LiveDeltaBroker();
+    }
+
+    /**
      * TASK-0181: JDBC {@link AuthorizationSnapshotProvider} wiring the V26
      * {@code create_authorization_snapshots} SECURITY DEFINER function and
      * mirroring the minted dual snapshots into the in-memory store the
@@ -523,14 +534,18 @@ public class AuthDataSourceConfig {
             GenerationRepository generationRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
-            MemoryService memoryService) {
+            MemoryService memoryService,
+            RealtimeEventRepository realtimeEventRepository,
+            LiveDeltaBroker liveDeltaBroker) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
                 generationFinalizeService,
                 liveInvocationAssembler,
                 liveModelInvokerProvider,
                 authorizationSnapshotServiceProvider,
-                workItemEnqueueService);
+                workItemEnqueueService,
+                realtimeEventRepository,
+                liveDeltaBroker);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

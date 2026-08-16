@@ -2,10 +2,20 @@
 
 产品待办（现状声明见 README）：
 
-## 当前里程碑（2026-08-16）：记忆闭环与用户回流
+## 当前里程碑（2026-08-16 第二轮）：实时增量流与产品收尾
 
-> 基于代码与契约现状识别的三个完整闭环缺口。验收口径：每条都做到
-> 「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+> 每条验收口径同第一轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+> 安全分类器接线不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。
+
+- [ ] STREAM-LIVE 实时增量流：chat.accepted 首发事件 + 模型流式增量经进程内 broker 直推
+      Fetch-SSE（V31 `vc.allocate_stream_seq` 为 delta 预留 seq 块，catalog 语义「delta 占号
+      不落库」），前端增量渲染，收尾 gap 走既有 snapshot 恢复（INV-RT-001 不补齐缺失 delta）。
+- [ ] ADMIN-UI ADMIN 账户开通页：auth API client 补 `createAccount`，新增 H5 管理页，
+      index 边界台提供入口（仅 ADMIN 可见），闭环：管理员开通 → 用户登录。
+- [ ] MEM-PROMPT 记忆候选提示：聊天页在轮次完成后查询待确认候选（含异步提取延迟的二次
+      复核），有候选时提示并跳转记忆页确认，把 MEM-LOOP 的产出接到用户眼前。
+
+## 已完成（2026-08-16 第一轮：记忆闭环与用户回流）
 
 - [x] CONV-HIST 会话历史导航：OpenAPI 新增 GET /api/v1/conversations（contract-first，重新生成
       dist 产物）+ V30 `vc.list_conversations` 迁移（含最后消息预览）+ H5 会话列表/切换/恢复

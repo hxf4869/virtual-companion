@@ -1,6 +1,8 @@
 package com.virtualcompanion.runtime.worker;
 
 import com.virtualcompanion.catalog.ProviderAttemptStatus;
+import com.virtualcompanion.modelruntime.contract.ModelPayload;
+import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.execution.LiveAttemptOutcome;
 import com.virtualcompanion.modelruntime.execution.LiveAttemptTerminal;
@@ -11,8 +13,12 @@ import com.virtualcompanion.modelruntime.execution.ProviderAttemptAudit;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
+import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -70,12 +76,23 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
      */
     static final int MAX_PROVIDER_ATTEMPTS = 3;
 
+    /**
+     * STREAM-LIVE: seq slots reserved for live deltas per external attempt
+     * (deltas consume seq without persisting, V8). Unused slots surface as the
+     * client's sanctioned gap → snapshot recovery at completion.
+     */
+    static final int DELTA_SEQ_BLOCK = 64;
+
+    private static final String EVENT_CHAT_ACCEPTED = "chat.accepted";
+
     private final GenerationStateService stateService;
     private final GenerationFinalizeService finalizeService;
     private final LiveInvocationAssembler assembler;
     private final ObjectProvider<LiveModelInvoker> liveModelInvokerProvider;
     private final ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider;
     private final WorkItemEnqueueService enqueueService;
+    private final RealtimeEventRepository realtimeEventRepository;
+    private final LiveDeltaBroker deltaBroker;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -83,13 +100,17 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             LiveInvocationAssembler assembler,
             ObjectProvider<LiveModelInvoker> liveModelInvokerProvider,
             ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider,
-            WorkItemEnqueueService enqueueService) {
+            WorkItemEnqueueService enqueueService,
+            RealtimeEventRepository realtimeEventRepository,
+            LiveDeltaBroker deltaBroker) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
         this.liveModelInvokerProvider = liveModelInvokerProvider;
         this.authorizationSnapshotServiceProvider = authorizationSnapshotServiceProvider;
         this.enqueueService = enqueueService;
+        this.realtimeEventRepository = realtimeEventRepository;
+        this.deltaBroker = deltaBroker;
     }
 
     @Override
@@ -110,7 +131,24 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 return;
             }
             // ---- external-no-db (adapter/session only, no database) ----
-            LiveAttemptOutcome outcome = prepared.invokerValue().execute(prepared.invocationValue());
+            // STREAM-LIVE: forward accepted session deltas to the live broker.
+            // The sink is in-memory only (no database access inside execute) and
+            // uses the seq block reserved in the prepare segment.
+            AtomicLong nextDeltaSeq = new AtomicLong(prepared.firstDeltaSeq());
+            Consumer<ModelProtocolEvent> sink = event -> {
+                if (!(event instanceof ModelProtocolEvent.OutputDelta delta)
+                        || !(delta.payload() instanceof ModelPayload.TextChunk chunk)) {
+                    return;
+                }
+                long seq = nextDeltaSeq.getAndIncrement();
+                if (prepared.externalMode()
+                        && seq - prepared.firstDeltaSeq() < DELTA_SEQ_BLOCK) {
+                    deltaBroker.publish(generationId, new LiveDeltaBroker.LiveEvent(
+                            prepared.streamEpoch(), seq, "chat.delta", chunk.text()));
+                }
+            };
+            LiveAttemptOutcome outcome =
+                    prepared.invokerValue().execute(prepared.invocationValue(), sink);
             // ---- audit-outcome-tx ----
             if (outcome.externalAttemptCreated()) {
                 auditOutcomeSegment(executor, ownerUserId, outcome);
@@ -138,6 +176,11 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             // The worker performs the independent per-item fail (fresh
             // transaction, only the original item/token/fence).
             throw e;
+        } finally {
+            // STREAM-LIVE: the live tail completes once this item is fully
+            // processed (durable terminal state committed); the client's next
+            // resume attempt then delivers the terminal snapshot.
+            deltaBroker.publishEnd(generationId);
         }
     }
 
@@ -154,6 +197,15 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         final Prepared[] ref = new Prepared[1];
         executor.asOwner(ownerUserId, () -> {
             stateService.promote(ownerUserId, generationId, GenerationStateService.IN_PROGRESS);
+            // STREAM-LIVE: the turn is accepted once the worker picked it up —
+            // the durable chat.accepted event is seq 1 of the generation stream.
+            long epoch = realtimeEventRepository.streamEpoch(ownerUserId, generationId);
+            realtimeEventRepository.appendDurableEvent(
+                    ownerUserId,
+                    generationId,
+                    epoch,
+                    EVENT_CHAT_ACCEPTED,
+                    "{\"generation_id\":" + generationId + "}");
             LiveModelInvoker invoker = liveModelInvokerProvider.getIfAvailable();
             if (invoker == null) {
                 ref[0] = Prepared.degrade("model-providers-disabled");
@@ -185,12 +237,19 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                             prepared.attempt().supplierName(),
                             prepared.attempt().requestedAuthorizationSnapshotId(),
                             prepared.attempt().executionAuthorizationSnapshotId());
+                    // STREAM-LIVE: reserve the delta seq block (deltas consume
+                    // seq without persisting, V8 advance_realtime_seq).
+                    long nextSeq = realtimeEventRepository.advanceSeq(
+                            ownerUserId, generationId, DELTA_SEQ_BLOCK);
+                    ref[0] = new Prepared(
+                            invoker, prepared, null, true, epoch, nextSeq - DELTA_SEQ_BLOCK);
+                } else {
+                    ref[0] = new Prepared(invoker, prepared, null, false, epoch, 0L);
                 }
-                ref[0] = new Prepared(invoker, prepared, null, true);
             } else {
                 LiveInvocationRequest request =
                         assembler.assemble(ownerUserId, generationId, claim.claimFence());
-                ref[0] = new Prepared(invoker, invoker.prepare(request), null, false);
+                ref[0] = new Prepared(invoker, invoker.prepare(request), null, false, epoch, 0L);
             }
         });
         return ref[0];
@@ -363,15 +422,18 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         });
     }
 
-    /** Immutable per-item prepare result: invoker, prepared invocation, external mode, or a degrade fault. */
+    /** Immutable per-item prepare result: invoker, prepared invocation, external
+     *  mode, and the STREAM-LIVE stream (epoch, first reserved delta seq). */
     private record Prepared(
             LiveModelInvoker invokerValue,
             PreparedInvocation invocationValue,
             String degradeFault,
-            boolean externalMode) {
+            boolean externalMode,
+            long streamEpoch,
+            long firstDeltaSeq) {
 
         static Prepared degrade(String fault) {
-            return new Prepared(null, null, fault, false);
+            return new Prepared(null, null, fault, false, 0L, 0L);
         }
     }
 }
