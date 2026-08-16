@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V32 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V33 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -54,7 +54,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   输入/输出 token）、`POST /api/v1/generations/{generationId}/cancel`
 - `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE
   恢复流；非终态 generation 保持连接并实时直推 `chat.delta` 增量，断线经 durable 事件与
-  snapshot 恢复，缺失 delta 永不补齐）
+  snapshot 恢复，缺失 delta 永不补齐；realtime 请求与 REST 一样支持 401 单次静默刷新重放）
 - 8 个 memory 端点（candidates/list/get/update/delete/confirm/reject/evidence）
 
 `specs/openapi/virtual-companion.yaml` 的合同面已全部由 runtime controller 实现（version、
@@ -62,6 +62,18 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-16 第五轮）：
+
+- 生成重试/崩溃对账（V33）：`promote_generation` 幂等化使 RETRY-A 重试重跑 prepare 不再卡死
+  generation；prepare 重跑闭合遗留 CREATED attempt intent 且 `chat.accepted` 不重复落库；
+  调度任务周期清扫 work_item 已终态但 generation 仍 IN_PROGRESS 的孤儿（终态化为 FAILED_FINAL +
+  `chat.failed`，前端有对应友好文案）。
+- 上下文 token 预算（CTX-BUDGET）：`virtual-companion.generation.context-budget.*` 配置输入/
+  输出 token 与轮次预算，组装器按确定性估算（UTF-8 字节/4）从最新消息回溯裁剪历史，召回记忆占
+  输入预算三分之一。
+- 采样参数部署配置（SAMPLE-CFG）：`model-providers.deployments[].temperature` 与 OpenAI 的
+  `max-tokens` 由 codec 透传进每次请求（OpenAI 0..2、Anthropic 0..1，缺省 1.0）。
 
 ## 真实 provider 部署配置（Technical Alpha 默认关闭）
 
