@@ -48,7 +48,13 @@ import {
   type StreamEvent,
 } from "@/domain/stream-reducer";
 
-export type ChatPhase = "idle" | "streaming" | "completed" | "cancelled" | "failed";
+export type ChatPhase =
+  | "idle"
+  | "streaming"
+  | "completed"
+  | "cancelled"
+  | "blocked"
+  | "failed";
 
 /** CONV-HIST: history page size and the auto-advance page cap on open. */
 const HISTORY_PAGE_SIZE = 50;
@@ -71,6 +77,12 @@ export const useChatStore = defineStore("h5-chat", () => {
   // CANCEL-A: the transport of the most recent send, so cancel() can confirm the
   // backend cancellation before tearing down the local stream.
   let lastTransport: ChatTransport | null = null;
+  // STREAM-ECHO: the content of the in-flight (or last failed) user turn, so the
+  // page can echo it as a pending bubble while streaming and offer a one-click
+  // retry after a terminal failure.
+  const pendingUserContent = ref("");
+  // USAGE-VIZ: settled provider token usage of the last completed generation.
+  const usage = ref<{ inputTokens: number; outputTokens: number } | null>(null);
 
   /** The rendered draft: joined delta payloads of the contiguous events only. */
   const draft = computed(() =>
@@ -86,9 +98,20 @@ export const useChatStore = defineStore("h5-chat", () => {
   /**
    * Messages to display: committed history plus the live streaming draft as a
    * pending assistant message (so the user sees incremental output in context).
+   * STREAM-ECHO: while a turn is in flight the user's own message is echoed as
+   * a pending bubble (the server persists it, but history only reloads after
+   * the stream reaches a terminal state).
    */
   const displayMessages = computed<Message[]>(() => {
     const msgs = [...messages.value];
+    if (pendingUserContent.value && isStreaming.value) {
+      msgs.push({
+        messageId: "__pending_user__",
+        conversationId: conversationId.value,
+        role: "user",
+        content: pendingUserContent.value,
+      });
+    }
     if (isStreaming.value && draft.value) {
       msgs.push({
         messageId: "__streaming__",
@@ -130,9 +153,22 @@ export const useChatStore = defineStore("h5-chat", () => {
 
     if (result.outcome === "completed") {
       phase.value = "completed";
+      pendingUserContent.value = "";
+      // USAGE-VIZ: the usage row settles in the same transaction as the
+      // terminal event, so it is already visible in the snapshot endpoint.
+      await refreshUsage(deps);
     } else if (result.outcome === "cancelled") {
       phase.value = "cancelled";
+      pendingUserContent.value = "";
+    } else if (result.outcome === "blocked") {
+      // TERM-SEM: server OUTPUT_BLOCKED is its own phase, never "failed".
+      // The content was refused by review, so retry would just be refused
+      // again -- clear it and let the user write something new.
+      phase.value = "blocked";
+      pendingUserContent.value = "";
     } else {
+      // TERM-SEM: failed / exhausted / not_found keep the content so the
+      // page can offer a one-click retry of the same turn.
       phase.value = "failed";
     }
   }
@@ -174,8 +210,27 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages.value = [];
     historyHasMore.value = false;
     pendingMemoryCount.value = 0;
+    pendingUserContent.value = "";
+    usage.value = null;
     handle = null;
     lastTransport = null;
+  }
+
+  /**
+   * USAGE-VIZ: pull the settled usage of the completed generation from the
+   * snapshot endpoint (the same one snapshot recovery uses). Non-fatal — a
+   * failed read keeps the previous usage.
+   */
+  async function refreshUsage(deps: RealtimeDeps): Promise<void> {
+    if (!generationId.value) return;
+    try {
+      const snapshot = await deps.fetchSnapshot(generationId.value);
+      if (snapshot.ok && snapshot.usage) {
+        usage.value = snapshot.usage;
+      }
+    } catch {
+      // Keep the previous usage.
+    }
   }
 
   /**
@@ -296,6 +351,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     content: string,
   ): Promise<void> {
     lastTransport = transport; // CANCEL-A: cancel() confirms through this transport
+    pendingUserContent.value = content; // STREAM-ECHO: echo + retry source
     if (!conversationId.value) {
       phase.value = "failed";
       return;
@@ -328,6 +384,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversations,
     historyHasMore,
     pendingMemoryCount,
+    pendingUserContent,
+    usage,
     draft,
     isStreaming,
     isTerminal,

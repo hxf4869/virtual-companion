@@ -437,6 +437,160 @@ describe("useChatStore", () => {
     expect(store.phase).toBe("idle");
     expect(store.historyHasMore).toBe(false);
     expect(store.pendingMemoryCount).toBe(0);
+    expect(store.pendingUserContent).toBe("");
+  });
+
+  // ---- TERM-SEM: server terminal events map to distinct phases ----
+
+  const SERVER_TERMINAL_CASES: Array<
+    [string, "cancelled" | "blocked" | "failed", string]
+  > = [
+    ["chat.cancelled", "cancelled", ""],
+    ["chat.blocked", "blocked", ""],
+    ["chat.failed", "failed", "keep"],
+  ];
+
+  it.each(SERVER_TERMINAL_CASES)(
+    "run maps a %s terminal stream to phase %s",
+    async (eventType, phase, retain) => {
+      const store = useChatStore();
+      const deps: RealtimeDeps = {
+        resume: vi.fn(async (): Promise<ResumeResult> => ({
+          disposition: "RESUMED",
+          events: [
+            delta(1, 1, "Hel"),
+            { eventSeq: 2, streamEpoch: 1, eventType, payload: {} },
+          ],
+        })),
+        fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+      };
+      store.pendingUserContent = "Hello";
+
+      await store.run(deps, "gen-1", 1);
+
+      expect(store.phase).toBe(phase);
+      if (retain === "keep") {
+        // failed keeps the content for the one-click retry.
+        expect(store.pendingUserContent).toBe("Hello");
+      } else {
+        expect(store.pendingUserContent).toBe("");
+      }
+    },
+  );
+
+  // ---- STREAM-ECHO: pending user bubble while streaming ----
+
+  it("displayMessages echoes the in-flight user message while streaming", () => {
+    const store = useChatStore();
+    store.conversationId = "1";
+    store.messages = [
+      { messageId: "1", conversationId: "1", role: "user", content: "earlier" },
+    ];
+    store.phase = "streaming";
+    store.pendingUserContent = "Hello";
+    store.stream = {
+      status: "streaming",
+      epoch: 1,
+      cursor: 0,
+      events: [],
+      terminal: false,
+      terminalEventType: null,
+    };
+
+    const msgs = store.displayMessages;
+
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1]).toMatchObject({
+      messageId: "__pending_user__",
+      role: "user",
+      content: "Hello",
+    });
+  });
+
+  it("displayMessages drops the pending bubble once completed", () => {
+    const store = useChatStore();
+    store.conversationId = "1";
+    store.messages = [
+      { messageId: "1", conversationId: "1", role: "user", content: "earlier" },
+    ];
+    store.phase = "completed";
+    store.pendingUserContent = "Hello";
+
+    expect(store.displayMessages).toHaveLength(1);
+  });
+
+  it("send keeps the content for retry when the stream fails", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      messagesJson: [
+        { messageId: 10, conversationId: 1, role: "user", content: "Hello" },
+      ],
+    });
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [
+          { eventSeq: 1, streamEpoch: 1, eventType: "chat.failed", payload: {} },
+        ],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.initConversation(transport, "1");
+    await store.send(transport, deps, "Hello");
+
+    expect(store.phase).toBe("failed");
+    expect(store.pendingUserContent).toBe("Hello");
+  });
+
+  // ---- USAGE-VIZ: settled usage surfaced after a completed run ----
+
+  it("run pulls the settled usage from the snapshot endpoint after completion", async () => {
+    const store = useChatStore();
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [delta(1, 1, "Hel"), terminal(2, 1)],
+      })),
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        events: [],
+        usage: { inputTokens: 42, outputTokens: 58 },
+      })),
+    };
+
+    await store.run(deps, "gen-1", 1);
+
+    expect(store.phase).toBe("completed");
+    expect(store.usage).toEqual({ inputTokens: 42, outputTokens: 58 });
+  });
+
+  it("keeps usage null when the snapshot carries none", async () => {
+    const store = useChatStore();
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [delta(1, 1, "Hel"), terminal(2, 1)],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.run(deps, "gen-1", 1);
+
+    expect(store.phase).toBe("completed");
+    expect(store.usage).toBeNull();
+  });
+
+  it("reset clears the usage", async () => {
+    const store = useChatStore();
+    store.usage = { inputTokens: 1, outputTokens: 2 };
+    store.generationId = "gen-1";
+
+    store.reset();
+
+    expect(store.usage).toBeNull();
+    expect(store.generationId).toBe("");
   });
 
   // ---- CONV-HIST: conversation list + history pagination ----

@@ -139,6 +139,16 @@
           <text>{{ statusText }}</text>
         </view>
 
+        <!-- USAGE-VIZ: settled token usage of the last completed turn -->
+        <view
+          v-if="usage"
+          class="chat-usage"
+          data-testid="usage"
+          role="status"
+        >
+          <text>{{ `本轮用量：输入 ${usage.inputTokens} / 输出 ${usage.outputTokens} tokens` }}</text>
+        </view>
+
         <!-- MEM-PROMPT: pending candidates surfaced after a completed turn -->
         <view
           v-if="pendingMemoryCount > 0"
@@ -181,6 +191,14 @@
             @click="onCancel"
           >
             取消
+          </button>
+          <button
+            v-if="canRetry"
+            data-testid="retry"
+            class="chat-retry"
+            @click="onRetry"
+          >
+            重试
           </button>
         </view>
       </template>
@@ -263,6 +281,7 @@ export default defineComponent({
     const conversations = computed(() => store.conversations);
     const pendingMemoryCount = computed(() => store.pendingMemoryCount);
     const draft = computed(() => store.draft);
+    const usage = computed(() => store.usage);
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
     const hasRelationship = computed(() => relStore.currentRelationshipId !== null);
@@ -307,17 +326,38 @@ export default defineComponent({
           }
           return "流式接收中";
         case "completed":
-          return store.stream.terminal ? "已完成（安全终态）" : "已结束";
+          return "已完成（安全终态）";
         case "cancelled":
           return "已取消";
+        case "blocked":
+          // TERM-SEM: server OUTPUT_BLOCKED terminal, not a transport failure.
+          return "回复未通过安全审查（已阻断）";
         case "failed":
-          return store.outcome === "not_found_or_forbidden"
-            ? "未找到或无权访问（存在性不披露）"
-            : "发送失败，请重试";
+          if (store.outcome === "not_found_or_forbidden") {
+            return "未找到或无权访问（存在性不披露）";
+          }
+          if (store.outcome === "failed") {
+            return "生成失败";
+          }
+          return "连接中断，请重试";
         default:
           return "";
       }
     });
+
+    /** STREAM-ECHO: one-click retry of the last failed turn (new idempotency key). */
+    const canRetry = computed(
+      () => store.phase === "failed" && store.pendingUserContent.trim().length > 0,
+    );
+
+    async function onRetry(): Promise<void> {
+      if (!canRetry.value) return;
+      const text = store.pendingUserContent;
+      await store.send(transport, deps, text);
+      if (store.phase === "completed") {
+        await scheduleMemoryPrompt();
+      }
+    }
 
     async function onSend(): Promise<void> {
       const text = inputText.value.trim();
@@ -512,6 +552,7 @@ export default defineComponent({
       conversations,
       pendingMemoryCount,
       draft,
+      usage,
       isStreaming,
       showEmptyHistory,
       showLoadMore,
@@ -521,9 +562,11 @@ export default defineComponent({
       initError,
       confirmDeactivate,
       statusText,
+      canRetry,
       roleLabel,
       conversationLabel,
       onSend,
+      onRetry,
       onCancel,
       onDeactivate,
       onOpenConversation,
@@ -653,6 +696,11 @@ export default defineComponent({
   opacity: 0.85;
   margin-bottom: 24rpx;
 }
+.chat-usage {
+  font-size: 24rpx;
+  opacity: 0.7;
+  margin-bottom: 24rpx;
+}
 .memory-prompt {
   display: flex;
   align-items: center;
@@ -683,6 +731,10 @@ export default defineComponent({
 }
 .chat-cancel {
   background-color: #e63946;
+  color: #ffffff;
+}
+.chat-retry {
+  background-color: #2a6a9a;
   color: #ffffff;
 }
 </style>
