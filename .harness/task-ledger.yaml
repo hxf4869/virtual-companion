@@ -1272,3 +1272,9 @@ tasks:
     taskCard: docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md
     evidence: docs/evidence/TASK-0236/evidence-pack.json
     handoff: docs/handoffs/TASK-0236.json
+  TASK-0237:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0237-history-legacy-finding-registry.md
+    evidence: docs/evidence/TASK-0237/evidence-pack.json
+    handoff: docs/handoffs/TASK-0237.json

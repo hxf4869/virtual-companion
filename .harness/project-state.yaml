@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: TASK-0237
-activeTaskCard: docs/tasks/TASK-0237-history-legacy-finding-registry.md
-lastAcceptedTask: TASK-0236
-lastAcceptedHandoff: docs/handoffs/TASK-0236.json
-lastTerminalTask: TASK-0236
-lastTerminalHandoff: docs/handoffs/TASK-0236.json
-nextAction: TASK-0237 READY（SLICE-HISTORY：TASK-0141 legacy finding 登记 + 已登记 tail 兼容确认；不改历史制品）。保持不推送 main。
+activeTask: null
+activeTaskCard: null
+lastAcceptedTask: TASK-0237
+lastAcceptedHandoff: docs/handoffs/TASK-0237.json
+lastTerminalTask: TASK-0237
+lastTerminalHandoff: docs/handoffs/TASK-0237.json
+nextAction: TASK-0237 ACCEPTED（SLICE-HISTORY 收口）。下一动作：推送本终态至恢复分支并远端复核、跑正式 Doctor 验证释放绑定，然后 intake 14 张卡补偿验证第一批卡（永久 ID 由机器分配）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
