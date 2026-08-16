@@ -448,6 +448,71 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  // ---- MEM-PROMPT: pending candidate hint ----
+
+  it("renders the memory prompt when pending candidates exist and links to the memory page", async () => {
+    stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.pendingMemoryCount = 2;
+    await wrapper.vm.$nextTick();
+
+    const prompt = wrapper.find('[data-testid="memory-prompt"]');
+    expect(prompt.exists()).toBe(true);
+    expect(prompt.text()).toContain("2 条新的记忆候选");
+
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    await wrapper.find('[data-testid="memory-prompt-link"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/memory/memory?relationshipId=1",
+    });
+    wrapper.unmount();
+  });
+
+  it("hides the memory prompt when no candidates are pending", async () => {
+    stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.pendingMemoryCount = 0;
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="memory-prompt"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("re-checks pending candidates once after the extraction delay", async () => {
+    vi.useFakeTimers();
+    try {
+      stubFetch();
+      const wrapper = mountPage();
+      await flushPromises();
+      const store = useChatStore();
+      const refreshSpy = vi
+        .spyOn(store, "refreshPendingMemoryCount")
+        .mockResolvedValue();
+      vi.spyOn(store, "send").mockImplementation(async () => {
+        store.phase = "completed";
+      });
+
+      const input = wrapper.find('input[data-testid="message-input"]');
+      await input.setValue("hello");
+      await wrapper.find('button[data-testid="send"]').trigger("click");
+      await flushPromises();
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(8000);
+      await flushPromises();
+      expect(refreshSpy).toHaveBeenCalledTimes(2);
+      wrapper.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // ---- REL-DEACT: two-step relationship deactivation ----
 
   it("deactivates the current relationship only after the two-step confirm", async () => {

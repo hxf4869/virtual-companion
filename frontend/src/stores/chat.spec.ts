@@ -436,6 +436,7 @@ describe("useChatStore", () => {
     expect(store.messages).toEqual([]);
     expect(store.phase).toBe("idle");
     expect(store.historyHasMore).toBe(false);
+    expect(store.pendingMemoryCount).toBe(0);
   });
 
   // ---- CONV-HIST: conversation list + history pagination ----
@@ -517,5 +518,38 @@ describe("useChatStore", () => {
     await store.openConversation(transport, "6");
 
     expect(store.conversationId).toBe("5");
+  });
+
+  // ---- MEM-PROMPT: pending candidate count ----
+
+  it("refreshPendingMemoryCount counts only pending candidates", async () => {
+    const store = useChatStore();
+    const transport: ChatTransport = {
+      request: async () => ({
+        ok: true,
+        status: 200,
+        json: [
+          { memoryId: "1", scope: "RELATIONSHIP", summary: "a", status: "PENDING_CONFIRMATION" },
+          { memoryId: "2", scope: "RELATIONSHIP", summary: "b", status: "ACCEPTED" },
+          { memoryId: "3", scope: "RELATIONSHIP", summary: "c", status: "PENDING_CONFIRMATION" },
+        ],
+      }),
+    };
+
+    await store.refreshPendingMemoryCount(transport, "1");
+
+    expect(store.pendingMemoryCount).toBe(2);
+  });
+
+  it("refreshPendingMemoryCount keeps the previous count on failure", async () => {
+    const store = useChatStore();
+    store.pendingMemoryCount = 3;
+    const failing: ChatTransport = {
+      request: async () => ({ ok: false, status: 500, json: null }),
+    };
+
+    await store.refreshPendingMemoryCount(failing, "1");
+
+    expect(store.pendingMemoryCount).toBe(3);
   });
 });

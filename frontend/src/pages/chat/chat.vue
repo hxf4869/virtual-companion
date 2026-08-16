@@ -139,6 +139,23 @@
           <text>{{ statusText }}</text>
         </view>
 
+        <!-- MEM-PROMPT: pending candidates surfaced after a completed turn -->
+        <view
+          v-if="pendingMemoryCount > 0"
+          class="memory-prompt"
+          data-testid="memory-prompt"
+          role="status"
+        >
+          <text>{{ `有 ${pendingMemoryCount} 条新的记忆候选待确认` }}</text>
+          <button
+            data-testid="memory-prompt-link"
+            class="chat-nav-index"
+            @click="goTo(memoryHref())"
+          >
+            去确认
+          </button>
+        </view>
+
         <view class="chat-input-area">
           <input
             v-model="inputText"
@@ -244,6 +261,7 @@ export default defineComponent({
 
     const messages = computed(() => store.messages);
     const conversations = computed(() => store.conversations);
+    const pendingMemoryCount = computed(() => store.pendingMemoryCount);
     const draft = computed(() => store.draft);
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
@@ -309,6 +327,33 @@ export default defineComponent({
       if (store.phase === "failed" && !store.generationId) {
         inputText.value = text;
       }
+      if (store.phase === "completed") {
+        await scheduleMemoryPrompt();
+      }
+    }
+
+    /**
+     * MEM-PROMPT: the extraction worker runs asynchronously (worker poll
+     * cadence ~5s), so the pending-candidate count is checked once right away
+     * and once again after the extraction delay; a hit shows the confirm link.
+     */
+    let memoryPollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function clearMemoryPoll(): void {
+      if (memoryPollTimer) {
+        clearTimeout(memoryPollTimer);
+        memoryPollTimer = null;
+      }
+    }
+
+    async function scheduleMemoryPrompt(): Promise<void> {
+      clearMemoryPoll();
+      const relationshipId = relStore.currentRelationshipId;
+      if (!relationshipId) return;
+      await store.refreshPendingMemoryCount(transport, relationshipId);
+      memoryPollTimer = setTimeout(() => {
+        void store.refreshPendingMemoryCount(transport, relationshipId);
+      }, 8000);
     }
 
     function onCancel(): void {
@@ -446,10 +491,16 @@ export default defineComponent({
         } else {
           await startConversation();
         }
+        // MEM-PROMPT: surface candidates from earlier turns on entry too.
+        await store.refreshPendingMemoryCount(
+          transport,
+          relStore.currentRelationshipId,
+        );
       }
     });
 
     onUnmounted(() => {
+      clearMemoryPoll();
       store.cancel();
       store.reset();
     });
@@ -459,6 +510,7 @@ export default defineComponent({
       store,
       messages,
       conversations,
+      pendingMemoryCount,
       draft,
       isStreaming,
       showEmptyHistory,
@@ -600,6 +652,16 @@ export default defineComponent({
   font-size: 26rpx;
   opacity: 0.85;
   margin-bottom: 24rpx;
+}
+.memory-prompt {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx;
+  margin-bottom: 24rpx;
+  background-color: #1a3a2a;
+  border-radius: 12rpx;
+  font-size: 26rpx;
 }
 .chat-input-area {
   display: flex;

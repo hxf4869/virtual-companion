@@ -34,6 +34,7 @@ import {
   type CreateConversationResponse,
   type Message,
 } from "@/api/chat";
+import { listMemories } from "@/api/memory";
 import {
   createStreamHandle,
   streamGeneration,
@@ -63,6 +64,8 @@ export const useChatStore = defineStore("h5-chat", () => {
   // CONV-HIST: conversation list (first page) and the history load-more cursor.
   const conversations = ref<ConversationListItem[]>([]);
   const historyHasMore = ref(false);
+  // MEM-PROMPT: pending candidate count surfaced after a completed turn.
+  const pendingMemoryCount = ref(0);
   let handle: StreamHandle | null = null;
   let runSequence = 0;
   // CANCEL-A: the transport of the most recent send, so cancel() can confirm the
@@ -170,6 +173,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversationId.value = "";
     messages.value = [];
     historyHasMore.value = false;
+    pendingMemoryCount.value = 0;
     handle = null;
     lastTransport = null;
   }
@@ -214,6 +218,25 @@ export const useChatStore = defineStore("h5-chat", () => {
       conversations.value = await listConversations(transport, relationshipId);
     } catch {
       // Non-fatal: keep the current list; the page can retry on next visit.
+    }
+  }
+
+  /**
+   * MEM-PROMPT: count the relationship's PENDING_CONFIRMATION candidates so
+   * the chat page can prompt the user to confirm. Non-fatal — a failure keeps
+   * the previous count (the memory page remains the authoritative surface).
+   */
+  async function refreshPendingMemoryCount(
+    transport: ChatTransport,
+    relationshipId: string,
+  ): Promise<void> {
+    try {
+      const memories = await listMemories(transport, relationshipId);
+      pendingMemoryCount.value = memories.filter(
+        (m) => m.status === "PENDING_CONFIRMATION",
+      ).length;
+    } catch {
+      // Keep the previous count.
     }
   }
 
@@ -304,6 +327,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages,
     conversations,
     historyHasMore,
+    pendingMemoryCount,
     draft,
     isStreaming,
     isTerminal,
@@ -317,5 +341,6 @@ export const useChatStore = defineStore("h5-chat", () => {
     loadConversations,
     openConversation,
     loadMoreHistory,
+    refreshPendingMemoryCount,
   };
 });

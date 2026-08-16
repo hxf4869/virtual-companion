@@ -25,7 +25,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - PostgreSQL 18 + pgvector 的 V1-V15 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
-- uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory H5 页面、typed transport 与组件/状态测试；
+- uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
+  与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -46,7 +47,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `POST /api/v1/conversations/{conversationId}/generations`、
   `GET /api/v1/conversations/{conversationId}/messages`
 - `GET /api/v1/generations/{generationId}/snapshot`、`POST /api/v1/generations/{generationId}/cancel`
-- `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE 恢复流）
+- `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE
+  恢复流；非终态 generation 保持连接并实时直推 `chat.delta` 增量，断线经 durable 事件与
+  snapshot 恢复，缺失 delta 永不补齐）
 - 8 个 memory 端点（candidates/list/get/update/delete/confirm/reject/evidence）
 
 `specs/openapi/virtual-companion.yaml` 的合同面已全部由 runtime controller 实现（version、
