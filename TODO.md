@@ -24,7 +24,7 @@
       ticket 铸造/resume/snapshot 遇 401 先静默刷新一次并重放（对齐 REST
       transport 的 SESS-REVIVE），避免 token 过期后实时流被误报为「未找到或
       无权访问」。
-- [ ] VERSION-UI 版本可见性：前端 version API client + 边界台展示后端版本/
+- [x] VERSION-UI 版本可见性：前端 version API client + 边界台展示后端版本/
       构建信息（既有 GET /version 端点零前端消费）；顺带修正 README/AGENTS 的
       模块数声明（14 而非 15）。
 

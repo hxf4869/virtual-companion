@@ -237,4 +237,67 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/admin/admin" });
     wrapper.unmount();
   });
+
+  // ---- VERSION-UI: build identity stamp ----
+
+  it("renders the build version stamp when baseline and version respond", async () => {
+    const baselineModule = await import("@/api/baseline");
+    const fetchBaselineMock = baselineModule.fetchBaseline as ReturnType<typeof vi.fn>;
+    fetchBaselineMock.mockResolvedValueOnce({
+      application: "virtual-companion",
+      phase: "TECHNICAL_ALPHA",
+      transport: "HTTP_SSE",
+      technology: {
+        javaVersion: "25",
+        springBootVersion: "4.1.0",
+        springAiVersion: "1.0.0",
+        springModulithVersion: "1.4.0",
+      },
+      catalogs: {
+        source: "specs/generated/catalog.snapshot.json",
+        riskLevels: [],
+        generationStates: [],
+        memoryScopes: [],
+        modelProtocols: [],
+        serviceModes: [],
+      },
+      capabilities: {
+        source: "specs/generated/catalog.snapshot.json#sources/product-scope.yaml/document",
+        publicRegistrationEnabled: false,
+        paymentEnabled: false,
+        romanceModeEnabled: false,
+        voiceEnabled: false,
+        imageEnabled: false,
+        websocketEnabled: false,
+        betaGenerationEnabledByDefault: false,
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/version") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ version: "0.1.0", commit: "abc123" }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => [] };
+      }),
+    );
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    const wrapper = mountPage();
+    await flushPromises();
+    await flushPromises();
+
+    const labels = wrapper.findAll(".stamp-item__label").map((node) => node.text());
+    expect(labels).toContain("VERSION");
+    expect(labels).toContain("COMMIT");
+    const values = wrapper.findAll(".stamp-item__value").map((node) => node.text());
+    expect(values).toContain("0.1.0");
+    expect(values).toContain("abc123");
+    wrapper.unmount();
+  });
 });

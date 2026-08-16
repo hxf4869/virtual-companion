@@ -124,6 +124,14 @@
             <text class="stamp-item__label">TRANSPORT</text>
             <text class="stamp-item__value">{{ baseline.transport }}</text>
           </view>
+          <view v-if="versionInfo" class="stamp-item">
+            <text class="stamp-item__label">VERSION</text>
+            <text class="stamp-item__value">{{ versionInfo.version }}</text>
+          </view>
+          <view v-if="versionInfo?.commit" class="stamp-item">
+            <text class="stamp-item__label">COMMIT</text>
+            <text class="stamp-item__value">{{ versionInfo.commit }}</text>
+          </view>
         </view>
 
         <view v-else class="connection__flag">
@@ -242,6 +250,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import { fetchVersion, type VersionInfo } from "@/api/version";
 import { personaDisplayName } from "@/domain/persona";
 import { useAuthStore } from "@/stores/auth";
 import { useBaselineStore } from "@/stores/baseline";
@@ -267,6 +276,9 @@ const {
 } = storeToRefs(store);
 const { load } = store;
 const detailsOpen = ref(false);
+// VERSION-UI: build identity for the boundary console stamp (public contract
+// endpoint; a failure degrades to null and the stamp simply stays empty).
+const versionInfo = ref<VersionInfo | null>(null);
 
 const connectionTitle = computed(() => {
   switch (state.value) {
@@ -378,6 +390,9 @@ onMounted(async () => {
   }
   void load();
   void relStore.load(transport);
+  // VERSION-UI: independent of the baseline preflight (public endpoint); a
+  // non-OK response yields null and the stamp simply omits the fields.
+  versionInfo.value = await fetchVersion(transport);
 });
 </script>
 

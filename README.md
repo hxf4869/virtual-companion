@@ -20,7 +20,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 ## 当前工程能力
 
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
-- Java 25 + Spring Boot 4.1 的 15 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
+- Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
 - PostgreSQL 18 + pgvector 的 V1-V32 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、

@@ -61,7 +61,7 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 | ├ licenses | <1s | Maven/前端直接依赖许可证清单核对 |
 | ├ frontend-test | ~2s | vitest 全量 |
 | └ frontend-type-check | ~2s | vue-tsc |
-| `./mvnw --batch-mode --no-transfer-progress verify` | ~19s | 后端 15 模块编译 + 全部 JUnit（JDK 25） |
+| `./mvnw --batch-mode --no-transfer-progress verify` | ~19s | 后端 14 模块编译 + 全部 JUnit（JDK 25） |
 | `bash infra/db/run-rls-tests.sh` | Docker | 84 个 SQL/RLS/并发测试 |
 | CI（5 个 job） | — | checks / backend / database / frontend / supply-chain |
 

@@ -1,6 +1,6 @@
 # Repository Agent Rules — Virtual Companion
 
-AI 虚拟陪伴系统单体仓库：Java 25 + Spring Boot 4.1 后端（15 模块）、uni-app + Vue 3 H5 前端、
+AI 虚拟陪伴系统单体仓库：Java 25 + Spring Boot 4.1 后端（14 模块）、uni-app + Vue 3 H5 前端、
 PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切已接通，现状以 README 为准。
 
 ## 开发约定
