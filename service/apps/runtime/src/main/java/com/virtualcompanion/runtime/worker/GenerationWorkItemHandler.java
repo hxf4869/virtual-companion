@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.worker;
 
+import com.virtualcompanion.catalog.ProviderAttemptStatus;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.execution.LiveAttemptOutcome;
 import com.virtualcompanion.modelruntime.execution.LiveAttemptTerminal;
@@ -42,6 +43,11 @@ import org.springframework.beans.factory.ObjectProvider;
  *       work-item complete atomically (INV-TX-001);</li>
  *   <li><b>guarded-fail-tx</b> (any non-success terminal): the same explicit
  *       claim guard, then {@code FAILED_FINAL} + per-item work-item fail;</li>
+ *   <li><b>guarded-retry-tx</b> (V29 RETRY-A, external RETRYABLE_FAILED only):
+ *       the same explicit claim guard, then requeue with bounded backoff — or
+ *       dead-letter + {@code FAILED_FINAL} when the attempt budget (initial + 2
+ *       retries) is exhausted; non-retryable / safety / authorization failures
+ *       stay on the guarded-fail path;</li>
  *   <li>the worker applies the <b>independent-fail-tx</b> when any segment
  *       above throws (fresh transaction, only the original item/token/fence).</li>
  * </ol>
@@ -51,6 +57,13 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private static final Logger log = LoggerFactory.getLogger(GenerationWorkItemHandler.class);
 
     static final String KIND_GENERATION = "GENERATION";
+
+    /**
+     * V29 RETRY-A attempt budget: one initial provider attempt plus at most two
+     * retries (Owner-approved bound). Only explicit RETRYABLE_FAILED outcomes
+     * consume the budget; TIMED_OUT and NON_RETRYABLE failures stay terminal.
+     */
+    static final int MAX_PROVIDER_ATTEMPTS = 3;
 
     private final GenerationStateService stateService;
     private final GenerationFinalizeService finalizeService;
@@ -99,6 +112,10 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 finalizeExternalSuccess(executor, claim, ownerUserId, generationId, outcome);
             } else if (outcome.terminal() == LiveAttemptTerminal.ZERO_LLM_COMPLETED) {
                 finalizeZeroLlmSuccess(executor, claim, ownerUserId, generationId, outcome);
+            } else if (prepared.externalMode() && retryableFailure(outcome)) {
+                // V29 RETRY-A: the adapter explicitly classified the failure as
+                // retryable; requeue with bounded backoff or dead-letter.
+                retrySegment(executor, claim, ownerUserId, generationId);
             } else {
                 String fault = prepared.externalMode()
                         ? "external-" + outcome.terminal().name().toLowerCase(java.util.Locale.ROOT)
@@ -274,6 +291,52 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             if (rows != 1) {
                 throw new IllegalStateException(
                         "per-item fail inside the guarded fail returned rows=" + rows);
+            }
+        });
+    }
+
+    /**
+     * V29 RETRY-A: a real outbound attempt whose audit status is exactly
+     * RETRYABLE_FAILED (adapter-classified, e.g. rate limited). TIMED_OUT,
+     * NON_RETRYABLE and safety/authorization failures are not retried — they
+     * stay on the guarded-fail path. The attempt outcome was already recorded
+     * in the audit-outcome segment, so the retry leaves a complete audit trail.
+     */
+    private static boolean retryableFailure(LiveAttemptOutcome outcome) {
+        if (outcome.terminal() != LiveAttemptTerminal.FAILED || outcome.audits().isEmpty()) {
+            return false;
+        }
+        return outcome.audits().get(0).status() == ProviderAttemptStatus.RETRYABLE_FAILED;
+    }
+
+    /**
+     * Guarded retry tx (V29): claim guard first, then requeue-or-dead-letter
+     * atomically. A retryable failure returns the item to PENDING with
+     * deterministic backoff and leaves the generation IN_PROGRESS; when the
+     * attempt budget is exhausted the item is dead-lettered and the generation
+     * is terminalized FAILED_FINAL in the same transaction.
+     */
+    private void retrySegment(
+            WorkItemWorker.OwnerExecutor executor,
+            WorkItemClaim claim,
+            long ownerUserId,
+            long generationId) {
+        executor.asOwner(ownerUserId, () -> {
+            finalizeService.assertActiveClaim(
+                    ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
+            String branch = finalizeService.requeueRetryableFailure(
+                    ownerUserId,
+                    claim.id(),
+                    claim.claimToken(),
+                    claim.claimFence(),
+                    MAX_PROVIDER_ATTEMPTS);
+            if (GenerationFinalizeService.DEAD_LETTERED.equals(branch)) {
+                finalizeService.terminalizeAsFailed(ownerUserId, generationId, "external-dead-lettered");
+                log.warn("generation {} dead-lettered after {} provider attempts for owner {}",
+                        generationId, MAX_PROVIDER_ATTEMPTS, ownerUserId);
+            } else {
+                log.info("generation {} retryable failure requeued for owner {} (attempt recorded)",
+                        generationId, ownerUserId);
             }
         });
     }

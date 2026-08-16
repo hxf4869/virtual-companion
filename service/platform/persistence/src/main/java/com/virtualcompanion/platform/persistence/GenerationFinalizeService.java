@@ -9,7 +9,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Drives the generation finalize / candidate / terminalize / attempt-intent
  * SECURITY DEFINER functions (V7 {@code finalize_generation}, V15
  * {@code insert_generation_candidate} and {@code terminalize_generation}, V20
- * {@code record_provider_attempt}, V28 intent/guard/per-item family), bound to
+ * {@code record_provider_attempt}, V28 intent/guard/per-item family, V29
+ * {@code requeue_retryable_failure}), bound to
  * the runtime {@code vc_api} JDBC pool (TASK-0176, TASK-0194).
  *
  * <p>TASK-0194 segmented flow: the worker runs each segment in its own
@@ -28,6 +29,12 @@ public class GenerationFinalizeService {
 
     /** The final assistant content for a ZERO_LLM completion (audit/identity only here). */
     private static final String TERMINAL_EVENT_FAILED = "chat.failed";
+
+    /** {@code vc.requeue_retryable_failure} branch: the item returns to PENDING with backoff. */
+    public static final String RETRY_SCHEDULED = "RETRY_SCHEDULED";
+
+    /** {@code vc.requeue_retryable_failure} branch: the attempt budget is exhausted. */
+    public static final String DEAD_LETTERED = "DEAD_LETTERED";
 
     private final JdbcTemplate jdbc;
 
@@ -328,6 +335,45 @@ public class GenerationFinalizeService {
     public int failWorkItem(long workItemId, String claimToken, String claimFence) {
         return terminalizePerItem("SELECT vc.fail_work_item(?, ?, ?)",
                 workItemId, claimToken, claimFence);
+    }
+
+    /**
+     * V29 RETRY-A: guarded requeue-or-dead-letter of a retryable provider
+     * failure (V29 {@code vc.requeue_retryable_failure}). The work item must
+     * still hold a live claim matching the presented token/fence (same guard
+     * family as {@link #assertActiveClaim}); any mismatch RAISEs so the
+     * caller's guarded transaction aborts with zero writes. Returns
+     * {@link #RETRY_SCHEDULED} (item back to PENDING with deterministic
+     * backoff) or {@link #DEAD_LETTERED} (attempt budget exhausted).
+     *
+     * @param maxAttempts total provider attempts allowed for the item
+     *     (initial + retries); must be positive
+     */
+    public String requeueRetryableFailure(
+            long ownerUserId, long workItemId, String claimToken, String claimFence, int maxAttempts) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (workItemId <= 0) {
+            throw new IllegalArgumentException("workItemId must be positive");
+        }
+        if (maxAttempts < 1) {
+            throw new IllegalArgumentException("maxAttempts must be positive");
+        }
+        requireNonBlank(claimToken, "claimToken");
+        requireNonBlank(claimFence, "claimFence");
+        String branch = jdbc.queryForObject(
+                "SELECT vc.requeue_retryable_failure(?, ?, ?, ?, ?)",
+                String.class,
+                ownerUserId,
+                workItemId,
+                claimToken,
+                claimFence,
+                maxAttempts);
+        if (branch == null || branch.isBlank()) {
+            throw new IllegalStateException("requeue_retryable_failure returned no branch");
+        }
+        return branch;
     }
 
     private int terminalizePerItem(String sql, long workItemId, String claimToken, String claimFence) {

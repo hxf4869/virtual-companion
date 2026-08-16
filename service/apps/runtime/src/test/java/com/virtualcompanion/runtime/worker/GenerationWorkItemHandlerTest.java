@@ -186,6 +186,21 @@ class GenerationWorkItemHandlerTest {
                 LiveAttemptTerminal.FAILED);
     }
 
+    private static LiveAttemptOutcome retryableFailedOutcome() {
+        InvocationBinding.ExternalAttemptBinding binding =
+                new InvocationBinding.ExternalAttemptBinding(
+                        OWN, "pa-test-1", 42L, "snap-10-req", "snap-10-exec");
+        ProviderAttemptAudit audit = new ProviderAttemptAudit(
+                "pa-test-1", OWN, "alpha-loopback", "alpha-supplier",
+                ProviderAttemptStatus.RETRYABLE_FAILED);
+        RecoveryOutcome recovery = RecoveryOutcome.of(OWN, RecoveryTerminal.ALL_FAILURE_BLOCKED,
+                QuotaDisposition.RELEASED, "");
+        return LiveAttemptOutcome.failed(RouteDecision.selected(
+                OWN, "SIMULATED", new ProviderId("alpha-loopback"), binding, RES, List.of()),
+                binding, audit, new AdapterFailure.RateLimited(), recovery,
+                LiveAttemptTerminal.FAILED);
+    }
+
     private static LiveInvocationRequest request() {
         RoutingRequest routing = new RoutingRequest(
                 OWN,
@@ -412,6 +427,66 @@ class GenerationWorkItemHandlerTest {
         verify(finalizeService, never()).finalizeCompletedWithUsage(
                 anyLong(), anyLong(), anyLong(), any(), any(),
                 anyLong(), anyLong(), anyDouble(), any(), anyInt(), anyBoolean());
+    }
+
+    @Test
+    void requeuesRetryableFailureWithinAttemptBudget() {
+        // V29 RETRY-A: a RETRYABLE_FAILED outcome records its audit, then the
+        // guarded-retry tx asserts the claim and requeues — the generation
+        // stays IN_PROGRESS and the item is never terminalized here.
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any())).thenReturn(retryableFailedOutcome());
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED"))
+                .thenReturn(1);
+        when(finalizeService.requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3))
+                .thenReturn(GenerationFinalizeService.RETRY_SCHEDULED);
+
+        handle(generationClaim(1L, 10L));
+
+        verify(finalizeService).recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED");
+        verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
+        verify(finalizeService).requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3);
+        verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
+        verify(finalizeService, never()).failWorkItem(anyLong(), anyString(), anyString());
+        verify(finalizeService, never()).insertCandidate(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void deadLettersWhenAttemptBudgetExhausted() {
+        // V29 RETRY-A exhaustion: the requeue function reports DEAD_LETTERED,
+        // so the same guarded transaction terminalizes the generation as
+        // FAILED_FINAL with the dead-letter fault (no separate per-item fail).
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any())).thenReturn(retryableFailedOutcome());
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED"))
+                .thenReturn(1);
+        when(finalizeService.requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3))
+                .thenReturn(GenerationFinalizeService.DEAD_LETTERED);
+
+        handle(generationClaim(1L, 10L));
+
+        verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
+        verify(finalizeService).requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3);
+        verify(finalizeService).terminalizeAsFailed(1L, 10L, "external-dead-lettered");
+        verify(finalizeService, never()).failWorkItem(anyLong(), anyString(), anyString());
+        verify(finalizeService, never()).completeWorkItem(anyLong(), anyString(), anyString());
+        verify(finalizeService, never()).insertCandidate(anyLong(), anyLong(), anyString());
     }
 
     @Test

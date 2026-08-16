@@ -27,9 +27,11 @@ import org.springframework.scheduling.annotation.Scheduled;
  * <p>Failure semantics: one owner's batch failure is logged and does not block
  * the remaining owners; a poll-wide exception is caught and logged so the
  * single-threaded {@code @Scheduled} loop survives into the next run (no
- * silent stall). Retry/dead-letter of FAILED batches is out of scope (V5 keeps
- * FAILED terminal; TASK-0173 knownRisk). Logs carry only owner ids and counts,
- * never the claim token, fence or work payload.
+ * silent stall). V29 RETRY-A adds bounded retry of adapter-classified
+ * RETRYABLE_FAILED outcomes and a DEAD_LETTERED terminal state — the
+ * coordinator itself only observes them via {@code list_pending_owner_ids}
+ * (backoff windows hide not-yet-due items). Logs carry only owner ids and
+ * counts, never the claim token, fence or work payload.
  *
  * <p>The bean is registered by {@code AuthDataSourceConfig} only while the
  * auth datasource is enabled, and {@code @EnableScheduling} on the same
