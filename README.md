@@ -1,8 +1,8 @@
 # Virtual Companion
 
-AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前已实现身份会话、生成/记忆/安全领域内核、
-PostgreSQL 持久化迁移、模型协议适配器和 uni-app H5 页面，但还没有接通 Generation、Realtime、
-Memory 的完整 HTTP 纵切，也未达到真实用户或生产发布条件。
+AI 虚拟陪伴系统的 Technical Alpha 单体仓库。身份会话、生成/记忆/安全领域内核、
+PostgreSQL 持久化迁移、模型协议适配器和 uni-app H5 页面均已实现；Generation、Realtime、
+Memory 的 HTTP 纵切（含异步 worker 与 Fetch-SSE 恢复流）已接通，但尚未达到真实用户或生产发布条件。
 
 ## 快速开始
 
@@ -38,11 +38,19 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/admin/accounts`
+- `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
+  `POST /api/v1/relationships/{relationshipId}/deactivate`
+- `POST /api/v1/conversations`、`POST /api/v1/conversations/{conversationId}/generations`、
+  `GET /api/v1/conversations/{conversationId}/messages`
+- `GET /api/v1/generations/{generationId}/snapshot`、`POST /api/v1/generations/{generationId}/cancel`
+- `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE 恢复流）
+- 8 个 memory 端点（candidates/list/get/update/delete/confirm/reject/evidence）
 
-`specs/openapi/virtual-companion.yaml` 还定义了 version、relationship、generation、message、snapshot 和 memory
-的合同面，但当前 runtime 没有对应 controller，包括尚未接线的 `GET /api/v1/version`。Chat/Memory 页面、
-领域内核、provider adapters 和数据库函数是已实现的组成部分，不应被描述成已可供真实用户调用的完整纵切。
-真实 provider 默认关闭，具体 deployment、endpoint 和凭据只允许由部署配置注入。
+`specs/openapi/virtual-companion.yaml` 的合同面除 `GET /api/v1/version` 外均已由 runtime controller
+实现（relationship、conversation、generation、snapshot、cancel、message、realtime、memory）。
+Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
+CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
+凭据只允许由部署配置注入。
 
 后端需要 JDK 25：
 
@@ -85,7 +93,8 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 当前只允许本地开发和 CI 使用合成数据。普通 profile 的 Auth 与 live provider 均默认关闭；production profile
 要求显式提供 Auth 和 datasource 两个开关，缺少任一配置时启动失败，但当前实现不会拒绝显式的 `false`。
 部署政策要求生产环境将两者设为 `true`，这项要求尚未由配置代码自身强制，也不代表生产就绪。系统未开放
-注册、未启用真实支付、未授权保存真实用户数据，也没有接通面向用户的 generation/realtime/memory 纵切。
+注册、未启用真实支付、未授权保存真实用户数据。generation/realtime/memory 纵切已接通，但仅限本地开发
+与 CI 合成数据，不面向真实用户。
 
 Duty-roster 检查通过不等于 Beta 获批；`realUserBeta` 在 PIA、伦理适用性、成年人验证、责任人、值班和安全
 演练形成证据前保持 `BLOCKED`，`realPayment` 在 Technical Alpha 保持 `FORBIDDEN`。真实 provider 外发还必须
