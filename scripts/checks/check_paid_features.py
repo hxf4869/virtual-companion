@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-POLICY = ROOT / ".harness/paid-feature-denylist.yaml"
+POLICY = ROOT / "scripts/checks/paid-feature-denylist.yaml"
 DEPENDENCY_NAMES = {
     "pom.xml",
     "build.gradle",

@@ -2,16 +2,16 @@ schemaVersion: 1
 rules:
   - id: JOBRUNR_PRO_REQUIRED
     patterns: [jobrunr-pro, TransactionPlugin, PriorityQueue, JobRunr Pro]
-    allowedOnlyIn: [docs/decisions, .harness/paid-feature-denylist.yaml]
+    allowedOnlyIn: [docs/decisions, scripts/checks/paid-feature-denylist.yaml]
   - id: LITELLM_ENTERPRISE_REQUIRED
     patterns: [LiteLLM Enterprise, enterprise_jwt_auth, enterprise_rbac]
-    allowedOnlyIn: [docs/decisions, .harness/paid-feature-denylist.yaml]
+    allowedOnlyIn: [docs/decisions, scripts/checks/paid-feature-denylist.yaml]
   - id: LANGFUSE_COMMERCIAL_REQUIRED
     patterns: [Langfuse Enterprise, Langfuse Cloud required]
-    allowedOnlyIn: [docs/decisions, .harness/paid-feature-denylist.yaml]
+    allowedOnlyIn: [docs/decisions, scripts/checks/paid-feature-denylist.yaml]
   - id: CENTRIFUGO_PRO_REQUIRED
     patterns: [Centrifugo PRO required, centrifugo-pro-only]
-    allowedOnlyIn: [docs/decisions, .harness/paid-feature-denylist.yaml]
+    allowedOnlyIn: [docs/decisions, scripts/checks/paid-feature-denylist.yaml]
   - id: FLYWAY_PAID_REQUIRED
     patterns: [flyway-enterprise-required, Flyway Undo required, Flyway Drift required]
-    allowedOnlyIn: [docs/decisions, .harness/paid-feature-denylist.yaml]
+    allowedOnlyIn: [docs/decisions, scripts/checks/paid-feature-denylist.yaml]

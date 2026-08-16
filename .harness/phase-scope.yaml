@@ -1,7 +1,0 @@
-schemaVersion: 2
-kind: COMPATIBILITY_PROJECTION
-source: specs/catalog/product-scope.yaml
-currentPhase: TECHNICAL_ALPHA
-rules:
-  sourceOverridesProjection: true
-  doctorMustRejectPhaseDrift: true

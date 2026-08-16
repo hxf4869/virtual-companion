@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """License inventory gate for canonical precheck.
 
-Reads .harness/license-policy.yaml (allowlist) and .harness/license-inventory.yaml
+Reads scripts/checks/license-policy.yaml (allowlist) and scripts/checks/license-inventory.yaml
 (pre-recorded inventory), then discovers Maven <dependency> entries across all
 pom.xml files and frontend/package.json dependencies, verifying that every direct
 dependency is covered by the inventory and its declared license family is allowed.
@@ -14,8 +14,8 @@ expired or malformed exception is an error, never a silent pass.
 This is a deterministic, local, <1s gate. It does NOT generate a full SBOM or
 scan transitive dependencies or known vulnerabilities — that is the CI
 supply-chain job's responsibility (cyclonedx + pnpm audit). Its sole purpose is
-to enforce INV-COST-001's license_scan mechanism by blocking new dependencies
-with disallowed or unknown licenses from entering the canonical precheck.
+to block new dependencies with disallowed or unknown licenses from entering
+the daily check (scripts/check.sh).
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-LICENSE_POLICY = ROOT / ".harness/license-policy.yaml"
-LICENSE_INVENTORY = ROOT / ".harness/license-inventory.yaml"
+LICENSE_POLICY = ROOT / "scripts/checks/license-policy.yaml"
+LICENSE_INVENTORY = ROOT / "scripts/checks/license-inventory.yaml"
 NS = "{http://maven.apache.org/POM/4.0.0}"
 PRUNED_DIRS = {
     ".git",

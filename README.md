@@ -4,31 +4,17 @@ AI 虚拟陪伴系统的 Technical Alpha 单体仓库。当前已实现身份会
 PostgreSQL 持久化迁移、模型协议适配器和 uni-app H5 页面，但还没有接通 Generation、Realtime、
 Memory 的完整 HTTP 纵切，也未达到真实用户或生产发布条件。
 
-## Agent 或开发者从这里开始
+## 快速开始
 
-1. 阅读 [`AGENTS.md`](AGENTS.md)，它是唯一 Agent 行为真源。
-2. 安装 Harness 依赖。
-3. 运行状态摘要和统一 precheck。
-
-先激活让 `python` 指向项目 Harness 环境的虚拟环境。Windows PowerShell：
-
-```powershell
-python -m pip install -r requirements-harness.txt
-python scripts/harness/doctor.py --summary
-python scripts/harness/precheck.py
-```
-
-macOS、Linux 或 WSL：
+日常检查唯一入口（秒级仓库检查 + 前端测试与类型检查，1 分钟内）：
 
 ```bash
-python -m pip install -r requirements-harness.txt
-python scripts/harness/doctor.py --summary
-python scripts/harness/precheck.py
+bash scripts/check.sh          # 全量
+bash scripts/check.sh --quick  # 仅秒级仓库检查
 ```
 
-PowerShell/POSIX 包装器仍可用于本机辅助，但正式 Evidence 的 canonical 入口是上面的
-`python scripts/harness/precheck.py`。不要从 README 猜当前任务；`.harness/project-state.yaml` 与 Doctor
-的扫描结果才是当前状态。
+后端（需 JDK 25）与数据库（OrbStack Docker）入口见下文「当前工程能力」。当前待办见
+[`TODO.md`](TODO.md)；Agent 行为约定见 [`AGENTS.md`](AGENTS.md)。
 
 ## 当前工程能力
 
@@ -39,8 +25,7 @@ PowerShell/POSIX 包装器仍可用于本机辅助，但正式 Evidence 的 cano
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory H5 页面、typed transport 与组件/状态测试；
-- GitHub Actions 的跨平台 Harness，以及后端、前端和数据库门禁；
-- 可恢复的任务卡、Context Lock、Evidence 和 Handoff。
+- GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
 
@@ -84,26 +69,16 @@ pnpm --dir frontend build
 bash infra/db/run-rls-tests.sh
 ```
 
-Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些脚本是该主机环境的便利工具，不是 macOS/Linux 的必要前置；其他平台直接使用 Maven Wrapper、pnpm 和统一 Harness。
+Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些脚本是该主机环境的便利工具，不是 macOS/Linux 的必要前置；其他平台直接使用 Maven Wrapper、pnpm 和 `scripts/check.sh`。
 
-## 治理与开发入口
+## 文档与历史档案
 
-- Agent 恢复和跨客户端说明：`docs/engineering/agent-onboarding.md`
-- 项目机器状态：`.harness/project-state.yaml`
-- 终态任务与审计产物索引：`.harness/task-ledger.yaml`
-- 原始需求与架构快照：`docs/source/`（仅历史来源）
-- 根目录 `MANIFEST.sha256`：仅证明 V0.3.1 起步包来源，不是当前仓库完整性清单
-- 技术基线：`docs/engineering/technology-baseline.md`
-- 仓库边界：`docs/architecture/repository-structure.md`
-- 架构决策：`docs/decisions/`
-- 任务、Context、Evidence、Handoff：`docs/tasks/`、`docs/evidence/`、`docs/handoffs/`
-- 机器真源：`.harness/`、`specs/catalog/`、`specs/contracts/`
-
-无 READY/IN_PROGRESS 任务时不得直接开发。禁止手改 `specs/generated/**`；Catalog、Contract、数据库、安全、记忆、模型路由和 Harness 变更必须走注册 Skill、审批和独立复核。
-Harness 按完整 Git 父边历史而非最终净差异审计范围；正式检查前需暂存完整候选快照，并按任务或保护规则
-要求由独立 Reviewer 复核同一精确提交。Evidence 必须用实际 argv 描述验证范围，明确区分 targeted 或
-runtime-upstream reactor、root 15-module reactor、本地 exact-tree fallback 与远端 exact-SHA；历史 Evidence
-保持 append-only，不为修正文案追溯改写。
+- 架构决策：`docs/decisions/`；技术基线：`docs/engineering/technology-baseline.md`
+- 仓库边界：`docs/architecture/repository-structure.md`；原始需求快照：`docs/source/`（仅历史来源）
+- 机器契约：`specs/catalog/`、`specs/contracts/`、`specs/openapi/`；`specs/generated/**` 为生成物，禁止手改
+- 2026-08-16 退役的旧任务治理体系（任务卡、Evidence、Handoff、账本）只读保留在
+  `docs/tasks/`、`docs/evidence/`、`docs/handoffs/`、`docs/archive/`，仅供追溯
+- 当前待办：[`TODO.md`](TODO.md)
 
 ## 安全与发布状态
 

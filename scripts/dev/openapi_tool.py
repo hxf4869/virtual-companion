@@ -8,7 +8,7 @@ closed when the generated artifacts drift from what is committed. Generation is
 pure and deterministic — the same source always yields byte-identical output
 (LF newlines, stable key order, fixed templates) — so the drift gate is exact.
 
-It mirrors scripts/harness/catalog_tool.py but lives under scripts/dev/ and
+It mirrors scripts/checks/catalog_tool.py but lives under scripts/dev/ and
 writes to specs/openapi/dist/ so it does not collide with the catalog_tool-owned
 specs/generated/ contract.
 """
