@@ -27,9 +27,11 @@
       清理 message:<id> 证据行、已确认记忆保留、助手消息删除时 generation 链接
       SET NULL、不存在不披露）+ OpenAPI DELETE /conversations/{id}/messages/{mid}
       + 聊天页逐条消息两步确认删除（FR-CHAT-004 / FR-DATA-003）。
+- [x] SVC-MODE 服务状态透明：GET /api/v1/service-mode（FULL_AI/ZERO_LLM +
+      平实文案，provider 主开关决定，DEGRADED/SAFETY/MAINTENANCE 不可达不虚报）
+      + 聊天页顶部明文状态行（FR-RES-005）。
 - [ ] INC-MODE 无痕会话（FR-CHAT-005，Beta 范围骨架）
 - [ ] CONSENT 版本化同意记录（FR-AUTH-003/005）
-- [ ] SVC-MODE 服务状态透明（FR-RES-005）
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

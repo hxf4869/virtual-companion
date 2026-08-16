@@ -65,6 +65,14 @@ export type MessageFeedbackKind =
   | "FACTUAL_ERROR"
   | "UNSAFE";
 
+/** SVC-MODE (FR-RES-005): reachable service modes in Technical Alpha. */
+export type ServiceMode = "FULL_AI" | "ZERO_LLM";
+
+export interface ServiceModeStatus {
+  mode: ServiceMode;
+  summary: string;
+}
+
 /** FEEDBACK: narrow an arbitrary string to an approved feedback kind. */
 export function asFeedbackKind(value: unknown): MessageFeedbackKind | undefined {
   switch (value) {
@@ -454,4 +462,25 @@ export async function deleteMessage(
   if (r.ok) return true;
   if (isExistenceHidden(r.status)) return false;
   throw new ChatHttpError(r.status, classifyStatus(r.status));
+}
+
+/**
+ * SVC-MODE (FR-RES-005): read the current generation-service mode. Non-OK
+ * statuses throw a typed error so the store can fall back to not showing a
+ * mode rather than faking one.
+ */
+export async function getServiceMode(
+  t: ChatTransport,
+): Promise<ServiceModeStatus | null> {
+  const r = await t.request("GET", "/api/v1/service-mode");
+  if (!r.ok) {
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  if (!r.json || typeof r.json !== "object") return null;
+  const o = r.json as Record<string, unknown>;
+  const mode = o.mode;
+  const summary = typeof o.summary === "string" ? o.summary : undefined;
+  if (mode !== "FULL_AI" && mode !== "ZERO_LLM") return null;
+  if (!summary) return null;
+  return { mode, summary };
 }

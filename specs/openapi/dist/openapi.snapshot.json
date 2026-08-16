@@ -2,6 +2,7 @@
   "generatorVersion": "1.0.0",
   "operations": [
     "getVersion",
+    "getServiceMode",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -38,6 +39,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "aa3b8b1558cafc8ba81784435983cdf3cfa6e5fc456f79ecfd175bb510b265d7"
+    "sha256": "275abafeeafd8e7e508ce219ceb08e8da3462d539905de78ac4e729baec9718d"
   }
 }

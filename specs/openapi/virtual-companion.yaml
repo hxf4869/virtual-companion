@@ -39,6 +39,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/service-mode:
+    get:
+      operationId: getServiceMode
+      summary: Current service mode (FR-RES-005 user transparency)
+      description: >-
+        The current generation-service mode for the authenticated caller:
+        FULL_AI (live model providers wired) or ZERO_LLM (no generation model —
+        deterministic record mode only). DEGRADED_AI / SAFETY_RESTRICTED /
+        MAINTENANCE exist in the service-modes catalog but are not reachable in
+        Technical Alpha and are never reported. The mode is an ops fact, never
+        role-played content — clients must show it plainly (FR-RES-005).
+        Requires a server-verified authentication context.
+      responses:
+        '200':
+          description: The current service mode and a plain-language summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceModeStatus'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -1293,6 +1318,25 @@ components:
         - BETA_OPERATIONS_NOT_READY
         - INVALID_REQUEST
         - AUTH_RATE_LIMITED
+    ServiceModeStatus:
+      type: object
+      description: Current generation-service mode (FR-RES-005).
+      required:
+        - mode
+        - summary
+      properties:
+        mode:
+          type: string
+          description: >-
+            service-modes catalog code: FULL_AI (live models wired) or ZERO_LLM
+            (deterministic record mode only). DEGRADED_AI / SAFETY_RESTRICTED /
+            MAINTENANCE are catalog codes but never reported in Technical Alpha.
+          enum:
+            - FULL_AI
+            - ZERO_LLM
+        summary:
+          type: string
+          description: Plain, non-role-played human-readable status line
     VersionResponse:
       type: object
       description: Service version and build identity

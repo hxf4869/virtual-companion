@@ -9,6 +9,11 @@ export interface ErrorEnvelope {
   details?: string
 }
 
+export interface ServiceModeStatus {
+  mode: string
+  summary: string
+}
+
 export interface VersionResponse {
   version: string
   commit?: string
@@ -214,6 +219,7 @@ export interface AccountResponse {
 
 export interface VirtualCompanionApiClient {
   getVersion(): Promise<VersionResponse>
+  getServiceMode(): Promise<VersionResponse>
   createRelationship(): Promise<VersionResponse>
   listRelationships(): Promise<VersionResponse>
   getRelationship(): Promise<VersionResponse>

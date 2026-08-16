@@ -5,6 +5,9 @@ public interface VirtualCompanionApi {
     /** Service version and build identity. */
     VersionResponse getVersion();
 
+    /** Current service mode (FR-RES-005 user transparency). */
+    ServiceModeStatus getServiceMode();
+
     /** Create a Companion relationship (becomes the active Companion). */
     Relationship createRelationship();
 

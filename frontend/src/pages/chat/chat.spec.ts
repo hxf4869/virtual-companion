@@ -219,6 +219,39 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("SVC-MODE: shows the plain service-mode status line when the API reports one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/service-mode") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" }),
+          };
+        }
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
+        }
+        if (url.includes("/messages")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const line = wrapper.find('[data-testid="service-mode"]');
+    expect(line.exists()).toBe(true);
+    expect(line.text()).toContain("当前为无生成模型的受限服务");
+    wrapper.unmount();
+  });
+
   it("restores the input when send fails before a generation exists", async () => {
     const wrapper = mountPage();
     await flushPromises();

@@ -9,6 +9,7 @@ import {
   createConversation,
   deleteConversation,
   deleteMessage,
+  getServiceMode,
   listConversations,
   listMessages,
   recordFeedback,
@@ -547,5 +548,38 @@ describe("listConversations (CONV-HIST)", () => {
     });
 
     await expect(listConversations(transport)).rejects.toThrow(ChatHttpError);
+  });
+});
+
+describe("getServiceMode (SVC-MODE)", () => {
+  it("GETs /api/v1/service-mode and parses the status", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" },
+    });
+
+    const status = await getServiceMode(transport);
+
+    expect(calls).toEqual([{ method: "GET", path: "/api/v1/service-mode", body: undefined }]);
+    expect(status).toEqual({ mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" });
+  });
+
+  it("returns null for an unapproved or malformed mode", async () => {
+    const unapproved = recorder({
+      ok: true,
+      status: 200,
+      json: { mode: "MAINTENANCE", summary: "维护中" },
+    }).transport;
+    expect(await getServiceMode(unapproved)).toBeNull();
+
+    const malformed = recorder({ ok: true, status: 200, json: {} }).transport;
+    expect(await getServiceMode(malformed)).toBeNull();
+  });
+
+  it("throws a typed error on a non-OK read", async () => {
+    const { transport } = recorder({ ok: false, status: 401, json: null });
+
+    await expect(getServiceMode(transport)).rejects.toThrow(ChatHttpError);
   });
 });

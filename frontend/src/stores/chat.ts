@@ -28,6 +28,7 @@ import {
   createConversation,
   deleteConversation as apiDeleteConversation,
   deleteMessage as apiDeleteMessage,
+  getServiceMode,
   listConversations,
   listMessages,
   recordFeedback,
@@ -40,6 +41,7 @@ import {
   type CreateConversationResponse,
   type Message,
   type MessageFeedbackKind,
+  type ServiceModeStatus,
 } from "@/api/chat";
 import { listMemories } from "@/api/memory";
 import {
@@ -97,6 +99,18 @@ export const useChatStore = defineStore("h5-chat", () => {
   // FEEDBACK (FR-CHAT-003): kinds already submitted for the current generation
   // (per-kind idempotent in the UI; the server no-ops repeats anyway).
   const feedbackKinds = ref<MessageFeedbackKind[]>([]);
+  // SVC-MODE (FR-RES-005): the current generation-service mode (null until
+  // loaded; a failed read keeps null so the UI never invents a mode).
+  const serviceMode = ref<ServiceModeStatus | null>(null);
+
+  /** SVC-MODE: load the current service mode (non-fatal). */
+  async function loadServiceMode(transport: ChatTransport): Promise<void> {
+    try {
+      serviceMode.value = await getServiceMode(transport);
+    } catch {
+      // Keep the previous value (usually null); the UI shows no mode.
+    }
+  }
 
   /** CHAT-MODE: narrow arbitrary chip input to an approved mode (no-op otherwise). */
   function setMode(mode: unknown): void {
@@ -281,6 +295,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     usage.value = null;
     selectedMode.value = "AUTO";
     feedbackKinds.value = [];
+    // SVC-MODE: the service mode is a session-level ops fact — reset() is also
+    // called by startConversation() and must NOT clear it.
     handle = null;
     lastTransport = null;
   }
@@ -511,6 +527,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     setMode,
     feedbackKinds,
     sendFeedback,
+    serviceMode,
+    loadServiceMode,
     draft,
     isStreaming,
     isTerminal,

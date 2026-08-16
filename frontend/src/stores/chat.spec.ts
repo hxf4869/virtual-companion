@@ -44,9 +44,14 @@ function mockChatTransport(opts: {
   feedbackJson?: unknown;
   /** MSG-DELETE: response for DELETE /conversations/{id}/messages/{id}. */
   messageDeleteOk?: boolean;
+  /** SVC-MODE: response for GET /api/v1/service-mode. */
+  serviceModeJson?: unknown;
 }): ChatTransport {
   return {
     async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
+      if (path === "/api/v1/service-mode") {
+        return { ok: true, status: 200, json: opts.serviceModeJson ?? { mode: "FULL_AI", summary: "正常模型服务" } };
+      }
       if (path === "/api/v1/conversations") {
         if (method === "GET") {
           return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
@@ -491,6 +496,24 @@ describe("useChatStore", () => {
     await store.initConversation(transport, "1");
     expect(await store.removeMessage(transport, "10")).toBe(false);
     expect(store.messages).toHaveLength(1);
+  });
+
+  it("SVC-MODE: loadServiceMode stores the current status and survives reset()", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      serviceModeJson: { mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" },
+    });
+
+    expect(store.serviceMode).toBeNull();
+    await store.loadServiceMode(transport);
+    expect(store.serviceMode).toEqual({
+      mode: "ZERO_LLM",
+      summary: "当前为无生成模型的受限服务",
+    });
+
+    // reset() is also called by startConversation(); the ops fact survives it.
+    store.reset();
+    expect(store.serviceMode?.mode).toBe("ZERO_LLM");
   });
 
   it("send without conversationId transitions to failed", async () => {

@@ -39,6 +39,17 @@
       </view>
     </view>
 
+    <!-- SVC-MODE (FR-RES-005): the service mode is an ops fact, shown plainly
+         and never role-played. -->
+    <view
+      v-if="serviceModeSummary"
+      class="service-mode"
+      data-testid="service-mode"
+      role="status"
+    >
+      <text>服务状态：{{ serviceModeSummary }}</text>
+    </view>
+
     <view
       v-if="relStore.status === 'ready'"
       class="current-relationship"
@@ -425,6 +436,8 @@ export default defineComponent({
     const usage = computed(() => store.usage);
     // FEEDBACK: kinds already submitted for the current generation.
     const feedbackKinds = computed(() => store.feedbackKinds);
+    // SVC-MODE: plain summary of the current service mode (null hides the line).
+    const serviceModeSummary = computed(() => store.serviceMode?.summary ?? "");
     // FEEDBACK: offer feedback only when the turn produced a visible reply
     // (completed) or refused one (blocked) — never mid-stream or for pure
     // transport failures with nothing to judge.
@@ -764,6 +777,8 @@ export default defineComponent({
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
       }
+      // SVC-MODE: surface the current service mode (non-fatal, ops fact).
+      await store.loadServiceMode(transport);
       // load() catches its own failures (status="error", no throw); the
       // selector surfaces them without faking success.
       await relStore.load(transport);
@@ -827,6 +842,7 @@ export default defineComponent({
       showFeedback,
       onFeedback,
       onDeleteMessage,
+      serviceModeSummary,
       statusText,
       canRetry,
       roleLabel,
@@ -1030,6 +1046,16 @@ export default defineComponent({
 }
 .chat-mode-chip[disabled] {
   opacity: 0.5;
+}
+/* SVC-MODE: plain service-mode status line (never role-played). */
+.service-mode {
+  margin: 0 24rpx 16rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background-color: #1c2b4a;
+  border: 2rpx solid #2a3a5a;
+  font-size: 24rpx;
+  color: #b8c4d8;
 }
 /* FEEDBACK: one-tap feedback chips on the finished reply. */
 .chat-feedback-row {

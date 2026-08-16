@@ -34,6 +34,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `GET /actuator/health`
 - `GET /api/internal/baseline`
 - `GET /api/v1/version`（公开，OpenAPI `getVersion`）
+- `GET /api/v1/service-mode`（SVC-MODE：当前服务模式 FULL_AI / ZERO_LLM 与
+  平实状态文案，FR-RES-005 用户透明度，需登录）
 
 显式开启 Auth 及其 datasource 后，runtime 还提供：
 
@@ -94,6 +96,10 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   清理 `message:<id>` 证据行、不存在返回 FALSE 不披露、仅 vc_api 可执行）；
   OpenAPI `DELETE /conversations/{id}/messages/{messageId}`；聊天页逐条消息两步
   确认删除（FR-CHAT-004 / FR-DATA-003）。
+- 服务状态透明（SVC-MODE）：`GET /api/v1/service-mode` 返回当前
+  FULL_AI / ZERO_LLM 与平实运维文案（provider 主开关决定；DEGRADED/SAFETY/
+  MAINTENANCE 在 Technical Alpha 不可达且永不虚报）；聊天页顶部明文展示服务
+  状态，绝不角色化事故（FR-RES-005）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 
