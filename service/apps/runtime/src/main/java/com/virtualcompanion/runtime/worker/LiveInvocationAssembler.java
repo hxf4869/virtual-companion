@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.worker;
 
 import com.virtualcompanion.catalog.ModelProtocol;
 import com.virtualcompanion.catalog.SafetyClassifierOutcome;
+import com.virtualcompanion.conversation.contextplan.ContextBudget;
 import com.virtualcompanion.conversation.contextplan.PersonaSkeleton;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
 import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
@@ -69,6 +70,17 @@ public class LiveInvocationAssembler {
     private static final String RECALL_HEADER =
             "以下是关于用户的长期记忆（仅参考与当前对话相关的条目）：";
 
+    /**
+     * CTX-BUDGET: deterministic token estimate divisor. UTF-8 bytes / 4 is a
+     * conservative, provider-neutral estimate (≈ one token per four bytes,
+     * safe for CJK and ASCII alike) with no external dependency — the same
+     * input always reproduces the same estimate.
+     */
+    private static final int TOKEN_ESTIMATE_BYTES_PER_TOKEN = 4;
+
+    /** CTX-BUDGET: share of the input budget reserved for the recall block. */
+    private static final int RECALL_BUDGET_SHARE = 3;
+
     private final GenerationRepository generationRepository;
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
@@ -77,6 +89,7 @@ public class LiveInvocationAssembler {
     private final JdbcTemplate jdbcTemplate;
     private final String zeroLlmSourceId;
     private final ModelProtocol externalProtocol;
+    private final ContextBudget budget;
 
     public LiveInvocationAssembler(
             GenerationRepository generationRepository,
@@ -86,7 +99,8 @@ public class LiveInvocationAssembler {
             RelationshipService relationshipService,
             JdbcTemplate jdbcTemplate,
             String zeroLlmSourceId,
-            ModelProtocol externalProtocol) {
+            ModelProtocol externalProtocol,
+            ContextBudget budget) {
         this.generationRepository = Objects.requireNonNull(generationRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
@@ -96,6 +110,7 @@ public class LiveInvocationAssembler {
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate);
         this.zeroLlmSourceId = requireSourceId(zeroLlmSourceId);
         this.externalProtocol = Objects.requireNonNull(externalProtocol, "externalProtocol must not be null");
+        this.budget = Objects.requireNonNull(budget, "budget must not be null");
     }
 
     /**
@@ -120,8 +135,12 @@ public class LiveInvocationAssembler {
      */
     public LiveInvocationRequest assemble(long ownerUserId, long generationId, String claimFence) {
         OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
-        List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
-        messages = withRecallContext(ownerUserId, ownership, messages);
+        // CTX-BUDGET: fixed SYSTEM blocks (recall; the ZERO_LLM path carries no
+        // persona) are budgeted first, history takes the remaining tokens.
+        String recallBlock = recallBlock(ownerUserId, ownership);
+        List<ProtocolMessage> messages = loadMessages(
+                ownerUserId, ownership.conversationId(), messageTokenBudget(null, recallBlock));
+        messages = prependBlocks(messages, null, recallBlock);
         long fence = fenceValue(claimFence, readFence());
 
         Entitlement entitlement = new Entitlement(
@@ -198,14 +217,18 @@ public class LiveInvocationAssembler {
                     "requestedSnapshotId and executionSnapshotId must not be blank");
         }
         OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
-        List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
         // PERSONA-WIRE: the companion persona is the outermost SYSTEM context
-        // (so it prepends AFTER the recall block below); consumed by the
-        // external branch only (the ZERO_LLM branch ignores it). Real persona
-        // content is approved out of band — only the approved skeleton fields
-        // are rendered, nothing is invented.
-        messages = withRecallContext(ownerUserId, ownership, messages);
-        messages = withPersonaContext(ownerUserId, ownership, messages);
+        // (so it prepends BEFORE the recall block); consumed by the external
+        // branch only (the ZERO_LLM branch ignores it). Real persona content
+        // is approved out of band — only the approved skeleton fields are
+        // rendered, nothing is invented.
+        // CTX-BUDGET: both SYSTEM blocks are budgeted first, history takes the
+        // remaining input tokens (most recent messages kept first).
+        String personaBlock = personaBlock(ownerUserId, ownership);
+        String recallBlock = recallBlock(ownerUserId, ownership);
+        List<ProtocolMessage> messages = loadMessages(
+                ownerUserId, ownership.conversationId(), messageTokenBudget(personaBlock, recallBlock));
+        messages = prependBlocks(messages, personaBlock, recallBlock);
         long fence = fenceValue(claimFence, readFence());
 
         Entitlement entitlement = new Entitlement(
@@ -251,55 +274,79 @@ public class LiveInvocationAssembler {
                 Long.toString(generationId));
     }
 
-    private List<ProtocolMessage> loadMessages(long ownerUserId, String conversationIdStr) {
+    /**
+     * CTX-BUDGET: load history most-recent-first under a token budget. Rows
+     * are walked backwards from the newest message, each clamped to
+     * {@link #MAX_MESSAGE_BYTES} and counted via {@link #estimateTokens}; once
+     * the budget is exhausted no older message is added (at least the newest
+     * one is always kept). The result is returned oldest-first as before, and
+     * the list never exceeds {@link #MAX_MESSAGES} entries.
+     */
+    private List<ProtocolMessage> loadMessages(
+            long ownerUserId, String conversationIdStr, int maxMessageTokens) {
         long conversationId = Long.parseLong(conversationIdStr);
         List<com.virtualcompanion.platform.persistence.MessageRepository.Message> rows =
                 messageRepository.listByConversation(ownerUserId, conversationId);
-        List<ProtocolMessage> messages = new ArrayList<>();
-        for (com.virtualcompanion.platform.persistence.MessageRepository.Message m : rows) {
-            if (messages.size() >= MAX_MESSAGES) {
-                break;
-            }
+        List<ProtocolMessage> newestFirst = new ArrayList<>();
+        int usedTokens = 0;
+        for (int i = rows.size() - 1; i >= 0 && newestFirst.size() < MAX_MESSAGES; i--) {
+            com.virtualcompanion.platform.persistence.MessageRepository.Message m = rows.get(i);
             String content = m.content();
             if (content == null || content.isBlank()) {
                 continue;
             }
-            messages.add(new ProtocolMessage(toRole(m.role()), clamp(content)));
+            String clamped = clamp(content);
+            int tokens = estimateTokens(clamped);
+            if (usedTokens + tokens > maxMessageTokens && !newestFirst.isEmpty()) {
+                break;
+            }
+            newestFirst.add(new ProtocolMessage(toRole(m.role()), clamped));
+            usedTokens += tokens;
         }
-        if (messages.isEmpty()) {
+        if (newestFirst.isEmpty()) {
             // Constructor requires a non-empty list; ZERO_LLM never reads it, so a
             // single placeholder keeps the request valid without inventing history.
-            messages.add(new ProtocolMessage(ProtocolMessage.Role.USER, PLACEHOLDER_USER_CONTENT));
+            return List.of(new ProtocolMessage(ProtocolMessage.Role.USER, PLACEHOLDER_USER_CONTENT));
         }
-        return messages;
+        List<ProtocolMessage> oldestFirst = new ArrayList<>(newestFirst.size());
+        for (int i = newestFirst.size() - 1; i >= 0; i--) {
+            oldestFirst.add(newestFirst.get(i));
+        }
+        return oldestFirst;
     }
 
     /**
-     * PERSONA-WIRE: prepend a SYSTEM context message rendering the relationship's
-     * persona from the approved skeleton fields only (display name, tone, default
-     * interaction mode, reflection style). An unknown/absent personaRef leaves the
-     * message list untouched — no synthetic persona is invented.
+     * CTX-BUDGET: remaining input tokens for the message history after the
+     * fixed SYSTEM blocks (persona + recall) are accounted for. Always at
+     * least one token so the newest message can always be carried.
      */
-    private List<ProtocolMessage> withPersonaContext(
-            long ownerUserId, OwnershipTuple ownership, List<ProtocolMessage> messages) {
+    private int messageTokenBudget(String personaBlock, String recallBlock) {
+        int fixed = (personaBlock == null ? 0 : estimateTokens(personaBlock))
+                + (recallBlock == null ? 0 : estimateTokens(recallBlock));
+        return Math.max(1, budget.maxInputTokens() - fixed);
+    }
+
+    /**
+     * PERSONA-WIRE: render the relationship's persona SYSTEM block from the
+     * approved skeleton fields only (display name, tone, default interaction
+     * mode, reflection style). An unknown/absent personaRef yields null — no
+     * synthetic persona is invented.
+     */
+    private String personaBlock(long ownerUserId, OwnershipTuple ownership) {
         long relationshipId = Long.parseLong(ownership.relationshipId());
         RelationshipRecord relationship =
                 relationshipService.get(ownerUserId, relationshipId).orElse(null);
         PersonaSkeleton persona = personaFor(
                 relationship == null ? null : relationship.personaRef());
         if (persona == null) {
-            return messages;
+            return null;
         }
-        String block = "Companion persona: %s. Tone: %s. Default interaction mode: %s. Reflection style: %s."
+        return "Companion persona: %s. Tone: %s. Default interaction mode: %s. Reflection style: %s."
                 .formatted(
                         persona.displayName(),
                         persona.tone(),
                         persona.defaultMode().name().toLowerCase(java.util.Locale.ROOT),
                         persona.reflectionPromptStyle());
-        List<ProtocolMessage> withPersona = new ArrayList<>(messages.size() + 1);
-        withPersona.add(new ProtocolMessage(ProtocolMessage.Role.SYSTEM, block));
-        withPersona.addAll(messages);
-        return withPersona;
     }
 
     /** PERSONA-WIRE: persona-templates catalog id → approved skeleton. */
@@ -311,27 +358,68 @@ public class LiveInvocationAssembler {
     }
 
     /**
-     * MEM-LOOP: prepend a SYSTEM context message carrying the confirmed memory
+     * MEM-LOOP: build the SYSTEM recall block carrying the confirmed memory
      * recalled for this relationship (and conversation, for SESSION scope).
-     * Empty recall leaves the message list untouched — no synthetic context.
+     * Empty recall yields null — no synthetic context. CTX-BUDGET: entries are
+     * appended most-recent-first only while the recall share of the input
+     * budget (a third) is not exhausted.
      */
-    private List<ProtocolMessage> withRecallContext(
-            long ownerUserId, OwnershipTuple ownership, List<ProtocolMessage> messages) {
+    private String recallBlock(long ownerUserId, OwnershipTuple ownership) {
         long relationshipId = Long.parseLong(ownership.relationshipId());
         long conversationId = Long.parseLong(ownership.conversationId());
         List<MemoryRecord> recalled = memoryService.recall(
                 ownerUserId, relationshipId, conversationId, MAX_RECALL_ENTRIES);
         if (recalled.isEmpty()) {
+            return null;
+        }
+        int recallBudgetTokens = Math.max(1, budget.maxInputTokens() / RECALL_BUDGET_SHARE);
+        StringBuilder block = new StringBuilder(RECALL_HEADER);
+        int usedTokens = estimateTokens(RECALL_HEADER);
+        int added = 0;
+        for (MemoryRecord memory : recalled) {
+            String line = "\n- " + clampRecall(memory.summary());
+            int lineTokens = estimateTokens(line);
+            if (usedTokens + lineTokens > recallBudgetTokens && added > 0) {
+                break;
+            }
+            block.append(line);
+            usedTokens += lineTokens;
+            added++;
+        }
+        return added == 0 ? null : block.toString();
+    }
+
+    /** Prepend the fixed SYSTEM blocks (persona outermost) to the history. */
+    private static List<ProtocolMessage> prependBlocks(
+            List<ProtocolMessage> messages, String personaBlock, String recallBlock) {
+        int extra = (personaBlock == null ? 0 : 1) + (recallBlock == null ? 0 : 1);
+        if (extra == 0) {
             return messages;
         }
-        StringBuilder block = new StringBuilder(RECALL_HEADER);
-        for (MemoryRecord memory : recalled) {
-            block.append("\n- ").append(clampRecall(memory.summary()));
+        List<ProtocolMessage> withBlocks = new ArrayList<>(messages.size() + extra);
+        if (personaBlock != null) {
+            withBlocks.add(new ProtocolMessage(ProtocolMessage.Role.SYSTEM, personaBlock));
         }
-        List<ProtocolMessage> withMemory = new ArrayList<>(messages.size() + 1);
-        withMemory.add(new ProtocolMessage(ProtocolMessage.Role.SYSTEM, block.toString()));
-        withMemory.addAll(messages);
-        return withMemory;
+        if (recallBlock != null) {
+            withBlocks.add(new ProtocolMessage(ProtocolMessage.Role.SYSTEM, recallBlock));
+        }
+        withBlocks.addAll(messages);
+        return withBlocks;
+    }
+
+    /**
+     * CTX-BUDGET: deterministic, provider-neutral token estimate. UTF-8 bytes
+     * divided by {@link #TOKEN_ESTIMATE_BYTES_PER_TOKEN} (rounded up, minimum
+     * one) — conservative for both CJK and ASCII, no external dependency, same
+     * input always reproduces the same estimate.
+     */
+    static int estimateTokens(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        int bytes = text.getBytes(StandardCharsets.UTF_8).length;
+        return Math.max(
+                1, (bytes + TOKEN_ESTIMATE_BYTES_PER_TOKEN - 1) / TOKEN_ESTIMATE_BYTES_PER_TOKEN);
     }
 
     private static String clampRecall(String summary) {

@@ -495,7 +495,10 @@ public class AuthDataSourceConfig {
             RelationshipService relationshipService,
             JdbcTemplate authJdbcTemplate,
             @Value("${virtual-companion.zero-llm.source-id:ZERO_LLM_FALLBACK}") String zeroLlmSourceId,
-            @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol) {
+            @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol,
+            @Value("${virtual-companion.generation.context-budget.max-input-tokens:8000}") int maxInputTokens,
+            @Value("${virtual-companion.generation.context-budget.max-output-tokens:2048}") int maxOutputTokens,
+            @Value("${virtual-companion.generation.context-budget.max-turns:64}") int maxTurns) {
         return new LiveInvocationAssembler(
                 generationRepository,
                 conversationRepository,
@@ -504,7 +507,9 @@ public class AuthDataSourceConfig {
                 relationshipService,
                 authJdbcTemplate,
                 zeroLlmSourceId,
-                externalProtocol);
+                externalProtocol,
+                new com.virtualcompanion.conversation.contextplan.ContextBudget(
+                        maxInputTokens, maxOutputTokens, maxTurns));
     }
 
     /**

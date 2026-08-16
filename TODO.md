@@ -13,7 +13,7 @@
       接线）且 chat.accepted 不重复落库；新增卡死对账清扫（work_item 已终态但
       generation 仍 IN_PROGRESS 的孤儿由调度任务终态化 FAILED_FINAL + chat.failed，
       前端补友好文案）。
-- [ ] CTX-BUDGET 上下文 token 预算：把 contextplan 的 ContextBudget 接进
+- [x] CTX-BUDGET 上下文 token 预算：把 contextplan 的 ContextBudget 接进
       LiveInvocationAssembler——确定性 token 估算，按输入预算从最新消息回溯裁剪
       历史与召回记忆（保留既有 64 条/64KiB/单条 500 字钳制），为真实 provider
       的上下文窗口与计费打底。

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.virtualcompanion.catalog.ModelProtocol;
+import com.virtualcompanion.conversation.contextplan.ContextBudget;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
 import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
@@ -42,6 +43,9 @@ class LiveInvocationAssemblerTest {
 
     private static final Instant NOW = Instant.parse("2026-08-16T08:00:00Z");
 
+    /** CTX-BUDGET: generous default budget so legacy cases stay uncut. */
+    private static final ContextBudget BUDGET = new ContextBudget(8_000, 2_048, 64);
+
     private final GenerationRepository generationRepository = mock(GenerationRepository.class);
     private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
     private final MessageRepository messageRepository = mock(MessageRepository.class);
@@ -50,9 +54,14 @@ class LiveInvocationAssemblerTest {
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
 
     private LiveInvocationAssembler assembler(String sourceId) {
+        return assembler(sourceId, BUDGET);
+    }
+
+    private LiveInvocationAssembler assembler(String sourceId, ContextBudget budget) {
         return new LiveInvocationAssembler(
                 generationRepository, conversationRepository, messageRepository, memoryService,
-                relationshipService, jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS);
+                relationshipService, jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                budget);
     }
 
     @Test
@@ -257,5 +266,76 @@ class LiveInvocationAssemblerTest {
 
         assertEquals(1, request.messages().size());
         assertEquals(ProtocolMessage.Role.USER, request.messages().get(0).role());
+    }
+
+    // ---- CTX-BUDGET ----
+
+    @Test
+    void estimateTokensIsByteBasedAndDeterministic() {
+        assertEquals(1, LiveInvocationAssembler.estimateTokens("a"));
+        // ASCII: 4 bytes = 1 token, 5 bytes = 2 tokens.
+        assertEquals(1, LiveInvocationAssembler.estimateTokens("abcd"));
+        assertEquals(2, LiveInvocationAssembler.estimateTokens("abcde"));
+        // CJK: one char is 3 UTF-8 bytes, so two chars (6 bytes) = 2 tokens.
+        assertEquals(2, LiveInvocationAssembler.estimateTokens("你好"));
+        assertEquals(0, LiveInvocationAssembler.estimateTokens(""));
+        assertEquals(0, LiveInvocationAssembler.estimateTokens(null));
+    }
+
+    @Test
+    void keepsOnlyTheNewestMessagesWhenTheBudgetIsTight() {
+        // Each message is ~2 tokens ("old-1" is 5 bytes → 2 tokens). A budget
+        // of 4 tokens keeps only the two newest messages; the oldest is cut.
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "old-1"),
+                new MessageRepository.Message(1L, 101L, 5L, "assistant", "mid-2"),
+                new MessageRepository.Message(1L, 102L, 5L, "user", "new-3")));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+
+        LiveInvocationRequest request =
+                assembler("SRC", new ContextBudget(4, 128, 64)).assemble(1L, 10L);
+
+        assertEquals(2, request.messages().size());
+        assertEquals("mid-2", request.messages().get(0).content());
+        assertEquals("new-3", request.messages().get(1).content());
+    }
+
+    @Test
+    void alwaysKeepsTheNewestMessageEvenForATinyBudget() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "old"),
+                new MessageRepository.Message(1L, 101L, 5L, "user", "new")));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+
+        LiveInvocationRequest request =
+                assembler("SRC", new ContextBudget(1, 128, 64)).assemble(1L, 10L);
+
+        assertEquals(1, request.messages().size());
+        assertEquals("new", request.messages().get(0).content());
+    }
+
+    @Test
+    void recallBlockIsCutToTheRecallBudgetShare() {
+        // Budget 90 → recall share 30 tokens; the header (~15 CJK chars ≈ 12
+        // tokens) plus each "- xxx" line (7-9 bytes ≈ 2-3 tokens) fills up and
+        // the tail entries are dropped.
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        List<MemoryRecord> recalled = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            recalled.add(new MemoryRecord(
+                    30L + i, null, "RELATIONSHIP", "记忆条目" + i, "ACCEPTED",
+                    null, null, NOW));
+        }
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(recalled);
+
+        LiveInvocationRequest request =
+                assembler("SRC", new ContextBudget(90, 128, 64)).assemble(1L, 10L);
+
+        assertEquals(2, request.messages().size());
+        String recall = request.messages().get(0).content();
+        assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
+        assertTrue(recall.contains("记忆条目0"));
+        assertTrue(!recall.contains("记忆条目19"));
     }
 }
