@@ -73,7 +73,13 @@ final class ApprovedModelProviderProvisioner {
         return switch (protocol) {
             case OPENAI_CHAT_COMPLETIONS -> new OpenAiChatCompletionsAdapter(
                     new OpenAiChatCompletionsConfig(
-                            endpoint, credential, deployment.model()));
+                            endpoint,
+                            credential,
+                            deployment.model(),
+                            deployment.maxTokens() > 0
+                                    ? deployment.maxTokens()
+                                    : OpenAiChatCompletionsConfig.DEFAULT_MAX_TOKENS,
+                            deployment.temperature()));
             case ANTHROPIC_MESSAGES -> {
                 if (!deployment.anthropicConfigured()) {
                     throw new IllegalStateException(
@@ -86,7 +92,8 @@ final class ApprovedModelProviderProvisioner {
                                 credential,
                                 deployment.anthropicVersion(),
                                 deployment.model(),
-                                deployment.maxTokens()));
+                                deployment.maxTokens(),
+                                deployment.temperature()));
             }
             // TASK-0181: the operator-configured loopback deployment
             // (protocol=FAKE) exercises the real external runtime path

@@ -63,7 +63,7 @@ class ApprovedModelProviderProvisionerTest {
     void rejectsUnknownProtocolFailClosed() {
         ModelProviderProperties.Deployment unapproved = new ModelProviderProperties.Deployment(
                 "responses-provider", "OPENAI_RESPONSES", "OpenAI Responses",
-                "gpt-5", "http://127.0.0.1:1/v1/responses", "openai-key", "", 0, true);
+                "gpt-5", "http://127.0.0.1:1/v1/responses", "openai-key", "", 0, null, true);
 
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class, () -> provision(unapproved));
@@ -75,7 +75,7 @@ class ApprovedModelProviderProvisionerTest {
         ModelProviderProperties.Deployment incomplete = new ModelProviderProperties.Deployment(
                 "anthropic-approved", "ANTHROPIC_MESSAGES", "Anthropic",
                 "claude-sonnet-5", "http://127.0.0.1:1/v1/messages",
-                "anthropic-key", "", 0, true);
+                "anthropic-key", "", 0, null, true);
 
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class, () -> provision(incomplete));
@@ -123,7 +123,7 @@ class ApprovedModelProviderProvisionerTest {
         ModelProviderProperties.Deployment missingSecret = new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
                 "gpt-4o-mini", "http://127.0.0.1:1/v1/chat/completions",
-                "does-not-exist", "", 0, true);
+                "does-not-exist", "", 0, null, true);
 
         assertThrows(IllegalStateException.class, () -> provision(missingSecret));
     }
@@ -133,7 +133,7 @@ class ApprovedModelProviderProvisionerTest {
         ModelProviderProperties.Deployment unapproved = new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
                 "gpt-4o-mini", "https://evil.example.com/v1/chat/completions",
-                "openai-key", "", 0, true);
+                "openai-key", "", 0, null, true);
 
         assertThrows(IllegalArgumentException.class, () -> provision(unapproved));
     }
@@ -143,7 +143,7 @@ class ApprovedModelProviderProvisionerTest {
         ModelProviderProperties.Deployment traversal = new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
                 "gpt-4o-mini", "http://127.0.0.1:1/v1/chat/completions",
-                "../openai-key", "", 0, true);
+                "../openai-key", "", 0, null, true);
 
         assertThrows(IllegalArgumentException.class, () -> provision(traversal));
     }
@@ -159,7 +159,7 @@ class ApprovedModelProviderProvisionerTest {
         return new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
                 "gpt-4o-mini", "http://127.0.0.1:1/v1/chat/completions",
-                secret, "", 0, enabled);
+                secret, "", 0, null, enabled);
     }
 
     private static ModelProviderProperties.Deployment anthropic(String secret, boolean enabled) {
@@ -173,6 +173,6 @@ class ApprovedModelProviderProvisionerTest {
         return new ModelProviderProperties.Deployment(
                 "anthropic-approved", "ANTHROPIC_MESSAGES", "Anthropic",
                 "claude-sonnet-5", "http://127.0.0.1:1/v1/messages",
-                secret, "2023-06-01", maxTokens, enabled);
+                secret, "2023-06-01", maxTokens, null, enabled);
     }
 }

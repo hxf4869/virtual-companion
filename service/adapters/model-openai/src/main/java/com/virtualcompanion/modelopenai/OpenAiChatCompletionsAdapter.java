@@ -84,7 +84,8 @@ public final class OpenAiChatCompletionsAdapter implements ModelProtocolAdapter 
 
         final String requestBody;
         try {
-            requestBody = codec.encodeRequest(request, config.model());
+            requestBody = codec.encodeRequest(
+                    request, config.model(), config.maxTokens(), config.temperature());
         } catch (OpenAiCodecException exception) {
             return ImmediateTerminalSession.failed(
                     request.binding(),

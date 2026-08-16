@@ -28,12 +28,15 @@ final class OpenAiChatCompletionsCodec {
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
             .build();
 
-    String encodeRequest(ModelProtocolRequest request, String model)
+    String encodeRequest(
+            ModelProtocolRequest request, String model, int maxTokens, double temperature)
             throws OpenAiCodecException {
         try {
             var root = jsonMapper.createObjectNode();
             root.put("model", model);
-            root.put("max_tokens", SizeLimits.MAX_OPENAI_OUTPUT_TOKENS);
+            // SAMPLE-CFG: deployment-level sampling defaults (operator-tuned).
+            root.put("max_tokens", OpenAiChatCompletionsConfig.requireMaxTokens(maxTokens));
+            root.put("temperature", OpenAiChatCompletionsConfig.requireTemperature(temperature));
             var messages = root.putArray("messages");
             for (ProtocolMessage message : request.messages()) {
                 var encoded = messages.addObject();

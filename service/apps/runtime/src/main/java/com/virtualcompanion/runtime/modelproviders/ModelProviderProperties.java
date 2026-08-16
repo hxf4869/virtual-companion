@@ -53,7 +53,11 @@ public record ModelProviderProperties(
      * @param credentialSecret name of the Docker secret / secret file whose
      *                         content is the bearer token / API key
      * @param anthropicVersion Anthropic Messages API version (Anthropic only)
-     * @param maxTokens        max output tokens (Anthropic only, must be > 0)
+     * @param maxTokens        max output tokens (Anthropic only, must be > 0;
+     *                         OpenAI deployments may also set it, defaulting to
+     *                         the OpenAI output ceiling)
+     * @param temperature      SAMPLE-CFG sampling default carried into every
+     *                         request (OpenAI 0..2, Anthropic 0..1; unset = 1.0)
      * @param enabled          per-deployment switch
      */
     public record Deployment(
@@ -65,11 +69,13 @@ public record ModelProviderProperties(
             @NotBlank String credentialSecret,
             String anthropicVersion,
             Integer maxTokens,
+            Double temperature,
             boolean enabled) {
 
         public Deployment {
             anthropicVersion = anthropicVersion == null ? "" : anthropicVersion;
             maxTokens = maxTokens == null ? 0 : maxTokens;
+            temperature = temperature == null ? 1.0 : temperature;
         }
 
         boolean anthropicConfigured() {

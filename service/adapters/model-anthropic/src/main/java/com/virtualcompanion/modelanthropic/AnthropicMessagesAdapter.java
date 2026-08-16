@@ -83,7 +83,8 @@ public final class AnthropicMessagesAdapter implements ModelProtocolAdapter {
 
         final String requestBody;
         try {
-            requestBody = codec.encodeRequest(request, config.model(), config.maxTokens());
+            requestBody = codec.encodeRequest(
+                    request, config.model(), config.maxTokens(), config.temperature());
         } catch (AnthropicCodecException exception) {
             return ImmediateTerminalSession.failed(
                     request.binding(),

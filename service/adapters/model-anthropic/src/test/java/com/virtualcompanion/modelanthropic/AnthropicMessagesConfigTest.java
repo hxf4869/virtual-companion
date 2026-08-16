@@ -40,6 +40,39 @@ class AnthropicMessagesConfigTest {
         }
     }
 
+    // ---- SAMPLE-CFG ----
+
+    @Test
+    void defaultsTemperatureToOneAndAcceptsTheFullAnthropicBand() {
+        assertEquals(1.0, config(1024).temperature());
+        var tuned = new AnthropicMessagesConfig(
+                ENDPOINT, "synthetic-api-key", "2023-06-01", "synthetic-model", 1024, 0.7);
+        assertEquals(0.7, tuned.temperature());
+    }
+
+    @Test
+    void rejectsOutOfBandTemperatures() {
+        for (double value : new double[]{-0.1, 1.1, Double.NaN, Double.POSITIVE_INFINITY}) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> new AnthropicMessagesConfig(
+                            ENDPOINT, "synthetic-api-key", "2023-06-01",
+                            "synthetic-model", 1024, value));
+        }
+    }
+
+    @Test
+    void codecRejectsOutOfBandTemperaturesBeforeWritingRequest() {
+        var codec = new AnthropicMessagesCodec();
+        var request = request();
+
+        for (double value : new double[]{-0.1, 1.1, Double.NaN}) {
+            assertThrows(
+                    AnthropicCodecException.class,
+                    () -> codec.encodeRequest(request, "synthetic-model", 1024, value));
+        }
+    }
+
     @Test
     void codecRevalidatesMaxTokensBeforeWritingRequest() {
         var codec = new AnthropicMessagesCodec();
@@ -48,7 +81,7 @@ class AnthropicMessagesConfigTest {
         for (int value : new int[]{0, -1, 8193, Integer.MAX_VALUE}) {
             assertThrows(
                     AnthropicCodecException.class,
-                    () -> codec.encodeRequest(request, "synthetic-model", value)
+                    () -> codec.encodeRequest(request, "synthetic-model", value, 1.0)
             );
         }
     }

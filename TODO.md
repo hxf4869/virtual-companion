@@ -17,7 +17,7 @@
       LiveInvocationAssembler——确定性 token 估算，按输入预算从最新消息回溯裁剪
       历史与召回记忆（保留既有 64 条/64KiB/单条 500 字钳制），为真实 provider
       的上下文窗口与计费打底。
-- [ ] SAMPLE-CFG 采样参数部署配置：ModelProviderProperties 增加 temperature/
+- [x] SAMPLE-CFG 采样参数部署配置：ModelProviderProperties 增加 temperature/
       maxTokens 部署级默认，OpenAI/Anthropic codec 透传（替代 OpenAI 硬编码
       max_tokens），回复风格成为可运营杠杆；请求级透传留给真实 provider 接入。
 - [ ] RT-REVIVE realtime 会话恢复：authed-fetch 注入 renewAccessToken——realtime

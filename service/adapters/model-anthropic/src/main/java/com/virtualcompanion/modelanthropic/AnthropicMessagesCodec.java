@@ -26,12 +26,15 @@ final class AnthropicMessagesCodec {
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
             .build();
 
-    String encodeRequest(ModelProtocolRequest request, String model, int maxTokens)
+    String encodeRequest(
+            ModelProtocolRequest request, String model, int maxTokens, double temperature)
             throws AnthropicCodecException {
         try {
             var root = jsonMapper.createObjectNode();
             root.put("model", model);
             root.put("max_tokens", AnthropicMessagesConfig.requireMaxTokens(maxTokens));
+            // SAMPLE-CFG: deployment-level sampling default (operator-tuned).
+            root.put("temperature", AnthropicMessagesConfig.requireTemperature(temperature));
 
             var systemBuilder = new StringBuilder();
             boolean hasSystem = false;
