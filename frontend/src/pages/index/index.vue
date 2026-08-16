@@ -249,8 +249,10 @@ import { useRelationshipStore } from "@/stores/relationship";
 const store = useBaselineStore();
 const auth = useAuthStore();
 const relStore = useRelationshipStore();
+// SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  renewAccessToken: () => auth.renewAccessToken(transport),
   onUnauthorized: () => auth.onUnauthorized(),
 });
 const {
@@ -368,7 +370,11 @@ watch(state, (nextState) => {
   }
 });
 
-onMounted(() => {
+onMounted(async () => {
+  // SESS-REVIVE: restore the session from the HttpOnly refresh cookie first.
+  if (!auth.isAuthenticated) {
+    await auth.tryRefresh(transport);
+  }
   void load();
   void relStore.load(transport);
 });

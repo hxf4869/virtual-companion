@@ -255,8 +255,10 @@ const showPrefillHint = computed(
 // TASK-0105 (P2-16): shared authenticated transport -- the single place where
 // credentials/CSRF are attached; an HTTP 401 routes to the auth store's
 // session handling (clear + redirect to login) exactly like the rest of the H5.
+// SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
 const transport: MemoryTransport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
+  renewAccessToken: () => auth.renewAccessToken(transport),
   onUnauthorized: () => auth.onUnauthorized(),
 });
 
@@ -318,7 +320,11 @@ function onPickRelationship(id: string): void {
   focusReload();
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // SESS-REVIVE: restore the session from the HttpOnly refresh cookie first.
+  if (!auth.isAuthenticated) {
+    await auth.tryRefresh(transport);
+  }
   void relStore.load(transport);
   const prefill = readQueryRelationshipId();
   if (prefill && !relationshipId.value) {

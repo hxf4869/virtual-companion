@@ -265,7 +265,7 @@ describe("memory page glue (P2-19 component test)", () => {
     const store = useMemoryStore();
     const loadSpy = vi.spyOn(store, "load");
     const wrapper = mountPage();
-    await wrapper.vm.$nextTick();
+    await flushPromises();
 
     const input = wrapper.find('input[aria-label="relationship id"]');
     expect((input.element as HTMLInputElement).value).toBe("rel-1");
@@ -300,7 +300,7 @@ describe("memory page glue (P2-19 component test)", () => {
     const store = useMemoryStore();
     vi.spyOn(store, "load").mockResolvedValue();
     const wrapper = mountPage();
-    await wrapper.vm.$nextTick();
+    await flushPromises();
     expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(true);
 
     await wrapper.findAll("button")[0].trigger("click");

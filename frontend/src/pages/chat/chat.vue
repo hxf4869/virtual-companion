@@ -27,6 +27,15 @@
         >
           登录
         </button>
+        <button
+          v-if="auth.isAuthenticated"
+          data-testid="logout"
+          class="chat-nav-index logout-btn"
+          aria-label="登出"
+          @click="onLogout"
+        >
+          登出
+        </button>
       </view>
     </view>
 
@@ -267,8 +276,12 @@ export default defineComponent({
 
     // One authenticated transport serves both the relationship and chat API
     // clients (identical {request → {ok,status,json}} structural shape).
+    // SESS-REVIVE: a 401 first tries one silent refresh (from the HttpOnly
+    // cookie) and replays the request, so a mid-session token expiry no longer
+    // boots the user; a rejected refresh clears + redirects as before.
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
+      renewAccessToken: () => auth.renewAccessToken(transport),
       onUnauthorized: () => auth.onUnauthorized(),
     });
     const authedFetch = createAuthedFetch(() => auth.accessToken);
@@ -313,6 +326,23 @@ export default defineComponent({
       return `会话 #${conv.conversationId}`;
     }
 
+    /**
+     * FAIL-REASON: map the server's internal fault string to stable, friendly
+     * copy. Unknown faults fall back to the generic wording; the raw diagnostic
+     * is never rendered.
+     */
+    function faultText(fault: string): string {
+      const map: Record<string, string> = {
+        "model-providers-disabled": "模型服务未启用",
+        "external-blocked_by_safety": "回复未通过安全审查",
+        "external-timed-out": "模型响应超时",
+        "external-failed": "模型服务失败",
+        "external-no_eligible_deployment": "当前没有可用的模型部署",
+        "external-dead-lettered": "模型服务多次失败，本轮已放弃",
+      };
+      return map[fault] ?? "生成失败";
+    }
+
     const statusText = computed(() => {
       switch (store.phase) {
         case "idle":
@@ -336,8 +366,8 @@ export default defineComponent({
           if (store.outcome === "not_found_or_forbidden") {
             return "未找到或无权访问（存在性不披露）";
           }
-          if (store.outcome === "failed") {
-            return "生成失败";
+          if (store.terminalFault) {
+            return faultText(store.terminalFault);
           }
           return "连接中断，请重试";
         default:
@@ -398,6 +428,12 @@ export default defineComponent({
 
     function onCancel(): void {
       store.cancel();
+    }
+
+    /** SESS-REVIVE: revoke the refresh cookie server-side and go to login. */
+    async function onLogout(): Promise<void> {
+      await auth.logout(transport);
+      goTo("/pages/login/login");
     }
 
     function goTo(url: string): void {
@@ -511,6 +547,11 @@ export default defineComponent({
     }
 
     onMounted(async () => {
+      // SESS-REVIVE: restore the session from the HttpOnly refresh cookie
+      // before any authenticated call, so a page reload stays logged in.
+      if (!auth.isAuthenticated) {
+        await auth.tryRefresh(transport);
+      }
       // load() catches its own failures (status="error", no throw); the
       // selector surfaces them without faking success.
       await relStore.load(transport);
@@ -548,6 +589,7 @@ export default defineComponent({
     return {
       relStore,
       store,
+      auth,
       messages,
       conversations,
       pendingMemoryCount,
@@ -568,6 +610,7 @@ export default defineComponent({
       onSend,
       onRetry,
       onCancel,
+      onLogout,
       onDeactivate,
       onOpenConversation,
       onNewConversation,
@@ -731,6 +774,10 @@ export default defineComponent({
 }
 .chat-cancel {
   background-color: #e63946;
+  color: #ffffff;
+}
+.logout-btn {
+  background-color: #5a1a1a;
   color: #ffffff;
 }
 .chat-retry {

@@ -158,6 +158,132 @@ describe("createAuthenticatedTransport", () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
+  it("SESS-REVIVE: replays the request once after a successful silent refresh", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => ({
+        ok: false,
+        status: 401,
+        json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const renewAccessToken = vi.fn(async (): Promise<"renewed"> => "renewed");
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "fresh-token",
+      renewAccessToken,
+      onUnauthorized,
+    });
+
+    const result = await transport.request("GET", "/api/v1/conversations");
+
+    expect(renewAccessToken).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2); // original 401 + replay
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe(200);
+  });
+
+  it("SESS-REVIVE: a rejected refresh clears and redirects without a replay", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const renewAccessToken = vi.fn(async (): Promise<"rejected"> => "rejected");
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "expired-token",
+      renewAccessToken,
+      onUnauthorized,
+    });
+
+    const result = await transport.request("GET", "/api/v1/conversations");
+
+    expect(renewAccessToken).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // no replay
+    expect(result.ok).toBe(false);
+  });
+
+  it("SESS-REVIVE: an unavailable refresh (network) returns the 401 without kicking the user", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const renewAccessToken = vi.fn(async (): Promise<"unavailable"> => "unavailable");
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "expired-token",
+      renewAccessToken,
+      onUnauthorized,
+    });
+
+    const result = await transport.request("GET", "/api/v1/conversations");
+
+    expect(renewAccessToken).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+  });
+
+  it("SESS-REVIVE: never replays the refresh endpoint itself (no recursion)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const renewAccessToken = vi.fn(async (): Promise<"renewed"> => "renewed");
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "expired-token",
+      renewAccessToken,
+      onUnauthorized,
+    });
+
+    await transport.request("POST", "/api/v1/auth/refresh");
+
+    expect(renewAccessToken).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("SESS-REVIVE: a replay that 401s again falls through to onUnauthorized exactly once", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ code: "AUTHENTICATION_REQUIRED" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const renewAccessToken = vi.fn(async (): Promise<"renewed"> => "renewed");
+    const onUnauthorized = vi.fn();
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "still-expired",
+      renewAccessToken,
+      onUnauthorized,
+    });
+
+    await transport.request("GET", "/api/v1/conversations");
+
+    expect(renewAccessToken).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // original + one replay, no storm
+  });
+
   it("tolerates a non-JSON response body", async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
       ok: true,

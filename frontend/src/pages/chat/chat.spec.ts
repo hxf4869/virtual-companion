@@ -9,6 +9,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPage from "./chat.vue";
+import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 
@@ -281,6 +282,55 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
     expect(sendSpy).not.toHaveBeenCalled();
     expect(cancelSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("SESS-REVIVE: renders a logout entry only for an authenticated session", async () => {
+    stubFetch({ relationships: [] });
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const logout = wrapper.find('[data-testid="logout"]');
+    expect(logout.exists()).toBe(true);
+    expect(logout.text()).toContain("登出");
+    wrapper.unmount();
+  });
+
+  it("SESS-REVIVE: logout revokes the session and navigates to login", async () => {
+    stubFetch({ relationships: [] });
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    auth.role = "USER";
+    const logoutSpy = vi.spyOn(auth, "logout").mockResolvedValue();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="logout"]').trigger("click");
+    await flushPromises();
+
+    expect(logoutSpy).toHaveBeenCalledTimes(1);
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("SESS-REVIVE: restores the session on mount before loading relationships", async () => {
+    stubFetch({ relationships: [] });
+    const auth = useAuthStore();
+    const refreshSpy = vi
+      .spyOn(auth, "tryRefresh")
+      .mockImplementation(async (t) => {
+        auth.accessToken = "renewed";
+        return true;
+      });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(auth.accessToken).toBe("renewed");
     wrapper.unmount();
   });
 

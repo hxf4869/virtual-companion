@@ -543,6 +543,62 @@ describe("useChatStore", () => {
     expect(store.pendingUserContent).toBe("Hello");
   });
 
+  // ---- FAIL-REASON: terminal fault surfaced for friendly copy ----
+
+  it("terminalFault exposes the fault of a chat.failed terminal event", async () => {
+    const store = useChatStore();
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [
+          {
+            eventSeq: 1,
+            streamEpoch: 1,
+            eventType: "chat.failed",
+            payload: { fault: "external-timed-out" },
+          },
+        ],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.run(deps, "gen-1", 1);
+
+    expect(store.phase).toBe("failed");
+    expect(store.terminalFault).toBe("external-timed-out");
+  });
+
+  it("terminalFault is null on a completed stream", async () => {
+    const store = useChatStore();
+    await store.run(successDeps(), "gen-1", 1);
+
+    expect(store.phase).toBe("completed");
+    expect(store.terminalFault).toBeNull();
+  });
+
+  it("terminalFault is null when the terminal payload has no fault string", async () => {
+    const store = useChatStore();
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [
+          {
+            eventSeq: 1,
+            streamEpoch: 1,
+            eventType: "chat.failed",
+            payload: { other: "value" },
+          },
+        ],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.run(deps, "gen-1", 1);
+
+    expect(store.phase).toBe("failed");
+    expect(store.terminalFault).toBeNull();
+  });
+
   // ---- USAGE-VIZ: settled usage surfaced after a completed run ----
 
   it("run pulls the settled usage from the snapshot endpoint after completion", async () => {

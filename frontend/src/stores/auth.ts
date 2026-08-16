@@ -115,6 +115,28 @@ export const useAuthStore = defineStore("h5-auth", () => {
     return true;
   }
 
+  /**
+   * SESS-REVIVE: one silent renewal for the transport's 401 replay path,
+   * three-state so the transport can distinguish a rejected cookie (kick to
+   * login) from a network failure (surface session-expired, stay put).
+   */
+  async function renewAccessToken(
+    t: AuthTransport,
+  ): Promise<"renewed" | "rejected" | "unavailable"> {
+    let tokens: AuthTokens | null;
+    try {
+      tokens = await apiRefresh(t);
+    } catch {
+      return "unavailable";
+    }
+    if (!tokens) {
+      clear();
+      return "rejected";
+    }
+    persist(tokens);
+    return "renewed";
+  }
+
   /** Revoke the session server-side (best effort) and clear locally. */
   async function logout(t: AuthTransport): Promise<void> {
     error.value = null;
@@ -141,6 +163,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     isAuthenticated,
     login,
     tryRefresh,
+    renewAccessToken,
     logout,
     onUnauthorized,
     clear,

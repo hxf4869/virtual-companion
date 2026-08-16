@@ -122,6 +122,40 @@ describe("useAuthStore", () => {
     expect(store.accessToken).toBeNull();
   });
 
+  it("SESS-REVIVE: renewAccessToken reports renewed and rotates the token in place", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
+
+    const t = okTransport(sampleTokens("a2"));
+    const outcome = await store.renewAccessToken(t);
+
+    expect(outcome).toBe("renewed");
+    expect(store.accessToken).toBe("a2");
+    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/refresh");
+  });
+
+  it("SESS-REVIVE: renewAccessToken reports rejected and clears on a refused cookie", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
+
+    const outcome = await store.renewAccessToken(failTransport(401));
+
+    expect(outcome).toBe("rejected");
+    expect(store.isAuthenticated).toBe(false);
+  });
+
+  it("SESS-REVIVE: renewAccessToken reports unavailable on a network failure and keeps the session", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("a1")), "alice", "pw");
+
+    const outcome = await store.renewAccessToken(throwTransport());
+
+    expect(outcome).toBe("unavailable");
+    // A network failure never fabricates a session loss.
+    expect(store.isAuthenticated).toBe(true);
+    expect(store.accessToken).toBe("a1");
+  });
+
   it("logout revokes server-side (cookie) then clears locally, even on transport failure", async () => {
     const store = useAuthStore();
     const t = okTransport(sampleTokens("a"));

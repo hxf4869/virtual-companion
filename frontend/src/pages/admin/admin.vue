@@ -86,7 +86,7 @@
 // backend rejects non-ADMIN callers; the page additionally gates the form on
 // the local role for honest UX. Passwords are sent once over the authenticated
 // transport and never persisted or logged.
-import { computed, defineComponent, ref } from "vue";
+import { computed, defineComponent, onMounted, ref } from "vue";
 
 import { createAccount } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -109,9 +109,18 @@ export default defineComponent({
     } | null>(null);
     const failed = ref(false);
 
+    // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
+      renewAccessToken: () => auth.renewAccessToken(transport),
       onUnauthorized: () => auth.onUnauthorized(),
+    });
+
+    // SESS-REVIVE: restore the session from the HttpOnly refresh cookie on mount.
+    onMounted(async () => {
+      if (!auth.isAuthenticated) {
+        await auth.tryRefresh(transport);
+      }
     });
 
     const canSubmit = computed(

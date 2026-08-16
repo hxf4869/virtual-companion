@@ -96,6 +96,25 @@ export const useChatStore = defineStore("h5-chat", () => {
   const isTerminal = computed(() => stream.value.terminal);
 
   /**
+   * FAIL-REASON: the internal fault string of the terminal event (if any).
+   * Server-side diagnostic; the page maps it to stable friendly copy and never
+   * renders it raw.
+   */
+  const terminalFault = computed<string | null>(() => {
+    const terminalEvent = stream.value.events.find((e) =>
+      ["chat.failed", "chat.blocked"].includes(e.eventType),
+    );
+    const payload = terminalEvent?.payload;
+    if (payload && typeof payload === "object" && "fault" in payload) {
+      const fault = (payload as { fault?: unknown }).fault;
+      if (typeof fault === "string" && fault.trim()) {
+        return fault;
+      }
+    }
+    return null;
+  });
+
+  /**
    * Messages to display: committed history plus the live streaming draft as a
    * pending assistant message (so the user sees incremental output in context).
    * STREAM-ECHO: while a turn is in flight the user's own message is echoed as
@@ -389,6 +408,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     draft,
     isStreaming,
     isTerminal,
+    terminalFault,
     displayMessages,
     run,
     cancel,

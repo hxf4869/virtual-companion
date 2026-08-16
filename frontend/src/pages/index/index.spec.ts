@@ -201,6 +201,9 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
 
   it("renders the account management entry only for ADMIN sessions", async () => {
     const auth = useAuthStore();
+    // SESS-REVIVE: an authenticated session (accessToken set) skips the mount
+    // refresh, so the ADMIN role survives to the assertion.
+    auth.accessToken = "a-token";
     auth.role = "ADMIN";
     const wrapper = mountPage();
     await flushPromises();
@@ -223,6 +226,8 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     const navigateTo = vi.fn();
     vi.stubGlobal("uni", { navigateTo });
     const auth = useAuthStore();
+    // SESS-REVIVE: authenticated session skips the mount refresh.
+    auth.accessToken = "a-token";
     auth.role = "ADMIN";
     const wrapper = mountPage();
     await flushPromises();
