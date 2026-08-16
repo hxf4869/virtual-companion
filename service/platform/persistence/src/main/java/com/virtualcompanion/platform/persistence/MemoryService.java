@@ -40,9 +40,8 @@ import org.springframework.jdbc.core.RowMapper;
  * summary, non-Alpha scope, SESSION without a conversation) fails fast as
  * {@link IllegalArgumentException} (400 INVALID_REQUEST).
  *
- * <p>{@code vc.recall_memory} (V13, ContextPlan injection) is intentionally not
- * wrapped here: it is a runtime consumer-facing read and out of this card's
- * HTTP scope.
+ * <p>{@code vc.recall_memory} (V13) is wrapped as {@link #recall} for the
+ * runtime generation-context consumer (MEM-LOOP), not exposed over HTTP.
  */
 public class MemoryService {
 
@@ -60,6 +59,9 @@ public class MemoryService {
     private static final String REJECT_SQL = "SELECT vc.reject_memory_candidate(?, ?)";
     private static final String EVIDENCE_SQL =
             "SELECT out_id, out_source_ref, out_created_at FROM vc.list_memory_evidence(?, ?)";
+    private static final String RECALL_SQL =
+            "SELECT out_id, out_scope, out_summary, out_conversation_id, out_created_at "
+                    + "FROM vc.recall_memory(?, ?, ?, ?)";
 
     /** PENDING_CONFIRMATION is the sole pre-canonical status; ACCEPTED is the
      *  canonical status; REJECTED/EXPIRED are dead ends (memory-candidate-statuses). */
@@ -290,6 +292,33 @@ public class MemoryService {
                 memoryId);
     }
 
+    /**
+     * Recall confirmed memory for generation-context injection (V13
+     * {@code vc.recall_memory}, MEM-LOOP). Returns only ACCEPTED, non-deleted
+     * rows: RELATIONSHIP-scoped memory across conversations, SESSION-scoped
+     * memory only when {@code conversationId} binds the generating
+     * conversation. A foreign or absent relationship resolves to no rows,
+     * indistinguishable from an empty relationship, so existence is never
+     * disclosed. The entries cap is clamped by the SD to {@code [1, 100]}.
+     */
+    public List<MemoryRecord> recall(
+            long ownerUserId, long relationshipId, Long conversationId, int maxEntries) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (relationshipId <= 0) {
+            throw new IllegalArgumentException("relationshipId must be positive");
+        }
+        if (conversationId != null && conversationId <= 0) {
+            throw new IllegalArgumentException("conversationId must be positive");
+        }
+        if (maxEntries <= 0) {
+            throw new IllegalArgumentException("maxEntries must be positive");
+        }
+        return jdbc.query(
+                RECALL_SQL, recallRowMapper(), ownerUserId, relationshipId, conversationId, maxEntries);
+    }
+
     /** Shared confirm/reject flow: pre-check pending, call the SD, re-read. */
     private Optional<MemoryRecord> transition(
             long ownerUserId, long memoryId, String sql, String functionName) {
@@ -376,6 +405,23 @@ public class MemoryService {
         return (ResultSet rs, int rowNum) -> new MemoryEvidenceRecord(
                 rs.getLong("out_id"),
                 rs.getString("out_source_ref"),
+                toInstant(rs, "out_created_at"));
+    }
+
+    /**
+     * {@code recall_memory} output columns: ACCEPTED rows only, so the status
+     * is fixed and there is no deleted_at (the tombstone already excluded
+     * soft-deleted rows).
+     */
+    private static RowMapper<MemoryRecord> recallRowMapper() {
+        return (ResultSet rs, int rowNum) -> new MemoryRecord(
+                rs.getLong("out_id"),
+                null,
+                rs.getString("out_scope"),
+                rs.getString("out_summary"),
+                "ACCEPTED",
+                nullableLong(rs, "out_conversation_id"),
+                null,
                 toInstant(rs, "out_created_at"));
     }
 

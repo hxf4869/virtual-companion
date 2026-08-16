@@ -33,15 +33,18 @@ import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
 import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
+import com.virtualcompanion.runtime.worker.DispatchingWorkItemHandler;
 import com.virtualcompanion.runtime.worker.GenerationWorkItemHandler;
 import com.virtualcompanion.runtime.worker.LiveInvocationAssembler;
 import com.virtualcompanion.runtime.worker.LoggingWorkItemHandler;
+import com.virtualcompanion.runtime.worker.MemoryExtractWorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemCoordinator;
 import com.virtualcompanion.runtime.worker.WorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemWorker;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Duration;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -458,16 +461,18 @@ public class AuthDataSourceConfig {
 
     /**
      * TASK-0176 / TASK-0177: assembles the {@code LiveInvocationRequest} from
-     * the generation snapshot (ownership two-hop + messages + fence GUC). The
-     * ZERO_LLM source id tunes the deterministic path; the external protocol
-     * tunes the external-attempt path so the router selects an admitted
-     * deployment of the configured protocol.
+     * the generation snapshot (ownership two-hop + messages + fence GUC) and
+     * prepends the recalled memory context (MEM-LOOP). The ZERO_LLM source id
+     * tunes the deterministic path; the external protocol tunes the
+     * external-attempt path so the router selects an admitted deployment of
+     * the configured protocol.
      */
     @Bean
     public LiveInvocationAssembler liveInvocationAssembler(
             GenerationRepository generationRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
+            MemoryService memoryService,
             JdbcTemplate authJdbcTemplate,
             @Value("${virtual-companion.zero-llm.source-id:ZERO_LLM_FALLBACK}") String zeroLlmSourceId,
             @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol) {
@@ -475,6 +480,7 @@ public class AuthDataSourceConfig {
                 generationRepository,
                 conversationRepository,
                 messageRepository,
+                memoryService,
                 authJdbcTemplate,
                 zeroLlmSourceId,
                 externalProtocol);
@@ -491,6 +497,13 @@ public class AuthDataSourceConfig {
      * runtime is active); the external branch is runtime-active since
      * TASK-0181 wires the JDBC {@link AuthorizationSnapshotProvider} bean
      * under the same {@code model-providers.enabled=true} condition.
+     *
+     * <p>MEM-LOOP: the worker now dispatches by kind — GENERATION stays on
+     * {@link GenerationWorkItemHandler}, MEMORY_EXTRACT items (enqueued by the
+     * generation handler in its guarded finalize transaction) go to
+     * {@link MemoryExtractWorkItemHandler}. An unknown kind terminalizes via
+     * the worker's independent per-item fail instead of looping on lease
+     * recovery.
      */
     @Bean
     public WorkItemHandler workItemHandler(
@@ -498,13 +511,28 @@ public class AuthDataSourceConfig {
             GenerationFinalizeService generationFinalizeService,
             LiveInvocationAssembler liveInvocationAssembler,
             ObjectProvider<LiveModelInvoker> liveModelInvokerProvider,
-            ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider) {
-        return new GenerationWorkItemHandler(
+            ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider,
+            WorkItemEnqueueService workItemEnqueueService,
+            GenerationRepository generationRepository,
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            MemoryService memoryService) {
+        GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
                 generationFinalizeService,
                 liveInvocationAssembler,
                 liveModelInvokerProvider,
-                authorizationSnapshotServiceProvider);
+                authorizationSnapshotServiceProvider,
+                workItemEnqueueService);
+        MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
+                generationRepository,
+                conversationRepository,
+                messageRepository,
+                memoryService,
+                generationFinalizeService);
+        return new DispatchingWorkItemHandler(Map.of(
+                GenerationWorkItemHandler.KIND_GENERATION, generationHandler,
+                MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, memoryExtractHandler));
     }
 
     @Bean

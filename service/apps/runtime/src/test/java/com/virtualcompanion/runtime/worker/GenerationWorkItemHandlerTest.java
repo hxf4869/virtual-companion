@@ -47,6 +47,7 @@ import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
+import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.safety.ClassifierReport;
 import com.virtualcompanion.safety.DeterministicSafetyResponse;
 import java.time.Duration;
@@ -76,6 +77,7 @@ class GenerationWorkItemHandlerTest {
     private final GenerationStateService stateService = mock(GenerationStateService.class);
     private final GenerationFinalizeService finalizeService = mock(GenerationFinalizeService.class);
     private final LiveInvocationAssembler assembler = mock(LiveInvocationAssembler.class);
+    private final WorkItemEnqueueService enqueueService = mock(WorkItemEnqueueService.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LiveModelInvoker> invokerProvider = mock(ObjectProvider.class);
@@ -91,7 +93,8 @@ class GenerationWorkItemHandlerTest {
     @BeforeEach
     void setUp() {
         handler = new GenerationWorkItemHandler(
-                stateService, finalizeService, assembler, invokerProvider, snapshotProvider);
+                stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
+                enqueueService);
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
     }
@@ -240,6 +243,7 @@ class GenerationWorkItemHandlerTest {
         verify(finalizeService).terminalizeAsFailed(1L, 10L, "model-providers-disabled");
         verify(finalizeService).failWorkItem(1L, "token-1", "FENCE-A");
         verify(assembler, never()).assemble(anyLong(), anyLong());
+        verify(enqueueService, never()).enqueue(anyLong(), anyString(), anyLong());
     }
 
     @Test
@@ -262,6 +266,7 @@ class GenerationWorkItemHandlerTest {
         verify(finalizeService).insertCandidate(1L, 10L, FALLBACK);
         verify(stateService).promote(1L, 10L, GenerationStateService.FINAL_REVIEW);
         verify(finalizeService).finalizeCompleted(1L, 10L, 777L, FALLBACK, "", false);
+        verify(enqueueService).enqueue(1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
     }
@@ -330,6 +335,7 @@ class GenerationWorkItemHandlerTest {
         verify(stateService).promote(1L, 10L, GenerationStateService.FINAL_REVIEW);
         verify(finalizeService).finalizeCompletedWithUsage(
                 1L, 10L, 888L, "real output", "pa-test-1", 42L, 58L, 0d, "USD", 1, false);
+        verify(enqueueService).enqueue(1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
     }

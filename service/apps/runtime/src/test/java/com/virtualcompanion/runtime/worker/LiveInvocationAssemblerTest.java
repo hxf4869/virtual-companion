@@ -19,7 +19,10 @@ import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
+import com.virtualcompanion.platform.persistence.MemoryRecord;
+import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,21 +30,25 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Unit tests for {@link LiveInvocationAssembler} (TASK-0176). Verifies the
- * two-hop ownership resolution (generation → conversation → relationship),
- * fence derivation from the {@code vc.job_fence} GUC, the ZERO_LLM routing
- * tuning, and the message mapping with placeholder fallback.
+ * Unit tests for {@link LiveInvocationAssembler} (TASK-0176, MEM-LOOP).
+ * Verifies the two-hop ownership resolution (generation → conversation →
+ * relationship), fence derivation from the {@code vc.job_fence} GUC, the
+ * ZERO_LLM routing tuning, the message mapping with placeholder fallback, and
+ * the recalled-memory SYSTEM context prepended on both assembly paths.
  */
 class LiveInvocationAssemblerTest {
+
+    private static final Instant NOW = Instant.parse("2026-08-16T08:00:00Z");
 
     private final GenerationRepository generationRepository = mock(GenerationRepository.class);
     private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
     private final MessageRepository messageRepository = mock(MessageRepository.class);
+    private final MemoryService memoryService = mock(MemoryService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
 
     private LiveInvocationAssembler assembler(String sourceId) {
         return new LiveInvocationAssembler(
-                generationRepository, conversationRepository, messageRepository,
+                generationRepository, conversationRepository, messageRepository, memoryService,
                 jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS);
     }
 
@@ -135,5 +142,63 @@ class LiveInvocationAssemblerTest {
         // two-hop ownership reused.
         assertEquals("10", routing.ownership().generationId());
         assertEquals(0L, routing.fence());
+    }
+
+    // ---- MEM-LOOP recall context ----
+
+    private void stubOwnershipAndMessages(long owner, long generationId, long conversationId,
+            long relationshipId, List<MessageRepository.Message> messages) {
+        when(generationRepository.find(owner, generationId)).thenReturn(Optional.of(
+                new GenerationRecord(owner, generationId, conversationId, "gen", "IN_PROGRESS", "idem")));
+        when(conversationRepository.find(owner, conversationId)).thenReturn(Optional.of(
+                new ConversationRepository.Conversation(owner, conversationId, relationshipId, null)));
+        when(messageRepository.listByConversation(owner, conversationId)).thenReturn(messages);
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
+                .thenReturn(null);
+    }
+
+    @Test
+    void prependsRecalledMemoryAsSystemContextOnZeroLlmPath() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
+                new MemoryRecord(30L, null, "RELATIONSHIP", "用户养了一只猫叫雪球", "ACCEPTED",
+                        null, null, NOW)));
+
+        LiveInvocationRequest request = assembler("SRC").assemble(1L, 10L);
+
+        assertEquals(2, request.messages().size());
+        assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
+        assertTrue(request.messages().get(0).content().contains("用户养了一只猫叫雪球"));
+        assertEquals(ProtocolMessage.Role.USER, request.messages().get(1).role());
+    }
+
+    @Test
+    void prependsRecalledMemoryAsSystemContextOnExternalPath() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
+                new MemoryRecord(30L, null, "RELATIONSHIP", "用户养了一只猫叫雪球", "ACCEPTED",
+                        null, null, NOW)));
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        assertEquals(2, request.messages().size());
+        assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
+        assertTrue(request.messages().get(0).content().contains("用户养了一只猫叫雪球"));
+    }
+
+    @Test
+    void emptyRecallLeavesMessagesUntouched() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+
+        LiveInvocationRequest request = assembler("SRC").assemble(1L, 10L);
+
+        assertEquals(1, request.messages().size());
+        assertEquals(ProtocolMessage.Role.USER, request.messages().get(0).role());
     }
 }

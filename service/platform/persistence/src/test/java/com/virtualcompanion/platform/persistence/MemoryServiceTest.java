@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,6 +51,9 @@ class MemoryServiceTest {
     private static final String REJECT_SQL = "SELECT vc.reject_memory_candidate(?, ?)";
     private static final String EVIDENCE_SQL =
             "SELECT out_id, out_source_ref, out_created_at FROM vc.list_memory_evidence(?, ?)";
+    private static final String RECALL_SQL =
+            "SELECT out_id, out_scope, out_summary, out_conversation_id, out_created_at "
+                    + "FROM vc.recall_memory(?, ?, ?, ?)";
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final RelationshipService relationshipService = mock(RelationshipService.class);
@@ -377,5 +381,40 @@ class MemoryServiceTest {
     void listEvidenceRejectsNonPositiveArguments() {
         assertThrows(IllegalArgumentException.class, () -> service.listEvidence(0L, 55L));
         assertThrows(IllegalArgumentException.class, () -> service.listEvidence(1L, 0L));
+    }
+
+    // ------------------------------------------------------------------
+    // recall (MEM-LOOP context injection)
+    // ------------------------------------------------------------------
+
+    @Test
+    void recallReturnsAcceptedRowsFromTheSd() {
+        when(jdbc.query(eq(RECALL_SQL), any(RowMapper.class), eq(1L), eq(7L), eq(100L), eq(20)))
+                .thenReturn(List.of(new MemoryRecord(
+                        9L, null, "RELATIONSHIP", "has a cat", "ACCEPTED", null, null, NOW)));
+
+        List<MemoryRecord> result = service.recall(1L, 7L, 100L, 20);
+
+        assertEquals(1, result.size());
+        assertEquals("RELATIONSHIP", result.get(0).scope());
+        assertEquals("ACCEPTED", result.get(0).status());
+        assertNull(result.get(0).deletedAt());
+        verify(jdbc).query(eq(RECALL_SQL), any(RowMapper.class), eq(1L), eq(7L), eq(100L), eq(20));
+    }
+
+    @Test
+    void recallPassesNullConversationThroughForRelationshipOnlyRecall() {
+        when(jdbc.query(eq(RECALL_SQL), any(RowMapper.class), eq(1L), eq(7L), isNull(), eq(50)))
+                .thenReturn(List.of());
+
+        assertTrue(service.recall(1L, 7L, null, 50).isEmpty());
+    }
+
+    @Test
+    void recallRejectsNonPositiveArguments() {
+        assertThrows(IllegalArgumentException.class, () -> service.recall(0L, 7L, null, 20));
+        assertThrows(IllegalArgumentException.class, () -> service.recall(1L, 0L, null, 20));
+        assertThrows(IllegalArgumentException.class, () -> service.recall(1L, 7L, 0L, 20));
+        assertThrows(IllegalArgumentException.class, () -> service.recall(1L, 7L, null, 0));
     }
 }

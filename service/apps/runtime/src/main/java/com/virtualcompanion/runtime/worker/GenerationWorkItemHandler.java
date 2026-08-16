@@ -12,6 +12,7 @@ import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
+import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -40,7 +41,10 @@ import org.springframework.beans.factory.ObjectProvider;
  *   <li><b>guarded-finalize-tx</b> (success): {@code assert_active_claim}
  *       (explicit work_item_id + token + fence, never a GUC) then candidate +
  *       promote {@code FINAL_REVIEW} + finalize (usage/quota/event) + per-item
- *       work-item complete atomically (INV-TX-001);</li>
+ *       work-item complete atomically (INV-TX-001); the same transaction also
+ *       enqueues the {@code MEMORY_EXTRACT} item (MEM-LOOP), so memory
+ *       extraction is scheduled exactly once per completed generation and
+ *       rolls back with the finalize on any failure;</li>
  *   <li><b>guarded-fail-tx</b> (any non-success terminal): the same explicit
  *       claim guard, then {@code FAILED_FINAL} + per-item work-item fail;</li>
  *   <li><b>guarded-retry-tx</b> (V29 RETRY-A, external RETRYABLE_FAILED only):
@@ -56,7 +60,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GenerationWorkItemHandler.class);
 
-    static final String KIND_GENERATION = "GENERATION";
+    /** Work-item kind handled here; also the dispatcher's GENERATION key. */
+    public static final String KIND_GENERATION = "GENERATION";
 
     /**
      * V29 RETRY-A attempt budget: one initial provider attempt plus at most two
@@ -70,18 +75,21 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final LiveInvocationAssembler assembler;
     private final ObjectProvider<LiveModelInvoker> liveModelInvokerProvider;
     private final ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider;
+    private final WorkItemEnqueueService enqueueService;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
             GenerationFinalizeService finalizeService,
             LiveInvocationAssembler assembler,
             ObjectProvider<LiveModelInvoker> liveModelInvokerProvider,
-            ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider) {
+            ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider,
+            WorkItemEnqueueService enqueueService) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
         this.liveModelInvokerProvider = liveModelInvokerProvider;
         this.authorizationSnapshotServiceProvider = authorizationSnapshotServiceProvider;
+        this.enqueueService = enqueueService;
     }
 
     @Override
@@ -224,8 +232,9 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
             long candidateId = finalizeService.insertCandidate(ownerUserId, generationId, content);
             stateService.promote(ownerUserId, generationId, GenerationStateService.FINAL_REVIEW);
-            // outboxEligible=false: the memory Java domain is not yet wired, so do
-            // not leave a dangling PENDING memory.extract outbox row.
+            // outboxEligible=false: extraction is scheduled through the
+            // work-item queue instead (MEMORY_EXTRACT enqueued below), so no
+            // dormant PENDING outbox row is left behind (MEM-LOOP).
             finalizeService.finalizeCompletedWithUsage(
                     ownerUserId,
                     generationId,
@@ -238,6 +247,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     "USD",
                     1,
                     false);
+            enqueueMemoryExtract(ownerUserId, generationId);
             int rows = finalizeService.completeWorkItem(
                     claim.id(), claim.claimToken(), claim.claimFence());
             if (rows != 1) {
@@ -264,6 +274,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             stateService.promote(ownerUserId, generationId, GenerationStateService.FINAL_REVIEW);
             finalizeService.finalizeCompleted(
                     ownerUserId, generationId, candidateId, content, "", false);
+            enqueueMemoryExtract(ownerUserId, generationId);
             int rows = finalizeService.completeWorkItem(
                     claim.id(), claim.claimToken(), claim.claimFence());
             if (rows != 1) {
@@ -293,6 +304,17 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                         "per-item fail inside the guarded fail returned rows=" + rows);
             }
         });
+    }
+
+    /**
+     * MEM-LOOP: schedule memory extraction for a completed generation inside
+     * the guarded finalize transaction, so the enqueue commits or rolls back
+     * with the finalize (extraction happens exactly once per completed
+     * generation). Must run in the owner-bound segment transaction.
+     */
+    private void enqueueMemoryExtract(long ownerUserId, long generationId) {
+        enqueueService.enqueue(
+                ownerUserId, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, generationId);
     }
 
     /**

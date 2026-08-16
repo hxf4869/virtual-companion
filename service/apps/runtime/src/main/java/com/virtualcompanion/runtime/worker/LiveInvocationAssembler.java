@@ -14,6 +14,8 @@ import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
+import com.virtualcompanion.platform.persistence.MemoryRecord;
+import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
 import com.virtualcompanion.safety.ClassifierReport;
 import java.nio.charset.StandardCharsets;
@@ -45,6 +47,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * <p>{@code messages} are loaded so the request satisfies the non-empty
  * constructor contract and so the external-attempt path can reuse this
  * assembler later; the ZERO_LLM branch never consumes them.
+ *
+ * <p>MEM-LOOP: confirmed memory (V13 {@code vc.recall_memory}) is prepended as
+ * a SYSTEM context message — RELATIONSHIP-scoped across conversations,
+ * SESSION-scoped only for the generating conversation. The ZERO_LLM branch
+ * ignores it (deterministic content), the external branch consumes it.
  */
 public class LiveInvocationAssembler {
 
@@ -53,9 +60,16 @@ public class LiveInvocationAssembler {
     private static final int MAX_MESSAGES = 64;
     private static final String PLACEHOLDER_USER_CONTENT = ".";
 
+    /** Recall budget: entries cap handed to the SD and per-summary char clamp. */
+    private static final int MAX_RECALL_ENTRIES = 20;
+    private static final int MAX_RECALL_SUMMARY_CHARS = 500;
+    private static final String RECALL_HEADER =
+            "以下是关于用户的长期记忆（仅参考与当前对话相关的条目）：";
+
     private final GenerationRepository generationRepository;
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final MemoryService memoryService;
     private final JdbcTemplate jdbcTemplate;
     private final String zeroLlmSourceId;
     private final ModelProtocol externalProtocol;
@@ -64,12 +78,14 @@ public class LiveInvocationAssembler {
             GenerationRepository generationRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
+            MemoryService memoryService,
             JdbcTemplate jdbcTemplate,
             String zeroLlmSourceId,
             ModelProtocol externalProtocol) {
         this.generationRepository = Objects.requireNonNull(generationRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
+        this.memoryService = Objects.requireNonNull(memoryService, "memoryService must not be null");
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate);
         this.zeroLlmSourceId = requireSourceId(zeroLlmSourceId);
         this.externalProtocol = Objects.requireNonNull(externalProtocol, "externalProtocol must not be null");
@@ -98,6 +114,7 @@ public class LiveInvocationAssembler {
     public LiveInvocationRequest assemble(long ownerUserId, long generationId, String claimFence) {
         OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
         List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
+        messages = withRecallContext(ownerUserId, ownership, messages);
         long fence = fenceValue(claimFence, readFence());
 
         Entitlement entitlement = new Entitlement(
@@ -175,6 +192,7 @@ public class LiveInvocationAssembler {
         }
         OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
         List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
+        messages = withRecallContext(ownerUserId, ownership, messages);
         long fence = fenceValue(claimFence, readFence());
 
         Entitlement entitlement = new Entitlement(
@@ -239,6 +257,36 @@ public class LiveInvocationAssembler {
             messages.add(new ProtocolMessage(ProtocolMessage.Role.USER, PLACEHOLDER_USER_CONTENT));
         }
         return messages;
+    }
+
+    /**
+     * MEM-LOOP: prepend a SYSTEM context message carrying the confirmed memory
+     * recalled for this relationship (and conversation, for SESSION scope).
+     * Empty recall leaves the message list untouched — no synthetic context.
+     */
+    private List<ProtocolMessage> withRecallContext(
+            long ownerUserId, OwnershipTuple ownership, List<ProtocolMessage> messages) {
+        long relationshipId = Long.parseLong(ownership.relationshipId());
+        long conversationId = Long.parseLong(ownership.conversationId());
+        List<MemoryRecord> recalled = memoryService.recall(
+                ownerUserId, relationshipId, conversationId, MAX_RECALL_ENTRIES);
+        if (recalled.isEmpty()) {
+            return messages;
+        }
+        StringBuilder block = new StringBuilder(RECALL_HEADER);
+        for (MemoryRecord memory : recalled) {
+            block.append("\n- ").append(clampRecall(memory.summary()));
+        }
+        List<ProtocolMessage> withMemory = new ArrayList<>(messages.size() + 1);
+        withMemory.add(new ProtocolMessage(ProtocolMessage.Role.SYSTEM, block.toString()));
+        withMemory.addAll(messages);
+        return withMemory;
+    }
+
+    private static String clampRecall(String summary) {
+        return summary.length() <= MAX_RECALL_SUMMARY_CHARS
+                ? summary
+                : summary.substring(0, MAX_RECALL_SUMMARY_CHARS);
     }
 
     private long readFence() {

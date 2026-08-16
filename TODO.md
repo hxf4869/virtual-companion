@@ -2,6 +2,21 @@
 
 产品待办（现状声明见 README）：
 
+## 当前里程碑（2026-08-16）：记忆闭环与用户回流
+
+> 基于代码与契约现状识别的三个完整闭环缺口。验收口径：每条都做到
+> 「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+
+- [ ] MEM-LOOP 记忆闭环：finalize 入队 MEMORY_EXTRACT 工作项，确定性提取器把本轮用户发言
+      变成待确认候选（复用既有 claim/lease/fence 基础设施）；recall 把已确认记忆注入生成上下文。
+      入口与出口两端接通后，对话 → 候选 → 确认 → 长期记忆 → 下次生成携带记忆形成完整闭环。
+- [ ] CONV-HIST 会话历史导航：OpenAPI 新增 GET /api/v1/conversations（contract-first，重新生成
+      dist 产物）+ V30 `vc.list_conversations` 迁移（含最后消息预览）+ H5 会话列表/切换/恢复
+      + 历史消息 load-more（after 游标）。
+- [ ] REL-DEACT 关系解除 H5 UI：复用既有 `relationshipStore.deactivate()`，加二次确认交互。
+
+## 已完成
+
 - [x] 接通 Generation 完整 HTTP 纵切（controller ↔ 领域内核 ↔ provider adapters）
 - [x] 接通 Realtime/Message 纵切与 SSE 流式链路
 - [x] 接通 Memory 纵切（含 snapshot 接口）
