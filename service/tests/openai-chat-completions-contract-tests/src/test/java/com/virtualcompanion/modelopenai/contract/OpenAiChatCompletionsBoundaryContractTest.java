@@ -1292,7 +1292,7 @@ class OpenAiChatCompletionsBoundaryContractTest {
         var current = Path.of("").toAbsolutePath();
         while (current != null
                 && (!Files.isRegularFile(current.resolve("pom.xml"))
-                || !Files.isDirectory(current.resolve(".harness")))) {
+                || !Files.isDirectory(current.resolve(".git")))) {
             current = current.getParent();
         }
         if (current == null) {
