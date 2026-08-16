@@ -83,6 +83,7 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 ## 文档与历史档案
 
 - 架构决策：`docs/decisions/`；技术基线：`docs/engineering/technology-baseline.md`
+- 检查与流程设计原则：`docs/engineering/checks-principles.md`（新增任何检查前必读，防过度工程化复发）
 - 仓库边界：`docs/architecture/repository-structure.md`；原始需求快照：`docs/source/`（仅历史来源）
 - 机器契约：`specs/catalog/`、`specs/contracts/`、`specs/openapi/`；`specs/generated/**` 为生成物，禁止手改
 - 2026-08-16 退役的旧任务治理体系（任务卡、Evidence、Handoff、账本）只读保留在

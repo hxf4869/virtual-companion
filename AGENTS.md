@@ -17,6 +17,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 - 前端（Node 22 + pnpm 11）：`pnpm --dir frontend test:run && pnpm --dir frontend type-check`
 - 数据库（OrbStack Docker）：`bash infra/db/run-rls-tests.sh`
 - 检查脚本依赖 PyYAML；系统 python3 缺少时 `scripts/check.sh` 自动回退 `uv run --with PyYAML`。
+- 新增任何检查前必读：`docs/engineering/checks-principles.md`（耗时预算与防过度工程化硬规则）。
 
 ## 红线
 
