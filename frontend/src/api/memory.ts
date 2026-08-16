@@ -155,6 +155,27 @@ export async function listMemories(
   return asMemoryArray(r.json);
 }
 
+/**
+ * MEM-MANUAL: create a memory candidate under a relationship (always
+ * PENDING_CONFIRMATION; canonical is reached only by user confirmation —
+ * INV-MEM-001/002). Manual entry uses the RELATIONSHIP scope (no conversation
+ * binding). Returns the created candidate, or null on 403/404 (existence
+ * hidden); other non-OK statuses throw the typed MemoryHttpError.
+ */
+export async function createMemoryCandidate(
+  t: MemoryTransport,
+  relationshipId: string,
+  summary: string,
+): Promise<Memory | null> {
+  const r = await t.request(
+    "POST",
+    `${REL_BASE}/${encodeURIComponent(relationshipId)}/memories/candidates`,
+    { scope: "RELATIONSHIP", summary },
+  );
+  guardJsonResult(r);
+  return asMemory(r.json);
+}
+
 /** Fetch one memory. Existence-hidden only for 403/404. */
 export async function getMemory(
   t: MemoryTransport,

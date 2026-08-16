@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   confirmMemory,
+  createMemoryCandidate,
   deleteMemory,
   getMemory,
   listMemories,
@@ -51,6 +52,30 @@ describe("api/memory existence-hidden mapping", () => {
     expect(list[0].memoryId).toBe("m1");
     expect(list[0].status).toBe("PENDING_CONFIRMATION");
     expect(list[1].status).toBe("ACCEPTED");
+  });
+
+  it("createMemoryCandidate POSTs a RELATIONSHIP-scoped candidate (MEM-MANUAL)", async () => {
+    const request = vi.fn(async (method: string, path: string, body?: unknown) => {
+      expect(method).toBe("POST");
+      expect(path).toBe("/api/v1/relationships/rel-1/memories/candidates");
+      expect(body).toEqual({ scope: "RELATIONSHIP", summary: "我喜欢雨天" });
+      return { ok: true, status: 200, json: mem("m9", "PENDING_CONFIRMATION") };
+    });
+    const t: MemoryTransport = { request };
+
+    const created = await createMemoryCandidate(t, "rel-1", "我喜欢雨天");
+
+    expect(created).not.toBeNull();
+    expect(created?.memoryId).toBe("m9");
+    expect(created?.status).toBe("PENDING_CONFIRMATION");
+  });
+
+  it("createMemoryCandidate is existence-hidden: non-OK -> null", async () => {
+    const t = transportReturning({
+      "/api/v1/relationships/rel-1/memories/candidates": { ok: false, status: 404, json: null },
+    });
+
+    expect(await createMemoryCandidate(t, "rel-1", "s")).toBeNull();
   });
 
   it("listMemories is existence-hidden: non-OK -> [] (never throws)", async () => {

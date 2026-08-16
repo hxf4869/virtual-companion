@@ -48,6 +48,45 @@ describe("useMemoryStore partition + no-fake-success", () => {
     await store.load(t, "rel-1");
   }
 
+  it("create adds a manual candidate to pending ONLY on confirmed PENDING_CONFIRMATION", async () => {
+    const store = useMemoryStore();
+    const t = keyedTransport({
+      ...Object.fromEntries([ok(
+        "/api/v1/relationships/rel-1/memories/candidates",
+        memory("man-1", "PENDING_CONFIRMATION", "手动录入"),
+      )]),
+    });
+
+    await store.create(t, "rel-1", "手动录入");
+
+    expect(store.error).toBeNull();
+    expect(store.pending.map((m) => m.memoryId)).toEqual(["man-1"]);
+    // The manual candidate never leaks into canonical memory.
+    expect(store.canonical).toHaveLength(0);
+  });
+
+  it("create not-confirmed (non-OK) records an error and never fakes a save", async () => {
+    const store = useMemoryStore();
+    const t = keyedTransport({
+      ...Object.fromEntries([notOk("/api/v1/relationships/rel-1/memories/candidates")]),
+    });
+
+    await store.create(t, "rel-1", "手动录入");
+
+    expect(store.error).toBe("create-not-confirmed");
+    expect(store.pending).toHaveLength(0);
+  });
+
+  it("create transport failure records create-failed and preserves state", async () => {
+    const store = useMemoryStore();
+    const t = throwingTransport();
+
+    await store.create(t, "rel-1", "手动录入");
+
+    expect(store.error).toBe("create-failed");
+    expect(store.pending).toHaveLength(0);
+  });
+
   it("load partitions pending and canonical by status; pending never appears in canonical", async () => {
     const store = useMemoryStore();
     await seed(store);

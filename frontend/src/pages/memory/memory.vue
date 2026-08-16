@@ -105,6 +105,25 @@ states carry alert/live a11y semantics. -->
     <view class="section" aria-live="polite">
       <text class="section-title">待确认候选（{{ memory.pendingCount }}）</text>
       <text class="hint">候选未经确认，不作为已保存事实。</text>
+      <!-- MEM-MANUAL: user-entered candidate (RELATIONSHIP scope, always
+           PENDING_CONFIRMATION until confirmed). -->
+      <view class="candidate-entry">
+        <input
+          v-model="candidateSummary"
+          class="candidate-input"
+          data-testid="candidate-input"
+          placeholder="手动添加一条记忆候选…"
+          aria-label="手动添加记忆候选"
+        />
+        <button
+          data-testid="candidate-add"
+          class="nav-index"
+          :disabled="!canAddCandidate || busy"
+          @click="onAddCandidate"
+        >
+          添加
+        </button>
+      </view>
       <view
         v-if="showEmptyPending"
         class="empty-status"
@@ -209,7 +228,12 @@ const relationshipId = ref("");
 const busy = ref(false);
 const editingId = ref<string | null>(null);
 const draftSummary = ref("");
+// MEM-MANUAL: manual candidate entry (RELATIONSHIP scope).
+const candidateSummary = ref("");
 const hasLoaded = ref(false);
+const canAddCandidate = computed(
+  () => relationshipId.value.trim().length > 0 && candidateSummary.value.trim().length > 0,
+);
 const showEmptyPending = computed(
   () => hasLoaded.value && memory.pendingCount === 0,
 );
@@ -240,6 +264,8 @@ const errorText = computed(() => {
   const map: Record<MemoryErrorCode, string> = {
     "load-failed": "加载失败，请稍后重试",
     "session-expired": "登录已过期，请重新登录",
+    "create-not-confirmed": "添加未生效（请检查内容或关系）",
+    "create-failed": "添加失败，请稍后重试",
     "confirm-not-confirmed": "确认未生效（候选不存在或已变更）",
     "confirm-failed": "确认失败，请稍后重试",
     "reject-not-confirmed": "拒绝未生效",
@@ -316,6 +342,21 @@ async function onConfirm(id: string): Promise<void> {
   busy.value = true;
   try {
     await memory.confirm(transport, id);
+  } finally {
+    busy.value = false;
+  }
+}
+
+/** MEM-MANUAL: submit a user-entered candidate; clear the input on success. */
+async function onAddCandidate(): Promise<void> {
+  const summary = candidateSummary.value.trim();
+  if (!summary || !relationshipId.value.trim()) return;
+  busy.value = true;
+  try {
+    await memory.create(transport, relationshipId.value.trim(), summary);
+    if (memory.error === null) {
+      candidateSummary.value = "";
+    }
   } finally {
     busy.value = false;
   }
@@ -457,6 +498,16 @@ function goTo(url: string): void {
   flex: 1;
   border: 1px solid #ccc;
   padding: 4px;
+}
+.candidate-entry {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.candidate-input {
+  flex: 1;
+  border: 1px solid #ccc;
+  padding: 6px;
 }
 .evidence {
   margin-top: 6px;

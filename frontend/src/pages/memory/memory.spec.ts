@@ -443,6 +443,31 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("adds a manual candidate through the entry area (MEM-MANUAL)", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const memStore = useMemoryStore();
+    const createSpy = vi
+      .spyOn(memStore, "create")
+      .mockImplementation(async () => {
+        memStore.pending = [
+          { memoryId: "man-1", scope: "RELATIONSHIP", summary: "手动记忆", status: "PENDING_CONFIRMATION" },
+        ];
+      });
+    const relInput = wrapper.find('input[aria-label="relationship id"]');
+    await relInput.setValue("rel-pick-1");
+    const candidateInput = wrapper.find('[data-testid="candidate-input"]');
+    await candidateInput.setValue("手动记忆");
+
+    // Empty relationship/blank summary keeps the button disabled (computed).
+    const addButton = wrapper.find('[data-testid="candidate-add"]');
+    await wrapper.find('[data-testid="candidate-add"]').trigger("click");
+
+    expect(createSpy).toHaveBeenCalledWith(expect.anything(), "rel-pick-1", "手动记忆");
+    expect(wrapper.find('[data-testid="candidate-input"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("does not render the unwired create controls", async () => {
     const wrapper = mountPage();
     await flushPromises();

@@ -23,6 +23,7 @@ import { computed, ref } from "vue";
 
 import {
   confirmMemory,
+  createMemoryCandidate,
   deleteMemory,
   listMemories,
   listMemoryEvidence,
@@ -37,6 +38,8 @@ import {
 export type MemoryErrorCode =
   | "load-failed"
   | "session-expired"
+  | "create-not-confirmed"
+  | "create-failed"
   | "confirm-not-confirmed"
   | "confirm-failed"
   | "reject-not-confirmed"
@@ -93,6 +96,28 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     }
     pending.value = list.filter((m) => m.status === "PENDING_CONFIRMATION");
     canonical.value = list.filter((m) => m.status === "ACCEPTED");
+  }
+
+  /**
+   * MEM-MANUAL: create a RELATIONSHIP-scoped candidate from the user's manual
+   * entry. The new candidate joins the pending list ONLY on a confirmed
+   * PENDING_CONFIRMATION result; anything else surfaces a typed error and
+   * never fakes a save.
+   */
+  async function create(t: MemoryTransport, relationshipId: string, summary: string): Promise<void> {
+    error.value = null;
+    let created: Memory | null;
+    try {
+      created = await createMemoryCandidate(t, relationshipId, summary);
+    } catch (e) {
+      error.value = failureCode(e, "create-failed");
+      return;
+    }
+    if (!created || created.status !== "PENDING_CONFIRMATION") {
+      error.value = "create-not-confirmed";
+      return;
+    }
+    pending.value = [created, ...pending.value];
   }
 
   /** Confirm: a pending candidate moves to canonical ONLY on confirmed success. */
@@ -206,6 +231,7 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     pendingCount,
     canonicalCount,
     load,
+    create,
     confirm,
     reject,
     update,
