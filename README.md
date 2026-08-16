@@ -58,6 +58,21 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+## 真实 provider 部署配置（Technical Alpha 默认关闭）
+
+真实 provider 默认关闭：`virtual-companion.model-providers.enabled=false` 时 runtime 不装配任何
+live provider，外部 attempt 在路由层 fail-closed（无 eligible deployment），且不读取任何凭据。
+启用方式（凭据只允许部署配置注入，绝不进入仓库）：
+
+- 模板：`ops/model-providers.example.yml`（结构与占位符，不含任何凭据）。复制为部署环境的
+  `application-provider.yml` 或注入等效环境变量，逐项填写 endpoint/model 并置 `enabled: true`。
+- 凭据注入（`ProviderSecretReader` 约定，二选一）：环境变量 `VC_MODEL_SECRET_<NAME>`
+  （secret 名大写、`-` 改为 `_`），或 Docker secret 文件 `/run/secrets/<name>`
+  （内容即 bearer token / API key）。`credential-secret` 字段只写 secret 名，永远不写值。
+
+启用真实 provider 不改变发布门禁：真实用户 Beta 的前置条件（PIA、成年验证、值班、安全演练等）
+未满足前不得对真实用户开放；凭据不得进入仓库、日志或提交。
+
 后端需要 JDK 25：
 
 ```powershell

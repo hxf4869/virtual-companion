@@ -1,0 +1,39 @@
+# model-providers.example.yml — 真实 provider 部署配置模板（PROV-TMPL）
+#
+# 用法：复制本文件为部署环境的 application-provider.yml（或注入等效环境变量），
+# 按部署实际值填写每个字段。本文件只包含结构与占位符，绝不包含真实凭据
+# （红线：真实 provider 凭据只允许部署配置注入，不得进入仓库）。
+#
+# 凭据注入约定（ProviderSecretReader，二选一）：
+#   - 环境变量 VC_MODEL_SECRET_<NAME>：NAME 为 secret 名大写、'-' 替换为 '_'，
+#     例如 credential-secret: openai-bearer-token -> VC_MODEL_SECRET_OPENAI_BEARER_TOKEN
+#   - Docker secret 文件 <secret-root>/<name>：secret-root 默认 /run/secrets，
+#     文件内容即 bearer token / API key，必须为常规文件
+# credential-secret 字段只写 secret 名，永远不写值。
+#
+# 主开关 virtual-companion.model-providers.enabled=false 时（默认），runtime 不装配
+# 任何 live provider，外部 attempt 在路由层 fail-closed（无 eligible deployment），
+# 且不读取任何凭据。启用真实 provider 不改变发布门禁：真实用户 Beta 前置条件
+# （PIA、成年验证、值班、安全演练等）未满足前不得对真实用户开放。
+
+virtual-companion:
+  model-providers:
+    enabled: false
+    secret-root: /run/secrets
+    deployments:
+      - provider-id: openai-standard
+        protocol: OPENAI_CHAT_COMPLETIONS
+        supplier-name: OpenAI
+        model: gpt-4.1-mini
+        endpoint: https://api.openai.com/v1/chat/completions
+        credential-secret: openai-bearer-token
+        enabled: false
+      - provider-id: anthropic-standard
+        protocol: ANTHROPIC_MESSAGES
+        supplier-name: Anthropic
+        model: claude-sonnet-4-5
+        endpoint: https://api.anthropic.com/v1/messages
+        credential-secret: anthropic-api-key
+        anthropic-version: '2023-06-01'
+        max-tokens: 1024
+        enabled: false
