@@ -5,6 +5,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useAuthStore } from "@/stores/auth";
 import { useRelationshipStore } from "@/stores/relationship";
 
 vi.mock("@/api/baseline", async (importOriginal) => {
@@ -193,6 +194,42 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(wrapper.find('[data-testid="current-relationship"]').exists()).toBe(false);
     expect(wrapper.find(".connection").exists()).toBe(true);
     expect(activateSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  // ---- ADMIN-UI: admin-only account management entry ----
+
+  it("renders the account management entry only for ADMIN sessions", async () => {
+    const auth = useAuthStore();
+    auth.role = "ADMIN";
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="nav-admin"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="nav-admin"]').text()).toContain("账户管理");
+    wrapper.unmount();
+  });
+
+  it("hides the account management entry for non-admin sessions", () => {
+    const auth = useAuthStore();
+    auth.role = "USER";
+    const wrapper = mountPage();
+
+    expect(wrapper.find('[data-testid="nav-admin"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("navigates to the admin page from the account management entry", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.role = "ADMIN";
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-admin"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/admin/admin" });
     wrapper.unmount();
   });
 });

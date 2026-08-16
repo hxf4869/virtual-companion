@@ -23,6 +23,12 @@
 			"style": {
 				"navigationBarTitleText": "登录"
 			}
+		},
+		{
+			"path": "pages/admin/admin",
+			"style": {
+				"navigationBarTitleText": "账户管理"
+			}
 		}
 	],
 	"globalStyle": {

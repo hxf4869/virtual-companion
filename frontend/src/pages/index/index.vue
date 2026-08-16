@@ -61,6 +61,17 @@
         >
           <text>登录</text>
         </button>
+        <!-- ADMIN-UI: internal account provisioning, ADMIN only -->
+        <button
+          v-if="auth.role === 'ADMIN'"
+          data-testid="nav-admin"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="账户管理"
+          @click="goTo('/pages/admin/admin')"
+        >
+          <text>账户管理</text>
+        </button>
       </view>
 
       <view

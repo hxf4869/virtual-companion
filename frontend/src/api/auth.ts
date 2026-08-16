@@ -85,3 +85,44 @@ export async function logout(t: AuthTransport): Promise<boolean> {
   const r = await t.request("POST", `${AUTH_BASE}/logout`);
   return r.ok;
 }
+
+/** ADMIN-UI: one created internal account (OpenAPI AccountResponse). */
+export interface CreatedAccount {
+  accountId: string;
+  username: string;
+  role: string;
+  status: string;
+}
+
+function asCreatedAccount(json: unknown): CreatedAccount | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const accountId = asString(o, "accountId");
+  const username = asString(o, "username");
+  const role = asString(o, "role");
+  const status = asString(o, "status");
+  if (!accountId || !username || !role || !status) return null;
+  return { accountId, username, role, status };
+}
+
+/**
+ * ADMIN-UI: create an internal account (ADMIN only,
+ * vc.create_internal_account). Existence-hidden: a non-OK response maps to
+ * null and never discloses whether the username already exists; transport
+ * failures propagate.
+ */
+export async function createAccount(
+  t: AuthTransport,
+  username: string,
+  password: string,
+  displayName: string,
+  role: string,
+): Promise<CreatedAccount | null> {
+  const r = await t.request("POST", `${AUTH_BASE}/admin/accounts`, {
+    username,
+    password,
+    displayName,
+    role,
+  });
+  return r.ok ? asCreatedAccount(r.json) : null;
+}

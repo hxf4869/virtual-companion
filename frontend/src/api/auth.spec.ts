@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { login, logout, refresh, type AuthApiResponse, type AuthTransport } from "@/api/auth";
+import {
+  createAccount,
+  login,
+  logout,
+  refresh,
+  type AuthApiResponse,
+  type AuthTransport,
+} from "@/api/auth";
 
 function transportFor(response: AuthApiResponse): AuthTransport {
   return { request: vi.fn(async () => response) };
@@ -122,5 +129,56 @@ describe("auth api client", () => {
     const t = transportFor({ ok: true, status: 200, json: { accessToken: "x" } });
 
     expect(await login(t, "root", "pw")).toBeNull();
+  });
+});
+
+describe("createAccount (ADMIN-UI)", () => {
+  it("POSTs the account body and parses the created account", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: { accountId: "9", username: "alice", role: "USER", status: "ACTIVE" },
+    });
+
+    const created = await createAccount(t, "alice", "pw-1", "Alice", "USER");
+
+    expect(created).toEqual({
+      accountId: "9",
+      username: "alice",
+      role: "USER",
+      status: "ACTIVE",
+    });
+    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/admin/accounts", {
+      username: "alice",
+      password: "pw-1",
+      displayName: "Alice",
+      role: "USER",
+    });
+  });
+
+  it("maps a non-OK response to null (existence never disclosed)", async () => {
+    const t = transportFor({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
+    });
+
+    expect(await createAccount(t, "alice", "pw-1", "Alice", "USER")).toBeNull();
+  });
+
+  it("maps a non-admin denial to null", async () => {
+    const t = transportFor({
+      ok: false,
+      status: 403,
+      json: { code: "ACCESS_DENIED", message: "admin only" },
+    });
+
+    expect(await createAccount(t, "alice", "pw-1", "Alice", "USER")).toBeNull();
+  });
+
+  it("rejects a malformed account payload without crashing", async () => {
+    const t = transportFor({ ok: true, status: 200, json: { accountId: "9" } });
+
+    expect(await createAccount(t, "alice", "pw-1", "Alice", "USER")).toBeNull();
   });
 });
