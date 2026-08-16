@@ -26,6 +26,12 @@ public interface VirtualCompanionApi {
     /** List the caller's conversations with a last-message preview. */
     Void listConversations();
 
+    /** Delete one conversation (CONV-MGMT). */
+    ConversationDeletedResponse deleteConversation();
+
+    /** Rename one conversation (CONV-MGMT). */
+    ConversationRenamedResponse renameConversation();
+
     /** Idempotently send a Chat turn (create or rejoin a generation). */
     Generation sendGeneration();
 

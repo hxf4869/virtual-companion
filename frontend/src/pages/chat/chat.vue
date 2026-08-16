@@ -108,6 +108,51 @@
           >
             新会话
           </button>
+          <!-- CONV-MGMT: per-conversation rename + two-step delete -->
+          <button
+            data-testid="conversation-rename"
+            class="chat-nav-index conv-mgmt-btn"
+            :disabled="isStreaming || !store.conversationId"
+            @click="startRename"
+          >
+            改名
+          </button>
+          <button
+            data-testid="conversation-delete"
+            class="chat-nav-index conv-mgmt-btn conv-delete-btn"
+            :disabled="isStreaming || !store.conversationId"
+            @click="onDeleteConversation"
+          >
+            {{ confirmDeleteId ? "确认删除？" : "删除" }}
+          </button>
+        </view>
+
+        <!-- CONV-MGMT: inline rename row -->
+        <view v-if="renaming" class="rename-row" data-testid="rename-row">
+          <input
+            v-model="renameInput"
+            class="rename-input"
+            data-testid="rename-input"
+            placeholder="会话标题（留空清除）"
+            aria-label="会话标题"
+            :disabled="isStreaming"
+          />
+          <button
+            data-testid="rename-apply"
+            class="chat-nav-index"
+            :disabled="isStreaming"
+            @click="onRenameConversation"
+          >
+            保存
+          </button>
+          <button
+            data-testid="rename-cancel"
+            class="chat-nav-index"
+            :disabled="isStreaming"
+            @click="cancelRename"
+          >
+            取消
+          </button>
         </view>
 
         <view class="chat-history" data-testid="history">
@@ -270,6 +315,10 @@ export default defineComponent({
     const initError = ref(false);
     // REL-DEACT: two-step confirm state for the deactivate button (no modal).
     const confirmDeactivate = ref(false);
+    // CONV-MGMT: two-step delete confirm + inline rename state.
+    const confirmDeleteId = ref<string | null>(null);
+    const renaming = ref(false);
+    const renameInput = ref("");
 
     // sessionId: client-generated UUID per chat session — the real source for
     // the realtime ticket binding (mint body carries it).
@@ -318,8 +367,12 @@ export default defineComponent({
       return role;
     }
 
-    /** CONV-HIST: short preview label for one conversation list entry. */
+    /** CONV-HIST: short label — the rename title wins, else the preview. */
     function conversationLabel(conv: ConversationListItem): string {
+      const title = (conv.title ?? "").trim();
+      if (title) {
+        return title.length > 16 ? `${title.slice(0, 16)}…` : title;
+      }
       const preview = (conv.lastMessagePreview ?? "").trim();
       if (preview) {
         return preview.length > 16 ? `${preview.slice(0, 16)}…` : preview;
@@ -502,7 +555,53 @@ export default defineComponent({
     }
 
     async function onNewConversation(): Promise<void> {
+      confirmDeleteId.value = null;
+      cancelRename();
       await startConversation();
+    }
+
+    /** CONV-MGMT: two-step delete of the open conversation. */
+    async function onDeleteConversation(): Promise<void> {
+      const id = store.conversationId;
+      if (!id) return;
+      if (confirmDeleteId.value !== id) {
+        confirmDeleteId.value = id;
+        return;
+      }
+      confirmDeleteId.value = null;
+      const deleted = await store.removeConversation(transport, id);
+      if (deleted && !store.conversationId) {
+        // The deleted conversation was the open one: open or create a fresh one.
+        await refreshConversationList();
+        const latest = store.conversations[store.conversations.length - 1];
+        if (latest) {
+          await store.openConversation(transport, latest.conversationId);
+        } else {
+          await startConversation();
+        }
+      }
+    }
+
+    function startRename(): void {
+      const id = store.conversationId;
+      if (!id) return;
+      const current = store.conversations.find((c) => c.conversationId === id);
+      renameInput.value = current?.title ?? "";
+      renaming.value = true;
+    }
+
+    function cancelRename(): void {
+      renaming.value = false;
+      renameInput.value = "";
+    }
+
+    async function onRenameConversation(): Promise<void> {
+      const id = store.conversationId;
+      if (!id) return;
+      const renamed = await store.renameConversation(transport, id, renameInput.value.trim());
+      if (renamed) {
+        cancelRename();
+      }
     }
 
     async function onLoadMore(): Promise<void> {
@@ -604,6 +703,9 @@ export default defineComponent({
       inputText,
       initError,
       confirmDeactivate,
+      confirmDeleteId,
+      renaming,
+      renameInput,
       statusText,
       canRetry,
       roleLabel,
@@ -616,6 +718,10 @@ export default defineComponent({
       onDeactivate,
       onOpenConversation,
       onNewConversation,
+      onDeleteConversation,
+      startRename,
+      cancelRename,
+      onRenameConversation,
       onLoadMore,
       goTo,
       memoryHref,
@@ -696,6 +802,27 @@ export default defineComponent({
 }
 .conversation-item.active {
   background-color: #2a6a9a;
+}
+.conv-mgmt-btn {
+  margin-left: 4rpx;
+}
+.conv-delete-btn {
+  background-color: #5a1a1a;
+}
+.rename-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+.rename-input {
+  flex: 1;
+  padding: 12rpx;
+  border-radius: 12rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  color: #f5f5f5;
+  font-size: 26rpx;
 }
 .deactivate-btn {
   margin-left: 16rpx;

@@ -334,6 +334,47 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("CONV-MGMT: renames the open conversation through the inline row", async () => {
+    stubFetch({
+      conversationsJson: [{ conversationId: "9", relationshipId: "1", title: "旧标题" }],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const renameSpy = vi.spyOn(store, "renameConversation").mockResolvedValue(true);
+    store.conversationId = "9";
+
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.find('[data-testid="rename-input"]').setValue("新标题");
+    await wrapper.find('[data-testid="rename-apply"]').trigger("click");
+    await flushPromises();
+
+    expect(renameSpy).toHaveBeenCalledWith(expect.anything(), "9", "新标题");
+    expect(wrapper.find('[data-testid="rename-row"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("CONV-MGMT: deletes the open conversation only after the two-step confirm", async () => {
+    stubFetch({
+      conversationsJson: [{ conversationId: "9", relationshipId: "1" }],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const removeSpy = vi.spyOn(store, "removeConversation").mockResolvedValue(true);
+    store.conversationId = "9";
+
+    // First click arms the confirm; nothing is deleted yet.
+    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
+
+    // Second click deletes.
+    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    expect(removeSpy).toHaveBeenCalledWith(expect.anything(), "9");
+    wrapper.unmount();
+  });
+
   it("shows the current relationship id after a successful load", async () => {
     const wrapper = mountPage();
     await flushPromises();

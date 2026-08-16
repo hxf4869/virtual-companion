@@ -23,7 +23,7 @@ public class ConversationListService {
 
     private static final String LIST_SQL =
             "SELECT out_id, out_relationship_id, out_created_at, "
-                    + "out_last_message_role, out_last_message_preview "
+                    + "out_last_message_role, out_last_message_preview, out_title "
                     + "FROM vc.list_conversations(?, ?, ?, ?)";
 
     private final JdbcTemplate jdbc;
@@ -68,7 +68,8 @@ public class ConversationListService {
                     rs.getLong("out_relationship_id"),
                     createdAt,
                     rs.getString("out_last_message_role"),
-                    rs.getString("out_last_message_preview"));
+                    rs.getString("out_last_message_preview"),
+                    rs.getString("out_title"));
         };
     }
 }

@@ -11,13 +11,16 @@ import java.util.Objects;
  * {@code lastMessagePreview}) is {@code null} for a conversation that has no
  * messages; the preview content is clamped by the SD (200 chars) and is a
  * display convenience, never a substitute for {@code list_messages}.
+ * {@code title} is the user-renamed conversation title (V32), {@code null}
+ * until renamed.
  */
 public record ConversationListRecord(
         long id,
         long relationshipId,
         Instant createdAt,
         String lastMessageRole,
-        String lastMessagePreview) {
+        String lastMessagePreview,
+        String title) {
 
     public ConversationListRecord {
         if (id <= 0) {

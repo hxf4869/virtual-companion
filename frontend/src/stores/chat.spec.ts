@@ -543,6 +543,80 @@ describe("useChatStore", () => {
     expect(store.pendingUserContent).toBe("Hello");
   });
 
+  // ---- CONV-MGMT: remove + rename ----
+
+  it("removeConversation drops the entry and clears the open window", async () => {
+    const store = useChatStore();
+    store.conversations = [
+      { conversationId: "3", relationshipId: "1", title: "A" },
+      { conversationId: "4", relationshipId: "1" },
+    ];
+    store.conversationId = "3";
+    store.messages = [
+      { messageId: "1", conversationId: "3", role: "user", content: "hi" },
+    ];
+    const transport = mockChatTransport({});
+    vi.spyOn(transport, "request").mockImplementation(
+      async (method: string, path: string) => {
+        if (path === "/api/v1/conversations/3" && method === "DELETE") {
+          return { ok: true, status: 200, json: { ok: true } };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    );
+
+    const removed = await store.removeConversation(transport, "3");
+
+    expect(removed).toBe(true);
+    expect(store.conversations.map((c) => c.conversationId)).toEqual(["4"]);
+    expect(store.conversationId).toBe("");
+    expect(store.messages).toEqual([]);
+  });
+
+  it("removeConversation keeps state on a non-confirmed delete", async () => {
+    const store = useChatStore();
+    store.conversations = [{ conversationId: "3", relationshipId: "1" }];
+    store.conversationId = "3";
+    const transport = mockChatTransport({});
+    vi.spyOn(transport, "request").mockImplementation(
+      async () => ({ ok: false, status: 404, json: null }),
+    );
+
+    const removed = await store.removeConversation(transport, "3");
+
+    expect(removed).toBe(false);
+    expect(store.conversations).toHaveLength(1);
+    expect(store.conversationId).toBe("3");
+  });
+
+  it("renameConversation updates the list entry only on a confirmed result", async () => {
+    const store = useChatStore();
+    store.conversations = [{ conversationId: "3", relationshipId: "1" }];
+    const transport = mockChatTransport({});
+    vi.spyOn(transport, "request").mockImplementation(
+      async () => ({ ok: true, status: 200, json: { conversationId: 3, title: "新标题" } }),
+    );
+
+    const renamed = await store.renameConversation(transport, "3", "新标题");
+
+    expect(renamed).toBe(true);
+    expect(store.conversations[0]?.title).toBe("新标题");
+  });
+
+  it("renameConversation keeps the entry untouched on a non-confirmed result", async () => {
+    const store = useChatStore();
+    store.conversations = [{ conversationId: "3", relationshipId: "1" }];
+    const transport = mockChatTransport({});
+    vi.spyOn(transport, "request").mockImplementation(
+      async () => ({ ok: false, status: 404, json: null }),
+    );
+
+    const renamed = await store.renameConversation(transport, "3", "x");
+
+    expect(renamed).toBe(false);
+    expect(store.conversations[0]?.title).toBeUndefined();
+  });
+
   // ---- FAIL-REASON: terminal fault surfaced for friendly copy ----
 
   it("terminalFault exposes the fault of a chat.failed terminal event", async () => {

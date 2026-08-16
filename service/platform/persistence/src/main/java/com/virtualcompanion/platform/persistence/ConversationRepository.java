@@ -61,4 +61,44 @@ public class ConversationRepository {
                 ownerUserId,
                 id).stream().findFirst();
     }
+
+    /**
+     * CONV-MGMT (V32): delete one conversation (in-flight work items are
+     * cancelled inside the SD; dependent rows cascade). true only when an
+     * owned row was deleted; a foreign or absent id returns false so
+     * existence is never disclosed.
+     */
+    public boolean delete(long ownerUserId, long conversationId) {
+        validate(ownerUserId, conversationId);
+        Boolean deleted = jdbc.queryForObject(
+                "SELECT vc.delete_conversation(?, ?)",
+                Boolean.class,
+                ownerUserId,
+                conversationId);
+        return Boolean.TRUE.equals(deleted);
+    }
+
+    /**
+     * CONV-MGMT (V32): write the conversation title (blank clears it). true
+     * only when an owned row was updated; a foreign or absent id returns false.
+     */
+    public boolean rename(long ownerUserId, long conversationId, String title) {
+        validate(ownerUserId, conversationId);
+        Boolean renamed = jdbc.queryForObject(
+                "SELECT vc.rename_conversation(?, ?, ?)",
+                Boolean.class,
+                ownerUserId,
+                conversationId,
+                title);
+        return Boolean.TRUE.equals(renamed);
+    }
+
+    private static void validate(long ownerUserId, long conversationId) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (conversationId <= 0) {
+            throw new IllegalArgumentException("conversationId must be positive");
+        }
+    }
 }

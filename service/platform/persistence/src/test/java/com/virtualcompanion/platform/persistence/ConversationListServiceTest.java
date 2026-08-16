@@ -27,7 +27,7 @@ class ConversationListServiceTest {
 
     private static final String LIST_SQL =
             "SELECT out_id, out_relationship_id, out_created_at, "
-                    + "out_last_message_role, out_last_message_preview "
+                    + "out_last_message_role, out_last_message_preview, out_title "
                     + "FROM vc.list_conversations(?, ?, ?, ?)";
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
@@ -59,7 +59,7 @@ class ConversationListServiceTest {
     @Test
     void listConversationsMapsRowsIncludingNullablePreview() {
         when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(null), eq(0L), eq(50)))
-                .thenReturn(List.of(new ConversationListRecord(100L, 10L, NOW, null, null)));
+                .thenReturn(List.of(new ConversationListRecord(100L, 10L, NOW, null, null, null)));
 
         List<ConversationListRecord> records = service.listConversations(1L, null, 0L, 50);
 
@@ -69,6 +69,7 @@ class ConversationListServiceTest {
         assertEquals(NOW, records.get(0).createdAt());
         assertNull(records.get(0).lastMessageRole());
         assertNull(records.get(0).lastMessagePreview());
+        assertNull(records.get(0).title());
     }
 
     @Test

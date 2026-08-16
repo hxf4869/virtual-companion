@@ -91,6 +91,20 @@ export interface ConversationListItem {
   lastMessageRole?: string
   lastMessagePreview?: string
   createdAt: string
+  title?: string
+}
+
+export interface ConversationDeletedResponse {
+  ok: string
+}
+
+export interface ConversationRenamedResponse {
+  conversationId: string
+  title: string
+}
+
+export interface RenameConversationRequest {
+  title: string
 }
 
 export interface Memory {
@@ -173,6 +187,8 @@ export interface VirtualCompanionApiClient {
   deactivateRelationship(): Promise<VersionResponse>
   createConversation(): Promise<VersionResponse>
   listConversations(): Promise<VersionResponse>
+  deleteConversation(): Promise<VersionResponse>
+  renameConversation(): Promise<VersionResponse>
   sendGeneration(): Promise<VersionResponse>
   listMessages(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>

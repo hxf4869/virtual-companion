@@ -57,6 +57,8 @@ export interface ConversationListItem {
   lastMessageRole?: string;
   lastMessagePreview?: string;
   createdAt?: string;
+  /** CONV-MGMT: user-renamed title, absent until renamed. */
+  title?: string;
 }
 
 export interface ChatApiResponse {
@@ -168,6 +170,7 @@ function asConversationListItem(json: unknown): ConversationListItem | null {
     lastMessageRole: asString(o, "lastMessageRole"),
     lastMessagePreview: asString(o, "lastMessagePreview"),
     createdAt: asString(o, "createdAt"),
+    title: asString(o, "title"),
   };
 }
 
@@ -179,6 +182,47 @@ function asConversationList(json: unknown): ConversationListItem[] {
     if (c) out.push(c);
   }
   return out;
+}
+
+/**
+ * CONV-MGMT: delete one conversation. true only on a confirmed HTTP OK; 403/404
+ * map to false (existence never disclosed); other non-OK statuses throw.
+ */
+export async function deleteConversation(
+  t: ChatTransport,
+  conversationId: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "DELETE",
+    `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}`,
+  );
+  if (r.ok) return true;
+  if (r.status === 403 || r.status === 404) return false;
+  throw new ChatHttpError(r.status, classifyStatus(r.status));
+}
+
+/**
+ * CONV-MGMT: rename one conversation (blank title clears it). Returns the
+ * applied title on success, null on 403/404 (existence hidden); other non-OK
+ * statuses throw.
+ */
+export async function renameConversation(
+  t: ChatTransport,
+  conversationId: string,
+  title: string,
+): Promise<string | null> {
+  const r = await t.request(
+    "PATCH",
+    `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}`,
+    { title },
+  );
+  if (!r.ok) {
+    if (r.status === 403 || r.status === 404) return null;
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  if (!r.json || typeof r.json !== "object") return null;
+  const applied = (r.json as Record<string, unknown>).title;
+  return typeof applied === "string" ? applied : null;
 }
 
 /**

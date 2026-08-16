@@ -7,8 +7,10 @@ import {
   cancelGeneration,
   ChatHttpError,
   createConversation,
+  deleteConversation,
   listConversations,
   listMessages,
+  renameConversation,
   sendGeneration,
   type ChatTransport,
 } from "./chat";
@@ -269,6 +271,66 @@ describe("cancelGeneration", () => {
     });
 
     await expect(cancelGeneration(transport, "42")).rejects.toThrow(ChatHttpError);
+  });
+});
+
+describe("deleteConversation/renameConversation (CONV-MGMT)", () => {
+  it("DELETE returns true on OK", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: { ok: true } });
+
+    expect(await deleteConversation(transport, "100")).toBe(true);
+    expect(calls).toEqual([{ method: "DELETE", path: "/api/v1/conversations/100", body: undefined }]);
+  });
+
+  it("DELETE maps 403/404 to false (existence never disclosed)", async () => {
+    const t404 = recorder({ ok: false, status: 404, json: null }).transport;
+    expect(await deleteConversation(t404, "100")).toBe(false);
+
+    const t403 = recorder({ ok: false, status: 403, json: null }).transport;
+    expect(await deleteConversation(t403, "100")).toBe(false);
+  });
+
+  it("DELETE throws a typed error on 5xx", async () => {
+    const { transport } = recorder({ ok: false, status: 500, json: null });
+
+    await expect(deleteConversation(transport, "100")).rejects.toBeInstanceOf(ChatHttpError);
+  });
+
+  it("PATCH sends the title and returns the applied title", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { conversationId: 100, title: "周二的夜聊" },
+    });
+
+    expect(await renameConversation(transport, "100", "周二的夜聊")).toBe("周二的夜聊");
+    expect(calls).toEqual([
+      { method: "PATCH", path: "/api/v1/conversations/100", body: { title: "周二的夜聊" } },
+    ]);
+  });
+
+  it("PATCH maps 403/404 to null", async () => {
+    const { transport } = recorder({ ok: false, status: 404, json: null });
+
+    expect(await renameConversation(transport, "100", "x")).toBeNull();
+  });
+
+  it("parses the title into the conversation list item", async () => {
+    const { transport } = recorder({
+      ok: true,
+      status: 200,
+      json: [
+        {
+          conversationId: "100",
+          relationshipId: "7",
+          createdAt: "2026-08-16T08:00:00Z",
+          title: "周二的夜聊",
+        },
+      ],
+    });
+
+    const list = await listConversations(transport);
+    expect(list[0]?.title).toBe("周二的夜聊");
   });
 });
 

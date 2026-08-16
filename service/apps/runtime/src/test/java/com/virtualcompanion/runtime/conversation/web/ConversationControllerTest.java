@@ -3,7 +3,9 @@ package com.virtualcompanion.runtime.conversation.web;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListRecord;
 import com.virtualcompanion.platform.persistence.ConversationListService;
+import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
 import java.time.Instant;
@@ -37,16 +40,66 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  */
 class ConversationControllerTest {
 
+    // ---- CONV-MGMT: delete + rename ----
+
+    @Test
+    void deleteConversationReturnsOkOnConfirmedDelete() throws Exception {
+        when(conversationRepository.delete(1L, 100L)).thenReturn(true);
+
+        mockMvc.perform(delete("/api/v1/conversations/100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        verify(conversationRepository).delete(1L, 100L);
+    }
+
+    @Test
+    void deleteConversationMapsForeignOrAbsentTo404() throws Exception {
+        when(conversationRepository.delete(1L, 100L)).thenReturn(false);
+
+        mockMvc.perform(delete("/api/v1/conversations/100"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void renameConversationReturnsTheAppliedTitle() throws Exception {
+        when(conversationRepository.rename(1L, 100L, "周二的夜聊")).thenReturn(true);
+
+        mockMvc.perform(patch("/api/v1/conversations/100")
+                        .contentType("application/json")
+                        .content("{\"title\":\"周二的夜聊\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").value(100))
+                .andExpect(jsonPath("$.title").value("周二的夜聊"));
+
+        verify(conversationRepository).rename(1L, 100L, "周二的夜聊");
+    }
+
+    @Test
+    void renameConversationMapsForeignOrAbsentTo404() throws Exception {
+        when(conversationRepository.rename(1L, 100L, "x")).thenReturn(false);
+
+        mockMvc.perform(patch("/api/v1/conversations/100")
+                        .contentType("application/json")
+                        .content("{\"title\":\"x\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+
     private ConversationCreateService conversationCreateService;
     private ConversationListService conversationListService;
+    private ConversationRepository conversationRepository;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         conversationCreateService = mock(ConversationCreateService.class);
         conversationListService = mock(ConversationListService.class);
-        ConversationController controller =
-                new ConversationController(conversationCreateService, conversationListService);
+        conversationRepository = mock(ConversationRepository.class);
+        ConversationController controller = new ConversationController(
+                conversationCreateService, conversationListService, conversationRepository);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -107,8 +160,8 @@ class ConversationControllerTest {
         Instant now = Instant.parse("2026-08-16T08:00:00Z");
         when(conversationListService.listConversations(1L, 7L, null, null))
                 .thenReturn(List.of(
-                        new ConversationListRecord(100L, 7L, now, "assistant", "好的，我在听"),
-                        new ConversationListRecord(101L, 7L, now, null, null)));
+                        new ConversationListRecord(100L, 7L, now, "assistant", "好的，我在听", "周二的夜聊"),
+                        new ConversationListRecord(101L, 7L, now, null, null, null)));
 
         mockMvc.perform(get("/api/v1/conversations").param("relationshipId", "7"))
                 .andExpect(status().isOk())

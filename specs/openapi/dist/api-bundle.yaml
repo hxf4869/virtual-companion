@@ -236,6 +236,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/{conversationId}:
+    delete:
+      operationId: deleteConversation
+      summary: Delete one conversation (CONV-MGMT)
+      description: Deletes the conversation; in-flight work items are cancelled and dependent rows (messages, generations,
+        realtime events, usage) cascade inside the SD function. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN (existence
+        is never disclosed). Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: The conversation was deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDeletedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      operationId: renameConversation
+      summary: Rename one conversation (CONV-MGMT)
+      description: Writes the conversation title (a blank title clears the rename). A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN
+        (existence is never disclosed). Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameConversationRequest'
+      responses:
+        '200':
+          description: The renamed conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationRenamedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/conversations/{conversationId}/generations:
     post:
       operationId: sendGeneration
@@ -1233,6 +1293,41 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (RFC 3339)
+        title:
+          type: string
+          description: User-renamed conversation title (CONV-MGMT), absent until renamed
+    ConversationDeletedResponse:
+      type: object
+      description: Result of deleting one conversation.
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always true on a confirmed delete
+    ConversationRenamedResponse:
+      type: object
+      description: Result of renaming one conversation.
+      required:
+      - conversationId
+      - title
+      properties:
+        conversationId:
+          type: string
+          description: The renamed conversation identifier
+        title:
+          type: string
+          description: The applied title (null clears the rename)
+    RenameConversationRequest:
+      type: object
+      description: Body for renaming a conversation (a blank title clears it).
+      required:
+      - title
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: The new title (blank clears the rename)
     Memory:
       type: object
       description: A memory candidate or canonical record owned by exactly one user within a relationship. Model extraction

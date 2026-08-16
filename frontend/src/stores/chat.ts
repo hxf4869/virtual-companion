@@ -26,8 +26,10 @@ import { computed, ref } from "vue";
 import {
   cancelGeneration,
   createConversation,
+  deleteConversation as apiDeleteConversation,
   listConversations,
   listMessages,
+  renameConversation as apiRenameConversation,
   sendGeneration,
   type ChatTransport,
   type ConversationListItem,
@@ -296,6 +298,40 @@ export const useChatStore = defineStore("h5-chat", () => {
   }
 
   /**
+   * CONV-MGMT: delete one conversation. On a confirmed delete the list entry
+   * is dropped; when the deleted conversation was the open one, the message
+   * window is cleared so the page can open (or create) a fresh conversation.
+   */
+  async function removeConversation(transport: ChatTransport, id: string): Promise<boolean> {
+    const ok = await apiDeleteConversation(transport, id);
+    if (!ok) return false;
+    conversations.value = conversations.value.filter((c) => c.conversationId !== id);
+    if (conversationId.value === id) {
+      conversationId.value = "";
+      messages.value = [];
+      historyHasMore.value = false;
+    }
+    return true;
+  }
+
+  /**
+   * CONV-MGMT: rename one conversation. Only a confirmed API result updates
+   * the list entry (a blank title clears the rename server-side).
+   */
+  async function renameConversation(
+    transport: ChatTransport,
+    id: string,
+    title: string,
+  ): Promise<boolean> {
+    const applied = await apiRenameConversation(transport, id, title);
+    if (applied === null) return false;
+    conversations.value = conversations.value.map((c) =>
+      c.conversationId === id ? { ...c, title: applied } : c,
+    );
+    return true;
+  }
+
+  /**
    * MEM-PROMPT: count the relationship's PENDING_CONFIRMATION candidates so
    * the chat page can prompt the user to confirm. Non-fatal — a failure keeps
    * the previous count (the memory page remains the authoritative surface).
@@ -420,5 +456,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     openConversation,
     loadMoreHistory,
     refreshPendingMemoryCount,
+    removeConversation,
+    renameConversation,
   };
 });

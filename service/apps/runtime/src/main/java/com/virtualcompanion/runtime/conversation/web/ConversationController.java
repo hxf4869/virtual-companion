@@ -3,10 +3,16 @@ package com.virtualcompanion.runtime.conversation.web;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListRecord;
 import com.virtualcompanion.platform.persistence.ConversationListService;
+import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.runtime.web.ResourceNotFoundException;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,12 +41,15 @@ public class ConversationController {
 
     private final ConversationCreateService conversationCreateService;
     private final ConversationListService conversationListService;
+    private final ConversationRepository conversationRepository;
 
     public ConversationController(
             ConversationCreateService conversationCreateService,
-            ConversationListService conversationListService) {
+            ConversationListService conversationListService,
+            ConversationRepository conversationRepository) {
         this.conversationCreateService = conversationCreateService;
         this.conversationListService = conversationListService;
+        this.conversationRepository = conversationRepository;
     }
 
     @PostMapping
@@ -65,6 +74,53 @@ public class ConversationController {
                 .stream()
                 .map(ConversationController::toResponse)
                 .toList();
+    }
+
+    /**
+     * CONV-MGMT (V32): delete one conversation. In-flight work items are
+     * cancelled and dependent rows cascade inside the SD function. A foreign
+     * or absent id maps to 404 NOT_FOUND_OR_FORBIDDEN (existence undisclosed).
+     */
+    @DeleteMapping("/{conversationId}")
+    public ConversationDeletedResponse delete(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String conversationId) {
+        long id = parseRequiredLong(conversationId, "conversationId");
+        if (!conversationRepository.delete(ownerUserId, id)) {
+            throw new ResourceNotFoundException("conversation");
+        }
+        return new ConversationDeletedResponse(true);
+    }
+
+    /**
+     * CONV-MGMT (V32): rename one conversation (blank title clears it). A
+     * foreign or absent id maps to 404 NOT_FOUND_OR_FORBIDDEN.
+     */
+    @PatchMapping("/{conversationId}")
+    public ConversationRenamedResponse rename(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String conversationId,
+            @RequestBody RenameConversationRequest request) {
+        long id = parseRequiredLong(conversationId, "conversationId");
+        if (request == null) {
+            throw new IllegalArgumentException("request body is required");
+        }
+        if (!conversationRepository.rename(ownerUserId, id, request.title())) {
+            throw new ResourceNotFoundException("conversation");
+        }
+        return new ConversationRenamedResponse(id, request.title());
+    }
+
+    private static long parseRequiredLong(String raw, String name) {
+        try {
+            long parsed = Long.parseLong(raw);
+            if (parsed <= 0) {
+                throw new IllegalArgumentException(name + " must be positive");
+            }
+            return parsed;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(name + " is not a valid id: " + raw, e);
+        }
     }
 
     private static Long parseOptionalLong(String raw, String name) {
@@ -95,7 +151,8 @@ public class ConversationController {
                 record.relationshipId(),
                 record.lastMessageRole(),
                 record.lastMessagePreview(),
-                record.createdAt().toString());
+                record.createdAt().toString(),
+                record.title());
     }
 
     /** Request body: the relationship under which to open the conversation. */
@@ -117,6 +174,19 @@ public class ConversationController {
             long relationshipId,
             String lastMessageRole,
             String lastMessagePreview,
-            String createdAt) {
+            String createdAt,
+            String title) {
+    }
+
+    /** CONV-MGMT: {@code DELETE /api/v1/conversations/{id}} result. */
+    public record ConversationDeletedResponse(boolean ok) {
+    }
+
+    /** CONV-MGMT: {@code PATCH /api/v1/conversations/{id}} result. */
+    public record ConversationRenamedResponse(long conversationId, String title) {
+    }
+
+    /** CONV-MGMT: rename body (OpenAPI {@code RenameConversationRequest}). */
+    public record RenameConversationRequest(@Size(max = 200) String title) {
     }
 }
