@@ -97,6 +97,18 @@ class RelationshipControllerTest {
     }
 
     @Test
+    void createRejectsAnUnknownPersonaTemplate() throws Exception {
+        // PERSONA-WIRE: personaRef must be a persona-templates catalog id; a
+        // free-form string is 400 before the service is reached.
+        mockMvc.perform(post("/api/v1/relationships")
+                        .contentType("application/json")
+                        .content("{\"personaRef\":\"evil-villain\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        verify(relationshipService, never()).create(anyLong(), anyString());
+    }
+
+    @Test
     void createRejectsBlankPersonaRef() throws Exception {
         mockMvc.perform(post("/api/v1/relationships")
                         .contentType("application/json")

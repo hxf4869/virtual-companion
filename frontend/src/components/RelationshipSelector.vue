@@ -26,15 +26,24 @@
     </view>
 
     <view v-if="showCreate" class="rel-create">
-      <input
-        v-model="personaRef"
+      <!-- PERSONA-WIRE: the personaRef is chosen from the catalog, not typed
+           free-form, so the backend always receives a known template id. -->
+      <select
+        v-model="templateId"
+        data-testid="persona-select"
         class="rel-input"
-        data-testid="persona-ref"
-        placeholder="persona ref（如 gentle-listener）"
-        aria-label="persona ref"
+        aria-label="选择人设"
         :disabled="busy"
-        @keydown.enter="onCreate"
-      />
+      >
+        <option value="" disabled>选择人设…</option>
+        <option
+          v-for="option in personaOptions"
+          :key="option.templateId"
+          :value="option.templateId"
+        >
+          {{ option.displayName }}（{{ option.description }}）
+        </option>
+      </select>
       <button
         data-testid="create-relationship"
         class="rel-create-btn"
@@ -76,6 +85,7 @@
 import { computed, defineComponent, ref, type PropType } from "vue";
 
 import type { Relationship } from "@/api/relationship";
+import { PERSONA_OPTIONS } from "@/domain/persona";
 import type { RelationshipStatus } from "@/stores/relationship";
 
 export default defineComponent({
@@ -107,9 +117,11 @@ export default defineComponent({
     create: (personaRef: string) => typeof personaRef === "string",
   },
   setup(props, { emit }) {
-    const personaRef = ref("");
+    // PERSONA-WIRE: the selected template id from the catalog directory.
+    const templateId = ref("");
+    const personaOptions = PERSONA_OPTIONS;
 
-    const canCreate = computed(() => personaRef.value.trim().length > 0);
+    const canCreate = computed(() => templateId.value.trim().length > 0);
     const showEmptyRelationships = computed(
       () =>
         props.status !== "loading" &&
@@ -130,14 +142,15 @@ export default defineComponent({
     }
 
     function onCreate(): void {
-      const trimmed = personaRef.value.trim();
+      const trimmed = templateId.value.trim();
       if (!trimmed) return;
       emit("create", trimmed);
-      personaRef.value = "";
+      templateId.value = "";
     }
 
     return {
-      personaRef,
+      templateId,
+      personaOptions,
       canCreate,
       showEmptyRelationships,
       emptyRelationshipsText,

@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.relationship.web;
 
+import com.virtualcompanion.catalog.PersonaTemplate;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
@@ -52,6 +53,12 @@ public class RelationshipController {
     public RelationshipResponse create(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
             @Valid @RequestBody CreateRelationshipRequest request) {
+        // PERSONA-WIRE: personaRef must be a persona-templates catalog id;
+        // a free-form string would silently bind a relationship to no persona.
+        if (!isKnownPersona(request.personaRef())) {
+            throw new IllegalArgumentException(
+                    "personaRef is not a known persona template: " + request.personaRef());
+        }
         long id = relationshipService.create(ownerUserId, request.personaRef());
         RelationshipRecord record = relationshipService
                 .get(ownerUserId, id)
@@ -108,6 +115,16 @@ public class RelationshipController {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("id is not valid: " + raw, e);
         }
+    }
+
+    /** PERSONA-WIRE: membership in the persona-templates catalog (generated enum). */
+    private static boolean isKnownPersona(String personaRef) {
+        for (PersonaTemplate template : PersonaTemplate.values()) {
+            if (template.code().equals(personaRef)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static RelationshipResponse toResponse(RelationshipRecord record) {

@@ -1,0 +1,8 @@
+schemaVersion: 1
+catalogId: persona-templates
+envelopeRequired:
+- schemaVersion
+- catalogId
+entries:
+- code: gentle-listener
+  order: 0

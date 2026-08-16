@@ -37,6 +37,9 @@ catalogs:
 - file: memory-item-statuses.yaml
   kind: enum
   typeName: MemoryItemStatus
+- file: persona-templates.yaml
+  kind: enum
+  typeName: PersonaTemplate
 - file: realtime-events.yaml
   kind: enum
   typeName: RealtimeEventType

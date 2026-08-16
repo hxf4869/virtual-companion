@@ -491,6 +491,7 @@ public class AuthDataSourceConfig {
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             MemoryService memoryService,
+            RelationshipService relationshipService,
             JdbcTemplate authJdbcTemplate,
             @Value("${virtual-companion.zero-llm.source-id:ZERO_LLM_FALLBACK}") String zeroLlmSourceId,
             @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol) {
@@ -499,6 +500,7 @@ public class AuthDataSourceConfig {
                 conversationRepository,
                 messageRepository,
                 memoryService,
+                relationshipService,
                 authJdbcTemplate,
                 zeroLlmSourceId,
                 externalProtocol);

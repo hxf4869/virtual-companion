@@ -156,7 +156,7 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
 
     const status = wrapper.find('[data-testid="current-relationship"]');
     expect(status.exists()).toBe(true);
-    expect(status.text()).toContain("当前关系：rel-index-1");
+    expect(status.text()).toContain("当前关系：温和倾听者");
     expect(activateSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });

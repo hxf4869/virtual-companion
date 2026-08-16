@@ -46,8 +46,8 @@
       role="status"
     >
       <text>{{
-        relStore.currentRelationshipId
-          ? `当前关系：${relStore.currentRelationshipId}`
+        relStore.current
+          ? `当前关系：${personaDisplayName(relStore.current.personaRef)}`
           : "还没有当前关系。"
       }}</text>
       <button
@@ -243,6 +243,7 @@
 import { computed, defineComponent, onMounted, onUnmounted, ref } from "vue";
 
 import { createAuthedFetch } from "@/api/authed-fetch";
+import { personaDisplayName } from "@/domain/persona";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import type { RealtimeDeps } from "@/api/realtime";
@@ -606,6 +607,7 @@ export default defineComponent({
       statusText,
       canRetry,
       roleLabel,
+      personaDisplayName,
       conversationLabel,
       onSend,
       onRetry,

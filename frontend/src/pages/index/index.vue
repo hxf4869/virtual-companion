@@ -81,8 +81,8 @@
         role="status"
       >
         <text>{{
-          relStore.currentRelationshipId
-            ? `当前关系：${relStore.currentRelationshipId}`
+          relStore.current
+            ? `当前关系：${personaDisplayName(relStore.current.personaRef)}`
             : "还没有当前关系。"
         }}</text>
       </view>
@@ -242,6 +242,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import { personaDisplayName } from "@/domain/persona";
 import { useAuthStore } from "@/stores/auth";
 import { useBaselineStore } from "@/stores/baseline";
 import { useRelationshipStore } from "@/stores/relationship";

@@ -20,6 +20,18 @@ function mountSelector(props: Record<string, unknown> = {}) {
 }
 
 describe("RelationshipSelector (TASK-0187)", () => {
+  it("renders the persona template directory as options (PERSONA-WIRE)", () => {
+    const wrapper = mountSelector();
+    const options = wrapper
+      .find("select[data-testid='persona-select']")
+      .findAll("option");
+
+    expect(options).toHaveLength(2); // placeholder + gentle-listener
+    expect(options[0].attributes("value")).toBe("");
+    expect(options[1].attributes("value")).toBe("gentle-listener");
+    expect(options[1].text()).toContain("温和倾听者");
+  });
+
   it("renders an option per relationship plus a placeholder", () => {
     const wrapper = mountSelector();
     const options = wrapper
@@ -41,17 +53,17 @@ describe("RelationshipSelector (TASK-0187)", () => {
     expect(wrapper.emitted("activate")).toEqual([["2"]]);
   });
 
-  it("disables the create button when personaRef is empty", () => {
+  it("disables the create button when no persona template is chosen", () => {
     const wrapper = mountSelector();
     const btn = wrapper.find("button[data-testid='create-relationship']");
 
     expect(btn.attributes("disabled")).toBeDefined();
   });
 
-  it("emits create with the trimmed personaRef on click", async () => {
+  it("emits create with the chosen persona template id on click (PERSONA-WIRE)", async () => {
     const wrapper = mountSelector();
 
-    await wrapper.find("input[data-testid='persona-ref']").setValue("  gentle-listener  ");
+    await wrapper.find("select[data-testid='persona-select']").setValue("gentle-listener");
     const btn = wrapper.find("button[data-testid='create-relationship']");
     expect(btn.attributes("disabled")).toBeUndefined();
 
@@ -60,13 +72,15 @@ describe("RelationshipSelector (TASK-0187)", () => {
     expect(wrapper.emitted("create")).toEqual([["gentle-listener"]]);
   });
 
-  it("disables the create button when busy", async () => {
+  it("disables the create controls when busy", async () => {
     const wrapper = mountSelector({ busy: true });
 
-    await wrapper.find("input[data-testid='persona-ref']").setValue("x");
+    await wrapper.find("select[data-testid='persona-select']").setValue("gentle-listener");
     const btn = wrapper.find("button[data-testid='create-relationship']");
+    const select = wrapper.find("select[data-testid='persona-select']");
 
     expect(btn.attributes("disabled")).toBeDefined();
+    expect(select.attributes("disabled")).toBeDefined();
   });
 
   it("renders an alert role when status is error", () => {
@@ -97,7 +111,7 @@ describe("RelationshipSelector (TASK-0187)", () => {
   it("hides create controls when showCreate is false", () => {
     const wrapper = mountSelector({ showCreate: false });
 
-    expect(wrapper.find('[data-testid="persona-ref"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="persona-select"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="create-relationship"]').exists()).toBe(
       false,
     );

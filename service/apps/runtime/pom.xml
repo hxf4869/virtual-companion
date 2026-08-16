@@ -31,6 +31,13 @@
             <artifactId>virtual-companion-modelruntime</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- PERSONA-WIRE: provider-neutral persona skeleton + interaction modes
+             (gentle-listener) injected into the external generation context. -->
+        <dependency>
+            <groupId>com.virtualcompanion</groupId>
+            <artifactId>virtual-companion-conversation</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- Fail-closed safety gate consumed by the live invocation path. -->
         <dependency>
             <groupId>com.virtualcompanion</groupId>

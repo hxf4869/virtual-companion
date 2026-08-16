@@ -22,6 +22,8 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.MemoryRecord;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.platform.persistence.RelationshipRecord;
+import com.virtualcompanion.platform.persistence.RelationshipService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -44,12 +46,13 @@ class LiveInvocationAssemblerTest {
     private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
     private final MessageRepository messageRepository = mock(MessageRepository.class);
     private final MemoryService memoryService = mock(MemoryService.class);
+    private final RelationshipService relationshipService = mock(RelationshipService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
 
     private LiveInvocationAssembler assembler(String sourceId) {
         return new LiveInvocationAssembler(
                 generationRepository, conversationRepository, messageRepository, memoryService,
-                jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS);
+                relationshipService, jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS);
     }
 
     @Test
@@ -156,6 +159,8 @@ class LiveInvocationAssemblerTest {
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
                 .thenReturn(null);
+        // PERSONA-WIRE: default — no relationship row (no persona context).
+        when(relationshipService.get(owner, relationshipId)).thenReturn(Optional.empty());
     }
 
     @Test
@@ -188,6 +193,58 @@ class LiveInvocationAssemblerTest {
         assertEquals(2, request.messages().size());
         assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
         assertTrue(request.messages().get(0).content().contains("用户养了一只猫叫雪球"));
+    }
+
+    // ---- PERSONA-WIRE persona context ----
+
+    @Test
+    void prependsPersonaAsOutermostSystemContextOnExternalPath() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW)));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
+                new MemoryRecord(30L, null, "RELATIONSHIP", "用户养了一只猫叫雪球", "ACCEPTED",
+                        null, null, NOW)));
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        // persona SYSTEM first, then recall SYSTEM, then the history.
+        assertEquals(3, request.messages().size());
+        assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
+        assertTrue(request.messages().get(0).content().contains("Gentle Listener"));
+        assertTrue(request.messages().get(0).content().contains("calm, reflective"));
+        assertTrue(request.messages().get(1).content().contains("用户养了一只猫叫雪球"));
+    }
+
+    @Test
+    void unknownPersonaRefLeavesMessagesUntouched() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "some-legacy-ref", true, NOW)));
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        // No persona context invented for an unknown ref.
+        assertEquals(1, request.messages().size());
+        assertEquals(ProtocolMessage.Role.USER, request.messages().get(0).role());
+    }
+
+    @Test
+    void zeroLlmPathDoesNotConsumePersonaContext() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW)));
+
+        LiveInvocationRequest request = assembler("SRC").assemble(1L, 10L);
+
+        // The deterministic ZERO_LLM content is fixed; no persona is injected.
+        assertEquals(1, request.messages().size());
+        assertEquals(ProtocolMessage.Role.USER, request.messages().get(0).role());
     }
 
     @Test

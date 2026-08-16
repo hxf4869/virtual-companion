@@ -344,7 +344,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     const status = wrapper.find('[data-testid="current-relationship"]');
     expect(status.exists()).toBe(true);
-    expect(status.text()).toContain("当前关系：1");
+    expect(status.text()).toContain("当前关系：温和倾听者");
     expect(activateSpy).not.toHaveBeenCalled();
     expect(sendSpy).not.toHaveBeenCalled();
     wrapper.unmount();

@@ -120,6 +120,10 @@ components:
       - SUPERSEDED
       - EXPIRED
       - DELETED
+    PersonaTemplate:
+      type: string
+      enum:
+      - gentle-listener
     RealtimeEventType:
       type: string
       enum:

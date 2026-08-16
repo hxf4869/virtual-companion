@@ -92,6 +92,9 @@
       "FAILURE",
       "ZERO_LLM"
     ],
+    "PersonaTemplate": [
+      "gentle-listener"
+    ],
     "ProcessingPurpose": [
       "COMPANION_CHAT",
       "OUTPUT_REVIEW",
@@ -355,6 +358,11 @@
             "typeName": "MemoryItemStatus"
           },
           {
+            "file": "persona-templates.yaml",
+            "kind": "enum",
+            "typeName": "PersonaTemplate"
+          },
+          {
             "file": "realtime-events.yaml",
             "kind": "enum",
             "typeName": "RealtimeEventType"
@@ -384,7 +392,7 @@
         "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "726915d89c98c6040a53b6930aaa2c77e0ae747bcd13ef960b9b08d6df44da45"
+      "sha256": "43f078ef99f0f840e2689e3f9b29a2640d5282aba3fa1e2e7b39fb7f71d0565b"
     },
     "data-categories.yaml": {
       "document": {
@@ -862,6 +870,23 @@
         "schemaVersion": 1
       },
       "sha256": "dd5d45b1118baf560591f8f29434a365467cfdd943c539fe0f407d6a8f66c0ab"
+    },
+    "persona-templates.yaml": {
+      "document": {
+        "catalogId": "persona-templates",
+        "entries": [
+          {
+            "code": "gentle-listener",
+            "order": 0
+          }
+        ],
+        "envelopeRequired": [
+          "schemaVersion",
+          "catalogId"
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "fdf0f66efc04875f6550fec23781a2c8d45273f36535ef6be581146b77c3f349"
     },
     "processing-purposes.yaml": {
       "document": {

@@ -86,6 +86,7 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MemoryItemSt
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MemoryItemStatus','SUPERSEDED',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MemoryItemStatus','EXPIRED',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MemoryItemStatus','DELETED',3) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('PersonaTemplate','gentle-listener',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('RealtimeEventType','chat.accepted',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('RealtimeEventType','chat.delta',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('RealtimeEventType','chat.replace',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;

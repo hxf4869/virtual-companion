@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.worker;
 
 import com.virtualcompanion.catalog.ModelProtocol;
 import com.virtualcompanion.catalog.SafetyClassifierOutcome;
+import com.virtualcompanion.conversation.contextplan.PersonaSkeleton;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
 import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
@@ -17,6 +18,8 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.MemoryRecord;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.platform.persistence.RelationshipRecord;
+import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.safety.ClassifierReport;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -70,6 +73,7 @@ public class LiveInvocationAssembler {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final MemoryService memoryService;
+    private final RelationshipService relationshipService;
     private final JdbcTemplate jdbcTemplate;
     private final String zeroLlmSourceId;
     private final ModelProtocol externalProtocol;
@@ -79,6 +83,7 @@ public class LiveInvocationAssembler {
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             MemoryService memoryService,
+            RelationshipService relationshipService,
             JdbcTemplate jdbcTemplate,
             String zeroLlmSourceId,
             ModelProtocol externalProtocol) {
@@ -86,6 +91,8 @@ public class LiveInvocationAssembler {
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.memoryService = Objects.requireNonNull(memoryService, "memoryService must not be null");
+        this.relationshipService =
+                Objects.requireNonNull(relationshipService, "relationshipService must not be null");
         this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate);
         this.zeroLlmSourceId = requireSourceId(zeroLlmSourceId);
         this.externalProtocol = Objects.requireNonNull(externalProtocol, "externalProtocol must not be null");
@@ -192,7 +199,13 @@ public class LiveInvocationAssembler {
         }
         OwnershipTuple ownership = loadOwnership(ownerUserId, generationId);
         List<ProtocolMessage> messages = loadMessages(ownerUserId, ownership.conversationId());
+        // PERSONA-WIRE: the companion persona is the outermost SYSTEM context
+        // (so it prepends AFTER the recall block below); consumed by the
+        // external branch only (the ZERO_LLM branch ignores it). Real persona
+        // content is approved out of band — only the approved skeleton fields
+        // are rendered, nothing is invented.
         messages = withRecallContext(ownerUserId, ownership, messages);
+        messages = withPersonaContext(ownerUserId, ownership, messages);
         long fence = fenceValue(claimFence, readFence());
 
         Entitlement entitlement = new Entitlement(
@@ -259,6 +272,42 @@ public class LiveInvocationAssembler {
             messages.add(new ProtocolMessage(ProtocolMessage.Role.USER, PLACEHOLDER_USER_CONTENT));
         }
         return messages;
+    }
+
+    /**
+     * PERSONA-WIRE: prepend a SYSTEM context message rendering the relationship's
+     * persona from the approved skeleton fields only (display name, tone, default
+     * interaction mode, reflection style). An unknown/absent personaRef leaves the
+     * message list untouched — no synthetic persona is invented.
+     */
+    private List<ProtocolMessage> withPersonaContext(
+            long ownerUserId, OwnershipTuple ownership, List<ProtocolMessage> messages) {
+        long relationshipId = Long.parseLong(ownership.relationshipId());
+        RelationshipRecord relationship =
+                relationshipService.get(ownerUserId, relationshipId).orElse(null);
+        PersonaSkeleton persona = personaFor(
+                relationship == null ? null : relationship.personaRef());
+        if (persona == null) {
+            return messages;
+        }
+        String block = "Companion persona: %s. Tone: %s. Default interaction mode: %s. Reflection style: %s."
+                .formatted(
+                        persona.displayName(),
+                        persona.tone(),
+                        persona.defaultMode().name().toLowerCase(java.util.Locale.ROOT),
+                        persona.reflectionPromptStyle());
+        List<ProtocolMessage> withPersona = new ArrayList<>(messages.size() + 1);
+        withPersona.add(new ProtocolMessage(ProtocolMessage.Role.SYSTEM, block));
+        withPersona.addAll(messages);
+        return withPersona;
+    }
+
+    /** PERSONA-WIRE: persona-templates catalog id → approved skeleton. */
+    private static PersonaSkeleton personaFor(String personaRef) {
+        if ("gentle-listener".equals(personaRef)) {
+            return PersonaSkeleton.gentleListener();
+        }
+        return null;
     }
 
     /**
