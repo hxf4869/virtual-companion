@@ -98,6 +98,7 @@ export interface GenerationFeedbackResponse {
 
 export interface CreateConversationRequest {
   relationshipId: string
+  incognito?: string
 }
 
 export interface ConversationResponse {
@@ -109,6 +110,7 @@ export interface ConversationListItem {
   relationshipId: string
   lastMessageRole?: string
   lastMessagePreview?: string
+  incognito?: string
   createdAt: string
   title?: string
 }

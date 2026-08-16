@@ -2,9 +2,11 @@
 package com.virtualcompanion.api;
 
 public record CreateConversationRequest(
-    final String relationshipId
+    final String relationshipId,
+    final String incognito
 ) {
     public CreateConversationRequest {
         java.util.Objects.requireNonNull(relationshipId, "relationshipId must not be null");
+        // incognito is nullable
     }
 }

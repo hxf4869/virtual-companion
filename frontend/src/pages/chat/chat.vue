@@ -85,6 +85,17 @@
     </view>
 
     <template v-else>
+      <!-- INC-MODE (FR-CHAT-005): incognito is not "no records at all" and
+           the UI says so plainly while the conversation is incognito. -->
+      <view
+        v-if="store.activeIncognito"
+        class="incognito-notice"
+        data-testid="incognito-notice"
+        role="status"
+      >
+        <text>当前为无痕会话：不会产生长期记忆候选；必要的安全与法定记录仍会保留。</text>
+      </view>
+
       <RelationshipSelector
         v-if="!hasRelationship"
         :relationships="relStore.relationships"
@@ -108,7 +119,7 @@
               :disabled="isStreaming"
               @click="onOpenConversation(conv.conversationId)"
             >
-              {{ conversationLabel(conv) }}
+              {{ conversationLabel(conv) }}<text v-if="conv.incognito" class="incognito-badge">无痕</text>
             </button>
           </scroll-view>
           <button
@@ -118,6 +129,17 @@
             @click="onNewConversation"
           >
             新会话
+          </button>
+          <!-- INC-MODE: creation-time incognito toggle (chosen knowingly). -->
+          <button
+            data-testid="incognito-toggle"
+            class="chat-nav-index conv-mgmt-btn"
+            :class="{ 'incognito-toggle-on': incognitoNext }"
+            :aria-pressed="incognitoNext"
+            :disabled="isStreaming"
+            @click="incognitoNext = !incognitoNext"
+          >
+            {{ incognitoNext ? "无痕：开" : "无痕：关" }}
           </button>
           <!-- CONV-MGMT: per-conversation rename + two-step delete -->
           <button
@@ -387,6 +409,8 @@ export default defineComponent({
     const renameInput = ref("");
     // MSG-DELETE: two-step confirm state for per-message deletion.
     const confirmDeleteMsgId = ref<string | null>(null);
+    // INC-MODE: creation-time incognito decision for the next new conversation.
+    const incognitoNext = ref(false);
     // CHAT-MODE: approved quick-mode options; AUTO keeps the persona default,
     // LISTEN/DISCUSS override it for the next turn (FR-CHAT-002).
     const MODE_OPTIONS = [
@@ -659,7 +683,12 @@ export default defineComponent({
       if (!relationshipId) return;
       store.reset();
       try {
-        const result = await store.initConversation(transport, relationshipId);
+        // INC-MODE: the creation-time toggle decides the new conversation.
+        const result = await store.initConversation(
+          transport,
+          relationshipId,
+          incognitoNext.value,
+        );
         if (result) {
           await refreshConversationList();
         }
@@ -677,6 +706,9 @@ export default defineComponent({
 
     async function onOpenConversation(id: string): Promise<void> {
       await store.openConversation(transport, id);
+      // INC-MODE: the toggle mirrors the opened conversation's frozen flag.
+      const opened = store.conversations.find((c) => c.conversationId === id);
+      incognitoNext.value = opened?.incognito === true;
     }
 
     async function onNewConversation(): Promise<void> {
@@ -832,6 +864,7 @@ export default defineComponent({
       confirmDeactivate,
       confirmDeleteId,
       confirmDeleteMsgId,
+      incognitoNext,
       renaming,
       renameInput,
       MODE_OPTIONS,
@@ -1093,6 +1126,28 @@ export default defineComponent({
   border: 2rpx solid #2a3a5a;
   background-color: #1c2b4a;
   color: #b8c4d8;
+}
+/* INC-MODE: incognito badge, notice and toggle. */
+.incognito-badge {
+  margin-left: 8rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background-color: #5a4a1a;
+  color: #f5d9a0;
+  font-size: 20rpx;
+}
+.incognito-notice {
+  margin: 0 24rpx 16rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background-color: #3a2f12;
+  border: 2rpx solid #5a4a1a;
+  font-size: 24rpx;
+  color: #f5d9a0;
+}
+.incognito-toggle-on {
+  background-color: #5a4a1a;
+  color: #f5d9a0;
 }
 .chat-input {
   flex: 1;

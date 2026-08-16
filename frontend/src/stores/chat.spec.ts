@@ -516,6 +516,40 @@ describe("useChatStore", () => {
     expect(store.serviceMode?.mode).toBe("ZERO_LLM");
   });
 
+  it("INC-MODE: initConversation carries the flag and marks the open conversation", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({});
+
+    await store.initConversation(transport, "1", true);
+    expect(store.activeIncognito).toBe(true);
+    expect(store.conversationId).toBe("1");
+
+    // A fresh non-incognito conversation flips the flag back.
+    await store.initConversation(transport, "1", false);
+    expect(store.activeIncognito).toBe(false);
+  });
+
+  it("INC-MODE: openConversation mirrors the opened conversation's flag", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      conversationsJson: [
+        {
+          conversationId: "5",
+          relationshipId: "1",
+          createdAt: "2026-08-16T08:00:00Z",
+          incognito: true,
+        },
+      ],
+      messagesJson: [
+        { messageId: 10, conversationId: 5, role: "user", content: "hi" },
+      ],
+    });
+
+    await store.loadConversations(transport, "1");
+    await store.openConversation(transport, "5");
+    expect(store.activeIncognito).toBe(true);
+  });
+
   it("send without conversationId transitions to failed", async () => {
     const store = useChatStore();
     // No initConversation — conversationId is empty

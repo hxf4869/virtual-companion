@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V37 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V38 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -50,7 +50,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
   `POST /api/v1/relationships/{relationshipId}/deactivate`（personaRef 按 persona-templates
   目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文）
-- `POST /api/v1/conversations`、`GET /api/v1/conversations`（会话列表，keyset + 最后消息预览）、
+- `POST /api/v1/conversations`（INC-MODE：请求可带 `incognito` 在创建时明确开启
+  无痕会话，标志冻结在会话行且不可事后翻转）、`GET /api/v1/conversations`（会话列表，
+  keyset + 最后消息预览 + incognito 标记）、
   `DELETE/PATCH /api/v1/conversations/{conversationId}`（删除级联清理、重命名写入 title）、
   `POST /api/v1/conversations/{conversationId}/generations`（CHAT-MODE：请求可带
   `mode` = AUTO/LISTEN/DISCUSS 的轮次级对话模式，首次接收时冻结在 generation 行并按
@@ -100,6 +102,11 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   FULL_AI / ZERO_LLM 与平实运维文案（provider 主开关决定；DEGRADED/SAFETY/
   MAINTENANCE 在 Technical Alpha 不可达且永不虚报）；聊天页顶部明文展示服务
   状态，绝不角色化事故（FR-RES-005）。
+- 无痕会话（INC-MODE）：V38 `vc.conversation.incognito`（创建时冻结，
+  `create_conversation` p_incognito、`list_conversations` 回传）；无痕会话的
+  finalize 跳过 MEMORY_EXTRACT 入队（不产生长期记忆候选），召回既有记忆、安全
+  检查与法定日志不受影响；前端创建新会话前可开关「无痕」、列表与当前会话显式
+  标记并明文说明「无痕 ≠ 无必要安全记录」（FR-CHAT-005）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

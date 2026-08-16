@@ -252,6 +252,42 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("INC-MODE: the toggle decides the next conversation's incognito flag", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const initSpy = vi
+      .spyOn(store, "initConversation")
+      .mockResolvedValue({ conversationId: "9" });
+
+    const toggle = wrapper.find('[data-testid="incognito-toggle"]');
+    expect(toggle.exists()).toBe(true);
+    expect(toggle.attributes("aria-pressed")).toBe("false");
+
+    await toggle.trigger("click");
+    expect(toggle.attributes("aria-pressed")).toBe("true");
+
+    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
+    await flushPromises();
+    expect(initSpy).toHaveBeenCalledWith(expect.anything(), expect.any(String), true);
+    wrapper.unmount();
+  });
+
+  it("INC-MODE: shows the plain incognito notice while the open conversation is incognito", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.activeIncognito = true;
+    await wrapper.vm.$nextTick();
+
+    const notice = wrapper.find('[data-testid="incognito-notice"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toContain("无痕会话");
+    wrapper.unmount();
+  });
+
   it("restores the input when send fails before a generation exists", async () => {
     const wrapper = mountPage();
     await flushPromises();

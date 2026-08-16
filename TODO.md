@@ -30,7 +30,10 @@
 - [x] SVC-MODE 服务状态透明：GET /api/v1/service-mode（FULL_AI/ZERO_LLM +
       平实文案，provider 主开关决定，DEGRADED/SAFETY/MAINTENANCE 不可达不虚报）
       + 聊天页顶部明文状态行（FR-RES-005）。
-- [ ] INC-MODE 无痕会话（FR-CHAT-005，Beta 范围骨架）
+- [x] INC-MODE 无痕会话：V38 conversation.incognito（创建时冻结 +
+      create_conversation p_incognito + list_conversations 回传）+ 无痕会话
+      finalize 跳过 MEMORY_EXTRACT 入队（不产生记忆候选）+ 前端新会话无痕开关、
+      列表/当前会话标记与明文说明（FR-CHAT-005）。
 - [ ] CONSENT 版本化同意记录（FR-AUTH-003/005）
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性

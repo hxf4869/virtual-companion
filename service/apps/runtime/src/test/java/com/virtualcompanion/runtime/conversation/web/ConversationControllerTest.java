@@ -125,7 +125,7 @@ class ConversationControllerTest {
 
     @Test
     void createReturnsTheAllocatedConversationId() throws Exception {
-        when(conversationCreateService.create(1L, 7L)).thenReturn(120L);
+        when(conversationCreateService.create(1L, 7L, false)).thenReturn(120L);
 
         mockMvc.perform(post("/api/v1/conversations")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -133,7 +133,20 @@ class ConversationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conversationId").value(120));
 
-        verify(conversationCreateService).create(1L, 7L);
+        verify(conversationCreateService).create(1L, 7L, false);
+    }
+
+    @Test
+    void createPassesTheIncognitoFlagThrough() throws Exception {
+        when(conversationCreateService.create(1L, 7L, true)).thenReturn(121L);
+
+        mockMvc.perform(post("/api/v1/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"relationshipId\":7,\"incognito\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").value(121));
+
+        verify(conversationCreateService).create(1L, 7L, true);
     }
 
     @Test

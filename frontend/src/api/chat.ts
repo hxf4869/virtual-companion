@@ -107,6 +107,8 @@ export interface ConversationListItem {
   createdAt?: string;
   /** CONV-MGMT: user-renamed title, absent until renamed. */
   title?: string;
+  /** INC-MODE: frozen creation-time flag (absent = false). */
+  incognito?: boolean;
 }
 
 export interface ChatApiResponse {
@@ -221,6 +223,7 @@ function asConversationListItem(json: unknown): ConversationListItem | null {
     lastMessagePreview: asString(o, "lastMessagePreview"),
     createdAt: asString(o, "createdAt"),
     title: asString(o, "title"),
+    incognito: o.incognito === true,
   };
 }
 
@@ -282,8 +285,13 @@ export async function renameConversation(
 export async function createConversation(
   t: ChatTransport,
   relationshipId: string,
+  incognito?: boolean,
 ): Promise<CreateConversationResponse | null> {
-  const r = await t.request("POST", CONVERSATIONS_BASE, { relationshipId });
+  const body: Record<string, unknown> = { relationshipId };
+  if (incognito === true) {
+    body.incognito = true;
+  }
+  const r = await t.request("POST", CONVERSATIONS_BASE, body);
   guardResult(r);
   if (!r.ok) return null;
   if (!r.json || typeof r.json !== "object") return null;

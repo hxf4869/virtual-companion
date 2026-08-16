@@ -491,6 +491,7 @@ describe("listConversations (CONV-HIST)", () => {
       lastMessageRole: "assistant",
       lastMessagePreview: "好的，我在听",
       createdAt: "2026-08-16T08:00:00Z",
+      incognito: false,
     });
   });
 
@@ -538,6 +539,38 @@ describe("listConversations (CONV-HIST)", () => {
     });
 
     expect(await listConversations(transport, "999")).toEqual([]);
+  });
+
+  it("INC-MODE: parses the incognito flag into the list item", async () => {
+    const { transport } = recorder({
+      ok: true,
+      status: 200,
+      json: [
+        {
+          conversationId: "100",
+          relationshipId: "7",
+          createdAt: "2026-08-16T08:00:00Z",
+          incognito: true,
+        },
+      ],
+    });
+
+    const list = await listConversations(transport);
+    expect(list[0]?.incognito).toBe(true);
+  });
+
+  it("INC-MODE: createConversation sends the incognito flag only when true", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { conversationId: 200 },
+    });
+
+    await createConversation(transport, "7", true);
+    expect(calls[0].body).toEqual({ relationshipId: "7", incognito: true });
+
+    await createConversation(transport, "7", false);
+    expect(calls[1].body).toEqual({ relationshipId: "7" });
   });
 
   it("throws ChatHttpError on 401", async () => {

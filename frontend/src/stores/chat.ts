@@ -102,6 +102,8 @@ export const useChatStore = defineStore("h5-chat", () => {
   // SVC-MODE (FR-RES-005): the current generation-service mode (null until
   // loaded; a failed read keeps null so the UI never invents a mode).
   const serviceMode = ref<ServiceModeStatus | null>(null);
+  // INC-MODE (FR-CHAT-005): whether the OPEN conversation is incognito.
+  const activeIncognito = ref(false);
 
   /** SVC-MODE: load the current service mode (non-fatal). */
   async function loadServiceMode(transport: ChatTransport): Promise<void> {
@@ -295,6 +297,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     usage.value = null;
     selectedMode.value = "AUTO";
     feedbackKinds.value = [];
+    activeIncognito.value = false;
     // SVC-MODE: the service mode is a session-level ops fact — reset() is also
     // called by startConversation() and must NOT clear it.
     handle = null;
@@ -325,10 +328,13 @@ export const useChatStore = defineStore("h5-chat", () => {
   async function initConversation(
     transport: ChatTransport,
     relationshipId: string,
+    incognito?: boolean,
   ): Promise<CreateConversationResponse | null> {
-    const result = await createConversation(transport, relationshipId);
+    const result = await createConversation(transport, relationshipId, incognito);
     if (result) {
       conversationId.value = result.conversationId;
+      // INC-MODE: the frozen creation-time flag becomes the active state.
+      activeIncognito.value = incognito === true;
       await loadHistory(transport);
     }
     return result;
@@ -426,6 +432,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     messages.value = [];
     historyHasMore.value = true;
     feedbackKinds.value = []; // FEEDBACK: feedback tracks the active generation
+    // INC-MODE: mirror the opened conversation's frozen flag.
+    activeIncognito.value =
+      conversations.value.find((c) => c.conversationId === id)?.incognito === true;
     try {
       await advanceHistory(transport);
     } catch {
@@ -529,6 +538,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     sendFeedback,
     serviceMode,
     loadServiceMode,
+    activeIncognito,
     draft,
     isStreaming,
     isTerminal,

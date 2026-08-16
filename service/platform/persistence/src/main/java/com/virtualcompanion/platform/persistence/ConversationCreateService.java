@@ -29,12 +29,24 @@ public class ConversationCreateService {
      * @return the allocated conversation id
      */
     public long create(long ownerUserId, long relationshipId) {
+        return create(ownerUserId, relationshipId, false);
+    }
+
+    /**
+     * INC-MODE (FR-CHAT-005): create a conversation, optionally incognito.
+     * Incognito is a creation-time decision (chosen knowingly); the flag is
+     * frozen on the row and never flipped by a later call.
+     *
+     * @return the allocated conversation id
+     */
+    public long create(long ownerUserId, long relationshipId, boolean incognito) {
         validateCreate(ownerUserId, relationshipId);
         Long id = jdbc.queryForObject(
-                "SELECT vc.create_conversation(?, ?)",
+                "SELECT vc.create_conversation(?, ?, ?)",
                 Long.class,
                 ownerUserId,
-                relationshipId);
+                relationshipId,
+                incognito);
         if (id == null || id <= 0) {
             throw new IllegalStateException("create_conversation returned no id");
         }

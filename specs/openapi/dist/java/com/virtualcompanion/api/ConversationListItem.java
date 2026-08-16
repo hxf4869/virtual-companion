@@ -6,6 +6,7 @@ public record ConversationListItem(
     final String relationshipId,
     final String lastMessageRole,
     final String lastMessagePreview,
+    final String incognito,
     final String createdAt,
     final String title
 ) {
@@ -14,6 +15,7 @@ public record ConversationListItem(
         java.util.Objects.requireNonNull(relationshipId, "relationshipId must not be null");
         // lastMessageRole is nullable
         // lastMessagePreview is nullable
+        // incognito is nullable
         java.util.Objects.requireNonNull(createdAt, "createdAt must not be null");
         // title is nullable
     }

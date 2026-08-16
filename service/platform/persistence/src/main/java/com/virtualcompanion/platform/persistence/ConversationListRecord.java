@@ -12,7 +12,8 @@ import java.util.Objects;
  * messages; the preview content is clamped by the SD (200 chars) and is a
  * display convenience, never a substitute for {@code list_messages}.
  * {@code title} is the user-renamed conversation title (V32), {@code null}
- * until renamed.
+ * until renamed. {@code incognito} is the frozen creation-time flag (V38,
+ * INC-MODE / FR-CHAT-005).
  */
 public record ConversationListRecord(
         long id,
@@ -20,7 +21,19 @@ public record ConversationListRecord(
         Instant createdAt,
         String lastMessageRole,
         String lastMessagePreview,
-        String title) {
+        String title,
+        boolean incognito) {
+
+    /** Legacy 6-arg construction defaults incognito to false. */
+    public ConversationListRecord(
+            long id,
+            long relationshipId,
+            Instant createdAt,
+            String lastMessageRole,
+            String lastMessagePreview,
+            String title) {
+        this(id, relationshipId, createdAt, lastMessageRole, lastMessagePreview, title, false);
+    }
 
     public ConversationListRecord {
         if (id <= 0) {

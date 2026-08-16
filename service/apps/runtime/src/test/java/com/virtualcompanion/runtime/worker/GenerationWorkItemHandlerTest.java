@@ -46,6 +46,7 @@ import com.virtualcompanion.modelruntime.routing.RouteDecision;
 import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
+import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
@@ -85,6 +86,7 @@ class GenerationWorkItemHandlerTest {
     private final WorkItemEnqueueService enqueueService = mock(WorkItemEnqueueService.class);
     private final RealtimeEventRepository realtimeEventRepository = mock(RealtimeEventRepository.class);
     private final LiveDeltaBroker deltaBroker = mock(LiveDeltaBroker.class);
+    private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LiveModelInvoker> invokerProvider = mock(ObjectProvider.class);
@@ -101,9 +103,13 @@ class GenerationWorkItemHandlerTest {
     void setUp() {
         handler = new GenerationWorkItemHandler(
                 stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
-                enqueueService, realtimeEventRepository, deltaBroker);
+                enqueueService, realtimeEventRepository, deltaBroker, conversationRepository);
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
+        // INC-MODE: non-incognito by default so the legacy MEM-LOOP tests
+        // keep expecting the extract enqueue.
+        when(conversationRepository.isIncognitoForGeneration(anyLong(), anyLong()))
+                .thenReturn(false);
     }
 
     private void handle(WorkItemClaim claim) {
@@ -282,6 +288,26 @@ class GenerationWorkItemHandlerTest {
                 1L, 10L, 0L, "chat.accepted", "{\"generation_id\":10}");
         verify(realtimeEventRepository, never()).advanceSeq(anyLong(), anyLong(), anyInt());
         verify(deltaBroker).publishEnd(10L);
+    }
+
+    @Test
+    void incognitoConversationSkipsTheMemoryExtractEnqueue() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(assembler.assemble(1L, 10L, "FENCE-A")).thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(zeroLlmPrepared());
+        when(invoker.execute(any(), any())).thenReturn(zeroLlmOutcome());
+        when(finalizeService.insertCandidate(1L, 10L, FALLBACK)).thenReturn(777L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+        // INC-MODE: the generation's conversation is incognito.
+        when(conversationRepository.isIncognitoForGeneration(1L, 10L)).thenReturn(true);
+
+        handle(generationClaim(1L, 10L));
+
+        // The turn still finalizes; only the MEMORY_EXTRACT enqueue is skipped.
+        verify(finalizeService).finalizeCompleted(1L, 10L, 777L, FALLBACK, "", false);
+        verify(enqueueService, never()).enqueue(
+                1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);
     }
 
     @Test

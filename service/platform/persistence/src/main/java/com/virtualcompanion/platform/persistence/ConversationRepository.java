@@ -63,6 +63,31 @@ public class ConversationRepository {
     }
 
     /**
+     * INC-MODE (V38): whether the conversation owning a generation is
+     * incognito (RLS-scoped join; false when the generation is unknown — the
+     * caller decides whether absence should fail closed).
+     */
+    public boolean isIncognitoForGeneration(long ownerUserId, long generationId) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (generationId <= 0) {
+            throw new IllegalArgumentException("generationId must be positive");
+        }
+        Boolean incognito = jdbc.queryForObject(
+                "SELECT c.incognito "
+                        + "FROM vc.conversation c "
+                        + "JOIN vc.generation g "
+                        + "  ON g.owner_user_id = c.owner_user_id "
+                        + " AND g.conversation_id = c.id "
+                        + "WHERE c.owner_user_id = ? AND g.id = ?",
+                Boolean.class,
+                ownerUserId,
+                generationId);
+        return Boolean.TRUE.equals(incognito);
+    }
+
+    /**
      * CONV-MGMT (V32): delete one conversation (in-flight work items are
      * cancelled inside the SD; dependent rows cascade). true only when an
      * owned row was deleted; a foreign or absent id returns false so

@@ -56,7 +56,8 @@ public class ConversationController {
     public ConversationResponse create(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
             @RequestBody CreateConversationRequest request) {
-        long conversationId = conversationCreateService.create(ownerUserId, request.relationshipId());
+        long conversationId = conversationCreateService.create(
+                ownerUserId, request.relationshipId(), request.incognitoFlag());
         return new ConversationResponse(conversationId);
     }
 
@@ -152,15 +153,26 @@ public class ConversationController {
                 record.lastMessageRole(),
                 record.lastMessagePreview(),
                 record.createdAt().toString(),
-                record.title());
+                record.title(),
+                record.incognito());
     }
 
-    /** Request body: the relationship under which to open the conversation. */
-    public record CreateConversationRequest(long relationshipId) {
+    /**
+     * Request body: the relationship under which to open the conversation and
+     * the optional creation-time incognito flag. {@code incognito} is a boxed
+     * Boolean so an omitted JSON field deserializes cleanly (a missing
+     * primitive would fail message conversion); absent means false.
+     */
+    public record CreateConversationRequest(long relationshipId, Boolean incognito) {
         public CreateConversationRequest {
             if (relationshipId <= 0) {
                 throw new IllegalArgumentException("relationshipId must be positive");
             }
+        }
+
+        /** INC-MODE: absent flag means false. */
+        public boolean incognitoFlag() {
+            return Boolean.TRUE.equals(incognito);
         }
     }
 
@@ -175,7 +187,8 @@ public class ConversationController {
             String lastMessageRole,
             String lastMessagePreview,
             String createdAt,
-            String title) {
+            String title,
+            boolean incognito) {
     }
 
     /** CONV-MGMT: {@code DELETE /api/v1/conversations/{id}} result. */

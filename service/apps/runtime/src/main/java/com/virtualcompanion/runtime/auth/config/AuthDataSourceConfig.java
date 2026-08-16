@@ -569,7 +569,8 @@ public class AuthDataSourceConfig {
                 authorizationSnapshotServiceProvider,
                 workItemEnqueueService,
                 realtimeEventRepository,
-                liveDeltaBroker);
+                liveDeltaBroker,
+                conversationRepository);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

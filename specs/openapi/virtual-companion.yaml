@@ -1626,6 +1626,14 @@ components:
         relationshipId:
           type: string
           description: The relationship under which to open the conversation
+        incognito:
+          type: boolean
+          description: >-
+            INC-MODE (FR-CHAT-005): true opens an incognito conversation —
+            chosen knowingly at creation time. Incognito conversations never
+            produce long-term memory candidates; necessary safety and
+            statutory logs still apply. Defaults to false.
+          default: false
     ConversationResponse:
       type: object
       description: The newly created conversation.
@@ -1657,6 +1665,9 @@ components:
         lastMessagePreview:
           type: string
           description: Clamped preview of the most recent message, absent for an empty conversation
+        incognito:
+          type: boolean
+          description: INC-MODE (FR-CHAT-005) — true when the conversation is incognito
         createdAt:
           type: string
           format: date-time

@@ -11,6 +11,7 @@ import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.modelruntime.execution.PreparedInvocation;
 import com.virtualcompanion.modelruntime.execution.ProviderAttemptAudit;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
+import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
@@ -93,6 +94,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final WorkItemEnqueueService enqueueService;
     private final RealtimeEventRepository realtimeEventRepository;
     private final LiveDeltaBroker deltaBroker;
+    private final ConversationRepository conversationRepository;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -102,7 +104,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider,
             WorkItemEnqueueService enqueueService,
             RealtimeEventRepository realtimeEventRepository,
-            LiveDeltaBroker deltaBroker) {
+            LiveDeltaBroker deltaBroker,
+            ConversationRepository conversationRepository) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -111,6 +114,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.enqueueService = enqueueService;
         this.realtimeEventRepository = realtimeEventRepository;
         this.deltaBroker = deltaBroker;
+        this.conversationRepository = conversationRepository;
     }
 
     @Override
@@ -381,8 +385,16 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
      * the guarded finalize transaction, so the enqueue commits or rolls back
      * with the finalize (extraction happens exactly once per completed
      * generation). Must run in the owner-bound segment transaction.
+     *
+     * <p>INC-MODE (FR-CHAT-005): incognito conversations never produce
+     * long-term memory candidates, so the enqueue is skipped entirely (safety
+     * checks and statutory logs still apply — incognito is not "no records").
      */
     private void enqueueMemoryExtract(long ownerUserId, long generationId) {
+        if (conversationRepository.isIncognitoForGeneration(ownerUserId, generationId)) {
+            log.info("skipping MEMORY_EXTRACT for incognito generation {}", generationId);
+            return;
+        }
         enqueueService.enqueue(
                 ownerUserId, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, generationId);
     }
