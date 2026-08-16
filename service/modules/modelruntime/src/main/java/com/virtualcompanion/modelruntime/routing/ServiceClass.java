@@ -37,6 +37,34 @@ public record ServiceClass(
     }
 
     /**
+     * ENT-SNAP (A3-001): the ECONOMY tier assigned by an admin to test
+     * accounts. External attempts allowed with the ZERO_LLM fallback; the
+     * class drives routing policy and audit, never a concrete model.
+     */
+    public static ServiceClass economy() {
+        return new ServiceClass("ECONOMY", true, true);
+    }
+
+    /**
+     * ENT-SNAP (A3-001): the PREMIUM tier assigned by an admin to test
+     * accounts. Same routing policy as ECONOMY in Technical Alpha (one real
+     * deployment); the class exists for audit and future policy divergence.
+     */
+    public static ServiceClass premium() {
+        return new ServiceClass("PREMIUM", true, true);
+    }
+
+    /** ENT-SNAP: resolve a stored class code to its policy (unknown -> disabled). */
+    public static ServiceClass fromCode(String code) {
+        return switch (code == null ? "" : code) {
+            case "ECONOMY" -> economy();
+            case "PREMIUM" -> premium();
+            case "SIMULATED" -> simulated();
+            default -> disabled();
+        };
+    }
+
+    /**
      * Degraded tier. Only the ZERO_LLM deterministic source is reachable; an
      * external attempt is never selected even when eligible deployments exist.
      */

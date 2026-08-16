@@ -95,6 +95,12 @@ public interface VirtualCompanionApi {
     /** Delete one owned reminder (FR-NOTIFY-001). */
     ReminderDeletedResponse deleteReminder();
 
+    /** Assign a simulated service class to an account (ADMIN only, ENT-SNAP). */
+    ServiceClassAssignResponse assignServiceClass();
+
+    /** List simulated service-class assignments (ADMIN only, ENT-SNAP). */
+    Void listServiceClassAssignments();
+
     /** Log in with internal-account credentials. */
     AuthTokenResponse login();
 

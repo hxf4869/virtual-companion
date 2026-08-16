@@ -178,6 +178,68 @@
           加载更早
         </button>
       </view>
+
+      <!-- ENT-SNAP (V40): simulated service-class assignment -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">权益分配（模拟 ECONOMY / PREMIUM）</text>
+          <button
+            data-testid="refresh-service-classes"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshServiceClasses"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="scFailed" class="admin-error" data-testid="service-class-failed" role="alert">
+          <text>权益分配加载失败，请重试。</text>
+        </view>
+        <view class="sc-form">
+          <select
+            v-model="scAccountId"
+            class="admin-select"
+            data-testid="sc-account"
+            aria-label="目标账户"
+            :disabled="busy"
+          >
+            <option value="">选择账户</option>
+            <option v-for="acc in accounts" :key="acc.accountId" :value="acc.accountId">
+              {{ acc.username }}
+            </option>
+          </select>
+          <select
+            v-model="scClass"
+            class="admin-select"
+            data-testid="sc-class"
+            aria-label="权益等级"
+            :disabled="busy"
+          >
+            <option value="ECONOMY">ECONOMY</option>
+            <option value="PREMIUM">PREMIUM</option>
+          </select>
+          <button
+            data-testid="sc-assign"
+            class="admin-nav-index"
+            :disabled="busy || !scAccountId"
+            @click="onAssignServiceClass"
+          >
+            分配
+          </button>
+        </view>
+        <view
+          v-for="row in scAssignments"
+          :key="row.accountId"
+          class="audit-row"
+          data-testid="sc-row"
+        >
+          <text class="audit-cell">{{ row.username }}</text>
+          <text class="audit-cell">{{ row.serviceClass }}</text>
+        </view>
+        <view v-if="scResult" class="admin-result" data-testid="sc-result" role="status">
+          <text>{{ `已分配：${scResult.username} → ${scResult.serviceClass}` }}</text>
+        </view>
+      </view>
     </template>
   </view>
 </template>
@@ -193,13 +255,16 @@
 import { computed, defineComponent, onMounted, ref } from "vue";
 
 import {
+  assignServiceClass,
   createAccount,
   disableAccount,
   listAccounts,
   listAuditEvents,
+  listServiceClassAssignments,
   usageSummary,
   type AccountListItem,
   type AuditEventListItem,
+  type ServiceClassAssignmentItem,
   type UsageSummaryItem,
 } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -233,6 +298,12 @@ export default defineComponent({
     const auditEvents = ref<AuditEventListItem[]>([]);
     const auditFailed = ref(false);
     const auditHasMore = ref(false);
+    // ENT-SNAP: simulated service-class assignments.
+    const scAssignments = ref<ServiceClassAssignmentItem[]>([]);
+    const scFailed = ref(false);
+    const scAccountId = ref("");
+    const scClass = ref<"ECONOMY" | "PREMIUM">("ECONOMY");
+    const scResult = ref<{ username: string; serviceClass: string } | null>(null);
 
     // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
     const transport = createAuthenticatedTransport({
@@ -252,6 +323,7 @@ export default defineComponent({
       if (auth.role === "ADMIN") {
         await refreshUsage();
         await refreshAudit();
+        await refreshServiceClasses();
       }
     });
 
@@ -307,6 +379,53 @@ export default defineComponent({
         auditHasMore.value = page.length >= AUDIT_PAGE_SIZE;
       } catch {
         auditFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** ENT-SNAP: reload the assignment registry (non-fatal). */
+    async function refreshServiceClasses(): Promise<void> {
+      scFailed.value = false;
+      try {
+        scAssignments.value = await listServiceClassAssignments(transport);
+      } catch {
+        scFailed.value = true;
+      }
+    }
+
+    async function onRefreshServiceClasses(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshServiceClasses();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** ENT-SNAP: assign a simulated service class and refresh the registry. */
+    async function onAssignServiceClass(): Promise<void> {
+      if (busy.value || !scAccountId.value) return;
+      busy.value = true;
+      scResult.value = null;
+      try {
+        const applied = await assignServiceClass(
+          transport,
+          scAccountId.value,
+          scClass.value,
+        );
+        if (applied) {
+          const account = accounts.value.find((a) => a.accountId === scAccountId.value);
+          scResult.value = {
+            username: account?.username ?? scAccountId.value,
+            serviceClass: applied,
+          };
+          await refreshServiceClasses();
+        } else {
+          scFailed.value = true;
+        }
+      } catch {
+        scFailed.value = true;
       } finally {
         busy.value = false;
       }
@@ -414,6 +533,11 @@ export default defineComponent({
       auditEvents,
       auditFailed,
       auditHasMore,
+      scAssignments,
+      scFailed,
+      scAccountId,
+      scClass,
+      scResult,
       canSubmit,
       onCreate,
       onRefreshAccounts,
@@ -421,6 +545,8 @@ export default defineComponent({
       onRefreshUsage,
       onRefreshAudit,
       onLoadMoreAudit,
+      onRefreshServiceClasses,
+      onAssignServiceClass,
       goTo,
     };
   },
@@ -559,5 +685,12 @@ export default defineComponent({
   border-radius: 12rpx;
   font-size: 24rpx;
   color: #8fa0bd;
+}
+/* ENT-SNAP: assignment form row */
+.sc-form {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 12rpx;
+  flex-wrap: wrap;
 }
 </style>

@@ -1081,6 +1081,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/service-class:
+    post:
+      operationId: assignServiceClass
+      summary: Assign a simulated service class to an account (ADMIN only, ENT-SNAP)
+      description: >-
+        ADMIN-only assignment of the simulated service class (ECONOMY or
+        PREMIUM) for one internal account via vc.assign_service_class (A3-001).
+        The assignment takes effect for the NEXT generation turn; turns that
+        already minted an entitlement snapshot keep their frozen class
+        (FR-ENT-004). Never a payment or an order — Alpha entitlement only.
+        Requires a valid Bearer access token whose account is an ACTIVE ADMIN.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceClassAssignRequest'
+      responses:
+        '200':
+          description: The applied assignment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceClassAssignResponse'
+        '400':
+          description: Unapproved service class or an invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Target account absent; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/service-classes:
+    get:
+      operationId: listServiceClassAssignments
+      summary: List simulated service-class assignments (ADMIN only, ENT-SNAP)
+      description: >-
+        ADMIN-only registry of every account with its assigned service class
+        (ECONOMY default for unassigned accounts) via
+        vc.list_service_class_assignments. Requires a valid Bearer access token
+        whose account is an ACTIVE ADMIN.
+      responses:
+        '200':
+          description: The assignment registry, ordered by account id
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceClassAssignmentItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/login:
     post:
       operationId: login
@@ -1941,6 +2019,60 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed delete
+    ServiceClassAssignRequest:
+      type: object
+      description: ADMIN-only simulated service-class assignment (ENT-SNAP).
+      required:
+        - accountId
+        - serviceClass
+      properties:
+        accountId:
+          type: string
+          description: The target internal account id
+        serviceClass:
+          type: string
+          description: ECONOMY or PREMIUM
+          enum:
+            - ECONOMY
+            - PREMIUM
+    ServiceClassAssignResponse:
+      type: object
+      description: The applied assignment.
+      required:
+        - accountId
+        - serviceClass
+      properties:
+        accountId:
+          type: string
+          description: The target account id
+        serviceClass:
+          type: string
+          description: The applied class (ECONOMY or PREMIUM)
+    ServiceClassAssignmentItem:
+      type: object
+      description: One assignment registry row (ENT-SNAP).
+      required:
+        - accountId
+        - username
+        - serviceClass
+      properties:
+        accountId:
+          type: string
+          description: The account id
+        username:
+          type: string
+          description: Normalized internal username
+        serviceClass:
+          type: string
+          description: Assigned class (ECONOMY is the default for unassigned accounts)
+        assignedAt:
+          type: string
+          format: date-time
+          description: First assignment timestamp, absent when never assigned
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last assignment timestamp, absent when never assigned
     ConversationRenamedResponse:
       type: object
       description: Result of renaming one conversation.

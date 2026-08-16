@@ -6,6 +6,7 @@ import com.virtualcompanion.runtime.auth.config.CookieCsrfGuardFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.LoginRequest;
+import com.virtualcompanion.runtime.auth.web.AuthRequests.ServiceClassAssignRequest;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountListItem;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuditEventResponse;
@@ -13,6 +14,8 @@ import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.DisableAccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.ServiceClassAssignResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.ServiceClassAssignmentItem;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.UsageSummaryResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -159,6 +162,40 @@ public class AuthController {
                         record.inputTokens(),
                         record.outputTokens(),
                         record.cost()))
+                .toList();
+    }
+
+    /** ENT-SNAP (V40): ADMIN-only simulated service-class assignment. */
+    @PostMapping("/admin/service-class")
+    public ServiceClassAssignResponse assignServiceClass(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @RequestBody ServiceClassAssignRequest request) {
+        if (request == null) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "A request body is required");
+        }
+        String serviceClass = com.virtualcompanion.platform.persistence
+                .EntitlementSnapshotService.normalizeServiceClass(request.serviceClass());
+        long target = parseAccountId(request.accountId());
+        boolean assigned = authService.assignServiceClass(principal, target, serviceClass);
+        if (!assigned) {
+            throw new AuthErrorException(HttpStatus.NOT_FOUND, "NOT_FOUND_OR_FORBIDDEN",
+                    "Target account unavailable");
+        }
+        return new ServiceClassAssignResponse(request.accountId(), serviceClass);
+    }
+
+    /** ENT-SNAP (V40): ADMIN-only assignment registry read. */
+    @GetMapping("/admin/service-classes")
+    public List<ServiceClassAssignmentItem> listServiceClassAssignments(
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        return authService.listServiceClassAssignments(principal).stream()
+                .map(record -> new ServiceClassAssignmentItem(
+                        Long.toString(record.accountId()),
+                        record.username(),
+                        record.serviceClass(),
+                        record.assignedAt() == null ? null : record.assignedAt().toString(),
+                        record.updatedAt() == null ? null : record.updatedAt().toString()))
                 .toList();
     }
 

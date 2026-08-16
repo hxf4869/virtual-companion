@@ -140,7 +140,7 @@ class SchemaReadinessHealthIndicatorTest {
 
     @Test
     void expectedSchemaVersionFromClasspathFindsNewestMigration() {
-        // The persistence module jar ships db/migration/V1..V39 on the test
+        // The persistence module jar ships db/migration/V1..V40 on the test
         // classpath, mirroring the runtime deployment (V26 = TASK-0181
         // create_authorization_snapshots; V27 = TASK-0191 owner-context
         // cryptographic binding; V28 = TASK-0194 worker lease/fence business
@@ -152,8 +152,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V35 = FEEDBACK generation_feedback + record_generation_feedback;
         // V36 = ADMIN-OPS identity_auth_event_list + admin_usage_summary;
         // V37 = MSG-DELETE delete_message; V38 = INC-MODE conversation.incognito;
-        // V39 = REMINDER structured reminders).
+        // V39 = REMINDER structured reminders; V40 = ENT-SNAP entitlement
+        // assignment + minted per-generation snapshots).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(39);
+                .isEqualTo(40);
     }
 }

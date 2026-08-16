@@ -72,4 +72,17 @@ public final class AuthResponses {
             long outputTokens,
             java.math.BigDecimal cost) {
     }
+
+    /** ENT-SNAP (V40): the applied simulated service-class assignment. */
+    public record ServiceClassAssignResponse(String accountId, String serviceClass) {
+    }
+
+    /** ENT-SNAP (V40): one assignment registry row. */
+    public record ServiceClassAssignmentItem(
+            String accountId,
+            String username,
+            String serviceClass,
+            String assignedAt,
+            String updatedAt) {
+    }
 }

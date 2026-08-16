@@ -283,6 +283,73 @@ export async function usageSummary(
   return out;
 }
 
+/** ENT-SNAP (V40): one service-class assignment registry row. */
+export interface ServiceClassAssignmentItem {
+  accountId: string;
+  username: string;
+  serviceClass: string;
+  assignedAt?: string;
+  updatedAt?: string;
+}
+
+function asServiceClassAssignment(json: unknown): ServiceClassAssignmentItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const accountId = asString(o, "accountId");
+  const username = asString(o, "username");
+  const serviceClass = asString(o, "serviceClass");
+  if (!accountId || !username || !serviceClass) return null;
+  return {
+    accountId,
+    username,
+    serviceClass,
+    assignedAt: asString(o, "assignedAt"),
+    updatedAt: asString(o, "updatedAt"),
+  };
+}
+
+/**
+ * ENT-SNAP: list the service-class assignment registry (ADMIN only). A
+ * non-OK response throws; transport failures propagate.
+ */
+export async function listServiceClassAssignments(
+  t: AuthTransport,
+): Promise<ServiceClassAssignmentItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/service-classes`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: ServiceClassAssignmentItem[] = [];
+  for (const item of r.json) {
+    const parsed = asServiceClassAssignment(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * ENT-SNAP: assign a simulated service class to an account (ADMIN only).
+ * Returns the applied class on success, null on an existence-hidden 404;
+ * other non-OK statuses throw.
+ */
+export async function assignServiceClass(
+  t: AuthTransport,
+  accountId: string,
+  serviceClass: "ECONOMY" | "PREMIUM",
+): Promise<string | null> {
+  const r = await t.request("POST", `${AUTH_BASE}/admin/service-class`, {
+    accountId,
+    serviceClass,
+  });
+  if (!r.ok) {
+    if (r.status === 404) return null;
+    throw new AuthHttpError(r.status);
+  }
+  if (!r.json || typeof r.json !== "object") return null;
+  const applied = (r.json as Record<string, unknown>).serviceClass;
+  return typeof applied === "string" ? applied : null;
+}
+
 /** ADMIN-ACCTS: typed non-OK failure for the registry operations. */
 export class AuthHttpError extends Error {
   readonly status: number;

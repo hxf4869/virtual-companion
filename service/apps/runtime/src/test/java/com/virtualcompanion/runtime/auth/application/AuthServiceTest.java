@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.virtualcompanion.platform.persistence.AdminConsoleService;
+import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
@@ -41,6 +42,7 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder;
     private JwtTokenService jwt;
     private AdminConsoleService adminConsole;
+    private EntitlementSnapshotService entitlementSnapshotService;
     private AuthService service;
 
     @BeforeEach
@@ -50,11 +52,13 @@ class AuthServiceTest {
         passwordEncoder = mock(PasswordEncoder.class);
         jwt = mock(JwtTokenService.class);
         adminConsole = mock(AdminConsoleService.class);
+        entitlementSnapshotService = mock(EntitlementSnapshotService.class);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$dummyhashplaceholder");
         when(jwt.accessTtl()).thenReturn(Duration.ofHours(2));
         when(jwt.issueAccessToken(anyLong(), anyString(), anyString())).thenReturn("access-token");
         service = new AuthService(
-                accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7), adminConsole);
+                accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7),
+                adminConsole, entitlementSnapshotService);
     }
 
     @Test
@@ -372,6 +376,49 @@ class AuthServiceTest {
                 .isInstanceOf(AuthErrorException.class)
                 .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("ACCESS_DENIED"));
         verifyNoInteractions(adminConsole);
+    }
+
+    // ---- ENT-SNAP (V40): service-class assignment ----
+
+    @Test
+    void adminAssignsAServiceClass() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        when(entitlementSnapshotService.assign(1L, 7L, "PREMIUM")).thenReturn(true);
+
+        assertThat(service.assignServiceClass(admin, 7L, "PREMIUM")).isTrue();
+        verify(entitlementSnapshotService).assign(1L, 7L, "PREMIUM");
+    }
+
+    @Test
+    void assignRejectsUnapprovedClassesEagerly() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+
+        assertThatThrownBy(() -> service.assignServiceClass(admin, 7L, "PLATINUM"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nonAdminCannotAssignServiceClasses() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+
+        assertThatThrownBy(() -> service.assignServiceClass(user, 1L, "ECONOMY"))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("ACCESS_DENIED"));
+        verifyNoInteractions(entitlementSnapshotService);
+    }
+
+    @Test
+    void adminListsServiceClassAssignments() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        when(entitlementSnapshotService.listAssignments(1L)).thenReturn(java.util.List.of(
+                new EntitlementSnapshotService.ServiceClassAssignment(
+                        7L, "alice", "ECONOMY", null, null)));
+
+        var rows = service.listServiceClassAssignments(admin);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).username()).isEqualTo("alice");
+        assertThat(rows.get(0).serviceClass()).isEqualTo("ECONOMY");
     }
 
     @Test

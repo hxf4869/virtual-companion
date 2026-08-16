@@ -32,4 +32,10 @@ public final class AuthRequests {
             @Pattern(regexp = "(?i:ADMIN|USER)") String role,
             @NotBlank @Size(max = 256) String displayName) {
     }
+
+    /** ENT-SNAP (V40): {@code POST /api/v1/auth/admin/service-class}. */
+    public record ServiceClassAssignRequest(
+            @NotBlank String accountId,
+            @NotBlank String serviceClass) {
+    }
 }

@@ -32,6 +32,8 @@
     "listReminders",
     "updateReminder",
     "deleteReminder",
+    "assignServiceClass",
+    "listServiceClassAssignments",
     "login",
     "refresh",
     "logout",
@@ -43,6 +45,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "d2fe636453451363722a6a8f6226e7114d2c67cf5242d2c6f9aa2237ea1e3459"
+    "sha256": "df780d439ff7f240d376c36267258cc713d8461200747351bc988a5c7a7fb711"
   }
 }

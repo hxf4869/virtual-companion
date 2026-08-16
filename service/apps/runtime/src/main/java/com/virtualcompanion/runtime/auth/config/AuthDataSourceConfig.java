@@ -12,6 +12,7 @@ import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFeedbackService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
@@ -224,14 +225,16 @@ public class AuthDataSourceConfig {
             PasswordEncoder passwordEncoder,
             JwtTokenService jwtTokenService,
             @Value("${virtual-companion.auth.refresh-token-ttl:7d}") Duration refreshTtl,
-            AdminConsoleService adminConsoleService) {
+            AdminConsoleService adminConsoleService,
+            EntitlementSnapshotService entitlementSnapshotService) {
         return new AuthService(
                 identityAccountRepository,
                 identityRefreshTokenRepository,
                 passwordEncoder,
                 jwtTokenService,
                 refreshTtl,
-                adminConsoleService);
+                adminConsoleService,
+                entitlementSnapshotService);
     }
 
     /** ADMIN-OPS (V36): minimal internal admin console reads. */
@@ -521,7 +524,8 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol,
             @Value("${virtual-companion.generation.context-budget.max-input-tokens:8000}") int maxInputTokens,
             @Value("${virtual-companion.generation.context-budget.max-output-tokens:2048}") int maxOutputTokens,
-            @Value("${virtual-companion.generation.context-budget.max-turns:64}") int maxTurns) {
+            @Value("${virtual-companion.generation.context-budget.max-turns:64}") int maxTurns,
+            EntitlementSnapshotService entitlementSnapshotService) {
         return new LiveInvocationAssembler(
                 generationRepository,
                 conversationRepository,
@@ -532,7 +536,14 @@ public class AuthDataSourceConfig {
                 zeroLlmSourceId,
                 externalProtocol,
                 new com.virtualcompanion.conversation.contextplan.ContextBudget(
-                        maxInputTokens, maxOutputTokens, maxTurns));
+                        maxInputTokens, maxOutputTokens, maxTurns),
+                entitlementSnapshotService);
+    }
+
+    /** ENT-SNAP (V40): simulated entitlement mint/assign/list. */
+    @Bean
+    public EntitlementSnapshotService entitlementSnapshotService(JdbcTemplate authJdbcTemplate) {
+        return new EntitlementSnapshotService(authJdbcTemplate);
     }
 
     /**

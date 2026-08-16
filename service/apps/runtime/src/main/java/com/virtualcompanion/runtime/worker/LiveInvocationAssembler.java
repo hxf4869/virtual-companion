@@ -14,6 +14,7 @@ import com.virtualcompanion.modelruntime.routing.Entitlement;
 import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.MemoryRecord;
@@ -90,6 +91,7 @@ public class LiveInvocationAssembler {
     private final String zeroLlmSourceId;
     private final ModelProtocol externalProtocol;
     private final ContextBudget budget;
+    private final EntitlementSnapshotService entitlementSnapshotService;
 
     public LiveInvocationAssembler(
             GenerationRepository generationRepository,
@@ -100,7 +102,8 @@ public class LiveInvocationAssembler {
             JdbcTemplate jdbcTemplate,
             String zeroLlmSourceId,
             ModelProtocol externalProtocol,
-            ContextBudget budget) {
+            ContextBudget budget,
+            EntitlementSnapshotService entitlementSnapshotService) {
         this.generationRepository = Objects.requireNonNull(generationRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
@@ -111,6 +114,8 @@ public class LiveInvocationAssembler {
         this.zeroLlmSourceId = requireSourceId(zeroLlmSourceId);
         this.externalProtocol = Objects.requireNonNull(externalProtocol, "externalProtocol must not be null");
         this.budget = Objects.requireNonNull(budget, "budget must not be null");
+        this.entitlementSnapshotService = Objects.requireNonNull(
+                entitlementSnapshotService, "entitlementSnapshotService must not be null");
     }
 
     /**
@@ -219,6 +224,16 @@ public class LiveInvocationAssembler {
         }
         ResolvedContext context = loadContext(ownerUserId, generationId);
         OwnershipTuple ownership = context.ownership();
+        // ENT-SNAP (A3-001): mint (or resolve) the generation's immutable
+        // entitlement snapshot inside the guarded prepare transaction; the
+        // ADMIN-assigned class (ECONOMY/PREMIUM, ECONOMY default) becomes the
+        // routing entitlement instead of the hardcoded simulated tier. Retries
+        // of the same logical generation resolve the same snapshot
+        // (FR-ENT-004).
+        EntitlementSnapshotService.MintedEntitlementSnapshot minted =
+                entitlementSnapshotService.mint(ownerUserId, generationId);
+        Entitlement entitlement = new Entitlement(
+                ownership.ownerUserId(), ServiceClass.fromCode(minted.serviceClass()));
         // PERSONA-WIRE: the companion persona is the outermost SYSTEM context
         // (so it prepends BEFORE the recall block); consumed by the external
         // branch only (the ZERO_LLM branch ignores it). Real persona content
@@ -234,8 +249,6 @@ public class LiveInvocationAssembler {
         messages = prependBlocks(messages, personaBlock, recallBlock);
         long fence = fenceValue(claimFence, readFence());
 
-        Entitlement entitlement = new Entitlement(
-                ownership.ownerUserId(), ServiceClass.simulated());
         RoutingRequest routing = new RoutingRequest(
                 ownership,
                 entitlement,

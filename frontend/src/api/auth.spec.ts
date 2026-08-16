@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  assignServiceClass,
   createAccount,
   disableAccount,
   listAccounts,
   listAuditEvents,
+  listServiceClassAssignments,
   login,
   logout,
   refresh,
@@ -308,5 +310,50 @@ describe("createAccount (ADMIN-UI)", () => {
     const t = transportFor({ ok: true, status: 200, json: { accountId: "9" } });
 
     expect(await createAccount(t, "alice", "pw-1", "Alice", "USER")).toBeNull();
+  });
+});
+
+describe("service-class assignments (ENT-SNAP)", () => {
+  it("lists the assignment registry on OK", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: [
+        { accountId: "7", username: "alice", serviceClass: "ECONOMY" },
+        { accountId: "9", username: "bob", serviceClass: "PREMIUM", assignedAt: "2026-08-16T08:00:00Z" },
+      ],
+    });
+
+    const list = await listServiceClassAssignments(t);
+
+    expect(list).toHaveLength(2);
+    expect(list[1].serviceClass).toBe("PREMIUM");
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/admin/service-classes");
+  });
+
+  it("throws a typed error on a non-OK registry read", async () => {
+    const t = transportFor({ ok: false, status: 403, json: null });
+
+    await expect(listServiceClassAssignments(t)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("POSTs the assignment and returns the applied class", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: { accountId: "7", serviceClass: "PREMIUM" },
+    });
+
+    expect(await assignServiceClass(t, "7", "PREMIUM")).toBe("PREMIUM");
+    expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/admin/service-class", {
+      accountId: "7",
+      serviceClass: "PREMIUM",
+    });
+  });
+
+  it("maps a 404 to null (existence hidden)", async () => {
+    const t = transportFor({ ok: false, status: 404, json: null });
+
+    expect(await assignServiceClass(t, "999", "ECONOMY")).toBeNull();
   });
 });

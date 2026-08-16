@@ -151,6 +151,24 @@ export interface ReminderDeletedResponse {
   ok: string
 }
 
+export interface ServiceClassAssignRequest {
+  accountId: string
+  serviceClass: string
+}
+
+export interface ServiceClassAssignResponse {
+  accountId: string
+  serviceClass: string
+}
+
+export interface ServiceClassAssignmentItem {
+  accountId: string
+  username: string
+  serviceClass: string
+  assignedAt?: string
+  updatedAt?: string
+}
+
 export interface ConversationRenamedResponse {
   conversationId: string
   title: string
@@ -279,6 +297,8 @@ export interface VirtualCompanionApiClient {
   listReminders(): Promise<VersionResponse>
   updateReminder(): Promise<VersionResponse>
   deleteReminder(): Promise<VersionResponse>
+  assignServiceClass(): Promise<VersionResponse>
+  listServiceClassAssignments(): Promise<VersionResponse>
   login(): Promise<VersionResponse>
   refresh(): Promise<VersionResponse>
   logout(): Promise<VersionResponse>

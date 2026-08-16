@@ -1,6 +1,7 @@
 package com.virtualcompanion.runtime.auth.application;
 
 import com.virtualcompanion.platform.persistence.AdminConsoleService;
+import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
@@ -65,6 +66,7 @@ public class AuthService {
     private final Duration refreshTtl;
     private final String dummyHash;
     private final AdminConsoleService adminConsole;
+    private final EntitlementSnapshotService entitlementSnapshotService;
 
     public AuthService(
             IdentityAccountRepository accounts,
@@ -72,7 +74,8 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtTokenService jwt,
             Duration refreshTtl,
-            AdminConsoleService adminConsole) {
+            AdminConsoleService adminConsole,
+            EntitlementSnapshotService entitlementSnapshotService) {
         this.accounts = accounts;
         this.sessions = sessions;
         this.passwordEncoder = passwordEncoder;
@@ -82,6 +85,8 @@ public class AuthService {
         }
         this.refreshTtl = refreshTtl;
         this.adminConsole = Objects.requireNonNull(adminConsole, "adminConsole must not be null");
+        this.entitlementSnapshotService = Objects.requireNonNull(
+                entitlementSnapshotService, "entitlementSnapshotService must not be null");
         // A valid BCrypt hash so the unknown-account login path runs a real
         // (equally expensive) compare instead of short-circuiting.
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
@@ -285,6 +290,39 @@ public class AuthService {
         requireAdmin(principal);
         try {
             return adminConsole.usageSummary(principal.accountId(), days);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /**
+     * ENT-SNAP (V40): ADMIN-only simulated service-class assignment. The
+     * assignment takes effect for the NEXT generation turn; already-minted
+     * snapshots keep their frozen class (FR-ENT-004).
+     */
+    public boolean assignServiceClass(
+            JwtTokenService.Principal principal, long targetAccountId, String serviceClass) {
+        requireAdmin(principal);
+        if (targetAccountId <= 0) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "A valid target account id is required");
+        }
+        // ENT-SNAP: fail closed on unapproved class codes before any call.
+        String normalized = EntitlementSnapshotService.normalizeServiceClass(serviceClass);
+        try {
+            return entitlementSnapshotService.assign(
+                    principal.accountId(), targetAccountId, normalized);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** ENT-SNAP (V40): ADMIN-only assignment registry read. */
+    public List<EntitlementSnapshotService.ServiceClassAssignment> listServiceClassAssignments(
+            JwtTokenService.Principal principal) {
+        requireAdmin(principal);
+        try {
+            return entitlementSnapshotService.listAssignments(principal.accountId());
         } catch (DataAccessException e) {
             throw genericError();
         }

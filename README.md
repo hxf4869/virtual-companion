@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V39 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V40 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -46,7 +46,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `POST /api/v1/auth/admin/accounts/{accountId}/disable`（禁用，幂等；开通受
   betaGate maxEnabledAccounts=30 容量门禁约束）、`GET /api/v1/auth/admin/audit`
   （审计日志 keyset 分页，ADMIN-OPS）、`GET /api/v1/auth/admin/usage`（按日
-  用量/成本汇总，ADMIN-OPS）
+  用量/成本汇总，ADMIN-OPS）、`POST /api/v1/auth/admin/service-class`、
+  `GET /api/v1/auth/admin/service-classes`（ENT-SNAP 模拟权益分配 ECONOMY/PREMIUM，
+  ADMIN-only，仅测试账号，绝不接订单）
 - `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
   `POST /api/v1/relationships/{relationshipId}/deactivate`（personaRef 按 persona-templates
   目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文）
@@ -117,6 +119,12 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   （关系选择、创建表单、soonest-first 列表、完成/删除）并接入边界台与聊天页
   导航（FR-NOTIFY-001：提醒是结构化记录，模型不能仅在 Prompt 里「记住以后
   提醒」；Alpha 无主动推送）。
+- 模拟权益快照（ENT-SNAP）：V40 `vc.service_class_assignment`（ADMIN 分配
+  ECONOMY/PREMIUM，仅测试账号）+ `vc.entitlement_snapshot`（每轮不可变快照，
+  UNIQUE owner+generation：重试解析同一快照、事后改级不重写历史）；组装器在
+  守卫 prepare 事务内铸造快照并以快照类（替代硬编码 SIMULATED）进入确定性
+  路由（A3-001/FR-ENT-004 路由审计）；admin 页新增权益分配区（分配表单 +
+  注册表）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

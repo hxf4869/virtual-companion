@@ -52,6 +52,9 @@ class LiveInvocationAssemblerTest {
     private final MemoryService memoryService = mock(MemoryService.class);
     private final RelationshipService relationshipService = mock(RelationshipService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+    private final com.virtualcompanion.platform.persistence.EntitlementSnapshotService
+            entitlementSnapshotService =
+                    mock(com.virtualcompanion.platform.persistence.EntitlementSnapshotService.class);
 
     private LiveInvocationAssembler assembler(String sourceId) {
         return assembler(sourceId, BUDGET);
@@ -61,7 +64,7 @@ class LiveInvocationAssemblerTest {
         return new LiveInvocationAssembler(
                 generationRepository, conversationRepository, messageRepository, memoryService,
                 relationshipService, jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS,
-                budget);
+                budget, entitlementSnapshotService);
     }
 
     @Test
@@ -127,7 +130,7 @@ class LiveInvocationAssemblerTest {
     }
 
     @Test
-    void assemblesExternalRequestWithSimulatedEntitlementAndSnapshots() {
+    void assemblesExternalRequestWithMintedEntitlementAndSnapshots() {
         when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
                 new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
         when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
@@ -137,13 +140,17 @@ class LiveInvocationAssemblerTest {
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
                 .thenReturn(null);
+        when(entitlementSnapshotService.mint(1L, 10L)).thenReturn(
+                new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
+                        .MintedEntitlementSnapshot(9001L, "PREMIUM"));
 
         LiveInvocationRequest request = assembler("ZERO_LLM_FALLBACK")
                 .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
 
         RoutingRequest routing = request.routingRequest();
-        // simulated entitlement: external allowed + ZERO_LLM fallback allowed.
-        assertEquals(ServiceClass.simulated(), routing.entitlement().serviceClass());
+        // ENT-SNAP: the minted PREMIUM class becomes the routing entitlement
+        // (external allowed + ZERO_LLM fallback allowed).
+        assertEquals(ServiceClass.premium(), routing.entitlement().serviceClass());
         assertTrue(routing.entitlement().serviceClass().externalAttemptAllowed());
         // both snapshot ids bound for the external binding selection.
         assertEquals("snap-10-req", routing.requestedAuthorizationSnapshotId());
@@ -170,6 +177,10 @@ class LiveInvocationAssemblerTest {
                 .thenReturn(null);
         // PERSONA-WIRE: default — no relationship row (no persona context).
         when(relationshipService.get(owner, relationshipId)).thenReturn(Optional.empty());
+        // ENT-SNAP: default mint for every external assembly (ECONOMY).
+        when(entitlementSnapshotService.mint(owner, generationId)).thenReturn(
+                new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
+                        .MintedEntitlementSnapshot(9001L, "ECONOMY"));
     }
 
     @Test

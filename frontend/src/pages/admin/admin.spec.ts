@@ -118,6 +118,59 @@ describe("admin account page (ADMIN-UI)", () => {
     wrapper.unmount();
   });
 
+  it("ENT-SNAP: renders the assignment registry and assigns a class", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/auth/admin/accounts" && (init?.method ?? "GET") === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { accountId: "1", username: "root", role: "ADMIN", status: "ACTIVE", displayName: "Root" },
+              { accountId: "7", username: "alice", role: "USER", status: "ACTIVE", displayName: "Alice" },
+            ],
+          };
+        }
+        if (url === "/api/v1/auth/admin/service-classes") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { accountId: "1", username: "root", serviceClass: "ECONOMY" },
+              { accountId: "7", username: "alice", serviceClass: "PREMIUM", assignedAt: "2026-08-16T08:00:00Z" },
+            ],
+          };
+        }
+        if (url === "/api/v1/auth/admin/service-class" && init?.method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ accountId: "7", serviceClass: "ECONOMY" }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const rows = wrapper.findAll('[data-testid="sc-row"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[1].text()).toContain("PREMIUM");
+
+    // Assign ECONOMY to alice and confirm the result line.
+    await wrapper.find('[data-testid="sc-account"]').setValue("7");
+    await wrapper.find('[data-testid="sc-class"]').setValue("ECONOMY");
+    await wrapper.find('[data-testid="sc-assign"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="sc-result"]').text()).toContain("alice");
+    expect(wrapper.find('[data-testid="sc-result"]').text()).toContain("ECONOMY");
+    wrapper.unmount();
+  });
+
   it("creates an account and shows the created account", async () => {
     stubCreateAccount(true, {
       accountId: "9",
