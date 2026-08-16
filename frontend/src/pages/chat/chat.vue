@@ -393,6 +393,7 @@ export default defineComponent({
         "external-failed": "模型服务失败",
         "external-no_eligible_deployment": "当前没有可用的模型部署",
         "external-dead-lettered": "模型服务多次失败，本轮已放弃",
+        "reconcile-stale-in-progress": "生成中断，系统已自动回收本轮",
       };
       return map[fault] ?? "生成失败";
     }

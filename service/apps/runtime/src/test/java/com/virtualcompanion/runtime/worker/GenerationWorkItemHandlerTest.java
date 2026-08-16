@@ -622,4 +622,53 @@ class GenerationWorkItemHandlerTest {
                 GenerationWorkItemHandler.DELTA_SEQ_BLOCK))
                 .publish(eq(10L), any(LiveDeltaBroker.LiveEvent.class));
     }
+
+    // ---- GEN-RECONC (V33) ----
+
+    @Test
+    void rerunOfPrepareSkipsDuplicateAcceptedEvent() {
+        // RETRY-A / crash-recovery re-run: the durable chat.accepted already
+        // exists, so the prepare segment must not append a second one.
+        when(realtimeEventRepository.hasDurableEvent(1L, 10L, "chat.accepted"))
+                .thenReturn(true);
+        when(realtimeEventRepository.streamEpoch(1L, 10L)).thenReturn(3L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+        when(finalizeService.failWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(generationClaim(1L, 10L));
+
+        verify(realtimeEventRepository, never()).appendDurableEvent(
+                anyLong(), anyLong(), anyLong(), eq("chat.accepted"), anyString());
+    }
+
+    @Test
+    void firstRunAppendsAcceptedAndClosesStaleIntentsBeforeTheNewIntent() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(generationClaim(1L, 10L));
+
+        verify(realtimeEventRepository).hasDurableEvent(1L, 10L, "chat.accepted");
+        verify(realtimeEventRepository).appendDurableEvent(
+                1L, 10L, 0L, "chat.accepted", "{\"generation_id\":10}");
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(finalizeService);
+        // Stale CREATED intents of a re-run are closed before the new intent
+        // is persisted (the audit trail never ends on an open intent).
+        inOrder.verify(finalizeService).closeStaleAttemptIntents(1L, 1L);
+        inOrder.verify(finalizeService).createAttemptIntent(
+                eq(1L), eq(1L), eq(10L), eq("token-1"), eq("FENCE-A"),
+                eq("pa-test-1"), eq("alpha-loopback"), eq("alpha-supplier"),
+                eq("snap-10-req"), eq("snap-10-exec"));
+    }
 }

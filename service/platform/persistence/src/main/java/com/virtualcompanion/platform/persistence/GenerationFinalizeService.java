@@ -2,6 +2,7 @@ package com.virtualcompanion.platform.persistence;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
 import java.util.Objects;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -375,6 +376,50 @@ public class GenerationFinalizeService {
         }
         return branch;
     }
+
+    /**
+     * GEN-RECONC: close every still-{@code CREATED} attempt intent of a
+     * re-processed work item as {@code ABANDONED_LATE} (V33
+     * {@code vc.close_stale_attempt_intents}). Called by the worker's prepare
+     * segment BEFORE the new intent is created, so a retried or crash-recovered
+     * run leaves no permanently-open intent behind. Audit closure only — the
+     * abandoned intent writes no business results and creates no attempt.
+     *
+     * @return number of intents closed
+     */
+    public int closeStaleAttemptIntents(long ownerUserId, long workItemId) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (workItemId <= 0) {
+            throw new IllegalArgumentException("workItemId must be positive");
+        }
+        Integer closed = jdbc.queryForObject(
+                "SELECT vc.close_stale_attempt_intents(?, ?)",
+                Integer.class,
+                ownerUserId,
+                workItemId);
+        return closed == null ? 0 : closed;
+    }
+
+    /**
+     * GEN-RECONC: enumerate generations stuck {@code IN_PROGRESS} whose work
+     * item is already terminal (V33 {@code vc.list_stale_in_progress_generations}).
+     * Coordinator-side probe with no owner context — only id pairs are returned,
+     * never business content. The reconciliation scheduler terminalizes each row
+     * via {@link #terminalizeAsFailed}.
+     */
+    public List<StaleGenerationRow> listStaleInProgressGenerations() {
+        return jdbc.query(
+                "SELECT out_owner_user_id, out_generation_id "
+                        + "FROM vc.list_stale_in_progress_generations()",
+                (rs, rowNum) -> new StaleGenerationRow(
+                        rs.getLong("out_owner_user_id"),
+                        rs.getLong("out_generation_id")));
+    }
+
+    /** GEN-RECONC: one stale generation pair for the reconciliation scheduler. */
+    public record StaleGenerationRow(long ownerUserId, long generationId) {}
 
     private int terminalizePerItem(String sql, long workItemId, String claimToken, String claimFence) {
         requireNonBlank(claimToken, "claimToken");

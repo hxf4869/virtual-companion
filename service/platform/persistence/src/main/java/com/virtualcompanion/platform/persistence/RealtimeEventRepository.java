@@ -104,6 +104,33 @@ public class RealtimeEventRepository {
     }
 
     /**
+     * GEN-RECONC: existence probe for one durable event of a generation (V33
+     * {@code vc.generation_has_event}). The worker's prepare segment uses it to
+     * skip re-appending {@code chat.accepted} when a retried or crash-recovered
+     * run re-enters prepare (append is not idempotent — every call allocates a
+     * fresh seq). The trusted-owner assertion inside the SD function fails
+     * closed for a foreign owner.
+     */
+    public boolean hasDurableEvent(long ownerUserId, long generationId, String eventType) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (generationId <= 0) {
+            throw new IllegalArgumentException("generationId must be positive");
+        }
+        if (eventType == null || eventType.isBlank()) {
+            throw new IllegalArgumentException("eventType must not be blank");
+        }
+        Boolean present = jdbc.queryForObject(
+                "SELECT vc.generation_has_event(?, ?, ?)",
+                Boolean.class,
+                ownerUserId,
+                generationId,
+                eventType);
+        return Boolean.TRUE.equals(present);
+    }
+
+    /**
      * Pure argument validation for a durable append. Exposed for unit testing;
      * throws {@link IllegalArgumentException} on any invalid combination.
      */

@@ -41,6 +41,7 @@ import com.virtualcompanion.runtime.worker.LiveInvocationAssembler;
 import com.virtualcompanion.runtime.worker.LoggingWorkItemHandler;
 import com.virtualcompanion.runtime.worker.MemoryExtractWorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemCoordinator;
+import com.virtualcompanion.runtime.worker.GenerationReconcileScheduler;
 import com.virtualcompanion.runtime.worker.WorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemWorker;
 import com.zaxxer.hikari.HikariDataSource;
@@ -583,5 +584,17 @@ public class AuthDataSourceConfig {
             WorkItemWorker workItemWorker,
             JdbcTemplate authJdbcTemplate) {
         return new WorkItemCoordinator(workItemWorker, authJdbcTemplate);
+    }
+
+    /**
+     * GEN-RECONC: periodic reconciliation of generations stuck IN_PROGRESS
+     * whose work item is already terminal (V33). Runs on its own cadence
+     * independent of the claim coordinator poll; only active while this
+     * conditional configuration (auth + datasource enabled) is live.
+     */
+    @Bean
+    public GenerationReconcileScheduler generationReconcileScheduler(
+            GenerationFinalizeService generationFinalizeService) {
+        return new GenerationReconcileScheduler(generationFinalizeService);
     }
 }

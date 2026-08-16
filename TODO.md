@@ -2,7 +2,33 @@
 
 产品待办（现状声明见 README）：
 
-## 当前里程碑（2026-08-16 第四轮）：失败原因、会话恢复、管理与人设
+## 当前里程碑（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
+
+> 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+> 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。
+
+- [x] GEN-RECONC 生成重试/崩溃对账：V33 幂等化 promote_generation（RETRY-A 重试
+      重跑 prepare-tx 不再因 IN_PROGRESS→IN_PROGRESS 抛异常而把 generation 永久
+      卡死）；prepare 重跑时闭合遗留 CREATED attempt intent（abandon_late 死代码
+      接线）且 chat.accepted 不重复落库；新增卡死对账清扫（work_item 已终态但
+      generation 仍 IN_PROGRESS 的孤儿由调度任务终态化 FAILED_FINAL + chat.failed，
+      前端补友好文案）。
+- [ ] CTX-BUDGET 上下文 token 预算：把 contextplan 的 ContextBudget 接进
+      LiveInvocationAssembler——确定性 token 估算，按输入预算从最新消息回溯裁剪
+      历史与召回记忆（保留既有 64 条/64KiB/单条 500 字钳制），为真实 provider
+      的上下文窗口与计费打底。
+- [ ] SAMPLE-CFG 采样参数部署配置：ModelProviderProperties 增加 temperature/
+      maxTokens 部署级默认，OpenAI/Anthropic codec 透传（替代 OpenAI 硬编码
+      max_tokens），回复风格成为可运营杠杆；请求级透传留给真实 provider 接入。
+- [ ] RT-REVIVE realtime 会话恢复：authed-fetch 注入 renewAccessToken——realtime
+      ticket 铸造/resume/snapshot 遇 401 先静默刷新一次并重放（对齐 REST
+      transport 的 SESS-REVIVE），避免 token 过期后实时流被误报为「未找到或
+      无权访问」。
+- [ ] VERSION-UI 版本可见性：前端 version API client + 边界台展示后端版本/
+      构建信息（既有 GET /version 端点零前端消费）；顺带修正 README/AGENTS 的
+      模块数声明（14 而非 15）。
+
+## 已完成（2026-08-16 第四轮）：失败原因、会话恢复、管理与人设
 
 > 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
 > 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。

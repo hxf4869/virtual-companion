@@ -199,13 +199,19 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             stateService.promote(ownerUserId, generationId, GenerationStateService.IN_PROGRESS);
             // STREAM-LIVE: the turn is accepted once the worker picked it up —
             // the durable chat.accepted event is seq 1 of the generation stream.
+            // GEN-RECONC: a retried (V29 backoff) or crash-recovered re-run of
+            // this prepare segment must not append a second chat.accepted —
+            // append allocates a fresh seq on every call and is not idempotent.
             long epoch = realtimeEventRepository.streamEpoch(ownerUserId, generationId);
-            realtimeEventRepository.appendDurableEvent(
-                    ownerUserId,
-                    generationId,
-                    epoch,
-                    EVENT_CHAT_ACCEPTED,
-                    "{\"generation_id\":" + generationId + "}");
+            if (!realtimeEventRepository.hasDurableEvent(
+                    ownerUserId, generationId, EVENT_CHAT_ACCEPTED)) {
+                realtimeEventRepository.appendDurableEvent(
+                        ownerUserId,
+                        generationId,
+                        epoch,
+                        EVENT_CHAT_ACCEPTED,
+                        "{\"generation_id\":" + generationId + "}");
+            }
             LiveModelInvoker invoker = liveModelInvokerProvider.getIfAvailable();
             if (invoker == null) {
                 ref[0] = Prepared.degrade("model-providers-disabled");
@@ -224,6 +230,11 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                         claim.claimFence());
                 PreparedInvocation prepared = invoker.prepare(request);
                 if (prepared.isExternal()) {
+                    // GEN-RECONC: a previous run of this work item may have left
+                    // a CREATED intent behind (retry / crash recovery). Close it
+                    // as ABANDONED_LATE before persisting the new intent so the
+                    // audit trail never ends on a permanently-open intent.
+                    finalizeService.closeStaleAttemptIntents(ownerUserId, claim.id());
                     // Intent failure raises here → prepare-tx aborts → the
                     // outbound is forbidden (adapter zero calls, test 74).
                     finalizeService.createAttemptIntent(
