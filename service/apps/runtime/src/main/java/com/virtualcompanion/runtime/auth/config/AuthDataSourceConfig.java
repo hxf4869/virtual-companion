@@ -12,6 +12,7 @@ import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
+import com.virtualcompanion.platform.persistence.GenerationFeedbackService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
@@ -281,6 +282,12 @@ public class AuthDataSourceConfig {
     @Bean
     public GenerationReceiveService generationReceiveService(JdbcTemplate authJdbcTemplate) {
         return new GenerationReceiveService(authJdbcTemplate);
+    }
+
+    /** FEEDBACK (V35): owner-scoped generation feedback recording. */
+    @Bean
+    public GenerationFeedbackService generationFeedbackService(JdbcTemplate authJdbcTemplate) {
+        return new GenerationFeedbackService(authJdbcTemplate);
     }
 
     @Bean

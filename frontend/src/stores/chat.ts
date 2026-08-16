@@ -29,6 +29,7 @@ import {
   deleteConversation as apiDeleteConversation,
   listConversations,
   listMessages,
+  recordFeedback,
   renameConversation as apiRenameConversation,
   sendGeneration,
   asChatMode,
@@ -37,6 +38,7 @@ import {
   type ConversationListItem,
   type CreateConversationResponse,
   type Message,
+  type MessageFeedbackKind,
 } from "@/api/chat";
 import { listMemories } from "@/api/memory";
 import {
@@ -91,6 +93,9 @@ export const useChatStore = defineStore("h5-chat", () => {
   // the persona default; LISTEN/DISCUSS override it for the turn. Sticky for
   // the page session (the page's mode chips write it via setMode).
   const selectedMode = ref<ChatMode>("AUTO");
+  // FEEDBACK (FR-CHAT-003): kinds already submitted for the current generation
+  // (per-kind idempotent in the UI; the server no-ops repeats anyway).
+  const feedbackKinds = ref<MessageFeedbackKind[]>([]);
 
   /** CHAT-MODE: narrow arbitrary chip input to an approved mode (no-op otherwise). */
   function setMode(mode: unknown): void {
@@ -98,6 +103,31 @@ export const useChatStore = defineStore("h5-chat", () => {
     if (narrowed) {
       selectedMode.value = narrowed;
     }
+  }
+
+  /**
+   * FEEDBACK: submit one feedback kind for the current generation. Repeated
+   * submissions of the same kind are no-ops; an existence-hidden failure (the
+   * generation is gone) is ignored so the UI never fakes success or discloses
+   * anything. Returns true only when the kind was (or already had been)
+   * recorded.
+   */
+  async function sendFeedback(
+    transport: ChatTransport,
+    kind: MessageFeedbackKind,
+  ): Promise<boolean> {
+    const id = generationId.value;
+    if (!id || feedbackKinds.value.includes(kind)) return false;
+    try {
+      const recorded = await recordFeedback(transport, id, kind);
+      if (recorded) {
+        feedbackKinds.value = [...feedbackKinds.value, kind];
+        return true;
+      }
+    } catch {
+      // Non-fatal: keep the previous state; the user can tap again.
+    }
+    return false;
   }
 
   /** The rendered draft: joined delta payloads of the contiguous events only. */
@@ -173,6 +203,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     phase.value = "streaming";
     outcome.value = null;
     stream.value = initialState(initialEpoch);
+    feedbackKinds.value = []; // FEEDBACK: fresh generation, fresh feedback state
     const current = createStreamHandle();
     handle = current;
 
@@ -248,6 +279,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     pendingUserContent.value = "";
     usage.value = null;
     selectedMode.value = "AUTO";
+    feedbackKinds.value = [];
     handle = null;
     lastTransport = null;
   }
@@ -376,6 +408,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversationId.value = id;
     messages.value = [];
     historyHasMore.value = true;
+    feedbackKinds.value = []; // FEEDBACK: feedback tracks the active generation
     try {
       await advanceHistory(transport);
     } catch {
@@ -459,6 +492,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     usage,
     selectedMode,
     setMode,
+    feedbackKinds,
+    sendFeedback,
     draft,
     isStreaming,
     isTerminal,

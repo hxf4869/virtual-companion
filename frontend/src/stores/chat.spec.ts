@@ -39,6 +39,9 @@ function mockChatTransport(opts: {
   conversationOk?: boolean;
   /** CHAT-MODE: capture every generation request body (in call order). */
   generationBodies?: unknown[];
+  /** FEEDBACK: response for POST /generations/{id}/feedback. */
+  feedbackStatus?: number;
+  feedbackJson?: unknown;
 }): ChatTransport {
   return {
     async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
@@ -51,6 +54,18 @@ function mockChatTransport(opts: {
       }
       if (path.startsWith("/api/v1/conversations?")) {
         return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
+      }
+      if (path.includes("/feedback")) {
+        const status = opts.feedbackStatus ?? 200;
+        return {
+          ok: status === 200,
+          status,
+          json: status === 200 ? (opts.feedbackJson ?? {
+            generationId: 42,
+            kind: "UNSAFE",
+            createdAt: "2026-08-16T10:00:00Z",
+          }) : null,
+        };
       }
       if (path.includes("/generations")) {
         opts.generationBodies?.push(body);
@@ -408,6 +423,37 @@ describe("useChatStore", () => {
     // Unapproved values are ignored, never applied.
     store.setMode("CASUAL");
     expect(store.selectedMode).toBe("LISTEN");
+  });
+
+  it("FEEDBACK: sendFeedback records a kind once and marks it in state", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      feedbackJson: {
+        generationId: 42,
+        kind: "UNSAFE",
+        createdAt: "2026-08-16T10:00:00Z",
+      },
+    });
+
+    store.generationId = "42";
+    expect(await store.sendFeedback(transport, "UNSAFE")).toBe(true);
+    expect(store.feedbackKinds).toEqual(["UNSAFE"]);
+
+    // Repeating the same kind is a no-op (server is idempotent too).
+    expect(await store.sendFeedback(transport, "UNSAFE")).toBe(false);
+    expect(store.feedbackKinds).toEqual(["UNSAFE"]);
+
+    // A different kind records a second entry.
+    expect(await store.sendFeedback(transport, "FACTUAL_ERROR")).toBe(true);
+    expect(store.feedbackKinds).toEqual(["UNSAFE", "FACTUAL_ERROR"]);
+  });
+
+  it("FEEDBACK: sendFeedback without a generation is a silent no-op", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({});
+
+    expect(await store.sendFeedback(transport, "UNSAFE")).toBe(false);
+    expect(store.feedbackKinds).toEqual([]);
   });
 
   it("send without conversationId transitions to failed", async () => {

@@ -190,3 +190,11 @@ components:
       - AUTH_RATE_LIMITED
       - INTERNAL_ERROR
       - SCHEMA_UNAVAILABLE
+    MessageFeedbackKind:
+      type: string
+      enum:
+      - TOO_MECHANICAL
+      - FORGOT_CONTEXT
+      - CROSSED_BOUNDARY
+      - FACTUAL_ERROR
+      - UNSAFE

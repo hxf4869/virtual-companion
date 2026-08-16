@@ -79,6 +79,18 @@ export interface SendGenerationRequest {
   mode?: string
 }
 
+export interface GenerationFeedbackCreateRequest {
+  kind: string
+  note?: string
+}
+
+export interface GenerationFeedbackResponse {
+  generationId: string
+  kind: string
+  note?: string
+  createdAt: string
+}
+
 export interface CreateConversationRequest {
   relationshipId: string
 }
@@ -195,6 +207,7 @@ export interface VirtualCompanionApiClient {
   listMessages(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>
   getGenerationSnapshot(): Promise<VersionResponse>
+  recordGenerationFeedback(): Promise<VersionResponse>
   createRealtimeTicket(): Promise<VersionResponse>
   openRealtimeStream(): Promise<VersionResponse>
   createMemoryCandidate(): Promise<VersionResponse>

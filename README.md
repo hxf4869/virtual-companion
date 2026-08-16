@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V34 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V35 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -53,7 +53,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   idempotencyKey 重入不覆盖，AUTO 保持人设默认）、
   `GET /api/v1/conversations/{conversationId}/messages`
 - `GET /api/v1/generations/{generationId}/snapshot`（含 finalize 结算后的 usage：
-  输入/输出 token）、`POST /api/v1/generations/{generationId}/cancel`
+  输入/输出 token）、`POST /api/v1/generations/{generationId}/cancel`、
+  `POST /api/v1/generations/{generationId}/feedback`（FR-CHAT-003 生成反馈，每
+  (generation, kind) 幂等一行，kind 按 message-feedback-kinds 目录校验）
 - `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE
   恢复流；非终态 generation 保持连接并实时直推 `chat.delta` 增量，断线经 durable 事件与
   snapshot 恢复，缺失 delta 永不补齐；realtime 请求与 REST 一样支持 401 单次静默刷新重放）
@@ -72,6 +74,12 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   LISTEN/DISCUSS 翻译为固定的、经批准的轮次指令附加到人设 SYSTEM 块（AUTO 保持
   gentle-listener 默认倾听姿态），ZERO_LLM 确定性分支不受影响；前端输入区新增
   「自动/只听我说/一起聊聊」快捷模式 chips（FR-CHAT-002）。
+- 生成反馈（FEEDBACK）：V35 `vc.generation_feedback` 表 + `record_generation_feedback`
+  SD 函数（trusted-owner 断言、未批准 kind 拒绝、每 (generation, kind) 幂等且首个
+  note 生效、不存在不披露）；OpenAPI `POST /generations/{id}/feedback`；聊天页完成/
+  审查阻断后展示「太机械/忘记了/越界/事实错误/不安全」一键反馈；反馈行经
+  generation_id 可关联 generation_route（模型/供应商）、provider attempt 与授权快照
+  （A4 负反馈可关联验收口径）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

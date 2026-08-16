@@ -10,6 +10,7 @@ import {
   deleteConversation,
   listConversations,
   listMessages,
+  recordFeedback,
   renameConversation,
   sendGeneration,
   type ChatTransport,
@@ -311,6 +312,68 @@ describe("cancelGeneration", () => {
     });
 
     await expect(cancelGeneration(transport, "42")).rejects.toThrow(ChatHttpError);
+  });
+});
+
+describe("recordFeedback (FEEDBACK)", () => {
+  const FEEDBACK_JSON = {
+    generationId: 42,
+    kind: "FACTUAL_ERROR",
+    note: "数字不对",
+    createdAt: "2026-08-16T10:00:00Z",
+  };
+
+  it("POSTs to generations/{id}/feedback with kind + note", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: FEEDBACK_JSON,
+    });
+
+    const result = await recordFeedback(transport, "42", "FACTUAL_ERROR", "数字不对");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].path).toBe("/api/v1/generations/42/feedback");
+    expect(calls[0].body).toEqual({ kind: "FACTUAL_ERROR", note: "数字不对" });
+    expect(result).toEqual({
+      generationId: "42",
+      kind: "FACTUAL_ERROR",
+      note: "数字不对",
+      createdAt: "2026-08-16T10:00:00Z",
+    });
+  });
+
+  it("omits the note from the body when undefined", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: FEEDBACK_JSON,
+    });
+
+    await recordFeedback(transport, "42", "UNSAFE");
+
+    expect(calls[0].body).toEqual({ kind: "UNSAFE" });
+  });
+
+  it("returns null on 404 (existence hidden)", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
+    });
+
+    expect(await recordFeedback(transport, "999", "UNSAFE")).toBeNull();
+  });
+
+  it("throws on 500", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 500,
+      json: null,
+    });
+
+    await expect(recordFeedback(transport, "42", "UNSAFE")).rejects.toThrow(ChatHttpError);
   });
 });
 

@@ -84,6 +84,13 @@
       "ACCOUNT_PRIVATE",
       "ACCOUNT_SHARED"
     ],
+    "MessageFeedbackKind": [
+      "TOO_MECHANICAL",
+      "FORGOT_CONTEXT",
+      "CROSSED_BOUNDARY",
+      "FACTUAL_ERROR",
+      "UNSAFE"
+    ],
     "ModelProtocol": [
       "OPENAI_CHAT_COMPLETIONS",
       "OPENAI_RESPONSES",
@@ -386,13 +393,18 @@
             "file": "error-codes.yaml",
             "kind": "enum",
             "typeName": "ErrorCode"
+          },
+          {
+            "file": "message-feedback-kinds.yaml",
+            "kind": "enum",
+            "typeName": "MessageFeedbackKind"
           }
         ],
         "generatorVersion": "1.0.0",
         "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "43f078ef99f0f840e2689e3f9b29a2640d5282aba3fa1e2e7b39fb7f71d0565b"
+      "sha256": "cbd2f717ca0daf6323342733b554874583327f5c646568b505ab79c308a3ef0b"
     },
     "data-categories.yaml": {
       "document": {
@@ -759,6 +771,35 @@
         "schemaVersion": 1
       },
       "sha256": "9c0e9606d46e304e16d153de2c21a9df23ce2a7a5429812407b0ab2f854f99bf"
+    },
+    "message-feedback-kinds.yaml": {
+      "document": {
+        "catalogId": "message-feedback-kinds",
+        "entries": [
+          {
+            "code": "TOO_MECHANICAL",
+            "order": 0
+          },
+          {
+            "code": "FORGOT_CONTEXT",
+            "order": 1
+          },
+          {
+            "code": "CROSSED_BOUNDARY",
+            "order": 2
+          },
+          {
+            "code": "FACTUAL_ERROR",
+            "order": 3
+          },
+          {
+            "code": "UNSAFE",
+            "order": 4
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "d71996a8c3a45e3659dafbcb3cbfe5109dd5d8c5b6be473a7d24f69d5b99013e"
     },
     "message-states.yaml": {
       "document": {

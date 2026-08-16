@@ -203,6 +203,27 @@
           <text>{{ `本轮用量：输入 ${usage.inputTokens} / 输出 ${usage.outputTokens} tokens` }}</text>
         </view>
 
+        <!-- FEEDBACK (FR-CHAT-003): one-tap feedback on the finished reply -->
+        <view
+          v-if="showFeedback"
+          class="chat-feedback-row"
+          data-testid="feedback-row"
+          role="group"
+          aria-label="回复反馈"
+        >
+          <text class="chat-feedback-label">这条回复有问题吗？</text>
+          <button
+            v-for="opt in FEEDBACK_OPTIONS"
+            :key="opt.value"
+            class="chat-feedback-chip"
+            :data-testid="`feedback-${opt.value}`"
+            :disabled="feedbackKinds.includes(opt.value)"
+            @click="onFeedback(opt.value)"
+          >
+            {{ feedbackKinds.includes(opt.value) ? `已反馈：${opt.label}` : opt.label }}
+          </button>
+        </view>
+
         <!-- MEM-PROMPT: pending candidates surfaced after a completed turn -->
         <view
           v-if="pendingMemoryCount > 0"
@@ -314,6 +335,7 @@ import { personaDisplayName } from "@/domain/persona";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import type { RealtimeDeps } from "@/api/realtime";
+import { asFeedbackKind } from "@/api/chat";
 import type { ConversationListItem } from "@/api/chat";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -348,6 +370,14 @@ export default defineComponent({
       { value: "LISTEN", label: "只听我说" },
       { value: "DISCUSS", label: "一起聊聊" },
     ] as const;
+    // FEEDBACK (FR-CHAT-003): approved feedback kinds with stable labels.
+    const FEEDBACK_OPTIONS = [
+      { value: "TOO_MECHANICAL", label: "太机械" },
+      { value: "FORGOT_CONTEXT", label: "忘记了" },
+      { value: "CROSSED_BOUNDARY", label: "越界" },
+      { value: "FACTUAL_ERROR", label: "事实错误" },
+      { value: "UNSAFE", label: "不安全" },
+    ] as const;
 
     // sessionId: client-generated UUID per chat session — the real source for
     // the realtime ticket binding (mint body carries it).
@@ -380,6 +410,14 @@ export default defineComponent({
     const pendingMemoryCount = computed(() => store.pendingMemoryCount);
     const draft = computed(() => store.draft);
     const usage = computed(() => store.usage);
+    // FEEDBACK: kinds already submitted for the current generation.
+    const feedbackKinds = computed(() => store.feedbackKinds);
+    // FEEDBACK: offer feedback only when the turn produced a visible reply
+    // (completed) or refused one (blocked) — never mid-stream or for pure
+    // transport failures with nothing to judge.
+    const showFeedback = computed(
+      () => store.phase === "completed" || store.phase === "blocked",
+    );
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
     // CHAT-MODE: mirrors the store's sticky selection for the chip highlight.
@@ -526,6 +564,13 @@ export default defineComponent({
     function onSelectMode(mode: string): void {
       if (isStreaming.value) return;
       store.setMode(mode);
+    }
+
+    /** FEEDBACK: submit one feedback kind for the finished turn. */
+    async function onFeedback(kind: string): Promise<void> {
+      const narrowed = asFeedbackKind(kind);
+      if (!narrowed) return;
+      await store.sendFeedback(transport, narrowed);
     }
 
     /** SESS-REVIVE: revoke the refresh cookie server-side and go to login. */
@@ -753,6 +798,10 @@ export default defineComponent({
       MODE_OPTIONS,
       selectedMode,
       onSelectMode,
+      FEEDBACK_OPTIONS,
+      feedbackKinds,
+      showFeedback,
+      onFeedback,
       statusText,
       canRetry,
       roleLabel,
@@ -956,6 +1005,32 @@ export default defineComponent({
 }
 .chat-mode-chip[disabled] {
   opacity: 0.5;
+}
+/* FEEDBACK: one-tap feedback chips on the finished reply. */
+.chat-feedback-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10rpx;
+  margin-bottom: 16rpx;
+}
+.chat-feedback-label {
+  font-size: 24rpx;
+  color: #8fa0bd;
+  margin-right: 4rpx;
+}
+.chat-feedback-chip {
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  color: #b8c4d8;
+  font-size: 22rpx;
+}
+.chat-feedback-chip[disabled] {
+  opacity: 0.6;
+  border-color: #2a6a9a;
+  color: #ffffff;
 }
 .chat-input {
   flex: 1;

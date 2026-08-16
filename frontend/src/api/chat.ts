@@ -57,6 +57,35 @@ export interface Message {
   createdAt?: string;
 }
 
+/** FEEDBACK (FR-CHAT-003): message-feedback-kinds catalog codes. */
+export type MessageFeedbackKind =
+  | "TOO_MECHANICAL"
+  | "FORGOT_CONTEXT"
+  | "CROSSED_BOUNDARY"
+  | "FACTUAL_ERROR"
+  | "UNSAFE";
+
+/** FEEDBACK: narrow an arbitrary string to an approved feedback kind. */
+export function asFeedbackKind(value: unknown): MessageFeedbackKind | undefined {
+  switch (value) {
+    case "TOO_MECHANICAL":
+    case "FORGOT_CONTEXT":
+    case "CROSSED_BOUNDARY":
+    case "FACTUAL_ERROR":
+    case "UNSAFE":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+export interface GenerationFeedbackResponse {
+  generationId: string;
+  kind: MessageFeedbackKind;
+  note?: string;
+  createdAt: string;
+}
+
 export interface CreateConversationResponse {
   conversationId: string;
 }
@@ -362,4 +391,47 @@ export async function cancelGeneration(
   );
   guardResult(r);
   return asGeneration(r.json);
+}
+
+function asFeedbackResponse(json: unknown): GenerationFeedbackResponse | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const generationId = asId(o.generationId);
+  const kind = asFeedbackKind(o.kind);
+  const createdAt = asString(o, "createdAt");
+  if (!generationId || !kind || !createdAt) return null;
+  return {
+    generationId,
+    kind,
+    note: asString(o, "note"),
+    createdAt,
+  };
+}
+
+/**
+ * FEEDBACK (FR-CHAT-003): record user feedback for a generation
+ * (vc.record_generation_feedback). Repeating the same kind for the same
+ * generation is an idempotent no-op. Returns the recorded row on success, null
+ * on 403/404 (existence hidden); other non-OK statuses throw.
+ */
+export async function recordFeedback(
+  t: ChatTransport,
+  generationId: string,
+  kind: MessageFeedbackKind,
+  note?: string,
+): Promise<GenerationFeedbackResponse | null> {
+  const body: Record<string, unknown> = { kind };
+  if (note !== undefined) {
+    body.note = note;
+  }
+  const r = await t.request(
+    "POST",
+    `${GENERATIONS_BASE}/${encodeURIComponent(generationId)}/feedback`,
+    body,
+  );
+  if (!r.ok) {
+    if (isExistenceHidden(r.status)) return null;
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  return asFeedbackResponse(r.json);
 }

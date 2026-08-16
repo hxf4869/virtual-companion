@@ -44,6 +44,9 @@ public interface VirtualCompanionApi {
     /** Read a consistent generation snapshot. */
     GenerationSnapshot getGenerationSnapshot();
 
+    /** Record user feedback on a generation (FR-CHAT-003). */
+    GenerationFeedbackResponse recordGenerationFeedback();
+
     /** Mint a single-use Fetch-SSE resume ticket bound to the caller's generation. */
     RealtimeTicket createRealtimeTicket();
 

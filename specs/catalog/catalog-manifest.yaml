@@ -55,3 +55,6 @@ catalogs:
 - file: error-codes.yaml
   kind: enum
   typeName: ErrorCode
+- file: message-feedback-kinds.yaml
+  kind: enum
+  typeName: MessageFeedbackKind

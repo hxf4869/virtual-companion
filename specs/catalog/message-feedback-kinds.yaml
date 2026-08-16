@@ -1,0 +1,13 @@
+schemaVersion: 1
+catalogId: message-feedback-kinds
+entries:
+- code: TOO_MECHANICAL
+  order: 0
+- code: FORGOT_CONTEXT
+  order: 1
+- code: CROSSED_BOUNDARY
+  order: 2
+- code: FACTUAL_ERROR
+  order: 3
+- code: UNSAFE
+  order: 4

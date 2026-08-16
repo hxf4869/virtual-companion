@@ -15,6 +15,7 @@
     "listMessages",
     "cancelGeneration",
     "getGenerationSnapshot",
+    "recordGenerationFeedback",
     "createRealtimeTicket",
     "openRealtimeStream",
     "createMemoryCandidate",
@@ -34,6 +35,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "c0ac31a127fa6f55e94963f9a5e0cae9226680ddf6a6c13e213f795e36b76024"
+    "sha256": "0b0020dcdf920e70dadf580e45b331066b81ac78d9643cfbb6f8d5a0ac2c9a28"
   }
 }

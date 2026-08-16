@@ -13,8 +13,13 @@
       vc_api 可执行）+ 组装器外部分支把显式模式翻译为固定轮次指令附加到人设
       SYSTEM 块（AUTO 保持 gentle-listener 默认）+ 前端输入区「自动/只听我说/
       一起聊聊」快捷 chips + SQL/单元/组件测试（FR-CHAT-002）。
+- [x] FEEDBACK 生成反馈：catalog 新增 message-feedback-kinds（TOO_MECHANICAL/
+      FORGOT_CONTEXT/CROSSED_BOUNDARY/FACTUAL_ERROR/UNSAFE）+ V35 迁移
+      （vc.generation_feedback 表 + record_generation_feedback SD：trusted-owner
+      断言、未批准 kind 拒绝、(generation, kind) 幂等首个 note 生效、不存在不披露）
+      + OpenAPI POST /generations/{id}/feedback + 聊天页一键反馈 chips（FR-CHAT-003，
+      A4 负反馈可关联口径）。
 - [ ] MSG-DELETE 单条消息删除（FR-CHAT-004 / FR-DATA-003）
-- [ ] FEEDBACK 生成反馈（FR-CHAT-003）
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

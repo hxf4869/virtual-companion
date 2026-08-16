@@ -96,6 +96,37 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("FEEDBACK: shows the five feedback chips after a completed turn and submits one", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // Idle: no feedback row.
+    expect(wrapper.find('[data-testid="feedback-row"]').exists()).toBe(false);
+
+    const store = useChatStore();
+    const feedbackSpy = vi
+      .spyOn(store, "sendFeedback")
+      .mockResolvedValue(true);
+    store.phase = "completed";
+    await wrapper.vm.$nextTick();
+
+    const row = wrapper.find('[data-testid="feedback-row"]');
+    expect(row.exists()).toBe(true);
+    for (const kind of [
+      "TOO_MECHANICAL",
+      "FORGOT_CONTEXT",
+      "CROSSED_BOUNDARY",
+      "FACTUAL_ERROR",
+      "UNSAFE",
+    ]) {
+      expect(wrapper.find(`button[data-testid="feedback-${kind}"]`).exists()).toBe(true);
+    }
+
+    await wrapper.find('button[data-testid="feedback-UNSAFE"]').trigger("click");
+    expect(feedbackSpy).toHaveBeenCalledWith(expect.anything(), "UNSAFE");
+    wrapper.unmount();
+  });
+
   it("disables the send button when the input is empty", async () => {
     const wrapper = mountPage();
     await flushPromises();

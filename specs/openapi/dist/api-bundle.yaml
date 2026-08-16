@@ -422,6 +422,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/generations/{generationId}/feedback:
+    post:
+      operationId: recordGenerationFeedback
+      summary: Record user feedback on a generation (FR-CHAT-003)
+      description: Records one owner-scoped feedback row per (generation, kind) via vc.record_generation_feedback; a repeated
+        submission of the same kind for the same generation is an idempotent no-op (the first note wins). kind follows the
+        message-feedback-kinds catalog. A foreign or absent generation maps to NOT_FOUND_OR_FORBIDDEN; existence is never
+        disclosed. Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/GenerationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationFeedbackCreateRequest'
+      responses:
+        '200':
+          description: The recorded feedback (created or already present)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationFeedbackResponse'
+        '400':
+          description: Unapproved feedback kind or an invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/realtime/tickets:
     post:
       operationId: createRealtimeTicket
@@ -1266,6 +1307,48 @@ components:
       - LISTEN
       - DISCUSS
       default: AUTO
+    GenerationFeedbackCreateRequest:
+      type: object
+      description: Body for recording user feedback on a generation (FR-CHAT-003).
+      required:
+      - kind
+      properties:
+        kind:
+          $ref: '#/components/schemas/MessageFeedbackKind'
+        note:
+          type: string
+          maxLength: 500
+          description: Optional free-text clarification (first submission wins)
+    MessageFeedbackKind:
+      type: string
+      description: 'message-feedback-kinds catalog code (FR-CHAT-003): TOO_MECHANICAL (太机械), FORGOT_CONTEXT (忘记了), CROSSED_BOUNDARY
+        (越界), FACTUAL_ERROR (事实错误), UNSAFE (不安全).'
+      enum:
+      - TOO_MECHANICAL
+      - FORGOT_CONTEXT
+      - CROSSED_BOUNDARY
+      - FACTUAL_ERROR
+      - UNSAFE
+    GenerationFeedbackResponse:
+      type: object
+      description: The recorded (or already present) generation feedback row.
+      required:
+      - generationId
+      - kind
+      - createdAt
+      properties:
+        generationId:
+          type: string
+          description: Owning generation identifier
+        kind:
+          $ref: '#/components/schemas/MessageFeedbackKind'
+        note:
+          type: string
+          description: Free-text clarification, absent when none was given
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
     CreateConversationRequest:
       type: object
       description: Body for creating a conversation under a relationship.
