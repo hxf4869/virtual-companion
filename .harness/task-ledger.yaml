@@ -1266,3 +1266,9 @@ tasks:
     taskCard: docs/tasks/TASK-0235-acceptance-evidence-governance.md
     evidence: docs/evidence/TASK-0235/evidence-pack.json
     handoff: docs/handoffs/TASK-0235.json
+  TASK-0236:
+    state: ACCEPTED
+    contractVersion: 2
+    taskCard: docs/tasks/TASK-0236-task0235-evidence-gap-recognition.md
+    evidence: docs/evidence/TASK-0236/evidence-pack.json
+    handoff: docs/handoffs/TASK-0236.json
