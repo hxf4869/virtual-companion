@@ -51,13 +51,21 @@ export interface ResumeRequest {
 
 /**
  * Typed snapshot result (P1-07): a failed fetch (HTTP/parse) has ok=false and
- * must never be treated as a safe terminal snapshot.
+ * must never be treated as a safe terminal snapshot. USAGE-VIZ: usage carries
+ * the settled provider tokens when the snapshot endpoint returns them.
  */
+export interface SnapshotUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface SnapshotResult {
   ok: boolean;
   /** HTTP status when known, null for network/parse failures. */
   status: number | null;
   events: StreamEvent[];
+  /** Settled provider usage; absent before finalize or on failed snapshots. */
+  usage?: SnapshotUsage | null;
 }
 
 export interface RealtimeDeps {
@@ -78,6 +86,8 @@ export interface StreamHandle {
 export type StreamOutcome =
   | "completed"
   | "cancelled"
+  | "blocked"
+  | "failed"
   | "not_found_or_forbidden"
   | "exhausted";
 
@@ -88,6 +98,27 @@ export interface StreamResult {
 
 function isCancel(handle: StreamHandle | undefined): boolean {
   return Boolean(handle && handle.cancelled);
+}
+
+/**
+ * TERM-SEM: map a terminal stream state to its typed outcome. chat.completed
+ * completes; the other durable terminal events surface as their own outcomes
+ * so the UI never collapses server cancelled/blocked/failed into a generic
+ * failure. Non-terminal states surface as exhausted.
+ */
+function terminalOutcome(state: StreamState): StreamOutcome {
+  switch (state.terminalEventType) {
+    case "chat.completed":
+      return "completed";
+    case "chat.cancelled":
+      return "cancelled";
+    case "chat.blocked":
+      return "blocked";
+    case "chat.failed":
+      return "failed";
+    default:
+      return "exhausted";
+  }
 }
 
 /**
@@ -147,7 +178,7 @@ export async function streamGeneration(
         for (const event of result.events) {
           state = applyEvent(state, event);
           if (state.terminal) {
-            return { state, outcome: "completed" };
+            return { state, outcome: terminalOutcome(state) };
           }
           if (state.status === "gap") {
             break; // recover via snapshot below
@@ -157,7 +188,7 @@ export async function streamGeneration(
           }
         }
         if (state.terminal) {
-          return { state, outcome: "completed" };
+          return { state, outcome: terminalOutcome(state) };
         }
         if (state.status === "gap") {
           const snapshot = await safeSnapshot(deps, generationId, handle);
@@ -168,7 +199,7 @@ export async function streamGeneration(
           }
           state = applyTerminalSnapshot(state, snapshot);
           return state.terminal
-            ? { state, outcome: "completed" }
+            ? { state, outcome: terminalOutcome(state) }
             : { state, outcome: "exhausted" };
         }
         if (state.status === "reset_required") {
@@ -185,7 +216,7 @@ export async function streamGeneration(
         // Only a genuine terminal snapshot completes (P1-07).
         state = applyTerminalSnapshot(state, result.events);
         return state.terminal
-          ? { state, outcome: "completed" }
+          ? { state, outcome: terminalOutcome(state) }
           : { state, outcome: "exhausted" };
       }
 
@@ -199,7 +230,7 @@ export async function streamGeneration(
         }
         state = applyTerminalSnapshot(state, snapshot);
         return state.terminal
-          ? { state, outcome: "completed" }
+          ? { state, outcome: terminalOutcome(state) }
           : { state, outcome: "exhausted" };
       }
 

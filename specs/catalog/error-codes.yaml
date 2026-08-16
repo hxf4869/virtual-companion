@@ -35,3 +35,5 @@ entries:
   order: 15
 - code: AUTH_RATE_LIMITED
   order: 16
+- code: INTERNAL_ERROR
+  order: 17

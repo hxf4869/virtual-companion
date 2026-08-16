@@ -31,11 +31,28 @@ export interface StreamState {
   cursor: number;
   /** The contiguous, applied events that may be safely rendered as draft. */
   events: readonly StreamEvent[];
-  /** True once a terminal event (chat.completed) has been applied. */
+  /** True once a terminal event has been applied. */
   terminal: boolean;
+  /**
+   * TERM-SEM: which terminal event froze the stream, so the UI can distinguish
+   * completed / cancelled / blocked / failed instead of collapsing every
+   * non-completed terminal into a generic failure. Null while not terminal.
+   */
+  terminalEventType: string | null;
 }
 
+/**
+ * Durable terminal events that freeze the stream (realtime-events catalog).
+ * chat.completed exists only after final message + final review commit; the
+ * other three close the stream without a final assistant message.
+ */
 export const TERMINAL_EVENT_TYPE = "chat.completed";
+export const TERMINAL_EVENT_TYPES = new Set([
+  "chat.completed",
+  "chat.cancelled",
+  "chat.blocked",
+  "chat.failed",
+]);
 
 export function initialState(epoch: number): StreamState {
   return {
@@ -44,6 +61,7 @@ export function initialState(epoch: number): StreamState {
     cursor: 0,
     events: [],
     terminal: false,
+    terminalEventType: null,
   };
 }
 
@@ -83,13 +101,14 @@ export function applyEvent(prev: StreamState, event: StreamEvent): StreamState {
 
   // Contiguous: eventSeq === cursor + 1. Apply and advance.
   const events = [...prev.events, event];
-  const terminal = event.eventType === TERMINAL_EVENT_TYPE;
+  const terminal = TERMINAL_EVENT_TYPES.has(event.eventType);
   return {
     status: terminal ? "terminal" : "streaming",
     epoch: prev.epoch,
     cursor: event.eventSeq,
     events,
     terminal,
+    terminalEventType: terminal ? event.eventType : null,
   };
 }
 
@@ -106,7 +125,14 @@ export function resetStream(prev: StreamState): StreamState {
   if (prev.status === "cancelled") {
     return prev;
   }
-  return { ...prev, status: "reset_required", events: [], cursor: 0, terminal: false };
+  return {
+    ...prev,
+    status: "reset_required",
+    events: [],
+    cursor: 0,
+    terminal: false,
+    terminalEventType: null,
+  };
 }
 
 /** CANCELLED: freeze the stream; no further events apply. */
@@ -119,19 +145,24 @@ export function cancelStream(prev: StreamState): StreamState {
  * snapshot and freeze. The snapshot is authoritative, so the partial draft is
  * discarded rather than merged.
  *
- * P1-07 (TASK-0104): only a snapshot containing the durable terminal event
- * (chat.completed) may complete the stream. A failed/empty/non-terminal
- * snapshot returns the previous state unchanged -- the caller must surface it
- * as a typed non-terminal failure, never as a safe completion.
+ * P1-07 (TASK-0104): only a snapshot containing a durable terminal event may
+ * complete the stream. A failed/empty/non-terminal snapshot returns the
+ * previous state unchanged -- the caller must surface it as a typed
+ * non-terminal failure, never as a safe completion. TERM-SEM: any of the four
+ * durable terminal events (completed/cancelled/blocked/failed) is a genuine
+ * server terminal, and the stream completes under that event's semantics.
  */
 export function applyTerminalSnapshot(prev: StreamState, events: StreamEvent[]): StreamState {
   if (prev.status === "cancelled") {
     return prev;
   }
-  if (!events.some((event) => event.eventType === TERMINAL_EVENT_TYPE)) {
+  const ordered = [...events].sort((a, b) => a.eventSeq - b.eventSeq);
+  const terminalEvent = [...ordered]
+    .reverse()
+    .find((event) => TERMINAL_EVENT_TYPES.has(event.eventType));
+  if (!terminalEvent) {
     return prev;
   }
-  const ordered = [...events].sort((a, b) => a.eventSeq - b.eventSeq);
   const cursor = ordered.length === 0 ? prev.cursor : ordered[ordered.length - 1].eventSeq;
   return {
     status: "terminal",
@@ -139,6 +170,7 @@ export function applyTerminalSnapshot(prev: StreamState, events: StreamEvent[]):
     cursor,
     events: ordered,
     terminal: true,
+    terminalEventType: terminalEvent.eventType,
   };
 }
 
@@ -147,5 +179,5 @@ export function beginStreaming(prev: StreamState, epoch: number): StreamState {
   if (prev.status === "cancelled" || prev.terminal) {
     return prev;
   }
-  return { status: "streaming", epoch, cursor: 0, events: [], terminal: false };
+  return { status: "streaming", epoch, cursor: 0, events: [], terminal: false, terminalEventType: null };
 }

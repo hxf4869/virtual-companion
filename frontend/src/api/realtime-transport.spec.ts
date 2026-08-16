@@ -284,6 +284,50 @@ describe("fetchSnapshot", () => {
     expect(result.events.map((e) => e.eventSeq)).toEqual([5]);
   });
 
+  it("parses the settled usage when the snapshot carries it (USAGE-VIZ)", async () => {
+    const { fn } = recorder(() =>
+      jsonResponse(200, {
+        events: [{ event: "chat.completed", eventSeq: 1, streamEpoch: 1, payload: "done" }],
+        usage: { inputTokens: 42, outputTokens: 58 },
+      }),
+    );
+    const deps = createBrowserRealtimeDeps(CONTEXT, fn);
+
+    const result = await deps.fetchSnapshot("101");
+
+    expect(result.ok).toBe(true);
+    expect(result.usage).toEqual({ inputTokens: 42, outputTokens: 58 });
+  });
+
+  it("leaves usage absent for a snapshot without settled usage", async () => {
+    const { fn } = recorder(() =>
+      jsonResponse(200, {
+        events: [{ event: "chat.accepted", eventSeq: 1, streamEpoch: 1, payload: "done" }],
+      }),
+    );
+    const deps = createBrowserRealtimeDeps(CONTEXT, fn);
+
+    const result = await deps.fetchSnapshot("101");
+
+    expect(result.ok).toBe(true);
+    expect(result.usage).toBeUndefined();
+  });
+
+  it("rejects a malformed usage object (USAGE-VIZ strict parse)", async () => {
+    const { fn } = recorder(() =>
+      jsonResponse(200, {
+        events: [{ event: "chat.completed", eventSeq: 1, streamEpoch: 1, payload: "done" }],
+        usage: { inputTokens: -1, outputTokens: "many" },
+      }),
+    );
+    const deps = createBrowserRealtimeDeps(CONTEXT, fn);
+
+    const result = await deps.fetchSnapshot("101");
+
+    expect(result.ok).toBe(true);
+    expect(result.usage).toBeUndefined();
+  });
+
   it("returns a typed failure on a non-OK status (no fake terminal)", async () => {
     const { fn } = recorder(() => jsonResponse(404, {}));
     const deps = createBrowserRealtimeDeps(CONTEXT, fn);

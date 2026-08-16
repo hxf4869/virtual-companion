@@ -51,7 +51,10 @@ public class GenerationStateService {
 
     /**
      * Read a generation snapshot (status + assistant message id + committed
-     * realtime events) via {@code vc.read_generation_snapshot} (V8).
+     * realtime events) via {@code vc.read_generation_snapshot} (V8), plus the
+     * settled provider usage (USAGE-VIZ) from {@code vc.generation_usage}
+     * (FORCE-RLS, direct read like {@link MessageRepository}). Usage is only
+     * present once finalize has settled it.
      */
     public GenerationSnapshot readSnapshot(long ownerUserId, long generationId) {
         if (ownerUserId <= 0) {
@@ -60,15 +63,31 @@ public class GenerationStateService {
         if (generationId <= 0) {
             throw new IllegalArgumentException("generationId must be positive");
         }
-        return jdbc.queryForObject(
+        GenerationSnapshot snapshot = jdbc.queryForObject(
                 "SELECT out_status, out_assistant_message_id, out_events "
                         + "FROM vc.read_generation_snapshot(?, ?)",
                 (rs, rowNum) -> new GenerationSnapshot(
                         rs.getString("out_status"),
                         (Long) rs.getObject("out_assistant_message_id"),
-                        rs.getString("out_events")),
+                        rs.getString("out_events"),
+                        null,
+                        null),
                 ownerUserId,
                 generationId);
+        if (snapshot == null) {
+            throw new IllegalStateException(
+                    "read_generation_snapshot returned no snapshot for generation " + generationId);
+        }
+        // USAGE-VIZ: settled usage row (at most one: finalize writes it).
+        return jdbc.query(
+                "SELECT input_tokens, output_tokens FROM vc.generation_usage "
+                        + "WHERE owner_user_id = ? AND generation_id = ? "
+                        + "ORDER BY id DESC LIMIT 1",
+                (rs, rowNum) -> snapshot.withUsage(
+                        rs.getLong("input_tokens"),
+                        rs.getLong("output_tokens")),
+                ownerUserId,
+                generationId).stream().findFirst().orElse(snapshot);
     }
 
     static void validatePromote(long ownerUserId, long generationId, String toStatus) {
@@ -83,10 +102,23 @@ public class GenerationStateService {
         }
     }
 
-    /** Generation snapshot view returned by {@code vc.read_generation_snapshot}. */
-    public record GenerationSnapshot(String status, Long assistantMessageId, String eventsJson) {
+    /**
+     * Generation snapshot view returned by {@code vc.read_generation_snapshot}.
+     * {@code inputTokens}/{@code outputTokens} are the settled provider usage
+     * (USAGE-VIZ); both null until finalize settles them.
+     */
+    public record GenerationSnapshot(
+            String status,
+            Long assistantMessageId,
+            String eventsJson,
+            Long inputTokens,
+            Long outputTokens) {
         public GenerationSnapshot {
             Objects.requireNonNull(status, "status must not be null");
+        }
+
+        GenerationSnapshot withUsage(long input, long output) {
+            return new GenerationSnapshot(status, assistantMessageId, eventsJson, input, output);
         }
     }
 }

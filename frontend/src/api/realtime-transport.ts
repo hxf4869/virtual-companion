@@ -29,6 +29,7 @@ import type {
 } from "@/api/realtime";
 import { parseStreamEvent } from "@/api/realtime-envelope";
 import { readSseFrames, SseAbortedError, SseParseError, type SseFrame } from "@/api/sse-parser";
+import type { SnapshotUsage } from "@/api/realtime";
 import type { StreamEvent } from "@/domain/stream-reducer";
 
 const TICKETS_ENDPOINT = "/api/v1/realtime/tickets";
@@ -284,5 +285,19 @@ async function fetchSnapshot(
       events.push(event);
     }
   }
-  return { ok: true, status: response.status, events };
+  // USAGE-VIZ: settled provider tokens, present only after finalize.
+  const usage = parseUsage(data.usage);
+  return usage
+    ? { ok: true, status: response.status, events, usage }
+    : { ok: true, status: response.status, events };
+}
+
+/** USAGE-VIZ: strict parse of the snapshot usage object (absent → null). */
+function parseUsage(raw: unknown): SnapshotUsage | null {
+  if (!isRecord(raw)) return null;
+  const inputTokens = Number(raw.inputTokens);
+  const outputTokens = Number(raw.outputTokens);
+  if (!Number.isInteger(inputTokens) || inputTokens < 0) return null;
+  if (!Number.isInteger(outputTokens) || outputTokens < 0) return null;
+  return { inputTokens, outputTokens };
 }

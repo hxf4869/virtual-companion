@@ -155,13 +155,30 @@ class GenerationControllerTest {
     @Test
     void snapshotReturnsStatusAssistantMessageAndEvents() throws Exception {
         when(generationStateService.readSnapshot(1L, 55L))
-                .thenReturn(new GenerationSnapshot("COMPLETED", 300L, "[{\"event\":\"chat.completed\"}]"));
+                .thenReturn(new GenerationSnapshot(
+                        "COMPLETED", 300L, "[{\"event\":\"chat.completed\"}]", 42L, 58L));
 
         mockMvc.perform(get("/api/v1/generations/55/snapshot"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.assistantMessageId").value(300))
-                .andExpect(jsonPath("$.events").value("[{\"event\":\"chat.completed\"}]"));
+                .andExpect(jsonPath("$.events").value("[{\"event\":\"chat.completed\"}]"))
+                .andExpect(jsonPath("$.usage.inputTokens").value(42))
+                .andExpect(jsonPath("$.usage.outputTokens").value(58));
+
+        verify(generationStateService).readSnapshot(1L, 55L);
+    }
+
+    @Test
+    void snapshotOmitsUsageBeforeFinalizeSettlesIt() throws Exception {
+        when(generationStateService.readSnapshot(1L, 55L))
+                .thenReturn(new GenerationSnapshot(
+                        "IN_PROGRESS", null, "[{\"event\":\"chat.accepted\"}]", null, null));
+
+        mockMvc.perform(get("/api/v1/generations/55/snapshot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.usage").doesNotExist());
 
         verify(generationStateService).readSnapshot(1L, 55L);
     }

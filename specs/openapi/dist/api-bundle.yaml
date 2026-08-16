@@ -996,7 +996,7 @@ components:
     GenerationSnapshot:
       type: object
       description: 'A consistent point-in-time read of a generation: status, final assistant message id and the ordered realtime
-        event stream (INV-RT-001).'
+        event stream (INV-RT-001). usage is present only after finalize settles the provider usage (USAGE-VIZ).'
       required:
       - status
       - events
@@ -1013,6 +1013,25 @@ components:
           items:
             type: object
             additionalProperties: true
+        usage:
+          $ref: '#/components/schemas/GenerationUsage'
+    GenerationUsage:
+      type: object
+      description: Settled provider token usage for one generation (USAGE-VIZ).
+      required:
+      - inputTokens
+      - outputTokens
+      properties:
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Provider input (prompt) tokens settled at finalize
+        outputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Provider output (completion) tokens settled at finalize
     RealtimeTicketCreateRequest:
       type: object
       description: Resume cursor the caller binds a ticket to. Identifiers and counters are decimal strings (hashid encoding

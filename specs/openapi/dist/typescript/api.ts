@@ -37,6 +37,12 @@ export interface GenerationSnapshot {
   status: string
   assistantMessageId?: string
   events: string
+  usage?: string
+}
+
+export interface GenerationUsage {
+  inputTokens: string
+  outputTokens: string
 }
 
 export interface RealtimeTicketCreateRequest {

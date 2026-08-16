@@ -149,6 +149,53 @@ describe("disposition helpers", () => {
     expect(state.status).not.toBe("terminal");
   });
 
+  // TERM-SEM: any durable terminal event freezes the stream under its own
+  // semantics; the UI must distinguish cancelled/blocked/failed from completed.
+  const TERM_SEM_CASES: Array<[string, string]> = [
+    ["chat.cancelled", "cancelled"],
+    ["chat.blocked", "blocked"],
+    ["chat.failed", "failed"],
+  ];
+
+  it.each(TERM_SEM_CASES)(
+    "applyEvent freezes on %s and records it as the terminal type",
+    (eventType, _label) => {
+      let state = initialState(1);
+      state = applyEvent(state, delta(1));
+      state = applyEvent(state, {
+        eventSeq: 2,
+        streamEpoch: 1,
+        eventType,
+        payload: { reasonCode: "X" },
+      });
+
+      expect(state.status).toBe("terminal");
+      expect(state.terminal).toBe(true);
+      expect(state.terminalEventType).toBe(eventType);
+      expect(state.cursor).toBe(2);
+    },
+  );
+
+  it.each(TERM_SEM_CASES)(
+    "applyTerminalSnapshot accepts a genuine %s terminal snapshot",
+    (eventType, _label) => {
+      let state = initialState(1);
+      state = applyEvent(state, delta(1));
+      state = applyEvent(state, delta(3)); // gap
+
+      state = applyTerminalSnapshot(state, [
+        delta(1, 1),
+        delta(2, 1),
+        { eventSeq: 3, streamEpoch: 1, eventType, payload: {} },
+      ]);
+
+      expect(state.status).toBe("terminal");
+      expect(state.terminal).toBe(true);
+      expect(state.terminalEventType).toBe(eventType);
+      expect(state.cursor).toBe(3);
+    },
+  );
+
   it("does not apply events after terminal", () => {
     let state = initialState(1);
     state = applyEvent(state, delta(1));

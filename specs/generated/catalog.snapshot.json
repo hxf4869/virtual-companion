@@ -45,7 +45,8 @@
       "CATALOG_DRIFT_DETECTED",
       "BETA_OPERATIONS_NOT_READY",
       "INVALID_REQUEST",
-      "AUTH_RATE_LIMITED"
+      "AUTH_RATE_LIMITED",
+      "INTERNAL_ERROR"
     ],
     "GenerationState": [
       "CREATED",
@@ -488,11 +489,15 @@
           {
             "code": "AUTH_RATE_LIMITED",
             "order": 16
+          },
+          {
+            "code": "INTERNAL_ERROR",
+            "order": 17
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "9a467dd8eb7039d8494f43ec66cc0c62009031d6bb6ebc619492c6691bfa7157"
+      "sha256": "3a8f16d1693abf8a62ae5908f413aba93316626b6f6a139236128c323ad05fe7"
     },
     "generation-states.yaml": {
       "document": {

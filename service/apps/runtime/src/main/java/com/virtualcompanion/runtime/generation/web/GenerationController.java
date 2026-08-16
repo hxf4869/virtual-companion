@@ -6,6 +6,7 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -99,10 +100,16 @@ public class GenerationController {
         long generation = parseId(generationId, "generationId");
         GenerationStateService.GenerationSnapshot snapshot =
                 generationStateService.readSnapshot(ownerUserId, generation);
+        GenerationSnapshotResponse.UsageResponse usage =
+                snapshot.inputTokens() == null || snapshot.outputTokens() == null
+                        ? null
+                        : new GenerationSnapshotResponse.UsageResponse(
+                                snapshot.inputTokens(), snapshot.outputTokens());
         return new GenerationSnapshotResponse(
                 snapshot.status(),
                 snapshot.assistantMessageId(),
-                snapshot.eventsJson());
+                snapshot.eventsJson(),
+                usage);
     }
 
     private static long parseId(String raw, String name) {
@@ -131,10 +138,18 @@ public class GenerationController {
             String status) {
     }
 
-    /** Snapshot response (OpenAPI {@code GenerationSnapshot}). */
+    /**
+     * Snapshot response (OpenAPI {@code GenerationSnapshot}). USAGE-VIZ:
+     * {@code usage} is absent until finalize settles the provider usage.
+     */
     public record GenerationSnapshotResponse(
             String status,
             Long assistantMessageId,
-            String events) {
+            String events,
+            @JsonInclude(JsonInclude.Include.NON_NULL) UsageResponse usage) {
+
+        /** Settled provider usage (OpenAPI {@code GenerationUsage}). */
+        public record UsageResponse(long inputTokens, long outputTokens) {
+        }
     }
 }

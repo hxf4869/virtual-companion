@@ -1,5 +1,7 @@
 package com.virtualcompanion.runtime.web;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -21,6 +23,8 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
  */
 @RestControllerAdvice
 public class RuntimeApiExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(RuntimeApiExceptionHandler.class);
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorEnvelope> handleNotFound(ResourceNotFoundException e) {
@@ -49,6 +53,19 @@ public class RuntimeApiExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorEnvelope> handleUnreadableJson(HttpMessageNotReadableException e) {
         return invalidRequest();
+    }
+
+    /**
+     * TERM-SEM: catch-all for unhandled failures so 5xx responses also carry
+     * the uniform {@link ErrorEnvelope} (the OpenAPI contract claims the shape
+     * for every error response). The message is stable and non-sensitive; the
+     * detail is logged server-side only.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorEnvelope> handleInternal(Exception e) {
+        log.error("Unhandled runtime API failure", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorEnvelope("INTERNAL_ERROR", "An internal error occurred"));
     }
 
     private static ResponseEntity<ErrorEnvelope> invalidRequest() {

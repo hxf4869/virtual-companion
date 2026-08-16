@@ -4,11 +4,13 @@ package com.virtualcompanion.api;
 public record GenerationSnapshot(
     final String status,
     final String assistantMessageId,
-    final String events
+    final String events,
+    final String usage
 ) {
     public GenerationSnapshot {
         java.util.Objects.requireNonNull(status, "status must not be null");
         // assistantMessageId is nullable
         java.util.Objects.requireNonNull(events, "events must not be null");
+        // usage is nullable
     }
 }

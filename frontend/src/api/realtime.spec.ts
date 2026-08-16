@@ -54,6 +54,57 @@ describe("streamGeneration offline success", () => {
     expect(result.state.cursor).toBe(3);
     expect(result.state.events.map((e) => e.eventSeq)).toEqual([1, 2, 3]);
   });
+
+  // TERM-SEM: server terminal events other than chat.completed surface as
+  // their own typed outcomes instead of a generic failure.
+  const SERVER_TERMINAL_CASES: Array<[string, "cancelled" | "blocked" | "failed"]> = [
+    ["chat.cancelled", "cancelled"],
+    ["chat.blocked", "blocked"],
+    ["chat.failed", "failed"],
+  ];
+
+  it.each(SERVER_TERMINAL_CASES)(
+    "maps a RESUMED stream ending in %s to outcome %s",
+    async (eventType, outcome) => {
+      const { deps } = depsWith([
+        {
+          disposition: "RESUMED",
+          events: [
+            delta(1),
+            { eventSeq: 2, streamEpoch: 1, eventType, payload: {} },
+          ],
+        },
+      ]);
+
+      const result = await streamGeneration(deps, "gen-1", 1);
+
+      expect(result.outcome).toBe(outcome);
+      expect(result.state.terminal).toBe(true);
+      expect(result.state.terminalEventType).toBe(eventType);
+    },
+  );
+
+  it.each(SERVER_TERMINAL_CASES)(
+    "maps a TERMINAL_SNAPSHOT ending in %s to outcome %s",
+    async (eventType, outcome) => {
+      // The transport extracts the committed snapshot events into the
+      // TERMINAL_SNAPSHOT disposition result (see realtime-transport.ts).
+      const { deps } = depsWith([
+        {
+          disposition: "TERMINAL_SNAPSHOT",
+          events: [
+            delta(1, 1),
+            { eventSeq: 2, streamEpoch: 1, eventType, payload: {} },
+          ],
+        },
+      ]);
+
+      const result = await streamGeneration(deps, "gen-1", 1);
+
+      expect(result.outcome).toBe(outcome);
+      expect(result.state.terminalEventType).toBe(eventType);
+    },
+  );
 });
 
 describe("streamGeneration disconnect then resume", () => {

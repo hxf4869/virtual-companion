@@ -135,3 +135,4 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','BETA_OPERATIONS_NOT_READY',14) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','INVALID_REQUEST',15) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','AUTH_RATE_LIMITED',16) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ErrorCode','INTERNAL_ERROR',17) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
