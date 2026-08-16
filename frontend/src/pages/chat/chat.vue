@@ -12,6 +12,14 @@
           记忆管理
         </button>
         <button
+          data-testid="nav-reminder"
+          class="chat-nav-index"
+          aria-label="提醒管理"
+          @click="goTo('/pages/reminder/reminder')"
+        >
+          提醒管理
+        </button>
+        <button
           data-testid="nav-index"
           class="chat-nav-index"
           aria-label="返回边界台"

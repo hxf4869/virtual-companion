@@ -53,6 +53,15 @@
           <text>记忆管理</text>
         </button>
         <button
+          data-testid="nav-reminder"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="提醒管理"
+          @click="goTo('/pages/reminder/reminder')"
+        >
+          <text>提醒管理</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"

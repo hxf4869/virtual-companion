@@ -28,6 +28,10 @@
     "confirmMemoryCandidate",
     "rejectMemoryCandidate",
     "listMemoryEvidence",
+    "createReminder",
+    "listReminders",
+    "updateReminder",
+    "deleteReminder",
     "login",
     "refresh",
     "logout",
@@ -39,6 +43,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "6ac591dffb410060697ee2c11c941e259184e37749c4918ac0f6db10d626e2e2"
+    "sha256": "d2fe636453451363722a6a8f6226e7114d2c67cf5242d2c6f9aa2237ea1e3459"
   }
 }

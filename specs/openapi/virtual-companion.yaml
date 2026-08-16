@@ -941,6 +941,146 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/reminders:
+    post:
+      operationId: createReminder
+      summary: Create a structured user reminder (FR-NOTIFY-001)
+      description: >-
+        Creates a structured reminder record under the caller's relationship
+        (vc.create_reminder). Reminders are canonical records, never a prompt
+        instruction; Technical Alpha stores and lists them without any push
+        transport (主动消息不在 Alpha 范围). remindAt is a UTC instant;
+        recurrence is NONE, DAILY or WEEKLY. Requires a server-verified
+        authentication context.
+      parameters:
+        - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReminderCreateRequest'
+      responses:
+        '200':
+          description: The newly created reminder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Relationship absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listReminders
+      summary: Keyset-paginated reminders of a relationship, soonest first
+      description: >-
+        Keyset page of the relationship's reminder records ordered by
+        (remind_at, id) via vc.list_reminders. after is the last reminder id
+        seen; limit is clamped to a safe band by the server. Requires a
+        server-verified authentication context.
+      parameters:
+        - $ref: '#/components/parameters/RelationshipId'
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor (the last reminder id seen); omit to start from the soonest.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Page size, clamped to a safe band by the server.
+      responses:
+        '200':
+          description: A page of reminders, soonest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reminder'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/reminders/{reminderId}:
+    patch:
+      operationId: updateReminder
+      summary: Update one owned reminder (FR-NOTIFY-001)
+      description: >-
+        Updates text / remindAt / recurrence / status of an owned reminder via
+        vc.update_reminder (every field is required in the body; no partial
+        silent edits). A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN;
+        existence is never disclosed. Requires a server-verified authentication
+        context.
+      parameters:
+        - $ref: '#/components/parameters/ReminderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReminderUpdateRequest'
+      responses:
+        '200':
+          description: The updated reminder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      operationId: deleteReminder
+      summary: Delete one owned reminder (FR-NOTIFY-001)
+      description: >-
+        Deletes an owned reminder via vc.delete_reminder. A foreign or absent
+        id maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed.
+        Requires a server-verified authentication context.
+      parameters:
+        - $ref: '#/components/parameters/ReminderId'
+      responses:
+        '200':
+          description: The reminder was deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderDeletedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/login:
     post:
       operationId: login
@@ -1693,6 +1833,114 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed delete
+    Reminder:
+      type: object
+      description: One structured user reminder (FR-NOTIFY-001).
+      required:
+        - reminderId
+        - relationshipId
+        - text
+        - remindAt
+        - recurrence
+        - status
+        - createdAt
+      properties:
+        reminderId:
+          type: string
+          description: Stable owner-scoped reminder identifier
+        relationshipId:
+          type: string
+          description: Owning relationship identifier
+        text:
+          type: string
+          description: The reminder text (1..500 characters)
+        remindAt:
+          type: string
+          format: date-time
+          description: UTC instant the reminder is due
+        recurrence:
+          type: string
+          description: NONE, DAILY or WEEKLY
+          enum:
+            - NONE
+            - DAILY
+            - WEEKLY
+        status:
+          type: string
+          description: ACTIVE or DISMISSED
+          enum:
+            - ACTIVE
+            - DISMISSED
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp (RFC 3339)
+    ReminderCreateRequest:
+      type: object
+      description: Body for creating a structured reminder.
+      required:
+        - text
+        - remindAt
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: The reminder text
+        remindAt:
+          type: string
+          format: date-time
+          description: UTC instant the reminder is due
+        recurrence:
+          type: string
+          description: NONE (default), DAILY or WEEKLY
+          enum:
+            - NONE
+            - DAILY
+            - WEEKLY
+          default: NONE
+    ReminderUpdateRequest:
+      type: object
+      description: >-
+        Body for updating a reminder. Every field is required — the update
+        writes the whole record so no partial silent edit is possible.
+      required:
+        - text
+        - remindAt
+        - recurrence
+        - status
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+        remindAt:
+          type: string
+          format: date-time
+        recurrence:
+          type: string
+          enum:
+            - NONE
+            - DAILY
+            - WEEKLY
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DISMISSED
+    ReminderDeletedResponse:
+      type: object
+      description: Result of deleting one reminder.
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always true on a confirmed delete
     ConversationRenamedResponse:
       type: object
       description: Result of renaming one conversation.
@@ -2048,6 +2296,13 @@ components:
       schema:
         type: string
       description: Owner-scoped message identifier
+    ReminderId:
+      name: reminderId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped reminder identifier
     MemoryId:
       name: memoryId
       in: path

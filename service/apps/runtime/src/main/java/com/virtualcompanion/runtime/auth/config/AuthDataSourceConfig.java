@@ -28,6 +28,7 @@ import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.RealtimeResumeService;
 import com.virtualcompanion.platform.persistence.RealtimeTicketRepository;
 import com.virtualcompanion.platform.persistence.RelationshipService;
+import com.virtualcompanion.platform.persistence.ReminderService;
 import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
@@ -297,6 +298,12 @@ public class AuthDataSourceConfig {
     @Bean
     public GenerationFeedbackService generationFeedbackService(JdbcTemplate authJdbcTemplate) {
         return new GenerationFeedbackService(authJdbcTemplate);
+    }
+
+    /** REMINDER (V39): structured user-created reminders (FR-NOTIFY-001). */
+    @Bean
+    public ReminderService reminderService(JdbcTemplate authJdbcTemplate) {
+        return new ReminderService(authJdbcTemplate);
     }
 
     @Bean

@@ -83,6 +83,18 @@ public interface VirtualCompanionApi {
     /** List the source Evidence of a memory. */
     Void listMemoryEvidence();
 
+    /** Create a structured user reminder (FR-NOTIFY-001). */
+    Reminder createReminder();
+
+    /** Keyset-paginated reminders of a relationship, soonest first. */
+    Void listReminders();
+
+    /** Update one owned reminder (FR-NOTIFY-001). */
+    Reminder updateReminder();
+
+    /** Delete one owned reminder (FR-NOTIFY-001). */
+    ReminderDeletedResponse deleteReminder();
+
     /** Log in with internal-account credentials. */
     AuthTokenResponse login();
 

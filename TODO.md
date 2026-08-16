@@ -34,6 +34,10 @@
       create_conversation p_incognito + list_conversations 回传）+ 无痕会话
       finalize 跳过 MEMORY_EXTRACT 入队（不产生记忆候选）+ 前端新会话无痕开关、
       列表/当前会话标记与明文说明（FR-CHAT-005）。
+- [x] REMINDER 结构化提醒模块：V39 vc.reminder（FORCE RLS owner_isolation +
+      关系级联 + CHECK 约束）+ create/list/get/update/delete 五个 SD 函数 +
+      OpenAPI 四个提醒端点 + 前端「提醒管理」页（关系选择/创建表单/列表/
+      完成/删除）+ 边界台与聊天页导航（FR-NOTIFY-001）。
 - [ ] CONSENT 版本化同意记录（FR-AUTH-003/005）
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性

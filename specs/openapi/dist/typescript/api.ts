@@ -123,6 +123,34 @@ export interface MessageDeletedResponse {
   ok: string
 }
 
+export interface Reminder {
+  reminderId: string
+  relationshipId: string
+  text: string
+  remindAt: string
+  recurrence: string
+  status: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface ReminderCreateRequest {
+  text: string
+  remindAt: string
+  recurrence?: string
+}
+
+export interface ReminderUpdateRequest {
+  text: string
+  remindAt: string
+  recurrence: string
+  status: string
+}
+
+export interface ReminderDeletedResponse {
+  ok: string
+}
+
 export interface ConversationRenamedResponse {
   conversationId: string
   title: string
@@ -247,6 +275,10 @@ export interface VirtualCompanionApiClient {
   confirmMemoryCandidate(): Promise<VersionResponse>
   rejectMemoryCandidate(): Promise<VersionResponse>
   listMemoryEvidence(): Promise<VersionResponse>
+  createReminder(): Promise<VersionResponse>
+  listReminders(): Promise<VersionResponse>
+  updateReminder(): Promise<VersionResponse>
+  deleteReminder(): Promise<VersionResponse>
   login(): Promise<VersionResponse>
   refresh(): Promise<VersionResponse>
   logout(): Promise<VersionResponse>

@@ -19,6 +19,12 @@
 			}
 		},
 		{
+			"path": "pages/reminder/reminder",
+			"style": {
+				"navigationBarTitleText": "提醒管理"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"
