@@ -20,7 +20,7 @@
 - [x] SAMPLE-CFG 采样参数部署配置：ModelProviderProperties 增加 temperature/
       maxTokens 部署级默认，OpenAI/Anthropic codec 透传（替代 OpenAI 硬编码
       max_tokens），回复风格成为可运营杠杆；请求级透传留给真实 provider 接入。
-- [ ] RT-REVIVE realtime 会话恢复：authed-fetch 注入 renewAccessToken——realtime
+- [x] RT-REVIVE realtime 会话恢复：authed-fetch 注入 renewAccessToken——realtime
       ticket 铸造/resume/snapshot 遇 401 先静默刷新一次并重放（对齐 REST
       transport 的 SESS-REVIVE），避免 token 过期后实时流被误报为「未找到或
       无权访问」。

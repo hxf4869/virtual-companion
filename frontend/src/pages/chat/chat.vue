@@ -334,7 +334,13 @@ export default defineComponent({
       renewAccessToken: () => auth.renewAccessToken(transport),
       onUnauthorized: () => auth.onUnauthorized(),
     });
-    const authedFetch = createAuthedFetch(() => auth.accessToken);
+    // RT-REVIVE: the realtime fetch shares the same silent-refresh session so a
+    // mid-session token expiry refreshes once and replays instead of surfacing
+    // "未找到或无权访问" on every ticket mint / resume / snapshot.
+    const authedFetch = createAuthedFetch(() => auth.accessToken, {
+      renewAccessToken: () => auth.renewAccessToken(transport),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
     const deps: RealtimeDeps = createBrowserRealtimeDeps(
       { sessionId, origin: resolveOrigin() },
       authedFetch,
