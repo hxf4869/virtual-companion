@@ -1,0 +1,161 @@
+// DATA-EXPORT (FR-DATA-002): asynchronous data-export API client. The
+// transport is injected so stores and specs can mock request() exactly like
+// the other api clients. POST enqueues the export; the status GET exposes a
+// short-lived one-time downloadUrl while READY; the download GET consumes the
+// token exactly once and returns the document. Non-OK statuses throw a typed
+// error so the store never fakes a request or a download.
+
+export interface ExportApiResponse {
+  ok: boolean;
+  status: number;
+  json: unknown;
+}
+
+export interface ExportTransport {
+  request(method: string, path: string, body?: unknown): Promise<ExportApiResponse>;
+}
+
+export type ExportStatus = "PENDING" | "READY" | "FAILED" | "EXPIRED";
+
+export interface ExportRequest {
+  exportId: string;
+  status: ExportStatus;
+  requestedAt: string;
+  completedAt?: string;
+  expiresAt?: string;
+  errorMessage?: string;
+  downloadUrl?: string;
+}
+
+/** Lightweight view shapes of the export document (full payload in JSON). */
+export interface ExportDownload {
+  exportId: string;
+  generatedAt: string;
+  expiresAt: string;
+  aiContentNotice: string;
+  conversations: unknown[];
+  memories: unknown[];
+  reminders: unknown[];
+  consents: unknown[];
+}
+
+export class ExportHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`export request failed with status ${status}`);
+    this.name = "ExportHttpError";
+    this.status = status;
+  }
+}
+
+const EXPORTS_BASE = "/api/v1/exports";
+
+const APPROVED_STATUSES: readonly string[] = ["PENDING", "READY", "FAILED", "EXPIRED"];
+
+function asId(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function asExportStatus(value: unknown): ExportStatus | undefined {
+  if (typeof value === "string" && APPROVED_STATUSES.includes(value)) {
+    return value as ExportStatus;
+  }
+  return undefined;
+}
+
+function asExportRequest(json: unknown): ExportRequest | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const exportId = asId(o.exportId);
+  const status = asExportStatus(o.status);
+  const requestedAt = typeof o.requestedAt === "string" ? o.requestedAt : undefined;
+  if (!exportId || !status || !requestedAt) return null;
+  return {
+    exportId,
+    status,
+    requestedAt,
+    completedAt: typeof o.completedAt === "string" ? o.completedAt : undefined,
+    expiresAt: typeof o.expiresAt === "string" ? o.expiresAt : undefined,
+    errorMessage: typeof o.errorMessage === "string" ? o.errorMessage : undefined,
+    downloadUrl: typeof o.downloadUrl === "string" ? o.downloadUrl : undefined,
+  };
+}
+
+function asExportDownload(json: unknown): ExportDownload | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const exportId = asId(o.exportId);
+  const generatedAt = typeof o.generatedAt === "string" ? o.generatedAt : undefined;
+  const expiresAt = typeof o.expiresAt === "string" ? o.expiresAt : undefined;
+  const aiContentNotice =
+    typeof o.aiContentNotice === "string" ? o.aiContentNotice : undefined;
+  if (
+    !exportId ||
+    !generatedAt ||
+    !expiresAt ||
+    !aiContentNotice ||
+    !Array.isArray(o.conversations) ||
+    !Array.isArray(o.memories) ||
+    !Array.isArray(o.reminders) ||
+    !Array.isArray(o.consents)
+  ) {
+    return null;
+  }
+  return {
+    exportId,
+    generatedAt,
+    expiresAt,
+    aiContentNotice,
+    conversations: o.conversations,
+    memories: o.memories,
+    reminders: o.reminders,
+    consents: o.consents,
+  };
+}
+
+/** The only download paths this client will issue (never an open redirect). */
+function assertExportDownloadPath(path: string): void {
+  if (!path.startsWith(`${EXPORTS_BASE}/`) || !path.includes("/download")) {
+    throw new ExportHttpError(0);
+  }
+}
+
+/** Enqueue an asynchronous export for the caller. */
+export async function createExport(t: ExportTransport): Promise<ExportRequest | null> {
+  const r = await t.request("POST", EXPORTS_BASE);
+  if (!r.ok) {
+    throw new ExportHttpError(r.status);
+  }
+  return asExportRequest(r.json);
+}
+
+/** Status of one owned export (downloadUrl present only while READY). */
+export async function getExport(
+  t: ExportTransport,
+  exportId: string,
+): Promise<ExportRequest | null> {
+  const r = await t.request("GET", `${EXPORTS_BASE}/${encodeURIComponent(exportId)}`);
+  if (!r.ok) {
+    throw new ExportHttpError(r.status);
+  }
+  return asExportRequest(r.json);
+}
+
+/**
+ * One-time download: the token inside downloadUrl is consumed on success.
+ * Only paths under /api/v1/exports are accepted.
+ */
+export async function downloadExport(
+  t: ExportTransport,
+  downloadUrl: string,
+): Promise<ExportDownload | null> {
+  assertExportDownloadPath(downloadUrl);
+  const r = await t.request("GET", downloadUrl);
+  if (!r.ok) {
+    throw new ExportHttpError(r.status);
+  }
+  return asExportDownload(r.json);
+}

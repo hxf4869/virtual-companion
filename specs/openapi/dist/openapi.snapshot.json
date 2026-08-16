@@ -36,6 +36,9 @@
     "listServiceClassAssignments",
     "recordConsent",
     "listConsents",
+    "createExport",
+    "getExportStatus",
+    "downloadExport",
     "login",
     "refresh",
     "logout",
@@ -47,6 +50,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "3819f749ced17a64cfe43ee375791b0e73040a9978edf35c7f8b2125a4fbb9e7"
+    "sha256": "fc63e773ac1554287aac6849600351260299c48e049f1978319b8d8ac2493a76"
   }
 }

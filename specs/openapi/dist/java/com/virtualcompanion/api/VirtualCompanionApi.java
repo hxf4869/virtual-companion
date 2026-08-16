@@ -107,6 +107,15 @@ public interface VirtualCompanionApi {
     /** The effective consent state per type (FR-AUTH-003). */
     Void listConsents();
 
+    /** Enqueue an asynchronous data export (FR-DATA-002). */
+    ExportRequest createExport();
+
+    /** Read one owned export request status (FR-DATA-002). */
+    ExportRequest getExportStatus();
+
+    /** One-time authenticated download of a READY export (FR-DATA-002). */
+    ExportDownload downloadExport();
+
     /** Log in with internal-account credentials. */
     AuthTokenResponse login();
 

@@ -71,6 +71,15 @@
           <text>同意管理</text>
         </button>
         <button
+          data-testid="nav-export"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="数据导出"
+          @click="goTo('/pages/export/export')"
+        >
+          <text>数据导出</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"

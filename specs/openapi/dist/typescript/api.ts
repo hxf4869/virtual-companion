@@ -184,6 +184,70 @@ export interface ConsentRecord {
   revokedAt?: string
 }
 
+export interface ExportRequest {
+  exportId: string
+  status: string
+  requestedAt: string
+  completedAt?: string
+  expiresAt?: string
+  errorMessage?: string
+  downloadUrl?: string
+}
+
+export interface ExportDownload {
+  exportId: string
+  generatedAt: string
+  expiresAt: string
+  aiContentNotice: string
+  conversations: string
+  memories: string
+  reminders: string
+  consents: string
+}
+
+export interface ExportConversation {
+  conversationId: string
+  relationshipId: string
+  title?: string
+  incognito: string
+  messages: string
+}
+
+export interface ExportMessage {
+  messageId: string
+  role: string
+  content: string
+  aiGenerated: string
+}
+
+export interface ExportMemory {
+  memoryId: string
+  relationshipId?: string
+  scope: string
+  summary: string
+  status: string
+  createdAt: string
+  deletedAt?: string
+}
+
+export interface ExportReminder {
+  reminderId: string
+  relationshipId: string
+  text: string
+  remindAt: string
+  recurrence: string
+  status: string
+}
+
+export interface ExportConsent {
+  consentId: string
+  consentType: string
+  version: string
+  granted: string
+  grantedAt: string
+  revokedAt?: string
+}
+
 export interface ConversationRenamedResponse {
   conversationId: string
   title: string
@@ -316,6 +380,9 @@ export interface VirtualCompanionApiClient {
   listServiceClassAssignments(): Promise<VersionResponse>
   recordConsent(): Promise<VersionResponse>
   listConsents(): Promise<VersionResponse>
+  createExport(): Promise<VersionResponse>
+  getExportStatus(): Promise<VersionResponse>
+  downloadExport(): Promise<VersionResponse>
   login(): Promise<VersionResponse>
   refresh(): Promise<VersionResponse>
   logout(): Promise<VersionResponse>

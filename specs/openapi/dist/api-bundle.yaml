@@ -1119,6 +1119,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/exports:
+    post:
+      operationId: createExport
+      summary: Enqueue an asynchronous data export (FR-DATA-002)
+      description: Creates an export request and enqueues a DATA_EXPORT work item (vc.create_export_request); the worker builds
+        the JSON document asynchronously and the status endpoint reports PENDING until READY. Only one in-flight export per
+        account is allowed. The download link is short-lived and one-time. Requires a server-verified authentication context.
+      responses:
+        '200':
+          description: The created export request (PENDING)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportRequest'
+        '400':
+          description: An export for this account is already in flight
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/exports/{exportId}:
+    get:
+      operationId: getExportStatus
+      summary: Read one owned export request status (FR-DATA-002)
+      description: Status of the caller's export request via vc.get_export_request. While READY the response carries a short-lived
+        one-time downloadUrl; a foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires
+        a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/ExportId'
+      responses:
+        '200':
+          description: The export request status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportRequest'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Export request absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/exports/{exportId}/download:
+    get:
+      operationId: downloadExport
+      summary: One-time authenticated download of a READY export (FR-DATA-002)
+      description: Returns the export document exactly once (the token is consumed on success, vc.consume_export). The token
+        is only handed out inside the authenticated status response; expired, consumed, foreign or absent exports map to NOT_FOUND_OR_FORBIDDEN
+        (existence is never disclosed). Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/ExportId'
+      - $ref: '#/components/parameters/ExportToken'
+      responses:
+        '200':
+          description: The export document (one-time)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportDownload'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Not READY, expired, consumed, absent or not owned; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/login:
     post:
       operationId: login
@@ -2043,6 +2126,225 @@ components:
           type: string
           format: date-time
           description: Revocation timestamp, present only on a revoke record
+    ExportRequest:
+      type: object
+      description: One asynchronous data-export request (FR-DATA-002).
+      required:
+      - exportId
+      - status
+      - requestedAt
+      properties:
+        exportId:
+          type: string
+          description: Stable owner-scoped export request identifier
+        status:
+          type: string
+          description: PENDING, READY, FAILED or EXPIRED
+          enum:
+          - PENDING
+          - READY
+          - FAILED
+          - EXPIRED
+        requestedAt:
+          type: string
+          format: date-time
+          description: Request timestamp (RFC 3339)
+        completedAt:
+          type: string
+          format: date-time
+          description: Completion timestamp, present once READY
+        expiresAt:
+          type: string
+          format: date-time
+          description: Download expiry, present once READY
+        errorMessage:
+          type: string
+          description: Stable failure reason, present only on FAILED
+        downloadUrl:
+          type: string
+          description: Short-lived one-time download link, present only while READY
+    ExportDownload:
+      type: object
+      description: The exported user-data document (FR-DATA-002, one-time).
+      required:
+      - exportId
+      - generatedAt
+      - expiresAt
+      - aiContentNotice
+      - conversations
+      - memories
+      - reminders
+      - consents
+      properties:
+        exportId:
+          type: string
+          description: The export request identifier
+        generatedAt:
+          type: string
+          format: date-time
+          description: Document generation timestamp (RFC 3339)
+        expiresAt:
+          type: string
+          format: date-time
+          description: Document expiry timestamp (RFC 3339)
+        aiContentNotice:
+          type: string
+          description: Plain-language notice that assistant messages are AI-generated
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportConversation'
+        memories:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportMemory'
+        reminders:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportReminder'
+        consents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportConsent'
+    ExportConversation:
+      type: object
+      description: One conversation with its full message history (FR-DATA-002).
+      required:
+      - conversationId
+      - relationshipId
+      - incognito
+      - messages
+      properties:
+        conversationId:
+          type: string
+          description: Owner-scoped conversation identifier
+        relationshipId:
+          type: string
+          description: Owning relationship identifier
+        title:
+          type: string
+          description: User-renamed title, absent until renamed
+        incognito:
+          type: boolean
+          description: Frozen creation-time incognito flag
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportMessage'
+    ExportMessage:
+      type: object
+      description: One message with its AI-generated marker (FR-DATA-002).
+      required:
+      - messageId
+      - role
+      - content
+      - aiGenerated
+      properties:
+        messageId:
+          type: string
+          description: Owner-scoped message identifier
+        role:
+          type: string
+          description: user or assistant
+        content:
+          type: string
+          description: The message text
+        aiGenerated:
+          type: boolean
+          description: true for assistant messages (AI 生成内容标识)
+    ExportMemory:
+      type: object
+      description: One memory record (FR-DATA-002).
+      required:
+      - memoryId
+      - scope
+      - summary
+      - status
+      - createdAt
+      properties:
+        memoryId:
+          type: string
+          description: Owner-scoped memory identifier
+        relationshipId:
+          type: string
+          description: Owning relationship identifier, present for RELATIONSHIP scope
+        scope:
+          type: string
+          description: memory-scopes catalog code
+        summary:
+          type: string
+          description: Memory content summary
+        status:
+          type: string
+          description: memory-candidate-statuses catalog code
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+        deletedAt:
+          type: string
+          format: date-time
+          description: Deletion timestamp, present only when deleted
+    ExportReminder:
+      type: object
+      description: One structured reminder (FR-DATA-002).
+      required:
+      - reminderId
+      - relationshipId
+      - text
+      - remindAt
+      - recurrence
+      - status
+      properties:
+        reminderId:
+          type: string
+          description: Owner-scoped reminder identifier
+        relationshipId:
+          type: string
+          description: Owning relationship identifier
+        text:
+          type: string
+          description: The reminder text
+        remindAt:
+          type: string
+          format: date-time
+          description: UTC instant the reminder is due
+        recurrence:
+          type: string
+          description: NONE, DAILY or WEEKLY
+        status:
+          type: string
+          description: ACTIVE or DISMISSED
+    ExportConsent:
+      type: object
+      description: One effective consent record (FR-DATA-002).
+      required:
+      - consentId
+      - consentType
+      - version
+      - granted
+      - grantedAt
+      properties:
+        consentId:
+          type: string
+          description: Owner-scoped consent record identifier
+        consentType:
+          type: string
+          description: The FR-AUTH-003 consent type
+        version:
+          type: string
+          description: The policy document version
+        granted:
+          type: boolean
+          description: Effective granted state
+        grantedAt:
+          type: string
+          format: date-time
+          description: Record timestamp (RFC 3339)
+        revokedAt:
+          type: string
+          format: date-time
+          description: Revocation timestamp, present only on a revoke record
     ConversationRenamedResponse:
       type: object
       description: Result of renaming one conversation.
@@ -2406,3 +2708,17 @@ components:
       schema:
         type: string
       description: Owner-scoped memory identifier
+    ExportId:
+      name: exportId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped export request identifier
+    ExportToken:
+      name: token
+      in: query
+      required: true
+      schema:
+        type: string
+      description: The one-time download token handed out inside the authenticated status response

@@ -49,6 +49,14 @@
       （未批准类型 400 拒绝）+ 前端「同意管理」页（8 类同意目录、生效状态、
       同意/撤回按钮，版本 2026-08 Alpha 演示，MODEL_TRAINING 注明撤回不影响
       基本聊天）+ SQL/单元/组件测试（FR-AUTH-003/005）。
+- [x] DATA-EXPORT 数据导出：V42 vc.export_request（FORCE RLS + status CHECK +
+      payload 内联存储）+ create/count/complete/fail/get/consume/expire
+      七个 SD 函数 + 入队复用 work_item 队列（DATA_EXPORT 类型）+ OpenAPI
+      POST /api/v1/exports、GET /exports/{id}、GET /exports/{id}/download
+      （状态响应 READY 时携带短效一次性 downloadUrl）+ 运行时
+      DataExportWorkItemHandler 聚合会话/消息（aiGenerated 标识）/记忆/提醒/
+      同意为 JSON + 过期定时清扫（payload 清除）+ 前端「数据导出」页（发起/
+      刷新/下载 + 内容预览）+ SQL/单元/组件测试（FR-DATA-002）。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

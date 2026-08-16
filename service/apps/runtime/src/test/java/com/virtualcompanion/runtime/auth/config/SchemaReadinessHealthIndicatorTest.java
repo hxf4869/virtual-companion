@@ -154,8 +154,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V37 = MSG-DELETE delete_message; V38 = INC-MODE conversation.incognito;
         // V39 = REMINDER structured reminders; V40 = ENT-SNAP entitlement
         // assignment + minted per-generation snapshots; V41 = CONSENT
-        // versioned consent records).
+        // versioned consent records; V42 = DATA-EXPORT asynchronous user data
+        // export).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(41);
+                .isEqualTo(42);
     }
 }

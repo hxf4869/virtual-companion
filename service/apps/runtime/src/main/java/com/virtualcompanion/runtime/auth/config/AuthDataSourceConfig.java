@@ -14,6 +14,7 @@ import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
+import com.virtualcompanion.platform.persistence.ExportService;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFeedbackService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
@@ -38,8 +39,10 @@ import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
+import com.virtualcompanion.runtime.export.ExportExpiryScheduler;
 import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
+import com.virtualcompanion.runtime.worker.DataExportWorkItemHandler;
 import com.virtualcompanion.runtime.worker.DispatchingWorkItemHandler;
 import com.virtualcompanion.runtime.worker.GenerationWorkItemHandler;
 import com.virtualcompanion.runtime.worker.LiveInvocationAssembler;
@@ -50,6 +53,7 @@ import com.virtualcompanion.runtime.worker.GenerationReconcileScheduler;
 import com.virtualcompanion.runtime.worker.WorkItemHandler;
 import com.virtualcompanion.runtime.worker.WorkItemWorker;
 import com.zaxxer.hikari.HikariDataSource;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -316,6 +320,12 @@ public class AuthDataSourceConfig {
         return new ConsentService(authJdbcTemplate);
     }
 
+    /** DATA-EXPORT (V42): asynchronous user data export (FR-DATA-002). */
+    @Bean
+    public ExportService exportService(JdbcTemplate authJdbcTemplate) {
+        return new ExportService(authJdbcTemplate);
+    }
+
     @Bean
     public GenerationRepository generationRepository(JdbcTemplate authJdbcTemplate) {
         return new GenerationRepository(authJdbcTemplate);
@@ -568,7 +578,9 @@ public class AuthDataSourceConfig {
      * <p>MEM-LOOP: the worker now dispatches by kind — GENERATION stays on
      * {@link GenerationWorkItemHandler}, MEMORY_EXTRACT items (enqueued by the
      * generation handler in its guarded finalize transaction) go to
-     * {@link MemoryExtractWorkItemHandler}. An unknown kind terminalizes via
+     * {@link MemoryExtractWorkItemHandler}, DATA_EXPORT items (enqueued by
+     * {@code vc.create_export_request}, V42) go to
+     * {@link DataExportWorkItemHandler}. An unknown kind terminalizes via
      * the worker's independent per-item fail instead of looping on lease
      * recovery.
      */
@@ -585,7 +597,13 @@ public class AuthDataSourceConfig {
             MessageRepository messageRepository,
             MemoryService memoryService,
             RealtimeEventRepository realtimeEventRepository,
-            LiveDeltaBroker liveDeltaBroker) {
+            LiveDeltaBroker liveDeltaBroker,
+            ExportService exportService,
+            RelationshipService relationshipService,
+            ConversationListService conversationListService,
+            ReminderService reminderService,
+            ConsentService consentService,
+            @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
                 generationFinalizeService,
@@ -602,9 +620,21 @@ public class AuthDataSourceConfig {
                 messageRepository,
                 memoryService,
                 generationFinalizeService);
+        DataExportWorkItemHandler dataExportHandler = new DataExportWorkItemHandler(
+                generationFinalizeService,
+                exportService,
+                relationshipService,
+                conversationListService,
+                messageRepository,
+                memoryService,
+                reminderService,
+                consentService,
+                new ObjectMapper(),
+                Duration.ofSeconds(exportTtlSeconds));
         return new DispatchingWorkItemHandler(Map.of(
                 GenerationWorkItemHandler.KIND_GENERATION, generationHandler,
-                MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, memoryExtractHandler));
+                MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, memoryExtractHandler,
+                DataExportWorkItemHandler.KIND_DATA_EXPORT, dataExportHandler));
     }
 
     @Bean
@@ -643,5 +673,15 @@ public class AuthDataSourceConfig {
     public GenerationReconcileScheduler generationReconcileScheduler(
             GenerationFinalizeService generationFinalizeService) {
         return new GenerationReconcileScheduler(generationFinalizeService);
+    }
+
+    /**
+     * DATA-EXPORT (V42): periodic expiry sweep of READY exports (FR-DATA-002
+     * 过期后自动删除). Runs on its own slow cadence; only active while this
+     * conditional configuration (auth + datasource enabled) is live.
+     */
+    @Bean
+    public ExportExpiryScheduler exportExpiryScheduler(ExportService exportService) {
+        return new ExportExpiryScheduler(exportService);
     }
 }
