@@ -44,4 +44,38 @@ class RuntimeApiExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().code()).isEqualTo("INVALID_REQUEST");
     }
+
+    @Test
+    void unmappedRouteStays404InsteadOfFallingIntoTheCatchAll() {
+        ResponseEntity<ErrorEnvelope> response =
+                handler.handleNoResource(new org.springframework.web.servlet.resource.NoResourceFoundException(
+                        org.springframework.http.HttpMethod.GET, "/api/v1/auth/anything", "not found"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody().code()).isEqualTo("NOT_FOUND_OR_FORBIDDEN");
+    }
+
+    @Test
+    void malformedPathVariableStays400InsteadOfFallingIntoTheCatchAll() {
+        ResponseEntity<ErrorEnvelope> response = handler.handleTypeMismatch(
+                new org.springframework.web.method.annotation.MethodArgumentTypeMismatchException(
+                        "not-a-number",
+                        Long.class,
+                        "generationId",
+                        null,
+                        new NumberFormatException("For input string")));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().code()).isEqualTo("INVALID_REQUEST");
+    }
+
+    @Test
+    void missingSchemaMapsTo503SchemaUnavailable() {
+        ResponseEntity<ErrorEnvelope> response = handler.handleSchemaUnavailable(
+                new org.springframework.jdbc.BadSqlGrammarException(
+                        "task", "SELECT 1", new java.sql.SQLException("schema unavailable", "42P01")));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody().code()).isEqualTo("SCHEMA_UNAVAILABLE");
+    }
 }

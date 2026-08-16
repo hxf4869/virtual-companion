@@ -185,3 +185,4 @@ components:
       - INVALID_REQUEST
       - AUTH_RATE_LIMITED
       - INTERNAL_ERROR
+      - SCHEMA_UNAVAILABLE

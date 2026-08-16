@@ -2,7 +2,25 @@
 
 产品待办（现状声明见 README）：
 
-## 当前里程碑（2026-08-16 第二轮）：实时增量流与产品收尾
+## 当前里程碑（2026-08-16 第三轮）：终态语义、体验与透明度收尾
+
+> 每条验收口径同前两轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+> 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。
+
+- [x] TERM-SEM 终态语义化：前端识别全部四种 durable 终态事件（completed/cancelled/
+      blocked/failed）并区分展示（"已取消/内容未通过审查/生成失败/连接中断"），终态原因
+      由 GenerationSnapshot.status（generation-states 目录码）承载；5xx 统一
+      ErrorEnvelope（error-codes 目录新增 INTERNAL_ERROR，契约宣称 uniform 的缺口）。
+- [x] STREAM-ECHO 流式回显与重试：发送中的用户消息即时回显占位（待回复），
+      终态失败后提供一键重试（复用内容，新 idempotencyKey）。
+- [x] USAGE-VIZ 用量读取链路：OpenAPI GenerationSnapshot 增加 usage（输入/输出 token，
+      复用已落库的 vc.generation_usage），前端完成态展示本轮 token 用量。
+- [x] MEM-MANUAL 手动记忆候选录入：memory 页新增候选录入区（scope + summary，复用
+      POST candidates），补齐 8 个 memory 端点的最后一块 UI 闭环。
+- [x] PROV-TMPL provider 部署配置模板：新增 application-provider 示例模板与凭据注入
+      指引（不含任何真实凭据），README 说明"只允许部署配置注入"的具体做法。
+
+## 已完成（2026-08-16 第二轮）：实时增量流与产品收尾
 
 > 每条验收口径同第一轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
 > 安全分类器接线不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。

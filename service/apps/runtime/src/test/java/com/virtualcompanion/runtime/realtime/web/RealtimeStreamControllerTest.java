@@ -365,16 +365,23 @@ class RealtimeStreamControllerTest {
     }
 
     @Test
-    void openStreamPropagatesBadSqlGrammarInsteadOfDeny() {
+    void openStreamMapsBadSqlGrammarTo503SchemaUnavailable() throws Exception {
         // A schema-unavailable BadSqlGrammarException must NOT be masked as
-        // stream.denied; it is re-thrown so the global advice can map 503.
+        // stream.denied; the global advice maps it to 503 SCHEMA_UNAVAILABLE
+        // (same mapping as the auth advice's P1-11 rule).
         when(ticketRepository.consume(
                 OWNER, TICKET, SECRET, GENERATION, SESSION, ORIGIN,
                 "FETCH_SSE", EPOCH, 0L)).thenThrow(new BadSqlGrammarException(
                         "consume", "SELECT vc.consume_realtime_ticket(...)",
                         new SQLException("schema unavailable", "42P01")));
 
-        Exception thrown = assertThrows(Exception.class, () -> openStream(null));
-        assertTrue(hasCauseOfType(thrown, BadSqlGrammarException.class));
+        mockMvc.perform(get("/api/v1/realtime/streams/{id}", String.valueOf(GENERATION))
+                        .param("ticketId", String.valueOf(TICKET))
+                        .param("secret", SECRET)
+                        .param("sessionId", SESSION)
+                        .param("origin", ORIGIN)
+                        .param("streamEpoch", String.valueOf(EPOCH)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("SCHEMA_UNAVAILABLE"));
     }
 }

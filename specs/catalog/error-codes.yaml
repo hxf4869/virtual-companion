@@ -37,3 +37,5 @@ entries:
   order: 16
 - code: INTERNAL_ERROR
   order: 17
+- code: SCHEMA_UNAVAILABLE
+  order: 18

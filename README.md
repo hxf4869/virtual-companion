@@ -46,7 +46,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/conversations`、`GET /api/v1/conversations`（会话列表，keyset + 最后消息预览）、
   `POST /api/v1/conversations/{conversationId}/generations`、
   `GET /api/v1/conversations/{conversationId}/messages`
-- `GET /api/v1/generations/{generationId}/snapshot`、`POST /api/v1/generations/{generationId}/cancel`
+- `GET /api/v1/generations/{generationId}/snapshot`（含 finalize 结算后的 usage：
+  输入/输出 token）、`POST /api/v1/generations/{generationId}/cancel`
 - `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE
   恢复流；非终态 generation 保持连接并实时直推 `chat.delta` 增量，断线经 durable 事件与
   snapshot 恢复，缺失 delta 永不补齐）

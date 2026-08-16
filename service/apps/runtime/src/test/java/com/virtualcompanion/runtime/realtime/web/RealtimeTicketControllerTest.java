@@ -126,22 +126,21 @@ class RealtimeTicketControllerTest {
     }
 
     @Test
-    void createTicketPropagatesBadSqlGrammarInsteadOfMapping404() {
+    void createTicketMapsBadSqlGrammarTo503SchemaUnavailable() throws Exception {
         // A schema-unavailable BadSqlGrammarException must NOT be translated to
-        // 404; it is re-thrown so the global advice can map it to 503. Standalone
-        // MockMvc has no resolver for it, so it surfaces up the request cause chain
-        // rather than producing a 404 response.
+        // 404; the global advice maps it to 503 SCHEMA_UNAVAILABLE (same
+        // mapping as the auth advice's P1-11 rule).
         when(ticketRepository.issue(
                 1L, 7L, "sess-1", "https://app.example", "FETCH_SSE", 2L, 0L))
                 .thenThrow(new BadSqlGrammarException(
                         "issue", "SELECT out_ticket_id, out_secret FROM vc.issue_realtime_ticket(...)",
                         new SQLException("schema unavailable", "42P01")));
 
-        Exception thrown = assertThrows(Exception.class, () ->
-                mockMvc.perform(post("/api/v1/realtime/tickets")
+        mockMvc.perform(post("/api/v1/realtime/tickets")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(ticketBody("7", "sess-1", "https://app.example", "2", "0"))));
-        assertTrue(hasCauseOfType(thrown, BadSqlGrammarException.class));
+                        .content(ticketBody("7", "sess-1", "https://app.example", "2", "0")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("SCHEMA_UNAVAILABLE"));
     }
 
     @Test

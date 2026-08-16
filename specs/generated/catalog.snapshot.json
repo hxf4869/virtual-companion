@@ -46,7 +46,8 @@
       "BETA_OPERATIONS_NOT_READY",
       "INVALID_REQUEST",
       "AUTH_RATE_LIMITED",
-      "INTERNAL_ERROR"
+      "INTERNAL_ERROR",
+      "SCHEMA_UNAVAILABLE"
     ],
     "GenerationState": [
       "CREATED",
@@ -493,11 +494,15 @@
           {
             "code": "INTERNAL_ERROR",
             "order": 17
+          },
+          {
+            "code": "SCHEMA_UNAVAILABLE",
+            "order": 18
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "3a8f16d1693abf8a62ae5908f413aba93316626b6f6a139236128c323ad05fe7"
+      "sha256": "9cba87074f2d2471e3cc9b653cde0204806685156facfb075d03e3301fce292b"
     },
     "generation-states.yaml": {
       "document": {
