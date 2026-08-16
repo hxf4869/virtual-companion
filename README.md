@@ -92,10 +92,9 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 ## 安全与发布状态
 
 当前只允许本地开发和 CI 使用合成数据。普通 profile 的 Auth 与 live provider 均默认关闭；production profile
-要求显式提供 Auth 和 datasource 两个开关，缺少任一配置时启动失败，但当前实现不会拒绝显式的 `false`。
-部署政策要求生产环境将两者设为 `true`，这项要求尚未由配置代码自身强制，也不代表生产就绪。系统未开放
-注册、未启用真实支付、未授权保存真实用户数据。generation/realtime/memory 纵切已接通，但仅限本地开发
-与 CI 合成数据，不面向真实用户。
+要求 Auth 和 datasource 两个开关显式为 `true`：缺少任一配置或显式 `false` 都会启动失败（fail-closed，
+由配置代码自身强制），但这不代表生产就绪。系统未开放注册、未启用真实支付、未授权保存真实用户数据。
+generation/realtime/memory 纵切已接通，但仅限本地开发与 CI 合成数据，不面向真实用户。
 
 Duty-roster 检查通过不等于 Beta 获批；`realUserBeta` 在 PIA、伦理适用性、成年人验证、责任人、值班和安全
 演练形成证据前保持 `BLOCKED`，`realPayment` 在 Technical Alpha 保持 `FORBIDDEN`。真实 provider 外发还必须

@@ -134,6 +134,7 @@ virtual-companion:
 # 条件风险 3（TASK-0102）：production profile 强制认证与数据源开启。两个开关
 # 在该 profile 下没有默认值——缺少 VC_AUTH_ENABLED / VC_AUTH_DATASOURCE_ENABLED
 # 环境变量时占位符解析失败，应用启动即失败（fail-closed，绝不静默降级为关闭）。
+# 显式 false 同样被 ProductionFailClosedConfig 拒绝：部署政策要求两者为 true。
 # P1-11（TASK-0155）：同一 profile 强制显式声明迁移开关与 migrator 凭据——
 # VC_FLYWAY_ENABLED 与 VC_MIGRATOR_DB_URL/USERNAME/PASSWORD 缺失同样启动失败，
 # 不允许「未迁移/无法迁移」的静默部署状态。

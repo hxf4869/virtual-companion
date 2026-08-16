@@ -10,7 +10,10 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
  * 条件风险 3（TASK-0102）：production profile 必须强制认证与数据源开启。两个
  * 开关在 production profile 下没有默认值——缺少 VC_AUTH_ENABLED /
  * VC_AUTH_DATASOURCE_ENABLED 时占位符解析失败，应用启动即失败（fail-closed）；
- * 显式设置后正常启动。无活库要求：DataSource bean 惰性连接，默认不运行 Flyway。
+ * 显式设置为 true 后正常启动。显式 false 由
+ * {@code ProductionFailClosedEnvironmentPostProcessor} 在 bean 创建前拒绝
+ * （部署政策要求两者必须为 true，不得静默降级）。无活库要求：DataSource bean
+ * 惰性连接，默认不运行 Flyway。
  *
  * <p>P1-11（TASK-0155）：production profile 同时强制显式声明迁移开关与 migrator
  * 凭据（VC_FLYWAY_ENABLED / VC_MIGRATOR_DB_*），缺失即启动失败；应用内 Flyway
@@ -48,6 +51,48 @@ class ProductionProfileFailClosedTest {
                         .run()) {
             assertThat(context.isRunning()).isTrue();
         }
+    }
+
+    @Test
+    void productionProfileWithExplicitFalseAuthEnabledFailsToStart() {
+        // An EXPLICIT false resolves the placeholder (unlike a missing
+        // variable) and must still refuse startup: the deployment policy
+        // requires auth on in production, so a silently degraded "auth off"
+        // production runtime is never acceptable.
+        assertThatThrownBy(() -> new SpringApplicationBuilder(VirtualCompanionRuntimeApplication.class)
+                .profiles("production")
+                .properties(
+                        "VC_AUTH_ENABLED=false",
+                        "VC_AUTH_DATASOURCE_ENABLED=true",
+                        "VC_FLYWAY_ENABLED=false",
+                        "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                        "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
+                        "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
+                        "VC_DB_USERNAME=vc",
+                        "VC_DB_PASSWORD=vc")
+                        .run())
+                .satisfies(t -> assertThat(chainMessages(t))
+                        .contains("VC_AUTH_ENABLED")
+                        .contains("explicit false is rejected"));
+    }
+
+    @Test
+    void productionProfileWithExplicitFalseDatasourceEnabledFailsToStart() {
+        assertThatThrownBy(() -> new SpringApplicationBuilder(VirtualCompanionRuntimeApplication.class)
+                .profiles("production")
+                .properties(
+                        "VC_AUTH_ENABLED=true",
+                        "VC_AUTH_DATASOURCE_ENABLED=false",
+                        "VC_FLYWAY_ENABLED=false",
+                        "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                        "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
+                        "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
+                        "VC_DB_USERNAME=vc",
+                        "VC_DB_PASSWORD=vc")
+                        .run())
+                .satisfies(t -> assertThat(chainMessages(t))
+                        .contains("VC_AUTH_DATASOURCE_ENABLED")
+                        .contains("explicit false is rejected"));
     }
 
     @Test
