@@ -340,6 +340,50 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("VIRT-LIST: renders at most 200 rows and shows the truncation notice for longer histories", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = Array.from({ length: 250 }, (_, i) => ({
+      messageId: `m${i}`,
+      conversationId: "1",
+      role: (i % 2 === 0 ? "user" : "assistant") as string,
+      content: `消息 ${i}`,
+    }));
+    await wrapper.vm.$nextTick();
+
+    const rows = wrapper.findAll(".chat-message");
+    expect(rows.length).toBe(200);
+    // The newest rows win; the oldest are dropped from the DOM.
+    expect(rows[0].text()).toContain("消息 50");
+    expect(rows[rows.length - 1].text()).toContain("消息 249");
+    const notice = wrapper.find('[data-testid="history-truncated"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toContain("已隐藏更早的 50 条消息");
+    wrapper.unmount();
+  });
+
+  it("VIRT-LIST: no notice while the history fits the render bound", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "user",
+        content: "你好",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="history-truncated"]').exists()).toBe(false);
+    expect(wrapper.findAll(".chat-message").length).toBe(1);
+    wrapper.unmount();
+  });
+
   it("SVC-MODE: shows the plain service-mode status line when the API reports one", async () => {
     vi.stubGlobal(
       "fetch",

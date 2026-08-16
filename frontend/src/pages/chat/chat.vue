@@ -205,8 +205,18 @@
           >
             <text>还没有消息。输入一句话开始倾听。</text>
           </view>
+          <!-- VIRT-LIST: the render window bound (older loaded rows are
+               dropped from the DOM with a plain notice, §18.6). -->
           <view
-            v-for="msg in messages"
+            v-if="truncatedCount > 0"
+            class="history-truncated"
+            data-testid="history-truncated"
+            role="note"
+          >
+            <text>已隐藏更早的 {{ truncatedCount }} 条消息（性能保护，可继续加载更早）。</text>
+          </view>
+          <view
+            v-for="msg in renderedMessages"
             :key="msg.messageId"
             class="chat-message"
             :class="msg.role"
@@ -421,6 +431,15 @@ import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 
+/**
+ * VIRT-LIST (§18.6): the DOM renders at most this many message rows. History
+ * is loaded in pages (load-more), so the bound only ever bites for long
+ * conversations; older loaded rows are dropped from the DOM with a plain
+ * notice instead of the precise virtual-scroller (Alpha keeps the page-level
+ * scrolling model — the scroll container refactor is a beta UI concern).
+ */
+const MAX_RENDERED_MESSAGES = 200;
+
 function resolveOrigin(): string {
   return typeof window !== "undefined" && window.location && window.location.origin
     ? window.location.origin
@@ -492,6 +511,17 @@ export default defineComponent({
     );
 
     const messages = computed(() => store.messages);
+    // VIRT-LIST: the render window is the newest MAX_RENDERED_MESSAGES rows;
+    // older rows are replaced by a plain notice (DOM-size bound for long
+    // histories, §18.6 虚拟滚动 intent).
+    const renderedMessages = computed(() =>
+      messages.value.length > MAX_RENDERED_MESSAGES
+        ? messages.value.slice(-MAX_RENDERED_MESSAGES)
+        : messages.value,
+    );
+    const truncatedCount = computed(
+      () => messages.value.length - renderedMessages.value.length,
+    );
     const conversations = computed(() => store.conversations);
     const pendingMemoryCount = computed(() => store.pendingMemoryCount);
     const draft = computed(() => store.draft);
@@ -948,6 +978,8 @@ export default defineComponent({
       store,
       auth,
       messages,
+      renderedMessages,
+      truncatedCount,
       conversations,
       pendingMemoryCount,
       draft,
@@ -1104,6 +1136,17 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   padding: 12rpx 0;
+}
+/* VIRT-LIST: plain notice replacing older loaded rows (DOM-size bound). */
+.history-truncated {
+  margin: 4rpx 0 12rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background-color: #1c2b4a;
+  border: 2rpx solid #2a3a5a;
+  color: #8fa0bd;
+  font-size: 20rpx;
+  text-align: center;
 }
 .chat-empty {
   padding: 24rpx;

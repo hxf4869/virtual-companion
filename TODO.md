@@ -82,6 +82,10 @@
       未成年/申诉/暂停 fail-closed）+ AgeStateTransitions 镜像转移表
       （测试钉死）+ OpenAPI GET /age/state、POST /age/verification +
       SQL/单元测试（FR-AUTH-002，Beta 门禁依赖，Alpha 不开放真实用户）。
+- [x] VIRT-LIST 聊天列表渲染窗口：§18.6 列表性能——DOM 渲染上限 200 条
+      最近消息 + 明文截断提示条（「已隐藏更早的 N 条消息」），配合既有
+      keyset 分段加载限制长会话 DOM 规模；流式/自动滚动行为不变；精确
+      虚拟滚动（固定高度滚动容器改造）留待 Beta 前端专项 + 组件测试。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

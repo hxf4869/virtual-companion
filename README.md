@@ -185,6 +185,11 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   `GET /api/v1/age/state`、`POST /api/v1/age/verification`
   （FR-AUTH-002，Beta 门禁依赖 ageStateRequired=ADULT_VERIFIED，Alpha 不
   开放真实用户）。
+- 聊天列表渲染窗口（VIRT-LIST）：§18.6 列表性能——历史消息已按段加载
+  （keyset load-more），DOM 渲染上限为最近 200 条，超出部分由明文提示条
+  替代（「已隐藏更早的 N 条消息，可继续加载更早」），限制长会话的 DOM
+  规模；精确虚拟滚动需要固定高度滚动容器的布局改造，留待 Beta 前端
+  专项（Alpha 保持页面级滚动语义，流式/自动滚动行为不变）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 
