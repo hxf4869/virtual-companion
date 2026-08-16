@@ -74,6 +74,7 @@ public final class LiveModelInvoker {
     private final AdapterLocator adapterLocator;
     private final GenerationRecovery recovery;
     private final Map<ProviderId, String> supplierNames;
+    private final ActiveInvocationRegistry activeInvocations;
 
     public LiveModelInvoker(
             DeterministicRouter router,
@@ -82,6 +83,18 @@ public final class LiveModelInvoker {
             AdapterLocator adapterLocator,
             GenerationRecovery recovery,
             Map<ProviderId, String> supplierNames) {
+        this(router, authorizationGuard, authorizationSnapshotStore, adapterLocator,
+                recovery, supplierNames, new ActiveInvocationRegistry());
+    }
+
+    public LiveModelInvoker(
+            DeterministicRouter router,
+            ExecutionAuthorizationGuard authorizationGuard,
+            AuthorizationSnapshotStore authorizationSnapshotStore,
+            AdapterLocator adapterLocator,
+            GenerationRecovery recovery,
+            Map<ProviderId, String> supplierNames,
+            ActiveInvocationRegistry activeInvocations) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.authorizationGuard = Objects.requireNonNull(
                 authorizationGuard, "authorizationGuard must not be null");
@@ -90,6 +103,8 @@ public final class LiveModelInvoker {
         this.adapterLocator = Objects.requireNonNull(adapterLocator, "adapterLocator must not be null");
         this.recovery = Objects.requireNonNull(recovery, "recovery must not be null");
         this.supplierNames = Map.copyOf(supplierNames);
+        this.activeInvocations = Objects.requireNonNull(
+                activeInvocations, "activeInvocations must not be null");
     }
 
     /**
@@ -256,64 +271,86 @@ public final class LiveModelInvoker {
         InvocationBinding binding = prepared.binding();
         ProviderId providerId = new ProviderId(attempt.providerId());
 
-        String output = "";
+        // CANCEL-A: the session is visible to the process-local registry for the
+        // whole external phase, so the HTTP cancel path can interrupt it. The
+        // registry is best-effort — the database terminal state stays the truth.
+        Long generationId = parseGenerationId(attempt);
+        try (ModelProtocolSession session = adapter.open(protocolRequest)) {
+            if (generationId != null) {
+                activeInvocations.register(generationId, session);
+            }
+            try {
+                return runSession(decision, binding, attempt, providerId, session);
+            } finally {
+                if (generationId != null) {
+                    activeInvocations.unregister(generationId, session);
+                }
+            }
+        }
+    }
+
+    /** Adapter session loop to exactly one terminal event (no database access). */
+    private LiveAttemptOutcome runSession(
+            RouteDecision decision,
+            InvocationBinding binding,
+            ExternalAttemptBinding attempt,
+            ProviderId providerId,
+            ModelProtocolSession session) {
         TokenUsage usage = new TokenUsage(0, 0, 0);
         ModelProtocolEvent terminalEvent = null;
         ModelProtocolEventFence fence = new ModelProtocolEventFence(binding);
-        try (ModelProtocolSession session = adapter.open(protocolRequest)) {
-            StringBuilder builder = new StringBuilder();
-            Utf8ByteAccumulator outputBytes = new Utf8ByteAccumulator(
-                    SizeLimits.MAX_TOTAL_OUTPUT_BYTES
-            );
-            while (true) {
-                final Optional<ModelProtocolEvent> next;
-                try {
-                    next = session.next();
-                } catch (RuntimeException failure) {
-                    // A read failure can happen after partial provider output;
-                    // cancel before returning the normalized fail-closed result.
-                    session.cancel();
-                    return fenceViolationOutcome(decision, binding, attempt, providerId);
-                }
-                if (next.isEmpty()) {
-                    // close() is not a substitute for cancelling an incomplete
-                    // provider session; release the stream explicitly first.
-                    session.cancel();
-                    break;
-                }
-                final ModelProtocolEvent event;
-                try {
-                    event = fence.accept(next.get());
-                } catch (ModelProtocolEventFence.FenceViolation violation) {
-                    // Corrupt stream (wrong binding, out-of-order, duplicate
-                    // usage, EOS without output): fail the whole attempt closed
-                    // so a late or wrong event can never pollute output/usage.
-                    session.cancel();
-                    return fenceViolationOutcome(decision, binding, attempt, providerId);
-                }
-                if (event instanceof ModelProtocolEvent.OutputDelta delta) {
-                    final String content;
-                    if (delta.payload() instanceof ModelPayload.TextChunk chunk) {
-                        content = chunk.text();
-                    } else if (delta.payload() instanceof ModelPayload.StructuredJson json) {
-                        content = json.json();
-                    } else {
-                        throw new IllegalStateException("unexpected output payload type");
-                    }
-                    if (!outputBytes.tryAppend(content)) {
-                        session.cancel();
-                        return fenceViolationOutcome(decision, binding, attempt, providerId);
-                    }
-                    builder.append(content);
-                } else if (event instanceof ModelProtocolEvent.UsageReported reported) {
-                    usage = reported.usage();
-                } else if (event.terminal()) {
-                    terminalEvent = event;
-                    break;
-                }
+        StringBuilder builder = new StringBuilder();
+        Utf8ByteAccumulator outputBytes = new Utf8ByteAccumulator(
+                SizeLimits.MAX_TOTAL_OUTPUT_BYTES
+        );
+        while (true) {
+            final Optional<ModelProtocolEvent> next;
+            try {
+                next = session.next();
+            } catch (RuntimeException failure) {
+                // A read failure can happen after partial provider output;
+                // cancel before returning the normalized fail-closed result.
+                session.cancel();
+                return fenceViolationOutcome(decision, binding, attempt, providerId);
             }
-            output = builder.toString();
+            if (next.isEmpty()) {
+                // close() is not a substitute for cancelling an incomplete
+                // provider session; release the stream explicitly first.
+                session.cancel();
+                break;
+            }
+            final ModelProtocolEvent event;
+            try {
+                event = fence.accept(next.get());
+            } catch (ModelProtocolEventFence.FenceViolation violation) {
+                // Corrupt stream (wrong binding, out-of-order, duplicate
+                // usage, EOS without output): fail the whole attempt closed
+                // so a late or wrong event can never pollute output/usage.
+                session.cancel();
+                return fenceViolationOutcome(decision, binding, attempt, providerId);
+            }
+            if (event instanceof ModelProtocolEvent.OutputDelta delta) {
+                final String content;
+                if (delta.payload() instanceof ModelPayload.TextChunk chunk) {
+                    content = chunk.text();
+                } else if (delta.payload() instanceof ModelPayload.StructuredJson json) {
+                    content = json.json();
+                } else {
+                    throw new IllegalStateException("unexpected output payload type");
+                }
+                if (!outputBytes.tryAppend(content)) {
+                    session.cancel();
+                    return fenceViolationOutcome(decision, binding, attempt, providerId);
+                }
+                builder.append(content);
+            } else if (event instanceof ModelProtocolEvent.UsageReported reported) {
+                usage = reported.usage();
+            } else if (event.terminal()) {
+                terminalEvent = event;
+                break;
+            }
         }
+        String output = builder.toString();
 
         if (terminalEvent == null) {
             // Session closed without a terminal event: malformed stream, fail closed.
@@ -340,6 +377,15 @@ public final class LiveModelInvoker {
             return handleFailure(decision, binding, attempt, providerId, failed.failure());
         }
         throw new IllegalStateException("unexpected terminal event: " + terminalEvent);
+    }
+
+    /** Numeric generation id from the ownership tuple, or null when unparseable (no registration). */
+    private static Long parseGenerationId(ExternalAttemptBinding attempt) {
+        try {
+            return Long.valueOf(attempt.ownership().generationId());
+        } catch (NumberFormatException notNumeric) {
+            return null;
+        }
     }
 
     private LiveAttemptOutcome fenceViolationOutcome(

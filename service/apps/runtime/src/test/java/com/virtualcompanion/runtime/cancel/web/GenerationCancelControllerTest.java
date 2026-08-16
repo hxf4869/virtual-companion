@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
@@ -16,6 +17,7 @@ import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.web.servlet.MockMvc;
@@ -37,13 +39,17 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 class GenerationCancelControllerTest {
 
     private GenerationCancelService generationCancelService;
+    private ActiveInvocationRegistry activeInvocationRegistry;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         generationCancelService = mock(GenerationCancelService.class);
+        activeInvocationRegistry = mock(ActiveInvocationRegistry.class);
+        ObjectProvider<ActiveInvocationRegistry> registryProvider = mock(ObjectProvider.class);
+        when(registryProvider.getIfAvailable()).thenReturn(activeInvocationRegistry);
         GenerationCancelController controller =
-                new GenerationCancelController(generationCancelService);
+                new GenerationCancelController(generationCancelService, registryProvider);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -84,6 +90,30 @@ class GenerationCancelControllerTest {
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
 
         verify(generationCancelService).cancel(1L, 55L);
+    }
+
+    @Test
+    void cancelSignalsActiveInvocationRegistryAfterDatabaseCancel() throws Exception {
+        // CANCEL-A: the cooperative interrupt fires only AFTER the database
+        // terminal state transition succeeded.
+        when(generationCancelService.cancel(1L, 55L))
+                .thenReturn(Optional.of(record(55L, "CANCELLED")));
+
+        mockMvc.perform(post("/api/v1/generations/55/cancel"))
+                .andExpect(status().isOk());
+
+        verify(generationCancelService).cancel(1L, 55L);
+        verify(activeInvocationRegistry).cancel(55L);
+    }
+
+    @Test
+    void cancelDoesNotSignalRegistryWhenGenerationNotFound() throws Exception {
+        when(generationCancelService.cancel(1L, 404L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/v1/generations/404/cancel"))
+                .andExpect(status().isNotFound());
+
+        verify(activeInvocationRegistry, never()).cancel(404L);
     }
 
     @Test

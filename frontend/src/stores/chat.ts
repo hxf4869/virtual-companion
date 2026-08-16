@@ -24,6 +24,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 import {
+  cancelGeneration,
   createConversation,
   listMessages,
   sendGeneration,
@@ -55,6 +56,9 @@ export const useChatStore = defineStore("h5-chat", () => {
   const messages = ref<Message[]>([]);
   let handle: StreamHandle | null = null;
   let runSequence = 0;
+  // CANCEL-A: the transport of the most recent send, so cancel() can confirm the
+  // backend cancellation before tearing down the local stream.
+  let lastTransport: ChatTransport | null = null;
 
   /** The rendered draft: joined delta payloads of the contiguous events only. */
   const draft = computed(() =>
@@ -121,11 +125,27 @@ export const useChatStore = defineStore("h5-chat", () => {
     }
   }
 
-  function cancel(): void {
-    if (handle) {
-      handle.cancelled = true;
-      handle.abort();
+  /**
+   * CANCEL-A: confirm the backend cancellation first, then tear down the local
+   * SSE. The database terminal state stays the source of truth; the API call
+   * only signals the in-flight provider session server-side. A backend failure
+   * (offline, already terminal, existence hidden) never blocks the local abort.
+   */
+  async function cancel(): Promise<void> {
+    const current = handle;
+    if (!current) return;
+    current.cancelled = true;
+    const transport = lastTransport;
+    const id = generationId.value;
+    if (transport && id) {
+      try {
+        await cancelGeneration(transport, id);
+      } catch {
+        // Local teardown proceeds regardless; the reducer outcome stays
+        // "cancelled" and the backend terminal state rules.
+      }
     }
+    current.abort();
   }
 
   function reset(): void {
@@ -141,6 +161,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversationId.value = "";
     messages.value = [];
     handle = null;
+    lastTransport = null;
   }
 
   /**
@@ -181,6 +202,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     deps: RealtimeDeps,
     content: string,
   ): Promise<void> {
+    lastTransport = transport; // CANCEL-A: cancel() confirms through this transport
     if (!conversationId.value) {
       phase.value = "failed";
       return;

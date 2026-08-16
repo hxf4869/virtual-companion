@@ -197,6 +197,113 @@ describe("useChatStore", () => {
     expect(store.phase).toBe("cancelled");
   });
 
+  // ---- CANCEL-A: backend cancel confirmation before local teardown ----
+
+  function blockingDeps(resumeStart: { started: boolean }): RealtimeDeps {
+    const resume = vi.fn(async (_req: unknown, signal?: AbortSignal) => {
+      resumeStart.started = true;
+      await new Promise<void>((resolve) => {
+        signal?.addEventListener("abort", () => resolve());
+      });
+      return { disposition: "RESUMED", events: [delta(1)] } as ResumeResult;
+    });
+    return {
+      resume,
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+  }
+
+  function cancelAwareTransport(opts: {
+    cancelOk: boolean;
+    order?: string[];
+  }): ChatTransport {
+    return {
+      async request(_method: string, path: string): Promise<ChatApiResponse> {
+        if (path === "/api/v1/conversations") {
+          return { ok: true, status: 200, json: { conversationId: 1 } };
+        }
+        if (path.includes("/messages")) {
+          return { ok: true, status: 200, json: [] };
+        }
+        if (path.endsWith("/cancel")) {
+          opts.order?.push("cancel-api");
+          return opts.cancelOk
+            ? {
+                ok: true,
+                status: 200,
+                json: {
+                  generationId: 42,
+                  conversationId: 1,
+                  logicalGenerationId: "lg-1",
+                  status: "CANCELLED",
+                },
+              }
+            : { ok: false, status: 503, json: null };
+        }
+        if (path.includes("/generations")) {
+          return {
+            ok: true,
+            status: 200,
+            json: {
+              generationId: 42,
+              conversationId: 1,
+              logicalGenerationId: "lg-1",
+              status: "CREATED",
+            },
+          };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    };
+  }
+
+  it("cancel() confirms the backend cancel API before aborting the local stream", async () => {
+    const store = useChatStore();
+    const order: string[] = [];
+    const transport = cancelAwareTransport({ cancelOk: true, order });
+    const resumeStart = { started: false };
+    // The abort listener is attached synchronously with the started marker, so
+    // waiting on it guarantees the cancel-abort event below is observed.
+    const resume = vi.fn(async (_req: unknown, signal?: AbortSignal) => {
+      resumeStart.started = true;
+      signal?.addEventListener("abort", () => order.push("abort-event"));
+      await new Promise<void>((resolve) => {
+        signal?.addEventListener("abort", () => resolve());
+      });
+      return { disposition: "RESUMED", events: [delta(1)] } as ResumeResult;
+    });
+    const deps: RealtimeDeps = {
+      resume,
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.initConversation(transport, "1");
+    const sendPromise = store.send(transport, deps, "Hello");
+    await vi.waitFor(() => expect(resumeStart.started).toBe(true));
+    await store.cancel();
+    await sendPromise;
+
+    // The backend confirmation must precede the local stream teardown.
+    expect(order).toEqual(["cancel-api", "abort-event"]);
+    expect(store.phase).toBe("cancelled");
+  });
+
+  it("cancel() still aborts the local stream when the backend cancel fails", async () => {
+    const store = useChatStore();
+    const transport = cancelAwareTransport({ cancelOk: false });
+    const resumeStart = { started: false };
+    const deps = blockingDeps(resumeStart);
+
+    await store.initConversation(transport, "1");
+    const sendPromise = store.send(transport, deps, "Hello");
+    await vi.waitFor(() => expect(resumeStart.started).toBe(true));
+    await store.cancel();
+    await sendPromise;
+
+    // Backend unavailable (503) must not block the local teardown.
+    expect(store.phase).toBe("cancelled");
+  });
+
   // ---- TASK-0186: send flow + history ----
 
   it("initConversation creates conversation and loads history", async () => {

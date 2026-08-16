@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.modelproviders;
 
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationGuard;
 import com.virtualcompanion.modelruntime.authorization.InMemoryAuthorizationSnapshotStore;
+import com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.modelruntime.routing.DeterministicRouter;
 import com.virtualcompanion.modelruntime.routing.GenerationRecovery;
@@ -71,19 +72,27 @@ public class ApprovedModelProviderConfig {
         return new GenerationRecovery(quotaLedger);
     }
 
+    /** CANCEL-A: process-local registry bridging the HTTP cancel path into in-flight sessions. */
+    @Bean
+    ActiveInvocationRegistry activeInvocationRegistry() {
+        return new ActiveInvocationRegistry();
+    }
+
     @Bean
     LiveModelInvoker liveModelInvoker(
             DeterministicRouter deterministicRouter,
             ExecutionAuthorizationGuard executionAuthorizationGuard,
             InMemoryAuthorizationSnapshotStore authorizationSnapshotStore,
             ApprovedModelProviders approvedModelProviders,
-            GenerationRecovery generationRecovery) {
+            GenerationRecovery generationRecovery,
+            ActiveInvocationRegistry activeInvocationRegistry) {
         return new LiveModelInvoker(
                 deterministicRouter,
                 executionAuthorizationGuard,
                 authorizationSnapshotStore,
                 approvedModelProviders.locator(),
                 generationRecovery,
-                approvedModelProviders.supplierNames());
+                approvedModelProviders.supplierNames(),
+                activeInvocationRegistry);
     }
 }

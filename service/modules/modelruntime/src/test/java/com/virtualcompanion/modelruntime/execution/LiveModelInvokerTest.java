@@ -37,6 +37,7 @@ import com.virtualcompanion.modelruntime.routing.DeterministicRouter;
 import com.virtualcompanion.modelruntime.routing.Entitlement;
 import com.virtualcompanion.modelruntime.routing.GenerationRecovery;
 import com.virtualcompanion.modelruntime.routing.QuotaLedger;
+import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
 import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.safety.ClassifierReport;
@@ -633,6 +634,43 @@ class LiveModelInvokerTest {
         assertEquals("OpenAI", outcome.audits().getFirst().supplierName());
     }
 
+    // ---- CANCEL-A: active-invocation registry lifecycle ----
+
+    @Test
+    void externalSessionRegistersAndUnregistersInActiveInvocationRegistry() {
+        // The registry key is the numeric generation id from the ownership
+        // tuple; the session must be registered for the whole external phase
+        // and unregistered before execute returns (best-effort signal channel).
+        RecordingRegistry registry = new RecordingRegistry();
+        Harness harness = harness(
+                false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"), registry);
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequestNumericGeneration());
+
+        assertEquals(LiveAttemptTerminal.SUCCEEDED, outcome.terminal());
+        assertEquals(List.of(42L), registry.registered);
+        assertEquals(List.of(42L), registry.unregistered);
+    }
+
+    /** Registry recording register/unregister calls while keeping the real semantics. */
+    private static final class RecordingRegistry extends ActiveInvocationRegistry {
+
+        private final java.util.ArrayList<Long> registered = new java.util.ArrayList<>();
+        private final java.util.ArrayList<Long> unregistered = new java.util.ArrayList<>();
+
+        @Override
+        public void register(long generationId, ModelProtocolSession session) {
+            registered.add(generationId);
+            super.register(generationId, session);
+        }
+
+        @Override
+        public void unregister(long generationId, ModelProtocolSession session) {
+            unregistered.add(generationId);
+            super.unregister(generationId, session);
+        }
+    }
+
     @Test
     void executeNeverPerformsAuthorizationStoreReads() {
         // The only database read of the invocation path (execution-snapshot
@@ -792,7 +830,8 @@ class LiveModelInvokerTest {
                 emptyLocator,
                 snapshotProvider,
                 -1,
-                null);
+                null,
+                new ActiveInvocationRegistry());
     }
 
     private Harness harness(
@@ -803,6 +842,42 @@ class LiveModelInvokerTest {
             ProviderId snapshotProvider,
             int nextFailureAfterEvents,
             RuntimeException nextFailure) {
+        return harness(
+                denyExecution,
+                script,
+                supplierNames,
+                emptyLocator,
+                snapshotProvider,
+                nextFailureAfterEvents,
+                nextFailure,
+                new ActiveInvocationRegistry());
+    }
+
+    private Harness harness(
+            boolean denyExecution,
+            Function<InvocationBinding, List<ModelProtocolEvent>> script,
+            Map<ProviderId, String> supplierNames,
+            ActiveInvocationRegistry registry) {
+        return harness(
+                denyExecution,
+                script,
+                supplierNames,
+                false,
+                PROVIDER,
+                -1,
+                null,
+                registry);
+    }
+
+    private Harness harness(
+            boolean denyExecution,
+            Function<InvocationBinding, List<ModelProtocolEvent>> script,
+            Map<ProviderId, String> supplierNames,
+            boolean emptyLocator,
+            ProviderId snapshotProvider,
+            int nextFailureAfterEvents,
+            RuntimeException nextFailure,
+            ActiveInvocationRegistry activeInvocationRegistry) {
         quota.provision("owner-1", 5);
         ScriptedAdapter adapter = new ScriptedAdapter(
                 ModelProtocol.OPENAI_CHAT_COMPLETIONS,
@@ -839,12 +914,27 @@ class LiveModelInvokerTest {
                 ? new InMemoryAdapterLocator(List.of())
                 : new InMemoryAdapterLocator(List.of(registration));
         LiveModelInvoker invoker = new LiveModelInvoker(
-                router, guard, store, locator, recovery, supplierNames);
-        return new Harness(adapter, invoker);
+                router, guard, store, locator, recovery, supplierNames, activeInvocationRegistry);
+        return new Harness(adapter, invoker, activeInvocationRegistry);
     }
 
     private static LiveInvocationRequest adequateRequest() {
         return request(routing(ServiceClass.simulated()),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95));
+    }
+
+    /** Adequate request whose generation id is numeric (registry-key parseable). */
+    private static LiveInvocationRequest adequateRequestNumericGeneration() {
+        RoutingRequest routing = new RoutingRequest(
+                new OwnershipTuple("owner-1", "rel-1", "conv-1", "42"),
+                new Entitlement("owner-1", ServiceClass.simulated()),
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                CAPABILITIES,
+                "snap-req",
+                "snap-exec",
+                "zero-llm-src",
+                42L);
+        return request(routing,
                 new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95));
     }
 
@@ -969,10 +1059,15 @@ class LiveModelInvokerTest {
 
         private final ScriptedAdapter adapter;
         private final LiveModelInvoker invoker;
+        private final ActiveInvocationRegistry activeInvocations;
 
-        Harness(ScriptedAdapter adapter, LiveModelInvoker invoker) {
+        Harness(
+                ScriptedAdapter adapter,
+                LiveModelInvoker invoker,
+                ActiveInvocationRegistry activeInvocations) {
             this.adapter = adapter;
             this.invoker = invoker;
+            this.activeInvocations = activeInvocations;
         }
 
         LiveAttemptOutcome invoke(LiveInvocationRequest request) {

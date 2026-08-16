@@ -1,8 +1,10 @@
 package com.virtualcompanion.runtime.cancel.web;
 
+import com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
  * no dedicated status for the state conflict). A foreign or absent id maps to
  * 404 NOT_FOUND_OR_FORBIDDEN so existence is never disclosed.
  *
+ * <p>CANCEL-A: after the database terminal state transition succeeds, the
+ * process-local {@link ActiveInvocationRegistry} forwards the cooperative
+ * cancel signal into the in-flight provider session (single-runtime Technical
+ * Alpha assumption). The registry is best-effort and optional — it exists only
+ * while the model-provider runtime is wired; the DB state stays the source of
+ * truth and the V28 claim guard still rejects any late finalize.
+ *
  * <p>Authenticated: the principal's account id is the owner id; the owner GUC
  * is bound upstream by the owner-injection filter so the V10 call runs in the
  * server-trusted tenant context.
@@ -34,9 +43,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class GenerationCancelController {
 
     private final GenerationCancelService generationCancelService;
+    private final ObjectProvider<ActiveInvocationRegistry> activeInvocationRegistry;
 
-    public GenerationCancelController(GenerationCancelService generationCancelService) {
+    public GenerationCancelController(
+            GenerationCancelService generationCancelService,
+            ObjectProvider<ActiveInvocationRegistry> activeInvocationRegistry) {
         this.generationCancelService = generationCancelService;
+        this.activeInvocationRegistry = activeInvocationRegistry;
     }
 
     @PostMapping("/generations/{generationId}/cancel")
@@ -47,6 +60,10 @@ public class GenerationCancelController {
         GenerationRecord record = generationCancelService
                 .cancel(ownerUserId, generation)
                 .orElseThrow(() -> new ResourceNotFoundException("generation"));
+        ActiveInvocationRegistry registry = activeInvocationRegistry.getIfAvailable();
+        if (registry != null) {
+            registry.cancel(generation);
+        }
         return new GenerationResponse(
                 record.id(),
                 record.conversationId(),
