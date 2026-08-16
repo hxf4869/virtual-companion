@@ -4,9 +4,11 @@ import {
   createAccount,
   disableAccount,
   listAccounts,
+  listAuditEvents,
   login,
   logout,
   refresh,
+  usageSummary,
   type AuthApiResponse,
   type AuthTransport,
 } from "@/api/auth";
@@ -185,6 +187,76 @@ describe("listAccounts/disableAccount (ADMIN-ACCTS)", () => {
     const t = transportFor({ ok: false, status: 500, json: null });
 
     await expect(disableAccount(t, "7")).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe("listAuditEvents/usageSummary (ADMIN-OPS)", () => {
+  it("lists the audit trail with the after cursor on OK", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: [
+        {
+          id: "500",
+          eventType: "ACCOUNT_CREATE",
+          accountId: "7",
+          username: "alice",
+          occurredAt: "2026-08-16T08:00:00Z",
+        },
+      ],
+    });
+
+    const list = await listAuditEvents(t, "501", 50);
+
+    expect(list).toHaveLength(1);
+    expect(list[0].eventType).toBe("ACCOUNT_CREATE");
+    expect(list[0].accountId).toBe("7");
+    expect(t.request).toHaveBeenCalledWith(
+      "GET",
+      "/api/v1/auth/admin/audit?after=501&limit=50",
+    );
+  });
+
+  it("omits the query string when no cursor is given", async () => {
+    const t = transportFor({ ok: true, status: 200, json: [] });
+
+    await listAuditEvents(t);
+
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/admin/audit");
+  });
+
+  it("throws a typed error on a non-OK audit read", async () => {
+    const t = transportFor({ ok: false, status: 403, json: null });
+
+    await expect(listAuditEvents(t)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("parses the usage summary rows on OK", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: [
+        { day: "2026-08-16", generations: 3, inputTokens: 1200, outputTokens: 800, cost: 0.012 },
+      ],
+    });
+
+    const rows = await usageSummary(t, 14);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      day: "2026-08-16",
+      generations: 3,
+      inputTokens: 1200,
+      outputTokens: 800,
+      cost: 0.012,
+    });
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/admin/usage?days=14");
+  });
+
+  it("throws a typed error on a non-OK usage read", async () => {
+    const t = transportFor({ ok: false, status: 403, json: null });
+
+    await expect(usageSummary(t)).rejects.toMatchObject({ status: 403 });
   });
 });
 

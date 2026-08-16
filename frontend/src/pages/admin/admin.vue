@@ -112,6 +112,72 @@
       <view v-if="failed" class="admin-error" data-testid="account-failed" role="alert">
         <text>开通失败，请检查输入或权限（不会披露用户名是否存在）。</text>
       </view>
+
+      <!-- ADMIN-OPS: per-day usage/cost summary -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">用量与成本（近 14 天）</text>
+          <button
+            data-testid="refresh-usage"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshUsage"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="usageFailed" class="admin-error" data-testid="usage-failed" role="alert">
+          <text>用量统计加载失败，请重试。</text>
+        </view>
+        <view v-if="usageRows.length > 0" class="usage-table" data-testid="usage-table">
+          <view v-for="row in usageRows" :key="row.day" class="usage-row" data-testid="usage-row">
+            <text class="usage-cell">{{ row.day }}</text>
+            <text class="usage-cell">{{ row.generations }} 轮</text>
+            <text class="usage-cell">{{ row.inputTokens }} / {{ row.outputTokens }} tokens</text>
+            <text class="usage-cell">{{ row.cost.toFixed(6) }}</text>
+          </view>
+        </view>
+        <view v-else-if="!usageFailed" class="admin-empty" data-testid="usage-empty">
+          <text>暂无已结算的生成用量。</text>
+        </view>
+      </view>
+
+      <!-- ADMIN-OPS: append-only audit trail -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">审计日志</text>
+          <button
+            data-testid="refresh-audit"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshAudit"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="auditFailed" class="admin-error" data-testid="audit-failed" role="alert">
+          <text>审计日志加载失败，请重试。</text>
+        </view>
+        <view
+          v-for="event in auditEvents"
+          :key="event.id"
+          class="audit-row"
+          data-testid="audit-row"
+        >
+          <text class="audit-cell">{{ event.eventType }}</text>
+          <text class="audit-cell">{{ event.username }}</text>
+          <text class="audit-cell">{{ event.occurredAt }}</text>
+        </view>
+        <button
+          v-if="auditHasMore"
+          data-testid="audit-load-more"
+          class="admin-nav-index"
+          :disabled="busy"
+          @click="onLoadMoreAudit"
+        >
+          加载更早
+        </button>
+      </view>
     </template>
   </view>
 </template>
@@ -126,9 +192,21 @@
 // transport and never persisted or logged.
 import { computed, defineComponent, onMounted, ref } from "vue";
 
-import { createAccount, disableAccount, listAccounts, type AccountListItem } from "@/api/auth";
+import {
+  createAccount,
+  disableAccount,
+  listAccounts,
+  listAuditEvents,
+  usageSummary,
+  type AccountListItem,
+  type AuditEventListItem,
+  type UsageSummaryItem,
+} from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
+
+/** ADMIN-OPS: audit page size (the server clamps its own band). */
+const AUDIT_PAGE_SIZE = 50;
 
 export default defineComponent({
   name: "AdminPage",
@@ -149,6 +227,12 @@ export default defineComponent({
     // ADMIN-ACCTS: the account registry loaded on mount and after mutations.
     const accounts = ref<AccountListItem[]>([]);
     const loadFailed = ref(false);
+    // ADMIN-OPS: usage summary + audit trail state.
+    const usageRows = ref<UsageSummaryItem[]>([]);
+    const usageFailed = ref(false);
+    const auditEvents = ref<AuditEventListItem[]>([]);
+    const auditFailed = ref(false);
+    const auditHasMore = ref(false);
 
     // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
     const transport = createAuthenticatedTransport({
@@ -164,7 +248,69 @@ export default defineComponent({
       }
       // ADMIN-ACCTS: the registry is loaded once the session state is known.
       await refreshAccounts();
+      // ADMIN-OPS: usage + audit load only for admins.
+      if (auth.role === "ADMIN") {
+        await refreshUsage();
+        await refreshAudit();
+      }
     });
+
+    /** ADMIN-OPS: reload the usage summary (non-fatal failure keeps rows). */
+    async function refreshUsage(): Promise<void> {
+      usageFailed.value = false;
+      try {
+        usageRows.value = await usageSummary(transport, 14);
+      } catch {
+        usageFailed.value = true;
+      }
+    }
+
+    async function onRefreshUsage(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshUsage();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** ADMIN-OPS: reload the first audit page (newest first). */
+    async function refreshAudit(): Promise<void> {
+      auditFailed.value = false;
+      try {
+        const page = await listAuditEvents(transport, undefined, AUDIT_PAGE_SIZE);
+        auditEvents.value = page;
+        auditHasMore.value = page.length >= AUDIT_PAGE_SIZE;
+      } catch {
+        auditFailed.value = true;
+      }
+    }
+
+    async function onRefreshAudit(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshAudit();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** ADMIN-OPS: append an older audit page (exclusive after cursor). */
+    async function onLoadMoreAudit(): Promise<void> {
+      if (busy.value || !auditHasMore.value) return;
+      const last = auditEvents.value[auditEvents.value.length - 1];
+      if (!last) return;
+      busy.value = true;
+      try {
+        const page = await listAuditEvents(transport, last.id, AUDIT_PAGE_SIZE);
+        auditEvents.value = [...auditEvents.value, ...page];
+        auditHasMore.value = page.length >= AUDIT_PAGE_SIZE;
+      } catch {
+        auditFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
 
     /** ADMIN-ACCTS: reload the registry (non-fatal failure keeps the list). */
     async function refreshAccounts(): Promise<void> {
@@ -263,10 +409,18 @@ export default defineComponent({
       failed,
       accounts,
       loadFailed,
+      usageRows,
+      usageFailed,
+      auditEvents,
+      auditFailed,
+      auditHasMore,
       canSubmit,
       onCreate,
       onRefreshAccounts,
       onDisable,
+      onRefreshUsage,
+      onRefreshAudit,
+      onLoadMoreAudit,
       goTo,
     };
   },
@@ -367,5 +521,43 @@ export default defineComponent({
   background-color: #5a1a1a;
   border-radius: 12rpx;
   font-size: 26rpx;
+}
+/* ADMIN-OPS: usage + audit sections */
+.ops-section {
+  margin-top: 32rpx;
+}
+.usage-table {
+  margin-top: 12rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  border: 2rpx solid #2a3a5a;
+}
+.usage-row,
+.audit-row {
+  display: flex;
+  gap: 12rpx;
+  padding: 12rpx 16rpx;
+  background-color: #1c2b4a;
+  font-size: 24rpx;
+  border-bottom: 2rpx solid #2a3a5a;
+}
+.usage-row:last-child,
+.audit-row:last-child {
+  border-bottom: none;
+}
+.usage-cell,
+.audit-cell {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-empty {
+  margin-top: 12rpx;
+  padding: 16rpx;
+  background-color: #1c2b4a;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #8fa0bd;
 }
 </style>

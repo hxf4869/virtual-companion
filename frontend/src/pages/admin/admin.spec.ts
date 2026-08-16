@@ -72,6 +72,52 @@ describe("admin account page (ADMIN-UI)", () => {
     wrapper.unmount();
   });
 
+  it("renders the usage summary and audit trail on mount (ADMIN-OPS)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/auth/admin/accounts" && (init?.method ?? "GET") === "GET") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/auth/admin/usage")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { day: "2026-08-16", generations: 3, inputTokens: 1200, outputTokens: 800, cost: 0.012 },
+            ],
+          };
+        }
+        if (url.startsWith("/api/v1/auth/admin/audit")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "500",
+                eventType: "ACCOUNT_CREATE",
+                accountId: "7",
+                username: "alice",
+                occurredAt: "2026-08-16T08:00:00Z",
+              },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="usage-table"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="usage-row"]').text()).toContain("3 轮");
+    expect(wrapper.find('[data-testid="audit-row"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="audit-row"]').text()).toContain("ACCOUNT_CREATE");
+    expect(wrapper.find('[data-testid="audit-load-more"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("creates an account and shows the created account", async () => {
     stubCreateAccount(true, {
       accountId: "9",

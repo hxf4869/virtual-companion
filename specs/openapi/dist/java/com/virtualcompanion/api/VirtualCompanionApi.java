@@ -94,4 +94,10 @@ public interface VirtualCompanionApi {
 
     /** Disable an internal account (ADMIN only, ADMIN-ACCTS). */
     DisableAccountResponse disableInternalAccount();
+
+    /** Keyset-paginated audit event list (ADMIN only, ADMIN-OPS). */
+    Void listAdminAuditEvents();
+
+    /** Per-day usage and cost summary (ADMIN only, ADMIN-OPS). */
+    Void getAdminUsageSummary();
 }

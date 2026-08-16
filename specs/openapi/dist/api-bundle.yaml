@@ -1043,6 +1043,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/audit:
+    get:
+      operationId: listAdminAuditEvents
+      summary: Keyset-paginated audit event list (ADMIN only, ADMIN-OPS)
+      description: Newest-first keyset page of the append-only identity_auth_event audit trail (login/logout/admin account
+        events), via vc.identity_auth_event_list. after is the last event id seen (exclusive); limit is clamped to a safe
+        band by the server. Requires a valid Bearer access token whose account is an ACTIVE ADMIN.
+      parameters:
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor (the last event id seen); omit to start from the newest.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Page size, clamped to a safe band by the server.
+      responses:
+        '200':
+          description: A page of audit events, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEventListItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/usage:
+    get:
+      operationId: getAdminUsageSummary
+      summary: Per-day usage and cost summary (ADMIN only, ADMIN-OPS)
+      description: Per-day aggregates (generation count, settled input/output tokens, actual cost) over vc.generation_usage
+        since the days floor, via vc.admin_usage_summary. days is clamped to 1..90 by the server (default 14). Requires a
+        valid Bearer access token whose account is an ACTIVE ADMIN.
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Days to cover, clamped to 1..90 (default 14).
+      responses:
+        '200':
+          description: Per-day usage rows, newest day first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UsageSummaryItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   securitySchemes:
     bearerAuth:
@@ -1639,6 +1715,63 @@ components:
         status:
           type: string
           description: DISABLED
+    AuditEventListItem:
+      type: object
+      description: One identity_auth_event audit row (ADMIN-OPS).
+      required:
+      - id
+      - eventType
+      - username
+      - occurredAt
+      properties:
+        id:
+          type: string
+          description: Monotonic event id (keyset cursor)
+        eventType:
+          type: string
+          description: LOGIN_SUCCESS / LOGIN_FAILURE / LOGOUT / ACCOUNT_CREATE / ACCOUNT_DISABLE
+        accountId:
+          type: string
+          description: Account the event is about, absent for login failures without a resolved account
+        username:
+          type: string
+          description: Normalized username recorded with the event
+        occurredAt:
+          type: string
+          format: date-time
+          description: Event timestamp (RFC 3339)
+    UsageSummaryItem:
+      type: object
+      description: One day of settled usage/cost aggregates (ADMIN-OPS).
+      required:
+      - day
+      - generations
+      - inputTokens
+      - outputTokens
+      - cost
+      properties:
+        day:
+          type: string
+          format: date
+          description: UTC calendar day
+        generations:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Settled generations that day
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Settled provider input tokens that day
+        outputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Settled provider output tokens that day
+        cost:
+          type: number
+          description: Settled actual cost that day (USD unless the deployment currency differs)
     AccountResponse:
       type: object
       description: An internal account (ADMIN creation result).

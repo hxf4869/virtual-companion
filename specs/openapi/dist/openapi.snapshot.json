@@ -31,10 +31,12 @@
     "logout",
     "createInternalAccount",
     "listInternalAccounts",
-    "disableInternalAccount"
+    "disableInternalAccount",
+    "listAdminAuditEvents",
+    "getAdminUsageSummary"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "0b0020dcdf920e70dadf580e45b331066b81ac78d9643cfbb6f8d5a0ac2c9a28"
+    "sha256": "48d30e225b4f225e3a75fa3efa74f8428891978235adb08e027b5fd2978ce641"
   }
 }

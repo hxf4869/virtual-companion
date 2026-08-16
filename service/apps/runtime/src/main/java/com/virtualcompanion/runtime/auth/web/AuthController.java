@@ -8,10 +8,12 @@ import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.LoginRequest;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountListItem;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.AuditEventResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.DisableAccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.UsageSummaryResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -122,6 +124,42 @@ public class AuthController {
             @PathVariable String accountId,
             @AuthenticationPrincipal JwtTokenService.Principal principal) {
         return authService.disableAccount(principal, parseAccountId(accountId));
+    }
+
+    /** ADMIN-OPS (V36): keyset page of the audit trail, newest first. */
+    @GetMapping("/admin/audit")
+    public List<AuditEventResponse> listAuditEvents(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "after", required = false)
+                    String after,
+            @org.springframework.web.bind.annotation.RequestParam(value = "limit", defaultValue = "50")
+                    int limit) {
+        Long afterId = after == null || after.isBlank() ? null : parseAccountId(after);
+        int safeLimit = Math.clamp(limit, 1, 200);
+        return authService.listAuditEvents(principal, afterId, safeLimit).stream()
+                .map(record -> new AuditEventResponse(
+                        Long.toString(record.id()),
+                        record.eventType(),
+                        record.accountId() == null ? null : Long.toString(record.accountId()),
+                        record.username(),
+                        record.occurredAt().toString()))
+                .toList();
+    }
+
+    /** ADMIN-OPS (V36): per-day usage/cost summary over the window. */
+    @GetMapping("/admin/usage")
+    public List<UsageSummaryResponse> usageSummary(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "days", defaultValue = "14")
+                    int days) {
+        return authService.usageSummary(principal, days).stream()
+                .map(record -> new UsageSummaryResponse(
+                        record.day().toString(),
+                        record.generations(),
+                        record.inputTokens(),
+                        record.outputTokens(),
+                        record.cost()))
+                .toList();
     }
 
     private static long parseAccountId(String raw) {

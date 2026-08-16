@@ -189,6 +189,100 @@ export async function disableAccount(
   throw new AuthHttpError(r.status);
 }
 
+/** ADMIN-OPS: one audit event row (OpenAPI AuditEventListItem). */
+export interface AuditEventListItem {
+  id: string;
+  eventType: string;
+  accountId?: string;
+  username: string;
+  occurredAt: string;
+}
+
+function asAuditEvent(json: unknown): AuditEventListItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const eventType = asString(o, "eventType");
+  const username = asString(o, "username");
+  const occurredAt = asString(o, "occurredAt");
+  if (!id || !eventType || !username || !occurredAt) return null;
+  return { id, eventType, username, occurredAt, accountId: asString(o, "accountId") };
+}
+
+/**
+ * ADMIN-OPS: keyset page of the audit trail (ADMIN only). A non-OK response
+ * throws (the page surfaces the denial); transport failures propagate.
+ */
+export async function listAuditEvents(
+  t: AuthTransport,
+  after?: string,
+  limit?: number,
+): Promise<AuditEventListItem[]> {
+  const params: string[] = [];
+  if (after !== undefined) {
+    params.push(`after=${encodeURIComponent(after)}`);
+  }
+  if (limit !== undefined) {
+    params.push(`limit=${limit}`);
+  }
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const r = await t.request("GET", `${AUTH_BASE}/admin/audit${query}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: AuditEventListItem[] = [];
+  for (const item of r.json) {
+    const parsed = asAuditEvent(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/** ADMIN-OPS: one day of settled usage/cost aggregates (UsageSummaryItem). */
+export interface UsageSummaryItem {
+  day: string;
+  generations: number;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+}
+
+function asUsageSummaryItem(json: unknown): UsageSummaryItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const day = asString(o, "day");
+  const generations = Number(o.generations);
+  const inputTokens = Number(o.inputTokens);
+  const outputTokens = Number(o.outputTokens);
+  const cost = Number(o.cost);
+  if (!day || !Number.isFinite(generations) || !Number.isFinite(inputTokens)
+      || !Number.isFinite(outputTokens) || !Number.isFinite(cost)) {
+    return null;
+  }
+  return { day, generations, inputTokens, outputTokens, cost };
+}
+
+/**
+ * ADMIN-OPS: per-day usage/cost summary (ADMIN only). A non-OK response
+ * throws; transport failures propagate.
+ */
+export async function usageSummary(
+  t: AuthTransport,
+  days?: number,
+): Promise<UsageSummaryItem[]> {
+  const query = days !== undefined ? `?days=${days}` : "";
+  const r = await t.request("GET", `${AUTH_BASE}/admin/usage${query}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: UsageSummaryItem[] = [];
+  for (const item of r.json) {
+    const parsed = asUsageSummaryItem(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
 /** ADMIN-ACCTS: typed non-OK failure for the registry operations. */
 export class AuthHttpError extends Error {
   readonly status: number;

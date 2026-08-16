@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.auth.application;
 
+import com.virtualcompanion.platform.persistence.AdminConsoleService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
@@ -62,13 +64,15 @@ public class AuthService {
     private final JwtTokenService jwt;
     private final Duration refreshTtl;
     private final String dummyHash;
+    private final AdminConsoleService adminConsole;
 
     public AuthService(
             IdentityAccountRepository accounts,
             IdentityRefreshTokenRepository sessions,
             PasswordEncoder passwordEncoder,
             JwtTokenService jwt,
-            Duration refreshTtl) {
+            Duration refreshTtl,
+            AdminConsoleService adminConsole) {
         this.accounts = accounts;
         this.sessions = sessions;
         this.passwordEncoder = passwordEncoder;
@@ -77,6 +81,7 @@ public class AuthService {
             throw new IllegalArgumentException("refresh TTL must be positive");
         }
         this.refreshTtl = refreshTtl;
+        this.adminConsole = Objects.requireNonNull(adminConsole, "adminConsole must not be null");
         // A valid BCrypt hash so the unknown-account login path runs a real
         // (equally expensive) compare instead of short-circuiting.
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
@@ -255,6 +260,42 @@ public class AuthService {
         }
         return new AuthResponses.DisableAccountResponse(
                 Long.toString(targetAccountId), "DISABLED");
+    }
+
+    /**
+     * ADMIN-OPS (V36): keyset page of the append-only audit trail, newest
+     * first. ADMIN-only in the application layer and re-verified in SQL.
+     */
+    public List<com.virtualcompanion.platform.persistence.AuditEventRecord> listAuditEvents(
+            JwtTokenService.Principal principal, Long after, int limit) {
+        requireAdmin(principal);
+        try {
+            return adminConsole.listAuditEvents(principal.accountId(), after, limit);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /**
+     * ADMIN-OPS (V36): per-day usage/cost summary over the window. ADMIN-only
+     * in the application layer and re-verified in SQL.
+     */
+    public List<com.virtualcompanion.platform.persistence.UsageSummaryRecord> usageSummary(
+            JwtTokenService.Principal principal, int days) {
+        requireAdmin(principal);
+        try {
+            return adminConsole.usageSummary(principal.accountId(), days);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** ADMIN-only guard shared by every management read/write. */
+    private void requireAdmin(JwtTokenService.Principal principal) {
+        if (principal == null || !ROLE_ADMIN.equals(principal.role())) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "ADMIN role is required");
+        }
     }
 
     /** Platform bootstrap: seed the single ADMIN (idempotent, no-op when one exists). */

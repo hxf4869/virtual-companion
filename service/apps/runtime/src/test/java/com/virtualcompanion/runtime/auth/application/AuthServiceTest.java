@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.virtualcompanion.platform.persistence.AdminConsoleService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
@@ -39,6 +40,7 @@ class AuthServiceTest {
     private IdentityRefreshTokenRepository sessions;
     private PasswordEncoder passwordEncoder;
     private JwtTokenService jwt;
+    private AdminConsoleService adminConsole;
     private AuthService service;
 
     @BeforeEach
@@ -47,10 +49,12 @@ class AuthServiceTest {
         sessions = mock(IdentityRefreshTokenRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         jwt = mock(JwtTokenService.class);
+        adminConsole = mock(AdminConsoleService.class);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$dummyhashplaceholder");
         when(jwt.accessTtl()).thenReturn(Duration.ofHours(2));
         when(jwt.issueAccessToken(anyLong(), anyString(), anyString())).thenReturn("access-token");
-        service = new AuthService(accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7));
+        service = new AuthService(
+                accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7), adminConsole);
     }
 
     @Test
@@ -314,6 +318,60 @@ class AuthServiceTest {
                     assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.BAD_REQUEST);
                 });
         verify(accounts, never()).disableAccount(anyLong(), anyLong());
+    }
+
+    // ---- ADMIN-OPS (V36): audit list + usage summary ----
+
+    @Test
+    void adminListsAuditEventsThroughTheConsole() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        java.time.Instant occurred = java.time.Instant.parse("2026-08-16T08:00:00Z");
+        when(adminConsole.listAuditEvents(1L, 500L, 50)).thenReturn(java.util.List.of(
+                new com.virtualcompanion.platform.persistence.AuditEventRecord(
+                        500L, "ACCOUNT_CREATE", 7L, "alice", occurred)));
+
+        var events = service.listAuditEvents(admin, 500L, 50);
+
+        assertThat(events).hasSize(1);
+        assertThat(events.get(0).eventType()).isEqualTo("ACCOUNT_CREATE");
+        assertThat(events.get(0).accountId()).isEqualTo(7L);
+        verify(adminConsole).listAuditEvents(1L, 500L, 50);
+    }
+
+    @Test
+    void nonAdminCannotListAuditEvents() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+
+        assertThatThrownBy(() -> service.listAuditEvents(user, null, 50))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("ACCESS_DENIED"));
+        verifyNoInteractions(adminConsole);
+    }
+
+    @Test
+    void adminReadsUsageSummaryThroughTheConsole() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        when(adminConsole.usageSummary(1L, 14)).thenReturn(java.util.List.of(
+                new com.virtualcompanion.platform.persistence.UsageSummaryRecord(
+                        java.time.LocalDate.parse("2026-08-16"), 3L, 1200L, 800L,
+                        new java.math.BigDecimal("0.012"))));
+
+        var rows = service.usageSummary(admin, 14);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).generations()).isEqualTo(3L);
+        assertThat(rows.get(0).inputTokens()).isEqualTo(1200L);
+        verify(adminConsole).usageSummary(1L, 14);
+    }
+
+    @Test
+    void nonAdminCannotReadUsageSummary() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+
+        assertThatThrownBy(() -> service.usageSummary(user, 14))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("ACCESS_DENIED"));
+        verifyNoInteractions(adminConsole);
     }
 
     @Test

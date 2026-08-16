@@ -185,6 +185,22 @@ export interface DisableAccountResponse {
   status: string
 }
 
+export interface AuditEventListItem {
+  id: string
+  eventType: string
+  accountId?: string
+  username: string
+  occurredAt: string
+}
+
+export interface UsageSummaryItem {
+  day: string
+  generations: string
+  inputTokens: string
+  outputTokens: string
+  cost: string
+}
+
 export interface AccountResponse {
   accountId: string
   username: string
@@ -224,4 +240,6 @@ export interface VirtualCompanionApiClient {
   createInternalAccount(): Promise<VersionResponse>
   listInternalAccounts(): Promise<VersionResponse>
   disableInternalAccount(): Promise<VersionResponse>
+  listAdminAuditEvents(): Promise<VersionResponse>
+  getAdminUsageSummary(): Promise<VersionResponse>
 }

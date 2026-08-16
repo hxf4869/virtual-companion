@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V35 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V36 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -42,7 +42,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/admin/accounts`、`GET /api/v1/auth/admin/accounts`（账户列表）、
   `POST /api/v1/auth/admin/accounts/{accountId}/disable`（禁用，幂等；开通受
-  betaGate maxEnabledAccounts=30 容量门禁约束）
+  betaGate maxEnabledAccounts=30 容量门禁约束）、`GET /api/v1/auth/admin/audit`
+  （审计日志 keyset 分页，ADMIN-OPS）、`GET /api/v1/auth/admin/usage`（按日
+  用量/成本汇总，ADMIN-OPS）
 - `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
   `POST /api/v1/relationships/{relationshipId}/deactivate`（personaRef 按 persona-templates
   目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文）
@@ -80,6 +82,11 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   审查阻断后展示「太机械/忘记了/越界/事实错误/不安全」一键反馈；反馈行经
   generation_id 可关联 generation_route（模型/供应商）、provider attempt 与授权快照
   （A4 负反馈可关联验收口径）。
+- 最小内部管理台读取（ADMIN-OPS）：V36 `identity_auth_event_list`（追加式审计日志
+  keyset 读取）与 `admin_usage_summary`（按日 generation 数/结算 token/实际成本），
+  均 ADMIN-only 且在 SQL 内重验 ACTIVE ADMIN（V31 模式）；OpenAPI
+  `GET /auth/admin/audit`、`GET /auth/admin/usage`；admin 页新增用量成本表与审计
+  日志列表（FR-ADMIN 阶段边界：Alpha 最小内部页面）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

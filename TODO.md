@@ -19,6 +19,10 @@
       断言、未批准 kind 拒绝、(generation, kind) 幂等首个 note 生效、不存在不披露）
       + OpenAPI POST /generations/{id}/feedback + 聊天页一键反馈 chips（FR-CHAT-003，
       A4 负反馈可关联口径）。
+- [x] ADMIN-OPS 最小内部管理台读取：V36 identity_auth_event_list（审计日志
+      keyset）+ admin_usage_summary（按日 generation/token/成本），ADMIN-only
+      且在 SQL 重验；OpenAPI GET /auth/admin/audit、GET /auth/admin/usage；
+      admin 页新增用量成本表 + 审计日志列表（FR-ADMIN 阶段边界，B0-005 slice）。
 - [ ] MSG-DELETE 单条消息删除（FR-CHAT-004 / FR-DATA-003）
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性

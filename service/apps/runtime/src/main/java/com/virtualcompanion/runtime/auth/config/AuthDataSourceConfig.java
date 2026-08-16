@@ -7,6 +7,7 @@ import com.virtualcompanion.modelruntime.authorization.ProcessingPurpose;
 import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
 import com.virtualcompanion.modelruntime.authorization.ProviderRegion;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
+import com.virtualcompanion.platform.persistence.AdminConsoleService;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListService;
@@ -221,13 +222,21 @@ public class AuthDataSourceConfig {
             IdentityRefreshTokenRepository identityRefreshTokenRepository,
             PasswordEncoder passwordEncoder,
             JwtTokenService jwtTokenService,
-            @Value("${virtual-companion.auth.refresh-token-ttl:7d}") Duration refreshTtl) {
+            @Value("${virtual-companion.auth.refresh-token-ttl:7d}") Duration refreshTtl,
+            AdminConsoleService adminConsoleService) {
         return new AuthService(
                 identityAccountRepository,
                 identityRefreshTokenRepository,
                 passwordEncoder,
                 jwtTokenService,
-                refreshTtl);
+                refreshTtl,
+                adminConsoleService);
+    }
+
+    /** ADMIN-OPS (V36): minimal internal admin console reads. */
+    @Bean
+    public AdminConsoleService adminConsoleService(JdbcTemplate authJdbcTemplate) {
+        return new AdminConsoleService(authJdbcTemplate);
     }
 
     @Bean

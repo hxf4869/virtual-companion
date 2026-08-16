@@ -54,4 +54,22 @@ public final class AuthResponses {
     /** ADMIN-ACCTS: {@code POST /api/v1/auth/admin/accounts/{id}/disable}. */
     public record DisableAccountResponse(String accountId, String status) {
     }
+
+    /** ADMIN-OPS: one identity_auth_event audit row (V36). */
+    public record AuditEventResponse(
+            String id,
+            String eventType,
+            String accountId,
+            String username,
+            String occurredAt) {
+    }
+
+    /** ADMIN-OPS: one day of settled usage/cost aggregates (V36). */
+    public record UsageSummaryResponse(
+            String day,
+            long generations,
+            long inputTokens,
+            long outputTokens,
+            java.math.BigDecimal cost) {
+    }
 }
