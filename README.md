@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V44 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V45 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Consent、
@@ -174,6 +174,17 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   用户消息，负向意图在源头生效、不被历史重提取；OpenAPI
   `PATCH /conversations/{id}/messages/{messageId}`（body {noMemory}）；
   聊天页用户消息新增「不记住/恢复记忆」按钮（assistant 消息无此操作）。
+- 成年识别端口（AGE-MIN）：V45 `vc.age_verification`（追加式结果历史，
+  仅存验证结果/年龄段/时间/供应商凭证，**不保存身份证号码**，9 状态
+  CHECK 对应 age-states catalog）+ record/get trusted-owner SD；运行时
+  独立 `AgeVerificationPort` 接口（供应商无关，避免绑定单一服务）+ 确定性
+  `SimulatedAgeVerifier`（Alpha 演示：按 catalog 转移图
+  AGE_UNKNOWN→SELF_DECLARED→VERIFICATION_REQUIRED→ADULT_VERIFIED 落历史，
+  已认证幂等、未成年/申诉/暂停态 fail-closed）；`AgeStateTransitions`
+  镜像 age-states.yaml 转移表并由测试钉死；OpenAPI
+  `GET /api/v1/age/state`、`POST /api/v1/age/verification`
+  （FR-AUTH-002，Beta 门禁依赖 ageStateRequired=ADULT_VERIFIED，Alpha 不
+  开放真实用户）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

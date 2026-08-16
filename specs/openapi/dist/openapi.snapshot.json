@@ -3,6 +3,8 @@
   "operations": [
     "getVersion",
     "getServiceMode",
+    "getAgeState",
+    "verifyAge",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -52,6 +54,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "a949027db0a22a6355a884fe0146e332979f6e1565c2cf351ee8e210e177ba16"
+    "sha256": "f26034bd9831e1ff747efe1677da909f459fabedafd4aecdfe0e0ae8009ce9e0"
   }
 }

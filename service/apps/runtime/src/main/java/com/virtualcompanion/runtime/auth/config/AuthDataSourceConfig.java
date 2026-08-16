@@ -8,6 +8,7 @@ import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
 import com.virtualcompanion.modelruntime.authorization.ProviderRegion;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.AdminConsoleService;
+import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListService;
@@ -39,6 +40,8 @@ import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
+import com.virtualcompanion.runtime.age.AgeVerificationPort;
+import com.virtualcompanion.runtime.age.SimulatedAgeVerifier;
 import com.virtualcompanion.runtime.export.ExportExpiryScheduler;
 import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
@@ -324,6 +327,24 @@ public class AuthDataSourceConfig {
     @Bean
     public ExportService exportService(JdbcTemplate authJdbcTemplate) {
         return new ExportService(authJdbcTemplate);
+    }
+
+    /** AGE-MIN (V45): adult-verification result persistence (FR-AUTH-002). */
+    @Bean
+    public AgeVerificationService ageVerificationService(JdbcTemplate authJdbcTemplate) {
+        return new AgeVerificationService(authJdbcTemplate);
+    }
+
+    /** AGE-MIN: the simulated verification port (Alpha; no real vendor). */
+    @Bean
+    public AgeVerificationPort ageVerificationPort() {
+        return new SimulatedAgeVerifier();
+    }
+
+    /** AGE-MIN: the simulated verifier, exposed for the flow walk. */
+    @Bean
+    public SimulatedAgeVerifier simulatedAgeVerifier() {
+        return new SimulatedAgeVerifier();
     }
 
     @Bean

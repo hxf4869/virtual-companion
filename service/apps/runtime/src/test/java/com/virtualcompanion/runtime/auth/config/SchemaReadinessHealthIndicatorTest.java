@@ -156,8 +156,9 @@ class SchemaReadinessHealthIndicatorTest {
         // assignment + minted per-generation snapshots; V41 = CONSENT
         // versioned consent records; V42 = DATA-EXPORT asynchronous user data
         // export; V43 = ACCT-DELETE self-service account deletion;
-        // V44 = MEM-NEG message no_memory negative marker).
+        // V44 = MEM-NEG message no_memory negative marker;
+        // V45 = AGE-MIN adult-verification result persistence).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(44);
+                .isEqualTo(45);
     }
 }

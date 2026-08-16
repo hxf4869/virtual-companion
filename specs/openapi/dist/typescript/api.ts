@@ -14,6 +14,12 @@ export interface ServiceModeStatus {
   summary: string
 }
 
+export interface AgeStateResponse {
+  ageState: string
+  providerRef?: string
+  verifiedAt?: string
+}
+
 export interface VersionResponse {
   version: string
   commit?: string
@@ -356,6 +362,8 @@ export interface AccountResponse {
 export interface VirtualCompanionApiClient {
   getVersion(): Promise<VersionResponse>
   getServiceMode(): Promise<VersionResponse>
+  getAgeState(): Promise<VersionResponse>
+  verifyAge(): Promise<VersionResponse>
   createRelationship(): Promise<VersionResponse>
   listRelationships(): Promise<VersionResponse>
   getRelationship(): Promise<VersionResponse>

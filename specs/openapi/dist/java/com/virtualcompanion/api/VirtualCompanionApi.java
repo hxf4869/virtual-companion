@@ -8,6 +8,12 @@ public interface VirtualCompanionApi {
     /** Current service mode (FR-RES-005 user transparency). */
     ServiceModeStatus getServiceMode();
 
+    /** The caller's effective age state (FR-AUTH-002). */
+    AgeStateResponse getAgeState();
+
+    /** Run the simulated adult verification (FR-AUTH-002, Alpha port). */
+    AgeStateResponse verifyAge();
+
     /** Create a Companion relationship (becomes the active Companion). */
     Relationship createRelationship();
 

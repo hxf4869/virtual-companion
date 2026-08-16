@@ -64,6 +64,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/age/state:
+    get:
+      operationId: getAgeState
+      summary: The caller's effective age state (FR-AUTH-002)
+      description: >-
+        The effective adult-verification state of the caller (age-states
+        catalog), AGE_UNKNOWN when never verified. The stored record carries
+        only the result, the age band, the verification time and the provider
+        reference — never an identity document. Requires a server-verified
+        authentication context.
+      responses:
+        '200':
+          description: The effective age state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgeStateResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/age/verification:
+    post:
+      operationId: verifyAge
+      summary: Run the simulated adult verification (FR-AUTH-002, Alpha port)
+      description: >-
+        Walks the age-states catalog transition table from the caller's
+        current state to ADULT_VERIFIED through the vendor-agnostic
+        AgeVerificationPort (Technical Alpha uses the deterministic simulated
+        verifier; a real provider replaces the port implementation, never the
+        callers). Every step is appended to the result history with the
+        provider reference and verification time; no identity document is
+        stored. A current state that the catalog forbids from reaching
+        ADULT_VERIFIED (minor, appeal-pending, suspended) maps to
+        INVALID_REQUEST (fail closed). Requires a server-verified
+        authentication context.
+      responses:
+        '200':
+          description: The new effective age state (ADULT_VERIFIED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgeStateResponse'
+        '400':
+          description: The current age state cannot complete adult verification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -1784,6 +1841,35 @@ components:
         summary:
           type: string
           description: Plain, non-role-played human-readable status line
+    AgeStateResponse:
+      type: object
+      description: >-
+        The caller's effective adult-verification state (FR-AUTH-002). Only
+        the result, the age band, the verification time and the provider
+        reference are stored — never an identity document.
+      required:
+        - ageState
+      properties:
+        ageState:
+          type: string
+          description: age-states catalog code (AGE_UNKNOWN when never verified)
+          enum:
+            - AGE_UNKNOWN
+            - ADULT_SELF_DECLARED
+            - ADULT_VERIFICATION_REQUIRED
+            - ADULT_VERIFIED
+            - MINOR_SUSPECTED
+            - MINOR_VERIFIED
+            - AGE_APPEAL_PENDING
+            - AGE_REVERIFY_REQUIRED
+            - AGE_ACCESS_SUSPENDED
+        providerRef:
+          type: string
+          description: Verification provider reference (alpha-simulated in Technical Alpha)
+        verifiedAt:
+          type: string
+          format: date-time
+          description: Verification time (RFC 3339), present once verified
     VersionResponse:
       type: object
       description: Service version and build identity

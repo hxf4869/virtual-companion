@@ -75,6 +75,13 @@
       跳过 no_memory 用户消息 + OpenAPI PATCH /messages/{messageId}
       （body {noMemory}）+ 聊天页「不记住/恢复记忆」按钮（仅用户消息）+
       SQL/单元/组件测试。
+- [x] AGE-MIN 成年识别端口：V45 vc.age_verification（追加式结果历史，
+      仅存结果/年龄段/时间/供应商凭证，不存身份证）+ record/get
+      trusted-owner SD（9 状态 CHECK）+ AgeVerificationPort 独立接口 +
+      SimulatedAgeVerifier（catalog 转移图路径落历史，已认证幂等、
+      未成年/申诉/暂停 fail-closed）+ AgeStateTransitions 镜像转移表
+      （测试钉死）+ OpenAPI GET /age/state、POST /age/verification +
+      SQL/单元测试（FR-AUTH-002，Beta 门禁依赖，Alpha 不开放真实用户）。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 
