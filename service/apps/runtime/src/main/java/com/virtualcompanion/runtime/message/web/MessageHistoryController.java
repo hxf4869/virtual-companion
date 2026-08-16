@@ -2,9 +2,12 @@ package com.virtualcompanion.runtime.message.web;
 
 import com.virtualcompanion.platform.persistence.MessageHistoryRecord;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
+import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.runtime.web.ResourceNotFoundException;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,9 +15,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Paginated message history HTTP API (TASK-0179). Implements the OpenAPI
- * {@code listMessages} endpoint backed by the V10
- * {@code vc.list_messages} SECURITY DEFINER function.
+ * Paginated message history HTTP API (TASK-0179) plus single-message deletion
+ * (MSG-DELETE / FR-CHAT-004). Implements the OpenAPI {@code listMessages} and
+ * {@code deleteMessage} endpoints backed by the V10 {@code vc.list_messages}
+ * and V37 {@code vc.delete_message} SECURITY DEFINER functions.
  *
  * <p>Keyset pagination: {@code after} is the last message id seen (opaque
  * cursor) and {@code limit} is clamped to a safe band by the server (default
@@ -23,9 +27,13 @@ import org.springframework.web.bind.annotation.RestController;
  * endpoint). The owning conversation id of every message is the path
  * conversation id.
  *
+ * <p>MSG-DELETE: deleting a message also removes its memory_evidence rows
+ * inside the SD; a foreign or absent message maps to 404
+ * NOT_FOUND_OR_FORBIDDEN so existence is never disclosed.
+ *
  * <p>Authenticated: the principal's account id is the owner id; the owner GUC
- * is bound upstream by the owner-injection filter so the V10 call runs in the
- * server-trusted tenant context.
+ * is bound upstream by the owner-injection filter so the V10/V37 calls run in
+ * the server-trusted tenant context.
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -35,9 +43,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class MessageHistoryController {
 
     private final MessageHistoryService messageHistoryService;
+    private final MessageRepository messageRepository;
 
-    public MessageHistoryController(MessageHistoryService messageHistoryService) {
+    public MessageHistoryController(
+            MessageHistoryService messageHistoryService,
+            MessageRepository messageRepository) {
         this.messageHistoryService = messageHistoryService;
+        this.messageRepository = messageRepository;
     }
 
     @GetMapping("/conversations/{conversationId}/messages")
@@ -54,6 +66,22 @@ public class MessageHistoryController {
                 .stream()
                 .map(record -> toResponse(conversation, record))
                 .toList();
+    }
+
+    /** MSG-DELETE (V37): delete one message of the caller's conversation. */
+    @DeleteMapping("/conversations/{conversationId}/messages/{messageId}")
+    public MessageDeletedResponse deleteMessage(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String conversationId,
+            @PathVariable String messageId) {
+        long conversation = parseId(conversationId, "conversationId");
+        long message = parseId(messageId, "messageId");
+        boolean deleted = messageRepository.deleteMessage(ownerUserId, conversation, message);
+        if (!deleted) {
+            // Foreign or absent: existence is never disclosed.
+            throw new ResourceNotFoundException("message");
+        }
+        return new MessageDeletedResponse(true);
     }
 
     private static Long parseOptionalLong(String raw, String name) {
@@ -106,5 +134,9 @@ public class MessageHistoryController {
             String role,
             String content,
             String createdAt) {
+    }
+
+    /** MSG-DELETE: response body (OpenAPI {@code MessageDeletedResponse}). */
+    public record MessageDeletedResponse(boolean ok) {
     }
 }

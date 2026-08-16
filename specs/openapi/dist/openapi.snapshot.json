@@ -13,6 +13,7 @@
     "renameConversation",
     "sendGeneration",
     "listMessages",
+    "deleteMessage",
     "cancelGeneration",
     "getGenerationSnapshot",
     "recordGenerationFeedback",
@@ -37,6 +38,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "48d30e225b4f225e3a75fa3efa74f8428891978235adb08e027b5fd2978ce641"
+    "sha256": "aa3b8b1558cafc8ba81784435983cdf3cfa6e5fc456f79ecfd175bb510b265d7"
   }
 }

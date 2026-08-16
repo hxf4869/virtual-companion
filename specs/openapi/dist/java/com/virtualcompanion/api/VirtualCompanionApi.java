@@ -38,6 +38,9 @@ public interface VirtualCompanionApi {
     /** Paginated message history for a conversation. */
     Void listMessages();
 
+    /** Delete one message (FR-CHAT-004 / FR-DATA-003). */
+    MessageDeletedResponse deleteMessage();
+
     /** Cancel a non-terminal generation. */
     Generation cancelGeneration();
 

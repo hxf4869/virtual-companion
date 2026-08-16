@@ -8,6 +8,7 @@ import {
   ChatHttpError,
   createConversation,
   deleteConversation,
+  deleteMessage,
   listConversations,
   listMessages,
   recordFeedback,
@@ -406,8 +407,7 @@ describe("deleteConversation/renameConversation (CONV-MGMT)", () => {
       json: { conversationId: 100, title: "周二的夜聊" },
     });
 
-    expect(await renameConversation(transport, "100", "周二的夜聊")).toBe("周二的夜聊");
-    expect(calls).toEqual([
+    expect(await renameConversation(transport, "100", "周二的夜聊")).toBe("周二的夜聊");    expect(calls).toEqual([
       { method: "PATCH", path: "/api/v1/conversations/100", body: { title: "周二的夜聊" } },
     ]);
   });
@@ -434,6 +434,31 @@ describe("deleteConversation/renameConversation (CONV-MGMT)", () => {
 
     const list = await listConversations(transport);
     expect(list[0]?.title).toBe("周二的夜聊");
+  });
+});
+
+describe("deleteMessage (MSG-DELETE)", () => {
+  it("DELETEs conversations/{id}/messages/{messageId} and reports true on OK", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: { ok: true } });
+
+    expect(await deleteMessage(transport, "100", "7")).toBe(true);
+    expect(calls).toEqual([
+      { method: "DELETE", path: "/api/v1/conversations/100/messages/7", body: undefined },
+    ]);
+  });
+
+  it("maps 403/404 to false (existence never disclosed)", async () => {
+    const t404 = recorder({ ok: false, status: 404, json: null }).transport;
+    expect(await deleteMessage(t404, "100", "999")).toBe(false);
+
+    const t403 = recorder({ ok: false, status: 403, json: null }).transport;
+    expect(await deleteMessage(t403, "100", "999")).toBe(false);
+  });
+
+  it("throws a typed error on 5xx", async () => {
+    const { transport } = recorder({ ok: false, status: 500, json: null });
+
+    await expect(deleteMessage(transport, "100", "7")).rejects.toBeInstanceOf(ChatHttpError);
   });
 });
 

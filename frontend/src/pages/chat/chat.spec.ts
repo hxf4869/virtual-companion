@@ -188,6 +188,37 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("MSG-DELETE: deletes a persisted message only after the two-step confirm", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "user",
+        content: "你好",
+      },
+    ];
+    const removeSpy = vi.spyOn(store, "removeMessage").mockResolvedValue(true);
+    await wrapper.vm.$nextTick();
+
+    const button = wrapper.find('[data-testid="msg-delete-m1"]');
+    expect(button.exists()).toBe(true);
+    expect(button.text()).toContain("删除");
+
+    // First click only arms the confirm; nothing is deleted yet.
+    await button.trigger("click");
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="msg-delete-m1"]').text()).toContain("确认删除");
+
+    // Second click confirms and deletes through the store.
+    await wrapper.find('[data-testid="msg-delete-m1"]').trigger("click");
+    expect(removeSpy).toHaveBeenCalledWith(expect.anything(), "m1");
+    wrapper.unmount();
+  });
+
   it("restores the input when send fails before a generation exists", async () => {
     const wrapper = mountPage();
     await flushPromises();

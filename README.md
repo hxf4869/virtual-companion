@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V36 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V37 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Admin H5 页面、typed transport
@@ -53,7 +53,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `POST /api/v1/conversations/{conversationId}/generations`（CHAT-MODE：请求可带
   `mode` = AUTO/LISTEN/DISCUSS 的轮次级对话模式，首次接收时冻结在 generation 行并按
   idempotencyKey 重入不覆盖，AUTO 保持人设默认）、
-  `GET /api/v1/conversations/{conversationId}/messages`
+  `GET /api/v1/conversations/{conversationId}/messages`、
+  `DELETE /api/v1/conversations/{conversationId}/messages/{messageId}`（MSG-DELETE
+  单条消息删除：同事务清理指向该消息的 memory_evidence，已确认记忆条目保留，
+  助手消息删除时 generation 链接 SET NULL）
 - `GET /api/v1/generations/{generationId}/snapshot`（含 finalize 结算后的 usage：
   输入/输出 token）、`POST /api/v1/generations/{generationId}/cancel`、
   `POST /api/v1/generations/{generationId}/feedback`（FR-CHAT-003 生成反馈，每
@@ -87,6 +90,10 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   均 ADMIN-only 且在 SQL 内重验 ACTIVE ADMIN（V31 模式）；OpenAPI
   `GET /auth/admin/audit`、`GET /auth/admin/usage`；admin 页新增用量成本表与审计
   日志列表（FR-ADMIN 阶段边界：Alpha 最小内部页面）。
+- 单条消息删除（MSG-DELETE）：V37 `delete_message` SD（trusted-owner 断言、同事务
+  清理 `message:<id>` 证据行、不存在返回 FALSE 不披露、仅 vc_api 可执行）；
+  OpenAPI `DELETE /conversations/{id}/messages/{messageId}`；聊天页逐条消息两步
+  确认删除（FR-CHAT-004 / FR-DATA-003）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

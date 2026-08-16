@@ -172,6 +172,17 @@
           >
             <text class="role-tag">{{ roleLabel(msg.role) }}</text>
             <text class="msg-content">{{ msg.content }}</text>
+            <!-- MSG-DELETE: two-step delete for persisted messages only
+                 (the streaming/pending placeholders are not deletable). -->
+            <button
+              v-if="!msg.messageId.startsWith('__') && !isStreaming"
+              class="msg-delete"
+              :data-testid="`msg-delete-${msg.messageId}`"
+              :aria-label="confirmDeleteMsgId === msg.messageId ? '确认删除这条消息' : '删除这条消息'"
+              @click="onDeleteMessage(msg.messageId)"
+            >
+              {{ confirmDeleteMsgId === msg.messageId ? "确认删除" : "删除" }}
+            </button>
           </view>
           <view v-if="showLoadMore" class="history-more">
             <button
@@ -363,6 +374,8 @@ export default defineComponent({
     const confirmDeleteId = ref<string | null>(null);
     const renaming = ref(false);
     const renameInput = ref("");
+    // MSG-DELETE: two-step confirm state for per-message deletion.
+    const confirmDeleteMsgId = ref<string | null>(null);
     // CHAT-MODE: approved quick-mode options; AUTO keeps the persona default,
     // LISTEN/DISCUSS override it for the next turn (FR-CHAT-002).
     const MODE_OPTIONS = [
@@ -571,6 +584,16 @@ export default defineComponent({
       const narrowed = asFeedbackKind(kind);
       if (!narrowed) return;
       await store.sendFeedback(transport, narrowed);
+    }
+
+    /** MSG-DELETE: two-step confirm, then delete through the store. */
+    async function onDeleteMessage(messageId: string): Promise<void> {
+      if (confirmDeleteMsgId.value === messageId) {
+        confirmDeleteMsgId.value = null;
+        await store.removeMessage(transport, messageId);
+        return;
+      }
+      confirmDeleteMsgId.value = messageId;
     }
 
     /** SESS-REVIVE: revoke the refresh cookie server-side and go to login. */
@@ -793,6 +816,7 @@ export default defineComponent({
       initError,
       confirmDeactivate,
       confirmDeleteId,
+      confirmDeleteMsgId,
       renaming,
       renameInput,
       MODE_OPTIONS,
@@ -802,6 +826,7 @@ export default defineComponent({
       feedbackKinds,
       showFeedback,
       onFeedback,
+      onDeleteMessage,
       statusText,
       canRetry,
       roleLabel,
@@ -1031,6 +1056,17 @@ export default defineComponent({
   opacity: 0.6;
   border-color: #2a6a9a;
   color: #ffffff;
+}
+/* MSG-DELETE: per-message two-step delete control. */
+.msg-delete {
+  margin-top: 8rpx;
+  align-self: flex-start;
+  padding: 4rpx 14rpx;
+  font-size: 22rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  color: #b8c4d8;
 }
 .chat-input {
   flex: 1;

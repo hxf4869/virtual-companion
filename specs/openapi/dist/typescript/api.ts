@@ -112,6 +112,10 @@ export interface ConversationDeletedResponse {
   ok: string
 }
 
+export interface MessageDeletedResponse {
+  ok: string
+}
+
 export interface ConversationRenamedResponse {
   conversationId: string
   title: string
@@ -221,6 +225,7 @@ export interface VirtualCompanionApiClient {
   renameConversation(): Promise<VersionResponse>
   sendGeneration(): Promise<VersionResponse>
   listMessages(): Promise<VersionResponse>
+  deleteMessage(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>
   getGenerationSnapshot(): Promise<VersionResponse>
   recordGenerationFeedback(): Promise<VersionResponse>

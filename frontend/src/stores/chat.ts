@@ -27,6 +27,7 @@ import {
   cancelGeneration,
   createConversation,
   deleteConversation as apiDeleteConversation,
+  deleteMessage as apiDeleteMessage,
   listConversations,
   listMessages,
   recordFeedback,
@@ -416,6 +417,23 @@ export const useChatStore = defineStore("h5-chat", () => {
     }
   }
 
+  /**
+   * MSG-DELETE (FR-CHAT-004): delete one message of the open conversation.
+   * Only a confirmed server delete drops the local row; an existence-hidden
+   * false keeps it (the server may already have removed it elsewhere).
+   */
+  async function removeMessage(
+    transport: ChatTransport,
+    messageId: string,
+  ): Promise<boolean> {
+    if (!conversationId.value) return false;
+    const deleted = await apiDeleteMessage(transport, conversationId.value, messageId);
+    if (deleted) {
+      messages.value = messages.value.filter((m) => m.messageId !== messageId);
+    }
+    return deleted;
+  }
+
   /** Append the next page of history after the last loaded message. */
   async function loadMoreHistory(transport: ChatTransport): Promise<void> {
     if (!conversationId.value || !historyHasMore.value) return;
@@ -425,8 +443,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       conversationId.value,
       last?.messageId,
       HISTORY_PAGE_SIZE,
-    );
-    messages.value = [...messages.value, ...page];
+    );    messages.value = [...messages.value, ...page];
     historyHasMore.value = page.length >= HISTORY_PAGE_SIZE;
   }
 
@@ -508,6 +525,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     loadConversations,
     openConversation,
     loadMoreHistory,
+    removeMessage,
     refreshPendingMemoryCount,
     removeConversation,
     renameConversation,

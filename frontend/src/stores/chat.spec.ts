@@ -42,6 +42,8 @@ function mockChatTransport(opts: {
   /** FEEDBACK: response for POST /generations/{id}/feedback. */
   feedbackStatus?: number;
   feedbackJson?: unknown;
+  /** MSG-DELETE: response for DELETE /conversations/{id}/messages/{id}. */
+  messageDeleteOk?: boolean;
 }): ChatTransport {
   return {
     async request(method: string, path: string, body?: unknown): Promise<ChatApiResponse> {
@@ -54,6 +56,10 @@ function mockChatTransport(opts: {
       }
       if (path.startsWith("/api/v1/conversations?")) {
         return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
+      }
+      if (method === "DELETE" && /\/messages\/[^/]+$/.test(path)) {
+        const ok = opts.messageDeleteOk ?? true;
+        return { ok, status: ok ? 200 : 404, json: ok ? { ok: true } : null };
       }
       if (path.includes("/feedback")) {
         const status = opts.feedbackStatus ?? 200;
@@ -454,6 +460,37 @@ describe("useChatStore", () => {
 
     expect(await store.sendFeedback(transport, "UNSAFE")).toBe(false);
     expect(store.feedbackKinds).toEqual([]);
+  });
+
+  it("MSG-DELETE: removeMessage drops the row only on a confirmed delete", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      messageDeleteOk: true,
+      messagesJson: [
+        { messageId: 10, conversationId: 1, role: "user", content: "A" },
+        { messageId: 11, conversationId: 1, role: "assistant", content: "B" },
+      ],
+    });
+
+    await store.initConversation(transport, "1");
+    expect(store.messages).toHaveLength(2);
+
+    expect(await store.removeMessage(transport, "10")).toBe(true);
+    expect(store.messages.map((m) => m.messageId)).toEqual(["11"]);
+  });
+
+  it("MSG-DELETE: an existence-hidden false keeps the row", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      messageDeleteOk: false,
+      messagesJson: [
+        { messageId: 10, conversationId: 1, role: "user", content: "A" },
+      ],
+    });
+
+    await store.initConversation(transport, "1");
+    expect(await store.removeMessage(transport, "10")).toBe(false);
+    expect(store.messages).toHaveLength(1);
   });
 
   it("send without conversationId transitions to failed", async () => {

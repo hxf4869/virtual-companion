@@ -111,4 +111,29 @@ public class MessageRepository {
         Collections.reverse(chronological);
         return chronological;
     }
+
+    /**
+     * MSG-DELETE (V37): delete one message of the caller's conversation (the
+     * SD also removes the message's memory_evidence rows in the same
+     * transaction). true only when an owned row was deleted; a foreign or
+     * absent id returns false so existence is never disclosed.
+     */
+    public boolean deleteMessage(long ownerUserId, long conversationId, long messageId) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (conversationId <= 0) {
+            throw new IllegalArgumentException("conversationId must be positive");
+        }
+        if (messageId <= 0) {
+            throw new IllegalArgumentException("messageId must be positive");
+        }
+        Boolean deleted = jdbc.queryForObject(
+                "SELECT vc.delete_message(?, ?, ?)",
+                Boolean.class,
+                ownerUserId,
+                conversationId,
+                messageId);
+        return Boolean.TRUE.equals(deleted);
+    }
 }

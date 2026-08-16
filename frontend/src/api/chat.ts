@@ -435,3 +435,23 @@ export async function recordFeedback(
   }
   return asFeedbackResponse(r.json);
 }
+
+/**
+ * MSG-DELETE (FR-CHAT-004): delete one message of the conversation
+ * (vc.delete_message; the server also removes the message's memory evidence).
+ * true only on a confirmed HTTP OK; 403/404 map to false (existence never
+ * disclosed); other non-OK statuses throw.
+ */
+export async function deleteMessage(
+  t: ChatTransport,
+  conversationId: string,
+  messageId: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "DELETE",
+    `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
+  );
+  if (r.ok) return true;
+  if (isExistenceHidden(r.status)) return false;
+  throw new ChatHttpError(r.status, classifyStatus(r.status));
+}

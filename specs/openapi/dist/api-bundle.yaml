@@ -366,6 +366,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/{conversationId}/messages/{messageId}:
+    delete:
+      operationId: deleteMessage
+      summary: Delete one message (FR-CHAT-004 / FR-DATA-003)
+      description: Deletes one message of the caller's conversation via vc.delete_message. Memory evidence rows pointing at
+        the message (source_ref message:{id}) are removed in the same transaction so no dangling evidence survives; confirmed
+        memory items keep their content and remain manageable in the memory center. The assistant-message link on the owning
+        generation is cleared (ON DELETE SET NULL). A foreign or absent message maps to NOT_FOUND_OR_FORBIDDEN; existence
+        is never disclosed. Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: The message was deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageDeletedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/generations/{generationId}/cancel:
     post:
       operationId: cancelGeneration
@@ -1480,6 +1511,15 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed delete
+    MessageDeletedResponse:
+      type: object
+      description: Result of deleting one message (FR-CHAT-004 / FR-DATA-003).
+      required:
+      - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always true on a confirmed delete
     ConversationRenamedResponse:
       type: object
       description: Result of renaming one conversation.
@@ -1822,6 +1862,13 @@ components:
       schema:
         type: string
       description: Owner-scoped generation identifier
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Owner-scoped message identifier
     MemoryId:
       name: memoryId
       in: path

@@ -23,7 +23,13 @@
       keyset）+ admin_usage_summary（按日 generation/token/成本），ADMIN-only
       且在 SQL 重验；OpenAPI GET /auth/admin/audit、GET /auth/admin/usage；
       admin 页新增用量成本表 + 审计日志列表（FR-ADMIN 阶段边界，B0-005 slice）。
-- [ ] MSG-DELETE 单条消息删除（FR-CHAT-004 / FR-DATA-003）
+- [x] MSG-DELETE 单条消息删除：V37 delete_message SD（trusted-owner 断言、同事务
+      清理 message:<id> 证据行、已确认记忆保留、助手消息删除时 generation 链接
+      SET NULL、不存在不披露）+ OpenAPI DELETE /conversations/{id}/messages/{mid}
+      + 聊天页逐条消息两步确认删除（FR-CHAT-004 / FR-DATA-003）。
+- [ ] INC-MODE 无痕会话（FR-CHAT-005，Beta 范围骨架）
+- [ ] CONSENT 版本化同意记录（FR-AUTH-003/005）
+- [ ] SVC-MODE 服务状态透明（FR-RES-005）
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

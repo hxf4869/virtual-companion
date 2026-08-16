@@ -4,12 +4,14 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.virtualcompanion.platform.persistence.MessageHistoryRecord;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
+import com.virtualcompanion.platform.persistence.MessageRepository;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
 import java.time.Instant;
@@ -26,10 +28,12 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
 /**
- * Standalone controller test for the message history HTTP API (TASK-0179):
- * happy-path pagination, the empty-page contract for a foreign/absent
- * conversation (the OpenAPI endpoint has no 404), and the 400 INVALID_REQUEST
- * contract for a malformed id, cursor or limit. The
+ * Standalone controller test for the message history HTTP API (TASK-0179) and
+ * single-message deletion (MSG-DELETE): happy-path pagination, the empty-page
+ * contract for a foreign/absent conversation (the OpenAPI endpoint has no
+ * 404), the 400 INVALID_REQUEST contract for a malformed id, cursor or limit,
+ * the confirmed-delete response, and the 404 NOT_FOUND_OR_FORBIDDEN contract
+ * for a foreign or absent message. The
  * {@code @AuthenticationPrincipal(expression = "accountId")} resolver is
  * replicated from the relationship controller tests; the owner GUC binding
  * itself is covered by the auth integration layer.
@@ -39,12 +43,15 @@ class MessageHistoryControllerTest {
     private static final Instant NOW = Instant.parse("2026-08-12T12:00:00Z");
 
     private MessageHistoryService messageHistoryService;
+    private MessageRepository messageRepository;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         messageHistoryService = mock(MessageHistoryService.class);
-        MessageHistoryController controller = new MessageHistoryController(messageHistoryService);
+        messageRepository = mock(MessageRepository.class);
+        MessageHistoryController controller =
+                new MessageHistoryController(messageHistoryService, messageRepository);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -132,6 +139,39 @@ class MessageHistoryControllerTest {
     @Test
     void listMessagesRejectsInvalidConversationId() throws Exception {
         mockMvc.perform(get("/api/v1/conversations/not-a-number/messages"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    // ---- MSG-DELETE (V37) ----
+
+    @Test
+    void deleteMessageReturnsOkOnAConfirmedDelete() throws Exception {
+        when(messageRepository.deleteMessage(1L, 100L, 7L)).thenReturn(true);
+
+        mockMvc.perform(delete("/api/v1/conversations/100/messages/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        verify(messageRepository).deleteMessage(1L, 100L, 7L);
+    }
+
+    @Test
+    void deleteMessageMapsForeignOrAbsentTo404() throws Exception {
+        when(messageRepository.deleteMessage(1L, 100L, 999L)).thenReturn(false);
+
+        mockMvc.perform(delete("/api/v1/conversations/100/messages/999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void deleteMessageRejectsMalformedIds() throws Exception {
+        mockMvc.perform(delete("/api/v1/conversations/not-a-number/messages/7"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+        mockMvc.perform(delete("/api/v1/conversations/100/messages/not-a-number"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
