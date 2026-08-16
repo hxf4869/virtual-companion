@@ -8,12 +8,14 @@ import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthErrorException;
 import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
+import com.virtualcompanion.runtime.auth.web.AuthResponses;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.springframework.dao.DataAccessException;
@@ -199,6 +201,60 @@ public class AuthService {
             throw genericError();
         }
         return new AccountResponse(Long.toString(accountId), username, role, STATUS_ACTIVE);
+    }
+
+    /**
+     * ADMIN-ACCTS (V31): the account registry for the management UI. The
+     * principal's role comes from the verified access token; the SD function
+     * re-verifies the caller is an ACTIVE ADMIN before returning rows.
+     */
+    public List<AuthResponses.AccountListItem> listAccounts(JwtTokenService.Principal principal) {
+        if (principal == null || !ROLE_ADMIN.equals(principal.role())) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "ADMIN role is required");
+        }
+        try {
+            return accounts.listAccounts(principal.accountId()).stream()
+                    .map(record -> new AuthResponses.AccountListItem(
+                            Long.toString(record.accountId()),
+                            record.username(),
+                            record.role(),
+                            record.status(),
+                            record.displayName(),
+                            record.createdAt() == null ? null : record.createdAt().toString()))
+                    .toList();
+        } catch (DataAccessException e) {
+            // Persistence failure or DB-enforced ADMIN re-check failure: one
+            // generic, non-disclosing surface.
+            throw genericError();
+        }
+    }
+
+    /**
+     * ADMIN-ACCTS (V31): flip one account to DISABLED. Self-disable and
+     * non-ADMIN callers fail closed inside the SD function; the response only
+     * reflects a confirmed disable.
+     */
+    public AuthResponses.DisableAccountResponse disableAccount(
+            JwtTokenService.Principal principal, long targetAccountId) {
+        if (principal == null || !ROLE_ADMIN.equals(principal.role())) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "ADMIN role is required");
+        }
+        if (targetAccountId <= 0) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "A valid target account id is required");
+        }
+        try {
+            boolean disabled = accounts.disableAccount(principal.accountId(), targetAccountId);
+            if (!disabled) {
+                throw genericError();
+            }
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+        return new AuthResponses.DisableAccountResponse(
+                Long.toString(targetAccountId), "DISABLED");
     }
 
     /** Platform bootstrap: seed the single ADMIN (idempotent, no-op when one exists). */

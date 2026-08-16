@@ -882,6 +882,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listInternalAccounts
+      summary: List internal accounts (ADMIN only, ADMIN-ACCTS)
+      description: 'The account registry for the management UI. ADMIN only: a non-ADMIN caller maps to ACCESS_DENIED. Never
+        exposes password hashes. Requires a valid Bearer access token.'
+      responses:
+        '200':
+          description: The account registry ordered by account id
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccountListItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/accounts/{accountId}/disable:
+    post:
+      operationId: disableInternalAccount
+      summary: Disable an internal account (ADMIN only, ADMIN-ACCTS)
+      description: Flips one account to DISABLED (idempotent). Login/refresh for a DISABLED account is rejected by the existing
+        identity flow. An admin cannot disable their own account; a non-ADMIN caller maps to ACCESS_DENIED; an unknown target
+        fails closed (existence is never disclosed). Requires a valid Bearer access token.
+      parameters:
+      - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: The account was disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisableAccountResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role or targets themselves
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Target account absent; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   securitySchemes:
     bearerAuth:
@@ -1343,6 +1403,48 @@ components:
         ok:
           type: boolean
           description: Always true; existence is never disclosed
+    AccountListItem:
+      type: object
+      description: One internal account registry entry (never the password hash).
+      required:
+      - accountId
+      - username
+      - role
+      - status
+      - displayName
+      properties:
+        accountId:
+          type: string
+          description: The account id (also the owner_user_id)
+        username:
+          type: string
+          description: Normalized (lowercase) internal username
+        role:
+          type: string
+          description: ADMIN or USER
+        status:
+          type: string
+          description: ACTIVE or DISABLED
+        displayName:
+          type: string
+          description: Human-facing display name
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
+    DisableAccountResponse:
+      type: object
+      description: Result of disabling one internal account.
+      required:
+      - accountId
+      - status
+      properties:
+        accountId:
+          type: string
+          description: The disabled account id
+        status:
+          type: string
+          description: DISABLED
     AccountResponse:
       type: object
       description: An internal account (ADMIN creation result).
@@ -1365,6 +1467,13 @@ components:
           type: string
           description: ACTIVE at creation
   parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The target internal account id
     RelationshipId:
       name: relationshipId
       in: path

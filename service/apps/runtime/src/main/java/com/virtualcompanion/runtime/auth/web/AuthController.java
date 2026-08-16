@@ -6,8 +6,10 @@ import com.virtualcompanion.runtime.auth.config.CookieCsrfGuardFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.LoginRequest;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountListItem;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AuthResponse;
+import com.virtualcompanion.runtime.auth.web.AuthResponses.DisableAccountResponse;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.IssuedSession;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.LogoutResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,12 +17,16 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -101,6 +107,35 @@ public class AuthController {
             @Valid @RequestBody CreateAccountRequest request,
             @AuthenticationPrincipal JwtTokenService.Principal principal) {
         return authService.createAccount(principal, request);
+    }
+
+    /** ADMIN-ACCTS (V31): the account registry for the management UI. */
+    @GetMapping("/admin/accounts")
+    public List<AccountListItem> listAccounts(
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        return authService.listAccounts(principal);
+    }
+
+    /** ADMIN-ACCTS (V31): flip one account to DISABLED (idempotent). */
+    @PostMapping("/admin/accounts/{accountId}/disable")
+    public DisableAccountResponse disableAccount(
+            @PathVariable String accountId,
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        return authService.disableAccount(principal, parseAccountId(accountId));
+    }
+
+    private static long parseAccountId(String raw) {
+        try {
+            long parsed = Long.parseLong(raw);
+            if (parsed <= 0) {
+                throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                        "A valid target account id is required");
+            }
+            return parsed;
+        } catch (NumberFormatException e) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "A valid target account id is required");
+        }
     }
 
     /**

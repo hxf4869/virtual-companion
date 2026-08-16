@@ -126,3 +126,76 @@ export async function createAccount(
   });
   return r.ok ? asCreatedAccount(r.json) : null;
 }
+
+/** ADMIN-ACCTS: one registry entry (OpenAPI AccountListItem). */
+export interface AccountListItem {
+  accountId: string;
+  username: string;
+  role: string;
+  status: string;
+  displayName: string;
+  createdAt?: string;
+}
+
+function asAccountListItem(json: unknown): AccountListItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const accountId = asString(o, "accountId");
+  const username = asString(o, "username");
+  const role = asString(o, "role");
+  const status = asString(o, "status");
+  const displayName = asString(o, "displayName");
+  if (!accountId || !username || !role || !status || !displayName) return null;
+  return { accountId, username, role, status, displayName, createdAt: asString(o, "createdAt") };
+}
+
+/**
+ * ADMIN-ACCTS: list the account registry (ADMIN only). A non-OK response
+ * (403/401) throws so the page surfaces the denial; transport failures
+ * propagate.
+ */
+export async function listAccounts(t: AuthTransport): Promise<AccountListItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/accounts`);
+  if (!r.ok) {
+    throw new AuthHttpError(r.status);
+  }
+  const list = r.json;
+  if (!Array.isArray(list)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: AccountListItem[] = [];
+  for (const item of list) {
+    const parsed = asAccountListItem(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * ADMIN-ACCTS: disable one account (idempotent). true only on a confirmed
+ * HTTP OK; 403/404 map to false (existence never disclosed); other non-OK
+ * statuses throw.
+ */
+export async function disableAccount(
+  t: AuthTransport,
+  accountId: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "POST",
+    `${AUTH_BASE}/admin/accounts/${encodeURIComponent(accountId)}/disable`,
+  );
+  if (r.ok) return true;
+  if (r.status === 403 || r.status === 404) return false;
+  throw new AuthHttpError(r.status);
+}
+
+/** ADMIN-ACCTS: typed non-OK failure for the registry operations. */
+export class AuthHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`auth admin request failed with status ${status}`);
+    this.name = "AuthHttpError";
+    this.status = status;
+  }
+}

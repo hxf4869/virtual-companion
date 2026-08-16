@@ -143,6 +143,20 @@ export interface LogoutResponse {
   ok: string
 }
 
+export interface AccountListItem {
+  accountId: string
+  username: string
+  role: string
+  status: string
+  displayName: string
+  createdAt?: string
+}
+
+export interface DisableAccountResponse {
+  accountId: string
+  status: string
+}
+
 export interface AccountResponse {
   accountId: string
   username: string
@@ -177,4 +191,6 @@ export interface VirtualCompanionApiClient {
   refresh(): Promise<VersionResponse>
   logout(): Promise<VersionResponse>
   createInternalAccount(): Promise<VersionResponse>
+  listInternalAccounts(): Promise<VersionResponse>
+  disableInternalAccount(): Promise<VersionResponse>
 }

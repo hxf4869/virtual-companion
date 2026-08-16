@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createAccount,
+  disableAccount,
+  listAccounts,
   login,
   logout,
   refresh,
@@ -129,6 +131,60 @@ describe("auth api client", () => {
     const t = transportFor({ ok: true, status: 200, json: { accessToken: "x" } });
 
     expect(await login(t, "root", "pw")).toBeNull();
+  });
+});
+
+describe("listAccounts/disableAccount (ADMIN-ACCTS)", () => {
+  it("lists the account registry on OK", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: [
+        { accountId: "1", username: "root", role: "ADMIN", status: "ACTIVE", displayName: "Root" },
+        { accountId: "7", username: "alice", role: "USER", status: "DISABLED", displayName: "Alice" },
+      ],
+    });
+
+    const list = await listAccounts(t);
+
+    expect(list).toHaveLength(2);
+    expect(list[0].username).toBe("root");
+    expect(list[1].status).toBe("DISABLED");
+    expect(t.request).toHaveBeenCalledWith("GET", "/api/v1/auth/admin/accounts");
+  });
+
+  it("throws a typed error on a non-OK registry read", async () => {
+    const t = transportFor({ ok: false, status: 403, json: null });
+
+    await expect(listAccounts(t)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("POSTs the disable action and reports true on OK", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: { accountId: "7", status: "DISABLED" },
+    });
+
+    expect(await disableAccount(t, "7")).toBe(true);
+    expect(t.request).toHaveBeenCalledWith(
+      "POST",
+      "/api/v1/auth/admin/accounts/7/disable",
+    );
+  });
+
+  it("maps 403/404 to false (existence never disclosed)", async () => {
+    const t403 = transportFor({ ok: false, status: 403, json: null });
+    expect(await disableAccount(t403, "999")).toBe(false);
+
+    const t404 = transportFor({ ok: false, status: 404, json: null });
+    expect(await disableAccount(t404, "999")).toBe(false);
+  });
+
+  it("throws a typed error on a 5xx disable", async () => {
+    const t = transportFor({ ok: false, status: 500, json: null });
+
+    await expect(disableAccount(t, "7")).rejects.toMatchObject({ status: 500 });
   });
 });
 

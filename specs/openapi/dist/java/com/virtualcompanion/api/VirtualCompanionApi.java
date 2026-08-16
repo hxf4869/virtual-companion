@@ -79,4 +79,10 @@ public interface VirtualCompanionApi {
 
     /** Create an internal account (ADMIN only). */
     AccountResponse createInternalAccount();
+
+    /** List internal accounts (ADMIN only, ADMIN-ACCTS). */
+    Void listInternalAccounts();
+
+    /** Disable an internal account (ADMIN only, ADMIN-ACCTS). */
+    DisableAccountResponse disableInternalAccount();
 }

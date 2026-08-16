@@ -68,6 +68,44 @@
         </button>
       </view>
 
+      <!-- ADMIN-ACCTS: the account registry with per-account disable. -->
+      <view class="account-list">
+        <view class="account-list-head">
+          <text class="account-list-title">账户列表</text>
+          <button
+            data-testid="refresh-accounts"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshAccounts"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="loadFailed" class="admin-error" data-testid="account-load-failed" role="alert">
+          <text>账户列表加载失败，请重试。</text>
+        </view>
+        <view
+          v-for="account in accounts"
+          :key="account.accountId"
+          class="account-row"
+          data-testid="account-row"
+        >
+          <text class="account-cell">{{ account.username }}</text>
+          <text class="account-cell">{{ account.role }}</text>
+          <text class="account-cell">{{ account.status }}</text>
+          <text class="account-cell">{{ account.displayName }}</text>
+          <button
+            v-if="account.status === 'ACTIVE' && account.accountId !== auth.accountId"
+            size="mini"
+            data-testid="disable-account"
+            :disabled="busy"
+            @click="onDisable(account)"
+          >
+            禁用
+          </button>
+        </view>
+      </view>
+
       <view v-if="result" class="admin-result" data-testid="account-result" role="status">
         <text>已开通：{{ result.username }}（{{ result.role }}，状态 {{ result.status }}）</text>
       </view>
@@ -88,7 +126,7 @@
 // transport and never persisted or logged.
 import { computed, defineComponent, onMounted, ref } from "vue";
 
-import { createAccount } from "@/api/auth";
+import { createAccount, disableAccount, listAccounts, type AccountListItem } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 
@@ -108,6 +146,9 @@ export default defineComponent({
       status: string;
     } | null>(null);
     const failed = ref(false);
+    // ADMIN-ACCTS: the account registry loaded on mount and after mutations.
+    const accounts = ref<AccountListItem[]>([]);
+    const loadFailed = ref(false);
 
     // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
     const transport = createAuthenticatedTransport({
@@ -121,7 +162,47 @@ export default defineComponent({
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
       }
+      // ADMIN-ACCTS: the registry is loaded once the session state is known.
+      await refreshAccounts();
     });
+
+    /** ADMIN-ACCTS: reload the registry (non-fatal failure keeps the list). */
+    async function refreshAccounts(): Promise<void> {
+      loadFailed.value = false;
+      try {
+        accounts.value = await listAccounts(transport);
+      } catch {
+        loadFailed.value = true;
+      }
+    }
+
+    async function onRefreshAccounts(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshAccounts();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** ADMIN-ACCTS: disable one account; the row flips on a confirmed result. */
+    async function onDisable(account: AccountListItem): Promise<void> {
+      busy.value = true;
+      try {
+        const disabled = await disableAccount(transport, account.accountId);
+        if (disabled) {
+          accounts.value = accounts.value.map((a) =>
+            a.accountId === account.accountId ? { ...a, status: "DISABLED" } : a,
+          );
+        } else {
+          loadFailed.value = true;
+        }
+      } catch {
+        loadFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
 
     const canSubmit = computed(
       () =>
@@ -180,8 +261,12 @@ export default defineComponent({
       busy,
       result,
       failed,
+      accounts,
+      loadFailed,
       canSubmit,
       onCreate,
+      onRefreshAccounts,
+      onDisable,
       goTo,
     };
   },
@@ -238,6 +323,36 @@ export default defineComponent({
 .admin-submit {
   background-color: #2a6a9a;
   color: #ffffff;
+}
+.account-list {
+  margin-top: 32rpx;
+  max-width: 800rpx;
+}
+.account-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.account-list-title {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx;
+  border-radius: 12rpx;
+  background-color: #1c2b4a;
+  margin-bottom: 8rpx;
+  font-size: 24rpx;
+}
+.account-cell {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .admin-result {
   margin-top: 24rpx;

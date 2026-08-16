@@ -38,6 +38,38 @@ describe("admin account page (ADMIN-UI)", () => {
     const auth = useAuthStore();
     auth.role = "ADMIN";
     auth.accessToken = "token";
+    auth.accountId = "1";
+  });
+
+  it("loads the account registry on mount and renders rows (ADMIN-ACCTS)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/auth/admin/accounts" && (init?.method ?? "GET") === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { accountId: "1", username: "root", role: "ADMIN", status: "ACTIVE", displayName: "Root" },
+              { accountId: "7", username: "alice", role: "USER", status: "ACTIVE", displayName: "Alice" },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const rows = wrapper.findAll('[data-testid="account-row"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].text()).toContain("root");
+    expect(rows[1].text()).toContain("alice");
+    // The admin's own row has no disable button (no self-disable).
+    const disableButtons = wrapper.findAll('[data-testid="disable-account"]');
+    expect(disableButtons).toHaveLength(1);
+    wrapper.unmount();
   });
 
   it("creates an account and shows the created account", async () => {

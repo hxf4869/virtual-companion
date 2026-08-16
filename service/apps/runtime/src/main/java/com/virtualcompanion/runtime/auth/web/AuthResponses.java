@@ -40,4 +40,18 @@ public final class AuthResponses {
             String role,
             String status) {
     }
+
+    /** ADMIN-ACCTS: one registry entry (never the password hash). */
+    public record AccountListItem(
+            String accountId,
+            String username,
+            String role,
+            String status,
+            String displayName,
+            String createdAt) {
+    }
+
+    /** ADMIN-ACCTS: {@code POST /api/v1/auth/admin/accounts/{id}/disable}. */
+    public record DisableAccountResponse(String accountId, String status) {
+    }
 }

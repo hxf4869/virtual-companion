@@ -26,10 +26,12 @@
     "login",
     "refresh",
     "logout",
-    "createInternalAccount"
+    "createInternalAccount",
+    "listInternalAccounts",
+    "disableInternalAccount"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "3240462bdbf3c19bd89c8eb5b0e5ade4c6e04edd988c4929e5f9a2d01707d912"
+    "sha256": "14729435198417d125036b9908511a21d105a6f41bdccefc64c307eca02cdad9"
   }
 }

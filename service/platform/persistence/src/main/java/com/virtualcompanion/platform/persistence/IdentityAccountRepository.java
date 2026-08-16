@@ -111,6 +111,60 @@ public class IdentityAccountRepository {
         jdbc.update("SELECT vc.identity_login_failure(?)", username);
     }
 
+    /**
+     * ADMIN-ACCTS (V31): the account registry for the management UI, bound to
+     * {@code vc.identity_account_list} (fails closed for a non-ADMIN caller).
+     */
+    public java.util.List<AccountRecord> listAccounts(long actingAccountId) {
+        if (actingAccountId <= 0) {
+            throw new IllegalArgumentException("actingAccountId must be positive");
+        }
+        return jdbc.query(
+                "SELECT out_account_id, out_username, out_role, out_status, "
+                        + "out_display_name, out_created_at "
+                        + "FROM vc.identity_account_list(?)",
+                (rs, rowNum) -> new AccountRecord(
+                        rs.getLong("out_account_id"),
+                        rs.getString("out_username"),
+                        rs.getString("out_role"),
+                        rs.getString("out_status"),
+                        rs.getString("out_display_name"),
+                        rs.getTimestamp("out_created_at") == null
+                                ? null
+                                : rs.getTimestamp("out_created_at").toInstant()),
+                actingAccountId);
+    }
+
+    /**
+     * ADMIN-ACCTS (V31): flip one account to DISABLED (idempotent), bound to
+     * {@code vc.identity_account_disable}. Self-disable and non-ADMIN callers
+     * fail closed inside the function; an unknown target fails closed too.
+     */
+    public boolean disableAccount(long actingAccountId, long targetAccountId) {
+        if (actingAccountId <= 0) {
+            throw new IllegalArgumentException("actingAccountId must be positive");
+        }
+        if (targetAccountId <= 0) {
+            throw new IllegalArgumentException("targetAccountId must be positive");
+        }
+        Boolean disabled = jdbc.queryForObject(
+                "SELECT vc.identity_account_disable(?, ?)",
+                Boolean.class,
+                actingAccountId,
+                targetAccountId);
+        return Boolean.TRUE.equals(disabled);
+    }
+
+    /** ADMIN-ACCTS (V31): one account registry row (never the password hash). */
+    public record AccountRecord(
+            long accountId,
+            String username,
+            String role,
+            String status,
+            String displayName,
+            java.time.Instant createdAt) {
+    }
+
     static void validateUsername(String username) {
         if (username == null || username.isBlank()) {
             throw new IllegalArgumentException("username is required");

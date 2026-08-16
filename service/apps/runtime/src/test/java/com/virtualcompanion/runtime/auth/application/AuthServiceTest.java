@@ -250,6 +250,72 @@ class AuthServiceTest {
         assertThat(response.role()).isEqualTo("ADMIN");
     }
 
+    // ---- ADMIN-ACCTS (V31): registry list + disable ----
+
+    @Test
+    void adminListsTheAccountRegistry() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        java.time.Instant created = java.time.Instant.parse("2026-08-16T08:00:00Z");
+        when(accounts.listAccounts(1L)).thenReturn(java.util.List.of(
+                new IdentityAccountRepository.AccountRecord(1L, "root", "ADMIN", "ACTIVE", "Root", created),
+                new IdentityAccountRepository.AccountRecord(7L, "alice", "USER", "DISABLED", "Alice", created)));
+
+        var list = service.listAccounts(admin);
+
+        assertThat(list).hasSize(2);
+        assertThat(list.get(0).accountId()).isEqualTo("1");
+        assertThat(list.get(0).status()).isEqualTo("ACTIVE");
+        assertThat(list.get(1).accountId()).isEqualTo("7");
+        assertThat(list.get(1).status()).isEqualTo("DISABLED");
+        // The registry never carries a password hash.
+        assertThat(list.get(0).displayName()).isEqualTo("Root");
+    }
+
+    @Test
+    void nonAdminCannotListAccounts() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+
+        assertThatThrownBy(() -> service.listAccounts(user))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("ACCESS_DENIED"));
+        verify(accounts, never()).listAccounts(anyLong());
+    }
+
+    @Test
+    void adminDisablesAnAccount() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        when(accounts.disableAccount(1L, 7L)).thenReturn(true);
+
+        var response = service.disableAccount(admin, 7L);
+
+        assertThat(response.accountId()).isEqualTo("7");
+        assertThat(response.status()).isEqualTo("DISABLED");
+        verify(accounts).disableAccount(1L, 7L);
+    }
+
+    @Test
+    void nonAdminCannotDisableAccounts() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+
+        assertThatThrownBy(() -> service.disableAccount(user, 1L))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("ACCESS_DENIED"));
+        verify(accounts, never()).disableAccount(anyLong(), anyLong());
+    }
+
+    @Test
+    void disableAccountRejectsNonPositiveTarget() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+
+        assertThatThrownBy(() -> service.disableAccount(admin, 0L))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code()).isEqualTo("INVALID_REQUEST");
+                    assertThat(((AuthErrorException) e).status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                });
+        verify(accounts, never()).disableAccount(anyLong(), anyLong());
+    }
+
     @Test
     void nonAdminCannotCreateAccounts() {
         JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
