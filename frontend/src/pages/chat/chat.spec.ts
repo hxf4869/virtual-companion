@@ -447,4 +447,71 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(wrapper.find('[data-testid="load-more"]').exists()).toBe(false);
     wrapper.unmount();
   });
+
+  // ---- REL-DEACT: two-step relationship deactivation ----
+
+  it("deactivates the current relationship only after the two-step confirm", async () => {
+    const relationships = [{ ...ACTIVE_RELATIONSHIP }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = init?.method ?? "GET";
+        if (url === "/api/v1/relationships" && method === "GET") {
+          return { ok: true, status: 200, json: async () => relationships };
+        }
+        if (url.includes("/deactivate")) {
+          relationships[0] = { ...relationships[0], active: false };
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ...ACTIVE_RELATIONSHIP, active: false }),
+          };
+        }
+        if (url.includes("/messages")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations") && method === "GET") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations")) {
+          return { ok: true, status: 200, json: async () => ({ conversationId: 1 }) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+    const relStore = useRelationshipStore();
+    const store = useChatStore();
+    expect(relStore.currentRelationshipId).toBe("1");
+
+    const button = wrapper.find('[data-testid="deactivate-relationship"]');
+    expect(button.exists()).toBe(true);
+    expect(button.text()).toContain("解除关系");
+
+    // First click only arms the confirm state; nothing is deactivated.
+    await button.trigger("click");
+    await flushPromises();
+    expect(relStore.currentRelationshipId).toBe("1");
+    expect(wrapper.find('[data-testid="deactivate-relationship"]').text()).toContain("确认解除？");
+
+    // Second click deactivates: current cleared, chat reset, selector shown.
+    await wrapper.find('[data-testid="deactivate-relationship"]').trigger("click");
+    await flushPromises();
+
+    expect(relStore.currentRelationshipId).toBeNull();
+    expect(store.conversationId).toBe("");
+    expect(wrapper.find('[data-testid="relationship-selector"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("hides the deactivate button when no relationship is selected", async () => {
+    stubFetch({ relationships: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="deactivate-relationship"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
 });

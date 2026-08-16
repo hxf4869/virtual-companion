@@ -41,6 +41,15 @@
           ? `当前关系：${relStore.currentRelationshipId}`
           : "还没有当前关系。"
       }}</text>
+      <button
+        v-if="relStore.currentRelationshipId"
+        data-testid="deactivate-relationship"
+        class="chat-nav-index deactivate-btn"
+        :aria-busy="confirmDeactivate"
+        @click="onDeactivate"
+      >
+        {{ confirmDeactivate ? "确认解除？" : "解除关系" }}
+      </button>
     </view>
     <view
       v-else-if="relStore.status === 'error'"
@@ -214,6 +223,8 @@ export default defineComponent({
     const auth = useAuthStore();
     const inputText = ref("");
     const initError = ref(false);
+    // REL-DEACT: two-step confirm state for the deactivate button (no modal).
+    const confirmDeactivate = ref(false);
 
     // sessionId: client-generated UUID per chat session — the real source for
     // the realtime ticket binding (mint body carries it).
@@ -380,6 +391,7 @@ export default defineComponent({
       const result = await relStore.activate(transport, relationshipId);
       if (result) {
         initError.value = false;
+        confirmDeactivate.value = false;
         await startConversation();
       }
     }
@@ -388,7 +400,28 @@ export default defineComponent({
       const result = await relStore.create(transport, personaRef);
       if (result) {
         initError.value = false;
+        confirmDeactivate.value = false;
         await startConversation();
+      }
+    }
+
+    /**
+     * REL-DEACT: two-step confirm, then deactivate the current relationship
+     * server-side (the store reloads and clears the current selection). On
+     * success the chat context is reset; the selector takes over because no
+     * relationship is selected anymore.
+     */
+    async function onDeactivate(): Promise<void> {
+      const id = relStore.currentRelationshipId;
+      if (!id) return;
+      if (!confirmDeactivate.value) {
+        confirmDeactivate.value = true;
+        return;
+      }
+      const result = await relStore.deactivate(transport, id);
+      confirmDeactivate.value = false;
+      if (result) {
+        store.reset();
       }
     }
 
@@ -434,11 +467,13 @@ export default defineComponent({
       hasRelationship,
       inputText,
       initError,
+      confirmDeactivate,
       statusText,
       roleLabel,
       conversationLabel,
       onSend,
       onCancel,
+      onDeactivate,
       onOpenConversation,
       onNewConversation,
       onLoadMore,
@@ -521,6 +556,11 @@ export default defineComponent({
 }
 .conversation-item.active {
   background-color: #2a6a9a;
+}
+.deactivate-btn {
+  margin-left: 16rpx;
+  background-color: #5a1a1a;
+  color: #ffffff;
 }
 .history-more {
   display: flex;
