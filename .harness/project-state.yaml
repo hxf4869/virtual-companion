@@ -2,13 +2,13 @@ schemaVersion: 1
 projectId: virtual-companion
 phase: TECHNICAL_ALPHA
 phaseSource: specs/catalog/product-scope.yaml
-activeTask: null
-activeTaskCard: null
+activeTask: TASK-0238
+activeTaskCard: docs/tasks/TASK-0238-compensation-batch-1.md
 lastAcceptedTask: TASK-0237
 lastAcceptedHandoff: docs/handoffs/TASK-0237.json
 lastTerminalTask: TASK-0237
 lastTerminalHandoff: docs/handoffs/TASK-0237.json
-nextAction: TASK-0237 ACCEPTED（SLICE-HISTORY 收口）。下一动作：推送本终态至恢复分支并远端复核、跑正式 Doctor 验证释放绑定，然后 intake 14 张卡补偿验证第一批卡（永久 ID 由机器分配）。保持不推送 main。
+nextAction: TASK-0238 READY（补偿验证批 1：0213-0217 五卡精确历史绑定；不补跑不追溯）。保持不推送 main。
 capabilityGates:
   businessImplementation:
     state: BLOCKED
