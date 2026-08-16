@@ -9,6 +9,7 @@ import com.virtualcompanion.modelruntime.authorization.ProviderRegion;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
+import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
@@ -298,6 +299,12 @@ public class AuthDataSourceConfig {
     @Bean
     public ConversationCreateService conversationCreateService(JdbcTemplate authJdbcTemplate) {
         return new ConversationCreateService(authJdbcTemplate);
+    }
+
+    /** CONV-HIST: keyset-paginated conversation list (V30) for the H5 chat page. */
+    @Bean
+    public ConversationListService conversationListService(JdbcTemplate authJdbcTemplate) {
+        return new ConversationListService(authJdbcTemplate);
     }
 
     @Bean

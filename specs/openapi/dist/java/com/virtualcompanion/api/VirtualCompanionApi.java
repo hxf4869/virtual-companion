@@ -23,6 +23,9 @@ public interface VirtualCompanionApi {
     /** Open a conversation under a relationship. */
     ConversationResponse createConversation();
 
+    /** List the caller's conversations with a last-message preview. */
+    Void listConversations();
+
     /** Idempotently send a Chat turn (create or rejoin a generation). */
     Generation sendGeneration();
 

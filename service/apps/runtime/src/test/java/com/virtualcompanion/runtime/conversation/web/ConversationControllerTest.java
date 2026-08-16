@@ -3,13 +3,18 @@ package com.virtualcompanion.runtime.conversation.web;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
+import com.virtualcompanion.platform.persistence.ConversationListRecord;
+import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -33,12 +38,15 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 class ConversationControllerTest {
 
     private ConversationCreateService conversationCreateService;
+    private ConversationListService conversationListService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         conversationCreateService = mock(ConversationCreateService.class);
-        ConversationController controller = new ConversationController(conversationCreateService);
+        conversationListService = mock(ConversationListService.class);
+        ConversationController controller =
+                new ConversationController(conversationCreateService, conversationListService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -88,6 +96,50 @@ class ConversationControllerTest {
     void createMissingBodyMapsTo400() throws Exception {
         mockMvc.perform(post("/api/v1/conversations")
                         .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    // ---- CONV-HIST list ----
+
+    @Test
+    void listReturnsTheCallersConversationsWithPreview() throws Exception {
+        Instant now = Instant.parse("2026-08-16T08:00:00Z");
+        when(conversationListService.listConversations(1L, 7L, null, null))
+                .thenReturn(List.of(
+                        new ConversationListRecord(100L, 7L, now, "assistant", "好的，我在听"),
+                        new ConversationListRecord(101L, 7L, now, null, null)));
+
+        mockMvc.perform(get("/api/v1/conversations").param("relationshipId", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].conversationId").value(100))
+                .andExpect(jsonPath("$[0].relationshipId").value(7))
+                .andExpect(jsonPath("$[0].lastMessageRole").value("assistant"))
+                .andExpect(jsonPath("$[0].lastMessagePreview").value("好的，我在听"))
+                .andExpect(jsonPath("$[1].conversationId").value(101))
+                .andExpect(jsonPath("$[1].lastMessageRole").isEmpty())
+                .andExpect(jsonPath("$[1].lastMessagePreview").isEmpty());
+
+        verify(conversationListService).listConversations(1L, 7L, null, null);
+    }
+
+    @Test
+    void listPassesCursorAndLimitThrough() throws Exception {
+        when(conversationListService.listConversations(1L, null, 42L, 20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/conversations").param("after", "42").param("limit", "20"))
+                .andExpect(status().isOk());
+
+        verify(conversationListService).listConversations(1L, null, 42L, 20);
+    }
+
+    @Test
+    void listMalformedParametersMapTo400() throws Exception {
+        mockMvc.perform(get("/api/v1/conversations").param("after", "not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+        mockMvc.perform(get("/api/v1/conversations").param("limit", "many"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }

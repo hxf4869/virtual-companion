@@ -23,18 +23,32 @@ function successDeps(): RealtimeDeps {
   };
 }
 
+/** Parse the `after` query parameter of a request path (undefined when absent). */
+function afterFromPath(path: string): string | undefined {
+  const idx = path.indexOf("?");
+  if (idx < 0) return undefined;
+  return new URLSearchParams(path.slice(idx + 1)).get("after") ?? undefined;
+}
+
 /** Mock ChatTransport that routes by path: conversations, generations, messages. */
 function mockChatTransport(opts: {
   generationStatus?: number;
   generationJson?: unknown;
   messagesJson?: unknown;
+  conversationsJson?: unknown;
   conversationOk?: boolean;
 }): ChatTransport {
   return {
     async request(method: string, path: string): Promise<ChatApiResponse> {
       if (path === "/api/v1/conversations") {
+        if (method === "GET") {
+          return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
+        }
         const ok = opts.conversationOk ?? true;
         return { ok, status: ok ? 200 : 404, json: ok ? { conversationId: 1 } : null };
+      }
+      if (path.startsWith("/api/v1/conversations?")) {
+        return { ok: true, status: 200, json: opts.conversationsJson ?? [] };
       }
       if (path.includes("/generations")) {
         const status = opts.generationStatus ?? 200;
@@ -50,7 +64,12 @@ function mockChatTransport(opts: {
         };
       }
       if (path.includes("/messages")) {
-        return { ok: true, status: 200, json: opts.messagesJson ?? [] };
+        const after = afterFromPath(path);
+        const limit = Number(new URLSearchParams(path.split("?")[1] ?? "").get("limit") ?? 50);
+        const all = (opts.messagesJson ?? []) as Array<{ messageId: number }>;
+        const filtered =
+          after === undefined ? all : all.filter((m) => Number(m.messageId) > Number(after));
+        return { ok: true, status: 200, json: filtered.slice(0, limit) };
       }
       return { ok: true, status: 200, json: {} };
     },
@@ -416,5 +435,87 @@ describe("useChatStore", () => {
     expect(store.conversationId).toBe("");
     expect(store.messages).toEqual([]);
     expect(store.phase).toBe("idle");
+    expect(store.historyHasMore).toBe(false);
+  });
+
+  // ---- CONV-HIST: conversation list + history pagination ----
+
+  it("loadConversations stores the first page for the relationship", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      conversationsJson: [
+        { conversationId: 3, relationshipId: "1", lastMessagePreview: "上次聊到" },
+      ],
+    });
+
+    await store.loadConversations(transport, "1");
+
+    expect(store.conversations).toHaveLength(1);
+    expect(store.conversations[0].conversationId).toBe("3");
+    expect(store.conversations[0].lastMessagePreview).toBe("上次聊到");
+  });
+
+  it("loadConversations keeps the previous list on failure", async () => {
+    const store = useChatStore();
+    const failing: ChatTransport = {
+      request: async () => ({ ok: false, status: 500, json: null }),
+    };
+
+    await store.loadConversations(failing, "1");
+
+    expect(store.conversations).toEqual([]);
+  });
+
+  it("openConversation switches and auto-advances to the newest messages", async () => {
+    const store = useChatStore();
+    const manyMessages = Array.from({ length: 120 }, (_, i) => ({
+      messageId: i + 1,
+      conversationId: "5",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const transport = mockChatTransport({ messagesJson: manyMessages });
+
+    await store.openConversation(transport, "5");
+
+    expect(store.conversationId).toBe("5");
+    expect(store.messages).toHaveLength(120);
+    expect(store.messages[119].content).toBe("m120");
+    expect(store.historyHasMore).toBe(false);
+  });
+
+  it("openConversation caps auto-advance and loadMoreHistory appends past the cap", async () => {
+    const store = useChatStore();
+    const manyMessages = Array.from({ length: 600 }, (_, i) => ({
+      messageId: i + 1,
+      conversationId: "5",
+      role: "user",
+      content: `m${i + 1}`,
+    }));
+    const transport = mockChatTransport({ messagesJson: manyMessages });
+
+    await store.openConversation(transport, "5");
+
+    // 10 auto pages × 50 = the cap; the rest stays behind the manual button.
+    expect(store.messages).toHaveLength(500);
+    expect(store.historyHasMore).toBe(true);
+
+    await store.loadMoreHistory(transport);
+    expect(store.messages).toHaveLength(550);
+    expect(store.historyHasMore).toBe(true);
+  });
+
+  it("openConversation refuses to switch mid-stream", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      messagesJson: [{ messageId: 1, conversationId: "5", role: "user", content: "A" }],
+    });
+    await store.openConversation(transport, "5");
+    expect(store.conversationId).toBe("5");
+
+    store.phase = "streaming";
+    await store.openConversation(transport, "6");
+
+    expect(store.conversationId).toBe("5");
   });
 });

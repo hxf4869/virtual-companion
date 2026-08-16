@@ -2,7 +2,8 @@
 
 AI 虚拟陪伴系统的 Technical Alpha 单体仓库。身份会话、生成/记忆/安全领域内核、
 PostgreSQL 持久化迁移、模型协议适配器和 uni-app H5 页面均已实现；Generation、Realtime、
-Memory 的 HTTP 纵切（含异步 worker 与 Fetch-SSE 恢复流）已接通，但尚未达到真实用户或生产发布条件。
+Memory 的 HTTP 纵切（含异步 worker、Fetch-SSE 恢复流、记忆提取与召回闭环）已接通，但尚未达到
+真实用户或生产发布条件。
 
 ## 快速开始
 
@@ -41,7 +42,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/auth/admin/accounts`
 - `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
   `POST /api/v1/relationships/{relationshipId}/deactivate`
-- `POST /api/v1/conversations`、`POST /api/v1/conversations/{conversationId}/generations`、
+- `POST /api/v1/conversations`、`GET /api/v1/conversations`（会话列表，keyset + 最后消息预览）、
+  `POST /api/v1/conversations/{conversationId}/generations`、
   `GET /api/v1/conversations/{conversationId}/messages`
 - `GET /api/v1/generations/{generationId}/snapshot`、`POST /api/v1/generations/{generationId}/cancel`
 - `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE 恢复流）

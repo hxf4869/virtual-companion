@@ -67,6 +67,31 @@
       />
 
       <template v-else>
+        <!-- CONV-HIST: conversation list / switch / new conversation -->
+        <view class="conversation-panel" data-testid="conversation-panel">
+          <scroll-view scroll-x class="conversation-list">
+            <button
+              v-for="conv in conversations"
+              :key="conv.conversationId"
+              class="conversation-item"
+              :class="{ active: conv.conversationId === store.conversationId }"
+              data-testid="conversation-item"
+              :disabled="isStreaming"
+              @click="onOpenConversation(conv.conversationId)"
+            >
+              {{ conversationLabel(conv) }}
+            </button>
+          </scroll-view>
+          <button
+            data-testid="new-conversation"
+            class="chat-nav-index"
+            :disabled="isStreaming"
+            @click="onNewConversation"
+          >
+            新会话
+          </button>
+        </view>
+
         <view class="chat-history" data-testid="history">
           <view
             v-if="showEmptyHistory"
@@ -84,6 +109,16 @@
           >
             <text class="role-tag">{{ roleLabel(msg.role) }}</text>
             <text class="msg-content">{{ msg.content }}</text>
+          </view>
+          <view v-if="showLoadMore" class="history-more">
+            <button
+              data-testid="load-more"
+              class="chat-nav-index"
+              :disabled="isStreaming"
+              @click="onLoadMore"
+            >
+              加载更多
+            </button>
           </view>
         </view>
 
@@ -158,6 +193,7 @@ import { createAuthedFetch } from "@/api/authed-fetch";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
 import type { RealtimeDeps } from "@/api/realtime";
+import type { ConversationListItem } from "@/api/chat";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
@@ -196,6 +232,7 @@ export default defineComponent({
     );
 
     const messages = computed(() => store.messages);
+    const conversations = computed(() => store.conversations);
     const draft = computed(() => store.draft);
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
@@ -207,11 +244,25 @@ export default defineComponent({
         !draft.value &&
         messages.value.length === 0,
     );
+    // CONV-HIST: manual load-more shows only when the auto-advance cap left
+    // more pages behind (and there is something on screen).
+    const showLoadMore = computed(
+      () => store.historyHasMore && messages.value.length > 0 && !isStreaming.value,
+    );
 
     function roleLabel(role: string): string {
       if (role === "assistant") return "AI";
       if (role === "user") return "我";
       return role;
+    }
+
+    /** CONV-HIST: short preview label for one conversation list entry. */
+    function conversationLabel(conv: ConversationListItem): string {
+      const preview = (conv.lastMessagePreview ?? "").trim();
+      if (preview) {
+        return preview.length > 16 ? `${preview.slice(0, 16)}…` : preview;
+      }
+      return `会话 #${conv.conversationId}`;
     }
 
     const statusText = computed(() => {
@@ -289,7 +340,7 @@ export default defineComponent({
 
     /**
      * Reset the chat store and create a fresh conversation under the currently
-     * selected relationship. Used on mount (when an active relationship exists)
+     * selected relationship. Used on mount (when no conversation exists yet)
      * and whenever the user activates/creates a relationship.
      */
     async function startConversation(): Promise<void> {
@@ -297,10 +348,32 @@ export default defineComponent({
       if (!relationshipId) return;
       store.reset();
       try {
-        await store.initConversation(transport, relationshipId);
+        const result = await store.initConversation(transport, relationshipId);
+        if (result) {
+          await refreshConversationList();
+        }
       } catch {
         initError.value = true;
       }
+    }
+
+    /** CONV-HIST: load the first page of conversations for the active relationship. */
+    async function refreshConversationList(): Promise<void> {
+      const relationshipId = relStore.currentRelationshipId;
+      if (!relationshipId) return;
+      await store.loadConversations(transport, relationshipId);
+    }
+
+    async function onOpenConversation(id: string): Promise<void> {
+      await store.openConversation(transport, id);
+    }
+
+    async function onNewConversation(): Promise<void> {
+      await startConversation();
+    }
+
+    async function onLoadMore(): Promise<void> {
+      await store.loadMoreHistory(transport);
     }
 
     async function onRelActivate(relationshipId: string): Promise<void> {
@@ -331,7 +404,15 @@ export default defineComponent({
         relStore.currentRelationshipId = queryId;
       }
       if (relStore.currentRelationshipId) {
-        await startConversation();
+        // CONV-HIST: resume the newest conversation when one exists, otherwise
+        // create a fresh one (the pre-CONV-HIST behavior).
+        await refreshConversationList();
+        const latest = store.conversations[store.conversations.length - 1];
+        if (latest) {
+          await store.openConversation(transport, latest.conversationId);
+        } else {
+          await startConversation();
+        }
       }
     });
 
@@ -342,18 +423,25 @@ export default defineComponent({
 
     return {
       relStore,
+      store,
       messages,
+      conversations,
       draft,
       isStreaming,
       showEmptyHistory,
+      showLoadMore,
       canSend,
       hasRelationship,
       inputText,
       initError,
       statusText,
       roleLabel,
+      conversationLabel,
       onSend,
       onCancel,
+      onOpenConversation,
+      onNewConversation,
+      onLoadMore,
       goTo,
       memoryHref,
       onRelActivate,
@@ -408,6 +496,36 @@ export default defineComponent({
   flex: 1;
   overflow-y: auto;
   margin-bottom: 24rpx;
+}
+.conversation-panel {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+.conversation-list {
+  flex: 1;
+  white-space: nowrap;
+}
+.conversation-item {
+  flex: 0 0 auto;
+  display: inline-block;
+  max-width: 280rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 12rpx;
+  background-color: #2a3a5a;
+  color: #ffffff;
+  font-size: 24rpx;
+}
+.conversation-item.active {
+  background-color: #2a6a9a;
+}
+.history-more {
+  display: flex;
+  justify-content: center;
+  padding: 12rpx 0;
 }
 .chat-empty {
   padding: 24rpx;

@@ -26,9 +26,11 @@ import { computed, ref } from "vue";
 import {
   cancelGeneration,
   createConversation,
+  listConversations,
   listMessages,
   sendGeneration,
   type ChatTransport,
+  type ConversationListItem,
   type CreateConversationResponse,
   type Message,
 } from "@/api/chat";
@@ -47,6 +49,10 @@ import {
 
 export type ChatPhase = "idle" | "streaming" | "completed" | "cancelled" | "failed";
 
+/** CONV-HIST: history page size and the auto-advance page cap on open. */
+const HISTORY_PAGE_SIZE = 50;
+const MAX_AUTO_PAGES = 10;
+
 export const useChatStore = defineStore("h5-chat", () => {
   const phase = ref<ChatPhase>("idle");
   const generationId = ref<string>("");
@@ -54,6 +60,9 @@ export const useChatStore = defineStore("h5-chat", () => {
   const outcome = ref<StreamOutcome | null>(null);
   const conversationId = ref<string>("");
   const messages = ref<Message[]>([]);
+  // CONV-HIST: conversation list (first page) and the history load-more cursor.
+  const conversations = ref<ConversationListItem[]>([]);
+  const historyHasMore = ref(false);
   let handle: StreamHandle | null = null;
   let runSequence = 0;
   // CANCEL-A: the transport of the most recent send, so cancel() can confirm the
@@ -160,6 +169,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     outcome.value = null;
     conversationId.value = "";
     messages.value = [];
+    historyHasMore.value = false;
     handle = null;
     lastTransport = null;
   }
@@ -180,14 +190,74 @@ export const useChatStore = defineStore("h5-chat", () => {
     return result;
   }
 
-  /** Reload message history for the current conversation. */
+  /** Reload message history for the current conversation from scratch. */
   async function loadHistory(transport: ChatTransport): Promise<void> {
     if (!conversationId.value) return;
+    messages.value = [];
+    historyHasMore.value = true;
     try {
-      messages.value = await listMessages(transport, conversationId.value);
+      await advanceHistory(transport);
     } catch {
       // History load failure is non-fatal — the stream result is already
       // committed and the user can retry. Do not surface as a phase change.
+    }
+  }
+
+  // ---- CONV-HIST: conversation list + history pagination ----
+
+  /** Load the first page of the caller's conversations (optionally scoped). */
+  async function loadConversations(
+    transport: ChatTransport,
+    relationshipId?: string,
+  ): Promise<void> {
+    try {
+      conversations.value = await listConversations(transport, relationshipId);
+    } catch {
+      // Non-fatal: keep the current list; the page can retry on next visit.
+    }
+  }
+
+  /**
+   * Switch to an existing conversation: reset the message window and page
+   * forward from the beginning until the end (capped) so the user lands on
+   * the latest messages. Switching mid-stream is refused — the current run
+   * must reach its terminal first.
+   */
+  async function openConversation(transport: ChatTransport, id: string): Promise<void> {
+    if (isStreaming.value || id === conversationId.value) return;
+    conversationId.value = id;
+    messages.value = [];
+    historyHasMore.value = true;
+    try {
+      await advanceHistory(transport);
+    } catch {
+      // Non-fatal; the user keeps the loaded window.
+    }
+  }
+
+  /** Append the next page of history after the last loaded message. */
+  async function loadMoreHistory(transport: ChatTransport): Promise<void> {
+    if (!conversationId.value || !historyHasMore.value) return;
+    const last = messages.value[messages.value.length - 1];
+    const page = await listMessages(
+      transport,
+      conversationId.value,
+      last?.messageId,
+      HISTORY_PAGE_SIZE,
+    );
+    messages.value = [...messages.value, ...page];
+    historyHasMore.value = page.length >= HISTORY_PAGE_SIZE;
+  }
+
+  /**
+   * Page forward until the end of the history or the auto-advance cap
+   * ({@link MAX_AUTO_PAGES}); beyond the cap the page offers manual load-more.
+   */
+  async function advanceHistory(transport: ChatTransport): Promise<void> {
+    let pages = 0;
+    while (historyHasMore.value && pages < MAX_AUTO_PAGES) {
+      await loadMoreHistory(transport);
+      pages += 1;
     }
   }
 
@@ -220,7 +290,9 @@ export const useChatStore = defineStore("h5-chat", () => {
       return;
     }
     await run(deps, generation.generationId, 1);
-    await loadHistory(transport);
+    // CONV-HIST: append the pages after the loaded window instead of reloading
+    // from scratch, so a long conversation keeps its earlier window intact.
+    await advanceHistory(transport);
   }
 
   return {
@@ -230,6 +302,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     outcome,
     conversationId,
     messages,
+    conversations,
+    historyHasMore,
     draft,
     isStreaming,
     isTerminal,
@@ -240,5 +314,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     initConversation,
     send,
     loadHistory,
+    loadConversations,
+    openConversation,
+    loadMoreHistory,
   };
 });

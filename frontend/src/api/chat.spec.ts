@@ -7,6 +7,7 @@ import {
   cancelGeneration,
   ChatHttpError,
   createConversation,
+  listConversations,
   listMessages,
   sendGeneration,
   type ChatTransport,
@@ -268,5 +269,93 @@ describe("cancelGeneration", () => {
     });
 
     await expect(cancelGeneration(transport, "42")).rejects.toThrow(ChatHttpError);
+  });
+});
+
+describe("listConversations (CONV-HIST)", () => {
+  const CONVERSATION_JSON = {
+    conversationId: 100,
+    relationshipId: 7,
+    lastMessageRole: "assistant",
+    lastMessagePreview: "好的，我在听",
+    createdAt: "2026-08-16T08:00:00Z",
+  };
+
+  it("GETs /api/v1/conversations with relationshipId + after + limit query", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: [CONVERSATION_JSON],
+    });
+
+    const result = await listConversations(transport, "7", "50", 20);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("GET");
+    expect(calls[0].path).toBe("/api/v1/conversations?relationshipId=7&after=50&limit=20");
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      conversationId: "100",
+      relationshipId: "7",
+      lastMessageRole: "assistant",
+      lastMessagePreview: "好的，我在听",
+      createdAt: "2026-08-16T08:00:00Z",
+    });
+  });
+
+  it("omits query when no parameters", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: [],
+    });
+
+    await listConversations(transport);
+
+    expect(calls[0].path).toBe("/api/v1/conversations");
+  });
+
+  it("maps a conversation without messages to undefined preview fields", async () => {
+    const { transport } = recorder({
+      ok: true,
+      status: 200,
+      json: [{ conversationId: 101, relationshipId: 7, createdAt: "2026-08-16T08:00:00Z" }],
+    });
+
+    const result = await listConversations(transport);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].lastMessageRole).toBeUndefined();
+    expect(result[0].lastMessagePreview).toBeUndefined();
+  });
+
+  it("drops rows missing required ids instead of faking entries", async () => {
+    const { transport } = recorder({
+      ok: true,
+      status: 200,
+      json: [{ conversationId: 102 }],
+    });
+
+    expect(await listConversations(transport)).toEqual([]);
+  });
+
+  it("returns empty array for a foreign relationship (404, existence hidden)", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
+    });
+
+    expect(await listConversations(transport, "999")).toEqual([]);
+  });
+
+  it("throws ChatHttpError on 401", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 401,
+      json: null,
+    });
+
+    await expect(listConversations(transport)).rejects.toThrow(ChatHttpError);
   });
 });

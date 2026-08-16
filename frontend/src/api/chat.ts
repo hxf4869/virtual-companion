@@ -50,6 +50,15 @@ export interface CreateConversationResponse {
   conversationId: string;
 }
 
+/** CONV-HIST: one conversation list row (OpenAPI ConversationListItem). */
+export interface ConversationListItem {
+  conversationId: string;
+  relationshipId: string;
+  lastMessageRole?: string;
+  lastMessagePreview?: string;
+  createdAt?: string;
+}
+
 export interface ChatApiResponse {
   ok: boolean;
   status: number;
@@ -147,6 +156,31 @@ function asMessageArray(json: unknown): Message[] {
   return out;
 }
 
+function asConversationListItem(json: unknown): ConversationListItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const conversationId = asId(o.conversationId);
+  const relationshipId = asId(o.relationshipId);
+  if (!conversationId || !relationshipId) return null;
+  return {
+    conversationId,
+    relationshipId,
+    lastMessageRole: asString(o, "lastMessageRole"),
+    lastMessagePreview: asString(o, "lastMessagePreview"),
+    createdAt: asString(o, "createdAt"),
+  };
+}
+
+function asConversationList(json: unknown): ConversationListItem[] {
+  if (!Array.isArray(json)) return [];
+  const out: ConversationListItem[] = [];
+  for (const item of json) {
+    const c = asConversationListItem(item);
+    if (c) out.push(c);
+  }
+  return out;
+}
+
 /**
  * Create a conversation under a relationship (vc.create_conversation). Returns
  * the new conversationId on success, null on 403/404 (existence hidden).
@@ -161,6 +195,39 @@ export async function createConversation(
   if (!r.json || typeof r.json !== "object") return null;
   const conversationId = asId((r.json as Record<string, unknown>).conversationId);
   return conversationId ? { conversationId } : null;
+}
+
+/**
+ * CONV-HIST: keyset-paginated conversation list (vc.list_conversations). A
+ * foreign or absent relationship filter yields an empty array and never
+ * discloses existence. 401/5xx throw typed errors so the store never fakes
+ * success.
+ */
+export async function listConversations(
+  t: ChatTransport,
+  relationshipId?: string,
+  after?: string,
+  limit?: number,
+): Promise<ConversationListItem[]> {
+  const params: string[] = [];
+  if (relationshipId !== undefined) {
+    params.push(`relationshipId=${encodeURIComponent(relationshipId)}`);
+  }
+  if (after !== undefined) {
+    params.push(`after=${encodeURIComponent(after)}`);
+  }
+  if (limit !== undefined) {
+    params.push(`limit=${limit}`);
+  }
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const r = await t.request("GET", `${CONVERSATIONS_BASE}${query}`);
+  if (!r.ok) {
+    if (!isExistenceHidden(r.status)) {
+      throw new ChatHttpError(r.status, classifyStatus(r.status));
+    }
+    return [];
+  }
+  return asConversationList(r.json);
 }
 
 /**

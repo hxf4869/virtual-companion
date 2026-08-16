@@ -196,6 +196,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listConversations
+      summary: List the caller's conversations with a last-message preview
+      description: Keyset-paginated conversations owned by the caller (vc.list_conversations), optionally scoped to one relationship.
+        The after cursor is the last conversation id seen; ordering is stable by (owner, id). A foreign or absent relationship
+        yields no rows and never discloses existence. Requires a server-verified authentication context.
+      parameters:
+      - name: relationshipId
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Restrict to conversations under this relationship; omit for all.
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor (the last conversation id seen); omit to start from the beginning.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Page size, clamped to a safe band by the server.
+      responses:
+        '200':
+          description: A page of conversations, ordered oldest-first within the page
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConversationListItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/conversations/{conversationId}/generations:
     post:
       operationId: sendGeneration
@@ -1089,6 +1129,31 @@ components:
         conversationId:
           type: string
           description: Stable owner-scoped conversation identifier
+    ConversationListItem:
+      type: object
+      description: One conversation row in the caller's list, carrying a clamped preview of the most recent message when the
+        conversation has any messages.
+      required:
+      - conversationId
+      - relationshipId
+      - createdAt
+      properties:
+        conversationId:
+          type: string
+          description: Stable owner-scoped conversation identifier
+        relationshipId:
+          type: string
+          description: Owning relationship identifier
+        lastMessageRole:
+          type: string
+          description: Role of the most recent message (user or assistant), absent for an empty conversation
+        lastMessagePreview:
+          type: string
+          description: Clamped preview of the most recent message, absent for an empty conversation
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (RFC 3339)
     Memory:
       type: object
       description: A memory candidate or canonical record owned by exactly one user within a relationship. Model extraction

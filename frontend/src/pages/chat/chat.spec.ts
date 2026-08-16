@@ -19,21 +19,25 @@ const ACTIVE_RELATIONSHIP = {
   createdAt: "2026-08-13T01:00:00Z",
 };
 
-/** Stub fetch to satisfy the mount-time relationship load + conversation create. */
-function stubFetch(opts: { relationships?: unknown[] } = {}): void {
+/** Stub fetch to satisfy the mount-time relationship load + conversation list/create. */
+function stubFetch(opts: { relationships?: unknown[]; conversationsJson?: unknown[] } = {}): void {
   const relationships = opts.relationships ?? [ACTIVE_RELATIONSHIP];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
       if (url === "/api/v1/relationships") {
         return { ok: true, status: 200, json: async () => relationships };
       }
-      if (url === "/api/v1/conversations") {
-        return { ok: true, status: 200, json: async () => ({ conversationId: 1 }) };
-      }
       if (url.includes("/messages")) {
         return { ok: true, status: 200, json: async () => [] };
+      }
+      if (url.startsWith("/api/v1/conversations") && method === "GET") {
+        return { ok: true, status: 200, json: async () => opts.conversationsJson ?? [] };
+      }
+      if (url.startsWith("/api/v1/conversations")) {
+        return { ok: true, status: 200, json: async () => ({ conversationId: 1 }) };
       }
       return { ok: true, status: 200, json: async () => ({}) };
     }),
@@ -357,6 +361,90 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(relStore.currentRelationshipId).toBe("2");
     expect(activateSpy).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- CONV-HIST: conversation panel / switching / load-more ----
+
+  it("renders the conversation panel and resumes the newest conversation on mount", async () => {
+    stubFetch({
+      conversationsJson: [
+        { conversationId: 8, relationshipId: "1", lastMessagePreview: "更早的会话" },
+        { conversationId: 9, relationshipId: "1", lastMessagePreview: "最近聊到的内容" },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+
+    expect(wrapper.find('[data-testid="conversation-panel"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="conversation-item"]')).toHaveLength(2);
+    expect(store.conversationId).toBe("9");
+    expect(wrapper.find('[data-testid="conversation-item"]').text()).toContain("更早的会话");
+    wrapper.unmount();
+  });
+
+  it("creates a fresh conversation when the list is empty", async () => {
+    stubFetch({ conversationsJson: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+
+    expect(store.conversationId).toBe("1");
+    expect(wrapper.find('[data-testid="conversation-panel"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("switches to another conversation when its entry is clicked", async () => {
+    stubFetch({
+      conversationsJson: [
+        { conversationId: 8, relationshipId: "1", lastMessagePreview: "更早的会话" },
+        { conversationId: 9, relationshipId: "1", lastMessagePreview: "最近聊到的内容" },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    expect(store.conversationId).toBe("9");
+
+    const items = wrapper.findAll('[data-testid="conversation-item"]');
+    await items[0].trigger("click");
+    await flushPromises();
+
+    expect(store.conversationId).toBe("8");
+    wrapper.unmount();
+  });
+
+  it("shows and triggers the load-more button when more history remains", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.messages = [
+      { messageId: "1", conversationId: "1", role: "user", content: "A" },
+    ];
+    store.historyHasMore = true;
+    const loadMoreSpy = vi.spyOn(store, "loadMoreHistory").mockResolvedValue();
+    await wrapper.vm.$nextTick();
+
+    const loadMore = wrapper.find('[data-testid="load-more"]');
+    expect(loadMore.exists()).toBe(true);
+    await loadMore.trigger("click");
+
+    expect(loadMoreSpy).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("hides the load-more button when no more history remains", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.messages = [
+      { messageId: "1", conversationId: "1", role: "user", content: "A" },
+    ];
+    store.historyHasMore = false;
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="load-more"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });
