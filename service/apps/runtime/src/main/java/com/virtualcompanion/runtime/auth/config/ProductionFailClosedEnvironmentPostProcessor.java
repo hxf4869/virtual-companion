@@ -20,8 +20,13 @@ import org.springframework.core.env.Profiles;
  * {@code true} in production, and a silently degraded "auth off" production
  * runtime is never acceptable.
  *
- * <p>Only the two master switches are forced here. {@code VC_FLYWAY_ENABLED}
- * may legitimately stay {@code false} in production (migrations may run out of
+ * <p>The secure-cookie flag defaults to {@code true} and has no production
+ * placeholder gap, but an EXPLICIT {@code false} is rejected the same way:
+ * production terminates TLS at the deployment boundary, so a non-secure
+ * session cookie would be leaked in transit there.
+ *
+ * <p>Only these auth flags are forced here. {@code VC_FLYWAY_ENABLED} may
+ * legitimately stay {@code false} in production (migrations may run out of
  * process via the migrator principal), so it is not part of this guard.
  */
 public class ProductionFailClosedEnvironmentPostProcessor implements EnvironmentPostProcessor {
@@ -46,6 +51,12 @@ public class ProductionFailClosedEnvironmentPostProcessor implements Environment
             throw new IllegalStateException(
                     "virtual-companion.auth.datasource-enabled (VC_AUTH_DATASOURCE_ENABLED) must "
                             + "be true in the production profile; an explicit false is rejected");
+        }
+        String cookieSecure = environment.getProperty("virtual-companion.auth.cookie-secure");
+        if ("false".equalsIgnoreCase(cookieSecure)) {
+            throw new IllegalStateException(
+                    "virtual-companion.auth.cookie-secure (VC_AUTH_COOKIE_SECURE) must be true in "
+                            + "the production profile; an explicit false is rejected");
         }
     }
 }

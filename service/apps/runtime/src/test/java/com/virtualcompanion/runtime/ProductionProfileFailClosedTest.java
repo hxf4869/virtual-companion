@@ -96,6 +96,30 @@ class ProductionProfileFailClosedTest {
     }
 
     @Test
+    void productionProfileWithExplicitFalseCookieSecureFailsToStart() {
+        // The secure-cookie flag defaults to true, so a missing variable is
+        // fine; an EXPLICIT false must refuse startup because production
+        // terminates TLS at the deployment boundary and a non-secure session
+        // cookie would leak in transit there.
+        assertThatThrownBy(() -> new SpringApplicationBuilder(VirtualCompanionRuntimeApplication.class)
+                .profiles("production")
+                .properties(
+                        "VC_AUTH_ENABLED=true",
+                        "VC_AUTH_DATASOURCE_ENABLED=true",
+                        "VC_AUTH_COOKIE_SECURE=false",
+                        "VC_FLYWAY_ENABLED=false",
+                        "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                        "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
+                        "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
+                        "VC_DB_USERNAME=vc",
+                        "VC_DB_PASSWORD=vc")
+                        .run())
+                .satisfies(t -> assertThat(chainMessages(t))
+                        .contains("VC_AUTH_COOKIE_SECURE")
+                        .contains("explicit false is rejected"));
+    }
+
+    @Test
     void productionProfileWithFlywayEnabledButMissingMigratorCredentialsFailsToStart() {
         // P1-11 fail-fast: enabling in-app Flyway without the migrator
         // datasource credentials must refuse startup with the missing variable

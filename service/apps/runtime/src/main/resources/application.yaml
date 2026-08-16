@@ -71,7 +71,8 @@ virtual-companion:
     refresh-token-ttl: ${VC_REFRESH_TOKEN_TTL:7d}
     issuer: ${VC_AUTH_ISSUER:virtual-companion}
     # Secure flag on the vc_refresh/vc_csrf session cookies. True in production;
-    # local HTTP development may set VC_AUTH_COOKIE_SECURE=false (never in prod).
+    # local HTTP development may set VC_AUTH_COOKIE_SECURE=false, but the
+    # production profile rejects an explicit false at startup (fail-closed).
     cookie-secure: ${VC_AUTH_COOKIE_SECURE:true}
     # Alpha Origin allow-list (host-origin strings). Requests with an unknown
     # Origin are rejected; a curl/server client without an Origin is unaffected.
