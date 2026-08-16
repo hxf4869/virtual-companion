@@ -159,6 +159,14 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   删除墓碑使恢复登录不可能；OpenAPI `DELETE /api/v1/auth/account`（同时
   清除会话 cookie）；边界台新增两步确认「注销账号」危险区，文案说明
   保留期与无法立即清除的合规日志（FR-AUTH-004）。
+- 请求关联日志（REQUEST-ID）：`RequestIdFilter` 为每个 HTTP 请求生成或透传
+  `X-Request-Id`（合法短 token 原样回显，否则服务端 UUID；非法头绝不入
+  日志/响应），写入 MDC（`logging.pattern.level` 输出 `[req=...]`）并在
+  响应头回显（CORS exposedHeaders 已放开）；FR-CHAT-001 的 request_id
+  落地，跨请求排查链路（匿名/被拒/基线请求同样带 id，与 auth 开关无关）。
+- 消息复制（MSG-COPY）：聊天页每条已持久化消息新增「复制」按钮——异步
+  剪贴板 API 优先、legacy textarea 回退，纯前端无网络调用，按钮短暂显示
+  「已复制」反馈（streaming 占位行不渲染）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

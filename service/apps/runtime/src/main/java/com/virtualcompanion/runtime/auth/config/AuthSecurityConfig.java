@@ -5,6 +5,7 @@ import com.virtualcompanion.runtime.auth.jwt.JwtAuthenticationFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.tenant.OwnerInjectionFilter;
+import com.virtualcompanion.runtime.observability.RequestIdFilter;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -96,6 +97,8 @@ public class AuthSecurityConfig {
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", CookieCsrfGuardFilter.CSRF_HEADER));
+        // REQUEST-ID: the correlation header must be readable cross-origin.
+        config.setExposedHeaders(List.of(RequestIdFilter.HEADER));
         config.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

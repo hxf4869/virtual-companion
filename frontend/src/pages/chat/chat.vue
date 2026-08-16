@@ -213,6 +213,17 @@
           >
             <text class="role-tag">{{ roleLabel(msg.role) }}</text>
             <text class="msg-content">{{ msg.content }}</text>
+            <!-- MSG-COPY: copy this message's text (best effort, no server
+                 call; the label flips briefly as visual feedback). -->
+            <button
+              v-if="!msg.messageId.startsWith('__') && !isStreaming"
+              class="msg-copy"
+              :data-testid="`msg-copy-${msg.messageId}`"
+              :aria-label="copiedMsgId === msg.messageId ? '已复制这条消息' : '复制这条消息'"
+              @click="onCopyMessage(msg.messageId, msg.content)"
+            >
+              {{ copiedMsgId === msg.messageId ? "已复制" : "复制" }}
+            </button>
             <!-- MSG-DELETE: two-step delete for persisted messages only
                  (the streaming/pending placeholders are not deletable). -->
             <button
@@ -417,6 +428,9 @@ export default defineComponent({
     const renameInput = ref("");
     // MSG-DELETE: two-step confirm state for per-message deletion.
     const confirmDeleteMsgId = ref<string | null>(null);
+    // MSG-COPY: the message currently shown as "已复制" (brief visual feedback).
+    const copiedMsgId = ref<string | null>(null);
+    let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
     // INC-MODE: creation-time incognito decision for the next new conversation.
     const incognitoNext = ref(false);
     // CHAT-MODE: approved quick-mode options; AUTO keeps the persona default,
@@ -641,6 +655,51 @@ export default defineComponent({
       confirmDeleteMsgId.value = messageId;
     }
 
+    /**
+     * MSG-COPY: copy the message text to the clipboard (best effort — never
+     * breaks the chat). The label flips to "已复制" for a moment as feedback;
+     * the timer is cleared on unmount.
+     */
+    function onCopyMessage(messageId: string, content: string): void {
+      const text = (content ?? "").trim();
+      if (!text) return;
+      try {
+        const clipboard = (globalThis.navigator as
+          | (Navigator & { clipboard?: { writeText(t: string): Promise<void> } })
+          | undefined)?.clipboard;
+        if (clipboard?.writeText) {
+          void clipboard.writeText(text);
+        } else {
+          legacyCopy(text);
+        }
+        copiedMsgId.value = messageId;
+        if (copyResetTimer !== undefined) {
+          globalThis.clearTimeout(copyResetTimer);
+        }
+        copyResetTimer = globalThis.setTimeout(() => {
+          copiedMsgId.value = null;
+        }, 1600);
+      } catch {
+        // Presentation-only copy; the chat must keep working either way.
+      }
+    }
+
+    /** MSG-COPY fallback for browsers without the async clipboard API. */
+    function legacyCopy(text: string): void {
+      const textarea = globalThis.document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      globalThis.document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        globalThis.document.execCommand("copy");
+      } finally {
+        globalThis.document.body.removeChild(textarea);
+      }
+    }
+
     /** SESS-REVIVE: revoke the refresh cookie server-side and go to login. */
     async function onLogout(): Promise<void> {
       await auth.logout(transport);
@@ -851,6 +910,10 @@ export default defineComponent({
       clearMemoryPoll();
       store.cancel();
       store.reset();
+      // MSG-COPY: never let the feedback timer fire after unmount.
+      if (copyResetTimer !== undefined) {
+        globalThis.clearTimeout(copyResetTimer);
+      }
     });
 
     return {
@@ -872,6 +935,8 @@ export default defineComponent({
       confirmDeactivate,
       confirmDeleteId,
       confirmDeleteMsgId,
+      copiedMsgId,
+      onCopyMessage,
       incognitoNext,
       renaming,
       renameInput,
@@ -1134,6 +1199,18 @@ export default defineComponent({
   border: 2rpx solid #2a3a5a;
   background-color: #1c2b4a;
   color: #b8c4d8;
+}
+/* MSG-COPY: same pill as delete, next to it. */
+.msg-copy {
+  margin-top: 8rpx;
+  margin-left: 8rpx;
+  align-self: flex-start;
+  padding: 4rpx 14rpx;
+  font-size: 22rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid #16503e;
+  background-color: #16503e;
+  color: #d8f2ea;
 }
 /* INC-MODE: incognito badge, notice and toggle. */
 .incognito-badge {

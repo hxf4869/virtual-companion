@@ -28,6 +28,13 @@ spring:
     locations: classpath:db/migration
     fail-on-missing-locations: true
 
+# REQUEST-ID (FR-CHAT-001): every log line carries the request_id correlation
+# value populated by RequestIdFilter (MDC key requestId); empty outside a
+# request (async worker logs fall back to their own generation/owner context).
+logging:
+  pattern:
+    level: "%5p [req=%X{requestId:-}]"
+
 management:
   endpoints:
     web:

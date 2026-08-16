@@ -219,6 +219,54 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("MSG-COPY: copies the message text via the async clipboard and flips the label", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...globalThis.navigator, clipboard: { writeText } });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "assistant",
+        content: "这是一段需要复制的内容",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    const copyButton = wrapper.find('[data-testid="msg-copy-m1"]');
+    expect(copyButton.exists()).toBe(true);
+    expect(copyButton.text()).toContain("复制");
+
+    await copyButton.trigger("click");
+    await flushPromises();
+
+    expect(writeText).toHaveBeenCalledWith("这是一段需要复制的内容");
+    expect(wrapper.find('[data-testid="msg-copy-m1"]').text()).toContain("已复制");
+    wrapper.unmount();
+  });
+
+  it("MSG-COPY: no copy button on streaming placeholder rows", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "__pending-1",
+        conversationId: "1",
+        role: "assistant",
+        content: "生成中",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="msg-copy-__pending-1"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("SVC-MODE: shows the plain service-mode status line when the API reports one", async () => {
     vi.stubGlobal(
       "fetch",

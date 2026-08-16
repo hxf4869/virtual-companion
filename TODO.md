@@ -64,6 +64,11 @@
       cookie）+ 注销墓碑（登录查无此人、refresh 级联失效，恢复不可能）+
       边界台两步确认「注销账号」危险区（说明保留期与合规日志）+
       SQL/单元/组件测试（FR-AUTH-004）。
+- [x] REQUEST-ID 请求关联日志：RequestIdFilter（X-Request-Id 透传/生成、
+      非法头替换、MDC requestId + 日志 pattern [req=...]、响应头回显、
+      CORS 暴露）+ 单元测试（FR-CHAT-001 的 request_id）。
+- [x] MSG-COPY 消息复制：聊天页已持久化消息「复制」按钮（异步剪贴板 +
+      legacy 回退、短暂「已复制」反馈、streaming 占位行不渲染）+ 组件测试。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 
