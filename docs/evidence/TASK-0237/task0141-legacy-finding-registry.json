@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "recordId": "OWNER-MAINT-20260816-TASK-0237-TASK0141-LEGACY-FINDING-01",
+  "kind": "EXACT_ONE_TIME_LEGACY_FINDING_REGISTRY",
+  "taskId": "TASK-0237",
+  "createdAt": "2026-08-16",
+  "historicalVerifiabilityOnly": true,
+  "doesNotLegitimize": true,
+  "doesNotRetroactivelyBlock": true,
+  "reusable": false,
+  "oneTimeOnly": true,
+  "copiedRecordForbidden": true,
+  "task0141": {
+    "state": "REJECTED",
+    "terminalCommit": "61aa6f96f0b4fe5809c53e2cdc7040b8e88fdbcb",
+    "cardPath": "docs/tasks/TASK-0141-p2-23-supply-chain-reproducibility.md",
+    "cardBlob": "6edd9607402100dd2dc223e8a97a7ea5453355c0",
+    "cardSha256": "bc0b91a9f960a261f23b38951150902b5217d1eebc39f78e876cc06208998efb",
+    "evidencePath": "docs/evidence/TASK-0141/evidence-pack.json",
+    "evidenceBlob": "c958f04633b6846e7212c0a5f5250418bd911da0",
+    "evidenceSha256": "63ee0ad98a4a16004053a1bfbf6c5fc29b76d29de3a84e31b7f1cfcaee010c68",
+    "handoffPath": "docs/handoffs/TASK-0141.json",
+    "handoffBlob": "a345f505d46a304ed43aae91d567bef846b75548",
+    "handoffSha256": "f6525054c060483aa20d501daea6e02541bb7175332d332ef6188d4399c13349"
+  },
+  "finding": {
+    "classification": "LEGACY_GOVERNANCE_FINDING_PRE_ACTIVATION",
+    "statement": "TASK-0141 是 enforcement activation 前的历史 nextAction 与 project-state 不一致且无 post-terminal edge；TASK-0196 已定性为独立 legacy finding：不追溯阻塞、不称 PASS、不改其历史制品。Doctor 的 post-terminal edge validator 对 activation 前边缘保持不追溯兼容（doctor.py 定向记录）。"
+  },
+  "registeredTails": [
+    {"taskId": "TASK-0098", "recordId": "OWNER-MAINT-20260808-TASK-0098-POST-TERMINAL-TAIL-01"},
+    {"taskId": "TASK-0189", "recordId": "OWNER-MAINT-20260813-TASK-0189-POST-TERMINAL-TAIL-01"},
+    {"taskId": "TASK-0196", "recordId": "OWNER-MAINT-20260814-TASK-0196-POST-TERMINAL-TAIL-01"}
+  ],
+  "statement": "本登记为 SLICE-HISTORY 收口：TASK-0141 legacy finding 与三条已登记 tail 的兼容状态正式成为机器可验证记录；不复制任何 tail record，不修改任何历史制品，不重判 activation 前历史。"
+}
