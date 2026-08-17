@@ -44,3 +44,6 @@ __pycache__/
 
 # Local evidence scratch files
 docs/evidence/**/raw/
+
+# Local agent harness state (never published)
+.zcode/
