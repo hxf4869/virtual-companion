@@ -23,6 +23,7 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.MemoryRecord;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.platform.persistence.CompanionPrefs;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import java.time.Instant;
@@ -239,7 +240,7 @@ class LiveInvocationAssemblerTest {
     }
 
     @Test
-    void unknownPersonaRefLeavesMessagesUntouched() {
+    void unknownPersonaRefStillEmitsStructuredPreferenceBlock() {
         stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
                 new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
         when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
@@ -248,9 +249,56 @@ class LiveInvocationAssemblerTest {
         LiveInvocationRequest request = assembler("SRC")
                 .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
 
-        // No persona context invented for an unknown ref.
-        assertEquals(1, request.messages().size());
-        assertEquals(ProtocolMessage.Role.USER, request.messages().get(0).role());
+        // No persona invented for an unknown ref; COMP-CFG defaults still apply.
+        assertEquals(2, request.messages().size());
+        assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
+        assertTrue(request.messages().get(0).content().contains("Reply length preference"));
+        assertEquals(ProtocolMessage.Role.USER, request.messages().get(1).role());
+    }
+
+    @Test
+    void companionPrefsInjectApprovedFragmentsAndQuotedLabels() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW,
+                        new CompanionPrefs("小安", "老张", "SHORT", "LOW", "NONE",
+                                "RARE", false, "RELATIONSHIP", List.of("WORK")))));
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        String system = request.messages().get(0).content();
+        assertTrue(system.contains("Gentle Listener"));
+        assertTrue(system.contains("\"小安\""));
+        assertTrue(system.contains("\"老张\""));
+        assertTrue(system.contains("keep replies brief"));
+        assertTrue(system.contains("rarely advise"));
+        assertTrue(system.contains("work stress"));
+    }
+
+    @Test
+    void sessionMemoryShareDropsRelationshipRecall() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW,
+                        new CompanionPrefs(null, null, "MEDIUM", "LOW", "LIGHT",
+                                "ASK_FIRST", false, "SESSION", List.of()))));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
+                new MemoryRecord(30L, null, "RELATIONSHIP", "用户养了一只猫叫雪球", "ACCEPTED",
+                        null, null, NOW),
+                new MemoryRecord(31L, null, "SESSION", "今天想早点休息", "ACCEPTED",
+                        5L, null, NOW)));
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        String joined = request.messages().stream()
+                .map(ProtocolMessage::content)
+                .reduce("", (a, b) -> a + "\n" + b);
+        assertTrue(joined.contains("今天想早点休息"));
+        assertTrue(!joined.contains("用户养了一只猫叫雪球"));
     }
 
     // ---- CHAT-MODE turn-mode override ----

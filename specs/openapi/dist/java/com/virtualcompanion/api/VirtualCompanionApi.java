@@ -26,6 +26,9 @@ public interface VirtualCompanionApi {
     /** Make a relationship the active Companion. */
     Relationship activateRelationship();
 
+    /** Update structured Companion preferences (FR-COMP-003). */
+    Relationship updateRelationshipPrefs();
+
     /** Deactivate a relationship (zero active Companions permitted). */
     Relationship deactivateRelationship();
 

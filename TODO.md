@@ -92,6 +92,10 @@
       接线）+ ExecutionAuthorizationGuard 执行前对 WITHDRAWN fail-closed
       （FR-AUTH-005：撤回后未执行任务不得用旧授权对外发送；新任务以当前
       授权重新铸造）+ SQL/单元测试。
+- [x] COMP-CFG 角色结构化配置：catalog companion-prefs + V47 relationship
+      偏好列与 update/get/list SD + OpenAPI PATCH /relationships/{id} +
+      组装器批准片段（名称消毒，禁止自由 Prompt）+ 前端「角色设置」页 +
+      SQL/单元/组件测试（FR-COMP-003）。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

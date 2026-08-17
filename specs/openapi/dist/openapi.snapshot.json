@@ -9,6 +9,7 @@
     "listRelationships",
     "getRelationship",
     "activateRelationship",
+    "updateRelationshipPrefs",
     "deactivateRelationship",
     "createConversation",
     "listConversations",
@@ -54,6 +55,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "f26034bd9831e1ff747efe1677da909f459fabedafd4aecdfe0e0ae8009ce9e0"
+    "sha256": "d062e27b8c68f87e764811991c88990535734c9def4746786483aba8904ed2e5"
   }
 }

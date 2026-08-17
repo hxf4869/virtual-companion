@@ -1,0 +1,53 @@
+schemaVersion: 1
+catalogId: companion-prefs
+enums:
+- typeName: CompanionReplyLength
+  entries:
+  - code: SHORT
+    order: 0
+  - code: MEDIUM
+    order: 1
+  - code: LONG
+    order: 2
+- typeName: CompanionInitiative
+  entries:
+  - code: LOW
+    order: 0
+  - code: MEDIUM
+    order: 1
+  - code: HIGH
+    order: 2
+- typeName: CompanionHumor
+  entries:
+  - code: NONE
+    order: 0
+  - code: LIGHT
+    order: 1
+  - code: WARM
+    order: 2
+- typeName: CompanionAdvicePref
+  entries:
+  - code: ASK_FIRST
+    order: 0
+  - code: DIRECT
+    order: 1
+  - code: RARE
+    order: 2
+- typeName: CompanionAvoidTopic
+  entries:
+  - code: WORK
+    order: 0
+  - code: FAMILY
+    order: 1
+  - code: HEALTH
+    order: 2
+  - code: ROMANCE
+    order: 3
+  - code: MONEY
+    order: 4
+  - code: POLITICS
+    order: 5
+  - code: SUBSTANCE
+    order: 6
+  - code: RELIGION
+    order: 7

@@ -101,6 +101,42 @@ class RelationshipServiceTest {
     }
 
     @Test
+    void updatePrefsCallsTheSdFunctionAndReloads() {
+        CompanionPrefs prefs = CompanionPrefs.defaults();
+        when(jdbc.queryForObject(
+                eq("SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L), eq(55L),
+                eq(null), eq(null),
+                eq("MEDIUM"), eq("LOW"), eq("LIGHT"), eq("ASK_FIRST"),
+                eq(false), eq("RELATIONSHIP"), eq("")))
+                .thenReturn(true);
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(55L)))
+                .thenReturn(List.of(new RelationshipRecord(55L, "persona-a", true, NOW, prefs)));
+
+        Optional<RelationshipRecord> record = service.updatePrefs(1L, 55L, prefs);
+
+        assertTrue(record.isPresent());
+        assertEquals("MEDIUM", record.get().prefs().replyLength());
+    }
+
+    @Test
+    void updatePrefsReturnsEmptyWhenSdFunctionReportsNoRow() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L), eq(99L),
+                eq(null), eq(null),
+                eq("MEDIUM"), eq("LOW"), eq("LIGHT"), eq("ASK_FIRST"),
+                eq(false), eq("RELATIONSHIP"), eq("")))
+                .thenReturn(false);
+
+        Optional<RelationshipRecord> record = service.updatePrefs(1L, 99L, CompanionPrefs.defaults());
+
+        assertTrue(record.isEmpty());
+    }
+
+    @Test
     void deactivateReturnsUpdatedRowWhenSdFunctionReportsSuccess() throws Exception {
         when(jdbc.queryForObject(
                 eq("SELECT vc.deactivate_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L)))

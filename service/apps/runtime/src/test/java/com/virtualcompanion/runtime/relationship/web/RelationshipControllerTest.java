@@ -1,16 +1,20 @@
 package com.virtualcompanion.runtime.relationship.web;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.platform.persistence.CompanionPrefs;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
@@ -190,6 +194,59 @@ class RelationshipControllerTest {
         when(relationshipService.deactivate(1L, 404L)).thenReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/relationships/404/deactivate"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void updatePrefsReplacesStructuredFields() throws Exception {
+        CompanionPrefs prefs = new CompanionPrefs(
+                "小安", "老张", "SHORT", "LOW", "NONE", "RARE", false, "SESSION", List.of("WORK"));
+        when(relationshipService.updatePrefs(eq(1L), eq(7L), any(CompanionPrefs.class)))
+                .thenReturn(Optional.of(new RelationshipRecord(7L, "gentle-listener", true, NOW, prefs)));
+
+        mockMvc.perform(patch("/api/v1/relationships/7")
+                        .contentType("application/json")
+                        .content("""
+                                {"companionName":"小安","userAddressAs":"老张","replyLength":"SHORT",
+                                 "initiative":"LOW","humor":"NONE","advicePref":"RARE",
+                                 "remindersAllowed":false,"memoryShareScope":"SESSION",
+                                 "avoidTopics":["WORK"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.companionName").value("小安"))
+                .andExpect(jsonPath("$.userAddressAs").value("老张"))
+                .andExpect(jsonPath("$.replyLength").value("SHORT"))
+                .andExpect(jsonPath("$.memoryShareScope").value("SESSION"))
+                .andExpect(jsonPath("$.avoidTopics[0]").value("WORK"));
+    }
+
+    @Test
+    void updatePrefsRejectsUnapprovedCatalogCode() throws Exception {
+        mockMvc.perform(patch("/api/v1/relationships/7")
+                        .contentType("application/json")
+                        .content("""
+                                {"replyLength":"YELL","initiative":"LOW","humor":"LIGHT",
+                                 "advicePref":"ASK_FIRST","remindersAllowed":false,
+                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        verify(relationshipService, never()).updatePrefs(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void updatePrefsMapsForeignIdToNotFound() throws Exception {
+        when(relationshipService.updatePrefs(eq(1L), eq(404L), any(CompanionPrefs.class)))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(patch("/api/v1/relationships/404")
+                        .contentType("application/json")
+                        .content("""
+                                {"replyLength":"MEDIUM","initiative":"LOW","humor":"LIGHT",
+                                 "advicePref":"ASK_FIRST","remindersAllowed":false,
+                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[]}
+                                """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
     }

@@ -25,6 +25,12 @@
 			}
 		},
 		{
+			"path": "pages/companion/companion",
+			"style": {
+				"navigationBarTitleText": "角色设置"
+			}
+		},
+		{
 			"path": "pages/consent/consent",
 			"style": {
 				"navigationBarTitleText": "同意管理"

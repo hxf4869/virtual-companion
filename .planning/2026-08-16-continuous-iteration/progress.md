@@ -3,11 +3,25 @@
 ## Session: 2026-08-16 — 持续迭代
 
 ### Current Status
-- **Phase:** 5 进行中（REMINDER 01f59ea / ENT-SNAP 1c1b6b9 / CONSENT f0db5fa /
-  DATA-EXPORT 3c6f7e9 / ACCT-DELETE 7920b6e / REQUEST-ID+MSG-COPY 72d1712 /
-  MEM-NEG f4a05a5 / AGE-MIN 90bb378 / VIRT-LIST f50b7bf / AUTH-RECHECK
-  6de39ea 完成）。本会话累计交付 18 个纵切/工程项，findings 缺口清单全部
-  闭环（SAFETY/QUOTA 为 Owner 冻结项、语音图片明确跳过）。
+- **Phase:** 6 完成（COMP-CFG / FR-COMP-003）。本会话交付第 19 项功能。
+  QUOTA-MIN 仍冻结，未动手。
+
+### Session: 2026-08-17 — COMP-CFG
+
+### Actions Taken
+- 需求对照后选定 FR-COMP-003（Alpha 最小能力「角色设置」/ A4 角色初始化）。
+- catalog companion-prefs + OpenAPI PATCH + V47 + 组装器批准片段 +
+  前端「角色设置」页；schema readiness 钉到 V47。
+
+### Test Results
+| Test | Actual | Status |
+|------|--------|--------|
+| scripts/check.sh | 全绿（含 frontend-test / frontend-type-check） | PASS |
+| ./mvnw verify（JDK 25） | BUILD SUCCESS（runtime 498 tests，0 失败） | PASS |
+| pnpm frontend test:run | 514 passed | PASS |
+| pnpm frontend type-check | 无错误 | PASS |
+| infra/db/run-rls-tests.sh | ALL TESTS PASS（V1-V47，含 102） | PASS |
+| 浏览器端到端 | Playwright MCP 未连接，未做真机点击 | NOT_RUN |
 
 ### Actions Taken
 - Phase 0 盘点 → findings.md 缺口清单（P0/P1/P2 + 路线图）。

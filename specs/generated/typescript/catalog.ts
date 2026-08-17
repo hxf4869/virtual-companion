@@ -56,3 +56,18 @@ export type ErrorCode = typeof ErrorCodeValues[number]
 
 export const MessageFeedbackKindValues = ["TOO_MECHANICAL", "FORGOT_CONTEXT", "CROSSED_BOUNDARY", "FACTUAL_ERROR", "UNSAFE"] as const
 export type MessageFeedbackKind = typeof MessageFeedbackKindValues[number]
+
+export const CompanionReplyLengthValues = ["SHORT", "MEDIUM", "LONG"] as const
+export type CompanionReplyLength = typeof CompanionReplyLengthValues[number]
+
+export const CompanionInitiativeValues = ["LOW", "MEDIUM", "HIGH"] as const
+export type CompanionInitiative = typeof CompanionInitiativeValues[number]
+
+export const CompanionHumorValues = ["NONE", "LIGHT", "WARM"] as const
+export type CompanionHumor = typeof CompanionHumorValues[number]
+
+export const CompanionAdvicePrefValues = ["ASK_FIRST", "DIRECT", "RARE"] as const
+export type CompanionAdvicePref = typeof CompanionAdvicePrefValues[number]
+
+export const CompanionAvoidTopicValues = ["WORK", "FAMILY", "HEALTH", "ROMANCE", "MONEY", "POLITICS", "SUBSTANCE", "RELIGION"] as const
+export type CompanionAvoidTopic = typeof CompanionAvoidTopicValues[number]

@@ -22,10 +22,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V46 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V47 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
-- uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Consent、
+- uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
   Export、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
@@ -52,8 +52,11 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `GET /api/v1/auth/admin/service-classes`（ENT-SNAP 模拟权益分配 ECONOMY/PREMIUM，
   ADMIN-only，仅测试账号，绝不接订单）
 - `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
+  `PATCH /api/v1/relationships/{relationshipId}`（COMP-CFG / FR-COMP-003：结构化角色配置，
+  全量替换昵称/称呼/回复长度/主动程度/幽默/建议偏好/提醒许可/记忆共享范围/回避话题；
+  目录码校验，名称只作标签）、
   `POST /api/v1/relationships/{relationshipId}/deactivate`（personaRef 按 persona-templates
-  目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文）
+  目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文与批准的偏好片段）
 - `POST /api/v1/relationships/{relationshipId}/reminders`、`GET /api/v1/relationships/{relationshipId}/reminders`
   （结构化用户提醒，soonest-first keyset）、`PATCH/DELETE /api/v1/reminders/{reminderId}`
   （REMINDER / FR-NOTIFY-001：提醒是结构化记录而非 Prompt 指令；Alpha 仅存储与
@@ -197,6 +200,11 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   `ExecutionAuthorizationGuard` 在执行前 fail-closed 拒绝对外发送
   （FR-AUTH-005：撤回后未执行任务不得使用旧授权；新任务以撤回后的当前
   授权重新铸造快照）。
+- 角色结构化配置（COMP-CFG）：V47 `vc.relationship` 偏好列 + `update_relationship_prefs`
+  SD（trusted-owner、未批准目录码拒绝、名称控制字符/超长拒绝、回避话题去重排序）；
+  OpenAPI `PATCH /relationships/{id}` 全量替换；组装器把目录码翻译为固定批准片段
+  （昵称/称呼只作引号标签），`memoryShareScope=SESSION` 时召回只保留会话记忆；
+  前端新增「角色设置」页（FR-COMP-003，A4 角色初始化）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

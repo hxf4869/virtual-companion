@@ -10,7 +10,8 @@ import java.time.Instant;
  * functions. At most one relationship per owner is active at any time
  * ({@code activeCompanionLimit=1}, enforced by a partial unique index).
  */
-public record RelationshipRecord(long id, String personaRef, boolean active, Instant createdAt) {
+public record RelationshipRecord(
+        long id, String personaRef, boolean active, Instant createdAt, CompanionPrefs prefs) {
 
     public RelationshipRecord {
         if (personaRef == null || personaRef.isBlank()) {
@@ -19,5 +20,13 @@ public record RelationshipRecord(long id, String personaRef, boolean active, Ins
         if (createdAt == null) {
             throw new IllegalArgumentException("createdAt must not be null");
         }
+        if (prefs == null) {
+            throw new IllegalArgumentException("prefs must not be null");
+        }
+    }
+
+    /** Convenience for callers that only need identity/lifecycle fields. */
+    public RelationshipRecord(long id, String personaRef, boolean active, Instant createdAt) {
+        this(id, personaRef, active, createdAt, CompanionPrefs.defaults());
     }
 }

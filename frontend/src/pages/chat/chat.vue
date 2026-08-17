@@ -12,6 +12,14 @@
           记忆管理
         </button>
         <button
+          data-testid="nav-companion"
+          class="chat-nav-index"
+          aria-label="角色设置"
+          @click="goTo('/pages/companion/companion')"
+        >
+          角色设置
+        </button>
+        <button
           data-testid="nav-reminder"
           class="chat-nav-index"
           aria-label="提醒管理"

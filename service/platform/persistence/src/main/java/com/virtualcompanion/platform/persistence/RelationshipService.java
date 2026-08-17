@@ -60,7 +60,10 @@ public class RelationshipService {
             throw new IllegalArgumentException("ownerUserId must be positive");
         }
         return jdbc.query(
-                "SELECT out_id, out_persona_ref, out_active, out_created_at "
+                "SELECT out_id, out_persona_ref, out_active, out_created_at, "
+                        + "out_companion_name, out_user_address_as, out_reply_length, "
+                        + "out_initiative, out_humor, out_advice_pref, out_reminders_allowed, "
+                        + "out_memory_share_scope, out_avoid_topics "
                         + "FROM vc.list_relationships(?)",
                 rowMapper(),
                 ownerUserId);
@@ -75,7 +78,10 @@ public class RelationshipService {
             throw new IllegalArgumentException("relationshipId must be positive");
         }
         return jdbc.query(
-                "SELECT out_id, out_persona_ref, out_active, out_created_at "
+                "SELECT out_id, out_persona_ref, out_active, out_created_at, "
+                        + "out_companion_name, out_user_address_as, out_reply_length, "
+                        + "out_initiative, out_humor, out_advice_pref, out_reminders_allowed, "
+                        + "out_memory_share_scope, out_avoid_topics "
                         + "FROM vc.get_relationship(?, ?)",
                 rowMapper(),
                 ownerUserId,
@@ -120,6 +126,36 @@ public class RelationshipService {
         return get(ownerUserId, relationshipId);
     }
 
+    /**
+     * COMP-CFG: replace structured preferences on one owned relationship.
+     * Returns the updated row, or empty for a foreign/absent id.
+     */
+    public Optional<RelationshipRecord> updatePrefs(
+            long ownerUserId, long relationshipId, CompanionPrefs prefs) {
+        if (ownerUserId <= 0 || relationshipId <= 0) {
+            return Optional.empty();
+        }
+        Objects.requireNonNull(prefs, "prefs must not be null");
+        Boolean updated = jdbc.queryForObject(
+                "SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                Boolean.class,
+                ownerUserId,
+                relationshipId,
+                prefs.companionName(),
+                prefs.userAddressAs(),
+                prefs.replyLength(),
+                prefs.initiative(),
+                prefs.humor(),
+                prefs.advicePref(),
+                prefs.remindersAllowed(),
+                prefs.memoryShareScope(),
+                prefs.avoidTopicsCsv());
+        if (!Boolean.TRUE.equals(updated)) {
+            return Optional.empty();
+        }
+        return get(ownerUserId, relationshipId);
+    }
+
     private static RowMapper<RelationshipRecord> rowMapper() {
         return (ResultSet rs, int rowNum) -> {
             Timestamp ts = rs.getTimestamp("out_created_at");
@@ -128,7 +164,17 @@ public class RelationshipService {
                     rs.getLong("out_id"),
                     rs.getString("out_persona_ref"),
                     rs.getBoolean("out_active"),
-                    createdAt);
+                    createdAt,
+                    new CompanionPrefs(
+                            rs.getString("out_companion_name"),
+                            rs.getString("out_user_address_as"),
+                            rs.getString("out_reply_length"),
+                            rs.getString("out_initiative"),
+                            rs.getString("out_humor"),
+                            rs.getString("out_advice_pref"),
+                            rs.getBoolean("out_reminders_allowed"),
+                            rs.getString("out_memory_share_scope"),
+                            CompanionPrefs.splitAvoidTopics(rs.getString("out_avoid_topics"))));
         };
     }
 }

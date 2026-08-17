@@ -7,9 +7,11 @@ import {
   activateRelationship,
   createRelationship,
   deactivateRelationship,
+  DEFAULT_COMPANION_PREFS,
   getRelationship,
   listRelationships,
   RelationshipHttpError,
+  updateRelationshipPrefs,
   type RelationshipTransport,
 } from "./relationship";
 
@@ -53,6 +55,7 @@ describe("createRelationship", () => {
       personaRef: "gentle-listener",
       active: true,
       createdAt: "2026-08-13T01:00:00Z",
+      ...DEFAULT_COMPANION_PREFS,
     });
   });
 
@@ -115,6 +118,7 @@ describe("listRelationships", () => {
       personaRef: "a",
       active: true,
       createdAt: undefined,
+      ...DEFAULT_COMPANION_PREFS,
     });
     expect(result[1].active).toBe(false);
   });
@@ -269,5 +273,50 @@ describe("deactivateRelationship", () => {
     const { transport } = recorder({ ok: false, status: 500, json: null });
 
     await expect(deactivateRelationship(transport, "42")).rejects.toThrow(RelationshipHttpError);
+  });
+});
+
+describe("updateRelationshipPrefs", () => {
+  it("PATCHes /api/v1/relationships/{id} with the preference body", async () => {
+    const prefs = {
+      ...DEFAULT_COMPANION_PREFS,
+      companionName: "小安",
+      replyLength: "SHORT" as const,
+      avoidTopics: ["WORK"] as const,
+    };
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { ...RELATIONSHIP_JSON, ...prefs },
+    });
+
+    const result = await updateRelationshipPrefs(transport, "42", { ...prefs, avoidTopics: ["WORK"] });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("PATCH");
+    expect(calls[0].path).toBe("/api/v1/relationships/42");
+    expect(result?.companionName).toBe("小安");
+    expect(result?.replyLength).toBe("SHORT");
+    expect(result?.avoidTopics).toEqual(["WORK"]);
+  });
+
+  it("returns null on 404 (existence hidden)", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
+    });
+
+    const result = await updateRelationshipPrefs(transport, "999", DEFAULT_COMPANION_PREFS);
+
+    expect(result).toBeNull();
+  });
+
+  it("throws on 400 (unapproved catalog code)", async () => {
+    const { transport } = recorder({ ok: false, status: 400, json: null });
+
+    await expect(updateRelationshipPrefs(transport, "42", DEFAULT_COMPANION_PREFS)).rejects.toThrow(
+      RelationshipHttpError,
+    );
   });
 });

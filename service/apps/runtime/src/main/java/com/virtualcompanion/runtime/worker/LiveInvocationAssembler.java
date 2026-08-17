@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.worker;
 
 import com.virtualcompanion.catalog.ModelProtocol;
 import com.virtualcompanion.catalog.SafetyClassifierOutcome;
+import com.virtualcompanion.conversation.contextplan.CompanionPreferenceInstructions;
 import com.virtualcompanion.conversation.contextplan.ContextBudget;
 import com.virtualcompanion.conversation.contextplan.PersonaSkeleton;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
@@ -20,6 +21,7 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.MemoryRecord;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.platform.persistence.CompanionPrefs;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.safety.ClassifierReport;
@@ -367,19 +369,37 @@ public class LiveInvocationAssembler {
         long relationshipId = Long.parseLong(ownership.relationshipId());
         RelationshipRecord relationship =
                 relationshipService.get(ownerUserId, relationshipId).orElse(null);
-        PersonaSkeleton persona = personaFor(
-                relationship == null ? null : relationship.personaRef());
-        if (persona == null) {
+        if (relationship == null) {
             return null;
         }
-        String block = "Companion persona: %s. Tone: %s. Default interaction mode: %s. Reflection style: %s."
-                .formatted(
-                        persona.displayName(),
-                        persona.tone(),
-                        persona.defaultMode().name().toLowerCase(java.util.Locale.ROOT),
-                        persona.reflectionPromptStyle());
+        List<String> parts = new ArrayList<>();
+        PersonaSkeleton persona = personaFor(relationship.personaRef());
+        if (persona != null) {
+            parts.add("Companion persona: %s. Tone: %s. Default interaction mode: %s. Reflection style: %s."
+                    .formatted(
+                            persona.displayName(),
+                            persona.tone(),
+                            persona.defaultMode().name().toLowerCase(java.util.Locale.ROOT),
+                            persona.reflectionPromptStyle()));
+        }
+        CompanionPrefs prefs = relationship.prefs();
+        String prefBlock = CompanionPreferenceInstructions.render(
+                prefs.companionName(),
+                prefs.userAddressAs(),
+                prefs.replyLength(),
+                prefs.initiative(),
+                prefs.humor(),
+                prefs.advicePref(),
+                prefs.memoryShareScope(),
+                prefs.avoidTopics());
+        if (prefBlock != null && !prefBlock.isBlank()) {
+            parts.add(prefBlock);
+        }
         String override = modeInstruction(mode);
-        return override == null ? block : block + " " + override;
+        if (override != null) {
+            parts.add(override);
+        }
+        return parts.isEmpty() ? null : String.join(" ", parts);
     }
 
     /**
@@ -418,6 +438,14 @@ public class LiveInvocationAssembler {
         long conversationId = Long.parseLong(ownership.conversationId());
         List<MemoryRecord> recalled = memoryService.recall(
                 ownerUserId, relationshipId, conversationId, MAX_RECALL_ENTRIES);
+        RelationshipRecord relationship =
+                relationshipService.get(ownerUserId, relationshipId).orElse(null);
+        if (relationship != null
+                && "SESSION".equals(relationship.prefs().memoryShareScope())) {
+            recalled = recalled.stream()
+                    .filter(memory -> "SESSION".equals(memory.scope()))
+                    .toList();
+        }
         if (recalled.isEmpty()) {
             return null;
         }

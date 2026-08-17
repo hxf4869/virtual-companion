@@ -7,8 +7,8 @@
 
 ## Current Phase
 
-Phase 5 — 进行中：CONSENT（f0db5fa）/ DATA-EXPORT（3c6f7e9）/ ACCT-DELETE
-已交付；剩余 P3 项（Phase 0-4 完成）
+Phase 6 — 完成：COMP-CFG（FR-COMP-003）。下一项需 Owner 确认 QUOTA-MIN
+解冻边界，或从 findings 新发现的 Alpha 项中挑选。
 
 ## Phases
 
@@ -63,13 +63,16 @@ Phase 5 — 进行中：CONSENT（f0db5fa）/ DATA-EXPORT（3c6f7e9）/ ACCT-DEL
 - [x] VIRT-LIST 聊天列表渲染窗口（§18.6，200 条上限+截断提示），commit f50b7bf
 - [x] AUTH-RECHECK 撤回即失效快照（FR-AUTH-005 执行前复核闭环），commit 6de39ea
 - [x] 全部 P0-P3 缺口已闭环（SAFETY/QUOTA 为 Owner 冻结项除外）
-- **Status:** in_progress
+- **Status:** complete
 
-### Phase 4: CONSENT 同意记录 或 SVC-MODE 服务状态透明
-- **Status:** pending
-
-### Phase 5+: 视剩余轮次（INC-MODE / MSG-DELETE / ENT-SNAP / REMINDER）
-- **Status:** pending
+### Phase 6: COMP-CFG 角色结构化配置（FR-COMP-003）
+- [x] catalog companion-prefs（回复长度/主动/幽默/建议/回避话题）
+- [x] OpenAPI PATCH /relationships/{id} + Relationship 扩展字段
+- [x] V47 relationship 结构化列 + update/get/list SD
+- [x] 组装器把目录码翻译为批准片段（昵称/称呼消毒，禁止自由 Prompt）
+- [x] 前端「角色设置」页 + api/store/页面测试
+- [x] check.sh / mvn / 前端 / DB 全绿并提交
+- **Status:** complete
 
 ## Decisions Made
 | Decision | Rationale |

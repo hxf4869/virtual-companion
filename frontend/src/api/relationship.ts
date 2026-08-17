@@ -31,12 +31,62 @@ export class RelationshipHttpError extends Error {
   }
 }
 
+export type CompanionReplyLength = "SHORT" | "MEDIUM" | "LONG";
+export type CompanionInitiative = "LOW" | "MEDIUM" | "HIGH";
+export type CompanionHumor = "NONE" | "LIGHT" | "WARM";
+export type CompanionAdvicePref = "ASK_FIRST" | "DIRECT" | "RARE";
+export type CompanionAvoidTopic =
+  | "WORK"
+  | "FAMILY"
+  | "HEALTH"
+  | "ROMANCE"
+  | "MONEY"
+  | "POLITICS"
+  | "SUBSTANCE"
+  | "RELIGION";
+export type CompanionMemoryShare = "SESSION" | "RELATIONSHIP";
+
+export interface CompanionPrefs {
+  companionName: string | null;
+  userAddressAs: string | null;
+  replyLength: CompanionReplyLength;
+  initiative: CompanionInitiative;
+  humor: CompanionHumor;
+  advicePref: CompanionAdvicePref;
+  remindersAllowed: boolean;
+  memoryShareScope: CompanionMemoryShare;
+  avoidTopics: CompanionAvoidTopic[];
+}
+
+export const DEFAULT_COMPANION_PREFS: CompanionPrefs = {
+  companionName: null,
+  userAddressAs: null,
+  replyLength: "MEDIUM",
+  initiative: "LOW",
+  humor: "LIGHT",
+  advicePref: "ASK_FIRST",
+  remindersAllowed: false,
+  memoryShareScope: "RELATIONSHIP",
+  avoidTopics: [],
+};
+
 export interface Relationship {
   relationshipId: string;
   personaRef: string;
   active: boolean;
   createdAt?: string;
+  companionName?: string | null;
+  userAddressAs?: string | null;
+  replyLength?: CompanionReplyLength;
+  initiative?: CompanionInitiative;
+  humor?: CompanionHumor;
+  advicePref?: CompanionAdvicePref;
+  remindersAllowed?: boolean;
+  memoryShareScope?: CompanionMemoryShare;
+  avoidTopics?: CompanionAvoidTopic[];
 }
+
+export interface RelationshipPrefsUpdate extends CompanionPrefs {}
 
 export interface RelationshipApiResponse {
   ok: boolean;
@@ -90,6 +140,60 @@ function asString(o: Record<string, unknown>, k: string): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
+function asEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
+}
+
+const REPLY_LENGTHS = ["SHORT", "MEDIUM", "LONG"] as const;
+const INITIATIVES = ["LOW", "MEDIUM", "HIGH"] as const;
+const HUMORS = ["NONE", "LIGHT", "WARM"] as const;
+const ADVICE_PREFS = ["ASK_FIRST", "DIRECT", "RARE"] as const;
+const AVOID_TOPICS = [
+  "WORK",
+  "FAMILY",
+  "HEALTH",
+  "ROMANCE",
+  "MONEY",
+  "POLITICS",
+  "SUBSTANCE",
+  "RELIGION",
+] as const;
+const MEMORY_SHARES = ["SESSION", "RELATIONSHIP"] as const;
+
+function asAvoidTopics(value: unknown): CompanionAvoidTopic[] {
+  if (!Array.isArray(value)) return [];
+  const out: CompanionAvoidTopic[] = [];
+  for (const item of value) {
+    if (typeof item === "string" && (AVOID_TOPICS as readonly string[]).includes(item)) {
+      const code = item as CompanionAvoidTopic;
+      if (!out.includes(code)) out.push(code);
+    }
+  }
+  return out;
+}
+
+function asPrefs(o: Record<string, unknown>): CompanionPrefs {
+  const name = asString(o, "companionName");
+  const address = asString(o, "userAddressAs");
+  return {
+    companionName: name && name.trim() ? name : null,
+    userAddressAs: address && address.trim() ? address : null,
+    replyLength: asEnum(o.replyLength, REPLY_LENGTHS, DEFAULT_COMPANION_PREFS.replyLength),
+    initiative: asEnum(o.initiative, INITIATIVES, DEFAULT_COMPANION_PREFS.initiative),
+    humor: asEnum(o.humor, HUMORS, DEFAULT_COMPANION_PREFS.humor),
+    advicePref: asEnum(o.advicePref, ADVICE_PREFS, DEFAULT_COMPANION_PREFS.advicePref),
+    remindersAllowed: o.remindersAllowed === true,
+    memoryShareScope: asEnum(
+      o.memoryShareScope,
+      MEMORY_SHARES,
+      DEFAULT_COMPANION_PREFS.memoryShareScope,
+    ),
+    avoidTopics: asAvoidTopics(o.avoidTopics),
+  };
+}
+
 function asRelationship(json: unknown): Relationship | null {
   if (!json || typeof json !== "object") return null;
   const o = json as Record<string, unknown>;
@@ -101,6 +205,7 @@ function asRelationship(json: unknown): Relationship | null {
     personaRef,
     active: o.active === true,
     createdAt: asString(o, "createdAt"),
+    ...asPrefs(o),
   };
 }
 
@@ -188,6 +293,25 @@ export async function deactivateRelationship(
   const r = await t.request(
     "POST",
     `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}/deactivate`,
+  );
+  guardResult(r);
+  return asRelationship(r.json);
+}
+
+/**
+ * COMP-CFG: replace structured Companion preferences
+ * (vc.update_relationship_prefs). Returns the updated relationship on
+ * success, null on 403/404 (existence hidden).
+ */
+export async function updateRelationshipPrefs(
+  t: RelationshipTransport,
+  relationshipId: string,
+  prefs: RelationshipPrefsUpdate,
+): Promise<Relationship | null> {
+  const r = await t.request(
+    "PATCH",
+    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}`,
+    prefs,
   );
   guardResult(r);
   return asRelationship(r.json);

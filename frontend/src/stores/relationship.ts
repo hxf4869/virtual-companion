@@ -21,7 +21,9 @@ import {
   createRelationship,
   deactivateRelationship,
   listRelationships,
+  updateRelationshipPrefs,
   type Relationship,
+  type RelationshipPrefsUpdate,
   type RelationshipTransport,
 } from "@/api/relationship";
 
@@ -114,6 +116,23 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
     return deactivated;
   }
 
+  /**
+   * COMP-CFG: replace structured preferences, then reload so the list
+   * carries the authoritative row.
+   */
+  async function updatePrefs(
+    t: RelationshipTransport,
+    relationshipId: string,
+    prefs: RelationshipPrefsUpdate,
+  ): Promise<Relationship | null> {
+    const updated = await updateRelationshipPrefs(t, relationshipId, prefs);
+    if (updated) {
+      await load(t);
+      currentRelationshipId.value = updated.relationshipId;
+    }
+    return updated;
+  }
+
   function reset(): void {
     relationships.value = [];
     currentRelationshipId.value = null;
@@ -131,6 +150,7 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
     create,
     activate,
     deactivate,
+    updatePrefs,
     reset,
   };
 });

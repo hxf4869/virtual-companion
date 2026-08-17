@@ -30,6 +30,27 @@ export interface Relationship {
   personaRef: string
   active?: string
   createdAt?: string
+  companionName?: string
+  userAddressAs?: string
+  replyLength: string
+  initiative: string
+  humor: string
+  advicePref: string
+  remindersAllowed: string
+  memoryShareScope: string
+  avoidTopics: string
+}
+
+export interface RelationshipPrefsUpdate {
+  companionName?: string
+  userAddressAs?: string
+  replyLength: string
+  initiative: string
+  humor: string
+  advicePref: string
+  remindersAllowed: string
+  memoryShareScope: string
+  avoidTopics: string
 }
 
 export interface RelationshipCreateRequest {
@@ -368,6 +389,7 @@ export interface VirtualCompanionApiClient {
   listRelationships(): Promise<VersionResponse>
   getRelationship(): Promise<VersionResponse>
   activateRelationship(): Promise<VersionResponse>
+  updateRelationshipPrefs(): Promise<VersionResponse>
   deactivateRelationship(): Promise<VersionResponse>
   createConversation(): Promise<VersionResponse>
   listConversations(): Promise<VersionResponse>

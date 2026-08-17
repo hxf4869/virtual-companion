@@ -20,6 +20,36 @@
       "DELETE_PENDING",
       "DELETED"
     ],
+    "CompanionAdvicePref": [
+      "ASK_FIRST",
+      "DIRECT",
+      "RARE"
+    ],
+    "CompanionAvoidTopic": [
+      "WORK",
+      "FAMILY",
+      "HEALTH",
+      "ROMANCE",
+      "MONEY",
+      "POLITICS",
+      "SUBSTANCE",
+      "RELIGION"
+    ],
+    "CompanionHumor": [
+      "NONE",
+      "LIGHT",
+      "WARM"
+    ],
+    "CompanionInitiative": [
+      "LOW",
+      "MEDIUM",
+      "HIGH"
+    ],
+    "CompanionReplyLength": [
+      "SHORT",
+      "MEDIUM",
+      "LONG"
+    ],
     "DataCategory": [
       "MESSAGE_TEXT",
       "MEMORY_SNIPPET",
@@ -398,13 +428,131 @@
             "file": "message-feedback-kinds.yaml",
             "kind": "enum",
             "typeName": "MessageFeedbackKind"
+          },
+          {
+            "file": "companion-prefs.yaml",
+            "kind": "multi-enum"
           }
         ],
         "generatorVersion": "1.0.0",
         "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "cbd2f717ca0daf6323342733b554874583327f5c646568b505ab79c308a3ef0b"
+      "sha256": "d6213fd350f40f2f6fbba7d44ca36c3878edecce1d49f7abc37941aba26abf53"
+    },
+    "companion-prefs.yaml": {
+      "document": {
+        "catalogId": "companion-prefs",
+        "enums": [
+          {
+            "entries": [
+              {
+                "code": "SHORT",
+                "order": 0
+              },
+              {
+                "code": "MEDIUM",
+                "order": 1
+              },
+              {
+                "code": "LONG",
+                "order": 2
+              }
+            ],
+            "typeName": "CompanionReplyLength"
+          },
+          {
+            "entries": [
+              {
+                "code": "LOW",
+                "order": 0
+              },
+              {
+                "code": "MEDIUM",
+                "order": 1
+              },
+              {
+                "code": "HIGH",
+                "order": 2
+              }
+            ],
+            "typeName": "CompanionInitiative"
+          },
+          {
+            "entries": [
+              {
+                "code": "NONE",
+                "order": 0
+              },
+              {
+                "code": "LIGHT",
+                "order": 1
+              },
+              {
+                "code": "WARM",
+                "order": 2
+              }
+            ],
+            "typeName": "CompanionHumor"
+          },
+          {
+            "entries": [
+              {
+                "code": "ASK_FIRST",
+                "order": 0
+              },
+              {
+                "code": "DIRECT",
+                "order": 1
+              },
+              {
+                "code": "RARE",
+                "order": 2
+              }
+            ],
+            "typeName": "CompanionAdvicePref"
+          },
+          {
+            "entries": [
+              {
+                "code": "WORK",
+                "order": 0
+              },
+              {
+                "code": "FAMILY",
+                "order": 1
+              },
+              {
+                "code": "HEALTH",
+                "order": 2
+              },
+              {
+                "code": "ROMANCE",
+                "order": 3
+              },
+              {
+                "code": "MONEY",
+                "order": 4
+              },
+              {
+                "code": "POLITICS",
+                "order": 5
+              },
+              {
+                "code": "SUBSTANCE",
+                "order": 6
+              },
+              {
+                "code": "RELIGION",
+                "order": 7
+              }
+            ],
+            "typeName": "CompanionAvoidTopic"
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "0d7d271044b9309cf28d51094687ff9e5be9c277ec13686264ac0f2deaa9f5de"
     },
     "data-categories.yaml": {
       "document": {

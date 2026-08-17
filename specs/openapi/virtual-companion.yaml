@@ -230,6 +230,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      operationId: updateRelationshipPrefs
+      summary: Update structured Companion preferences (FR-COMP-003)
+      description: >-
+        Replaces the caller's structured Companion preferences for one owned
+        relationship (companion display name, how to address the user, reply
+        length, initiative, humor, advice preference, reminder permission,
+        memory share scope, and avoid-topic codes). Every field is required in
+        the body so there are no silent partial edits. Catalog codes are
+        validated against companion-prefs and memory-scopes; names are labels
+        only (never free-form prompt text). A foreign or absent id maps to
+        NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
+        server-verified authentication context.
+      parameters:
+        - $ref: '#/components/parameters/RelationshipId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipPrefsUpdate'
+      responses:
+        '200':
+          description: The relationship with the updated preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+        '400':
+          description: Unapproved catalog code or invalid name label
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships/{relationshipId}/deactivate:
     post:
       operationId: deactivateRelationship
@@ -1885,9 +1931,18 @@ components:
       description: >-
         A Companion relationship owned by exactly one user. At most one
         relationship per owner is active at any time (activeCompanionLimit=1).
+        Structured preferences (FR-COMP-003) are always present after create
+        (catalog defaults apply until the caller PATCHes them).
       required:
         - relationshipId
         - personaRef
+        - replyLength
+        - initiative
+        - humor
+        - advicePref
+        - remindersAllowed
+        - memoryShareScope
+        - avoidTopics
       properties:
         relationshipId:
           type: string
@@ -1902,6 +1957,83 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (RFC 3339)
+        companionName:
+          type: string
+          maxLength: 32
+          description: Optional Companion display name (a label, never a prompt)
+        userAddressAs:
+          type: string
+          maxLength: 32
+          description: Optional label the Companion should use for the user
+        replyLength:
+          type: string
+          description: companion-prefs CompanionReplyLength code
+        initiative:
+          type: string
+          description: companion-prefs CompanionInitiative code
+        humor:
+          type: string
+          description: companion-prefs CompanionHumor code
+        advicePref:
+          type: string
+          description: companion-prefs CompanionAdvicePref code
+        remindersAllowed:
+          type: boolean
+          description: Whether the user allows structured reminders for this Companion
+        memoryShareScope:
+          type: string
+          description: Alpha memory share (SESSION or RELATIONSHIP)
+        avoidTopics:
+          type: array
+          items:
+            type: string
+          description: companion-prefs CompanionAvoidTopic codes the model must not raise
+    RelationshipPrefsUpdate:
+      type: object
+      description: >-
+        Full replacement of structured Companion preferences (FR-COMP-003).
+        Names are optional labels; an omitted or empty name clears the stored
+        label. Enum fields and avoidTopics must be approved catalog codes.
+      required:
+        - replyLength
+        - initiative
+        - humor
+        - advicePref
+        - remindersAllowed
+        - memoryShareScope
+        - avoidTopics
+      properties:
+        companionName:
+          type: string
+          maxLength: 32
+          description: Optional Companion display name (empty string clears)
+        userAddressAs:
+          type: string
+          maxLength: 32
+          description: Optional user-address label (empty string clears)
+        replyLength:
+          type: string
+          description: companion-prefs CompanionReplyLength code
+        initiative:
+          type: string
+          description: companion-prefs CompanionInitiative code
+        humor:
+          type: string
+          description: companion-prefs CompanionHumor code
+        advicePref:
+          type: string
+          description: companion-prefs CompanionAdvicePref code
+        remindersAllowed:
+          type: boolean
+          description: Whether structured reminders are allowed
+        memoryShareScope:
+          type: string
+          description: SESSION or RELATIONSHIP (Alpha-enabled memory-scopes)
+        avoidTopics:
+          type: array
+          items:
+            type: string
+          description: companion-prefs CompanionAvoidTopic codes
     RelationshipCreateRequest:
       type: object
       description: Body for creating a new Companion relationship.

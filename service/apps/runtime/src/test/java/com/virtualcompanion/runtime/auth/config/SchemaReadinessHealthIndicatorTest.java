@@ -158,8 +158,9 @@ class SchemaReadinessHealthIndicatorTest {
         // export; V43 = ACCT-DELETE self-service account deletion;
         // V44 = MEM-NEG message no_memory negative marker;
         // V45 = AGE-MIN adult-verification result persistence;
-        // V46 = AUTH-RECHECK consent withdrawal withdraws snapshots).
+        // V46 = AUTH-RECHECK consent withdrawal withdraws snapshots;
+        // V47 = COMP-CFG structured Companion preferences).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(46);
+                .isEqualTo(47);
     }
 }

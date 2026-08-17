@@ -198,3 +198,38 @@ components:
       - CROSSED_BOUNDARY
       - FACTUAL_ERROR
       - UNSAFE
+    CompanionReplyLength:
+      type: string
+      enum:
+      - SHORT
+      - MEDIUM
+      - LONG
+    CompanionInitiative:
+      type: string
+      enum:
+      - LOW
+      - MEDIUM
+      - HIGH
+    CompanionHumor:
+      type: string
+      enum:
+      - NONE
+      - LIGHT
+      - WARM
+    CompanionAdvicePref:
+      type: string
+      enum:
+      - ASK_FIRST
+      - DIRECT
+      - RARE
+    CompanionAvoidTopic:
+      type: string
+      enum:
+      - WORK
+      - FAMILY
+      - HEALTH
+      - ROMANCE
+      - MONEY
+      - POLITICS
+      - SUBSTANCE
+      - RELIGION

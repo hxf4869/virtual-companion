@@ -1,16 +1,27 @@
 package com.virtualcompanion.runtime.relationship.web;
 
+import com.virtualcompanion.catalog.CompanionAdvicePref;
+import com.virtualcompanion.catalog.CompanionAvoidTopic;
+import com.virtualcompanion.catalog.CompanionHumor;
+import com.virtualcompanion.catalog.CompanionInitiative;
+import com.virtualcompanion.catalog.CompanionReplyLength;
 import com.virtualcompanion.catalog.PersonaTemplate;
+import com.virtualcompanion.conversation.contextplan.CompanionPreferenceInstructions;
+import com.virtualcompanion.platform.persistence.CompanionPrefs;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,7 +39,9 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>{@code POST /api/v1/relationships/{relationshipId}} — activate one
  *       (deactivates the others);</li>
  *   <li>{@code POST /api/v1/relationships/{relationshipId}/deactivate} —
- *       deactivate one (zero active Companions permitted).</li>
+ *       deactivate one (zero active Companions permitted);</li>
+ *   <li>{@code PATCH /api/v1/relationships/{relationshipId}} — replace
+ *       structured Companion preferences (COMP-CFG / FR-COMP-003).</li>
  * </ul>
  *
  * <p>Authenticated: the principal's account id is the owner id; the owner GUC is
@@ -105,6 +118,18 @@ public class RelationshipController {
                 .orElseThrow(() -> new ResourceNotFoundException("relationship"));
     }
 
+    @PatchMapping("/relationships/{relationshipId}")
+    public RelationshipResponse updatePrefs(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String relationshipId,
+            @Valid @RequestBody UpdatePrefsRequest request) {
+        long id = parseId(relationshipId);
+        CompanionPrefs prefs = toPrefs(request);
+        return relationshipService.updatePrefs(ownerUserId, id, prefs)
+                .map(RelationshipController::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("relationship"));
+    }
+
     private static long parseId(String raw) {
         try {
             long parsed = Long.parseLong(raw);
@@ -127,12 +152,88 @@ public class RelationshipController {
         return false;
     }
 
+    private static CompanionPrefs toPrefs(UpdatePrefsRequest request) {
+        CompanionPreferenceInstructions.requireKnown(
+                "replyLength", request.replyLength(),
+                catalogHas(CompanionReplyLength.values(), request.replyLength(), CompanionReplyLength::code));
+        CompanionPreferenceInstructions.requireKnown(
+                "initiative", request.initiative(),
+                catalogHas(CompanionInitiative.values(), request.initiative(), CompanionInitiative::code));
+        CompanionPreferenceInstructions.requireKnown(
+                "humor", request.humor(),
+                catalogHas(CompanionHumor.values(), request.humor(), CompanionHumor::code));
+        CompanionPreferenceInstructions.requireKnown(
+                "advicePref", request.advicePref(),
+                catalogHas(CompanionAdvicePref.values(), request.advicePref(), CompanionAdvicePref::code));
+        if (!"SESSION".equals(request.memoryShareScope())
+                && !"RELATIONSHIP".equals(request.memoryShareScope())) {
+            throw new IllegalArgumentException(
+                    "memoryShareScope is not an Alpha-enabled memory scope: "
+                            + request.memoryShareScope());
+        }
+        String companionName = sanitizeOptionalLabel("companionName", request.companionName());
+        String userAddressAs = sanitizeOptionalLabel("userAddressAs", request.userAddressAs());
+        List<String> avoid = new ArrayList<>();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (String code : request.avoidTopics() == null ? List.<String>of() : request.avoidTopics()) {
+            if (!catalogHas(CompanionAvoidTopic.values(), code, CompanionAvoidTopic::code)) {
+                throw new IllegalArgumentException("avoidTopics contains an unapproved code: " + code);
+            }
+            if (seen.add(code)) {
+                avoid.add(code);
+            }
+        }
+        return new CompanionPrefs(
+                companionName,
+                userAddressAs,
+                request.replyLength(),
+                request.initiative(),
+                request.humor(),
+                request.advicePref(),
+                request.remindersAllowed(),
+                request.memoryShareScope(),
+                avoid);
+    }
+
+    private static String sanitizeOptionalLabel(String field, String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String sanitized = CompanionPreferenceInstructions.sanitizeLabel(raw);
+        if (sanitized == null) {
+            throw new IllegalArgumentException(field + " is not a valid display label");
+        }
+        return sanitized;
+    }
+
+    private static <E> boolean catalogHas(E[] values, String code, java.util.function.Function<E, String> codeOf) {
+        if (code == null) {
+            return false;
+        }
+        for (E value : values) {
+            if (codeOf.apply(value).equals(code)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static RelationshipResponse toResponse(RelationshipRecord record) {
+        CompanionPrefs prefs = record.prefs();
         return new RelationshipResponse(
                 record.id(),
                 record.personaRef(),
                 record.active(),
-                record.createdAt() == null ? null : record.createdAt().toString());
+                record.createdAt() == null ? null : record.createdAt().toString(),
+                prefs.companionName(),
+                prefs.userAddressAs(),
+                prefs.replyLength(),
+                prefs.initiative(),
+                prefs.humor(),
+                prefs.advicePref(),
+                prefs.remindersAllowed(),
+                prefs.memoryShareScope(),
+                prefs.avoidTopics());
     }
 
     /** Request body (OpenAPI {@code RelationshipCreateRequest}). */
@@ -140,11 +241,33 @@ public class RelationshipController {
             @NotBlank @Size(max = 128) String personaRef) {
     }
 
+    /** Request body (OpenAPI {@code RelationshipPrefsUpdate}). */
+    public record UpdatePrefsRequest(
+            @Size(max = 32) String companionName,
+            @Size(max = 32) String userAddressAs,
+            @NotBlank @Size(max = 32) String replyLength,
+            @NotBlank @Size(max = 32) String initiative,
+            @NotBlank @Size(max = 32) String humor,
+            @NotBlank @Size(max = 32) String advicePref,
+            @NotNull Boolean remindersAllowed,
+            @NotBlank @Size(max = 32) String memoryShareScope,
+            @NotNull List<String> avoidTopics) {
+    }
+
     /** Response body (OpenAPI {@code Relationship}). */
     public record RelationshipResponse(
             long relationshipId,
             String personaRef,
             boolean active,
-            String createdAt) {
+            String createdAt,
+            String companionName,
+            String userAddressAs,
+            String replyLength,
+            String initiative,
+            String humor,
+            String advicePref,
+            boolean remindersAllowed,
+            String memoryShareScope,
+            List<String> avoidTopics) {
     }
 }

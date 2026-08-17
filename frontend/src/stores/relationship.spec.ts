@@ -5,10 +5,11 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRelationshipStore } from "@/stores/relationship";
-import type {
-  Relationship,
-  RelationshipApiResponse,
-  RelationshipTransport,
+import {
+  DEFAULT_COMPANION_PREFS,
+  type Relationship,
+  type RelationshipApiResponse,
+  type RelationshipTransport,
 } from "@/api/relationship";
 
 const ACTIVE: Relationship = {
@@ -16,12 +17,14 @@ const ACTIVE: Relationship = {
   personaRef: "gentle-listener",
   active: true,
   createdAt: "2026-08-13T01:00:00Z",
+  ...DEFAULT_COMPANION_PREFS,
 };
 const INACTIVE: Relationship = {
   relationshipId: "2",
   personaRef: "other",
   active: false,
   createdAt: "2026-08-13T02:00:00Z",
+  ...DEFAULT_COMPANION_PREFS,
 };
 
 /** Mock RelationshipTransport routing by path, like stores/chat.spec.ts. */
@@ -34,6 +37,8 @@ function mockTransport(opts: {
   activateStatus?: number;
   deactivateJson?: unknown;
   deactivateStatus?: number;
+  updateJson?: unknown;
+  updateStatus?: number;
 }): RelationshipTransport & { listCalls: number } {
   let listCalls = 0;
   return {
@@ -47,6 +52,10 @@ function mockTransport(opts: {
       if (path === "/api/v1/relationships" && method === "POST") {
         const status = opts.createStatus ?? 200;
         return { ok: status === 200, status, json: status === 200 ? opts.createJson : null };
+      }
+      if (method === "PATCH" && /^\/api\/v1\/relationships\/[^/]+$/.test(path)) {
+        const status = opts.updateStatus ?? 200;
+        return { ok: status === 200, status, json: status === 200 ? opts.updateJson : null };
       }
       if (/^\/api\/v1\/relationships\/[^/]+\/deactivate$/.test(path)) {
         const status = opts.deactivateStatus ?? 200;
@@ -187,6 +196,26 @@ describe("useRelationshipStore", () => {
     const result = await store.deactivate(transport, "999");
 
     expect(result).toBeNull();
+  });
+
+  it("updatePrefs reloads the authoritative row after a successful PATCH", async () => {
+    const store = useRelationshipStore();
+    const updated = { ...ACTIVE, companionName: "小安", replyLength: "SHORT" as const };
+    const transport = mockTransport({
+      updateJson: updated,
+      list: [updated],
+    });
+
+    const result = await store.updatePrefs(transport, "1", {
+      ...DEFAULT_COMPANION_PREFS,
+      companionName: "小安",
+      replyLength: "SHORT",
+    });
+
+    expect(result?.companionName).toBe("小安");
+    expect(store.current?.replyLength).toBe("SHORT");
+    expect(store.currentRelationshipId).toBe("1");
+    expect(transport.listCalls).toBe(1);
   });
 
   it("reset clears all state", async () => {

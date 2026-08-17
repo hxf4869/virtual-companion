@@ -53,6 +53,15 @@
           <text>记忆管理</text>
         </button>
         <button
+          data-testid="nav-companion"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="角色设置"
+          @click="goTo('/pages/companion/companion')"
+        >
+          <text>角色设置</text>
+        </button>
+        <button
           data-testid="nav-reminder"
           class="alpha-nav__link"
           role="button"
