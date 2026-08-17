@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V45 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V46 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Consent、
@@ -190,6 +190,13 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   替代（「已隐藏更早的 N 条消息，可继续加载更早」），限制长会话的 DOM
   规模；精确虚拟滚动需要固定高度滚动容器的布局改造，留待 Beta 前端
   专项（Alpha 保持页面级滚动语义，流式/自动滚动行为不变）。
+- 撤回失效快照（AUTH-RECHECK）：V46 `vc.withdraw_authorization_snapshots`
+  （trusted-owner SD，把 owner 全部 ACTIVE 快照置 WITHDRAWN 并返回行数）；
+  任一同意记录撤回（`ConsentService.record` granted=false）时在同事务
+  失效全部 ACTIVE 快照——排队中的任务持有旧快照时，
+  `ExecutionAuthorizationGuard` 在执行前 fail-closed 拒绝对外发送
+  （FR-AUTH-005：撤回后未执行任务不得使用旧授权；新任务以撤回后的当前
+  授权重新铸造快照）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

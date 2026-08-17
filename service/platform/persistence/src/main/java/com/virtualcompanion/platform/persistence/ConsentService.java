@@ -18,7 +18,10 @@ import org.springframework.jdbc.core.RowMapper;
  * re-verified in SQL (V17 trusted-owner pattern). Withdrawing MODEL_TRAINING
  * never affects basic chat — the consent layer is the user-facing record
  * surface; the execution-time authorization re-check stays in the existing
- * authorization snapshot machinery (FR-AUTH-005).
+ * authorization snapshot machinery (FR-AUTH-005). A revocation additionally
+ * withdraws every ACTIVE authorization snapshot of the owner in the same
+ * transaction (V46, AUTH-RECHECK), so queued work cannot reuse stale
+ * authorization for outbound provider calls.
  */
 public class ConsentService {
 
@@ -68,6 +71,21 @@ public class ConsentService {
                 granted);
         if (id == null || id <= 0) {
             throw new IllegalStateException("record_consent returned no id");
+        }
+        // AUTH-RECHECK (FR-AUTH-005): a withdrawal must stop queued work from
+        // using the old authorization — every ACTIVE snapshot of the owner is
+        // flipped to WITHDRAWN in the SAME transaction, so the
+        // ExecutionAuthorizationGuard refuses it before any outbound transfer.
+        // The revoke row and the withdrawal commit or roll back together.
+        if (!granted) {
+            Integer withdrawn = jdbc.queryForObject(
+                    "SELECT vc.withdraw_authorization_snapshots(?)",
+                    Integer.class,
+                    ownerUserId);
+            if (withdrawn == null) {
+                throw new IllegalStateException(
+                        "withdraw_authorization_snapshots returned no count");
+            }
         }
         return id;
     }

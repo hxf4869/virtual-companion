@@ -61,6 +61,72 @@ class ConsentServiceTest {
         assertEquals(77L, id);
     }
 
+    // ---- AUTH-RECHECK (V46, FR-AUTH-005): revocation withdraws snapshots ----
+
+    @Test
+    void revokeAlsoWithdrawsEveryActiveSnapshotInTheSameTransaction() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.record_consent(?, ?, ?, ?)"),
+                eq(Long.class),
+                eq(1L),
+                eq("MODEL_TRAINING"),
+                eq("2026-08"),
+                eq(false)))
+                .thenReturn(78L);
+        when(jdbc.queryForObject(
+                eq("SELECT vc.withdraw_authorization_snapshots(?)"),
+                eq(Integer.class),
+                eq(1L)))
+                .thenReturn(3);
+
+        long id = service.record(1L, "MODEL_TRAINING", "2026-08", false);
+
+        assertEquals(78L, id);
+        org.mockito.Mockito.verify(jdbc).queryForObject(
+                eq("SELECT vc.withdraw_authorization_snapshots(?)"),
+                eq(Integer.class),
+                eq(1L));
+    }
+
+    @Test
+    void grantDoesNotWithdrawSnapshots() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.record_consent(?, ?, ?, ?)"),
+                eq(Long.class),
+                eq(1L),
+                eq("MODEL_TRAINING"),
+                eq("2026-08"),
+                eq(true)))
+                .thenReturn(79L);
+
+        service.record(1L, "MODEL_TRAINING", "2026-08", true);
+
+        org.mockito.Mockito.verify(jdbc, org.mockito.Mockito.never()).queryForObject(
+                eq("SELECT vc.withdraw_authorization_snapshots(?)"),
+                eq(Integer.class),
+                eq(1L));
+    }
+
+    @Test
+    void revokeFailsClosedWhenTheWithdrawalReturnsNoCount() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.record_consent(?, ?, ?, ?)"),
+                eq(Long.class),
+                eq(1L),
+                eq("MODEL_TRAINING"),
+                eq("2026-08"),
+                eq(false)))
+                .thenReturn(80L);
+        when(jdbc.queryForObject(
+                eq("SELECT vc.withdraw_authorization_snapshots(?)"),
+                eq(Integer.class),
+                eq(1L)))
+                .thenReturn(null);
+
+        assertThrows(IllegalStateException.class,
+                () -> service.record(1L, "MODEL_TRAINING", "2026-08", false));
+    }
+
     @Test
     void listMapsTheEffectiveLatestRows() {
         when(jdbc.query(

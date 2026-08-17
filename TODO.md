@@ -86,6 +86,12 @@
       最近消息 + 明文截断提示条（「已隐藏更早的 N 条消息」），配合既有
       keyset 分段加载限制长会话 DOM 规模；流式/自动滚动行为不变；精确
       虚拟滚动（固定高度滚动容器改造）留待 Beta 前端专项 + 组件测试。
+- [x] AUTH-RECHECK 撤回失效快照：V46 withdraw_authorization_snapshots
+      （trusted-owner SD，ACTIVE→WITHDRAWN 返回行数、幂等）+ 同意撤回
+      时同事务失效全部 ACTIVE 快照（ConsentService.record granted=false
+      接线）+ ExecutionAuthorizationGuard 执行前对 WITHDRAWN fail-closed
+      （FR-AUTH-005：撤回后未执行任务不得用旧授权对外发送；新任务以当前
+      授权重新铸造）+ SQL/单元测试。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 
