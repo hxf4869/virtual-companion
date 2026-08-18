@@ -377,6 +377,13 @@
               role="status"
             >
               <text>举报和申诉受理接口尚未接通。这里没有可提交的表单，也不会编造工单。</text>
+              <button
+                class="msg-copy"
+                data-testid="msg-report-open-page"
+                @click="goTo('/pages/report/report')"
+              >
+                打开举报和申诉页
+              </button>
             </view>
             <button
               v-if="canRegenerateMessage(msg) && !isStreaming"

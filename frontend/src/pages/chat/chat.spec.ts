@@ -299,6 +299,11 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(notice.text()).toContain("尚未接通");
     expect(notice.text()).toContain("表单");
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
+
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    await wrapper.find('[data-testid="msg-report-open-page"]').trigger("click");
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/report/report" });
     wrapper.unmount();
   });
 
