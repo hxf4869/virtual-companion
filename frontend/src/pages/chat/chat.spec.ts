@@ -341,7 +341,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
-  it("VIRT-LIST: renders at most 200 rows and shows the truncation notice for longer histories", async () => {
+  it("VIRT-SCROLL: long histories only mount the visible window, not a 200-row slice", async () => {
     const wrapper = mountPage();
     await flushPromises();
 
@@ -355,17 +355,16 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     await wrapper.vm.$nextTick();
 
     const rows = wrapper.findAll(".chat-message");
-    expect(rows.length).toBe(200);
-    // The newest rows win; the oldest are dropped from the DOM.
-    expect(rows[0].text()).toContain("消息 50");
-    expect(rows[rows.length - 1].text()).toContain("消息 249");
-    const notice = wrapper.find('[data-testid="history-truncated"]');
-    expect(notice.exists()).toBe(true);
-    expect(notice.text()).toContain("已隐藏更早的 50 条消息");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length).toBeLessThan(40);
+    expect(store.messages.length).toBe(250);
+    expect(wrapper.find('[data-testid="history-truncated"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="virt-spacer-top"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="virt-spacer-bottom"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
-  it("VIRT-LIST: no notice while the history fits the render bound", async () => {
+  it("VIRT-SCROLL: short histories still render every row", async () => {
     const wrapper = mountPage();
     await flushPromises();
 
@@ -382,6 +381,33 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     expect(wrapper.find('[data-testid="history-truncated"]').exists()).toBe(false);
     expect(wrapper.findAll(".chat-message").length).toBe(1);
+    wrapper.unmount();
+  });
+
+  it("VIRT-SCROLL: scrolling the viewport remounts later rows", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = Array.from({ length: 250 }, (_, i) => ({
+      messageId: `m${i}`,
+      conversationId: "1",
+      role: "user",
+      content: `消息 ${i}`,
+    }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.findAll(".chat-message")[0].text()).toContain("消息 0");
+
+    const history = wrapper.find('[data-testid="history"]');
+    const el = history.element as HTMLElement;
+    el.scrollTop = 96 * 40;
+    await history.trigger("scroll");
+    await wrapper.vm.$nextTick();
+
+    const rows = wrapper.findAll(".chat-message");
+    expect(rows[0].text()).not.toContain("消息 0");
+    expect(rows[0].text()).toContain("消息 36");
     wrapper.unmount();
   });
 

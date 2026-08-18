@@ -111,6 +111,11 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-18 第十五轮）：
+
+- 聊天历史精确虚拟滚动（VIRT-SCROLL / §18.6）：固定高度滚动容器 +
+  `computeVirtualWindow`，长会话只挂载可视行，滚动换窗，短列表仍全量渲染。
+
 后端在运方面上还提供（2026-08-18 第十四轮）：
 
 - 生成版本（GEN-VER / FR-CHAT-003）：V53 `generation.source_user_message_id` /
@@ -232,11 +237,9 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   申诉提交接口尚未接通）
   （FR-AUTH-002，Beta 门禁依赖 ageStateRequired=ADULT_VERIFIED，Alpha 不
   开放真实用户）。
-- 聊天列表渲染窗口（VIRT-LIST）：§18.6 列表性能——历史消息已按段加载
-  （keyset load-more），DOM 渲染上限为最近 200 条，超出部分由明文提示条
-  替代（「已隐藏更早的 N 条消息，可继续加载更早」），限制长会话的 DOM
-  规模；精确虚拟滚动需要固定高度滚动容器的布局改造，留待 Beta 前端
-  专项（Alpha 保持页面级滚动语义，流式/自动滚动行为不变）。
+- 聊天列表虚拟滚动（VIRT-SCROLL）：§18.6 列表性能——历史消息按段加载
+  （keyset load-more），固定高度容器按滚动位置只挂载可视切片加 overscan；
+  不再用 200 条截断条丢掉更早的已加载行。
 - 撤回失效快照（AUTH-RECHECK）：V46 `vc.withdraw_authorization_snapshots`
   （trusted-owner SD，把 owner 全部 ACTIVE 快照置 WITHDRAWN 并返回行数）；
   任一同意记录撤回（`ConsentService.record` granted=false）时在同事务

@@ -244,7 +244,12 @@
           </button>
         </view>
 
-        <view class="chat-history" data-testid="history">
+        <view
+          class="chat-history"
+          data-testid="history"
+          :style="{ height: historyViewportPx + 'px' }"
+          @scroll="onHistoryScroll"
+        >
           <view
             v-if="showEmptyHistory"
             class="chat-empty"
@@ -253,21 +258,19 @@
           >
             <text>还没有消息。输入一句话开始倾听。</text>
           </view>
-          <!-- VIRT-LIST: the render window bound (older loaded rows are
-               dropped from the DOM with a plain notice, §18.6). -->
+          <!-- VIRT-SCROLL (§18.6): only the visible slice is mounted. -->
           <view
-            v-if="truncatedCount > 0"
-            class="history-truncated"
-            data-testid="history-truncated"
-            role="note"
-          >
-            <text>已隐藏更早的 {{ truncatedCount }} 条消息（性能保护，可继续加载更早）。</text>
-          </view>
+            v-if="messages.length > 0"
+            class="virt-spacer"
+            data-testid="virt-spacer-top"
+            :style="{ height: virtualWindow.offsetTop + 'px' }"
+          />
           <view
             v-for="msg in renderedMessages"
             :key="msg.messageId"
             class="chat-message"
             :class="msg.role"
+            data-testid="chat-message"
           >
             <text class="role-tag">{{ roleLabel(msg.role) }}</text>
             <text class="msg-content">{{ msg.content }}</text>
@@ -339,6 +342,12 @@
               </button>
             </view>
           </view>
+          <view
+            v-if="messages.length > 0"
+            class="virt-spacer"
+            data-testid="virt-spacer-bottom"
+            :style="{ height: virtualBottomPad + 'px' }"
+          />
           <view v-if="showLoadMore" class="history-more">
             <button
               data-testid="load-more"
@@ -495,6 +504,12 @@
 // button aria-busy while streaming, so async phase changes are announced to
 // assistive technology.
 import { computed, defineComponent, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  computeVirtualWindow,
+  VIRTUAL_ESTIMATE_HEIGHT,
+  VIRTUAL_OVERSCAN,
+  VIRTUAL_VIEWPORT_HEIGHT,
+} from "@/domain/virtual-list-window";
 
 import { createAuthedFetch } from "@/api/authed-fetch";
 import { personaDisplayName } from "@/domain/persona";
@@ -508,15 +523,6 @@ import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 import { useUsageHealthStore } from "@/stores/usage-health";
-
-/**
- * VIRT-LIST (§18.6): the DOM renders at most this many message rows. History
- * is loaded in pages (load-more), so the bound only ever bites for long
- * conversations; older loaded rows are dropped from the DOM with a plain
- * notice instead of the precise virtual-scroller (Alpha keeps the page-level
- * scrolling model — the scroll container refactor is a beta UI concern).
- */
-const MAX_RENDERED_MESSAGES = 200;
 
 function resolveOrigin(): string {
   return typeof window !== "undefined" && window.location && window.location.origin
@@ -592,17 +598,35 @@ export default defineComponent({
     );
 
     const messages = computed(() => store.messages);
-    // VIRT-LIST: the render window is the newest MAX_RENDERED_MESSAGES rows;
-    // older rows are replaced by a plain notice (DOM-size bound for long
-    // histories, §18.6 虚拟滚动 intent).
+    const historyScrollTop = ref(0);
+    const historyViewportPx = VIRTUAL_VIEWPORT_HEIGHT;
+    const virtualWindow = computed(() =>
+      computeVirtualWindow({
+        count: messages.value.length,
+        scrollTop: historyScrollTop.value,
+        viewportHeight: historyViewportPx,
+        estimateHeight: VIRTUAL_ESTIMATE_HEIGHT,
+        overscan: VIRTUAL_OVERSCAN,
+      }),
+    );
     const renderedMessages = computed(() =>
-      messages.value.length > MAX_RENDERED_MESSAGES
-        ? messages.value.slice(-MAX_RENDERED_MESSAGES)
-        : messages.value,
+      messages.value.slice(virtualWindow.value.startIndex, virtualWindow.value.endIndex),
     );
-    const truncatedCount = computed(
-      () => messages.value.length - renderedMessages.value.length,
+    const virtualBottomPad = computed(() =>
+      Math.max(
+        0,
+        virtualWindow.value.totalHeight -
+          virtualWindow.value.offsetTop -
+          renderedMessages.value.length * VIRTUAL_ESTIMATE_HEIGHT,
+      ),
     );
+
+    function onHistoryScroll(event: Event): void {
+      const target = event.target as { scrollTop?: number } | null;
+      if (target && typeof target.scrollTop === "number") {
+        historyScrollTop.value = target.scrollTop;
+      }
+    }
     const conversations = computed(() => store.conversations);
     const pendingMemoryCount = computed(() => store.pendingMemoryCount);
     const draft = computed(() => store.draft);
@@ -1163,7 +1187,10 @@ export default defineComponent({
       auth,
       messages,
       renderedMessages,
-      truncatedCount,
+      virtualWindow,
+      virtualBottomPad,
+      historyViewportPx,
+      onHistoryScroll,
       conversations,
       pendingMemoryCount,
       draft,
@@ -1270,9 +1297,13 @@ export default defineComponent({
   border-radius: 12rpx;
 }
 .chat-history {
-  flex: 1;
   overflow-y: auto;
   margin-bottom: 24rpx;
+  -webkit-overflow-scrolling: touch;
+}
+.virt-spacer {
+  width: 100%;
+  pointer-events: none;
 }
 .conversation-panel {
   display: flex;
@@ -1329,17 +1360,6 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   padding: 12rpx 0;
-}
-/* VIRT-LIST: plain notice replacing older loaded rows (DOM-size bound). */
-.history-truncated {
-  margin: 4rpx 0 12rpx;
-  padding: 8rpx 16rpx;
-  border-radius: 999rpx;
-  background-color: #1c2b4a;
-  border: 2rpx solid #2a3a5a;
-  color: #8fa0bd;
-  font-size: 20rpx;
-  text-align: center;
 }
 .chat-empty {
   padding: 24rpx;
