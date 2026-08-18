@@ -26,7 +26,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
-  Age、Data、Help、AI-Notice、Health、Incognito、Export、Memory-Detail、Ops、Admin H5 页面、typed transport 与组件/状态测试；
+  Age、Data、Help、AI-Notice、Health、Incognito、Export、Memory-Detail、Conversations、Ops、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -112,6 +112,12 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-18 第十九轮）：
+
+- 独立会话列表页（CONV-LIST / §8.2）：H5 `/pages/conversations/conversations`
+  复用既有会话 list/rename/delete/end；可按关系筛选、打开指定会话、两步删除
+  与结束今天的对话；404 不披露存在性。聊天页接受 `conversationId` 查询参数。
 
 后端在运方面上还提供（2026-08-18 第十八轮）：
 

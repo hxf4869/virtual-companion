@@ -13,6 +13,12 @@
 			}
 		},
 		{
+			"path": "pages/conversations/conversations",
+			"style": {
+				"navigationBarTitleText": "会话列表"
+			}
+		},
+		{
 			"path": "pages/memory/memory",
 			"style": {
 				"navigationBarTitleText": "记忆管理"

@@ -44,6 +44,15 @@
           <text>离线聊天</text>
         </button>
         <button
+          data-testid="nav-conversations"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="会话列表"
+          @click="goTo(conversationsHref())"
+        >
+          <text>会话列表</text>
+        </button>
+        <button
           data-testid="nav-memory"
           class="alpha-nav__link"
           role="button"
@@ -502,6 +511,12 @@ function chatHref(): string {
   const id = relStore.currentRelationshipId;
   if (!id) return "/pages/chat/chat";
   return `/pages/chat/chat?relationshipId=${encodeURIComponent(id)}`;
+}
+
+function conversationsHref(): string {
+  const id = relStore.currentRelationshipId;
+  if (!id) return "/pages/conversations/conversations";
+  return `/pages/conversations/conversations?relationshipId=${encodeURIComponent(id)}`;
 }
 
 function goTo(url: string): void {

@@ -625,6 +625,25 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("navigates to the conversation list without calling send or cancel", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    const sendSpy = vi.spyOn(store, "send");
+    const cancelSpy = vi.spyOn(store, "cancel");
+
+    await wrapper.find('[data-testid="nav-conversations"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/conversations/conversations?relationshipId=1",
+    });
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(cancelSpy).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("renders a memory-page entry even before a relationship is selected", async () => {
     stubFetch({ relationships: [] });
     const wrapper = mountPage();
@@ -743,6 +762,22 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(auth.accessToken).toBe("renewed");
+    wrapper.unmount();
+  });
+
+  it("CONV-LIST: opens the conversationId from the query instead of the latest", async () => {
+    vi.stubGlobal("location", { search: "?relationshipId=1&conversationId=9" });
+    stubFetch({
+      conversationsJson: [
+        { conversationId: "9", relationshipId: "1", title: "指定会话" },
+        { conversationId: "2", relationshipId: "1", title: "更新的会话" },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+
+    expect(store.conversationId).toBe("9");
     wrapper.unmount();
   });
 

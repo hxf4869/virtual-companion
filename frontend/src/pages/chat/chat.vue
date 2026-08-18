@@ -4,6 +4,14 @@
       <text>Technical Alpha · 离线聊天</text>
       <view class="chat-header-nav">
         <button
+          data-testid="nav-conversations"
+          class="chat-nav-index"
+          aria-label="会话列表"
+          @click="goTo(conversationsHref())"
+        >
+          会话列表
+        </button>
+        <button
           data-testid="nav-memory"
           class="chat-nav-index"
           aria-label="记忆管理"
@@ -1010,12 +1018,31 @@ export default defineComponent({
       return `/pages/memory/memory?relationshipId=${encodeURIComponent(id)}`;
     }
 
+    function conversationsHref(): string {
+      const id = relStore.currentRelationshipId;
+      if (!id) return "/pages/conversations/conversations";
+      return `/pages/conversations/conversations?relationshipId=${encodeURIComponent(id)}`;
+    }
+
     function readQueryRelationshipId(): string {
       try {
         if (typeof location === "undefined") return "";
         return (
           new URLSearchParams(String(location.search || ""))
             .get("relationshipId")
+            ?.trim() ?? ""
+        );
+      } catch {
+        return "";
+      }
+    }
+
+    function readQueryConversationId(): string {
+      try {
+        if (typeof location === "undefined") return "";
+        return (
+          new URLSearchParams(String(location.search || ""))
+            .get("conversationId")
             ?.trim() ?? ""
         );
       } catch {
@@ -1213,11 +1240,17 @@ export default defineComponent({
       }
       if (relStore.currentRelationshipId) {
         // CONV-HIST: resume the newest conversation when one exists, otherwise
-        // create a fresh one (the pre-CONV-HIST behavior).
+        // create a fresh one (the pre-CONV-HIST behavior). CONV-LIST can pin
+        // a specific conversation via ?conversationId=.
         await refreshConversationList();
+        const requested = readQueryConversationId();
+        const fromQuery = requested
+          ? store.conversations.find((c) => c.conversationId === requested)
+          : undefined;
         const latest = store.conversations[store.conversations.length - 1];
-        if (latest) {
-          await store.openConversation(transport, latest.conversationId);
+        const target = fromQuery ?? latest;
+        if (target) {
+          await store.openConversation(transport, target.conversationId);
         } else {
           await startConversation();
         }
@@ -1322,6 +1355,7 @@ export default defineComponent({
       onLoadMore,
       goTo,
       memoryHref,
+      conversationsHref,
       onRelActivate,
       onRelCreate,
     };

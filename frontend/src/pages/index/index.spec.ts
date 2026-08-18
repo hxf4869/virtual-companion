@@ -59,6 +59,7 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(nav.exists()).toBe(true);
     expect(nav.attributes("role")).toBe("navigation");
     expect(wrapper.find('[data-testid="nav-chat"]').text()).toContain("离线聊天");
+    expect(wrapper.find('[data-testid="nav-conversations"]').text()).toContain("会话列表");
     expect(wrapper.find('[data-testid="nav-memory"]').text()).toContain("记忆管理");
     expect(wrapper.find('[data-testid="nav-age"]').text()).toContain("成年核验");
     expect(wrapper.find('[data-testid="nav-data"]').text()).toContain("我的数据");
@@ -150,6 +151,34 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     await wrapper.find('[data-testid="nav-chat"]').trigger("click");
 
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
+    wrapper.unmount();
+  });
+
+  it("carries current relationship id to the conversation list after load", async () => {
+    stubRelationshipFetch([ACTIVE_RELATIONSHIP]);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-conversations"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/conversations/conversations?relationshipId=rel-index-1",
+    });
+    wrapper.unmount();
+  });
+
+  it("keeps a bare conversation-list path when there is no current relationship", async () => {
+    stubRelationshipFetch([]);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-conversations"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/conversations/conversations" });
     wrapper.unmount();
   });
 
