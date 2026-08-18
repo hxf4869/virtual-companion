@@ -17,6 +17,8 @@ import {
   renameConversation,
   sendGeneration,
   setMessageNoMemory,
+  listGenerationVersions,
+  selectGenerationVersion,
   type ChatTransport,
 } from "./chat";
 
@@ -145,6 +147,56 @@ describe("sendGeneration", () => {
     await sendGeneration(transport, "7", "key-abc");
 
     expect(calls[0].body).toEqual({ idempotencyKey: "key-abc" });
+  });
+
+  it("GEN-VER: includes sourceUserMessageId when regenerating", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: GENERATION_JSON,
+    });
+
+    await sendGeneration(transport, "7", "key-abc", "Hello", "AUTO", "9");
+
+    expect(calls[0].body).toEqual({
+      idempotencyKey: "key-abc",
+      userContent: "Hello",
+      sourceUserMessageId: "9",
+    });
+  });
+});
+
+describe("generation versions (GEN-VER)", () => {
+  it("lists versions for a user message", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: [
+        { generationId: "55", selected: false, status: "COMPLETED" },
+        { generationId: "56", selected: true, status: "COMPLETED" },
+      ],
+    });
+
+    const rows = await listGenerationVersions(transport, "9");
+
+    expect(calls).toEqual([
+      { method: "GET", path: "/api/v1/messages/9/generation-versions" },
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[1]?.selected).toBe(true);
+  });
+
+  it("selects a version", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { generationId: "55", selected: true, status: "COMPLETED" },
+    });
+
+    const row = await selectGenerationVersion(transport, "55");
+
+    expect(calls).toEqual([{ method: "POST", path: "/api/v1/generations/55/select" }]);
+    expect(row?.selected).toBe(true);
   });
 
   it("CHAT-MODE: sends an explicit non-AUTO mode in the body", async () => {

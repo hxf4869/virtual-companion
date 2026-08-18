@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V52 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V53 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
@@ -88,7 +88,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   不删 Companion）、
   `POST /api/v1/conversations/{conversationId}/generations`（CHAT-MODE：请求可带
   `mode` = AUTO/LISTEN/DISCUSS/CASUAL 的轮次级对话模式，首次接收时冻结在 generation 行并按
-  idempotencyKey 重入不覆盖，AUTO 保持人设默认）、
+  idempotencyKey 重入不覆盖，AUTO 保持人设默认；GEN-VER：`sourceUserMessageId`
+  对已有用户消息重新生成，不插入第二条用户消息，新版本成为默认可见版本）、
+  `GET /api/v1/messages/{messageId}/generation-versions`、
+  `POST /api/v1/generations/{generationId}/select`（界面默认只显示选中版本）、
   `GET /api/v1/conversations/{conversationId}/messages`、
   `DELETE /api/v1/conversations/{conversationId}/messages/{messageId}`（MSG-DELETE
   单条消息删除：同事务清理指向该消息的 memory_evidence，已确认记忆条目保留，
@@ -107,6 +110,12 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-18 第十四轮）：
+
+- 生成版本（GEN-VER / FR-CHAT-003）：V53 `generation.source_user_message_id` /
+  `selected`；重新生成复用原用户消息、默认历史只显示选中助手版本；已完成兄弟
+  版本不再二次入队 MEMORY_EXTRACT。聊天页「重新生成」与版本 chips。
 
 后端在运方面上还提供（2026-08-18 第十三轮）：
 

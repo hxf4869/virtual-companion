@@ -309,6 +309,35 @@
             >
               {{ confirmDeleteMsgId === msg.messageId ? "确认删除" : "删除" }}
             </button>
+            <button
+              v-if="canRegenerateMessage(msg) && !isStreaming"
+              class="msg-copy"
+              data-testid="regenerate"
+              aria-label="重新生成这条回复"
+              @click="onRegenerate(msg)"
+            >
+              重新生成
+            </button>
+            <view
+              v-if="versionsFor(msg).length > 1"
+              class="version-row"
+              data-testid="version-row"
+              role="group"
+              aria-label="生成版本"
+            >
+              <button
+                v-for="(ver, index) in versionsFor(msg)"
+                :key="ver.generationId"
+                class="chat-mode-chip"
+                :class="{ 'chat-mode-chip-active': ver.selected }"
+                :data-testid="`version-${index + 1}`"
+                :aria-pressed="ver.selected"
+                :disabled="isStreaming"
+                @click="onSelectVersion(msg, ver.generationId)"
+              >
+                版本 {{ index + 1 }}
+              </button>
+            </view>
           </view>
           <view v-if="showLoadMore" class="history-more">
             <button
@@ -700,11 +729,54 @@ export default defineComponent({
       }
       if (store.phase === "completed") {
         await scheduleMemoryPrompt();
+        await refreshVersions();
       }
     }
 
     async function onUsageContinue(): Promise<void> {
       await usageHealth.record(transport, "CONTINUED");
+    }
+
+    function lastUserMessage(): { messageId: string; content: string } | null {
+      const users = messages.value.filter(
+        (m) => m.role === "user" && !m.messageId.startsWith("__"),
+      );
+      const last = users[users.length - 1];
+      return last ? { messageId: last.messageId, content: last.content } : null;
+    }
+
+    function canRegenerateMessage(msg: { role: string; messageId: string }): boolean {
+      const last = lastUserMessage();
+      return (
+        msg.role === "user" &&
+        !!last &&
+        last.messageId === msg.messageId &&
+        !isStreaming.value &&
+        (store.phase === "completed" || store.phase === "idle")
+      );
+    }
+
+    function versionsFor(msg: { role: string; messageId: string }) {
+      if (msg.role !== "user") return [];
+      return store.versionsByUserMessage[msg.messageId] ?? [];
+    }
+
+    async function onRegenerate(msg: { messageId: string; content: string }): Promise<void> {
+      await store.regenerate(transport, deps, msg.messageId, msg.content);
+    }
+
+    async function onSelectVersion(
+      msg: { messageId: string },
+      generationId: string,
+    ): Promise<void> {
+      await store.selectVersion(transport, generationId, msg.messageId);
+    }
+
+    async function refreshVersions(): Promise<void> {
+      const last = lastUserMessage();
+      if (last) {
+        await store.loadVersions(transport, last.messageId);
+      }
     }
 
     async function onUsageEnd(): Promise<void> {
@@ -1067,6 +1139,7 @@ export default defineComponent({
           transport,
           relStore.currentRelationshipId,
         );
+        await refreshVersions();
       }
     });
 
@@ -1131,6 +1204,10 @@ export default defineComponent({
       personaDisplayName,
       conversationLabel,
       onSend,
+      onRegenerate,
+      onSelectVersion,
+      canRegenerateMessage,
+      versionsFor,
       onRetry,
       onCancel,
       onLogout,

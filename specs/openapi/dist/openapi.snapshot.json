@@ -27,6 +27,8 @@
     "listMessages",
     "deleteMessage",
     "setMessageNoMemory",
+    "selectGenerationVersion",
+    "listGenerationVersions",
     "cancelGeneration",
     "getGenerationSnapshot",
     "recordGenerationFeedback",
@@ -63,6 +65,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "bbfc4c9579a1ac0b7d63e05a5fb6bc15e86ba5c92d0105af44598148ef5f83b6"
+    "sha256": "cbc4ccf8e99eca0c7413617793980e88632991080a7e4bb1a53e0fa41ef82393"
   }
 }

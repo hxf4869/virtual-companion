@@ -771,6 +771,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/generations/{generationId}/select:
+    post:
+      operationId: selectGenerationVersion
+      summary: Make this generation the selected version of its user message
+      description: Marks the generation as the selected version (GEN-VER / FR-CHAT-003). Sibling versions stay stored but
+        disappear from default history. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN.
+      parameters:
+      - $ref: '#/components/parameters/GenerationId'
+      responses:
+        '200':
+          description: The selected version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationVersion'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/messages/{messageId}/generation-versions:
+    get:
+      operationId: listGenerationVersions
+      summary: List generation versions for a user message
+      description: Returns every generation grouped on this user message, including unselected versions. A foreign or absent
+        message yields an empty list.
+      parameters:
+      - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Version list, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GenerationVersion'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/generations/{generationId}/cancel:
     post:
       operationId: cancelGeneration
@@ -2384,6 +2434,26 @@ components:
         noMemory:
           type: boolean
           description: true marks the message so memory extraction skips it; false restores it
+    GenerationVersion:
+      type: object
+      description: One saved generation of a user message (GEN-VER / FR-CHAT-003).
+      required:
+      - generationId
+      - selected
+      - status
+      properties:
+        generationId:
+          type: string
+        selected:
+          type: boolean
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        assistantMessageId:
+          type: string
+          description: Final assistant message of this version, absent until finalize
     SendGenerationRequest:
       type: object
       description: Body for idempotently sending a Chat turn; mode selects the interaction mode for the turn (CHAT-MODE).
@@ -2396,6 +2466,10 @@ components:
         userContent:
           type: string
           description: The user's chat content for this turn
+        sourceUserMessageId:
+          type: string
+          description: Existing user message to regenerate against (GEN-VER / FR-CHAT-003). When set, the server does not
+            insert a second user row and the new generation becomes the selected version.
         mode:
           $ref: '#/components/schemas/InteractionModeCode'
     InteractionModeCode:

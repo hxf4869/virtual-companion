@@ -107,6 +107,40 @@ public class GenerationReceiveService {
     }
 
     /**
+     * GEN-VER: receive a regenerate against an existing user message. Does not
+     * insert a second user row. {@code sourceUserMessageId} must be positive.
+     */
+    public ReceivedGeneration receive(
+            long ownerUserId,
+            long conversationId,
+            String idempotencyKey,
+            String userRole,
+            String userContent,
+            String mode,
+            long sourceUserMessageId) {
+        if (sourceUserMessageId <= 0) {
+            throw new IllegalArgumentException("sourceUserMessageId must be positive");
+        }
+        String normalizedMode = normalizeMode(mode);
+        validateReceive(ownerUserId, conversationId, userRole, userContent, idempotencyKey, normalizedMode);
+        return jdbc.queryForObject(
+                "SELECT logical_generation_id, generation_id, message_id, created "
+                        + "FROM vc.receive_generation(?, ?, ?, ?, ?, ?, ?)",
+                (rs, rowNum) -> new ReceivedGeneration(
+                        rs.getString("logical_generation_id"),
+                        rs.getLong("generation_id"),
+                        (Long) rs.getObject("message_id"),
+                        rs.getBoolean("created")),
+                ownerUserId,
+                conversationId,
+                idempotencyKey,
+                userRole,
+                userContent,
+                normalizedMode,
+                sourceUserMessageId);
+    }
+
+    /**
      * CHAT-MODE: normalize a caller-supplied mode. {@code null}/blank becomes
      * {@code AUTO}; any value outside the approved set throws (the API layer
      * must reject unapproved modes, unlike the SD function's silent AUTO

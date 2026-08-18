@@ -1109,6 +1109,39 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("GEN-VER: offers regenerate on the last user message after a completed turn", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.phase = "completed";
+    store.messages = [
+      {
+        messageId: "9",
+        conversationId: "1",
+        role: "user",
+        content: "hello",
+      },
+      {
+        messageId: "10",
+        conversationId: "1",
+        role: "assistant",
+        content: "hi",
+      },
+    ];
+    store.versionsByUserMessage = {
+      "9": [
+        { generationId: "55", selected: false, status: "COMPLETED" },
+        { generationId: "56", selected: true, status: "COMPLETED" },
+      ],
+    };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="regenerate"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="version-row"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="version-2"]').attributes("aria-pressed")).toBe("true");
+    wrapper.unmount();
+  });
+
   it("hides the deactivate button when no relationship is selected", async () => {
     stubFetch({ relationships: [] });
     const wrapper = mountPage();

@@ -111,6 +111,26 @@ class GenerationControllerTest {
     }
 
     @Test
+    void sendGenerationRegenerateReusesTheSourceUserMessage() throws Exception {
+        when(receiveService.receive(1L, 100L, "key-2",
+                GenerationReceiveService.DEFAULT_USER_ROLE, "hello", "AUTO", 9L))
+                .thenReturn(new ReceivedGeneration("gen-56", 56L, 9L, true));
+        when(generationRepository.find(1L, 56L))
+                .thenReturn(Optional.of(new GenerationRecord(
+                        1L, 56L, 100L, "gen-56", "CREATED", "key-2")));
+
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-2\",\"userContent\":\"hello\",\"sourceUserMessageId\":\"9\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.generationId").value(56));
+
+        verify(receiveService).receive(1L, 100L, "key-2",
+                GenerationReceiveService.DEFAULT_USER_ROLE, "hello", "AUTO", 9L);
+        verify(enqueueService).enqueue(1L, "GENERATION", 56L);
+    }
+
+    @Test
     void sendGenerationExplicitModeIsValidatedAndEchoed() throws Exception {
         when(receiveService.receive(1L, 100L, "key-1",
                 GenerationReceiveService.DEFAULT_USER_ROLE, "hello", "DISCUSS"))

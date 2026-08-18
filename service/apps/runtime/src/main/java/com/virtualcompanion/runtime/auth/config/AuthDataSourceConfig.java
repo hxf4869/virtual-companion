@@ -22,6 +22,7 @@ import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
+import com.virtualcompanion.platform.persistence.GenerationVersionService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvider;
@@ -342,6 +343,12 @@ public class AuthDataSourceConfig {
         return new UsageHealthService(authJdbcTemplate);
     }
 
+    /** GEN-VER (V53): list/select generation versions for one user message. */
+    @Bean
+    public GenerationVersionService generationVersionService(JdbcTemplate authJdbcTemplate) {
+        return new GenerationVersionService(authJdbcTemplate);
+    }
+
     /** AGE-MIN: the simulated verification port (Alpha; no real vendor). */
     @Bean
     public AgeVerificationPort ageVerificationPort() {
@@ -641,7 +648,8 @@ public class AuthDataSourceConfig {
                 workItemEnqueueService,
                 realtimeEventRepository,
                 liveDeltaBroker,
-                conversationRepository);
+                conversationRepository,
+                generationRepository);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

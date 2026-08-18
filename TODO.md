@@ -2,7 +2,17 @@
 
 产品待办（现状声明见 README）：
 
-## 当前里程碑（2026-08-18 第十三轮）：使用时长 / 健康设置
+## 当前里程碑（2026-08-18 第十四轮）：生成版本选择器
+
+> 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+
+- [x] GEN-VER 生成版本：OpenAPI `sourceUserMessageId` + GET
+      `/messages/{id}/generation-versions` + POST `/generations/{id}/select`
+      + V53 source/selected + receive 复用原用户消息 + list_messages 默认只露
+      选中助手版本 + 重新生成不重复入队 MEMORY_EXTRACT + 聊天页「重新生成」与
+      版本 chips + SQL/单元/组件测试（FR-CHAT-003）。
+
+## 已完成（2026-08-18 第十三轮）：使用时长 / 健康设置
 
 > 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
 
@@ -292,6 +302,6 @@
 - 真实成年核验供应商与申诉提交接口
 - 举报/申诉工单后端
 
-- 生成版本选择器、精确虚拟滚动
+- 精确虚拟滚动
 - 真实支付、公开注册、语音/图像/WebSocket/恋爱模式/主动推送
 - SAFETY 分类器接线、COORD/QUOTA 深化（2026-08-15 Owner：维持现状）

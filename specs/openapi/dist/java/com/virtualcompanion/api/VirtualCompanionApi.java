@@ -80,6 +80,12 @@ public interface VirtualCompanionApi {
     /** Flip the 不记住 negative-memory marker of one message (MEM-NEG). */
     Message setMessageNoMemory();
 
+    /** Make this generation the selected version of its user message. */
+    GenerationVersion selectGenerationVersion();
+
+    /** List generation versions for a user message. */
+    Void listGenerationVersions();
+
     /** Cancel a non-terminal generation. */
     Generation cancelGeneration();
 

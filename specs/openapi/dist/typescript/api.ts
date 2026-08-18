@@ -142,9 +142,18 @@ export interface MessageNoMemoryUpdate {
   noMemory: string
 }
 
+export interface GenerationVersion {
+  generationId: string
+  selected: string
+  status: string
+  createdAt?: string
+  assistantMessageId?: string
+}
+
 export interface SendGenerationRequest {
   idempotencyKey: string
   userContent?: string
+  sourceUserMessageId?: string
   mode?: string
 }
 
@@ -444,6 +453,8 @@ export interface VirtualCompanionApiClient {
   listMessages(): Promise<VersionResponse>
   deleteMessage(): Promise<VersionResponse>
   setMessageNoMemory(): Promise<VersionResponse>
+  selectGenerationVersion(): Promise<VersionResponse>
+  listGenerationVersions(): Promise<VersionResponse>
   cancelGeneration(): Promise<VersionResponse>
   getGenerationSnapshot(): Promise<VersionResponse>
   recordGenerationFeedback(): Promise<VersionResponse>

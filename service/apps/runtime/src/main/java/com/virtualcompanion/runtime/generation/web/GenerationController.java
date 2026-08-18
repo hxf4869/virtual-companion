@@ -74,13 +74,26 @@ public class GenerationController {
         // to AUTO only for direct callers).
         String mode = GenerationReceiveService.normalizeMode(request.mode());
 
-        ReceivedGeneration received = receiveService.receive(
-                ownerUserId,
-                conversation,
-                request.idempotencyKey(),
-                GenerationReceiveService.DEFAULT_USER_ROLE,
-                request.userContent(),
-                mode);
+        ReceivedGeneration received;
+        if (request.sourceUserMessageId() != null && !request.sourceUserMessageId().isBlank()) {
+            long source = parseId(request.sourceUserMessageId(), "sourceUserMessageId");
+            received = receiveService.receive(
+                    ownerUserId,
+                    conversation,
+                    request.idempotencyKey(),
+                    GenerationReceiveService.DEFAULT_USER_ROLE,
+                    request.userContent() == null ? "" : request.userContent(),
+                    mode,
+                    source);
+        } else {
+            received = receiveService.receive(
+                    ownerUserId,
+                    conversation,
+                    request.idempotencyKey(),
+                    GenerationReceiveService.DEFAULT_USER_ROLE,
+                    request.userContent(),
+                    mode);
+        }
 
         // Enqueue only on first creation; a duplicate reception resolves to the
         // same logical generation and must not produce a second work item.
@@ -135,7 +148,8 @@ public class GenerationController {
     public record SendGenerationRequest(
             @NotBlank @Size(max = 128) String idempotencyKey,
             @Size(max = 4096) String userContent,
-            String mode) {
+            String mode,
+            String sourceUserMessageId) {
     }
 
     /** Generation response (OpenAPI {@code Generation}). */

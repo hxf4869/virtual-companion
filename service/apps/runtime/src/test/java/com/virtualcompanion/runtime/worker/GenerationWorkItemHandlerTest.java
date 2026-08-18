@@ -48,6 +48,7 @@ import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
+import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
@@ -87,6 +88,7 @@ class GenerationWorkItemHandlerTest {
     private final RealtimeEventRepository realtimeEventRepository = mock(RealtimeEventRepository.class);
     private final LiveDeltaBroker deltaBroker = mock(LiveDeltaBroker.class);
     private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
+    private final GenerationRepository generationRepository = mock(GenerationRepository.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LiveModelInvoker> invokerProvider = mock(ObjectProvider.class);
@@ -103,12 +105,15 @@ class GenerationWorkItemHandlerTest {
     void setUp() {
         handler = new GenerationWorkItemHandler(
                 stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
-                enqueueService, realtimeEventRepository, deltaBroker, conversationRepository);
+                enqueueService, realtimeEventRepository, deltaBroker, conversationRepository,
+                generationRepository);
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
         // INC-MODE: non-incognito by default so the legacy MEM-LOOP tests
         // keep expecting the extract enqueue.
         when(conversationRepository.isIncognitoForGeneration(anyLong(), anyLong()))
+                .thenReturn(false);
+        when(generationRepository.hasCompletedSiblingVersion(anyLong(), anyLong()))
                 .thenReturn(false);
     }
 
@@ -305,6 +310,24 @@ class GenerationWorkItemHandlerTest {
         handle(generationClaim(1L, 10L));
 
         // The turn still finalizes; only the MEMORY_EXTRACT enqueue is skipped.
+        verify(finalizeService).finalizeCompleted(1L, 10L, 777L, FALLBACK, "", false);
+        verify(enqueueService, never()).enqueue(
+                1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);
+    }
+
+    @Test
+    void regenerateWithCompletedSiblingSkipsTheMemoryExtractEnqueue() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(assembler.assemble(1L, 10L, "FENCE-A")).thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(zeroLlmPrepared());
+        when(invoker.execute(any(), any())).thenReturn(zeroLlmOutcome());
+        when(finalizeService.insertCandidate(1L, 10L, FALLBACK)).thenReturn(777L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+        when(generationRepository.hasCompletedSiblingVersion(1L, 10L)).thenReturn(true);
+
+        handle(generationClaim(1L, 10L));
+
         verify(finalizeService).finalizeCompleted(1L, 10L, 777L, FALLBACK, "", false);
         verify(enqueueService, never()).enqueue(
                 1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);

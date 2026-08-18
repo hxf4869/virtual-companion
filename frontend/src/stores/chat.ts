@@ -36,11 +36,14 @@ import {
   renameConversation as apiRenameConversation,
   sendGeneration,
   setMessageNoMemory as apiSetMessageNoMemory,
+  listGenerationVersions,
+  selectGenerationVersion,
   asChatMode,
   type ChatMode,
   type ChatTransport,
   type ConversationListItem,
   type CreateConversationResponse,
+  type GenerationVersion,
   type Message,
   type MessageFeedbackKind,
   type ServiceModeStatus,
@@ -92,6 +95,8 @@ export const useChatStore = defineStore("h5-chat", () => {
   // page can echo it as a pending bubble while streaming and offer a one-click
   // retry after a terminal failure.
   const pendingUserContent = ref("");
+  // GEN-VER: versions keyed by source user message id.
+  const versionsByUserMessage = ref<Record<string, GenerationVersion[]>>({});
   // USAGE-VIZ: settled provider token usage of the last completed generation.
   const usage = ref<{ inputTokens: number; outputTokens: number } | null>(null);
   // CHAT-MODE: the turn-level interaction mode for the next send. AUTO keeps
@@ -296,6 +301,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     historyHasMore.value = false;
     pendingMemoryCount.value = 0;
     pendingUserContent.value = "";
+    versionsByUserMessage.value = {};
     usage.value = null;
     selectedMode.value = "AUTO";
     feedbackKinds.value = [];
@@ -580,6 +586,61 @@ export const useChatStore = defineStore("h5-chat", () => {
     await advanceHistory(transport);
   }
 
+  /** GEN-VER: regenerate against an existing user message (no second user row). */
+  async function regenerate(
+    transport: ChatTransport,
+    deps: RealtimeDeps,
+    sourceUserMessageId: string,
+    content: string,
+  ): Promise<void> {
+    lastTransport = transport;
+    pendingUserContent.value = content;
+    if (!conversationId.value) {
+      phase.value = "failed";
+      return;
+    }
+    const generation = await sendGeneration(
+      transport,
+      conversationId.value,
+      crypto.randomUUID(),
+      content,
+      selectedMode.value,
+      sourceUserMessageId,
+    );
+    if (!generation) {
+      phase.value = "failed";
+      outcome.value = null;
+      return;
+    }
+    await run(deps, generation.generationId, 1);
+    await loadHistory(transport);
+    await loadVersions(transport, sourceUserMessageId);
+  }
+
+  async function loadVersions(transport: ChatTransport, userMessageId: string): Promise<void> {
+    try {
+      const rows = await listGenerationVersions(transport, userMessageId);
+      versionsByUserMessage.value = {
+        ...versionsByUserMessage.value,
+        [userMessageId]: rows,
+      };
+    } catch {
+      // Non-fatal: the selected version is already in history.
+    }
+  }
+
+  async function selectVersion(
+    transport: ChatTransport,
+    generationId: string,
+    userMessageId: string,
+  ): Promise<boolean> {
+    const row = await selectGenerationVersion(transport, generationId);
+    if (!row) return false;
+    await loadHistory(transport);
+    await loadVersions(transport, userMessageId);
+    return true;
+  }
+
   return {
     phase,
     generationId,
@@ -591,6 +652,10 @@ export const useChatStore = defineStore("h5-chat", () => {
     historyHasMore,
     pendingMemoryCount,
     pendingUserContent,
+    versionsByUserMessage,
+    loadVersions,
+    regenerate,
+    selectVersion,
     usage,
     selectedMode,
     setMode,

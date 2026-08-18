@@ -13,6 +13,7 @@ import com.virtualcompanion.modelruntime.execution.ProviderAttemptAudit;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
+import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
@@ -95,6 +96,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final RealtimeEventRepository realtimeEventRepository;
     private final LiveDeltaBroker deltaBroker;
     private final ConversationRepository conversationRepository;
+    private final GenerationRepository generationRepository;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -105,7 +107,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             WorkItemEnqueueService enqueueService,
             RealtimeEventRepository realtimeEventRepository,
             LiveDeltaBroker deltaBroker,
-            ConversationRepository conversationRepository) {
+            ConversationRepository conversationRepository,
+            GenerationRepository generationRepository) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -115,6 +118,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.realtimeEventRepository = realtimeEventRepository;
         this.deltaBroker = deltaBroker;
         this.conversationRepository = conversationRepository;
+        this.generationRepository = generationRepository;
     }
 
     @Override
@@ -389,10 +393,17 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
      * <p>INC-MODE (FR-CHAT-005): incognito conversations never produce
      * long-term memory candidates, so the enqueue is skipped entirely (safety
      * checks and statutory logs still apply — incognito is not "no records").
+     *
+     * <p>GEN-VER (FR-CHAT-003): a regenerate of an already-completed user
+     * message must not write a second memory candidate.
      */
     private void enqueueMemoryExtract(long ownerUserId, long generationId) {
         if (conversationRepository.isIncognitoForGeneration(ownerUserId, generationId)) {
             log.info("skipping MEMORY_EXTRACT for incognito generation {}", generationId);
+            return;
+        }
+        if (generationRepository.hasCompletedSiblingVersion(ownerUserId, generationId)) {
+            log.info("skipping MEMORY_EXTRACT for regenerate generation {}", generationId);
             return;
         }
         enqueueService.enqueue(
