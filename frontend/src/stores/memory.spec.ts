@@ -4,8 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Memory, MemoryApiResponse, MemoryTransport } from "@/api/memory";
 import { useMemoryStore } from "@/stores/memory";
 
-function memory(id: string, status: Memory["status"], summary = "s"): Memory {
-  return { memoryId: id, scope: "RELATIONSHIP", summary, status };
+function memory(
+  id: string,
+  status: Memory["status"],
+  summary = "s",
+  scope: Memory["scope"] = "RELATIONSHIP",
+): Memory {
+  return { memoryId: id, scope, summary, status };
 }
 
 /** A transport whose request() is a vi.fn returning path-keyed responses. */
@@ -221,7 +226,44 @@ describe("useMemoryStore partition + no-fake-success", () => {
     store.reset();
     expect(store.pending).toEqual([]);
     expect(store.canonical).toEqual([]);
+    expect(store.rejected).toEqual([]);
+    expect(store.expired).toEqual([]);
     expect(store.error).toBeNull();
+  });
+
+  it("MEM-GROUPS: load keeps rejected and expired out of canonical and splits scope", async () => {
+    const store = useMemoryStore();
+    const t = keyedTransport({
+      ...Object.fromEntries([
+        ok("/api/v1/relationships/rel-1/memories", [
+          memory("pend-1", "PENDING_CONFIRMATION", "candidate"),
+          memory("rel-acc", "ACCEPTED", "角色专属"),
+          memory("sess-acc", "ACCEPTED", "会话记忆", "SESSION"),
+          memory("rej-1", "REJECTED", "已拒绝"),
+          memory("exp-1", "EXPIRED", "已过期"),
+        ]),
+      ]),
+    });
+    await store.load(t, "rel-1");
+
+    expect(store.canonical.map((m) => m.memoryId)).toEqual(["rel-acc", "sess-acc"]);
+    expect(store.relationshipCanonical.map((m) => m.memoryId)).toEqual(["rel-acc"]);
+    expect(store.sessionCanonical.map((m) => m.memoryId)).toEqual(["sess-acc"]);
+    expect(store.rejected.map((m) => m.memoryId)).toEqual(["rej-1"]);
+    expect(store.expired.map((m) => m.memoryId)).toEqual(["exp-1"]);
+    expect(store.canonical.some((m) => m.status !== "ACCEPTED")).toBe(false);
+  });
+
+  it("MEM-GROUPS: reject moves the candidate into rejected, never canonical", async () => {
+    const store = useMemoryStore();
+    await seed(store);
+    const okT = keyedTransport({
+      ...Object.fromEntries([ok("/api/v1/memories/pend-1/reject", memory("pend-1", "REJECTED"))]),
+    });
+    await store.reject(okT, "pend-1");
+    expect(store.pending.map((m) => m.memoryId)).toEqual([]);
+    expect(store.rejected.map((m) => m.memoryId)).toEqual(["pend-1", "rej-1"]);
+    expect(store.canonical.map((m) => m.memoryId)).not.toContain("pend-1");
   });
 });
 

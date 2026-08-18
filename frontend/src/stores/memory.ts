@@ -61,12 +61,18 @@ function failureCode(error: unknown, fallback: MemoryErrorCode): MemoryErrorCode
 export const useMemoryStore = defineStore("h5-memory", () => {
   const pending = ref<Memory[]>([]);
   const canonical = ref<Memory[]>([]);
+  const rejected = ref<Memory[]>([]);
+  const expired = ref<Memory[]>([]);
   const evidence = ref<Record<string, MemoryEvidence[]>>({});
   const error = ref<MemoryErrorCode | null>(null);
 
   /** Unconfirmed candidates are never part of the canonical set. */
   const pendingCount = computed(() => pending.value.length);
   const canonicalCount = computed(() => canonical.value.length);
+  const relationshipCanonical = computed(() =>
+    canonical.value.filter((m) => m.scope === "RELATIONSHIP"),
+  );
+  const sessionCanonical = computed(() => canonical.value.filter((m) => m.scope === "SESSION"));
 
   function without(list: Memory[], memoryId: string): Memory[] {
     return list.filter((m) => m.memoryId !== memoryId);
@@ -96,6 +102,8 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     }
     pending.value = list.filter((m) => m.status === "PENDING_CONFIRMATION");
     canonical.value = list.filter((m) => m.status === "ACCEPTED");
+    rejected.value = list.filter((m) => m.status === "REJECTED");
+    expired.value = list.filter((m) => m.status === "EXPIRED");
   }
 
   /**
@@ -142,18 +150,21 @@ export const useMemoryStore = defineStore("h5-memory", () => {
   /** Reject: a pending candidate is dropped ONLY on confirmed success. */
   async function reject(t: MemoryTransport, memoryId: string): Promise<void> {
     error.value = null;
-    let rejected: Memory | null;
+    let result: Memory | null;
     try {
-      rejected = await rejectMemory(t, memoryId);
+      result = await rejectMemory(t, memoryId);
     } catch (e) {
       error.value = failureCode(e, "reject-failed");
       return;
     }
-    if (!rejected) {
+    if (!result) {
       error.value = "reject-not-confirmed";
       return;
     }
     pending.value = without(pending.value, memoryId);
+    if (result.status === "REJECTED") {
+      rejected.value = [result, ...without(rejected.value, memoryId)];
+    }
   }
 
   /**
@@ -219,6 +230,8 @@ export const useMemoryStore = defineStore("h5-memory", () => {
   function reset(): void {
     pending.value = [];
     canonical.value = [];
+    rejected.value = [];
+    expired.value = [];
     evidence.value = {};
     error.value = null;
   }
@@ -226,10 +239,14 @@ export const useMemoryStore = defineStore("h5-memory", () => {
   return {
     pending,
     canonical,
+    rejected,
+    expired,
     evidence,
     error,
     pendingCount,
     canonicalCount,
+    relationshipCanonical,
+    sessionCanonical,
     load,
     create,
     confirm,

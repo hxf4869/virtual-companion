@@ -136,6 +136,32 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("MEM-GROUPS: splits saved memory by scope and keeps rejected/expired out of saved facts", async () => {
+    const store = useMemoryStore();
+    store.canonical = [
+      canonicalMemory("rel-1", "角色专属"),
+      { memoryId: "sess-1", scope: "SESSION", summary: "会话记忆", status: "ACCEPTED" },
+    ];
+    store.rejected = [
+      { memoryId: "rej-1", scope: "RELATIONSHIP", summary: "被拒绝的候选", status: "REJECTED" },
+    ];
+    store.expired = [
+      { memoryId: "exp-1", scope: "RELATIONSHIP", summary: "过期记忆", status: "EXPIRED" },
+    ];
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="memory-group-relationship"]').text()).toContain("角色专属");
+    expect(wrapper.find('[data-testid="memory-group-session"]').text()).toContain("会话记忆");
+    expect(wrapper.find('[data-testid="memory-group-rejected"]').text()).toContain("被拒绝的候选");
+    expect(wrapper.find('[data-testid="memory-group-rejected"]').text()).toContain("不作为已保存事实");
+    expect(wrapper.find('[data-testid="memory-group-rejected"]').text()).not.toContain("已保存记忆");
+    expect(wrapper.find('[data-testid="memory-group-expired"]').text()).toContain("过期记忆");
+    expect(wrapper.find('[data-testid="memory-group-expired"]').text()).toContain("不作为已保存事实");
+    expect(wrapper.find('[data-testid="memory-group-expired"]').text()).not.toContain("已保存记忆");
+    wrapper.unmount();
+  });
+
   it("hides a side's empty status when that list has items", async () => {
     const store = useMemoryStore();
     vi.spyOn(store, "load").mockImplementation(async () => {

@@ -158,7 +158,7 @@ states carry alert/live a11y semantics. -->
     </view>
 
     <view class="section" aria-live="polite">
-      <text class="section-title">Canonical 记忆（{{ memory.canonicalCount }}）</text>
+      <text class="section-title">已保存记忆（{{ memory.canonicalCount }}）</text>
       <view
         v-if="showEmptyCanonical"
         class="empty-status"
@@ -167,34 +167,131 @@ states carry alert/live a11y semantics. -->
       >
         <text>还没有已保存记忆。</text>
       </view>
-      <view
-        v-for="m in memory.canonical"
-        :key="m.memoryId"
-        class="card canonical"
-      >
-        <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}</text>
-        <view v-else class="edit-row">
-          <input
-            v-model="draftSummary"
-            class="edit-input"
-            aria-label="编辑记忆内容"
-          />
-          <button size="mini" :disabled="busy" @click="onSave(m.memoryId)">
-            保存
-          </button>
+      <template v-else>
+        <view
+          v-if="memory.relationshipCanonical.length > 0"
+          data-testid="memory-group-relationship"
+        >
+          <text class="section-subtitle">当前角色专属</text>
+          <view
+            v-for="m in memory.relationshipCanonical"
+            :key="m.memoryId"
+            class="card canonical"
+          >
+            <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}</text>
+            <view v-else class="edit-row">
+              <input
+                v-model="draftSummary"
+                class="edit-input"
+                aria-label="编辑记忆内容"
+              />
+              <button size="mini" :disabled="busy" @click="onSave(m.memoryId)">
+                保存
+              </button>
+            </view>
+            <text class="meta">{{ m.scope }}</text>
+            <view class="actions">
+              <button
+                size="mini"
+                :disabled="busy"
+                @click="startEdit(m.memoryId, m.summary)"
+              >
+                编辑
+              </button>
+              <button size="mini" :disabled="busy" @click="onDelete(m.memoryId)">
+                删除
+              </button>
+              <button
+                size="mini"
+                data-testid="memory-open-detail"
+                @click="openDetail(m.memoryId)"
+              >
+                详情
+              </button>
+            </view>
+          </view>
         </view>
-        <text class="meta">{{ m.scope }}</text>
+        <view
+          v-if="memory.sessionCanonical.length > 0"
+          data-testid="memory-group-session"
+        >
+          <text class="section-subtitle">会话记忆</text>
+          <view
+            v-for="m in memory.sessionCanonical"
+            :key="m.memoryId"
+            class="card canonical"
+          >
+            <text v-if="editingId !== m.memoryId" class="summary">{{ m.summary }}</text>
+            <view v-else class="edit-row">
+              <input
+                v-model="draftSummary"
+                class="edit-input"
+                aria-label="编辑记忆内容"
+              />
+              <button size="mini" :disabled="busy" @click="onSave(m.memoryId)">
+                保存
+              </button>
+            </view>
+            <text class="meta">{{ m.scope }}</text>
+            <view class="actions">
+              <button
+                size="mini"
+                :disabled="busy"
+                @click="startEdit(m.memoryId, m.summary)"
+              >
+                编辑
+              </button>
+              <button size="mini" :disabled="busy" @click="onDelete(m.memoryId)">
+                删除
+              </button>
+              <button
+                size="mini"
+                data-testid="memory-open-detail"
+                @click="openDetail(m.memoryId)"
+              >
+                详情
+              </button>
+            </view>
+          </view>
+        </view>
+      </template>
+    </view>
+
+    <view
+      v-if="memory.rejected.length > 0"
+      class="section"
+      data-testid="memory-group-rejected"
+      aria-live="polite"
+    >
+      <text class="section-title">已拒绝（{{ memory.rejected.length }}）</text>
+      <text class="hint">这些候选已被拒绝，不作为已保存事实。</text>
+      <view v-for="m in memory.rejected" :key="m.memoryId" class="card">
+        <text class="summary">{{ m.summary }}</text>
+        <text class="meta">{{ m.scope }} · {{ m.status }}</text>
         <view class="actions">
           <button
             size="mini"
-            :disabled="busy"
-            @click="startEdit(m.memoryId, m.summary)"
+            data-testid="memory-open-detail"
+            @click="openDetail(m.memoryId)"
           >
-            编辑
+            详情
           </button>
-          <button size="mini" :disabled="busy" @click="onDelete(m.memoryId)">
-            删除
-          </button>
+        </view>
+      </view>
+    </view>
+
+    <view
+      v-if="memory.expired.length > 0"
+      class="section"
+      data-testid="memory-group-expired"
+      aria-live="polite"
+    >
+      <text class="section-title">已过期（{{ memory.expired.length }}）</text>
+      <text class="hint">这些记录已过期，不作为已保存事实。</text>
+      <view v-for="m in memory.expired" :key="m.memoryId" class="card">
+        <text class="summary">{{ m.summary }}</text>
+        <text class="meta">{{ m.scope }} · {{ m.status }}</text>
+        <view class="actions">
           <button
             size="mini"
             data-testid="memory-open-detail"
@@ -447,6 +544,13 @@ function goTo(url: string): void {
   font-weight: bold;
   display: block;
   margin-bottom: 4px;
+}
+.section-subtitle {
+  font-weight: 600;
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: #444;
 }
 .hint {
   color: #888;
