@@ -24,6 +24,7 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.GenerationVersionService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
+import com.virtualcompanion.platform.persistence.IncognitoPrefService;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.MemoryService;
@@ -347,6 +348,12 @@ public class AuthDataSourceConfig {
     @Bean
     public GenerationVersionService generationVersionService(JdbcTemplate authJdbcTemplate) {
         return new GenerationVersionService(authJdbcTemplate);
+    }
+
+    /** INC-PREF (V54): default incognito flag for the next new conversation. */
+    @Bean
+    public IncognitoPrefService incognitoPrefService(JdbcTemplate authJdbcTemplate) {
+        return new IncognitoPrefService(authJdbcTemplate);
     }
 
     /** AGE-MIN: the simulated verification port (Alpha; no real vendor). */

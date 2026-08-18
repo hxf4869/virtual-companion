@@ -134,6 +134,15 @@
           <text>使用时长</text>
         </button>
         <button
+          data-testid="nav-incognito"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="无痕模式"
+          @click="goTo('/pages/incognito/incognito')"
+        >
+          <text>无痕模式</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"

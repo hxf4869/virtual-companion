@@ -73,6 +73,12 @@
 			}
 		},
 		{
+			"path": "pages/incognito/incognito",
+			"style": {
+				"navigationBarTitleText": "无痕模式"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"

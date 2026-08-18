@@ -33,6 +33,14 @@ export interface UsageHealthPrefsUpdate {
   sessionGapMinutes: string
 }
 
+export interface IncognitoPref {
+  defaultIncognito: string
+}
+
+export interface IncognitoPrefUpdate {
+  defaultIncognito: string
+}
+
 export interface UsageReminderRequest {
   result: string
 }
@@ -435,6 +443,8 @@ export interface VirtualCompanionApiClient {
   updateUsageHealthPrefs(): Promise<VersionResponse>
   usageHealthHeartbeat(): Promise<VersionResponse>
   recordUsageReminder(): Promise<VersionResponse>
+  getIncognitoPref(): Promise<VersionResponse>
+  updateIncognitoPref(): Promise<VersionResponse>
   createRelationship(): Promise<VersionResponse>
   listRelationships(): Promise<VersionResponse>
   getRelationship(): Promise<VersionResponse>

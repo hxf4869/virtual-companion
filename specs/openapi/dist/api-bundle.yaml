@@ -207,6 +207,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/incognito-pref:
+    get:
+      operationId: getIncognitoPref
+      summary: Default incognito flag for the next new conversation
+      description: Reads whether the next newly created conversation should start incognito (FR-CHAT-005). Existing conversations
+        keep their frozen flag. Missing prefs read as false. Requires a server-verified authentication context.
+      responses:
+        '200':
+          description: Current default
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncognitoPref'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: updateIncognitoPref
+      summary: Replace the default incognito flag for the next new conversation
+      description: Sets whether the next newly created conversation should start incognito. Does not flip existing conversations.
+        Requires a server-verified authentication context.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncognitoPrefUpdate'
+      responses:
+        '200':
+          description: Pref after the update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncognitoPref'
+        '400':
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -2077,6 +2126,22 @@ components:
           - 15
           - 30
           - 45
+    IncognitoPref:
+      type: object
+      description: Account default for the next new conversation's incognito flag.
+      required:
+      - defaultIncognito
+      properties:
+        defaultIncognito:
+          type: boolean
+    IncognitoPrefUpdate:
+      type: object
+      description: Replacement of the next-conversation incognito default.
+      required:
+      - defaultIncognito
+      properties:
+        defaultIncognito:
+          type: boolean
     UsageReminderRequest:
       type: object
       description: Outcome of a continuous-use reminder.

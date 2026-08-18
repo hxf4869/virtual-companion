@@ -520,6 +520,34 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("INC-PREF: seeds the next-conversation toggle from the saved default", async () => {
+    useAuthStore().accessToken = "a-token";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/incognito-pref") {
+          return { ok: true, status: 200, json: async () => ({ defaultIncognito: true }) };
+        }
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
+        }
+        if (url.includes("/messages")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="incognito-toggle"]').text()).toContain("无痕：开");
+    wrapper.unmount();
+  });
+
   it("restores the input when send fails before a generation exists", async () => {
     const wrapper = mountPage();
     await flushPromises();

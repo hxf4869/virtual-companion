@@ -9,6 +9,8 @@
     "updateUsageHealthPrefs",
     "usageHealthHeartbeat",
     "recordUsageReminder",
+    "getIncognitoPref",
+    "updateIncognitoPref",
     "createRelationship",
     "listRelationships",
     "getRelationship",
@@ -65,6 +67,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "cbc4ccf8e99eca0c7413617793980e88632991080a7e4bb1a53e0fa41ef82393"
+    "sha256": "bc1f57b733e770e39d0943b6f8b14edfe5ac44507adadf0c79a4b22c2ad99526"
   }
 }

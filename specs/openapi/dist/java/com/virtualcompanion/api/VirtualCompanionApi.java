@@ -26,6 +26,12 @@ public interface VirtualCompanionApi {
     /** Record the outcome of a continuous-use reminder. */
     UsageHealthStatus recordUsageReminder();
 
+    /** Default incognito flag for the next new conversation. */
+    IncognitoPref getIncognitoPref();
+
+    /** Replace the default incognito flag for the next new conversation. */
+    IncognitoPref updateIncognitoPref();
+
     /** Create a Companion relationship (becomes the active Companion). */
     Relationship createRelationship();
 

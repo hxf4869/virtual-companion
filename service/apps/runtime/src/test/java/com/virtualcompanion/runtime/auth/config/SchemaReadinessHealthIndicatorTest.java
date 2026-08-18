@@ -165,8 +165,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V50 = END-TODAY end conversation + incognito body clear;
         // V51 = CHAT-MODE CASUAL turn mode;
         // V52 = USAGE-HEALTH continuous-use reminder prefs + heartbeat;
-        // V53 = GEN-VER generation versions for one user message).
+        // V53 = GEN-VER generation versions for one user message;
+        // V54 = INC-PREF default incognito for the next new conversation).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(53);
+                .isEqualTo(54);
     }
 }

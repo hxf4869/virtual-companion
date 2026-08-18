@@ -554,6 +554,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 import { useUsageHealthStore } from "@/stores/usage-health";
+import { useIncognitoStore } from "@/stores/incognito";
 
 function resolveOrigin(): string {
   return typeof window !== "undefined" && window.location && window.location.origin
@@ -569,6 +570,7 @@ export default defineComponent({
     const relStore = useRelationshipStore();
     const auth = useAuthStore();
     const usageHealth = useUsageHealthStore();
+    const incognitoPref = useIncognitoStore();
     const inputText = ref("");
     const initError = ref(false);
     // REL-DEACT: two-step confirm state for the deactivate button (no modal).
@@ -1194,6 +1196,8 @@ export default defineComponent({
         usagePulseTimer = setInterval(() => {
           void usageHealth.heartbeat(transport);
         }, 60_000);
+        await incognitoPref.load(transport);
+        incognitoNext.value = incognitoPref.defaultIncognito;
       }
       // SVC-MODE: surface the current service mode (non-fatal, ops fact).
       await store.loadServiceMode(transport);
