@@ -26,6 +26,7 @@ import {
   type AuthTokens,
   type AuthTransport,
 } from "@/api/auth";
+import { clearLocalSessionCaches } from "@/domain/session-cleanup";
 
 export type AuthErrorCode =
   | "invalid-credentials"
@@ -63,10 +64,14 @@ export const useAuthStore = defineStore("h5-auth", () => {
   }
 
   function clear(): void {
+    const hadSession = accessToken.value !== null;
     accessToken.value = null;
     accountId.value = null;
     role.value = null;
     error.value = null;
+    if (hadSession) {
+      clearLocalSessionCaches();
+    }
   }
 
   /** Log in. true only on a confirmed server login; never fakes success. */

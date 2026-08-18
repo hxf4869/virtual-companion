@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthTokens, AuthTransport } from "@/api/auth";
 import { useAuthStore } from "@/stores/auth";
+import { useChatStore } from "@/stores/chat";
+import { useMemoryStore } from "@/stores/memory";
+import { useRelationshipStore } from "@/stores/relationship";
 
 function okTransport(tokens: AuthTokens): AuthTransport {
   return {
@@ -172,6 +175,51 @@ describe("useAuthStore", () => {
     await store.login(okTransport(sampleTokens("a2")), "alice", "pw");
     await store.logout(throwTransport());
     expect(store.isAuthenticated).toBe(false);
+  });
+
+  it("LOGOUT-CLEAR: logout drops in-memory chat, memory, and relationship caches", async () => {
+    const auth = useAuthStore();
+    await auth.login(okTransport(sampleTokens("a")), "alice", "pw");
+    const chat = useChatStore();
+    const memory = useMemoryStore();
+    const rel = useRelationshipStore();
+    chat.conversationId = "99";
+    chat.messages = [
+      { messageId: "m1", conversationId: "99", role: "user", content: "secret" },
+    ];
+    memory.canonical = [
+      { memoryId: "mem-1", scope: "RELATIONSHIP", summary: "不该留给下一账号", status: "ACCEPTED" },
+    ];
+    rel.relationships = [
+      {
+        relationshipId: "rel-1",
+        personaRef: "gentle-listener",
+        active: true,
+      },
+    ];
+    rel.currentRelationshipId = "rel-1";
+
+    await auth.logout(okTransport(sampleTokens()));
+
+    expect(chat.conversationId).toBe("");
+    expect(chat.messages).toEqual([]);
+    expect(memory.canonical).toEqual([]);
+    expect(rel.relationships).toEqual([]);
+    expect(rel.currentRelationshipId).toBeNull();
+  });
+
+  it("LOGOUT-CLEAR: a failed refresh without an existing session does not wipe caches", async () => {
+    const memory = useMemoryStore();
+    memory.canonical = [
+      { memoryId: "mem-1", scope: "RELATIONSHIP", summary: "预置", status: "ACCEPTED" },
+    ];
+    const auth = useAuthStore();
+    expect(auth.isAuthenticated).toBe(false);
+
+    await auth.tryRefresh(failTransport(401));
+
+    expect(memory.canonical).toHaveLength(1);
+    expect(memory.canonical[0]?.memoryId).toBe("mem-1");
   });
 
   it("onUnauthorized clears the session and redirects to login (server 401)", async () => {
