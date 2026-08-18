@@ -20,6 +20,23 @@ export interface AgeStateResponse {
   verifiedAt?: string
 }
 
+export interface UsageHealthStatus {
+  reminderAfterMinutes: string
+  sessionGapMinutes: string
+  continuousMinutes: string
+  reminderDue: string
+  sessionStartedAt?: string
+}
+
+export interface UsageHealthPrefsUpdate {
+  reminderAfterMinutes: string
+  sessionGapMinutes: string
+}
+
+export interface UsageReminderRequest {
+  result: string
+}
+
 export interface VersionResponse {
   version: string
   commit?: string
@@ -405,6 +422,10 @@ export interface VirtualCompanionApiClient {
   getServiceMode(): Promise<VersionResponse>
   getAgeState(): Promise<VersionResponse>
   verifyAge(): Promise<VersionResponse>
+  getUsageHealth(): Promise<VersionResponse>
+  updateUsageHealthPrefs(): Promise<VersionResponse>
+  usageHealthHeartbeat(): Promise<VersionResponse>
+  recordUsageReminder(): Promise<VersionResponse>
   createRelationship(): Promise<VersionResponse>
   listRelationships(): Promise<VersionResponse>
   getRelationship(): Promise<VersionResponse>

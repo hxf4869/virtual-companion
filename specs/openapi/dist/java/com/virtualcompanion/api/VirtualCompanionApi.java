@@ -14,6 +14,18 @@ public interface VirtualCompanionApi {
     /** Run the simulated adult verification (FR-AUTH-002, Alpha port). */
     AgeStateResponse verifyAge();
 
+    /** Continuous-use reminder prefs and current session (FR well-being). */
+    UsageHealthStatus getUsageHealth();
+
+    /** Replace continuous-use reminder prefs. */
+    UsageHealthStatus updateUsageHealthPrefs();
+
+    /** Record activity and recompute continuous-use reminder. */
+    UsageHealthStatus usageHealthHeartbeat();
+
+    /** Record the outcome of a continuous-use reminder. */
+    UsageHealthStatus recordUsageReminder();
+
     /** Create a Companion relationship (becomes the active Companion). */
     Relationship createRelationship();
 

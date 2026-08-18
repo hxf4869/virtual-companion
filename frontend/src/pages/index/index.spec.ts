@@ -64,6 +64,7 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(wrapper.find('[data-testid="nav-data"]').text()).toContain("我的数据");
     expect(wrapper.find('[data-testid="nav-help"]').text()).toContain("帮助与安全支持");
     expect(wrapper.find('[data-testid="nav-ai-notice"]').text()).toContain("模型与 AI 标识");
+    expect(wrapper.find('[data-testid="nav-health"]').text()).toContain("使用时长");
     expect(wrapper.find('[data-testid="nav-login"]').text()).toContain("登录");
     wrapper.unmount();
   });

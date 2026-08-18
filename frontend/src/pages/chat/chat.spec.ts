@@ -12,6 +12,7 @@ import ChatPage from "./chat.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
+import { useUsageHealthStore } from "@/stores/usage-health";
 
 const ACTIVE_RELATIONSHIP = {
   relationshipId: 1,
@@ -1035,6 +1036,76 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       true,
     );
     expect(useRelationshipStore().current).not.toBeNull();
+    wrapper.unmount();
+  });
+
+  it("USAGE-HEALTH: shows a system-layer banner and continues without role-play", async () => {
+    const reminderPosts: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [{ ...ACTIVE_RELATIONSHIP }] };
+        }
+        if (url.includes("/messages")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations") && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { conversationId: 1, relationshipId: 1, createdAt: "2026-08-18T00:00:00Z" },
+            ],
+          };
+        }
+        if (url === "/api/v1/usage-health/reminder" && method === "POST") {
+          const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+          reminderPosts.push(body);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              reminderAfterMinutes: 120,
+              sessionGapMinutes: 30,
+              continuousMinutes: 125,
+              reminderDue: body.result !== "CONTINUED",
+              sessionStartedAt: "2026-08-18T00:00:00Z",
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const health = useUsageHealthStore();
+    health.status = {
+      reminderAfterMinutes: 120,
+      sessionGapMinutes: 30,
+      continuousMinutes: 125,
+      reminderDue: true,
+      sessionStartedAt: "2026-08-18T00:00:00Z",
+    };
+    await wrapper.vm.$nextTick();
+    await flushPromises();
+
+    const banner = wrapper.find('[data-testid="usage-health-banner"]');
+    expect(banner.exists()).toBe(true);
+    expect(wrapper.find('[data-testid="usage-health-copy"]').text()).toContain("系统提醒");
+    expect(wrapper.find('[data-testid="usage-health-copy"]').text()).toContain("125 分钟");
+    expect(wrapper.text()).not.toMatch(/舍不得|再陪我一会儿|我很难过/);
+
+    await wrapper.find('[data-testid="usage-health-continue"]').trigger("click");
+    await flushPromises();
+
+    expect(reminderPosts.some((body) => (body as { result?: string }).result === "CONTINUED")).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-testid="usage-health-banner"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

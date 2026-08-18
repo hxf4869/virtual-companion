@@ -33,6 +33,7 @@ import com.virtualcompanion.platform.persistence.RealtimeResumeService;
 import com.virtualcompanion.platform.persistence.RealtimeTicketRepository;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.platform.persistence.ReminderService;
+import com.virtualcompanion.platform.persistence.UsageHealthService;
 import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
@@ -333,6 +334,12 @@ public class AuthDataSourceConfig {
     @Bean
     public AgeVerificationService ageVerificationService(JdbcTemplate authJdbcTemplate) {
         return new AgeVerificationService(authJdbcTemplate);
+    }
+
+    /** USAGE-HEALTH (V52): continuous-use reminder prefs + heartbeat. */
+    @Bean
+    public UsageHealthService usageHealthService(JdbcTemplate authJdbcTemplate) {
+        return new UsageHealthService(authJdbcTemplate);
     }
 
     /** AGE-MIN: the simulated verification port (Alpha; no real vendor). */

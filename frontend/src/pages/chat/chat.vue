@@ -66,6 +66,38 @@
       <text>服务状态：{{ serviceModeSummary }}</text>
     </view>
 
+    <!-- USAGE-HEALTH (§20.7): system-layer continuous-use reminder. Never
+         role-played; the user may continue or end today's conversation. -->
+    <view
+      v-if="usageHealth.reminderDue"
+      class="usage-health-banner"
+      data-testid="usage-health-banner"
+      role="status"
+    >
+      <text data-testid="usage-health-copy">
+        你已连续使用 {{ usageHealth.continuousMinutes }} 分钟。这是系统提醒，不是角色在说话。
+        可以结束今天的对话，或继续使用。
+      </text>
+      <view class="usage-health-actions">
+        <button
+          data-testid="usage-health-continue"
+          class="chat-nav-index"
+          :disabled="usageHealth.busy"
+          @click="onUsageContinue"
+        >
+          继续使用
+        </button>
+        <button
+          data-testid="usage-health-end"
+          class="chat-nav-index conv-delete-btn"
+          :disabled="usageHealth.busy || !store.conversationId"
+          @click="onUsageEnd"
+        >
+          结束今天的对话
+        </button>
+      </view>
+    </view>
+
     <view
       v-if="relStore.status === 'ready'"
       class="current-relationship"
@@ -433,7 +465,7 @@
 // The status region carries role="status" + aria-live="polite" and the cancel
 // button aria-busy while streaming, so async phase changes are announced to
 // assistive technology.
-import { computed, defineComponent, onMounted, onUnmounted, ref } from "vue";
+import { computed, defineComponent, onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createAuthedFetch } from "@/api/authed-fetch";
 import { personaDisplayName } from "@/domain/persona";
@@ -446,6 +478,7 @@ import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
+import { useUsageHealthStore } from "@/stores/usage-health";
 
 /**
  * VIRT-LIST (§18.6): the DOM renders at most this many message rows. History
@@ -469,6 +502,7 @@ export default defineComponent({
     const store = useChatStore();
     const relStore = useRelationshipStore();
     const auth = useAuthStore();
+    const usageHealth = useUsageHealthStore();
     const inputText = ref("");
     const initError = ref(false);
     // REL-DEACT: two-step confirm state for the deactivate button (no modal).
@@ -660,11 +694,28 @@ export default defineComponent({
       if (!text || store.isStreaming) return;
       inputText.value = "";
       await store.send(transport, deps, text);
+      void usageHealth.heartbeat(transport);
       if (store.phase === "failed" && !store.generationId) {
         inputText.value = text;
       }
       if (store.phase === "completed") {
         await scheduleMemoryPrompt();
+      }
+    }
+
+    async function onUsageContinue(): Promise<void> {
+      await usageHealth.record(transport, "CONTINUED");
+    }
+
+    async function onUsageEnd(): Promise<void> {
+      await usageHealth.record(transport, "ENDED");
+      const id = store.conversationId;
+      if (!id) return;
+      const ended = await store.endToday(transport, id);
+      if (ended) {
+        confirmEndToday.value = false;
+        await refreshConversationList();
+        await startConversation();
       }
     }
 
@@ -965,11 +1016,29 @@ export default defineComponent({
       }
     }
 
+    let usagePulseTimer: ReturnType<typeof setInterval> | undefined;
+
+    watch(
+      () => usageHealth.reminderDue,
+      (due) => {
+        if (due) {
+          void usageHealth.markShown(transport);
+        }
+      },
+    );
+
     onMounted(async () => {
       // SESS-REVIVE: restore the session from the HttpOnly refresh cookie
       // before any authenticated call, so a page reload stays logged in.
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
+      }
+      // USAGE-HEALTH: client-assist heartbeat; the backend owns the clock.
+      if (auth.isAuthenticated) {
+        await usageHealth.heartbeat(transport);
+        usagePulseTimer = setInterval(() => {
+          void usageHealth.heartbeat(transport);
+        }, 60_000);
       }
       // SVC-MODE: surface the current service mode (non-fatal, ops fact).
       await store.loadServiceMode(transport);
@@ -1005,6 +1074,10 @@ export default defineComponent({
       clearMemoryPoll();
       store.cancel();
       store.reset();
+      usageHealth.reset();
+      if (usagePulseTimer !== undefined) {
+        clearInterval(usagePulseTimer);
+      }
       // MSG-COPY: never let the feedback timer fire after unmount.
       if (copyResetTimer !== undefined) {
         globalThis.clearTimeout(copyResetTimer);
@@ -1049,6 +1122,9 @@ export default defineComponent({
       onFeedback,
       onDeleteMessage,
       serviceModeSummary,
+      usageHealth,
+      onUsageContinue,
+      onUsageEnd,
       statusText,
       canRetry,
       roleLabel,
@@ -1273,6 +1349,20 @@ export default defineComponent({
   border: 2rpx solid #2a3a5a;
   font-size: 24rpx;
   color: #b8c4d8;
+}
+.usage-health-banner {
+  margin: 0 24rpx 16rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background-color: #2a2430;
+  border: 2rpx solid #5a4a3a;
+  font-size: 24rpx;
+  color: #e8dcc8;
+}
+.usage-health-actions {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 12rpx;
 }
 /* FEEDBACK: one-tap feedback chips on the finished reply. */
 .chat-feedback-row {

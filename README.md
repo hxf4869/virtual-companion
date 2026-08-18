@@ -22,11 +22,11 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V51 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V52 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
-  Age、Data、Help、AI-Notice、Export、Admin H5 页面、typed transport 与组件/状态测试；
+  Age、Data、Help、AI-Notice、Health、Export、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -67,6 +67,11 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   （结构化用户提醒，soonest-first keyset）、`PATCH/DELETE /api/v1/reminders/{reminderId}`
   （REMINDER / FR-NOTIFY-001：提醒是结构化记录而非 Prompt 指令；Alpha 仅存储与
   展示、无主动推送，recurrence=NONE/DAILY/WEEKLY、status=ACTIVE/DISMISSED）
+- `GET /api/v1/usage-health`、`PUT /api/v1/usage-health`、
+  `POST /api/v1/usage-health/heartbeat`、`POST /api/v1/usage-health/reminder`
+  （USAGE-HEALTH / §20.7：连续使用由服务端计算，客户端只辅助；批准提醒间隔
+  60/90/120/180 默认 120，会话中断间隔 15/30/45 默认 30；提醒是系统层事实，
+  仅 CONTINUED 推迟下次提醒）
 - `PUT /api/v1/consents`、`GET /api/v1/consents`（CONSENT / FR-AUTH-003/005：
   版本化同意记录，追加式落库、生效态按类取最新一行；未批准类型 400 拒绝；
   撤回 MODEL_TRAINING 不影响基本聊天）
@@ -102,6 +107,15 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-18 第十三轮）：
+
+- 连续使用提醒（USAGE-HEALTH / §20.7 / 21.3.3）：V52 `usage_health_prefs` /
+  `usage_session` / `usage_reminder_event` + trusted-owner SD（GET 只读、
+  heartbeat 续计、未批准间隔拒绝、owner 错配 fail-closed、仅 vc_api 可执行；
+  SHOWN 只记审计、CONTINUED 才推迟下次提醒）；OpenAPI 四个 usage-health 端点；
+  H5「使用时长」页改批准间隔；聊天页系统层横幅「继续使用 / 结束今天的对话」，
+  不用角色口吻挽留。
 
 后端在运方面上还提供（2026-08-18 第七轮）：
 

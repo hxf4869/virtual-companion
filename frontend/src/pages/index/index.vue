@@ -125,6 +125,15 @@
           <text>模型与 AI 标识</text>
         </button>
         <button
+          data-testid="nav-health"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="使用时长"
+          @click="goTo('/pages/health/health')"
+        >
+          <text>使用时长</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"

@@ -67,6 +67,12 @@
 			}
 		},
 		{
+			"path": "pages/health/health",
+			"style": {
+				"navigationBarTitleText": "使用时长"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"

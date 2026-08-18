@@ -121,6 +121,117 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/usage-health:
+    get:
+      operationId: getUsageHealth
+      summary: Continuous-use reminder prefs and current session (FR well-being)
+      description: >-
+        Read-only view of the caller's continuous-use reminder settings and
+        the current continuous-session minutes. Does not extend the session.
+        reminderAfterMinutes defaults to 120 and sessionGapMinutes to 30
+        until the caller PUTs approved values. Requires a server-verified
+        authentication context.
+      responses:
+        '200':
+          description: Prefs and computed continuous-use status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageHealthStatus'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: updateUsageHealthPrefs
+      summary: Replace continuous-use reminder prefs
+      description: >-
+        Replaces the caller's reminder interval and session-gap minutes.
+        Only approved values are accepted (60/90/120/180 and 15/30/45).
+        The reminder is a system-layer fact, never role-played. Requires a
+        server-verified authentication context.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsageHealthPrefsUpdate'
+      responses:
+        '200':
+          description: Prefs after the update, plus current session status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageHealthStatus'
+        '400':
+          description: Unapproved interval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/usage-health/heartbeat:
+    post:
+      operationId: usageHealthHeartbeat
+      summary: Record activity and recompute continuous-use reminder
+      description: >-
+        Extends or restarts the caller's continuous-use session and returns
+        whether a system-layer reminder is due. Adjacent activity within
+        sessionGapMinutes continues the session; a longer gap starts a new
+        one. Requires a server-verified authentication context.
+      responses:
+        '200':
+          description: Updated continuous-use status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageHealthStatus'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/usage-health/reminder:
+    post:
+      operationId: recordUsageReminder
+      summary: Record the outcome of a continuous-use reminder
+      description: >-
+        Appends a reminder event (SHOWN, CONTINUED or ENDED). Used when the
+        client displays the reminder or the user continues / ends. Does not
+        role-play. Requires a server-verified authentication context.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsageReminderRequest'
+      responses:
+        '200':
+          description: The updated status after recording the event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageHealthStatus'
+        '400':
+          description: Unapproved result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships:
     post:
       operationId: createRelationship
@@ -2056,6 +2167,56 @@ components:
           type: string
           format: date-time
           description: Verification time (RFC 3339), present once verified
+    UsageHealthStatus:
+      type: object
+      description: >-
+        Continuous-use reminder prefs and the current session (§20.7 / 21.3.3).
+        reminderDue is a system-layer fact, never role-played.
+      required:
+        - reminderAfterMinutes
+        - sessionGapMinutes
+        - continuousMinutes
+        - reminderDue
+      properties:
+        reminderAfterMinutes:
+          type: integer
+          description: Minutes of continuous use before a reminder (60, 90, 120 or 180)
+        sessionGapMinutes:
+          type: integer
+          description: Idle gap that starts a new continuous session (15, 30 or 45)
+        continuousMinutes:
+          type: integer
+          minimum: 0
+          description: Minutes in the current continuous session (0 if none)
+        reminderDue:
+          type: boolean
+          description: True when a system-layer reminder should be shown
+        sessionStartedAt:
+          type: string
+          format: date-time
+          description: Start of the current continuous session, absent when none
+    UsageHealthPrefsUpdate:
+      type: object
+      description: Full replacement of continuous-use reminder prefs.
+      required:
+        - reminderAfterMinutes
+        - sessionGapMinutes
+      properties:
+        reminderAfterMinutes:
+          type: integer
+          enum: [60, 90, 120, 180]
+        sessionGapMinutes:
+          type: integer
+          enum: [15, 30, 45]
+    UsageReminderRequest:
+      type: object
+      description: Outcome of a continuous-use reminder.
+      required:
+        - result
+      properties:
+        result:
+          type: string
+          enum: [SHOWN, CONTINUED, ENDED]
     VersionResponse:
       type: object
       description: Service version and build identity

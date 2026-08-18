@@ -163,8 +163,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V48 = COMP-PRES gender presentation + curated avatar reference;
         // V49 = COMP-CLEAR relationship reset/delete + clearance preview;
         // V50 = END-TODAY end conversation + incognito body clear;
-        // V51 = CHAT-MODE CASUAL turn mode).
+        // V51 = CHAT-MODE CASUAL turn mode;
+        // V52 = USAGE-HEALTH continuous-use reminder prefs + heartbeat).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(51);
+                .isEqualTo(52);
     }
 }
