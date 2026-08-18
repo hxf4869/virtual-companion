@@ -359,6 +359,25 @@
             >
               {{ confirmDeleteMsgId === msg.messageId ? "确认删除" : "删除" }}
             </button>
+            <!-- MSG-REPORT: ticket API is not wired. Disclose that; never
+                 invent a form or POST a fake ticket. -->
+            <button
+              v-if="!msg.messageId.startsWith('__') && !isStreaming"
+              class="msg-copy"
+              :data-testid="`msg-report-${msg.messageId}`"
+              :aria-label="reportMsgId === msg.messageId ? '收起举报说明' : '举报这条消息'"
+              @click="onReportMessage(msg.messageId)"
+            >
+              举报
+            </button>
+            <view
+              v-if="reportMsgId === msg.messageId"
+              class="msg-report-notice"
+              :data-testid="`msg-report-notice-${msg.messageId}`"
+              role="status"
+            >
+              <text>举报和申诉受理接口尚未接通。这里没有可提交的表单，也不会编造工单。</text>
+            </view>
             <button
               v-if="canRegenerateMessage(msg) && !isStreaming"
               class="msg-copy"
@@ -600,6 +619,8 @@ export default defineComponent({
     const renameInput = ref("");
     // MSG-DELETE: two-step confirm state for per-message deletion.
     const confirmDeleteMsgId = ref<string | null>(null);
+    // MSG-REPORT: local disclosure only — no ticket API in Alpha.
+    const reportMsgId = ref<string | null>(null);
     // MSG-COPY: the message currently shown as "已复制" (brief visual feedback).
     const copiedMsgId = ref<string | null>(null);
     let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -933,6 +954,11 @@ export default defineComponent({
       const narrowed = asFeedbackKind(kind);
       if (!narrowed) return;
       await store.sendFeedback(transport, narrowed);
+    }
+
+    /** MSG-REPORT: toggle the "not wired" notice. Never calls an API. */
+    function onReportMessage(messageId: string): void {
+      reportMsgId.value = reportMsgId.value === messageId ? null : messageId;
     }
 
     /** MSG-DELETE: two-step confirm, then delete through the store. */
@@ -1324,6 +1350,8 @@ export default defineComponent({
       onEndToday,
       confirmDeleteId,
       confirmDeleteMsgId,
+      reportMsgId,
+      onReportMessage,
       copiedMsgId,
       onCopyMessage,
       onToggleNoMemory,
@@ -1670,6 +1698,15 @@ export default defineComponent({
   border: 2rpx solid #16503e;
   background-color: #16503e;
   color: #d8f2ea;
+}
+.msg-report-notice {
+  margin-top: 8rpx;
+  padding: 10rpx 12rpx;
+  border-radius: 12rpx;
+  background-color: #1c2b4a;
+  color: #8fa0bd;
+  font-size: 22rpx;
+  line-height: 1.5;
 }
 /* MEM-NEG (V44): 不记住 marker pill; the on state is visually distinct. */
 .msg-no-memory {

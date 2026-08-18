@@ -269,6 +269,57 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("MSG-REPORT: persisted messages offer report and disclose the ticket API is not wired", async () => {
+    stubFetch();
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "m1",
+        conversationId: "1",
+        role: "assistant",
+        content: "一条助手回复",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    const button = wrapper.find('[data-testid="msg-report-m1"]');
+    expect(button.exists()).toBe(true);
+    expect(button.text()).toContain("举报");
+    expect(wrapper.find('[data-testid="msg-report-notice-m1"]').exists()).toBe(false);
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const callsBefore = fetchMock.mock.calls.length;
+    await button.trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const notice = wrapper.find('[data-testid="msg-report-notice-m1"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toContain("尚未接通");
+    expect(notice.text()).toContain("表单");
+    expect(fetchMock.mock.calls.length).toBe(callsBefore);
+    wrapper.unmount();
+  });
+
+  it("MSG-REPORT: no report button on streaming placeholder rows", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "__pending-1",
+        conversationId: "1",
+        role: "assistant",
+        content: "生成中",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="msg-report-__pending-1"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("MSG-COPY: no copy button on streaming placeholder rows", async () => {
     const wrapper = mountPage();
     await flushPromises();
