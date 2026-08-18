@@ -113,6 +113,11 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-18 第二十三轮）：
+
+- 已删除记忆分组（MEM-DELETED / §8.4）：OpenAPI Memory 增补 `deletedAt`；
+  记忆中心用 `includeDeleted=true` 拉软删行，单独成组且不进入已保存事实。
+
 后端在运方面上还提供（2026-08-18 第二十二轮）：
 
 - 消息举报入口（MSG-REPORT / §8.3）：已落库消息提供「举报」，只说明受理接口

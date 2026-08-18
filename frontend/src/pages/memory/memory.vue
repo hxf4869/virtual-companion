@@ -302,6 +302,29 @@ states carry alert/live a11y semantics. -->
         </view>
       </view>
     </view>
+
+    <view
+      v-if="memory.deleted.length > 0"
+      class="section"
+      data-testid="memory-group-deleted"
+      aria-live="polite"
+    >
+      <text class="section-title">已删除（{{ memory.deleted.length }}）</text>
+      <text class="hint">这些记录已删除，不作为已保存事实。</text>
+      <view v-for="m in memory.deleted" :key="m.memoryId" class="card">
+        <text class="summary">{{ m.summary }}</text>
+        <text class="meta">{{ m.scope }} · 已删除</text>
+        <view class="actions">
+          <button
+            size="mini"
+            data-testid="memory-open-detail"
+            @click="openDetail(m.memoryId)"
+          >
+            详情
+          </button>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 

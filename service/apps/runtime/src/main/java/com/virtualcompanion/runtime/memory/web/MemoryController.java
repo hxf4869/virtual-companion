@@ -193,7 +193,8 @@ public class MemoryController {
                 record.summary(),
                 record.status(),
                 record.conversationId() == null ? null : record.conversationId().toString(),
-                record.createdAt() == null ? null : record.createdAt().toString());
+                record.createdAt() == null ? null : record.createdAt().toString(),
+                record.deletedAt() == null ? null : record.deletedAt().toString());
     }
 
     private static MemoryEvidenceResponse toEvidenceResponse(MemoryEvidenceRecord record) {
@@ -222,7 +223,8 @@ public class MemoryController {
             String summary,
             String status,
             String conversationId,
-            String createdAt) {
+            String createdAt,
+            String deletedAt) {
     }
 
     /** Response body (OpenAPI {@code MemoryEvidence}). */

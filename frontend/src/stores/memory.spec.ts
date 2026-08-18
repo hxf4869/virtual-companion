@@ -42,7 +42,7 @@ describe("useMemoryStore partition + no-fake-success", () => {
   async function seed(store: ReturnType<typeof useMemoryStore>): Promise<void> {
     const t = keyedTransport({
       ...Object.fromEntries([ok(
-        "/api/v1/relationships/rel-1/memories",
+        "/api/v1/relationships/rel-1/memories?includeDeleted=true",
         [
           memory("pend-1", "PENDING_CONFIRMATION", "candidate"),
           memory("acc-1", "ACCEPTED", "canonical"),
@@ -228,6 +228,7 @@ describe("useMemoryStore partition + no-fake-success", () => {
     expect(store.canonical).toEqual([]);
     expect(store.rejected).toEqual([]);
     expect(store.expired).toEqual([]);
+    expect(store.deleted).toEqual([]);
     expect(store.error).toBeNull();
   });
 
@@ -235,7 +236,7 @@ describe("useMemoryStore partition + no-fake-success", () => {
     const store = useMemoryStore();
     const t = keyedTransport({
       ...Object.fromEntries([
-        ok("/api/v1/relationships/rel-1/memories", [
+        ok("/api/v1/relationships/rel-1/memories?includeDeleted=true", [
           memory("pend-1", "PENDING_CONFIRMATION", "candidate"),
           memory("rel-acc", "ACCEPTED", "角色专属"),
           memory("sess-acc", "ACCEPTED", "会话记忆", "SESSION"),
@@ -252,6 +253,26 @@ describe("useMemoryStore partition + no-fake-success", () => {
     expect(store.rejected.map((m) => m.memoryId)).toEqual(["rej-1"]);
     expect(store.expired.map((m) => m.memoryId)).toEqual(["exp-1"]);
     expect(store.canonical.some((m) => m.status !== "ACCEPTED")).toBe(false);
+  });
+
+  it("MEM-DELETED: load with includeDeleted keeps deleted rows out of canonical", async () => {
+    const store = useMemoryStore();
+    const request = vi.fn(async (_method: string, path: string): Promise<MemoryApiResponse> => {
+      expect(path).toBe("/api/v1/relationships/rel-1/memories?includeDeleted=true");
+      return {
+        ok: true,
+        status: 200,
+        json: [
+          memory("acc-1", "ACCEPTED", "live"),
+          { ...memory("del-1", "ACCEPTED", "已删"), deletedAt: "2026-08-18T12:00:00Z" },
+        ],
+      };
+    });
+    await store.load({ request }, "rel-1");
+
+    expect(store.canonical.map((m) => m.memoryId)).toEqual(["acc-1"]);
+    expect(store.deleted.map((m) => m.memoryId)).toEqual(["del-1"]);
+    expect(store.deleted[0]?.deletedAt).toBe("2026-08-18T12:00:00Z");
   });
 
   it("MEM-GROUPS: reject moves the candidate into rejected, never canonical", async () => {
@@ -275,7 +296,7 @@ describe("useMemoryStore typed error mapping (P2-16)", () => {
   async function seed(store: ReturnType<typeof useMemoryStore>): Promise<void> {
     const t = keyedTransport({
       ...Object.fromEntries([ok(
-        "/api/v1/relationships/rel-1/memories",
+        "/api/v1/relationships/rel-1/memories?includeDeleted=true",
         [
           memory("pend-1", "PENDING_CONFIRMATION", "candidate"),
           memory("acc-1", "ACCEPTED", "canonical"),

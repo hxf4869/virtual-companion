@@ -63,6 +63,7 @@ export const useMemoryStore = defineStore("h5-memory", () => {
   const canonical = ref<Memory[]>([]);
   const rejected = ref<Memory[]>([]);
   const expired = ref<Memory[]>([]);
+  const deleted = ref<Memory[]>([]);
   const evidence = ref<Record<string, MemoryEvidence[]>>({});
   const error = ref<MemoryErrorCode | null>(null);
 
@@ -95,15 +96,17 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     error.value = null;
     let list: Memory[];
     try {
-      list = await listMemories(t, relationshipId);
+      list = await listMemories(t, relationshipId, { includeDeleted: true });
     } catch (e) {
       error.value = failureCode(e, "load-failed");
       return;
     }
-    pending.value = list.filter((m) => m.status === "PENDING_CONFIRMATION");
-    canonical.value = list.filter((m) => m.status === "ACCEPTED");
-    rejected.value = list.filter((m) => m.status === "REJECTED");
-    expired.value = list.filter((m) => m.status === "EXPIRED");
+    const live = list.filter((m) => !m.deletedAt);
+    pending.value = live.filter((m) => m.status === "PENDING_CONFIRMATION");
+    canonical.value = live.filter((m) => m.status === "ACCEPTED");
+    rejected.value = live.filter((m) => m.status === "REJECTED");
+    expired.value = live.filter((m) => m.status === "EXPIRED");
+    deleted.value = list.filter((m) => Boolean(m.deletedAt));
   }
 
   /**
@@ -232,6 +235,7 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     canonical.value = [];
     rejected.value = [];
     expired.value = [];
+    deleted.value = [];
     evidence.value = {};
     error.value = null;
   }
@@ -241,6 +245,7 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     canonical,
     rejected,
     expired,
+    deleted,
     evidence,
     error,
     pendingCount,

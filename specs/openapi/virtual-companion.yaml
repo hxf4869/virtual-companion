@@ -3401,6 +3401,10 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (RFC 3339)
+        deletedAt:
+          type: string
+          format: date-time
+          description: Soft-deletion timestamp; present only when includeDeleted is true
     MemoryCandidateCreateRequest:
       type: object
       description: Body for creating a memory candidate from model extraction.

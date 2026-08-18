@@ -181,6 +181,20 @@ class MemoryControllerTest {
     }
 
     @Test
+    void listMemoriesEchoesDeletedAtWhenIncludeDeleted() throws Exception {
+        Instant deletedAt = Instant.parse("2026-08-18T12:00:00Z");
+        MemoryRecord deleted = new MemoryRecord(
+                42L, 7L, "RELATIONSHIP", "gone", "ACCEPTED", null, deletedAt, NOW);
+        when(memoryService.list(1L, 7L, true)).thenReturn(List.of(deleted));
+
+        mockMvc.perform(get("/api/v1/relationships/7/memories").param("includeDeleted", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].memoryId").value(42))
+                .andExpect(jsonPath("$[0].deletedAt").value("2026-08-18T12:00:00Z"));
+    }
+
+    @Test
     void listMemoriesReturnsEmptyArrayForForeignRelationship() throws Exception {
         when(memoryService.list(1L, 999L, null)).thenReturn(List.of());
 

@@ -236,6 +236,39 @@ describe("api/memory typed error mapping (P2-16)", () => {
     expect((err as MemoryHttpError).kind).toBe("parse");
   });
 
+  it("listMemories requests includeDeleted and parses deletedAt", async () => {
+    let seenPath = "";
+    const t: MemoryTransport = {
+      request: vi.fn(async (_method: string, path: string): Promise<MemoryApiResponse> => {
+        seenPath = path;
+        return {
+          ok: true,
+          status: 200,
+          json: [
+            {
+              memoryId: "m-del",
+              scope: "RELATIONSHIP",
+              summary: "已删",
+              status: "ACCEPTED",
+              deletedAt: "2026-08-18T12:00:00Z",
+            },
+          ],
+        };
+      }),
+    };
+    const list = await listMemories(t, "rel-1", { includeDeleted: true });
+    expect(seenPath).toBe("/api/v1/relationships/rel-1/memories?includeDeleted=true");
+    expect(list).toEqual([
+      {
+        memoryId: "m-del",
+        scope: "RELATIONSHIP",
+        summary: "已删",
+        status: "ACCEPTED",
+        deletedAt: "2026-08-18T12:00:00Z",
+      },
+    ]);
+  });
+
   it("listMemories URL-encodes the relationshipId (P3-03)", async () => {
     let seenPath = "";
     const t: MemoryTransport = {

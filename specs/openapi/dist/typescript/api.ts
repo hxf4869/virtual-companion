@@ -350,6 +350,7 @@ export interface Memory {
   status: string
   conversationId?: string
   createdAt?: string
+  deletedAt?: string
 }
 
 export interface MemoryCandidateCreateRequest {

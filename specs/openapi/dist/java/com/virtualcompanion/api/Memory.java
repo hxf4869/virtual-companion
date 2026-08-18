@@ -7,7 +7,8 @@ public record Memory(
     final String summary,
     final String status,
     final String conversationId,
-    final String createdAt
+    final String createdAt,
+    final String deletedAt
 ) {
     public Memory {
         java.util.Objects.requireNonNull(memoryId, "memoryId must not be null");
@@ -16,5 +17,6 @@ public record Memory(
         java.util.Objects.requireNonNull(status, "status must not be null");
         // conversationId is nullable
         // createdAt is nullable
+        // deletedAt is nullable
     }
 }

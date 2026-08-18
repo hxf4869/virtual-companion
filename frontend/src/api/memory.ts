@@ -41,6 +41,7 @@ export interface Memory {
   status: MemoryStatus;
   conversationId?: string;
   createdAt?: string;
+  deletedAt?: string;
 }
 
 export interface MemoryEvidence {
@@ -115,6 +116,7 @@ function asMemory(json: unknown): Memory | null {
     status: status as MemoryStatus,
     conversationId: asString(o, "conversationId"),
     createdAt: asString(o, "createdAt"),
+    deletedAt: asString(o, "deletedAt"),
   };
 }
 
@@ -146,10 +148,12 @@ function asEvidenceArray(json: unknown): MemoryEvidence[] {
 export async function listMemories(
   t: MemoryTransport,
   relationshipId: string,
+  options?: { includeDeleted?: boolean },
 ): Promise<Memory[]> {
+  const query = options?.includeDeleted === true ? "?includeDeleted=true" : "";
   const r = await t.request(
     "GET",
-    `${REL_BASE}/${encodeURIComponent(relationshipId)}/memories`,
+    `${REL_BASE}/${encodeURIComponent(relationshipId)}/memories${query}`,
   );
   guardJsonResult(r);
   return asMemoryArray(r.json);

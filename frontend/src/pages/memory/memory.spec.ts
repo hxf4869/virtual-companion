@@ -162,6 +162,29 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("MEM-DELETED: shows deleted memories as a non-canonical group", async () => {
+    const store = useMemoryStore();
+    store.canonical = [canonicalMemory("acc-1", "还在")];
+    store.deleted = [
+      {
+        memoryId: "del-1",
+        scope: "RELATIONSHIP",
+        summary: "已经删掉的记忆",
+        status: "ACCEPTED",
+        deletedAt: "2026-08-18T12:00:00Z",
+      },
+    ];
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+
+    const group = wrapper.find('[data-testid="memory-group-deleted"]');
+    expect(group.exists()).toBe(true);
+    expect(group.text()).toContain("已经删掉的记忆");
+    expect(group.text()).toContain("不作为已保存事实");
+    expect(group.text()).not.toContain("已保存记忆");
+    wrapper.unmount();
+  });
+
   it("hides a side's empty status when that list has items", async () => {
     const store = useMemoryStore();
     vi.spyOn(store, "load").mockImplementation(async () => {
