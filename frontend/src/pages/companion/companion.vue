@@ -258,6 +258,7 @@ import {
   type Relationship,
   type RelationshipClearancePreview,
 } from "@/api/relationship";
+import { COMPANION_AVATAR_OPTIONS } from "@/domain/companion-presentation";
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -280,19 +281,8 @@ const GENDER_OPTIONS: { code: CompanionGender; label: string }[] = [
   { code: "NEUTRAL", label: "中性" },
 ];
 
-// Platform-curated avatar catalog (companion-presentation CompanionAvatar).
-// Alpha renders CSS placeholders; real reviewed image assets are a Beta
-// concern. Photo upload is never offered (FR-COMP-002).
-const AVATAR_OPTIONS: {
-  code: CompanionAvatar;
-  name: string;
-  glyph: string;
-  theme: string;
-}[] = [
-  { code: "AVATAR_FEMALE_01", name: "温婉", glyph: "F", theme: "rose" },
-  { code: "AVATAR_MALE_01", name: "沉稳", glyph: "M", theme: "teal" },
-  { code: "AVATAR_NEUTRAL_01", name: "自然", glyph: "N", theme: "gold" },
-];
+// Platform-curated avatar catalog (FR-COMP-002). Photo upload is never offered.
+const AVATAR_OPTIONS = COMPANION_AVATAR_OPTIONS;
 
 export default {
   name: "CompanionPage",

@@ -3,13 +3,19 @@
     <view class="chat-header">
       <view class="chat-header-identity">
         <text class="chat-header-title">Technical Alpha · 离线聊天</text>
-        <text
-          v-if="relStore.current"
-          class="chat-companion-name"
-          data-testid="chat-companion-name"
-        >
-          {{ personaDisplayName(relStore.current.personaRef) }}
-        </text>
+        <view v-if="relStore.current" class="chat-header-companion">
+          <text
+            class="chat-companion-avatar"
+            :class="`chat-companion-avatar--${headerAvatar.theme}`"
+            data-testid="chat-companion-avatar"
+            :aria-label="headerAvatar.name"
+          >
+            {{ headerAvatar.glyph }}
+          </text>
+          <text class="chat-companion-name" data-testid="chat-companion-name">
+            {{ headerCompanionName }}
+          </text>
+        </view>
         <text class="chat-ai-label" data-testid="chat-ai-label">AI 陪伴 · 非真人</text>
       </view>
       <view class="chat-header-nav">
@@ -587,6 +593,10 @@ import { parseSafeMarkdown } from "@/domain/safe-markdown";
 import { createDisplayThrottle } from "@/domain/display-throttle";
 
 import { createAuthedFetch } from "@/api/authed-fetch";
+import {
+  companionAvatarOption,
+  companionHeaderName,
+} from "@/domain/companion-presentation";
 import { personaDisplayName } from "@/domain/persona";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { createBrowserRealtimeDeps } from "@/api/realtime-transport";
@@ -615,6 +625,10 @@ export default defineComponent({
     const auth = useAuthStore();
     const usageHealth = useUsageHealthStore();
     const incognitoPref = useIncognitoStore();
+    const headerCompanionName = computed(() =>
+      relStore.current ? companionHeaderName(relStore.current) : "",
+    );
+    const headerAvatar = computed(() => companionAvatarOption(relStore.current?.avatarRef));
     const inputText = ref("");
     const initError = ref(false);
     // REL-DEACT: two-step confirm state for the deactivate button (no modal).
@@ -1333,6 +1347,8 @@ export default defineComponent({
       relStore,
       store,
       auth,
+      headerCompanionName,
+      headerAvatar,
       messages,
       renderedMessages,
       virtualWindow,
@@ -1431,6 +1447,33 @@ export default defineComponent({
   flex-direction: column;
   gap: 4rpx;
   min-width: 0;
+}
+.chat-header-companion {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.chat-companion-avatar {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.chat-companion-avatar--rose {
+  background-color: #5a2a3a;
+  color: #f0c8d4;
+}
+.chat-companion-avatar--teal {
+  background-color: #1a3a3a;
+  color: #b8e0d8;
+}
+.chat-companion-avatar--gold {
+  background-color: #3a3420;
+  color: #e8dcc8;
 }
 .chat-companion-name {
   font-size: 26rpx;

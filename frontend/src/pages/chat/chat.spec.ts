@@ -77,6 +77,28 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("CHAT-PRES: prefers the saved companion name and curated avatar in the header", async () => {
+    stubFetch({
+      relationships: [
+        {
+          ...ACTIVE_RELATIONSHIP,
+          companionName: "小安",
+          avatarRef: "AVATAR_FEMALE_01",
+        },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-companion-name"]').text()).toContain("小安");
+    expect(wrapper.find('[data-testid="chat-companion-name"]').text()).not.toContain("温和倾听者");
+    const avatar = wrapper.find('[data-testid="chat-companion-avatar"]');
+    expect(avatar.exists()).toBe(true);
+    expect(avatar.text()).toContain("F");
+    expect(avatar.attributes("aria-label")).toContain("温婉");
+    wrapper.unmount();
+  });
+
   it("renders the message input and send button once a relationship is active", async () => {
     const wrapper = mountPage();
     await flushPromises();
