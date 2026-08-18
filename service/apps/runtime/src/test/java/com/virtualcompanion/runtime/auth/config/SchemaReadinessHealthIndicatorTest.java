@@ -160,8 +160,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V45 = AGE-MIN adult-verification result persistence;
         // V46 = AUTH-RECHECK consent withdrawal withdraws snapshots;
         // V47 = COMP-CFG structured Companion preferences;
-        // V48 = COMP-PRES gender presentation + curated avatar reference).
+        // V48 = COMP-PRES gender presentation + curated avatar reference;
+        // V49 = COMP-CLEAR relationship reset/delete + clearance preview).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(48);
+                .isEqualTo(49);
     }
 }
