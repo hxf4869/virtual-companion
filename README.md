@@ -113,6 +113,11 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-18 第二十八轮）：
+
+- 会话列表加载更多（CONV-MORE / CONV-HIST）：独立会话页按 keyset `limit=20`
+  分页，满页才显示「加载更多」，after 用最后一条会话 id。
+
 后端在运方面上还提供（2026-08-18 第二十七轮）：
 
 - 登出清理内存缓存（LOGOUT-CLEAR / §18.7）：logout 与会话清除会丢掉聊天、

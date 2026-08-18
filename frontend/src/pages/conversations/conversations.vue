@@ -94,6 +94,15 @@
         </button>
       </view>
     </view>
+    <button
+      v-if="hasMore"
+      data-testid="conversations-load-more"
+      class="nav-index"
+      :disabled="busy"
+      @click="loadMore"
+    >
+      加载更多
+    </button>
   </view>
 </template>
 
@@ -127,6 +136,8 @@ export default {
     const renameInput = ref("");
     const confirmDeleteId = ref<string | null>(null);
     const confirmEndId = ref<string | null>(null);
+    const hasMore = ref(false);
+    const PAGE_SIZE = 20;
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -149,11 +160,35 @@ export default {
       busy.value = true;
       try {
         const filter = relationshipId.value.trim();
-        items.value = await listConversations(transport, filter || undefined);
+        const page = await listConversations(transport, filter || undefined, undefined, PAGE_SIZE);
+        items.value = page;
+        hasMore.value = page.length === PAGE_SIZE;
         loaded.value = true;
       } catch {
         items.value = [];
+        hasMore.value = false;
         loadFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function loadMore(): Promise<void> {
+      if (!hasMore.value || busy.value || items.value.length === 0) return;
+      busy.value = true;
+      try {
+        const filter = relationshipId.value.trim();
+        const after = items.value[items.value.length - 1]?.conversationId;
+        const page = await listConversations(
+          transport,
+          filter || undefined,
+          after,
+          PAGE_SIZE,
+        );
+        items.value = [...items.value, ...page];
+        hasMore.value = page.length === PAGE_SIZE;
+      } catch {
+        // Keep the loaded rows; do not invent a next page.
       } finally {
         busy.value = false;
       }
@@ -292,6 +327,8 @@ export default {
       openChat,
       chatHref,
       goTo,
+      hasMore,
+      loadMore,
     };
   },
 };

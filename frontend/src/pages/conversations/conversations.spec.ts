@@ -102,7 +102,9 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
-    expect(calls.some((c) => c.method === "GET" && c.url === "/api/v1/conversations")).toBe(true);
+    expect(calls.some((c) => c.method === "GET" && c.url === "/api/v1/conversations?limit=20")).toBe(
+      true,
+    );
     const cards = wrapper.findAll('[data-testid="conversation-card"]');
     expect(cards).toHaveLength(2);
     expect(cards[0].text()).toContain("周二夜聊");
@@ -120,7 +122,9 @@ describe("independent conversation list page", () => {
 
     expect(
       calls.some(
-        (c) => c.method === "GET" && c.url === "/api/v1/conversations?relationshipId=rel-1",
+        (c) =>
+          c.method === "GET" &&
+          c.url === "/api/v1/conversations?relationshipId=rel-1&limit=20",
       ),
     ).toBe(true);
     wrapper.unmount();
@@ -148,9 +152,9 @@ describe("independent conversation list page", () => {
 
     await wrapper.find('[data-testid="conversations-retry"]').trigger("click");
     await flushPromises();
-    expect(calls.filter((c) => c.method === "GET" && c.url === "/api/v1/conversations").length).toBe(
-      2,
-    );
+    expect(
+      calls.filter((c) => c.method === "GET" && c.url === "/api/v1/conversations?limit=20").length,
+    ).toBe(2);
     wrapper.unmount();
   });
 
@@ -252,9 +256,51 @@ describe("independent conversation list page", () => {
 
     expect(
       calls.some(
-        (c) => c.method === "GET" && c.url === "/api/v1/conversations?relationshipId=rel-1",
+        (c) =>
+          c.method === "GET" &&
+          c.url === "/api/v1/conversations?relationshipId=rel-1&limit=20",
       ),
     ).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("CONV-MORE: a full first page offers load-more and appends the next keyset", async () => {
+    const page1 = Array.from({ length: 20 }, (_, i) =>
+      item({ conversationId: `c${i + 1}`, title: `会话 ${i + 1}` }),
+    );
+    const page2 = [item({ conversationId: "c21", title: "会话 21" })];
+    let listCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url === "/api/v1/relationships" && method === "GET") {
+          return { ok: true, status: 200, json: async () => [REL] };
+        }
+        if (url.startsWith("/api/v1/conversations") && method === "GET") {
+          listCalls += 1;
+          if (url.includes("after=c20")) {
+            return { ok: true, status: 200, json: async () => page2 };
+          }
+          return { ok: true, status: 200, json: async () => page1 };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(20);
+    const more = wrapper.find('[data-testid="conversations-load-more"]');
+    expect(more.exists()).toBe(true);
+    await more.trigger("click");
+    await flushPromises();
+
+    expect(listCalls).toBe(2);
+    expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(21);
+    expect(wrapper.text()).toContain("会话 21");
+    expect(wrapper.find('[data-testid="conversations-load-more"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });
