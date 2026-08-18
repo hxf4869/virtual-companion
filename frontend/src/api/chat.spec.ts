@@ -8,6 +8,7 @@ import {
   ChatHttpError,
   createConversation,
   deleteConversation,
+  endConversation,
   deleteMessage,
   getServiceMode,
   listConversations,
@@ -377,6 +378,32 @@ describe("recordFeedback (FEEDBACK)", () => {
     });
 
     await expect(recordFeedback(transport, "42", "UNSAFE")).rejects.toThrow(ChatHttpError);
+  });
+});
+
+describe("endConversation (END-TODAY)", () => {
+  it("POSTs /conversations/{id}/end", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { ok: true, incognitoCleared: true },
+    });
+
+    expect(await endConversation(transport, "100")).toEqual({
+      ok: true,
+      incognitoCleared: true,
+    });
+    expect(calls).toEqual([{ method: "POST", path: "/api/v1/conversations/100/end", body: undefined }]);
+  });
+
+  it("maps 404 to false", async () => {
+    const { transport } = recorder({ ok: false, status: 404, json: null });
+    expect(await endConversation(transport, "100")).toBe(false);
+  });
+
+  it("throws on 500", async () => {
+    const { transport } = recorder({ ok: false, status: 500, json: null });
+    await expect(endConversation(transport, "100")).rejects.toBeInstanceOf(ChatHttpError);
   });
 });
 

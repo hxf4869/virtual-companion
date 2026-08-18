@@ -174,6 +174,14 @@
           >
             {{ confirmDeleteId ? "确认删除？" : "删除" }}
           </button>
+          <button
+            data-testid="end-today"
+            class="chat-nav-index conv-mgmt-btn"
+            :disabled="isStreaming || !store.conversationId"
+            @click="onEndToday"
+          >
+            {{ confirmEndToday ? "确认结束？" : "结束今天的对话" }}
+          </button>
         </view>
 
         <!-- CONV-MGMT: inline rename row -->
@@ -467,6 +475,7 @@ export default defineComponent({
     const confirmDeactivate = ref(false);
     // CONV-MGMT: two-step delete confirm + inline rename state.
     const confirmDeleteId = ref<string | null>(null);
+    const confirmEndToday = ref(false);
     const renaming = ref(false);
     const renameInput = ref("");
     // MSG-DELETE: two-step confirm state for per-message deletion.
@@ -849,6 +858,26 @@ export default defineComponent({
       await startConversation();
     }
 
+    /**
+     * END-TODAY: two-step confirm, then end the open conversation. Does not
+     * delete the Companion or the conversation row; a new conversation is
+     * opened so the user is no longer in that turn's input/stream.
+     */
+    async function onEndToday(): Promise<void> {
+      const id = store.conversationId;
+      if (!id) return;
+      if (!confirmEndToday.value) {
+        confirmEndToday.value = true;
+        return;
+      }
+      confirmEndToday.value = false;
+      const ended = await store.endToday(transport, id);
+      if (ended) {
+        await refreshConversationList();
+        await startConversation();
+      }
+    }
+
     /** CONV-MGMT: two-step delete of the open conversation. */
     async function onDeleteConversation(): Promise<void> {
       const id = store.conversationId;
@@ -1000,6 +1029,8 @@ export default defineComponent({
       inputText,
       initError,
       confirmDeactivate,
+      confirmEndToday,
+      onEndToday,
       confirmDeleteId,
       confirmDeleteMsgId,
       copiedMsgId,

@@ -66,6 +66,9 @@ function mockChatTransport(opts: {
         const ok = opts.messageDeleteOk ?? true;
         return { ok, status: ok ? 200 : 404, json: ok ? { ok: true } : null };
       }
+      if (path.endsWith("/end") && method === "POST") {
+        return { ok: true, status: 200, json: { ok: true, incognitoCleared: true } };
+      }
       if (path.includes("/feedback")) {
         const status = opts.feedbackStatus ?? 200;
         return {
@@ -368,6 +371,27 @@ describe("useChatStore", () => {
     expect(store.conversationId).toBe("1");
     expect(store.messages).toHaveLength(1);
     expect(store.messages[0].content).toBe("old");
+  });
+
+  it("endToday clears the open conversation without deleting the list row", async () => {
+    const store = useChatStore();
+    const transport = mockChatTransport({
+      conversationsJson: [
+        { conversationId: 1, relationshipId: 7, createdAt: "2026-08-18T00:00:00Z", lastMessagePreview: "无痕秘密", incognito: true },
+      ],
+      messagesJson: [{ messageId: 10, conversationId: 1, role: "user", content: "无痕秘密" }],
+    });
+    await store.loadConversations(transport, "7");
+    await store.openConversation(transport, "1");
+    expect(store.messages[0].content).toBe("无痕秘密");
+
+    const ok = await store.endToday(transport, "1");
+
+    expect(ok).toBe(true);
+    expect(store.conversationId).toBe("");
+    expect(store.messages).toEqual([]);
+    expect(store.conversations).toHaveLength(1);
+    expect(store.conversations[0].lastMessagePreview).toBe("");
   });
 
   it("send mints idempotency key, creates generation, streams, reloads history", async () => {

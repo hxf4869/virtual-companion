@@ -262,6 +262,27 @@ export async function deleteConversation(
  * applied title on success, null on 403/404 (existence hidden); other non-OK
  * statuses throw.
  */
+/**
+ * END-TODAY: end today's conversation. Incognito bodies are cleared on the
+ * server. true only on confirmed OK; 403/404 map to false.
+ */
+export async function endConversation(
+  t: ChatTransport,
+  conversationId: string,
+): Promise<{ ok: true; incognitoCleared: boolean } | false> {
+  const r = await t.request(
+    "POST",
+    `${CONVERSATIONS_BASE}/${encodeURIComponent(conversationId)}/end`,
+  );
+  if (!r.ok) {
+    if (r.status === 403 || r.status === 404) return false;
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  const incognitoCleared =
+    !!r.json && typeof r.json === "object" && (r.json as Record<string, unknown>).incognitoCleared === true;
+  return { ok: true, incognitoCleared };
+}
+
 export async function renameConversation(
   t: ChatTransport,
   conversationId: string,

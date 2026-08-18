@@ -112,6 +112,20 @@ public class ConversationController {
         return new ConversationRenamedResponse(id, request.title());
     }
 
+    /**
+     * END-TODAY (V50): end today's conversation. Incognito bodies are
+     * cleared inside the SD. A foreign or absent id maps to 404.
+     */
+    @PostMapping("/{conversationId}/end")
+    public ConversationEndedResponse end(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String conversationId) {
+        long id = parseRequiredLong(conversationId, "conversationId");
+        return conversationRepository.end(ownerUserId, id)
+                .map(result -> new ConversationEndedResponse(result.ok(), result.incognitoCleared()))
+                .orElseThrow(() -> new ResourceNotFoundException("conversation"));
+    }
+
     private static long parseRequiredLong(String raw, String name) {
         try {
             long parsed = Long.parseLong(raw);
@@ -193,6 +207,10 @@ public class ConversationController {
 
     /** CONV-MGMT: {@code DELETE /api/v1/conversations/{id}} result. */
     public record ConversationDeletedResponse(boolean ok) {
+    }
+
+    /** END-TODAY: {@code POST /api/v1/conversations/{id}/end} result. */
+    public record ConversationEndedResponse(boolean ok, boolean incognitoCleared) {
     }
 
     /** CONV-MGMT: {@code PATCH /api/v1/conversations/{id}} result. */

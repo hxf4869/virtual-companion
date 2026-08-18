@@ -55,6 +55,12 @@
 			}
 		},
 		{
+			"path": "pages/help/help",
+			"style": {
+				"navigationBarTitleText": "帮助与安全支持"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"

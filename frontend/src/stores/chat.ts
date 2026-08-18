@@ -27,6 +27,7 @@ import {
   cancelGeneration,
   createConversation,
   deleteConversation as apiDeleteConversation,
+  endConversation as apiEndConversation,
   deleteMessage as apiDeleteMessage,
   getServiceMode,
   listConversations,
@@ -373,6 +374,39 @@ export const useChatStore = defineStore("h5-chat", () => {
    * is dropped; when the deleted conversation was the open one, the message
    * window is cleared so the page can open (or create) a fresh conversation.
    */
+  /**
+   * END-TODAY: end the open conversation. Cancels the local stream, then
+   * calls the shipped end API. The conversation row stays in the list;
+   * only the local input/stream state is torn down when it was the open one.
+   */
+  async function endToday(transport: ChatTransport, id: string): Promise<boolean> {
+    if (handle) {
+      handle.cancelled = true;
+      handle.abort();
+    }
+    const result = await apiEndConversation(transport, id);
+    if (!result) return false;
+    if (conversationId.value === id) {
+      phase.value = "idle";
+      generationId.value = "";
+      stream.value = initialState(0);
+      outcome.value = null;
+      conversationId.value = "";
+      messages.value = [];
+      historyHasMore.value = false;
+      pendingUserContent.value = "";
+      usage.value = null;
+      feedbackKinds.value = [];
+      activeIncognito.value = false;
+    }
+    conversations.value = conversations.value.map((c) =>
+      c.conversationId === id && result.incognitoCleared
+        ? { ...c, lastMessagePreview: "" }
+        : c,
+    );
+    return true;
+  }
+
   async function removeConversation(transport: ChatTransport, id: string): Promise<boolean> {
     const ok = await apiDeleteConversation(transport, id);
     if (!ok) return false;
@@ -582,6 +616,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     removeMessage,
     setMessageNoMemory,
     refreshPendingMemoryCount,
+    endToday,
     removeConversation,
     renameConversation,
   };

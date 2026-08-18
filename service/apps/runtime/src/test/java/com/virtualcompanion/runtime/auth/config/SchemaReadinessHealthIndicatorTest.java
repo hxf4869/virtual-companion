@@ -161,8 +161,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V46 = AUTH-RECHECK consent withdrawal withdraws snapshots;
         // V47 = COMP-CFG structured Companion preferences;
         // V48 = COMP-PRES gender presentation + curated avatar reference;
-        // V49 = COMP-CLEAR relationship reset/delete + clearance preview).
+        // V49 = COMP-CLEAR relationship reset/delete + clearance preview;
+        // V50 = END-TODAY end conversation + incognito body clear).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(49);
+                .isEqualTo(50);
     }
 }

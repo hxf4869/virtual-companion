@@ -166,6 +166,11 @@ export interface ConversationDeletedResponse {
   ok: string
 }
 
+export interface ConversationEndedResponse {
+  ok: string
+  incognitoCleared: string
+}
+
 export interface MessageDeletedResponse {
   ok: string
 }
@@ -413,6 +418,7 @@ export interface VirtualCompanionApiClient {
   listConversations(): Promise<VersionResponse>
   deleteConversation(): Promise<VersionResponse>
   renameConversation(): Promise<VersionResponse>
+  endConversation(): Promise<VersionResponse>
   sendGeneration(): Promise<VersionResponse>
   listMessages(): Promise<VersionResponse>
   deleteMessage(): Promise<VersionResponse>

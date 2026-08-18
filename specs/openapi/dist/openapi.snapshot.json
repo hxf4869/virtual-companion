@@ -18,6 +18,7 @@
     "listConversations",
     "deleteConversation",
     "renameConversation",
+    "endConversation",
     "sendGeneration",
     "listMessages",
     "deleteMessage",
@@ -58,6 +59,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "e1d3b8b586ced50799664c2d274325af19b3836479462a0a7d39ce64d0eac319"
+    "sha256": "444d6fa9f18c0260ccc924a5b5e042f4702981462e01ae3b96436101d189b2f9"
   }
 }

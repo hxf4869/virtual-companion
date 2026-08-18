@@ -118,6 +118,26 @@ public class ConversationRepository {
         return Boolean.TRUE.equals(renamed);
     }
 
+    /**
+     * END-TODAY (V50): end one conversation. Cancels in-flight work items.
+     * Incognito conversations also have message bodies cleared. Empty when
+     * the id is foreign or absent.
+     */
+    public Optional<ConversationEndResult> end(long ownerUserId, long conversationId) {
+        validate(ownerUserId, conversationId);
+        return jdbc.query(
+                "SELECT out_ok, out_incognito_cleared FROM vc.end_conversation(?, ?)",
+                (rs, rowNum) -> new ConversationEndResult(
+                        rs.getBoolean("out_ok"),
+                        rs.getBoolean("out_incognito_cleared")),
+                ownerUserId,
+                conversationId).stream().findFirst();
+    }
+
+    /** Result of {@link #end(long, long)}. */
+    public record ConversationEndResult(boolean ok, boolean incognitoCleared) {
+    }
+
     private static void validate(long ownerUserId, long conversationId) {
         if (ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId must be positive");

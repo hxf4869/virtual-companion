@@ -107,6 +107,15 @@
           <text>我的数据</text>
         </button>
         <button
+          data-testid="nav-help"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="帮助与安全支持"
+          @click="goTo('/pages/help/help')"
+        >
+          <text>帮助与安全支持</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"

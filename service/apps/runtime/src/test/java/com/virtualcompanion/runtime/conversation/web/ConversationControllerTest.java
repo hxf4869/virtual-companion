@@ -14,10 +14,12 @@ import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListRecord;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.ConversationRepository.ConversationEndResult;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -83,6 +85,28 @@ class ConversationControllerTest {
         mockMvc.perform(patch("/api/v1/conversations/100")
                         .contentType("application/json")
                         .content("{\"title\":\"x\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void endConversationReturnsOkAndIncognitoFlag() throws Exception {
+        when(conversationRepository.end(1L, 100L))
+                .thenReturn(Optional.of(new ConversationEndResult(true, true)));
+
+        mockMvc.perform(post("/api/v1/conversations/100/end"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.incognitoCleared").value(true));
+
+        verify(conversationRepository).end(1L, 100L);
+    }
+
+    @Test
+    void endConversationMapsForeignOrAbsentTo404() throws Exception {
+        when(conversationRepository.end(1L, 100L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/v1/conversations/100/end"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
     }

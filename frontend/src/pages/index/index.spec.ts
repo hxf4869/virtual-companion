@@ -62,6 +62,7 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(wrapper.find('[data-testid="nav-memory"]').text()).toContain("记忆管理");
     expect(wrapper.find('[data-testid="nav-age"]').text()).toContain("成年核验");
     expect(wrapper.find('[data-testid="nav-data"]').text()).toContain("我的数据");
+    expect(wrapper.find('[data-testid="nav-help"]').text()).toContain("帮助与安全支持");
     expect(wrapper.find('[data-testid="nav-login"]').text()).toContain("登录");
     wrapper.unmount();
   });

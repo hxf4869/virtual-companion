@@ -22,11 +22,11 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V49 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V50 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
-  Age、Data、Export、Admin H5 页面、typed transport 与组件/状态测试；
+  Age、Data、Help、Export、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -78,6 +78,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   无痕会话，标志冻结在会话行且不可事后翻转）、`GET /api/v1/conversations`（会话列表，
   keyset + 最后消息预览 + incognito 标记）、
   `DELETE/PATCH /api/v1/conversations/{conversationId}`（删除级联清理、重命名写入 title）、
+  `POST /api/v1/conversations/{conversationId}/end`（END-TODAY：结束今天的对话，
+  取消进行中 work item；无痕会话同时清空消息正文，预览不再露出原文；不删会话行、
+  不删 Companion）、
   `POST /api/v1/conversations/{conversationId}/generations`（CHAT-MODE：请求可带
   `mode` = AUTO/LISTEN/DISCUSS 的轮次级对话模式，首次接收时冻结在 generation 行并按
   idempotencyKey 重入不覆盖，AUTO 保持人设默认）、

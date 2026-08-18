@@ -498,6 +498,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/{conversationId}/end:
+    post:
+      operationId: endConversation
+      summary: End today's conversation (FR-CHAT session close)
+      description: Ends the caller's open conversation for today. In-flight GENERATION and MEMORY_EXTRACT work items for this
+        conversation are cancelled. The conversation row, Companion and relationship data are kept; deactivate and delete-conversation
+        stay separate. If the conversation is incognito, persisted message bodies are cleared so list previews and history
+        no longer expose the original text; necessary safety and statutory records are not removed. A foreign or absent id
+        maps to NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a server-verified authentication context.
+      parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: The conversation was ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationEndedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/conversations/{conversationId}/generations:
     post:
       operationId: sendGeneration
@@ -2325,6 +2355,19 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed delete
+    ConversationEndedResponse:
+      type: object
+      description: Result of ending today's conversation.
+      required:
+      - ok
+      - incognitoCleared
+      properties:
+        ok:
+          type: boolean
+          description: Always true on a confirmed end
+        incognitoCleared:
+          type: boolean
+          description: True when this was an incognito conversation and message bodies were cleared
     MessageDeletedResponse:
       type: object
       description: Result of deleting one message (FR-CHAT-004 / FR-DATA-003).

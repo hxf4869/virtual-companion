@@ -53,6 +53,9 @@ public interface VirtualCompanionApi {
     /** Rename one conversation (CONV-MGMT). */
     ConversationRenamedResponse renameConversation();
 
+    /** End today's conversation (FR-CHAT session close). */
+    ConversationEndedResponse endConversation();
+
     /** Idempotently send a Chat turn (create or rejoin a generation). */
     Generation sendGeneration();
 

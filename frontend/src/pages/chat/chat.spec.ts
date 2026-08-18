@@ -979,6 +979,65 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("ends today's conversation only after the two-step confirm", async () => {
+    const calls: { method: string; url: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = (init?.method ?? "GET").toUpperCase();
+        calls.push({ method, url });
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [{ ...ACTIVE_RELATIONSHIP }] };
+        }
+        if (url.includes("/deactivate") || url.includes("/relationships/1") && method === "DELETE") {
+          throw new Error("end today must not deactivate or delete the companion");
+        }
+        if (url.endsWith("/end") && method === "POST") {
+          return { ok: true, status: 200, json: async () => ({ ok: true, incognitoCleared: false }) };
+        }
+        if (url.includes("/messages")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations") && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { conversationId: 1, relationshipId: 1, createdAt: "2026-08-18T00:00:00Z", lastMessagePreview: "hello" },
+            ],
+          };
+        }
+        if (url.startsWith("/api/v1/conversations") && method === "POST") {
+          return { ok: true, status: 200, json: async () => ({ conversationId: 2 }) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const button = wrapper.find('[data-testid="end-today"]');
+    expect(button.exists()).toBe(true);
+    expect(button.text()).toContain("结束今天的对话");
+    expect(wrapper.text()).not.toMatch(/挽留|难过|再考虑|舍不得/);
+
+    await button.trigger("click");
+    await flushPromises();
+    expect(calls.some((c) => c.url.endsWith("/end"))).toBe(false);
+    expect(wrapper.find('[data-testid="end-today"]').text()).toContain("确认结束？");
+    expect(useRelationshipStore().currentRelationshipId).toBe("1");
+
+    await wrapper.find('[data-testid="end-today"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/conversations/1/end")).toBe(
+      true,
+    );
+    expect(useRelationshipStore().current).not.toBeNull();
+    wrapper.unmount();
+  });
+
   it("hides the deactivate button when no relationship is selected", async () => {
     stubFetch({ relationships: [] });
     const wrapper = mountPage();
