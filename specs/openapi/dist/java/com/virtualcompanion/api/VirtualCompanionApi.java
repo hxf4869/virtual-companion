@@ -59,6 +59,15 @@ public interface VirtualCompanionApi {
     /** Reset a Companion's relationship-domain data and keep the row (FR-COMP-004). */
     Relationship resetRelationship();
 
+    /** Preview the importable confirmed-memory archive (FR-COMP-004). */
+    MemoryImportPreview listMemoryImports();
+
+    /** Discard the importable archive without importing (FR-COMP-004). */
+    MemoryImportDiscarded discardMemoryImport();
+
+    /** Import the archived confirmed memories into this Companion. */
+    MemoryImportResult importMemories();
+
     /** Open a conversation under a relationship. */
     ConversationResponse createConversation();
 

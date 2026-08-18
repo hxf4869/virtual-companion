@@ -185,15 +185,17 @@ public class RelationshipService {
      * FR-COMP-004: clear the relationship domain and keep the Companion row
      * plus structured preferences. Empty for a foreign or absent id.
      */
-    public Optional<RelationshipRecord> reset(long ownerUserId, long relationshipId) {
+    public Optional<RelationshipRecord> reset(
+            long ownerUserId, long relationshipId, boolean retainImportable) {
         if (ownerUserId <= 0 || relationshipId <= 0) {
             return Optional.empty();
         }
         Boolean updated = jdbc.queryForObject(
-                "SELECT vc.reset_relationship(?, ?)",
+                "SELECT vc.reset_relationship(?, ?, ?)",
                 Boolean.class,
                 ownerUserId,
-                relationshipId);
+                relationshipId,
+                retainImportable);
         if (!Boolean.TRUE.equals(updated)) {
             return Optional.empty();
         }
@@ -204,15 +206,16 @@ public class RelationshipService {
      * FR-COMP-004: delete the Companion and cascade its relationship-domain
      * data. {@code false} for a foreign or absent id.
      */
-    public boolean delete(long ownerUserId, long relationshipId) {
+    public boolean delete(long ownerUserId, long relationshipId, boolean retainImportable) {
         if (ownerUserId <= 0 || relationshipId <= 0) {
             return false;
         }
         Boolean deleted = jdbc.queryForObject(
-                "SELECT vc.delete_relationship(?, ?)",
+                "SELECT vc.delete_relationship(?, ?, ?)",
                 Boolean.class,
                 ownerUserId,
-                relationshipId);
+                relationshipId,
+                retainImportable);
         return Boolean.TRUE.equals(deleted);
     }
 

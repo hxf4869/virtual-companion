@@ -379,10 +379,12 @@ export async function previewRelationshipClearance(
 export async function resetRelationship(
   t: RelationshipTransport,
   relationshipId: string,
+  options?: { retainImportable?: boolean },
 ): Promise<Relationship | null> {
+  const query = options?.retainImportable === true ? "?retainImportable=true" : "";
   const r = await t.request(
     "POST",
-    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}/reset`,
+    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}/reset${query}`,
   );
   guardResult(r);
   return asRelationship(r.json);
@@ -396,10 +398,12 @@ export async function resetRelationship(
 export async function deleteRelationship(
   t: RelationshipTransport,
   relationshipId: string,
+  options?: { retainImportable?: boolean },
 ): Promise<boolean> {
+  const query = options?.retainImportable === true ? "?retainImportable=true" : "";
   const r = await t.request(
     "DELETE",
-    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}`,
+    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}${query}`,
   );
   if (!r.ok) {
     if (!isExistenceHidden(r.status)) {
@@ -409,4 +413,62 @@ export async function deleteRelationship(
   }
   if (!r.json || typeof r.json !== "object") return false;
   return (r.json as Record<string, unknown>).ok === true;
+}
+
+export interface MemoryImportPreview {
+  personaRef: string;
+  acceptedCount: number;
+  createdAt?: string;
+}
+
+export async function listMemoryImports(
+  t: RelationshipTransport,
+  personaRef: string,
+): Promise<MemoryImportPreview> {
+  const r = await t.request(
+    "GET",
+    `/api/v1/memory-imports?personaRef=${encodeURIComponent(personaRef)}`,
+  );
+  guardResult(r);
+  if (!r.json || typeof r.json !== "object") {
+    return { personaRef, acceptedCount: 0 };
+  }
+  const o = r.json as Record<string, unknown>;
+  const count = o.acceptedCount;
+  return {
+    personaRef: typeof o.personaRef === "string" ? o.personaRef : personaRef,
+    acceptedCount: typeof count === "number" && Number.isFinite(count) ? count : 0,
+    createdAt: typeof o.createdAt === "string" ? o.createdAt : undefined,
+  };
+}
+
+export async function importMemories(
+  t: RelationshipTransport,
+  relationshipId: string,
+): Promise<number> {
+  const r = await t.request(
+    "POST",
+    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}/memory-imports`,
+  );
+  guardResult(r);
+  if (!r.json || typeof r.json !== "object") return 0;
+  const count = (r.json as Record<string, unknown>).importedCount;
+  return typeof count === "number" && Number.isFinite(count) ? count : 0;
+}
+
+export async function discardMemoryImport(
+  t: RelationshipTransport,
+  personaRef: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "DELETE",
+    `/api/v1/memory-imports?personaRef=${encodeURIComponent(personaRef)}`,
+  );
+  if (!r.ok) {
+    if (!isExistenceHidden(r.status)) {
+      throw new RelationshipHttpError(r.status, classifyStatus(r.status));
+    }
+    return false;
+  }
+  return true;
 }

@@ -410,6 +410,15 @@ paths:
         server-verified authentication context.
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
+        - name: retainImportable
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            When true, snapshot ACCEPTED RELATIONSHIP memories for later
+            explicit import. Default false (hard clear, no archive).
       responses:
         '200':
           description: The Companion was deleted
@@ -556,6 +565,16 @@ paths:
         authentication context.
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
+        - name: retainImportable
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: >-
+            When true, snapshot ACCEPTED RELATIONSHIP memories for later
+            explicit import. Default false. Same-template create never
+            inherits unless the user later calls import.
       responses:
         '200':
           description: The Companion after reset (row and preferences retained)
@@ -563,6 +582,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Relationship'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/memory-imports:
+    get:
+      operationId: listMemoryImports
+      summary: Preview the importable confirmed-memory archive (FR-COMP-004)
+      description: >-
+        Returns the caller's latest explicit archive of ACCEPTED RELATIONSHIP
+        memories for one persona template. A missing archive is an empty
+        count, never 404. Create/reset never inherit unless the user later
+        POSTs import. Requires a server-verified authentication context.
+      parameters:
+        - name: personaRef
+          in: query
+          required: true
+          schema:
+            type: string
+          description: persona-templates catalog code
+      responses:
+        '200':
+          description: Archive count (zero when none)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryImportPreview'
+        '400':
+          description: personaRef is not an approved template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      operationId: discardMemoryImport
+      summary: Discard the importable archive without importing (FR-COMP-004)
+      description: >-
+        Deletes the caller's archive for one persona after the user actively
+        chooses not to import. A missing archive is still 200. Requires a
+        server-verified authentication context.
+      parameters:
+        - name: personaRef
+          in: query
+          required: true
+          schema:
+            type: string
+          description: persona-templates catalog code
+      responses:
+        '200':
+          description: Archive discarded or already absent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryImportDiscarded'
+        '400':
+          description: personaRef is not an approved template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/memory-imports:
+    post:
+      operationId: importMemories
+      summary: Import the archived confirmed memories into this Companion
+      description: >-
+        Copies the caller's archive for this Companion's persona into the
+        target relationship as ACCEPTED RELATIONSHIP memories. The POST is
+        the required explicit user choice (FR-COMP-004). The archive is
+        consumed. A foreign or absent relationship maps to
+        NOT_FOUND_OR_FORBIDDEN. An empty archive imports zero rows.
+        Requires a server-verified authentication context.
+      parameters:
+        - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: Number of memories imported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryImportResult'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -2524,6 +2643,45 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed delete
+    MemoryImportPreview:
+      type: object
+      description: >-
+        Latest explicit archive of ACCEPTED RELATIONSHIP memories for one
+        persona (FR-COMP-004). acceptedCount is 0 when no archive exists.
+      required:
+        - personaRef
+        - acceptedCount
+      properties:
+        personaRef:
+          type: string
+          description: persona-templates catalog code
+        acceptedCount:
+          type: integer
+          minimum: 0
+          description: Number of archived confirmed memories
+        createdAt:
+          type: string
+          format: date-time
+          description: Archive timestamp, absent when empty
+    MemoryImportResult:
+      type: object
+      description: Result of an explicit memory import (FR-COMP-004).
+      required:
+        - importedCount
+      properties:
+        importedCount:
+          type: integer
+          minimum: 0
+          description: Number of ACCEPTED memories copied into the target Companion
+    MemoryImportDiscarded:
+      type: object
+      description: Result of discarding an import archive without importing.
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always true when the archive is gone
     RelationshipCreateRequest:
       type: object
       description: Body for creating a new Companion relationship.

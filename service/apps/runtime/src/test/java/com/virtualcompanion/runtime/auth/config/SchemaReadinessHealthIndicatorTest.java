@@ -166,8 +166,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V51 = CHAT-MODE CASUAL turn mode;
         // V52 = USAGE-HEALTH continuous-use reminder prefs + heartbeat;
         // V53 = GEN-VER generation versions for one user message;
-        // V54 = INC-PREF default incognito for the next new conversation).
+        // V54 = INC-PREF default incognito for the next new conversation;
+        // V55 = MEM-IMPORT explicit archive/import of confirmed memories).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(54);
+                .isEqualTo(55);
     }
 }

@@ -22,6 +22,7 @@ const ACTIVE = {
 function stubFetch(): { calls: { method: string; url: string; body?: unknown }[] } {
   const calls: { method: string; url: string; body?: unknown }[] = [];
   let deleted = false;
+  let archived = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -63,6 +64,27 @@ function stubFetch(): { calls: { method: string; url: string; body?: unknown }[]
       }
       if (url === "/api/v1/relationships/7" && method === "DELETE") {
         deleted = true;
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      if (url.startsWith("/api/v1/relationships/7/reset") && method === "POST") {
+        archived = url.includes("retainImportable=true");
+        return { ok: true, status: 200, json: async () => ACTIVE };
+      }
+      if (url.startsWith("/api/v1/memory-imports") && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            personaRef: "gentle-listener",
+            acceptedCount: archived ? 2 : 0,
+            createdAt: archived ? "2026-08-19T00:00:00Z" : undefined,
+          }),
+        };
+      }
+      if (url === "/api/v1/relationships/7/memory-imports" && method === "POST") {
+        return { ok: true, status: 200, json: async () => ({ importedCount: 2 }) };
+      }
+      if (url.startsWith("/api/v1/memory-imports") && method === "DELETE") {
         return { ok: true, status: 200, json: async () => ({ ok: true }) };
       }
       return { ok: true, status: 200, json: async () => ({}) };
@@ -213,6 +235,55 @@ describe("companion page (FR-COMP-003 / FR-COMP-002)", () => {
     );
     expect(useRelationshipStore().current).toBeNull();
     expect(wrapper.find('[data-testid="companion-no-rel"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("MEM-IMPORT: retain stays off by default and reset does not add the flag", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.find('[data-testid="companion-reset-open"]').trigger("click");
+    await flushPromises();
+
+    const retain = wrapper.find('[data-testid="retain-importable"]');
+    expect(retain.exists()).toBe(true);
+    expect((retain.element as HTMLInputElement).checked).toBe(false);
+
+    await wrapper.find('[data-testid="companion-reset-confirm"]').trigger("click");
+    await flushPromises();
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/relationships/7/reset")).toBe(
+      true,
+    );
+    expect(calls.some((c) => String(c.url).includes("retainImportable=true"))).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("MEM-IMPORT: checking retain snapshots then offers an explicit import choice", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.find('[data-testid="companion-reset-open"]').trigger("click");
+    await flushPromises();
+
+    await wrapper.find('[data-testid="retain-importable"]').setValue(true);
+    await wrapper.find('[data-testid="companion-reset-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(
+      calls.some(
+        (c) => c.method === "POST" && c.url === "/api/v1/relationships/7/reset?retainImportable=true",
+      ),
+    ).toBe(true);
+    const prompt = wrapper.find('[data-testid="memory-import-prompt"]');
+    expect(prompt.exists()).toBe(true);
+    expect(prompt.text()).toContain("2 条");
+    expect(prompt.text()).not.toMatch(/挽留|舍不得|忘记你/);
+
+    await wrapper.find('[data-testid="memory-import-confirm"]').trigger("click");
+    await flushPromises();
+    expect(
+      calls.some((c) => c.method === "POST" && c.url === "/api/v1/relationships/7/memory-imports"),
+    ).toBe(true);
     wrapper.unmount();
   });
 });

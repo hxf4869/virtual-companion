@@ -10,6 +10,8 @@ import com.virtualcompanion.catalog.CompanionReplyLength;
 import com.virtualcompanion.catalog.PersonaTemplate;
 import com.virtualcompanion.conversation.contextplan.CompanionPreferenceInstructions;
 import com.virtualcompanion.platform.persistence.CompanionPrefs;
+import com.virtualcompanion.platform.persistence.MemoryImportPreview;
+import com.virtualcompanion.platform.persistence.MemoryImportService;
 import com.virtualcompanion.platform.persistence.RelationshipClearancePreview;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -68,9 +71,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class RelationshipController {
 
     private final RelationshipService relationshipService;
+    private final MemoryImportService memoryImportService;
 
-    public RelationshipController(RelationshipService relationshipService) {
+    public RelationshipController(
+            RelationshipService relationshipService, MemoryImportService memoryImportService) {
         this.relationshipService = relationshipService;
+        this.memoryImportService = memoryImportService;
     }
 
     @PostMapping("/relationships")
@@ -154,9 +160,10 @@ public class RelationshipController {
     @PostMapping("/relationships/{relationshipId}/reset")
     public RelationshipResponse reset(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
-            @PathVariable String relationshipId) {
+            @PathVariable String relationshipId,
+            @RequestParam(name = "retainImportable", required = false) String retainImportable) {
         long id = parseId(relationshipId);
-        return relationshipService.reset(ownerUserId, id)
+        return relationshipService.reset(ownerUserId, id, parseRetain(retainImportable))
                 .map(RelationshipController::toResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("relationship"));
     }
@@ -164,12 +171,61 @@ public class RelationshipController {
     @DeleteMapping("/relationships/{relationshipId}")
     public RelationshipDeletedResponse delete(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
-            @PathVariable String relationshipId) {
+            @PathVariable String relationshipId,
+            @RequestParam(name = "retainImportable", required = false) String retainImportable) {
         long id = parseId(relationshipId);
-        if (!relationshipService.delete(ownerUserId, id)) {
+        if (!relationshipService.delete(ownerUserId, id, parseRetain(retainImportable))) {
             throw new ResourceNotFoundException("relationship");
         }
         return new RelationshipDeletedResponse(true);
+    }
+
+    @GetMapping("/memory-imports")
+    public MemoryImportPreviewResponse listMemoryImports(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @RequestParam(name = "personaRef") String personaRef) {
+        if (!isKnownPersona(personaRef)) {
+            throw new IllegalArgumentException("personaRef is not a known persona template: " + personaRef);
+        }
+        MemoryImportPreview preview = memoryImportService.preview(ownerUserId, personaRef);
+        return new MemoryImportPreviewResponse(
+                preview.personaRef(),
+                preview.acceptedCount(),
+                preview.createdAt() == null ? null : preview.createdAt().toString());
+    }
+
+    @DeleteMapping("/memory-imports")
+    public MemoryImportDiscardedResponse discardMemoryImport(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @RequestParam(name = "personaRef") String personaRef) {
+        if (!isKnownPersona(personaRef)) {
+            throw new IllegalArgumentException("personaRef is not a known persona template: " + personaRef);
+        }
+        memoryImportService.discard(ownerUserId, personaRef);
+        return new MemoryImportDiscardedResponse(true);
+    }
+
+    @PostMapping("/relationships/{relationshipId}/memory-imports")
+    public MemoryImportResultResponse importMemories(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String relationshipId) {
+        long id = parseId(relationshipId);
+        return memoryImportService.importTo(ownerUserId, id)
+                .map(MemoryImportResultResponse::new)
+                .orElseThrow(() -> new ResourceNotFoundException("relationship"));
+    }
+
+    private static boolean parseRetain(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        if ("true".equalsIgnoreCase(raw)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(raw)) {
+            return false;
+        }
+        throw new IllegalArgumentException("retainImportable must be true or false: " + raw);
     }
 
     private static long parseId(String raw) {
@@ -321,6 +377,15 @@ public class RelationshipController {
 
     /** Response body (OpenAPI {@code RelationshipDeletedResponse}). */
     public record RelationshipDeletedResponse(boolean ok) {
+    }
+
+    public record MemoryImportPreviewResponse(String personaRef, int acceptedCount, String createdAt) {
+    }
+
+    public record MemoryImportResultResponse(int importedCount) {
+    }
+
+    public record MemoryImportDiscardedResponse(boolean ok) {
     }
 
     private static ClearancePreviewResponse toPreview(RelationshipClearancePreview preview) {

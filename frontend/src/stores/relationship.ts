@@ -21,6 +21,9 @@ import {
   createRelationship,
   deactivateRelationship,
   deleteRelationship,
+  discardMemoryImport,
+  importMemories,
+  listMemoryImports,
   listRelationships,
   previewRelationshipClearance,
   resetRelationship,
@@ -154,8 +157,9 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
   async function resetCompanion(
     t: RelationshipTransport,
     relationshipId: string,
+    options?: { retainImportable?: boolean },
   ): Promise<Relationship | null> {
-    const resetRow = await resetRelationship(t, relationshipId);
+    const resetRow = await resetRelationship(t, relationshipId, options);
     if (resetRow) {
       await load(t);
       currentRelationshipId.value = resetRow.relationshipId;
@@ -170,8 +174,9 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
   async function removeCompanion(
     t: RelationshipTransport,
     relationshipId: string,
+    options?: { retainImportable?: boolean },
   ): Promise<boolean> {
-    const deleted = await deleteRelationship(t, relationshipId);
+    const deleted = await deleteRelationship(t, relationshipId, options);
     if (deleted) {
       await load(t);
       if (currentRelationshipId.value === relationshipId) {
@@ -202,6 +207,9 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
     previewClearance,
     resetCompanion,
     removeCompanion,
+    listMemoryImports,
+    importMemories,
+    discardMemoryImport,
     reset,
   };
 });

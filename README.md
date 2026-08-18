@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V54 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V55 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
@@ -62,7 +62,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `DELETE /api/v1/relationships/{relationshipId}`（COMP-CLEAR / FR-COMP-004：预览将清除的
   会话/记忆/提醒数量；重置清除关系域数据但保留 Companion 行与结构化偏好；删除移除
   Companion 及关系域数据；账号级偏好不顺带抹掉；进行中 generation/memory-extract
-  工作项先取消；同模板新建不继承旧已确认记忆；deactivate 仍只退出 active 槽）
+  工作项先取消；同模板新建默认不继承旧已确认记忆；重置/删除可选择
+  retainImportable 留下归档，之后必须用户主动导入；deactivate 仍只退出 active 槽）
 - `POST /api/v1/relationships/{relationshipId}/reminders`、`GET /api/v1/relationships/{relationshipId}/reminders`
   （结构化用户提醒，soonest-first keyset）、`PATCH/DELETE /api/v1/reminders/{reminderId}`
   （REMINDER / FR-NOTIFY-001：提醒是结构化记录而非 Prompt 指令；Alpha 仅存储与
@@ -112,6 +113,12 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第二十九轮）：
+
+- 旧关系记忆导入（MEM-IMPORT / FR-COMP-004）：V55 归档表 + 显式 import/discard
+  SD；重置/删除默认不归档；用户勾选后才保留已确认记忆，再单独选择导入或
+  不要导入。同模板新建不会自动继承。
 
 后端在运方面上还提供（2026-08-18 第二十八轮）：
 

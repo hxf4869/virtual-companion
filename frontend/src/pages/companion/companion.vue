@@ -205,6 +205,16 @@ does not push. -->
             <template v-else>删除后会移除这个角色。</template>
             同模板新建的角色不会带上这些记忆。账号级偏好不会被改动。
           </text>
+          <label class="retain-row">
+            <input
+              type="checkbox"
+              data-testid="retain-importable"
+              :checked="retainImportable"
+              :disabled="dangerBusy"
+              @change="onRetainChange"
+            />
+            <text>保留一份已确认记忆，之后由我决定是否导入（默认不保留）</text>
+          </label>
           <view class="danger-actions">
             <button
               data-testid="companion-danger-cancel"
@@ -235,6 +245,22 @@ does not push. -->
           </view>
         </view>
       </view>
+      <view
+        v-if="importPreview && importPreview.acceptedCount > 0"
+        class="import-prompt"
+        data-testid="memory-import-prompt"
+        role="status"
+      >
+        <text>有 {{ importPreview.acceptedCount }} 条已确认记忆可导入到当前角色。默认不会自动带上。</text>
+        <view class="danger-actions">
+          <button data-testid="memory-import-confirm" class="nav-index" :disabled="dangerBusy" @click="onImportMemories">
+            导入这些记忆
+          </button>
+          <button data-testid="memory-import-discard" class="nav-index" :disabled="dangerBusy" @click="onDiscardImport">
+            不要导入
+          </button>
+        </view>
+      </view>
     </template>
     <view v-else class="empty" data-testid="companion-no-rel">
       <text>请先选择一个关系。</text>
@@ -255,6 +281,7 @@ import {
   type CompanionInitiative,
   type CompanionMemoryShare,
   type CompanionReplyLength,
+  type MemoryImportPreview,
   type Relationship,
   type RelationshipClearancePreview,
 } from "@/api/relationship";
@@ -306,6 +333,8 @@ export default {
     const dangerKind = ref<"reset" | "delete" | null>(null);
     const preview = ref<RelationshipClearancePreview | null>(null);
     const dangerBusy = ref(false);
+    const retainImportable = ref(false);
+    const importPreview = ref<MemoryImportPreview | null>(null);
 
     function applyRelationship(rel: Relationship | null): void {
       companionName.value = rel?.companionName ?? "";
@@ -402,6 +431,25 @@ export default {
     function onCancelDanger(): void {
       dangerKind.value = null;
       preview.value = null;
+      retainImportable.value = false;
+    }
+
+    function onRetainChange(event: Event): void {
+      const target = event.target as HTMLInputElement | null;
+      retainImportable.value = target?.checked === true;
+    }
+
+    async function refreshImportPreview(): Promise<void> {
+      const persona = relStore.current?.personaRef;
+      if (!persona) {
+        importPreview.value = null;
+        return;
+      }
+      try {
+        importPreview.value = await relStore.listMemoryImports(transport, persona);
+      } catch {
+        importPreview.value = null;
+      }
     }
 
     async function onConfirmReset(): Promise<void> {
@@ -410,11 +458,15 @@ export default {
       actionError.value = null;
       dangerBusy.value = true;
       try {
-        const result = await relStore.resetCompanion(transport, id);
+        const result = await relStore.resetCompanion(transport, id, {
+          retainImportable: retainImportable.value,
+        });
         if (result) {
           dangerKind.value = null;
           preview.value = null;
           saved.value = false;
+          await refreshImportPreview();
+          retainImportable.value = false;
         } else {
           actionError.value = "重置失败，请重试。";
         }
@@ -429,14 +481,47 @@ export default {
       actionError.value = null;
       dangerBusy.value = true;
       try {
-        const deleted = await relStore.removeCompanion(transport, id);
+        const deleted = await relStore.removeCompanion(transport, id, {
+          retainImportable: retainImportable.value,
+        });
         if (deleted) {
           dangerKind.value = null;
           preview.value = null;
           saved.value = false;
+          importPreview.value = null;
+          retainImportable.value = false;
         } else {
           actionError.value = "删除失败，请重试。";
         }
+      } finally {
+        dangerBusy.value = false;
+      }
+    }
+
+    async function onImportMemories(): Promise<void> {
+      const id = relStore.currentRelationshipId;
+      if (!id) return;
+      dangerBusy.value = true;
+      actionError.value = null;
+      try {
+        await relStore.importMemories(transport, id);
+        importPreview.value = null;
+      } catch {
+        actionError.value = "导入失败，请重试。";
+      } finally {
+        dangerBusy.value = false;
+      }
+    }
+
+    async function onDiscardImport(): Promise<void> {
+      const persona = relStore.current?.personaRef;
+      if (!persona) return;
+      dangerBusy.value = true;
+      try {
+        await relStore.discardMemoryImport(transport, persona);
+        importPreview.value = null;
+      } catch {
+        actionError.value = "未能取消导入。";
       } finally {
         dangerBusy.value = false;
       }
@@ -482,8 +567,16 @@ export default {
       }
     }
 
-    onMounted(() => {
-      void relStore.load(transport);
+    watch(
+      () => relStore.currentRelationshipId,
+      () => {
+        void refreshImportPreview();
+      },
+    );
+
+    onMounted(async () => {
+      await relStore.load(transport);
+      await refreshImportPreview();
     });
 
     return {
@@ -508,6 +601,11 @@ export default {
       dangerKind,
       preview,
       dangerBusy,
+      retainImportable,
+      importPreview,
+      onRetainChange,
+      onImportMemories,
+      onDiscardImport,
       onOpenDanger,
       onCancelDanger,
       onConfirmReset,
@@ -682,6 +780,23 @@ export default {
   font-size: 24rpx;
   color: #d7b4b1;
   line-height: 1.6;
+}
+.retain-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #d5deee;
+}
+.import-prompt {
+  margin-top: 16rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  font-size: 24rpx;
+  color: #d5deee;
 }
 .danger-actions {
   display: flex;

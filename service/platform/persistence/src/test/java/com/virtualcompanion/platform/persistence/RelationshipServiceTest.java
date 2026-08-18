@@ -194,45 +194,69 @@ class RelationshipServiceTest {
     @Test
     void resetCallsTheSdFunctionAndReloads() {
         when(jdbc.queryForObject(
-                eq("SELECT vc.reset_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L)))
+                eq("SELECT vc.reset_relationship(?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L),
+                eq(55L),
+                eq(false)))
                 .thenReturn(true);
         when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(new RelationshipRecord(55L, "persona-a", true, NOW)));
 
-        Optional<RelationshipRecord> record = service.reset(1L, 55L);
+        Optional<RelationshipRecord> record = service.reset(1L, 55L, false);
 
         assertTrue(record.isPresent());
         assertEquals(55L, record.get().id());
         verify(jdbc).queryForObject(
-                eq("SELECT vc.reset_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L));
+                eq("SELECT vc.reset_relationship(?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L),
+                eq(55L),
+                eq(false));
     }
 
     @Test
     void resetReturnsEmptyWhenSdFunctionReportsNoRow() {
         when(jdbc.queryForObject(
-                eq("SELECT vc.reset_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(99L)))
+                eq("SELECT vc.reset_relationship(?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L),
+                eq(99L),
+                eq(false)))
                 .thenReturn(false);
 
-        assertTrue(service.reset(1L, 99L).isEmpty());
+        assertTrue(service.reset(1L, 99L, false).isEmpty());
     }
 
     @Test
     void deleteCallsTheSdFunction() {
         when(jdbc.queryForObject(
-                eq("SELECT vc.delete_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L)))
+                eq("SELECT vc.delete_relationship(?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L),
+                eq(55L),
+                eq(false)))
                 .thenReturn(true);
 
-        assertTrue(service.delete(1L, 55L));
+        assertTrue(service.delete(1L, 55L, false));
         verify(jdbc).queryForObject(
-                eq("SELECT vc.delete_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L));
+                eq("SELECT vc.delete_relationship(?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L),
+                eq(55L),
+                eq(false));
     }
 
     @Test
     void deleteReturnsFalseWhenSdFunctionReportsNoRow() {
         when(jdbc.queryForObject(
-                eq("SELECT vc.delete_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(99L)))
+                eq("SELECT vc.delete_relationship(?, ?, ?)"),
+                eq(Boolean.class),
+                eq(1L),
+                eq(99L),
+                eq(false)))
                 .thenReturn(false);
 
-        assertFalse(service.delete(1L, 99L));
+        assertFalse(service.delete(1L, 99L, false));
     }
 }

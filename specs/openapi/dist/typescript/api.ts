@@ -93,6 +93,20 @@ export interface RelationshipDeletedResponse {
   ok: string
 }
 
+export interface MemoryImportPreview {
+  personaRef: string
+  acceptedCount: string
+  createdAt?: string
+}
+
+export interface MemoryImportResult {
+  importedCount: string
+}
+
+export interface MemoryImportDiscarded {
+  ok: string
+}
+
 export interface RelationshipCreateRequest {
   personaRef: string
 }
@@ -455,6 +469,9 @@ export interface VirtualCompanionApiClient {
   deactivateRelationship(): Promise<VersionResponse>
   previewRelationshipClearance(): Promise<VersionResponse>
   resetRelationship(): Promise<VersionResponse>
+  listMemoryImports(): Promise<VersionResponse>
+  discardMemoryImport(): Promise<VersionResponse>
+  importMemories(): Promise<VersionResponse>
   createConversation(): Promise<VersionResponse>
   listConversations(): Promise<VersionResponse>
   deleteConversation(): Promise<VersionResponse>

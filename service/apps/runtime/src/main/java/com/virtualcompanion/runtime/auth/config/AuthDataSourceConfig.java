@@ -27,6 +27,7 @@ import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IncognitoPrefService;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvider;
+import com.virtualcompanion.platform.persistence.MemoryImportService;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
@@ -354,6 +355,12 @@ public class AuthDataSourceConfig {
     @Bean
     public IncognitoPrefService incognitoPrefService(JdbcTemplate authJdbcTemplate) {
         return new IncognitoPrefService(authJdbcTemplate);
+    }
+
+    /** MEM-IMPORT (V55): explicit archive / import of confirmed relationship memories. */
+    @Bean
+    public MemoryImportService memoryImportService(JdbcTemplate authJdbcTemplate) {
+        return new MemoryImportService(authJdbcTemplate);
     }
 
     /** AGE-MIN: the simulated verification port (Alpha; no real vendor). */

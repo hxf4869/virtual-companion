@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.virtualcompanion.platform.persistence.CompanionPrefs;
+import com.virtualcompanion.platform.persistence.MemoryImportService;
 import com.virtualcompanion.platform.persistence.RelationshipClearancePreview;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
@@ -53,7 +54,9 @@ class RelationshipControllerTest {
     @BeforeEach
     void setUp() {
         relationshipService = mock(RelationshipService.class);
-        RelationshipController controller = new RelationshipController(relationshipService);
+        MemoryImportService memoryImportService = mock(MemoryImportService.class);
+        RelationshipController controller =
+                new RelationshipController(relationshipService, memoryImportService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -320,7 +323,7 @@ class RelationshipControllerTest {
 
     @Test
     void resetReturnsTheRetainedRelationship() throws Exception {
-        when(relationshipService.reset(1L, 7L)).thenReturn(
+        when(relationshipService.reset(1L, 7L, false)).thenReturn(
                 Optional.of(record(7L, "gentle-listener", true)));
 
         mockMvc.perform(post("/api/v1/relationships/7/reset"))
@@ -331,7 +334,7 @@ class RelationshipControllerTest {
 
     @Test
     void resetMapsForeignIdToNotFound() throws Exception {
-        when(relationshipService.reset(1L, 404L)).thenReturn(Optional.empty());
+        when(relationshipService.reset(1L, 404L, false)).thenReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/relationships/404/reset"))
                 .andExpect(status().isNotFound())
@@ -340,7 +343,7 @@ class RelationshipControllerTest {
 
     @Test
     void deleteReturnsOkOnConfirmedDelete() throws Exception {
-        when(relationshipService.delete(1L, 7L)).thenReturn(true);
+        when(relationshipService.delete(1L, 7L, false)).thenReturn(true);
 
         mockMvc.perform(delete("/api/v1/relationships/7"))
                 .andExpect(status().isOk())
@@ -349,7 +352,7 @@ class RelationshipControllerTest {
 
     @Test
     void deleteMapsForeignIdToNotFound() throws Exception {
-        when(relationshipService.delete(1L, 404L)).thenReturn(false);
+        when(relationshipService.delete(1L, 404L, false)).thenReturn(false);
 
         mockMvc.perform(delete("/api/v1/relationships/404"))
                 .andExpect(status().isNotFound())

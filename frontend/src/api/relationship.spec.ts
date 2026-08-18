@@ -8,7 +8,10 @@ import {
   createRelationship,
   deactivateRelationship,
   DEFAULT_COMPANION_PREFS,
+  discardMemoryImport,
   getRelationship,
+  importMemories,
+  listMemoryImports,
   listRelationships,
   RelationshipHttpError,
   deleteRelationship,
@@ -380,6 +383,18 @@ describe("resetRelationship", () => {
     expect(result?.relationshipId).toBe("42");
   });
 
+  it("MEM-IMPORT: retainImportable adds the query flag", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: RELATIONSHIP_JSON,
+    });
+
+    await resetRelationship(transport, "42", { retainImportable: true });
+
+    expect(calls[0].path).toBe("/api/v1/relationships/42/reset?retainImportable=true");
+  });
+
   it("returns null on 404 (existence hidden)", async () => {
     const { transport } = recorder({
       ok: false,
@@ -409,6 +424,18 @@ describe("deleteRelationship", () => {
     expect(result).toBe(true);
   });
 
+  it("MEM-IMPORT: retainImportable adds the query flag on delete", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { ok: true },
+    });
+
+    await deleteRelationship(transport, "42", { retainImportable: true });
+
+    expect(calls[0].path).toBe("/api/v1/relationships/42?retainImportable=true");
+  });
+
   it("returns false on 404 (existence hidden)", async () => {
     const { transport } = recorder({
       ok: false,
@@ -425,5 +452,49 @@ describe("deleteRelationship", () => {
     const { transport } = recorder({ ok: false, status: 401, json: null });
 
     await expect(deleteRelationship(transport, "42")).rejects.toThrow(RelationshipHttpError);
+  });
+});
+
+describe("memory import (MEM-IMPORT / FR-COMP-004)", () => {
+  it("lists the importable archive for a persona", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { personaRef: "gentle-listener", acceptedCount: 2, createdAt: "2026-08-19T00:00:00Z" },
+    });
+    const row = await listMemoryImports(transport, "gentle-listener");
+    expect(calls[0]).toEqual({
+      method: "GET",
+      path: "/api/v1/memory-imports?personaRef=gentle-listener",
+    });
+    expect(row).toEqual({
+      personaRef: "gentle-listener",
+      acceptedCount: 2,
+      createdAt: "2026-08-19T00:00:00Z",
+    });
+  });
+
+  it("imports the archive into a relationship", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { importedCount: 2 },
+    });
+    const result = await importMemories(transport, "7");
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: "/api/v1/relationships/7/memory-imports",
+    });
+    expect(result).toBe(2);
+  });
+
+  it("discards the archive without importing", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: { ok: true } });
+    const ok = await discardMemoryImport(transport, "gentle-listener");
+    expect(calls[0]).toEqual({
+      method: "DELETE",
+      path: "/api/v1/memory-imports?personaRef=gentle-listener",
+    });
+    expect(ok).toBe(true);
   });
 });
