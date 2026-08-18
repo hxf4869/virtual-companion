@@ -49,6 +49,12 @@ export const useAgeStore = defineStore("h5-age", () => {
     }
   }
 
+  function reset(): void {
+    record.value = { ageState: "AGE_UNKNOWN", providerRef: null, verifiedAt: null };
+    loadFailed.value = false;
+    busy.value = false;
+  }
+
   async function runVerification(transport: AgeTransport): Promise<boolean> {
     if (busy.value || !canVerify.value) return false;
     busy.value = true;
@@ -70,5 +76,6 @@ export const useAgeStore = defineStore("h5-age", () => {
     label,
     load,
     runVerification,
+    reset,
   };
 });

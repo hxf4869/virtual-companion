@@ -21,6 +21,14 @@
       @activate="onPickRelationship"
     />
 
+    <input
+      v-model="filterQuery"
+      class="filter-input"
+      data-testid="conversation-filter"
+      placeholder="按标题或预览筛选"
+      aria-label="按标题或预览筛选"
+    />
+
     <view v-if="loadFailed" class="error" data-testid="conversations-load-failed" role="alert">
       <text>会话列表加载失败，请重试。</text>
       <button data-testid="conversations-retry" class="nav-index" :disabled="busy" @click="reload">
@@ -38,7 +46,7 @@
     </view>
 
     <view
-      v-for="item in items"
+      v-for="item in visibleItems"
       :key="item.conversationId"
       class="card"
       data-testid="conversation-card"
@@ -107,7 +115,7 @@
 </template>
 
 <script lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import {
   deleteConversation,
@@ -118,6 +126,7 @@ import {
 } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";
 import { useRelationshipStore } from "@/stores/relationship";
 
@@ -128,6 +137,7 @@ export default {
     const auth = useAuthStore();
     const relStore = useRelationshipStore();
     const items = ref<ConversationListItem[]>([]);
+    const filterQuery = ref("");
     const relationshipId = ref("");
     const loadFailed = ref(false);
     const loaded = ref(false);
@@ -138,6 +148,11 @@ export default {
     const confirmEndId = ref<string | null>(null);
     const hasMore = ref(false);
     const PAGE_SIZE = 20;
+    const visibleItems = computed(() =>
+      items.value.filter((item) =>
+        matchesLooseText(`${item.title ?? ""} ${item.lastMessagePreview ?? ""}`, filterQuery.value),
+      ),
+    );
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -310,6 +325,8 @@ export default {
     return {
       relStore,
       items,
+      visibleItems,
+      filterQuery,
       relationshipId,
       loadFailed,
       loaded,
@@ -351,6 +368,17 @@ export default {
   font-size: 32rpx;
   font-weight: 600;
   margin-right: auto;
+}
+.filter-input {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 16rpx;
+  padding: 12rpx 16rpx;
+  border: 2rpx solid #2a3a5a;
+  border-radius: 12rpx;
+  background-color: #1c2b4a;
+  color: #f5f5f5;
+  font-size: 24rpx;
 }
 .nav-index {
   background-color: #2a3a5a;

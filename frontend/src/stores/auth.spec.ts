@@ -3,9 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthTokens, AuthTransport } from "@/api/auth";
 import { useAuthStore } from "@/stores/auth";
+import { useAgeStore } from "@/stores/age";
 import { useChatStore } from "@/stores/chat";
+import { useConsentStore } from "@/stores/consent";
+import { useDataStore } from "@/stores/data";
+import { useExportStore } from "@/stores/export";
+import { useIncognitoStore } from "@/stores/incognito";
 import { useMemoryStore } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
+import { useReminderStore } from "@/stores/reminder";
 
 function okTransport(tokens: AuthTokens): AuthTransport {
   return {
@@ -206,6 +212,42 @@ describe("useAuthStore", () => {
     expect(memory.canonical).toEqual([]);
     expect(rel.relationships).toEqual([]);
     expect(rel.currentRelationshipId).toBeNull();
+  });
+
+  it("LOGOUT-CLEAR: logout also drops consent, data, export, reminder, age and incognito caches", async () => {
+    const auth = useAuthStore();
+    await auth.login(okTransport(sampleTokens("a")), "alice", "pw");
+    const consent = useConsentStore();
+    const data = useDataStore();
+    const exported = useExportStore();
+    const reminder = useReminderStore();
+    const age = useAgeStore();
+    const incognito = useIncognitoStore();
+    consent.records = [
+      {
+        consentId: "c1",
+        consentType: "SERVICE_TERMS",
+        version: "2026-08",
+        granted: true,
+        grantedAt: "t",
+      },
+    ];
+    data.conversations = [
+      { conversationId: "9", relationshipId: "1", lastMessagePreview: "secret" },
+    ];
+    exported.request = { exportId: "e1", status: "READY" } as never;
+    reminder.reminders = [{ reminderId: "r1", relationshipId: "1", text: "secret", remindAt: "t", recurrence: "NONE", status: "ACTIVE", createdAt: "t" }];
+    age.record = { ageState: "ADULT_VERIFIED", providerRef: "x", verifiedAt: "t" };
+    incognito.defaultIncognito = true;
+
+    await auth.logout(okTransport(sampleTokens()));
+
+    expect(consent.records).toEqual([]);
+    expect(data.conversations).toEqual([]);
+    expect(exported.request).toBeNull();
+    expect(reminder.reminders).toEqual([]);
+    expect(age.ageState).toBe("AGE_UNKNOWN");
+    expect(incognito.defaultIncognito).toBe(false);
   });
 
   it("LOGOUT-CLEAR: a failed refresh without an existing session does not wipe caches", async () => {

@@ -115,6 +115,35 @@ describe("data page (FR-DATA-001)", () => {
     wrapper.unmount();
   });
 
+  it("DATA-JUMP: stored rows open the matching existing pages", async () => {
+    stubFetch();
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const wrapper = mount(DataPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="data-open-account"]').trigger("click");
+    await wrapper.find('[data-testid="data-open-companion"]').trigger("click");
+    await wrapper.find('[data-testid="data-open-conversation"]').trigger("click");
+    await wrapper.find('[data-testid="data-open-memory"]').trigger("click");
+    await wrapper.find('[data-testid="data-open-reminder"]').trigger("click");
+    await wrapper.find('[data-testid="data-open-consent"]').trigger("click");
+    await wrapper.find('[data-testid="data-open-ai-notice"]').trigger("click");
+    await wrapper.find('[data-testid="data-open-report"]').trigger("click");
+
+    expect(navigateTo.mock.calls.map((call) => call[0])).toEqual([
+      { url: "/pages/account/account" },
+      { url: "/pages/companion/companion" },
+      { url: "/pages/chat/chat?conversationId=11" },
+      { url: "/pages/memory-detail/memory-detail?memoryId=3" },
+      { url: "/pages/reminder/reminder" },
+      { url: "/pages/consent/consent" },
+      { url: "/pages/ai-notice/ai-notice" },
+      { url: "/pages/report/report" },
+    ]);
+    wrapper.unmount();
+  });
+
   it("shows the load failure without inventing rows", async () => {
     stubFetch(true);
     const wrapper = mount(DataPage, { attachTo: document.body });

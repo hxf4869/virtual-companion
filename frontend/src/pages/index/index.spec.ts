@@ -53,6 +53,105 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     stubRelationshipFetch();
   });
 
+  it("NEXT-STEP: an authenticated session with no companion points to create one", async () => {
+    stubRelationshipFetch([]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url === "/api/v1/age/state") {
+          return { ok: true, status: 200, json: async () => ({ ageState: "ADULT_VERIFIED" }) };
+        }
+        if (url === "/api/v1/consents") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { consentId: "1", consentType: "SERVICE_TERMS", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "2", consentType: "PRIVACY_POLICY", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "3", consentType: "AI_CONTENT_NOTICE", version: "2026-08", granted: true, grantedAt: "t" },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    auth.role = "USER";
+    const wrapper = mountPage();
+    await flushPromises();
+    const step = wrapper.find('[data-testid="next-step"]');
+    expect(step.exists()).toBe(true);
+    expect(step.text()).toContain("还没有角色");
+    await wrapper.find('[data-testid="next-step-go"]').trigger("click");
+    const navigateTo = (globalThis as { uni?: { navigateTo: ReturnType<typeof vi.fn> } }).uni?.navigateTo;
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
+    wrapper.unmount();
+  });
+
+  it("NEXT-STEP: unverified age comes before creating a companion", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/age/state") {
+          return { ok: true, status: 200, json: async () => ({ ageState: "AGE_UNKNOWN" }) };
+        }
+        if (url === "/api/v1/consents") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    auth.role = "USER";
+    const wrapper = mountPage();
+    await flushPromises();
+    const step = wrapper.find('[data-testid="next-step"]');
+    expect(step.text()).toContain("成年核验");
+    await wrapper.find('[data-testid="next-step-go"]').trigger("click");
+    const navigateTo = (globalThis as { uni?: { navigateTo: ReturnType<typeof vi.fn> } }).uni?.navigateTo;
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/age/age" });
+    wrapper.unmount();
+  });
+
+  it("NEXT-STEP: missing required consents go to the consent page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/age/state") {
+          return { ok: true, status: 200, json: async () => ({ ageState: "ADULT_VERIFIED" }) };
+        }
+        if (url === "/api/v1/consents") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    auth.role = "USER";
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="next-step"]').text()).toContain("协议");
+    await wrapper.find('[data-testid="next-step-go"]').trigger("click");
+    const navigateTo = (globalThis as { uni?: { navigateTo: ReturnType<typeof vi.fn> } }).uni?.navigateTo;
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/consent/consent" });
+    wrapper.unmount();
+  });
+
   it("renders internal entries for chat, memory, and login", () => {
     const wrapper = mountPage();
     const nav = wrapper.find('[data-testid="alpha-nav"]');

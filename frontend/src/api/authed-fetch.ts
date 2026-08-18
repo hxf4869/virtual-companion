@@ -17,6 +17,7 @@
 // layer); an unavailable refresh leaves the original response untouched.
 
 import type { RenewResult } from "@/api/transport";
+import { rememberRequestIdFromResponse } from "@/domain/request-id";
 
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_COOKIE = "vc_csrf";
@@ -76,6 +77,7 @@ export function createAuthedFetch(
       }
     }
     const response = await fetch(input, { ...init, headers, credentials: "include" });
+    rememberRequestIdFromResponse(response);
 
     if (response.status === 401 && !isReplay && session?.renewAccessToken) {
       const outcome = await session.renewAccessToken();

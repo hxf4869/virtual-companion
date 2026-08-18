@@ -202,6 +202,24 @@
       </view>
 
       <view
+        v-if="auth.isAuthenticated && nextStep"
+        class="next-step"
+        data-testid="next-step"
+        role="status"
+      >
+        <text>{{ nextStep.copy }}</text>
+        <button
+          data-testid="next-step-go"
+          class="alpha-nav__link"
+          role="button"
+          :aria-label="nextStep.action"
+          @click="goTo(nextStepHref)"
+        >
+          <text>{{ nextStep.action }}</text>
+        </button>
+      </view>
+
+      <view
         v-if="relStore.status === 'ready'"
         class="current-relationship"
         data-testid="current-relationship"
@@ -422,14 +440,20 @@ import { storeToRefs } from "pinia";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { deleteAccount } from "@/api/auth";
 import { fetchVersion, type VersionInfo } from "@/api/version";
+import { resolveNextStep, type NextStep } from "@/domain/next-step";
 import { personaDisplayName } from "@/domain/persona";
+import { useAgeStore } from "@/stores/age";
 import { useAuthStore } from "@/stores/auth";
 import { useBaselineStore } from "@/stores/baseline";
+import { useConsentStore } from "@/stores/consent";
 import { useRelationshipStore } from "@/stores/relationship";
 
 const store = useBaselineStore();
 const auth = useAuthStore();
 const relStore = useRelationshipStore();
+const age = useAgeStore();
+const consent = useConsentStore();
+const nextStep = ref<NextStep | null>(null);
 // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -537,6 +561,30 @@ function conversationsHref(): string {
   return `/pages/conversations/conversations?relationshipId=${encodeURIComponent(id)}`;
 }
 
+const nextStepHref = computed(() => {
+  if (!nextStep.value) return "/pages/chat/chat";
+  if (nextStep.value.kind === "companion" || nextStep.value.kind === "ready") {
+    return chatHref();
+  }
+  return nextStep.value.href;
+});
+
+async function refreshNextStep(): Promise<void> {
+  if (!auth.isAuthenticated) {
+    nextStep.value = null;
+    return;
+  }
+  await Promise.all([age.load(transport), consent.load(transport)]);
+  nextStep.value = resolveNextStep({
+    authenticated: true,
+    ageKnown: !age.loadFailed,
+    ageState: age.ageState,
+    consentKnown: !consent.loadFailed,
+    grantedTypes: consent.records.filter((row) => row.granted).map((row) => row.consentType),
+    hasCompanion: relStore.relationships.length > 0,
+  });
+}
+
 function goTo(url: string): void {
   try {
     const uniApi = (globalThis as Record<string, unknown>).uni as
@@ -595,7 +643,8 @@ onMounted(async () => {
     await auth.tryRefresh(transport);
   }
   void load();
-  void relStore.load(transport);
+  await relStore.load(transport);
+  await refreshNextStep();
   // VERSION-UI: independent of the baseline preflight (public endpoint); a
   // non-OK response yields null and the stamp simply omits the fields.
   versionInfo.value = await fetchVersion(transport);
@@ -765,6 +814,20 @@ onMounted(async () => {
 .current-relationship {
   margin: -8px 0 20px;
   color: rgba(238, 243, 249, 0.78);
+  font-size: 13px;
+}
+
+.next-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid rgba(238, 243, 249, 0.22);
+  border-radius: 10px;
+  color: rgba(238, 243, 249, 0.88);
+  background: rgba(251, 252, 254, 0.08);
   font-size: 13px;
 }
 

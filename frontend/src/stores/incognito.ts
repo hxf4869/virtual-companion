@@ -36,5 +36,11 @@ export const useIncognitoStore = defineStore("h5-incognito-pref", () => {
     }
   }
 
-  return { defaultIncognito, loadFailed, busy, label, load, save };
+  function reset(): void {
+    defaultIncognito.value = false;
+    loadFailed.value = false;
+    busy.value = false;
+  }
+
+  return { defaultIncognito, loadFailed, busy, label, load, save, reset };
 });

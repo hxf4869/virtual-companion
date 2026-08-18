@@ -16,6 +16,13 @@
             {{ headerCompanionName }}
           </text>
         </view>
+        <text
+          v-if="headerConversationTitle"
+          class="chat-conversation-title"
+          data-testid="chat-conversation-title"
+        >
+          {{ headerConversationTitle }}
+        </text>
         <text class="chat-ai-label" data-testid="chat-ai-label">AI 陪伴 · 非真人</text>
       </view>
       <view class="chat-header-nav">
@@ -152,8 +159,26 @@
       <text>关系列表加载失败。</text>
     </view>
 
-    <view v-if="initError" class="chat-error" role="alert">
+    <view
+      v-if="importPreview && importPreview.acceptedCount > 0 && hasRelationship"
+      class="incognito-notice"
+      data-testid="memory-import-prompt"
+      role="status"
+    >
+      <text>有 {{ importPreview.acceptedCount }} 条已确认记忆可导入到当前角色。默认不会自动带上。</text>
+      <view class="usage-health-actions">
+        <button data-testid="memory-import-confirm" class="chat-nav-index" @click="onImportMemories">
+          导入这些记忆
+        </button>
+        <button data-testid="memory-import-discard" class="chat-nav-index" @click="onDiscardImport">
+          不要导入
+        </button>
+      </view>
+    </view>
+
+    <view v-if="initError" class="chat-error" data-testid="chat-init-error" role="alert">
       <text>初始化失败，请刷新重试</text>
+      <text v-if="initRequestId">{{ initRequestId }}</text>
     </view>
 
     <template v-else>
@@ -609,6 +634,8 @@ import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 import { useUsageHealthStore } from "@/stores/usage-health";
 import { useIncognitoStore } from "@/stores/incognito";
+import type { MemoryImportPreview } from "@/api/relationship";
+import { requestIdLabel } from "@/domain/request-id";
 
 function resolveOrigin(): string {
   return typeof window !== "undefined" && window.location && window.location.origin
@@ -625,12 +652,19 @@ export default defineComponent({
     const auth = useAuthStore();
     const usageHealth = useUsageHealthStore();
     const incognitoPref = useIncognitoStore();
+    const importPreview = ref<MemoryImportPreview | null>(null);
     const headerCompanionName = computed(() =>
       relStore.current ? companionHeaderName(relStore.current) : "",
     );
     const headerAvatar = computed(() => companionAvatarOption(relStore.current?.avatarRef));
+    const headerConversationTitle = computed(() => {
+      const id = store.conversationId;
+      if (!id) return "";
+      return (store.conversations.find((item) => item.conversationId === id)?.title ?? "").trim();
+    });
     const inputText = ref("");
     const initError = ref(false);
+    const initRequestId = ref("");
     // REL-DEACT: two-step confirm state for the deactivate button (no modal).
     const confirmDeactivate = ref(false);
     // CONV-MGMT: two-step delete confirm + inline rename state.
@@ -1128,6 +1162,7 @@ export default defineComponent({
         }
       } catch {
         initError.value = true;
+        initRequestId.value = requestIdLabel();
       }
     }
 
@@ -1225,6 +1260,42 @@ export default defineComponent({
         initError.value = false;
         confirmDeactivate.value = false;
         await startConversation();
+        await refreshImportPreview();
+      }
+    }
+
+    async function refreshImportPreview(): Promise<void> {
+      const persona = relStore.current?.personaRef;
+      if (!persona) {
+        importPreview.value = null;
+        return;
+      }
+      try {
+        importPreview.value = await relStore.listMemoryImports(transport, persona);
+      } catch {
+        importPreview.value = null;
+      }
+    }
+
+    async function onImportMemories(): Promise<void> {
+      const id = relStore.currentRelationshipId;
+      if (!id) return;
+      try {
+        await relStore.importMemories(transport, id);
+        importPreview.value = null;
+      } catch {
+        // Keep the prompt; do not invent a successful import.
+      }
+    }
+
+    async function onDiscardImport(): Promise<void> {
+      const persona = relStore.current?.personaRef;
+      if (!persona) return;
+      try {
+        await relStore.discardMemoryImport(transport, persona);
+        importPreview.value = null;
+      } catch {
+        // Keep the prompt.
       }
     }
 
@@ -1234,6 +1305,7 @@ export default defineComponent({
         initError.value = false;
         confirmDeactivate.value = false;
         await startConversation();
+        await refreshImportPreview();
       }
     }
 
@@ -1317,6 +1389,7 @@ export default defineComponent({
           relStore.currentRelationshipId,
         );
         await refreshVersions();
+        await refreshImportPreview();
       }
       draftFlushTimer = setInterval(() => {
         const published = draftThrottle.flush();
@@ -1349,6 +1422,11 @@ export default defineComponent({
       auth,
       headerCompanionName,
       headerAvatar,
+      headerConversationTitle,
+      importPreview,
+      initRequestId,
+      onImportMemories,
+      onDiscardImport,
       messages,
       renderedMessages,
       virtualWindow,
@@ -1479,6 +1557,10 @@ export default defineComponent({
   font-size: 26rpx;
   font-weight: 600;
   color: #d5deee;
+}
+.chat-conversation-title {
+  font-size: 22rpx;
+  color: #c5d0e4;
 }
 .chat-ai-label {
   font-size: 22rpx;

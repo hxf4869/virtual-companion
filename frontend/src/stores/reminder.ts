@@ -23,6 +23,13 @@ export const useReminderStore = defineStore("h5-reminder", () => {
   const loadFailed = ref(false);
   const busy = ref(false);
 
+  function reset(): void {
+    relationshipId.value = "";
+    reminders.value = [];
+    loadFailed.value = false;
+    busy.value = false;
+  }
+
   /** Load the first page for a relationship (non-fatal failure keeps rows). */
   async function load(transport: ReminderTransport, relId: string): Promise<void> {
     relationshipId.value = relId;
@@ -104,5 +111,6 @@ export const useReminderStore = defineStore("h5-reminder", () => {
     create,
     dismiss,
     remove,
+    reset,
   };
 });

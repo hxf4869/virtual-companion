@@ -85,6 +85,15 @@ export const useExportStore = defineStore("h5-export", () => {
     return request.value?.status === "READY" && !!request.value?.downloadUrl;
   }
 
+  function reset(): void {
+    request.value = null;
+    loadFailed.value = false;
+    busy.value = false;
+    actionError.value = "";
+    download.value = null;
+    downloadFailed.value = false;
+  }
+
   return {
     request,
     loadFailed,
@@ -96,5 +105,6 @@ export const useExportStore = defineStore("h5-export", () => {
     refresh,
     downloadDocument,
     canDownload,
+    reset,
   };
 });

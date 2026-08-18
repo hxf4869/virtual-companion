@@ -57,6 +57,13 @@ states carry alert/live a11y semantics. -->
       :show-create="false"
       @activate="onPickRelationship"
     />
+    <input
+      v-model="filterQuery"
+      class="rel-input"
+      data-testid="memory-filter"
+      placeholder="按内容筛选"
+      aria-label="按内容筛选"
+    />
 
     <view
       v-if="relStore.status === 'ready'"
@@ -133,7 +140,7 @@ states carry alert/live a11y semantics. -->
         <text>还没有待确认候选。模型提取的内容需你确认后才会成为记忆。</text>
       </view>
       <view
-        v-for="m in memory.pending"
+        v-for="m in visiblePending"
         :key="m.memoryId"
         class="card pending"
       >
@@ -169,12 +176,12 @@ states carry alert/live a11y semantics. -->
       </view>
       <template v-else>
         <view
-          v-if="memory.relationshipCanonical.length > 0"
+          v-if="visibleRelationship.length > 0"
           data-testid="memory-group-relationship"
         >
           <text class="section-subtitle">当前角色专属</text>
           <view
-            v-for="m in memory.relationshipCanonical"
+            v-for="m in visibleRelationship"
             :key="m.memoryId"
             class="card canonical"
           >
@@ -190,6 +197,9 @@ states carry alert/live a11y semantics. -->
               </button>
             </view>
             <text class="meta">{{ m.scope }}</text>
+            <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
+              {{ formatTimestamp(m.createdAt) }}
+            </text>
             <view class="actions">
               <button
                 size="mini"
@@ -212,12 +222,12 @@ states carry alert/live a11y semantics. -->
           </view>
         </view>
         <view
-          v-if="memory.sessionCanonical.length > 0"
+          v-if="visibleSession.length > 0"
           data-testid="memory-group-session"
         >
           <text class="section-subtitle">会话记忆</text>
           <view
-            v-for="m in memory.sessionCanonical"
+            v-for="m in visibleSession"
             :key="m.memoryId"
             class="card canonical"
           >
@@ -233,6 +243,9 @@ states carry alert/live a11y semantics. -->
               </button>
             </view>
             <text class="meta">{{ m.scope }}</text>
+            <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
+              {{ formatTimestamp(m.createdAt) }}
+            </text>
             <view class="actions">
               <button
                 size="mini"
@@ -258,14 +271,14 @@ states carry alert/live a11y semantics. -->
     </view>
 
     <view
-      v-if="memory.rejected.length > 0"
+      v-if="visibleRejected.length > 0"
       class="section"
       data-testid="memory-group-rejected"
       aria-live="polite"
     >
       <text class="section-title">已拒绝（{{ memory.rejected.length }}）</text>
       <text class="hint">这些候选已被拒绝，不作为已保存事实。</text>
-      <view v-for="m in memory.rejected" :key="m.memoryId" class="card">
+      <view v-for="m in visibleRejected" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
         <text class="meta">{{ m.scope }} · {{ m.status }}</text>
         <view class="actions">
@@ -281,14 +294,14 @@ states carry alert/live a11y semantics. -->
     </view>
 
     <view
-      v-if="memory.expired.length > 0"
+      v-if="visibleExpired.length > 0"
       class="section"
       data-testid="memory-group-expired"
       aria-live="polite"
     >
       <text class="section-title">已过期（{{ memory.expired.length }}）</text>
       <text class="hint">这些记录已过期，不作为已保存事实。</text>
-      <view v-for="m in memory.expired" :key="m.memoryId" class="card">
+      <view v-for="m in visibleExpired" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
         <text class="meta">{{ m.scope }} · {{ m.status }}</text>
         <view class="actions">
@@ -304,14 +317,14 @@ states carry alert/live a11y semantics. -->
     </view>
 
     <view
-      v-if="memory.deleted.length > 0"
+      v-if="visibleDeleted.length > 0"
       class="section"
       data-testid="memory-group-deleted"
       aria-live="polite"
     >
       <text class="section-title">已删除（{{ memory.deleted.length }}）</text>
       <text class="hint">这些记录已删除，不作为已保存事实。</text>
-      <view v-for="m in memory.deleted" :key="m.memoryId" class="card">
+      <view v-for="m in visibleDeleted" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
         <text class="meta">{{ m.scope }} · 已删除</text>
         <view class="actions">
@@ -333,8 +346,10 @@ import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import { matchesLooseText } from "@/domain/text-filter";
+import { formatTimestamp } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
-import type { MemoryTransport } from "@/api/memory";
+import type { Memory, MemoryTransport } from "@/api/memory";
 import { useMemoryStore, type MemoryErrorCode } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
 
@@ -343,6 +358,7 @@ const relStore = useRelationshipStore();
 const auth = useAuthStore();
 
 const relationshipId = ref("");
+const filterQuery = ref("");
 const busy = ref(false);
 const editingId = ref<string | null>(null);
 const draftSummary = ref("");
@@ -352,6 +368,17 @@ const hasLoaded = ref(false);
 const canAddCandidate = computed(
   () => relationshipId.value.trim().length > 0 && candidateSummary.value.trim().length > 0,
 );
+
+function visibleMemories(list: Memory[]): Memory[] {
+  return list.filter((item) => matchesLooseText(item.summary, filterQuery.value));
+}
+
+const visiblePending = computed(() => visibleMemories(memory.pending));
+const visibleRelationship = computed(() => visibleMemories(memory.relationshipCanonical));
+const visibleSession = computed(() => visibleMemories(memory.sessionCanonical));
+const visibleRejected = computed(() => visibleMemories(memory.rejected));
+const visibleExpired = computed(() => visibleMemories(memory.expired));
+const visibleDeleted = computed(() => visibleMemories(memory.deleted));
 const showEmptyPending = computed(
   () => hasLoaded.value && memory.pendingCount === 0,
 );

@@ -44,6 +44,23 @@ describe("login page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("REQ-ID: a failed login shows the last request id when one was recorded", async () => {
+    const { rememberRequestId } = await import("@/domain/request-id");
+    rememberRequestId("req-login-1");
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockResolvedValue(false);
+    const wrapper = mountPage();
+
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    await wrapper.find('input[aria-label="密码"]').setValue("wrong");
+    await wrapper.find('button[data-testid="submit"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="login-request-id"]').text()).toContain("req-login-1");
+    rememberRequestId(null);
+    wrapper.unmount();
+  });
+
   it("marks the submit button aria-busy while submitting", async () => {
     const store = useAuthStore();
     let resolveLogin!: (v: boolean) => void;
@@ -80,6 +97,45 @@ describe("login page glue (P2-19 component test)", () => {
     await wrapper.find('button[data-testid="submit"]').trigger("click");
     expect(loginSpy).not.toHaveBeenCalled();
 
+    wrapper.unmount();
+  });
+
+  it("NEXT-STEP: after login with no companion, goes to chat", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockResolvedValue(true);
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/age/state") {
+          return { ok: true, status: 200, json: async () => ({ ageState: "ADULT_VERIFIED" }) };
+        }
+        if (url === "/api/v1/consents") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { consentId: "1", consentType: "SERVICE_TERMS", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "2", consentType: "PRIVACY_POLICY", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "3", consentType: "AI_CONTENT_NOTICE", version: "2026-08", granted: true, grantedAt: "t" },
+            ],
+          };
+        }
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    await wrapper.find('input[aria-label="密码"]').setValue("secret");
+    await wrapper.find('button[data-testid="submit"]').trigger("click");
+    const { flushPromises } = await import("@vue/test-utils");
+    await flushPromises();
+    expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
     wrapper.unmount();
   });
 

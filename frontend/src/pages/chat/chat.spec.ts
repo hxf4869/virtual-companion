@@ -582,6 +582,41 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("REQ-ID: an init failure shows the last request id", async () => {
+    const { rememberRequestId } = await import("@/domain/request-id");
+    rememberRequestId("req-chat-1");
+    const store = useChatStore();
+    vi.spyOn(store, "initConversation").mockRejectedValue(new Error("boom"));
+    const wrapper = mountPage();
+    await flushPromises();
+    const alert = wrapper.find('[data-testid="chat-init-error"]');
+    expect(alert.exists()).toBe(true);
+    expect(alert.text()).toContain("req-chat-1");
+    rememberRequestId(null);
+    wrapper.unmount();
+  });
+
+  it("CHAT-TITLE: shows the open conversation title in the header", async () => {
+    stubFetch({
+      conversationsJson: [
+        {
+          conversationId: 1,
+          relationshipId: 1,
+          title: "周二夜聊",
+          lastMessagePreview: "今晚早点休息",
+          createdAt: "2026-08-18T01:00:00Z",
+          incognito: false,
+        },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const title = wrapper.find('[data-testid="chat-conversation-title"]');
+    expect(title.exists()).toBe(true);
+    expect(title.text()).toContain("周二夜聊");
+    wrapper.unmount();
+  });
+
   it("INC-MODE: the toggle decides the next conversation's incognito flag", async () => {
     const wrapper = mountPage();
     await flushPromises();
@@ -1366,6 +1401,57 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(wrapper.find('[data-testid="regenerate"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="version-row"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="version-2"]').attributes("aria-pressed")).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("MEM-IMPORT: offers import when an archive exists for the current persona", async () => {
+    const calls: { method: string; url: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = (init?.method ?? "GET").toUpperCase();
+        calls.push({ method, url });
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [{ ...ACTIVE_RELATIONSHIP }] };
+        }
+        if (url.startsWith("/api/v1/memory-imports") && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              personaRef: "gentle-listener",
+              acceptedCount: 2,
+              createdAt: "2026-08-19T00:00:00Z",
+            }),
+          };
+        }
+        if (url.includes("/memory-imports") && method === "POST") {
+          return { ok: true, status: 200, json: async () => ({ importedCount: 2 }) };
+        }
+        if (url.includes("/messages")) {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations") && method === "GET") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/conversations")) {
+          return { ok: true, status: 200, json: async () => ({ conversationId: 1 }) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const prompt = wrapper.find('[data-testid="memory-import-prompt"]');
+    expect(prompt.exists()).toBe(true);
+    expect(prompt.text()).toContain("2 条");
+    await wrapper.find('[data-testid="memory-import-confirm"]').trigger("click");
+    await flushPromises();
+    expect(
+      calls.some((c) => c.method === "POST" && c.url === "/api/v1/relationships/1/memory-imports"),
+    ).toBe(true);
     wrapper.unmount();
   });
 

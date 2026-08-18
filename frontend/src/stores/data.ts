@@ -55,6 +55,17 @@ export const useDataStore = defineStore("h5-data", () => {
     }
   }
 
+  function reset(): void {
+    relationships.value = [];
+    conversations.value = [];
+    memories.value = [];
+    reminders.value = [];
+    consents.value = [];
+    serviceMode.value = null;
+    loadFailed.value = false;
+    busy.value = false;
+  }
+
   return {
     relationships,
     conversations,
@@ -65,5 +76,6 @@ export const useDataStore = defineStore("h5-data", () => {
     loadFailed,
     busy,
     load,
+    reset,
   };
 });

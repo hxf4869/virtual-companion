@@ -25,6 +25,7 @@
 // content or any model-bound context, so a token can never leak into a prompt.
 
 import type { AuthTransport, AuthApiResponse } from "@/api/auth";
+import { rememberRequestIdFromResponse } from "@/domain/request-id";
 
 export type RenewResult = "renewed" | "rejected" | "unavailable";
 
@@ -89,6 +90,7 @@ export function createAuthenticatedTransport(provider: AuthTokenProvider): AuthT
       credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    rememberRequestIdFromResponse(response);
     if (response.status === 401 && !isReplay && provider.renewAccessToken
         && !path.endsWith(REFRESH_PATH_SUFFIX)) {
       const outcome = await provider.renewAccessToken();

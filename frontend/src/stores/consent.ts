@@ -72,6 +72,13 @@ export const useConsentStore = defineStore("h5-consent", () => {
     return records.value.find((r) => r.consentType === type)?.granted;
   }
 
+  function reset(): void {
+    records.value = [];
+    loadFailed.value = false;
+    busy.value = false;
+    lastAction.value = null;
+  }
+
   return {
     records,
     loadFailed,
@@ -80,5 +87,6 @@ export const useConsentStore = defineStore("h5-consent", () => {
     load,
     setConsent,
     grantedFor,
+    reset,
   };
 });

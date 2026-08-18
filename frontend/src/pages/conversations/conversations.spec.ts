@@ -114,6 +114,25 @@ describe("independent conversation list page", () => {
     wrapper.unmount();
   });
 
+  it("CONV-FILTER: hides conversations whose title or preview does not match", async () => {
+    stubFetch({
+      conversations: [
+        item(),
+        item({ conversationId: "c2", title: "周末计划", lastMessagePreview: "去散步" }),
+      ],
+    });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(2);
+
+    await wrapper.find('[data-testid="conversation-filter"]').setValue("周末");
+    await wrapper.vm.$nextTick();
+    const cards = wrapper.findAll('[data-testid="conversation-card"]');
+    expect(cards).toHaveLength(1);
+    expect(cards[0].text()).toContain("周末计划");
+    wrapper.unmount();
+  });
+
   it("filters the list when relationshipId is in the query", async () => {
     vi.stubGlobal("location", { search: "?relationshipId=rel-1", href: "" });
     const { calls } = stubFetch();

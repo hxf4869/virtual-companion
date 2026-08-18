@@ -21,74 +21,112 @@ Uses existing list APIs. Report/appeal has no Alpha endpoint. -->
 
     <view v-if="store.loadFailed" class="error" data-testid="data-load-failed" role="alert">
       <text>数据加载失败，请重试。</text>
+      <text v-if="requestIdCopy">{{ requestIdCopy }}</text>
       <button data-testid="data-retry" class="nav-index" :disabled="store.busy" @click="onRetry">重试</button>
     </view>
 
     <template v-if="!store.loadFailed">
       <view class="section" data-testid="data-account">
         <text class="section-title">账号</text>
-        <text class="row">账号编号：{{ auth.accountId ?? "未登录" }}</text>
+        <button data-testid="data-open-account" class="row row-link" @click="goTo('/pages/account/account')">
+          账号编号：{{ auth.accountId ?? "未登录" }}
+        </button>
         <text class="row">角色：{{ auth.role ?? "未知" }}</text>
       </view>
 
       <view class="section" data-testid="data-relationships">
         <text class="section-title">角色与关系（{{ store.relationships.length }}）</text>
-        <text v-for="rel in store.relationships" :key="rel.relationshipId" class="row">
+        <button
+          v-for="rel in store.relationships"
+          :key="rel.relationshipId"
+          class="row row-link"
+          data-testid="data-open-companion"
+          @click="goTo('/pages/companion/companion')"
+        >
           {{ rel.companionName || rel.personaRef }} · {{ rel.active ? "当前使用" : "未使用" }}
-        </text>
+        </button>
         <text v-if="store.relationships.length === 0" class="empty">没有关系记录。</text>
       </view>
 
       <view class="section" data-testid="data-conversations">
         <text class="section-title">聊天记录（{{ store.conversations.length }}）</text>
-        <text v-for="item in store.conversations.slice(0, 8)" :key="item.conversationId" class="row">
+        <button
+          v-for="item in store.conversations.slice(0, 8)"
+          :key="item.conversationId"
+          class="row row-link"
+          data-testid="data-open-conversation"
+          @click="goTo(`/pages/chat/chat?conversationId=${encodeURIComponent(item.conversationId)}`)"
+        >
           {{ item.title || item.lastMessagePreview || `会话 ${item.conversationId}` }}
-        </text>
+        </button>
         <text v-if="store.conversations.length === 0" class="empty">没有会话记录。</text>
       </view>
 
       <view class="section" data-testid="data-memories">
         <text class="section-title">长期记忆（{{ store.memories.length }}）</text>
-        <text v-for="item in store.memories.slice(0, 8)" :key="item.memoryId" class="row">
+        <button
+          v-for="item in store.memories.slice(0, 8)"
+          :key="item.memoryId"
+          class="row row-link"
+          data-testid="data-open-memory"
+          @click="goTo(`/pages/memory-detail/memory-detail?memoryId=${encodeURIComponent(item.memoryId)}`)"
+        >
           {{ item.summary }}（{{ item.status }}）
-        </text>
+        </button>
         <text v-if="store.memories.length === 0" class="empty">没有记忆记录。</text>
       </view>
 
       <view class="section" data-testid="data-reminders">
         <text class="section-title">提醒（{{ store.reminders.length }}）</text>
-        <text v-for="item in store.reminders.slice(0, 8)" :key="item.reminderId" class="row">
+        <button
+          v-for="item in store.reminders.slice(0, 8)"
+          :key="item.reminderId"
+          class="row row-link"
+          data-testid="data-open-reminder"
+          @click="goTo('/pages/reminder/reminder')"
+        >
           {{ item.text }}
-        </text>
+        </button>
         <text v-if="store.reminders.length === 0" class="empty">没有提醒记录。</text>
       </view>
 
       <view class="section" data-testid="data-consents">
         <text class="section-title">同意记录（{{ store.consents.length }}）</text>
-        <text v-for="item in store.consents" :key="item.consentId" class="row">
+        <button
+          v-for="item in store.consents"
+          :key="item.consentId"
+          class="row row-link"
+          data-testid="data-open-consent"
+          @click="goTo('/pages/consent/consent')"
+        >
           {{ item.consentType }} · {{ item.granted ? "已同意" : "已撤回" }}
-        </text>
+        </button>
         <text v-if="store.consents.length === 0" class="empty">没有同意记录。</text>
       </view>
 
       <view class="section" data-testid="data-model">
         <text class="section-title">当前使用的模型说明</text>
-        <text class="row">{{ store.serviceMode?.summary ?? "服务状态尚未读取。" }}</text>
+        <button data-testid="data-open-ai-notice" class="row row-link" @click="goTo('/pages/ai-notice/ai-notice')">
+          {{ store.serviceMode?.summary ?? "服务状态尚未读取。" }}
+        </button>
         <text v-if="store.serviceMode" class="meta">模式 {{ store.serviceMode.mode }}</text>
       </view>
 
       <view class="section" data-testid="data-appeals">
         <text class="section-title">举报和申诉状态</text>
-        <text class="empty">尚未接通。本页不会显示虚构的工单。</text>
+        <button data-testid="data-open-report" class="row row-link" @click="goTo('/pages/report/report')">
+          尚未接通。本页不会显示虚构的工单。
+        </button>
       </view>
     </template>
   </view>
 </template>
 
 <script lang="ts">
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
 import { useDataStore } from "@/stores/data";
 
@@ -97,6 +135,7 @@ export default {
   setup() {
     const auth = useAuthStore();
     const store = useDataStore();
+    const requestIdCopy = ref("");
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
@@ -108,10 +147,12 @@ export default {
         await auth.tryRefresh(transport);
       }
       await store.load(transport);
+      requestIdCopy.value = store.loadFailed ? requestIdLabel() : "";
     });
 
     async function onRetry(): Promise<void> {
       await store.load(transport);
+      requestIdCopy.value = store.loadFailed ? requestIdLabel() : "";
     }
 
     function goTo(url: string): void {
@@ -129,7 +170,7 @@ export default {
       }
     }
 
-    return { auth, store, onRetry, goTo };
+    return { auth, store, requestIdCopy, onRetry, goTo };
   },
 };
 </script>
@@ -181,6 +222,14 @@ export default {
 }
 .row {
   font-size: 24rpx;
+}
+.row-link {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d7e4ff;
+  text-align: left;
 }
 .error {
   margin-top: 16rpx;

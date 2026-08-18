@@ -72,6 +72,27 @@ describe("createAuthenticatedTransport", () => {
     expect(fetchMock.mock.calls[0]![1]!.headers).not.toHaveProperty("X-CSRF-Token");
   });
 
+  it("REQ-ID: records X-Request-Id from the response header", async () => {
+    const { lastRequestId, rememberRequestId } = await import("@/domain/request-id");
+    rememberRequestId(null);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: (name: string) => (name === "X-Request-Id" ? "req-wire-1" : null) },
+        json: async () => ({ ok: true }),
+      })),
+    );
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => "a-token",
+      onUnauthorized: vi.fn(),
+    });
+    await transport.request("GET", "/api/v1/version");
+    expect(lastRequestId()).toBe("req-wire-1");
+    rememberRequestId(null);
+  });
+
   it("does not inject the CSRF header when the vc_csrf cookie is absent", async () => {
     vi.stubGlobal("document", { cookie: "other=value" });
     const fetchMock = fetchOk();

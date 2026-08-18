@@ -162,6 +162,32 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("MEM-FILTER: hides saved memories whose summary does not match", async () => {
+    const store = useMemoryStore();
+    store.canonical = [
+      canonicalMemory("keep-1", "喜欢安静的晚上"),
+      canonicalMemory("drop-1", "周末去散步"),
+    ];
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+    await wrapper.find('[data-testid="memory-filter"]').setValue("安静");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain("喜欢安静的晚上");
+    expect(wrapper.text()).not.toContain("周末去散步");
+    wrapper.unmount();
+  });
+
+  it("shows createdAt on a saved memory when the API provided one", async () => {
+    const store = useMemoryStore();
+    store.canonical = [
+      { ...canonicalMemory("rel-1", "角色专属"), createdAt: "2026-08-19T12:00:00Z" },
+    ];
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="memory-created-rel-1"]').text()).toContain("2026-08-19");
+    wrapper.unmount();
+  });
+
   it("MEM-DELETED: shows deleted memories as a non-canonical group", async () => {
     const store = useMemoryStore();
     store.canonical = [canonicalMemory("acc-1", "还在")];

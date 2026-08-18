@@ -63,6 +63,7 @@
         role="alert"
       >
         <text>{{ message }}</text>
+        <text v-if="requestIdCopy" data-testid="login-request-id">{{ requestIdCopy }}</text>
       </view>
       <view class="login-hint">
         <text>内部账号登录 · 凭据经批准渠道注入，不落仓库</text>
@@ -82,16 +83,25 @@
 import { computed, defineComponent, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import { resolveNextStep } from "@/domain/next-step";
+import { requestIdLabel } from "@/domain/request-id";
+import { useAgeStore } from "@/stores/age";
 import { useAuthStore } from "@/stores/auth";
+import { useConsentStore } from "@/stores/consent";
+import { useRelationshipStore } from "@/stores/relationship";
 
 export default defineComponent({
   name: "LoginPage",
   setup() {
     const store = useAuthStore();
+    const age = useAgeStore();
+    const consent = useConsentStore();
+    const relStore = useRelationshipStore();
     const username = ref("");
     const password = ref("");
     const submitting = ref(false);
     const message = ref("");
+    const requestIdCopy = ref("");
     const canSubmit = computed(
       () => username.value.trim().length > 0 && password.value.length > 0,
     );
@@ -128,19 +138,32 @@ export default defineComponent({
       }
     }
 
-    function redirectHome(): void {
+    function redirectHome(url = "/pages/index/index"): void {
       try {
         const uniApi = (globalThis as Record<string, unknown>).uni as
           | { redirectTo?: (options: { url: string }) => void }
           | undefined;
         if (uniApi?.redirectTo) {
-          uniApi.redirectTo({ url: "/pages/index/index" });
+          uniApi.redirectTo({ url });
         } else if (typeof location !== "undefined") {
-          location.href = "/pages/index/index";
+          location.href = url;
         }
       } catch {
         // Never let navigation break a successful login transition.
       }
+    }
+
+    async function destinationAfterLogin(): Promise<string> {
+      await Promise.all([age.load(transport), consent.load(transport), relStore.load(transport)]);
+      const step = resolveNextStep({
+        authenticated: true,
+        ageKnown: !age.loadFailed,
+        ageState: age.ageState,
+        consentKnown: !consent.loadFailed,
+        grantedTypes: consent.records.filter((row) => row.granted).map((row) => row.consentType),
+        hasCompanion: relStore.relationships.length > 0,
+      });
+      return step.kind === "ready" ? "/pages/index/index" : step.href;
     }
 
     /** Move focus back to the username field after a failed attempt (a11y). */
@@ -163,15 +186,17 @@ export default defineComponent({
       }
       submitting.value = true;
       message.value = "";
+      requestIdCopy.value = "";
       const ok = await store.login(transport, username.value, password.value);
       submitting.value = false;
       if (ok) {
-        redirectHome();
+        redirectHome(await destinationAfterLogin());
       } else {
         message.value =
           store.error === "network-failed"
             ? "网络错误，请重试"
             : "用户名或密码错误";
+        requestIdCopy.value = requestIdLabel();
         focusUsername();
       }
     }
@@ -182,6 +207,7 @@ export default defineComponent({
       submitting,
       canSubmit,
       message,
+      requestIdCopy,
       onSubmit,
       goToIndex,
       goToChat,
