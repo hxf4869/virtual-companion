@@ -113,6 +113,11 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-18 第二十轮）：
+
+- 聊天页 AI 非真人标识（CHAT-AI-LABEL / §8.3）：顶栏持续写明「AI 陪伴 · 非真人」，
+  有当前关系时同时展示角色名称；不编造头像，服务是否可用仍只看已有服务状态行。
+
 后端在运方面上还提供（2026-08-18 第十九轮）：
 
 - 独立会话列表页（CONV-LIST / §8.2）：H5 `/pages/conversations/conversations`

@@ -57,6 +57,26 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     stubFetch();
   });
 
+  it("states the AI-companion non-human disclosure in the header", async () => {
+    stubFetch({ relationships: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const label = wrapper.find('[data-testid="chat-ai-label"]');
+    expect(label.exists()).toBe(true);
+    expect(label.text()).toContain("AI 陪伴");
+    expect(label.text()).toContain("非真人");
+    wrapper.unmount();
+  });
+
+  it("shows the current companion name in the header after a relationship is active", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-companion-name"]').text()).toContain("温和倾听者");
+    wrapper.unmount();
+  });
+
   it("renders the message input and send button once a relationship is active", async () => {
     const wrapper = mountPage();
     await flushPromises();

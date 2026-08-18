@@ -1,7 +1,17 @@
 <template>
   <view class="chat-page">
     <view class="chat-header">
-      <text>Technical Alpha · 离线聊天</text>
+      <view class="chat-header-identity">
+        <text class="chat-header-title">Technical Alpha · 离线聊天</text>
+        <text
+          v-if="relStore.current"
+          class="chat-companion-name"
+          data-testid="chat-companion-name"
+        >
+          {{ personaDisplayName(relStore.current.personaRef) }}
+        </text>
+        <text class="chat-ai-label" data-testid="chat-ai-label">AI 陪伴 · 非真人</text>
+      </view>
       <view class="chat-header-nav">
         <button
           data-testid="nav-conversations"
@@ -1380,6 +1390,22 @@ export default defineComponent({
   font-size: 32rpx;
   font-weight: 600;
   margin-bottom: 24rpx;
+}
+.chat-header-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+.chat-companion-name {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #d5deee;
+}
+.chat-ai-label {
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #8fa0bd;
 }
 .chat-header-nav {
   display: flex;
