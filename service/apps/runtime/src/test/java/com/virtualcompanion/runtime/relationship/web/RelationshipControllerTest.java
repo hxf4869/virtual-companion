@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -15,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.virtualcompanion.platform.persistence.CompanionPrefs;
+import com.virtualcompanion.platform.persistence.RelationshipClearancePreview;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
@@ -292,5 +294,65 @@ class RelationshipControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
         verify(relationshipService, never()).get(1L, 0L);
+    }
+
+    @Test
+    void previewClearanceReturnsScopeCounts() throws Exception {
+        when(relationshipService.previewClearance(1L, 7L)).thenReturn(
+                Optional.of(new RelationshipClearancePreview(7L, 2L, 3L, 1L)));
+
+        mockMvc.perform(get("/api/v1/relationships/7/clearance-preview"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.relationshipId").value(7))
+                .andExpect(jsonPath("$.conversationCount").value(2))
+                .andExpect(jsonPath("$.memoryCount").value(3))
+                .andExpect(jsonPath("$.reminderCount").value(1));
+    }
+
+    @Test
+    void previewClearanceMapsForeignIdToNotFound() throws Exception {
+        when(relationshipService.previewClearance(1L, 404L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/v1/relationships/404/clearance-preview"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void resetReturnsTheRetainedRelationship() throws Exception {
+        when(relationshipService.reset(1L, 7L)).thenReturn(
+                Optional.of(record(7L, "gentle-listener", true)));
+
+        mockMvc.perform(post("/api/v1/relationships/7/reset"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.relationshipId").value(7))
+                .andExpect(jsonPath("$.personaRef").value("gentle-listener"));
+    }
+
+    @Test
+    void resetMapsForeignIdToNotFound() throws Exception {
+        when(relationshipService.reset(1L, 404L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/v1/relationships/404/reset"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void deleteReturnsOkOnConfirmedDelete() throws Exception {
+        when(relationshipService.delete(1L, 7L)).thenReturn(true);
+
+        mockMvc.perform(delete("/api/v1/relationships/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+    }
+
+    @Test
+    void deleteMapsForeignIdToNotFound() throws Exception {
+        when(relationshipService.delete(1L, 404L)).thenReturn(false);
+
+        mockMvc.perform(delete("/api/v1/relationships/404"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
     }
 }

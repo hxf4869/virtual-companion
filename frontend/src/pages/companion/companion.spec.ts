@@ -21,6 +21,7 @@ const ACTIVE = {
 
 function stubFetch(): { calls: { method: string; url: string; body?: unknown }[] } {
   const calls: { method: string; url: string; body?: unknown }[] = [];
+  let deleted = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -36,7 +37,7 @@ function stubFetch(): { calls: { method: string; url: string; body?: unknown }[]
       }
       calls.push({ method, url, body });
       if (url === "/api/v1/relationships" && method === "GET") {
-        return { ok: true, status: 200, json: async () => [ACTIVE] };
+        return { ok: true, status: 200, json: async () => (deleted ? [] : [ACTIVE]) };
       }
       if (url === "/api/v1/relationships/7" && method === "PATCH") {
         return {
@@ -44,6 +45,25 @@ function stubFetch(): { calls: { method: string; url: string; body?: unknown }[]
           status: 200,
           json: async () => ({ ...ACTIVE, ...(body as object) }),
         };
+      }
+      if (url === "/api/v1/relationships/7/clearance-preview" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            relationshipId: 7,
+            conversationCount: 2,
+            memoryCount: 3,
+            reminderCount: 1,
+          }),
+        };
+      }
+      if (url === "/api/v1/relationships/7/reset" && method === "POST") {
+        return { ok: true, status: 200, json: async () => ACTIVE };
+      }
+      if (url === "/api/v1/relationships/7" && method === "DELETE") {
+        deleted = true;
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
       }
       return { ok: true, status: 200, json: async () => ({}) };
     }),
@@ -144,6 +164,55 @@ describe("companion page (FR-COMP-003 / FR-COMP-002)", () => {
     expect(wrapper.find('[data-testid="companion-no-rel"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="companion-save"]').exists()).toBe(false);
     expect(useRelationshipStore().current).toBeNull();
+    wrapper.unmount();
+  });
+
+  it("loads a factual preview and does not write until reset is confirmed", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="companion-reset-open"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="companion-clearance-preview"]').text()).toContain(
+      "将清除 2 个会话、3 条记忆、1 条提醒",
+    );
+    expect(wrapper.text()).toContain("重置后会保留这个角色及其设置");
+    expect(wrapper.text()).not.toMatch(/挽留|难过|再考虑|舍不得|求求/);
+    expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/reset"))).toBe(false);
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+
+    await wrapper.find('[data-testid="companion-reset-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/relationships/7/reset")).toBe(
+      true,
+    );
+    expect(useRelationshipStore().currentRelationshipId).toBe("7");
+    wrapper.unmount();
+  });
+
+  it("deletes only after the second confirm and clears the current companion", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="companion-delete-open"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="companion-clearance-preview"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("删除后会移除这个角色");
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+
+    await wrapper.find('[data-testid="companion-delete-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/v1/relationships/7")).toBe(
+      true,
+    );
+    expect(useRelationshipStore().current).toBeNull();
+    expect(wrapper.find('[data-testid="companion-no-rel"]').exists()).toBe(true);
     wrapper.unmount();
   });
 });

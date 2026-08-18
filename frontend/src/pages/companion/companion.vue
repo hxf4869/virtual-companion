@@ -172,6 +172,69 @@ does not push. -->
         </button>
         <text v-if="saved" class="saved" data-testid="companion-saved">已保存</text>
       </view>
+
+      <view class="danger-zone" data-testid="companion-danger">
+        <text class="danger-title">清除或删除这个角色</text>
+        <text class="danger-lead">
+          重置只清除这个关系下的会话、记忆和提醒，并保留角色及其设置。
+          删除会移除这个角色及上述关系数据。账号级偏好不会被改动。
+          退出当前使用不会删除数据。
+        </text>
+        <view class="danger-actions">
+          <button
+            data-testid="companion-reset-open"
+            class="danger-btn"
+            :disabled="busy || dangerBusy"
+            @click="onOpenDanger('reset')"
+          >
+            重置关系数据
+          </button>
+          <button
+            data-testid="companion-delete-open"
+            class="danger-btn"
+            :disabled="busy || dangerBusy"
+            @click="onOpenDanger('delete')"
+          >
+            删除这个角色
+          </button>
+        </view>
+        <view v-if="dangerKind" class="danger-confirm" data-testid="companion-danger-confirm">
+          <text v-if="preview" class="danger-copy" data-testid="companion-clearance-preview">
+            将清除 {{ preview.conversationCount }} 个会话、{{ preview.memoryCount }} 条记忆、{{ preview.reminderCount }} 条提醒。
+            <template v-if="dangerKind === 'reset'">重置后会保留这个角色及其设置。</template>
+            <template v-else>删除后会移除这个角色。</template>
+            同模板新建的角色不会带上这些记忆。账号级偏好不会被改动。
+          </text>
+          <view class="danger-actions">
+            <button
+              data-testid="companion-danger-cancel"
+              class="nav-index"
+              :disabled="dangerBusy"
+              @click="onCancelDanger"
+            >
+              取消
+            </button>
+            <button
+              v-if="dangerKind === 'reset'"
+              data-testid="companion-reset-confirm"
+              class="danger-btn"
+              :disabled="dangerBusy || !preview"
+              @click="onConfirmReset"
+            >
+              确认重置
+            </button>
+            <button
+              v-if="dangerKind === 'delete'"
+              data-testid="companion-delete-confirm"
+              class="danger-btn"
+              :disabled="dangerBusy || !preview"
+              @click="onConfirmDelete"
+            >
+              确认删除
+            </button>
+          </view>
+        </view>
+      </view>
     </template>
     <view v-else class="empty" data-testid="companion-no-rel">
       <text>请先选择一个关系。</text>
@@ -193,6 +256,7 @@ import {
   type CompanionMemoryShare,
   type CompanionReplyLength,
   type Relationship,
+  type RelationshipClearancePreview,
 } from "@/api/relationship";
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
@@ -249,6 +313,9 @@ export default {
     const avoidTopics = ref<CompanionAvoidTopic[]>([]);
     const gender = ref<CompanionGender>(DEFAULT_COMPANION_PREFS.gender);
     const avatarRef = ref<CompanionAvatar>(DEFAULT_COMPANION_PREFS.avatarRef);
+    const dangerKind = ref<"reset" | "delete" | null>(null);
+    const preview = ref<RelationshipClearancePreview | null>(null);
+    const dangerBusy = ref(false);
 
     function applyRelationship(rel: Relationship | null): void {
       companionName.value = rel?.companionName ?? "";
@@ -324,6 +391,67 @@ export default {
       return option ? `avatar-${option.theme}` : "avatar-gold";
     }
 
+    async function onOpenDanger(kind: "reset" | "delete"): Promise<void> {
+      const id = relStore.currentRelationshipId;
+      if (!id) return;
+      actionError.value = null;
+      dangerKind.value = kind;
+      preview.value = null;
+      dangerBusy.value = true;
+      try {
+        preview.value = await relStore.previewClearance(transport, id);
+        if (!preview.value) {
+          actionError.value = "无法读取将清除的范围。";
+          dangerKind.value = null;
+        }
+      } finally {
+        dangerBusy.value = false;
+      }
+    }
+
+    function onCancelDanger(): void {
+      dangerKind.value = null;
+      preview.value = null;
+    }
+
+    async function onConfirmReset(): Promise<void> {
+      const id = relStore.currentRelationshipId;
+      if (!id || !preview.value) return;
+      actionError.value = null;
+      dangerBusy.value = true;
+      try {
+        const result = await relStore.resetCompanion(transport, id);
+        if (result) {
+          dangerKind.value = null;
+          preview.value = null;
+          saved.value = false;
+        } else {
+          actionError.value = "重置失败，请重试。";
+        }
+      } finally {
+        dangerBusy.value = false;
+      }
+    }
+
+    async function onConfirmDelete(): Promise<void> {
+      const id = relStore.currentRelationshipId;
+      if (!id || !preview.value) return;
+      actionError.value = null;
+      dangerBusy.value = true;
+      try {
+        const deleted = await relStore.removeCompanion(transport, id);
+        if (deleted) {
+          dangerKind.value = null;
+          preview.value = null;
+          saved.value = false;
+        } else {
+          actionError.value = "删除失败，请重试。";
+        }
+      } finally {
+        dangerBusy.value = false;
+      }
+    }
+
     async function onSave(): Promise<void> {
       const id = relStore.currentRelationshipId;
       if (!id) return;
@@ -387,6 +515,13 @@ export default {
       actionError,
       saved,
       busy,
+      dangerKind,
+      preview,
+      dangerBusy,
+      onOpenDanger,
+      onCancelDanger,
+      onConfirmReset,
+      onConfirmDelete,
       onPickRelationship,
       onRemindersChange,
       onTopicChange,
@@ -538,5 +673,39 @@ export default {
   border-radius: 12rpx;
   background-color: #5a1a1a;
   font-size: 24rpx;
+}
+.danger-zone {
+  margin-top: 32rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  border: 2rpx solid #7a3030;
+  background-color: #2a1518;
+}
+.danger-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #f4aba6;
+}
+.danger-lead,
+.danger-copy {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #d7b4b1;
+  line-height: 1.6;
+}
+.danger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+.danger-btn {
+  flex: 0 0 auto;
+  background-color: #5a1a1a;
+  color: #f4aba6;
+  font-size: 24rpx;
+}
+.danger-confirm {
+  margin-top: 16rpx;
 }
 </style>

@@ -57,6 +57,17 @@ export interface RelationshipPrefsUpdate {
   avatarRef: string
 }
 
+export interface RelationshipClearancePreview {
+  relationshipId: string
+  conversationCount: string
+  memoryCount: string
+  reminderCount: string
+}
+
+export interface RelationshipDeletedResponse {
+  ok: string
+}
+
 export interface RelationshipCreateRequest {
   personaRef: string
 }
@@ -393,8 +404,11 @@ export interface VirtualCompanionApiClient {
   listRelationships(): Promise<VersionResponse>
   getRelationship(): Promise<VersionResponse>
   activateRelationship(): Promise<VersionResponse>
+  deleteRelationship(): Promise<VersionResponse>
   updateRelationshipPrefs(): Promise<VersionResponse>
   deactivateRelationship(): Promise<VersionResponse>
+  previewRelationshipClearance(): Promise<VersionResponse>
+  resetRelationship(): Promise<VersionResponse>
   createConversation(): Promise<VersionResponse>
   listConversations(): Promise<VersionResponse>
   deleteConversation(): Promise<VersionResponse>

@@ -26,11 +26,20 @@ public interface VirtualCompanionApi {
     /** Make a relationship the active Companion. */
     Relationship activateRelationship();
 
+    /** Delete a Companion and its relationship-domain data (FR-COMP-004). */
+    RelationshipDeletedResponse deleteRelationship();
+
     /** Update structured Companion preferences (FR-COMP-003). */
     Relationship updateRelationshipPrefs();
 
     /** Deactivate a relationship (zero active Companions permitted). */
     Relationship deactivateRelationship();
+
+    /** Preview the relationship-domain rows a reset or delete would clear (FR-COMP-004). */
+    RelationshipClearancePreview previewRelationshipClearance();
+
+    /** Reset a Companion's relationship-domain data and keep the row (FR-COMP-004). */
+    Relationship resetRelationship();
 
     /** Open a conversation under a relationship. */
     ConversationResponse createConversation();

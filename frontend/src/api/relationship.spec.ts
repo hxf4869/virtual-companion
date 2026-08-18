@@ -11,6 +11,9 @@ import {
   getRelationship,
   listRelationships,
   RelationshipHttpError,
+  deleteRelationship,
+  previewRelationshipClearance,
+  resetRelationship,
   updateRelationshipPrefs,
   type RelationshipTransport,
 } from "./relationship";
@@ -318,5 +321,109 @@ describe("updateRelationshipPrefs", () => {
     await expect(updateRelationshipPrefs(transport, "42", DEFAULT_COMPANION_PREFS)).rejects.toThrow(
       RelationshipHttpError,
     );
+  });
+});
+
+describe("previewRelationshipClearance", () => {
+  it("GETs /api/v1/relationships/{id}/clearance-preview and normalises ids", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { relationshipId: 42, conversationCount: 2, memoryCount: 3, reminderCount: 1 },
+    });
+
+    const result = await previewRelationshipClearance(transport, "42");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("GET");
+    expect(calls[0].path).toBe("/api/v1/relationships/42/clearance-preview");
+    expect(result).toEqual({
+      relationshipId: "42",
+      conversationCount: 2,
+      memoryCount: 3,
+      reminderCount: 1,
+    });
+  });
+
+  it("returns null on 404 (existence hidden)", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
+    });
+
+    const result = await previewRelationshipClearance(transport, "999");
+
+    expect(result).toBeNull();
+  });
+
+  it("throws on 500", async () => {
+    const { transport } = recorder({ ok: false, status: 500, json: null });
+
+    await expect(previewRelationshipClearance(transport, "42")).rejects.toThrow(RelationshipHttpError);
+  });
+});
+
+describe("resetRelationship", () => {
+  it("POSTs to /api/v1/relationships/{id}/reset", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: RELATIONSHIP_JSON,
+    });
+
+    const result = await resetRelationship(transport, "42");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].path).toBe("/api/v1/relationships/42/reset");
+    expect(result?.relationshipId).toBe("42");
+  });
+
+  it("returns null on 404 (existence hidden)", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
+    });
+
+    const result = await resetRelationship(transport, "999");
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("deleteRelationship", () => {
+  it("DELETEs /api/v1/relationships/{id}", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { ok: true },
+    });
+
+    const result = await deleteRelationship(transport, "42");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("DELETE");
+    expect(calls[0].path).toBe("/api/v1/relationships/42");
+    expect(result).toBe(true);
+  });
+
+  it("returns false on 404 (existence hidden)", async () => {
+    const { transport } = recorder({
+      ok: false,
+      status: 404,
+      json: { code: "NOT_FOUND_OR_FORBIDDEN", message: "hidden" },
+    });
+
+    const result = await deleteRelationship(transport, "999");
+
+    expect(result).toBe(false);
+  });
+
+  it("throws on 401", async () => {
+    const { transport } = recorder({ ok: false, status: 401, json: null });
+
+    await expect(deleteRelationship(transport, "42")).rejects.toThrow(RelationshipHttpError);
   });
 });

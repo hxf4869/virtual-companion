@@ -15,8 +15,10 @@ import org.springframework.jdbc.core.RowMapper;
  * (TASK-0178).
  *
  * <p>Wraps {@code vc.create_relationship}, {@code vc.list_relationships},
- * {@code vc.get_relationship}, {@code vc.activate_relationship} and
- * {@code vc.deactivate_relationship}. Every call runs in the server-trusted
+ * {@code vc.get_relationship}, {@code vc.activate_relationship},
+ * {@code vc.deactivate_relationship}, {@code vc.preview_relationship_clearance},
+ * {@code vc.reset_relationship} and {@code vc.delete_relationship}. Every call
+ * runs in the server-trusted
  * owner context established upstream (the request filter bound
  * {@code vc.owner_user_id}); the V17 trusted-owner assertion inside each
  * function re-checks that the caller-supplied owner matches. A foreign or
@@ -156,6 +158,62 @@ public class RelationshipService {
             return Optional.empty();
         }
         return get(ownerUserId, relationshipId);
+    }
+
+    /**
+     * FR-COMP-004: read-only counts of conversations, memories and reminders
+     * under one owned Companion. Empty for a foreign or absent id.
+     */
+    public Optional<RelationshipClearancePreview> previewClearance(
+            long ownerUserId, long relationshipId) {
+        if (ownerUserId <= 0 || relationshipId <= 0) {
+            return Optional.empty();
+        }
+        return jdbc.query(
+                "SELECT out_conversation_count, out_memory_count, out_reminder_count "
+                        + "FROM vc.preview_relationship_clearance(?, ?)",
+                (ResultSet rs, int rowNum) -> new RelationshipClearancePreview(
+                        relationshipId,
+                        rs.getLong("out_conversation_count"),
+                        rs.getLong("out_memory_count"),
+                        rs.getLong("out_reminder_count")),
+                ownerUserId,
+                relationshipId).stream().findFirst();
+    }
+
+    /**
+     * FR-COMP-004: clear the relationship domain and keep the Companion row
+     * plus structured preferences. Empty for a foreign or absent id.
+     */
+    public Optional<RelationshipRecord> reset(long ownerUserId, long relationshipId) {
+        if (ownerUserId <= 0 || relationshipId <= 0) {
+            return Optional.empty();
+        }
+        Boolean updated = jdbc.queryForObject(
+                "SELECT vc.reset_relationship(?, ?)",
+                Boolean.class,
+                ownerUserId,
+                relationshipId);
+        if (!Boolean.TRUE.equals(updated)) {
+            return Optional.empty();
+        }
+        return get(ownerUserId, relationshipId);
+    }
+
+    /**
+     * FR-COMP-004: delete the Companion and cascade its relationship-domain
+     * data. {@code false} for a foreign or absent id.
+     */
+    public boolean delete(long ownerUserId, long relationshipId) {
+        if (ownerUserId <= 0 || relationshipId <= 0) {
+            return false;
+        }
+        Boolean deleted = jdbc.queryForObject(
+                "SELECT vc.delete_relationship(?, ?)",
+                Boolean.class,
+                ownerUserId,
+                relationshipId);
+        return Boolean.TRUE.equals(deleted);
     }
 
     private static RowMapper<RelationshipRecord> rowMapper() {

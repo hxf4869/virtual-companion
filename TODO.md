@@ -2,7 +2,20 @@
 
 产品待办（现状声明见 README）：
 
-## 当前里程碑（2026-08-16 第六轮）：对话模式、单条消息删除与反馈（进行中）
+## 当前里程碑（2026-08-18 第七轮）：角色删除/重置闭环
+
+> 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
+> 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。
+> 旧关系记忆导入（FR-COMP-004「必须用户主动选择」）本轮不做，默认硬清。
+
+- [x] COMP-CLEAR 角色删除/重置：OpenAPI GET `/relationships/{id}/clearance-preview`、
+      POST `/relationships/{id}/reset`、DELETE `/relationships/{id}`（contract-first
+      重新生成 dist）+ V49 trusted-owner SD（预览计数、重置保行+偏好、删除级联、
+      先取消 PENDING/CLAIMED 的 GENERATION/MEMORY_EXTRACT work item、存在性隐藏）
+      + 角色设置页危险区（预览范围 + 二次确认 + 平实文案）+ SQL/单元/组件测试
+      （FR-COMP-004）。`deactivate` 仍只退出 active 槽，不被本切片替代。
+
+## 已完成（2026-08-16 第六轮）：对话模式、单条消息删除与反馈
 
 > 每条验收口径同前几轮：「代码 + 测试 + 契约/文档同步 + check.sh 全绿」。
 > 安全分类器接线仍不在本轮：2026-08-15 Owner 决定 SAFETY 维持现状。

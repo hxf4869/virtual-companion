@@ -10,6 +10,7 @@ import com.virtualcompanion.catalog.CompanionReplyLength;
 import com.virtualcompanion.catalog.PersonaTemplate;
 import com.virtualcompanion.conversation.contextplan.CompanionPreferenceInstructions;
 import com.virtualcompanion.platform.persistence.CompanionPrefs;
+import com.virtualcompanion.platform.persistence.RelationshipClearancePreview;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
@@ -22,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,7 +45,14 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>{@code POST /api/v1/relationships/{relationshipId}/deactivate} —
  *       deactivate one (zero active Companions permitted);</li>
  *   <li>{@code PATCH /api/v1/relationships/{relationshipId}} — replace
- *       structured Companion preferences (COMP-CFG / FR-COMP-003).</li>
+ *       structured Companion preferences (COMP-CFG / FR-COMP-003);</li>
+ *   <li>{@code GET /api/v1/relationships/{relationshipId}/clearance-preview} —
+ *       factual counts of conversations, memories and reminders a reset or
+ *       delete would clear (FR-COMP-004);</li>
+ *   <li>{@code POST /api/v1/relationships/{relationshipId}/reset} — clear
+ *       the relationship domain and keep the Companion row + prefs;</li>
+ *   <li>{@code DELETE /api/v1/relationships/{relationshipId}} — remove the
+ *       Companion and cascade its relationship-domain data.</li>
  * </ul>
  *
  * <p>Authenticated: the principal's account id is the owner id; the owner GUC is
@@ -130,6 +139,37 @@ public class RelationshipController {
         return relationshipService.updatePrefs(ownerUserId, id, prefs)
                 .map(RelationshipController::toResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("relationship"));
+    }
+
+    @GetMapping("/relationships/{relationshipId}/clearance-preview")
+    public ClearancePreviewResponse previewClearance(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String relationshipId) {
+        long id = parseId(relationshipId);
+        return relationshipService.previewClearance(ownerUserId, id)
+                .map(RelationshipController::toPreview)
+                .orElseThrow(() -> new ResourceNotFoundException("relationship"));
+    }
+
+    @PostMapping("/relationships/{relationshipId}/reset")
+    public RelationshipResponse reset(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String relationshipId) {
+        long id = parseId(relationshipId);
+        return relationshipService.reset(ownerUserId, id)
+                .map(RelationshipController::toResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("relationship"));
+    }
+
+    @DeleteMapping("/relationships/{relationshipId}")
+    public RelationshipDeletedResponse delete(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String relationshipId) {
+        long id = parseId(relationshipId);
+        if (!relationshipService.delete(ownerUserId, id)) {
+            throw new ResourceNotFoundException("relationship");
+        }
+        return new RelationshipDeletedResponse(true);
     }
 
     private static long parseId(String raw) {
@@ -269,6 +309,26 @@ public class RelationshipController {
             @NotNull List<String> avoidTopics,
             @NotBlank @Size(max = 32) String gender,
             @NotBlank @Size(max = 32) String avatarRef) {
+    }
+
+    /** Response body (OpenAPI {@code RelationshipClearancePreview}). */
+    public record ClearancePreviewResponse(
+            long relationshipId,
+            long conversationCount,
+            long memoryCount,
+            long reminderCount) {
+    }
+
+    /** Response body (OpenAPI {@code RelationshipDeletedResponse}). */
+    public record RelationshipDeletedResponse(boolean ok) {
+    }
+
+    private static ClearancePreviewResponse toPreview(RelationshipClearancePreview preview) {
+        return new ClearancePreviewResponse(
+                preview.relationshipId(),
+                preview.conversationCount(),
+                preview.memoryCount(),
+                preview.reminderCount());
     }
 
     /** Response body (OpenAPI {@code Relationship}). */

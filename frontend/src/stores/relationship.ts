@@ -20,9 +20,13 @@ import {
   activateRelationship,
   createRelationship,
   deactivateRelationship,
+  deleteRelationship,
   listRelationships,
+  previewRelationshipClearance,
+  resetRelationship,
   updateRelationshipPrefs,
   type Relationship,
+  type RelationshipClearancePreview,
   type RelationshipPrefsUpdate,
   type RelationshipTransport,
 } from "@/api/relationship";
@@ -133,6 +137,50 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
     return updated;
   }
 
+  /**
+   * FR-COMP-004: load the factual clearance scope for one Companion.
+   */
+  async function previewClearance(
+    t: RelationshipTransport,
+    relationshipId: string,
+  ): Promise<RelationshipClearancePreview | null> {
+    return previewRelationshipClearance(t, relationshipId);
+  }
+
+  /**
+   * FR-COMP-004: reset the relationship domain and keep the Companion row,
+   * then reload the authoritative list.
+   */
+  async function resetCompanion(
+    t: RelationshipTransport,
+    relationshipId: string,
+  ): Promise<Relationship | null> {
+    const resetRow = await resetRelationship(t, relationshipId);
+    if (resetRow) {
+      await load(t);
+      currentRelationshipId.value = resetRow.relationshipId;
+    }
+    return resetRow;
+  }
+
+  /**
+   * FR-COMP-004: delete the Companion, then reload. Clears current when the
+   * deleted row was selected.
+   */
+  async function removeCompanion(
+    t: RelationshipTransport,
+    relationshipId: string,
+  ): Promise<boolean> {
+    const deleted = await deleteRelationship(t, relationshipId);
+    if (deleted) {
+      await load(t);
+      if (currentRelationshipId.value === relationshipId) {
+        currentRelationshipId.value = null;
+      }
+    }
+    return deleted;
+  }
+
   function reset(): void {
     relationships.value = [];
     currentRelationshipId.value = null;
@@ -151,6 +199,9 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
     activate,
     deactivate,
     updatePrefs,
+    previewClearance,
+    resetCompanion,
+    removeCompanion,
     reset,
   };
 });

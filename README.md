@@ -56,7 +56,13 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   全量替换昵称/称呼/回复长度/主动程度/幽默/建议偏好/提醒许可/记忆共享范围/回避话题；
   目录码校验，名称只作标签）、
   `POST /api/v1/relationships/{relationshipId}/deactivate`（personaRef 按 persona-templates
-  目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文与批准的偏好片段）
+  目录校验，当前唯一模板 gentle-listener，外部 provider 生成时注入其人设上下文与批准的偏好片段）、
+  `GET /api/v1/relationships/{relationshipId}/clearance-preview`、
+  `POST /api/v1/relationships/{relationshipId}/reset`、
+  `DELETE /api/v1/relationships/{relationshipId}`（COMP-CLEAR / FR-COMP-004：预览将清除的
+  会话/记忆/提醒数量；重置清除关系域数据但保留 Companion 行与结构化偏好；删除移除
+  Companion 及关系域数据；账号级偏好不顺带抹掉；进行中 generation/memory-extract
+  工作项先取消；同模板新建不继承旧已确认记忆；deactivate 仍只退出 active 槽）
 - `POST /api/v1/relationships/{relationshipId}/reminders`、`GET /api/v1/relationships/{relationshipId}/reminders`
   （结构化用户提醒，soonest-first keyset）、`PATCH/DELETE /api/v1/reminders/{reminderId}`
   （REMINDER / FR-NOTIFY-001：提醒是结构化记录而非 Prompt 指令；Alpha 仅存储与
@@ -93,6 +99,15 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-18 第七轮）：
+
+- 角色删除/重置（COMP-CLEAR / FR-COMP-004）：V49 `preview_relationship_clearance` /
+  `reset_relationship` / `delete_relationship`（trusted-owner、存在性隐藏、先取消
+  该关系下 PENDING/CLAIMED 的 GENERATION 与 MEMORY_EXTRACT work item）；重置保留
+  Companion 行及结构化偏好（含呈现字段），删除再删关系行并由 FK CASCADE 清会话树、
+  记忆与提醒；账号级同意等不被顺带抹掉；同 `personaRef` 新建不继承已确认记忆。
+  角色设置页危险区先预览范围再二次确认，文案只陈述将清除的数量。
 
 后端在运方面上还提供（2026-08-16 第六轮）：
 

@@ -158,4 +158,81 @@ class RelationshipServiceTest {
         assertTrue(record.isPresent());
         assertFalse(record.get().active());
     }
+
+    @Test
+    void previewClearanceMapsSdCounts() {
+        when(jdbc.query(
+                eq("SELECT out_conversation_count, out_memory_count, out_reminder_count "
+                        + "FROM vc.preview_relationship_clearance(?, ?)"),
+                any(RowMapper.class),
+                eq(1L),
+                eq(55L)))
+                .thenReturn(List.of(new RelationshipClearancePreview(55L, 2L, 3L, 1L)));
+
+        Optional<RelationshipClearancePreview> preview = service.previewClearance(1L, 55L);
+
+        assertTrue(preview.isPresent());
+        assertEquals(55L, preview.get().relationshipId());
+        assertEquals(2L, preview.get().conversationCount());
+        assertEquals(3L, preview.get().memoryCount());
+        assertEquals(1L, preview.get().reminderCount());
+    }
+
+    @Test
+    void previewClearanceReturnsEmptyForForeignOrAbsentId() {
+        when(jdbc.query(
+                eq("SELECT out_conversation_count, out_memory_count, out_reminder_count "
+                        + "FROM vc.preview_relationship_clearance(?, ?)"),
+                any(RowMapper.class),
+                eq(1L),
+                eq(99L)))
+                .thenReturn(List.of());
+
+        assertTrue(service.previewClearance(1L, 99L).isEmpty());
+    }
+
+    @Test
+    void resetCallsTheSdFunctionAndReloads() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.reset_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L)))
+                .thenReturn(true);
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(55L)))
+                .thenReturn(List.of(new RelationshipRecord(55L, "persona-a", true, NOW)));
+
+        Optional<RelationshipRecord> record = service.reset(1L, 55L);
+
+        assertTrue(record.isPresent());
+        assertEquals(55L, record.get().id());
+        verify(jdbc).queryForObject(
+                eq("SELECT vc.reset_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L));
+    }
+
+    @Test
+    void resetReturnsEmptyWhenSdFunctionReportsNoRow() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.reset_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(99L)))
+                .thenReturn(false);
+
+        assertTrue(service.reset(1L, 99L).isEmpty());
+    }
+
+    @Test
+    void deleteCallsTheSdFunction() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.delete_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L)))
+                .thenReturn(true);
+
+        assertTrue(service.delete(1L, 55L));
+        verify(jdbc).queryForObject(
+                eq("SELECT vc.delete_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(55L));
+    }
+
+    @Test
+    void deleteReturnsFalseWhenSdFunctionReportsNoRow() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.delete_relationship(?, ?)"), eq(Boolean.class), eq(1L), eq(99L)))
+                .thenReturn(false);
+
+        assertFalse(service.delete(1L, 99L));
+    }
 }

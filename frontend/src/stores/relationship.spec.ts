@@ -39,6 +39,12 @@ function mockTransport(opts: {
   deactivateStatus?: number;
   updateJson?: unknown;
   updateStatus?: number;
+  previewJson?: unknown;
+  previewStatus?: number;
+  resetJson?: unknown;
+  resetStatus?: number;
+  deleteJson?: unknown;
+  deleteStatus?: number;
 }): RelationshipTransport & { listCalls: number } {
   let listCalls = 0;
   return {
@@ -60,6 +66,18 @@ function mockTransport(opts: {
       if (/^\/api\/v1\/relationships\/[^/]+\/deactivate$/.test(path)) {
         const status = opts.deactivateStatus ?? 200;
         return { ok: status === 200, status, json: status === 200 ? opts.deactivateJson : null };
+      }
+      if (/\/clearance-preview$/.test(path) && method === "GET") {
+        const status = opts.previewStatus ?? 200;
+        return { ok: status === 200, status, json: status === 200 ? opts.previewJson : null };
+      }
+      if (/\/reset$/.test(path) && method === "POST") {
+        const status = opts.resetStatus ?? 200;
+        return { ok: status === 200, status, json: status === 200 ? opts.resetJson : null };
+      }
+      if (method === "DELETE" && /^\/api\/v1\/relationships\/[^/]+$/.test(path)) {
+        const status = opts.deleteStatus ?? 200;
+        return { ok: status === 200, status, json: status === 200 ? (opts.deleteJson ?? { ok: true }) : null };
       }
       if (/^\/api\/v1\/relationships\/[^/]+$/.test(path)) {
         const status = opts.activateStatus ?? 200;
@@ -216,6 +234,38 @@ describe("useRelationshipStore", () => {
     expect(store.current?.replyLength).toBe("SHORT");
     expect(store.currentRelationshipId).toBe("1");
     expect(transport.listCalls).toBe(1);
+  });
+
+  it("resetCompanion reloads and keeps the current companion", async () => {
+    const store = useRelationshipStore();
+    store.relationships = [ACTIVE];
+    store.currentRelationshipId = "1";
+    const transport = mockTransport({
+      resetJson: ACTIVE,
+      list: [ACTIVE],
+    });
+
+    const result = await store.resetCompanion(transport, "1");
+
+    expect(result?.relationshipId).toBe("1");
+    expect(store.currentRelationshipId).toBe("1");
+    expect(transport.listCalls).toBe(1);
+  });
+
+  it("removeCompanion clears current after a confirmed delete", async () => {
+    const store = useRelationshipStore();
+    store.relationships = [ACTIVE];
+    store.currentRelationshipId = "1";
+    const transport = mockTransport({
+      deleteJson: { ok: true },
+      list: [],
+    });
+
+    const result = await store.removeCompanion(transport, "1");
+
+    expect(result).toBe(true);
+    expect(store.currentRelationshipId).toBeNull();
+    expect(store.relationships).toEqual([]);
   });
 
   it("reset clears all state", async () => {

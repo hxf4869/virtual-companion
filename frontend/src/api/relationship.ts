@@ -96,6 +96,13 @@ export interface Relationship {
 
 export interface RelationshipPrefsUpdate extends CompanionPrefs {}
 
+export interface RelationshipClearancePreview {
+  relationshipId: string;
+  conversationCount: number;
+  memoryCount: number;
+  reminderCount: number;
+}
+
 export interface RelationshipApiResponse {
   ok: boolean;
   status: number;
@@ -327,4 +334,79 @@ export async function updateRelationshipPrefs(
   );
   guardResult(r);
   return asRelationship(r.json);
+}
+
+function asNonNegInt(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  return undefined;
+}
+
+function asClearancePreview(json: unknown): RelationshipClearancePreview | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const relationshipId = asId(o.relationshipId);
+  const conversationCount = asNonNegInt(o.conversationCount);
+  const memoryCount = asNonNegInt(o.memoryCount);
+  const reminderCount = asNonNegInt(o.reminderCount);
+  if (!relationshipId || conversationCount === undefined || memoryCount === undefined || reminderCount === undefined) {
+    return null;
+  }
+  return { relationshipId, conversationCount, memoryCount, reminderCount };
+}
+
+/**
+ * FR-COMP-004: read-only counts of conversations, memories and reminders
+ * a reset or delete would clear (vc.preview_relationship_clearance).
+ */
+export async function previewRelationshipClearance(
+  t: RelationshipTransport,
+  relationshipId: string,
+): Promise<RelationshipClearancePreview | null> {
+  const r = await t.request(
+    "GET",
+    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}/clearance-preview`,
+  );
+  guardResult(r);
+  return asClearancePreview(r.json);
+}
+
+/**
+ * FR-COMP-004: clear the relationship domain and keep the Companion row
+ * (vc.reset_relationship). Returns the retained relationship, or null on
+ * 403/404 (existence hidden).
+ */
+export async function resetRelationship(
+  t: RelationshipTransport,
+  relationshipId: string,
+): Promise<Relationship | null> {
+  const r = await t.request(
+    "POST",
+    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}/reset`,
+  );
+  guardResult(r);
+  return asRelationship(r.json);
+}
+
+/**
+ * FR-COMP-004: delete the Companion and cascade its relationship-domain
+ * data (vc.delete_relationship). Returns true on a confirmed delete, false
+ * on 403/404 (existence hidden).
+ */
+export async function deleteRelationship(
+  t: RelationshipTransport,
+  relationshipId: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "DELETE",
+    `${RELATIONSHIPS_BASE}/${encodeURIComponent(relationshipId)}`,
+  );
+  if (!r.ok) {
+    if (!isExistenceHidden(r.status)) {
+      throw new RelationshipHttpError(r.status, classifyStatus(r.status));
+    }
+    return false;
+  }
+  if (!r.json || typeof r.json !== "object") return false;
+  return (r.json as Record<string, unknown>).ok === true;
 }

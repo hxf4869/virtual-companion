@@ -230,6 +230,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      operationId: deleteRelationship
+      summary: Delete a Companion and its relationship-domain data (FR-COMP-004)
+      description: >-
+        Permanently removes the caller's Companion relationship and its
+        relationship-domain data (conversations, memories and reminders).
+        In-flight GENERATION and MEMORY_EXTRACT work items for this
+        relationship are cancelled first so no worker processes a dangling
+        reference. Account-level records (consents, age state, exports,
+        identity) are not touched. Deactivate remains a separate operation
+        that only leaves the active slot. A foreign or absent id maps to
+        NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
+        server-verified authentication context.
+      parameters:
+        - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: The Companion was deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipDeletedResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
     patch:
       operationId: updateRelationshipPrefs
       summary: Update structured Companion preferences (FR-COMP-003)
@@ -292,6 +326,74 @@ paths:
       responses:
         '200':
           description: The relationship, now inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Relationship'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/clearance-preview:
+    get:
+      operationId: previewRelationshipClearance
+      summary: Preview the relationship-domain rows a reset or delete would clear (FR-COMP-004)
+      description: >-
+        Read-only count of conversations, memories and reminders owned by the
+        caller under this Companion. The same scope is cleared by reset and by
+        delete; reset keeps the Companion row and its structured preferences,
+        delete also removes the Companion. The response is factual scope, not
+        a retention appeal. A foreign or absent id maps to
+        NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
+        server-verified authentication context.
+      parameters:
+        - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: Counts of relationship-domain rows that would be cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipClearancePreview'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/relationships/{relationshipId}/reset:
+    post:
+      operationId: resetRelationship
+      summary: Reset a Companion's relationship-domain data and keep the row (FR-COMP-004)
+      description: >-
+        Clears conversations, memories and reminders under the caller's
+        Companion while keeping the relationship row and its structured
+        preferences (including presentation fields). In-flight GENERATION and
+        MEMORY_EXTRACT work items for this relationship are cancelled first.
+        Account-level records are not touched. A later Companion created from
+        the same persona template does not inherit the cleared confirmed
+        memories. A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN;
+        existence is never disclosed. Requires a server-verified
+        authentication context.
+      parameters:
+        - $ref: '#/components/parameters/RelationshipId'
+      responses:
+        '200':
+          description: The Companion after reset (row and preferences retained)
           content:
             application/json:
               schema:
@@ -2066,6 +2168,43 @@ components:
           description: >-
             companion-presentation CompanionAvatar code referencing a
             platform-curated, reviewed asset (no photo upload in v1)
+    RelationshipClearancePreview:
+      type: object
+      description: >-
+        Factual scope of relationship-domain rows a reset or delete would
+        clear (FR-COMP-004). Counts cover every conversation, memory item and
+        reminder under the Companion. Account-level records are outside this
+        scope.
+      required:
+        - relationshipId
+        - conversationCount
+        - memoryCount
+        - reminderCount
+      properties:
+        relationshipId:
+          type: string
+          description: Owner-scoped relationship identifier
+        conversationCount:
+          type: integer
+          minimum: 0
+          description: Conversations under this Companion
+        memoryCount:
+          type: integer
+          minimum: 0
+          description: Memory items under this Companion (all statuses)
+        reminderCount:
+          type: integer
+          minimum: 0
+          description: Reminders under this Companion
+    RelationshipDeletedResponse:
+      type: object
+      description: Result of deleting one Companion relationship (FR-COMP-004).
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always true on a confirmed delete
     RelationshipCreateRequest:
       type: object
       description: Body for creating a new Companion relationship.

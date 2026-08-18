@@ -9,8 +9,11 @@
     "listRelationships",
     "getRelationship",
     "activateRelationship",
+    "deleteRelationship",
     "updateRelationshipPrefs",
     "deactivateRelationship",
+    "previewRelationshipClearance",
+    "resetRelationship",
     "createConversation",
     "listConversations",
     "deleteConversation",
@@ -55,6 +58,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "9d6f6a6e6417ba17662c3766eac6a25245d1e78ebe65c02d8e53b21e2fa9df47"
+    "sha256": "e1d3b8b586ced50799664c2d274325af19b3836479462a0a7d39ce64d0eac319"
   }
 }
