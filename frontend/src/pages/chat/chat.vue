@@ -273,7 +273,36 @@
             data-testid="chat-message"
           >
             <text class="role-tag">{{ roleLabel(msg.role) }}</text>
-            <text class="msg-content">{{ msg.content }}</text>
+            <view v-if="msg.role === 'assistant'" class="msg-content" data-testid="assistant-md">
+              <view v-for="(block, bi) in markdownBlocks(msg.content)" :key="bi">
+                <view v-if="block.kind === 'p'" class="md-p">
+                  <text
+                    v-for="(part, pi) in block.parts"
+                    :key="pi"
+                    :class="part.style ? `md-${part.style}` : undefined"
+                  >{{ part.text }}</text>
+                  <text v-if="block.truncated" class="md-truncated" data-testid="md-truncated">
+                    回复过长，已截断
+                  </text>
+                </view>
+                <view v-else-if="block.kind === 'code'" class="md-code" data-testid="md-code">
+                  <text>{{ block.text }}</text>
+                  <text v-if="block.truncated" class="md-truncated" data-testid="md-truncated">
+                    代码过长，已截断
+                  </text>
+                </view>
+                <view v-else-if="block.kind === 'ul'" class="md-ul">
+                  <view v-for="(item, ii) in block.items" :key="ii" class="md-li">
+                    <text
+                      v-for="(part, pi) in item"
+                      :key="pi"
+                      :class="part.style ? `md-${part.style}` : undefined"
+                    >{{ part.text }}</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+            <text v-else class="msg-content">{{ msg.content }}</text>
             <!-- MSG-COPY: copy this message's text (best effort, no server
                  call; the label flips briefly as visual feedback). -->
             <button
@@ -360,8 +389,8 @@
           </view>
         </view>
 
-        <view v-if="draft" class="chat-draft" data-testid="draft">
-          <text>{{ draft }}</text>
+        <view v-if="paintedDraft" class="chat-draft" data-testid="draft">
+          <text>{{ paintedDraft }}</text>
         </view>
 
         <view class="chat-status" data-testid="status" role="status" aria-live="polite">
@@ -510,6 +539,8 @@ import {
   VIRTUAL_OVERSCAN,
   VIRTUAL_VIEWPORT_HEIGHT,
 } from "@/domain/virtual-list-window";
+import { parseSafeMarkdown } from "@/domain/safe-markdown";
+import { createDisplayThrottle } from "@/domain/display-throttle";
 
 import { createAuthedFetch } from "@/api/authed-fetch";
 import { personaDisplayName } from "@/domain/persona";
@@ -630,6 +661,34 @@ export default defineComponent({
     const conversations = computed(() => store.conversations);
     const pendingMemoryCount = computed(() => store.pendingMemoryCount);
     const draft = computed(() => store.draft);
+    const paintedDraft = ref("");
+    const draftThrottle = createDisplayThrottle(50);
+    let draftFlushTimer: ReturnType<typeof setInterval> | undefined;
+    watch(
+      () => store.draft,
+      (next) => {
+        if (!store.isStreaming) {
+          paintedDraft.value = next;
+          return;
+        }
+        const published = draftThrottle.push(next);
+        if (published !== null) {
+          paintedDraft.value = published;
+        }
+      },
+    );
+    watch(
+      () => store.isStreaming,
+      (streaming) => {
+        if (!streaming) {
+          paintedDraft.value = store.draft;
+        }
+      },
+    );
+
+    function markdownBlocks(content: string) {
+      return parseSafeMarkdown(content ?? "");
+    }
     const usage = computed(() => store.usage);
     // FEEDBACK: kinds already submitted for the current generation.
     const feedbackKinds = computed(() => store.feedbackKinds);
@@ -1165,6 +1224,12 @@ export default defineComponent({
         );
         await refreshVersions();
       }
+      draftFlushTimer = setInterval(() => {
+        const published = draftThrottle.flush();
+        if (published !== null) {
+          paintedDraft.value = published;
+        }
+      }, 50);
     });
 
     onUnmounted(() => {
@@ -1174,6 +1239,9 @@ export default defineComponent({
       usageHealth.reset();
       if (usagePulseTimer !== undefined) {
         clearInterval(usagePulseTimer);
+      }
+      if (draftFlushTimer !== undefined) {
+        clearInterval(draftFlushTimer);
       }
       // MSG-COPY: never let the feedback timer fire after unmount.
       if (copyResetTimer !== undefined) {
@@ -1194,6 +1262,8 @@ export default defineComponent({
       conversations,
       pendingMemoryCount,
       draft,
+      paintedDraft,
+      markdownBlocks,
       usage,
       isStreaming,
       showEmptyHistory,
@@ -1382,6 +1452,33 @@ export default defineComponent({
 }
 .msg-content {
   font-size: 28rpx;
+}
+.md-p,
+.md-ul,
+.md-code {
+  display: block;
+  margin-bottom: 8rpx;
+}
+.md-strong {
+  font-weight: 700;
+}
+.md-em {
+  font-style: italic;
+}
+.md-code,
+.md-code text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 24rpx;
+  white-space: pre-wrap;
+}
+.md-li {
+  padding-left: 16rpx;
+}
+.md-truncated {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #8fa0bd;
 }
 .chat-draft {
   min-height: 80rpx;

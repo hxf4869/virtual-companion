@@ -364,6 +364,46 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("MD-SAFE: assistant markdown uses the whitelist and never mounts HTML tags", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "a1",
+        conversationId: "1",
+        role: "assistant",
+        content: '看 **这里** <img src=x onerror="alert(1)"><script>x</script>',
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".md-strong").text()).toBe("这里");
+    expect(wrapper.find("img").exists()).toBe(false);
+    expect(wrapper.find("script").exists()).toBe(false);
+    expect(wrapper.text()).toContain("<img");
+    wrapper.unmount();
+  });
+
+  it("MD-SAFE: user text stays literal and is not parsed as markdown", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "u1",
+        conversationId: "1",
+        role: "user",
+        content: "我说 **不是强调**",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".md-strong").exists()).toBe(false);
+    expect(wrapper.text()).toContain("我说 **不是强调**");
+    wrapper.unmount();
+  });
+
   it("VIRT-SCROLL: short histories still render every row", async () => {
     const wrapper = mountPage();
     await flushPromises();

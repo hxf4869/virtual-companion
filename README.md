@@ -111,6 +111,11 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-18 第十六轮）：
+
+- 安全 Markdown 与流式节流（MD-SAFE / STREAM-THROTTLE / §18.6）：助手回复只渲染
+  白名单节点，原始 HTML 当文本；超长段落/代码截断；流式 draft 50ms 节流。
+
 后端在运方面上还提供（2026-08-18 第十五轮）：
 
 - 聊天历史精确虚拟滚动（VIRT-SCROLL / §18.6）：固定高度滚动容器 +
