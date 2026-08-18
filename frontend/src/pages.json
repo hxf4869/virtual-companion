@@ -97,6 +97,12 @@
 			}
 		},
 		{
+			"path": "pages/account/account",
+			"style": {
+				"navigationBarTitleText": "账号与注销"
+			}
+		},
+		{
 			"path": "pages/ops/ops",
 			"style": {
 				"navigationBarTitleText": "运行与合规"

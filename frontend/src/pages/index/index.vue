@@ -160,6 +160,15 @@
         >
           <text>登录</text>
         </button>
+        <button
+          data-testid="nav-account"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="账号与注销"
+          @click="goTo('/pages/account/account')"
+        >
+          <text>账号与注销</text>
+        </button>
         <!-- ADMIN-UI: internal account provisioning, ADMIN only -->
         <button
           v-if="auth.role === 'ADMIN'"

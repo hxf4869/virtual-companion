@@ -68,6 +68,7 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     expect(wrapper.find('[data-testid="nav-health"]').text()).toContain("使用时长");
     expect(wrapper.find('[data-testid="nav-incognito"]').text()).toContain("无痕模式");
     expect(wrapper.find('[data-testid="nav-login"]').text()).toContain("登录");
+    expect(wrapper.find('[data-testid="nav-account"]').text()).toContain("账号与注销");
     wrapper.unmount();
   });
 
