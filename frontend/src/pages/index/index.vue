@@ -80,6 +80,15 @@
           <text>同意管理</text>
         </button>
         <button
+          data-testid="nav-age"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="成年核验"
+          @click="goTo('/pages/age/age')"
+        >
+          <text>成年核验</text>
+        </button>
+        <button
           data-testid="nav-export"
           class="alpha-nav__link"
           role="button"

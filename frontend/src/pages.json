@@ -37,6 +37,12 @@
 			}
 		},
 		{
+			"path": "pages/age/age",
+			"style": {
+				"navigationBarTitleText": "成年核验"
+			}
+		},
+		{
 			"path": "pages/export/export",
 			"style": {
 				"navigationBarTitleText": "数据导出"

@@ -26,7 +26,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
-  Export、Admin H5 页面、typed transport 与组件/状态测试；
+  Age、Export、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -200,7 +200,9 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   AGE_UNKNOWN→SELF_DECLARED→VERIFICATION_REQUIRED→ADULT_VERIFIED 落历史，
   已认证幂等、未成年/申诉/暂停态 fail-closed）；`AgeStateTransitions`
   镜像 age-states.yaml 转移表并由测试钉死；OpenAPI
-  `GET /api/v1/age/state`、`POST /api/v1/age/verification`
+  `GET /api/v1/age/state`、`POST /api/v1/age/verification`；H5「成年核验」页
+  读取状态并在可核验态走模拟核验（无「我已成年」勾选，未成年/申诉/暂停不发写，
+  申诉提交接口尚未接通）
   （FR-AUTH-002，Beta 门禁依赖 ageStateRequired=ADULT_VERIFIED，Alpha 不
   开放真实用户）。
 - 聊天列表渲染窗口（VIRT-LIST）：§18.6 列表性能——历史消息已按段加载

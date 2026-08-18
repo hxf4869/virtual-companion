@@ -1,0 +1,224 @@
+<!-- AGE-UI (FR-AUTH-002): adult-verification status and Alpha simulated
+verify. The page never offers a “I am an adult” checkbox as the gate.
+Technical Alpha uses the simulated port; no identity document is stored.
+Appeal submission is not wired — blocked states are shown factually. -->
+<template>
+  <view class="age-page">
+    <view class="bar">
+      <text class="title">成年核验</text>
+      <button
+        data-testid="nav-chat"
+        class="nav-index"
+        aria-label="离线聊天"
+        @click="goTo('/pages/chat/chat')"
+      >
+        离线聊天
+      </button>
+      <button
+        data-testid="nav-index"
+        class="nav-index"
+        aria-label="返回边界台"
+        @click="goTo('/pages/index/index')"
+      >
+        返回边界台
+      </button>
+    </view>
+
+    <view class="intro">
+      <text>
+        服务默认面向 18 岁以上用户。本页读取成年核验结果，并可运行 Technical
+        Alpha 的模拟核验。系统只保存结果、年龄段、时间和供应商凭证，不保存身份证件。
+        模拟核验供本地联调，不能当作公开上线的成年证明；真实供应商只替换端口实现，
+        不改本页调用。申诉提交接口尚未接通。
+      </text>
+    </view>
+
+    <view v-if="store.loadFailed" class="error" data-testid="age-load-failed" role="alert">
+      <text>成年核验状态加载失败，请重试。</text>
+      <button data-testid="age-retry" class="nav-index" :disabled="store.busy" @click="onRetry">
+        重试
+      </button>
+    </view>
+    <view v-if="actionError" class="error" data-testid="age-action-failed" role="alert">
+      <text>{{ actionError }}</text>
+    </view>
+
+    <template v-if="!store.loadFailed">
+      <view class="state-card" data-testid="age-state">
+        <text class="label">当前状态</text>
+        <text class="state" data-testid="age-state-label">{{ store.label }}</text>
+        <text class="meta" data-testid="age-state-code">{{ store.ageState }}</text>
+        <text v-if="store.record.providerRef" class="meta" data-testid="age-provider">
+          供应商凭证：{{ store.record.providerRef }}
+        </text>
+        <text v-if="store.record.verifiedAt" class="meta" data-testid="age-verified-at">
+          记录时间：{{ store.record.verifiedAt }}
+        </text>
+      </view>
+
+      <view v-if="store.blocked" class="blocked" data-testid="age-blocked">
+        <text>
+          当前状态无法完成成年核验。申诉提交接口尚未接通，本页只展示状态，不会改写结果。
+        </text>
+      </view>
+
+      <button
+        v-if="store.canVerify"
+        data-testid="age-verify"
+        class="nav-index verify-btn"
+        :disabled="store.busy"
+        @click="onVerify"
+      >
+        运行模拟成年核验
+      </button>
+      <text v-if="store.ageState === 'ADULT_VERIFIED'" class="done" data-testid="age-verified">
+        已完成成年核验。模拟核验对已核验账号是幂等的，本页不再发起写入。
+      </text>
+    </template>
+  </view>
+</template>
+
+<script lang="ts">
+import { onMounted, ref } from "vue";
+
+import { AgeHttpError } from "@/api/age";
+import { createAuthenticatedTransport } from "@/api/transport";
+import { useAgeStore } from "@/stores/age";
+import { useAuthStore } from "@/stores/auth";
+
+export default {
+  name: "AgePage",
+  setup() {
+    const auth = useAuthStore();
+    const store = useAgeStore();
+    const actionError = ref("");
+
+    const transport = createAuthenticatedTransport({
+      getAccessToken: () => auth.accessToken,
+      renewAccessToken: () => auth.renewAccessToken(transport),
+      onUnauthorized: () => auth.onUnauthorized(),
+    });
+
+    onMounted(async () => {
+      if (!auth.isAuthenticated) {
+        await auth.tryRefresh(transport);
+      }
+      await store.load(transport);
+    });
+
+    async function onRetry(): Promise<void> {
+      actionError.value = "";
+      await store.load(transport);
+    }
+
+    async function onVerify(): Promise<void> {
+      actionError.value = "";
+      try {
+        const ok = await store.runVerification(transport);
+        if (!ok) {
+          actionError.value = "当前状态不能发起模拟核验。";
+        }
+      } catch (e) {
+        if (e instanceof AgeHttpError && e.status === 400) {
+          actionError.value = "当前状态无法完成成年核验。";
+        } else {
+          actionError.value = "模拟核验失败，请重试。";
+        }
+      }
+    }
+
+    function goTo(url: string): void {
+      try {
+        const uniApi = (globalThis as Record<string, unknown>).uni as
+          | { navigateTo?: (options: { url: string }) => void }
+          | undefined;
+        if (uniApi?.navigateTo) {
+          uniApi.navigateTo({ url });
+        } else if (typeof location !== "undefined") {
+          location.href = url;
+        }
+      } catch {
+        // Presentation-only navigation.
+      }
+    }
+
+    return {
+      store,
+      actionError,
+      onRetry,
+      onVerify,
+      goTo,
+    };
+  },
+};
+</script>
+
+<style scoped>
+.age-page {
+  padding: 24rpx;
+  background-color: #14213d;
+  color: #f5f5f5;
+  min-height: 100vh;
+}
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+.title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-right: auto;
+}
+.nav-index {
+  flex: 0 0 auto;
+  background-color: #2a3a5a;
+  color: #ffffff;
+  font-size: 24rpx;
+}
+.intro,
+.blocked {
+  margin: 16rpx 0;
+  font-size: 24rpx;
+  color: #8fa0bd;
+  line-height: 1.6;
+}
+.state-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+}
+.label {
+  font-size: 24rpx;
+  color: #8fa0bd;
+}
+.state {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+.meta {
+  font-size: 22rpx;
+  color: #8fa0bd;
+}
+.verify-btn {
+  margin-top: 20rpx;
+}
+.done {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #8fd18f;
+}
+.error {
+  margin-top: 16rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  background-color: #5a1a1a;
+  font-size: 24rpx;
+}
+</style>
