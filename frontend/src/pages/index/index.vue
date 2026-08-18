@@ -98,6 +98,15 @@
           <text>数据导出</text>
         </button>
         <button
+          data-testid="nav-data"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="我的数据"
+          @click="goTo('/pages/data/data')"
+        >
+          <text>我的数据</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"

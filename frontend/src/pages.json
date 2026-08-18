@@ -49,6 +49,12 @@
 			}
 		},
 		{
+			"path": "pages/data/data",
+			"style": {
+				"navigationBarTitleText": "我的数据"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"

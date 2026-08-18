@@ -1,0 +1,127 @@
+// @vitest-environment happy-dom
+// DATA-VIEW (FR-DATA-001): overview page glue. Fetch is stubbed; the page
+// must drive the shipped store and list clients.
+import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import DataPage from "./data.vue";
+import { useAuthStore } from "@/stores/auth";
+import { DEFAULT_COMPANION_PREFS } from "@/api/relationship";
+
+function stubFetch(fail = false): { calls: string[] } {
+  const calls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push(url);
+      if (fail && !url.includes("/auth/refresh")) {
+        return { ok: false, status: 500, json: async () => null };
+      }
+      if (url === "/api/v1/relationships") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { relationshipId: 7, personaRef: "gentle-listener", active: true, ...DEFAULT_COMPANION_PREFS, companionName: "小安" },
+          ],
+        };
+      }
+      if (url === "/api/v1/conversations") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ conversationId: 11, relationshipId: 7, createdAt: "2026-08-18T00:00:00Z", title: "夜聊" }],
+        };
+      }
+      if (url === "/api/v1/relationships/7/memories") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ memoryId: "3", scope: "RELATIONSHIP", summary: "喜欢安静的晚上", status: "ACCEPTED" }],
+        };
+      }
+      if (url === "/api/v1/relationships/7/reminders") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              reminderId: 4,
+              relationshipId: 7,
+              text: "晚上十点提醒我休息",
+              remindAt: "2026-08-18T14:00:00Z",
+              recurrence: "NONE",
+              status: "ACTIVE",
+              createdAt: "2026-08-18T00:00:00Z",
+            },
+          ],
+        };
+      }
+      if (url === "/api/v1/consents") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              consentId: 1,
+              consentType: "SERVICE_TERMS",
+              version: "2026-08",
+              granted: true,
+              grantedAt: "2026-08-18T00:00:00Z",
+            },
+          ],
+        };
+      }
+      if (url === "/api/v1/service-mode") {
+        return { ok: true, status: 200, json: async () => ({ mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    }),
+  );
+  return { calls };
+}
+
+describe("data page (FR-DATA-001)", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.stubGlobal("uni", { navigateTo: vi.fn() });
+    const auth = useAuthStore();
+    auth.accessToken = "test-token";
+    auth.accountId = "42";
+    auth.role = "USER";
+  });
+
+  it("renders stored domains from the real list APIs", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mount(DataPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(calls).toContain("/api/v1/relationships");
+    expect(calls).toContain("/api/v1/conversations");
+    expect(calls).toContain("/api/v1/relationships/7/memories");
+    expect(calls).toContain("/api/v1/relationships/7/reminders");
+    expect(calls).toContain("/api/v1/consents");
+    expect(calls).toContain("/api/v1/service-mode");
+    expect(wrapper.find('[data-testid="data-account"]').text()).toContain("42");
+    expect(wrapper.find('[data-testid="data-relationships"]').text()).toContain("小安");
+    expect(wrapper.find('[data-testid="data-conversations"]').text()).toContain("夜聊");
+    expect(wrapper.find('[data-testid="data-memories"]').text()).toContain("喜欢安静的晚上");
+    expect(wrapper.find('[data-testid="data-reminders"]').text()).toContain("晚上十点提醒我休息");
+    expect(wrapper.find('[data-testid="data-consents"]').text()).toContain("SERVICE_TERMS");
+    expect(wrapper.find('[data-testid="data-model"]').text()).toContain("无生成模型");
+    expect(wrapper.find('[data-testid="data-appeals"]').text()).toContain("尚未接通");
+    wrapper.unmount();
+  });
+
+  it("shows the load failure without inventing rows", async () => {
+    stubFetch(true);
+    const wrapper = mount(DataPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="data-load-failed"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="data-relationships"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});

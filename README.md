@@ -26,7 +26,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
-  Age、Export、Admin H5 页面、typed transport 与组件/状态测试；
+  Age、Data、Export、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -167,7 +167,8 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   记忆、提醒与同意记录为 JSON 文档并封存短效一次性 token（默认 24h）；
   `vc.consume_export` 同语句消费 token，`vc.expire_stale_exports` 定时清扫
   过期行并清除 payload（FR-DATA-002：异步、短期有效、一次性/强鉴权、AI 内容
-  标识、留痕、过期自动删除）；前端新增「数据导出」页（发起/刷新/下载 +
+  标识、留痕、过期自动删除）；前端「我的数据」页只读汇总账号/关系/会话/
+  记忆/提醒/同意与当前服务模式（FR-DATA-001，举报申诉未接通）；前端新增「数据导出」页（发起/刷新/下载 +
   内容预览，Alpha 手动轮询不自动轮询）。
 - 账号注销（ACCT-DELETE）：V43 `vc.identity_account_delete`（自助注销 SD：
   仅删除本人 ACTIVE 账号，先落 ACCOUNT_DELETE 审计再删 `vc_user` 根行——
