@@ -162,8 +162,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V47 = COMP-CFG structured Companion preferences;
         // V48 = COMP-PRES gender presentation + curated avatar reference;
         // V49 = COMP-CLEAR relationship reset/delete + clearance preview;
-        // V50 = END-TODAY end conversation + incognito body clear).
+        // V50 = END-TODAY end conversation + incognito body clear;
+        // V51 = CHAT-MODE CASUAL turn mode).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(50);
+                .isEqualTo(51);
     }
 }

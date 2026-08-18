@@ -129,10 +129,26 @@ class GenerationControllerTest {
     }
 
     @Test
-    void sendGenerationUnapprovedModeMapsTo400() throws Exception {
+    void sendGenerationCasualModeIsValidatedAndEchoed() throws Exception {
+        when(receiveService.receive(1L, 100L, "key-1",
+                GenerationReceiveService.DEFAULT_USER_ROLE, "hello", "CASUAL"))
+                .thenReturn(new ReceivedGeneration("gen-55", 55L, 200L, true));
+        when(generationRepository.find(1L, 55L))
+                .thenReturn(Optional.of(new GenerationRecord(
+                        1L, 55L, 100L, "gen-55", "CREATED", "key-1", "CASUAL")));
+
         mockMvc.perform(post("/api/v1/conversations/100/generations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"idempotencyKey\":\"key-1\",\"userContent\":\"hello\",\"mode\":\"CASUAL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("CASUAL"));
+    }
+
+    @Test
+    void sendGenerationUnapprovedModeMapsTo400() throws Exception {
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-1\",\"userContent\":\"hello\",\"mode\":\"YELL\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }

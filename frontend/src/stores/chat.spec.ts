@@ -455,9 +455,12 @@ describe("useChatStore", () => {
     store.setMode("LISTEN");
     expect(store.selectedMode).toBe("LISTEN");
 
-    // Unapproved values are ignored, never applied.
     store.setMode("CASUAL");
-    expect(store.selectedMode).toBe("LISTEN");
+    expect(store.selectedMode).toBe("CASUAL");
+
+    // Unapproved values are ignored, never applied.
+    store.setMode("YELL");
+    expect(store.selectedMode).toBe("CASUAL");
   });
 
   it("FEEDBACK: sendFeedback records a kind once and marks it in state", async () => {

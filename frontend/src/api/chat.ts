@@ -35,17 +35,19 @@ export interface Generation {
   conversationId: string;
   logicalGenerationId: string;
   status: string;
-  /** CHAT-MODE: frozen reception mode (AUTO | LISTEN | DISCUSS). */
+  /** CHAT-MODE: frozen reception mode (AUTO | LISTEN | DISCUSS | CASUAL). */
   mode?: string;
   createdAt?: string;
 }
 
 /** CHAT-MODE: approved turn-level interaction modes (OpenAPI InteractionModeCode). */
-export type ChatMode = "AUTO" | "LISTEN" | "DISCUSS";
+export type ChatMode = "AUTO" | "LISTEN" | "DISCUSS" | "CASUAL";
 
 /** CHAT-MODE: narrow an arbitrary string to an approved mode or undefined. */
 export function asChatMode(value: unknown): ChatMode | undefined {
-  if (value === "AUTO" || value === "LISTEN" || value === "DISCUSS") return value;
+  if (value === "AUTO" || value === "LISTEN" || value === "DISCUSS" || value === "CASUAL") {
+    return value;
+  }
   return undefined;
 }
 

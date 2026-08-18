@@ -405,7 +405,7 @@ public class LiveInvocationAssembler {
 
     /**
      * CHAT-MODE: fixed approved turn-mode instruction for an explicit
-     * LISTEN/DISCUSS request; null for AUTO so the persona default rules.
+     * LISTEN/DISCUSS/CASUAL request; null for AUTO so the persona default rules.
      */
     private static String modeInstruction(String mode) {
         return switch (mode) {
@@ -415,6 +415,9 @@ public class LiveInvocationAssembler {
             case "DISCUSS" ->
                     "User-requested interaction mode for this turn: DISCUSS."
                             + " The user opened an active exchange: ask questions and analyze together.";
+            case "CASUAL" ->
+                    "User-requested interaction mode for this turn: CASUAL."
+                            + " Keep a light everyday tone; stay present without pushing plans.";
             default -> null;
         };
     }

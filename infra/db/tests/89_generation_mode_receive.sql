@@ -55,7 +55,7 @@ DECLARE
     r record;
     v_mode text;
 BEGIN
-    SELECT * INTO r FROM vc.receive_generation(1, 100, 'req-mode-2', 'user', 'hello', 'CASUAL');
+    SELECT * INTO r FROM vc.receive_generation(1, 100, 'req-mode-2', 'user', 'hello', 'YELL');
     SELECT mode INTO STRICT v_mode FROM vc.generation
      WHERE owner_user_id = 1 AND id = r.generation_id;
     IF v_mode IS DISTINCT FROM 'AUTO' THEN
@@ -69,7 +69,7 @@ RESET ROLE;
 DO $$
 BEGIN
     BEGIN
-        UPDATE vc.generation SET mode = 'CASUAL'
+        UPDATE vc.generation SET mode = 'YELL'
          WHERE owner_user_id = 1 AND id = (SELECT id FROM vc.generation
                                             WHERE owner_user_id = 1
                                               AND idempotency_key = 'req-mode-2');

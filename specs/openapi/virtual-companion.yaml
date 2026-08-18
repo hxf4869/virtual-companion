@@ -2451,12 +2451,14 @@ components:
         Turn-level interaction mode captured at reception (CHAT-MODE). AUTO lets
         the persona's default mode rule (gentle-listener: LISTEN); LISTEN asks
         the companion to listen and reflect without unsolicited advice; DISCUSS
-        opens an active exchange with questions and analysis. Rejoining the same
-        generation via idempotencyKey keeps the first reception's mode.
+        opens an active exchange with questions and analysis; CASUAL is a light
+        everyday stance (FR-CHAT-002). Rejoining the same generation via
+        idempotencyKey keeps the first reception's mode.
       enum:
         - AUTO
         - LISTEN
         - DISCUSS
+        - CASUAL
       default: AUTO
     GenerationFeedbackCreateRequest:
       type: object

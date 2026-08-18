@@ -75,13 +75,13 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
-  it("CHAT-MODE: renders the three quick-mode chips and selects on click", async () => {
+  it("CHAT-MODE: renders the four quick-mode chips and selects on click", async () => {
     const wrapper = mountPage();
     await flushPromises();
 
     const row = wrapper.find('[data-testid="mode-row"]');
     expect(row.exists()).toBe(true);
-    for (const mode of ["auto", "listen", "discuss"]) {
+    for (const mode of ["auto", "listen", "discuss", "casual"]) {
       expect(wrapper.find(`button[data-testid="mode-${mode}"]`).exists()).toBe(true);
     }
 

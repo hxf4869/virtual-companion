@@ -36,6 +36,7 @@ public class GenerationReceiveService {
     public static final String MODE_AUTO = "AUTO";
     public static final String MODE_LISTEN = "LISTEN";
     public static final String MODE_DISCUSS = "DISCUSS";
+    public static final String MODE_CASUAL = "CASUAL";
 
     /**
      * Receive a generation with the default user role, empty content and the
@@ -115,10 +116,12 @@ public class GenerationReceiveService {
         if (mode == null || mode.isBlank()) {
             return MODE_AUTO;
         }
-        if (MODE_AUTO.equals(mode) || MODE_LISTEN.equals(mode) || MODE_DISCUSS.equals(mode)) {
+        if (MODE_AUTO.equals(mode) || MODE_LISTEN.equals(mode)
+                || MODE_DISCUSS.equals(mode) || MODE_CASUAL.equals(mode)) {
             return mode;
         }
-        throw new IllegalArgumentException("mode must be one of AUTO, LISTEN, DISCUSS: " + mode);
+        throw new IllegalArgumentException(
+                "mode must be one of AUTO, LISTEN, DISCUSS, CASUAL: " + mode);
     }
 
     /**

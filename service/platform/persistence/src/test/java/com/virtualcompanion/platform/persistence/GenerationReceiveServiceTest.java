@@ -136,12 +136,13 @@ class GenerationReceiveServiceTest {
         assertEquals("AUTO", GenerationReceiveService.normalizeMode("AUTO"));
         assertEquals("LISTEN", GenerationReceiveService.normalizeMode("LISTEN"));
         assertEquals("DISCUSS", GenerationReceiveService.normalizeMode("DISCUSS"));
+        assertEquals("CASUAL", GenerationReceiveService.normalizeMode("CASUAL"));
     }
 
     @Test
     void normalizeModeRejectsUnapprovedModes() {
         assertThrows(IllegalArgumentException.class,
-                () -> GenerationReceiveService.normalizeMode("CASUAL"));
+                () -> GenerationReceiveService.normalizeMode("YELL"));
         assertThrows(IllegalArgumentException.class,
                 () -> GenerationReceiveService.normalizeMode("listen"));
         assertThrows(IllegalArgumentException.class,

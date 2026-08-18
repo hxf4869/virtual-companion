@@ -491,6 +491,7 @@ export default defineComponent({
       { value: "AUTO", label: "自动" },
       { value: "LISTEN", label: "只听我说" },
       { value: "DISCUSS", label: "一起聊聊" },
+      { value: "CASUAL", label: "轻松日常" },
     ] as const;
     // FEEDBACK (FR-CHAT-003): approved feedback kinds with stable labels.
     const FEEDBACK_OPTIONS = [

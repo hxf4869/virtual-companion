@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V50 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V51 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
@@ -82,7 +82,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   取消进行中 work item；无痕会话同时清空消息正文，预览不再露出原文；不删会话行、
   不删 Companion）、
   `POST /api/v1/conversations/{conversationId}/generations`（CHAT-MODE：请求可带
-  `mode` = AUTO/LISTEN/DISCUSS 的轮次级对话模式，首次接收时冻结在 generation 行并按
+  `mode` = AUTO/LISTEN/DISCUSS/CASUAL 的轮次级对话模式，首次接收时冻结在 generation 行并按
   idempotencyKey 重入不覆盖，AUTO 保持人设默认）、
   `GET /api/v1/conversations/{conversationId}/messages`、
   `DELETE /api/v1/conversations/{conversationId}/messages/{messageId}`（MSG-DELETE
@@ -114,11 +114,11 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
 
 后端在运方面上还提供（2026-08-16 第六轮）：
 
-- 对话模式（CHAT-MODE）：`SendGenerationRequest.mode`（AUTO/LISTEN/DISCUSS）经 V34
+- 对话模式（CHAT-MODE）：`SendGenerationRequest.mode`（AUTO/LISTEN/DISCUSS/CASUAL）经 V34/V51
   迁移冻结在 generation 行（幂等重入不覆盖）；组装器在外部 provider 分支把显式
-  LISTEN/DISCUSS 翻译为固定的、经批准的轮次指令附加到人设 SYSTEM 块（AUTO 保持
-  gentle-listener 默认倾听姿态），ZERO_LLM 确定性分支不受影响；前端输入区新增
-  「自动/只听我说/一起聊聊」快捷模式 chips（FR-CHAT-002）。
+  LISTEN/DISCUSS/CASUAL 翻译为固定的、经批准的轮次指令附加到人设 SYSTEM 块（AUTO 保持
+  gentle-listener 默认倾听姿态），ZERO_LLM 确定性分支不受影响；前端输入区
+  「自动/只听我说/一起聊聊/轻松日常」快捷模式 chips（FR-CHAT-002）。
 - 生成反馈（FEEDBACK）：V35 `vc.generation_feedback` 表 + `record_generation_feedback`
   SD 函数（trusted-owner 断言、未批准 kind 拒绝、每 (generation, kind) 幂等且首个
   note 生效、不存在不披露）；OpenAPI `POST /generations/{id}/feedback`；聊天页完成/
