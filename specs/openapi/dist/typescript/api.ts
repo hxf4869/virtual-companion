@@ -39,6 +39,8 @@ export interface Relationship {
   remindersAllowed: string
   memoryShareScope: string
   avoidTopics: string
+  gender: string
+  avatarRef: string
 }
 
 export interface RelationshipPrefsUpdate {
@@ -51,6 +53,8 @@ export interface RelationshipPrefsUpdate {
   remindersAllowed: string
   memoryShareScope: string
   avoidTopics: string
+  gender: string
+  avatarRef: string
 }
 
 export interface RelationshipCreateRequest {

@@ -237,12 +237,15 @@ paths:
         Replaces the caller's structured Companion preferences for one owned
         relationship (companion display name, how to address the user, reply
         length, initiative, humor, advice preference, reminder permission,
-        memory share scope, and avoid-topic codes). Every field is required in
-        the body so there are no silent partial edits. Catalog codes are
-        validated against companion-prefs and memory-scopes; names are labels
-        only (never free-form prompt text). A foreign or absent id maps to
-        NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a
-        server-verified authentication context.
+        memory share scope, avoid-topic codes, gender presentation and curated
+        avatar reference). Every field is required in the body so there are no
+        silent partial edits. Catalog codes are validated against companion-prefs,
+        companion-presentation and memory-scopes; names are labels only (never
+        free-form prompt text). Every companion stays an adult role and avatars
+        may only reference platform-curated assets (no photo upload)
+        (FR-COMP-002). A foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN;
+        existence is never disclosed. Requires a server-verified authentication
+        context.
       parameters:
         - $ref: '#/components/parameters/RelationshipId'
       requestBody:
@@ -1932,7 +1935,11 @@ components:
         A Companion relationship owned by exactly one user. At most one
         relationship per owner is active at any time (activeCompanionLimit=1).
         Structured preferences (FR-COMP-003) are always present after create
-        (catalog defaults apply until the caller PATCHes them).
+        (catalog defaults apply until the caller PATCHes them). Presentation
+        fields (FR-COMP-002) carry the companion's gender presentation and a
+        platform-curated avatar reference; every companion is fixed to an adult
+        role, avatars come only from approved assets and real-person photo
+        upload is not supported in v1.
       required:
         - relationshipId
         - personaRef
@@ -1943,6 +1950,8 @@ components:
         - remindersAllowed
         - memoryShareScope
         - avoidTopics
+        - gender
+        - avatarRef
       properties:
         relationshipId:
           type: string
@@ -1988,6 +1997,17 @@ components:
           items:
             type: string
           description: companion-prefs CompanionAvoidTopic codes the model must not raise
+        gender:
+          type: string
+          description: >-
+            companion-presentation CompanionGender code (FEMALE, MALE or
+            NEUTRAL). Presentation only, never a behavior change
+            (FR-COMP-002)
+        avatarRef:
+          type: string
+          description: >-
+            companion-presentation CompanionAvatar code referencing a
+            platform-curated, reviewed asset (no photo upload in v1)
     RelationshipPrefsUpdate:
       type: object
       description: >-
@@ -2002,6 +2022,8 @@ components:
         - remindersAllowed
         - memoryShareScope
         - avoidTopics
+        - gender
+        - avatarRef
       properties:
         companionName:
           type: string
@@ -2034,6 +2056,16 @@ components:
           items:
             type: string
           description: companion-prefs CompanionAvoidTopic codes
+        gender:
+          type: string
+          description: >-
+            companion-presentation CompanionGender code (FEMALE, MALE or
+            NEUTRAL). Presentation only; never a behavior change (FR-COMP-002)
+        avatarRef:
+          type: string
+          description: >-
+            companion-presentation CompanionAvatar code referencing a
+            platform-curated, reviewed asset (no photo upload in v1)
     RelationshipCreateRequest:
       type: object
       description: Body for creating a new Companion relationship.

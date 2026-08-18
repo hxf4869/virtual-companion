@@ -163,3 +163,9 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionAvo
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionAvoidTopic','POLITICS',5) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionAvoidTopic','SUBSTANCE',6) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionAvoidTopic','RELIGION',7) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionGender','FEMALE',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionGender','MALE',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionGender','NEUTRAL',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionAvatar','AVATAR_FEMALE_01',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionAvatar','AVATAR_MALE_01',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionAvatar','AVATAR_NEUTRAL_01',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;

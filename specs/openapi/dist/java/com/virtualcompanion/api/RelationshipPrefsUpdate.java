@@ -10,7 +10,9 @@ public record RelationshipPrefsUpdate(
     final String advicePref,
     final String remindersAllowed,
     final String memoryShareScope,
-    final String avoidTopics
+    final String avoidTopics,
+    final String gender,
+    final String avatarRef
 ) {
     public RelationshipPrefsUpdate {
         // companionName is nullable
@@ -22,5 +24,7 @@ public record RelationshipPrefsUpdate(
         java.util.Objects.requireNonNull(remindersAllowed, "remindersAllowed must not be null");
         java.util.Objects.requireNonNull(memoryShareScope, "memoryShareScope must not be null");
         java.util.Objects.requireNonNull(avoidTopics, "avoidTopics must not be null");
+        java.util.Objects.requireNonNull(gender, "gender must not be null");
+        java.util.Objects.requireNonNull(avatarRef, "avatarRef must not be null");
     }
 }

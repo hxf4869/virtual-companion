@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-// COMP-CFG (FR-COMP-003): companion settings page glue test.
+// COMP-CFG (FR-COMP-003) + COMP-PRES (FR-COMP-002): companion settings page
+// glue test (behavioral prefs plus gender/avatar presentation).
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,7 +51,7 @@ function stubFetch(): { calls: { method: string; url: string; body?: unknown }[]
   return { calls };
 }
 
-describe("companion page (FR-COMP-003)", () => {
+describe("companion page (FR-COMP-003 / FR-COMP-002)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", { navigateTo: vi.fn() });
@@ -65,6 +66,10 @@ describe("companion page (FR-COMP-003)", () => {
     expect((wrapper.find('[data-testid="companion-reply-length"]').element as HTMLSelectElement).value).toBe(
       "SHORT",
     );
+    expect(wrapper.find('[data-testid="companion-gender-NEUTRAL"]').attributes("checked")).toBe("true");
+    expect(
+      wrapper.find('[data-testid="companion-avatar-AVATAR_NEUTRAL_01"]').attributes("checked"),
+    ).toBe("true");
     wrapper.unmount();
   });
 
@@ -83,8 +88,42 @@ describe("companion page (FR-COMP-003)", () => {
       companionName: "倾听者",
       replyLength: "SHORT",
       memoryShareScope: "RELATIONSHIP",
+      gender: "NEUTRAL",
+      avatarRef: "AVATAR_NEUTRAL_01",
     });
     expect(wrapper.find('[data-testid="companion-saved"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("selects gender and the curated avatar follow-up, then saves both", async () => {
+    const { calls } = stubFetch();
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="companion-gender-MALE"]').trigger("click");
+    expect(wrapper.find('[data-testid="companion-gender-MALE"]').attributes("checked")).toBe("true");
+    expect(
+      wrapper.find('[data-testid="companion-avatar-AVATAR_MALE_01"]').attributes("checked"),
+    ).toBe("true");
+
+    await wrapper.find('[data-testid="companion-save"]').trigger("click");
+    await flushPromises();
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch?.body).toMatchObject({
+      gender: "MALE",
+      avatarRef: "AVATAR_MALE_01",
+    });
+    wrapper.unmount();
+  });
+
+  it("does not offer a photo upload for the avatar", async () => {
+    stubFetch();
+    const wrapper = mount(CompanionPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("不支持上传照片");
     wrapper.unmount();
   });
 

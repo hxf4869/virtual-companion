@@ -7,9 +7,12 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * COMP-CFG (FR-COMP-003): maps structured Companion preference catalog codes
- * to fixed, approved SYSTEM fragments. User-supplied names are treated as
- * labels only — never concatenated as free-form prompt instructions.
+ * COMP-CFG (FR-COMP-003) + COMP-PRES (FR-COMP-002): maps structured Companion
+ * preference and presentation catalog codes to fixed, approved SYSTEM
+ * fragments. User-supplied names are treated as labels only — never
+ * concatenated as free-form prompt instructions. Gender is presentation only
+ * (behavior, safety and memory rules never change); avatar references are
+ * visual assets and are not rendered into the text context.
  */
 public final class CompanionPreferenceInstructions {
 
@@ -38,6 +41,17 @@ public final class CompanionPreferenceInstructions {
     private static final Map<String, String> MEMORY_SHARE = Map.of(
             "SESSION", "Memory share: only this conversation's memories may be used.",
             "RELATIONSHIP", "Memory share: this relationship's long-term memories may be used.");
+
+    private static final Map<String, String> GENDER = Map.of(
+            "FEMALE",
+            "Companion presentation: feminine. This is visual and appellation presentation only;"
+                    + " it never changes your behavior, safety or memory rules.",
+            "MALE",
+            "Companion presentation: masculine. This is visual and appellation presentation only;"
+                    + " it never changes your behavior, safety or memory rules.",
+            "NEUTRAL",
+            "Companion presentation: neutral. Do not emphasize any gender; this is presentation"
+                    + " only and never changes your behavior, safety or memory rules.");
 
     private static final Map<String, String> AVOID_LABELS;
 
@@ -80,7 +94,8 @@ public final class CompanionPreferenceInstructions {
     /**
      * Render the approved preference SYSTEM block. Unknown catalog codes are
      * omitted; an empty / all-unknown preference set still emits the known
-     * fragments that remain.
+     * fragments that remain. Avatar references are visual-only and never
+     * rendered into the text context.
      */
     public static String render(
             String companionName,
@@ -90,7 +105,8 @@ public final class CompanionPreferenceInstructions {
             String humor,
             String advicePref,
             String memoryShareScope,
-            List<String> avoidTopics) {
+            List<String> avoidTopics,
+            String gender) {
         List<String> parts = new ArrayList<>();
         String name = sanitizeLabel(companionName);
         if (name != null) {
@@ -105,6 +121,7 @@ public final class CompanionPreferenceInstructions {
         addIfKnown(parts, HUMOR, humor);
         addIfKnown(parts, ADVICE, advicePref);
         addIfKnown(parts, MEMORY_SHARE, memoryShareScope);
+        addIfKnown(parts, GENDER, gender);
         List<String> avoid = new ArrayList<>();
         if (avoidTopics != null) {
             for (String code : avoidTopics) {
@@ -153,6 +170,21 @@ public final class CompanionPreferenceInstructions {
 
     public static boolean isApprovedMemoryShare(String code) {
         return code != null && MEMORY_SHARE.containsKey(code);
+    }
+
+    /** Approved companion-presentation gender codes (FR-COMP-002). */
+    public static boolean isApprovedGender(String code) {
+        return code != null && GENDER.containsKey(code);
+    }
+
+    /** Approved companion-presentation avatar asset references (FR-COMP-002). */
+    public static boolean isApprovedAvatarRef(String code) {
+        if (code == null) {
+            return false;
+        }
+        return "AVATAR_FEMALE_01".equals(code)
+                || "AVATAR_MALE_01".equals(code)
+                || "AVATAR_NEUTRAL_01".equals(code);
     }
 
     public static List<String> approvedAvoidTopics() {

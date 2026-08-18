@@ -60,3 +60,5 @@ catalogs:
   typeName: MessageFeedbackKind
 - file: companion-prefs.yaml
   kind: multi-enum
+- file: companion-presentation.yaml
+  kind: multi-enum

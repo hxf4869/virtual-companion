@@ -25,6 +25,11 @@
       "DIRECT",
       "RARE"
     ],
+    "CompanionAvatar": [
+      "AVATAR_FEMALE_01",
+      "AVATAR_MALE_01",
+      "AVATAR_NEUTRAL_01"
+    ],
     "CompanionAvoidTopic": [
       "WORK",
       "FAMILY",
@@ -34,6 +39,11 @@
       "POLITICS",
       "SUBSTANCE",
       "RELIGION"
+    ],
+    "CompanionGender": [
+      "FEMALE",
+      "MALE",
+      "NEUTRAL"
     ],
     "CompanionHumor": [
       "NONE",
@@ -432,13 +442,17 @@
           {
             "file": "companion-prefs.yaml",
             "kind": "multi-enum"
+          },
+          {
+            "file": "companion-presentation.yaml",
+            "kind": "multi-enum"
           }
         ],
         "generatorVersion": "1.0.0",
         "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "d6213fd350f40f2f6fbba7d44ca36c3878edecce1d49f7abc37941aba26abf53"
+      "sha256": "42d703af78e834564981904f82bdb6b65dfaf5301a4161f6c341076688707fbb"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -553,6 +567,49 @@
         "schemaVersion": 1
       },
       "sha256": "0d7d271044b9309cf28d51094687ff9e5be9c277ec13686264ac0f2deaa9f5de"
+    },
+    "companion-presentation.yaml": {
+      "document": {
+        "catalogId": "companion-presentation",
+        "enums": [
+          {
+            "entries": [
+              {
+                "code": "FEMALE",
+                "order": 0
+              },
+              {
+                "code": "MALE",
+                "order": 1
+              },
+              {
+                "code": "NEUTRAL",
+                "order": 2
+              }
+            ],
+            "typeName": "CompanionGender"
+          },
+          {
+            "entries": [
+              {
+                "code": "AVATAR_FEMALE_01",
+                "order": 0
+              },
+              {
+                "code": "AVATAR_MALE_01",
+                "order": 1
+              },
+              {
+                "code": "AVATAR_NEUTRAL_01",
+                "order": 2
+              }
+            ],
+            "typeName": "CompanionAvatar"
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "c81f4d8292e8afe9368541cb6f406a75aec23c2fd1c873964f1b0ab2379f3329"
     },
     "data-categories.yaml": {
       "document": {

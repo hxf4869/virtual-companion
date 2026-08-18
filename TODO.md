@@ -96,6 +96,12 @@
       偏好列与 update/get/list SD + OpenAPI PATCH /relationships/{id} +
       组装器批准片段（名称消毒，禁止自由 Prompt）+ 前端「角色设置」页 +
       SQL/单元/组件测试（FR-COMP-003）。
+- [x] COMP-PRES 性别与形象呈现：catalog companion-presentation（CompanionGender
+      FEMALE/MALE/NEUTRAL + CompanionAvatar 平台审核素材引用）+ V48 relationship
+      性别/头像列与 update/get/list SD + OpenAPI PATCH /relationships/{id}
+      增补 gender/avatarRef + 组装器性别批准片段（明示仅呈现，不改变行为/安全/
+      记忆规则）+ 前端「角色设置」页性别选择与平台素材头像选择（CSS 占位视觉，
+      无照片上传；所有角色固定成年人设定）+ SQL/单元/组件测试（FR-COMP-002）。
 
 ## 已完成（2026-08-16 第五轮）：生成对账、上下文预算、采样配置与会话一致性
 

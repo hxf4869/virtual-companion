@@ -159,8 +159,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V44 = MEM-NEG message no_memory negative marker;
         // V45 = AGE-MIN adult-verification result persistence;
         // V46 = AUTH-RECHECK consent withdrawal withdraws snapshots;
-        // V47 = COMP-CFG structured Companion preferences).
+        // V47 = COMP-CFG structured Companion preferences;
+        // V48 = COMP-PRES gender presentation + curated avatar reference).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(47);
+                .isEqualTo(48);
     }
 }

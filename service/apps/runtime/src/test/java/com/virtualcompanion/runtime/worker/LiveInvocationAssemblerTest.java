@@ -263,7 +263,8 @@ class LiveInvocationAssemblerTest {
         when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
                 new RelationshipRecord(9L, "gentle-listener", true, NOW,
                         new CompanionPrefs("小安", "老张", "SHORT", "LOW", "NONE",
-                                "RARE", false, "RELATIONSHIP", List.of("WORK")))));
+                                "RARE", false, "RELATIONSHIP", List.of("WORK"),
+                                "FEMALE", "AVATAR_FEMALE_01"))));
 
         LiveInvocationRequest request = assembler("SRC")
                 .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
@@ -275,6 +276,7 @@ class LiveInvocationAssemblerTest {
         assertTrue(system.contains("keep replies brief"));
         assertTrue(system.contains("rarely advise"));
         assertTrue(system.contains("work stress"));
+        assertTrue(system.contains("Companion presentation: feminine"));
     }
 
     @Test
@@ -284,7 +286,8 @@ class LiveInvocationAssemblerTest {
         when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
                 new RelationshipRecord(9L, "gentle-listener", true, NOW,
                         new CompanionPrefs(null, null, "MEDIUM", "LOW", "LIGHT",
-                                "ASK_FIRST", false, "SESSION", List.of()))));
+                                "ASK_FIRST", false, "SESSION", List.of(),
+                                "NEUTRAL", "AVATAR_NEUTRAL_01"))));
         when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
                 new MemoryRecord(30L, null, "RELATIONSHIP", "用户养了一只猫叫雪球", "ACCEPTED",
                         null, null, NOW),

@@ -3,8 +3,11 @@ package com.virtualcompanion.platform.persistence;
 import java.util.List;
 
 /**
- * Structured Companion preferences (COMP-CFG / FR-COMP-003). Catalog codes
- * only; display names are labels, never free-form prompt text.
+ * Structured Companion configuration (COMP-CFG FR-COMP-003 + COMP-PRES
+ * FR-COMP-002). Catalog codes only; display names are labels, never free-form
+ * prompt text. gender/avatarRef are presentation-only fields: every companion
+ * stays an adult role (fixed) and avatars must reference the platform-curated
+ * companion-presentation catalog (no photo upload in v1).
  */
 public record CompanionPrefs(
         String companionName,
@@ -15,13 +18,17 @@ public record CompanionPrefs(
         String advicePref,
         boolean remindersAllowed,
         String memoryShareScope,
-        List<String> avoidTopics) {
+        List<String> avoidTopics,
+        String gender,
+        String avatarRef) {
 
     public static final String DEFAULT_REPLY_LENGTH = "MEDIUM";
     public static final String DEFAULT_INITIATIVE = "LOW";
     public static final String DEFAULT_HUMOR = "LIGHT";
     public static final String DEFAULT_ADVICE = "ASK_FIRST";
     public static final String DEFAULT_MEMORY_SHARE = "RELATIONSHIP";
+    public static final String DEFAULT_GENDER = "NEUTRAL";
+    public static final String DEFAULT_AVATAR = "AVATAR_NEUTRAL_01";
 
     public CompanionPrefs {
         if (replyLength == null || replyLength.isBlank()) {
@@ -39,6 +46,12 @@ public record CompanionPrefs(
         if (memoryShareScope == null || memoryShareScope.isBlank()) {
             throw new IllegalArgumentException("memoryShareScope must not be blank");
         }
+        if (gender == null || gender.isBlank()) {
+            throw new IllegalArgumentException("gender must not be blank");
+        }
+        if (avatarRef == null || avatarRef.isBlank()) {
+            throw new IllegalArgumentException("avatarRef must not be blank");
+        }
         avoidTopics = List.copyOf(avoidTopics == null ? List.of() : avoidTopics);
     }
 
@@ -52,7 +65,9 @@ public record CompanionPrefs(
                 DEFAULT_ADVICE,
                 false,
                 DEFAULT_MEMORY_SHARE,
-                List.of());
+                List.of(),
+                DEFAULT_GENDER,
+                DEFAULT_AVATAR);
     }
 
     public String avoidTopicsCsv() {

@@ -63,7 +63,7 @@ public class RelationshipService {
                 "SELECT out_id, out_persona_ref, out_active, out_created_at, "
                         + "out_companion_name, out_user_address_as, out_reply_length, "
                         + "out_initiative, out_humor, out_advice_pref, out_reminders_allowed, "
-                        + "out_memory_share_scope, out_avoid_topics "
+                        + "out_memory_share_scope, out_avoid_topics, out_gender, out_avatar_ref "
                         + "FROM vc.list_relationships(?)",
                 rowMapper(),
                 ownerUserId);
@@ -81,7 +81,7 @@ public class RelationshipService {
                 "SELECT out_id, out_persona_ref, out_active, out_created_at, "
                         + "out_companion_name, out_user_address_as, out_reply_length, "
                         + "out_initiative, out_humor, out_advice_pref, out_reminders_allowed, "
-                        + "out_memory_share_scope, out_avoid_topics "
+                        + "out_memory_share_scope, out_avoid_topics, out_gender, out_avatar_ref "
                         + "FROM vc.get_relationship(?, ?)",
                 rowMapper(),
                 ownerUserId,
@@ -137,7 +137,7 @@ public class RelationshipService {
         }
         Objects.requireNonNull(prefs, "prefs must not be null");
         Boolean updated = jdbc.queryForObject(
-                "SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Boolean.class,
                 ownerUserId,
                 relationshipId,
@@ -149,7 +149,9 @@ public class RelationshipService {
                 prefs.advicePref(),
                 prefs.remindersAllowed(),
                 prefs.memoryShareScope(),
-                prefs.avoidTopicsCsv());
+                prefs.avoidTopicsCsv(),
+                prefs.gender(),
+                prefs.avatarRef());
         if (!Boolean.TRUE.equals(updated)) {
             return Optional.empty();
         }
@@ -174,7 +176,9 @@ public class RelationshipService {
                             rs.getString("out_advice_pref"),
                             rs.getBoolean("out_reminders_allowed"),
                             rs.getString("out_memory_share_scope"),
-                            CompanionPrefs.splitAvoidTopics(rs.getString("out_avoid_topics"))));
+                            CompanionPrefs.splitAvoidTopics(rs.getString("out_avoid_topics")),
+                            rs.getString("out_gender"),
+                            rs.getString("out_avatar_ref")));
         };
     }
 }

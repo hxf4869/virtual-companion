@@ -104,12 +104,13 @@ class RelationshipServiceTest {
     void updatePrefsCallsTheSdFunctionAndReloads() {
         CompanionPrefs prefs = CompanionPrefs.defaults();
         when(jdbc.queryForObject(
-                eq("SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+                eq("SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
                 eq(Boolean.class),
                 eq(1L), eq(55L),
                 eq(null), eq(null),
                 eq("MEDIUM"), eq("LOW"), eq("LIGHT"), eq("ASK_FIRST"),
-                eq(false), eq("RELATIONSHIP"), eq("")))
+                eq(false), eq("RELATIONSHIP"), eq(""),
+                eq("NEUTRAL"), eq("AVATAR_NEUTRAL_01")))
                 .thenReturn(true);
         when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(new RelationshipRecord(55L, "persona-a", true, NOW, prefs)));
@@ -123,12 +124,13 @@ class RelationshipServiceTest {
     @Test
     void updatePrefsReturnsEmptyWhenSdFunctionReportsNoRow() {
         when(jdbc.queryForObject(
-                eq("SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+                eq("SELECT vc.update_relationship_prefs(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
                 eq(Boolean.class),
                 eq(1L), eq(99L),
                 eq(null), eq(null),
                 eq("MEDIUM"), eq("LOW"), eq("LIGHT"), eq("ASK_FIRST"),
-                eq(false), eq("RELATIONSHIP"), eq("")))
+                eq(false), eq("RELATIONSHIP"), eq(""),
+                eq("NEUTRAL"), eq("AVATAR_NEUTRAL_01")))
                 .thenReturn(false);
 
         Optional<RelationshipRecord> record = service.updatePrefs(1L, 99L, CompanionPrefs.defaults());
@@ -146,6 +148,8 @@ class RelationshipServiceTest {
         when(rs.getString("out_persona_ref")).thenReturn("persona-a");
         when(rs.getBoolean("out_active")).thenReturn(false);
         when(rs.getTimestamp("out_created_at")).thenReturn(Timestamp.from(NOW));
+        when(rs.getString("out_gender")).thenReturn("NEUTRAL");
+        when(rs.getString("out_avatar_ref")).thenReturn("AVATAR_NEUTRAL_01");
         when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(new RelationshipRecord(55L, "persona-a", false, NOW)));
 

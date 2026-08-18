@@ -71,3 +71,9 @@ export type CompanionAdvicePref = typeof CompanionAdvicePrefValues[number]
 
 export const CompanionAvoidTopicValues = ["WORK", "FAMILY", "HEALTH", "ROMANCE", "MONEY", "POLITICS", "SUBSTANCE", "RELIGION"] as const
 export type CompanionAvoidTopic = typeof CompanionAvoidTopicValues[number]
+
+export const CompanionGenderValues = ["FEMALE", "MALE", "NEUTRAL"] as const
+export type CompanionGender = typeof CompanionGenderValues[number]
+
+export const CompanionAvatarValues = ["AVATAR_FEMALE_01", "AVATAR_MALE_01", "AVATAR_NEUTRAL_01"] as const
+export type CompanionAvatar = typeof CompanionAvatarValues[number]

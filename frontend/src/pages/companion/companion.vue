@@ -1,6 +1,9 @@
-<!-- COMP-CFG (FR-COMP-003): structured Companion preferences. Catalog codes
-only; names are labels, never a free-form prompt. Alpha stores the reminder
-flag but does not push. -->
+<!-- COMP-CFG (FR-COMP-003) + COMP-PRES (FR-COMP-002): structured Companion
+preferences and presentation. Catalog codes only; names are labels, never a
+free-form prompt. Gender presentation never changes behavior rules; every
+companion stays an adult role; avatars reference only the platform-curated
+asset catalog (no photo upload in v1). Alpha stores the reminder flag but
+does not push. -->
 <template>
   <view class="companion-page">
     <view class="bar">
@@ -26,7 +29,9 @@ flag but does not push. -->
     <view class="intro">
       <text>
         这些是结构化配置，会翻译成经过批准的回复偏好，不会把自由文本拼进 Prompt。
-        「允许提醒」仅表示你愿意创建结构化提醒；Technical Alpha 不会主动推送。
+        角色一律为成年人设定；性别只是呈现方式，不改变行为规则；形象仅来自平台
+        审核素材，第一版不支持上传照片。「允许提醒」仅表示你愿意创建结构化提醒；
+        Technical Alpha 不会主动推送。
       </text>
     </view>
 
@@ -65,6 +70,43 @@ flag but does not push. -->
           aria-label="希望被如何称呼"
           :disabled="busy"
         />
+        <text class="label">性别呈现</text>
+        <view class="gender-row">
+          <label
+            v-for="option in GENDER_OPTIONS"
+            :key="option.code"
+            class="gender-chip"
+            :class="{ selected: gender === option.code }"
+          >
+            <radio
+              :data-testid="`companion-gender-${option.code}`"
+              :checked="gender === option.code"
+              :disabled="busy"
+              @click="onGenderChange(option.code)"
+            />
+            <text>{{ option.label }}</text>
+          </label>
+        </view>
+        <text class="label">形象（平台审核素材）</text>
+        <view class="avatars">
+          <label
+            v-for="option in AVATAR_OPTIONS"
+            :key="option.code"
+            class="avatar-tile"
+            :class="{ selected: avatarRef === option.code }"
+          >
+            <radio
+              :data-testid="`companion-avatar-${option.code}`"
+              :checked="avatarRef === option.code"
+              :disabled="busy"
+              @click="onAvatarChange(option.code)"
+            />
+            <view class="avatar-visual" :class="avatarClass(option.code)" aria-hidden="true">
+              <text class="avatar-glyph">{{ option.glyph }}</text>
+            </view>
+            <text class="avatar-name">{{ option.name }}</text>
+          </label>
+        </view>
         <text class="label">回复长度</text>
         <select v-model="replyLength" class="select" data-testid="companion-reply-length" :disabled="busy">
           <option value="SHORT">简短</option>
@@ -143,7 +185,9 @@ import { computed, onMounted, ref, watch } from "vue";
 import {
   DEFAULT_COMPANION_PREFS,
   type CompanionAdvicePref,
+  type CompanionAvatar,
   type CompanionAvoidTopic,
+  type CompanionGender,
   type CompanionHumor,
   type CompanionInitiative,
   type CompanionMemoryShare,
@@ -166,6 +210,26 @@ const AVOID_OPTIONS: { code: CompanionAvoidTopic; label: string }[] = [
   { code: "RELIGION", label: "宗教" },
 ];
 
+const GENDER_OPTIONS: { code: CompanionGender; label: string }[] = [
+  { code: "FEMALE", label: "女性" },
+  { code: "MALE", label: "男性" },
+  { code: "NEUTRAL", label: "中性" },
+];
+
+// Platform-curated avatar catalog (companion-presentation CompanionAvatar).
+// Alpha renders CSS placeholders; real reviewed image assets are a Beta
+// concern. Photo upload is never offered (FR-COMP-002).
+const AVATAR_OPTIONS: {
+  code: CompanionAvatar;
+  name: string;
+  glyph: string;
+  theme: string;
+}[] = [
+  { code: "AVATAR_FEMALE_01", name: "温婉", glyph: "F", theme: "rose" },
+  { code: "AVATAR_MALE_01", name: "沉稳", glyph: "M", theme: "teal" },
+  { code: "AVATAR_NEUTRAL_01", name: "自然", glyph: "N", theme: "gold" },
+];
+
 export default {
   name: "CompanionPage",
   components: { RelationshipSelector },
@@ -183,6 +247,8 @@ export default {
     const remindersAllowed = ref(false);
     const memoryShareScope = ref<CompanionMemoryShare>(DEFAULT_COMPANION_PREFS.memoryShareScope);
     const avoidTopics = ref<CompanionAvoidTopic[]>([]);
+    const gender = ref<CompanionGender>(DEFAULT_COMPANION_PREFS.gender);
+    const avatarRef = ref<CompanionAvatar>(DEFAULT_COMPANION_PREFS.avatarRef);
 
     function applyRelationship(rel: Relationship | null): void {
       companionName.value = rel?.companionName ?? "";
@@ -194,6 +260,8 @@ export default {
       remindersAllowed.value = rel?.remindersAllowed === true;
       memoryShareScope.value = rel?.memoryShareScope ?? DEFAULT_COMPANION_PREFS.memoryShareScope;
       avoidTopics.value = [...(rel?.avoidTopics ?? [])];
+      gender.value = rel?.gender ?? DEFAULT_COMPANION_PREFS.gender;
+      avatarRef.value = rel?.avatarRef ?? DEFAULT_COMPANION_PREFS.avatarRef;
     }
 
     const transport = createAuthenticatedTransport({
@@ -234,6 +302,28 @@ export default {
       }
     }
 
+    function onGenderChange(code: CompanionGender): void {
+      gender.value = code;
+      // Curated avatar catalog ships one default asset per gender; keep the
+      // selection in sync unless the user overrides it afterwards.
+      if (code === "FEMALE") {
+        avatarRef.value = "AVATAR_FEMALE_01";
+      } else if (code === "MALE") {
+        avatarRef.value = "AVATAR_MALE_01";
+      } else {
+        avatarRef.value = "AVATAR_NEUTRAL_01";
+      }
+    }
+
+    function onAvatarChange(code: CompanionAvatar): void {
+      avatarRef.value = code;
+    }
+
+    function avatarClass(code: CompanionAvatar): string {
+      const option = AVATAR_OPTIONS.find((item) => item.code === code);
+      return option ? `avatar-${option.theme}` : "avatar-gold";
+    }
+
     async function onSave(): Promise<void> {
       const id = relStore.currentRelationshipId;
       if (!id) return;
@@ -249,6 +339,8 @@ export default {
         remindersAllowed: remindersAllowed.value,
         memoryShareScope: memoryShareScope.value,
         avoidTopics: [...avoidTopics.value],
+        gender: gender.value,
+        avatarRef: avatarRef.value,
       });
       if (result) {
         saved.value = true;
@@ -287,6 +379,10 @@ export default {
       remindersAllowed,
       memoryShareScope,
       avoidTopics,
+      gender,
+      avatarRef,
+      GENDER_OPTIONS,
+      AVATAR_OPTIONS,
       AVOID_OPTIONS,
       actionError,
       saved,
@@ -294,6 +390,9 @@ export default {
       onPickRelationship,
       onRemindersChange,
       onTopicChange,
+      onGenderChange,
+      onAvatarChange,
+      avatarClass,
       onSave,
       goTo,
     };
@@ -354,6 +453,71 @@ export default {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
+}
+.gender-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.gender-chip {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 12rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  font-size: 24rpx;
+}
+.gender-chip.selected {
+  border-color: #6ca0dc;
+  background-color: #244066;
+}
+.avatars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+.avatar-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+  padding: 12rpx;
+  border-radius: 16rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  font-size: 22rpx;
+  color: #f5f5f5;
+}
+.avatar-tile.selected {
+  border-color: #6ca0dc;
+  background-color: #244066;
+}
+.avatar-visual {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-rose {
+  background-color: #7a3b52;
+}
+.avatar-teal {
+  background-color: #2f5d63;
+}
+.avatar-gold {
+  background-color: #6b5a2f;
+}
+.avatar-glyph {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+.avatar-name {
+  color: #c8d3e8;
 }
 .check {
   display: flex;

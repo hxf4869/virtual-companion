@@ -1,0 +1,19 @@
+schemaVersion: 1
+catalogId: companion-presentation
+enums:
+- typeName: CompanionGender
+  entries:
+  - code: FEMALE
+    order: 0
+  - code: MALE
+    order: 1
+  - code: NEUTRAL
+    order: 2
+- typeName: CompanionAvatar
+  entries:
+  - code: AVATAR_FEMALE_01
+    order: 0
+  - code: AVATAR_MALE_01
+    order: 1
+  - code: AVATAR_NEUTRAL_01
+    order: 2

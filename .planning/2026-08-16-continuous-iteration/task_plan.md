@@ -7,8 +7,10 @@
 
 ## Current Phase
 
-Phase 6 — 完成：COMP-CFG（FR-COMP-003）。下一项需 Owner 确认 QUOTA-MIN
-解冻边界，或从 findings 新发现的 Alpha 项中挑选。
+Phase 7 — 完成：COMP-PRES 性别与形象呈现（FR-COMP-002）。下一项从
+findings 新发现的 Alpha 项中挑选（FR-COMP-004 / FR-DATA-003 剩余删除面 /
+FR-CHAT-003 重生成版本 / FR-DATA-001 / FR-RES-002 / A4 隐私页），
+QUOTA-MIN 仍为 Owner 冻结项需先确认边界。
 
 ## Phases
 
@@ -71,6 +73,16 @@ Phase 6 — 完成：COMP-CFG（FR-COMP-003）。下一项需 Owner 确认 QUOTA
 - [x] V47 relationship 结构化列 + update/get/list SD
 - [x] 组装器把目录码翻译为批准片段（昵称/称呼消毒，禁止自由 Prompt）
 - [x] 前端「角色设置」页 + api/store/页面测试
+- [x] check.sh / mvn / 前端 / DB 全绿并提交
+- **Status:** complete
+
+### Phase 7: COMP-PRES 性别与形象呈现（FR-COMP-002）
+- [x] catalog companion-presentation（CompanionGender / CompanionAvatar）
+- [x] OpenAPI PATCH /relationships/{id} 增补 gender/avatarRef + 描述同步
+- [x] V48 relationship 性别/头像列 + update/get/list SD
+- [x] 组装器性别批准片段（呈现仅改变称谓/视觉，不改变行为规则）
+- [x] 前端「角色设置」页性别/平台素材头像选择 + 页面测试（无照片上传）
+- [x] 后端单测 + DB 测试 103 + 前端测试全绿
 - [x] check.sh / mvn / 前端 / DB 全绿并提交
 - **Status:** complete
 

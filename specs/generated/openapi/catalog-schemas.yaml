@@ -233,3 +233,15 @@ components:
       - POLITICS
       - SUBSTANCE
       - RELIGION
+    CompanionGender:
+      type: string
+      enum:
+      - FEMALE
+      - MALE
+      - NEUTRAL
+    CompanionAvatar:
+      type: string
+      enum:
+      - AVATAR_FEMALE_01
+      - AVATAR_MALE_01
+      - AVATAR_NEUTRAL_01

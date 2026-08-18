@@ -201,7 +201,8 @@ class RelationshipControllerTest {
     @Test
     void updatePrefsReplacesStructuredFields() throws Exception {
         CompanionPrefs prefs = new CompanionPrefs(
-                "小安", "老张", "SHORT", "LOW", "NONE", "RARE", false, "SESSION", List.of("WORK"));
+                "小安", "老张", "SHORT", "LOW", "NONE", "RARE", false, "SESSION", List.of("WORK"),
+                "FEMALE", "AVATAR_FEMALE_01");
         when(relationshipService.updatePrefs(eq(1L), eq(7L), any(CompanionPrefs.class)))
                 .thenReturn(Optional.of(new RelationshipRecord(7L, "gentle-listener", true, NOW, prefs)));
 
@@ -211,14 +212,46 @@ class RelationshipControllerTest {
                                 {"companionName":"小安","userAddressAs":"老张","replyLength":"SHORT",
                                  "initiative":"LOW","humor":"NONE","advicePref":"RARE",
                                  "remindersAllowed":false,"memoryShareScope":"SESSION",
-                                 "avoidTopics":["WORK"]}
+                                 "avoidTopics":["WORK"],"gender":"FEMALE","avatarRef":"AVATAR_FEMALE_01"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.companionName").value("小安"))
                 .andExpect(jsonPath("$.userAddressAs").value("老张"))
                 .andExpect(jsonPath("$.replyLength").value("SHORT"))
                 .andExpect(jsonPath("$.memoryShareScope").value("SESSION"))
-                .andExpect(jsonPath("$.avoidTopics[0]").value("WORK"));
+                .andExpect(jsonPath("$.avoidTopics[0]").value("WORK"))
+                .andExpect(jsonPath("$.gender").value("FEMALE"))
+                .andExpect(jsonPath("$.avatarRef").value("AVATAR_FEMALE_01"));
+    }
+
+    @Test
+    void updatePrefsRejectsUnapprovedGenderCode() throws Exception {
+        mockMvc.perform(patch("/api/v1/relationships/7")
+                        .contentType("application/json")
+                        .content("""
+                                {"replyLength":"MEDIUM","initiative":"LOW","humor":"LIGHT",
+                                 "advicePref":"ASK_FIRST","remindersAllowed":false,
+                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[],
+                                 "gender":"OTHER","avatarRef":"AVATAR_NEUTRAL_01"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        verify(relationshipService, never()).updatePrefs(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void updatePrefsRejectsUnapprovedAvatarRef() throws Exception {
+        mockMvc.perform(patch("/api/v1/relationships/7")
+                        .contentType("application/json")
+                        .content("""
+                                {"replyLength":"MEDIUM","initiative":"LOW","humor":"LIGHT",
+                                 "advicePref":"ASK_FIRST","remindersAllowed":false,
+                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[],
+                                 "gender":"MALE","avatarRef":"UPLOADED_PHOTO_99"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        verify(relationshipService, never()).updatePrefs(anyLong(), anyLong(), any());
     }
 
     @Test
@@ -228,7 +261,8 @@ class RelationshipControllerTest {
                         .content("""
                                 {"replyLength":"YELL","initiative":"LOW","humor":"LIGHT",
                                  "advicePref":"ASK_FIRST","remindersAllowed":false,
-                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[]}
+                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[],
+                                 "gender":"NEUTRAL","avatarRef":"AVATAR_NEUTRAL_01"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
@@ -245,7 +279,8 @@ class RelationshipControllerTest {
                         .content("""
                                 {"replyLength":"MEDIUM","initiative":"LOW","humor":"LIGHT",
                                  "advicePref":"ASK_FIRST","remindersAllowed":false,
-                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[]}
+                                 "memoryShareScope":"RELATIONSHIP","avoidTopics":[],
+                                 "gender":"NEUTRAL","avatarRef":"AVATAR_NEUTRAL_01"}
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));

@@ -45,6 +45,8 @@ export type CompanionAvoidTopic =
   | "SUBSTANCE"
   | "RELIGION";
 export type CompanionMemoryShare = "SESSION" | "RELATIONSHIP";
+export type CompanionGender = "FEMALE" | "MALE" | "NEUTRAL";
+export type CompanionAvatar = "AVATAR_FEMALE_01" | "AVATAR_MALE_01" | "AVATAR_NEUTRAL_01";
 
 export interface CompanionPrefs {
   companionName: string | null;
@@ -56,6 +58,8 @@ export interface CompanionPrefs {
   remindersAllowed: boolean;
   memoryShareScope: CompanionMemoryShare;
   avoidTopics: CompanionAvoidTopic[];
+  gender: CompanionGender;
+  avatarRef: CompanionAvatar;
 }
 
 export const DEFAULT_COMPANION_PREFS: CompanionPrefs = {
@@ -68,6 +72,8 @@ export const DEFAULT_COMPANION_PREFS: CompanionPrefs = {
   remindersAllowed: false,
   memoryShareScope: "RELATIONSHIP",
   avoidTopics: [],
+  gender: "NEUTRAL",
+  avatarRef: "AVATAR_NEUTRAL_01",
 };
 
 export interface Relationship {
@@ -84,6 +90,8 @@ export interface Relationship {
   remindersAllowed?: boolean;
   memoryShareScope?: CompanionMemoryShare;
   avoidTopics?: CompanionAvoidTopic[];
+  gender?: CompanionGender;
+  avatarRef?: CompanionAvatar;
 }
 
 export interface RelationshipPrefsUpdate extends CompanionPrefs {}
@@ -161,6 +169,8 @@ const AVOID_TOPICS = [
   "RELIGION",
 ] as const;
 const MEMORY_SHARES = ["SESSION", "RELATIONSHIP"] as const;
+const GENDERS = ["FEMALE", "MALE", "NEUTRAL"] as const;
+const AVATARS = ["AVATAR_FEMALE_01", "AVATAR_MALE_01", "AVATAR_NEUTRAL_01"] as const;
 
 function asAvoidTopics(value: unknown): CompanionAvoidTopic[] {
   if (!Array.isArray(value)) return [];
@@ -191,6 +201,8 @@ function asPrefs(o: Record<string, unknown>): CompanionPrefs {
       DEFAULT_COMPANION_PREFS.memoryShareScope,
     ),
     avoidTopics: asAvoidTopics(o.avoidTopics),
+    gender: asEnum(o.gender, GENDERS, DEFAULT_COMPANION_PREFS.gender),
+    avatarRef: asEnum(o.avatarRef, AVATARS, DEFAULT_COMPANION_PREFS.avatarRef),
   };
 }
 

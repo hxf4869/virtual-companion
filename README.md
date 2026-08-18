@@ -205,6 +205,14 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   OpenAPI `PATCH /relationships/{id}` 全量替换；组装器把目录码翻译为固定批准片段
   （昵称/称呼只作引号标签），`memoryShareScope=SESSION` 时召回只保留会话记忆；
   前端新增「角色设置」页（FR-COMP-003，A4 角色初始化）。
+- 性别与形象呈现（COMP-PRES）：V48 `vc.relationship` 性别/头像列（默认
+  NEUTRAL + AVATAR_NEUTRAL_01）+ `update_relationship_prefs` 全量替换（新目录码
+  companion-presentation：CompanionGender FEMALE/MALE/NEUTRAL、CompanionAvatar 平台
+  审核素材引用）；OpenAPI `PATCH /relationships/{id}` 增补 `gender`/`avatarRef`
+  （FR-COMP-002：性别呈现与人格分离、所有角色固定成年人设定、头像只来自平台审核
+  素材、第一版不支持上传照片）；组装器把性别翻译为固定批准片段（明示仅呈现、
+  不改变行为/安全/记忆规则）；「角色设置」页增性别选择与平台素材头像选择
+  （CSS 占位视觉，无照片上传）。
 
 后端在运方面上还提供（2026-08-16 第五轮）：
 

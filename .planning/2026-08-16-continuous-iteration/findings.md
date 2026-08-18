@@ -77,7 +77,11 @@
 
 ### 新发现的 Alpha 范围内后续项（Phase 6 盘点）
 
-- **FR-COMP-002** 性别/形象呈现（FEMALE/MALE/NEUTRAL，无上传照片）。
+- **FR-COMP-002 性别/形象呈现**：✅ 已交付（V48/COMP-PRES）——catalog
+  companion-presentation（CompanionGender FEMALE/MALE/NEUTRAL + CompanionAvatar
+  平台审核素材引用）+ relationship 性别/头像列 + PATCH 增补 gender/avatarRef +
+  组装器性别批准片段（只呈现、不改变行为/安全/记忆规则）+「角色设置」页性别
+  与平台素材头像选择（CSS 占位视觉，无照片上传；所有角色固定成年人设定）。
 - **FR-COMP-004** 删除/重置角色时展示将删除的记忆与会话范围。
 - **FR-DATA-003** 剩余删除面：全部聊天删除、角色全部关系数据删除。
 - **FR-CHAT-003** 重新生成版本选择（界面默认只显示选中版本）。

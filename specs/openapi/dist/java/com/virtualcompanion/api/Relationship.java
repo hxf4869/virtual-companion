@@ -14,7 +14,9 @@ public record Relationship(
     final String advicePref,
     final String remindersAllowed,
     final String memoryShareScope,
-    final String avoidTopics
+    final String avoidTopics,
+    final String gender,
+    final String avatarRef
 ) {
     public Relationship {
         java.util.Objects.requireNonNull(relationshipId, "relationshipId must not be null");
@@ -30,5 +32,7 @@ public record Relationship(
         java.util.Objects.requireNonNull(remindersAllowed, "remindersAllowed must not be null");
         java.util.Objects.requireNonNull(memoryShareScope, "memoryShareScope must not be null");
         java.util.Objects.requireNonNull(avoidTopics, "avoidTopics must not be null");
+        java.util.Objects.requireNonNull(gender, "gender must not be null");
+        java.util.Objects.requireNonNull(avatarRef, "avatarRef must not be null");
     }
 }

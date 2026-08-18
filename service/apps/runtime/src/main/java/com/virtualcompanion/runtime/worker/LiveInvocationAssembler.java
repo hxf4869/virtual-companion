@@ -391,7 +391,8 @@ public class LiveInvocationAssembler {
                 prefs.humor(),
                 prefs.advicePref(),
                 prefs.memoryShareScope(),
-                prefs.avoidTopics());
+                prefs.avoidTopics(),
+                prefs.gender());
         if (prefBlock != null && !prefBlock.isBlank()) {
             parts.add(prefBlock);
         }

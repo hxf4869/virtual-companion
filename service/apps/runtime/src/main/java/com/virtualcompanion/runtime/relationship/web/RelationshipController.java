@@ -1,7 +1,9 @@
 package com.virtualcompanion.runtime.relationship.web;
 
 import com.virtualcompanion.catalog.CompanionAdvicePref;
+import com.virtualcompanion.catalog.CompanionAvatar;
 import com.virtualcompanion.catalog.CompanionAvoidTopic;
+import com.virtualcompanion.catalog.CompanionGender;
 import com.virtualcompanion.catalog.CompanionHumor;
 import com.virtualcompanion.catalog.CompanionInitiative;
 import com.virtualcompanion.catalog.CompanionReplyLength;
@@ -171,6 +173,15 @@ public class RelationshipController {
                     "memoryShareScope is not an Alpha-enabled memory scope: "
                             + request.memoryShareScope());
         }
+        // COMP-PRES (FR-COMP-002): gender and avatarRef are approved catalog
+        // codes; presentation never changes behavior, and avatars may only
+        // reference platform-curated assets (no photo upload in v1).
+        CompanionPreferenceInstructions.requireKnown(
+                "gender", request.gender(),
+                catalogHas(CompanionGender.values(), request.gender(), CompanionGender::code));
+        CompanionPreferenceInstructions.requireKnown(
+                "avatarRef", request.avatarRef(),
+                catalogHas(CompanionAvatar.values(), request.avatarRef(), CompanionAvatar::code));
         String companionName = sanitizeOptionalLabel("companionName", request.companionName());
         String userAddressAs = sanitizeOptionalLabel("userAddressAs", request.userAddressAs());
         List<String> avoid = new ArrayList<>();
@@ -192,7 +203,9 @@ public class RelationshipController {
                 request.advicePref(),
                 request.remindersAllowed(),
                 request.memoryShareScope(),
-                avoid);
+                avoid,
+                request.gender(),
+                request.avatarRef());
     }
 
     private static String sanitizeOptionalLabel(String field, String raw) {
@@ -233,7 +246,9 @@ public class RelationshipController {
                 prefs.advicePref(),
                 prefs.remindersAllowed(),
                 prefs.memoryShareScope(),
-                prefs.avoidTopics());
+                prefs.avoidTopics(),
+                prefs.gender(),
+                prefs.avatarRef());
     }
 
     /** Request body (OpenAPI {@code RelationshipCreateRequest}). */
@@ -251,7 +266,9 @@ public class RelationshipController {
             @NotBlank @Size(max = 32) String advicePref,
             @NotNull Boolean remindersAllowed,
             @NotBlank @Size(max = 32) String memoryShareScope,
-            @NotNull List<String> avoidTopics) {
+            @NotNull List<String> avoidTopics,
+            @NotBlank @Size(max = 32) String gender,
+            @NotBlank @Size(max = 32) String avatarRef) {
     }
 
     /** Response body (OpenAPI {@code Relationship}). */
@@ -268,6 +285,8 @@ public class RelationshipController {
             String advicePref,
             boolean remindersAllowed,
             String memoryShareScope,
-            List<String> avoidTopics) {
+            List<String> avoidTopics,
+            String gender,
+            String avatarRef) {
     }
 }

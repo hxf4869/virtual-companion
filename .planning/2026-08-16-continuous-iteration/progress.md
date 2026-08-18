@@ -1,12 +1,31 @@
 # Progress Log
 
-## Session: 2026-08-16 — 持续迭代
+## Session: 2026-08-18 — COMP-PRES
 
 ### Current Status
-- **Phase:** 6 完成（COMP-CFG / FR-COMP-003）。本会话交付第 19 项功能。
+- **Phase:** 7 完成（COMP-PRES / FR-COMP-002）。本会话交付第 20 项功能。
   QUOTA-MIN 仍冻结，未动手。
 
-### Session: 2026-08-17 — COMP-CFG
+### Actions Taken
+- 需求对照后选定 FR-COMP-002（性别与形象呈现；Owner 确认 QUOTA-MIN 保持冻结，
+  从 Alpha 新发现项中挑选）。
+- catalog companion-presentation（CompanionGender FEMALE/MALE/NEUTRAL +
+  CompanionAvatar 平台审核素材引用）+ OpenAPI PATCH 增补 gender/avatarRef +
+  V48 迁移（列 + update/get/list SD）+ 组装器性别批准片段（只呈现、不改变
+  行为/安全/记忆规则）+「角色设置」页性别/平台素材头像选择（CSS 占位视觉，
+  无照片上传；所有角色固定成年人设定）；schema readiness 钉到 V48。
+
+### Test Results
+| Test | Actual | Status |
+|------|--------|--------|
+| scripts/check.sh | 全绿（含 frontend-test / frontend-type-check） | PASS |
+| ./mvnw verify（JDK 25） | BUILD SUCCESS（runtime 500 tests，0 失败） | PASS |
+| pnpm frontend test:run | 517 passed | PASS |
+| pnpm frontend type-check | 无错误 | PASS |
+| infra/db/run-rls-tests.sh | ALL TESTS PASS（V1-V48，含 103） | PASS |
+| 浏览器端到端 | Playwright MCP 未连接，未做真机点击 | NOT_RUN |
+
+## Session: 2026-08-17 — COMP-CFG
 
 ### Actions Taken
 - 需求对照后选定 FR-COMP-003（Alpha 最小能力「角色设置」/ A4 角色初始化）。
@@ -22,6 +41,8 @@
 | pnpm frontend type-check | 无错误 | PASS |
 | infra/db/run-rls-tests.sh | ALL TESTS PASS（V1-V47，含 102） | PASS |
 | 浏览器端到端 | Playwright MCP 未连接，未做真机点击 | NOT_RUN |
+
+## Session: 2026-08-16 — 持续迭代（Phase 1-5）
 
 ### Actions Taken
 - Phase 0 盘点 → findings.md 缺口清单（P0/P1/P2 + 路线图）。
