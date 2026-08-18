@@ -61,6 +61,12 @@
 			}
 		},
 		{
+			"path": "pages/ai-notice/ai-notice",
+			"style": {
+				"navigationBarTitleText": "模型与 AI 标识"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"

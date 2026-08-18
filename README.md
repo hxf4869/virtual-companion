@@ -26,7 +26,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
-  Age、Data、Help、Export、Admin H5 页面、typed transport 与组件/状态测试；
+  Age、Data、Help、AI-Notice、Export、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：

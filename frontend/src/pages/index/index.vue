@@ -116,6 +116,15 @@
           <text>帮助与安全支持</text>
         </button>
         <button
+          data-testid="nav-ai-notice"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="模型与 AI 标识"
+          @click="goTo('/pages/ai-notice/ai-notice')"
+        >
+          <text>模型与 AI 标识</text>
+        </button>
+        <button
           data-testid="nav-login"
           class="alpha-nav__link"
           role="button"
