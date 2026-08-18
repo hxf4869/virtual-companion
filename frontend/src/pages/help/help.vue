@@ -33,6 +33,9 @@
     <view class="section" data-testid="help-reports">
       <text class="section-title">举报和申诉</text>
       <text class="empty">受理接口尚未接通。本页没有可提交的表单，也不会编造工单状态。</text>
+      <button data-testid="nav-report" class="nav-index" @click="goTo('/pages/report/report')">
+        打开举报和申诉页
+      </button>
     </view>
   </view>
 </template>

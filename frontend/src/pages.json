@@ -73,6 +73,12 @@
 			}
 		},
 		{
+			"path": "pages/report/report",
+			"style": {
+				"navigationBarTitleText": "举报和申诉"
+			}
+		},
+		{
 			"path": "pages/ai-notice/ai-notice",
 			"style": {
 				"navigationBarTitleText": "模型与 AI 标识"

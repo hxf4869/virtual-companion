@@ -125,6 +125,15 @@
           <text>帮助与安全支持</text>
         </button>
         <button
+          data-testid="nav-report"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="举报和申诉"
+          @click="goTo('/pages/report/report')"
+        >
+          <text>举报和申诉</text>
+        </button>
+        <button
           data-testid="nav-ai-notice"
           class="alpha-nav__link"
           role="button"
