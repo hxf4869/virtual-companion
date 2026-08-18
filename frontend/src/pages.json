@@ -19,6 +19,12 @@
 			}
 		},
 		{
+			"path": "pages/memory-detail/memory-detail",
+			"style": {
+				"navigationBarTitleText": "记忆详情"
+			}
+		},
+		{
 			"path": "pages/reminder/reminder",
 			"style": {
 				"navigationBarTitleText": "提醒管理"
@@ -82,6 +88,12 @@
 			"path": "pages/login/login",
 			"style": {
 				"navigationBarTitleText": "登录"
+			}
+		},
+		{
+			"path": "pages/ops/ops",
+			"style": {
+				"navigationBarTitleText": "运行与合规"
 			}
 		},
 		{

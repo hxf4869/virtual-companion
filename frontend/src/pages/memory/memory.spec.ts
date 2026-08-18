@@ -67,19 +67,22 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("renders the evidence container only when sources are non-empty (P3-03)", async () => {
+  it("opens the independent detail page instead of expanding evidence inline", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
     const store = useMemoryStore();
     store.canonical = [canonicalMemory("m1")];
-    store.evidence = { m1: [] };
-    const empty = mountPage();
-    await empty.vm.$nextTick();
-    expect(empty.find(".evidence").exists()).toBe(false);
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
 
-    store.evidence = { m1: [{ evidenceId: "e1", sourceRef: "src-1" }] };
-    await empty.vm.$nextTick();
-    expect(empty.find(".evidence").exists()).toBe(true);
-    expect(empty.find(".source").text()).toContain("src-1");
-    empty.unmount();
+    expect(wrapper.find(".evidence").exists()).toBe(false);
+    const detail = wrapper.find('[data-testid="memory-open-detail"]');
+    expect(detail.text()).toContain("详情");
+    await detail.trigger("click");
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: "/pages/memory-detail/memory-detail?memoryId=m1",
+    });
+    wrapper.unmount();
   });
 
   it("keeps the edit row open on a failed save and exits on a confirmed save (P3-03)", async () => {

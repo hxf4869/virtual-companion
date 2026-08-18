@@ -154,6 +154,16 @@
         <!-- ADMIN-UI: internal account provisioning, ADMIN only -->
         <button
           v-if="auth.role === 'ADMIN'"
+          data-testid="nav-ops"
+          class="alpha-nav__link"
+          role="button"
+          aria-label="运行与合规"
+          @click="goTo('/pages/ops/ops')"
+        >
+          <text>运行与合规</text>
+        </button>
+        <button
+          v-if="auth.role === 'ADMIN'"
           data-testid="nav-admin"
           class="alpha-nav__link"
           role="button"

@@ -146,14 +146,13 @@ states carry alert/live a11y semantics. -->
           <button size="mini" :disabled="busy" @click="onReject(m.memoryId)">
             拒绝
           </button>
-          <button size="mini" @click="onEvidence(m.memoryId)">来源</button>
-        </view>
-        <view v-if="hasEvidence(m.memoryId)" class="evidence">
-          <text
-            v-for="e in memory.evidence[m.memoryId]"
-            :key="e.evidenceId"
-            class="source"
-          >• {{ e.sourceRef }}</text>
+          <button
+            size="mini"
+            data-testid="memory-open-detail"
+            @click="openDetail(m.memoryId)"
+          >
+            详情
+          </button>
         </view>
       </view>
     </view>
@@ -196,14 +195,13 @@ states carry alert/live a11y semantics. -->
           <button size="mini" :disabled="busy" @click="onDelete(m.memoryId)">
             删除
           </button>
-          <button size="mini" @click="onEvidence(m.memoryId)">来源</button>
-        </view>
-        <view v-if="hasEvidence(m.memoryId)" class="evidence">
-          <text
-            v-for="e in memory.evidence[m.memoryId]"
-            :key="e.evidenceId"
-            class="source"
-          >• {{ e.sourceRef }}</text>
+          <button
+            size="mini"
+            data-testid="memory-open-detail"
+            @click="openDetail(m.memoryId)"
+          >
+            详情
+          </button>
         </view>
       </view>
     </view>
@@ -280,12 +278,6 @@ const errorText = computed(() => {
   };
   return memory.error ? map[memory.error] : "";
 });
-
-/** An empty evidence array must not render an empty container (P3-03). */
-function hasEvidence(memoryId: string): boolean {
-  const list = memory.evidence[memoryId];
-  return Array.isArray(list) && list.length > 0;
-}
 
 function readQueryRelationshipId(): string {
   try {
@@ -405,8 +397,8 @@ async function onDelete(id: string): Promise<void> {
   }
 }
 
-async function onEvidence(id: string): Promise<void> {
-  await memory.loadEvidence(transport, id);
+function openDetail(id: string): void {
+  goTo(`/pages/memory-detail/memory-detail?memoryId=${encodeURIComponent(id)}`);
 }
 
 function chatHref(): string {
@@ -514,14 +506,6 @@ function goTo(url: string): void {
   flex: 1;
   border: 1px solid #ccc;
   padding: 6px;
-}
-.evidence {
-  margin-top: 6px;
-}
-.source {
-  display: block;
-  font-size: 12px;
-  color: #555;
 }
 .error {
   color: #b91c1c;

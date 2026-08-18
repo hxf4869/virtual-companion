@@ -216,6 +216,8 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
 
     expect(wrapper.find('[data-testid="nav-admin"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="nav-admin"]').text()).toContain("账户管理");
+    expect(wrapper.find('[data-testid="nav-ops"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="nav-ops"]').text()).toContain("运行与合规");
     wrapper.unmount();
   });
 
@@ -225,6 +227,7 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     const wrapper = mountPage();
 
     expect(wrapper.find('[data-testid="nav-admin"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="nav-ops"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -241,6 +244,21 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     await wrapper.find('[data-testid="nav-admin"]').trigger("click");
 
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/admin/admin" });
+    wrapper.unmount();
+  });
+
+  it("navigates to the ops page from the run-and-compliance entry", async () => {
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    auth.role = "ADMIN";
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-ops"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/ops/ops" });
     wrapper.unmount();
   });
 

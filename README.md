@@ -26,7 +26,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
-  Age、Data、Help、AI-Notice、Health、Incognito、Export、Admin H5 页面、typed transport 与组件/状态测试；
+  Age、Data、Help、AI-Notice、Health、Incognito、Export、Memory-Detail、Ops、Admin H5 页面、typed transport 与组件/状态测试；
 - GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
@@ -112,6 +112,16 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-18 第十八轮）：
+
+- 独立记忆详情页（MEM-DETAIL / §8.2）：H5 `/pages/memory-detail/memory-detail`
+  复用既有 GET `/memories/{id}` 与 GET `/memories/{id}/evidence`；记忆列表改为
+  「详情」跳转，不再行内展开来源；404/403 一律「未找到或无权访问」。
+- 管理端只读运行与合规页（ADMIN-OPS-RO / §8.2）：ADMIN-only 的
+  `/pages/ops/ops` 复用 GET `/service-mode` 与 GET `/version`，静态写明 Alpha
+  不对真实用户开放、不公开注册、不真实支付；公告只复述服务状态摘要，不编造
+  provider 健康、不角色化事故。
 
 后端在运方面上还提供（2026-08-18 第十七轮）：
 
