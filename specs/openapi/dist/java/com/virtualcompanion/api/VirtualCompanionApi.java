@@ -80,6 +80,12 @@ public interface VirtualCompanionApi {
     /** List the caller's conversations with a last-message preview. */
     Void listConversations();
 
+    /** Preview an account-wide chat wipe (FR-DATA-003 全部聊天删除). */
+    ChatWipePreview previewChatWipe();
+
+    /** Delete every conversation of the caller (FR-DATA-003 全部聊天删除). */
+    ChatWipeResult wipeAllChats();
+
     /** Delete one conversation (CONV-MGMT). */
     ConversationDeletedResponse deleteConversation();
 

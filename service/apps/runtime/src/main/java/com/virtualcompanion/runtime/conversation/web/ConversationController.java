@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.conversation.web;
 
+import com.virtualcompanion.platform.persistence.ChatWipeService;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListRecord;
 import com.virtualcompanion.platform.persistence.ConversationListService;
@@ -42,14 +43,17 @@ public class ConversationController {
     private final ConversationCreateService conversationCreateService;
     private final ConversationListService conversationListService;
     private final ConversationRepository conversationRepository;
+    private final ChatWipeService chatWipeService;
 
     public ConversationController(
             ConversationCreateService conversationCreateService,
             ConversationListService conversationListService,
-            ConversationRepository conversationRepository) {
+            ConversationRepository conversationRepository,
+            ChatWipeService chatWipeService) {
         this.conversationCreateService = conversationCreateService;
         this.conversationListService = conversationListService;
         this.conversationRepository = conversationRepository;
+        this.chatWipeService = chatWipeService;
     }
 
     @PostMapping
@@ -124,6 +128,34 @@ public class ConversationController {
         return conversationRepository.end(ownerUserId, id)
                 .map(result -> new ConversationEndedResponse(result.ok(), result.incognitoCleared()))
                 .orElseThrow(() -> new ResourceNotFoundException("conversation"));
+    }
+
+    /**
+     * CHAT-WIPE (V57, FR-DATA-003 全部聊天删除): preview what an account-wide
+     * wipe would clear — conversations across all relationships, their
+     * messages and the in-flight chat work items that would be cancelled.
+     * Relationships, memories and account-level rows never appear here.
+     */
+    @GetMapping("/wipe-preview")
+    public ChatWipePreviewResponse wipePreview(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
+        ChatWipeService.ChatWipePreview preview = chatWipeService.preview(ownerUserId);
+        return new ChatWipePreviewResponse(
+                preview.conversationCount(), preview.messageCount(), preview.inFlightCount());
+    }
+
+    /**
+     * CHAT-WIPE (V57): cancel in-flight chat work items, then delete every
+     * conversation of the caller. Relationships, memories, reminders and the
+     * account survive; a repeat wipe is a no-op returning zeroes.
+     */
+    @PostMapping("/wipe")
+    public ChatWipeResultResponse wipeAll(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
+        ChatWipeService.ChatWipeResult result = chatWipeService.wipeAll(ownerUserId);
+        return new ChatWipeResultResponse(
+                result.conversationsDeleted(), result.messagesDeleted(),
+                result.workItemsCancelled());
     }
 
     private static long parseRequiredLong(String raw, String name) {
@@ -219,5 +251,15 @@ public class ConversationController {
 
     /** CONV-MGMT: rename body (OpenAPI {@code RenameConversationRequest}). */
     public record RenameConversationRequest(@Size(max = 200) String title) {
+    }
+
+    /** CHAT-WIPE: preview counts (OpenAPI {@code ChatWipePreview}). */
+    public record ChatWipePreviewResponse(
+            long conversationCount, long messageCount, long inFlightCount) {
+    }
+
+    /** CHAT-WIPE: execution result (OpenAPI {@code ChatWipeResult}). */
+    public record ChatWipeResultResponse(
+            long conversationsDeleted, long messagesDeleted, long workItemsCancelled) {
     }
 }

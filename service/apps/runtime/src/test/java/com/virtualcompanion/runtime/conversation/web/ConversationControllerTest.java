@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.platform.persistence.ChatWipeService;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListRecord;
 import com.virtualcompanion.platform.persistence.ConversationListService;
@@ -115,6 +116,7 @@ class ConversationControllerTest {
     private ConversationCreateService conversationCreateService;
     private ConversationListService conversationListService;
     private ConversationRepository conversationRepository;
+    private ChatWipeService chatWipeService;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -122,8 +124,10 @@ class ConversationControllerTest {
         conversationCreateService = mock(ConversationCreateService.class);
         conversationListService = mock(ConversationListService.class);
         conversationRepository = mock(ConversationRepository.class);
+        chatWipeService = mock(ChatWipeService.class);
         ConversationController controller = new ConversationController(
-                conversationCreateService, conversationListService, conversationRepository);
+                conversationCreateService, conversationListService,
+                conversationRepository, chatWipeService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -232,5 +236,35 @@ class ConversationControllerTest {
         mockMvc.perform(get("/api/v1/conversations").param("limit", "many"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    // ---- CHAT-WIPE: preview + account-wide delete ----
+
+    @Test
+    void wipePreviewReturnsTheCurrentCounts() throws Exception {
+        when(chatWipeService.preview(1L))
+                .thenReturn(new ChatWipeService.ChatWipePreview(2, 34, 1));
+
+        mockMvc.perform(get("/api/v1/conversations/wipe-preview"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationCount").value(2))
+                .andExpect(jsonPath("$.messageCount").value(34))
+                .andExpect(jsonPath("$.inFlightCount").value(1));
+
+        verify(chatWipeService).preview(1L);
+    }
+
+    @Test
+    void wipeAllReturnsWhatWasCleared() throws Exception {
+        when(chatWipeService.wipeAll(1L))
+                .thenReturn(new ChatWipeService.ChatWipeResult(2, 34, 1));
+
+        mockMvc.perform(post("/api/v1/conversations/wipe"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationsDeleted").value(2))
+                .andExpect(jsonPath("$.messagesDeleted").value(34))
+                .andExpect(jsonPath("$.workItemsCancelled").value(1));
+
+        verify(chatWipeService).wipeAll(1L);
     }
 }

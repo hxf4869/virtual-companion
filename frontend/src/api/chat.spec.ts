@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   cancelGeneration,
+  chatWipePreview,
   ChatHttpError,
   createConversation,
   deleteConversation,
@@ -19,6 +20,7 @@ import {
   setMessageNoMemory,
   listGenerationVersions,
   selectGenerationVersion,
+  wipeAllChats,
   type ChatTransport,
 } from "./chat";
 
@@ -733,5 +735,45 @@ describe("getServiceMode (SVC-MODE)", () => {
     const { transport } = recorder({ ok: false, status: 401, json: null });
 
     await expect(getServiceMode(transport)).rejects.toThrow(ChatHttpError);
+  });
+});
+
+describe("CHAT-WIPE api client", () => {
+  it("GETs the wipe preview and parses the counts", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { conversationCount: 2, messageCount: 9, inFlightCount: 1 },
+    });
+
+    const preview = await chatWipePreview(transport);
+
+    expect(calls).toEqual([{ method: "GET", path: "/api/v1/conversations/wipe-preview" }]);
+    expect(preview).toEqual({ conversationCount: 2, messageCount: 9, inFlightCount: 1 });
+  });
+
+  it("rejects a malformed preview body with a typed error", async () => {
+    const { transport } = recorder({ ok: true, status: 200, json: { conversationCount: "many" } });
+
+    await expect(chatWipePreview(transport)).rejects.toThrow(ChatHttpError);
+  });
+
+  it("POSTs the wipe and parses the result", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: { conversationsDeleted: 2, messagesDeleted: 9, workItemsCancelled: 1 },
+    });
+
+    const result = await wipeAllChats(transport);
+
+    expect(calls).toEqual([{ method: "POST", path: "/api/v1/conversations/wipe" }]);
+    expect(result).toEqual({ conversationsDeleted: 2, messagesDeleted: 9, workItemsCancelled: 1 });
+  });
+
+  it("throws a typed error when the wipe fails", async () => {
+    const { transport } = recorder({ ok: false, status: 500, json: null });
+
+    await expect(wipeAllChats(transport)).rejects.toThrow(ChatHttpError);
   });
 });

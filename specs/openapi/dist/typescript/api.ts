@@ -50,6 +50,18 @@ export interface ReportRecord {
   resolvedAt?: string
 }
 
+export interface ChatWipePreview {
+  conversationCount: string
+  messageCount: string
+  inFlightCount: string
+}
+
+export interface ChatWipeResult {
+  conversationsDeleted: string
+  messagesDeleted: string
+  workItemsCancelled: string
+}
+
 export interface UsageHealthStatus {
   reminderAfterMinutes: string
   sessionGapMinutes: string
@@ -506,6 +518,8 @@ export interface VirtualCompanionApiClient {
   importMemories(): Promise<VersionResponse>
   createConversation(): Promise<VersionResponse>
   listConversations(): Promise<VersionResponse>
+  previewChatWipe(): Promise<VersionResponse>
+  wipeAllChats(): Promise<VersionResponse>
   deleteConversation(): Promise<VersionResponse>
   renameConversation(): Promise<VersionResponse>
   endConversation(): Promise<VersionResponse>

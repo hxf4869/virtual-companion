@@ -770,6 +770,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/wipe-preview:
+    get:
+      operationId: previewChatWipe
+      summary: Preview an account-wide chat wipe (FR-DATA-003 全部聊天删除)
+      description: 'Counts what a wipe would clear right now: every conversation of the caller across all relationships, their
+        messages, and the in-flight GENERATION / MEMORY_EXTRACT work items that would be cancelled (vc.preview_chat_wipe).
+        Relationships, confirmed memories and account-level rows are not part of a chat wipe and never appear in these counts.
+        Requires a server-verified authentication context.'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Current counts a wipe would clear
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatWipePreview'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/wipe:
+    post:
+      operationId: wipeAllChats
+      summary: Delete every conversation of the caller (FR-DATA-003 全部聊天删除)
+      description: Cancels the caller's in-flight GENERATION / MEMORY_EXTRACT work items under their conversations, then deletes
+        every conversation across all relationships (vc.wipe_all_chats; the FK cascade removes messages and generations).
+        Relationships, confirmed long-term memories, reminders and account-level rows survive. The response reports what was
+        cleared; a repeat wipe is a no-op returning zeroes. Requires a server-verified authentication context.
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: What the wipe cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatWipeResult'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/conversations/{conversationId}:
     delete:
       operationId: deleteConversation
@@ -2490,6 +2536,41 @@ components:
           type: string
           format: date-time
           description: Resolution time (RFC 3339), present once resolved.
+    ChatWipePreview:
+      type: object
+      description: Counts of what an account-wide chat wipe would clear right now (FR-DATA-003 全部聊天删除). Relationships, confirmed
+        memories and account-level rows are never part of a chat wipe.
+      required:
+      - conversationCount
+      - messageCount
+      - inFlightCount
+      properties:
+        conversationCount:
+          type: integer
+          description: Conversations that would be deleted, across all relationships.
+        messageCount:
+          type: integer
+          description: Messages that would be deleted with them.
+        inFlightCount:
+          type: integer
+          description: In-flight GENERATION / MEMORY_EXTRACT work items that would be cancelled.
+    ChatWipeResult:
+      type: object
+      description: What an executed account-wide chat wipe cleared.
+      required:
+      - conversationsDeleted
+      - messagesDeleted
+      - workItemsCancelled
+      properties:
+        conversationsDeleted:
+          type: integer
+          description: Conversations deleted by this wipe.
+        messagesDeleted:
+          type: integer
+          description: Messages deleted with them.
+        workItemsCancelled:
+          type: integer
+          description: In-flight chat work items cancelled before the delete.
     UsageHealthStatus:
       type: object
       description: Continuous-use reminder prefs and the current session (§20.7 / 21.3.3). reminderDue is a system-layer fact,

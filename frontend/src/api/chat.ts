@@ -259,6 +259,72 @@ export async function deleteConversation(
   throw new ChatHttpError(r.status, classifyStatus(r.status));
 }
 
+/** CHAT-WIPE: counts of what an account-wide wipe would clear right now. */
+export interface ChatWipePreview {
+  conversationCount: number;
+  messageCount: number;
+  inFlightCount: number;
+}
+
+/** CHAT-WIPE: what an executed account-wide wipe cleared. */
+export interface ChatWipeResult {
+  conversationsDeleted: number;
+  messagesDeleted: number;
+  workItemsCancelled: number;
+}
+
+function asCount(o: Record<string, unknown>, key: string): number | undefined {
+  const v = o[key];
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
+}
+
+/**
+ * CHAT-WIPE (FR-DATA-003 全部聊天删除): preview the account-wide chat wipe.
+ * Throws a typed error on failure — the page never fakes counts.
+ */
+export async function chatWipePreview(t: ChatTransport): Promise<ChatWipePreview> {
+  const r = await t.request("GET", `${CONVERSATIONS_BASE}/wipe-preview`);
+  if (!r.ok || !r.json || typeof r.json !== "object") {
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  const o = r.json as Record<string, unknown>;
+  const conversationCount = asCount(o, "conversationCount");
+  const messageCount = asCount(o, "messageCount");
+  const inFlightCount = asCount(o, "inFlightCount");
+  if (
+    conversationCount === undefined ||
+    messageCount === undefined ||
+    inFlightCount === undefined
+  ) {
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  return { conversationCount, messageCount, inFlightCount };
+}
+
+/**
+ * CHAT-WIPE: execute the account-wide chat wipe (relationships, memories and
+ * the account survive). Throws a typed error on failure; the list only
+ * changes on a confirmed OK.
+ */
+export async function wipeAllChats(t: ChatTransport): Promise<ChatWipeResult> {
+  const r = await t.request("POST", `${CONVERSATIONS_BASE}/wipe`);
+  if (!r.ok || !r.json || typeof r.json !== "object") {
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  const o = r.json as Record<string, unknown>;
+  const conversationsDeleted = asCount(o, "conversationsDeleted");
+  const messagesDeleted = asCount(o, "messagesDeleted");
+  const workItemsCancelled = asCount(o, "workItemsCancelled");
+  if (
+    conversationsDeleted === undefined ||
+    messagesDeleted === undefined ||
+    workItemsCancelled === undefined
+  ) {
+    throw new ChatHttpError(r.status, classifyStatus(r.status));
+  }
+  return { conversationsDeleted, messagesDeleted, workItemsCancelled };
+}
+
 /**
  * CONV-MGMT: rename one conversation (blank title clears it). Returns the
  * applied title on success, null on 403/404 (existence hidden); other non-OK

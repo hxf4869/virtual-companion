@@ -27,6 +27,8 @@
     "importMemories",
     "createConversation",
     "listConversations",
+    "previewChatWipe",
+    "wipeAllChats",
     "deleteConversation",
     "renameConversation",
     "endConversation",
@@ -75,6 +77,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "789fdf9b7c60b5d0a264cb7bc6adca0326fdab0bd2506de1d52510ec08eba228"
+    "sha256": "fdd259369a6973a1cf9f41db7d11a310669db4d34a6b0837e15f75104c5257d1"
   }
 }

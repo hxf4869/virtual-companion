@@ -34,6 +34,10 @@ function stubFetch(opts?: {
   renameStatus?: number;
   endStatus?: number;
   relationships?: unknown[];
+  wipePreview?: unknown;
+  wipePreviewStatus?: number;
+  wipeResult?: unknown;
+  wipeStatus?: number;
 }): { calls: { method: string; url: string; body?: string }[] } {
   const calls: { method: string; url: string; body?: string }[] = [];
   vi.stubGlobal(
@@ -44,6 +48,28 @@ function stubFetch(opts?: {
       calls.push({ method, url, body: typeof init?.body === "string" ? init.body : undefined });
       if (url === "/api/v1/relationships" && method === "GET") {
         return { ok: true, status: 200, json: async () => opts?.relationships ?? [REL] };
+      }
+      if (url === "/api/v1/conversations/wipe-preview" && method === "GET") {
+        const status = opts?.wipePreviewStatus ?? 200;
+        return {
+          ok: status === 200,
+          status,
+          json: async () =>
+            status === 200
+              ? (opts?.wipePreview ?? { conversationCount: 2, messageCount: 9, inFlightCount: 1 })
+              : { code: "INTERNAL_ERROR" },
+        };
+      }
+      if (url === "/api/v1/conversations/wipe" && method === "POST") {
+        const status = opts?.wipeStatus ?? 200;
+        return {
+          ok: status === 200,
+          status,
+          json: async () =>
+            status === 200
+              ? (opts?.wipeResult ?? { conversationsDeleted: 2, messagesDeleted: 9, workItemsCancelled: 1 })
+              : { code: "INTERNAL_ERROR" },
+        };
       }
       if (url.startsWith("/api/v1/conversations") && method === "GET") {
         const status = opts?.listStatus ?? 200;
@@ -320,6 +346,59 @@ describe("independent conversation list page", () => {
     expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(21);
     expect(wrapper.text()).toContain("会话 21");
     expect(wrapper.find('[data-testid="conversations-load-more"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("CHAT-WIPE: previews counts, wipes after the two-step confirm and clears the list", async () => {
+    const { calls } = stubFetch({ conversations: [item()] });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    // Nothing destructive is reachable before the preview.
+    expect(wrapper.find('[data-testid="chat-wipe-confirm"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="chat-wipe-preview"]').trigger("click");
+    await flushPromises();
+
+    const preview = wrapper.find('[data-testid="chat-wipe-preview-result"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.text()).toContain("2 个会话");
+    expect(preview.text()).toContain("9 条消息");
+
+    // First confirm click only arms; the wipe POST has not fired yet.
+    const confirm = wrapper.find('[data-testid="chat-wipe-confirm"]');
+    expect(confirm.text()).toContain("删除全部会话");
+    await confirm.trigger("click");
+    await flushPromises();
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/conversations/wipe")).toBe(
+      false,
+    );
+
+    await wrapper.find('[data-testid="chat-wipe-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/conversations/wipe")).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-testid="chat-wipe-done"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("CHAT-WIPE: a failed wipe keeps the list and never fakes success", async () => {
+    stubFetch({ conversations: [item()], wipeStatus: 500 });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="chat-wipe-preview"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="chat-wipe-confirm"]').trigger("click");
+    await wrapper.find('[data-testid="chat-wipe-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-wipe-failed"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="chat-wipe-done"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(1);
     wrapper.unmount();
   });
 });

@@ -111,6 +111,45 @@
     >
       加载更多
     </button>
+
+    <!-- CHAT-WIPE (FR-DATA-003 全部聊天删除): preview first, then a two-step
+         confirm. Plain wording — counts only, no emotional framing. -->
+    <view class="wipe-zone" data-testid="chat-wipe-zone">
+      <text class="wipe-title">危险区：删除全部会话</text>
+      <text class="meta">删除所有角色的全部会话和消息；角色、已保存记忆、提醒和账号不会被删除。</text>
+      <button
+        data-testid="chat-wipe-preview"
+        class="nav-index"
+        :disabled="wipeBusy"
+        @click="onWipePreview"
+      >
+        查看将删除的内容
+      </button>
+      <view v-if="wipePreview" class="wipe-preview" data-testid="chat-wipe-preview-result" role="status">
+        <text>
+          将删除 {{ wipePreview.conversationCount }} 个会话、{{ wipePreview.messageCount }} 条消息；
+          {{ wipePreview.inFlightCount }} 个进行中的生成任务将被取消。
+        </text>
+      </view>
+      <button
+        v-if="wipePreview && wipePreview.conversationCount > 0"
+        data-testid="chat-wipe-confirm"
+        class="nav-index danger"
+        :disabled="wipeBusy"
+        @click="onWipeAll"
+      >
+        {{ confirmWipe ? "再点一次确认删除全部" : "删除全部会话" }}
+      </button>
+      <view v-if="wipeDone" class="wipe-preview" data-testid="chat-wipe-done" role="status">
+        <text>
+          已删除 {{ wipeDone.conversationsDeleted }} 个会话、{{ wipeDone.messagesDeleted }} 条消息；
+          {{ wipeDone.workItemsCancelled }} 个进行中的任务已取消。
+        </text>
+      </view>
+      <view v-else-if="wipeFailed" class="error" data-testid="chat-wipe-failed" role="alert">
+        <text>删除未完成，请重试。列表保持当前状态。</text>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -118,16 +157,21 @@
 import { computed, onMounted, ref } from "vue";
 
 import {
+  chatWipePreview,
   deleteConversation,
   endConversation,
   listConversations,
   renameConversation,
+  wipeAllChats,
+  type ChatWipePreview,
+  type ChatWipeResult,
   type ConversationListItem,
 } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";
+import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
 
 export default {
@@ -136,6 +180,7 @@ export default {
   setup() {
     const auth = useAuthStore();
     const relStore = useRelationshipStore();
+    const chatStore = useChatStore();
     const items = ref<ConversationListItem[]>([]);
     const filterQuery = ref("");
     const relationshipId = ref("");
@@ -148,6 +193,12 @@ export default {
     const confirmEndId = ref<string | null>(null);
     const hasMore = ref(false);
     const PAGE_SIZE = 20;
+    // CHAT-WIPE state: preview → two-step confirm → done/failed notice.
+    const wipePreview = ref<ChatWipePreview | null>(null);
+    const wipeDone = ref<ChatWipeResult | null>(null);
+    const wipeFailed = ref(false);
+    const wipeBusy = ref(false);
+    const confirmWipe = ref(false);
     const visibleItems = computed(() =>
       items.value.filter((item) =>
         matchesLooseText(`${item.title ?? ""} ${item.lastMessagePreview ?? ""}`, filterQuery.value),
@@ -289,6 +340,47 @@ export default {
       goTo(`/pages/chat/chat?${params.toString()}`);
     }
 
+    async function onWipePreview(): Promise<void> {
+      wipeFailed.value = false;
+      wipeBusy.value = true;
+      try {
+        wipePreview.value = await chatWipePreview(transport);
+        wipeDone.value = null;
+        confirmWipe.value = false;
+      } catch {
+        wipePreview.value = null;
+        wipeFailed.value = true;
+      } finally {
+        wipeBusy.value = false;
+      }
+    }
+
+    async function onWipeAll(): Promise<void> {
+      if (!confirmWipe.value) {
+        confirmWipe.value = true;
+        return;
+      }
+      confirmWipe.value = false;
+      wipeFailed.value = false;
+      wipeBusy.value = true;
+      try {
+        const result = await wipeAllChats(transport);
+        wipeDone.value = result;
+        wipePreview.value = null;
+        items.value = [];
+        hasMore.value = false;
+        loaded.value = true;
+        // The chat page's in-memory conversation state is stale after a wipe
+        // (§18.7 clear semantics without dropping the auth session).
+        chatStore.reset();
+        chatStore.conversations = [];
+      } catch {
+        wipeFailed.value = true;
+      } finally {
+        wipeBusy.value = false;
+      }
+    }
+
     function chatHref(): string {
       const id = relationshipId.value.trim();
       if (!id) return "/pages/chat/chat";
@@ -346,6 +438,13 @@ export default {
       goTo,
       hasMore,
       loadMore,
+      wipePreview,
+      wipeDone,
+      wipeFailed,
+      wipeBusy,
+      confirmWipe,
+      onWipePreview,
+      onWipeAll,
     };
   },
 };
@@ -427,5 +526,32 @@ export default {
   background-color: #14213d;
   color: #f5f5f5;
   padding: 8rpx;
+}
+.wipe-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10rpx;
+  margin-top: 32rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  border: 2rpx solid #5a2a2a;
+  background-color: #2a1c1c;
+}
+.wipe-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #f2c4c4;
+}
+.wipe-zone .meta {
+  font-size: 24rpx;
+  color: #d5b0b0;
+}
+.wipe-preview {
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background-color: #1a4a2a;
+  color: #bfe8c6;
+  font-size: 24rpx;
 }
 </style>

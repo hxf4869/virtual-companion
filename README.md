@@ -77,6 +77,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   （REPORT-BE / FR-DATA-001 / §20.15：举报与投诉受理记录，可选锚定本人消息
   （锚点随消息删除置空）、report-reasons 目录码、note 1..2000 裁剪存储；
   状态 SUBMITTED/RESOLVED，处置为人工动作，不编造工单/时限/热线）
+- `GET /api/v1/conversations/wipe-preview`、`POST /api/v1/conversations/wipe`
+  （CHAT-WIPE / FR-DATA-003 全部聊天删除：预览将清除的会话/消息/进行中任务
+  数量；执行时先取消 in-flight GENERATION/MEMORY_EXTRACT 再删全部会话，
+  角色、已保存记忆、提醒与账号保留；重复执行返回零）
 - `POST /api/v1/age/appeal`、`GET /api/v1/age/appeals`
   （AGE-APPEAL / FR-AUTH-002：年龄申诉提交，仅
   ADULT_VERIFICATION_REQUIRED / MINOR_SUSPECTED 可提交（目录转移表），同事务
@@ -121,6 +125,15 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第三十二轮）：
+
+- 全部聊天删除（CHAT-WIPE / FR-DATA-003）：V57 `preview_chat_wipe` /
+  `wipe_all_chats` trusted-owner SD；会话列表页危险区「查看将删除的内容 →
+  两步确认删除全部」，平实文案只报数量；角色、记忆、提醒、账号不删。
+- 删除防重学（MEM-SUPPRESS / §11.16 最小版）：`delete_memory` 在软删记忆的
+  同事务把证据来源消息（`message:<id>` 引用）标记 `no_memory`，同源不再
+  重新提取；只存布尔标记不存被删内容，可用既有 PATCH /messages 恢复。
 
 后端在运方面上还提供（2026-08-19 第三十一轮）：
 

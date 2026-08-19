@@ -168,8 +168,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V53 = GEN-VER generation versions for one user message;
         // V54 = INC-PREF default incognito for the next new conversation;
         // V55 = MEM-IMPORT explicit archive/import of confirmed memories;
-        // V56 = REPORT-BE/AGE-APPEAL report intake + age-appeal tables).
+        // V56 = REPORT-BE/AGE-APPEAL report intake + age-appeal tables;
+        // V57 = CHAT-WIPE account-wide chat wipe + MEM-SUPPRESS).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(56);
+                .isEqualTo(57);
     }
 }

@@ -11,6 +11,7 @@ import com.virtualcompanion.platform.persistence.AdminConsoleService;
 import com.virtualcompanion.platform.persistence.AgeAppealService;
 import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
+import com.virtualcompanion.platform.persistence.ChatWipeService;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
@@ -351,6 +352,12 @@ public class AuthDataSourceConfig {
     @Bean
     public ReportService reportService(JdbcTemplate authJdbcTemplate) {
         return new ReportService(authJdbcTemplate);
+    }
+
+    /** CHAT-WIPE (V57): account-wide chat wipe (FR-DATA-003 全部聊天删除). */
+    @Bean
+    public ChatWipeService chatWipeService(JdbcTemplate authJdbcTemplate) {
+        return new ChatWipeService(authJdbcTemplate);
     }
 
     /** USAGE-HEALTH (V52): continuous-use reminder prefs + heartbeat. */
