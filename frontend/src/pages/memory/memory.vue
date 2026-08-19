@@ -160,6 +160,45 @@ states carry alert/live a11y semantics. -->
           添加
         </button>
       </view>
+      <!-- R44 (§11.12): optional event fields — any event field requires the
+           anchor 事件时间; expiry strictly after it. -->
+      <view class="candidate-event">
+        <input
+          v-model="candidateEventAt"
+          class="event-input"
+          type="datetime-local"
+          data-testid="candidate-event-at"
+          placeholder="事件时间（可选）"
+          aria-label="事件时间（可选）"
+        />
+        <select
+          v-if="candidateEventAt"
+          v-model="candidateEventStatus"
+          class="event-input"
+          data-testid="candidate-event-status"
+          aria-label="事件状态"
+        >
+          <option
+            v-for="s in eventStatuses"
+            :key="s.code"
+            :value="s.code"
+          >
+            {{ s.label }}
+          </option>
+        </select>
+        <input
+          v-if="candidateEventAt"
+          v-model="candidateEventExpiresAt"
+          class="event-input"
+          type="datetime-local"
+          data-testid="candidate-event-expires-at"
+          placeholder="过期时间（可选）"
+          aria-label="事件过期时间（可选）"
+        />
+        <text v-if="candidateEventAt" class="hint">
+          事件记忆在过期后自动不再使用；到期后只会询问后续，不会编造结果。
+        </text>
+      </view>
       <view
         v-if="showEmptyPending"
         class="empty-status"
@@ -175,6 +214,27 @@ states carry alert/live a11y semantics. -->
       >
         <text class="summary">{{ m.summary }}</text>
         <text class="meta">{{ m.scope }}</text>
+        <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
+          事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+        </text>
+        <!-- R44 (§11.11): the explicit supersede choice — confirm may replace
+             one active canonical memory; nothing is auto-detected. -->
+        <select
+          v-if="memory.canonicalCount > 0"
+          v-model="supersedeChoice[m.memoryId]"
+          class="supersede-select"
+          :data-testid="`memory-supersede-${m.memoryId}`"
+          aria-label="替代哪条已有记忆（可选）"
+        >
+          <option value="">不替代已有记忆</option>
+          <option
+            v-for="old in memory.canonical"
+            :key="old.memoryId"
+            :value="old.memoryId"
+          >
+            替代：{{ old.summary.slice(0, 24) }}
+          </option>
+        </select>
         <view class="actions">
           <button size="mini" :disabled="busy" @click="onConfirm(m.memoryId)">
             确认
@@ -233,6 +293,9 @@ states carry alert/live a11y semantics. -->
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
               {{ formatTimestamp(m.createdAt) }}
             </text>
+            <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
+              事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+            </text>
             <view class="actions">
               <button
                 size="mini"
@@ -282,6 +345,9 @@ states carry alert/live a11y semantics. -->
             <text class="meta">{{ m.scope }}</text>
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
               {{ formatTimestamp(m.createdAt) }}
+            </text>
+            <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
+              事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
             </text>
             <view class="actions">
               <button
@@ -354,6 +420,29 @@ states carry alert/live a11y semantics. -->
     </view>
 
     <view
+      v-if="visibleSuperseded.length > 0"
+      class="section"
+      data-testid="memory-group-superseded"
+      aria-live="polite"
+    >
+      <text class="section-title">已替代（{{ memory.superseded.length }}）</text>
+      <text class="hint">这些记忆已被更新的确认事实替代，不作为已保存事实。</text>
+      <view v-for="m in visibleSuperseded" :key="m.memoryId" class="card">
+        <text class="summary">{{ m.summary }}</text>
+        <text class="meta">{{ m.scope }} · 已被替代</text>
+        <view class="actions">
+          <button
+            size="mini"
+            data-testid="memory-open-detail"
+            @click="openDetail(m.memoryId)"
+          >
+            详情
+          </button>
+        </view>
+      </view>
+    </view>
+
+    <view
       v-if="visibleDeleted.length > 0"
       class="section"
       data-testid="memory-group-deleted"
@@ -386,7 +475,7 @@ import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { matchesLooseText } from "@/domain/text-filter";
 import { formatTimestamp } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
-import type { Memory, MemoryTransport } from "@/api/memory";
+import type { Memory, MemoryEventStatus, MemoryTransport } from "@/api/memory";
 import { getMemoryAutoSave, setMemoryAutoSave } from "@/api/memory";
 import { useMemoryStore, type MemoryErrorCode } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
@@ -402,6 +491,20 @@ const editingId = ref<string | null>(null);
 const draftSummary = ref("");
 // MEM-MANUAL: manual candidate entry (RELATIONSHIP scope).
 const candidateSummary = ref("");
+// R44 (§11.12): optional event fields on manual candidates. datetime-local
+// values convert to ISO instants; a filled-but-unparseable value blocks create.
+const candidateEventAt = ref("");
+const candidateEventStatus = ref<MemoryEventStatus>("PLANNED");
+const candidateEventExpiresAt = ref("");
+const eventStatuses = [
+  { code: "PLANNED", label: "计划中" },
+  { code: "IN_PROGRESS", label: "进行中" },
+  { code: "COMPLETED", label: "已完成" },
+  { code: "CANCELLED", label: "已取消" },
+  { code: "UNKNOWN", label: "未知" },
+] as const;
+// R44 (§11.11): per-pending-card supersede choice ("" = plain confirm).
+const supersedeChoice = ref<Record<string, string>>({});
 const hasLoaded = ref(false);
 // MEM-AUTO-SAVE (§7.4): the per-owner low-sensitivity switch.
 const autoSaveEnabled = ref(false);
@@ -441,6 +544,7 @@ const visibleRelationship = computed(() => visibleMemories(memory.relationshipCa
 const visibleSession = computed(() => visibleMemories(memory.sessionCanonical));
 const visibleRejected = computed(() => visibleMemories(memory.rejected));
 const visibleExpired = computed(() => visibleMemories(memory.expired));
+const visibleSuperseded = computed(() => visibleMemories(memory.superseded));
 const visibleDeleted = computed(() => visibleMemories(memory.deleted));
 const showEmptyPending = computed(
   () => hasLoaded.value && memory.pendingCount === 0,
@@ -550,7 +654,11 @@ async function reload(): Promise<void> {
 async function onConfirm(id: string): Promise<void> {
   busy.value = true;
   try {
-    await memory.confirm(transport, id);
+    const supersedeId = supersedeChoice.value[id] || undefined;
+    await memory.confirm(transport, id, supersedeId, relationshipId.value.trim());
+    if (memory.error === null) {
+      delete supersedeChoice.value[id];
+    }
   } finally {
     busy.value = false;
   }
@@ -560,15 +668,42 @@ async function onConfirm(id: string): Promise<void> {
 async function onAddCandidate(): Promise<void> {
   const summary = candidateSummary.value.trim();
   if (!summary || !relationshipId.value.trim()) return;
+  const eventAt = toIsoOrNull(candidateEventAt.value);
+  const eventExpiresAt = toIsoOrNull(candidateEventExpiresAt.value);
+  if (candidateEventAt.value && !eventAt) return; // unparseable: block the create
+  if (candidateEventExpiresAt.value && !eventExpiresAt) return;
   busy.value = true;
   try {
-    await memory.create(transport, relationshipId.value.trim(), summary);
+    if (eventAt) {
+      await memory.create(transport, relationshipId.value.trim(), summary, {
+        eventAt,
+        eventStatus: candidateEventStatus.value,
+        eventExpiresAt: eventExpiresAt ?? undefined,
+      });
+    } else {
+      await memory.create(transport, relationshipId.value.trim(), summary);
+    }
     if (memory.error === null) {
       candidateSummary.value = "";
+      candidateEventAt.value = "";
+      candidateEventExpiresAt.value = "";
+      candidateEventStatus.value = "PLANNED";
     }
   } finally {
     busy.value = false;
   }
+}
+
+/** datetime-local → RFC-3339 instant; empty stays empty, garbage yields null. */
+function toIsoOrNull(raw: string): string | null | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const ms = Date.parse(trimmed);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+function eventStatusLabel(status?: string): string {
+  return eventStatuses.find((s) => s.code === status)?.label ?? "未知";
 }
 
 async function onReject(id: string): Promise<void> {
@@ -724,6 +859,23 @@ function goTo(url: string): void {
   flex: 1;
   border: 1px solid #ccc;
   padding: 6px;
+}
+.candidate-event {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+.event-input {
+  border: 1px solid #ccc;
+  padding: 4px;
+}
+.supersede-select {
+  margin-top: 6px;
+  border: 1px solid #ccc;
+  padding: 4px;
+  max-width: 100%;
 }
 .error {
   color: #b91c1c;

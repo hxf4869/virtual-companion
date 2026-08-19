@@ -526,6 +526,12 @@ public class LiveInvocationAssembler {
         int added = 0;
         for (MemoryRecord memory : recalled) {
             String line = "\n- " + clampRecall(memory.summary());
+            // §11.12: an event whose time has passed (and was never marked
+            // completed/cancelled) may only be followed up with a question —
+            // the model must never fabricate how the event turned out.
+            if (isDueForFollowUp(memory)) {
+                line += "（该事件时间已过：只能询问后续进展，不得编造结果）";
+            }
             int lineTokens = estimateTokens(line);
             if (usedTokens + lineTokens > recallBudgetTokens && added > 0) {
                 break;
@@ -535,6 +541,19 @@ public class LiveInvocationAssembler {
             added++;
         }
         return added == 0 ? null : block.toString();
+    }
+
+    /**
+     * MEM-EVENT (V68 / §11.12): an event memory is due for follow-up when its
+     * {@code eventAt} has passed and its status is still PLANNED or UNKNOWN
+     * (null status on a legacy event row behaves as UNKNOWN).
+     */
+    private static boolean isDueForFollowUp(MemoryRecord memory) {
+        if (memory.eventAt() == null || memory.eventAt().isAfter(java.time.Instant.now())) {
+            return false;
+        }
+        String status = memory.eventStatus();
+        return status == null || "PLANNED".equals(status) || "UNKNOWN".equals(status);
     }
 
     /** Prepend the fixed SYSTEM blocks (persona outermost) to the history. */

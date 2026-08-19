@@ -120,6 +120,14 @@ components:
       - SUPERSEDED
       - EXPIRED
       - DELETED
+    MemoryEventStatus:
+      type: string
+      enum:
+      - PLANNED
+      - IN_PROGRESS
+      - COMPLETED
+      - CANCELLED
+      - UNKNOWN
     PersonaTemplate:
       type: string
       enum:

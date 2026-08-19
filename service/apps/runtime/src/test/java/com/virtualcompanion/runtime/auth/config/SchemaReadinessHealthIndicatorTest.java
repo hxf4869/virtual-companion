@@ -179,8 +179,10 @@ class SchemaReadinessHealthIndicatorTest {
         // V64 = ADMIN-BETA console queues;
         // V65 = EMERGENCY-CONTACT lifecycle;
         // V66 = MEM-AUTO-SAVE deterministic low-sensitivity auto-save;
-        // V67 = drill-fix explicit row emission for two set-returning SDs).
+        // V67 = drill-fix explicit row emission for two set-returning SDs;
+        // V68 = MEM-SUPERSEDE/MEM-EVENT explicit supersede chain + event
+        // lifecycle with lazy EXPIRED).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(67);
+                .isEqualTo(68);
     }
 }

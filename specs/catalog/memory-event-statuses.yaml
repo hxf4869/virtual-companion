@@ -1,0 +1,13 @@
+schemaVersion: 1
+catalogId: memory-event-statuses
+entries:
+- code: PLANNED
+  order: 0
+- code: IN_PROGRESS
+  order: 1
+- code: COMPLETED
+  order: 2
+- code: CANCELLED
+  order: 3
+- code: UNKNOWN
+  order: 4

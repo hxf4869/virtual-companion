@@ -5,12 +5,18 @@ public record MemoryCandidateCreateRequest(
     final String scope,
     final String summary,
     final String conversationId,
-    final String evidence
+    final String evidence,
+    final String eventAt,
+    final String eventStatus,
+    final String eventExpiresAt
 ) {
     public MemoryCandidateCreateRequest {
         java.util.Objects.requireNonNull(scope, "scope must not be null");
         java.util.Objects.requireNonNull(summary, "summary must not be null");
         // conversationId is nullable
         // evidence is nullable
+        // eventAt is nullable
+        // eventStatus is nullable
+        // eventExpiresAt is nullable
     }
 }

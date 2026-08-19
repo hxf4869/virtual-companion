@@ -1658,9 +1658,18 @@ paths:
         Only a PENDING_CONFIRMATION candidate can be confirmed; confirming an
         already-confirmed or otherwise transitioned memory is rejected and maps to
         NOT_FOUND_OR_FORBIDDEN (confirm is intentionally not idempotent into
-        canonical). Requires a server-verified authentication context.
+        canonical). R44 (V68 / §11.11): an optional supersedeMemoryId marks the
+        referenced active canonical memory SUPERSEDED in the same transaction —
+        an explicit user choice, never automatic conflict detection. Requires a
+        server-verified authentication context.
       parameters:
         - $ref: '#/components/parameters/MemoryId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryConfirmRequest'
       responses:
         '200':
           description: The memory, now in ACCEPTED status
@@ -1670,6 +1679,12 @@ paths:
                 $ref: '#/components/schemas/Memory'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: The supersede target is not an active canonical memory of this relationship
           content:
             application/json:
               schema:
@@ -4690,6 +4705,31 @@ components:
         autoSaved:
           type: boolean
           description: True only for rows saved by the deterministic low-sensitivity auto rule (V66).
+        supersededAt:
+          type: string
+          format: date-time
+          description: >-
+            R44 (V68) explicit-supersede timestamp; present only when this
+            canonical memory was replaced by a newer confirmed one (§11.11).
+            Like deletedAt it is a tombstone column, not a status value.
+        supersededByMemoryId:
+          type: string
+          description: The replacing memory identifier, present only with supersededAt.
+        eventAt:
+          type: string
+          format: date-time
+          description: >-
+            R44 (V68 / §11.12) event anchor; present only on event memories
+            (any event field requires eventAt).
+        eventStatus:
+          type: string
+          description: memory-event-statuses catalog code (PLANNED / IN_PROGRESS / COMPLETED / CANCELLED / UNKNOWN).
+        eventExpiresAt:
+          type: string
+          format: date-time
+          description: >-
+            Event expiry; once passed, reads lazily move the row to EXPIRED
+            (§11.12 Event 到期, V61-style lazy sweep).
     MemoryAutoSavePref:
       type: object
       description: The per-owner memory auto-save switch state (V66, §7.4).
@@ -4729,6 +4769,17 @@ components:
           description: Cited source references supporting the candidate
           items:
             type: string
+        eventAt:
+          type: string
+          format: date-time
+          description: 'R44 (V68 / §11.12): optional event anchor; any event field requires it.'
+        eventStatus:
+          type: string
+          description: memory-event-statuses catalog code; defaults to PLANNED when eventAt is set.
+        eventExpiresAt:
+          type: string
+          format: date-time
+          description: Optional event expiry; must be strictly after eventAt.
     MemoryUpdateRequest:
       type: object
       description: Body for editing a memory's content (status-preserving).
@@ -4738,6 +4789,29 @@ components:
         summary:
           type: string
           description: The new memory content summary
+        eventAt:
+          type: string
+          format: date-time
+          description: 'R44: optional event edit; absent leaves the stored value unchanged.'
+        eventStatus:
+          type: string
+          description: 'R44: optional memory-event-statuses code edit; absent leaves the stored value unchanged.'
+        eventExpiresAt:
+          type: string
+          format: date-time
+          description: 'R44: optional event expiry edit; absent leaves the stored value unchanged.'
+    MemoryConfirmRequest:
+      type: object
+      description: >-
+        R44 (V68 / §11.11) optional confirm body — the explicit supersede
+        choice. The target must be an active canonical memory of the same
+        relationship; a stale or invalid target is 400 INVALID_REQUEST
+        (the id came from the caller's own list, so it is not an
+        existence-hidden case). Absent body or field means a plain confirm.
+      properties:
+        supersedeMemoryId:
+          type: string
+          description: Identifier of the canonical memory this confirmation replaces.
     MemoryEvidence:
       type: object
       description: A cited source reference supporting a memory candidate.

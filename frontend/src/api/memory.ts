@@ -19,6 +19,21 @@ export type MemoryStatus =
 
 export type MemoryScope = "SESSION" | "RELATIONSHIP";
 
+/** R44 (V68 / §11.12): memory-event-statuses catalog codes. */
+export type MemoryEventStatus =
+  | "PLANNED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "UNKNOWN";
+
+/** R44: the optional §11.12 event triple (any field requires eventAt). */
+export interface MemoryEventInput {
+  eventAt?: string;
+  eventStatus?: MemoryEventStatus;
+  eventExpiresAt?: string;
+}
+
 export type MemoryHttpErrorKind = "unauthorized" | "server" | "client" | "parse";
 
 /** Typed non-OK/parse failure. Never thrown for existence-hidden 403/404. */
@@ -44,6 +59,13 @@ export interface Memory {
   deletedAt?: string;
   /** MEM-AUTO-SAVE (V66): true only for deterministic low-sensitivity auto-saves. */
   autoSaved?: boolean;
+  /** R44 (V68 / §11.11): present only when an explicit supersede replaced this row. */
+  supersededAt?: string;
+  supersededByMemoryId?: string;
+  /** R44 (V68 / §11.12): present only on event memories. */
+  eventAt?: string;
+  eventStatus?: MemoryEventStatus;
+  eventExpiresAt?: string;
 }
 
 export interface MemoryEvidence {
@@ -120,6 +142,11 @@ function asMemory(json: unknown): Memory | null {
     createdAt: asString(o, "createdAt"),
     deletedAt: asString(o, "deletedAt"),
     autoSaved: o.autoSaved === true,
+    supersededAt: asString(o, "supersededAt"),
+    supersededByMemoryId: asString(o, "supersededByMemoryId"),
+    eventAt: asString(o, "eventAt"),
+    eventStatus: asString(o, "eventStatus") as MemoryEventStatus | undefined,
+    eventExpiresAt: asString(o, "eventExpiresAt"),
   };
 }
 
@@ -166,18 +193,26 @@ export async function listMemories(
  * MEM-MANUAL: create a memory candidate under a relationship (always
  * PENDING_CONFIRMATION; canonical is reached only by user confirmation —
  * INV-MEM-001/002). Manual entry uses the RELATIONSHIP scope (no conversation
- * binding). Returns the created candidate, or null on 403/404 (existence
- * hidden); other non-OK statuses throw the typed MemoryHttpError.
+ * binding). R44 (V68): the optional §11.12 event triple rides along; any event
+ * field requires eventAt. Returns the created candidate, or null on 403/404
+ * (existence hidden); other non-OK statuses throw the typed MemoryHttpError.
  */
 export async function createMemoryCandidate(
   t: MemoryTransport,
   relationshipId: string,
   summary: string,
+  event?: MemoryEventInput,
 ): Promise<Memory | null> {
+  const body: Record<string, unknown> = { scope: "RELATIONSHIP", summary };
+  if (event?.eventAt) body.eventAt = event.eventAt;
+  if (event?.eventAt && event.eventStatus) body.eventStatus = event.eventStatus;
+  if (event?.eventAt && event.eventExpiresAt) {
+    body.eventExpiresAt = event.eventExpiresAt;
+  }
   const r = await t.request(
     "POST",
     `${REL_BASE}/${encodeURIComponent(relationshipId)}/memories/candidates`,
-    { scope: "RELATIONSHIP", summary },
+    body,
   );
   guardJsonResult(r);
   return asMemory(r.json);
@@ -193,12 +228,19 @@ export async function getMemory(
   return asMemory(r.json);
 }
 
-/** Confirm a candidate. Returns the ACCEPTED memory on success, else null. */
+/**
+ * Confirm a candidate. Returns the ACCEPTED memory on success, else null.
+ * R44 (V68 / §11.11): an optional supersedeMemoryId marks that active
+ * canonical memory superseded in the same transaction (an explicit user
+ * choice, never automatic conflict detection).
+ */
 export async function confirmMemory(
   t: MemoryTransport,
   memoryId: string,
+  supersedeMemoryId?: string,
 ): Promise<Memory | null> {
-  const r = await t.request("POST", `${MEM_BASE}/${memoryId}/confirm`);
+  const body = supersedeMemoryId ? { supersedeMemoryId } : undefined;
+  const r = await t.request("POST", `${MEM_BASE}/${memoryId}/confirm`, body);
   guardJsonResult(r);
   return asMemory(r.json);
 }
@@ -213,13 +255,22 @@ export async function rejectMemory(
   return asMemory(r.json);
 }
 
-/** Edit a memory's summary. Returns the updated memory on success, else null. */
+/**
+ * Edit a memory's summary. Returns the updated memory on success, else null.
+ * R44 (V68): optional event edits ride along (e.g. marking an event COMPLETED);
+ * an absent field leaves the stored value unchanged on the server.
+ */
 export async function updateMemory(
   t: MemoryTransport,
   memoryId: string,
   summary: string,
+  event?: MemoryEventInput,
 ): Promise<Memory | null> {
-  const r = await t.request("PATCH", `${MEM_BASE}/${memoryId}`, { summary });
+  const body: Record<string, unknown> = { summary };
+  if (event?.eventAt) body.eventAt = event.eventAt;
+  if (event?.eventStatus) body.eventStatus = event.eventStatus;
+  if (event?.eventExpiresAt) body.eventExpiresAt = event.eventExpiresAt;
+  const r = await t.request("PATCH", `${MEM_BASE}/${memoryId}`, body);
   guardJsonResult(r);
   return asMemory(r.json);
 }

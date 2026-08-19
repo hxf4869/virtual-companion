@@ -39,22 +39,29 @@ class MemoryServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-12T12:00:00Z");
     private static final String GET_SQL =
             "SELECT out_id, out_relationship_id, out_scope, out_summary, out_status, "
-                    + "out_conversation_id, out_created_at, out_auto_saved "
+                    + "out_conversation_id, out_created_at, out_auto_saved, "
+                    + "out_superseded_at, out_superseded_by_memory_id, "
+                    + "out_event_at, out_event_status, out_event_expires_at "
                     + "FROM vc.get_memory(?, ?)";
     private static final String LIST_SQL =
             "SELECT out_id, out_scope, out_summary, out_status, out_conversation_id, "
-                    + "out_deleted_at, out_created_at, out_auto_saved "
+                    + "out_deleted_at, out_created_at, out_auto_saved, "
+                    + "out_superseded_at, out_superseded_by_memory_id, "
+                    + "out_event_at, out_event_status, out_event_expires_at "
                     + "FROM vc.list_memory(?, ?, ?)";
     private static final String CREATE_SQL =
-            "SELECT vc.create_memory_candidate(?, ?, ?, ?, ?, ?)";
-    private static final String UPDATE_SQL = "SELECT vc.update_memory(?, ?, ?)";
+            "SELECT vc.create_memory_candidate(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    private static final String UPDATE_SQL =
+            "SELECT vc.update_memory(?, ?, ?, ?, ?, ?)";
     private static final String DELETE_SQL = "SELECT vc.delete_memory(?, ?)";
-    private static final String CONFIRM_SQL = "SELECT vc.confirm_memory_candidate(?, ?)";
+    private static final String CONFIRM_SQL =
+            "SELECT vc.confirm_memory_candidate(?, ?, ?)";
     private static final String REJECT_SQL = "SELECT vc.reject_memory_candidate(?, ?)";
     private static final String EVIDENCE_SQL =
             "SELECT out_id, out_source_ref, out_created_at FROM vc.list_memory_evidence(?, ?)";
     private static final String RECALL_SQL =
-            "SELECT out_id, out_scope, out_summary, out_conversation_id, out_created_at "
+            "SELECT out_id, out_scope, out_summary, out_conversation_id, out_created_at, "
+                    + "out_event_at, out_event_status "
                     + "FROM vc.recall_memory(?, ?, ?, ?)";
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
@@ -206,7 +213,7 @@ class MemoryServiceTest {
     void updateEditsTheSummaryAndKeepsStatus() {
         when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(record(55L, "ACCEPTED")));
-        when(jdbc.queryForObject(eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new")))
+        when(jdbc.queryForObject(eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new"), isNull(), isNull(), isNull()))
                 .thenReturn(true);
         when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(record(55L, "ACCEPTED")));
@@ -215,7 +222,7 @@ class MemoryServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals("ACCEPTED", result.get().status());
-        verify(jdbc).queryForObject(eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new"));
+        verify(jdbc).queryForObject(eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new"), isNull(), isNull(), isNull());
     }
 
     @Test
@@ -235,14 +242,14 @@ class MemoryServiceTest {
 
         assertTrue(service.update(1L, 55L, "new").isEmpty());
         verify(jdbc, never()).queryForObject(
-                eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new"));
+                eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new"), isNull(), isNull(), isNull());
     }
 
     @Test
     void updateTranslatesSdRaiseToEmpty() {
         when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(record(55L, "PENDING_CONFIRMATION")));
-        when(jdbc.queryForObject(eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new")))
+        when(jdbc.queryForObject(eq(UPDATE_SQL), eq(Boolean.class), eq(1L), eq(55L), eq("new"), isNull(), isNull(), isNull()))
                 .thenThrow(new DataAccessException("update_memory: memory 55 is deleted") {});
 
         assertTrue(service.update(1L, 55L, "new").isEmpty());
@@ -300,14 +307,14 @@ class MemoryServiceTest {
         when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(record(55L, "PENDING_CONFIRMATION")))
                 .thenReturn(List.of(record(55L, "ACCEPTED")));
-        when(jdbc.queryForObject(eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L)))
+        when(jdbc.queryForObject(eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L), isNull()))
                 .thenReturn(true);
 
         Optional<MemoryRecord> result = service.confirm(1L, 55L);
 
         assertTrue(result.isPresent());
         assertEquals("ACCEPTED", result.get().status());
-        verify(jdbc).queryForObject(eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L));
+        verify(jdbc).queryForObject(eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L), isNull());
     }
 
     @Test
@@ -317,17 +324,118 @@ class MemoryServiceTest {
 
         assertTrue(service.confirm(1L, 55L).isEmpty());
         verify(jdbc, never()).queryForObject(
-                eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L));
+                eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L), isNull());
     }
 
     @Test
     void confirmTranslatesSdRaiseToEmpty() {
         when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
                 .thenReturn(List.of(record(55L, "PENDING_CONFIRMATION")));
-        when(jdbc.queryForObject(eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L)))
+        when(jdbc.queryForObject(eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L), isNull()))
                 .thenThrow(new DataAccessException("confirm_memory_candidate: memory 55 is deleted") {});
 
         assertTrue(service.confirm(1L, 55L).isEmpty());
+    }
+
+    // ------------------------------------------------------------------
+    // R44 (V68): explicit supersede + event memories
+    // ------------------------------------------------------------------
+
+    @Test
+    void confirmWithSupersedeReplacesTheCanonicalTargetInOneCall() {
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
+                .thenReturn(List.of(record(55L, "PENDING_CONFIRMATION")))
+                .thenReturn(List.of(record(55L, "ACCEPTED")));
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(66L)))
+                .thenReturn(List.of(new MemoryRecord(
+                        66L, 7L, "SESSION", "old fact", "ACCEPTED", 100L, null, NOW)));
+        when(jdbc.queryForObject(eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L), eq(66L)))
+                .thenReturn(true);
+
+        Optional<MemoryRecord> result = service.confirm(1L, 55L, 66L);
+
+        assertTrue(result.isPresent());
+        assertEquals("ACCEPTED", result.get().status());
+        verify(jdbc).queryForObject(
+                eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L), eq(66L));
+    }
+
+    @Test
+    void confirmWithSupersedeRejectsStaleTargetsAsClientErrors() {
+        // Self, a REJECTED target, an already-superseded target, a foreign
+        // target and a cross-relationship target are all 400s — the ids came
+        // from the caller's own list, so stale UI state is not a hidden 404.
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
+                .thenReturn(List.of(record(55L, "PENDING_CONFIRMATION")));
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(77L)))
+                .thenReturn(List.of(record(77L, "REJECTED")));
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(88L)))
+                .thenReturn(List.of(new MemoryRecord(88L, 7L, "SESSION", "s", "ACCEPTED",
+                        100L, null, NOW, false, NOW, 55L, null, null, null)));
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(99L)))
+                .thenReturn(List.of());
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(11L)))
+                .thenReturn(List.of(new MemoryRecord(
+                        11L, 9L, "SESSION", "s", "ACCEPTED", 100L, null, NOW)));
+
+        assertThrows(IllegalArgumentException.class, () -> service.confirm(1L, 55L, 55L));
+        assertThrows(IllegalArgumentException.class, () -> service.confirm(1L, 55L, 77L));
+        assertThrows(IllegalArgumentException.class, () -> service.confirm(1L, 55L, 88L));
+        assertThrows(IllegalArgumentException.class, () -> service.confirm(1L, 55L, 99L));
+        assertThrows(IllegalArgumentException.class, () -> service.confirm(1L, 55L, 11L));
+        verify(jdbc, never()).queryForObject(
+                eq(CONFIRM_SQL), eq(Boolean.class), eq(1L), eq(55L), any());
+    }
+
+    @Test
+    void createWithEventValidatesTheTripleBeforeCallingTheSd() {
+        when(relationshipService.get(1L, 7L)).thenReturn(Optional.of(relationship()));
+
+        // Status without the event_at anchor, an uncatalogued status, and an
+        // expiry not strictly after the start all fail fast (400).
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                1L, 7L, "RELATIONSHIP", "s", null, null, null, "PLANNED", null));
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                1L, 7L, "RELATIONSHIP", "s", null, null, NOW, "SOMEDAY", null));
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                1L, 7L, "RELATIONSHIP", "s", null, null, NOW, "PLANNED", NOW.minusSeconds(1)));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    void createWithEventPassesTheTripleThrough() {
+        when(relationshipService.get(1L, 7L)).thenReturn(Optional.of(relationship()));
+        when(jdbc.query(eq(CREATE_SQL), any(PreparedStatementSetter.class), any(RowMapper.class)))
+                .thenReturn(List.of(42L));
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(42L)))
+                .thenReturn(List.of(record(42L, "PENDING_CONFIRMATION")));
+
+        Optional<MemoryRecord> result = service.create(
+                1L, 7L, "RELATIONSHIP", "周五汇报", null, null,
+                NOW, "PLANNED", NOW.plusSeconds(3600));
+
+        assertTrue(result.isPresent());
+        verify(jdbc).query(
+                eq(CREATE_SQL), any(PreparedStatementSetter.class), any(RowMapper.class));
+    }
+
+    @Test
+    void updateWithEventEditValidatesEffectiveShapeAndPassesThrough() {
+        MemoryRecord eventRecord = new MemoryRecord(55L, 7L, "SESSION", "汇报", "ACCEPTED",
+                100L, null, NOW, false, null, null, NOW, "PLANNED", NOW.plusSeconds(3600));
+        when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(55L)))
+                .thenReturn(List.of(eventRecord))
+                .thenReturn(List.of(eventRecord));
+        when(jdbc.queryForObject(eq(UPDATE_SQL), eq(Boolean.class),
+                eq(1L), eq(55L), eq("汇报完成"), isNull(), eq("COMPLETED"), isNull()))
+                .thenReturn(true);
+
+        Optional<MemoryRecord> result = service.update(
+                1L, 55L, "汇报完成", null, "COMPLETED", null);
+
+        assertTrue(result.isPresent());
+        verify(jdbc).queryForObject(eq(UPDATE_SQL), eq(Boolean.class),
+                eq(1L), eq(55L), eq("汇报完成"), isNull(), eq("COMPLETED"), isNull());
     }
 
     @Test

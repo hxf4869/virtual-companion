@@ -391,4 +391,106 @@ describe("useMemoryStore typed error mapping (P2-16)", () => {
     expect(store.error).toBeNull();
     expect(store.evidence["acc-1"]).toHaveLength(1);
   });
+
+  // --- R44 (V68): explicit supersede + event memories ---
+
+  it("load partitions explicitly superseded rows out of canonical", async () => {
+    const store = useMemoryStore();
+    const t = keyedTransport({
+      ...Object.fromEntries([ok(
+        "/api/v1/relationships/rel-1/memories?includeDeleted=true",
+        [
+          memory("acc-1", "ACCEPTED", "旧事实"),
+          memory("acc-2", "ACCEPTED", "新事实"),
+          {
+            ...memory("acc-1", "ACCEPTED", "旧事实"),
+            supersededAt: "2026-08-19T10:00:00Z",
+            supersededByMemoryId: "acc-2",
+          },
+        ].filter((m, i) => i !== 0),
+      )]),
+    });
+    await store.load(t, "rel-1");
+
+    expect(store.canonical.map((m) => m.memoryId)).toEqual(["acc-2"]);
+    expect(store.superseded.map((m) => m.memoryId)).toEqual(["acc-1"]);
+    expect(store.superseded[0]?.supersededByMemoryId).toBe("acc-2");
+  });
+
+  it("confirm with a supersede sends the body and reloads the relationship", async () => {
+    const store = useMemoryStore();
+    const seenBodies: { path: string; body?: unknown }[] = [];
+    const confirmResponse = memory("pend-1", "ACCEPTED", "新事实");
+    const reloaded = [
+      memory("pend-1", "ACCEPTED", "新事实"),
+      {
+        ...memory("acc-1", "ACCEPTED", "旧事实"),
+        supersededAt: "2026-08-19T10:00:00Z",
+        supersededByMemoryId: "pend-1",
+      },
+    ];
+    const t: MemoryTransport = {
+      request: vi.fn(async (_method: string, path: string, body?: unknown): Promise<MemoryApiResponse> => {
+        seenBodies.push({ path, body });
+        if (path === "/api/v1/memories/pend-1/confirm") {
+          return { ok: true, status: 200, json: confirmResponse };
+        }
+        if (path === "/api/v1/relationships/rel-1/memories?includeDeleted=true") {
+          return { ok: true, status: 200, json: reloaded };
+        }
+        throw new Error(`unexpected ${path}`);
+      }),
+    };
+
+    await store.confirm(t, "pend-1", "acc-1", "rel-1");
+
+    expect(store.error).toBeNull();
+    const confirmCall = seenBodies.find((c) => c.path.endsWith("/confirm"));
+    expect(confirmCall?.body).toEqual({ supersedeMemoryId: "acc-1" });
+    // The reload moved the replaced row into the superseded group.
+    expect(store.canonical.map((m) => m.memoryId)).toEqual(["pend-1"]);
+    expect(store.superseded.map((m) => m.memoryId)).toEqual(["acc-1"]);
+  });
+
+  it("create with an event triple posts the §11.12 fields", async () => {
+    const store = useMemoryStore();
+    const seenBodies: { path: string; body?: unknown }[] = [];
+    const t: MemoryTransport = {
+      request: vi.fn(async (_method: string, path: string, body?: unknown): Promise<MemoryApiResponse> => {
+        seenBodies.push({ path, body });
+        return { ok: true, status: 200, json: memory("ev-1", "PENDING_CONFIRMATION", "周五汇报") };
+      }),
+    };
+
+    await store.create(t, "rel-1", "周五汇报", {
+      eventAt: "2026-08-21T09:00:00.000Z",
+      eventStatus: "PLANNED",
+      eventExpiresAt: "2026-09-20T09:00:00.000Z",
+    });
+
+    const createCall = seenBodies.find((c) => c.path.endsWith("/candidates"));
+    expect(createCall?.body).toMatchObject({
+      scope: "RELATIONSHIP",
+      summary: "周五汇报",
+      eventAt: "2026-08-21T09:00:00.000Z",
+      eventStatus: "PLANNED",
+      eventExpiresAt: "2026-09-20T09:00:00.000Z",
+    });
+    expect(store.pending.map((m) => m.memoryId)).toEqual(["ev-1"]);
+  });
+
+  it("update with an event edit posts the eventStatus alongside the summary", async () => {
+    const store = useMemoryStore();
+    const seenBodies: { path: string; body?: unknown }[] = [];
+    const t: MemoryTransport = {
+      request: vi.fn(async (_method: string, path: string, body?: unknown): Promise<MemoryApiResponse> => {
+        seenBodies.push({ path, body });
+        return { ok: true, status: 200, json: memory("ev-1", "ACCEPTED", "汇报已完成") };
+      }),
+    };
+
+    expect(await store.update(t, "ev-1", "汇报已完成", { eventStatus: "COMPLETED" })).toBe(true);
+    const patchCall = seenBodies.find((c) => c.path === "/api/v1/memories/ev-1");
+    expect(patchCall?.body).toMatchObject({ summary: "汇报已完成", eventStatus: "COMPLETED" });
+  });
 });

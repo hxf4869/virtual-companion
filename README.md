@@ -145,6 +145,21 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-19 第四十四轮）：
+
+- 记忆显式替代与事件生命周期（MEM-SUPERSEDE / MEM-EVENT，V68 / §7.3.3、§11.11、
+  §11.12）：确认候选时可显式选择替代同关系的一条在存事实（confirm 增补可选
+  `supersedeMemoryId`，旧行保持 ACCEPTED 但落 `superseded_at`/`superseded_by` 墓碑列
+  ——与删除墓碑同构；跨关系/非在存目标 400，绝不自动检测冲突、不覆盖手工修改）；
+  召回（结构化 + 语义）一律排除已替代行，陈旧 embedding 不会让旧事实复活。事件记忆
+  新增 `event_at`/`event_status`/`event_expires_at`（新目录 memory-event-statuses：
+  PLANNED/IN_PROGRESS/COMPLETED/CANCELLED/UNKNOWN），过期事件在读路径惰性置 EXPIRED
+  （不再进入生成上下文）；已过时且未完结的事件在召回行附带固定指令「只能询问后续进展，
+  不得编造结果」。OpenAPI：Memory 增补 supersededAt/supersededByMemoryId/eventAt/
+  eventStatus/eventExpiresAt；候选创建、PATCH 编辑与 confirm 增补可选事件/替代参数；
+  H5 记忆页新增事件表单（时间/状态/到期）、待确认卡的「替代哪条已有记忆」选择器与
+  「已替代」分组，详情页展示事件与替代链。
+
 后端在运方面上还提供（2026-08-19 第四十三轮）：
 
 - 确定性安全规则扩充（SAFETY-RULES-2 / §20.9、§20.10、§20.11、§21.3.2/21.3.4）：

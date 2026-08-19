@@ -46,7 +46,7 @@ import org.springframework.jdbc.core.RowMapper;
 public class MemoryService {
 
     private static final String CREATE_SQL =
-            "SELECT vc.create_memory_candidate(?, ?, ?, ?, ?, ?)";
+            "SELECT vc.create_memory_candidate(?, ?, ?, ?, ?, ?, ?, ?, ?)";
     private static final String CREATE_AUTO_SAVED_SQL =
             "SELECT vc.create_auto_saved_memory(?, ?, ?, ?, ?, ?)";
     private static final String AUTO_SAVE_PREF_GET_SQL =
@@ -55,20 +55,26 @@ public class MemoryService {
             "SELECT vc.set_memory_auto_save_pref(?, ?)";
     private static final String LIST_SQL =
             "SELECT out_id, out_scope, out_summary, out_status, out_conversation_id, "
-                    + "out_deleted_at, out_created_at, out_auto_saved "
+                    + "out_deleted_at, out_created_at, out_auto_saved, "
+                    + "out_superseded_at, out_superseded_by_memory_id, "
+                    + "out_event_at, out_event_status, out_event_expires_at "
                     + "FROM vc.list_memory(?, ?, ?)";
     private static final String GET_SQL =
             "SELECT out_id, out_relationship_id, out_scope, out_summary, out_status, "
-                    + "out_conversation_id, out_created_at, out_auto_saved "
+                    + "out_conversation_id, out_created_at, out_auto_saved, "
+                    + "out_superseded_at, out_superseded_by_memory_id, "
+                    + "out_event_at, out_event_status, out_event_expires_at "
                     + "FROM vc.get_memory(?, ?)";
-    private static final String UPDATE_SQL = "SELECT vc.update_memory(?, ?, ?)";
+    private static final String UPDATE_SQL =
+            "SELECT vc.update_memory(?, ?, ?, ?, ?, ?)";
     private static final String DELETE_SQL = "SELECT vc.delete_memory(?, ?)";
-    private static final String CONFIRM_SQL = "SELECT vc.confirm_memory_candidate(?, ?)";
+    private static final String CONFIRM_SQL = "SELECT vc.confirm_memory_candidate(?, ?, ?)";
     private static final String REJECT_SQL = "SELECT vc.reject_memory_candidate(?, ?)";
     private static final String EVIDENCE_SQL =
             "SELECT out_id, out_source_ref, out_created_at FROM vc.list_memory_evidence(?, ?)";
     private static final String RECALL_SQL =
-            "SELECT out_id, out_scope, out_summary, out_conversation_id, out_created_at "
+            "SELECT out_id, out_scope, out_summary, out_conversation_id, out_created_at, "
+                    + "out_event_at, out_event_status "
                     + "FROM vc.recall_memory(?, ?, ?, ?)";
 
     /** PENDING_CONFIRMATION is the sole pre-canonical status; ACCEPTED is the
@@ -77,6 +83,9 @@ public class MemoryService {
     private static final Set<String> EDITABLE_STATUSES = Set.of(PENDING, "ACCEPTED");
     /** Alpha-enabled scopes (memory-scopes catalog). */
     private static final Set<String> ALPHA_SCOPES = Set.of("SESSION", "RELATIONSHIP");
+    /** memory-event-statuses catalog codes (§11.12). */
+    private static final Set<String> EVENT_STATUSES =
+            Set.of("PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "UNKNOWN");
 
     private final JdbcTemplate jdbc;
     private final RelationshipService relationshipService;
@@ -95,7 +104,8 @@ public class MemoryService {
      * @return the created candidate, or empty for a foreign/absent relationship
      *         (NOT_FOUND_OR_FORBIDDEN)
      * @throws IllegalArgumentException on a non-positive id, blank summary,
-     *         non-Alpha scope, or SESSION scope without a conversation binding
+     *         non-Alpha scope, SESSION scope without a conversation binding, or
+     *         an invalid §11.12 event triple (R44)
      */
     public Optional<MemoryRecord> create(
             long ownerUserId,
@@ -104,6 +114,25 @@ public class MemoryService {
             String summary,
             Long conversationId,
             List<String> evidence) {
+        return create(ownerUserId, relationshipId, scope, summary,
+                conversationId, evidence, null, null, null);
+    }
+
+    /**
+     * R44 (V68 / §11.12): create with the optional event triple. Any event
+     * field requires {@code eventAt}; the status must be a
+     * memory-event-statuses code; the expiry must be strictly after the start.
+     */
+    public Optional<MemoryRecord> create(
+            long ownerUserId,
+            long relationshipId,
+            String scope,
+            String summary,
+            Long conversationId,
+            List<String> evidence,
+            Instant eventAt,
+            String eventStatus,
+            Instant eventExpiresAt) {
         if (ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId must be positive");
         }
@@ -125,6 +154,7 @@ public class MemoryService {
         if (conversationId != null && conversationId <= 0) {
             throw new IllegalArgumentException("conversationId must be positive");
         }
+        validateEvent(eventAt, eventStatus, eventExpiresAt);
         // Existence is pre-checked (mirroring the SD RAISE) so the common
         // foreign/absent relationship maps to 404 without relying on the RAISE.
         if (relationshipService.get(ownerUserId, relationshipId).isEmpty()) {
@@ -133,7 +163,8 @@ public class MemoryService {
         Long id;
         try {
             id = queryId(CREATE_SQL,
-                    createSetter(ownerUserId, relationshipId, scope, summary, conversationId, evidence));
+                    createSetter(ownerUserId, relationshipId, scope, summary,
+                            conversationId, evidence, eventAt, eventStatus, eventExpiresAt));
         } catch (BadSqlGrammarException e) {
             // Schema unavailable: keep the existing 503 SCHEMA_UNAVAILABLE
             // classification instead of folding it into a not-found 404.
@@ -187,7 +218,8 @@ public class MemoryService {
         Long id;
         try {
             id = queryId(CREATE_AUTO_SAVED_SQL,
-                    createSetter(ownerUserId, relationshipId, scope, summary, conversationId, evidence));
+                    createSetter(ownerUserId, relationshipId, scope, summary,
+                            conversationId, evidence, null, null, null));
         } catch (BadSqlGrammarException e) {
             throw e;
         } catch (DataAccessException e) {
@@ -259,10 +291,13 @@ public class MemoryService {
      * Edit a memory's summary (status-preserving and idempotent: applying the
      * same summary twice succeeds both times). Only PENDING_CONFIRMATION and
      * ACCEPTED memories are editable; a foreign, absent, soft-deleted or
-     * dead-end (REJECTED/EXPIRED) id resolves to empty (NOT_FOUND_OR_FORBIDDEN,
-     * the OpenAPI contract for this endpoint).
+     * dead-end (REJECTED/EXPIRED) id resolves to empty (NOT_FOUND_ORFORBIDDEN,
+     * the OpenAPI contract for this endpoint). R44: optional §11.12 event
+     * edits — a {@code null} event parameter leaves the stored value unchanged.
      */
-    public Optional<MemoryRecord> update(long ownerUserId, long memoryId, String summary) {
+    public Optional<MemoryRecord> update(
+            long ownerUserId, long memoryId, String summary,
+            Instant eventAt, String eventStatus, Instant eventExpiresAt) {
         if (ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId must be positive");
         }
@@ -272,13 +307,23 @@ public class MemoryService {
         if (summary == null || summary.isBlank()) {
             throw new IllegalArgumentException("summary must not be blank");
         }
+        if (eventStatus != null && !EVENT_STATUSES.contains(eventStatus)) {
+            throw new IllegalArgumentException(
+                    "eventStatus is not a memory-event-statuses code: " + eventStatus);
+        }
         MemoryRecord existing = get(ownerUserId, memoryId).orElse(null);
         if (existing == null || !EDITABLE_STATUSES.contains(existing.status())) {
             return Optional.empty();
         }
+        validateEvent(
+                eventAt == null ? existing.eventAt() : eventAt,
+                eventStatus == null ? existing.eventStatus() : eventStatus,
+                eventExpiresAt == null ? existing.eventExpiresAt() : eventExpiresAt);
         try {
             Boolean updated = jdbc.queryForObject(
-                    UPDATE_SQL, Boolean.class, ownerUserId, memoryId, summary);
+                    UPDATE_SQL, Boolean.class,
+                    ownerUserId, memoryId, summary,
+                    toTimestamp(eventAt), eventStatus, toTimestamp(eventExpiresAt));
             if (!Boolean.TRUE.equals(updated)) {
                 throw new IllegalStateException(
                         "update_memory returned false for owned memory " + memoryId);
@@ -292,6 +337,11 @@ public class MemoryService {
             return Optional.empty();
         }
         return get(ownerUserId, memoryId);
+    }
+
+    /** Pre-R44 shape: summary-only edit (event columns untouched). */
+    public Optional<MemoryRecord> update(long ownerUserId, long memoryId, String summary) {
+        return update(ownerUserId, memoryId, summary, null, null, null);
     }
 
     /**
@@ -336,7 +386,19 @@ public class MemoryService {
      * transitioned memory resolves to empty (NOT_FOUND_OR_FORBIDDEN).
      */
     public Optional<MemoryRecord> confirm(long ownerUserId, long memoryId) {
-        return transition(ownerUserId, memoryId, CONFIRM_SQL, "confirm_memory_candidate");
+        return transition(ownerUserId, memoryId, null, CONFIRM_SQL, "confirm_memory_candidate");
+    }
+
+    /**
+     * R44 (V68 / §11.11): confirm with an explicit supersede. The target must
+     * be an active canonical memory of the SAME relationship; anything else is
+     * a client error (400 INVALID_REQUEST), never a silent 404 — the user
+     * picked the id from their own list, so a mismatch is stale UI state, not a
+     * hidden resource. The SD re-validates everything (defense in depth).
+     */
+    public Optional<MemoryRecord> confirm(long ownerUserId, long memoryId, Long supersedeMemoryId) {
+        return transition(ownerUserId, memoryId, supersedeMemoryId,
+                CONFIRM_SQL, "confirm_memory_candidate");
     }
 
     /**
@@ -345,7 +407,7 @@ public class MemoryService {
      * transitioned memory resolves to empty (NOT_FOUND_OR_FORBIDDEN).
      */
     public Optional<MemoryRecord> reject(long ownerUserId, long memoryId) {
-        return transition(ownerUserId, memoryId, REJECT_SQL, "reject_memory_candidate");
+        return transition(ownerUserId, memoryId, null, REJECT_SQL, "reject_memory_candidate");
     }
 
     /**
@@ -449,7 +511,8 @@ public class MemoryService {
 
     /** Shared confirm/reject flow: pre-check pending, call the SD, re-read. */
     private Optional<MemoryRecord> transition(
-            long ownerUserId, long memoryId, String sql, String functionName) {
+            long ownerUserId, long memoryId, Long supersedeMemoryId,
+            String sql, String functionName) {
         if (ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId must be positive");
         }
@@ -460,9 +523,35 @@ public class MemoryService {
         if (existing == null || !PENDING.equals(existing.status())) {
             return Optional.empty();
         }
+        if (supersedeMemoryId != null) {
+            // Stale-UI guard: the user picked this id from their own canonical
+            // list; a mismatch is a 400, not an existence-hidden 404.
+            if (supersedeMemoryId <= 0) {
+                throw new IllegalArgumentException("supersedeMemoryId must be positive");
+            }
+            if (supersedeMemoryId == memoryId) {
+                throw new IllegalArgumentException("a memory cannot supersede itself");
+            }
+            MemoryRecord target = get(ownerUserId, supersedeMemoryId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "supersede target is not an active canonical memory"));
+            if (!"ACCEPTED".equals(target.status())
+                    || target.supersededAt() != null
+                    || target.deletedAt() != null
+                    || target.relationshipId() == null
+                    || !target.relationshipId().equals(existing.relationshipId())) {
+                throw new IllegalArgumentException(
+                        "supersede target is not an active canonical memory of this relationship");
+            }
+        }
         try {
-            Boolean updated = jdbc.queryForObject(
-                    sql, Boolean.class, ownerUserId, memoryId);
+            Boolean updated;
+            if (sql == CONFIRM_SQL) {
+                updated = jdbc.queryForObject(
+                        sql, Boolean.class, ownerUserId, memoryId, supersedeMemoryId);
+            } else {
+                updated = jdbc.queryForObject(sql, Boolean.class, ownerUserId, memoryId);
+            }
             if (!Boolean.TRUE.equals(updated)) {
                 throw new IllegalStateException(
                         functionName + " returned false for owned memory " + memoryId);
@@ -494,7 +583,10 @@ public class MemoryService {
             String scope,
             String summary,
             Long conversationId,
-            List<String> evidence) {
+            List<String> evidence,
+            Instant eventAt,
+            String eventStatus,
+            Instant eventExpiresAt) {
         String[] evidenceArray = evidence == null ? null : evidence.toArray(String[]::new);
         return (PreparedStatement ps) -> {
             ps.setLong(1, ownerUserId);
@@ -511,7 +603,43 @@ public class MemoryService {
             } else {
                 ps.setArray(6, ps.getConnection().createArrayOf("text", evidenceArray));
             }
+            setNullableTimestamp(ps, 7, eventAt);
+            ps.setString(8, eventStatus);
+            setNullableTimestamp(ps, 9, eventExpiresAt);
         };
+    }
+
+    private static void setNullableTimestamp(PreparedStatement ps, int index, Instant value)
+            throws SQLException {
+        if (value == null) {
+            ps.setNull(index, Types.TIMESTAMP_WITH_TIMEZONE);
+        } else {
+            ps.setTimestamp(index, Timestamp.from(value));
+        }
+    }
+
+    private static Timestamp toTimestamp(Instant value) {
+        return value == null ? null : Timestamp.from(value);
+    }
+
+    /**
+     * §11.12 event-triple shape: any event field requires the anchor
+     * {@code eventAt}; the status is a memory-event-statuses code; the expiry
+     * is strictly after the start. Applied to creates and to the EFFECTIVE
+     * values on update (null param = keep stored).
+     */
+    private static void validateEvent(Instant eventAt, String eventStatus, Instant eventExpiresAt) {
+        if ((eventStatus != null || eventExpiresAt != null) && eventAt == null) {
+            throw new IllegalArgumentException(
+                    "eventStatus/eventExpiresAt require eventAt");
+        }
+        if (eventStatus != null && !EVENT_STATUSES.contains(eventStatus)) {
+            throw new IllegalArgumentException(
+                    "eventStatus is not a memory-event-statuses code: " + eventStatus);
+        }
+        if (eventAt != null && eventExpiresAt != null && !eventExpiresAt.isAfter(eventAt)) {
+            throw new IllegalArgumentException("eventExpiresAt must be after eventAt");
+        }
     }
 
     /** {@code get_memory} output columns (carries relationship_id, no deleted_at). */
@@ -525,7 +653,12 @@ public class MemoryService {
                 nullableLong(rs, "out_conversation_id"),
                 null,
                 toInstant(rs, "out_created_at"),
-                rs.getBoolean("out_auto_saved"));
+                rs.getBoolean("out_auto_saved"),
+                nullableInstant(rs, "out_superseded_at"),
+                nullableLong(rs, "out_superseded_by_memory_id"),
+                nullableInstant(rs, "out_event_at"),
+                rs.getString("out_event_status"),
+                nullableInstant(rs, "out_event_expires_at"));
     }
 
     /** {@code list_memory} output columns (carries deleted_at, no relationship_id). */
@@ -539,7 +672,12 @@ public class MemoryService {
                 nullableLong(rs, "out_conversation_id"),
                 toInstant(rs, "out_deleted_at"),
                 toInstant(rs, "out_created_at"),
-                rs.getBoolean("out_auto_saved"));
+                rs.getBoolean("out_auto_saved"),
+                nullableInstant(rs, "out_superseded_at"),
+                nullableLong(rs, "out_superseded_by_memory_id"),
+                nullableInstant(rs, "out_event_at"),
+                rs.getString("out_event_status"),
+                nullableInstant(rs, "out_event_expires_at"));
     }
 
     private static RowMapper<MemoryEvidenceRecord> evidenceRowMapper() {
@@ -550,9 +688,10 @@ public class MemoryService {
     }
 
     /**
-     * {@code recall_memory} output columns: ACCEPTED rows only, so the status
-     * is fixed and there is no deleted_at (the tombstone already excluded
-     * soft-deleted rows).
+     * {@code recall_memory} output columns: ACCEPTED, non-superseded rows only,
+     * so the status is fixed and there is no deleted_at (the tombstone already
+     * excluded soft-deleted rows). R44: the §11.12 event pair rides along so
+     * the assembler can demand follow-up questions for due events.
      */
     private static RowMapper<MemoryRecord> recallRowMapper() {
         return (ResultSet rs, int rowNum) -> new MemoryRecord(
@@ -563,7 +702,13 @@ public class MemoryService {
                 "ACCEPTED",
                 nullableLong(rs, "out_conversation_id"),
                 null,
-                toInstant(rs, "out_created_at"));
+                toInstant(rs, "out_created_at"),
+                false,
+                null,
+                null,
+                nullableInstant(rs, "out_event_at"),
+                rs.getString("out_event_status"),
+                null);
     }
 
     private static Long nullableLong(ResultSet rs, String column) throws SQLException {
@@ -574,6 +719,13 @@ public class MemoryService {
     private static Instant toInstant(ResultSet rs, String column) throws SQLException {
         Timestamp ts = rs.getTimestamp(column);
         return ts == null ? Instant.EPOCH : ts.toInstant();
+    }
+
+    /** Like {@link #toInstant} but keeps SQL NULL as {@code null} (tombstone /
+     * event columns are genuinely absent, not epoch). */
+    private static Instant nullableInstant(ResultSet rs, String column) throws SQLException {
+        Timestamp ts = rs.getTimestamp(column);
+        return ts == null ? null : ts.toInstant();
     }
 
     private static boolean isSessionMissingConversation(String scope, Long conversationId) {

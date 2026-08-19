@@ -1,5 +1,7 @@
 package com.virtualcompanion.runtime.memory.web;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,7 +93,7 @@ class MemoryControllerTest {
 
     @Test
     void createMemoryCandidateReturnsTheCreatedCandidate() throws Exception {
-        when(memoryService.create(1L, 7L, "SESSION", "likes hiking", 100L, List.of("ref-1")))
+        when(memoryService.create(1L, 7L, "SESSION", "likes hiking", 100L, List.of("ref-1"), null, null, null))
                 .thenReturn(Optional.of(new MemoryRecord(
                         42L, 7L, "SESSION", "likes hiking", "PENDING_CONFIRMATION", 100L, null, NOW)));
 
@@ -107,12 +109,12 @@ class MemoryControllerTest {
                 .andExpect(jsonPath("$.conversationId").value(100))
                 .andExpect(jsonPath("$.createdAt").value("2026-08-12T12:00:00Z"));
 
-        verify(memoryService).create(1L, 7L, "SESSION", "likes hiking", 100L, List.of("ref-1"));
+        verify(memoryService).create(1L, 7L, "SESSION", "likes hiking", 100L, List.of("ref-1"), null, null, null);
     }
 
     @Test
     void createMemoryCandidateMapsForeignRelationshipTo404() throws Exception {
-        when(memoryService.create(1L, 99L, "SESSION", "s", 100L, null))
+        when(memoryService.create(1L, 99L, "SESSION", "s", 100L, null, null, null, null))
                 .thenReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/relationships/99/memories/candidates")
@@ -124,7 +126,7 @@ class MemoryControllerTest {
 
     @Test
     void createMemoryCandidateRejectsNonAlphaScopeAs400() throws Exception {
-        when(memoryService.create(1L, 7L, "ACCOUNT_PRIVATE", "s", null, null))
+        when(memoryService.create(1L, 7L, "ACCOUNT_PRIVATE", "s", null, null, null, null, null))
                 .thenThrow(new IllegalArgumentException("scope is not enabled in Alpha: ACCOUNT_PRIVATE"));
 
         mockMvc.perform(post("/api/v1/relationships/7/memories/candidates")
@@ -249,7 +251,7 @@ class MemoryControllerTest {
 
     @Test
     void updateMemoryReturnsTheUpdatedMemory() throws Exception {
-        when(memoryService.update(1L, 55L, "new summary"))
+        when(memoryService.update(1L, 55L, "new summary", null, null, null))
                 .thenReturn(Optional.of(memory(55L, "ACCEPTED")));
 
         mockMvc.perform(patch("/api/v1/memories/55")
@@ -259,7 +261,7 @@ class MemoryControllerTest {
                 .andExpect(jsonPath("$.memoryId").value(55))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
-        verify(memoryService).update(1L, 55L, "new summary");
+        verify(memoryService).update(1L, 55L, "new summary", null, null, null);
     }
 
     @Test
@@ -313,19 +315,19 @@ class MemoryControllerTest {
 
     @Test
     void confirmMemoryCandidateReturnsTheAcceptedMemory() throws Exception {
-        when(memoryService.confirm(1L, 55L)).thenReturn(Optional.of(memory(55L, "ACCEPTED")));
+        when(memoryService.confirm(1L, 55L, null)).thenReturn(Optional.of(memory(55L, "ACCEPTED")));
 
         mockMvc.perform(post("/api/v1/memories/55/confirm"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.memoryId").value(55))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
-        verify(memoryService).confirm(1L, 55L);
+        verify(memoryService).confirm(1L, 55L, null);
     }
 
     @Test
     void confirmMemoryCandidateMapsNonPendingTo404() throws Exception {
-        when(memoryService.confirm(1L, 55L)).thenReturn(Optional.empty());
+        when(memoryService.confirm(1L, 55L, null)).thenReturn(Optional.empty());
 
         mockMvc.perform(post("/api/v1/memories/55/confirm"))
                 .andExpect(status().isNotFound())
@@ -351,6 +353,70 @@ class MemoryControllerTest {
         mockMvc.perform(post("/api/v1/memories/55/reject"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void confirmWithSupersedeBodyPassesTheExplicitChoice() throws Exception {
+        when(memoryService.confirm(1L, 55L, 66L))
+                .thenReturn(Optional.of(memory(55L, "ACCEPTED")));
+
+        mockMvc.perform(post("/api/v1/memories/55/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supersedeMemoryId\":\"66\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"));
+
+        verify(memoryService).confirm(1L, 55L, 66L);
+    }
+
+    @Test
+    void confirmWithStaleSupersedeTargetMapsTo400InvalidRequest() throws Exception {
+        when(memoryService.confirm(1L, 55L, 66L))
+                .thenThrow(new IllegalArgumentException(
+                        "supersede target is not an active canonical memory of this relationship"));
+
+        mockMvc.perform(post("/api/v1/memories/55/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supersedeMemoryId\":\"66\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void createWithEventFieldsPassesTheParsedTriple() throws Exception {
+        when(memoryService.create(
+                eq(1L), eq(7L), eq("RELATIONSHIP"), eq("周五汇报"),
+                isNull(), isNull(), eq(NOW), eq("PLANNED"), eq(NOW.plusSeconds(3600))))
+                .thenReturn(Optional.of(memory(42L, "PENDING_CONFIRMATION")));
+
+        mockMvc.perform(post("/api/v1/relationships/7/memories/candidates")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\":\"RELATIONSHIP\",\"summary\":\"周五汇报\","
+                                + "\"eventAt\":\"2026-08-12T12:00:00Z\","
+                                + "\"eventStatus\":\"PLANNED\","
+                                + "\"eventExpiresAt\":\"2026-08-12T13:00:00Z\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_CONFIRMATION"));
+
+        verify(memoryService).create(
+                eq(1L), eq(7L), eq("RELATIONSHIP"), eq("周五汇报"),
+                isNull(), isNull(), eq(NOW), eq("PLANNED"), eq(NOW.plusSeconds(3600)));
+    }
+
+    @Test
+    void responseCarriesSupersedeAndEventFields() throws Exception {
+        MemoryRecord superseded = new MemoryRecord(55L, 7L, "RELATIONSHIP", "旧事实",
+                "ACCEPTED", null, null, NOW, false,
+                NOW, 66L, NOW.minusSeconds(60), "PLANNED", NOW.plusSeconds(3600));
+        when(memoryService.get(1L, 55L)).thenReturn(Optional.of(superseded));
+
+        mockMvc.perform(get("/api/v1/memories/55"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.supersededAt").value("2026-08-12T12:00:00Z"))
+                .andExpect(jsonPath("$.supersededByMemoryId").value("66"))
+                .andExpect(jsonPath("$.eventAt").value("2026-08-12T11:59:00Z"))
+                .andExpect(jsonPath("$.eventStatus").value("PLANNED"))
+                .andExpect(jsonPath("$.eventExpiresAt").value("2026-08-12T13:00:00Z"));
     }
 
     // ------------------------------------------------------------------

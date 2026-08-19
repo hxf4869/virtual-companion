@@ -31,6 +31,7 @@ import {
   rejectMemory,
   updateMemory,
   type Memory,
+  type MemoryEventInput,
   type MemoryEvidence,
   type MemoryTransport,
 } from "@/api/memory";
@@ -64,6 +65,9 @@ export const useMemoryStore = defineStore("h5-memory", () => {
   const rejected = ref<Memory[]>([]);
   const expired = ref<Memory[]>([]);
   const deleted = ref<Memory[]>([]);
+  // R44 (V68 / §11.11): explicitly superseded rows — status stays ACCEPTED but
+  // the tombstone columns moved them out of the saved-fact groups.
+  const superseded = ref<Memory[]>([]);
   const evidence = ref<Record<string, MemoryEvidence[]>>({});
   const error = ref<MemoryErrorCode | null>(null);
 
@@ -103,7 +107,12 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     }
     const live = list.filter((m) => !m.deletedAt);
     pending.value = live.filter((m) => m.status === "PENDING_CONFIRMATION");
-    canonical.value = live.filter((m) => m.status === "ACCEPTED");
+    // R44: an explicitly superseded row keeps status ACCEPTED but must never
+    // appear among the saved facts — the tombstone moves it to its own group.
+    canonical.value = live.filter(
+      (m) => m.status === "ACCEPTED" && !m.supersededAt,
+    );
+    superseded.value = live.filter((m) => Boolean(m.supersededAt));
     rejected.value = live.filter((m) => m.status === "REJECTED");
     expired.value = live.filter((m) => m.status === "EXPIRED");
     deleted.value = list.filter((m) => Boolean(m.deletedAt));
@@ -113,13 +122,18 @@ export const useMemoryStore = defineStore("h5-memory", () => {
    * MEM-MANUAL: create a RELATIONSHIP-scoped candidate from the user's manual
    * entry. The new candidate joins the pending list ONLY on a confirmed
    * PENDING_CONFIRMATION result; anything else surfaces a typed error and
-   * never fakes a save.
+   * never fakes a save. R44: the optional §11.12 event triple rides along.
    */
-  async function create(t: MemoryTransport, relationshipId: string, summary: string): Promise<void> {
+  async function create(
+    t: MemoryTransport,
+    relationshipId: string,
+    summary: string,
+    event?: MemoryEventInput,
+  ): Promise<void> {
     error.value = null;
     let created: Memory | null;
     try {
-      created = await createMemoryCandidate(t, relationshipId, summary);
+      created = await createMemoryCandidate(t, relationshipId, summary, event);
     } catch (e) {
       error.value = failureCode(e, "create-failed");
       return;
@@ -131,12 +145,23 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     pending.value = [created, ...pending.value];
   }
 
-  /** Confirm: a pending candidate moves to canonical ONLY on confirmed success. */
-  async function confirm(t: MemoryTransport, memoryId: string): Promise<void> {
+  /**
+   * Confirm: a pending candidate moves to canonical ONLY on confirmed success.
+   * R44 (§11.11): an optional supersedeMemoryId replaces that active canonical
+   * memory in the same transaction; the API answers with the confirmed row
+   * only, so a supersede confirm reloads the relationship list to surface the
+   * superseded row's new group (the page always knows the relationshipId).
+   */
+  async function confirm(
+    t: MemoryTransport,
+    memoryId: string,
+    supersedeMemoryId?: string,
+    relationshipId?: string,
+  ): Promise<void> {
     error.value = null;
     let confirmed: Memory | null;
     try {
-      confirmed = await confirmMemory(t, memoryId);
+      confirmed = await confirmMemory(t, memoryId, supersedeMemoryId);
     } catch (e) {
       error.value = failureCode(e, "confirm-failed");
       return;
@@ -144,6 +169,10 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     if (!confirmed || confirmed.status !== "ACCEPTED") {
       // Not confirmed -> preserve state, do not fake a confirmation.
       error.value = "confirm-not-confirmed";
+      return;
+    }
+    if (supersedeMemoryId && relationshipId) {
+      await load(t, relationshipId);
       return;
     }
     pending.value = without(pending.value, memoryId);
@@ -172,17 +201,19 @@ export const useMemoryStore = defineStore("h5-memory", () => {
 
   /**
    * Edit: the visible summary changes ONLY on confirmed success. Returns true
-   * only then, so the page keeps the edit row open on any failure.
+   * only then, so the page keeps the edit row open on any failure. R44: the
+   * optional event edits ride along (e.g. marking an event COMPLETED).
    */
   async function update(
     t: MemoryTransport,
     memoryId: string,
     summary: string,
+    event?: MemoryEventInput,
   ): Promise<boolean> {
     error.value = null;
     let updated: Memory | null;
     try {
-      updated = await updateMemory(t, memoryId, summary);
+      updated = await updateMemory(t, memoryId, summary, event);
     } catch (e) {
       error.value = failureCode(e, "update-failed");
       return false;
@@ -214,6 +245,7 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     }
     pending.value = without(pending.value, memoryId);
     canonical.value = without(canonical.value, memoryId);
+    superseded.value = without(superseded.value, memoryId);
     const nextEvidence = { ...evidence.value };
     delete nextEvidence[memoryId];
     evidence.value = nextEvidence;
@@ -236,6 +268,7 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     rejected.value = [];
     expired.value = [];
     deleted.value = [];
+    superseded.value = [];
     evidence.value = {};
     error.value = null;
   }
@@ -246,6 +279,7 @@ export const useMemoryStore = defineStore("h5-memory", () => {
     rejected,
     expired,
     deleted,
+    superseded,
     evidence,
     error,
     pendingCount,

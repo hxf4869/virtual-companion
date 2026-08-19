@@ -112,6 +112,13 @@
       "REJECTED",
       "EXPIRED"
     ],
+    "MemoryEventStatus": [
+      "PLANNED",
+      "IN_PROGRESS",
+      "COMPLETED",
+      "CANCELLED",
+      "UNKNOWN"
+    ],
     "MemoryItemStatus": [
       "ACTIVE",
       "SUPERSEDED",
@@ -412,6 +419,11 @@
             "typeName": "MemoryItemStatus"
           },
           {
+            "file": "memory-event-statuses.yaml",
+            "kind": "enum",
+            "typeName": "MemoryEventStatus"
+          },
+          {
             "file": "persona-templates.yaml",
             "kind": "enum",
             "typeName": "PersonaTemplate"
@@ -464,7 +476,7 @@
         "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "ada66659474b68b28dd16a49ba2ea1983c895f720b7b5f50f214c16703851686"
+      "sha256": "39347f56cff516d8fd5f1a9fe9c31abed29ef4427935db0d337351d6a0dfb929"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -918,6 +930,35 @@
         "schemaVersion": 1
       },
       "sha256": "9d7611534a36661c92c031fa1321805a14f577c2c046b43c1bcb881e91b09c9e"
+    },
+    "memory-event-statuses.yaml": {
+      "document": {
+        "catalogId": "memory-event-statuses",
+        "entries": [
+          {
+            "code": "PLANNED",
+            "order": 0
+          },
+          {
+            "code": "IN_PROGRESS",
+            "order": 1
+          },
+          {
+            "code": "COMPLETED",
+            "order": 2
+          },
+          {
+            "code": "CANCELLED",
+            "order": 3
+          },
+          {
+            "code": "UNKNOWN",
+            "order": 4
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "0fe2769aefd7f58db1d7ad3b14c8bce344ec9098a254957263628548acbfd9d0"
     },
     "memory-item-statuses.yaml": {
       "document": {

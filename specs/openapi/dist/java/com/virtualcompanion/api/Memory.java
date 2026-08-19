@@ -9,7 +9,12 @@ public record Memory(
     final String conversationId,
     final String createdAt,
     final String deletedAt,
-    final String autoSaved
+    final String autoSaved,
+    final String supersededAt,
+    final String supersededByMemoryId,
+    final String eventAt,
+    final String eventStatus,
+    final String eventExpiresAt
 ) {
     public Memory {
         java.util.Objects.requireNonNull(memoryId, "memoryId must not be null");
@@ -20,5 +25,10 @@ public record Memory(
         // createdAt is nullable
         // deletedAt is nullable
         java.util.Objects.requireNonNull(autoSaved, "autoSaved must not be null");
+        // supersededAt is nullable
+        // supersededByMemoryId is nullable
+        // eventAt is nullable
+        // eventStatus is nullable
+        // eventExpiresAt is nullable
     }
 }

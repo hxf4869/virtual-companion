@@ -30,15 +30,23 @@
       check.sh 全绿；召回型类别（色情/暴力/仇恨/Prompt Injection）按设计
       留给真实 provider 分类器（R49）。
 
-### R44 记忆生命周期收尾（A2-005 / §11.12，Alpha 声明范围内未竟）
+### R44 记忆生命周期收尾（A2-005 / §11.12，Alpha 声明范围内未竟）——已完成（2026-08-19）
 
-- [ ] MEM-SUPERSEDE 显式替代：确认同类新候选时可选替代旧事实，
+- [x] MEM-SUPERSEDE 显式替代：确认同类新候选时可选替代旧事实，
       SUPERSEDED 状态首次产生运行时路径（召回已只取 ACCEPTED，无需改召回）；
       不自动覆盖用户手工修改（§7.3.3「只实现显式替代、过期和删除墓碑」
       ——墓碑已交付，替代/过期未落地）。
-- [ ] MEM-EVENT 事件记忆最小生命周期：事件字段（时间/状态/跟进）+ 到期
+      交付：V68 以 superseded_at/superseded_by 墓碑列承载 SUPERSEDED（与删除
+      墓碑同构，不动状态目录）；confirm 可选 supersedeMemoryId（同关系在存
+      事实，否则 400）；召回（含语义）排除已替代行。
+- [x] MEM-EVENT 事件记忆最小生命周期：事件字段（时间/状态/跟进）+ 到期
       惰性 EXPIRED；跟进只提问「之前提到的X后来怎么样了」，不编造结果
       （§11.12）。
+      交付：V68 event_at/event_status/event_expires_at + 新目录
+      memory-event-statuses；读路径惰性 EXPIRED；到期未完结事件在召回行
+      附带「只能询问后续进展，不得编造结果」指令；OpenAPI/H5 表单与分组。
+      验证：DB 123/123（新增 122）、runtime+上游 579/579、前端 740/740、
+      check.sh 全绿。
 
 ### R45 Alpha 门槛测量与记忆评测（§26.3–26.7，Owner 2026-08-19 决定全部补做）
 

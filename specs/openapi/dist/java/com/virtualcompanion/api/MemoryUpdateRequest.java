@@ -2,9 +2,15 @@
 package com.virtualcompanion.api;
 
 public record MemoryUpdateRequest(
-    final String summary
+    final String summary,
+    final String eventAt,
+    final String eventStatus,
+    final String eventExpiresAt
 ) {
     public MemoryUpdateRequest {
         java.util.Objects.requireNonNull(summary, "summary must not be null");
+        // eventAt is nullable
+        // eventStatus is nullable
+        // eventExpiresAt is nullable
     }
 }

@@ -74,7 +74,10 @@ public class MemoryController {
         Long conversationId = parseOptionalLong(request.conversationId(), "conversationId");
         MemoryRecord record = memoryService
                 .create(ownerUserId, relationship, request.scope(), request.summary(),
-                        conversationId, request.evidence())
+                        conversationId, request.evidence(),
+                        parseInstant(request.eventAt(), "eventAt"),
+                        request.eventStatus(),
+                        parseInstant(request.eventExpiresAt(), "eventExpiresAt"))
                 .orElseThrow(() -> new ResourceNotFoundException("relationship"));
         return toMemoryResponse(record);
     }
@@ -107,7 +110,10 @@ public class MemoryController {
             @PathVariable String memoryId,
             @Valid @RequestBody MemoryUpdateRequest request) {
         long id = parseId(memoryId, "memoryId");
-        return memoryService.update(ownerUserId, id, request.summary())
+        return memoryService.update(ownerUserId, id, request.summary(),
+                        parseInstant(request.eventAt(), "eventAt"),
+                        request.eventStatus(),
+                        parseInstant(request.eventExpiresAt(), "eventExpiresAt"))
                 .map(MemoryController::toMemoryResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("memory"));
     }
@@ -125,9 +131,13 @@ public class MemoryController {
     @PostMapping("/memories/{memoryId}/confirm")
     public MemoryResponse confirmMemoryCandidate(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
-            @PathVariable String memoryId) {
+            @PathVariable String memoryId,
+            @RequestBody(required = false) MemoryConfirmRequest request) {
         long id = parseId(memoryId, "memoryId");
-        var confirmed = memoryService.confirm(ownerUserId, id)
+        Long supersedeId = request == null || request.supersedeMemoryId() == null
+                ? null
+                : parseOptionalLong(request.supersedeMemoryId(), "supersedeMemoryId");
+        var confirmed = memoryService.confirm(ownerUserId, id, supersedeId)
                 .map(MemoryController::toMemoryResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("memory"));
         // EMBED-RECALL (V62 / §11.15): a confirmed memory gets its embedding
@@ -236,7 +246,25 @@ public class MemoryController {
                 record.conversationId() == null ? null : record.conversationId().toString(),
                 record.createdAt() == null ? null : record.createdAt().toString(),
                 record.deletedAt() == null ? null : record.deletedAt().toString(),
-                record.autoSaved());
+                record.autoSaved(),
+                record.supersededAt() == null ? null : record.supersededAt().toString(),
+                record.supersededByMemoryId() == null
+                        ? null : record.supersededByMemoryId().toString(),
+                record.eventAt() == null ? null : record.eventAt().toString(),
+                record.eventStatus(),
+                record.eventExpiresAt() == null ? null : record.eventExpiresAt().toString());
+    }
+
+    /** Strict RFC-3339 instant parse: a malformed value fails as 400. */
+    private static java.time.Instant parseInstant(String raw, String name) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return java.time.Instant.parse(raw);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException(name + " is not a valid instant: " + raw, e);
+        }
     }
 
     private static MemoryEvidenceResponse toEvidenceResponse(MemoryEvidenceRecord record) {
@@ -246,16 +274,29 @@ public class MemoryController {
                 record.createdAt() == null ? null : record.createdAt().toString());
     }
 
-    /** Request body (OpenAPI {@code MemoryCandidateCreateRequest}). */
+    /** Request body (OpenAPI {@code MemoryCandidateCreateRequest}). R44: the
+     *  optional §11.12 event triple (any event field requires eventAt). */
     public record MemoryCandidateCreateRequest(
             @NotBlank String scope,
             @NotBlank String summary,
             String conversationId,
-            List<String> evidence) {
+            List<String> evidence,
+            String eventAt,
+            String eventStatus,
+            String eventExpiresAt) {
     }
 
-    /** Request body (OpenAPI {@code MemoryUpdateRequest}). */
-    public record MemoryUpdateRequest(@NotBlank String summary) {
+    /** Request body (OpenAPI {@code MemoryUpdateRequest}). R44: optional event
+     *  edits; a missing field leaves the stored value unchanged. */
+    public record MemoryUpdateRequest(
+            @NotBlank String summary,
+            String eventAt,
+            String eventStatus,
+            String eventExpiresAt) {
+    }
+
+    /** R44: optional confirm body — the explicit supersede choice (§11.11). */
+    public record MemoryConfirmRequest(String supersedeMemoryId) {
     }
 
     /** Response body (OpenAPI {@code Memory}). */
@@ -267,7 +308,12 @@ public class MemoryController {
             String conversationId,
             String createdAt,
             String deletedAt,
-            boolean autoSaved) {
+            boolean autoSaved,
+            String supersededAt,
+            String supersededByMemoryId,
+            String eventAt,
+            String eventStatus,
+            String eventExpiresAt) {
     }
 
     /** MEM-AUTO-SAVE: switch request body (OpenAPI {@code MemoryAutoSaveRequest}). */

@@ -36,6 +36,9 @@ export type MemoryCandidateStatus = typeof MemoryCandidateStatusValues[number]
 export const MemoryItemStatusValues = ["ACTIVE", "SUPERSEDED", "EXPIRED", "DELETED"] as const
 export type MemoryItemStatus = typeof MemoryItemStatusValues[number]
 
+export const MemoryEventStatusValues = ["PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "UNKNOWN"] as const
+export type MemoryEventStatus = typeof MemoryEventStatusValues[number]
+
 export const PersonaTemplateValues = ["gentle-listener"] as const
 export type PersonaTemplate = typeof PersonaTemplateValues[number]
 

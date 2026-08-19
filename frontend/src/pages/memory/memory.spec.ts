@@ -17,6 +17,10 @@ function canonicalMemory(id: string, summary = "s"): Memory {
   return { memoryId: id, scope: "RELATIONSHIP", summary, status: "ACCEPTED" };
 }
 
+function pendingMemory(id: string, summary = "s"): Memory {
+  return { memoryId: id, scope: "RELATIONSHIP", summary, status: "PENDING_CONFIRMATION" };
+}
+
 const PICKABLE_RELATIONSHIP = {
   relationshipId: "rel-pick-1",
   personaRef: "gentle-listener",
@@ -595,6 +599,52 @@ describe("memory page glue (P2-19 component test)", () => {
     await toggle.trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="memory-auto-save-toggle"]').text()).toContain("已关闭");
+    wrapper.unmount();
+  });
+
+  // --- R44 (V68): supersede + event memories ---
+
+  it("renders explicitly superseded rows in their own group, never as saved facts", async () => {
+    const store = useMemoryStore();
+    store.canonical = [canonicalMemory("acc-2", "新事实")];
+    store.superseded = [
+      {
+        ...canonicalMemory("acc-1", "旧事实"),
+        supersededAt: "2026-08-19T10:00:00Z",
+        supersededByMemoryId: "acc-2",
+      },
+    ];
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+
+    const group = wrapper.find('[data-testid="memory-group-superseded"]');
+    expect(group.exists()).toBe(true);
+    expect(group.text()).toContain("旧事实");
+    expect(group.text()).toContain("不作为已保存事实");
+    // The replaced row must not appear among the saved facts.
+    const canonicalGroup = wrapper.find('[data-testid="memory-group-relationship"]');
+    expect(canonicalGroup.exists()).toBe(true);
+    expect(canonicalGroup.text()).toContain("新事实");
+    expect(canonicalGroup.text()).not.toContain("旧事实");
+    wrapper.unmount();
+  });
+
+  it("offers the optional supersede choice on pending cards and event fields on the create form", async () => {
+    const store = useMemoryStore();
+    store.canonical = [canonicalMemory("acc-1", "用户在 A 公司工作")];
+    store.pending = [pendingMemory("pend-1", "用户换到 B 公司工作")];
+    const wrapper = mountPage();
+    await wrapper.vm.$nextTick();
+
+    const select = wrapper.find('[data-testid="memory-supersede-pend-1"]');
+    expect(select.exists()).toBe(true);
+    expect(select.text()).toContain("不替代已有记忆");
+    expect(select.text()).toContain("用户在 A 公司工作");
+
+    // The §11.12 event anchor input is present (optional, hidden extras appear
+    // only after it is filled).
+    expect(wrapper.find('[data-testid="candidate-event-at"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="candidate-event-status"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

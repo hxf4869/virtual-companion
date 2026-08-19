@@ -423,6 +423,11 @@ export interface Memory {
   createdAt?: string
   deletedAt?: string
   autoSaved: string
+  supersededAt?: string
+  supersededByMemoryId?: string
+  eventAt?: string
+  eventStatus?: string
+  eventExpiresAt?: string
 }
 
 export interface MemoryAutoSavePref {
@@ -438,10 +443,20 @@ export interface MemoryCandidateCreateRequest {
   summary: string
   conversationId?: string
   evidence?: string
+  eventAt?: string
+  eventStatus?: string
+  eventExpiresAt?: string
 }
 
 export interface MemoryUpdateRequest {
   summary: string
+  eventAt?: string
+  eventStatus?: string
+  eventExpiresAt?: string
+}
+
+export interface MemoryConfirmRequest {
+  supersedeMemoryId?: string
 }
 
 export interface MemoryEvidence {

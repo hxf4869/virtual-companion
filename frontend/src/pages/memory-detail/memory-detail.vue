@@ -41,6 +41,18 @@ Reuses GET /memories/{id} and GET /memories/{id}/evidence. Existence hidden. -->
         <text v-if="record.createdAt" class="meta" data-testid="memory-created">
           记录时间 {{ record.createdAt }}
         </text>
+        <text v-if="record.autoSaved" class="meta" data-testid="memory-auto">
+          自动保存条目（可随时删除）
+        </text>
+        <text v-if="record.eventAt" class="meta" data-testid="memory-event">
+          事件时间 {{ record.eventAt }} · 状态 {{ eventStatusLabel(record.eventStatus) }}
+        </text>
+        <text v-if="record.eventExpiresAt" class="meta" data-testid="memory-event-expires">
+          事件过期 {{ record.eventExpiresAt }}（过期后不再使用，仅询问后续）
+        </text>
+        <text v-if="record.supersededAt" class="meta" data-testid="memory-superseded">
+          已被 {{ record.supersededByMemoryId }} 替代，不作为已保存事实
+        </text>
       </view>
 
       <view v-if="sources.length > 0" class="card" data-testid="memory-evidence">
@@ -85,6 +97,22 @@ export default {
         return new URLSearchParams(String(location.search || "")).get("memoryId")?.trim() ?? "";
       } catch {
         return "";
+      }
+    }
+
+    /** R44: plain label for the §11.12 memory-event-statuses code. */
+    function eventStatusLabel(status?: string): string {
+      switch (status) {
+        case "PLANNED":
+          return "计划中";
+        case "IN_PROGRESS":
+          return "进行中";
+        case "COMPLETED":
+          return "已完成";
+        case "CANCELLED":
+          return "已取消";
+        default:
+          return "未知";
       }
     }
 
@@ -149,6 +177,7 @@ export default {
       reload,
       memoryHref,
       goTo,
+      eventStatusLabel,
     };
   },
 };

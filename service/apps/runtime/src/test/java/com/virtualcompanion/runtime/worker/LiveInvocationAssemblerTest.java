@@ -1,6 +1,7 @@
 package com.virtualcompanion.runtime.worker;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -215,6 +216,50 @@ class LiveInvocationAssemblerTest {
         assertEquals(2, request.messages().size());
         assertEquals(ProtocolMessage.Role.SYSTEM, request.messages().get(0).role());
         assertTrue(request.messages().get(0).content().contains("用户养了一只猫叫雪球"));
+    }
+
+    @Test
+    void dueEventMemoryCarriesTheFollowUpOnlyInstruction() {
+        // R44 (V68 / §11.12): an event whose time has passed and whose status
+        // is still PLANNED may only be followed up with a question — the recall
+        // line demands 询问后续 and forbids fabricating the outcome.
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        java.time.Instant past = java.time.Instant.now().minusSeconds(3600);
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
+                new MemoryRecord(30L, null, "RELATIONSHIP", "周五有项目汇报", "ACCEPTED",
+                        null, null, NOW, false, null, null,
+                        past, "PLANNED", null)));
+
+        LiveInvocationRequest request = assembler("SRC").assemble(1L, 10L);
+
+        String system = request.messages().get(0).content();
+        assertTrue(system.contains("周五有项目汇报"));
+        assertTrue(system.contains("只能询问后续进展，不得编造结果"));
+    }
+
+    @Test
+    void completedOrUpcomingEventMemoryNeedsNoFollowUpInstruction() {
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        // Upcoming (PLANNED, in the future) and completed events are
+        // plain facts — no due-event suffix.
+        java.time.Instant past = java.time.Instant.now().minusSeconds(3600);
+        java.time.Instant future = java.time.Instant.now().plusSeconds(3600);
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
+                new MemoryRecord(31L, null, "RELATIONSHIP", "下周三体检", "ACCEPTED",
+                        null, null, NOW, false, null, null,
+                        future, "PLANNED", null),
+                new MemoryRecord(32L, null, "RELATIONSHIP", "上周汇报已完成", "ACCEPTED",
+                        null, null, NOW, false, null, null,
+                        past, "COMPLETED", null)));
+
+        LiveInvocationRequest request = assembler("SRC").assemble(1L, 10L);
+
+        String system = request.messages().get(0).content();
+        assertTrue(system.contains("下周三体检"));
+        assertTrue(system.contains("上周汇报已完成"));
+        assertFalse(system.contains("只能询问后续进展"));
     }
 
     // ---- PERSONA-WIRE persona context ----
