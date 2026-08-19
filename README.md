@@ -48,7 +48,12 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `POST /api/v1/auth/admin/accounts/{accountId}/disable`（禁用，幂等；开通受
   betaGate maxEnabledAccounts=30 容量门禁约束）、`GET /api/v1/auth/admin/audit`
   （审计日志 keyset 分页，ADMIN-OPS）、`GET /api/v1/auth/admin/usage`（按日
-  用量/成本汇总，ADMIN-OPS）、`POST /api/v1/auth/admin/service-class`、
+  用量/成本汇总，ADMIN-OPS）、
+  `POST /api/v1/auth/admin/invites`、`GET /api/v1/auth/admin/invites`、
+  `POST /api/v1/auth/admin/invites/disable`（INVITE：ADMIN 生成/列表/停用一次性
+  邀请码，§7.4）、`POST /api/v1/auth/invite-register`（匿名凭码开通测试账号，
+  `invite-registration-enabled` 默认 false 时 403 fail-closed）、
+  `POST /api/v1/auth/admin/service-class`、
   `GET /api/v1/auth/admin/service-classes`（ENT-SNAP 模拟权益分配 ECONOMY/PREMIUM，
   ADMIN-only，仅测试账号，绝不接订单）
 - `POST /api/v1/relationships`、`GET /api/v1/relationships`、`GET/POST /api/v1/relationships/{relationshipId}`、
@@ -125,6 +130,21 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第三十五轮）：
+
+- 邀请码开通（INVITE / §7.4）：V60 `vc.invite_code`（SD-only，无 RLS policy）+
+  create/list/disable（ADMIN，SQL 重验）+ `redeem_invite_code`（匿名兑换：码校验、
+  同一 30 账号容量门禁、ACCOUNT_CREATE 审计、码与账号同事务置 USED，单次有效；
+  无效/过期/已用/已停用同一文案不披露）。`POST/GET /auth/admin/invites`、
+  `POST /auth/admin/invites/disable`、匿名 `POST /auth/invite-register`（permitAll
+  + 登录同款限流；`invite-registration-enabled` 默认 false → 403
+  BETA_OPERATIONS_NOT_READY）。admin 页邀请码区 + 登录页凭码开通表单。
+- Beta 服务时段强制（SVC-WINDOW / §24.7、FR-RES-002）：V60
+  `beta_service_window_state`（DAU + owner 当日已活跃，trusted-owner）；纯策略类
+  `BetaServiceWindow`（默认关闭；开启时 20:30–00:00 Asia/Shanghai 接受新 turn、
+  手动停服开关短路、DAU 上限只挡新活跃者）；sendGeneration 在 receive 之前拒绝
+  （403 BETA_OPERATIONS_NOT_READY，不落库不排队），历史/记忆/数据权利不受影响。
 
 后端在运方面上还提供（2026-08-19 第三十四轮）：
 
