@@ -76,10 +76,11 @@ class OwnerContextTest {
 
         String[] seenNonce = new String[1];
         doAnswer(invocation -> {
-            seenNonce[0] = invocation.getArgument(2);
-            return 1;
-        }).when(jdbc).update(
+            seenNonce[0] = invocation.getArgument(3);
+            return null;
+        }).when(jdbc).query(
                 eq("SELECT vc.set_owner_context(?, ?, ?)"),
+                any(org.springframework.jdbc.core.ResultSetExtractor.class),
                 eq(42L), anyString(), anyString());
 
         AtomicBoolean ran = new AtomicBoolean(false);
@@ -91,11 +92,12 @@ class OwnerContextTest {
         // server will recompute (owner 42, this pid, this xact, this nonce) and
         // never carries the key material.
         var args = org.mockito.Mockito.mockingDetails(jdbc).getInvocations().stream()
-                .filter(inv -> "update".equals(inv.getMethod().getName()))
+                .filter(inv -> "query".equals(inv.getMethod().getName()))
+                .filter(inv -> inv.getArguments().length == 5)
                 .findFirst().orElseThrow();
-        Long owner = args.getArgument(1);
-        String nonce = args.getArgument(2);
-        String proof = args.getArgument(3);
+        Long owner = args.getArgument(2);
+        String nonce = args.getArgument(3);
+        String proof = args.getArgument(4);
         assertThat(owner).isEqualTo(42L);
         assertThat(nonce).matches("[0-9a-f]{32}");
         assertThat(proof).isEqualTo(ownerContext.proofFor(42L, "4321", "87654321", nonce));
@@ -117,10 +119,11 @@ class OwnerContextTest {
 
         java.util.Set<String> nonces = new java.util.HashSet<>();
         doAnswer(invocation -> {
-            nonces.add(invocation.getArgument(2));
-            return 1;
-        }).when(jdbc).update(
+            nonces.add(invocation.getArgument(3));
+            return null;
+        }).when(jdbc).query(
                 eq("SELECT vc.set_owner_context(?, ?, ?)"),
+                any(org.springframework.jdbc.core.ResultSetExtractor.class),
                 eq(42L), anyString(), anyString());
 
         ownerContext.asOwner(42L, () -> { });
@@ -153,12 +156,13 @@ class OwnerContextTest {
             return null;
         }).when(transactions).executeWithoutResult(any());
         doAnswer(invocation -> {
-            observedNonces.add(invocation.getArgument(2));
-            observedProofs.add(invocation.getArgument(3));
+            observedNonces.add(invocation.getArgument(3));
+            observedProofs.add(invocation.getArgument(4));
             segmentIndex.incrementAndGet();
-            return 1;
-        }).when(jdbc).update(
+            return null;
+        }).when(jdbc).query(
                 eq("SELECT vc.set_owner_context(?, ?, ?)"),
+                any(org.springframework.jdbc.core.ResultSetExtractor.class),
                 eq(42L), anyString(), anyString());
         OwnerContext ownerContext = new OwnerContext(jdbc, transactions, TEST_KEY);
 

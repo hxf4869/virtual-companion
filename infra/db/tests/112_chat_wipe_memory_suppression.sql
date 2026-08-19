@@ -78,6 +78,11 @@ BEGIN
     SELECT out_conversation_count, out_message_count, out_in_flight_count
       INTO v_conv_count, v_msg_count, v_in_flight
       FROM vc.preview_chat_wipe(1);
+    -- V67 drill-fix guard: a set-returning SD that emits no row leaves the
+    -- variables NULL and the count assertions below would be vacuous.
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'preview_chat_wipe returned no row (V67 regression)';
+    END IF;
     IF v_conv_count <> 2 OR v_msg_count <> 3 OR v_in_flight <> 2 THEN
         RAISE EXCEPTION 'preview counts wrong: % / % / %',
             v_conv_count, v_msg_count, v_in_flight;

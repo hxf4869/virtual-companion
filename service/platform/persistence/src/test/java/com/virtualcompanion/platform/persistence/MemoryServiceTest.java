@@ -76,9 +76,9 @@ class MemoryServiceTest {
     @Test
     void createCallsTheSdAndReturnsThePendingCandidate() {
         when(relationshipService.get(1L, 7L)).thenReturn(Optional.of(relationship()));
-        when(jdbc.queryForObject(
-                eq(CREATE_SQL), eq(Long.class), any(PreparedStatementSetter.class)))
-                .thenReturn(42L);
+        when(jdbc.query(
+                eq(CREATE_SQL), any(PreparedStatementSetter.class), any(RowMapper.class)))
+                .thenReturn(List.of(42L));
         when(jdbc.query(eq(GET_SQL), any(RowMapper.class), eq(1L), eq(42L)))
                 .thenReturn(List.of(record(42L, "PENDING_CONFIRMATION")));
 
@@ -87,8 +87,8 @@ class MemoryServiceTest {
 
         assertTrue(result.isPresent());
         assertEquals("PENDING_CONFIRMATION", result.get().status());
-        verify(jdbc).queryForObject(
-                eq(CREATE_SQL), eq(Long.class), any(PreparedStatementSetter.class));
+        verify(jdbc).query(
+                eq(CREATE_SQL), any(PreparedStatementSetter.class), any(RowMapper.class));
     }
 
     @Test
@@ -122,8 +122,8 @@ class MemoryServiceTest {
     @Test
     void createTranslatesSdRaiseToEmpty() {
         when(relationshipService.get(1L, 7L)).thenReturn(Optional.of(relationship()));
-        when(jdbc.queryForObject(
-                eq(CREATE_SQL), eq(Long.class), any(PreparedStatementSetter.class)))
+        when(jdbc.query(
+                eq(CREATE_SQL), any(PreparedStatementSetter.class), any(RowMapper.class)))
                 .thenThrow(new DataAccessException("create_memory_candidate: relationship not found") {});
 
         assertTrue(service.create(1L, 7L, "SESSION", "s", 100L, null).isEmpty());
@@ -132,8 +132,8 @@ class MemoryServiceTest {
     @Test
     void createRethrowsBadSqlGrammarForSchemaUnavailable() {
         when(relationshipService.get(1L, 7L)).thenReturn(Optional.of(relationship()));
-        when(jdbc.queryForObject(
-                eq(CREATE_SQL), eq(Long.class), any(PreparedStatementSetter.class)))
+        when(jdbc.query(
+                eq(CREATE_SQL), any(PreparedStatementSetter.class), any(RowMapper.class)))
                 .thenThrow(new BadSqlGrammarException("sql", "sql", null));
 
         assertThrows(BadSqlGrammarException.class,

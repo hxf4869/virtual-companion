@@ -71,7 +71,14 @@ public class OwnerContext {
                     "SELECT pg_backend_pid() AS pid, pg_current_xact_id()::text AS xact");
             String nonce = newNonce();
             String proof = proofFor(ownerUserId, String.valueOf(ids.get("pid")), String.valueOf(ids.get("xact")), nonce);
-            jdbc.update("SELECT vc.set_owner_context(?, ?, ?)", ownerUserId, nonce, proof);
+            // set_owner_context RETURNS void: the SELECT form still produces
+            // one result row, which update() cannot absorb (pgjdbc: "a result
+            // was returned when none was expected" — found by the B0-05
+            // supplier-failure drill, 2026-08-19), so the row is drained.
+            jdbc.query("SELECT vc.set_owner_context(?, ?, ?)", rs -> {
+                rs.next();
+                return null;
+            }, ownerUserId, nonce, proof);
             work.run();
         });
     }

@@ -132,9 +132,7 @@ public class MemoryService {
         }
         Long id;
         try {
-            id = jdbc.queryForObject(
-                    CREATE_SQL,
-                    Long.class,
+            id = queryId(CREATE_SQL,
                     createSetter(ownerUserId, relationshipId, scope, summary, conversationId, evidence));
         } catch (BadSqlGrammarException e) {
             // Schema unavailable: keep the existing 503 SCHEMA_UNAVAILABLE
@@ -188,11 +186,8 @@ public class MemoryService {
         }
         Long id;
         try {
-            id = jdbc.queryForObject(
-                    CREATE_AUTO_SAVED_SQL,
-                    Long.class,
-                    createSetter(ownerUserId, relationshipId, scope, summary,
-                            conversationId, evidence));
+            id = queryId(CREATE_AUTO_SAVED_SQL,
+                    createSetter(ownerUserId, relationshipId, scope, summary, conversationId, evidence));
         } catch (BadSqlGrammarException e) {
             throw e;
         } catch (DataAccessException e) {
@@ -480,6 +475,17 @@ public class MemoryService {
             return Optional.empty();
         }
         return get(ownerUserId, memoryId);
+    }
+
+    /**
+     * Run one id-returning SD call through a {@link PreparedStatementSetter}
+     * (the varargs {@code queryForObject(sql, type, setter...)} overload would
+     * pass the setter itself as a bind argument — found by the B0-05
+     * supplier-failure drill, 2026-08-19).
+     */
+    private Long queryId(String sql, PreparedStatementSetter setter) {
+        List<Long> ids = jdbc.query(sql, setter, (rs, rowNum) -> rs.getLong(1));
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     private static PreparedStatementSetter createSetter(

@@ -236,6 +236,10 @@ BEGIN
            out_completed_not_settled, out_failed_without_release
       INTO v_settled, v_released, v_snc, v_cns, v_fwr
       FROM vc.admin_quota_reconciliation(v_admin_id, now() - interval '1 day');
+    -- V67 drill-fix guard: without a row the comparisons below are vacuous.
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'admin_quota_reconciliation returned no row (V67 regression)';
+    END IF;
     IF v_settled <> 2 OR v_released <> 0 THEN
         RAISE EXCEPTION 'volumes wrong: settled=% released=%', v_settled, v_released;
     END IF;

@@ -178,8 +178,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V63 = CONV-SUMMARY L2 conversation summaries;
         // V64 = ADMIN-BETA console queues;
         // V65 = EMERGENCY-CONTACT lifecycle;
-        // V66 = MEM-AUTO-SAVE deterministic low-sensitivity auto-save).
+        // V66 = MEM-AUTO-SAVE deterministic low-sensitivity auto-save;
+        // V67 = drill-fix explicit row emission for two set-returning SDs).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(66);
+                .isEqualTo(67);
     }
 }

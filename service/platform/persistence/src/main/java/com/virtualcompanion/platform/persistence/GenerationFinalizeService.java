@@ -202,7 +202,7 @@ public class GenerationFinalizeService {
         String detail = fault == null ? "" : fault;
         jdbc.queryForObject(
                 "SELECT vc.terminalize_generation(?, ?, 'FAILED_FINAL', ?, "
-                        + "'{\"fault\":\"' || ? || '\"}'::jsonb)",
+                        + "('{\"fault\":\"' || ? || '\"}')::jsonb)",
                 String.class,
                 ownerUserId,
                 generationId,
@@ -220,7 +220,7 @@ public class GenerationFinalizeService {
         validateIds(ownerUserId, generationId);
         jdbc.queryForObject(
                 "SELECT vc.terminalize_generation(?, ?, 'INPUT_BLOCKED', 'chat.blocked', "
-                        + "'{\"rule\":\"' || ? || '\"}'::jsonb)",
+                        + "('{\"rule\":\"' || ? || '\"}')::jsonb)",
                 String.class,
                 ownerUserId,
                 generationId,
@@ -237,7 +237,7 @@ public class GenerationFinalizeService {
         validateIds(ownerUserId, generationId);
         jdbc.queryForObject(
                 "SELECT vc.terminalize_generation(?, ?, 'OUTPUT_BLOCKED', 'chat.blocked', "
-                        + "'{\"rule\":\"' || ? || '\"}'::jsonb)",
+                        + "('{\"rule\":\"' || ? || '\"}')::jsonb)",
                 String.class,
                 ownerUserId,
                 generationId,

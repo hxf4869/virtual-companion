@@ -102,13 +102,27 @@ public class IdentityAccountRepository {
             throw new IllegalArgumentException("accountId must be positive");
         }
         validateUsername(username);
-        jdbc.update("SELECT vc.identity_login_success(?, ?)", accountId, username);
+        callVoidFunction("SELECT vc.identity_login_success(?, ?)", accountId, username);
     }
 
     /** Audit a failed login for a username (internal account, non-sensitive). */
     public void recordLoginFailure(String username) {
         validateUsername(username);
-        jdbc.update("SELECT vc.identity_login_failure(?)", username);
+        callVoidFunction("SELECT vc.identity_login_failure(?)", username);
+    }
+
+    /**
+     * Invoke a {@code RETURNS void} SD function. The SELECT form always
+     * produces one result row, which {@code update()} cannot absorb (pgjdbc:
+     * "a result was returned when none was expected" — found by the B0-05
+     * supplier-failure drill, 2026-08-19), so the single void row is drained
+     * through a query instead.
+     */
+    private void callVoidFunction(String sql, Object... args) {
+        jdbc.query(sql, rs -> {
+            rs.next();
+            return null;
+        }, args);
     }
 
     /**
