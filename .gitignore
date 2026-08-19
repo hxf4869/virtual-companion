@@ -47,3 +47,6 @@ docs/evidence/**/raw/
 
 # Local agent harness state (never published)
 .zcode/
+
+# B0-01 值班表含真实人员联系方式，按红线不入库（docs/beta-readiness/01 指向此文件）
+docs/beta-readiness/duty-roster.local.md
