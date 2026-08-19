@@ -9,7 +9,10 @@ import {
   listAuditEvents,
   createInvite,
   disableInvite,
+  grantTrial,
   inviteRegister,
+  providerRegistry,
+  quotaReconciliation,
   listInvites,
   listServiceClassAssignments,
   login,
@@ -454,5 +457,51 @@ describe("invite codes (INVITE V60)", () => {
         displayName: "d",
       }),
     ).rejects.toMatchObject({ name: "AuthHttpError", status: 403 });
+  });
+});
+
+describe("trial + quota reconciliation (R61)", () => {
+  it("grantTrial posts the body and returns the grant id", async () => {
+    const t = transportFor({ ok: true, status: 200, json: { grantId: "77", ok: true } });
+    await expect(grantTrial(t, "12", 20, 14)).resolves.toBe("77");
+  });
+
+  it("quotaReconciliation parses the result row and rejects malformed bodies", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: {
+        settledCount: 2,
+        settledAmount: 2,
+        releasedCount: 1,
+        releasedAmount: 1,
+        settledNotCompleted: 0,
+        completedNotSettled: 0,
+        failedWithoutRelease: 1,
+      },
+    });
+    const recon = await quotaReconciliation(t, 14);
+    expect(recon?.failedWithoutRelease).toBe(1);
+
+    const bad = transportFor({ ok: true, status: 200, json: {} });
+    await expect(quotaReconciliation(bad)).resolves.toBeNull();
+  });
+
+  it("providerRegistry parses persisted deployment rows", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: [
+        {
+          providerId: "alpha-loopback",
+          protocol: "OPENAI_CHAT_COMPLETIONS",
+          admissionState: "ADMITTED",
+          updatedAt: "2026-08-19T08:00:00Z",
+        },
+      ],
+    });
+    const rows = await providerRegistry(t);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].admissionState).toBe("ADMITTED");
   });
 });

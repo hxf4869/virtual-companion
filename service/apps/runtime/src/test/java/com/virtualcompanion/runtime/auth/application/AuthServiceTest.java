@@ -19,6 +19,8 @@ import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.InviteCodeService;
+import com.virtualcompanion.platform.persistence.QuotaReconciliationService;
+import com.virtualcompanion.platform.persistence.TrialService;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository.RotatedSession;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthErrorException;
@@ -45,6 +47,8 @@ class AuthServiceTest {
     private AdminConsoleService adminConsole;
     private EntitlementSnapshotService entitlementSnapshotService;
     private InviteCodeService inviteCodes;
+    private TrialService trials;
+    private QuotaReconciliationService quotaReconciliation;
     private AuthService service;
 
     @BeforeEach
@@ -56,12 +60,15 @@ class AuthServiceTest {
         adminConsole = mock(AdminConsoleService.class);
         entitlementSnapshotService = mock(EntitlementSnapshotService.class);
         inviteCodes = mock(InviteCodeService.class);
+        trials = mock(TrialService.class);
+        quotaReconciliation = mock(QuotaReconciliationService.class);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$dummyhashplaceholder");
         when(jwt.accessTtl()).thenReturn(Duration.ofHours(2));
         when(jwt.issueAccessToken(anyLong(), anyString(), anyString())).thenReturn("access-token");
         service = new AuthService(
                 accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7),
-                adminConsole, entitlementSnapshotService, inviteCodes);
+                adminConsole, entitlementSnapshotService, inviteCodes,
+                trials, quotaReconciliation);
     }
 
     @Test

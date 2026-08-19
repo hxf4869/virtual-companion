@@ -52,7 +52,11 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `POST /api/v1/auth/admin/invites`、`GET /api/v1/auth/admin/invites`、
   `POST /api/v1/auth/admin/invites/disable`（INVITE：ADMIN 生成/列表/停用一次性
   邀请码，§7.4）、`POST /api/v1/auth/invite-register`（匿名凭码开通测试账号，
-  `invite-registration-enabled` 默认 false 时 403 fail-closed）、
+  `invite-registration-enabled` 默认 false 时 403 fail-closed）、`POST /api/v1/auth/admin/trial-grants`
+  （ENT-TRIAL：ADMIN 授予模拟 PREMIUM 试用，FR-ENT-005）、
+  `GET /api/v1/auth/admin/quota-reconciliation`、`GET /api/v1/auth/admin/provider-registry`
+  （QUOTA-PERSIST：配额对账与持久化模型注册表，ADMIN-only）、
+  `GET /api/v1/trial-status`（ENT-TRIAL：本人试用剩余额度）
   `POST /api/v1/auth/admin/service-class`、
   `GET /api/v1/auth/admin/service-classes`（ENT-SNAP 模拟权益分配 ECONOMY/PREMIUM，
   ADMIN-only，仅测试账号，绝不接订单）
@@ -130,6 +134,21 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第三十六轮）：
+
+- 模拟试用权益（ENT-TRIAL / FR-ENT-005/006）：V61 `vc.trial_grant`（ADMIN 授予
+  PREMIUM 轮次预算 + 到期，替换旧 ACTIVE；RLS+SD-only）+ `trial_status`（owner 读
+  剩余/到期，惰性 EXPIRED）；`mint_entitlement_snapshot` 试用优先——每个新
+  generation 的首次 mint 消耗一轮（幂等重 mint 不双扣），耗尽 CONSUMED / 过期
+  回落 ADMIN 分配（缺省 ECONOMY）；试用不删除聊天/记忆/角色。快照增列
+  `entitled_service_class`（应得 vs 实际，当前恒等，降级轮填差异）。端点
+  `POST /auth/admin/trial-grants`、`GET /api/v1/trial-status`（使用时长页展示）。
+- 配额对账与注册表透出（QUOTA-PERSIST / §12.4、§12.26）：V61
+  `admin_quota_reconciliation`（窗口内结算/冲正量 + 三类异常：结算未完成、完成
+  未结算、失败未冲正）与 `admin_provider_registry`（V4 持久化部署注册表）；
+  `GET /auth/admin/quota-reconciliation`、`GET /auth/admin/provider-registry`，
+  admin 页对账与注册表区。
 
 后端在运方面上还提供（2026-08-19 第三十五轮）：
 

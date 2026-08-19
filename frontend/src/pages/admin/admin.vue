@@ -217,6 +217,70 @@
         </view>
       </view>
 
+      <!-- ENT-TRIAL (V61): simulated PREMIUM trial budgets. -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">试用授予（模拟 PREMIUM）</text>
+        </view>
+        <view class="sc-row">
+          <input
+            v-model="trialAccountId"
+            class="rename-input"
+            data-testid="trial-account-input"
+            placeholder="账号编号"
+            aria-label="目标账号编号"
+          />
+          <button
+            data-testid="trial-grant"
+            class="admin-nav-index"
+            :disabled="busy || !trialAccountId.trim()"
+            @click="onGrantTrial"
+          >
+            授予 20 轮 / 14 天
+          </button>
+        </view>
+        <view v-if="trialResult" class="admin-empty" data-testid="trial-result" role="status">
+          <text>{{ trialResult }}</text>
+        </view>
+        <view v-else-if="trialFailed" class="admin-error" data-testid="trial-failed" role="alert">
+          <text>试用授予失败，请重试。</text>
+        </view>
+      </view>
+
+      <!-- QUOTA-PERSIST (V61): ledger reconciliation + persisted registry. -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">配额对账与模型注册表</text>
+          <button
+            data-testid="recon-refresh"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshRecon"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="reconFailed" class="admin-error" data-testid="recon-failed" role="alert">
+          <text>对账数据加载失败，请重试。</text>
+        </view>
+        <view v-else-if="recon" class="audit-row" data-testid="recon-row">
+          <text class="audit-cell">结算 {{ recon.settledCount }} 笔 / {{ recon.settledAmount }}</text>
+          <text class="audit-cell">冲正 {{ recon.releasedCount }} 笔 / {{ recon.releasedAmount }}</text>
+          <text class="audit-cell">异常：结算未完成 {{ recon.settledNotCompleted }} · 完成未结算 {{ recon.completedNotSettled }} · 失败未冲正 {{ recon.failedWithoutRelease }}</text>
+        </view>
+        <view
+          v-for="dep in registry"
+          :key="dep.providerId"
+          class="audit-row"
+          data-testid="registry-row"
+        >
+          <text class="audit-cell">{{ dep.providerId }}</text>
+          <text class="audit-cell">{{ dep.protocol }}</text>
+          <text class="audit-cell">{{ dep.admissionState }}</text>
+          <text class="audit-cell">{{ dep.updatedAt }}</text>
+        </view>
+      </view>
+
       <!-- INVITE (V60): single-use invite codes; registration itself is
            config-gated on the server (default off). -->
       <view class="ops-section">
@@ -339,8 +403,11 @@ import {
   createInvite,
   disableAccount,
   disableInvite,
+  grantTrial,
   listAccounts,
   listInvites,
+  providerRegistry,
+  quotaReconciliation,
   listAuditEvents,
   listSafetyEvents,
   listServiceClassAssignments,
@@ -349,6 +416,8 @@ import {
   type AuditEventListItem,
   type InviteCreated,
   type InviteListItem,
+  type ProviderRegistryItem,
+  type QuotaReconciliation,
   type SafetyEventItem,
   type ServiceClassAssignmentItem,
   type UsageSummaryItem,
@@ -391,6 +460,13 @@ export default defineComponent({
     const invites = ref<InviteListItem[]>([]);
     const inviteCreated = ref<InviteCreated | null>(null);
     const inviteFailed = ref(false);
+    // ENT-TRIAL (V61) + QUOTA-PERSIST (V61).
+    const trialAccountId = ref("");
+    const trialResult = ref("");
+    const trialFailed = ref(false);
+    const recon = ref<QuotaReconciliation | null>(null);
+    const reconFailed = ref(false);
+    const registry = ref<ProviderRegistryItem[]>([]);
     // ENT-SNAP: simulated service-class assignments.
     const scAssignments = ref<ServiceClassAssignmentItem[]>([]);
     const scFailed = ref(false);
@@ -418,6 +494,7 @@ export default defineComponent({
         await refreshAudit();
         await refreshSafety();
         await refreshInvites();
+        await refreshRecon();
         await refreshServiceClasses();
       }
     });
@@ -493,6 +570,43 @@ export default defineComponent({
       busy.value = true;
       try {
         await refreshSafety();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** ENT-TRIAL (V61): grant a default 20-turn / 14-day trial. */
+    async function onGrantTrial(): Promise<void> {
+      const target = trialAccountId.value.trim();
+      if (!target) return;
+      busy.value = true;
+      trialFailed.value = false;
+      trialResult.value = "";
+      try {
+        const grantId = await grantTrial(transport, target);
+        trialResult.value = `已授予试用（编号 ${grantId}）。到期或用尽后自动回到原等级，不删除任何数据。`;
+      } catch {
+        trialFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** QUOTA-PERSIST (V61): reconciliation + persisted registry. */
+    async function refreshRecon(): Promise<void> {
+      reconFailed.value = false;
+      try {
+        recon.value = await quotaReconciliation(transport, 14);
+        registry.value = await providerRegistry(transport);
+      } catch {
+        reconFailed.value = true;
+      }
+    }
+
+    async function onRefreshRecon(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshRecon();
       } finally {
         busy.value = false;
       }
@@ -691,6 +805,14 @@ export default defineComponent({
       inviteFailed,
       onCreateInvite,
       onDisableInvite,
+      trialAccountId,
+      trialResult,
+      trialFailed,
+      onGrantTrial,
+      recon,
+      reconFailed,
+      registry,
+      onRefreshRecon,
       scAssignments,
       scFailed,
       scAccountId,

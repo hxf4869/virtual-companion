@@ -50,9 +50,9 @@
 
 ### R36 权益与配额深化
 
-- [ ] ENT-TRIAL 模拟 FREE/TRIAL 权益 + 试用开始/结束/剩余额度/防滥用 + 失败
+- [x] ENT-TRIAL 模拟 FREE/TRIAL 权益 + 试用开始/结束/剩余额度/防滥用 + 失败
       冲正统计与「应得 vs 实际」Service Class 记录（FR-ENT-005/006）。
-- [ ] QUOTA-PERSIST 持久化模型注册表与配额账本对账（§12.4、§12.26；补齐
+- [x] QUOTA-PERSIST 持久化模型注册表与配额账本对账（§12.4、§12.26；补齐
       真实 provider 外发门禁「持久化 quota/registry」未满足项）。
 
 ### R37 记忆深化

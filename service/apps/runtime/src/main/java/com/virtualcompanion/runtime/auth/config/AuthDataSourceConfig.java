@@ -18,7 +18,9 @@ import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.InviteCodeService;
+import com.virtualcompanion.platform.persistence.QuotaReconciliationService;
 import com.virtualcompanion.platform.persistence.ReportService;
+import com.virtualcompanion.platform.persistence.TrialService;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.platform.persistence.ExportService;
@@ -245,7 +247,9 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.auth.refresh-token-ttl:7d}") Duration refreshTtl,
             AdminConsoleService adminConsoleService,
             EntitlementSnapshotService entitlementSnapshotService,
-            InviteCodeService inviteCodeService) {
+            InviteCodeService inviteCodeService,
+            TrialService trialService,
+            QuotaReconciliationService quotaReconciliationService) {
         return new AuthService(
                 identityAccountRepository,
                 identityRefreshTokenRepository,
@@ -254,7 +258,9 @@ public class AuthDataSourceConfig {
                 refreshTtl,
                 adminConsoleService,
                 entitlementSnapshotService,
-                inviteCodeService);
+                inviteCodeService,
+                trialService,
+                quotaReconciliationService);
     }
 
     /** ADMIN-OPS (V36): minimal internal admin console reads. */
@@ -398,6 +404,18 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.beta.service-window.zone:Asia/Shanghai}") String zone) {
         return new com.virtualcompanion.runtime.servicemode.BetaServiceWindow(
                 enabled, paused, windowFrom, maxDailyActiveUsers, zone);
+    }
+
+    /** ENT-TRIAL (V61): simulated trial grants (FR-ENT-005). */
+    @Bean
+    public TrialService trialService(JdbcTemplate authJdbcTemplate) {
+        return new TrialService(authJdbcTemplate);
+    }
+
+    /** QUOTA-PERSIST (V61): ledger reconciliation + persisted registry reads. */
+    @Bean
+    public QuotaReconciliationService quotaReconciliationService(JdbcTemplate authJdbcTemplate) {
+        return new QuotaReconciliationService(authJdbcTemplate);
     }
 
     /** SAFETY-WIRE (V58): deterministic classifier — the local safety floor. */

@@ -172,8 +172,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V57 = CHAT-WIPE account-wide chat wipe + MEM-SUPPRESS;
         // V58 = SAFETY-WIRE safety events + input-block catalog edges;
         // V59 = SAFETY-QUEUE admin safety queue read;
-        // V60 = INVITE invite codes + SVC-WINDOW beta window state).
+        // V60 = INVITE invite codes + SVC-WINDOW beta window state;
+        // V61 = ENT-TRIAL trial grants + QUOTA-PERSIST reconciliation).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(60);
+                .isEqualTo(61);
     }
 }

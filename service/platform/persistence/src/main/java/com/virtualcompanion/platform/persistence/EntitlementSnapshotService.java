@@ -53,10 +53,12 @@ public class EntitlementSnapshotService {
             throw new IllegalArgumentException("generationId must be positive");
         }
         List<MintedEntitlementSnapshot> rows = jdbc.query(
-                "SELECT out_id, out_service_class FROM vc.mint_entitlement_snapshot(?, ?)",
+                "SELECT out_id, out_service_class, out_entitled_service_class "
+                        + "FROM vc.mint_entitlement_snapshot(?, ?)",
                 (rs, rowNum) -> new MintedEntitlementSnapshot(
                         rs.getLong("out_id"),
-                        rs.getString("out_service_class")),
+                        rs.getString("out_service_class"),
+                        rs.getString("out_entitled_service_class")),
                 ownerUserId,
                 generationId);
         return rows.stream().findFirst().orElseThrow(
@@ -98,13 +100,20 @@ public class EntitlementSnapshotService {
                 actingAccountId);
     }
 
-    /** One minted (or resolved) immutable snapshot. */
-    public record MintedEntitlementSnapshot(long id, String serviceClass) {
+    /**
+     * One minted (or resolved) immutable snapshot. {@code entitledServiceClass}
+     * is the class the owner was entitled to (FR-ENT-006 应得); {@code serviceClass}
+     * is what was actually minted — identical until a degradation diverges them.
+     */
+    public record MintedEntitlementSnapshot(
+            long id, String serviceClass, String entitledServiceClass) {
         public MintedEntitlementSnapshot {
             if (id <= 0) {
                 throw new IllegalArgumentException("id must be positive");
             }
             Objects.requireNonNull(serviceClass, "serviceClass must not be null");
+            Objects.requireNonNull(entitledServiceClass,
+                    "entitledServiceClass must not be null");
         }
     }
 

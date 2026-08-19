@@ -51,6 +51,13 @@ intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. --
         </text>
       </view>
 
+      <!-- ENT-TRIAL (V61): the live simulated trial budget, if any. -->
+      <view v-if="trial && trial.active" class="state-card" data-testid="trial-status" role="status">
+        <text class="label">试用中（模拟 PREMIUM）</text>
+        <text class="state">剩余 {{ trial.remainingTurns }} 轮</text>
+        <text class="meta">到期时间 {{ trial.expiresAt }}。到期或用尽后自动回到原等级，不删除任何数据。</text>
+      </view>
+
       <view class="section" data-testid="health-reminder-section">
         <text class="label">连续使用多久后提醒</text>
         <view class="chip-row">
@@ -93,6 +100,8 @@ intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. --
 <script lang="ts">
 import { onMounted, ref } from "vue";
 
+import { getTrialStatus, type TrialStatus } from "@/api/entitlement";
+
 import {
   APPROVED_GAP_MINUTES,
   APPROVED_REMINDER_MINUTES,
@@ -112,6 +121,8 @@ export default {
     const actionError = ref("");
     const reminderOptions = APPROVED_REMINDER_MINUTES;
     const gapOptions = APPROVED_GAP_MINUTES;
+    // ENT-TRIAL (V61): supplementary read; a failure keeps it hidden.
+    const trial = ref<TrialStatus | null>(null);
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -124,6 +135,11 @@ export default {
         await auth.tryRefresh(transport);
       }
       await store.load(transport);
+      try {
+        trial.value = await getTrialStatus(transport);
+      } catch {
+        trial.value = null;
+      }
     });
 
     async function onRetry(): Promise<void> {
@@ -180,6 +196,7 @@ export default {
 
     return {
       store,
+      trial,
       actionError,
       reminderOptions,
       gapOptions,

@@ -347,6 +347,102 @@ export async function inviteRegister(
   return { accountId, username };
 }
 
+/** QUOTA-PERSIST (V61): one reconciliation result row. */
+export interface QuotaReconciliation {
+  settledCount: number;
+  settledAmount: number;
+  releasedCount: number;
+  releasedAmount: number;
+  settledNotCompleted: number;
+  completedNotSettled: number;
+  failedWithoutRelease: number;
+}
+
+/** QUOTA-PERSIST (V61): one persisted deployment registry row. */
+export interface ProviderRegistryItem {
+  providerId: string;
+  protocol: string;
+  admissionState: "ADMITTED" | "DISABLED" | "REJECTED";
+  updatedAt: string;
+}
+
+/** ENT-TRIAL (V61): ADMIN grants a trial (defaults 20 turns / 14 days). */
+export async function grantTrial(
+  t: AuthTransport,
+  accountId: string,
+  turns?: number,
+  days?: number,
+): Promise<string> {
+  const body: Record<string, unknown> = { accountId };
+  if (turns !== undefined) body.turns = turns;
+  if (days !== undefined) body.days = days;
+  const r = await t.request("POST", `${AUTH_BASE}/admin/trial-grants`, body);
+  if (!r.ok) {
+    throw new AuthHttpError(r.status);
+  }
+  const grantId = asString(r.json as Record<string, unknown>, "grantId");
+  if (!grantId) {
+    throw new AuthHttpError(r.status);
+  }
+  return grantId;
+}
+
+/** QUOTA-PERSIST (V61): ledger reconciliation over the window. */
+export async function quotaReconciliation(
+  t: AuthTransport,
+  days?: number,
+): Promise<QuotaReconciliation | null> {
+  const query = days !== undefined ? `?days=${days}` : "";
+  const r = await t.request("GET", `${AUTH_BASE}/admin/quota-reconciliation${query}`);
+  if (!r.ok || !r.json || typeof r.json !== "object") {
+    throw new AuthHttpError(r.status);
+  }
+  const o = r.json as Record<string, unknown>;
+  const num = (key: string): number | undefined => {
+    const v = o[key];
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  };
+  const fields = ["settledCount", "settledAmount", "releasedCount", "releasedAmount",
+    "settledNotCompleted", "completedNotSettled", "failedWithoutRelease"];
+  const values = fields.map(num);
+  if (values.some((v) => v === undefined)) {
+    return null;
+  }
+  return {
+    settledCount: values[0]!,
+    settledAmount: values[1]!,
+    releasedCount: values[2]!,
+    releasedAmount: values[3]!,
+    settledNotCompleted: values[4]!,
+    completedNotSettled: values[5]!,
+    failedWithoutRelease: values[6]!,
+  };
+}
+
+/** QUOTA-PERSIST (V61): the persisted deployment registry. */
+export async function providerRegistry(t: AuthTransport): Promise<ProviderRegistryItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/provider-registry`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: ProviderRegistryItem[] = [];
+  for (const item of r.json) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const providerId = asString(o, "providerId");
+    const protocol = asString(o, "protocol");
+    const admissionState = asString(o, "admissionState");
+    const updatedAt = asString(o, "updatedAt");
+    if (!providerId || !protocol || !admissionState || !updatedAt) continue;
+    if (admissionState !== "ADMITTED" && admissionState !== "DISABLED"
+        && admissionState !== "REJECTED") {
+      continue;
+    }
+    out.push({ providerId, protocol, admissionState, updatedAt });
+  }
+  return out;
+}
+
 /** SAFETY-QUEUE (V59): one admin safety-queue row. */
 export interface SafetyEventItem {
   id: string;

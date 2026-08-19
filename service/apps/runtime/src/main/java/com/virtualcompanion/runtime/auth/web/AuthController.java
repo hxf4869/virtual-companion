@@ -245,6 +245,71 @@ public class AuthController {
                 request.code(), request.username(), request.password(), request.displayName());
     }
 
+    /** ENT-TRIAL (V61): ADMIN grants a simulated PREMIUM trial budget. */
+    @PostMapping("/admin/trial-grants")
+    public TrialGrantResponse grantTrial(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @RequestBody TrialGrantRequest request) {
+        if (request == null) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "A request body is required");
+        }
+        long target = parseAccountId(request.accountId());
+        long grantId = authService.grantTrial(principal, target,
+                request.turns() == null ? 20 : request.turns(),
+                request.days() == null ? 14 : request.days());
+        return new TrialGrantResponse(Long.toString(grantId), true);
+    }
+
+    /** QUOTA-PERSIST (V61): ledger reconciliation over the window. */
+    @GetMapping("/admin/quota-reconciliation")
+    public QuotaReconciliationResponse quotaReconciliation(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "days", defaultValue = "14")
+                    int days) {
+        com.virtualcompanion.platform.persistence.QuotaReconciliationService.Reconciliation r =
+                authService.quotaReconciliation(principal, days);
+        return new QuotaReconciliationResponse(
+                r.settledCount(), r.settledAmount(),
+                r.releasedCount(), r.releasedAmount(),
+                r.settledNotCompleted(), r.completedNotSettled(),
+                r.failedWithoutRelease());
+    }
+
+    /** QUOTA-PERSIST (V61): the persisted deployment registry. */
+    @GetMapping("/admin/provider-registry")
+    public List<ProviderRegistryItem> providerRegistry(
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        return authService.providerRegistry(principal).stream()
+                .map(record -> new ProviderRegistryItem(
+                        record.providerId(),
+                        record.protocol(),
+                        record.admissionState(),
+                        record.updatedAt().toString()))
+                .toList();
+    }
+
+    /** ENT-TRIAL: grant request body (defaults: 20 turns / 14 days). */
+    public record TrialGrantRequest(String accountId, Integer turns, Integer days) {
+    }
+
+    /** ENT-TRIAL: grant result. */
+    public record TrialGrantResponse(String grantId, boolean ok) {
+    }
+
+    /** QUOTA-PERSIST: one reconciliation result. */
+    public record QuotaReconciliationResponse(
+            long settledCount, long settledAmount,
+            long releasedCount, long releasedAmount,
+            long settledNotCompleted, long completedNotSettled,
+            long failedWithoutRelease) {
+    }
+
+    /** QUOTA-PERSIST: one persisted deployment row. */
+    public record ProviderRegistryItem(
+            String providerId, String protocol, String admissionState, String updatedAt) {
+    }
+
     /** INVITE: a freshly minted code. */
     public record InviteResponse(String id, String code, String expiresAt) {
     }

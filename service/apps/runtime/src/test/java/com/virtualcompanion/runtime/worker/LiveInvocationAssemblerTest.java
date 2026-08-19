@@ -143,7 +143,7 @@ class LiveInvocationAssemblerTest {
                 .thenReturn(null);
         when(entitlementSnapshotService.mint(1L, 10L)).thenReturn(
                 new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
-                        .MintedEntitlementSnapshot(9001L, "PREMIUM"));
+                        .MintedEntitlementSnapshot(9001L, "PREMIUM", "PREMIUM"));
 
         LiveInvocationRequest request = assembler("ZERO_LLM_FALLBACK")
                 .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
@@ -181,7 +181,7 @@ class LiveInvocationAssemblerTest {
         // ENT-SNAP: default mint for every external assembly (ECONOMY).
         when(entitlementSnapshotService.mint(owner, generationId)).thenReturn(
                 new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
-                        .MintedEntitlementSnapshot(9001L, "ECONOMY"));
+                        .MintedEntitlementSnapshot(9001L, "ECONOMY", "ECONOMY"));
     }
 
     @Test

@@ -2551,6 +2551,143 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/trial-grants:
+    post:
+      operationId: grantTrial
+      summary: Grant a simulated PREMIUM trial budget (ENT-TRIAL, ADMIN only)
+      description: >-
+        ADMIN grants one live per-owner simulated trial (vc.grant_trial): a
+        PREMIUM turn budget (default 20 turns) with an expiry (default 14
+        days). A previous ACTIVE grant is replaced. The mint consumes one
+        turn per NEW generation; a spent or expired trial falls back to the
+        ADMIN assignment (or ECONOMY) and never removes chats, memories or
+        relationships (FR-ENT-005). Requires a server-verified ADMIN context.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrialGrantRequest'
+      responses:
+        '200':
+          description: The granted trial id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrialGrantResponse'
+        '400':
+          description: Invalid body or out-of-band turns/days
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/quota-reconciliation:
+    get:
+      operationId: quotaReconciliation
+      summary: Reconcile the quota ledger against terminal states (QUOTA-PERSIST, ADMIN only)
+      description: >-
+        Settled/released volumes plus three anomaly classes over a window
+        (vc.admin_quota_reconciliation): settled-but-not-completed,
+        completed-but-unsettled and failed-without-release. ADMIN-only,
+        re-verified in SQL (§12.26 对账).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Window length in days, clamped to 1..90 by the server (default 14).
+      responses:
+        '200':
+          description: One reconciliation result row
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaReconciliation'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/provider-registry:
+    get:
+      operationId: providerRegistry
+      summary: The persisted deployment registry (QUOTA-PERSIST, ADMIN only)
+      description: >-
+        The vc.provider_deployment rows (V4) — provider id, protocol,
+        admission state and last update (vc.admin_provider_registry). The
+        persisted table is the durable source of truth for routing
+        eligibility (§12.4 模型注册表).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The persisted deployments, ordered by provider id
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderRegistryItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/trial-status:
+    get:
+      operationId: getTrialStatus
+      summary: The caller's live simulated trial (ENT-TRIAL, FR-ENT-005)
+      description: >-
+        The caller's live trial state (vc.trial_status): the remaining PREMIUM
+        turn budget and the expiry, or active=false when no trial is running.
+        A spent or expired trial never removes chats, memories or
+        relationships. Requires a server-verified authentication context.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The live trial state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrialStatus'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/admin/safety-events:
     get:
       operationId: listSafetyEvents
@@ -4219,6 +4356,113 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed deletion
+    TrialGrantRequest:
+      type: object
+      description: ENT-TRIAL grant body; turns/days fall back to 20/14 when omitted.
+      required:
+        - accountId
+      properties:
+        accountId:
+          type: string
+          description: The target account id.
+        turns:
+          type: integer
+          description: Turn budget (1..1000, default 20).
+        days:
+          type: integer
+          description: Expiry in days (1..90, default 14).
+    TrialGrantResponse:
+      type: object
+      description: The granted trial id.
+      required:
+        - grantId
+        - ok
+      properties:
+        grantId:
+          type: string
+          description: The new trial grant id.
+        ok:
+          type: boolean
+          description: Always true on success.
+    QuotaReconciliation:
+      type: object
+      description: >-
+        Quota-ledger reconciliation over the window (§12.26): volumes plus the
+        three anomaly classes.
+      required:
+        - settledCount
+        - settledAmount
+        - releasedCount
+        - releasedAmount
+        - settledNotCompleted
+        - completedNotSettled
+        - failedWithoutRelease
+      properties:
+        settledCount:
+          type: integer
+          description: SETTLE ledger rows in the window.
+        settledAmount:
+          type: integer
+          description: Sum of settled quota amounts in the window.
+        releasedCount:
+          type: integer
+          description: RELEASE ledger rows in the window (failure reversals).
+        releasedAmount:
+          type: integer
+          description: Sum of released quota amounts in the window.
+        settledNotCompleted:
+          type: integer
+          description: Anomaly — settles whose generation is not a success terminal.
+        completedNotSettled:
+          type: integer
+          description: Anomaly — completed generations with attempts but no settle.
+        failedWithoutRelease:
+          type: integer
+          description: Anomaly — failed terminals with attempts but no release.
+    ProviderRegistryItem:
+      type: object
+      description: One persisted deployment registry row (V4, §12.4).
+      required:
+        - providerId
+        - protocol
+        - admissionState
+        - updatedAt
+      properties:
+        providerId:
+          type: string
+          description: The deployment's stable provider id.
+        protocol:
+          type: string
+          description: The model protocol code (model-protocols catalog).
+        admissionState:
+          type: string
+          enum:
+            - ADMITTED
+            - DISABLED
+            - REJECTED
+          description: The durable admission state used by routing eligibility.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last registry update (RFC 3339).
+    TrialStatus:
+      type: object
+      description: >-
+        The caller's live simulated trial (FR-ENT-005 剩余额度). active=false
+        when no trial is running.
+      required:
+        - active
+      properties:
+        active:
+          type: boolean
+          description: Whether a trial budget is live right now.
+        remainingTurns:
+          type: integer
+          description: Remaining PREMIUM turns in the live trial.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Trial expiry (RFC 3339).
     SafetyEventItem:
       type: object
       description: >-

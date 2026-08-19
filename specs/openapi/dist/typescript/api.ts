@@ -468,6 +468,40 @@ export interface AccountDeletedResponse {
   ok: string
 }
 
+export interface TrialGrantRequest {
+  accountId: string
+  turns?: string
+  days?: string
+}
+
+export interface TrialGrantResponse {
+  grantId: string
+  ok: string
+}
+
+export interface QuotaReconciliation {
+  settledCount: string
+  settledAmount: string
+  releasedCount: string
+  releasedAmount: string
+  settledNotCompleted: string
+  completedNotSettled: string
+  failedWithoutRelease: string
+}
+
+export interface ProviderRegistryItem {
+  providerId: string
+  protocol: string
+  admissionState: string
+  updatedAt: string
+}
+
+export interface TrialStatus {
+  active: string
+  remainingTurns?: string
+  expiresAt?: string
+}
+
 export interface SafetyEventItem {
   id: string
   ownerId: string
@@ -575,5 +609,9 @@ export interface VirtualCompanionApiClient {
   disableInternalAccount(): Promise<VersionResponse>
   listAdminAuditEvents(): Promise<VersionResponse>
   getAdminUsageSummary(): Promise<VersionResponse>
+  grantTrial(): Promise<VersionResponse>
+  quotaReconciliation(): Promise<VersionResponse>
+  providerRegistry(): Promise<VersionResponse>
+  getTrialStatus(): Promise<VersionResponse>
   listSafetyEvents(): Promise<VersionResponse>
 }

@@ -4,6 +4,8 @@ import com.virtualcompanion.platform.persistence.AdminConsoleService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.InviteCodeService;
+import com.virtualcompanion.platform.persistence.QuotaReconciliationService;
+import com.virtualcompanion.platform.persistence.TrialService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository.RotatedSession;
@@ -69,6 +71,8 @@ public class AuthService {
     private final AdminConsoleService adminConsole;
     private final EntitlementSnapshotService entitlementSnapshotService;
     private final InviteCodeService inviteCodes;
+    private final TrialService trials;
+    private final QuotaReconciliationService quotaReconciliation;
 
     public AuthService(
             IdentityAccountRepository accounts,
@@ -78,7 +82,9 @@ public class AuthService {
             Duration refreshTtl,
             AdminConsoleService adminConsole,
             EntitlementSnapshotService entitlementSnapshotService,
-            InviteCodeService inviteCodes) {
+            InviteCodeService inviteCodes,
+            TrialService trials,
+            QuotaReconciliationService quotaReconciliation) {
         this.accounts = accounts;
         this.sessions = sessions;
         this.passwordEncoder = passwordEncoder;
@@ -91,6 +97,9 @@ public class AuthService {
         this.entitlementSnapshotService = Objects.requireNonNull(
                 entitlementSnapshotService, "entitlementSnapshotService must not be null");
         this.inviteCodes = Objects.requireNonNull(inviteCodes, "inviteCodes must not be null");
+        this.trials = Objects.requireNonNull(trials, "trials must not be null");
+        this.quotaReconciliation = Objects.requireNonNull(
+                quotaReconciliation, "quotaReconciliation must not be null");
         // A valid BCrypt hash so the unknown-account login path runs a real
         // (equally expensive) compare instead of short-circuiting.
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
@@ -398,6 +407,42 @@ public class AuthService {
         }
         return new AccountResponse(Long.toString(accountId), normalizedUsername, "USER",
                 STATUS_ACTIVE);
+    }
+
+    /** ENT-TRIAL (V61): ADMIN grants a simulated trial (PREMIUM budget). */
+    public long grantTrial(JwtTokenService.Principal principal, long targetAccountId,
+            int turns, int days) {
+        requireAdmin(principal);
+        if (targetAccountId <= 0) {
+            throw invalidRequestError();
+        }
+        try {
+            return trials.grant(principal.accountId(), targetAccountId, turns, days);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** QUOTA-PERSIST (V61): ledger reconciliation over the window. */
+    public QuotaReconciliationService.Reconciliation quotaReconciliation(
+            JwtTokenService.Principal principal, int windowDays) {
+        requireAdmin(principal);
+        try {
+            return quotaReconciliation.reconcile(principal.accountId(), windowDays);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** QUOTA-PERSIST (V61): the persisted deployment registry. */
+    public java.util.List<QuotaReconciliationService.DeploymentRecord> providerRegistry(
+            JwtTokenService.Principal principal) {
+        requireAdmin(principal);
+        try {
+            return quotaReconciliation.registry(principal.accountId());
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
     }
 
     /** INVITE (V60): a freshly minted invite code. */

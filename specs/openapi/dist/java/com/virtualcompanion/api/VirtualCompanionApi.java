@@ -221,6 +221,18 @@ public interface VirtualCompanionApi {
     /** Per-day usage and cost summary (ADMIN only, ADMIN-OPS). */
     Void getAdminUsageSummary();
 
+    /** Grant a simulated PREMIUM trial budget (ENT-TRIAL, ADMIN only). */
+    TrialGrantResponse grantTrial();
+
+    /** Reconcile the quota ledger against terminal states (QUOTA-PERSIST, ADMIN only). */
+    QuotaReconciliation quotaReconciliation();
+
+    /** The persisted deployment registry (QUOTA-PERSIST, ADMIN only). */
+    Void providerRegistry();
+
+    /** The caller's live simulated trial (ENT-TRIAL, FR-ENT-005). */
+    TrialStatus getTrialStatus();
+
     /** ADMIN-only keyset page of the safety queue (SAFETY-QUEUE, §20.5). */
     Void listSafetyEvents();
 }
