@@ -18,7 +18,9 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.GenerationStateService.GenerationSnapshot;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
+import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
 import com.virtualcompanion.safety.DeterministicSafetyClassifier;
@@ -54,6 +56,7 @@ class GenerationControllerTest {
     private GenerationFinalizeService finalizeService;
     private SafetyEventService safetyEventService;
     private GenerationCancelService cancelService;
+    private ServiceWindowService serviceWindowService;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -65,10 +68,16 @@ class GenerationControllerTest {
         finalizeService = mock(GenerationFinalizeService.class);
         safetyEventService = mock(SafetyEventService.class);
         cancelService = mock(GenerationCancelService.class);
+        serviceWindowService = mock(ServiceWindowService.class);
+        // SVC-WINDOW: disabled by default, mirroring production default.
+        setUpWithWindow(new BetaServiceWindow(false, false, "20:30", 10, "Asia/Shanghai"));
+    }
+
+    private void setUpWithWindow(BetaServiceWindow window) {
         GenerationController controller = new GenerationController(
                 receiveService, enqueueService, generationRepository, generationStateService,
                 finalizeService, new DeterministicSafetyClassifier(), safetyEventService,
-                cancelService);
+                cancelService, window, serviceWindowService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(principalResolver())
@@ -99,6 +108,31 @@ class GenerationControllerTest {
     // ------------------------------------------------------------------
     // POST /api/v1/conversations/{conversationId}/generations
     // ------------------------------------------------------------------
+
+    @Test
+    void sendGenerationRefusedOutsideTheServiceWindowBeforeAnythingPersists() throws Exception {
+        // SVC-WINDOW: with the gate on and the window closed, the turn is
+        // refused up front — no receive, no enqueue, 403 BETA_OPERATIONS_NOT_READY.
+        setUpWithWindow(new BetaServiceWindow(true, false, "20:30", 10, "Asia/Shanghai"));
+        org.mockito.Mockito.when(serviceWindowService.state(
+                        org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new ServiceWindowService.WindowState(0, false));
+
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-w\",\"userContent\":\"hello\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BETA_OPERATIONS_NOT_READY"));
+
+        verify(receiveService, never()).receive(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString());
+    }
 
     @Test
     void sendGenerationFirstCreationEnqueuesAndReturnsTheGeneration() throws Exception {

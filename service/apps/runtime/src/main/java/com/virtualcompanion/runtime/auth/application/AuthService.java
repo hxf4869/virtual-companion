@@ -3,6 +3,7 @@ package com.virtualcompanion.runtime.auth.application;
 import com.virtualcompanion.platform.persistence.AdminConsoleService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
+import com.virtualcompanion.platform.persistence.InviteCodeService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository.RotatedSession;
@@ -67,6 +68,7 @@ public class AuthService {
     private final String dummyHash;
     private final AdminConsoleService adminConsole;
     private final EntitlementSnapshotService entitlementSnapshotService;
+    private final InviteCodeService inviteCodes;
 
     public AuthService(
             IdentityAccountRepository accounts,
@@ -75,7 +77,8 @@ public class AuthService {
             JwtTokenService jwt,
             Duration refreshTtl,
             AdminConsoleService adminConsole,
-            EntitlementSnapshotService entitlementSnapshotService) {
+            EntitlementSnapshotService entitlementSnapshotService,
+            InviteCodeService inviteCodes) {
         this.accounts = accounts;
         this.sessions = sessions;
         this.passwordEncoder = passwordEncoder;
@@ -87,6 +90,7 @@ public class AuthService {
         this.adminConsole = Objects.requireNonNull(adminConsole, "adminConsole must not be null");
         this.entitlementSnapshotService = Objects.requireNonNull(
                 entitlementSnapshotService, "entitlementSnapshotService must not be null");
+        this.inviteCodes = Objects.requireNonNull(inviteCodes, "inviteCodes must not be null");
         // A valid BCrypt hash so the unknown-account login path runs a real
         // (equally expensive) compare instead of short-circuiting.
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
@@ -318,6 +322,86 @@ public class AuthService {
         } catch (DataAccessException e) {
             throw genericError();
         }
+    }
+
+    /**
+     * INVITE (V60): ADMIN mints a single-use invite code (14-day default
+     * expiry). The code is generated here with a CSPRNG; the SD validates
+     * shape and expiry and re-verifies the ACTIVE ADMIN.
+     */
+    public InviteCreated createInviteCode(JwtTokenService.Principal principal) {
+        requireAdmin(principal);
+        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        StringBuilder code = new StringBuilder(20);
+        for (int i = 0; i < 20; i++) {
+            code.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        }
+        java.time.Instant expiresAt = java.time.Instant.now().plus(java.time.Duration.ofDays(14));
+        long id;
+        try {
+            id = inviteCodes.create(principal.accountId(), code.toString(), expiresAt);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+        return new InviteCreated(Long.toString(id), code.toString(), expiresAt);
+    }
+
+    /** INVITE (V60): ADMIN registry read, newest first. */
+    public java.util.List<InviteCodeService.InviteCodeRecord> listInviteCodes(
+            JwtTokenService.Principal principal) {
+        requireAdmin(principal);
+        try {
+            return inviteCodes.list(principal.accountId());
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** INVITE (V60): ADMIN retires an ACTIVE code (idempotent). */
+    public boolean disableInviteCode(JwtTokenService.Principal principal, String code) {
+        requireAdmin(principal);
+        if (code == null || code.isBlank()) {
+            throw invalidRequestError();
+        }
+        try {
+            return inviteCodes.disable(principal.accountId(), code.trim());
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /**
+     * INVITE (V60): anonymous provisioning through a valid code. Same input
+     * policy as admin provisioning (the role is always USER) and the same
+     * non-disclosing persistence surface; the code, not an admin, vouches
+     * for the caller.
+     */
+    public AccountResponse inviteRegister(String code, String username, String password,
+            String displayName) {
+        if (code == null || code.isBlank()) {
+            throw invalidRequestError();
+        }
+        validateAccountInput(username, password, "USER", displayName);
+        String normalizedUsername = normalizeUsername(username);
+        String normalizedDisplayName = normalizeDisplayName(displayName);
+        validateNormalizedInput(normalizedUsername, normalizedDisplayName, "USER");
+        long accountId;
+        try {
+            accountId = inviteCodes.redeem(
+                    code.trim(), normalizedUsername, passwordEncoder.encode(password),
+                    normalizedDisplayName);
+        } catch (DataAccessException e) {
+            // Invalid/expired/used code, duplicate username, capacity or any
+            // other persistence failure: one generic, non-disclosing surface.
+            throw genericError();
+        }
+        return new AccountResponse(Long.toString(accountId), normalizedUsername, "USER",
+                STATUS_ACTIVE);
+    }
+
+    /** INVITE (V60): a freshly minted invite code. */
+    public record InviteCreated(String id, String code, java.time.Instant expiresAt) {
     }
 
     /**

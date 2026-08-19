@@ -284,4 +284,56 @@ describe("admin account page (ADMIN-UI)", () => {
     expect(wrapper.text()).not.toMatch(/处置|标记已处理|关闭工单/);
     wrapper.unmount();
   });
+  it("INVITE: mints a code and renders the registry with a disable action", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url === "/api/v1/auth/admin/accounts" && method === "GET") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url === "/api/v1/auth/admin/invites" && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "9",
+                code: "INVITE-ABC123XYZ",
+                status: "ACTIVE",
+                createdAt: "2026-08-19T08:00:00Z",
+                usedAt: null,
+                expiresAt: "2026-09-02T00:00:00Z",
+                usedByAccount: null,
+              },
+            ],
+          };
+        }
+        if (url === "/api/v1/auth/admin/invites" && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: "10",
+              code: "INVITE-NEWCODE99",
+              expiresAt: "2026-09-02T00:00:00Z",
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => [] };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="invite-row"]')).toHaveLength(1);
+
+    await wrapper.find('[data-testid="invite-create"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="invite-created"]').text()).toContain("INVITE-NEWCODE99");
+    expect(wrapper.find('[data-testid="invite-disable-INVITE-ABC123XYZ"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
 });

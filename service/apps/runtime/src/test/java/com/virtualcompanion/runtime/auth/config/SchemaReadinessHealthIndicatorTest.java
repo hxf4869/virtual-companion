@@ -171,8 +171,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V56 = REPORT-BE/AGE-APPEAL report intake + age-appeal tables;
         // V57 = CHAT-WIPE account-wide chat wipe + MEM-SUPPRESS;
         // V58 = SAFETY-WIRE safety events + input-block catalog edges;
-        // V59 = SAFETY-QUEUE admin safety queue read).
+        // V59 = SAFETY-QUEUE admin safety queue read;
+        // V60 = INVITE invite codes + SVC-WINDOW beta window state).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(59);
+                .isEqualTo(60);
     }
 }

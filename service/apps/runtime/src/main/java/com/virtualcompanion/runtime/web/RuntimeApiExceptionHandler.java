@@ -50,6 +50,17 @@ public class RuntimeApiExceptionHandler {
                         "The requested resource does not exist"));
     }
 
+    /**
+     * SVC-WINDOW (§24.7 / FR-RES-002): a new generative turn is refused by
+     * the Beta service window. 403 BETA_OPERATIONS_NOT_READY — the plain
+     * message states the window; history/memory/data rights stay available.
+     */
+    @ExceptionHandler(ServiceWindowClosedException.class)
+    public ResponseEntity<ErrorEnvelope> handleServiceWindowClosed(ServiceWindowClosedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorEnvelope("BETA_OPERATIONS_NOT_READY", e.getMessage()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorEnvelope> handleInvalidRequest(IllegalArgumentException e) {
         return invalidRequest();

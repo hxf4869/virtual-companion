@@ -212,4 +212,29 @@ describe("login page glue (P2-19 component test)", () => {
     expect(loginSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+  it("INVITE: the code panel stays closed until toggled, then shows the gated wording on 403", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      json: async () => ({ code: "BETA_OPERATIONS_NOT_READY" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mountPage();
+
+    expect(wrapper.find('[data-testid="invite-panel"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="invite-toggle"]').trigger("click");
+    expect(wrapper.find('[data-testid="invite-panel"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="invite-code"]').setValue("INVITE-ABC123XYZ");
+    await wrapper.find('[data-testid="invite-username"]').setValue("bob");
+    await wrapper.find('[data-testid="invite-password"]').setValue("passw0rd!");
+    await wrapper.find('[data-testid="invite-display-name"]').setValue("Bob");
+    await wrapper.find('[data-testid="invite-submit"]').trigger("click");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="invite-result"]').text()).toContain("凭码开通未开放");
+    wrapper.unmount();
+  });
 });

@@ -68,6 +68,66 @@
       <view class="login-hint">
         <text>内部账号登录 · 凭据经批准渠道注入，不落仓库</text>
       </view>
+
+      <!-- INVITE (V60): provisioning through a single-use invite code. The
+           server fail-closes to 403 while invite-registration-enabled=false;
+           the page shows that plain wording instead of guessing. -->
+      <button
+        class="login-invite-toggle"
+        data-testid="invite-toggle"
+        :aria-expanded="inviteOpen"
+        @click="inviteOpen = !inviteOpen"
+      >
+        {{ inviteOpen ? "收起凭邀请码开通" : "凭邀请码开通测试账号" }}
+      </button>
+      <view v-if="inviteOpen" class="login-invite" data-testid="invite-panel">
+        <input
+          v-model="inviteCode"
+          class="login-input"
+          data-testid="invite-code"
+          placeholder="邀请码"
+          aria-label="邀请码"
+        />
+        <input
+          v-model="inviteUsername"
+          class="login-input"
+          data-testid="invite-username"
+          placeholder="用户名"
+          aria-label="用户名"
+        />
+        <input
+          v-model="invitePassword"
+          class="login-input"
+          data-testid="invite-password"
+          type="password"
+          placeholder="密码"
+          aria-label="密码"
+          autocomplete="new-password"
+        />
+        <input
+          v-model="inviteDisplayName"
+          class="login-input"
+          data-testid="invite-display-name"
+          placeholder="昵称"
+          aria-label="昵称"
+        />
+        <button
+          class="login-submit"
+          data-testid="invite-submit"
+          :disabled="!canInviteSubmit || submitting"
+          @click="onInviteRegister"
+        >
+          {{ submitting ? "开通中…" : "凭码开通" }}
+        </button>
+        <view
+          v-if="inviteMessage"
+          class="login-error"
+          data-testid="invite-result"
+          role="status"
+        >
+          <text>{{ inviteMessage }}</text>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -82,6 +142,7 @@
 // failed attempt so keyboard/screen-reader users can correct and resubmit.
 import { computed, defineComponent, ref } from "vue";
 
+import { AuthHttpError, inviteRegister } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { resolveNextStep } from "@/domain/next-step";
 import { requestIdLabel } from "@/domain/request-id";
@@ -104,6 +165,20 @@ export default defineComponent({
     const requestIdCopy = ref("");
     const canSubmit = computed(
       () => username.value.trim().length > 0 && password.value.length > 0,
+    );
+    // INVITE (V60): provisioning through a single-use code.
+    const inviteOpen = ref(false);
+    const inviteCode = ref("");
+    const inviteUsername = ref("");
+    const invitePassword = ref("");
+    const inviteDisplayName = ref("");
+    const inviteMessage = ref("");
+    const canInviteSubmit = computed(
+      () =>
+        inviteCode.value.trim().length > 0 &&
+        inviteUsername.value.trim().length > 0 &&
+        invitePassword.value.length > 0 &&
+        inviteDisplayName.value.trim().length > 0,
     );
 
     const transport = createAuthenticatedTransport({
@@ -201,6 +276,36 @@ export default defineComponent({
       }
     }
 
+    async function onInviteRegister(): Promise<void> {
+      if (submitting.value || !canInviteSubmit.value) {
+        return;
+      }
+      submitting.value = true;
+      inviteMessage.value = "";
+      try {
+        const created = await inviteRegister(transport, {
+          code: inviteCode.value.trim(),
+          username: inviteUsername.value.trim(),
+          password: invitePassword.value,
+          displayName: inviteDisplayName.value.trim(),
+        });
+        inviteMessage.value =
+          `开通成功：${created.username}。请用该账号登录。`;
+        inviteCode.value = "";
+        invitePassword.value = "";
+      } catch (e) {
+        if (e instanceof AuthHttpError && e.status === 403) {
+          inviteMessage.value = "凭码开通未开放。";
+        } else if (e instanceof AuthHttpError && (e.status === 400 || e.status === 404)) {
+          inviteMessage.value = "邀请码或资料不符合要求，未开通。";
+        } else {
+          inviteMessage.value = "开通失败，请重试。";
+        }
+      } finally {
+        submitting.value = false;
+      }
+    }
+
     return {
       username,
       password,
@@ -209,6 +314,14 @@ export default defineComponent({
       message,
       requestIdCopy,
       onSubmit,
+      inviteOpen,
+      inviteCode,
+      inviteUsername,
+      invitePassword,
+      inviteDisplayName,
+      inviteMessage,
+      canInviteSubmit,
+      onInviteRegister,
       goToIndex,
       goToChat,
       goToMemory,
@@ -267,5 +380,17 @@ export default defineComponent({
 .login-hint {
   opacity: 0.7;
   font-size: 24rpx;
+}
+.login-invite-toggle {
+  align-self: flex-start;
+  background: transparent;
+  color: #8fa0bd;
+  font-size: 24rpx;
+  padding: 0;
+}
+.login-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
 }
 </style>

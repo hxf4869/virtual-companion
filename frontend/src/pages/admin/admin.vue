@@ -217,6 +217,47 @@
         </view>
       </view>
 
+      <!-- INVITE (V60): single-use invite codes; registration itself is
+           config-gated on the server (default off). -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">邀请码（凭码开通测试账号）</text>
+          <button
+            data-testid="invite-create"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onCreateInvite"
+          >
+            生成邀请码
+          </button>
+        </view>
+        <view v-if="inviteCreated" class="admin-empty" data-testid="invite-created" role="status">
+          <text>新邀请码：{{ inviteCreated.code }}（14 天内有效，一次性使用）</text>
+        </view>
+        <view v-if="inviteFailed" class="admin-error" data-testid="invite-failed" role="alert">
+          <text>邀请码操作失败，请重试。</text>
+        </view>
+        <view
+          v-for="invite in invites"
+          :key="invite.id"
+          class="audit-row"
+          data-testid="invite-row"
+        >
+          <text class="audit-cell">{{ invite.code }}</text>
+          <text class="audit-cell">{{ invite.status }}</text>
+          <text class="audit-cell">{{ invite.expiresAt }}</text>
+          <button
+            v-if="invite.status === 'ACTIVE'"
+            class="admin-nav-index"
+            :data-testid="`invite-disable-${invite.code}`"
+            :disabled="busy"
+            @click="onDisableInvite(invite.code)"
+          >
+            停用
+          </button>
+        </view>
+      </view>
+
       <!-- ENT-SNAP (V40): simulated service-class assignment -->
       <view class="ops-section">
         <view class="account-list-head">
@@ -295,14 +336,19 @@ import { computed, defineComponent, onMounted, ref } from "vue";
 import {
   assignServiceClass,
   createAccount,
+  createInvite,
   disableAccount,
+  disableInvite,
   listAccounts,
+  listInvites,
   listAuditEvents,
   listSafetyEvents,
   listServiceClassAssignments,
   usageSummary,
   type AccountListItem,
   type AuditEventListItem,
+  type InviteCreated,
+  type InviteListItem,
   type SafetyEventItem,
   type ServiceClassAssignmentItem,
   type UsageSummaryItem,
@@ -341,6 +387,10 @@ export default defineComponent({
     // SAFETY-QUEUE (V59): read-only deterministic safety queue.
     const safetyEvents = ref<SafetyEventItem[]>([]);
     const safetyFailed = ref(false);
+    // INVITE (V60): single-use invite codes.
+    const invites = ref<InviteListItem[]>([]);
+    const inviteCreated = ref<InviteCreated | null>(null);
+    const inviteFailed = ref(false);
     // ENT-SNAP: simulated service-class assignments.
     const scAssignments = ref<ServiceClassAssignmentItem[]>([]);
     const scFailed = ref(false);
@@ -367,6 +417,7 @@ export default defineComponent({
         await refreshUsage();
         await refreshAudit();
         await refreshSafety();
+        await refreshInvites();
         await refreshServiceClasses();
       }
     });
@@ -442,6 +493,42 @@ export default defineComponent({
       busy.value = true;
       try {
         await refreshSafety();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** INVITE (V60): mint one code and refresh the registry. */
+    async function onCreateInvite(): Promise<void> {
+      busy.value = true;
+      inviteFailed.value = false;
+      try {
+        inviteCreated.value = await createInvite(transport);
+        await refreshInvites();
+      } catch {
+        inviteFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function refreshInvites(): Promise<void> {
+      inviteFailed.value = false;
+      try {
+        invites.value = await listInvites(transport);
+      } catch {
+        inviteFailed.value = true;
+      }
+    }
+
+    async function onDisableInvite(code: string): Promise<void> {
+      busy.value = true;
+      inviteFailed.value = false;
+      try {
+        await disableInvite(transport, code);
+        await refreshInvites();
+      } catch {
+        inviteFailed.value = true;
       } finally {
         busy.value = false;
       }
@@ -599,6 +686,11 @@ export default defineComponent({
       safetyEvents,
       safetyFailed,
       onRefreshSafety,
+      invites,
+      inviteCreated,
+      inviteFailed,
+      onCreateInvite,
+      onDisableInvite,
       scAssignments,
       scFailed,
       scAccountId,

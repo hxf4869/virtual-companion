@@ -7,6 +7,10 @@ import {
   disableAccount,
   listAccounts,
   listAuditEvents,
+  createInvite,
+  disableInvite,
+  inviteRegister,
+  listInvites,
   listServiceClassAssignments,
   login,
   logout,
@@ -369,5 +373,86 @@ describe("service-class assignments (ENT-SNAP)", () => {
     const t = transportFor({ ok: false, status: 404, json: null });
 
     expect(await assignServiceClass(t, "999", "ECONOMY")).toBeNull();
+  });
+});
+
+describe("invite codes (INVITE V60)", () => {
+  it("POSTs the mint and parses the new code", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: { id: "9", code: "INVITE-ABC123XYZ", expiresAt: "2026-09-02T00:00:00Z" },
+    });
+
+    const created = await createInvite(t);
+
+    expect(created.code).toBe("INVITE-ABC123XYZ");
+    expect(created.expiresAt).toBe("2026-09-02T00:00:00Z");
+  });
+
+  it("parses the registry rows and skips malformed ones", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: [
+        {
+          id: "9",
+          code: "INVITE-ABC123XYZ",
+          status: "USED",
+          createdAt: "2026-08-19T08:00:00Z",
+          usedAt: "2026-08-19T09:00:00Z",
+          expiresAt: "2026-09-02T00:00:00Z",
+          usedByAccount: "12",
+        },
+        { id: "10" },
+      ],
+    });
+
+    const rows = await listInvites(t);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("USED");
+    expect(rows[0].usedByAccount).toBe("12");
+  });
+
+  it("disable maps the ok flag and throws on failure", async () => {
+    const ok = transportFor({ ok: true, status: 200, json: { ok: true } });
+    await expect(disableInvite(ok, "INVITE-ABC123XYZ")).resolves.toBe(true);
+
+    const fail = transportFor({ ok: false, status: 500, json: null });
+    await expect(disableInvite(fail, "INVITE-ABC123XYZ")).rejects.toMatchObject({
+      name: "AuthHttpError",
+    });
+  });
+
+  it("invite-register posts the body and throws the typed 403 when gated off", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: { accountId: "12", username: "bob", role: "USER", status: "ACTIVE" },
+    });
+
+    const created = await inviteRegister(t, {
+      code: "INVITE-ABC123XYZ",
+      username: "bob",
+      password: "pw",
+      displayName: "Bob",
+    });
+
+    expect(created.username).toBe("bob");
+
+    const gated = transportFor({
+      ok: false,
+      status: 403,
+      json: { code: "BETA_OPERATIONS_NOT_READY" },
+    });
+    await expect(
+      inviteRegister(gated, {
+        code: "X",
+        username: "x",
+        password: "p",
+        displayName: "d",
+      }),
+    ).rejects.toMatchObject({ name: "AuthHttpError", status: 403 });
   });
 });

@@ -250,6 +250,103 @@ export async function listAuditEvents(
   return out;
 }
 
+/** INVITE (V60): a freshly minted single-use invite code. */
+export interface InviteCreated {
+  id: string;
+  code: string;
+  expiresAt: string;
+}
+
+/** INVITE (V60): one invite registry row. */
+export interface InviteListItem {
+  id: string;
+  code: string;
+  status: "ACTIVE" | "USED" | "DISABLED";
+  createdAt: string;
+  usedAt: string | null;
+  expiresAt: string;
+  usedByAccount: string | null;
+}
+
+/** INVITE (V60): ADMIN mints one code (14-day expiry). Non-OK throws. */
+export async function createInvite(t: AuthTransport): Promise<InviteCreated> {
+  const r = await t.request("POST", `${AUTH_BASE}/admin/invites`);
+  if (!r.ok) {
+    throw new AuthHttpError(r.status);
+  }
+  const o = (r.json ?? {}) as Record<string, unknown>;
+  const id = asString(o, "id");
+  const code = asString(o, "code");
+  const expiresAt = asString(o, "expiresAt");
+  if (!id || !code || !expiresAt) {
+    throw new AuthHttpError(r.status);
+  }
+  return { id, code, expiresAt };
+}
+
+function asInvite(json: unknown): InviteListItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const code = asString(o, "code");
+  const status = asString(o, "status");
+  const createdAt = asString(o, "createdAt");
+  const expiresAt = asString(o, "expiresAt");
+  if (!id || !code || !status || !createdAt || !expiresAt) return null;
+  if (status !== "ACTIVE" && status !== "USED" && status !== "DISABLED") return null;
+  return {
+    id, code, status, createdAt, expiresAt,
+    usedAt: asString(o, "usedAt") ?? null,
+    usedByAccount: asString(o, "usedByAccount") ?? null,
+  };
+}
+
+/** INVITE (V60): ADMIN registry read, newest first. Non-OK throws. */
+export async function listInvites(t: AuthTransport): Promise<InviteListItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/invites`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: InviteListItem[] = [];
+  for (const item of r.json) {
+    const parsed = asInvite(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/** INVITE (V60): ADMIN retires an ACTIVE code (idempotent). */
+export async function disableInvite(t: AuthTransport, code: string): Promise<boolean> {
+  const r = await t.request("POST", `${AUTH_BASE}/admin/invites/disable`, { code });
+  if (!r.ok) {
+    throw new AuthHttpError(r.status);
+  }
+  const o = (r.json ?? {}) as Record<string, unknown>;
+  return o.ok === true;
+}
+
+/**
+ * INVITE (V60): anonymous provisioning through a single-use code. Config-gated
+ * on the server (disabled → 403 BETA_OPERATIONS_NOT_READY); the thrown typed
+ * error carries that status so the page can show the plain server wording.
+ */
+export async function inviteRegister(
+  t: AuthTransport,
+  body: { code: string; username: string; password: string; displayName: string },
+): Promise<{ accountId: string; username: string }> {
+  const r = await t.request("POST", `${AUTH_BASE}/invite-register`, body);
+  if (!r.ok) {
+    throw new AuthHttpError(r.status);
+  }
+  const o = (r.json ?? {}) as Record<string, unknown>;
+  const accountId = asString(o, "accountId");
+  const username = asString(o, "username");
+  if (!accountId || !username) {
+    throw new AuthHttpError(r.status);
+  }
+  return { accountId, username };
+}
+
 /** SAFETY-QUEUE (V59): one admin safety-queue row. */
 export interface SafetyEventItem {
   id: string;

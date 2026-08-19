@@ -17,8 +17,10 @@ import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
+import com.virtualcompanion.platform.persistence.InviteCodeService;
 import com.virtualcompanion.platform.persistence.ReportService;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
+import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.platform.persistence.ExportService;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFeedbackService;
@@ -242,7 +244,8 @@ public class AuthDataSourceConfig {
             JwtTokenService jwtTokenService,
             @Value("${virtual-companion.auth.refresh-token-ttl:7d}") Duration refreshTtl,
             AdminConsoleService adminConsoleService,
-            EntitlementSnapshotService entitlementSnapshotService) {
+            EntitlementSnapshotService entitlementSnapshotService,
+            InviteCodeService inviteCodeService) {
         return new AuthService(
                 identityAccountRepository,
                 identityRefreshTokenRepository,
@@ -250,7 +253,8 @@ public class AuthDataSourceConfig {
                 jwtTokenService,
                 refreshTtl,
                 adminConsoleService,
-                entitlementSnapshotService);
+                entitlementSnapshotService,
+                inviteCodeService);
     }
 
     /** ADMIN-OPS (V36): minimal internal admin console reads. */
@@ -365,6 +369,35 @@ public class AuthDataSourceConfig {
     @Bean
     public SafetyEventService safetyEventService(JdbcTemplate authJdbcTemplate) {
         return new SafetyEventService(authJdbcTemplate);
+    }
+
+    /** INVITE (V60): single-use invite-code provisioning (§7.4). */
+    @Bean
+    public InviteCodeService inviteCodeService(JdbcTemplate authJdbcTemplate) {
+        return new InviteCodeService(authJdbcTemplate);
+    }
+
+    /** SVC-WINDOW (V60): DAU + owner-active state over vc.generation (§24.7). */
+    @Bean
+    public ServiceWindowService serviceWindowService(JdbcTemplate authJdbcTemplate) {
+        return new ServiceWindowService(authJdbcTemplate);
+    }
+
+    /**
+     * SVC-WINDOW: the pure window policy. Disabled by default so local
+     * development and CI never hit the gate; the Beta deployment turns it on
+     * (defaults mirror the betaGate declarations in product-scope).
+     */
+    @Bean
+    public com.virtualcompanion.runtime.servicemode.BetaServiceWindow betaServiceWindow(
+            @Value("${virtual-companion.beta.service-window.enabled:false}") boolean enabled,
+            @Value("${virtual-companion.beta.service-window.paused:false}") boolean paused,
+            @Value("${virtual-companion.beta.service-window.window-from:20:30}") String windowFrom,
+            @Value("${virtual-companion.beta.service-window.max-daily-active-users:10}")
+                    int maxDailyActiveUsers,
+            @Value("${virtual-companion.beta.service-window.zone:Asia/Shanghai}") String zone) {
+        return new com.virtualcompanion.runtime.servicemode.BetaServiceWindow(
+                enabled, paused, windowFrom, maxDailyActiveUsers, zone);
     }
 
     /** SAFETY-WIRE (V58): deterministic classifier — the local safety floor. */

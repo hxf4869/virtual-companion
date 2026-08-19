@@ -8,12 +8,16 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
+import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
+import com.virtualcompanion.runtime.web.ServiceWindowClosedException;
 import com.virtualcompanion.safety.ExitIntentDetector;
 import com.virtualcompanion.safety.SafetyClassification;
 import com.virtualcompanion.safety.SafetyClassifierPort;
 import com.virtualcompanion.safety.SafetyStage;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.Instant;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -69,6 +73,8 @@ public class GenerationController {
     private final SafetyClassifierPort safetyClassifier;
     private final SafetyEventService safetyEventService;
     private final GenerationCancelService cancelService;
+    private final BetaServiceWindow serviceWindow;
+    private final ServiceWindowService serviceWindowService;
 
     public GenerationController(
             GenerationReceiveService receiveService,
@@ -78,7 +84,9 @@ public class GenerationController {
             GenerationFinalizeService finalizeService,
             SafetyClassifierPort safetyClassifier,
             SafetyEventService safetyEventService,
-            GenerationCancelService cancelService) {
+            GenerationCancelService cancelService,
+            BetaServiceWindow serviceWindow,
+            ServiceWindowService serviceWindowService) {
         this.receiveService = receiveService;
         this.enqueueService = enqueueService;
         this.generationRepository = generationRepository;
@@ -87,6 +95,8 @@ public class GenerationController {
         this.safetyClassifier = safetyClassifier;
         this.safetyEventService = safetyEventService;
         this.cancelService = cancelService;
+        this.serviceWindow = serviceWindow;
+        this.serviceWindowService = serviceWindowService;
     }
 
     @PostMapping("/conversations/{conversationId}/generations")
@@ -95,6 +105,12 @@ public class GenerationController {
             @PathVariable String conversationId,
             @Valid @RequestBody SendGenerationRequest request) {
         long conversation = parseId(conversationId, "conversationId");
+
+        // SVC-WINDOW (§24.7 / FR-RES-002): outside the Beta generation window
+        // (or paused, or over the daily-active cap) new generative turns are
+        // refused up front — nothing is persisted. Disabled by default so
+        // local development and CI never hit the gate.
+        assertServiceWindowOpen(ownerUserId);
 
         // CHAT-MODE: eager validation rejects unapproved modes with a 400
         // (fail closed toward the persona default; the SD function falls back
@@ -146,6 +162,24 @@ public class GenerationController {
                 record.logicalGenerationId(),
                 record.status(),
                 record.mode());
+    }
+
+    /**
+     * SVC-WINDOW: refuse the turn when the window is closed. An owner already
+     * active today never consumes an extra DAU slot, so an in-flight
+     * conversation is not split by the cap.
+     */
+    private void assertServiceWindowOpen(long ownerUserId) {
+        if (!serviceWindow.enabled()) {
+            return;
+        }
+        Instant now = Instant.now();
+        ServiceWindowService.WindowState state =
+                serviceWindowService.state(ownerUserId, serviceWindow.dayStart(now));
+        serviceWindow.rejectReason(now, state.dailyActiveUsers(), state.ownerActiveToday())
+                .ifPresent(reason -> {
+                    throw new ServiceWindowClosedException(reason);
+                });
     }
 
     /**

@@ -121,7 +121,12 @@ public class AuthSecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh")
+                            .permitAll()
+                        // INVITE (V60): anonymous provisioning through a valid
+                        // single-use code; the endpoint itself fail-closes to
+                        // 403 while invite-registration-enabled=false.
+                        .requestMatchers("/api/v1/auth/invite-register").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/version").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/internal/baseline").permitAll()
                         .requestMatchers("/actuator/health").permitAll()

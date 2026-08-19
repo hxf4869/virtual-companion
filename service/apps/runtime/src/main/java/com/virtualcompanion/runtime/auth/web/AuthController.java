@@ -74,6 +74,14 @@ public class AuthController {
     @Value("${virtual-companion.auth.cookie-secure:true}")
     private boolean cookieSecure;
 
+    /**
+     * INVITE (V60): invite-code registration is config-gated and disabled by
+     * default — Technical Alpha keeps public registration closed; the Beta
+     * deployment turns it on together with the service window.
+     */
+    @Value("${virtual-companion.auth.invite-registration-enabled:false}")
+    private boolean inviteRegistrationEnabled;
+
     public AuthController(AuthService authService, AuthAbuseGuard abuseGuard) {
         this.authService = authService;
         this.abuseGuard = abuseGuard;
@@ -179,6 +187,88 @@ public class AuthController {
                         record.outputTokens(),
                         record.cost()))
                 .toList();
+    }
+
+    /** INVITE (V60): ADMIN mints a single-use invite code (14-day expiry). */
+    @PostMapping("/admin/invites")
+    public InviteResponse createInvite(
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        AuthService.InviteCreated created = authService.createInviteCode(principal);
+        return new InviteResponse(created.id(), created.code(), created.expiresAt().toString());
+    }
+
+    /** INVITE (V60): ADMIN registry of invite codes, newest first. */
+    @GetMapping("/admin/invites")
+    public List<InviteListItem> listInvites(
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        return authService.listInviteCodes(principal).stream()
+                .map(record -> new InviteListItem(
+                        Long.toString(record.id()),
+                        record.code(),
+                        record.status(),
+                        record.createdAt().toString(),
+                        record.usedAt() == null ? null : record.usedAt().toString(),
+                        record.expiresAt().toString(),
+                        record.usedByAccount() == null
+                                ? null : Long.toString(record.usedByAccount())))
+                .toList();
+    }
+
+    /** INVITE (V60): ADMIN retires an ACTIVE invite code (idempotent). */
+    @PostMapping("/admin/invites/disable")
+    public InviteDisabledResponse disableInvite(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @RequestBody InviteDisableRequest request) {
+        if (request == null || request.code() == null || request.code().isBlank()) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "A code is required");
+        }
+        boolean disabled = authService.disableInviteCode(principal, request.code());
+        return new InviteDisabledResponse(disabled);
+    }
+
+    /**
+     * INVITE (V60): anonymous provisioning through a valid single-use code.
+     * Config-gated (default off). Rate-limited through the same login guard;
+     * the response never discloses whether a code exists.
+     */
+    @PostMapping("/invite-register")
+    public AccountResponse inviteRegister(
+            @Valid @RequestBody InviteRegisterRequest request,
+            HttpServletRequest servletRequest) {
+        if (!inviteRegistrationEnabled) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "BETA_OPERATIONS_NOT_READY",
+                    "Invite registration is disabled");
+        }
+        abuseGuard.admitLogin(servletRequest.getRemoteAddr(), request.username());
+        return authService.inviteRegister(
+                request.code(), request.username(), request.password(), request.displayName());
+    }
+
+    /** INVITE: a freshly minted code. */
+    public record InviteResponse(String id, String code, String expiresAt) {
+    }
+
+    /** INVITE: one registry row. */
+    public record InviteListItem(
+            String id, String code, String status, String createdAt, String usedAt,
+            String expiresAt, String usedByAccount) {
+    }
+
+    /** INVITE: retire request body. */
+    public record InviteDisableRequest(String code) {
+    }
+
+    /** INVITE: retire result. */
+    public record InviteDisabledResponse(boolean ok) {
+    }
+
+    /** INVITE: anonymous registration body. */
+    public record InviteRegisterRequest(
+            @jakarta.validation.constraints.NotBlank String code,
+            @jakarta.validation.constraints.NotBlank String username,
+            @jakarta.validation.constraints.NotBlank String password,
+            @jakarta.validation.constraints.NotBlank String displayName) {
     }
 
     /** SAFETY-QUEUE (V59): ADMIN-only keyset page of the safety queue, newest first. */
