@@ -8,7 +8,8 @@ public record Memory(
     final String status,
     final String conversationId,
     final String createdAt,
-    final String deletedAt
+    final String deletedAt,
+    final String autoSaved
 ) {
     public Memory {
         java.util.Objects.requireNonNull(memoryId, "memoryId must not be null");
@@ -18,5 +19,6 @@ public record Memory(
         // conversationId is nullable
         // createdAt is nullable
         // deletedAt is nullable
+        java.util.Objects.requireNonNull(autoSaved, "autoSaved must not be null");
     }
 }

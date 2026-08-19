@@ -42,6 +42,8 @@ export interface Memory {
   conversationId?: string;
   createdAt?: string;
   deletedAt?: string;
+  /** MEM-AUTO-SAVE (V66): true only for deterministic low-sensitivity auto-saves. */
+  autoSaved?: boolean;
 }
 
 export interface MemoryEvidence {
@@ -117,6 +119,7 @@ function asMemory(json: unknown): Memory | null {
     conversationId: asString(o, "conversationId"),
     createdAt: asString(o, "createdAt"),
     deletedAt: asString(o, "deletedAt"),
+    autoSaved: o.autoSaved === true,
   };
 }
 
@@ -249,4 +252,26 @@ export async function listMemoryEvidence(
   const r = await t.request("GET", `${MEM_BASE}/${memoryId}/evidence`);
   guardJsonResult(r);
   return asEvidenceArray(r.json);
+}
+
+/**
+ * MEM-AUTO-SAVE (V66 / §7.4): read the caller's low-sensitivity auto-save
+ * switch (default on). Non-OK statuses throw the typed MemoryHttpError.
+ */
+export async function getMemoryAutoSave(t: MemoryTransport): Promise<boolean> {
+  const r = await t.request("GET", `${MEM_BASE}/auto-save`);
+  guardJsonResult(r);
+  const o = (r.json ?? {}) as Record<string, unknown>;
+  return o.enabled === true;
+}
+
+/** MEM-AUTO-SAVE: flip the switch at any time (可随时撤销). */
+export async function setMemoryAutoSave(
+  t: MemoryTransport,
+  enabled: boolean,
+): Promise<boolean> {
+  const r = await t.request("PUT", `${MEM_BASE}/auto-save`, { enabled });
+  guardJsonResult(r);
+  const o = (r.json ?? {}) as Record<string, unknown>;
+  return o.enabled === enabled;
 }

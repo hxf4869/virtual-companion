@@ -5,10 +5,12 @@ import {
   createMemoryCandidate,
   deleteMemory,
   getMemory,
+  getMemoryAutoSave,
   listMemories,
   listMemoryEvidence,
   MemoryHttpError,
   rejectMemory,
+  setMemoryAutoSave,
   updateMemory,
   type MemoryApiResponse,
   type MemoryTransport,
@@ -265,6 +267,7 @@ describe("api/memory typed error mapping (P2-16)", () => {
         summary: "已删",
         status: "ACCEPTED",
         deletedAt: "2026-08-18T12:00:00Z",
+        autoSaved: false,
       },
     ]);
   });
@@ -279,5 +282,46 @@ describe("api/memory typed error mapping (P2-16)", () => {
     };
     await listMemories(t, "rel a/b?c#d&e");
     expect(seenPath).toBe("/api/v1/relationships/rel%20a%2Fb%3Fc%23d%26e/memories");
+  });
+
+  it("MEM-AUTO-SAVE: parses the autoSaved flag on listed memories", async () => {
+    const t = transportReturning({
+      "/api/v1/relationships/rel-1/memories": {
+        ok: true,
+        status: 200,
+        json: [
+          mem("auto-1", "ACCEPTED", "RELATIONSHIP", "称呼偏好：小雪"),
+          mem("manual-1", "ACCEPTED"),
+        ].map((item, i) => ({ ...(item as Record<string, unknown>), autoSaved: i === 0 })),
+      },
+    });
+    const rows = await listMemories(t, "rel-1");
+    expect(rows[0]?.autoSaved).toBe(true);
+    expect(rows[1]?.autoSaved).toBe(false);
+  });
+
+  it("MEM-AUTO-SAVE: get/set round the auto-save switch (V66)", async () => {
+    const get = transportReturning({
+      "/api/v1/memories/auto-save": { ok: true, status: 200, json: { enabled: true } },
+    });
+    expect(await getMemoryAutoSave(get)).toBe(true);
+
+    let seenBody: unknown;
+    const put: MemoryTransport = {
+      request: vi.fn(async (_method: string, _path: string, body?: unknown) => {
+        seenBody = body;
+        return { ok: true, status: 200, json: { enabled: false } };
+      }),
+    };
+    expect(await setMemoryAutoSave(put, false)).toBe(true);
+    expect(seenBody).toEqual({ enabled: false });
+  });
+
+  it("MEM-AUTO-SAVE: a failed switch read throws the typed error", async () => {
+    await expect(getMemoryAutoSave(throwingTransport())).rejects.toThrow(Error);
+    const failed = transportReturning({
+      "/api/v1/memories/auto-save": { ok: false, status: 500, json: null },
+    });
+    await expect(getMemoryAutoSave(failed)).rejects.toThrow(MemoryHttpError);
   });
 });

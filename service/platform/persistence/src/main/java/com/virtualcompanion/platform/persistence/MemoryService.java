@@ -47,12 +47,20 @@ public class MemoryService {
 
     private static final String CREATE_SQL =
             "SELECT vc.create_memory_candidate(?, ?, ?, ?, ?, ?)";
+    private static final String CREATE_AUTO_SAVED_SQL =
+            "SELECT vc.create_auto_saved_memory(?, ?, ?, ?, ?, ?)";
+    private static final String AUTO_SAVE_PREF_GET_SQL =
+            "SELECT vc.get_memory_auto_save_pref(?)";
+    private static final String AUTO_SAVE_PREF_SET_SQL =
+            "SELECT vc.set_memory_auto_save_pref(?, ?)";
     private static final String LIST_SQL =
             "SELECT out_id, out_scope, out_summary, out_status, out_conversation_id, "
-                    + "out_deleted_at, out_created_at FROM vc.list_memory(?, ?, ?)";
+                    + "out_deleted_at, out_created_at, out_auto_saved "
+                    + "FROM vc.list_memory(?, ?, ?)";
     private static final String GET_SQL =
             "SELECT out_id, out_relationship_id, out_scope, out_summary, out_status, "
-                    + "out_conversation_id, out_created_at FROM vc.get_memory(?, ?)";
+                    + "out_conversation_id, out_created_at, out_auto_saved "
+                    + "FROM vc.get_memory(?, ?)";
     private static final String UPDATE_SQL = "SELECT vc.update_memory(?, ?, ?)";
     private static final String DELETE_SQL = "SELECT vc.delete_memory(?, ?)";
     private static final String CONFIRM_SQL = "SELECT vc.confirm_memory_candidate(?, ?)";
@@ -144,6 +152,78 @@ public class MemoryService {
         MemoryRecord record = get(ownerUserId, id).orElseThrow(
                 () -> new IllegalStateException("memory " + id + " not found after create"));
         return Optional.of(record);
+    }
+
+    /**
+     * MEM-AUTO-SAVE (V66 / §7.4): create the memory directly in ACCEPTED with
+     * {@code auto_saved=true} — the deterministic low-sensitivity path
+     * (§11.10 PROPOSED→ACCEPTED 低敏自动规则). The caller must be the
+     * deterministic extraction rule (never the model); every created row is
+     * individually deletable/editable (可随时撤销).
+     *
+     * @return the created canonical memory, or empty for a foreign/absent
+     *         relationship (NOT_FOUND_OR_FORBIDDEN)
+     */
+    public Optional<MemoryRecord> createAutoSaved(
+            long ownerUserId,
+            long relationshipId,
+            String scope,
+            String summary,
+            Long conversationId,
+            List<String> evidence) {
+        if (ownerUserId <= 0 || relationshipId <= 0) {
+            throw new IllegalArgumentException("ids must be positive");
+        }
+        if (scope == null || scope.isBlank() || !ALPHA_SCOPES.contains(scope)) {
+            throw new IllegalArgumentException("scope is not enabled in Alpha: " + scope);
+        }
+        if (summary == null || summary.isBlank()) {
+            throw new IllegalArgumentException("summary must not be blank");
+        }
+        if (isSessionMissingConversation(scope, conversationId)) {
+            throw new IllegalArgumentException("SESSION scope requires a conversationId");
+        }
+        if (relationshipService.get(ownerUserId, relationshipId).isEmpty()) {
+            return Optional.empty();
+        }
+        Long id;
+        try {
+            id = jdbc.queryForObject(
+                    CREATE_AUTO_SAVED_SQL,
+                    Long.class,
+                    createSetter(ownerUserId, relationshipId, scope, summary,
+                            conversationId, evidence));
+        } catch (BadSqlGrammarException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            return Optional.empty();
+        }
+        if (id == null) {
+            throw new IllegalStateException("create_auto_saved_memory returned no id");
+        }
+        MemoryRecord record = get(ownerUserId, id).orElseThrow(
+                () -> new IllegalStateException("memory " + id + " not found after create"));
+        return Optional.of(record);
+    }
+
+    /** MEM-AUTO-SAVE: the per-owner kill switch (default true — §7.4 baseline). */
+    public boolean autoSaveEnabled(long ownerUserId) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        Boolean enabled = jdbc.queryForObject(
+                AUTO_SAVE_PREF_GET_SQL, Boolean.class, ownerUserId);
+        return !Boolean.FALSE.equals(enabled);
+    }
+
+    /** MEM-AUTO-SAVE: flip the kill switch; returns the stored value. */
+    public boolean setAutoSaveEnabled(long ownerUserId, boolean enabled) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        Boolean stored = jdbc.queryForObject(
+                AUTO_SAVE_PREF_SET_SQL, Boolean.class, ownerUserId, enabled);
+        return Boolean.TRUE.equals(stored);
     }
 
     /** List the memory candidates and canonical records scoped to a
@@ -438,7 +518,8 @@ public class MemoryService {
                 rs.getString("out_status"),
                 nullableLong(rs, "out_conversation_id"),
                 null,
-                toInstant(rs, "out_created_at"));
+                toInstant(rs, "out_created_at"),
+                rs.getBoolean("out_auto_saved"));
     }
 
     /** {@code list_memory} output columns (carries deleted_at, no relationship_id). */
@@ -451,7 +532,8 @@ public class MemoryService {
                 rs.getString("out_status"),
                 nullableLong(rs, "out_conversation_id"),
                 toInstant(rs, "out_deleted_at"),
-                toInstant(rs, "out_created_at"));
+                toInstant(rs, "out_created_at"),
+                rs.getBoolean("out_auto_saved"));
     }
 
     private static RowMapper<MemoryEvidenceRecord> evidenceRowMapper() {

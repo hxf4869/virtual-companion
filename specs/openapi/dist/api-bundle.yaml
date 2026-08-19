@@ -1579,6 +1579,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/memories/auto-save:
+    get:
+      operationId: getMemoryAutoSave
+      summary: The caller's memory auto-save switch (MEM-AUTO-SAVE, §7.4)
+      description: The per-owner deterministic low-sensitivity auto-save switch (vc.get_memory_auto_save_pref, V66). Default
+        true — §7.4 lists auto-save as the controlled Beta baseline, limited to the fixed low-sensitivity whitelist categories;
+        the owner can turn it off at any time (可随时撤销). Requires a server-verified authentication context.
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: The current switch state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryAutoSavePref'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: setMemoryAutoSave
+      summary: Flip the memory auto-save switch (MEM-AUTO-SAVE, §7.4)
+      description: Flips the per-owner auto-save switch (vc.set_memory_auto_save_pref, V66). Turning it off stops every future
+        auto-save immediately; already auto-saved rows stay (each is individually deletable). Requires a server-verified authentication
+        context.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryAutoSaveRequest'
+      responses:
+        '200':
+          description: The stored switch state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryAutoSavePref'
+        '400':
+          description: A missing or invalid enabled value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/relationships/{relationshipId}/reminders:
     post:
       operationId: createReminder
@@ -4241,13 +4296,15 @@ components:
     Memory:
       type: object
       description: A memory candidate or canonical record owned by exactly one user within a relationship. Model extraction
-        only creates PENDING_CONFIRMATION candidates; ACCEPTED (canonical) is reached solely by user confirmation (INV-MEM-001/002).
-        status follows the memory-candidate-statuses catalog.
+        only creates PENDING_CONFIRMATION candidates; ACCEPTED (canonical) is reached by user confirmation (INV-MEM-001/002)
+        or, since V66, the deterministic low-sensitivity auto-save rule — such rows carry autoSaved=true so the UI can mark
+        them (界面明示). status follows the memory-candidate-statuses catalog.
       required:
       - memoryId
       - scope
       - summary
       - status
+      - autoSaved
       properties:
         memoryId:
           type: string
@@ -4272,6 +4329,27 @@ components:
           type: string
           format: date-time
           description: Soft-deletion timestamp; present only when includeDeleted is true
+        autoSaved:
+          type: boolean
+          description: True only for rows saved by the deterministic low-sensitivity auto rule (V66).
+    MemoryAutoSavePref:
+      type: object
+      description: The per-owner memory auto-save switch state (V66, §7.4).
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the deterministic low-sensitivity auto-save rule is active for the owner.
+    MemoryAutoSaveRequest:
+      type: object
+      description: Body for flipping the memory auto-save switch.
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: The desired switch state.
     MemoryCandidateCreateRequest:
       type: object
       description: Body for creating a memory candidate from model extraction.

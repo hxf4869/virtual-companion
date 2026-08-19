@@ -422,6 +422,15 @@ export interface Memory {
   conversationId?: string
   createdAt?: string
   deletedAt?: string
+  autoSaved: string
+}
+
+export interface MemoryAutoSavePref {
+  enabled: string
+}
+
+export interface MemoryAutoSaveRequest {
+  enabled: string
 }
 
 export interface MemoryCandidateCreateRequest {
@@ -672,6 +681,8 @@ export interface VirtualCompanionApiClient {
   confirmMemoryCandidate(): Promise<VersionResponse>
   rejectMemoryCandidate(): Promise<VersionResponse>
   listMemoryEvidence(): Promise<VersionResponse>
+  getMemoryAutoSave(): Promise<VersionResponse>
+  setMemoryAutoSave(): Promise<VersionResponse>
   createReminder(): Promise<VersionResponse>
   listReminders(): Promise<VersionResponse>
   updateReminder(): Promise<VersionResponse>

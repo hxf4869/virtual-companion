@@ -25,11 +25,15 @@ import org.slf4j.LoggerFactory;
  * {@link #MIN_CANDIDATE_CHARS} (greetings, acknowledgments) carries no memory
  * value and is skipped.
  *
- * <p>The candidate is always {@code PENDING_CONFIRMATION} — canonical memory is
- * reached only through user confirmation (INV-MEM-001/002), so the
- * confirmation gate (confirm/reject/edit UI already exists) is the safety
- * valve for extraction noise. When a real model runtime is wired, this
- * handler is the seam to replace with a model-based extraction prompt.
+ * <p>MEM-AUTO-SAVE (§7.4): a statement that hits the deterministic
+ * low-sensitivity whitelist (and carries no sensitive-lexicon hit) is saved
+ * directly as ACCEPTED with {@code auto_saved=true} — but only while the
+ * owner's auto-save switch is on; every such row stays individually
+ * deletable (可随时撤销). Everything else stays a PENDING_CONFIRMATION
+ * candidate — canonical memory through user confirmation remains the default
+ * (INV-MEM-001/002). When a real model runtime is wired, this handler is the
+ * seam to replace with a model-based extraction prompt (the auto rule itself
+ * stays deterministic).
  *
  * <p>Unlike {@link GenerationWorkItemHandler} there is no external call, so
  * the handler runs one short owner-bound transaction: claim guard (V28
@@ -56,18 +60,21 @@ public class MemoryExtractWorkItemHandler implements WorkItemHandler {
     private final MessageRepository messageRepository;
     private final MemoryService memoryService;
     private final GenerationFinalizeService finalizeService;
+    private final com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort;
 
     public MemoryExtractWorkItemHandler(
             GenerationRepository generationRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             MemoryService memoryService,
-            GenerationFinalizeService finalizeService) {
+            GenerationFinalizeService finalizeService,
+            com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort) {
         this.generationRepository = generationRepository;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.memoryService = memoryService;
         this.finalizeService = finalizeService;
+        this.embeddingPort = embeddingPort;
     }
 
     @Override
@@ -142,13 +149,46 @@ public class MemoryExtractWorkItemHandler implements WorkItemHandler {
                     ownerUserId);
             return Optional.empty();
         }
+        List<String> evidence = List.of("message:" + userMessage.id());
+        // MEM-AUTO-SAVE (§7.4): a whitelist hit on a short statement saves
+        // directly as ACCEPTED (marked auto_saved); anything else stays a
+        // PENDING_CONFIRMATION candidate for the user to confirm.
+        var autoSaved = com.virtualcompanion.runtime.memory
+                .DeterministicMemoryAutoSaveRule.evaluate(userMessage.content());
+        if (autoSaved.isPresent() && memoryService.autoSaveEnabled(ownerUserId)) {
+            Optional<MemoryRecord> created = memoryService.createAutoSaved(
+                    ownerUserId, exchange.relationshipId(), "RELATIONSHIP",
+                    autoSaved.get().summary(), null, evidence);
+            created.ifPresent(record -> upsertEmbeddingQuietly(ownerUserId, record));
+            return created;
+        }
         return memoryService.create(
                 ownerUserId,
                 exchange.relationshipId(),
                 "RELATIONSHIP",
                 summary,
                 null,
-                List.of("message:" + userMessage.id()));
+                evidence);
+    }
+
+    /**
+     * EMBED-RECALL (V62): an auto-saved memory is canonical immediately, so
+     * its embedding is written right away (mirroring the confirm path). The
+     * write is idempotent and additive — a failure never fails extraction.
+     */
+    private void upsertEmbeddingQuietly(long ownerUserId, MemoryRecord record) {
+        try {
+            var space = embeddingPort.space();
+            memoryService.upsertEmbedding(
+                    ownerUserId, record.id(),
+                    space.modelId(), space.modelVersion(),
+                    space.dimension(), space.spaceId(),
+                    com.virtualcompanion.runtime.memory.DeterministicEmbedder
+                            .toVectorLiteral(embeddingPort.embed(record.summary())));
+        } catch (RuntimeException e) {
+            log.debug("auto-saved memory {} embedding deferred: {}", record.id(),
+                    e.getMessage());
+        }
     }
 
     /**

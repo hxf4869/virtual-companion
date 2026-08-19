@@ -559,4 +559,42 @@ describe("memory page glue (P2-19 component test)", () => {
     expect(createSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  it("MEM-AUTO-SAVE: renders the switch, flips it, and marks auto-saved rows (§7.4 界面明示)", async () => {
+    let enabled = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [PICKABLE_RELATIONSHIP] };
+        }
+        if (url === "/api/v1/memories/auto-save" && (init?.method ?? "GET") === "GET") {
+          return { ok: true, status: 200, json: async () => ({ enabled }) };
+        }
+        if (url === "/api/v1/memories/auto-save" && init?.method === "PUT") {
+          enabled = (init.body as string).includes("false");
+          return { ok: true, status: 200, json: async () => ({ enabled }) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const store = useMemoryStore();
+    store.canonical = [
+      { ...canonicalMemory("auto-1", "称呼偏好：小雪"), autoSaved: true },
+      canonicalMemory("manual-1", "手动确认的记忆"),
+    ];
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const toggle = wrapper.find('[data-testid="memory-auto-save-toggle"]');
+    expect(toggle.text()).toContain("已开启");
+    expect(wrapper.find('[data-testid="memory-auto-auto-1"]').text()).toContain("自动保存");
+    expect(wrapper.find('[data-testid="memory-auto-manual-1"]').exists()).toBe(false);
+
+    await toggle.trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="memory-auto-save-toggle"]').text()).toContain("已关闭");
+    wrapper.unmount();
+  });
 });

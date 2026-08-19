@@ -155,6 +155,12 @@ public interface VirtualCompanionApi {
     /** List the source Evidence of a memory. */
     Void listMemoryEvidence();
 
+    /** The caller's memory auto-save switch (MEM-AUTO-SAVE, §7.4). */
+    MemoryAutoSavePref getMemoryAutoSave();
+
+    /** Flip the memory auto-save switch (MEM-AUTO-SAVE, §7.4). */
+    MemoryAutoSavePref setMemoryAutoSave();
+
     /** Create a structured user reminder (FR-NOTIFY-001). */
     Reminder createReminder();
 

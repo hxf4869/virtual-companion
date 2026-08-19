@@ -136,13 +136,28 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE
   恢复流；非终态 generation 保持连接并实时直推 `chat.delta` 增量，断线经 durable 事件与
   snapshot 恢复，缺失 delta 永不补齐；realtime 请求与 REST 一样支持 401 单次静默刷新重放）
-- 8 个 memory 端点（candidates/list/get/update/delete/confirm/reject/evidence）
+- 8 个 memory 端点（candidates/list/get/update/delete/confirm/reject/evidence）+
+  `GET/PUT /api/v1/memories/auto-save`（MEM-AUTO-SAVE 低敏自动保存开关，§7.4）
 
 `specs/openapi/virtual-companion.yaml` 的合同面已全部由 runtime controller 实现（version、
 relationship、conversation、generation、snapshot、cancel、message、realtime、memory）。
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第四十一轮）：
+
+- 低敏记忆自动保存（MEM-AUTO-SAVE / §7.4、§11.10）：V66 `memory_item.auto_saved`
+  标记 + `create_auto_saved_memory` SD（§11.10 PROPOSED→ACCEPTED「仅 Beta 后允许
+  的低敏自动规则」的确定性实现）+ `memory_auto_save_pref`（每 owner 开关，默认
+  开启，可随时关闭）。规则引擎 `DeterministicMemoryAutoSaveRule` 固定三类白名单
+  ——称呼（叫我X）、口味（喜欢/不吃X）、作息（早睡/晚睡/早起/晚起/熬夜）——仅
+  60 字以内短句且命中 健康/家庭/财务/创伤/凭据 敏感词表任一词即永不自动保存
+  （退回确认队列）；无任何模型判断（§11.8 保持）。自动保存行直接 ACCEPTED 并
+  即刻写 embedding，仍可单条删除/编辑（可随时撤销）；界面明示：记忆页
+  「低敏记忆自动保存」开关 + 自动保存条目「自动保存」徽标。其余一切提取内容
+  仍走 PENDING_CONFIRMATION 用户确认（INV-MEM-001/002 不变）。端点
+  `GET/PUT /api/v1/memories/auto-save` + Memory 响应新增 `autoSaved`。
 
 后端在运方面上还提供（2026-08-19 第四十轮）：
 

@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.worker;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,13 +44,16 @@ class MemoryExtractWorkItemHandlerTest {
     private final MessageRepository messageRepository = mock(MessageRepository.class);
     private final MemoryService memoryService = mock(MemoryService.class);
     private final GenerationFinalizeService finalizeService = mock(GenerationFinalizeService.class);
+    private final com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort =
+            mock(com.virtualcompanion.runtime.memory.EmbeddingPort.class);
 
     private final MemoryExtractWorkItemHandler handler = new MemoryExtractWorkItemHandler(
             generationRepository,
             conversationRepository,
             messageRepository,
             memoryService,
-            finalizeService);
+            finalizeService,
+            embeddingPort);
 
     private final WorkItemWorker.OwnerExecutor executor = (ownerUserId, work) -> work.run();
 
@@ -218,5 +222,56 @@ class MemoryExtractWorkItemHandlerTest {
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(0);
 
         assertThrows(IllegalStateException.class, () -> handle(extractClaim(1L, 10L)));
+    }
+
+    @Test
+    void whitelistHitAutoSavesAsAcceptedWithEmbeddingWhenEnabled() {
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(generation(5L)));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(conversation(9L)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                message(101L, "user", "以后请叫我小雪，谢谢你"),
+                message(102L, "assistant", "好的")));
+        when(memoryService.autoSaveEnabled(1L)).thenReturn(true);
+        when(embeddingPort.space()).thenReturn(
+                new com.virtualcompanion.runtime.memory.EmbeddingPort.EmbeddingSpace(
+                        "deterministic-hash", "1", 64, "alpha-hash-64"));
+        when(embeddingPort.embed(anyString())).thenReturn(new float[64]);
+        MemoryRecord autoSaved = new MemoryRecord(
+                202L, null, "RELATIONSHIP", "称呼偏好：小雪", "ACCEPTED", null, null, NOW, true);
+        when(memoryService.createAutoSaved(1L, 9L, "RELATIONSHIP", "称呼偏好：小雪",
+                null, List.of("message:101"))).thenReturn(Optional.of(autoSaved));
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(extractClaim(1L, 10L));
+
+        verify(memoryService).createAutoSaved(
+                1L, 9L, "RELATIONSHIP", "称呼偏好：小雪", null, List.of("message:101"));
+        // An auto-saved memory is canonical immediately, so its embedding is
+        // written right away (mirroring the confirm path).
+        verify(memoryService).upsertEmbedding(
+                eq(1L), eq(202L), anyString(), anyString(), anyInt(), anyString(), anyString());
+        verify(memoryService, never()).create(
+                anyLong(), anyLong(), anyString(), anyString(), isNull(), any());
+        verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
+    }
+
+    @Test
+    void whitelistHitStaysPendingWhenTheOwnerSwitchedAutoSaveOff() {
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(generation(5L)));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(conversation(9L)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                message(101L, "user", "以后请叫我小雪，谢谢你"),
+                message(102L, "assistant", "好的")));
+        when(memoryService.autoSaveEnabled(1L)).thenReturn(false);
+        when(memoryService.create(1L, 9L, "RELATIONSHIP", "以后请叫我小雪，谢谢你",
+                null, List.of("message:101"))).thenReturn(Optional.of(candidate(201L)));
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(extractClaim(1L, 10L));
+
+        verify(memoryService, never()).createAutoSaved(
+                anyLong(), anyLong(), anyString(), anyString(), isNull(), any());
+        verify(memoryService).create(
+                1L, 9L, "RELATIONSHIP", "以后请叫我小雪，谢谢你", null, List.of("message:101"));
     }
 }

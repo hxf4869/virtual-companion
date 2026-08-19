@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -168,6 +169,25 @@ public class MemoryController {
                 .toList();
     }
 
+    /** MEM-AUTO-SAVE (§7.4): the per-owner auto-save switch (default on). */
+    @GetMapping("/memories/auto-save")
+    public MemoryAutoSaveResponse getAutoSave(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
+        return new MemoryAutoSaveResponse(memoryService.autoSaveEnabled(ownerUserId));
+    }
+
+    /** MEM-AUTO-SAVE: flip the switch at any time (可随时撤销). */
+    @PutMapping("/memories/auto-save")
+    public MemoryAutoSaveResponse setAutoSave(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @Valid @RequestBody MemoryAutoSaveRequest request) {
+        if (request.enabled() == null) {
+            throw new IllegalArgumentException("enabled is required");
+        }
+        return new MemoryAutoSaveResponse(
+                memoryService.setAutoSaveEnabled(ownerUserId, request.enabled()));
+    }
+
     private static long parseId(String raw, String name) {
         try {
             long parsed = Long.parseLong(raw);
@@ -215,7 +235,8 @@ public class MemoryController {
                 record.status(),
                 record.conversationId() == null ? null : record.conversationId().toString(),
                 record.createdAt() == null ? null : record.createdAt().toString(),
-                record.deletedAt() == null ? null : record.deletedAt().toString());
+                record.deletedAt() == null ? null : record.deletedAt().toString(),
+                record.autoSaved());
     }
 
     private static MemoryEvidenceResponse toEvidenceResponse(MemoryEvidenceRecord record) {
@@ -245,7 +266,16 @@ public class MemoryController {
             String status,
             String conversationId,
             String createdAt,
-            String deletedAt) {
+            String deletedAt,
+            boolean autoSaved) {
+    }
+
+    /** MEM-AUTO-SAVE: switch request body (OpenAPI {@code MemoryAutoSaveRequest}). */
+    public record MemoryAutoSaveRequest(Boolean enabled) {
+    }
+
+    /** MEM-AUTO-SAVE: switch response body (OpenAPI {@code MemoryAutoSavePref}). */
+    public record MemoryAutoSaveResponse(boolean enabled) {
     }
 
     /** Response body (OpenAPI {@code MemoryEvidence}). */

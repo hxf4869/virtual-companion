@@ -39,10 +39,12 @@ class MemoryServiceTest {
     private static final Instant NOW = Instant.parse("2026-08-12T12:00:00Z");
     private static final String GET_SQL =
             "SELECT out_id, out_relationship_id, out_scope, out_summary, out_status, "
-                    + "out_conversation_id, out_created_at FROM vc.get_memory(?, ?)";
+                    + "out_conversation_id, out_created_at, out_auto_saved "
+                    + "FROM vc.get_memory(?, ?)";
     private static final String LIST_SQL =
             "SELECT out_id, out_scope, out_summary, out_status, out_conversation_id, "
-                    + "out_deleted_at, out_created_at FROM vc.list_memory(?, ?, ?)";
+                    + "out_deleted_at, out_created_at, out_auto_saved "
+                    + "FROM vc.list_memory(?, ?, ?)";
     private static final String CREATE_SQL =
             "SELECT vc.create_memory_candidate(?, ?, ?, ?, ?, ?)";
     private static final String UPDATE_SQL = "SELECT vc.update_memory(?, ?, ?)";

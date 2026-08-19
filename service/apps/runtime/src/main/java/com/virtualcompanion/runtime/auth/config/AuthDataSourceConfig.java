@@ -784,7 +784,8 @@ public class AuthDataSourceConfig {
                 conversationRepository,
                 messageRepository,
                 memoryService,
-                generationFinalizeService);
+                generationFinalizeService,
+                embeddingPort());
         DataExportWorkItemHandler dataExportHandler = new DataExportWorkItemHandler(
                 generationFinalizeService,
                 exportService,

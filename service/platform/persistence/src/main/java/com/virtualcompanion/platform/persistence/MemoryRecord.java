@@ -14,7 +14,9 @@ import java.util.Objects;
  * on the list path and {@code deletedAt} is {@code null} on the get path. The
  * status follows the memory-candidate-statuses catalog
  * ({@code PENDING_CONFIRMATION} candidates are created by model extraction;
- * {@code ACCEPTED} is reached only through user confirmation, INV-MEM-001/002).
+ * {@code ACCEPTED} is reached through user confirmation or, since V66, the
+ * deterministic low-sensitivity auto-save rule — such rows carry
+ * {@code autoSaved=true} so the UI can mark them 界面明示).
  */
 public record MemoryRecord(
         long id,
@@ -24,7 +26,8 @@ public record MemoryRecord(
         String status,
         Long conversationId,
         Instant deletedAt,
-        Instant createdAt) {
+        Instant createdAt,
+        boolean autoSaved) {
 
     public MemoryRecord {
         if (id <= 0) {
@@ -45,5 +48,16 @@ public record MemoryRecord(
         if (createdAt == null) {
             throw new IllegalArgumentException("createdAt must not be null");
         }
+    }
+
+    /**
+     * Pre-V66 shape (recall paths and pre-flag rows that do not surface the
+     * auto-save flag — every such row is simply not auto-saved).
+     */
+    public MemoryRecord(
+            long id, Long relationshipId, String scope, String summary,
+            String status, Long conversationId, Instant deletedAt, Instant createdAt) {
+        this(id, relationshipId, scope, summary, status, conversationId,
+                deletedAt, createdAt, false);
     }
 }

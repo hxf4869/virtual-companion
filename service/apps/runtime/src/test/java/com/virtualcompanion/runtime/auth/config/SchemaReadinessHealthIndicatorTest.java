@@ -177,8 +177,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V62 = EMBED-RECALL memory embeddings + DEGRADED-AI actual class;
         // V63 = CONV-SUMMARY L2 conversation summaries;
         // V64 = ADMIN-BETA console queues;
-        // V65 = EMERGENCY-CONTACT lifecycle).
+        // V65 = EMERGENCY-CONTACT lifecycle;
+        // V66 = MEM-AUTO-SAVE deterministic low-sensitivity auto-save).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(65);
+                .isEqualTo(66);
     }
 }
