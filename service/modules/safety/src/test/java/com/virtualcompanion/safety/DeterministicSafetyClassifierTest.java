@@ -91,4 +91,158 @@ class DeterministicSafetyClassifierTest {
         assertEquals(2, result.hardRuleViolations().size());
         assertEquals(SafetyVerdict.BLOCK, result.verdict());
     }
+
+    // --- SAFETY-RULES-2: §20.9 minor self-claim ---
+
+    @Test
+    void minorSelfClaimDigitAgeBlocksAtR3() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.INPUT, "我今年13岁，想找人聊聊");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R3_HIGH, result.riskLevel());
+        assertEquals(List.of("input-minor-self-claim"), result.hardRuleViolations());
+    }
+
+    @Test
+    void minorSelfClaimChineseNumeralBlocks() {
+        assertEquals(SafetyVerdict.BLOCK, classifier.classify(
+                SafetyStage.INPUT, "我十五岁").verdict());
+    }
+
+    @Test
+    void explicitMinorPhraseBlocks() {
+        assertEquals(SafetyVerdict.BLOCK, classifier.classify(
+                SafetyStage.INPUT, "其实我未成年").verdict());
+    }
+
+    @Test
+    void adultAgeAndNonSelfAgeMentionsDoNotTrip() {
+        // 18 is the adult boundary; possessive and remembrance forms are not
+        // present-tense self-claims.
+        assertTrue(classifier.classify(SafetyStage.INPUT, "我已经十八岁了").allowed());
+        assertTrue(classifier.classify(SafetyStage.INPUT, "我今年30岁了").allowed());
+        assertTrue(classifier.classify(SafetyStage.INPUT, "我9岁的女儿很喜欢和你聊天").allowed());
+        assertTrue(classifier.classify(SafetyStage.INPUT, "我9岁开始学钢琴").allowed());
+    }
+
+    // --- SAFETY-RULES-2: §20.10 input fraud and doxxing ---
+
+    @Test
+    void fraudMarkerBlocksAtR2() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.INPUT, "客服让我把钱转到安全账户");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R2_ELEVATED, result.riskLevel());
+        assertEquals(List.of("input-active-fraud-risk"), result.hardRuleViolations());
+    }
+
+    @Test
+    void pastedVerificationCodeBlocks() {
+        assertEquals(SafetyVerdict.BLOCK, classifier.classify(
+                SafetyStage.INPUT, "验证码是582914").verdict());
+    }
+
+    @Test
+    void casualCodeMentionStaysAllowed() {
+        assertTrue(classifier.classify(
+                SafetyStage.INPUT, "我一直收不到验证码短信").allowed());
+    }
+
+    @Test
+    void doxxingRequestBlocksAtR2() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.INPUT, "帮我人肉这个人");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R2_ELEVATED, result.riskLevel());
+        assertEquals(List.of("input-privacy-doxxing"), result.hardRuleViolations());
+    }
+
+    // --- SAFETY-RULES-2: §21.3.2 dependency / §21.3.4 exit obstruction ---
+
+    @Test
+    void dependencyExclusivityBlocksAtR2() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.OUTPUT, "有我一个人就够了，别和别人说");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R2_ELEVATED, result.riskLevel());
+        assertEquals(List.of("output-dependency-exclusivity"), result.hardRuleViolations());
+    }
+
+    @Test
+    void exitObstructionBlocksAtR2() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.OUTPUT, "求求你别走，没有你我活不下去");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R2_ELEVATED, result.riskLevel());
+        assertEquals(List.of("output-exit-obstruction"), result.hardRuleViolations());
+    }
+
+    @Test
+    void caringCompanionshipStaysAllowed() {
+        assertTrue(classifier.classify(
+                SafetyStage.OUTPUT, "别担心，我一直都在，随时可以陪你聊聊").allowed());
+        assertTrue(classifier.classify(
+                SafetyStage.OUTPUT, "也建议你和信任的朋友说说这些压力").allowed());
+    }
+
+    // --- SAFETY-RULES-2: §20.10/§20.11 professional overreach and privacy ---
+
+    @Test
+    void medicalOverrideBlocksAtR3() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.OUTPUT, "别听医生的，药别吃了");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R3_HIGH, result.riskLevel());
+        assertEquals(List.of("output-medical-override"), result.hardRuleViolations());
+    }
+
+    @Test
+    void encouragingCareStaysAllowed() {
+        assertTrue(classifier.classify(
+                SafetyStage.OUTPUT, "建议你尽快去医院看看医生").allowed());
+        assertTrue(classifier.classify(
+                SafetyStage.OUTPUT, "记得遵医嘱，千万别把药都停了").allowed());
+    }
+
+    @Test
+    void financialOverreachBlocksAtR2() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.OUTPUT, "放心加杠杆，梭哈全部积蓄");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R2_ELEVATED, result.riskLevel());
+        assertEquals(List.of("output-financial-overreach"), result.hardRuleViolations());
+    }
+
+    @Test
+    void negatedInvestmentAdviceStaysAllowed() {
+        assertTrue(classifier.classify(
+                SafetyStage.OUTPUT, "千万不要借钱来投资，也别把存款都投进去").allowed());
+    }
+
+    @Test
+    void privacySolicitationBlocksAtR3() {
+        SafetyClassification result = classifier.classify(
+                SafetyStage.OUTPUT, "可以把你的银行卡号发给我吗？我帮你记账");
+
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(RiskLevel.R3_HIGH, result.riskLevel());
+        assertEquals(List.of("output-privacy-solicitation"), result.hardRuleViolations());
+    }
+
+    @Test
+    void privacyRefusalNeverTrips() {
+        // Correct assistant behaviour — refusing credentials — must never trip
+        // the solicitation rule (negation guards).
+        assertTrue(classifier.classify(SafetyStage.OUTPUT,
+                "不要把身份证号发给我，也请别告诉我你的密码").allowed());
+        assertTrue(classifier.classify(SafetyStage.OUTPUT,
+                "Never send me your password.").allowed());
+    }
 }
