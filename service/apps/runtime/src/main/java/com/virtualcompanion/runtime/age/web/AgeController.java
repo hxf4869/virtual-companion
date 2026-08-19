@@ -1,6 +1,8 @@
 package com.virtualcompanion.runtime.age.web;
 
 import com.virtualcompanion.catalog.AgeState;
+import com.virtualcompanion.platform.persistence.AgeAppealRecord;
+import com.virtualcompanion.platform.persistence.AgeAppealService;
 import com.virtualcompanion.platform.persistence.AgeVerificationRecord;
 import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.runtime.age.AgeStateTransitions;
@@ -12,7 +14,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -42,14 +46,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class AgeController {
 
     private final AgeVerificationService ageVerificationService;
+    private final AgeAppealService ageAppealService;
     private final AgeVerificationPort ageVerificationPort;
     private final SimulatedAgeVerifier simulatedAgeVerifier;
 
     public AgeController(
             AgeVerificationService ageVerificationService,
+            AgeAppealService ageAppealService,
             AgeVerificationPort ageVerificationPort,
             SimulatedAgeVerifier simulatedAgeVerifier) {
         this.ageVerificationService = ageVerificationService;
+        this.ageAppealService = ageAppealService;
         this.ageVerificationPort = ageVerificationPort;
         this.simulatedAgeVerifier = simulatedAgeVerifier;
     }
@@ -108,6 +115,92 @@ public class AgeController {
                 .map(AgeVerificationRecord::ageState)
                 .map(AgeState::valueOf)
                 .orElse(AgeState.AGE_UNKNOWN);
+    }
+
+    /**
+     * AGE-APPEAL (V56, FR-AUTH-002 申诉入口): append one appeal and flip the
+     * effective state to AGE_APPEAL_PENDING in the same transaction. Only a
+     * state the age-states catalog can reach AGE_APPEAL_PENDING from
+     * (ADULT_VERIFICATION_REQUIRED / MINOR_SUSPECTED) may appeal; anything
+     * else maps to 400 INVALID_REQUEST (fail closed). Resolution stays a
+     * human review action — this endpoint never rewrites a result.
+     */
+    @PostMapping("/age/appeal")
+    public AgeAppealResponse appeal(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @RequestBody AgeAppealRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request body is required");
+        }
+        String reason = AgeAppealService.normalizeReason(request.reason());
+        AgeState current = currentState(ownerUserId);
+        if (!AgeStateTransitions.allows(current, AgeState.AGE_APPEAL_PENDING)) {
+            throw new IllegalArgumentException(
+                    "the current age state cannot submit an appeal");
+        }
+        ageAppealService.submit(ownerUserId, reason);
+        // The newest row of the same owner is the row just appended (ids are
+        // allocated from a single monotonic sequence).
+        return ageAppealService.list(ownerUserId, null, 1).stream()
+                .findFirst()
+                .map(AgeController::toAppealResponse)
+                .orElseThrow(() -> new IllegalStateException(
+                        "submitted age appeal not readable"));
+    }
+
+    /** AGE-APPEAL: the caller's appeals, newest-first keyset. */
+    @GetMapping("/age/appeals")
+    public List<AgeAppealResponse> appeals(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @RequestParam(name = "after", required = false) String after,
+            @RequestParam(name = "limit", required = false) String limit) {
+        return ageAppealService
+                .list(ownerUserId, parseOptionalLong(after), parseOptionalInt(limit))
+                .stream()
+                .map(AgeController::toAppealResponse)
+                .toList();
+    }
+
+    private static Long parseOptionalLong(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("after is not a valid id: " + raw, e);
+        }
+    }
+
+    private static Integer parseOptionalInt(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("limit is not a valid number: " + raw, e);
+        }
+    }
+
+    private static AgeAppealResponse toAppealResponse(AgeAppealRecord record) {
+        return new AgeAppealResponse(
+                Long.toString(record.id()),
+                record.reason(),
+                record.status(),
+                record.resolutionNote().isEmpty() ? null : record.resolutionNote(),
+                record.createdAt().toString(),
+                record.resolvedAt() == null ? null : record.resolvedAt().toString());
+    }
+
+    /** Appeal submission body (OpenAPI {@code AgeAppealRequest}). */
+    public record AgeAppealRequest(String reason) {
+    }
+
+    /** Appeal record body (OpenAPI {@code AgeAppealRecord}). */
+    public record AgeAppealResponse(
+            String id, String reason, String status, String resolutionNote,
+            String createdAt, String resolvedAt) {
     }
 
     private static AgeStateResponse toResponse(AgeVerificationRecord record) {

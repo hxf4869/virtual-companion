@@ -1,5 +1,6 @@
 <!-- DATA-VIEW (FR-DATA-001): read-only overview of stored account data.
-Uses existing list APIs. Report/appeal has no Alpha endpoint. -->
+Uses existing list APIs; report/appeal status reads the report intake list
+(REPORT-BE). -->
 <template>
   <view class="data-page">
     <view class="bar">
@@ -15,7 +16,7 @@ Uses existing list APIs. Report/appeal has no Alpha endpoint. -->
     <view class="intro">
       <text>
         这里只查看已经保存在本服务中的数据。导出请走「数据导出」。
-        举报和申诉状态没有独立接口，本页不会编造记录。
+        举报和申诉提交后会有人工处理，本页只显示真实记录。
       </text>
     </view>
 
@@ -114,9 +115,19 @@ Uses existing list APIs. Report/appeal has no Alpha endpoint. -->
 
       <view class="section" data-testid="data-appeals">
         <text class="section-title">举报和申诉状态</text>
-        <button data-testid="data-open-report" class="row row-link" @click="goTo('/pages/report/report')">
-          尚未接通。本页不会显示虚构的工单。
+        <button
+          v-for="r in reportStore.reports.slice(0, 8)"
+          :key="r.id"
+          class="row row-link"
+          data-testid="data-open-report"
+          @click="goTo('/pages/report/report')"
+        >
+          {{ REPORT_REASON_LABELS[r.reason] }} ·
+          {{ r.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }}
         </button>
+        <text v-if="reportStore.loaded && reportStore.reports.length === 0" class="empty" data-testid="data-report-empty">
+          还没有提交过举报。
+        </text>
       </view>
     </template>
   </view>
@@ -129,12 +140,14 @@ import { createAuthenticatedTransport } from "@/api/transport";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
 import { useDataStore } from "@/stores/data";
+import { REPORT_REASON_LABELS, useReportStore } from "@/stores/report";
 
 export default {
   name: "DataPage",
   setup() {
     const auth = useAuthStore();
     const store = useDataStore();
+    const reportStore = useReportStore();
     const requestIdCopy = ref("");
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -147,11 +160,15 @@ export default {
         await auth.tryRefresh(transport);
       }
       await store.load(transport);
+      // REPORT-BE: the appeal-status section reads the real intake list; a
+      // failed read keeps it empty rather than faking a status.
+      await reportStore.load(transport);
       requestIdCopy.value = store.loadFailed ? requestIdLabel() : "";
     });
 
     async function onRetry(): Promise<void> {
       await store.load(transport);
+      await reportStore.load(transport);
       requestIdCopy.value = store.loadFailed ? requestIdLabel() : "";
     }
 
@@ -170,7 +187,7 @@ export default {
       }
     }
 
-    return { auth, store, requestIdCopy, onRetry, goTo };
+    return { auth, store, reportStore, REPORT_REASON_LABELS, requestIdCopy, onRetry, goTo };
   },
 };
 </script>

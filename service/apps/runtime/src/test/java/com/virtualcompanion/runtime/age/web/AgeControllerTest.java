@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.virtualcompanion.catalog.AgeState;
+import com.virtualcompanion.platform.persistence.AgeAppealRecord;
+import com.virtualcompanion.platform.persistence.AgeAppealService;
 import com.virtualcompanion.platform.persistence.AgeVerificationRecord;
 import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.runtime.age.AgeVerificationPort;
@@ -17,6 +19,7 @@ import com.virtualcompanion.runtime.age.SimulatedAgeVerifier;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +44,7 @@ class AgeControllerTest {
     private static final Instant NOW = Instant.parse("2026-08-17T12:00:00Z");
 
     private AgeVerificationService ageVerificationService;
+    private AgeAppealService ageAppealService;
     private AgeVerificationPort port;
     private SimulatedAgeVerifier simulated;
     private MockMvc mockMvc;
@@ -48,10 +52,11 @@ class AgeControllerTest {
     @BeforeEach
     void setUp() {
         ageVerificationService = mock(AgeVerificationService.class);
+        ageAppealService = mock(AgeAppealService.class);
         port = mock(AgeVerificationPort.class);
         simulated = new SimulatedAgeVerifier();
         AgeController controller =
-                new AgeController(ageVerificationService, port, simulated);
+                new AgeController(ageVerificationService, ageAppealService, port, simulated);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -159,5 +164,60 @@ class AgeControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.providerRef").value("vendor-x"));
         verify(ageVerificationService).record(1L, "ADULT_VERIFIED", "vendor-x");
+    }
+
+    @Test
+    void appealSubmitsFromAnAppealableStateAndReturnsTheRecord() throws Exception {
+        when(ageVerificationService.get(1L))
+                .thenReturn(Optional.of(record("ADULT_VERIFICATION_REQUIRED")));
+        when(ageAppealService.submit(1L, "核验结果有误"))
+                .thenReturn(7L);
+        when(ageAppealService.list(1L, null, 1))
+                .thenReturn(List.of(new AgeAppealRecord(
+                        7L, "核验结果有误", "SUBMITTED", "", NOW, null)));
+
+        mockMvc.perform(post("/api/v1/age/appeal")
+                        .contentType("application/json")
+                        .content("{\"reason\":\"  核验结果有误  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("7"))
+                .andExpect(jsonPath("$.status").value("SUBMITTED"))
+                .andExpect(jsonPath("$.reason").value("核验结果有误"))
+                .andExpect(jsonPath("$.resolvedAt").doesNotExist());
+    }
+
+    @Test
+    void appealFailsClosedFromStatesTheCatalogCannotAppealFrom() throws Exception {
+        // AGE_UNKNOWN / AGE_APPEAL_PENDING / MINOR_VERIFIED have no catalog
+        // transition into AGE_APPEAL_PENDING — every one fails closed.
+        for (String state : List.of("AGE_UNKNOWN", "AGE_APPEAL_PENDING", "MINOR_VERIFIED")) {
+            when(ageVerificationService.get(1L))
+                    .thenReturn(Optional.of(record(state)));
+            mockMvc.perform(post("/api/v1/age/appeal")
+                            .contentType("application/json")
+                            .content("{\"reason\":\"判错了\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        }
+    }
+
+    @Test
+    void appealRejectsAnInvalidBody() throws Exception {
+        mockMvc.perform(post("/api/v1/age/appeal")
+                        .contentType("application/json")
+                        .content("{\"reason\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void appealsListReturnsTheOwnerPage() throws Exception {
+        when(ageAppealService.list(1L, null, null))
+                .thenReturn(List.of(new AgeAppealRecord(
+                        7L, "判错了", "SUBMITTED", "", NOW, null)));
+
+        mockMvc.perform(get("/api/v1/age/appeals"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("7"))
+                .andExpect(jsonPath("$[0].status").value("SUBMITTED"));
     }
 }

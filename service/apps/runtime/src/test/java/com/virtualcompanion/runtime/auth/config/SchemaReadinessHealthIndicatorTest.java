@@ -167,8 +167,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V52 = USAGE-HEALTH continuous-use reminder prefs + heartbeat;
         // V53 = GEN-VER generation versions for one user message;
         // V54 = INC-PREF default incognito for the next new conversation;
-        // V55 = MEM-IMPORT explicit archive/import of confirmed memories).
+        // V55 = MEM-IMPORT explicit archive/import of confirmed memories;
+        // V56 = REPORT-BE/AGE-APPEAL report intake + age-appeal tables).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(55);
+                .isEqualTo(56);
     }
 }

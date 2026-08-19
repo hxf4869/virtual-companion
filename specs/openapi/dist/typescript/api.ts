@@ -20,6 +20,36 @@ export interface AgeStateResponse {
   verifiedAt?: string
 }
 
+export interface AgeAppealRequest {
+  reason: string
+}
+
+export interface AgeAppealRecord {
+  id: string
+  reason: string
+  status: string
+  resolutionNote?: string
+  createdAt: string
+  resolvedAt?: string
+}
+
+export interface CreateReportRequest {
+  messageId?: string
+  reason: string
+  note: string
+}
+
+export interface ReportRecord {
+  id: string
+  messageId?: string
+  reason: string
+  note: string
+  status: string
+  resolutionNote?: string
+  createdAt: string
+  resolvedAt?: string
+}
+
 export interface UsageHealthStatus {
   reminderAfterMinutes: string
   sessionGapMinutes: string
@@ -454,6 +484,8 @@ export interface VirtualCompanionApiClient {
   getServiceMode(): Promise<VersionResponse>
   getAgeState(): Promise<VersionResponse>
   verifyAge(): Promise<VersionResponse>
+  submitAgeAppeal(): Promise<VersionResponse>
+  listAgeAppeals(): Promise<VersionResponse>
   getUsageHealth(): Promise<VersionResponse>
   updateUsageHealthPrefs(): Promise<VersionResponse>
   usageHealthHeartbeat(): Promise<VersionResponse>
@@ -500,6 +532,9 @@ export interface VirtualCompanionApiClient {
   listReminders(): Promise<VersionResponse>
   updateReminder(): Promise<VersionResponse>
   deleteReminder(): Promise<VersionResponse>
+  createReport(): Promise<VersionResponse>
+  listReports(): Promise<VersionResponse>
+  getReport(): Promise<VersionResponse>
   assignServiceClass(): Promise<VersionResponse>
   listServiceClassAssignments(): Promise<VersionResponse>
   recordConsent(): Promise<VersionResponse>

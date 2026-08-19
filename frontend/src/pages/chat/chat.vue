@@ -353,15 +353,20 @@
             </view>
             <text v-else class="msg-content">{{ msg.content }}</text>
             <!-- MSG-COPY: copy this message's text (best effort, no server
-                 call; the label flips briefly as visual feedback). -->
+                 call; the label flips briefly as visual feedback). Assistant
+                 copies carry the AI-content notice (COPY-LABEL / §21.4.1). -->
             <button
               v-if="!msg.messageId.startsWith('__') && !isStreaming"
               class="msg-copy"
               :data-testid="`msg-copy-${msg.messageId}`"
-              :aria-label="copiedMsgId === msg.messageId ? '已复制这条消息' : '复制这条消息'"
-              @click="onCopyMessage(msg.messageId, msg.content)"
+              :aria-label="copiedMsgId === msg.messageId
+                ? (msg.role === 'assistant' ? '已复制（内容由 AI 生成，请核实后使用）' : '已复制这条消息')
+                : '复制这条消息'"
+              @click="onCopyMessage(msg.messageId, msg.content, msg.role)"
             >
-              {{ copiedMsgId === msg.messageId ? "已复制" : "复制" }}
+              {{ copiedMsgId === msg.messageId
+                ? (msg.role === 'assistant' ? '已复制 · AI 生成' : '已复制')
+                : '复制' }}
             </button>
             <!-- MEM-NEG (V44): 不记住 negative-memory marker, user messages
                  only (assistant text is never an extraction source). -->
@@ -390,8 +395,8 @@
             >
               {{ confirmDeleteMsgId === msg.messageId ? "确认删除" : "删除" }}
             </button>
-            <!-- MSG-REPORT: ticket API is not wired. Disclose that; never
-                 invent a form or POST a fake ticket. -->
+            <!-- MSG-REPORT (REPORT-BE): the intake page takes the submission;
+                 no invented tickets, statuses or SLA wording inline. -->
             <button
               v-if="!msg.messageId.startsWith('__') && !isStreaming"
               class="msg-copy"
@@ -407,13 +412,13 @@
               :data-testid="`msg-report-notice-${msg.messageId}`"
               role="status"
             >
-              <text>举报和申诉受理接口尚未接通。这里没有可提交的表单，也不会编造工单。</text>
+              <text>提交后会进入人工处理队列。这里不编造工单编号或处理时限。</text>
               <button
                 class="msg-copy"
                 data-testid="msg-report-open-page"
-                @click="goTo('/pages/report/report')"
+                @click="goTo(`/pages/report/report?messageId=${encodeURIComponent(msg.messageId)}`)"
               >
-                打开举报和申诉页
+                打开举报和申诉页提交
               </button>
             </view>
             <button
@@ -1039,10 +1044,12 @@ export default defineComponent({
 
     /**
      * MSG-COPY: copy the message text to the clipboard (best effort — never
-     * breaks the chat). The label flips to "已复制" for a moment as feedback;
-     * the timer is cleared on unmount.
+     * breaks the chat). The label flips for a moment as feedback; assistant
+     * copies carry the AI-content notice (COPY-LABEL / §21.4.1: 复制时提示
+     * 「内容由 AI 生成，请核实后使用」— the export already labels every AI
+     * message). The timer is cleared on unmount.
      */
-    function onCopyMessage(messageId: string, content: string): void {
+    function onCopyMessage(messageId: string, content: string, role: string): void {
       const text = (content ?? "").trim();
       if (!text) return;
       try {
@@ -1055,6 +1062,20 @@ export default defineComponent({
           legacyCopy(text);
         }
         copiedMsgId.value = messageId;
+        if (role === "assistant") {
+          const uniApi = (globalThis as Record<string, unknown>).uni as
+            | { showToast?: (options: { title: string; icon: string; duration: number }) => void }
+            | undefined;
+          try {
+            uniApi?.showToast?.({
+              title: "内容由 AI 生成，请核实后使用",
+              icon: "none",
+              duration: 1600,
+            });
+          } catch {
+            // Presentation-only notice; the copy itself already succeeded.
+          }
+        }
         if (copyResetTimer !== undefined) {
           globalThis.clearTimeout(copyResetTimer);
         }

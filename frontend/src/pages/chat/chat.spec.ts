@@ -287,11 +287,38 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     await flushPromises();
 
     expect(writeText).toHaveBeenCalledWith("这是一段需要复制的内容");
-    expect(wrapper.find('[data-testid="msg-copy-m1"]').text()).toContain("已复制");
+    // COPY-LABEL (§21.4.1): an assistant copy carries the AI-content notice.
+    expect(wrapper.find('[data-testid="msg-copy-m1"]').text()).toContain("已复制 · AI 生成");
     wrapper.unmount();
   });
 
-  it("MSG-REPORT: persisted messages offer report and disclose the ticket API is not wired", async () => {
+  it("MSG-COPY: a user-message copy stays a plain 已复制 with no AI notice", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...globalThis.navigator, clipboard: { writeText } });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.messages = [
+      {
+        messageId: "u1",
+        conversationId: "1",
+        role: "user",
+        content: "用户自己说的话",
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="msg-copy-u1"]').trigger("click");
+    await flushPromises();
+
+    expect(writeText).toHaveBeenCalledWith("用户自己说的话");
+    expect(wrapper.find('[data-testid="msg-copy-u1"]').text()).toContain("已复制");
+    expect(wrapper.find('[data-testid="msg-copy-u1"]').text()).not.toContain("AI 生成");
+    wrapper.unmount();
+  });
+
+  it("MSG-REPORT: persisted messages offer report and open the intake page anchored to the message", async () => {
     stubFetch();
     const wrapper = mountPage();
     await flushPromises();
@@ -318,14 +345,14 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     const notice = wrapper.find('[data-testid="msg-report-notice-m1"]');
     expect(notice.exists()).toBe(true);
-    expect(notice.text()).toContain("尚未接通");
-    expect(notice.text()).toContain("表单");
+    expect(notice.text()).toContain("人工处理队列");
+    expect(notice.text()).not.toMatch(/工单号|回电|客服热线/);
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
 
     const navigateTo = vi.fn();
     vi.stubGlobal("uni", { navigateTo });
     await wrapper.find('[data-testid="msg-report-open-page"]').trigger("click");
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/report/report" });
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/report/report?messageId=m1" });
     wrapper.unmount();
   });
 

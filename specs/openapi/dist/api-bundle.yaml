@@ -106,6 +106,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/age/appeal:
+    post:
+      operationId: submitAgeAppeal
+      summary: Submit an age-verification appeal (FR-AUTH-002)
+      description: Appends an age appeal for the caller (vc.submit_age_appeal) and flips the effective age state to AGE_APPEAL_PENDING
+        in the same transaction. Allowed only from a state the age-states catalog can reach AGE_APPEAL_PENDING from (ADULT_VERIFICATION_REQUIRED
+        / MINOR_SUSPECTED); anything else maps to INVALID_REQUEST (fail closed). Resolution stays a human review action —
+        this endpoint only records the appeal, it never rewrites a verification result. Requires a server-verified authentication
+        context.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgeAppealRequest'
+      responses:
+        '200':
+          description: The appended appeal record (status SUBMITTED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgeAppealRecord'
+        '400':
+          description: The current age state cannot submit an appeal, or an invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/age/appeals:
+    get:
+      operationId: listAgeAppeals
+      summary: The caller's age appeals, newest first (FR-AUTH-002)
+      description: Keyset-paginated age appeals owned by the caller (vc.list_age_appeals). The after cursor is the last appeal
+        id seen. Appeals are append-only intake records; resolution status changes only through human review. Requires a server-verified
+        authentication context.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor (the last appeal id seen); omit to start from the beginning.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Page size, clamped to a safe band by the server.
+      responses:
+        '200':
+          description: A page of the caller's appeals, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgeAppealRecord'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/usage-health:
     get:
       operationId: getUsageHealth
@@ -1554,6 +1627,118 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/reports:
+    post:
+      operationId: createReport
+      summary: Submit a report or complaint (FR-DATA-001, §20.15)
+      description: Appends a report intake record for the caller (vc.create_report), optionally anchored to one of the caller's
+        own messages. The reason follows the report-reasons catalog; the note is free text, bounded and trimmed. Technical
+        Alpha records and exposes the submission status only — resolution stays a human review action, and no ticket numbers,
+        SLA promises or hotline contacts are invented. A foreign or absent message anchor maps to NOT_FOUND_OR_FORBIDDEN;
+        existence is never disclosed. Requires a server-verified authentication context.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReportRequest'
+      responses:
+        '200':
+          description: The appended report record (status SUBMITTED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportRecord'
+        '400':
+          description: Unapproved reason or an invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Message anchor absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listReports
+      summary: The caller's reports, newest first (FR-DATA-001)
+      description: Keyset-paginated report intake records owned by the caller (vc.list_reports). The after cursor is the last
+        report id seen. Status reflects the intake lifecycle only (SUBMITTED until a human resolves it). Requires a server-verified
+        authentication context.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor (the last report id seen); omit to start from the beginning.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Page size, clamped to a safe band by the server.
+      responses:
+        '200':
+          description: A page of the caller's reports, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportRecord'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/reports/{reportId}:
+    get:
+      operationId: getReport
+      summary: One of the caller's reports (FR-DATA-001)
+      description: A single report intake record owned by the caller (vc.get_report). A foreign or absent report id maps to
+        NOT_FOUND_OR_FORBIDDEN; existence is never disclosed. Requires a server-verified authentication context.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: reportId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The report id returned by createReport.
+      responses:
+        '200':
+          description: The report record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportRecord'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Resource absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/admin/service-class:
     post:
       operationId: assignServiceClass
@@ -2188,6 +2373,123 @@ components:
           type: string
           format: date-time
           description: Verification time (RFC 3339), present once verified
+    AgeAppealRequest:
+      type: object
+      description: Age-appeal submission body (FR-AUTH-002). The reason is the caller's own appeal statement; it is stored
+        trimmed and never rewrites a verification result.
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the caller believes the age verdict is wrong (trimmed server-side).
+    AgeAppealRecord:
+      type: object
+      description: An age-appeal intake record (FR-AUTH-002). SUBMITTED until a human review resolves it; resolution fields
+        are present only once resolved.
+      required:
+      - id
+      - reason
+      - status
+      - createdAt
+      properties:
+        id:
+          type: string
+          description: The appeal id (opaque cursor for listAgeAppeals).
+        reason:
+          type: string
+          description: The caller's appeal statement as submitted.
+        status:
+          type: string
+          enum:
+          - SUBMITTED
+          - RESOLVED
+          description: Intake lifecycle status; resolution is a human review action.
+        resolutionNote:
+          type: string
+          description: Present once a human review resolved the appeal.
+        createdAt:
+          type: string
+          format: date-time
+          description: Submission time (RFC 3339).
+        resolvedAt:
+          type: string
+          format: date-time
+          description: Resolution time (RFC 3339), present once resolved.
+    CreateReportRequest:
+      type: object
+      description: Report/complaint submission body (FR-DATA-001, §20.15). The message anchor is optional; when present it
+        must be one of the caller's own persisted messages.
+      required:
+      - reason
+      - note
+      properties:
+        messageId:
+          type: string
+          description: Optional anchor to one of the caller's persisted messages.
+        reason:
+          type: string
+          enum:
+          - UNSAFE_CONTENT
+          - AI_IDENTITY
+          - MINOR_SAFEGUARD
+          - PRIVACY_OR_DATA
+          - OTHER
+          description: report-reasons catalog code.
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Free-text description (stored trimmed server-side).
+    ReportRecord:
+      type: object
+      description: A report intake record (FR-DATA-001). SUBMITTED until a human review resolves it; the message anchor becomes
+        null when the anchored message is later deleted, while the intake record survives.
+      required:
+      - id
+      - reason
+      - note
+      - status
+      - createdAt
+      properties:
+        id:
+          type: string
+          description: The report id (opaque cursor for listReports).
+        messageId:
+          type: string
+          nullable: true
+          description: The anchored message id, null for a general report or a deleted anchor.
+        reason:
+          type: string
+          enum:
+          - UNSAFE_CONTENT
+          - AI_IDENTITY
+          - MINOR_SAFEGUARD
+          - PRIVACY_OR_DATA
+          - OTHER
+          description: report-reasons catalog code.
+        note:
+          type: string
+          description: The caller's description as submitted.
+        status:
+          type: string
+          enum:
+          - SUBMITTED
+          - RESOLVED
+          description: Intake lifecycle status; resolution is a human review action.
+        resolutionNote:
+          type: string
+          description: Present once a human review resolved the report.
+        createdAt:
+          type: string
+          format: date-time
+          description: Submission time (RFC 3339).
+        resolvedAt:
+          type: string
+          format: date-time
+          description: Resolution time (RFC 3339), present once resolved.
     UsageHealthStatus:
       type: object
       description: Continuous-use reminder prefs and the current session (§20.7 / 21.3.3). reminderDue is a system-layer fact,

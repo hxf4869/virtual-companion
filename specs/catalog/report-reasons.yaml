@@ -1,0 +1,13 @@
+schemaVersion: 1
+catalogId: report-reasons
+entries:
+- code: UNSAFE_CONTENT
+  order: 0
+- code: AI_IDENTITY
+  order: 1
+- code: MINOR_SAFEGUARD
+  order: 2
+- code: PRIVACY_OR_DATA
+  order: 3
+- code: OTHER
+  order: 4

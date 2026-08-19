@@ -8,6 +8,7 @@ import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
 import com.virtualcompanion.modelruntime.authorization.ProviderRegion;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.AdminConsoleService;
+import com.virtualcompanion.platform.persistence.AgeAppealService;
 import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
@@ -15,6 +16,7 @@ import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
+import com.virtualcompanion.platform.persistence.ReportService;
 import com.virtualcompanion.platform.persistence.ExportService;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFeedbackService;
@@ -337,6 +339,18 @@ public class AuthDataSourceConfig {
     @Bean
     public AgeVerificationService ageVerificationService(JdbcTemplate authJdbcTemplate) {
         return new AgeVerificationService(authJdbcTemplate);
+    }
+
+    /** AGE-APPEAL (V56): age-appeal intake persistence (FR-AUTH-002 申诉入口). */
+    @Bean
+    public AgeAppealService ageAppealService(JdbcTemplate authJdbcTemplate) {
+        return new AgeAppealService(authJdbcTemplate);
+    }
+
+    /** REPORT-BE (V56): report/complaint intake persistence (FR-DATA-001, §20.15). */
+    @Bean
+    public ReportService reportService(JdbcTemplate authJdbcTemplate) {
+        return new ReportService(authJdbcTemplate);
     }
 
     /** USAGE-HEALTH (V52): continuous-use reminder prefs + heartbeat. */

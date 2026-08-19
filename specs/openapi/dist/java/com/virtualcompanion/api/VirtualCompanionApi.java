@@ -14,6 +14,12 @@ public interface VirtualCompanionApi {
     /** Run the simulated adult verification (FR-AUTH-002, Alpha port). */
     AgeStateResponse verifyAge();
 
+    /** Submit an age-verification appeal (FR-AUTH-002). */
+    AgeAppealRecord submitAgeAppeal();
+
+    /** The caller's age appeals, newest first (FR-AUTH-002). */
+    Void listAgeAppeals();
+
     /** Continuous-use reminder prefs and current session (FR well-being). */
     UsageHealthStatus getUsageHealth();
 
@@ -151,6 +157,15 @@ public interface VirtualCompanionApi {
 
     /** Delete one owned reminder (FR-NOTIFY-001). */
     ReminderDeletedResponse deleteReminder();
+
+    /** Submit a report or complaint (FR-DATA-001, §20.15). */
+    ReportRecord createReport();
+
+    /** The caller's reports, newest first (FR-DATA-001). */
+    Void listReports();
+
+    /** One of the caller's reports (FR-DATA-001). */
+    ReportRecord getReport();
 
     /** Assign a simulated service class to an account (ADMIN only, ENT-SNAP). */
     ServiceClassAssignResponse assignServiceClass();

@@ -6,9 +6,13 @@ import { computed, ref } from "vue";
 
 import {
   canRunSimulatedVerification,
+  canSubmitAgeAppeal,
   getAgeState,
   isVerificationBlocked,
+  listAgeAppeals,
+  submitAgeAppeal,
   verifyAge,
+  type AgeAppeal,
   type AgeState,
   type AgeStateRecord,
   type AgeTransport,
@@ -39,6 +43,10 @@ export const useAgeStore = defineStore("h5-age", () => {
   const canVerify = computed(() => canRunSimulatedVerification(record.value.ageState));
   const blocked = computed(() => isVerificationBlocked(record.value.ageState));
   const label = computed(() => AGE_STATE_LABELS[record.value.ageState]);
+  const canAppeal = computed(() => canSubmitAgeAppeal(record.value.ageState));
+
+  const appeals = ref<AgeAppeal[]>([]);
+  const appealsLoaded = ref(false);
 
   async function load(transport: AgeTransport): Promise<void> {
     loadFailed.value = false;
@@ -49,10 +57,43 @@ export const useAgeStore = defineStore("h5-age", () => {
     }
   }
 
+  async function loadAppeals(transport: AgeTransport): Promise<void> {
+    try {
+      appeals.value = await listAgeAppeals(transport);
+      appealsLoaded.value = true;
+    } catch {
+      // The appeal list is supplementary; a failed read keeps the previous
+      // rows instead of faking an empty history.
+    }
+  }
+
+  /**
+   * AGE-APPEAL: submit an appeal from a catalog-appealable state. Returns
+   * false on a local guard rejection; the caller maps thrown 400s to the
+   * fail-closed wording (the state never changes on a rejected write).
+   */
+  async function submitAppeal(transport: AgeTransport, reason: string): Promise<boolean> {
+    if (busy.value || !canAppeal.value) return false;
+    busy.value = true;
+    try {
+      const appeal = await submitAgeAppeal(transport, reason);
+      appeals.value = [appeal, ...appeals.value];
+      record.value = {
+        ...record.value,
+        ageState: "AGE_APPEAL_PENDING",
+      };
+      return true;
+    } finally {
+      busy.value = false;
+    }
+  }
+
   function reset(): void {
     record.value = { ageState: "AGE_UNKNOWN", providerRef: null, verifiedAt: null };
     loadFailed.value = false;
     busy.value = false;
+    appeals.value = [];
+    appealsLoaded.value = false;
   }
 
   async function runVerification(transport: AgeTransport): Promise<boolean> {
@@ -74,7 +115,12 @@ export const useAgeStore = defineStore("h5-age", () => {
     canVerify,
     blocked,
     label,
+    canAppeal,
+    appeals,
+    appealsLoaded,
     load,
+    loadAppeals,
+    submitAppeal,
     runVerification,
     reset,
   };

@@ -12,12 +12,12 @@
 
 ### R31 合规收尾
 
-- [ ] REPORT-BE 举报/申诉最小闭环：V56 表 + trusted-owner SD + OpenAPI
+- [x] REPORT-BE 举报/申诉最小闭环：V56 表 + trusted-owner SD + OpenAPI
       POST/GET `/reports` + 举报页接提交表单 + 消息举报可提交 + 「我的数据」
       展示举报申诉状态（FR-DATA-001、§20.15）。
-- [ ] AGE-APPEAL 年龄申诉提交接口：落申诉记录、按 age-states 目录进入申诉态，
+- [x] AGE-APPEAL 年龄申诉提交接口：落申诉记录、按 age-states 目录进入申诉态，
       处置仍人工；成年核验页接入（FR-AUTH-002、§21.3.6）。
-- [ ] COPY-LABEL 复制 AI 生成标识提示：助手消息复制反馈携带「内容由 AI 生成，
+- [x] COPY-LABEL 复制 AI 生成标识提示：助手消息复制反馈携带「内容由 AI 生成，
       请核实后使用」（§21.4.1/21.4.2，提示方案）。
 
 ### R32 数据权利补全

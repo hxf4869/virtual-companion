@@ -77,6 +77,22 @@ function stubFetch(fail = false): { calls: string[] } {
       if (url === "/api/v1/service-mode") {
         return { ok: true, status: 200, json: async () => ({ mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" }) };
       }
+      if (url === "/api/v1/reports") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              id: 5,
+              messageId: null,
+              reason: "PRIVACY_OR_DATA",
+              note: "导出不完整",
+              status: "SUBMITTED",
+              createdAt: "2026-08-19T08:00:00Z",
+            },
+          ],
+        };
+      }
       return { ok: true, status: 200, json: async () => ({}) };
     }),
   );
@@ -111,7 +127,10 @@ describe("data page (FR-DATA-001)", () => {
     expect(wrapper.find('[data-testid="data-reminders"]').text()).toContain("晚上十点提醒我休息");
     expect(wrapper.find('[data-testid="data-consents"]').text()).toContain("SERVICE_TERMS");
     expect(wrapper.find('[data-testid="data-model"]').text()).toContain("无生成模型");
-    expect(wrapper.find('[data-testid="data-appeals"]').text()).toContain("尚未接通");
+    // REPORT-BE: the appeal-status section reads the real intake list.
+    expect(calls).toContain("/api/v1/reports");
+    expect(wrapper.find('[data-testid="data-appeals"]').text()).toContain("隐私与数据权利");
+    expect(wrapper.find('[data-testid="data-appeals"]').text()).toContain("已提交，等待人工处理");
     wrapper.unmount();
   });
 

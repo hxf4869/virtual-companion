@@ -1,7 +1,8 @@
 <!-- AGE-UI (FR-AUTH-002): adult-verification status and Alpha simulated
 verify. The page never offers a “I am an adult” checkbox as the gate.
 Technical Alpha uses the simulated port; no identity document is stored.
-Appeal submission is not wired — blocked states are shown factually. -->
+AGE-APPEAL: a wrong verdict can be appealed from an appealable state — the
+appeal is recorded and reviewed by a human; the page never rewrites results. -->
 <template>
   <view class="age-page">
     <view class="bar">
@@ -29,7 +30,7 @@ Appeal submission is not wired — blocked states are shown factually. -->
         服务默认面向 18 岁以上用户。本页读取成年核验结果，并可运行 Technical
         Alpha 的模拟核验。系统只保存结果、年龄段、时间和供应商凭证，不保存身份证件。
         模拟核验供本地联调，不能当作公开上线的成年证明；真实供应商只替换端口实现，
-        不改本页调用。申诉提交接口尚未接通。
+        不改本页调用。认为核验结果有误时，可以从本页提交申诉，由人工处理。
       </text>
     </view>
 
@@ -58,8 +59,61 @@ Appeal submission is not wired — blocked states are shown factually. -->
 
       <view v-if="store.blocked" class="blocked" data-testid="age-blocked">
         <text>
-          当前状态无法完成成年核验。申诉提交接口尚未接通，本页只展示状态，不会改写结果。
+          当前状态无法完成成年核验。本页只展示状态，不会改写结果。
         </text>
+      </view>
+
+      <!-- AGE-APPEAL: submission is only offered from a catalog-appealable
+           state; the server re-checks the same rule (fail closed). -->
+      <view v-if="store.canAppeal" class="appeal-card" data-testid="age-appeal-form">
+        <text class="label">提交年龄申诉</text>
+        <text class="meta">申诉会交给人工处理。提交后状态变为「申诉处理中」，期间不能重复提交。</text>
+        <textarea
+          v-model="appealReason"
+          class="appeal-input"
+          data-testid="age-appeal-reason"
+          aria-label="申诉理由"
+          :maxlength="500"
+          placeholder="请说明为什么认为核验结果有误（必填，最多 500 字）"
+        />
+        <button
+          data-testid="age-appeal-submit"
+          class="nav-index verify-btn"
+          :disabled="store.busy || !canSubmitAppeal"
+          @click="onSubmitAppeal"
+        >
+          提交申诉
+        </button>
+      </view>
+
+      <!-- The result notices live outside the form card: on success the state
+           flips to AGE_APPEAL_PENDING and the card itself disappears. -->
+      <view v-if="appealResult === 'ok'" class="done" data-testid="age-appeal-ok" role="status">
+        <text>申诉已提交，等待人工处理。</text>
+      </view>
+      <view v-else-if="appealResult === 'rejected'" class="error" data-testid="age-appeal-rejected" role="alert">
+        <text>当前状态不能提交申诉，或理由不符合要求。结果不会被改写。</text>
+      </view>
+
+      <view
+        v-if="store.ageState === 'AGE_APPEAL_PENDING'"
+        class="state-card"
+        data-testid="age-appeal-pending"
+        role="status"
+      >
+        <text class="label">申诉处理中</text>
+        <text class="meta">已提交的申诉会由人工处理。处理完成前模拟核验保持关闭。</text>
+      </view>
+
+      <view v-if="store.appealsLoaded && store.appeals.length > 0" class="state-card">
+        <text class="label">我的申诉</text>
+        <view v-for="a in store.appeals" :key="a.id" class="appeal-row" :data-testid="`age-appeal-row-${a.id}`">
+          <text class="meta">
+            {{ a.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }} · {{ a.createdAt }}
+          </text>
+          <text class="meta">{{ a.reason }}</text>
+          <text v-if="a.resolutionNote" class="meta">处理说明：{{ a.resolutionNote }}</text>
+        </view>
       </view>
 
       <button
@@ -79,7 +133,7 @@ Appeal submission is not wired — blocked states are shown factually. -->
 </template>
 
 <script lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import { AgeHttpError } from "@/api/age";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -92,6 +146,8 @@ export default {
     const auth = useAuthStore();
     const store = useAgeStore();
     const actionError = ref("");
+    const appealReason = ref("");
+    const appealResult = ref<"idle" | "ok" | "rejected">("idle");
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -99,16 +155,20 @@ export default {
       onUnauthorized: () => auth.onUnauthorized(),
     });
 
+    const canSubmitAppeal = computed(() => appealReason.value.trim().length > 0);
+
     onMounted(async () => {
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
       }
       await store.load(transport);
+      await store.loadAppeals(transport);
     });
 
     async function onRetry(): Promise<void> {
       actionError.value = "";
       await store.load(transport);
+      await store.loadAppeals(transport);
     }
 
     async function onVerify(): Promise<void> {
@@ -123,6 +183,23 @@ export default {
           actionError.value = "当前状态无法完成成年核验。";
         } else {
           actionError.value = "模拟核验失败，请重试。";
+        }
+      }
+    }
+
+    async function onSubmitAppeal(): Promise<void> {
+      appealResult.value = "idle";
+      try {
+        const ok = await store.submitAppeal(transport, appealReason.value.trim());
+        appealResult.value = ok ? "ok" : "rejected";
+        if (ok) {
+          appealReason.value = "";
+        }
+      } catch (e) {
+        if (e instanceof AgeHttpError && e.status === 400) {
+          appealResult.value = "rejected";
+        } else {
+          appealResult.value = "rejected";
         }
       }
     }
@@ -145,8 +222,12 @@ export default {
     return {
       store,
       actionError,
+      appealReason,
+      appealResult,
+      canSubmitAppeal,
       onRetry,
       onVerify,
+      onSubmitAppeal,
       goTo,
     };
   },
@@ -208,6 +289,34 @@ export default {
 }
 .verify-btn {
   margin-top: 20rpx;
+}
+.appeal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+}
+.appeal-input {
+  width: 100%;
+  min-height: 120rpx;
+  box-sizing: border-box;
+  background-color: #14213d;
+  color: #f5f5f5;
+  border: 2rpx solid #2a3a5a;
+  border-radius: 12rpx;
+  padding: 12rpx;
+  font-size: 24rpx;
+}
+.appeal-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 10rpx 0;
+  border-bottom: 2rpx solid #24365c;
 }
 .done {
   margin-top: 16rpx;

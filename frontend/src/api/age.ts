@@ -39,6 +39,13 @@ export const BLOCKED_AGE_STATES: readonly AgeState[] = [
   "AGE_ACCESS_SUSPENDED",
 ];
 
+// AGE-APPEAL: the age-states catalog only allows AGE_APPEAL_PENDING from
+// these two states; the server re-checks the same rule (fail closed).
+export const APPEALABLE_AGE_STATES: readonly AgeState[] = [
+  "ADULT_VERIFICATION_REQUIRED",
+  "MINOR_SUSPECTED",
+];
+
 export interface AgeStateRecord {
   ageState: AgeState;
   providerRef: string | null;
@@ -67,6 +74,17 @@ export class AgeHttpError extends Error {
 
 const AGE_STATE_PATH = "/api/v1/age/state";
 const AGE_VERIFY_PATH = "/api/v1/age/verification";
+const AGE_APPEAL_PATH = "/api/v1/age/appeal";
+const AGE_APPEALS_PATH = "/api/v1/age/appeals";
+
+export interface AgeAppeal {
+  id: string;
+  reason: string;
+  status: "SUBMITTED" | "RESOLVED";
+  resolutionNote: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
 
 function asAgeState(value: unknown): AgeState | undefined {
   return typeof value === "string" && (AGE_STATES as readonly string[]).includes(value)
@@ -90,6 +108,68 @@ export function canRunSimulatedVerification(state: AgeState): boolean {
 
 export function isVerificationBlocked(state: AgeState): boolean {
   return BLOCKED_AGE_STATES.includes(state);
+}
+
+/** AGE-APPEAL: only the catalog-appealable states may submit an appeal. */
+export function canSubmitAgeAppeal(state: AgeState): boolean {
+  return APPEALABLE_AGE_STATES.includes(state);
+}
+
+function asAgeAppeal(json: unknown): AgeAppeal | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = typeof o.id === "string" || typeof o.id === "number" ? String(o.id) : undefined;
+  const reason = typeof o.reason === "string" ? o.reason : undefined;
+  const status =
+    o.status === "SUBMITTED" || o.status === "RESOLVED" ? o.status : undefined;
+  const createdAt = typeof o.createdAt === "string" ? o.createdAt : undefined;
+  if (!id || reason === undefined || !status || !createdAt) {
+    return null;
+  }
+  const resolutionNote = typeof o.resolutionNote === "string" && o.resolutionNote ? o.resolutionNote : null;
+  const resolvedAt = typeof o.resolvedAt === "string" && o.resolvedAt ? o.resolvedAt : null;
+  return { id, reason, status, resolutionNote, createdAt, resolvedAt };
+}
+
+/**
+ * AGE-APPEAL: submit an appeal against the current age verdict. 400 means
+ * the current state cannot appeal (fail closed); other non-OK statuses throw.
+ */
+export async function submitAgeAppeal(
+  t: AgeTransport,
+  reason: string,
+): Promise<AgeAppeal> {
+  const r = await t.request("POST", AGE_APPEAL_PATH, { reason });
+  if (!r.ok) {
+    throw new AgeHttpError(r.status);
+  }
+  const parsed = asAgeAppeal(r.json);
+  if (!parsed) {
+    throw new AgeHttpError(r.status);
+  }
+  return parsed;
+}
+
+/** AGE-APPEAL: the caller's appeals, newest first (keyset page). */
+export async function listAgeAppeals(
+  t: AgeTransport,
+  after?: string,
+  limit?: number,
+): Promise<AgeAppeal[]> {
+  const params: string[] = [];
+  if (after !== undefined) params.push(`after=${encodeURIComponent(after)}`);
+  if (limit !== undefined) params.push(`limit=${limit}`);
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const r = await t.request("GET", `${AGE_APPEALS_PATH}${query}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AgeHttpError(r.status);
+  }
+  const out: AgeAppeal[] = [];
+  for (const item of r.json) {
+    const parsed = asAgeAppeal(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
 }
 
 /** Effective adult-verification state (AGE_UNKNOWN when never verified). */

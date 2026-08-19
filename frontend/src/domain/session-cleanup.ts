@@ -10,6 +10,7 @@ import { useIncognitoStore } from "@/stores/incognito";
 import { useMemoryStore } from "@/stores/memory";
 import { useRelationshipStore } from "@/stores/relationship";
 import { useReminderStore } from "@/stores/reminder";
+import { useReportStore } from "@/stores/report";
 import { useUsageHealthStore } from "@/stores/usage-health";
 
 export function clearLocalSessionCaches(): void {
@@ -25,4 +26,5 @@ export function clearLocalSessionCaches(): void {
   useReminderStore().reset();
   useAgeStore().reset();
   useIncognitoStore().reset();
+  useReportStore().reset();
 }

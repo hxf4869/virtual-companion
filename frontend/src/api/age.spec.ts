@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   AgeHttpError,
   canRunSimulatedVerification,
+  canSubmitAgeAppeal,
   getAgeState,
   isVerificationBlocked,
+  listAgeAppeals,
+  submitAgeAppeal,
   verifyAge,
   type AgeTransport,
 } from "./age";
@@ -93,5 +96,74 @@ describe("age state helpers", () => {
     expect(isVerificationBlocked("MINOR_SUSPECTED")).toBe(true);
     expect(isVerificationBlocked("AGE_APPEAL_PENDING")).toBe(true);
     expect(isVerificationBlocked("AGE_UNKNOWN")).toBe(false);
+  });
+});
+
+describe("submitAgeAppeal", () => {
+  it("POSTs the appeal body and parses the record", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: {
+        id: 7,
+        reason: "核验结果有误",
+        status: "SUBMITTED",
+        createdAt: "2026-08-19T08:00:00Z",
+      },
+    });
+
+    const appeal = await submitAgeAppeal(transport, "核验结果有误");
+
+    expect(calls).toEqual([
+      { method: "POST", path: "/api/v1/age/appeal", body: { reason: "核验结果有误" } },
+    ]);
+    expect(appeal.id).toBe("7");
+    expect(appeal.status).toBe("SUBMITTED");
+    expect(appeal.resolvedAt).toBeNull();
+  });
+
+  it("throws AgeHttpError on a 400 fail-closed state", async () => {
+    const { transport } = recorder({ ok: false, status: 400, json: { code: "INVALID_REQUEST" } });
+
+    await expect(submitAgeAppeal(transport, "x")).rejects.toMatchObject({
+      name: "AgeHttpError",
+      status: 400,
+    });
+  });
+});
+
+describe("listAgeAppeals", () => {
+  it("GETs the keyset page and skips malformed rows", async () => {
+    const { transport, calls } = recorder({
+      ok: true,
+      status: 200,
+      json: [
+        { id: 7, reason: "判错了", status: "SUBMITTED", createdAt: "2026-08-19T08:00:00Z" },
+        { id: 8 },
+      ],
+    });
+
+    const rows = await listAgeAppeals(transport, "7", 20);
+
+    expect(calls[0].path).toBe("/api/v1/age/appeals?after=7&limit=20");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe("7");
+  });
+
+  it("throws a typed error on failure", async () => {
+    const { transport } = recorder({ ok: false, status: 500, json: null });
+
+    await expect(listAgeAppeals(transport)).rejects.toBeInstanceOf(AgeHttpError);
+  });
+});
+
+describe("canSubmitAgeAppeal", () => {
+  it("allows only the catalog-appealable states", () => {
+    expect(canSubmitAgeAppeal("ADULT_VERIFICATION_REQUIRED")).toBe(true);
+    expect(canSubmitAgeAppeal("MINOR_SUSPECTED")).toBe(true);
+    expect(canSubmitAgeAppeal("AGE_UNKNOWN")).toBe(false);
+    expect(canSubmitAgeAppeal("AGE_APPEAL_PENDING")).toBe(false);
+    expect(canSubmitAgeAppeal("MINOR_VERIFIED")).toBe(false);
+    expect(canSubmitAgeAppeal("ADULT_VERIFIED")).toBe(false);
   });
 });

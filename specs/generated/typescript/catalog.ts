@@ -57,6 +57,9 @@ export type ErrorCode = typeof ErrorCodeValues[number]
 export const MessageFeedbackKindValues = ["TOO_MECHANICAL", "FORGOT_CONTEXT", "CROSSED_BOUNDARY", "FACTUAL_ERROR", "UNSAFE"] as const
 export type MessageFeedbackKind = typeof MessageFeedbackKindValues[number]
 
+export const ReportReasonValues = ["UNSAFE_CONTENT", "AI_IDENTITY", "MINOR_SAFEGUARD", "PRIVACY_OR_DATA", "OTHER"] as const
+export type ReportReason = typeof ReportReasonValues[number]
+
 export const CompanionReplyLengthValues = ["SHORT", "MEDIUM", "LONG"] as const
 export type CompanionReplyLength = typeof CompanionReplyLengthValues[number]
 

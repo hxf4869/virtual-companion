@@ -58,6 +58,9 @@ catalogs:
 - file: message-feedback-kinds.yaml
   kind: enum
   typeName: MessageFeedbackKind
+- file: report-reasons.yaml
+  kind: enum
+  typeName: ReportReason
 - file: companion-prefs.yaml
   kind: multi-enum
 - file: companion-presentation.yaml

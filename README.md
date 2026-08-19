@@ -73,6 +73,14 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   （USAGE-HEALTH / §20.7：连续使用由服务端计算，客户端只辅助；批准提醒间隔
   60/90/120/180 默认 120，会话中断间隔 15/30/45 默认 30；提醒是系统层事实，
   仅 CONTINUED 推迟下次提醒）
+- `POST /api/v1/reports`、`GET /api/v1/reports`、`GET /api/v1/reports/{reportId}`
+  （REPORT-BE / FR-DATA-001 / §20.15：举报与投诉受理记录，可选锚定本人消息
+  （锚点随消息删除置空）、report-reasons 目录码、note 1..2000 裁剪存储；
+  状态 SUBMITTED/RESOLVED，处置为人工动作，不编造工单/时限/热线）
+- `POST /api/v1/age/appeal`、`GET /api/v1/age/appeals`
+  （AGE-APPEAL / FR-AUTH-002：年龄申诉提交，仅
+  ADULT_VERIFICATION_REQUIRED / MINOR_SUSPECTED 可提交（目录转移表），同事务
+  追加 AGE_APPEAL_PENDING 状态行；申诉记录 newest-first keyset；处置人工）
 - `GET /api/v1/incognito-pref`、`PUT /api/v1/incognito-pref`（INC-PREF /
   FR-CHAT-005：下次新会话是否默认无痕；不翻转已有会话）
 - `PUT /api/v1/consents`、`GET /api/v1/consents`（CONSENT / FR-AUTH-003/005：
@@ -113,6 +121,19 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第三十一轮）：
+
+- 举报/申诉最小闭环（REPORT-BE / FR-DATA-001 / §20.15）：V56 `vc.report_request`
+  + create/list/get trusted-owner SD；举报页接提交表单（目录原因 + 1..2000 note），
+  消息举报经 `?messageId=` 锚定；「我的数据」展示举报状态；处置人工、不编造
+  工单。
+- 年龄申诉提交（AGE-APPEAL / FR-AUTH-002 / §21.3.6）：V56 `vc.age_appeal` +
+  submit/list SD，同事务把生效年龄态翻到 AGE_APPEAL_PENDING；成年核验页在
+  可申诉态给表单、展示申诉历史；模拟核验对申诉态保持 fail-closed。
+- 复制 AI 生成标识（COPY-LABEL / §21.4.1/21.4.2）：助手消息复制按钮反馈
+  「已复制 · AI 生成」并 toast「内容由 AI 生成，请核实后使用」；用户消息复制
+  不加标识。
 
 后端在运方面上还提供（2026-08-19 第三十轮）：
 

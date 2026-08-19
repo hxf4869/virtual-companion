@@ -5,6 +5,8 @@
     "getServiceMode",
     "getAgeState",
     "verifyAge",
+    "submitAgeAppeal",
+    "listAgeAppeals",
     "getUsageHealth",
     "updateUsageHealthPrefs",
     "usageHealthHeartbeat",
@@ -51,6 +53,9 @@
     "listReminders",
     "updateReminder",
     "deleteReminder",
+    "createReport",
+    "listReports",
+    "getReport",
     "assignServiceClass",
     "listServiceClassAssignments",
     "recordConsent",
@@ -70,6 +75,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "e5410fe411b7c8baca1f2cd76a68765309b75a7c21c8076481b128523a9e9db5"
+    "sha256": "789fdf9b7c60b5d0a264cb7bc6adca0326fdab0bd2506de1d52510ec08eba228"
   }
 }

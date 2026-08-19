@@ -143,6 +143,11 @@ INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedb
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','CROSSED_BOUNDARY',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','FACTUAL_ERROR',3) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('MessageFeedbackKind','UNSAFE',4) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ReportReason','UNSAFE_CONTENT',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ReportReason','AI_IDENTITY',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ReportReason','MINOR_SAFEGUARD',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ReportReason','PRIVACY_OR_DATA',3) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
+INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('ReportReason','OTHER',4) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionReplyLength','SHORT',0) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionReplyLength','MEDIUM',1) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;
 INSERT INTO ref_catalog_value(catalog_type, code, ordinal) VALUES ('CompanionReplyLength','LONG',2) ON CONFLICT (catalog_type, code) DO UPDATE SET ordinal=EXCLUDED.ordinal;

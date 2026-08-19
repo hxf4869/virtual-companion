@@ -198,6 +198,14 @@ components:
       - CROSSED_BOUNDARY
       - FACTUAL_ERROR
       - UNSAFE
+    ReportReason:
+      type: string
+      enum:
+      - UNSAFE_CONTENT
+      - AI_IDENTITY
+      - MINOR_SAFEGUARD
+      - PRIVACY_OR_DATA
+      - OTHER
     CompanionReplyLength:
       type: string
       enum:

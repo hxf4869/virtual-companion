@@ -180,6 +180,13 @@
       "stream.reset",
       "stream.denied"
     ],
+    "ReportReason": [
+      "UNSAFE_CONTENT",
+      "AI_IDENTITY",
+      "MINOR_SAFEGUARD",
+      "PRIVACY_OR_DATA",
+      "OTHER"
+    ],
     "RiskLevel": [
       "R0_NORMAL",
       "R1_DISTRESS",
@@ -440,6 +447,11 @@
             "typeName": "MessageFeedbackKind"
           },
           {
+            "file": "report-reasons.yaml",
+            "kind": "enum",
+            "typeName": "ReportReason"
+          },
+          {
             "file": "companion-prefs.yaml",
             "kind": "multi-enum"
           },
@@ -452,7 +464,7 @@
         "packageName": "com.virtualcompanion.catalog",
         "schemaVersion": 1
       },
-      "sha256": "42d703af78e834564981904f82bdb6b65dfaf5301a4161f6c341076688707fbb"
+      "sha256": "ada66659474b68b28dd16a49ba2ea1983c895f720b7b5f50f214c16703851686"
     },
     "companion-prefs.yaml": {
       "document": {
@@ -1402,6 +1414,35 @@
         "schemaVersion": 1
       },
       "sha256": "be896592a0e482643db0389993b7edad08fbd94637c5c280bd627085535e3042"
+    },
+    "report-reasons.yaml": {
+      "document": {
+        "catalogId": "report-reasons",
+        "entries": [
+          {
+            "code": "UNSAFE_CONTENT",
+            "order": 0
+          },
+          {
+            "code": "AI_IDENTITY",
+            "order": 1
+          },
+          {
+            "code": "MINOR_SAFEGUARD",
+            "order": 2
+          },
+          {
+            "code": "PRIVACY_OR_DATA",
+            "order": 3
+          },
+          {
+            "code": "OTHER",
+            "order": 4
+          }
+        ],
+        "schemaVersion": 1
+      },
+      "sha256": "98dc4d1501246ca096f15640b34b0085e8da8bc298c7dc94e557b9d65cec4396"
     },
     "risk-levels.yaml": {
       "document": {
