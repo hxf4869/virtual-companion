@@ -179,6 +179,44 @@
         </button>
       </view>
 
+      <!-- SAFETY-QUEUE (V59): read-only deterministic safety queue; triage
+           stays a human action outside this page. -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">安全事件队列（只读）</text>
+          <button
+            data-testid="refresh-safety"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshSafety"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="safetyFailed" class="admin-error" data-testid="safety-failed" role="alert">
+          <text>安全事件加载失败，请重试。</text>
+        </view>
+        <view
+          v-else-if="safetyEvents.length === 0"
+          class="admin-empty"
+          data-testid="safety-empty"
+        >
+          <text>暂无安全事件。</text>
+        </view>
+        <view
+          v-for="event in safetyEvents"
+          :key="event.id"
+          class="audit-row"
+          data-testid="safety-row"
+        >
+          <text class="audit-cell">{{ event.riskLevel }}</text>
+          <text class="audit-cell">{{ event.stage }}</text>
+          <text class="audit-cell">{{ event.ruleId }}</text>
+          <text class="audit-cell">账号 {{ event.ownerId }}</text>
+          <text class="audit-cell">{{ event.createdAt }}</text>
+        </view>
+      </view>
+
       <!-- ENT-SNAP (V40): simulated service-class assignment -->
       <view class="ops-section">
         <view class="account-list-head">
@@ -260,10 +298,12 @@ import {
   disableAccount,
   listAccounts,
   listAuditEvents,
+  listSafetyEvents,
   listServiceClassAssignments,
   usageSummary,
   type AccountListItem,
   type AuditEventListItem,
+  type SafetyEventItem,
   type ServiceClassAssignmentItem,
   type UsageSummaryItem,
 } from "@/api/auth";
@@ -298,6 +338,9 @@ export default defineComponent({
     const auditEvents = ref<AuditEventListItem[]>([]);
     const auditFailed = ref(false);
     const auditHasMore = ref(false);
+    // SAFETY-QUEUE (V59): read-only deterministic safety queue.
+    const safetyEvents = ref<SafetyEventItem[]>([]);
+    const safetyFailed = ref(false);
     // ENT-SNAP: simulated service-class assignments.
     const scAssignments = ref<ServiceClassAssignmentItem[]>([]);
     const scFailed = ref(false);
@@ -323,6 +366,7 @@ export default defineComponent({
       if (auth.role === "ADMIN") {
         await refreshUsage();
         await refreshAudit();
+        await refreshSafety();
         await refreshServiceClasses();
       }
     });
@@ -379,6 +423,25 @@ export default defineComponent({
         auditHasMore.value = page.length >= AUDIT_PAGE_SIZE;
       } catch {
         auditFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** SAFETY-QUEUE (V59): reload the newest safety queue page (read-only). */
+    async function refreshSafety(): Promise<void> {
+      safetyFailed.value = false;
+      try {
+        safetyEvents.value = await listSafetyEvents(transport, undefined, 50);
+      } catch {
+        safetyFailed.value = true;
+      }
+    }
+
+    async function onRefreshSafety(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshSafety();
       } finally {
         busy.value = false;
       }
@@ -533,6 +596,9 @@ export default defineComponent({
       auditEvents,
       auditFailed,
       auditHasMore,
+      safetyEvents,
+      safetyFailed,
+      onRefreshSafety,
       scAssignments,
       scFailed,
       scAccountId,

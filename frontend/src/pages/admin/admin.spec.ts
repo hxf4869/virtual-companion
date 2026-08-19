@@ -89,6 +89,23 @@ describe("admin account page (ADMIN-UI)", () => {
             ],
           };
         }
+        if (url.startsWith("/api/v1/auth/admin/safety-events")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "9",
+                ownerId: "7",
+                generationId: "55",
+                stage: "INPUT",
+                riskLevel: "R4_IMMINENT",
+                ruleId: "input-imminent-self-harm",
+                createdAt: "2026-08-19T08:00:00Z",
+              },
+            ],
+          };
+        }
         if (url.startsWith("/api/v1/auth/admin/audit")) {
           return {
             ok: true,
@@ -225,6 +242,46 @@ describe("admin account page (ADMIN-UI)", () => {
 
     await fillForm(wrapper);
     expect(submit.attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+  it("SAFETY-QUEUE: renders the read-only safety queue on mount", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/auth/admin/accounts" && (init?.method ?? "GET") === "GET") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/auth/admin/safety-events")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "9",
+                ownerId: "7",
+                generationId: "55",
+                stage: "INPUT",
+                riskLevel: "R4_IMMINENT",
+                ruleId: "input-imminent-self-harm",
+                createdAt: "2026-08-19T08:00:00Z",
+              },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: async () => [] };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const rows = wrapper.findAll('[data-testid="safety-row"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].text()).toContain("R4_IMMINENT");
+    expect(rows[0].text()).toContain("input-imminent-self-harm");
+    expect(rows[0].text()).toContain("账号 7");
+    // Read-only queue: no triage/dispose action is offered.
+    expect(wrapper.text()).not.toMatch(/处置|标记已处理|关闭工单/);
     wrapper.unmount();
   });
 });

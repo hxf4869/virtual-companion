@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.generation.web;
 
+import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService.ReceivedGeneration;
@@ -8,6 +9,7 @@ import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.safety.ExitIntentDetector;
 import com.virtualcompanion.safety.SafetyClassification;
 import com.virtualcompanion.safety.SafetyClassifierPort;
 import com.virtualcompanion.safety.SafetyStage;
@@ -66,6 +68,7 @@ public class GenerationController {
     private final GenerationFinalizeService finalizeService;
     private final SafetyClassifierPort safetyClassifier;
     private final SafetyEventService safetyEventService;
+    private final GenerationCancelService cancelService;
 
     public GenerationController(
             GenerationReceiveService receiveService,
@@ -74,7 +77,8 @@ public class GenerationController {
             GenerationStateService generationStateService,
             GenerationFinalizeService finalizeService,
             SafetyClassifierPort safetyClassifier,
-            SafetyEventService safetyEventService) {
+            SafetyEventService safetyEventService,
+            GenerationCancelService cancelService) {
         this.receiveService = receiveService;
         this.enqueueService = enqueueService;
         this.generationRepository = generationRepository;
@@ -82,6 +86,7 @@ public class GenerationController {
         this.finalizeService = finalizeService;
         this.safetyClassifier = safetyClassifier;
         this.safetyEventService = safetyEventService;
+        this.cancelService = cancelService;
     }
 
     @PostMapping("/conversations/{conversationId}/generations")
@@ -121,7 +126,13 @@ public class GenerationController {
         // same logical generation and must not produce a second work item.
         // SAFETY-WIRE: on first creation a fresh message is classified at
         // intake — a hard-rule hit blocks the turn instead of scheduling it.
-        if (received.created() && !isInputBlocked(ownerUserId, request, received.generationId())) {
+        // NL-EXIT: an exit-intent message cancels the turn (no generation, no
+        // retention wording; the durable chat.cancelled event is the audit).
+        if (received.created() && isInputBlocked(ownerUserId, request, received.generationId())) {
+            // fall through: the response carries the INPUT_BLOCKED terminal state
+        } else if (received.created() && isExitRequested(ownerUserId, request, received.generationId())) {
+            // fall through: the response carries the CANCELLED terminal state
+        } else if (received.created()) {
             enqueueService.enqueue(ownerUserId, WORK_ITEM_KIND, received.generationId());
         }
 
@@ -167,6 +178,27 @@ public class GenerationController {
                 SafetyEventService.STAGE_INPUT,
                 classification.riskLevel().code(),
                 ruleId);
+        return true;
+    }
+
+    /**
+     * NL-EXIT (§21.3.4): a fresh exit-intent message stops the turn before
+     * any model work — the generation cancels through the existing catalog
+     * double-hop (CREATED → CANCEL_REQUESTED → CANCELLED) with the durable
+     * chat.cancelled event as the auditable exit record. No confirmation
+     * reply is generated and nothing retains the user. Safety input blocks
+     * take precedence (checked first); a regenerate reuses the original
+     * message and is not re-detected.
+     */
+    private boolean isExitRequested(
+            long ownerUserId, SendGenerationRequest request, long generationId) {
+        boolean regenerate =
+                request.sourceUserMessageId() != null && !request.sourceUserMessageId().isBlank();
+        String content = request.userContent() == null ? "" : request.userContent().trim();
+        if (regenerate || content.isEmpty() || !ExitIntentDetector.isExitIntent(content)) {
+            return false;
+        }
+        cancelService.cancel(ownerUserId, generationId);
         return true;
     }
 

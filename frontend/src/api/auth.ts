@@ -250,6 +250,65 @@ export async function listAuditEvents(
   return out;
 }
 
+/** SAFETY-QUEUE (V59): one admin safety-queue row. */
+export interface SafetyEventItem {
+  id: string;
+  ownerId: string;
+  generationId?: string;
+  stage: string;
+  riskLevel: string;
+  ruleId: string;
+  createdAt: string;
+}
+
+function asSafetyEvent(json: unknown): SafetyEventItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const ownerId = asString(o, "ownerId");
+  const stage = asString(o, "stage");
+  const riskLevel = asString(o, "riskLevel");
+  const ruleId = asString(o, "ruleId");
+  const createdAt = asString(o, "createdAt");
+  if (!id || !ownerId || !stage || !riskLevel || !ruleId || !createdAt) {
+    return null;
+  }
+  return {
+    id, ownerId, stage, riskLevel, ruleId, createdAt,
+    generationId: asString(o, "generationId"),
+  };
+}
+
+/**
+ * SAFETY-QUEUE (V59): keyset page of the deterministic safety queue across
+ * all owners (ADMIN only, read-only — triage stays human). A non-OK response
+ * throws; transport failures propagate.
+ */
+export async function listSafetyEvents(
+  t: AuthTransport,
+  after?: string,
+  limit?: number,
+): Promise<SafetyEventItem[]> {
+  const params: string[] = [];
+  if (after !== undefined) {
+    params.push(`after=${encodeURIComponent(after)}`);
+  }
+  if (limit !== undefined) {
+    params.push(`limit=${limit}`);
+  }
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const r = await t.request("GET", `${AUTH_BASE}/admin/safety-events${query}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: SafetyEventItem[] = [];
+  for (const item of r.json) {
+    const parsed = asSafetyEvent(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
 /** ADMIN-OPS: one day of settled usage/cost aggregates (UsageSummaryItem). */
 export interface UsageSummaryItem {
   day: string;

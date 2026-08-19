@@ -73,10 +73,11 @@
     "listInternalAccounts",
     "disableInternalAccount",
     "listAdminAuditEvents",
-    "getAdminUsageSummary"
+    "getAdminUsageSummary",
+    "listSafetyEvents"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "fdd259369a6973a1cf9f41db7d11a310669db4d34a6b0837e15f75104c5257d1"
+    "sha256": "c9f7e16f0110760f3ff50d067107265819e665afd0db0f4f0e150cf1e3515d4d"
   }
 }

@@ -2330,6 +2330,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/safety-events:
+    get:
+      operationId: listSafetyEvents
+      summary: ADMIN-only keyset page of the safety queue (SAFETY-QUEUE, §20.5)
+      description: Newest-first keyset page of the deterministic safety events across all owners (vc.list_safety_events).
+        The acting account is re-verified as an ACTIVE ADMIN inside the SD function; the runtime role check is only a convenience.
+        The queue is read-only — triage and disposition stay human actions outside the API. Rows carry only the stage, the
+        risk-levels catalog code and the deterministic rule id; content is never stored or returned.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: after
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Opaque cursor (the last safety event id seen); omit to start from the newest.
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Page size, clamped to 1..200 by the server.
+      responses:
+        '200':
+          description: A page of safety queue rows, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SafetyEventItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   securitySchemes:
     bearerAuth:
@@ -3894,6 +3938,51 @@ components:
         ok:
           type: boolean
           description: Always true on a confirmed deletion
+    SafetyEventItem:
+      type: object
+      description: One deterministic safety-queue row (SAFETY-QUEUE, §20.5). Carries only the stage, the risk-levels catalog
+        code and the rule id — content is never stored or returned; triage stays a human action.
+      required:
+      - id
+      - ownerId
+      - stage
+      - riskLevel
+      - ruleId
+      - createdAt
+      properties:
+        id:
+          type: string
+          description: The safety event id (opaque cursor for listSafetyEvents).
+        ownerId:
+          type: string
+          description: The owning account id.
+        generationId:
+          type: string
+          nullable: true
+          description: The generation the event refers to, when known.
+        stage:
+          type: string
+          enum:
+          - INPUT
+          - INCREMENTAL
+          - FINAL
+          description: The pipeline stage that produced the event.
+        riskLevel:
+          type: string
+          enum:
+          - R0_NORMAL
+          - R1_DISTRESS
+          - R2_ELEVATED
+          - R3_HIGH
+          - R4_IMMINENT
+          description: risk-levels catalog code of the tripped rule.
+        ruleId:
+          type: string
+          description: The deterministic rule id that tripped.
+        createdAt:
+          type: string
+          format: date-time
+          description: Event time (RFC 3339).
     AuditEventListItem:
       type: object
       description: One identity_auth_event audit row (ADMIN-OPS).

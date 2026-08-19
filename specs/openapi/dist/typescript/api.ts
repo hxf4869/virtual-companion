@@ -468,6 +468,16 @@ export interface AccountDeletedResponse {
   ok: string
 }
 
+export interface SafetyEventItem {
+  id: string
+  ownerId: string
+  generationId?: string
+  stage: string
+  riskLevel: string
+  ruleId: string
+  createdAt: string
+}
+
 export interface AuditEventListItem {
   id: string
   eventType: string
@@ -565,4 +575,5 @@ export interface VirtualCompanionApiClient {
   disableInternalAccount(): Promise<VersionResponse>
   listAdminAuditEvents(): Promise<VersionResponse>
   getAdminUsageSummary(): Promise<VersionResponse>
+  listSafetyEvents(): Promise<VersionResponse>
 }

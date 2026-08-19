@@ -77,4 +77,44 @@ public class AdminConsoleService {
                 actingAccountId,
                 java.sql.Timestamp.from(since));
     }
+
+    /**
+     * SAFETY-QUEUE (V59): keyset page of the deterministic safety queue
+     * across all owners, newest first. Read-only — triage and disposition
+     * stay human actions outside the API.
+     *
+     * @param after the last event id seen (exclusive); null starts from the newest
+     * @param limit page size, clamped server-side to 1..200
+     */
+    public List<SafetyEventListRecord> listSafetyEvents(long actingAccountId, Long after, int limit) {
+        if (actingAccountId <= 0) {
+            throw new IllegalArgumentException("actingAccountId must be positive");
+        }
+        return jdbc.query(
+                "SELECT out_id, out_owner_user_id, out_generation_id, out_stage, "
+                        + "out_risk_level, out_rule_id, out_created_at "
+                        + "FROM vc.list_safety_events(?, ?, ?)",
+                (rs, rowNum) -> new SafetyEventListRecord(
+                        rs.getLong("out_id"),
+                        rs.getLong("out_owner_user_id"),
+                        (Long) rs.getObject("out_generation_id"),
+                        rs.getString("out_stage"),
+                        rs.getString("out_risk_level"),
+                        rs.getString("out_rule_id"),
+                        rs.getTimestamp("out_created_at").toInstant()),
+                actingAccountId,
+                after,
+                limit);
+    }
+
+    /** SAFETY-QUEUE: one admin-queue row (V59). */
+    public record SafetyEventListRecord(
+            long id,
+            long ownerUserId,
+            Long generationId,
+            String stage,
+            String riskLevel,
+            String ruleId,
+            Instant createdAt) {
+    }
 }

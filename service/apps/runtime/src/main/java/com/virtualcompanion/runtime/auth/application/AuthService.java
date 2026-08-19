@@ -306,6 +306,21 @@ public class AuthService {
     }
 
     /**
+     * SAFETY-QUEUE (V59): keyset page of the deterministic safety queue
+     * across all owners, newest first. ADMIN-only in the application layer
+     * and re-verified in SQL; read-only (triage stays human).
+     */
+    public List<com.virtualcompanion.platform.persistence.AdminConsoleService.SafetyEventListRecord>
+            listSafetyEvents(JwtTokenService.Principal principal, Long after, int limit) {
+        requireAdmin(principal);
+        try {
+            return adminConsole.listSafetyEvents(principal.accountId(), after, limit);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /**
      * ADMIN-OPS (V36): per-day usage/cost summary over the window. ADMIN-only
      * in the application layer and re-verified in SQL.
      */

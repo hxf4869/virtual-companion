@@ -126,6 +126,18 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-19 第三十四轮）：
+
+- 高风险人工队列（SAFETY-QUEUE / §20.5、FR-RES-004）：V59 `list_safety_events`
+  ADMIN-only SD（SQL 内重验 ACTIVE ADMIN，跨 owner newest-first keyset 只读）；
+  `GET /auth/admin/safety-events` + admin 页「安全事件队列（只读）」区；处置
+  仍为人工动作，页面上没有处置/关单按钮。聊天页 blocked 终态文案补现实
+  求助一句（不角色化危机回复）。
+- 自然语言退出（NL-EXIT / §21.3.4）：`ExitIntentDetector` 固定高精度短语集在
+  intake 识别退出意图——用户消息照常落库，turn 经既有目录双跳
+  CREATED→CANCEL_REQUESTED→CANCELLED 终止（durable chat.cancelled 即可审计
+  退出事件），不排队模型、不生成挽留回复；安全输入拦截优先于退出识别。
+
 后端在运方面上还提供（2026-08-19 第三十三轮）：
 
 - 安全分类器接线 I：确定性输入/输出审核（SAFETY-WIRE / FR-CHAT-001、§20.10/

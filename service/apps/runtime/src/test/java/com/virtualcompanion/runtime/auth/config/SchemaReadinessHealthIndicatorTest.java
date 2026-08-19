@@ -170,8 +170,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V55 = MEM-IMPORT explicit archive/import of confirmed memories;
         // V56 = REPORT-BE/AGE-APPEAL report intake + age-appeal tables;
         // V57 = CHAT-WIPE account-wide chat wipe + MEM-SUPPRESS;
-        // V58 = SAFETY-WIRE safety events + input-block catalog edges).
+        // V58 = SAFETY-WIRE safety events + input-block catalog edges;
+        // V59 = SAFETY-QUEUE admin safety queue read).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(58);
+                .isEqualTo(59);
     }
 }

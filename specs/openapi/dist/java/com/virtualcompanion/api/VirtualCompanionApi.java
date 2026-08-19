@@ -220,4 +220,7 @@ public interface VirtualCompanionApi {
 
     /** Per-day usage and cost summary (ADMIN only, ADMIN-OPS). */
     Void getAdminUsageSummary();
+
+    /** ADMIN-only keyset page of the safety queue (SAFETY-QUEUE, §20.5). */
+    Void listSafetyEvents();
 }

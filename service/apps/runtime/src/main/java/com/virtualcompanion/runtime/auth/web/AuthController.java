@@ -181,6 +181,34 @@ public class AuthController {
                 .toList();
     }
 
+    /** SAFETY-QUEUE (V59): ADMIN-only keyset page of the safety queue, newest first. */
+    @GetMapping("/admin/safety-events")
+    public List<SafetyEventResponse> listSafetyEvents(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "after", required = false)
+                    String after,
+            @org.springframework.web.bind.annotation.RequestParam(value = "limit", defaultValue = "50")
+                    int limit) {
+        Long afterId = after == null || after.isBlank() ? null : parseAccountId(after);
+        int safeLimit = Math.clamp(limit, 1, 200);
+        return authService.listSafetyEvents(principal, afterId, safeLimit).stream()
+                .map(record -> new SafetyEventResponse(
+                        Long.toString(record.id()),
+                        Long.toString(record.ownerUserId()),
+                        record.generationId() == null ? null : Long.toString(record.generationId()),
+                        record.stage(),
+                        record.riskLevel(),
+                        record.ruleId(),
+                        record.createdAt().toString()))
+                .toList();
+    }
+
+    /** SAFETY-QUEUE: one admin-queue row. */
+    public record SafetyEventResponse(
+            String id, String ownerId, String generationId, String stage,
+            String riskLevel, String ruleId, String createdAt) {
+    }
+
     /** ENT-SNAP (V40): ADMIN-only simulated service-class assignment. */
     @PostMapping("/admin/service-class")
     public ServiceClassAssignResponse assignServiceClass(

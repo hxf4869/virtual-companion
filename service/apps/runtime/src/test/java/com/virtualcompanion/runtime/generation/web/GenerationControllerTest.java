@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService.ReceivedGeneration;
@@ -52,6 +53,7 @@ class GenerationControllerTest {
     private GenerationStateService generationStateService;
     private GenerationFinalizeService finalizeService;
     private SafetyEventService safetyEventService;
+    private GenerationCancelService cancelService;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -62,9 +64,11 @@ class GenerationControllerTest {
         generationStateService = mock(GenerationStateService.class);
         finalizeService = mock(GenerationFinalizeService.class);
         safetyEventService = mock(SafetyEventService.class);
+        cancelService = mock(GenerationCancelService.class);
         GenerationController controller = new GenerationController(
                 receiveService, enqueueService, generationRepository, generationStateService,
-                finalizeService, new DeterministicSafetyClassifier(), safetyEventService);
+                finalizeService, new DeterministicSafetyClassifier(), safetyEventService,
+                cancelService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(principalResolver())
@@ -146,6 +150,41 @@ class GenerationControllerTest {
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void sendGenerationExitIntentCancelsTheTurnWithoutEnqueue() throws Exception {
+        // NL-EXIT (§21.3.4): the exit message is persisted, the turn cancels
+        // through the catalog double-hop, nothing is enqueued and no safety
+        // event is written (an exit is not a safety incident).
+        when(receiveService.receive(1L, 100L, "key-exit",
+                GenerationReceiveService.DEFAULT_USER_ROLE, "我不想聊了", "AUTO"))
+                .thenReturn(new ReceivedGeneration("gen-61", 61L, 301L, true));
+        when(cancelService.cancel(1L, 61L))
+                .thenReturn(Optional.of(new GenerationRecord(
+                        1L, 61L, 100L, "gen-61", "CANCELLED", "key-exit")));
+        when(generationRepository.find(1L, 61L))
+                .thenReturn(Optional.of(new GenerationRecord(
+                        1L, 61L, 100L, "gen-61", "CANCELLED", "key-exit")));
+
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-exit\",\"userContent\":\"我不想聊了\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.generationId").value(61))
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        verify(cancelService).cancel(1L, 61L);
+        verify(enqueueService, never()).enqueue(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong());
+        verify(safetyEventService, never()).record(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test

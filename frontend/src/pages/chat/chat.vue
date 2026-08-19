@@ -873,8 +873,10 @@ export default defineComponent({
         case "cancelled":
           return "已取消";
         case "blocked":
-          // TERM-SEM: server OUTPUT_BLOCKED terminal, not a transport failure.
-          return "回复未通过安全审查（已阻断）";
+          // TERM-SEM: server OUTPUT_BLOCKED/INPUT_BLOCKED terminal, not a
+          // transport failure. SAFETY-QUEUE (§20.5): plain reality-help line —
+          // never a role-voiced crisis reply.
+          return "这条内容没有通过安全审查，本轮不会继续。如果你正处于紧急危险，请联系当地紧急服务或你信任的真人。";
         case "failed":
           if (store.outcome === "not_found_or_forbidden") {
             return "未找到或无权访问（存在性不披露）";
