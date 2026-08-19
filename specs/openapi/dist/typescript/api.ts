@@ -564,6 +564,39 @@ export interface BetaMemorySamplingItem {
   createdAt: string
 }
 
+export interface EmergencyContact {
+  id: string
+  label: string
+  contact?: string
+  status: string
+  consentVersion?: string
+  invitedAt?: string
+  verifiedAt?: string
+  verifiedMethod?: string
+  verifiedExpiresAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EmergencyContactSaveRequest {
+  label: string
+  contact: string
+}
+
+export interface EmergencyContactVerifyConfirmRequest {
+  token: string
+}
+
+export interface EmergencyContactVerificationInvite {
+  id: string
+  token: string
+  invitedAt: string
+}
+
+export interface EmergencyContactRevokeResult {
+  revoked: string
+}
+
 export interface AuditEventListItem {
   id: string
   eventType: string
@@ -671,4 +704,9 @@ export interface VirtualCompanionApiClient {
   listBetaAgeAppeals(): Promise<VersionResponse>
   listBetaExportTasks(): Promise<VersionResponse>
   listBetaMemorySampling(): Promise<VersionResponse>
+  getEmergencyContact(): Promise<VersionResponse>
+  saveEmergencyContact(): Promise<VersionResponse>
+  startEmergencyContactVerification(): Promise<VersionResponse>
+  confirmEmergencyContactVerification(): Promise<VersionResponse>
+  revokeEmergencyContact(): Promise<VersionResponse>
 }

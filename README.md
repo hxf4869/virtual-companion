@@ -59,7 +59,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   `GET /api/v1/auth/admin/reports`、`GET /api/v1/auth/admin/age-appeals`、
   `GET /api/v1/auth/admin/export-tasks`、`GET /api/v1/auth/admin/memory-sampling`
   （ADMIN-BETA：举报/年龄申诉/导出任务/记忆异常抽样四个只读队列，ADMIN-only）、
-  `GET /api/v1/trial-status`（ENT-TRIAL：本人试用剩余额度）
+  `GET /api/v1/trial-status`（ENT-TRIAL：本人试用剩余额度）、
+  `GET/PUT /api/v1/emergency-contact`、`POST /api/v1/emergency-contact/verify-start`、
+  `POST /api/v1/emergency-contact/verify-confirm`、`POST /api/v1/emergency-contact/revoke`
+  （EMERGENCY-CONTACT：紧急联系人草稿/验证/撤回，§20.14）、
   `POST /api/v1/auth/admin/service-class`、
   `GET /api/v1/auth/admin/service-classes`（ENT-SNAP 模拟权益分配 ECONOMY/PREMIUM，
   ADMIN-only，仅测试账号，绝不接订单）
@@ -140,6 +143,21 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第四十轮）：
+
+- 紧急联系人生命周期（EMERGENCY-CONTACT / §20.14）：V65 `vc.emergency_contact`
+  （应用层加密存联系方式，SQL 永不见明文；RLS + SD-only；每 owner 至多一条
+  非 REVOKED）——保存需 EMERGENCY_CONTACT 单独同意（SQL 内重验最新同意
+  记录，缺省/撤回 fail-closed）；未验证仅 DRAFT，不可用于实际联络；一次性
+  验证邀请 token（hash-only 存储，7 天有效，错误/过期同文案不披露）；联系人
+  确认后绑定验证时间/方式（Alpha 为 SIMULATED_EMAIL_LINK，无真实发送）与
+  条款版本，180 天有效期到期读取时惰性降回 DRAFT；变更联系方式即回 DRAFT
+  重新验证；撤回为终态，新联系人走新行。每次读取存量行同事务追加
+  EMERGENCY_CONTACT_VIEW 审计（§20.14 每次查看、解密和联系均审计）。AES-256-GCM
+  密钥仅部署注入（开发默认键仅限本地）。端点 `GET/PUT /api/v1/emergency-contact`、
+  `POST /emergency-contact/verify-start|verify-confirm|revoke` + 同意页
+  「紧急联系人」卡片（草稿/邀请/确认/撤回，界面明示未验证不可联络）。
 
 后端在运方面上还提供（2026-08-19 第三十九轮）：
 

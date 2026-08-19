@@ -155,4 +155,78 @@ describe("consent page (FR-AUTH-003)", () => {
 
     wrapper.unmount();
   });
+
+  it("EMERGENCY-CONTACT: renders the draft card and walks the verify flow (§20.14)", async () => {
+    const draft = {
+      id: "42",
+      label: "妈妈",
+      contact: "+86 138 0000 0000",
+      status: "DRAFT",
+      createdAt: "2026-08-19T08:00:00Z",
+      updatedAt: "2026-08-19T08:00:00Z",
+    };
+    const verified = {
+      ...draft,
+      status: "VERIFIED",
+      consentVersion: "2026-08",
+      verifiedAt: "2026-08-19T09:00:00Z",
+      verifiedMethod: "SIMULATED_EMAIL_LINK",
+      verifiedExpiresAt: "2027-02-15T09:00:00Z",
+    };
+    const emergencyContact = { current: { ...draft } as typeof draft | typeof verified };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/consents") {
+          return { ok: true, status: 200, json: async () => EFFECTIVE };
+        }
+        if (url === "/api/v1/emergency-contact" && (init?.method ?? "GET") === "GET") {
+          return { ok: true, status: 200, json: async () => emergencyContact.current };
+        }
+        if (url === "/api/v1/emergency-contact/verify-start") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: "42",
+              token: "a1b2c3d4e5f6",
+              invitedAt: "2026-08-19T08:30:00Z",
+            }),
+          };
+        }
+        if (url === "/api/v1/emergency-contact/verify-confirm") {
+          emergencyContact.current = verified;
+          return { ok: true, status: 200, json: async () => verified };
+        }
+        if (url === "/api/v1/emergency-contact/revoke") {
+          emergencyContact.current = draft;
+          return { ok: true, status: 200, json: async () => ({ revoked: true }) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+
+    const wrapper = mount(ConsentPage, { attachTo: document.body });
+    await flushPromises();
+
+    // The draft card renders with the explicit 未验证 warning.
+    expect(wrapper.find('[data-testid="emc-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="emc-status"]').text()).toContain("草稿（未验证）");
+
+    // Invite → the simulated token shows for manual relay.
+    await wrapper.find('[data-testid="emc-invite"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="emc-invite-token"]').text()).toContain("a1b2c3d4e5f6");
+    expect(wrapper.find('[data-testid="emc-invite-token"]').text()).toContain("模拟邀请");
+
+    // The contact-side acceptance flips the card to 已验证.
+    await wrapper.find('[data-testid="emc-confirm-token"]').setValue("a1b2c3d4e5f6");
+    await wrapper.find('[data-testid="emc-confirm"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="emc-status"]').text()).toContain("已验证");
+    expect(wrapper.find('[data-testid="emc-card"]').text()).toContain("SIMULATED_EMAIL_LINK");
+
+    wrapper.unmount();
+  });
 });

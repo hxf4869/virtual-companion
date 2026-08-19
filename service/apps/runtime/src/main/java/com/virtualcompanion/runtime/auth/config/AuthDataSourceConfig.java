@@ -17,6 +17,7 @@ import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.platform.persistence.ConsentService;
+import com.virtualcompanion.platform.persistence.EmergencyContactService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.InviteCodeService;
 import com.virtualcompanion.platform.persistence.QuotaReconciliationService;
@@ -340,6 +341,12 @@ public class AuthDataSourceConfig {
     @Bean
     public ConsentService consentService(JdbcTemplate authJdbcTemplate) {
         return new ConsentService(authJdbcTemplate);
+    }
+
+    /** EMERGENCY-CONTACT (V65): the §20.14 emergency contact lifecycle. */
+    @Bean
+    public EmergencyContactService emergencyContactService(JdbcTemplate authJdbcTemplate) {
+        return new EmergencyContactService(authJdbcTemplate);
     }
 
     /** DATA-EXPORT (V42): asynchronous user data export (FR-DATA-002). */

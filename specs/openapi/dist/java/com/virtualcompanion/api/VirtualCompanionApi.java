@@ -250,4 +250,19 @@ public interface VirtualCompanionApi {
 
     /** ADMIN-only memory-anomaly sampling page (ADMIN-BETA, §8.2). */
     Void listBetaMemorySampling();
+
+    /** The caller's live emergency contact card (EMERGENCY-CONTACT, §20.14). */
+    EmergencyContact getEmergencyContact();
+
+    /** Save or change the emergency contact (as an unverified draft). */
+    EmergencyContact saveEmergencyContact();
+
+    /** Mint a one-time verification invite token (§20.14 step 2). */
+    EmergencyContactVerificationInvite startEmergencyContactVerification();
+
+    /** The contact-side acceptance of the invite token (§20.14 step 3). */
+    EmergencyContact confirmEmergencyContactVerification();
+
+    /** Withdraw the emergency contact (§20.14 撤回). */
+    EmergencyContactRevokeResult revokeEmergencyContact();
 }

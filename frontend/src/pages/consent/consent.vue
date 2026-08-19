@@ -88,6 +88,115 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
         </button>
       </view>
     </template>
+
+    <!-- EMERGENCY-CONTACT (§20.14): the contact lifecycle card. Saving needs
+         the standing EMERGENCY_CONTACT consent; an unverified contact is only
+         a draft and can never be used for an actual liaison. The Alpha
+         invite is simulated — the token is shown for manual relay, nothing
+         is ever sent. -->
+    <view class="emc-section">
+      <view class="emc-head">
+        <text class="emc-title">紧急联系人</text>
+        <text
+          v-if="emergencyContact"
+          class="consent-status"
+          :class="emergencyContact.status === 'VERIFIED'
+            ? 'consent-status--granted' : 'consent-status--none'"
+          data-testid="emc-status"
+        >
+          {{ emergencyContact.status === 'VERIFIED' ? '已验证' : '草稿（未验证）' }}
+        </text>
+      </view>
+      <view class="intro">
+        <text>
+          紧急联系人不是普通通讯录字段：未验证前仅保存为草稿，不能用于实际联络；
+          只有在经批准的最高风险条件下、由人工判断后才可能联络，绝不由模型自动触发。
+          联系方式加密存储；每次查看都会留下审计记录。
+        </text>
+      </view>
+
+      <view v-if="emcError" class="error" data-testid="emc-error" role="alert">
+        <text>{{ emcError }}</text>
+      </view>
+
+      <view v-if="!emergencyContact" class="emc-form">
+        <input
+          v-model="emcLabel"
+          class="emc-input"
+          data-testid="emc-label"
+          placeholder="称呼（如：妈妈）"
+          aria-label="紧急联系人称呼"
+        />
+        <input
+          v-model="emcContact"
+          class="emc-input"
+          data-testid="emc-contact"
+          placeholder="联系方式（Alpha 演示数据）"
+          aria-label="紧急联系人联系方式"
+        />
+        <button
+          data-testid="emc-save"
+          class="nav-index grant-btn"
+          :disabled="store.busy || !emcLabel.trim() || !emcContact.trim()"
+          @click="onSaveContact"
+        >
+          保存为草稿
+        </button>
+        <view v-if="!emcConsentGranted()" class="emc-hint">
+          <text>需先在上方对「紧急联系人处理」给出单独同意。</text>
+        </view>
+      </view>
+
+      <template v-else>
+        <view class="emc-card" data-testid="emc-card">
+          <text class="emc-line">{{ emergencyContact.label }} · {{ emergencyContact.contact }}</text>
+          <text v-if="emergencyContact.status === 'VERIFIED'" class="consent-meta">
+            验证于 {{ emergencyContact.verifiedAt }}（方式 {{ emergencyContact.verifiedMethod }}，
+            条款版本 {{ emergencyContact.consentVersion }}，有效期至 {{ emergencyContact.verifiedExpiresAt }}）
+          </text>
+          <text v-else class="consent-meta">未验证草稿：变更后需重新验证，未验证不可用于实际联络。</text>
+        </view>
+
+        <view v-if="emergencyContact.status === 'DRAFT'" class="emc-form">
+          <button
+            data-testid="emc-invite"
+            class="nav-index"
+            :disabled="store.busy"
+            @click="onStartVerification"
+          >
+            生成验证邀请
+          </button>
+          <view v-if="inviteToken" class="emc-card" data-testid="emc-invite-token">
+            <text>（模拟邀请，无真实发送）验证码：{{ inviteToken }}</text>
+            <text class="consent-meta">请交由联系人本人确认；7 天内有效。</text>
+          </view>
+          <input
+            v-model="confirmToken"
+            class="emc-input"
+            data-testid="emc-confirm-token"
+            placeholder="（模拟）联系人输入邀请码确认接受"
+            aria-label="联系人邀请码"
+          />
+          <button
+            data-testid="emc-confirm"
+            class="nav-index grant-btn"
+            :disabled="store.busy || !confirmToken.trim()"
+            @click="onConfirmVerification"
+          >
+            联系人确认接受
+          </button>
+        </view>
+
+        <button
+          data-testid="emc-revoke"
+          class="nav-index revoke-btn"
+          :disabled="store.busy"
+          @click="onRevokeContact"
+        >
+          撤回紧急联系人
+        </button>
+      </template>
+    </view>
   </view>
 </template>
 
@@ -98,6 +207,14 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
 import { onMounted, ref } from "vue";
 
 import type { ConsentType } from "@/api/consent";
+import {
+  confirmEmergencyContactVerification,
+  getEmergencyContact,
+  revokeEmergencyContact,
+  saveEmergencyContact,
+  startEmergencyContactVerification,
+  type EmergencyContact,
+} from "@/api/emergency-contact";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 import { CONSENT_OPTIONS, useConsentStore } from "@/stores/consent";
@@ -112,6 +229,14 @@ export default {
     const store = useConsentStore();
     const actionError = ref("");
 
+    // EMERGENCY-CONTACT (§20.14): the lifecycle card state.
+    const emergencyContact = ref<EmergencyContact | null>(null);
+    const emcLabel = ref("");
+    const emcContact = ref("");
+    const inviteToken = ref("");
+    const confirmToken = ref("");
+    const emcError = ref("");
+
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
@@ -123,7 +248,70 @@ export default {
         await auth.tryRefresh(transport);
       }
       await store.load(transport);
+      await refreshContact();
     });
+
+    async function refreshContact(): Promise<void> {
+      try {
+        emergencyContact.value = await getEmergencyContact(transport);
+      } catch {
+        // The consent rows stay usable; the contact card just shows the form.
+        emergencyContact.value = null;
+      }
+    }
+
+    async function onSaveContact(): Promise<void> {
+      emcError.value = "";
+      try {
+        emergencyContact.value = await saveEmergencyContact(
+          transport,
+          emcLabel.value.trim(),
+          emcContact.value.trim(),
+        );
+        emcLabel.value = "";
+        emcContact.value = "";
+      } catch {
+        emcError.value = "保存失败：请确认已单独同意「紧急联系人处理」。";
+      }
+    }
+
+    async function onStartVerification(): Promise<void> {
+      emcError.value = "";
+      try {
+        const invite = await startEmergencyContactVerification(transport);
+        inviteToken.value = invite.token;
+      } catch {
+        emcError.value = "生成验证邀请失败，请重试。";
+      }
+    }
+
+    async function onConfirmVerification(): Promise<void> {
+      emcError.value = "";
+      try {
+        emergencyContact.value = await confirmEmergencyContactVerification(
+          transport,
+          confirmToken.value.trim(),
+        );
+        inviteToken.value = "";
+        confirmToken.value = "";
+      } catch {
+        emcError.value = "验证失败：邀请码不正确或已过期（7 天有效）。";
+      }
+    }
+
+    async function onRevokeContact(): Promise<void> {
+      emcError.value = "";
+      try {
+        await revokeEmergencyContact(transport);
+        emergencyContact.value = null;
+        inviteToken.value = "";
+        confirmToken.value = "";
+      } catch {
+        emcError.value = "撤回失败，请重试。";
+      }
+    }
+
+    const emcConsentGranted = () => store.grantedFor("EMERGENCY_CONTACT") === true;
 
     async function onRetry(): Promise<void> {
       actionError.value = "";
@@ -180,6 +368,17 @@ export default {
       CONSENT_VERSION,
       store,
       actionError,
+      emergencyContact,
+      emcLabel,
+      emcContact,
+      inviteToken,
+      confirmToken,
+      emcError,
+      emcConsentGranted,
+      onSaveContact,
+      onStartVerification,
+      onConfirmVerification,
+      onRevokeContact,
       onRetry,
       onToggle,
       versionFor,
@@ -270,6 +469,57 @@ export default {
 }
 .consent-status--none {
   color: #8fa0bd;
+}
+.emc-section {
+  margin-top: 32rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background-color: #16233f;
+  border: 2rpx solid #2a3a5a;
+}
+.emc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+.emc-title {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+.emc-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+.emc-input {
+  flex: 1 1 280rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  color: #f5f5f5;
+  font-size: 26rpx;
+}
+.emc-card {
+  margin-top: 12rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  background-color: #1c2b4a;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.emc-line {
+  font-size: 26rpx;
+}
+.emc-hint {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #f19a94;
 }
 .error {
   margin-top: 16rpx;

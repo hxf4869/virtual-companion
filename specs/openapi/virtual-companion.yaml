@@ -2957,6 +2957,166 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/emergency-contact:
+    get:
+      operationId: getEmergencyContact
+      summary: The caller's live emergency contact card (EMERGENCY-CONTACT, §20.14)
+      description: >-
+        The caller's live (non-revoked) emergency contact via
+        vc.get_emergency_contact (V65). An expired verification is lazily
+        demoted to DRAFT on read (验证过期后重新确认). The stored value is
+        application-layer encrypted; decryption happens only for this
+        response, and every read of a stored row appends an
+        EMERGENCY_CONTACT_VIEW audit row. A DRAFT contact can never be used
+        for an actual liaison. Null body when nothing is saved. Requires a
+        server-verified authentication context.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The live contact card, or an empty body when none is saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyContact'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      operationId: saveEmergencyContact
+      summary: Save or change the emergency contact (as an unverified draft)
+      description: >-
+        Saves (or changes) the emergency contact via
+        vc.upsert_emergency_contact (V65). Requires the standing
+        EMERGENCY_CONTACT consent grant (re-verified in SQL — a missing or
+        withdrawn consent fails closed). The contact value is encrypted with
+        the deployment AES-256-GCM key before it reaches the database.
+        Changing a stored contact demotes it back to DRAFT for
+        re-verification (联系方式变更后重新确认). Requires a server-verified
+        authentication context.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyContactSaveRequest'
+      responses:
+        '200':
+          description: The saved (draft) contact card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyContact'
+        '400':
+          description: Missing consent, an invalid body or an unapproved value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/emergency-contact/verify-start:
+    post:
+      operationId: startEmergencyContactVerification
+      summary: Mint a one-time verification invite token (§20.14 step 2)
+      description: >-
+        Mints a one-time invite token for the contact-side acceptance via
+        vc.start_emergency_contact_verification (V65; the database stores only
+        the token's SHA-256 digest). Only a DRAFT contact can be invited.
+        Alpha: the token is returned for manual relay — no email or SMS is
+        ever sent. Requires a server-verified authentication context.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The one-time invite token and its invite time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyContactVerificationInvite'
+        '400':
+          description: No draft contact saved, or the contact is already verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/emergency-contact/verify-confirm:
+    post:
+      operationId: confirmEmergencyContactVerification
+      summary: The contact-side acceptance of the invite token (§20.14 step 3)
+      description: >-
+        Confirms the contact-side acceptance via
+        vc.confirm_emergency_contact_verification (V65). Binds WHEN
+        (verifiedAt), HOW (the simulated channel) and WHICH consent version
+        the contact accepted, and sets the 180-day verification validity. A
+        wrong token or an invite older than 7 days fails closed without
+        disclosing which. Requires a server-verified authentication context.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyContactVerifyConfirmRequest'
+      responses:
+        '200':
+          description: The verified contact card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyContact'
+        '400':
+          description: A wrong, absent or stale invite token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/emergency-contact/revoke:
+    post:
+      operationId: revokeEmergencyContact
+      summary: Withdraw the emergency contact (§20.14 撤回)
+      description: >-
+        Withdraws the live contact via vc.revoke_emergency_contact (V65,
+        terminal — a new contact starts a fresh row and a fresh
+        verification). Returns revoked=false when nothing live existed.
+        Requires a server-verified authentication context.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Whether a live contact existed and was withdrawn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmergencyContactRevokeResult'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   securitySchemes:
     bearerAuth:
@@ -4932,6 +5092,120 @@ components:
           type: string
           format: date-time
           description: Creation time (RFC 3339).
+    EmergencyContact:
+      type: object
+      description: >-
+        The caller's live emergency contact card (§20.14, V65). A DRAFT row
+        is only ever a draft — it can never be used for an actual liaison.
+        contact is decrypted only for this response; every read is audited.
+      required:
+        - id
+        - label
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: The contact row id.
+        label:
+          type: string
+          description: The user-facing label (e.g. 妈妈).
+        contact:
+          type: string
+          nullable: true
+          description: The decrypted contact value (present on reads).
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - VERIFIED
+          description: DRAFT is saved but unverified; VERIFIED passed the contact-side acceptance.
+        consentVersion:
+          type: string
+          nullable: true
+          description: The consent version the contact accepted, when verified.
+        invitedAt:
+          type: string
+          nullable: true
+          format: date-time
+          description: The latest invite time, while a verification is pending.
+        verifiedAt:
+          type: string
+          nullable: true
+          format: date-time
+          description: When the contact-side acceptance happened.
+        verifiedMethod:
+          type: string
+          nullable: true
+          description: How the acceptance happened (Alpha channel SIMULATED_EMAIL_LINK).
+        verifiedExpiresAt:
+          type: string
+          nullable: true
+          format: date-time
+          description: Verification validity (180 days); expiry demotes to DRAFT.
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation time (RFC 3339).
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last change time (RFC 3339).
+    EmergencyContactSaveRequest:
+      type: object
+      description: The save body — the label and the (plaintext) contact value.
+      required:
+        - label
+        - contact
+      properties:
+        label:
+          type: string
+          maxLength: 64
+          description: The user-facing label.
+        contact:
+          type: string
+          maxLength: 512
+          description: The contact value; encrypted application-side before storage.
+    EmergencyContactVerifyConfirmRequest:
+      type: object
+      description: The contact-side acceptance body (the invite token).
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          maxLength: 128
+          description: The one-time invite token the contact received.
+    EmergencyContactVerificationInvite:
+      type: object
+      description: >-
+        A one-time verification invite (§20.14 step 2). Alpha: the caller
+        relays the token manually — nothing is ever sent.
+      required:
+        - id
+        - token
+        - invitedAt
+      properties:
+        id:
+          type: string
+          description: The contact row id.
+        token:
+          type: string
+          description: The one-time invite token (relayed manually in Alpha).
+        invitedAt:
+          type: string
+          format: date-time
+          description: The invite time (valid for 7 days).
+    EmergencyContactRevokeResult:
+      type: object
+      description: The withdraw result.
+      required:
+        - revoked
+      properties:
+        revoked:
+          type: boolean
+          description: Whether a live contact existed and was withdrawn.
     AuditEventListItem:
       type: object
       description: One identity_auth_event audit row (ADMIN-OPS).

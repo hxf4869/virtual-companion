@@ -83,10 +83,15 @@
     "listBetaReports",
     "listBetaAgeAppeals",
     "listBetaExportTasks",
-    "listBetaMemorySampling"
+    "listBetaMemorySampling",
+    "getEmergencyContact",
+    "saveEmergencyContact",
+    "startEmergencyContactVerification",
+    "confirmEmergencyContactVerification",
+    "revokeEmergencyContact"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "1055274e15d294ba2c99f0d6c5d44410c2731f86902669b98891dc44f52db831"
+    "sha256": "5bcf35dd5b571dc4aad5870897d1c104a2b4a5d2026c99fbec1dda1dbb940439"
   }
 }
