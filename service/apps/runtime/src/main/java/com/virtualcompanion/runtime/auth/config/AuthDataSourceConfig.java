@@ -406,6 +406,12 @@ public class AuthDataSourceConfig {
                 enabled, paused, windowFrom, maxDailyActiveUsers, zone);
     }
 
+    /** EMBED-RECALL (V62): deterministic embedder — the local recall floor. */
+    @Bean
+    public com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort() {
+        return new com.virtualcompanion.runtime.memory.DeterministicEmbedder();
+    }
+
     /** ENT-TRIAL (V61): simulated trial grants (FR-ENT-005). */
     @Bean
     public TrialService trialService(JdbcTemplate authJdbcTemplate) {
@@ -676,7 +682,9 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.generation.context-budget.max-input-tokens:8000}") int maxInputTokens,
             @Value("${virtual-companion.generation.context-budget.max-output-tokens:2048}") int maxOutputTokens,
             @Value("${virtual-companion.generation.context-budget.max-turns:64}") int maxTurns,
-            EntitlementSnapshotService entitlementSnapshotService) {
+            EntitlementSnapshotService entitlementSnapshotService,
+            com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort,
+            @Value("${virtual-companion.model-providers.degraded:false}") boolean degraded) {
         return new LiveInvocationAssembler(
                 generationRepository,
                 conversationRepository,
@@ -688,7 +696,9 @@ public class AuthDataSourceConfig {
                 externalProtocol,
                 new com.virtualcompanion.conversation.contextplan.ContextBudget(
                         maxInputTokens, maxOutputTokens, maxTurns),
-                entitlementSnapshotService);
+                entitlementSnapshotService,
+                embeddingPort,
+                degraded);
     }
 
     /** ENT-SNAP (V40): simulated entitlement mint/assign/list. */

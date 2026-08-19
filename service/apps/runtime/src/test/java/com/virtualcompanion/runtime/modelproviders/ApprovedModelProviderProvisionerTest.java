@@ -151,7 +151,7 @@ class ApprovedModelProviderProvisionerTest {
     private ApprovedModelProviders provision(
             ModelProviderProperties.Deployment... deployments) {
         ModelProviderProperties properties =
-                new ModelProviderProperties(true, tempDir.toString(), List.of(deployments));
+                new ModelProviderProperties(true, tempDir.toString(), List.of(deployments), false);
         return ApprovedModelProviderProvisioner.provision(properties, new ProviderSecretReader(tempDir));
     }
 

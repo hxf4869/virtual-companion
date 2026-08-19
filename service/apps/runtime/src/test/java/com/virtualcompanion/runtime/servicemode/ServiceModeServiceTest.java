@@ -14,7 +14,11 @@ import org.junit.jupiter.api.Test;
 class ServiceModeServiceTest {
 
     private static ModelProviderProperties providers(boolean enabled) {
-        return new ModelProviderProperties(enabled, "/run/secrets", List.of());
+        return providers(enabled, false);
+    }
+
+    private static ModelProviderProperties providers(boolean enabled, boolean degraded) {
+        return new ModelProviderProperties(enabled, "/run/secrets", List.of(), degraded);
     }
 
     @Test
@@ -44,5 +48,15 @@ class ServiceModeServiceTest {
                 () -> new ServiceModeService.Status("  ", "summary"));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> new ServiceModeService.Status("FULL_AI", " "));
+    }
+
+    @Test
+    void enabledAndDegradedReportsDegradedAi() {
+        ServiceModeService service = new ServiceModeService(providers(true, true));
+
+        ServiceModeService.Status status = service.current();
+
+        assertThat(status.mode()).isEqualTo("DEGRADED_AI");
+        assertThat(status.summary()).contains("降级");
     }
 }

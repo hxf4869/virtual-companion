@@ -16,6 +16,7 @@ import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
+import com.virtualcompanion.runtime.memory.EmbeddingPort;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.MemoryRecord;
@@ -94,6 +95,8 @@ public class LiveInvocationAssembler {
     private final ModelProtocol externalProtocol;
     private final ContextBudget budget;
     private final EntitlementSnapshotService entitlementSnapshotService;
+    private final EmbeddingPort embeddingPort;
+    private final boolean degraded;
 
     public LiveInvocationAssembler(
             GenerationRepository generationRepository,
@@ -105,7 +108,9 @@ public class LiveInvocationAssembler {
             String zeroLlmSourceId,
             ModelProtocol externalProtocol,
             ContextBudget budget,
-            EntitlementSnapshotService entitlementSnapshotService) {
+            EntitlementSnapshotService entitlementSnapshotService,
+            EmbeddingPort embeddingPort,
+            boolean degraded) {
         this.generationRepository = Objects.requireNonNull(generationRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
@@ -118,6 +123,8 @@ public class LiveInvocationAssembler {
         this.budget = Objects.requireNonNull(budget, "budget must not be null");
         this.entitlementSnapshotService = Objects.requireNonNull(
                 entitlementSnapshotService, "entitlementSnapshotService must not be null");
+        this.embeddingPort = Objects.requireNonNull(embeddingPort, "embeddingPort must not be null");
+        this.degraded = degraded;
     }
 
     /**
@@ -232,8 +239,12 @@ public class LiveInvocationAssembler {
         // routing entitlement instead of the hardcoded simulated tier. Retries
         // of the same logical generation resolve the same snapshot
         // (FR-ENT-004).
+        // DEGRADED-AI (V62 / §12.10 D2): when the deployment declares a
+        // degradation, the SD mints PREMIUM entitlements one class lower
+        // (ECONOMY actual); the snapshot records the 应得 vs 实际 pair and
+        // the router consumes the ACTUAL class.
         EntitlementSnapshotService.MintedEntitlementSnapshot minted =
-                entitlementSnapshotService.mint(ownerUserId, generationId);
+                entitlementSnapshotService.mint(ownerUserId, generationId, degraded);
         Entitlement entitlement = new Entitlement(
                 ownership.ownerUserId(), ServiceClass.fromCode(minted.serviceClass()));
         // PERSONA-WIRE: the companion persona is the outermost SYSTEM context
@@ -430,6 +441,62 @@ public class LiveInvocationAssembler {
         return null;
     }
 
+    /** EMBED-RECALL: the generating conversation's latest user message text. */
+    private String latestUserContent(long ownerUserId, long conversationId) {
+        try {
+            List<String> rows = jdbcTemplate.queryForList(
+                    "SELECT content FROM vc.message "
+                            + "WHERE owner_user_id = ? AND conversation_id = ? AND role = 'user' "
+                            + "ORDER BY id DESC LIMIT 1",
+                    String.class,
+                    ownerUserId, conversationId);
+            return rows.isEmpty() ? null : rows.get(0);
+        } catch (org.springframework.dao.DataAccessException e) {
+            return null;
+        }
+    }
+
+    /**
+     * EMBED-RECALL (V62 / §11.13): structured (recency) recall merged with
+     * cosine semantic recall — dedupe by memory id, structured entries keep
+     * their order, semantic hits fill the remaining slots. A missing embedding
+     * or a failed semantic read degrades to the structured result alone
+     * (never blocks generation).
+     */
+    private List<MemoryRecord> recalledMemories(
+            long ownerUserId, long relationshipId, long conversationId, String queryText) {
+        List<MemoryRecord> structured = memoryService.recall(
+                ownerUserId, relationshipId, conversationId, MAX_RECALL_ENTRIES);
+        if (queryText == null || queryText.isBlank()) {
+            return structured;
+        }
+        List<MemoryRecord> merged = new ArrayList<>(structured);
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (MemoryRecord record : structured) {
+            seen.add(record.id());
+        }
+        try {
+            float[] queryVector = embeddingPort.embed(queryText);
+            EmbeddingPort.EmbeddingSpace space = embeddingPort.space();
+            String literal = com.virtualcompanion.runtime.memory.DeterministicEmbedder
+                    .toVectorLiteral(queryVector);
+            for (com.virtualcompanion.platform.persistence.MemoryService.SemanticMemoryRecord hit
+                    : memoryService.semanticRecall(
+                            ownerUserId, relationshipId, space.spaceId(),
+                            literal, MAX_RECALL_ENTRIES)) {
+                if (seen.add(hit.memoryId()) && merged.size() < MAX_RECALL_ENTRIES) {
+                    merged.add(new MemoryRecord(
+                            hit.memoryId(), relationshipId, null,
+                            hit.summary(), "ACCEPTED", conversationId,
+                            null, java.time.Instant.now()));
+                }
+            }
+        } catch (RuntimeException e) {
+            // Semantic recall is additive; any failure keeps the structured half.
+        }
+        return merged;
+    }
+
     /**
      * MEM-LOOP: build the SYSTEM recall block carrying the confirmed memory
      * recalled for this relationship (and conversation, for SESSION scope).
@@ -440,8 +507,8 @@ public class LiveInvocationAssembler {
     private String recallBlock(long ownerUserId, OwnershipTuple ownership) {
         long relationshipId = Long.parseLong(ownership.relationshipId());
         long conversationId = Long.parseLong(ownership.conversationId());
-        List<MemoryRecord> recalled = memoryService.recall(
-                ownerUserId, relationshipId, conversationId, MAX_RECALL_ENTRIES);
+        List<MemoryRecord> recalled = recalledMemories(
+                ownerUserId, relationshipId, conversationId, latestUserContent(ownerUserId, conversationId));
         RelationshipRecord relationship =
                 relationshipService.get(ownerUserId, relationshipId).orElse(null);
         if (relationship != null

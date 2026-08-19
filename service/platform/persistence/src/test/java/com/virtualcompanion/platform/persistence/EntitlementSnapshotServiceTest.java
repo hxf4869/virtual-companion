@@ -36,16 +36,19 @@ class EntitlementSnapshotServiceTest {
     @Test
     void mintReturnsTheMintedSnapshot() {
         when(jdbc.query(
-                eq("SELECT out_id, out_service_class, out_entitled_service_class "
-                        + "FROM vc.mint_entitlement_snapshot(?, ?)"),
+                eq("SELECT out_id, out_service_class, out_entitled_service_class, "
+                        + "out_actual_service_class "
+                        + "FROM vc.mint_entitlement_snapshot(?, ?, ?)"),
                 any(RowMapper.class),
                 eq(1L),
-                eq(10L)))
+                eq(10L),
+                eq(false)))
                 .thenAnswer(invocation -> {
                     ResultSet rs = mock(ResultSet.class);
                     when(rs.getLong("out_id")).thenReturn(9001L);
                     when(rs.getString("out_service_class")).thenReturn("PREMIUM");
                     when(rs.getString("out_entitled_service_class")).thenReturn("PREMIUM");
+                    when(rs.getString("out_actual_service_class")).thenReturn("PREMIUM");
                     var mapper = invocation.getArgument(1, RowMapper.class);
                     return List.of(mapper.mapRow(rs, 1));
                 });

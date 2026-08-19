@@ -70,7 +70,7 @@ export type MessageFeedbackKind =
   | "UNSAFE";
 
 /** SVC-MODE (FR-RES-005): reachable service modes in Technical Alpha. */
-export type ServiceMode = "FULL_AI" | "ZERO_LLM";
+export type ServiceMode = "FULL_AI" | "DEGRADED_AI" | "ZERO_LLM";
 
 export interface ServiceModeStatus {
   mode: ServiceMode;
@@ -663,7 +663,9 @@ export async function getServiceMode(
   const o = r.json as Record<string, unknown>;
   const mode = o.mode;
   const summary = typeof o.summary === "string" ? o.summary : undefined;
-  if (mode !== "FULL_AI" && mode !== "ZERO_LLM") return null;
+  if (mode !== "FULL_AI" && mode !== "DEGRADED_AI" && mode !== "ZERO_LLM") {
+    return null;
+  }
   if (!summary) return null;
   return { mode, summary };
 }

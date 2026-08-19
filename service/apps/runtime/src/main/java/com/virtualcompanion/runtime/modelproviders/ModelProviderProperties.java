@@ -33,7 +33,8 @@ import org.springframework.validation.annotation.Validated;
 public record ModelProviderProperties(
         boolean enabled,
         @DefaultValue("/run/secrets") String secretRoot,
-        @Valid List<Deployment> deployments) {
+        @Valid List<Deployment> deployments,
+        @DefaultValue("false") boolean degraded) {
 
     public ModelProviderProperties {
         deployments = deployments == null ? List.of() : List.copyOf(deployments);

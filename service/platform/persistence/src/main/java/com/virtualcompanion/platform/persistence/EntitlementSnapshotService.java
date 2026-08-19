@@ -52,15 +52,34 @@ public class EntitlementSnapshotService {
         if (generationId <= 0) {
             throw new IllegalArgumentException("generationId must be positive");
         }
+        return mint(ownerUserId, generationId, false);
+    }
+
+    /**
+     * DEGRADED-AI (V62): mint (or resolve) with the deployment-computed
+     * ACTUAL class — a non-null value one class below the entitlement records
+     * the 应得 vs 实际 pair; null keeps actual == entitled.
+     */
+    public MintedEntitlementSnapshot mint(
+            long ownerUserId, long generationId, boolean degraded) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (generationId <= 0) {
+            throw new IllegalArgumentException("generationId must be positive");
+        }
         List<MintedEntitlementSnapshot> rows = jdbc.query(
-                "SELECT out_id, out_service_class, out_entitled_service_class "
-                        + "FROM vc.mint_entitlement_snapshot(?, ?)",
+                "SELECT out_id, out_service_class, out_entitled_service_class, "
+                        + "out_actual_service_class "
+                        + "FROM vc.mint_entitlement_snapshot(?, ?, ?)",
                 (rs, rowNum) -> new MintedEntitlementSnapshot(
                         rs.getLong("out_id"),
                         rs.getString("out_service_class"),
-                        rs.getString("out_entitled_service_class")),
+                        rs.getString("out_entitled_service_class"),
+                        rs.getString("out_actual_service_class")),
                 ownerUserId,
-                generationId);
+                generationId,
+                degraded);
         return rows.stream().findFirst().orElseThrow(
                 () -> new IllegalStateException("mint_entitlement_snapshot returned no row"));
     }
@@ -106,7 +125,8 @@ public class EntitlementSnapshotService {
      * is what was actually minted — identical until a degradation diverges them.
      */
     public record MintedEntitlementSnapshot(
-            long id, String serviceClass, String entitledServiceClass) {
+            long id, String serviceClass, String entitledServiceClass,
+            String actualServiceClass) {
         public MintedEntitlementSnapshot {
             if (id <= 0) {
                 throw new IllegalArgumentException("id must be positive");
@@ -114,6 +134,8 @@ public class EntitlementSnapshotService {
             Objects.requireNonNull(serviceClass, "serviceClass must not be null");
             Objects.requireNonNull(entitledServiceClass,
                     "entitledServiceClass must not be null");
+            Objects.requireNonNull(actualServiceClass,
+                    "actualServiceClass must not be null");
         }
     }
 

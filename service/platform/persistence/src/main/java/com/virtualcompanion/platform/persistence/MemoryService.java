@@ -293,6 +293,59 @@ public class MemoryService {
     }
 
     /**
+     * EMBED-RECALL (V62): upsert one memory's embedding (idempotent per
+     * memory; the vector travels as the pgvector text literal).
+     */
+    public boolean upsertEmbedding(
+            long ownerUserId, long memoryItemId, String modelId, String modelVersion,
+            int dimension, String spaceId, String vectorLiteral) {
+        if (ownerUserId <= 0 || memoryItemId <= 0) {
+            throw new IllegalArgumentException("ids must be positive");
+        }
+        if (modelId == null || modelId.isBlank() || modelVersion == null
+                || modelVersion.isBlank() || spaceId == null || spaceId.isBlank()
+                || vectorLiteral == null || vectorLiteral.isBlank()) {
+            throw new IllegalArgumentException(
+                    "model/version/space/vector must not be blank");
+        }
+        Boolean ok = jdbc.queryForObject(
+                "SELECT vc.upsert_memory_embedding(?, ?, ?, ?, ?, ?, ?)",
+                Boolean.class,
+                ownerUserId, memoryItemId, modelId, modelVersion,
+                dimension, spaceId, vectorLiteral);
+        return Boolean.TRUE.equals(ok);
+    }
+
+    /**
+     * EMBED-RECALL (V62): cosine-nearest confirmed memories of the owner in
+     * the SAME embedding space (§11.13 语义向量召回 — the merge/dedupe with
+     * the structured recall happens in the runtime caller).
+     */
+    public List<SemanticMemoryRecord> semanticRecall(
+            long ownerUserId, long relationshipId, String spaceId,
+            String queryLiteral, int limit) {
+        if (ownerUserId <= 0 || relationshipId <= 0) {
+            throw new IllegalArgumentException("ids must be positive");
+        }
+        if (spaceId == null || spaceId.isBlank()
+                || queryLiteral == null || queryLiteral.isBlank()) {
+            throw new IllegalArgumentException("space/query must not be blank");
+        }
+        return jdbc.query(
+                "SELECT out_memory_id, out_summary, out_distance "
+                        + "FROM vc.semantic_recall(?, ?, ?, ?, ?)",
+                (rs, rowNum) -> new SemanticMemoryRecord(
+                        rs.getLong("out_memory_id"),
+                        rs.getString("out_summary"),
+                        rs.getDouble("out_distance")),
+                ownerUserId, relationshipId, spaceId, queryLiteral, limit);
+    }
+
+    /** EMBED-RECALL: one semantic recall hit (id, summary, cosine distance). */
+    public record SemanticMemoryRecord(long memoryId, String summary, double distance) {
+    }
+
+    /**
      * Recall confirmed memory for generation-context injection (V13
      * {@code vc.recall_memory}, MEM-LOOP). Returns only ACCEPTED, non-deleted
      * rows: RELATIONSHIP-scoped memory across conversations, SESSION-scoped

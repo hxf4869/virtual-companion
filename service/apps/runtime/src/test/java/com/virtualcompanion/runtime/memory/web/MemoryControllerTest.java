@@ -50,7 +50,8 @@ class MemoryControllerTest {
     @BeforeEach
     void setUp() {
         memoryService = mock(MemoryService.class);
-        MemoryController controller = new MemoryController(memoryService);
+        MemoryController controller = new MemoryController(
+                memoryService, new com.virtualcompanion.runtime.memory.DeterministicEmbedder());
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {

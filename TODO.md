@@ -57,9 +57,9 @@
 
 ### R37 记忆深化
 
-- [ ] EMBED-RECALL：`memory_embedding` 表 + EmbeddingPort（Alpha 确定性实现）
+- [x] EMBED-RECALL：`memory_embedding` 表 + EmbeddingPort（Alpha 确定性实现）
       + 语义召回与结构化召回合并去重（§11.13/§11.15/§11.17）。
-- [ ] DEGRADED-AI 降级档位运行时可达 + 应得/实际 Service Class 落路由决策
+- [x] DEGRADED-AI 降级档位运行时可达 + 应得/实际 Service Class 落路由决策
       （§12.10、FR-RES-005 三态展示）。
 
 ### R38 会话摘要

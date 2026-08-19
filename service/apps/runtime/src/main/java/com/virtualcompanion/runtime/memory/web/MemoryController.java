@@ -55,9 +55,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class MemoryController {
 
     private final MemoryService memoryService;
+    private final com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort;
 
-    public MemoryController(MemoryService memoryService) {
+    public MemoryController(
+            MemoryService memoryService,
+            com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort) {
         this.memoryService = memoryService;
+        this.embeddingPort = embeddingPort;
     }
 
     @PostMapping("/relationships/{relationshipId}/memories/candidates")
@@ -122,9 +126,26 @@ public class MemoryController {
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
             @PathVariable String memoryId) {
         long id = parseId(memoryId, "memoryId");
-        return memoryService.confirm(ownerUserId, id)
+        var confirmed = memoryService.confirm(ownerUserId, id)
                 .map(MemoryController::toMemoryResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("memory"));
+        // EMBED-RECALL (V62 / §11.15): a confirmed memory gets its embedding
+        // right away (deterministic Alpha embedder; a real provider replaces
+        // the port). The write is idempotent and additive — a failure never
+        // rolls back the confirmation.
+        try {
+            var space = embeddingPort.space();
+            memoryService.upsertEmbedding(
+                    ownerUserId, id,
+                    space.modelId(), space.modelVersion(),
+                    space.dimension(), space.spaceId(),
+                    com.virtualcompanion.runtime.memory.DeterministicEmbedder
+                            .toVectorLiteral(embeddingPort.embed(confirmed.summary())));
+        } catch (RuntimeException e) {
+            // The confirmation stays canonical; semantic recall catches up on
+            // the next confirm of the same memory (idempotent upsert).
+        }
+        return confirmed;
     }
 
     @PostMapping("/memories/{memoryId}/reject")

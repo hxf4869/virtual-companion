@@ -34,8 +34,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `GET /actuator/health`
 - `GET /api/internal/baseline`
 - `GET /api/v1/version`（公开，OpenAPI `getVersion`）
-- `GET /api/v1/service-mode`（SVC-MODE：当前服务模式 FULL_AI / ZERO_LLM 与
-  平实状态文案，FR-RES-005 用户透明度，需登录）
+- `GET /api/v1/service-mode`（SVC-MODE：当前服务模式 FULL_AI / DEGRADED_AI /
+  ZERO_LLM 与平实状态文案，FR-RES-005 用户透明度，需登录）
 
 显式开启 Auth 及其 datasource 后，runtime 还提供：
 
@@ -134,6 +134,19 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第三十七轮）：
+
+- 语义记忆召回（EMBED-RECALL / §11.13/11.15/11.17）：V62 `vc.memory_embedding`
+  （vector(64) + model/version/dimension/space 血统列，幂等 upsert，RLS+SD-only）
+  + `EmbeddingPort`/`DeterministicEmbedder`（确定性 64 维哈希向量，本地无供应商；
+  真实 embedding 供应商以后替换实现不改表）。确认记忆即写入 embedding；组装器
+  召回=结构化（recency）+ 语义（余弦最近，同 space）合并去重——结构化保序、语义
+  补位，语义读失败不阻断生成。导入归档记忆暂无 embedding（结构化召回覆盖）。
+- 降级档位（DEGRADED-AI / §12.10、FR-RES-005/FR-ENT-006）：部署配置
+  `model-providers.degraded=true` 时 `GET /service-mode` 返回 DEGRADED_AI（平实
+  文案「以较低服务等级运行」）；快照增列 `actual_service_class`——PREMIUM 应得
+  在降级下铸 ECONOMY 实际（应得 vs 实际持久成对），路由消费实际档。
 
 后端在运方面上还提供（2026-08-19 第三十六轮）：
 

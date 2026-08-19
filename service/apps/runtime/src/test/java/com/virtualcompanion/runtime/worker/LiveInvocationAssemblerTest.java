@@ -65,7 +65,8 @@ class LiveInvocationAssemblerTest {
         return new LiveInvocationAssembler(
                 generationRepository, conversationRepository, messageRepository, memoryService,
                 relationshipService, jdbcTemplate, sourceId, ModelProtocol.OPENAI_CHAT_COMPLETIONS,
-                budget, entitlementSnapshotService);
+                budget, entitlementSnapshotService,
+                new com.virtualcompanion.runtime.memory.DeterministicEmbedder(), false);
     }
 
     @Test
@@ -141,9 +142,9 @@ class LiveInvocationAssemblerTest {
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
                 .thenReturn(null);
-        when(entitlementSnapshotService.mint(1L, 10L)).thenReturn(
+        when(entitlementSnapshotService.mint(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(10L), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(
                 new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
-                        .MintedEntitlementSnapshot(9001L, "PREMIUM", "PREMIUM"));
+                        .MintedEntitlementSnapshot(9001L, "PREMIUM", "PREMIUM", "PREMIUM"));
 
         LiveInvocationRequest request = assembler("ZERO_LLM_FALLBACK")
                 .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
@@ -179,9 +180,9 @@ class LiveInvocationAssemblerTest {
         // PERSONA-WIRE: default — no relationship row (no persona context).
         when(relationshipService.get(owner, relationshipId)).thenReturn(Optional.empty());
         // ENT-SNAP: default mint for every external assembly (ECONOMY).
-        when(entitlementSnapshotService.mint(owner, generationId)).thenReturn(
+        when(entitlementSnapshotService.mint(org.mockito.ArgumentMatchers.eq(owner), org.mockito.ArgumentMatchers.eq(generationId), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(
                 new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
-                        .MintedEntitlementSnapshot(9001L, "ECONOMY", "ECONOMY"));
+                        .MintedEntitlementSnapshot(9001L, "ECONOMY", "ECONOMY", "ECONOMY"));
     }
 
     @Test

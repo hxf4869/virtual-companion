@@ -173,8 +173,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V58 = SAFETY-WIRE safety events + input-block catalog edges;
         // V59 = SAFETY-QUEUE admin safety queue read;
         // V60 = INVITE invite codes + SVC-WINDOW beta window state;
-        // V61 = ENT-TRIAL trial grants + QUOTA-PERSIST reconciliation).
+        // V61 = ENT-TRIAL trial grants + QUOTA-PERSIST reconciliation;
+        // V62 = EMBED-RECALL memory embeddings + DEGRADED-AI actual class).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(61);
+                .isEqualTo(62);
     }
 }
