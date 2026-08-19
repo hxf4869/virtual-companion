@@ -16,9 +16,14 @@ import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
+import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
+import com.virtualcompanion.safety.SafetyClassification;
+import com.virtualcompanion.safety.SafetyClassifierPort;
+import com.virtualcompanion.safety.SafetyStage;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -97,6 +102,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final LiveDeltaBroker deltaBroker;
     private final ConversationRepository conversationRepository;
     private final GenerationRepository generationRepository;
+    private final SafetyClassifierPort safetyClassifier;
+    private final SafetyEventService safetyEventService;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -108,7 +115,9 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             RealtimeEventRepository realtimeEventRepository,
             LiveDeltaBroker deltaBroker,
             ConversationRepository conversationRepository,
-            GenerationRepository generationRepository) {
+            GenerationRepository generationRepository,
+            SafetyClassifierPort safetyClassifier,
+            SafetyEventService safetyEventService) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -119,6 +128,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.deltaBroker = deltaBroker;
         this.conversationRepository = conversationRepository;
         this.generationRepository = generationRepository;
+        this.safetyClassifier = safetyClassifier;
+        this.safetyEventService = safetyEventService;
     }
 
     @Override
@@ -142,6 +153,11 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             // STREAM-LIVE: forward accepted session deltas to the live broker.
             // The sink is in-memory only (no database access inside execute) and
             // uses the seq block reserved in the prepare segment.
+            // SAFETY-WIRE (FR-CHAT-001): only fragments passing the incremental
+            // review may become chat.delta — a paused fragment still consumes
+            // its reserved seq (a sanctioned gap; the terminal snapshot or the
+            // final-review backstop resolves the stream).
+            AtomicInteger pausedDeltas = new AtomicInteger();
             AtomicLong nextDeltaSeq = new AtomicLong(prepared.firstDeltaSeq());
             Consumer<ModelProtocolEvent> sink = event -> {
                 if (!(event instanceof ModelProtocolEvent.OutputDelta delta)
@@ -151,8 +167,14 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 long seq = nextDeltaSeq.getAndIncrement();
                 if (prepared.externalMode()
                         && seq - prepared.firstDeltaSeq() < DELTA_SEQ_BLOCK) {
-                    deltaBroker.publish(generationId, new LiveDeltaBroker.LiveEvent(
-                            prepared.streamEpoch(), seq, "chat.delta", chunk.text()));
+                    SafetyClassification incremental =
+                            safetyClassifier.classify(SafetyStage.OUTPUT, chunk.text());
+                    if (incremental.allowed()) {
+                        deltaBroker.publish(generationId, new LiveDeltaBroker.LiveEvent(
+                                prepared.streamEpoch(), seq, "chat.delta", chunk.text()));
+                    } else {
+                        pausedDeltas.incrementAndGet();
+                    }
                 }
             };
             LiveAttemptOutcome outcome =
@@ -163,7 +185,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             }
             // ---- guarded finalize / guarded fail ----
             if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
-                finalizeExternalSuccess(executor, claim, ownerUserId, generationId, outcome);
+                finalizeExternalSuccess(
+                        executor, claim, ownerUserId, generationId, outcome, pausedDeltas.get());
             } else if (outcome.terminal() == LiveAttemptTerminal.ZERO_LLM_COMPLETED) {
                 finalizeZeroLlmSuccess(executor, claim, ownerUserId, generationId, outcome);
             } else if (prepared.externalMode() && retryableFailure(outcome)) {
@@ -290,13 +313,24 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         });
     }
 
-    /** Guarded finalize tx: claim guard + candidate + FINAL_REVIEW + finalize + per-item complete. */
+    /**
+     * Guarded finalize tx: claim guard + candidate + FINAL_REVIEW + finalize + per-item complete.
+     *
+     * <p>SAFETY-WIRE (V58, §20.11 最终复核): the full model output is
+     * classified before anything is committed. A hard-rule hit walks
+     * FINAL_REVIEW → OUTPUT_BLOCKED with a durable chat.blocked event and a
+     * minimal safety-event row (plus one INCREMENTAL row when any fragment
+     * was paused mid-stream) — no assistant message, no candidate, no memory
+     * extraction; the work item still completes (the provider attempt itself
+     * succeeded and is audited).
+     */
     private void finalizeExternalSuccess(
             WorkItemWorker.OwnerExecutor executor,
             WorkItemClaim claim,
             long ownerUserId,
             long generationId,
-            LiveAttemptOutcome outcome) {
+            LiveAttemptOutcome outcome,
+            int pausedDeltas) {
         ProviderAttemptAudit audit = outcome.audits().get(0);
         TokenUsage usage = outcome.usage();
         long inputTokens = usage == null ? 0L : usage.inputTokens();
@@ -304,12 +338,49 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         String content = outcome.response();
         String attemptId = audit.providerAttemptId();
 
+        SafetyClassification finalReview =
+                safetyClassifier.classify(SafetyStage.OUTPUT, content);
+        if (!finalReview.allowed()) {
+            String ruleId = finalReview.hardRuleViolations().get(0);
+            executor.asOwner(ownerUserId, () -> {
+                finalizeService.assertActiveClaim(
+                        ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
+                stateService.promote(ownerUserId, generationId, GenerationStateService.FINAL_REVIEW);
+                finalizeService.terminalizeAsBlocked(ownerUserId, generationId, ruleId);
+                if (pausedDeltas > 0) {
+                    safetyEventService.record(
+                            ownerUserId, generationId, SafetyEventService.STAGE_INCREMENTAL,
+                            finalReview.riskLevel().code(), ruleId);
+                }
+                safetyEventService.record(
+                        ownerUserId, generationId, SafetyEventService.STAGE_FINAL,
+                        finalReview.riskLevel().code(), ruleId);
+                int rows = finalizeService.completeWorkItem(
+                        claim.id(), claim.claimToken(), claim.claimFence());
+                if (rows != 1) {
+                    throw new IllegalStateException(
+                            "per-item complete inside the blocked finalize returned rows=" + rows);
+                }
+            });
+            log.warn("generation {} OUTPUT_BLOCKED by final review for owner {} (rule={}, pausedDeltas={})",
+                    generationId, ownerUserId, ruleId, pausedDeltas);
+            return;
+        }
+
         executor.asOwner(ownerUserId, () -> {
             // Explicit claim guard first (work_item_id + token + fence, never a GUC).
             finalizeService.assertActiveClaim(
                     ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
             long candidateId = finalizeService.insertCandidate(ownerUserId, generationId, content);
             stateService.promote(ownerUserId, generationId, GenerationStateService.FINAL_REVIEW);
+            if (pausedDeltas > 0) {
+                // With substring rules a pause implies a final block, so this
+                // is unreachable today; recorded anyway so the audit trail can
+                // never silently drop a paused fragment.
+                safetyEventService.record(
+                        ownerUserId, generationId, SafetyEventService.STAGE_INCREMENTAL,
+                        finalReview.riskLevel().code(), "incremental-pause-allowed-final");
+            }
             // outboxEligible=false: extraction is scheduled through the
             // work-item queue instead (MEMORY_EXTRACT enqueued below), so no
             // dormant PENDING outbox row is left behind (MEM-LOOP).
@@ -337,7 +408,14 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 generationId, ownerUserId, inputTokens, outputTokens);
     }
 
-    /** Guarded finalize tx for the ZERO_LLM deterministic completion. */
+    /**
+     * Guarded finalize tx for the ZERO_LLM deterministic completion.
+     *
+     * <p>SAFETY-WIRE note: the ZERO_LLM response is the platform-authored
+     * constant (DeterministicSafetyResponse), so no final review runs here —
+     * there is no model output to review. The input side was already
+     * classified at intake.
+     */
     private void finalizeZeroLlmSuccess(
             WorkItemWorker.OwnerExecutor executor,
             WorkItemClaim claim,

@@ -126,6 +126,21 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-19 第三十三轮）：
+
+- 安全分类器接线 I：确定性输入/输出审核（SAFETY-WIRE / FR-CHAT-001、§20.10/
+  §20.11）：`SafetyClassifierPort` + `DeterministicSafetyClassifier`（固定高精度
+  规则集：输入侧 R4/R3 自伤危机短语、输出侧 AI 冒充真人声明；命中即硬规则
+  BLOCK，未命中 CLASSIFIED 1.0 放行——复用 SafetyGate 确定性优先与 fail-closed
+  语义）。输入检查在 intake 生效：危机消息仍落库但走目录路径
+  CREATED→INPUT_REVIEW→INPUT_BLOCKED（V58 扩展 promote/terminalize），发
+  `chat.blocked` 终态事件并记 `vc.safety_event`（只存 stage/risk/rule，不存
+  内容，无 FK 保留合规记录），不排队不外发；重新生成复用原消息不重复判。
+  增量复审核对流式片段生效——只有通过审核的片段才推 `chat.delta`，被暂停
+  片段消耗 seq 但不上线；最终复核在 finalize 前对完整输出复判，命中走
+  FINAL_REVIEW→OUTPUT_BLOCKED，无助手消息、无记忆提取，工作项照常完结。
+  ZERO_LLM 常量回复不经复核（平台自审文本）。
+
 后端在运方面上还提供（2026-08-19 第三十二轮）：
 
 - 全部聊天删除（CHAT-WIPE / FR-DATA-003）：V57 `preview_chat_wipe` /

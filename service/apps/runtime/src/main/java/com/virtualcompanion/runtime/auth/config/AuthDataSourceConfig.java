@@ -18,6 +18,7 @@ import com.virtualcompanion.platform.persistence.ConversationRepository;
 import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.ReportService;
+import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.ExportService;
 import com.virtualcompanion.platform.persistence.GenerationCancelService;
 import com.virtualcompanion.platform.persistence.GenerationFeedbackService;
@@ -360,6 +361,18 @@ public class AuthDataSourceConfig {
         return new ChatWipeService(authJdbcTemplate);
     }
 
+    /** SAFETY-WIRE (V58): minimal safety-event persistence (§20.10/§20.11). */
+    @Bean
+    public SafetyEventService safetyEventService(JdbcTemplate authJdbcTemplate) {
+        return new SafetyEventService(authJdbcTemplate);
+    }
+
+    /** SAFETY-WIRE (V58): deterministic classifier — the local safety floor. */
+    @Bean
+    public com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort() {
+        return new com.virtualcompanion.safety.DeterministicSafetyClassifier();
+    }
+
     /** USAGE-HEALTH (V52): continuous-use reminder prefs + heartbeat. */
     @Bean
     public UsageHealthService usageHealthService(JdbcTemplate authJdbcTemplate) {
@@ -673,6 +686,8 @@ public class AuthDataSourceConfig {
             ConversationListService conversationListService,
             ReminderService reminderService,
             ConsentService consentService,
+            com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort,
+            SafetyEventService safetyEventService,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -684,7 +699,9 @@ public class AuthDataSourceConfig {
                 realtimeEventRepository,
                 liveDeltaBroker,
                 conversationRepository,
-                generationRepository);
+                generationRepository,
+                safetyClassifierPort,
+                safetyEventService);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

@@ -1,11 +1,16 @@
 package com.virtualcompanion.runtime.generation.web;
 
+import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService.ReceivedGeneration;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
+import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.safety.SafetyClassification;
+import com.virtualcompanion.safety.SafetyClassifierPort;
+import com.virtualcompanion.safety.SafetyStage;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -32,6 +37,14 @@ import org.springframework.web.bind.annotation.RestController;
  *       status + realtime events for client polling.</li>
  * </ul>
  *
+ * <p>SAFETY-WIRE (V58, FR-CHAT-001 step 4 输入安全检查): a fresh send is
+ * classified at intake. A deterministic hard-rule hit keeps the user message
+ * persisted (data rights) but walks the generation CREATED → INPUT_REVIEW →
+ * INPUT_BLOCKED with a durable {@code chat.blocked} event and a minimal
+ * safety-event row — no work item is scheduled and no model is invoked. A
+ * regenerate reuses the original message, which was already classified on its
+ * first send, so only fresh content is re-checked here.
+ *
  * <p>Authenticated: the principal's account id is the owner id and the owner
  * GUC is bound upstream by the owner-injection filter. Enqueue happens only on
  * first creation ({@code created=true}); duplicate idempotency keys resolve to
@@ -50,16 +63,25 @@ public class GenerationController {
     private final WorkItemEnqueueService enqueueService;
     private final GenerationRepository generationRepository;
     private final GenerationStateService generationStateService;
+    private final GenerationFinalizeService finalizeService;
+    private final SafetyClassifierPort safetyClassifier;
+    private final SafetyEventService safetyEventService;
 
     public GenerationController(
             GenerationReceiveService receiveService,
             WorkItemEnqueueService enqueueService,
             GenerationRepository generationRepository,
-            GenerationStateService generationStateService) {
+            GenerationStateService generationStateService,
+            GenerationFinalizeService finalizeService,
+            SafetyClassifierPort safetyClassifier,
+            SafetyEventService safetyEventService) {
         this.receiveService = receiveService;
         this.enqueueService = enqueueService;
         this.generationRepository = generationRepository;
         this.generationStateService = generationStateService;
+        this.finalizeService = finalizeService;
+        this.safetyClassifier = safetyClassifier;
+        this.safetyEventService = safetyEventService;
     }
 
     @PostMapping("/conversations/{conversationId}/generations")
@@ -97,7 +119,9 @@ public class GenerationController {
 
         // Enqueue only on first creation; a duplicate reception resolves to the
         // same logical generation and must not produce a second work item.
-        if (received.created()) {
+        // SAFETY-WIRE: on first creation a fresh message is classified at
+        // intake — a hard-rule hit blocks the turn instead of scheduling it.
+        if (received.created() && !isInputBlocked(ownerUserId, request, received.generationId())) {
             enqueueService.enqueue(ownerUserId, WORK_ITEM_KIND, received.generationId());
         }
 
@@ -111,6 +135,39 @@ public class GenerationController {
                 record.logicalGenerationId(),
                 record.status(),
                 record.mode());
+    }
+
+    /**
+     * SAFETY-WIRE input check for a fresh send. A regenerate reuses the
+     * original message (already classified on its first send) and is skipped.
+     * Returns true when the turn was blocked; the walk is the catalog path
+     * CREATED → INPUT_REVIEW → INPUT_BLOCKED with a durable chat.blocked event
+     * and one minimal safety-event row.
+     */
+    private boolean isInputBlocked(
+            long ownerUserId, SendGenerationRequest request, long generationId) {
+        boolean regenerate =
+                request.sourceUserMessageId() != null && !request.sourceUserMessageId().isBlank();
+        String content = request.userContent() == null ? "" : request.userContent().trim();
+        if (regenerate || content.isEmpty()) {
+            return false;
+        }
+        SafetyClassification classification =
+                safetyClassifier.classify(SafetyStage.INPUT, content);
+        if (classification.allowed()) {
+            return false;
+        }
+        String ruleId = classification.hardRuleViolations().get(0);
+        generationStateService.promote(
+                ownerUserId, generationId, GenerationStateService.INPUT_REVIEW);
+        finalizeService.terminalizeAsInputBlocked(ownerUserId, generationId, ruleId);
+        safetyEventService.record(
+                ownerUserId,
+                generationId,
+                SafetyEventService.STAGE_INPUT,
+                classification.riskLevel().code(),
+                ruleId);
+        return true;
     }
 
     @GetMapping("/generations/{generationId}/snapshot")

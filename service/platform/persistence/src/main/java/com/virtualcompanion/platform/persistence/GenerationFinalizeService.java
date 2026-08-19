@@ -211,6 +211,40 @@ public class GenerationFinalizeService {
     }
 
     /**
+     * SAFETY-WIRE (V58): terminalize an input-blocked generation
+     * (INPUT_REVIEW → INPUT_BLOCKED) with a durable {@code chat.blocked}
+     * event carrying the deterministic rule id. The caller's message stays
+     * persisted; only the generation is refused.
+     */
+    public void terminalizeAsInputBlocked(long ownerUserId, long generationId, String ruleId) {
+        validateIds(ownerUserId, generationId);
+        jdbc.queryForObject(
+                "SELECT vc.terminalize_generation(?, ?, 'INPUT_BLOCKED', 'chat.blocked', "
+                        + "'{\"rule\":\"' || ? || '\"}'::jsonb)",
+                String.class,
+                ownerUserId,
+                generationId,
+                jsonEscape(ruleId == null ? "" : ruleId));
+    }
+
+    /**
+     * SAFETY-WIRE (V58): terminalize an output-blocked generation
+     * (FINAL_REVIEW → OUTPUT_BLOCKED) with a durable {@code chat.blocked}
+     * event carrying the deterministic rule id. No assistant message or
+     * candidate is written on this path.
+     */
+    public void terminalizeAsBlocked(long ownerUserId, long generationId, String ruleId) {
+        validateIds(ownerUserId, generationId);
+        jdbc.queryForObject(
+                "SELECT vc.terminalize_generation(?, ?, 'OUTPUT_BLOCKED', 'chat.blocked', "
+                        + "'{\"rule\":\"' || ? || '\"}'::jsonb)",
+                String.class,
+                ownerUserId,
+                generationId,
+                jsonEscape(ruleId == null ? "" : ruleId));
+    }
+
+    /**
      * TASK-0194: persist the {@code CREATED} attempt intent BEFORE any outbound
      * (V28 {@code vc.create_attempt_intent}). The intent binds owner, work
      * item, generation, SHA-256 hashes of the claim token/fence, the unique

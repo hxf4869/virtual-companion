@@ -9,15 +9,18 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService;
 import com.virtualcompanion.platform.persistence.GenerationReceiveService.ReceivedGeneration;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.GenerationStateService.GenerationSnapshot;
+import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
+import com.virtualcompanion.safety.DeterministicSafetyClassifier;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +50,8 @@ class GenerationControllerTest {
     private WorkItemEnqueueService enqueueService;
     private GenerationRepository generationRepository;
     private GenerationStateService generationStateService;
+    private GenerationFinalizeService finalizeService;
+    private SafetyEventService safetyEventService;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -55,8 +60,11 @@ class GenerationControllerTest {
         enqueueService = mock(WorkItemEnqueueService.class);
         generationRepository = mock(GenerationRepository.class);
         generationStateService = mock(GenerationStateService.class);
+        finalizeService = mock(GenerationFinalizeService.class);
+        safetyEventService = mock(SafetyEventService.class);
         GenerationController controller = new GenerationController(
-                receiveService, enqueueService, generationRepository, generationStateService);
+                receiveService, enqueueService, generationRepository, generationStateService,
+                finalizeService, new DeterministicSafetyClassifier(), safetyEventService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(principalResolver())
@@ -108,6 +116,36 @@ class GenerationControllerTest {
                 .andExpect(jsonPath("$.mode").value("AUTO"));
 
         verify(enqueueService).enqueue(1L, "GENERATION", 55L);
+    }
+
+    @Test
+    void sendGenerationInputBlockedTurnNeverEnqueuesOrInvokesTheModel() throws Exception {
+        // SAFETY-WIRE (V58): a fresh crisis message is still persisted
+        // (receive ran) but the turn walks INPUT_REVIEW -> INPUT_BLOCKED, gets
+        // a chat.blocked event path and a safety event — no work item.
+        when(receiveService.receive(1L, 100L, "key-safe",
+                GenerationReceiveService.DEFAULT_USER_ROLE, "我不想活了", "AUTO"))
+                .thenReturn(new ReceivedGeneration("gen-60", 60L, 300L, true));
+        when(generationRepository.find(1L, 60L))
+                .thenReturn(Optional.of(new GenerationRecord(
+                        1L, 60L, 100L, "gen-60", "INPUT_BLOCKED", "key-safe")));
+
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-safe\",\"userContent\":\"我不想活了\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.generationId").value(60))
+                .andExpect(jsonPath("$.status").value("INPUT_BLOCKED"));
+
+        verify(generationStateService).promote(1L, 60L, GenerationStateService.INPUT_REVIEW);
+        verify(finalizeService).terminalizeAsInputBlocked(1L, 60L, "input-imminent-self-harm");
+        verify(safetyEventService).record(
+                1L, 60L, SafetyEventService.STAGE_INPUT, "R4_IMMINENT",
+                "input-imminent-self-harm");
+        verify(enqueueService, never()).enqueue(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong());
     }
 
     @Test

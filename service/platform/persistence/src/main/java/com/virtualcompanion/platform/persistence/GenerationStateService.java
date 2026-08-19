@@ -18,11 +18,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 public class GenerationStateService {
 
-    /** Legal forward-transition targets (V25 promote_generation enforces adjacency). */
+    /** Legal forward-transition targets (V25/V58 promote_generation enforces adjacency). */
     public static final String IN_PROGRESS = "IN_PROGRESS";
     public static final String FINAL_REVIEW = "FINAL_REVIEW";
+    /** SAFETY-WIRE (V58): input-review hop before an input block (CREATED → INPUT_REVIEW). */
+    public static final String INPUT_REVIEW = "INPUT_REVIEW";
 
-    private static final Set<String> VALID_TARGETS = Set.of(IN_PROGRESS, FINAL_REVIEW);
+    private static final Set<String> VALID_TARGETS =
+            Set.of(IN_PROGRESS, FINAL_REVIEW, INPUT_REVIEW);
 
     private final JdbcTemplate jdbc;
 

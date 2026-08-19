@@ -29,7 +29,7 @@
 
 ### R33 安全分类器接线 I：确定性输入/输出审核
 
-- [ ] SAFETY-WIRE：SafetyClassifierPort + 确定性规则实现；激活输入检查、最终
+- [x] SAFETY-WIRE：SafetyClassifierPort + 确定性规则实现；激活输入检查、最终
       输出复核与增量复核——只有通过增量审核的片段才产生 `chat.delta`；安全
       事件落库（risk-levels / safety-classifier-outcomes 目录）（FR-CHAT-001、
       §20.10/§20.11）。

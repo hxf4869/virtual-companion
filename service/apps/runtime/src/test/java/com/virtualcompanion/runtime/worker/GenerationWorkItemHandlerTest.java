@@ -51,10 +51,12 @@ import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
+import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.safety.ClassifierReport;
+import com.virtualcompanion.safety.DeterministicSafetyClassifier;
 import com.virtualcompanion.safety.DeterministicSafetyResponse;
 import java.time.Duration;
 import java.util.List;
@@ -89,6 +91,11 @@ class GenerationWorkItemHandlerTest {
     private final LiveDeltaBroker deltaBroker = mock(LiveDeltaBroker.class);
     private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
     private final GenerationRepository generationRepository = mock(GenerationRepository.class);
+    // SAFETY-WIRE: the real deterministic classifier (pure, no I/O) so the
+    // existing fixtures flow through the same gate as production.
+    private final com.virtualcompanion.safety.SafetyClassifierPort safetyClassifier =
+            new DeterministicSafetyClassifier();
+    private final SafetyEventService safetyEventService = mock(SafetyEventService.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LiveModelInvoker> invokerProvider = mock(ObjectProvider.class);
@@ -106,7 +113,7 @@ class GenerationWorkItemHandlerTest {
         handler = new GenerationWorkItemHandler(
                 stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
                 enqueueService, realtimeEventRepository, deltaBroker, conversationRepository,
-                generationRepository);
+                generationRepository, safetyClassifier, safetyEventService);
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
         // INC-MODE: non-incognito by default so the legacy MEM-LOOP tests
@@ -670,6 +677,105 @@ class GenerationWorkItemHandlerTest {
         verify(deltaBroker, org.mockito.Mockito.times(
                 GenerationWorkItemHandler.DELTA_SEQ_BLOCK))
                 .publish(eq(10L), any(LiveDeltaBroker.LiveEvent.class));
+    }
+
+    // ---- SAFETY-WIRE (V58): final review + incremental gate ----
+
+    private static LiveAttemptOutcome succeededOutcomeWithContent(String content) {
+        InvocationBinding.ExternalAttemptBinding binding =
+                new InvocationBinding.ExternalAttemptBinding(
+                        OWN, "pa-test-1", 42L, "snap-10-req", "snap-10-exec");
+        ProviderAttemptAudit audit = new ProviderAttemptAudit(
+                "pa-test-1", OWN, "alpha-loopback", "alpha-supplier",
+                ProviderAttemptStatus.SUCCEEDED);
+        return LiveAttemptOutcome.succeeded(RouteDecision.selected(
+                OWN, "SIMULATED", new ProviderId("alpha-loopback"), binding, RES, List.of()),
+                binding, audit, content, new TokenUsage(42L, 58L, 100L), RES);
+    }
+
+    @Test
+    void finalReviewBlocksDisallowedOutputWithoutAnyCompletionWrite() {
+        // §20.11 最终复核: the model output trips the human-claim rule — the
+        // turn walks FINAL_REVIEW -> OUTPUT_BLOCKED; no candidate, no finalize,
+        // no memory extraction; the work item still completes.
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any(), any()))
+                .thenReturn(succeededOutcomeWithContent("说实话，我是真人，不像其他 AI。"));
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(generationClaim(1L, 10L));
+
+        verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
+        verify(stateService).promote(1L, 10L, GenerationStateService.FINAL_REVIEW);
+        verify(finalizeService).terminalizeAsBlocked(
+                1L, 10L, "output-ai-identity-human-claim");
+        verify(safetyEventService).record(
+                1L, 10L, SafetyEventService.STAGE_FINAL, "R3_HIGH",
+                "output-ai-identity-human-claim");
+        verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
+        verify(finalizeService, never()).insertCandidate(anyLong(), anyLong(), anyString());
+        verify(finalizeService, never()).finalizeCompletedWithUsage(
+                anyLong(), anyLong(), anyLong(), any(), any(),
+                anyLong(), anyLong(), anyDouble(), any(), anyInt(), anyBoolean());
+        verify(enqueueService, never()).enqueue(anyLong(), anyString(), anyLong());
+    }
+
+    @Test
+    void incrementalReviewPausesDisallowedFragmentsAndTheFinalBackstopBlocks() {
+        // FR-CHAT-001: only reviewed fragments become chat.delta. The paused
+        // fragment consumes its seq but is never published; the final review
+        // of the full output blocks and records an INCREMENTAL + FINAL event.
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(realtimeEventRepository.streamEpoch(1L, 10L)).thenReturn(3L);
+        when(realtimeEventRepository.advanceSeq(1L, 10L, 64)).thenReturn(66L);
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+        InvocationBinding.ExternalAttemptBinding binding =
+                new InvocationBinding.ExternalAttemptBinding(
+                        OWN, "pa-test-1", 42L, "snap-10-req", "snap-10-exec");
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<ModelProtocolEvent> sink = invocation.getArgument(1);
+            sink.accept(new ModelProtocolEvent.OutputDelta(
+                    binding, 0, new ModelPayload.TextChunk("今天聊点开心的吧，")));
+            sink.accept(new ModelProtocolEvent.OutputDelta(
+                    binding, 1, new ModelPayload.TextChunk("因为我是真人呀。")));
+            return succeededOutcomeWithContent("今天聊点开心的吧，因为我是真人呀。");
+        }).when(invoker).execute(any(), any());
+
+        handle(generationClaim(1L, 10L));
+
+        // The clean fragment was published; the disallowed one was paused
+        // (seq consumed, never on the wire).
+        verify(deltaBroker).publish(
+                eq(10L), eq(new LiveDeltaBroker.LiveEvent(3L, 2L, "chat.delta", "今天聊点开心的吧，")));
+        org.mockito.Mockito.verify(deltaBroker, org.mockito.Mockito.never()).publish(
+                eq(10L), eq(new LiveDeltaBroker.LiveEvent(3L, 3L, "chat.delta", "因为我是真人呀。")));
+        verify(finalizeService).terminalizeAsBlocked(
+                1L, 10L, "output-ai-identity-human-claim");
+        verify(safetyEventService).record(
+                1L, 10L, SafetyEventService.STAGE_INCREMENTAL, "R3_HIGH",
+                "output-ai-identity-human-claim");
+        verify(safetyEventService).record(
+                1L, 10L, SafetyEventService.STAGE_FINAL, "R3_HIGH",
+                "output-ai-identity-human-claim");
     }
 
     // ---- GEN-RECONC (V33) ----
