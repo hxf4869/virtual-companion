@@ -2770,7 +2770,7 @@ paths:
         is lazily demoted to DRAFT on read (验证过期后重新确认). The stored value is application-layer encrypted; decryption happens
         only for this response, and every read of a stored row appends an EMERGENCY_CONTACT_VIEW audit row. A DRAFT contact
         can never be used for an actual liaison. Null body when nothing is saved. Requires a server-verified authentication
-        context.
+        context. The whole capability fails closed with 403 while the deployment switch is off (§20.14 未完成 评审宁可不启用).
       security:
       - bearerAuth: []
       responses:
@@ -2782,6 +2782,12 @@ paths:
                 $ref: '#/components/schemas/EmergencyContact'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The capability is not enabled on this deployment (§20.14 review pending)
           content:
             application/json:
               schema:
@@ -2820,6 +2826,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The capability is not enabled on this deployment (§20.14 review pending)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/emergency-contact/verify-start:
     post:
       operationId: startEmergencyContactVerification
@@ -2844,6 +2856,12 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The capability is not enabled on this deployment (§20.14 review pending)
           content:
             application/json:
               schema:
@@ -2883,6 +2901,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The capability is not enabled on this deployment (§20.14 review pending)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/emergency-contact/revoke:
     post:
       operationId: revokeEmergencyContact
@@ -2901,6 +2925,12 @@ paths:
                 $ref: '#/components/schemas/EmergencyContactRevokeResult'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The capability is not enabled on this deployment (§20.14 review pending)
           content:
             application/json:
               schema:

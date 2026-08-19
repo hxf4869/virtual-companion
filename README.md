@@ -145,6 +145,17 @@ Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已�
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
 
+后端在运方面上还提供（2026-08-19 第四十二轮，Owner Q&A 决策落地）：
+
+- Beta 服务时段对齐需求 §24.7（10:00–22:00）：`BetaServiceWindow` 支持日内窗口
+  （from<until，如 10:00–22:00）与跨夜窗口（from>until，如 20:30–00:00），
+  边界相同视为配置错误；配置默认与 product-scope betaGate 目录同步改为
+  10:00–22:00（长会话截断 21:45、在途宽限 22:10、值守 09:45–22:30）。
+- 紧急联系人能力开关（§20.14 未完成评审宁可不启用）：部署配置
+  `virtual-companion.emergency-contact.enabled`（默认 false）——关闭时五个
+  emergency-contact 端点全部 403 BETA_OPERATIONS_NOT_READY fail-closed，同意页
+  整区隐藏（同意类型行保留）；评审通过后配置置 true 一键放开（B0-02 §4）。
+
 后端在运方面上还提供（2026-08-19 第四十一轮）：
 
 - 低敏记忆自动保存（MEM-AUTO-SAVE / §7.4、§11.10）：V66 `memory_item.auto_saved`
@@ -237,7 +248,7 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   BETA_OPERATIONS_NOT_READY）。admin 页邀请码区 + 登录页凭码开通表单。
 - Beta 服务时段强制（SVC-WINDOW / §24.7、FR-RES-002）：V60
   `beta_service_window_state`（DAU + owner 当日已活跃，trusted-owner）；纯策略类
-  `BetaServiceWindow`（默认关闭；开启时 20:30–00:00 Asia/Shanghai 接受新 turn、
+  `BetaServiceWindow`（默认关闭；开启时 10:00–22:00 Asia/Shanghai 接受新 turn、
   手动停服开关短路、DAU 上限只挡新活跃者）；sendGeneration 在 receive 之前拒绝
   （403 BETA_OPERATIONS_NOT_READY，不落库不排队），历史/记忆/数据权利不受影响。
 

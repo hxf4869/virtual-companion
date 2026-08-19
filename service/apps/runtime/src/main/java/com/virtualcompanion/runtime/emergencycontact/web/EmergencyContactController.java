@@ -56,6 +56,7 @@ public class EmergencyContactController {
     @GetMapping("/emergency-contact")
     public EmergencyContactResponse get(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
+        requireEnabled();
         return emergencyContactService.get(ownerUserId)
                 .map(record -> toResponse(record, true))
                 .orElse(null);
@@ -66,6 +67,7 @@ public class EmergencyContactController {
     public EmergencyContactResponse save(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
             @Valid @RequestBody EmergencyContactSaveRequest request) {
+        requireEnabled();
         try {
             emergencyContactService.upsert(
                     ownerUserId, request.label(), cipher.encrypt(request.contact()));
@@ -84,6 +86,7 @@ public class EmergencyContactController {
     @PostMapping("/emergency-contact/verify-start")
     public VerificationInviteResponse startVerification(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
+        requireEnabled();
         EmergencyContactService.VerificationInvite invite;
         try {
             invite = emergencyContactService.startVerification(ownerUserId);
@@ -102,6 +105,7 @@ public class EmergencyContactController {
     public EmergencyContactResponse confirm(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
             @Valid @RequestBody VerificationConfirmRequest request) {
+        requireEnabled();
         try {
             emergencyContactService.confirmVerification(
                     ownerUserId,
@@ -119,6 +123,7 @@ public class EmergencyContactController {
     @PostMapping("/emergency-contact/revoke")
     public RevokeResponse revoke(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
+        requireEnabled();
         boolean revoked;
         try {
             revoked = emergencyContactService.revoke(ownerUserId);
@@ -126,6 +131,13 @@ public class EmergencyContactController {
             throw new IllegalArgumentException("emergency contact revoke rejected");
         }
         return new RevokeResponse(revoked);
+    }
+
+    /** §20.14 enablement gate: fail closed until the review is recorded. */
+    private void requireEnabled() {
+        if (!properties.enabled()) {
+            throw new com.virtualcompanion.runtime.web.EmergencyContactDisabledException();
+        }
     }
 
     private EmergencyContactResponse toResponse(

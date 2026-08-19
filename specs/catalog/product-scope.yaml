@@ -51,12 +51,14 @@ betaGate:
   maxEnabledAccounts: 30
   maxDailyActiveUsers: 10
   timezone: Asia/Shanghai
-  generationWindowFrom: '20:30'
-  longConversationCutoff: '23:45'
-  newGenerationCutoff: 00:00
-  inFlightGraceUntil: 00:10
-  dutyFrom: '20:15'
-  dutyUntil: 00:30
+  # §24.7 受控 Beta 服务时段：北京时间 10:00–22:00 开放生成式聊天（2026-08-19
+  # Owner 决策对齐需求文档；原 20:30–00:00 为早期草案）。
+  generationWindowFrom: '10:00'
+  longConversationCutoff: '21:45'
+  newGenerationCutoff: '22:00'
+  inFlightGraceUntil: '22:10'
+  dutyFrom: '09:45'
+  dutyUntil: '22:30'
   piaRequired: true
   internalEthicsReviewRequired: true
   externalEthicsApplicabilityDecisionRequired: true

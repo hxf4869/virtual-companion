@@ -400,18 +400,19 @@ public class AuthDataSourceConfig {
     /**
      * SVC-WINDOW: the pure window policy. Disabled by default so local
      * development and CI never hit the gate; the Beta deployment turns it on
-     * (defaults mirror the betaGate declarations in product-scope).
+     * (defaults mirror §24.7: generative chat 10:00–22:00 Asia/Shanghai).
      */
     @Bean
     public com.virtualcompanion.runtime.servicemode.BetaServiceWindow betaServiceWindow(
             @Value("${virtual-companion.beta.service-window.enabled:false}") boolean enabled,
             @Value("${virtual-companion.beta.service-window.paused:false}") boolean paused,
-            @Value("${virtual-companion.beta.service-window.window-from:20:30}") String windowFrom,
+            @Value("${virtual-companion.beta.service-window.window-from:10:00}") String windowFrom,
+            @Value("${virtual-companion.beta.service-window.window-until:22:00}") String windowUntil,
             @Value("${virtual-companion.beta.service-window.max-daily-active-users:10}")
                     int maxDailyActiveUsers,
             @Value("${virtual-companion.beta.service-window.zone:Asia/Shanghai}") String zone) {
         return new com.virtualcompanion.runtime.servicemode.BetaServiceWindow(
-                enabled, paused, windowFrom, maxDailyActiveUsers, zone);
+                enabled, paused, windowFrom, windowUntil, maxDailyActiveUsers, zone);
     }
 
     /** EMBED-RECALL (V62): deterministic embedder — the local recall floor. */

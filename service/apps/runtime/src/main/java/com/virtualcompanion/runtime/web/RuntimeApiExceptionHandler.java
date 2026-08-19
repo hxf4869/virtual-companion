@@ -61,6 +61,18 @@ public class RuntimeApiExceptionHandler {
                 .body(new ErrorEnvelope("BETA_OPERATIONS_NOT_READY", e.getMessage()));
     }
 
+    /**
+     * EMERGENCY-CONTACT (§20.14): the capability is disabled on this
+     * deployment (enablement requires the §20.14 review). 403
+     * BETA_OPERATIONS_NOT_READY, fail closed on every endpoint.
+     */
+    @ExceptionHandler(EmergencyContactDisabledException.class)
+    public ResponseEntity<ErrorEnvelope> handleEmergencyContactDisabled(
+            EmergencyContactDisabledException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorEnvelope("BETA_OPERATIONS_NOT_READY", e.getMessage()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorEnvelope> handleInvalidRequest(IllegalArgumentException e) {
         return invalidRequest();

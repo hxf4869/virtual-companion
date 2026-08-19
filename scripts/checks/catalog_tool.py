@@ -91,12 +91,12 @@ def validate(root: Path) -> list[str]:
         errors.append("product-scope.yaml: vector baseline must be PGVECTOR_0.8.5")
     beta = product.get("betaGate", {})
     expected_beta = {
-        "generationWindowFrom": "20:30",
-        "longConversationCutoff": "23:45",
-        "newGenerationCutoff": "00:00",
-        "inFlightGraceUntil": "00:10",
-        "dutyFrom": "20:15",
-        "dutyUntil": "00:30",
+        "generationWindowFrom": "10:00",
+        "longConversationCutoff": "21:45",
+        "newGenerationCutoff": "22:00",
+        "inFlightGraceUntil": "22:10",
+        "dutyFrom": "09:45",
+        "dutyUntil": "22:30",
         "ageStateRequired": "ADULT_VERIFIED",
         "betaGenerationEnabledByDefault": False,
     }

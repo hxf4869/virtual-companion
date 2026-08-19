@@ -87,4 +87,35 @@ class BetaServiceWindowTest {
         assertThrows(Exception.class,
                 () -> new BetaServiceWindow(true, false, "not-a-time", 10, "Asia/Shanghai"));
     }
+
+    @Test
+    void sameDayWindowClosesAtWindowUntil() {
+        // §24.7 Beta window: generative chat 10:00–22:00 Asia/Shanghai.
+        BetaServiceWindow window = new BetaServiceWindow(
+                true, false, "10:00", "22:00", 10, "Asia/Shanghai");
+        assertEquals(Optional.of("outside-generation-window"),
+                window.rejectReason(at(9, 59), 0, false));
+        assertTrue(window.rejectReason(at(10, 0), 0, false).isEmpty());
+        assertTrue(window.rejectReason(at(21, 59), 0, false).isEmpty());
+        assertEquals(Optional.of("outside-generation-window"),
+                window.rejectReason(at(22, 0), 0, false));
+        assertEquals(Optional.of("outside-generation-window"),
+                window.rejectReason(at(23, 30), 0, false));
+        assertEquals("10:00–22:00 Asia/Shanghai", window.windowLabel());
+    }
+
+    @Test
+    void overnightWindowStillWrapsMidnight() {
+        BetaServiceWindow window = new BetaServiceWindow(
+                true, false, "20:30", "00:00", 10, "Asia/Shanghai");
+        assertTrue(window.rejectReason(at(23, 59), 0, false).isEmpty());
+        assertEquals(Optional.of("outside-generation-window"),
+                window.rejectReason(at(0, 0), 0, false));
+    }
+
+    @Test
+    void equalBoundariesAreRejectedAsDegenerate() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new BetaServiceWindow(true, false, "22:00", "22:00", 10, "Asia/Shanghai"));
+    }
 }

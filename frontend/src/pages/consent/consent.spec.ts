@@ -229,4 +229,35 @@ describe("consent page (FR-AUTH-003)", () => {
 
     wrapper.unmount();
   });
+
+  it("EMERGENCY-CONTACT: hides the whole section while the capability is off (403, §20.14)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/consents") {
+          return { ok: true, status: 200, json: async () => EFFECTIVE };
+        }
+        if (url === "/api/v1/emergency-contact") {
+          // Capability disabled on the deployment (§20.14 未完成评审宁可不启用).
+          return {
+            ok: false,
+            status: 403,
+            json: async () => ({ code: "BETA_OPERATIONS_NOT_READY" }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mount(ConsentPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="emc-card"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="emc-save"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="emc-status"]').exists()).toBe(false);
+    // The consent rows themselves keep working (the EMERGENCY_CONTACT consent
+    // row stays — the hidden section is the capability, not the consent type).
+    expect(wrapper.findAll('[data-testid="consent-row"]')).toHaveLength(8);
+    wrapper.unmount();
+  });
 });

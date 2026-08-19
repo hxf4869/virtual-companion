@@ -93,8 +93,9 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
          the standing EMERGENCY_CONTACT consent; an unverified contact is only
          a draft and can never be used for an actual liaison. The Alpha
          invite is simulated — the token is shown for manual relay, nothing
-         is ever sent. -->
-    <view class="emc-section">
+         is ever sent. The whole section hides while the deployment has the
+         capability switched off (§20.14 未完成评审宁可不启用；403 → 隐藏). -->
+    <view v-if="!emcHidden" class="emc-section">
       <view class="emc-head">
         <text class="emc-title">紧急联系人</text>
         <text
@@ -209,6 +210,7 @@ import { onMounted, ref } from "vue";
 import type { ConsentType } from "@/api/consent";
 import {
   confirmEmergencyContactVerification,
+  EmergencyContactHttpError,
   getEmergencyContact,
   revokeEmergencyContact,
   saveEmergencyContact,
@@ -236,6 +238,9 @@ export default {
     const inviteToken = ref("");
     const confirmToken = ref("");
     const emcError = ref("");
+    // §20.14 enablement: the backend 403s every endpoint while the review is
+    // pending — the whole section then hides (宁可不启用).
+    const emcHidden = ref(false);
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -254,7 +259,12 @@ export default {
     async function refreshContact(): Promise<void> {
       try {
         emergencyContact.value = await getEmergencyContact(transport);
-      } catch {
+      } catch (e) {
+        if (e instanceof EmergencyContactHttpError && e.status === 403) {
+          // Capability switched off on this deployment — hide the section.
+          emcHidden.value = true;
+          return;
+        }
         // The consent rows stay usable; the contact card just shows the form.
         emergencyContact.value = null;
       }
@@ -374,6 +384,7 @@ export default {
       inviteToken,
       confirmToken,
       emcError,
+      emcHidden,
       emcConsentGranted,
       onSaveContact,
       onStartVerification,

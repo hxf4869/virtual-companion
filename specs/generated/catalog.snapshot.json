@@ -1208,18 +1208,18 @@
           "ageStateRequired": "ADULT_VERIFIED",
           "betaGenerationEnabledByDefault": false,
           "confirmedDutyRosterRequired": true,
-          "dutyFrom": "20:15",
-          "dutyUntil": "00:30",
+          "dutyFrom": "09:45",
+          "dutyUntil": "22:30",
           "externalEthicsApplicabilityDecisionRequired": true,
-          "generationWindowFrom": "20:30",
-          "inFlightGraceUntil": "00:10",
+          "generationWindowFrom": "10:00",
+          "inFlightGraceUntil": "22:10",
           "internalEthicsReviewRequired": true,
-          "longConversationCutoff": "23:45",
+          "longConversationCutoff": "21:45",
           "maxDailyActiveUsers": 10,
           "maxEnabledAccounts": 30,
           "namedBackupRequired": true,
           "namedSafetyOwnerRequired": true,
-          "newGenerationCutoff": "00:00",
+          "newGenerationCutoff": "22:00",
           "piaRequired": true,
           "timezone": "Asia/Shanghai"
         },
@@ -1260,7 +1260,7 @@
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "dc8fe7f8a00d4c177a8ce2230376b9738d9da2fd51cbc04de40fae2f6ce1f65b"
+      "sha256": "297ab34fba052f67c2365ce471549c59b7b31d4dd825555255c6624a65e1a3a9"
     },
     "provider-attempt-statuses.yaml": {
       "document": {
