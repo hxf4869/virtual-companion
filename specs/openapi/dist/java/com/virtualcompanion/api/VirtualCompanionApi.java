@@ -80,6 +80,9 @@ public interface VirtualCompanionApi {
     /** List the caller's conversations with a last-message preview. */
     Void listConversations();
 
+    /** The conversation's latest valid L2 summary (CONV-SUMMARY, §11.18). */
+    ConversationSummary getConversationSummary();
+
     /** Preview an account-wide chat wipe (FR-DATA-003 全部聊天删除). */
     ChatWipePreview previewChatWipe();
 

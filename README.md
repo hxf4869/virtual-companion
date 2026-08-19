@@ -86,7 +86,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   （REPORT-BE / FR-DATA-001 / §20.15：举报与投诉受理记录，可选锚定本人消息
   （锚点随消息删除置空）、report-reasons 目录码、note 1..2000 裁剪存储；
   状态 SUBMITTED/RESOLVED，处置为人工动作，不编造工单/时限/热线）
-- `GET /api/v1/conversations/wipe-preview`、`POST /api/v1/conversations/wipe`
+- `GET /api/v1/conversations/{conversationId}/summary`
+  （CONV-SUMMARY / §11.18：最新有效 L2 会话摘要，含覆盖范围/模型与 Prompt
+  版本/置信度/上一版本链；被删消息失效的摘要不返回）、
+`GET /api/v1/conversations/wipe-preview`、`POST /api/v1/conversations/wipe`
   （CHAT-WIPE / FR-DATA-003 全部聊天删除：预览将清除的会话/消息/进行中任务
   数量；执行时先取消 in-flight GENERATION/MEMORY_EXTRACT 再删全部会话，
   角色、已保存记忆、提醒与账号保留；重复执行返回零）
@@ -134,6 +137,17 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第三十八轮）：
+
+- L2 会话摘要（CONV-SUMMARY / §11.18）：V63 `vc.conversation_summary` 追加式
+  版本链——每行记录覆盖消息起止 ID、摘要模型与 Prompt 版本、置信度、校验位、
+  产生档位与上一版本 id；**低质不覆盖高质**（ECONOMY 写入在已验证 PREMIUM 摘要
+  之后被跳过，保留旧摘要待稳定档恢复）；`record_turn_summary` 在外部路径
+  finalize 同事务追加确定性摘要（快照 actual 档驱动质量档；无痕会话不更新，
+  FR-CHAT-005；ZERO_LLM 不更新，FR-RES-002）。删除覆盖范围内的消息时同事务
+  失效相关摘要（行保留供审计，读取只返回有效行；FR-CHAT-004 补全）。
+  `GET /api/v1/conversations/{id}/summary` 读最新有效摘要（无摘要 available=false）。
 
 后端在运方面上还提供（2026-08-19 第三十七轮）：
 

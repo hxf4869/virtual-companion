@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.virtualcompanion.platform.persistence.ChatWipeService;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
+import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.platform.persistence.ConversationListRecord;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
@@ -117,6 +118,7 @@ class ConversationControllerTest {
     private ConversationListService conversationListService;
     private ConversationRepository conversationRepository;
     private ChatWipeService chatWipeService;
+    private ConversationSummaryService summaryService;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -125,9 +127,10 @@ class ConversationControllerTest {
         conversationListService = mock(ConversationListService.class);
         conversationRepository = mock(ConversationRepository.class);
         chatWipeService = mock(ChatWipeService.class);
+        summaryService = mock(ConversationSummaryService.class);
         ConversationController controller = new ConversationController(
                 conversationCreateService, conversationListService,
-                conversationRepository, chatWipeService);
+                conversationRepository, chatWipeService, summaryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -236,6 +239,47 @@ class ConversationControllerTest {
         mockMvc.perform(get("/api/v1/conversations").param("limit", "many"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    // ---- CONV-SUMMARY ----
+
+    @Test
+    void summaryReturnsAvailableFalseWhenNoneExists() throws Exception {
+        when(conversationRepository.find(1L, 100L))
+                .thenReturn(Optional.of(new ConversationRepository.Conversation(1L, 100L, 7L, null)));
+        when(summaryService.latest(1L, 100L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/v1/conversations/100/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false));
+    }
+
+    @Test
+    void summaryReturnsTheLatestValidRow() throws Exception {
+        when(conversationRepository.find(1L, 100L))
+                .thenReturn(Optional.of(new ConversationRepository.Conversation(1L, 100L, 7L, null)));
+        when(summaryService.latest(1L, 100L)).thenReturn(Optional.of(
+                new ConversationSummaryService.SummaryRecord(
+                        9L, 10L, 42L, "会话进展摘要", "deterministic-summarizer", "1",
+                        "1", 1.0, true, "PREMIUM", 8L,
+                        java.time.Instant.parse("2026-08-19T08:00:00Z"))));
+
+        mockMvc.perform(get("/api/v1/conversations/100/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.fromMessageId").value("10"))
+                .andExpect(jsonPath("$.toMessageId").value("42"))
+                .andExpect(jsonPath("$.serviceClass").value("PREMIUM"))
+                .andExpect(jsonPath("$.previousId").value("8"));
+    }
+
+    @Test
+    void summaryHidesExistenceForAForeignConversation() throws Exception {
+        when(conversationRepository.find(1L, 100L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/v1/conversations/100/summary"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"));
     }
 
     // ---- CHAT-WIPE: preview + account-wide delete ----

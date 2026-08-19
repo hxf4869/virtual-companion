@@ -12,6 +12,7 @@ import com.virtualcompanion.modelruntime.execution.PreparedInvocation;
 import com.virtualcompanion.modelruntime.execution.ProviderAttemptAudit;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
@@ -104,6 +105,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final GenerationRepository generationRepository;
     private final SafetyClassifierPort safetyClassifier;
     private final SafetyEventService safetyEventService;
+    private final ConversationSummaryService summaryService;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -117,7 +119,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             ConversationRepository conversationRepository,
             GenerationRepository generationRepository,
             SafetyClassifierPort safetyClassifier,
-            SafetyEventService safetyEventService) {
+            SafetyEventService safetyEventService,
+            ConversationSummaryService summaryService) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -130,6 +133,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.generationRepository = generationRepository;
         this.safetyClassifier = safetyClassifier;
         this.safetyEventService = safetyEventService;
+        this.summaryService = summaryService;
     }
 
     @Override
@@ -397,6 +401,13 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     1,
                     false);
             enqueueMemoryExtract(ownerUserId, generationId);
+            // CONV-SUMMARY (§11.18): external success updates the L2 summary
+            // inside the same guarded transaction; the SD's quality floor may
+            // skip the write (低质不覆盖高质) — that skip is a normal outcome.
+            // Incognito conversations never update summaries (FR-CHAT-005).
+            if (!conversationRepository.isIncognitoForGeneration(ownerUserId, generationId)) {
+                summaryService.recordTurnSummary(ownerUserId, generationId);
+            }
             int rows = finalizeService.completeWorkItem(
                     claim.id(), claim.claimToken(), claim.claimFence());
             if (rows != 1) {

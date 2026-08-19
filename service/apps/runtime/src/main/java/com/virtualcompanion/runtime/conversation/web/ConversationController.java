@@ -5,6 +5,7 @@ import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListRecord;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -44,16 +45,19 @@ public class ConversationController {
     private final ConversationListService conversationListService;
     private final ConversationRepository conversationRepository;
     private final ChatWipeService chatWipeService;
+    private final ConversationSummaryService summaryService;
 
     public ConversationController(
             ConversationCreateService conversationCreateService,
             ConversationListService conversationListService,
             ConversationRepository conversationRepository,
-            ChatWipeService chatWipeService) {
+            ChatWipeService chatWipeService,
+            ConversationSummaryService summaryService) {
         this.conversationCreateService = conversationCreateService;
         this.conversationListService = conversationListService;
         this.conversationRepository = conversationRepository;
         this.chatWipeService = chatWipeService;
+        this.summaryService = summaryService;
     }
 
     @PostMapping
@@ -158,6 +162,37 @@ public class ConversationController {
                 result.workItemsCancelled());
     }
 
+    /**
+     * CONV-SUMMARY (V63 / §11.18): the newest still-valid summary of the
+     * conversation (invalidated rows stay in the audit chain but never
+     * surface). A conversation without a summary answers available=false.
+     */
+    @GetMapping("/{conversationId}/summary")
+    public ConversationSummaryResponse summary(
+            @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
+            @PathVariable String conversationId) {
+        long id = parseRequiredLong(conversationId, "conversationId");
+        if (conversationRepository.find(ownerUserId, id).isEmpty()) {
+            throw new ResourceNotFoundException("conversation");
+        }
+        return summaryService.latest(ownerUserId, id)
+                .map(record -> new ConversationSummaryResponse(
+                        true,
+                        Long.toString(record.fromMessageId()),
+                        Long.toString(record.toMessageId()),
+                        record.summary(),
+                        record.modelId(),
+                        record.modelVersion(),
+                        record.promptVersion(),
+                        record.confidence(),
+                        record.validated(),
+                        record.serviceClass(),
+                        record.prevId() == null ? null : Long.toString(record.prevId()),
+                        record.createdAt().toString()))
+                .orElseGet(() -> new ConversationSummaryResponse(
+                        false, null, null, null, null, null, null, null, null, null, null, null));
+    }
+
     private static long parseRequiredLong(String raw, String name) {
         try {
             long parsed = Long.parseLong(raw);
@@ -251,6 +286,13 @@ public class ConversationController {
 
     /** CONV-MGMT: rename body (OpenAPI {@code RenameConversationRequest}). */
     public record RenameConversationRequest(@Size(max = 200) String title) {
+    }
+
+    /** CONV-SUMMARY: latest valid summary (OpenAPI {@code ConversationSummary}). */
+    public record ConversationSummaryResponse(
+            boolean available, String fromMessageId, String toMessageId, String summary,
+            String modelId, String modelVersion, String promptVersion, Double confidence,
+            Boolean validated, String serviceClass, String previousId, String createdAt) {
     }
 
     /** CHAT-WIPE: preview counts (OpenAPI {@code ChatWipePreview}). */

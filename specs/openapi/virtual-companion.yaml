@@ -853,6 +853,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/conversations/{conversationId}/summary:
+    get:
+      operationId: getConversationSummary
+      summary: The conversation's latest valid L2 summary (CONV-SUMMARY, §11.18)
+      description: >-
+        The newest still-valid summary row of the conversation
+        (vc.latest_conversation_summary): the covered message id range, the
+        summarizer model + prompt version, a confidence, the validated flag,
+        the producing service class and the previous row id. Summaries
+        invalidated by message deletion stay in the version chain for audit
+        but never surface here. A conversation without a summary answers
+        available=false. Requires a server-verified authentication context.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The conversation id.
+      responses:
+        '200':
+          description: The latest valid summary, or available=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationSummary'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Conversation absent or not owned by the caller; existence is not disclosed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/conversations/wipe-preview:
     get:
       operationId: previewChatWipe
@@ -2954,6 +2994,56 @@ components:
           type: string
           format: date-time
           description: Resolution time (RFC 3339), present once resolved.
+    ConversationSummary:
+      type: object
+      description: >-
+        The newest still-valid L2 summary of a conversation (CONV-SUMMARY,
+        §11.18). available=false when the conversation has no summary yet.
+      required:
+        - available
+      properties:
+        available:
+          type: boolean
+          description: Whether a valid summary exists for the conversation.
+        fromMessageId:
+          type: string
+          description: First message id covered by the summary.
+        toMessageId:
+          type: string
+          description: Last message id covered by the summary.
+        summary:
+          type: string
+          description: The summary text.
+        modelId:
+          type: string
+          description: The summarizer model id.
+        modelVersion:
+          type: string
+          description: The summarizer model version.
+        promptVersion:
+          type: string
+          description: The approved prompt version.
+        confidence:
+          type: number
+          format: float
+          description: Confidence in [0,1].
+        validated:
+          type: boolean
+          description: Whether the summary passed validation.
+        serviceClass:
+          type: string
+          enum:
+            - ECONOMY
+            - PREMIUM
+          description: The service class that produced the summary.
+        previousId:
+          type: string
+          nullable: true
+          description: The previous summary row id (version chain).
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation time (RFC 3339).
     ChatWipePreview:
       type: object
       description: >-

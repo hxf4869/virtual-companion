@@ -47,6 +47,7 @@ import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.modelruntime.routing.ServiceClass;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
@@ -96,6 +97,8 @@ class GenerationWorkItemHandlerTest {
     private final com.virtualcompanion.safety.SafetyClassifierPort safetyClassifier =
             new DeterministicSafetyClassifier();
     private final SafetyEventService safetyEventService = mock(SafetyEventService.class);
+    private final ConversationSummaryService summaryService =
+            mock(ConversationSummaryService.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LiveModelInvoker> invokerProvider = mock(ObjectProvider.class);
@@ -113,7 +116,8 @@ class GenerationWorkItemHandlerTest {
         handler = new GenerationWorkItemHandler(
                 stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
                 enqueueService, realtimeEventRepository, deltaBroker, conversationRepository,
-                generationRepository, safetyClassifier, safetyEventService);
+                generationRepository, safetyClassifier, safetyEventService,
+                summaryService);
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
         // INC-MODE: non-incognito by default so the legacy MEM-LOOP tests

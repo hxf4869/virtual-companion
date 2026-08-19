@@ -50,6 +50,21 @@ export interface ReportRecord {
   resolvedAt?: string
 }
 
+export interface ConversationSummary {
+  available: string
+  fromMessageId?: string
+  toMessageId?: string
+  summary?: string
+  modelId?: string
+  modelVersion?: string
+  promptVersion?: string
+  confidence?: string
+  validated?: string
+  serviceClass?: string
+  previousId?: string
+  createdAt?: string
+}
+
 export interface ChatWipePreview {
   conversationCount: string
   messageCount: string
@@ -562,6 +577,7 @@ export interface VirtualCompanionApiClient {
   importMemories(): Promise<VersionResponse>
   createConversation(): Promise<VersionResponse>
   listConversations(): Promise<VersionResponse>
+  getConversationSummary(): Promise<VersionResponse>
   previewChatWipe(): Promise<VersionResponse>
   wipeAllChats(): Promise<VersionResponse>
   deleteConversation(): Promise<VersionResponse>

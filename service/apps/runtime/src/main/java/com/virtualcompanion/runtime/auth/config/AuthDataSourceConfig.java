@@ -15,6 +15,7 @@ import com.virtualcompanion.platform.persistence.ChatWipeService;
 import com.virtualcompanion.platform.persistence.ConversationCreateService;
 import com.virtualcompanion.platform.persistence.ConversationListService;
 import com.virtualcompanion.platform.persistence.ConversationRepository;
+import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.EntitlementSnapshotService;
 import com.virtualcompanion.platform.persistence.InviteCodeService;
@@ -424,6 +425,12 @@ public class AuthDataSourceConfig {
         return new QuotaReconciliationService(authJdbcTemplate);
     }
 
+    /** CONV-SUMMARY (V63): L2 conversation summaries (§11.18). */
+    @Bean
+    public ConversationSummaryService conversationSummaryService(JdbcTemplate authJdbcTemplate) {
+        return new ConversationSummaryService(authJdbcTemplate);
+    }
+
     /** SAFETY-WIRE (V58): deterministic classifier — the local safety floor. */
     @Bean
     public com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort() {
@@ -749,6 +756,7 @@ public class AuthDataSourceConfig {
             ConsentService consentService,
             com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort,
             SafetyEventService safetyEventService,
+            ConversationSummaryService conversationSummaryService,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -762,7 +770,8 @@ public class AuthDataSourceConfig {
                 conversationRepository,
                 generationRepository,
                 safetyClassifierPort,
-                safetyEventService);
+                safetyEventService,
+                conversationSummaryService);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,
