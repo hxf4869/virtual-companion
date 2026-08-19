@@ -238,4 +238,16 @@ public interface VirtualCompanionApi {
 
     /** ADMIN-only keyset page of the safety queue (SAFETY-QUEUE, §20.5). */
     Void listSafetyEvents();
+
+    /** ADMIN-only keyset page of the report queue (ADMIN-BETA, §8.2). */
+    Void listBetaReports();
+
+    /** ADMIN-only keyset page of the age-appeal queue (ADMIN-BETA, §8.2). */
+    Void listBetaAgeAppeals();
+
+    /** ADMIN-only keyset page of the export-task queue (ADMIN-BETA, §8.2). */
+    Void listBetaExportTasks();
+
+    /** ADMIN-only memory-anomaly sampling page (ADMIN-BETA, §8.2). */
+    Void listBetaMemorySampling();
 }

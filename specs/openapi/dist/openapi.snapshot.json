@@ -79,10 +79,14 @@
     "quotaReconciliation",
     "providerRegistry",
     "getTrialStatus",
-    "listSafetyEvents"
+    "listSafetyEvents",
+    "listBetaReports",
+    "listBetaAgeAppeals",
+    "listBetaExportTasks",
+    "listBetaMemorySampling"
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "3b673777f9deaa6650758c66c499cd10be9fbc39a8173f25169f20134bb2911a"
+    "sha256": "1055274e15d294ba2c99f0d6c5d44410c2731f86902669b98891dc44f52db831"
   }
 }

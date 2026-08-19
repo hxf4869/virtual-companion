@@ -284,6 +284,107 @@ describe("admin account page (ADMIN-UI)", () => {
     expect(wrapper.text()).not.toMatch(/处置|标记已处理|关闭工单/);
     wrapper.unmount();
   });
+  it("ADMIN-BETA: renders the four read-only console queues on mount", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/auth/admin/accounts" && (init?.method ?? "GET") === "GET") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url.startsWith("/api/v1/auth/admin/reports")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "9003",
+                ownerId: "7",
+                messageId: "10",
+                reason: "UNSAFE_CONTENT",
+                note: "内容让我不安",
+                status: "SUBMITTED",
+                createdAt: "2026-08-19T08:00:00Z",
+              },
+            ],
+          };
+        }
+        if (url.startsWith("/api/v1/auth/admin/age-appeals")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "9102",
+                ownerId: "8",
+                reason: "系统误判为未成年",
+                status: "SUBMITTED",
+                createdAt: "2026-08-19T07:00:00Z",
+              },
+            ],
+          };
+        }
+        if (url.startsWith("/api/v1/auth/admin/export-tasks")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "9202",
+                ownerId: "8",
+                status: "READY",
+                createdAt: "2026-08-19T06:00:00Z",
+                completedAt: "2026-08-19T06:05:00Z",
+              },
+            ],
+          };
+        }
+        if (url.startsWith("/api/v1/auth/admin/memory-sampling")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "9304",
+                ownerId: "7",
+                relationshipId: "1",
+                scope: "RELATIONSHIP",
+                summary: "待确认候选",
+                status: "PENDING_CONFIRMATION",
+                deletedAt: null,
+                createdAt: "2026-08-19T05:00:00Z",
+              },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: async () => [] };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const reportRows = wrapper.findAll('[data-testid="beta-report-row"]');
+    expect(reportRows).toHaveLength(1);
+    expect(reportRows[0].text()).toContain("UNSAFE_CONTENT");
+    expect(reportRows[0].text()).toContain("SUBMITTED");
+
+    const appealRows = wrapper.findAll('[data-testid="beta-appeal-row"]');
+    expect(appealRows).toHaveLength(1);
+    expect(appealRows[0].text()).toContain("系统误判为未成年");
+
+    const exportRows = wrapper.findAll('[data-testid="beta-export-row"]');
+    expect(exportRows).toHaveLength(1);
+    expect(exportRows[0].text()).toContain("READY");
+    expect(exportRows[0].text()).toContain("2026-08-19T06:05:00Z");
+
+    const samplingRows = wrapper.findAll('[data-testid="beta-sampling-row"]');
+    expect(samplingRows).toHaveLength(1);
+    expect(samplingRows[0].text()).toContain("PENDING_CONFIRMATION");
+    expect(samplingRows[0].text()).toContain("待确认候选");
+    // Read-only console: no disposition action anywhere on the page.
+    expect(wrapper.text()).not.toMatch(/处置|标记已处理|关闭工单/);
+    wrapper.unmount();
+  });
   it("INVITE: mints a code and renders the registry with a disable action", async () => {
     vi.stubGlobal(
       "fetch",

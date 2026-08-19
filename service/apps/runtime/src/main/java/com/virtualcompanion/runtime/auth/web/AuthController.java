@@ -289,6 +289,108 @@ public class AuthController {
                 .toList();
     }
 
+    /** ADMIN-BETA (V64): the report/complaint intake queue, newest first. */
+    @GetMapping("/admin/reports")
+    public List<BetaReportRow> listReports(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "after", required = false)
+                    String after,
+            @org.springframework.web.bind.annotation.RequestParam(value = "limit", defaultValue = "50")
+                    int limit) {
+        Long afterId = after == null || after.isBlank() ? null : parseAccountId(after);
+        int safeLimit = Math.clamp(limit, 1, 200);
+        return authService.listReports(principal, afterId, safeLimit).stream()
+                .map(row -> new BetaReportRow(
+                        Long.toString(row.id()),
+                        Long.toString(row.ownerId()),
+                        row.messageId() == null ? null : Long.toString(row.messageId()),
+                        row.reason(), row.note(), row.status(),
+                        row.createdAt().toString()))
+                .toList();
+    }
+
+    /** ADMIN-BETA (V64): the age-appeal intake queue, newest first. */
+    @GetMapping("/admin/age-appeals")
+    public List<BetaAgeAppealRow> listAgeAppeals(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "after", required = false)
+                    String after,
+            @org.springframework.web.bind.annotation.RequestParam(value = "limit", defaultValue = "50")
+                    int limit) {
+        Long afterId = after == null || after.isBlank() ? null : parseAccountId(after);
+        int safeLimit = Math.clamp(limit, 1, 200);
+        return authService.listAgeAppeals(principal, afterId, safeLimit).stream()
+                .map(row -> new BetaAgeAppealRow(
+                        Long.toString(row.id()),
+                        Long.toString(row.ownerId()),
+                        row.reason(), row.status(),
+                        row.createdAt().toString()))
+                .toList();
+    }
+
+    /** ADMIN-BETA (V64): the async export-task queue, newest first. */
+    @GetMapping("/admin/export-tasks")
+    public List<BetaExportTaskRow> listExportTasks(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "after", required = false)
+                    String after,
+            @org.springframework.web.bind.annotation.RequestParam(value = "limit", defaultValue = "50")
+                    int limit) {
+        Long afterId = after == null || after.isBlank() ? null : parseAccountId(after);
+        int safeLimit = Math.clamp(limit, 1, 200);
+        return authService.listExportTasks(principal, afterId, safeLimit).stream()
+                .map(row -> new BetaExportTaskRow(
+                        Long.toString(row.id()),
+                        Long.toString(row.ownerId()),
+                        row.status(),
+                        row.createdAt().toString(),
+                        row.completedAt() == null ? null : row.completedAt().toString()))
+                .toList();
+    }
+
+    /** ADMIN-BETA (V64): memory-anomaly sampling, newest first (read-only). */
+    @GetMapping("/admin/memory-sampling")
+    public List<BetaMemorySamplingRow> memorySampling(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(value = "after", required = false)
+                    String after,
+            @org.springframework.web.bind.annotation.RequestParam(value = "limit", defaultValue = "50")
+                    int limit) {
+        Long afterId = after == null || after.isBlank() ? null : parseAccountId(after);
+        int safeLimit = Math.clamp(limit, 1, 200);
+        return authService.memorySampling(principal, afterId, safeLimit).stream()
+                .map(row -> new BetaMemorySamplingRow(
+                        Long.toString(row.id()),
+                        Long.toString(row.ownerId()),
+                        Long.toString(row.relationshipId()),
+                        row.scope(), row.summary(), row.status(),
+                        row.deletedAt() == null ? null : row.deletedAt().toString(),
+                        row.createdAt().toString()))
+                .toList();
+    }
+
+    /** ADMIN-BETA: one report queue row. */
+    public record BetaReportRow(
+            String id, String ownerId, String messageId, String reason, String note,
+            String status, String createdAt) {
+    }
+
+    /** ADMIN-BETA: one age-appeal queue row. */
+    public record BetaAgeAppealRow(
+            String id, String ownerId, String reason, String status, String createdAt) {
+    }
+
+    /** ADMIN-BETA: one export-task row. */
+    public record BetaExportTaskRow(
+            String id, String ownerId, String status, String createdAt, String completedAt) {
+    }
+
+    /** ADMIN-BETA: one memory-anomaly sampling row. */
+    public record BetaMemorySamplingRow(
+            String id, String ownerId, String relationshipId, String scope,
+            String summary, String status, String deletedAt, String createdAt) {
+    }
+
     /** ENT-TRIAL: grant request body (defaults: 20 turns / 14 days). */
     public record TrialGrantRequest(String accountId, Integer turns, Integer days) {
     }

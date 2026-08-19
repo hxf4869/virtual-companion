@@ -445,6 +445,54 @@ public class AuthService {
         }
     }
 
+    /** ADMIN-BETA (V64): the report/complaint intake queue (read-only). */
+    public java.util.List<com.virtualcompanion.platform.persistence
+            .AdminConsoleService.ReportQueueRow> listReports(
+            JwtTokenService.Principal principal, Long after, int limit) {
+        requireAdmin(principal);
+        try {
+            return adminConsole.listReports(principal.accountId(), after, limit);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** ADMIN-BETA (V64): the age-appeal intake queue (read-only). */
+    public java.util.List<com.virtualcompanion.platform.persistence
+            .AdminConsoleService.AgeAppealQueueRow> listAgeAppeals(
+            JwtTokenService.Principal principal, Long after, int limit) {
+        requireAdmin(principal);
+        try {
+            return adminConsole.listAgeAppeals(principal.accountId(), after, limit);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** ADMIN-BETA (V64): the async export-task queue (read-only). */
+    public java.util.List<com.virtualcompanion.platform.persistence
+            .AdminConsoleService.ExportTaskRow> listExportTasks(
+            JwtTokenService.Principal principal, Long after, int limit) {
+        requireAdmin(principal);
+        try {
+            return adminConsole.listExportTasks(principal.accountId(), after, limit);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    /** ADMIN-BETA (V64): memory-anomaly sampling (read-only). */
+    public java.util.List<com.virtualcompanion.platform.persistence
+            .AdminConsoleService.MemorySamplingRow> memorySampling(
+            JwtTokenService.Principal principal, Long after, int limit) {
+        requireAdmin(principal);
+        try {
+            return adminConsole.memorySampling(principal.accountId(), after, limit);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
     /** INVITE (V60): a freshly minted invite code. */
     public record InviteCreated(String id, String code, java.time.Instant expiresAt) {
     }

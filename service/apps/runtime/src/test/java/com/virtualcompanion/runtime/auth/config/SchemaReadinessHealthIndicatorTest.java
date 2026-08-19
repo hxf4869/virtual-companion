@@ -175,8 +175,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V60 = INVITE invite codes + SVC-WINDOW beta window state;
         // V61 = ENT-TRIAL trial grants + QUOTA-PERSIST reconciliation;
         // V62 = EMBED-RECALL memory embeddings + DEGRADED-AI actual class;
-        // V63 = CONV-SUMMARY L2 conversation summaries).
+        // V63 = CONV-SUMMARY L2 conversation summaries;
+        // V64 = ADMIN-BETA console queues).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(63);
+                .isEqualTo(64);
     }
 }

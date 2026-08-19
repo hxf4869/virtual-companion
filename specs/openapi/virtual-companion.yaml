@@ -2776,6 +2776,187 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/reports:
+    get:
+      operationId: listBetaReports
+      summary: ADMIN-only keyset page of the report queue (ADMIN-BETA, §8.2)
+      description: >-
+        Newest-first keyset page of the report/complaint intake queue across
+        all owners (vc.admin_list_reports, V64). The acting account is
+        re-verified as an ACTIVE ADMIN inside the SD function. The queue is
+        read-only — triage and disposition stay human actions outside the API.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor (the last report id seen); omit to start from the newest.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Page size, clamped to 1..200 by the server.
+      responses:
+        '200':
+          description: A page of report queue rows, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BetaReportItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/age-appeals:
+    get:
+      operationId: listBetaAgeAppeals
+      summary: ADMIN-only keyset page of the age-appeal queue (ADMIN-BETA, §8.2)
+      description: >-
+        Newest-first keyset page of the age-appeal intake queue across all
+        owners (vc.admin_list_age_appeals, V64). The acting account is
+        re-verified as an ACTIVE ADMIN inside the SD function. Read-only;
+        resolution stays a human action.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor (the last appeal id seen); omit to start from the newest.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Page size, clamped to 1..200 by the server.
+      responses:
+        '200':
+          description: A page of age-appeal queue rows, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BetaAgeAppealItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/export-tasks:
+    get:
+      operationId: listBetaExportTasks
+      summary: ADMIN-only keyset page of the export-task queue (ADMIN-BETA, §8.2)
+      description: >-
+        Newest-first keyset page of the async data-export task queue across
+        all owners (vc.admin_list_export_tasks, V64). Rows carry ids and
+        statuses only — never payloads or download tokens. The acting account
+        is re-verified as an ACTIVE ADMIN inside the SD function. Read-only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor (the last export task id seen); omit to start from the newest.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Page size, clamped to 1..200 by the server.
+      responses:
+        '200':
+          description: A page of export-task rows, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BetaExportTaskItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/memory-sampling:
+    get:
+      operationId: listBetaMemorySampling
+      summary: ADMIN-only memory-anomaly sampling page (ADMIN-BETA, §8.2)
+      description: >-
+        Newest-first keyset sample of memory rows that are not ACCEPTED or
+        are soft-deleted (vc.admin_memory_sampling, V64) — REJECTED / EXPIRED
+        candidates and MEM-DELETED rows. Content is limited to the memory
+        summary itself, never message bodies. The acting account is
+        re-verified as an ACTIVE ADMIN inside the SD function. Read-only.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor (the last memory id seen); omit to start from the newest.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Page size, clamped to 1..200 by the server.
+      responses:
+        '200':
+          description: A page of memory-anomaly sampling rows, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BetaMemorySamplingItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
   securitySchemes:
     bearerAuth:
@@ -4600,6 +4781,157 @@ components:
           type: string
           format: date-time
           description: Event time (RFC 3339).
+    BetaReportItem:
+      type: object
+      description: >-
+        One report/complaint queue row (ADMIN-BETA, V64). Read-only; triage
+        and disposition stay human actions outside the API.
+      required:
+        - id
+        - ownerId
+        - reason
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The report id (opaque cursor for listBetaReports).
+        ownerId:
+          type: string
+          description: The owning account id.
+        messageId:
+          type: string
+          nullable: true
+          description: The reported message id, when still present.
+        reason:
+          type: string
+          enum:
+            - UNSAFE_CONTENT
+            - AI_IDENTITY
+            - MINOR_SAFEGUARD
+            - PRIVACY_OR_DATA
+            - OTHER
+          description: The report reason catalog code.
+        note:
+          type: string
+          description: The optional free-text note submitted with the report.
+        status:
+          type: string
+          enum:
+            - SUBMITTED
+            - RESOLVED
+          description: The queue status; RESOLVED is reached by human action.
+        createdAt:
+          type: string
+          format: date-time
+          description: Submission time (RFC 3339).
+    BetaAgeAppealItem:
+      type: object
+      description: >-
+        One age-appeal queue row (ADMIN-BETA, V64). Read-only; resolution
+        stays a human action outside the API.
+      required:
+        - id
+        - ownerId
+        - reason
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The appeal id (opaque cursor for listBetaAgeAppeals).
+        ownerId:
+          type: string
+          description: The owning account id.
+        reason:
+          type: string
+          description: The appeal free-text reason.
+        status:
+          type: string
+          enum:
+            - SUBMITTED
+            - RESOLVED
+          description: The queue status; RESOLVED is reached by human action.
+        createdAt:
+          type: string
+          format: date-time
+          description: Submission time (RFC 3339).
+    BetaExportTaskItem:
+      type: object
+      description: >-
+        One async data-export task row (ADMIN-BETA, V64). Carries ids and
+        statuses only — never payloads or download tokens.
+      required:
+        - id
+        - ownerId
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The export task id (opaque cursor for listBetaExportTasks).
+        ownerId:
+          type: string
+          description: The owning account id.
+        status:
+          type: string
+          enum:
+            - PENDING
+            - READY
+            - FAILED
+            - EXPIRED
+          description: The task lifecycle status.
+        createdAt:
+          type: string
+          format: date-time
+          description: Request time (RFC 3339).
+        completedAt:
+          type: string
+          nullable: true
+          format: date-time
+          description: Completion time, when the task reached a terminal state.
+    BetaMemorySamplingItem:
+      type: object
+      description: >-
+        One memory-anomaly sampling row (ADMIN-BETA, V64) — a memory that is
+        not ACCEPTED or is soft-deleted. Content is limited to the memory
+        summary itself, never message bodies.
+      required:
+        - id
+        - ownerId
+        - relationshipId
+        - scope
+        - summary
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The memory id (opaque cursor for listBetaMemorySampling).
+        ownerId:
+          type: string
+          description: The owning account id.
+        relationshipId:
+          type: string
+          description: The relationship the memory belongs to.
+        scope:
+          type: string
+          description: The memory scope code.
+        summary:
+          type: string
+          description: The memory summary text (no message bodies).
+        status:
+          type: string
+          description: The memory-candidate status (not ACCEPTED for sampled rows).
+        deletedAt:
+          type: string
+          nullable: true
+          format: date-time
+          description: Soft-delete time, when the row is sampled as deleted.
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation time (RFC 3339).
     AuditEventListItem:
       type: object
       description: One identity_auth_event audit row (ADMIN-OPS).

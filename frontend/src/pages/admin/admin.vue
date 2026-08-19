@@ -217,6 +217,106 @@
         </view>
       </view>
 
+      <!-- ADMIN-BETA (V64): read-only intake queues — report, age appeal,
+           export task and memory-anomaly sampling. Triage and disposition
+           stay human actions outside this page. -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">举报队列（只读）</text>
+          <button
+            data-testid="refresh-beta-queues"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshBetaQueues"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="betaFailed" class="admin-error" data-testid="beta-queues-failed" role="alert">
+          <text>Beta 队列加载失败，请重试。</text>
+        </view>
+        <view
+          v-else-if="betaReports.length === 0"
+          class="admin-empty"
+          data-testid="reports-empty"
+        >
+          <text>暂无举报。</text>
+        </view>
+        <view
+          v-for="report in betaReports"
+          :key="report.id"
+          class="audit-row"
+          data-testid="beta-report-row"
+        >
+          <text class="audit-cell">{{ report.reason }}</text>
+          <text class="audit-cell">{{ report.status }}</text>
+          <text class="audit-cell">账号 {{ report.ownerId }}</text>
+          <text class="audit-cell">{{ report.note }}</text>
+          <text class="audit-cell">{{ report.createdAt }}</text>
+        </view>
+        <view
+          v-if="!betaFailed && betaAppeals.length === 0"
+          class="admin-empty"
+        >
+          <text>暂无年龄申诉。</text>
+        </view>
+        <view
+          v-for="appeal in betaAppeals"
+          :key="appeal.id"
+          class="audit-row"
+          data-testid="beta-appeal-row"
+        >
+          <text class="audit-cell">{{ appeal.status }}</text>
+          <text class="audit-cell">账号 {{ appeal.ownerId }}</text>
+          <text class="audit-cell">{{ appeal.reason }}</text>
+          <text class="audit-cell">{{ appeal.createdAt }}</text>
+        </view>
+        <view v-if="!betaFailed && betaExports.length === 0" class="admin-empty">
+          <text>暂无导出任务。</text>
+        </view>
+        <view
+          v-for="task in betaExports"
+          :key="task.id"
+          class="audit-row"
+          data-testid="beta-export-row"
+        >
+          <text class="audit-cell">{{ task.status }}</text>
+          <text class="audit-cell">账号 {{ task.ownerId }}</text>
+          <text class="audit-cell">{{ task.createdAt }}</text>
+          <text class="audit-cell">{{ task.completedAt ?? "未完成" }}</text>
+        </view>
+      </view>
+
+      <!-- ADMIN-BETA (V64): memory-anomaly sampling (non-ACCEPTED or
+           soft-deleted memory rows), newest first. -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">记忆异常抽样（只读）</text>
+        </view>
+        <view v-if="betaFailed" class="admin-error" role="alert">
+          <text>记忆抽样加载失败，请重试。</text>
+        </view>
+        <view
+          v-else-if="betaSampling.length === 0"
+          class="admin-empty"
+          data-testid="sampling-empty"
+        >
+          <text>暂无异常记忆样本。</text>
+        </view>
+        <view
+          v-for="sample in betaSampling"
+          :key="sample.id"
+          class="audit-row"
+          data-testid="beta-sampling-row"
+        >
+          <text class="audit-cell">{{ sample.status }}</text>
+          <text class="audit-cell">{{ sample.scope }}</text>
+          <text class="audit-cell">账号 {{ sample.ownerId }}</text>
+          <text class="audit-cell">{{ sample.summary }}</text>
+          <text class="audit-cell">{{ sample.deletedAt ?? "未删除" }}</text>
+        </view>
+      </view>
+
       <!-- ENT-TRIAL (V61): simulated PREMIUM trial budgets. -->
       <view class="ops-section">
         <view class="account-list-head">
@@ -405,6 +505,10 @@ import {
   disableInvite,
   grantTrial,
   listAccounts,
+  listBetaAgeAppeals,
+  listBetaExportTasks,
+  listBetaMemorySampling,
+  listBetaReports,
   listInvites,
   providerRegistry,
   quotaReconciliation,
@@ -414,6 +518,10 @@ import {
   usageSummary,
   type AccountListItem,
   type AuditEventListItem,
+  type BetaAgeAppealItem,
+  type BetaExportTaskItem,
+  type BetaMemorySamplingItem,
+  type BetaReportItem,
   type InviteCreated,
   type InviteListItem,
   type ProviderRegistryItem,
@@ -456,6 +564,12 @@ export default defineComponent({
     // SAFETY-QUEUE (V59): read-only deterministic safety queue.
     const safetyEvents = ref<SafetyEventItem[]>([]);
     const safetyFailed = ref(false);
+    // ADMIN-BETA (V64): read-only intake queues + memory-anomaly sampling.
+    const betaReports = ref<BetaReportItem[]>([]);
+    const betaAppeals = ref<BetaAgeAppealItem[]>([]);
+    const betaExports = ref<BetaExportTaskItem[]>([]);
+    const betaSampling = ref<BetaMemorySamplingItem[]>([]);
+    const betaFailed = ref(false);
     // INVITE (V60): single-use invite codes.
     const invites = ref<InviteListItem[]>([]);
     const inviteCreated = ref<InviteCreated | null>(null);
@@ -493,6 +607,7 @@ export default defineComponent({
         await refreshUsage();
         await refreshAudit();
         await refreshSafety();
+        await refreshBetaQueues();
         await refreshInvites();
         await refreshRecon();
         await refreshServiceClasses();
@@ -570,6 +685,28 @@ export default defineComponent({
       busy.value = true;
       try {
         await refreshSafety();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /** ADMIN-BETA (V64): reload all read-only console queues (non-fatal). */
+    async function refreshBetaQueues(): Promise<void> {
+      betaFailed.value = false;
+      try {
+        betaReports.value = await listBetaReports(transport, undefined, 50);
+        betaAppeals.value = await listBetaAgeAppeals(transport, undefined, 50);
+        betaExports.value = await listBetaExportTasks(transport, undefined, 50);
+        betaSampling.value = await listBetaMemorySampling(transport, undefined, 50);
+      } catch {
+        betaFailed.value = true;
+      }
+    }
+
+    async function onRefreshBetaQueues(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshBetaQueues();
       } finally {
         busy.value = false;
       }
@@ -800,6 +937,12 @@ export default defineComponent({
       safetyEvents,
       safetyFailed,
       onRefreshSafety,
+      betaReports,
+      betaAppeals,
+      betaExports,
+      betaSampling,
+      betaFailed,
+      onRefreshBetaQueues,
       invites,
       inviteCreated,
       inviteFailed,

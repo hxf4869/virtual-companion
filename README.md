@@ -56,6 +56,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   （ENT-TRIAL：ADMIN 授予模拟 PREMIUM 试用，FR-ENT-005）、
   `GET /api/v1/auth/admin/quota-reconciliation`、`GET /api/v1/auth/admin/provider-registry`
   （QUOTA-PERSIST：配额对账与持久化模型注册表，ADMIN-only）、
+  `GET /api/v1/auth/admin/reports`、`GET /api/v1/auth/admin/age-appeals`、
+  `GET /api/v1/auth/admin/export-tasks`、`GET /api/v1/auth/admin/memory-sampling`
+  （ADMIN-BETA：举报/年龄申诉/导出任务/记忆异常抽样四个只读队列，ADMIN-only）、
   `GET /api/v1/trial-status`（ENT-TRIAL：本人试用剩余额度）
   `POST /api/v1/auth/admin/service-class`、
   `GET /api/v1/auth/admin/service-classes`（ENT-SNAP 模拟权益分配 ECONOMY/PREMIUM，
@@ -137,6 +140,19 @@ relationship、conversation、generation、snapshot、cancel、message、realtim
 Chat/Memory 页面、领域内核、provider adapters 和数据库函数是已实现的组成部分；纵切仅限本地开发与
 CI 合成数据，不应被描述成已可供真实用户调用。真实 provider 默认关闭，具体 deployment、endpoint 和
 凭据只允许由部署配置注入。
+
+后端在运方面上还提供（2026-08-19 第三十九轮）：
+
+- Beta 管理端只读队列（ADMIN-BETA / §8.2）：V64 四个 ADMIN-only SD（SQL 内重验
+  ACTIVE ADMIN，跨 owner newest-first keyset 只读，REVOKE PUBLIC + GRANT vc_api）——
+  `admin_list_reports`（举报/投诉受理队列，V56）、`admin_list_age_appeals`（年龄
+  申诉队列，V56）、`admin_list_export_tasks`（异步导出任务队列，只透出 id/状态/
+  时间，绝不透出 payload 或下载 token）、`admin_memory_sampling`（记忆异常抽样：
+  非 ACCEPTED 或已软删的记忆行，内容仅限记忆摘要本身）。端点
+  `GET /auth/admin/reports`、`GET /auth/admin/age-appeals`、
+  `GET /auth/admin/export-tasks`、`GET /auth/admin/memory-sampling` + admin 页
+  「举报队列 / 记忆异常抽样（只读）」区；triage 与处置仍是人工动作，页面上没有
+  处置/关单按钮。
 
 后端在运方面上还提供（2026-08-19 第三十八轮）：
 

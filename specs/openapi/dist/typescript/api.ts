@@ -527,6 +527,43 @@ export interface SafetyEventItem {
   createdAt: string
 }
 
+export interface BetaReportItem {
+  id: string
+  ownerId: string
+  messageId?: string
+  reason: string
+  note?: string
+  status: string
+  createdAt: string
+}
+
+export interface BetaAgeAppealItem {
+  id: string
+  ownerId: string
+  reason: string
+  status: string
+  createdAt: string
+}
+
+export interface BetaExportTaskItem {
+  id: string
+  ownerId: string
+  status: string
+  createdAt: string
+  completedAt?: string
+}
+
+export interface BetaMemorySamplingItem {
+  id: string
+  ownerId: string
+  relationshipId: string
+  scope: string
+  summary: string
+  status: string
+  deletedAt?: string
+  createdAt: string
+}
+
 export interface AuditEventListItem {
   id: string
   eventType: string
@@ -630,4 +667,8 @@ export interface VirtualCompanionApiClient {
   providerRegistry(): Promise<VersionResponse>
   getTrialStatus(): Promise<VersionResponse>
   listSafetyEvents(): Promise<VersionResponse>
+  listBetaReports(): Promise<VersionResponse>
+  listBetaAgeAppeals(): Promise<VersionResponse>
+  listBetaExportTasks(): Promise<VersionResponse>
+  listBetaMemorySampling(): Promise<VersionResponse>
 }

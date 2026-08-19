@@ -502,6 +502,203 @@ export async function listSafetyEvents(
   return out;
 }
 
+/** ADMIN-BETA (V64): one report/complaint queue row (read-only). */
+export interface BetaReportItem {
+  id: string;
+  ownerId: string;
+  messageId?: string;
+  reason: string;
+  note: string;
+  status: string;
+  createdAt: string;
+}
+
+/** ADMIN-BETA (V64): one age-appeal queue row (read-only). */
+export interface BetaAgeAppealItem {
+  id: string;
+  ownerId: string;
+  reason: string;
+  status: string;
+  createdAt: string;
+}
+
+/** ADMIN-BETA (V64): one async export-task row (ids/statuses only). */
+export interface BetaExportTaskItem {
+  id: string;
+  ownerId: string;
+  status: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+/** ADMIN-BETA (V64): one memory-anomaly sampling row (summary only). */
+export interface BetaMemorySamplingItem {
+  id: string;
+  ownerId: string;
+  relationshipId: string;
+  scope: string;
+  summary: string;
+  status: string;
+  deletedAt?: string;
+  createdAt: string;
+}
+
+function keysetQuery(after?: string, limit?: number): string {
+  const params: string[] = [];
+  if (after !== undefined) {
+    params.push(`after=${encodeURIComponent(after)}`);
+  }
+  if (limit !== undefined) {
+    params.push(`limit=${limit}`);
+  }
+  return params.length > 0 ? `?${params.join("&")}` : "";
+}
+
+function asBetaReport(json: unknown): BetaReportItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const ownerId = asString(o, "ownerId");
+  const reason = asString(o, "reason");
+  const note = asString(o, "note");
+  const status = asString(o, "status");
+  const createdAt = asString(o, "createdAt");
+  if (!id || !ownerId || !reason || note === undefined || !status || !createdAt) {
+    return null;
+  }
+  return { id, ownerId, reason, note, status, createdAt, messageId: asString(o, "messageId") };
+}
+
+function asBetaAgeAppeal(json: unknown): BetaAgeAppealItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const ownerId = asString(o, "ownerId");
+  const reason = asString(o, "reason");
+  const status = asString(o, "status");
+  const createdAt = asString(o, "createdAt");
+  if (!id || !ownerId || !reason || !status || !createdAt) {
+    return null;
+  }
+  return { id, ownerId, reason, status, createdAt };
+}
+
+function asBetaExportTask(json: unknown): BetaExportTaskItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const ownerId = asString(o, "ownerId");
+  const status = asString(o, "status");
+  const createdAt = asString(o, "createdAt");
+  if (!id || !ownerId || !status || !createdAt) {
+    return null;
+  }
+  return { id, ownerId, status, createdAt, completedAt: asString(o, "completedAt") };
+}
+
+function asBetaMemorySampling(json: unknown): BetaMemorySamplingItem | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const ownerId = asString(o, "ownerId");
+  const relationshipId = asString(o, "relationshipId");
+  const scope = asString(o, "scope");
+  const summary = asString(o, "summary");
+  const status = asString(o, "status");
+  const createdAt = asString(o, "createdAt");
+  if (!id || !ownerId || !relationshipId || !scope || !summary || !status || !createdAt) {
+    return null;
+  }
+  return {
+    id, ownerId, relationshipId, scope, summary, status, createdAt,
+    deletedAt: asString(o, "deletedAt"),
+  };
+}
+
+/**
+ * ADMIN-BETA (V64): keyset page of the report queue across all owners
+ * (ADMIN only, read-only — triage and disposition stay human).
+ */
+export async function listBetaReports(
+  t: AuthTransport,
+  after?: string,
+  limit?: number,
+): Promise<BetaReportItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/reports${keysetQuery(after, limit)}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: BetaReportItem[] = [];
+  for (const item of r.json) {
+    const parsed = asBetaReport(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * ADMIN-BETA (V64): keyset page of the age-appeal queue across all owners
+ * (ADMIN only, read-only — resolution stays human).
+ */
+export async function listBetaAgeAppeals(
+  t: AuthTransport,
+  after?: string,
+  limit?: number,
+): Promise<BetaAgeAppealItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/age-appeals${keysetQuery(after, limit)}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: BetaAgeAppealItem[] = [];
+  for (const item of r.json) {
+    const parsed = asBetaAgeAppeal(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * ADMIN-BETA (V64): keyset page of the async export-task queue across all
+ * owners (ADMIN only, read-only; rows carry ids/statuses only).
+ */
+export async function listBetaExportTasks(
+  t: AuthTransport,
+  after?: string,
+  limit?: number,
+): Promise<BetaExportTaskItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/export-tasks${keysetQuery(after, limit)}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: BetaExportTaskItem[] = [];
+  for (const item of r.json) {
+    const parsed = asBetaExportTask(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * ADMIN-BETA (V64): memory-anomaly sampling (non-ACCEPTED or soft-deleted
+ * rows) across all owners (ADMIN only, read-only).
+ */
+export async function listBetaMemorySampling(
+  t: AuthTransport,
+  after?: string,
+  limit?: number,
+): Promise<BetaMemorySamplingItem[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/memory-sampling${keysetQuery(after, limit)}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: BetaMemorySamplingItem[] = [];
+  for (const item of r.json) {
+    const parsed = asBetaMemorySampling(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
 /** ADMIN-OPS: one day of settled usage/cost aggregates (UsageSummaryItem). */
 export interface UsageSummaryItem {
   day: string;
