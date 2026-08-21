@@ -186,8 +186,10 @@ class SchemaReadinessHealthIndicatorTest {
         // redefinition adds out_age_hours);
         // V70 = RETENTION versioned data_retention_policy + categorized
         // purge SDs);
-        // V72 = B1-SURVEY daily 被理解感 score capture (survey_response RLS table).
+        // V72 = B1-SURVEY daily 被理解感 score capture (survey_response RLS table);
+        // V73/V74/V75 = review-fix bundles (anchor FK column lists, RLS/REVOKE
+        // hardening + indexes, SD function guards).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(72);
+                .isEqualTo(75);
     }
 }

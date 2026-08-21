@@ -9,7 +9,7 @@ SELECT to_char(u.day, 'YYYY-MM-DD')            AS date,
        COALESCE(sum(u.output_tokens), 0)       AS output_tokens,
        round(COALESCE(sum(u.actual_cost), 0)::numeric, 6) AS settled_cost_usd
   FROM (
-       SELECT date_trunc('day', created_at) AS day, *
+       SELECT date_trunc('day', recorded_at) AS day, *
          FROM vc.generation_usage
        ) u
  GROUP BY u.day
