@@ -27,7 +27,10 @@ virtual-companion:
         model: gpt-4.1-mini
         endpoint: https://api.openai.com/v1/chat/completions
         credential-secret: openai-bearer-token
-        # SAMPLE-CFG（可选）：部署级采样默认。max-tokens 缺省用 OpenAI 输出上限；
+              # MODEL-ROLL（§12.14）：灰度顺序 = deployments 列表序（排后承接
+      # failover 小流量）;回滚 = enabled 翻 false。流程见
+      # docs/engineering/model-rollout.md。
+# SAMPLE-CFG（可选）：部署级采样默认。max-tokens 缺省用 OpenAI 输出上限；
         # temperature 缺省 1.0，合法区间 0..2。
         max-tokens: 1024
         temperature: 0.8
