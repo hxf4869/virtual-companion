@@ -325,6 +325,22 @@ public class AuthDataSourceConfig {
     }
 
     /**
+     * CRYPTO-REST one-shot backfill: opt-in via
+     * {@code virtual-companion.crypto.backfill-enabled=true} for exactly one
+     * boot after enabling at-rest encryption; idempotent, so an accidental
+     * second boot is a no-op scan.
+     */
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "virtual-companion.crypto.backfill-enabled", havingValue = "true")
+    public com.virtualcompanion.runtime.crypto.DataCryptoBackfillRunner dataCryptoBackfillRunner(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new com.virtualcompanion.runtime.crypto.DataCryptoBackfillRunner(
+                authJdbcTemplate, restFieldCipher);
+    }
+
+    /**
      * P1-04 worker execution half (Owner 2026-08-12: server-side asOwner
      * injection, runtime in-process). Wires the claim family of SECURITY
      * DEFINER functions (V5/V17/V23) plus the worker batch primitive; the
@@ -343,9 +359,21 @@ public class AuthDataSourceConfig {
      * datasource's vc_api JDBC pool and run inside the server-trusted owner
      * context established upstream.
      */
+        /** CRYPTO-REST (§16.5/§17.4): at-rest cipher for chat bodies. The dev
+     * default key keeps local development and CI friction-free; production
+     * rejects it (fail-closed) and must inject VC_CRYPTO_REST_KEY. */
     @Bean
-    public GenerationReceiveService generationReceiveService(JdbcTemplate authJdbcTemplate) {
-        return new GenerationReceiveService(authJdbcTemplate);
+    public com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher(
+            @org.springframework.beans.factory.annotation.Value(
+                    "${virtual-companion.crypto.rest-key}") String restKey) {
+        return new com.virtualcompanion.platform.persistence.RestFieldCipher(restKey);
+    }
+
+@Bean
+    public GenerationReceiveService generationReceiveService(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new GenerationReceiveService(authJdbcTemplate, restFieldCipher);
     }
 
     /** FEEDBACK (V35): owner-scoped generation feedback recording. */
@@ -552,8 +580,10 @@ public class AuthDataSourceConfig {
      * message history HTTP API controller.
      */
     @Bean
-    public MessageHistoryService messageHistoryService(JdbcTemplate authJdbcTemplate) {
-        return new MessageHistoryService(authJdbcTemplate);
+    public MessageHistoryService messageHistoryService(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new MessageHistoryService(authJdbcTemplate, restFieldCipher);
     }
 
     /**
@@ -695,8 +725,10 @@ public class AuthDataSourceConfig {
      * and {@code terminalize_generation} SECURITY DEFINER functions.
      */
     @Bean
-    public GenerationFinalizeService generationFinalizeService(JdbcTemplate authJdbcTemplate) {
-        return new GenerationFinalizeService(authJdbcTemplate);
+    public GenerationFinalizeService generationFinalizeService(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new GenerationFinalizeService(authJdbcTemplate, restFieldCipher);
     }
 
     /**

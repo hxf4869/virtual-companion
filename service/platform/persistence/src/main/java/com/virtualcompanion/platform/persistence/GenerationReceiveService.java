@@ -22,8 +22,16 @@ public class GenerationReceiveService {
 
     private final JdbcTemplate jdbc;
 
+    private final RestFieldCipher cipher;
+
     public GenerationReceiveService(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    /** CRYPTO-REST: when a cipher is wired, user bodies are encrypted at rest. */
+    public GenerationReceiveService(JdbcTemplate jdbc, RestFieldCipher cipher) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+        this.cipher = cipher;
     }
 
     /** Default role written for the user message when the caller omits it. */
@@ -90,6 +98,7 @@ public class GenerationReceiveService {
             String mode) {
         String normalizedMode = normalizeMode(mode);
         validateReceive(ownerUserId, conversationId, userRole, userContent, idempotencyKey, normalizedMode);
+        String storedContent = cipher == null ? userContent : cipher.encrypt(userContent);
         return jdbc.queryForObject(
                 "SELECT logical_generation_id, generation_id, message_id, created "
                         + "FROM vc.receive_generation(?, ?, ?, ?, ?, ?)",
@@ -102,7 +111,7 @@ public class GenerationReceiveService {
                 conversationId,
                 idempotencyKey,
                 userRole,
-                userContent,
+                storedContent,
                 normalizedMode);
     }
 
@@ -123,6 +132,7 @@ public class GenerationReceiveService {
         }
         String normalizedMode = normalizeMode(mode);
         validateReceive(ownerUserId, conversationId, userRole, userContent, idempotencyKey, normalizedMode);
+        String storedContent = cipher == null ? userContent : cipher.encrypt(userContent);
         return jdbc.queryForObject(
                 "SELECT logical_generation_id, generation_id, message_id, created "
                         + "FROM vc.receive_generation(?, ?, ?, ?, ?, ?, ?)",
@@ -135,7 +145,7 @@ public class GenerationReceiveService {
                 conversationId,
                 idempotencyKey,
                 userRole,
-                userContent,
+                storedContent,
                 normalizedMode,
                 sourceUserMessageId);
     }

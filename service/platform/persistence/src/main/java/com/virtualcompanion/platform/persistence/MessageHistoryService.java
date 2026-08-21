@@ -24,8 +24,16 @@ public class MessageHistoryService {
 
     private final JdbcTemplate jdbc;
 
+    private final RestFieldCipher cipher;
+
     public MessageHistoryService(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    /** CRYPTO-REST: when a cipher is wired, stored bodies decrypt on read. */
+    public MessageHistoryService(JdbcTemplate jdbc, RestFieldCipher cipher) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+        this.cipher = cipher;
     }
 
     /**
@@ -54,14 +62,15 @@ public class MessageHistoryService {
                 limit);
     }
 
-    private static RowMapper<MessageHistoryRecord> rowMapper() {
+    private RowMapper<MessageHistoryRecord> rowMapper() {
         return (ResultSet rs, int rowNum) -> {
             Timestamp ts = rs.getTimestamp("out_created_at");
             Instant createdAt = ts == null ? Instant.EPOCH : ts.toInstant();
             return new MessageHistoryRecord(
                     rs.getLong("out_id"),
                     rs.getString("out_role"),
-                    rs.getString("out_content"),
+                    cipher == null ? rs.getString("out_content")
+                            : cipher.decrypt(rs.getString("out_content")),
                     createdAt,
                     rs.getBoolean("out_no_memory"));
         };

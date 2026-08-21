@@ -187,6 +187,6 @@ class SchemaReadinessHealthIndicatorTest {
         // V70 = RETENTION versioned data_retention_policy + categorized
         // purge SDs).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(70);
+                .isEqualTo(71);
     }
 }

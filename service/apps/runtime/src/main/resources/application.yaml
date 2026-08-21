@@ -73,6 +73,10 @@ virtual-companion:
   retention:
     enabled: ${VC_RETENTION_PURGE_ENABLED:false}
     purge-cron: "0 47 3 * * *"
+  # CRYPTO-REST (§17.4): at-rest key injected by deployment; the shipped
+  # default is development-only and rejected in the production profile.
+  crypto:
+    rest-key: ${VC_CRYPTO_REST_KEY:ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=}
   auth:
     # Master switch for the self-hosted identity component. Off by default so a
     # plain runtime context (tests, baseline) needs no secret and no database.

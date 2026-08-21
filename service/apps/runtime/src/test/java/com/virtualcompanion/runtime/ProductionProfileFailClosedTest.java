@@ -47,7 +47,8 @@ class ProductionProfileFailClosedTest {
                                 "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                                 "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
                                 "VC_DB_USERNAME=vc",
-                                "VC_DB_PASSWORD=vc")
+                                "VC_DB_PASSWORD=vc",
+                                "VC_CRYPTO_REST_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
                         .run()) {
             assertThat(context.isRunning()).isTrue();
         }
@@ -69,7 +70,8 @@ class ProductionProfileFailClosedTest {
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
                         "VC_DB_USERNAME=vc",
-                        "VC_DB_PASSWORD=vc")
+                        "VC_DB_PASSWORD=vc",
+                                "VC_CRYPTO_REST_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
                         .run())
                 .satisfies(t -> assertThat(chainMessages(t))
                         .contains("VC_AUTH_ENABLED")
@@ -88,7 +90,8 @@ class ProductionProfileFailClosedTest {
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
                         "VC_DB_USERNAME=vc",
-                        "VC_DB_PASSWORD=vc")
+                        "VC_DB_PASSWORD=vc",
+                                "VC_CRYPTO_REST_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
                         .run())
                 .satisfies(t -> assertThat(chainMessages(t))
                         .contains("VC_AUTH_DATASOURCE_ENABLED")
@@ -112,7 +115,8 @@ class ProductionProfileFailClosedTest {
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
                         "VC_DB_USERNAME=vc",
-                        "VC_DB_PASSWORD=vc")
+                        "VC_DB_PASSWORD=vc",
+                                "VC_CRYPTO_REST_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
                         .run())
                 .satisfies(t -> assertThat(chainMessages(t))
                         .contains("VC_AUTH_COOKIE_SECURE")
@@ -134,7 +138,8 @@ class ProductionProfileFailClosedTest {
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
                         "VC_DB_USERNAME=vc",
-                        "VC_DB_PASSWORD=vc")
+                        "VC_DB_PASSWORD=vc",
+                                "VC_CRYPTO_REST_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
                         .run())
                 .satisfies(t -> assertThat(chainMessages(t))
                         .contains("VC_MIGRATOR_DB_URL"));
@@ -159,7 +164,8 @@ class ProductionProfileFailClosedTest {
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_MIGRATOR_DB_URL=jdbc:postgresql://127.0.0.1:5433/vc",
                         "VC_MIGRATOR_DB_USERNAME=postgres",
-                        "VC_MIGRATOR_DB_PASSWORD=vc")
+                        "VC_MIGRATOR_DB_PASSWORD=vc",
+                        "VC_CRYPTO_REST_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
                         .run())
                 .satisfies(t -> {
                     String messages = chainMessages(t);

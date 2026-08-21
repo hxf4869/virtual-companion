@@ -39,8 +39,16 @@ public class GenerationFinalizeService {
 
     private final JdbcTemplate jdbc;
 
+    private final RestFieldCipher cipher;
+
     public GenerationFinalizeService(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    /** CRYPTO-REST: when a cipher is wired, assistant bodies are encrypted at rest. */
+    public GenerationFinalizeService(JdbcTemplate jdbc, RestFieldCipher cipher) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+        this.cipher = cipher;
     }
 
     /**
@@ -87,13 +95,14 @@ public class GenerationFinalizeService {
             throw new IllegalArgumentException("content must not be null");
         }
         String ref = providerRef == null ? "" : providerRef;
+        String storedContent = cipher == null ? content : cipher.encrypt(content);
         Boolean finalized = jdbc.queryForObject(
                 "SELECT out_finalized FROM vc.finalize_generation(?, ?, ?, ?, ?, 0, 0, 0, 'USD', 0, ?, NULL)",
                 Boolean.class,
                 ownerUserId,
                 generationId,
                 candidateId,
-                content,
+                storedContent,
                 ref,
                 outboxEligible);
         if (!Boolean.TRUE.equals(finalized)) {
@@ -172,13 +181,14 @@ public class GenerationFinalizeService {
         }
         String ref = providerRef == null ? "" : providerRef;
         String cur = (currency == null || currency.isBlank()) ? "USD" : currency;
+        String storedContent = cipher == null ? content : cipher.encrypt(content);
         Boolean finalized = jdbc.queryForObject(
                 "SELECT out_finalized FROM vc.finalize_generation(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
                 Boolean.class,
                 ownerUserId,
                 generationId,
                 candidateId,
-                content,
+                storedContent,
                 ref,
                 inputTokens,
                 outputTokens,

@@ -58,5 +58,16 @@ public class ProductionFailClosedEnvironmentPostProcessor implements Environment
                     "virtual-companion.auth.cookie-secure (VC_AUTH_COOKIE_SECURE) must be true in "
                             + "the production profile; an explicit false is rejected");
         }
+        // CRYPTO-REST (§17.4): the at-rest cipher must use a deployment-injected
+        // key — the shipped development default would mean every stored body is
+        // readable by anyone holding the public source tree.
+        String restKey = environment.getProperty(
+                "virtual-companion.crypto.rest-key",
+                "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=");
+        if ("ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=".equals(restKey)) {
+            throw new IllegalStateException(
+                    "virtual-companion.crypto.rest-key (VC_CRYPTO_REST_KEY) must be injected in "
+                            + "the production profile; the development default key is rejected");
+        }
     }
 }
