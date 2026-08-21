@@ -39,13 +39,15 @@ public final class InMemoryAuthorizationSnapshotStore implements AuthorizationSn
     @Override
     public AuthorizationSnapshot withdraw(AuthorizationSnapshotId id) {
         Objects.requireNonNull(id, "id must not be null");
-        AuthorizationSnapshot current = requirePresent(id);
-        if (current.status() != AuthorizationStatus.ACTIVE) {
-            throw transitionFailure(id, "withdrawn", current);
-        }
-        AuthorizationSnapshot withdrawn = copyWithStatus(current, AuthorizationStatus.WITHDRAWN);
-        snapshots.put(id, withdrawn);
-        return withdrawn;
+        // compute keeps the check-then-put atomic, so a concurrent narrow can
+        // never overwrite a withdrawn snapshot (terminal states stay final).
+        return snapshots.compute(id, (key, current) -> {
+            AuthorizationSnapshot present = requirePresent(id);
+            if (present.status() != AuthorizationStatus.ACTIVE) {
+                throw transitionFailure(id, "withdrawn", present);
+            }
+            return copyWithStatus(present, AuthorizationStatus.WITHDRAWN);
+        });
     }
 
     @Override
@@ -59,13 +61,13 @@ public final class InMemoryAuthorizationSnapshotStore implements AuthorizationSn
             throw new IllegalArgumentException(
                     "narrowed snapshot id must equal the target id");
         }
-        AuthorizationSnapshot current = requirePresent(id);
-        if (current.status() != AuthorizationStatus.ACTIVE) {
-            throw transitionFailure(id, "narrowed", current);
-        }
-        AuthorizationSnapshot result = copyWithStatus(narrowed, AuthorizationStatus.NARROWED);
-        snapshots.put(id, result);
-        return result;
+        return snapshots.compute(id, (key, current) -> {
+            AuthorizationSnapshot present = requirePresent(id);
+            if (present.status() != AuthorizationStatus.ACTIVE) {
+                throw transitionFailure(id, "narrowed", present);
+            }
+            return copyWithStatus(narrowed, AuthorizationStatus.NARROWED);
+        });
     }
 
     private AuthorizationSnapshot requirePresent(AuthorizationSnapshotId id) {

@@ -33,7 +33,11 @@ public final class SizeLimits {
                 bytes += 4;
                 index++;
             } else if (Character.isSurrogate(current)) {
-                // Match the UTF-8 encoder's one-byte replacement for malformed input.
+                // Isolated (malformed) surrogates count as ONE byte here,
+                // deliberately below the UTF-8 encoder's actual 3-byte
+                // U+FFFD replacement; streaming consumers re-adjust the
+                // boundary when adjacent deltas complete a pair (see
+                // AnthropicMessagesSession.addOutputBytes).
                 bytes++;
             } else {
                 bytes += 3;

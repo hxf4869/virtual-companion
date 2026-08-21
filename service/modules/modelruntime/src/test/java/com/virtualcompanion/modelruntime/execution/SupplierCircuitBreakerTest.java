@@ -60,5 +60,11 @@ class SupplierCircuitBreakerTest {
         assertTrue(breaker.allow("x"));   // half-open probe
         breaker.failure("x");             // probe failed -> re-open
         assertFalse(breaker.allow("x"));  // still open until next cooldown
+        Thread.sleep(5);
+        // The failed probe must re-open with a FRESH cooldown: after it
+        // elapses, a new probe is admitted (regression: the old probe-token
+        // overflow locked the breaker open until process restart).
+        assertTrue(breaker.allow("x"));
+        assertFalse(breaker.allow("x"));  // still exactly one probe
     }
 }

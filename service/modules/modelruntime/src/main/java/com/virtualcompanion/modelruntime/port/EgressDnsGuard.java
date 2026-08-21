@@ -155,6 +155,20 @@ public class EgressDnsGuard {
         if (isAllZero(bytes, 0, 16)) {
             return "unspecified (::)";
         }
+        if ((bytes[0] & 0xff) == 0xff) {
+            return "multicast (ff00::/8)";
+        }
+        if ((bytes[0] & 0xff) == 0x00
+                && (bytes[1] & 0xff) == 0x64
+                && (bytes[2] & 0xff) == 0xff
+                && (bytes[3] & 0xff) == 0x9b
+                && isAllZero(bytes, 4, 12)) {
+            // 64:ff9b::/96 well-known NAT64 prefix: an IPv6-only network can
+            // route these to arbitrary internal IPv4 addresses.
+            byte[] mapped = {bytes[12], bytes[13], bytes[14], bytes[15]};
+            String category = blockedIpv4(mapped);
+            return category != null ? "NAT64 " + category : null;
+        }
         if (isAllZero(bytes, 0, 10)
                 && (bytes[10] & 0xff) == 0xff
                 && (bytes[11] & 0xff) == 0xff) {

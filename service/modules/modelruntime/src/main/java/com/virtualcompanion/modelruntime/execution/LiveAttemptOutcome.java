@@ -46,7 +46,7 @@ public record LiveAttemptOutcome(
                 Objects.requireNonNull(failure, "failure must not be null for " + terminal);
                 Objects.requireNonNull(recovery, "recovery must not be null for " + terminal);
             }
-            case BLOCKED_BY_AUTHORIZATION, BLOCKED_BY_SAFETY,
+            case BLOCKED_BY_AUTHORIZATION, BLOCKED_BY_SAFETY, BLOCKED_BY_BUDGET,
                  ZERO_LLM_COMPLETED, NO_ELIGIBLE_DEPLOYMENT ->
                     Objects.requireNonNull(recovery, "recovery must not be null for " + terminal);
             default -> throw new IllegalStateException("unexpected terminal: " + terminal);
@@ -191,6 +191,25 @@ public record LiveAttemptOutcome(
             RecoveryOutcome recovery) {
         return new LiveAttemptOutcome(
                 LiveAttemptTerminal.BLOCKED_BY_SAFETY,
+                decision,
+                null,
+                List.of(),
+                null,
+                null,
+                recovery,
+                recovery.response(),
+                null);
+    }
+
+    /**
+     * Blocked by the monthly budget guard before any outbound transfer
+     * (BUDGET-HALT §22.18; deterministic response, no provider attempt).
+     */
+    public static LiveAttemptOutcome blockedByBudget(
+            RouteDecision decision,
+            RecoveryOutcome recovery) {
+        return new LiveAttemptOutcome(
+                LiveAttemptTerminal.BLOCKED_BY_BUDGET,
                 decision,
                 null,
                 List.of(),

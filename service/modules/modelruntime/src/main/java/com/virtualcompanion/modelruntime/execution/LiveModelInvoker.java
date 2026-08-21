@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 /**
  * Controlled real-model invocation path (TASK-0194 prepare/external split).
@@ -68,6 +69,9 @@ import java.util.function.Consumer;
  * runtime configuration via the injected map, never a hard-coded vendor name.</p>
  */
 public final class LiveModelInvoker {
+
+    private static final Logger logger =
+            Logger.getLogger(LiveModelInvoker.class.getName());
 
     private final DeterministicRouter router;
     private final ExecutionAuthorizationGuard authorizationGuard;
@@ -295,6 +299,8 @@ public final class LiveModelInvoker {
                     LiveAttemptOutcome.blockedByAuthorization(decision, outcome);
             case BLOCKED_BY_SAFETY ->
                     LiveAttemptOutcome.blockedBySafety(decision, outcome);
+            case BLOCKED_BY_BUDGET ->
+                    LiveAttemptOutcome.blockedByBudget(decision, outcome);
             case FAILED ->
                     LiveAttemptOutcome.failed(decision, prepared.binding(), null,
                             prepared.failure(), outcome, LiveAttemptTerminal.FAILED);
@@ -352,6 +358,9 @@ public final class LiveModelInvoker {
             } catch (RuntimeException failure) {
                 // A read failure can happen after partial provider output;
                 // cancel before returning the normalized fail-closed result.
+                // Log the class only — never provider content or secrets.
+                logger.warning("model session read failed ("
+                        + failure.getClass().getSimpleName() + "), normalizing to fail-closed");
                 session.cancel();
                 return fenceViolationOutcome(decision, binding, attempt, providerId);
             }

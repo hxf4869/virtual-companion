@@ -248,6 +248,31 @@ class LiveModelInvokerTest {
     }
 
     @Test
+    void budgetCapExceededBlocksBeforeOutboundAndReleasesQuota() {
+        BudgetGuard exceededGuard = new BudgetGuard(() -> 10.0, 5.0);
+        Harness harness = harness(
+                false,
+                Scripts.success("world"),
+                Map.of(PROVIDER, "OpenAI"),
+                false,
+                PROVIDER,
+                -1,
+                null,
+                new ActiveInvocationRegistry(),
+                exceededGuard);
+
+        LiveAttemptOutcome outcome = harness.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_BUDGET, outcome.terminal());
+        assertEquals(0, harness.adapter.openCount());
+        assertFalse(outcome.externalAttemptCreated());
+        assertTrue(outcome.audits().isEmpty());
+        assertEquals(DeterministicSafetyResponse.ZERO_LLM_FALLBACK, outcome.response());
+        assertEquals(RealtimeEventType.CHAT_BLOCKED, outcome.realtimeEventType());
+        assertEquals(5L, quota.remaining("owner-1"));
+    }
+
+    @Test
     void providerFailureFailsClosedAndReleasesQuota() {
         Harness harness = harness(
                 false,
@@ -896,6 +921,20 @@ class LiveModelInvokerTest {
             int nextFailureAfterEvents,
             RuntimeException nextFailure,
             ActiveInvocationRegistry activeInvocationRegistry) {
+        return harness(denyExecution, script, supplierNames, emptyLocator, snapshotProvider,
+                nextFailureAfterEvents, nextFailure, activeInvocationRegistry, null);
+    }
+
+    private Harness harness(
+            boolean denyExecution,
+            Function<InvocationBinding, List<ModelProtocolEvent>> script,
+            Map<ProviderId, String> supplierNames,
+            boolean emptyLocator,
+            ProviderId snapshotProvider,
+            int nextFailureAfterEvents,
+            RuntimeException nextFailure,
+            ActiveInvocationRegistry activeInvocationRegistry,
+            BudgetGuard budgetGuard) {
         quota.provision("owner-1", 5);
         ScriptedAdapter adapter = new ScriptedAdapter(
                 ModelProtocol.OPENAI_CHAT_COMPLETIONS,
@@ -932,7 +971,8 @@ class LiveModelInvokerTest {
                 ? new InMemoryAdapterLocator(List.of())
                 : new InMemoryAdapterLocator(List.of(registration));
         LiveModelInvoker invoker = new LiveModelInvoker(
-                router, guard, store, locator, recovery, supplierNames, activeInvocationRegistry);
+                router, guard, store, locator, recovery, supplierNames,
+                activeInvocationRegistry, budgetGuard);
         return new Harness(adapter, invoker, activeInvocationRegistry);
     }
 

@@ -2,6 +2,7 @@ package com.virtualcompanion.modelruntime.execution;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -26,6 +27,10 @@ public final class SupplierCircuitBreaker {
     private static final class Slot {
         final AtomicInteger consecutiveFailures = new AtomicInteger();
         final AtomicLong openedAtMillis = new AtomicLong(0);
+        // Probe token for half-open: claimed by exactly one allow() call per
+        // cooldown. Kept separate from openedAtMillis so the cooldown clock
+        // never depends on the token state.
+        final AtomicBoolean probing = new AtomicBoolean(false);
         volatile State state = State.CLOSED;
     }
 
@@ -54,7 +59,7 @@ public final class SupplierCircuitBreaker {
         if (!cooledDown) {
             return false;
         }
-        return slot.openedAtMillis.compareAndSet(openedAt, Long.MIN_VALUE); // probe token
+        return slot.probing.compareAndSet(false, true); // probe token
     }
 
     public void success(String supplier) {
@@ -62,6 +67,7 @@ public final class SupplierCircuitBreaker {
         slot.consecutiveFailures.set(0);
         slot.state = State.CLOSED;
         slot.openedAtMillis.set(0);
+        slot.probing.set(false);
     }
 
     public void failure(String supplier) {
@@ -70,6 +76,14 @@ public final class SupplierCircuitBreaker {
         if (n >= failureThreshold && slot.state != State.OPEN) {
             slot.state = State.OPEN;
             slot.openedAtMillis.set(System.currentTimeMillis());
+            return;
+        }
+        if (slot.state == State.OPEN) {
+            // A failed half-open probe re-opens with a fresh cooldown and
+            // releases the probe token so the next cooldown admits a new
+            // probe instead of locking the breaker open forever.
+            slot.openedAtMillis.set(System.currentTimeMillis());
+            slot.probing.set(false);
         }
     }
 
