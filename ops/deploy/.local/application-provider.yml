@@ -4,6 +4,24 @@ virtual-companion:
     enabled: true
     secret-root: /run/secrets
     deployments:
+      - provider-id: weixin-ds-flash
+        protocol: OPENAI_CHAT_COMPLETIONS
+        supplier-name: WeChat
+        model: Deepseek-v4-flash
+        endpoint: https://chatapi.weixin.qq.com/openai/v1/chat/completions
+        credential-secret: weixin-api-key
+        max-tokens: 4096
+        temperature: 0.8
+        enabled: true
+      - provider-id: weixin-glm
+        protocol: OPENAI_CHAT_COMPLETIONS
+        supplier-name: WeChat
+        model: GLM-5.2
+        endpoint: https://chatapi.weixin.qq.com/openai/v1/chat/completions
+        credential-secret: weixin-api-key
+        max-tokens: 4096
+        temperature: 0.8
+        enabled: true
       - provider-id: opencode-go
         protocol: OPENAI_CHAT_COMPLETIONS
         supplier-name: OpenCode

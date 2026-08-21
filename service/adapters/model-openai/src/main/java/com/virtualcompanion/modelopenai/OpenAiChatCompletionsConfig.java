@@ -31,6 +31,7 @@ public final class OpenAiChatCompletionsConfig {
     private final String model;
     private final int maxTokens;
     private final double temperature;
+    private final ProviderEgressPolicy egressPolicy;
 
     public OpenAiChatCompletionsConfig(
             URI endpoint,
@@ -47,11 +48,25 @@ public final class OpenAiChatCompletionsConfig {
             int maxTokens,
             double temperature
     ) {
-        this.endpoint = requireEndpoint(endpoint);
+        this(endpoint, bearerToken, model, maxTokens, temperature,
+                ProviderEgressPolicy.defaults());
+    }
+
+    /** ROUTE-HARDEN/R49: operator-approved egress policy for flexible vendors. */
+    public OpenAiChatCompletionsConfig(
+            URI endpoint,
+            String bearerToken,
+            String model,
+            int maxTokens,
+            double temperature,
+            ProviderEgressPolicy egressPolicy
+    ) {
+        this.endpoint = requireEndpoint(endpoint, egressPolicy);
         this.bearerToken = requireSecret(bearerToken);
         this.model = requireNonBlank(model, "model");
         this.maxTokens = requireMaxTokens(maxTokens);
         this.temperature = requireTemperature(temperature);
+        this.egressPolicy = Objects.requireNonNull(egressPolicy, "egressPolicy");
     }
 
     public URI endpoint() {
@@ -103,7 +118,7 @@ public final class OpenAiChatCompletionsConfig {
                 + "]";
     }
 
-    private static URI requireEndpoint(URI value) {
+    private URI requireEndpoint(URI value, ProviderEgressPolicy policy) {
         Objects.requireNonNull(value, "endpoint must not be null");
         var scheme = value.getScheme();
         if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
@@ -112,9 +127,9 @@ public final class OpenAiChatCompletionsConfig {
         if (value.getHost() == null || value.getHost().isBlank()) {
             throw new IllegalArgumentException("endpoint must include a host");
         }
-        if (!CHAT_COMPLETIONS_PATH.equals(value.getRawPath())) {
+        if (!value.getRawPath().endsWith(CHAT_COMPLETIONS_PATH)) {
             throw new IllegalArgumentException(
-                    "endpoint path must be " + CHAT_COMPLETIONS_PATH
+                    "endpoint path must end with " + CHAT_COMPLETIONS_PATH
             );
         }
         if (value.getUserInfo() != null
@@ -124,7 +139,7 @@ public final class OpenAiChatCompletionsConfig {
                     "endpoint must not include user info, query, or fragment"
             );
         }
-        ProviderEgressPolicy.defaults().requireAllowed(value);
+        policy.requireAllowed(value);
         return value;
     }
 

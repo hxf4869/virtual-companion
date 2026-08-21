@@ -38,7 +38,8 @@ final class ApprovedModelProviderProvisioner {
 
     static ApprovedModelProviders provision(
             ModelProviderProperties properties,
-            ProviderSecretReader secretReader) {
+            ProviderSecretReader secretReader,
+            com.virtualcompanion.modelruntime.port.ProviderEgressPolicy egressPolicy) {
         Objects.requireNonNull(properties, "properties must not be null");
         Objects.requireNonNull(secretReader, "secretReader must not be null");
 
@@ -52,7 +53,7 @@ final class ApprovedModelProviderProvisioner {
                 continue;
             }
             ProviderId providerId = new ProviderId(deployment.providerId());
-            ModelProtocolAdapter adapter = buildAdapter(deployment, secretReader);
+            ModelProtocolAdapter adapter = buildAdapter(deployment, secretReader, egressPolicy);
             ProviderRegistration registration = new ProviderRegistration(
                     providerId, adapter.protocol(), adapter.capabilities(), adapter);
             registry.register(registration);
@@ -66,7 +67,8 @@ final class ApprovedModelProviderProvisioner {
 
     private static ModelProtocolAdapter buildAdapter(
             ModelProviderProperties.Deployment deployment,
-            ProviderSecretReader secretReader) {
+            ProviderSecretReader secretReader,
+            com.virtualcompanion.modelruntime.port.ProviderEgressPolicy egressPolicy) {
         ModelProtocol protocol = parseProtocol(deployment.protocol());
         String credential = secretReader.readSecret(deployment.credentialSecret());
         URI endpoint = URI.create(deployment.endpoint());
@@ -79,7 +81,8 @@ final class ApprovedModelProviderProvisioner {
                             deployment.maxTokens() > 0
                                     ? deployment.maxTokens()
                                     : OpenAiChatCompletionsConfig.DEFAULT_MAX_TOKENS,
-                            deployment.temperature()));
+                            deployment.temperature(),
+                            egressPolicy));
             case ANTHROPIC_MESSAGES -> {
                 if (!deployment.anthropicConfigured()) {
                     throw new IllegalStateException(

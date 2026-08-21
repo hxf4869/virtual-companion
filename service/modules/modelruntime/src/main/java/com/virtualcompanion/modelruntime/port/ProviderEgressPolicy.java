@@ -38,6 +38,18 @@ public final class ProviderEgressPolicy {
 
     private final Set<String> approvedHosts;
 
+    /** The default approved set plus operator-configured extra hosts. */
+    public static ProviderEgressPolicy defaultsPlus(java.util.Collection<String> extraHosts) {
+        var merged = new HashSet<>(DEFAULT_APPROVED_HOSTS);
+        if (extraHosts != null) {
+            for (String host : extraHosts) {
+                merged.add(normalizeHostname(Objects.requireNonNull(
+                        host, "approved host must not be null")));
+            }
+        }
+        return new ProviderEgressPolicy(merged);
+    }
+
     public ProviderEgressPolicy(Set<String> approvedHosts) {
         Objects.requireNonNull(approvedHosts, "approvedHosts must not be null");
         if (approvedHosts.isEmpty()) {

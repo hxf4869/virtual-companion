@@ -152,7 +152,9 @@ class ApprovedModelProviderProvisionerTest {
             ModelProviderProperties.Deployment... deployments) {
         ModelProviderProperties properties =
                 new ModelProviderProperties(true, tempDir.toString(), List.of(deployments), false);
-        return ApprovedModelProviderProvisioner.provision(properties, new ProviderSecretReader(tempDir));
+        return ApprovedModelProviderProvisioner.provision(properties,
+                new ProviderSecretReader(tempDir),
+                com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaults());
     }
 
     private static ModelProviderProperties.Deployment openai(String secret, boolean enabled) {

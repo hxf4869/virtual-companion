@@ -38,8 +38,13 @@ public class ApprovedModelProviderConfig {
     @Bean
     ApprovedModelProviders approvedModelProviders(
             ModelProviderProperties properties,
-            ProviderSecretReader providerSecretReader) {
-        return ApprovedModelProviderProvisioner.provision(properties, providerSecretReader);
+            ProviderSecretReader providerSecretReader,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${VC_MODEL_EGRESS_ALLOWED_HOSTS:}")
+            java.util.List<String> approvedEgressHosts) {
+        return ApprovedModelProviderProvisioner.provision(properties, providerSecretReader,
+            com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaultsPlus(
+                    approvedEgressHosts));
     }
 
     @Bean

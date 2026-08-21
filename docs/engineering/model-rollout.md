@@ -67,3 +67,22 @@ provider 接线（R49 适配器）落地；本文先行钉死流程与回滚语�
 5. max-tokens 必须 ≥2048(Hy3 为推理模型,思考消耗 token,content 才产出);
 6. 测试:EgressPolicy 自定义主机用例 + 合约测试回归 + 本机全栈 E2E
    (admin→invite→user→generation 走通 Hy3)。
+
+
+## 7. Hy3 本机联调现场记录（待续）
+
+已就绪:本机全栈(8443 自签)、三部署配置文件(.local/,gitignored)、密钥注入、
+直连探测通过(key/协议/模型均验证)。E2E 链路机制全通(login→invite→register→
+relationship→conversation→generation→assistant message)。
+
+阻塞点:runtime 仍走 ZERO_LLM 兜底——actuator/env 确认
+`virtual-companion.model-providers.enabled=true`(来源为本机 provider 文件),
+但 authorizationSnapshotProvider/approvedModelProviders 等 Bean 未激活,
+generation_route/provider_attempt 均为 0 行。
+
+下一会话排查方向(带此证据):
+1. /actuator/conditions 查 ApprovedModelProviderConfig 条件评估结果
+   (需先暴露 conditions 端点);
+2. 核对 @ConditionalOnProperty 与 additional-location 属性源的可见性时序;
+3. 注意 docker-compose.override.yml 仅在显式 -f 双文件调用下生效;
+4. 调试完成后移除 override 中的 DEBUG/env 端点临时项。
