@@ -602,8 +602,9 @@ public class AuthDataSourceConfig {
     @Bean
     public MemoryService memoryService(
             JdbcTemplate authJdbcTemplate,
-            RelationshipService relationshipService) {
-        return new MemoryService(authJdbcTemplate, relationshipService);
+            RelationshipService relationshipService,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new MemoryService(authJdbcTemplate, relationshipService, restFieldCipher);
     }
 
     /**

@@ -90,10 +90,19 @@ public class MemoryService {
     private final JdbcTemplate jdbc;
     private final RelationshipService relationshipService;
 
+    private final RestFieldCipher cipher;
+
     public MemoryService(JdbcTemplate jdbc, RelationshipService relationshipService) {
+        this(jdbc, relationshipService, null);
+    }
+
+    /** CRYPTO-REST: when a cipher is wired, memory summaries encrypt at rest. */
+    public MemoryService(JdbcTemplate jdbc, RelationshipService relationshipService,
+                         RestFieldCipher cipher) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
         this.relationshipService = Objects.requireNonNull(
                 relationshipService, "relationshipService must not be null");
+        this.cipher = cipher;
     }
 
     /**
@@ -473,7 +482,8 @@ public class MemoryService {
                         + "FROM vc.semantic_recall(?, ?, ?, ?, ?)",
                 (rs, rowNum) -> new SemanticMemoryRecord(
                         rs.getLong("out_memory_id"),
-                        rs.getString("out_summary"),
+                        cipher == null ? rs.getString("out_summary")
+                        : cipher.decrypt(rs.getString("out_summary")),
                         rs.getDouble("out_distance")),
                 ownerUserId, relationshipId, spaceId, queryLiteral, limit);
     }
@@ -577,7 +587,7 @@ public class MemoryService {
         return ids.isEmpty() ? null : ids.get(0);
     }
 
-    private static PreparedStatementSetter createSetter(
+    private PreparedStatementSetter createSetter(
             long ownerUserId,
             long relationshipId,
             String scope,
@@ -587,12 +597,13 @@ public class MemoryService {
             Instant eventAt,
             String eventStatus,
             Instant eventExpiresAt) {
+        String storedSummary = cipher == null ? summary : cipher.encrypt(summary);
         String[] evidenceArray = evidence == null ? null : evidence.toArray(String[]::new);
         return (PreparedStatement ps) -> {
             ps.setLong(1, ownerUserId);
             ps.setLong(2, relationshipId);
             ps.setString(3, scope);
-            ps.setString(4, summary);
+            ps.setString(4, storedSummary);
             if (conversationId == null) {
                 ps.setNull(5, Types.BIGINT);
             } else {
@@ -643,12 +654,13 @@ public class MemoryService {
     }
 
     /** {@code get_memory} output columns (carries relationship_id, no deleted_at). */
-    private static RowMapper<MemoryRecord> getRowMapper() {
+    private RowMapper<MemoryRecord> getRowMapper() {
         return (ResultSet rs, int rowNum) -> new MemoryRecord(
                 rs.getLong("out_id"),
                 rs.getLong("out_relationship_id"),
                 rs.getString("out_scope"),
-                rs.getString("out_summary"),
+                cipher == null ? rs.getString("out_summary")
+                        : cipher.decrypt(rs.getString("out_summary")),
                 rs.getString("out_status"),
                 nullableLong(rs, "out_conversation_id"),
                 null,
@@ -662,12 +674,13 @@ public class MemoryService {
     }
 
     /** {@code list_memory} output columns (carries deleted_at, no relationship_id). */
-    private static RowMapper<MemoryRecord> listRowMapper() {
+    private RowMapper<MemoryRecord> listRowMapper() {
         return (ResultSet rs, int rowNum) -> new MemoryRecord(
                 rs.getLong("out_id"),
                 null,
                 rs.getString("out_scope"),
-                rs.getString("out_summary"),
+                cipher == null ? rs.getString("out_summary")
+                        : cipher.decrypt(rs.getString("out_summary")),
                 rs.getString("out_status"),
                 nullableLong(rs, "out_conversation_id"),
                 toInstant(rs, "out_deleted_at"),
@@ -693,12 +706,13 @@ public class MemoryService {
      * excluded soft-deleted rows). R44: the §11.12 event pair rides along so
      * the assembler can demand follow-up questions for due events.
      */
-    private static RowMapper<MemoryRecord> recallRowMapper() {
+    private RowMapper<MemoryRecord> recallRowMapper() {
         return (ResultSet rs, int rowNum) -> new MemoryRecord(
                 rs.getLong("out_id"),
                 null,
                 rs.getString("out_scope"),
-                rs.getString("out_summary"),
+                cipher == null ? rs.getString("out_summary")
+                        : cipher.decrypt(rs.getString("out_summary")),
                 "ACCEPTED",
                 nullableLong(rs, "out_conversation_id"),
                 null,
