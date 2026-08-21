@@ -35,7 +35,8 @@ public final class OpenAiCompatModerationClient {
     /** Moderate one text; returns flagged flag plus the tripped category names. */
     public ModerationResult moderate(String text) {
         Objects.requireNonNull(text, "text must not be null");
-        String safe = text.replace("\\", "\\\\").replace("\"", "\\\"");
+        String safe = com.virtualcompanion.runtime.memory.OpenAiCompatEmbedder
+                .escapeJsonString(text);
         String body = "{\"model\":\"" + model + "\",\"input\":\"" + safe + "\"}";
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/moderations"))

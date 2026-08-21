@@ -33,8 +33,8 @@ public final class OpenAiCompatEmbedder {
     /** Embed one text; returns the vendor's vector as float[]. */
     public float[] embed(String text) {
         Objects.requireNonNull(text, "text must not be null");
-        String safe = text.replace("\\", "\\\\").replace("\"", "\\\"");
-        String body = "{\"model\":\"" + model + "\",\"input\":\"" + safe + "\"}";
+        String body = "{\"model\":\"" + escapeJsonString(model)
+                + "\",\"input\":\"" + escapeJsonString(text) + "\"}";
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/embeddings"))
                 .timeout(Duration.ofSeconds(20))
@@ -53,6 +53,35 @@ public final class OpenAiCompatEmbedder {
                     "embeddings call returned HTTP " + response.statusCode());
         }
         return parseVector(response.body());
+    }
+
+    /**
+     * Minimal JSON string escaping: quotes, backslash and control characters
+     * (a raw newline inside the input would otherwise make the request body
+     * invalid JSON and the vendor would reject the call).
+     */
+    public static String escapeJsonString(String value) {
+        StringBuilder out = new StringBuilder(value.length() + 8);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                case '\b' -> out.append("\\b");
+                case '\f' -> out.append("\\f");
+                default -> {
+                    if (c < 0x20) {
+                        out.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        return out.toString();
     }
 
     /** Extracts {@code data[0].embedding} from an OpenAI-compatible payload. */

@@ -69,5 +69,21 @@ public class ProductionFailClosedEnvironmentPostProcessor implements Environment
                     "virtual-companion.crypto.rest-key (VC_CRYPTO_REST_KEY) must be injected in "
                             + "the production profile; the development default key is rejected");
         }
+        // EMERGENCY-CONTACT: the AES-256-GCM cipher for contact_cipher must not
+        // run on the development default key when the feature is enabled in
+        // production — a public key would make the stored contact data
+        // equivalent to plaintext (same fail-closed shape as the rest key).
+        String emergencyContactEnabled = environment.getProperty(
+                "virtual-companion.emergency-contact.enabled", "false");
+        String emergencyContactKey = environment.getProperty(
+                "virtual-companion.emergency-contact.encryption-key",
+                "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=");
+        if ("true".equalsIgnoreCase(emergencyContactEnabled)
+                && "ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=".equals(emergencyContactKey)) {
+            throw new IllegalStateException(
+                    "virtual-companion.emergency-contact.encryption-key must be injected in the "
+                            + "production profile when emergency-contact is enabled; the "
+                            + "development default key is rejected");
+        }
     }
 }

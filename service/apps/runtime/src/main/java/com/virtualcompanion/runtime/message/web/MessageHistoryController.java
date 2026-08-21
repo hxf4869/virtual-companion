@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 /**
  * Paginated message history HTTP API (TASK-0179) plus single-message deletion
@@ -98,7 +99,7 @@ public class MessageHistoryController {
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
             @PathVariable String conversationId,
             @PathVariable String messageId,
-            @RequestBody MessageNoMemoryUpdate request) {
+            @Valid @RequestBody MessageNoMemoryUpdate request) {
         long conversation = parseId(conversationId, "conversationId");
         long message = parseId(messageId, "messageId");
         boolean changed = messageRepository.setNoMemory(

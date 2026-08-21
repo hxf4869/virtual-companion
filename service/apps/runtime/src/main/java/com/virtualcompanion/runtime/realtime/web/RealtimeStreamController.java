@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -159,7 +160,14 @@ public class RealtimeStreamController {
         try {
             result = resumeService.resume(ownerUserId, genId, epoch, afterSeq);
         } catch (BadSqlGrammarException e) {
+            // Schema unavailable (SQLSTATE 42xxx): let the global advice map 503.
             throw e;
+        } catch (DataAccessException e) {
+            // Same translation as the ticket path: the global
+            // AuthExceptionHandler would mis-map a DataAccessException to 401,
+            // which would make SSE clients think the session died and log out.
+            deny(emitter);
+            return emitter;
         }
         dispatch(emitter, result, ownerUserId, genId);
         return emitter;

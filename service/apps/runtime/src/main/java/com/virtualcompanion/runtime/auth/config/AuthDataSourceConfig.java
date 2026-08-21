@@ -360,23 +360,24 @@ public class AuthDataSourceConfig {
      * datasource's vc_api JDBC pool and run inside the server-trusted owner
      * context established upstream.
      */
-        /** CRYPTO-REST (§16.5/§17.4): at-rest cipher for chat bodies. The dev
-     * default key keeps local development and CI friction-free; production
-     * rejects it (fail-closed) and must inject VC_CRYPTO_REST_KEY. */
-        /** B1-SURVEY (§26.5 / R45): daily 被理解感 score capture. */
+
+    /** B1-SURVEY (§26.5 / R45): daily 被理解感 score capture. */
     @Bean
     public SurveyService surveyService(JdbcTemplate authJdbcTemplate) {
         return new SurveyService(authJdbcTemplate);
     }
 
-@Bean
+    /** CRYPTO-REST (§16.5/§17.4): at-rest cipher for chat bodies. The dev
+     * default key keeps local development and CI friction-free; production
+     * rejects it (fail-closed) and must inject VC_CRYPTO_REST_KEY. */
+    @Bean
     public com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher(
             @org.springframework.beans.factory.annotation.Value(
                     "${virtual-companion.crypto.rest-key}") String restKey) {
         return new com.virtualcompanion.platform.persistence.RestFieldCipher(restKey);
     }
 
-@Bean
+    @Bean
     public GenerationReceiveService generationReceiveService(
             JdbcTemplate authJdbcTemplate,
             com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {

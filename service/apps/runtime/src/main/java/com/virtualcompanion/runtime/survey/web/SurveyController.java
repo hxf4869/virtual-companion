@@ -68,11 +68,21 @@ public class SurveyController {
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId,
             @RequestParam(value = "after", required = false) String after,
             @RequestParam(value = "limit", defaultValue = "50") int limit) {
-        LocalDate afterDate = after == null || after.isBlank() ? null : LocalDate.parse(after);
+        LocalDate afterDate = after == null || after.isBlank() ? null : parseDate(after);
         int safeLimit = Math.clamp(limit, 1, 200);
         return surveyService.list(ownerUserId, afterDate, safeLimit).stream()
                 .map(row -> new SurveyRowResponse(row.date().toString(), row.score()))
                 .toList();
+    }
+
+    private static LocalDate parseDate(String raw) {
+        try {
+            return LocalDate.parse(raw);
+        } catch (java.time.format.DateTimeParseException e) {
+            // Map to the contract's 400 INVALID_REQUEST instead of the
+            // catch-all 500 (same shape as MemoryController.parseInstant).
+            throw new IllegalArgumentException("after is not a valid date: " + raw, e);
+        }
     }
 
     public record SurveyRowResponse(String date, short score) {

@@ -217,7 +217,12 @@ public class GenerationController {
         if (classification.allowed()) {
             return false;
         }
-        String ruleId = classification.hardRuleViolations().get(0);
+        // A non-adequate classifier report can BLOCK with zero hard-rule
+        // hits (fail-closed); use a fixed internal rule id in that case
+        // instead of throwing on the empty violations list.
+        String ruleId = classification.hardRuleViolations().isEmpty()
+                ? "INTERNAL_BLOCK"
+                : classification.hardRuleViolations().get(0);
         metrics.generationTerminal("blocked_input");
         metrics.safetyEvent(SafetyEventService.STAGE_INPUT, classification.riskLevel().code());
         generationStateService.promote(

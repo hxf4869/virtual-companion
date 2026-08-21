@@ -693,7 +693,14 @@ public class LiveInvocationAssembler {
         if (bytes.length <= MAX_MESSAGE_BYTES) {
             return content;
         }
-        return new String(bytes, 0, MAX_MESSAGE_BYTES, StandardCharsets.UTF_8);
+        int limit = MAX_MESSAGE_BYTES;
+        // Cutting inside a multi-byte sequence would decode to a corrupted
+        // U+FFFD tail; back off to the last complete code point boundary
+        // (dropped continuation bytes are 0b10xxxxxx).
+        while (limit > 0 && (bytes[limit] & 0xc0) == 0x80) {
+            limit--;
+        }
+        return new String(bytes, 0, limit, StandardCharsets.UTF_8);
     }
 
     private static String requireSourceId(String zeroLlmSourceId) {
