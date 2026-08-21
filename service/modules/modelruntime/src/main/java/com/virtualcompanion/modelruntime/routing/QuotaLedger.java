@@ -9,17 +9,23 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * In-memory synthetic quota ledger, keyed by owner.
  *
- * <p>Owners must be provisioned before reservation. Reservation fails closed
- * (returns an empty {@link Optional}) when the owner is unknown or the remaining
- * budget is insufficient. The router treats an empty result as a routing
- * failure and degrades to ZERO_LLM or returns {@code NO_ELIGIBLE_DEPLOYMENT}
- * rather than over-reserving or carrying a negative balance.
+ * <p>Owners are either provisioned explicitly ( {@link #provision}) or — when
+ * the ledger is constructed with a positive {@code defaultAllowance} —
+ * provisioned implicitly at first reservation. Reservation fails closed
+ * (returns an empty {@link Optional}) when the owner has no provisioned budget
+ * and the default allowance is zero, or when the remaining budget is
+ * insufficient. The router treats an empty result as a routing failure and
+ * degrades to ZERO_LLM or returns {@code NO_ELIGIBLE_DEPLOYMENT} rather than
+ * over-reserving or carrying a negative balance.
  *
  * <p>This is a Technical Alpha simulation: there is no persistent ledger row and
  * no real cost. Each external attempt reserves one unit of synthetic capacity.
- * Reservation is atomic per owner (via {@link ConcurrentHashMap#compute}) so
- * concurrent reservations cannot double-reserve the same budget, matching the
- * fail-closed integrity of the sibling in-memory stores.
+ * Real cost is enforced by the execution BudgetGuard over the persisted
+ * {@code vc.generation_usage} spend (§22.18 BUDGET-HALT), never by this
+ * in-memory ledger. Reservation is atomic per owner (via
+ * {@link ConcurrentHashMap#compute}) so concurrent reservations cannot
+ * double-reserve the same budget, matching the fail-closed integrity of the
+ * sibling in-memory stores.
  *
  * <p>Release is reservation-scoped and idempotent: each successful reservation
  * carries a unique {@code reservationId}, and a repeated release of the same
@@ -36,6 +42,30 @@ public final class QuotaLedger {
     private final ConcurrentHashMap<String, Long> ceilingByOwner = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Boolean> releasedReservations = new ConcurrentHashMap<>();
     private final AtomicLong reservationSequence = new AtomicLong();
+    private final long defaultAllowance;
+
+    /**
+     * Fail-closed default ledger: no implicit provisioning, so an unprovisioned
+     * owner can never reserve (unknown owner degrades at the router).
+     */
+    public QuotaLedger() {
+        this(0L);
+    }
+
+    /**
+     * Ledger with a per-owner default allowance: an owner not yet explicitly
+     * provisioned is provisioned with {@code defaultAllowance} at first
+     * reservation (capped at the same ceiling). Technical Alpha deployments
+     * with real providers use a practically-unbounded synthetic allowance
+     * because real cost is enforced by the execution BudgetGuard, not here.
+     *
+     * @param defaultAllowance the implicit per-owner budget on first
+     *     reservation; zero or negative keeps the fail-closed unknown-owner
+     *     behavior (no implicit provisioning)
+     */
+    public QuotaLedger(long defaultAllowance) {
+        this.defaultAllowance = defaultAllowance;
+    }
 
     /**
      * Seed or refresh an owner's reservable budget.
@@ -66,10 +96,14 @@ public final class QuotaLedger {
     /**
      * Reserve {@code units} against the owner's budget.
      *
-     * <p>Returns empty when the owner is unknown or the remaining budget is
-     * insufficient; the ledger is left untouched in that case. The check and the
-     * decrement run atomically per owner, so concurrent reservations cannot
-     * observe the same stale balance and over-reserve.
+     * <p>Returns empty when the owner has no budget (unknown owner with no
+     * default allowance, or insufficient remaining budget); the ledger is left
+     * untouched in that case. When the ledger has a positive default allowance,
+     * an owner never provisioned before is provisioned with that allowance as
+     * part of the first reservation (the implicit budget becomes an explicit
+     * ceiling like any provisioned one). The check and the decrement run
+     * atomically per owner, so concurrent reservations cannot observe the same
+     * stale balance and over-reserve.
      *
      * <p>Each successful reservation is assigned a ledger-unique
      * {@code reservationId} (a per-ledger sequence prefix plus the deterministic
@@ -87,7 +121,20 @@ public final class QuotaLedger {
         }
         AtomicReference<QuotaReservation> outcome = new AtomicReference<>();
         remainingByOwner.compute(ownerUserId, (key, current) -> {
-            if (current == null || current < units) {
+            if (current == null) {
+                if (defaultAllowance <= 0 || defaultAllowance < units) {
+                    // Unknown owner with no implicit budget (or an allowance too
+                    // small for this reservation): fail closed, leave the ledger
+                    // untouched (no provisioning side effect).
+                    return null;
+                }
+                // First reservation of a real owner: provision the default
+                // allowance once; the ceiling is fixed so a later release can
+                // never inflate the balance beyond the implicit budget.
+                current = defaultAllowance;
+                ceilingByOwner.put(key, defaultAllowance);
+            }
+            if (current < units) {
                 return current;
             }
             long after = current - units;

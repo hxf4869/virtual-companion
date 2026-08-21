@@ -47,10 +47,26 @@ public class ApprovedModelProviderConfig {
                     approvedEgressHosts));
     }
 
+    /**
+     * Synthetic in-memory quota ledger for the deterministic router.
+     *
+     * <p>QUOTA-FIX (本机联调): the ledger must provision every real owner —
+     * the router degrades to ZERO_LLM whenever {@code reserve} returns empty,
+     * which is exactly what an unprovisioned owner yields. Owners are dynamic
+     * (invite-registered users), so explicit provisioning at wiring time is
+     * impossible; the ledger therefore carries a practically-unbounded default
+     * allowance auto-provisioned at first reservation. This stays safe because
+     * the ledger is purely synthetic (Technical Alpha): real spend is enforced
+     * by the execution BudgetGuard over the persisted {@code vc.generation_usage}
+     * (BUDGET-HALT §22.18), never by this in-memory simulation.
+     */
     @Bean
     QuotaLedger quotaLedger() {
-        return new QuotaLedger();
+        return new QuotaLedger(UNLIMITED_SYNTHETIC_ALLOWANCE);
     }
+
+    /** Practically-unbounded synthetic per-owner allowance (see {@link #quotaLedger()}). */
+    private static final long UNLIMITED_SYNTHETIC_ALLOWANCE = Long.MAX_VALUE;
 
     @Bean
     InMemoryAuthorizationSnapshotStore authorizationSnapshotStore() {

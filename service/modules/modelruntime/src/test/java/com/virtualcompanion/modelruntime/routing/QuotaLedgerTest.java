@@ -47,6 +47,37 @@ class QuotaLedgerTest {
     }
 
     @Test
+    void reserveUnknownOwnerAutoProvisionsDefaultAllowance() {
+        QuotaLedger ledger = new QuotaLedger(5L);
+
+        QuotaReservation reservation = ledger.reserve("ghost", 2L).orElseThrow();
+
+        assertEquals(2L, reservation.reservedUnits());
+        assertEquals(3L, reservation.remainingUnits());
+        assertEquals(3L, ledger.remaining("ghost"));
+    }
+
+    @Test
+    void reserveUnknownOwnerWithInsufficientDefaultAllowanceFailsClosedUntouched() {
+        QuotaLedger ledger = new QuotaLedger(3L);
+
+        assertTrue(ledger.reserve("ghost", 4L).isEmpty());
+        assertEquals(0L, ledger.remaining("ghost"));
+    }
+
+    @Test
+    void autoProvisionedOwnerStaysCappedAtDefaultAllowanceAfterRelease() {
+        QuotaLedger ledger = new QuotaLedger(5L);
+
+        QuotaReservation reservation = ledger.reserve("ghost", 2L).orElseThrow();
+        long released = ledger.release(reservation);
+
+        // Release restores the units but never inflates past the implicit ceiling.
+        assertEquals(5L, released);
+        assertEquals(5L, ledger.remaining("ghost"));
+    }
+
+    @Test
     void reserveExactBudgetThenExhausted() {
         QuotaLedger ledger = new QuotaLedger();
         ledger.provision("owner-1", 2L);
