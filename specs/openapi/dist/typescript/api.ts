@@ -549,6 +549,8 @@ export interface SafetyEventItem {
   riskLevel: string
   ruleId: string
   createdAt: string
+  ageHours: string
+  slaBreached: string
 }
 
 export interface BetaReportItem {

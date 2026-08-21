@@ -251,7 +251,8 @@ public class AuthDataSourceConfig {
             EntitlementSnapshotService entitlementSnapshotService,
             InviteCodeService inviteCodeService,
             TrialService trialService,
-            QuotaReconciliationService quotaReconciliationService) {
+            QuotaReconciliationService quotaReconciliationService,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         return new AuthService(
                 identityAccountRepository,
                 identityRefreshTokenRepository,
@@ -262,7 +263,8 @@ public class AuthDataSourceConfig {
                 entitlementSnapshotService,
                 inviteCodeService,
                 trialService,
-                quotaReconciliationService);
+                quotaReconciliationService,
+                alertNotifier);
     }
 
     /** ADMIN-OPS (V36): minimal internal admin console reads. */
@@ -272,8 +274,11 @@ public class AuthDataSourceConfig {
     }
 
     @Bean
-    public AuthController authController(AuthService authService, AuthAbuseGuard authAbuseGuard) {
-        return new AuthController(authService, authAbuseGuard);
+    public AuthController authController(
+            AuthService authService,
+            AuthAbuseGuard authAbuseGuard,
+            com.virtualcompanion.runtime.observability.AlertProperties alertProperties) {
+        return new AuthController(authService, authAbuseGuard, alertProperties);
     }
 
     @Bean
@@ -765,6 +770,7 @@ public class AuthDataSourceConfig {
             com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort,
             SafetyEventService safetyEventService,
             ConversationSummaryService conversationSummaryService,
+            com.virtualcompanion.runtime.observability.VcMetrics metrics,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -779,7 +785,8 @@ public class AuthDataSourceConfig {
                 generationRepository,
                 safetyClassifierPort,
                 safetyEventService,
-                conversationSummaryService);
+                conversationSummaryService,
+                metrics);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

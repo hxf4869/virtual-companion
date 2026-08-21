@@ -73,6 +73,7 @@ public class AuthService {
     private final InviteCodeService inviteCodes;
     private final TrialService trials;
     private final QuotaReconciliationService quotaReconciliation;
+    private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
 
     public AuthService(
             IdentityAccountRepository accounts,
@@ -84,7 +85,8 @@ public class AuthService {
             EntitlementSnapshotService entitlementSnapshotService,
             InviteCodeService inviteCodes,
             TrialService trials,
-            QuotaReconciliationService quotaReconciliation) {
+            QuotaReconciliationService quotaReconciliation,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         this.accounts = accounts;
         this.sessions = sessions;
         this.passwordEncoder = passwordEncoder;
@@ -100,6 +102,8 @@ public class AuthService {
         this.trials = Objects.requireNonNull(trials, "trials must not be null");
         this.quotaReconciliation = Objects.requireNonNull(
                 quotaReconciliation, "quotaReconciliation must not be null");
+        this.alertNotifier = Objects.requireNonNull(
+                alertNotifier, "alertNotifier must not be null");
         // A valid BCrypt hash so the unknown-account login path runs a real
         // (equally expensive) compare instead of short-circuiting.
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
@@ -299,6 +303,12 @@ public class AuthService {
                 throw genericError();
             }
         } catch (DataAccessException e) {
+            // METRICS-ALERT (§26.6): an unexpected deletion failure is a P1 —
+            // the alert never replaces the error handling (still rethrown as
+            // the generic non-disclosing error).
+            alertNotifier.alert(com.virtualcompanion.runtime.observability.AlertSeverity.P1,
+                    "ACCOUNT_DELETE_FAILED",
+                    "account deletion failed with a data-access exception");
             throw genericError();
         }
         return new AuthResponses.AccountDeletedResponse(true);

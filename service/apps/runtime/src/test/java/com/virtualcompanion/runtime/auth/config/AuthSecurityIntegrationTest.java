@@ -207,7 +207,7 @@ class AuthSecurityIntegrationTest {
     @Test
     void datasourceControllerFactoryReceivesTheSameSingletonGuard() {
         AuthService authService = mock(AuthService.class);
-        AuthController controller = new AuthDataSourceConfig().authController(authService, authAbuseGuard);
+        AuthController controller = new AuthDataSourceConfig().authController(authService, authAbuseGuard, com.virtualcompanion.runtime.observability.TestAlerts.props());
 
         assertThat(ReflectionTestUtils.getField(controller, "authService"))
                 .isSameAs(authService);

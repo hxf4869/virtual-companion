@@ -51,7 +51,7 @@ class AuthControllerCookieTest {
     void setUp() {
         authService = mock(AuthService.class);
         when(authService.refreshTtlSeconds()).thenReturn(604800L);
-        AuthController controller = new AuthController(authService, new AuthAbuseGuard());
+        AuthController controller = new AuthController(authService, new AuthAbuseGuard(), com.virtualcompanion.runtime.observability.TestAlerts.props());
         ReflectionTestUtils.setField(controller, "cookieSecure", true);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new AuthExceptionHandler())

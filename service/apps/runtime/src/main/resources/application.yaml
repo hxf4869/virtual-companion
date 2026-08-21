@@ -39,7 +39,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       show-details: never
@@ -58,6 +58,15 @@ virtual-companion:
     # (VC_COMMIT), never required so a local build serves the endpoint too.
     version: "@project.version@"
     commit: ${VC_COMMIT:}
+    # METRICS-ALERT (§26.6): webhook alert channel + R3/R4 SLA thresholds for
+    # the admin safety queue. The URL is deployment-injected; blank disables
+    # posting (metrics stay exposed, nothing is sent).
+  alerts:
+    webhook-url: ${VC_ALERT_WEBHOOK_URL:}
+    connect-timeout: 2s
+    throttle-millis: 60000
+    r3-sla-hours: 24
+    r4-sla-hours: 1
   auth:
     # Master switch for the self-hosted identity component. Off by default so a
     # plain runtime context (tests, baseline) needs no secret and no database.

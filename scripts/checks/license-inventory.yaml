@@ -68,6 +68,10 @@ mavenDirectDependencies:
   - groupId: tools.jackson.core
     artifactId: jackson-databind
     licenseFamily: Apache-2.0
+  # --- Micrometer (Apache-2.0; METRICS-ALERT Prometheus endpoint) ---
+  - groupId: io.micrometer
+    artifactId: micrometer-registry-prometheus
+    licenseFamily: Apache-2.0
   # --- Jackson 2 (compile, Spring Boot BOM managed; TASK-0184) ---
   - groupId: com.fasterxml.jackson.core
     artifactId: jackson-databind

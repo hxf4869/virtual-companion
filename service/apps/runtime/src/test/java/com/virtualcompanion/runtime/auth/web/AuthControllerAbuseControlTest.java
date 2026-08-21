@@ -39,7 +39,7 @@ class AuthControllerAbuseControlTest {
     void setUp() {
         authService = mock(AuthService.class);
         when(authService.refreshTtlSeconds()).thenReturn(604800L);
-        AuthController controller = new AuthController(authService, new AuthAbuseGuard());
+        AuthController controller = new AuthController(authService, new AuthAbuseGuard(), com.virtualcompanion.runtime.observability.TestAlerts.props());
         ReflectionTestUtils.setField(controller, "cookieSecure", true);
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -168,7 +168,7 @@ class AuthControllerAbuseControlTest {
     void nonCanonicalLoginPathsDoNotReachTheMvcEndpoint() throws Exception {
         AuthAbuseGuard guard = new AuthAbuseGuard();
         MockMvc admissionProtectedMvc = MockMvcBuilders.standaloneSetup(
-                        new AuthController(authService, guard))
+                        new AuthController(authService, guard, com.virtualcompanion.runtime.observability.TestAlerts.props()))
                 .setControllerAdvice(new AuthExceptionHandler())
                 .addFilters(
                         new AuthSourceAdmissionFilter(guard),

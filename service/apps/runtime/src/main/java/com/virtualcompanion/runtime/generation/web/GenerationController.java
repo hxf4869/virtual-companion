@@ -75,6 +75,8 @@ public class GenerationController {
     private final GenerationCancelService cancelService;
     private final BetaServiceWindow serviceWindow;
     private final ServiceWindowService serviceWindowService;
+    private final com.virtualcompanion.runtime.observability.VcMetrics metrics;
+    private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
 
     public GenerationController(
             GenerationReceiveService receiveService,
@@ -86,7 +88,9 @@ public class GenerationController {
             SafetyEventService safetyEventService,
             GenerationCancelService cancelService,
             BetaServiceWindow serviceWindow,
-            ServiceWindowService serviceWindowService) {
+            ServiceWindowService serviceWindowService,
+            com.virtualcompanion.runtime.observability.VcMetrics metrics,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         this.receiveService = receiveService;
         this.enqueueService = enqueueService;
         this.generationRepository = generationRepository;
@@ -97,6 +101,8 @@ public class GenerationController {
         this.cancelService = cancelService;
         this.serviceWindow = serviceWindow;
         this.serviceWindowService = serviceWindowService;
+        this.metrics = metrics;
+        this.alertNotifier = alertNotifier;
     }
 
     @PostMapping("/conversations/{conversationId}/generations")
@@ -178,6 +184,15 @@ public class GenerationController {
                 serviceWindowService.state(ownerUserId, serviceWindow.dayStart(now));
         serviceWindow.rejectReason(now, state.dailyActiveUsers(), state.ownerActiveToday())
                 .ifPresent(reason -> {
+                    if ("daily-active-limit".equals(reason)) {
+                        // METRICS-ALERT (§26.6): the DAU cap refusing a new
+                        // active user is the configured P2 signal; the
+                        // notifier throttles repeat hits per code.
+                        alertNotifier.alert(
+                                com.virtualcompanion.runtime.observability.AlertSeverity.P2,
+                                "DAU_CAP_REACHED",
+                                "daily active users reached the beta cap; new actives refused");
+                    }
                     throw new ServiceWindowClosedException(reason);
                 });
     }
@@ -203,6 +218,8 @@ public class GenerationController {
             return false;
         }
         String ruleId = classification.hardRuleViolations().get(0);
+        metrics.generationTerminal("blocked_input");
+        metrics.safetyEvent(SafetyEventService.STAGE_INPUT, classification.riskLevel().code());
         generationStateService.promote(
                 ownerUserId, generationId, GenerationStateService.INPUT_REVIEW);
         finalizeService.terminalizeAsInputBlocked(ownerUserId, generationId, ruleId);

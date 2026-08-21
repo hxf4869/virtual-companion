@@ -106,6 +106,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final SafetyClassifierPort safetyClassifier;
     private final SafetyEventService safetyEventService;
     private final ConversationSummaryService summaryService;
+    private final com.virtualcompanion.runtime.observability.VcMetrics metrics;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -120,7 +121,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             GenerationRepository generationRepository,
             SafetyClassifierPort safetyClassifier,
             SafetyEventService safetyEventService,
-            ConversationSummaryService summaryService) {
+            ConversationSummaryService summaryService,
+            com.virtualcompanion.runtime.observability.VcMetrics metrics) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -134,6 +136,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.safetyClassifier = safetyClassifier;
         this.safetyEventService = safetyEventService;
         this.summaryService = summaryService;
+        this.metrics = metrics;
     }
 
     @Override
@@ -145,12 +148,18 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         WorkItemWorker.OwnerExecutor executor = WorkItemWorker.segmentExecutor();
         long ownerUserId = claim.ownerUserId();
         long generationId = claim.refId();
+        // METRICS-ALERT (§22.10): one duration sample + one terminal counter
+        // per handled work item; result tags are the fixed strings below.
+        long startNanos = System.nanoTime();
+        String metricResult = "error";
         try {
             // ---- prepare-tx ----
             Prepared prepared = prepareSegment(executor, claim, ownerUserId, generationId);
             if (prepared.degradeFault() != null) {
                 // No provider runtime wired: degrade inside a guarded fail tx.
                 failSegment(executor, claim, ownerUserId, generationId, prepared.degradeFault());
+                metricResult = "failed";
+                metrics.generationTerminal(metricResult);
                 return;
             }
             // ---- external-no-db (adapter/session only, no database) ----
@@ -185,22 +194,27 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     prepared.invokerValue().execute(prepared.invocationValue(), sink);
             // ---- audit-outcome-tx ----
             if (outcome.externalAttemptCreated()) {
+                metrics.providerAttempt(outcome.terminal().name());
                 auditOutcomeSegment(executor, ownerUserId, outcome);
             }
             // ---- guarded finalize / guarded fail ----
             if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
+                metricResult = "completed";
                 finalizeExternalSuccess(
                         executor, claim, ownerUserId, generationId, outcome, pausedDeltas.get());
             } else if (outcome.terminal() == LiveAttemptTerminal.ZERO_LLM_COMPLETED) {
+                metricResult = "completed_zero_llm";
                 finalizeZeroLlmSuccess(executor, claim, ownerUserId, generationId, outcome);
             } else if (prepared.externalMode() && retryableFailure(outcome)) {
                 // V29 RETRY-A: the adapter explicitly classified the failure as
                 // retryable; requeue with bounded backoff or dead-letter.
+                metricResult = "retried";
                 retrySegment(executor, claim, ownerUserId, generationId);
             } else {
                 String fault = prepared.externalMode()
                         ? "external-" + outcome.terminal().name().toLowerCase(java.util.Locale.ROOT)
                         : "zero-llm-unexpected-outcome:" + outcome.terminal();
+                metricResult = "failed";
                 failSegment(executor, claim, ownerUserId, generationId, fault);
                 log.warn("generation {} terminated as FAILED_FINAL for owner {} (outcome={})",
                         generationId, ownerUserId, outcome.terminal());
@@ -212,6 +226,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             // transaction, only the original item/token/fence).
             throw e;
         } finally {
+            metrics.generationDuration(startNanos, metricResult);
             // STREAM-LIVE: the live tail completes once this item is fully
             // processed (durable terminal state committed); the client's next
             // resume attempt then delivers the terminal snapshot.
@@ -346,16 +361,22 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 safetyClassifier.classify(SafetyStage.OUTPUT, content);
         if (!finalReview.allowed()) {
             String ruleId = finalReview.hardRuleViolations().get(0);
+            metrics.generationTerminal("blocked_output");
             executor.asOwner(ownerUserId, () -> {
                 finalizeService.assertActiveClaim(
                         ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
                 stateService.promote(ownerUserId, generationId, GenerationStateService.FINAL_REVIEW);
                 finalizeService.terminalizeAsBlocked(ownerUserId, generationId, ruleId);
                 if (pausedDeltas > 0) {
+                    metrics.safetyEvent(
+                            SafetyEventService.STAGE_INCREMENTAL,
+                            finalReview.riskLevel().code());
                     safetyEventService.record(
                             ownerUserId, generationId, SafetyEventService.STAGE_INCREMENTAL,
                             finalReview.riskLevel().code(), ruleId);
                 }
+                metrics.safetyEvent(
+                        SafetyEventService.STAGE_FINAL, finalReview.riskLevel().code());
                 safetyEventService.record(
                         ownerUserId, generationId, SafetyEventService.STAGE_FINAL,
                         finalReview.riskLevel().code(), ruleId);
@@ -400,6 +421,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     "USD",
                     1,
                     false);
+            metrics.tokens("input", inputTokens);
+            metrics.tokens("output", outputTokens);
             enqueueMemoryExtract(ownerUserId, generationId);
             // CONV-SUMMARY (§11.18): external success updates the L2 summary
             // inside the same guarded transaction; the SD's quality floor may

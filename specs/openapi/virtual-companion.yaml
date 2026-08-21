@@ -5090,13 +5090,6 @@ components:
         One deterministic safety-queue row (SAFETY-QUEUE, §20.5). Carries only
         the stage, the risk-levels catalog code and the rule id — content is
         never stored or returned; triage stays a human action.
-      required:
-        - id
-        - ownerId
-        - stage
-        - riskLevel
-        - ruleId
-        - createdAt
       properties:
         id:
           type: string
@@ -5131,6 +5124,27 @@ components:
           type: string
           format: date-time
           description: Event time (RFC 3339).
+        ageHours:
+          type: number
+          format: double
+          description: >-
+            METRICS-ALERT (V69): row age in hours (SQL-computed) so R3/R4 SLA
+            breach is visible in the queue without a threshold in SQL.
+        slaBreached:
+          type: boolean
+          description: >-
+            METRICS-ALERT (V69): true when an R3/R4 row is older than the
+            deployment-configured SLA hours
+            (virtual-companion.alerts.r3-sla-hours / r4-sla-hours).
+      required:
+        - id
+        - ownerId
+        - stage
+        - riskLevel
+        - ruleId
+        - createdAt
+        - ageHours
+        - slaBreached
     BetaReportItem:
       type: object
       description: >-

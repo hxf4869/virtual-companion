@@ -92,7 +92,7 @@ public class AdminConsoleService {
         }
         return jdbc.query(
                 "SELECT out_id, out_owner_user_id, out_generation_id, out_stage, "
-                        + "out_risk_level, out_rule_id, out_created_at "
+                        + "out_risk_level, out_rule_id, out_created_at, out_age_hours "
                         + "FROM vc.list_safety_events(?, ?, ?)",
                 (rs, rowNum) -> new SafetyEventListRecord(
                         rs.getLong("out_id"),
@@ -101,7 +101,8 @@ public class AdminConsoleService {
                         rs.getString("out_stage"),
                         rs.getString("out_risk_level"),
                         rs.getString("out_rule_id"),
-                        rs.getTimestamp("out_created_at").toInstant()),
+                        rs.getTimestamp("out_created_at").toInstant(),
+                        rs.getDouble("out_age_hours")),
                 actingAccountId,
                 after,
                 limit);
@@ -206,7 +207,8 @@ public class AdminConsoleService {
                 actingAccountId, after, limit);
     }
 
-    /** SAFETY-QUEUE: one admin-queue row (V59). */
+    /** SAFETY-QUEUE: one admin-queue row (V59; V69 adds the row age in hours
+     * so the runtime can flag R3/R4 SLA breach against configured thresholds). */
     public record SafetyEventListRecord(
             long id,
             long ownerUserId,
@@ -214,6 +216,7 @@ public class AdminConsoleService {
             String stage,
             String riskLevel,
             String ruleId,
-            Instant createdAt) {
+            Instant createdAt,
+            double ageHours) {
     }
 }

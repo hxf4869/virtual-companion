@@ -41,7 +41,7 @@ class AuthControllerValidationTest {
     @BeforeEach
     void setUp() {
         authService = mock(AuthService.class);
-        AuthController controller = new AuthController(authService, new AuthAbuseGuard());
+        AuthController controller = new AuthController(authService, new AuthAbuseGuard(), com.virtualcompanion.runtime.observability.TestAlerts.props());
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(controller)

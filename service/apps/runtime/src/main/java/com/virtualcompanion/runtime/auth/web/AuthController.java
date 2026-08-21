@@ -64,6 +64,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final AuthAbuseGuard abuseGuard;
+    private final com.virtualcompanion.runtime.observability.AlertProperties alertProperties;
 
     /**
      * Secure flag for the session cookies. Field-injected so the bean can be
@@ -82,9 +83,13 @@ public class AuthController {
     @Value("${virtual-companion.auth.invite-registration-enabled:false}")
     private boolean inviteRegistrationEnabled;
 
-    public AuthController(AuthService authService, AuthAbuseGuard abuseGuard) {
+    public AuthController(
+            AuthService authService,
+            AuthAbuseGuard abuseGuard,
+            com.virtualcompanion.runtime.observability.AlertProperties alertProperties) {
         this.authService = authService;
         this.abuseGuard = abuseGuard;
+        this.alertProperties = alertProperties;
     }
 
     @PostMapping("/login")
@@ -456,14 +461,31 @@ public class AuthController {
                         record.stage(),
                         record.riskLevel(),
                         record.ruleId(),
-                        record.createdAt().toString()))
+                        record.createdAt().toString(),
+                        record.ageHours(),
+                        isSlaBreached(record.riskLevel(), record.ageHours())))
                 .toList();
+    }
+
+    /** METRICS-ALERT (V69): R3/R4 queue rows past the configured SLA hours. */
+    private boolean isSlaBreached(String riskLevel, double ageHours) {
+        if (riskLevel == null) {
+            return false;
+        }
+        if (riskLevel.startsWith("R4")) {
+            return ageHours > alertProperties.r4SlaHours();
+        }
+        if (riskLevel.startsWith("R3")) {
+            return ageHours > alertProperties.r3SlaHours();
+        }
+        return false;
     }
 
     /** SAFETY-QUEUE: one admin-queue row. */
     public record SafetyEventResponse(
             String id, String ownerId, String generationId, String stage,
-            String riskLevel, String ruleId, String createdAt) {
+            String riskLevel, String ruleId, String createdAt,
+            double ageHours, boolean slaBreached) {
     }
 
     /** ENT-SNAP (V40): ADMIN-only simulated service-class assignment. */

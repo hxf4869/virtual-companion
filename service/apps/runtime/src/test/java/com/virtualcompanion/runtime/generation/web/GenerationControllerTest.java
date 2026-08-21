@@ -77,7 +77,9 @@ class GenerationControllerTest {
         GenerationController controller = new GenerationController(
                 receiveService, enqueueService, generationRepository, generationStateService,
                 finalizeService, new DeterministicSafetyClassifier(), safetyEventService,
-                cancelService, window, serviceWindowService);
+                cancelService, window, serviceWindowService,
+                com.virtualcompanion.runtime.observability.TestAlerts.metrics(),
+                com.virtualcompanion.runtime.observability.TestAlerts.noop());
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(principalResolver())

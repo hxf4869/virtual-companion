@@ -8,7 +8,9 @@ public record SafetyEventItem(
     final String stage,
     final String riskLevel,
     final String ruleId,
-    final String createdAt
+    final String createdAt,
+    final String ageHours,
+    final String slaBreached
 ) {
     public SafetyEventItem {
         java.util.Objects.requireNonNull(id, "id must not be null");
@@ -18,5 +20,7 @@ public record SafetyEventItem(
         java.util.Objects.requireNonNull(riskLevel, "riskLevel must not be null");
         java.util.Objects.requireNonNull(ruleId, "ruleId must not be null");
         java.util.Objects.requireNonNull(createdAt, "createdAt must not be null");
+        java.util.Objects.requireNonNull(ageHours, "ageHours must not be null");
+        java.util.Objects.requireNonNull(slaBreached, "slaBreached must not be null");
     }
 }

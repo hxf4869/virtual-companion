@@ -181,8 +181,10 @@ class SchemaReadinessHealthIndicatorTest {
         // V66 = MEM-AUTO-SAVE deterministic low-sensitivity auto-save;
         // V67 = drill-fix explicit row emission for two set-returning SDs;
         // V68 = MEM-SUPERSEDE/MEM-EVENT explicit supersede chain + event
-        // lifecycle with lazy EXPIRED).
+        // lifecycle with lazy EXPIRED);
+        // V69 = METRICS-ALERT safety-queue SLA age (list_safety_events
+        // redefinition adds out_age_hours).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(68);
+                .isEqualTo(69);
     }
 }

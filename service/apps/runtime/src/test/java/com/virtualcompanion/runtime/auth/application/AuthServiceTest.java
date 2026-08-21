@@ -68,7 +68,8 @@ class AuthServiceTest {
         service = new AuthService(
                 accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7),
                 adminConsole, entitlementSnapshotService, inviteCodes,
-                trials, quotaReconciliation);
+                trials, quotaReconciliation,
+                com.virtualcompanion.runtime.observability.TestAlerts.noop());
     }
 
     @Test
