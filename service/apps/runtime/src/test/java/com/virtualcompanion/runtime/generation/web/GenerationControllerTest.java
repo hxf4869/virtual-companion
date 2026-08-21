@@ -115,7 +115,9 @@ class GenerationControllerTest {
     void sendGenerationRefusedOutsideTheServiceWindowBeforeAnythingPersists() throws Exception {
         // SVC-WINDOW: with the gate on and the window closed, the turn is
         // refused up front — no receive, no enqueue, 403 BETA_OPERATIONS_NOT_READY.
-        setUpWithWindow(new BetaServiceWindow(true, false, "20:30", 10, "Asia/Shanghai"));
+        // Paused makes the closed-gate refusal deterministic (the old draft
+        // window 20:30-00:00 flipped on real clock when tests ran inside it).
+        setUpWithWindow(new BetaServiceWindow(true, true, "20:30", 10, "Asia/Shanghai"));
         org.mockito.Mockito.when(serviceWindowService.state(
                         org.mockito.ArgumentMatchers.anyLong(),
                         org.mockito.ArgumentMatchers.any()))
