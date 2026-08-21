@@ -242,6 +242,12 @@ public interface VirtualCompanionApi {
     /** The caller's live simulated trial (ENT-TRIAL, FR-ENT-005). */
     TrialStatus getTrialStatus();
 
+    /** Record today's 被理解感 score (B1-SURVEY, §26.5). */
+    SurveyAccepted recordSurvey();
+
+    /** The owner's own scoring history, newest first. */
+    Void listMySurveys();
+
     /** ADMIN-only keyset page of the safety queue (SAFETY-QUEUE, §20.5). */
     Void listSafetyEvents();
 

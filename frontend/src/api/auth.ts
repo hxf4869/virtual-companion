@@ -821,3 +821,15 @@ export class AuthHttpError extends Error {
     this.status = status;
   }
 }
+
+/** B1-SURVEY (§26.5): record today's 被理解感 score (1..5). Returns whether
+ * the score was recorded (false = already scored today). */
+export async function recordSurvey(
+  t: AuthTransport,
+  score: number,
+): Promise<boolean> {
+  const r = await t.request("POST", "/api/v1/survey", { score });
+  if (!r.ok) return false;
+  const body = r.json as { accepted?: boolean };
+  return body?.accepted === true;
+}

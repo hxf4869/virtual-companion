@@ -2803,6 +2803,69 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/survey:
+    post:
+      operationId: recordSurvey
+      summary: Record today's 被理解感 score (B1-SURVEY, §26.5)
+      description: >-
+        One immutable score (1..5) per owner per day (Asia/Shanghai). A second
+        submission the same day is accepted by the API but is a no-op
+        (accepted=false). The Beta product gate is computed offline from the
+        stored responses.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+      responses:
+        '200':
+          description: Recorded (or already-scored today)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurveyAccepted'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      operationId: listMySurveys
+      summary: The owner's own scoring history, newest first
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Own scoring history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SurveyRow'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/admin/safety-events:
     get:
       operationId: listSafetyEvents
@@ -5084,6 +5147,39 @@ components:
           type: string
           format: date-time
           description: Trial expiry (RFC 3339).
+    SurveyRequest:
+      type: object
+      required:
+        - score
+      properties:
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 被理解感评分（随机会话后,1..5）。
+        conversationId:
+          type: string
+          nullable: true
+          description: Optional conversation the score refers to.
+    SurveyAccepted:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+          description: True when today's score was recorded; false if already scored today.
+    SurveyRow:
+      type: object
+      required:
+        - date
+        - score
+      properties:
+        date:
+          type: string
+          format: date
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
     SafetyEventItem:
       type: object
       description: >-

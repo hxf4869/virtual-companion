@@ -541,6 +541,20 @@ export interface TrialStatus {
   expiresAt?: string
 }
 
+export interface SurveyRequest {
+  score: string
+  conversationId?: string
+}
+
+export interface SurveyAccepted {
+  accepted?: string
+}
+
+export interface SurveyRow {
+  date: string
+  score: string
+}
+
 export interface SafetyEventItem {
   id: string
   ownerId: string
@@ -727,6 +741,8 @@ export interface VirtualCompanionApiClient {
   quotaReconciliation(): Promise<VersionResponse>
   providerRegistry(): Promise<VersionResponse>
   getTrialStatus(): Promise<VersionResponse>
+  recordSurvey(): Promise<VersionResponse>
+  listMySurveys(): Promise<VersionResponse>
   listSafetyEvents(): Promise<VersionResponse>
   listBetaReports(): Promise<VersionResponse>
   listBetaAgeAppeals(): Promise<VersionResponse>

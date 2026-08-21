@@ -46,6 +46,7 @@ describe("account page", () => {
     expect(wrapper.find('[data-testid="account-id"]').text()).toContain("42");
     expect(wrapper.find('[data-testid="account-role"]').text()).toContain("USER");
     expect(wrapper.find('[data-testid="public-computer-hint"]').text()).toContain("公共电脑");
+    expect(wrapper.find('[data-testid="survey-card"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="account-signed-out"]').exists()).toBe(false);
     wrapper.unmount();
   });

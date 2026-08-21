@@ -8,6 +8,7 @@ import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
 import com.virtualcompanion.modelruntime.authorization.ProviderRegion;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.platform.persistence.AdminConsoleService;
+import com.virtualcompanion.platform.persistence.SurveyService;
 import com.virtualcompanion.platform.persistence.AgeAppealService;
 import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.platform.persistence.AuthorizationSnapshotProvider;
@@ -362,7 +363,13 @@ public class AuthDataSourceConfig {
         /** CRYPTO-REST (§16.5/§17.4): at-rest cipher for chat bodies. The dev
      * default key keeps local development and CI friction-free; production
      * rejects it (fail-closed) and must inject VC_CRYPTO_REST_KEY. */
+        /** B1-SURVEY (§26.5 / R45): daily 被理解感 score capture. */
     @Bean
+    public SurveyService surveyService(JdbcTemplate authJdbcTemplate) {
+        return new SurveyService(authJdbcTemplate);
+    }
+
+@Bean
     public com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher(
             @org.springframework.beans.factory.annotation.Value(
                     "${virtual-companion.crypto.rest-key}") String restKey) {

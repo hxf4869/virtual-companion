@@ -185,8 +185,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V69 = METRICS-ALERT safety-queue SLA age (list_safety_events
         // redefinition adds out_age_hours);
         // V70 = RETENTION versioned data_retention_policy + categorized
-        // purge SDs).
+        // purge SDs);
+        // V72 = B1-SURVEY daily 被理解感 score capture (survey_response RLS table).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(71);
+                .isEqualTo(72);
     }
 }

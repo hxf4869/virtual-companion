@@ -31,6 +31,24 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text class="meta">在公共或共用电脑上使用后，请「登出」并关闭页面；建议使用浏览器无痕模式。登出会清除本机缓存的会话数据。</text>
       </view>
 
+      <view class="card" data-testid="survey-card">
+        <text class="label">本期体验评分</text>
+        <text class="meta">这段对话让你感到「被理解」了吗？1 分完全没被理解，5 分非常被理解。每天可评一次。</text>
+        <view class="actions" data-testid="survey-buttons">
+          <button
+            v-for="s in [1, 2, 3, 4, 5]"
+            :key="s"
+            class="nav-index"
+            :data-testid="'survey-score-' + s"
+            :disabled="busy"
+            @click="onSurvey(s)"
+          >
+            {{ s }}
+          </button>
+        </view>
+        <text v-if="surveyMsg" class="meta" data-testid="survey-msg">{{ surveyMsg }}</text>
+      </view>
+
       <view class="danger">
         <text class="label">注销账号</text>
         <text class="meta">注销会删除本账号的业务数据，且无法恢复登录。合规审计日志按既定保留期留存。</text>
@@ -70,7 +88,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
 <script lang="ts">
 import { onMounted, ref } from "vue";
 
-import { deleteAccount } from "@/api/auth";
+import { deleteAccount, recordSurvey } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 
@@ -81,6 +99,7 @@ export default {
     const deleteOpen = ref(false);
     const deleteError = ref("");
     const busy = ref(false);
+    const surveyMsg = ref("");
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -93,6 +112,20 @@ export default {
         await auth.tryRefresh(transport);
       }
     });
+
+
+    async function onSurvey(score: number): Promise<void> {
+      if (busy.value) return;
+      busy.value = true;
+      try {
+        const accepted = await recordSurvey(transport, score);
+        surveyMsg.value = accepted
+          ? "已记录今天的评分，谢谢你的反馈。"
+          : "今天已经评过分了，明天再来吧。";
+      } finally {
+        busy.value = false;
+      }
+    }
 
     async function onLogout(): Promise<void> {
       if (busy.value) return;
@@ -140,7 +173,7 @@ export default {
       }
     }
 
-    return { auth, deleteOpen, deleteError, busy, onLogout, onConfirmDelete, goTo };
+    return { auth, deleteOpen, deleteError, busy, surveyMsg, onSurvey, onLogout, onConfirmDelete, goTo };
   },
 };
 </script>
