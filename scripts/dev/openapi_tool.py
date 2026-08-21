@@ -212,7 +212,18 @@ def generate(root: Path, out: Path) -> None:
         for method, op in item.items():
             if method == "parameters" or not isinstance(op, dict):
                 continue
-            ts.append(f"  {op['operationId']}(): Promise<VersionResponse>")
+            # Same derivation as the Java interface: the 200-response $ref
+            # names the return record; no JSON 200 body means void.
+            responses = op.get("responses", {})
+            ok = responses.get("200", {})
+            ref = (
+                ok.get("content", {})
+                .get("application/json", {})
+                .get("schema", {})
+                .get("$ref", "")
+            )
+            return_type = _record_name(ref.split("/")[-1]) if ref else "void"
+            ts.append(f"  {op['operationId']}(): Promise<{return_type}>")
     ts.append("}")
     write_text_lf(ts_dir / "api.ts", "\n".join(ts).rstrip() + "\n")
 

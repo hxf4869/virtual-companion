@@ -14,22 +14,7 @@ relative discrepancy, and fails (exit 1) when any day drifts beyond
 """
 import argparse
 import csv
-
-
-def load(path: str) -> dict[str, float]:
-    with open(path, newline="") as f:
-        return {r["date"]: float(r[r_key(r)]) for r in rows(f)}
-
-
-def rows(f):
-    return csv.DictReader(f, delimiter="\t")
-
-
-def r_key(r: dict) -> str:
-    for k in ("settled_cost_usd", "cost_usd"):
-        if k in r:
-            return k
-    raise KeyError("cost column missing")
+import sys
 
 
 def main() -> None:
@@ -69,5 +54,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import sys
     main()

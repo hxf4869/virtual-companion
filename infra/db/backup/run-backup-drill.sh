@@ -42,7 +42,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-psql() { docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q "$@"; }
 
 wait_ready() { # $1 = container
     local stable=0

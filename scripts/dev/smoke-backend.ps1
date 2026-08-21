@@ -13,6 +13,14 @@ $relativePath = $Matches[2].Replace('\', '/')
 $linuxRepositoryRoot = "/mnt/$drive/$relativePath"
 $mavenImage = 'maven:3.9.16-eclipse-temurin-25-noble@sha256:7e461cec477077c1d9e50b13df8aef9018764410f4c4cd7c34803f10c4c99e4c'
 $containerName = "virtual-companion-runtime-smoke-$([guid]::NewGuid().ToString('N'))"
+
+# Resolve the newest runtime jar so a version bump does not break the script.
+$runtimeJar = Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'service\apps\runtime\target') -Filter 'virtual-companion-runtime-*.jar' -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($null -eq $runtimeJar) {
+    throw '未找到 Runtime JAR，请先运行 .\scripts\dev\maven-verify.ps1。'
+}
+$containerJarPath = "/workspace/service/apps/runtime/target/$($runtimeJar.Name)"
 $containerStarted = $false
 
 try {
@@ -21,7 +29,7 @@ try {
         --publish '127.0.0.1:18080:8080' `
         --volume "${linuxRepositoryRoot}:/workspace:ro" `
         $mavenImage `
-        java -jar /workspace/service/apps/runtime/target/virtual-companion-runtime-0.1.0-SNAPSHOT.jar | Out-Null
+        java -jar $containerJarPath | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
         throw "无法启动后端冒烟容器，退出码：$LASTEXITCODE"

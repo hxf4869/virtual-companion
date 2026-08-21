@@ -6,7 +6,7 @@ description: >-
   内部模块（com.virtualcompanion:*）标注 INTERNAL。未知或待审查项标注
   COMMUNITY_FREE_REVIEW_REQUIRED。传递依赖不在此清单（需 cyclonedx SBOM 覆盖）。
 # Maven 直接依赖（跨所有 pom.xml 的 <dependencies> 去重，不含 dependencyManagement BOM import）
-# 实际 = 15 外部 + 9 内部模块 = 24
+# 实际 = 18 外部 + 9 内部模块 = 27
 mavenDirectDependencies:
   # --- Spring Boot starters (Apache-2.0) ---
   - groupId: org.springframework.boot
