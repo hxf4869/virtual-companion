@@ -829,6 +829,10 @@ public class AuthDataSourceConfig {
             ConversationSummaryService conversationSummaryService,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            @Value("${virtual-companion.model-providers.circuit-failure-threshold:5}")
+            int circuitFailureThreshold,
+            @Value("${virtual-companion.model-providers.circuit-cooldown-millis:60000}")
+            long circuitCooldownMillis,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -845,7 +849,9 @@ public class AuthDataSourceConfig {
                 safetyEventService,
                 conversationSummaryService,
                 metrics,
-                alertNotifier);
+                alertNotifier,
+                new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(
+                        circuitFailureThreshold, circuitCooldownMillis));
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

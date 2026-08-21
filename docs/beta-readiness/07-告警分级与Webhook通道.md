@@ -30,6 +30,15 @@
 {"severity":"P2","code":"DAU_CAP_REACHED","message":"daily active users reached the beta cap; new actives refused","occurredAt":"2026-08-21T12:00:00Z"}
 ```
 
+## 2a. ROUTE-HARDEN 熔断器（已接线，§12.12）
+
+- 配置：`virtual-companion.model-providers.circuit-failure-threshold`（默认 5）
+  与 `circuit-cooldown-millis`（默认 60000）。
+- 行为：外部 attempt 连续失败达阈值即熔断 OPEN——后续外发在 prepare 前
+  被拒并进入既有 RETRY-A 有界重试（长故障经死信预算自然终止）；冷却期满
+  放行单个半开探针，成功闭合、失败重开。全局供应商粒度（单 live provider
+  阶段足够；多供应商粘滞随真实 provider 接线交付）。
+
 ## 2b. BUDGET-HALT 硬预算停机（已接线，§22.18）
 
 - 配置：`virtual-companion.model-providers.budget-monthly-usd`（月度美元上限；

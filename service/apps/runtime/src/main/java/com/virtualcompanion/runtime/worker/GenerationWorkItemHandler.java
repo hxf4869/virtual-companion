@@ -108,6 +108,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final ConversationSummaryService summaryService;
     private final com.virtualcompanion.runtime.observability.VcMetrics metrics;
     private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
+    private final com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -124,7 +125,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             SafetyEventService safetyEventService,
             ConversationSummaryService summaryService,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
-            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -140,6 +142,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.summaryService = summaryService;
         this.metrics = metrics;
         this.alertNotifier = alertNotifier;
+        this.circuitBreaker = circuitBreaker;
     }
 
     @Override
@@ -156,6 +159,14 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         long startNanos = System.nanoTime();
         String metricResult = "error";
         try {
+            // ROUTE-HARDEN (§12.12): an OPEN circuit refuses the outbound up
+            // front — the item re-enters the bounded RETRY-A backoff instead,
+            // so a long outage dead-letters via the existing attempt budget.
+            if (circuitBreaker != null && !circuitBreaker.allow("provider")) {
+                metricResult = "retried";
+                retrySegment(executor, claim, ownerUserId, generationId);
+                return;
+            }
             // ---- prepare-tx ----
             Prepared prepared = prepareSegment(executor, claim, ownerUserId, generationId);
             if (prepared.degradeFault() != null) {
@@ -195,6 +206,17 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             };
             LiveAttemptOutcome outcome =
                     prepared.invokerValue().execute(prepared.invocationValue(), sink);
+            // ROUTE-HARDEN (§12.12): record the outbound result on the global
+            // supplier breaker — consecutive failures trip it OPEN and the
+            // gate below refuses new outbounds until the cooldown probe.
+            if (outcome.externalAttemptCreated()) {
+                if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
+                    circuitBreaker.success("provider");
+                } else if (outcome.terminal() == LiveAttemptTerminal.FAILED
+                        || outcome.terminal() == LiveAttemptTerminal.TIMED_OUT) {
+                    circuitBreaker.failure("provider");
+                }
+            }
             // ---- audit-outcome-tx ----
             if (outcome.externalAttemptCreated()) {
                 metrics.providerAttempt(outcome.terminal().name());
