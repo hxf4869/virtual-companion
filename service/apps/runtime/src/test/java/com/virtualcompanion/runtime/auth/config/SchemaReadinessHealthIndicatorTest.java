@@ -183,8 +183,10 @@ class SchemaReadinessHealthIndicatorTest {
         // V68 = MEM-SUPERSEDE/MEM-EVENT explicit supersede chain + event
         // lifecycle with lazy EXPIRED);
         // V69 = METRICS-ALERT safety-queue SLA age (list_safety_events
-        // redefinition adds out_age_hours).
+        // redefinition adds out_age_hours);
+        // V70 = RETENTION versioned data_retention_policy + categorized
+        // purge SDs).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(69);
+                .isEqualTo(70);
     }
 }

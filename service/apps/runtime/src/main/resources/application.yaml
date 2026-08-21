@@ -67,6 +67,12 @@ virtual-companion:
     throttle-millis: 60000
     r3-sla-hours: 24
     r4-sla-hours: 1
+  # RETENTION (§16.7 / R48): categorized purge over the versioned
+  # data_retention_policy (V70). Opt-in — the seeded v1 periods are a DRAFT
+  # pending Owner/legal review; flip to true only after that review.
+  retention:
+    enabled: ${VC_RETENTION_PURGE_ENABLED:false}
+    purge-cron: "0 47 3 * * *"
   auth:
     # Master switch for the self-hosted identity component. Off by default so a
     # plain runtime context (tests, baseline) needs no secret and no database.

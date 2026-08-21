@@ -307,6 +307,24 @@ public class AuthDataSourceConfig {
     }
 
     /**
+     * RETENTION (§16.7 / R48): categorized purge driven by the versioned
+     * {@code vc.data_retention_policy} (V70). Opt-in via
+     * {@code virtual-companion.retention.enabled=true} — the seeded v1 periods
+     * are a DRAFT pending Owner/legal review, so no deployment purges user
+     * data before that review lands. Same scheduling lifecycle as the audit
+     * purge above (EnableScheduling + live datasource only).
+     */
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "virtual-companion.retention.enabled", havingValue = "true")
+    public com.virtualcompanion.runtime.retention.RetentionPurgeScheduler retentionPurgeScheduler(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+        return new com.virtualcompanion.runtime.retention.RetentionPurgeScheduler(
+                authJdbcTemplate, alertNotifier);
+    }
+
+    /**
      * P1-04 worker execution half (Owner 2026-08-12: server-side asOwner
      * injection, runtime in-process). Wires the claim family of SECURITY
      * DEFINER functions (V5/V17/V23) plus the worker batch primitive; the
