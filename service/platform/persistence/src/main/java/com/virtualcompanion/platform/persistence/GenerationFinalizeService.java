@@ -62,12 +62,13 @@ public class GenerationFinalizeService {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("content must not be blank");
         }
+        String storedContent = cipher == null ? content : cipher.encrypt(content);
         Long candidateId = jdbc.queryForObject(
                 "SELECT out_candidate_id FROM vc.insert_generation_candidate(?, ?, ?, false)",
                 Long.class,
                 ownerUserId,
                 generationId,
-                content);
+                storedContent);
         if (candidateId == null) {
             throw new IllegalStateException("insert_generation_candidate returned no id");
         }

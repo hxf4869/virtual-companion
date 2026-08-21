@@ -329,9 +329,10 @@ public class MemoryService {
                 eventStatus == null ? existing.eventStatus() : eventStatus,
                 eventExpiresAt == null ? existing.eventExpiresAt() : eventExpiresAt);
         try {
+            String storedSummary = cipher == null ? summary : cipher.encrypt(summary);
             Boolean updated = jdbc.queryForObject(
                     UPDATE_SQL, Boolean.class,
-                    ownerUserId, memoryId, summary,
+                    ownerUserId, memoryId, storedSummary,
                     toTimestamp(eventAt), eventStatus, toTimestamp(eventExpiresAt));
             if (!Boolean.TRUE.equals(updated)) {
                 throw new IllegalStateException(

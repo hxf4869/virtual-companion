@@ -76,6 +76,9 @@ public class MessageRepository {
     /** Insert one message row under the active tenant context. */
     public void insert(Message message) {
         Objects.requireNonNull(message, "message must not be null");
+        String storedContent = cipher == null
+                ? message.content()
+                : cipher.encrypt(message.content());
         jdbc.update(
                 "INSERT INTO vc.message (owner_user_id, id, conversation_id, role, content) "
                         + "VALUES (?, ?, ?, ?, ?)",
@@ -83,7 +86,7 @@ public class MessageRepository {
                 message.id(),
                 message.conversationId(),
                 message.role(),
-                message.content());
+                storedContent);
     }
 
     /** Find a message by composite owner + id (RLS-scoped). */
@@ -96,7 +99,7 @@ public class MessageRepository {
                         rs.getLong("id"),
                         rs.getLong("conversation_id"),
                         rs.getString("role"),
-                        rs.getString("content"),
+                        decrypt(rs.getString("content")),
                         rs.getBoolean("no_memory")),
                 ownerUserId,
                 id).stream().findFirst();
