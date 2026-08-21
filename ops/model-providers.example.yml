@@ -46,3 +46,19 @@ virtual-companion:
         # SAMPLE-CFG（可选）：temperature 缺省 1.0，合法区间 0..1。
         temperature: 0.7
         enabled: false
+
+    # MODERATION/EMBED（§20.10/§11.17/R49）：真实审核与向量化的灵活接入位。
+    # 两者均为 OpenAI 兼容协议（/moderations、/embeddings），任何兼容第三方
+    # 只需替换 base-url 与模型名；credential-secret 只写名字，值走
+    # VC_MODEL_SECRET_* 或 /run/secrets 注入。默认关闭——关闭时确定性规则与
+    # 确定性 embedder 兜底，行为与现状一致。
+    # moderation:
+    #   provider: openai-compat
+    #   base-url: https://api.openai.com/v1
+    #   model: omni-moderation-latest
+    #   credential-secret: openai-api-key
+    # embeddings:
+    #   provider: openai-compat
+    #   base-url: https://api.example-vendor.com/v1
+    #   model: text-embedding-3-small
+    #   credential-secret: vendor-api-key
