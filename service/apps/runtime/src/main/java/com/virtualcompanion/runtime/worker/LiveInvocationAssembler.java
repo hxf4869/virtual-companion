@@ -97,6 +97,8 @@ public class LiveInvocationAssembler {
     private final EntitlementSnapshotService entitlementSnapshotService;
     private final EmbeddingPort embeddingPort;
     private final boolean degraded;
+    /** EXTERNAL-TIMEOUT: real-provider budget for the external attempt path. */
+    private final TimeoutBudget externalTimeoutBudget;
 
     public LiveInvocationAssembler(
             GenerationRepository generationRepository,
@@ -111,6 +113,40 @@ public class LiveInvocationAssembler {
             EntitlementSnapshotService entitlementSnapshotService,
             EmbeddingPort embeddingPort,
             boolean degraded) {
+        this(
+                generationRepository,
+                conversationRepository,
+                messageRepository,
+                memoryService,
+                relationshipService,
+                jdbcTemplate,
+                zeroLlmSourceId,
+                externalProtocol,
+                budget,
+                entitlementSnapshotService,
+                embeddingPort,
+                degraded,
+                // Legacy default: tight loopback-era budget (1s). Real-provider
+                // deployments must pass an explicit budget via the configurable
+                // constructor (EXTERNAL-TIMEOUT).
+                new TimeoutBudget(
+                        Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)));
+    }
+
+    public LiveInvocationAssembler(
+            GenerationRepository generationRepository,
+            ConversationRepository conversationRepository,
+            MessageRepository messageRepository,
+            MemoryService memoryService,
+            RelationshipService relationshipService,
+            JdbcTemplate jdbcTemplate,
+            String zeroLlmSourceId,
+            ModelProtocol externalProtocol,
+            ContextBudget budget,
+            EntitlementSnapshotService entitlementSnapshotService,
+            EmbeddingPort embeddingPort,
+            boolean degraded,
+            TimeoutBudget externalTimeoutBudget) {
         this.generationRepository = Objects.requireNonNull(generationRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
@@ -125,6 +161,8 @@ public class LiveInvocationAssembler {
                 entitlementSnapshotService, "entitlementSnapshotService must not be null");
         this.embeddingPort = Objects.requireNonNull(embeddingPort, "embeddingPort must not be null");
         this.degraded = degraded;
+        this.externalTimeoutBudget = Objects.requireNonNull(
+                externalTimeoutBudget, "externalTimeoutBudget must not be null");
     }
 
     /**
@@ -274,13 +312,15 @@ public class LiveInvocationAssembler {
 
         // STREAM-LIVE: the external attempt streams — the adapter emits
         // incremental deltas forwarded live by the worker's event sink.
+        // EXTERNAL-TIMEOUT: real providers (reasoning models in particular)
+        // need a generous budget — a 1s total would time out before the first
+        // content delta; the budget is deployment-tunable, not hard-coded.
         return new LiveInvocationRequest(
                 routing,
                 messages,
                 new ResponseMode.Text(),
                 true,
-                new TimeoutBudget(
-                        Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)),
+                externalTimeoutBudget,
                 List.of(),
                 new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80));
     }

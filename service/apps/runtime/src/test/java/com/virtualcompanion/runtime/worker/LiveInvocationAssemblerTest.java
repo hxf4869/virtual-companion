@@ -166,6 +166,39 @@ class LiveInvocationAssemblerTest {
         assertEquals(0L, routing.fence());
     }
 
+    @Test
+    void externalRequestCarriesTheConfiguredTimeoutBudget() {
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
+                new ConversationRepository.Conversation(1L, 5L, 9L, null)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
+                .thenReturn(null);
+        when(entitlementSnapshotService.mint(org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(10L), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
+                        .MintedEntitlementSnapshot(9002L, "ECONOMY", "ECONOMY", "ECONOMY"));
+
+        // EXTERNAL-TIMEOUT: the external attempt must carry the operator-tuned
+        // real-provider budget, not the legacy 1s loopback default.
+        com.virtualcompanion.modelruntime.contract.TimeoutBudget budget =
+                new com.virtualcompanion.modelruntime.contract.TimeoutBudget(
+                        java.time.Duration.ofSeconds(10),
+                        java.time.Duration.ofSeconds(60),
+                        java.time.Duration.ofSeconds(240));
+        LiveInvocationRequest request = new LiveInvocationAssembler(
+                generationRepository, conversationRepository, messageRepository, memoryService,
+                relationshipService, jdbcTemplate, "ZERO_LLM_FALLBACK",
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS, BUDGET, entitlementSnapshotService,
+                new com.virtualcompanion.runtime.memory.DeterministicEmbedder(), false, budget)
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        assertEquals(budget, request.timeoutBudget());
+    }
+
     // ---- MEM-LOOP recall context ----
 
     private void stubOwnershipAndMessages(long owner, long generationId, long conversationId,

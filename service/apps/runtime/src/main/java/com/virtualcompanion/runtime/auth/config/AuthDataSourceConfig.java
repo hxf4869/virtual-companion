@@ -762,7 +762,10 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.generation.context-budget.max-turns:64}") int maxTurns,
             EntitlementSnapshotService entitlementSnapshotService,
             com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort,
-            @Value("${virtual-companion.model-providers.degraded:false}") boolean degraded) {
+            @Value("${virtual-companion.model-providers.degraded:false}") boolean degraded,
+            @Value("${virtual-companion.external-attempt.timeout-connect:10s}") Duration timeoutConnect,
+            @Value("${virtual-companion.external-attempt.timeout-first-token:60s}") Duration timeoutFirstToken,
+            @Value("${virtual-companion.external-attempt.timeout-total:240s}") Duration timeoutTotal) {
         return new LiveInvocationAssembler(
                 generationRepository,
                 conversationRepository,
@@ -776,7 +779,9 @@ public class AuthDataSourceConfig {
                         maxInputTokens, maxOutputTokens, maxTurns),
                 entitlementSnapshotService,
                 embeddingPort,
-                degraded);
+                degraded,
+                new com.virtualcompanion.modelruntime.contract.TimeoutBudget(
+                        timeoutConnect, timeoutFirstToken, timeoutTotal));
     }
 
     /** ENT-SNAP (V40): simulated entitlement mint/assign/list. */

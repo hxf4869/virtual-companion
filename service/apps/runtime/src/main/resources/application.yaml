@@ -156,6 +156,13 @@ virtual-companion:
     contract-ref: ${VC_EXTERNAL_CONTRACT:alpha-standard}
     purpose: ${VC_EXTERNAL_PURPOSE:COMPANION_CHAT}
     data-categories: ${VC_EXTERNAL_CATEGORIES:MESSAGE_TEXT}
+    # EXTERNAL-TIMEOUT: real-provider budget for the external attempt path
+    # (reasoning-model scaffolds consume time before the first content delta).
+    # The defaults are generous so a local real-model deployment works out of
+    # the box; tighten per deployment as latency is measured.
+    timeout-connect: ${VC_EXTERNAL_TIMEOUT_CONNECT:10s}
+    timeout-first-token: ${VC_EXTERNAL_TIMEOUT_FIRST_TOKEN:60s}
+    timeout-total: ${VC_EXTERNAL_TIMEOUT_TOTAL:240s}
   context-budget:
     # CTX-BUDGET: deterministic input-token budget for one generation turn
     # (ContextBudget wired into the live invocation assembler). History is
