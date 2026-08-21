@@ -65,3 +65,6 @@ id_ed25519
 
 # Local deploy secrets overrides (never committed)
 ops/deploy/.local/
+
+# Planning-with-files process artifacts (local only, never committed)
+.planning/
