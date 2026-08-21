@@ -1,14 +1,16 @@
+# 模板文件：真实值班表含真实联系方式，按红线不入库；真实数据落位
+# docs/beta-readiness/duty-roster.local.md（已 gitignore）。本文件保持空字段。
 schemaVersion: 1
 beta_generation_enabled: false
 timezone: Asia/Shanghai
 date: YYYY-MM-DD
 dutyWindow:
-  startsAt: '20:15'
-  generationOpensAt: '20:30'
-  longConversationCutoff: '23:45'
-  newGenerationCutoff: '00:00'
-  inFlightGraceUntil: '00:10'
-  endsAt: '00:30'
+  startsAt: '09:45'
+  generationOpensAt: '10:00'
+  longConversationCutoff: '21:45'
+  newGenerationCutoff: '22:00'
+  inFlightGraceUntil: '22:10'
+  endsAt: '22:30'
 primary:
   name: ""
   contactSecretRef: ""

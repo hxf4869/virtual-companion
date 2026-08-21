@@ -50,3 +50,15 @@ docs/evidence/**/raw/
 
 # B0-01 值班表含真实人员联系方式，按红线不入库（docs/beta-readiness/01 指向此文件）
 docs/beta-readiness/duty-roster.local.md
+
+# 预防性密钥/本地文件模式（2026-08-21 审计加固；真实值班表变体同样不入库）
+ops/*.local.*
+*.jks
+*.keystore
+application-local.yml
+application-local.yaml
+.aws/
+.codex/
+.claude/settings.local.json
+id_rsa
+id_ed25519

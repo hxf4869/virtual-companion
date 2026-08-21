@@ -183,6 +183,9 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install frontend dependencies
         run: pnpm --dir frontend install --frozen-lockfile
+      # 软门禁（有意为之）：已知未修复项（如 uni-app 精确锁定的 vite 5.2.8）
+      # 登记在 docs/dependency-audit-exceptions.yaml 并带到期复审日；
+      # 改为硬门禁前必须先清空台账。
       - name: Audit frontend dependencies
         run: pnpm --dir frontend audit --audit-level=high
         continue-on-error: true
