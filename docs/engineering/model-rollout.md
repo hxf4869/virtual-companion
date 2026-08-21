@@ -69,20 +69,80 @@ provider 接线（R49 适配器）落地；本文先行钉死流程与回滚语�
    (admin→invite→user→generation 走通 Hy3)。
 
 
-## 7. Hy3 本机联调现场记录（待续）
+## 7. Hy3 本机联调现场记录（已跑通,2026-08-22 收口）
 
-已就绪:本机全栈(8443 自签)、三部署配置文件(.local/,gitignored)、密钥注入、
-直连探测通过(key/协议/模型均验证)。E2E 链路机制全通(login→invite→register→
-relationship→conversation→generation→assistant message)。
+### 结论
 
-阻塞点:runtime 仍走 ZERO_LLM 兜底——actuator/env 确认
-`virtual-companion.model-providers.enabled=true`(来源为本机 provider 文件),
-但 authorizationSnapshotProvider/approvedModelProviders 等 Bean 未激活,
-generation_route/provider_attempt 均为 0 行。
+本机全栈（https://localhost, compose 项目 vc-local）已用真实外部模型端到端
+跑通:hy3 经 opencode-go 部署产生真实回复并完成全审计链落库;SSE 流式增量
+（chat.delta）在生成过程中实时到达;usage 真实记账。
 
-下一会话排查方向(带此证据):
-1. /actuator/conditions 查 ApprovedModelProviderConfig 条件评估结果
-   (需先暴露 conditions 端点);
-2. 核对 @ConditionalOnProperty 与 additional-location 属性源的可见性时序;
-3. 注意 docker-compose.override.yml 仅在显式 -f 双文件调用下生效;
-4. 调试完成后移除 override 中的 DEBUG/env 端点临时项。
+### 上一会话遗留谜题的解（Bean 未激活 → 实际全部激活）
+
+用 /actuator/conditions 结合 admin token 直连 runtime 实证:
+
+- `ApprovedModelProviderConfig` 与 `AuthDataSourceConfig#authorizationSnapshotProvider`
+  均为 **positiveMatches**;`ZeroLlmModelRuntimeConfig` 为 **negativeMatches**
+  ——条件装配一直正常,「Bean 未激活」推断不成立;
+- 每次 generation 双快照（V26）正常 mint,provider_id=opencode-go（路由候选
+  排序首位）;entitlement mint=ECONOMY（外部允许）;
+- 真正根因一:**`QuotaLedger` 生产装配从不 provision 任何 owner**——
+  `ApprovedModelProviderConfig.quotaLedger()` 直接 `new QuotaLedger()`,
+  而 reserve 对未知 owner 恒返回 empty,`DeterministicRouter.tryExternal`
+  恒 null → 折叠 ZERO_LLM。修复:QuotaLedger 增加 default-allowance 构造
+  （首次 reserve 自动预置,release 不越界）,装配传 Long.MAX_VALUE 合成额度
+  （TechAlpha 无真实成本,真实花费由 BudgetGuard §22.18 基于
+  vc.generation_usage 执行）。
+
+### 跑通过程中的其余阻塞与修复（按序）
+
+1. **部署 jar 陈旧**:Dockerfile 直接 COPY 本地
+   `service/apps/runtime/target/*.jar`,必须先在宿主机 `./mvnw verify`
+   产出新 jar 再 `compose up -d --build`;只改代码不 verify 时镜像里是旧包。
+2. **外部超时预算 1s**:`LiveInvocationAssembler.assembleExternal` 硬编码
+   TimeoutBudget(1s,1s,1s),推理模型必超时;改为
+   `virtual-companion.external-attempt.timeout-connect/first-token/total`
+   （默认 10s/60s/240s,env VC_EXTERNAL_TIMEOUT_* 可调）。
+3. **claim 租约 30s 过期**:真实外部调用 30s+ 期间租约到期,finalize 段
+   `assert_active_claim` 全拒、coordinator 回收重排有重复调用风险;修复:
+   外部 prepare（写 intent 前）对 per-item 续租
+   `virtual-companion.worker.external-claim-lease-seconds`（默认 300）,0 行
+   续租即 fail-closed 中止。实测 intent 状态从 FAILED 变 SUCCEEDED。
+4. **finalize_generation 参数解析失败**:Java double 经 pgjdbc 绑定为 float8,
+   PG 对 numeric 参数无隐式转换,报 `does not exist`（ZERO 路径用字面量 0
+   未暴露）;两处调用点（GenerationFinalizeService /
+   FinalizeGenerationService）改 `?::numeric`。
+5. **reconcile 无限报错**:GenerationReconcileScheduler 直接调
+   terminalize（无 V27 owner 上下文）→ `p_owner_user_id does not match`;
+   改为经 OwnerExecutor（auth 侧传 `ownerContext::asOwner`）执行,顺带证明
+   Modulith 无环（worker 不依赖 auth 类型）。
+6. **历史消息密文入请求**:vc.message 全量 CRYPTO-REST 加密,但
+   `MessageRepository.listByConversation`（assembler 与 memory-extract 共用）
+   原样返回 enc1: blob,模型将历史当作「encoded thoughts」;注入
+   RestFieldCipher 在读取路径解密,legacy 明文与无 cipher 构造保持直通。
+
+### 验收证据（generation 11/12/13,owner 1000002）
+
+- status=COMPLETED,usage input 340~975 / output 1317~3001（真实 provider）;
+- 事件流 seq 1 → 66（64 delta seq 块已预留 → 外部模式确定）;
+- 审计链:attempt_intent SUCCEEDED（opencode-go,双快照 id）+
+  entitlement_snapshot ECONOMY + authorization_snapshot ACTIVE×2 +
+  generation_usage（provider_ref=pa-<hash>,cost 0 因 TechAlpha 不计费）;
+- SSE:生成中实时捕获 24 个 `chat.delta` 增量事件（`payload` 逐段中文,
+  seq 2..24）;H5 前端 realtime-transport 单测覆盖 delta 解析;
+- hy3 实测回复（gentle-listener,温度 0.8）:「听到你说加班到这么晚、
+  感到有些累……我就在这里陪着你,你想随便说点今天的琐事,或者只是
+  默不作声地待一会儿,都很好。」人设一致,PASS 无需调温;
+- max-tokens:hy3 由 2048 → 4096（.local 配置,gitignored）,gen 11 实测
+  output 3001 token,2048 会截断,PASS;
+- H5 页面人工目验（https://localhost 登录对话）:头部无头 Chrome 渲染空白,
+  未目验（NOT_RUN,建议本机真实浏览器点验）;协议层 SSE 证据见上。
+
+### 遗留说明
+
+- `vc.provider_attempt`（V20 record_provider_attempt）与 `vc.generation_route`
+  为早期设计遗留表:前者服务方法无任何调用方,后者无任何写入函数;现行审计
+  等价物为 attempt_intent + generation_usage + entitlement_snapshot +
+  authorization_snapshot。如需旧表落库需另行接线（未做,超范围）。
+- override 中的 DEBUG 日志 / env+conditions 端点（含 SHOW_VALUES=always）为
+  调试临时项,已移除还原为 health,prometheus。
