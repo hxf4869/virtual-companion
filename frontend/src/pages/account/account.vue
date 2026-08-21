@@ -26,6 +26,11 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         登出
       </button>
 
+      <view class="card" data-testid="public-computer-hint">
+        <text class="label">公共电脑提示</text>
+        <text class="meta">在公共或共用电脑上使用后，请「登出」并关闭页面；建议使用浏览器无痕模式。登出会清除本机缓存的会话数据。</text>
+      </view>
+
       <view class="danger">
         <text class="label">注销账号</text>
         <text class="meta">注销会删除本账号的业务数据，且无法恢复登录。合规审计日志按既定保留期留存。</text>

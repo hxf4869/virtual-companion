@@ -10,7 +10,14 @@
         '<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0' +
         (coverSupport ? ', viewport-fit=cover' : '') + '" />')
     </script>
-    <title>开发基线</title>
+    <title>AI 陪伴 · 内部测试版</title>
+    <!-- H5-HARDEN (§21.7)：Technical Alpha 不对公众开放——禁止搜索收录；
+         Referer 不随外链外泄；分享卡片只用静态文案，绝不含聊天内容。 -->
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta property="og:title" content="AI 陪伴 · 内部测试版" />
+    <meta property="og:description" content="受控测试中的 AI 陪伴服务，不对公众开放注册。" />
+    <meta property="og:type" content="website" />
     <!--preload-links-->
     <!--app-context-->
   </head>

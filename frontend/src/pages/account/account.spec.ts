@@ -45,6 +45,7 @@ describe("account page", () => {
 
     expect(wrapper.find('[data-testid="account-id"]').text()).toContain("42");
     expect(wrapper.find('[data-testid="account-role"]').text()).toContain("USER");
+    expect(wrapper.find('[data-testid="public-computer-hint"]').text()).toContain("公共电脑");
     expect(wrapper.find('[data-testid="account-signed-out"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -55,6 +56,7 @@ describe("account page", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="account-signed-out"]').text()).toContain("未登录");
+    expect(wrapper.find('[data-testid="public-computer-hint"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="account-logout"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="delete-account-open"]').exists()).toBe(false);
     wrapper.unmount();
