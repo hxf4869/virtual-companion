@@ -73,6 +73,9 @@ BEGIN
         PERFORM vc.terminalize_generation(1, 5005, 'FAILED_FINAL', 'chat.failed');
         RAISE EXCEPTION 'QUEUED -> FAILED_FINAL must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%QUEUED -> FAILED_FINAL must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
     SELECT status INTO v FROM vc.generation WHERE owner_user_id = 1 AND id = 5005;
@@ -85,6 +88,9 @@ BEGIN
         PERFORM vc.terminalize_generation(1, 5006, 'FAILED_FINAL', 'chat.failed');
         RAISE EXCEPTION 'terminal generation must reject further terminalize';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%terminal generation must reject further terminalize%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -93,6 +99,9 @@ BEGIN
         PERFORM vc.terminalize_generation(1, 5007, 'CANCELLED', 'chat.cancelled');
         RAISE EXCEPTION 'direct CANCELLED must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%direct CANCELLED must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -101,6 +110,9 @@ BEGIN
         PERFORM vc.terminalize_generation(1, 9999, 'FAILED_FINAL', 'chat.failed');
         RAISE EXCEPTION 'unknown generation must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown generation must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -109,6 +121,9 @@ BEGIN
         PERFORM vc.terminalize_generation(1, 5007, 'FAILED_FINAL', 'chat.completed');
         RAISE EXCEPTION 'event-type mismatch must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%event-type mismatch must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected (chat.completed on FAILED_FINAL is INV-GEN-003)
     END;
     SELECT count(*) INTO n FROM vc.realtime_event WHERE generation_id = 5007;

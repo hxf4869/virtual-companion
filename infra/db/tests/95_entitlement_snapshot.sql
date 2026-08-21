@@ -67,6 +67,9 @@ BEGIN
         PERFORM vc.assign_service_class(v_user, v_user, 'ECONOMY');
         RAISE EXCEPTION 'non-ADMIN unexpectedly assigned a service class';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-ADMIN unexpectedly assigned a service class%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 
@@ -75,6 +78,9 @@ BEGIN
         PERFORM vc.assign_service_class(v_admin, v_user, 'PLATINUM');
         RAISE EXCEPTION 'unapproved class unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved class unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 
@@ -83,6 +89,9 @@ BEGIN
         PERFORM vc.assign_service_class(v_admin, 999999, 'ECONOMY');
         RAISE EXCEPTION 'unknown target unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown target unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;

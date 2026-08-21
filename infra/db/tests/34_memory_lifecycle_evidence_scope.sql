@@ -37,6 +37,9 @@ BEGIN
         PERFORM vc.create_memory_candidate(1, 10, 'SESSION', 'no-conv', NULL, ARRAY[]::text[]);
         RAISE EXCEPTION 'SESSION without conversation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%SESSION without conversation must fail%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -45,6 +48,9 @@ BEGIN
         PERFORM vc.create_memory_candidate(1, 10, 'ACCOUNT_PRIVATE', 'acct', NULL, ARRAY[]::text[]);
         RAISE EXCEPTION 'ACCOUNT_PRIVATE must fail in Alpha';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%ACCOUNT_PRIVATE must fail in Alpha%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 

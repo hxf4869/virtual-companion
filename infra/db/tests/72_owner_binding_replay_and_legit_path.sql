@@ -50,6 +50,9 @@ BEGIN
         PERFORM vc.set_owner_context(2, 'rp1', v_proof);
         RAISE EXCEPTION 'cross-owner replay must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cross-owner replay must be rejected%' THEN
+            RAISE;
+        END IF;
         IF position('proof rejected' in SQLERRM) = 0 AND position('invalid' in SQLERRM) = 0 THEN
             RAISE;
         END IF;
@@ -157,16 +160,25 @@ BEGIN
         PERFORM vc.set_owner_context(1, 'lg2', 'tooshort');
         RAISE EXCEPTION 'short proof must be rejected';
     EXCEPTION WHEN OTHERS THEN NULL;
+        IF SQLERRM LIKE '%short proof must be rejected%' THEN
+            RAISE;
+        END IF;
     END;
     BEGIN
         PERFORM vc.set_owner_context(1, '', '0000000000000000000000000000000000000000000000000000000000000000');
         RAISE EXCEPTION 'empty nonce must be rejected';
     EXCEPTION WHEN OTHERS THEN NULL;
+        IF SQLERRM LIKE '%empty nonce must be rejected%' THEN
+            RAISE;
+        END IF;
     END;
     BEGIN
         PERFORM vc.set_owner_context(0, 'lg3', '0000000000000000000000000000000000000000000000000000000000000000');
         RAISE EXCEPTION 'non-positive owner must be rejected';
     EXCEPTION WHEN OTHERS THEN NULL;
+        IF SQLERRM LIKE '%non-positive owner must be rejected%' THEN
+            RAISE;
+        END IF;
     END;
     IF vc.current_owner_id() IS NOT NULL THEN
         RAISE EXCEPTION 'rejected calls must leave no context behind';

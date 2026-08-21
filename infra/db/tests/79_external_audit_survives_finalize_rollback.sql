@@ -101,6 +101,9 @@ BEGIN
             42, 58, 0.001000, 'USD', 1, false, 'fault-79');
         RAISE EXCEPTION 'fault injection must fail finalize';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%fault injection must fail finalize%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected: finalize fault
     END;
 END $$;

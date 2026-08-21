@@ -64,18 +64,27 @@ BEGIN
         PERFORM vc.create_reminder(1, 10, 'text', now(), 'MONTHLY');
         RAISE EXCEPTION 'unapproved recurrence unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved recurrence unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
     BEGIN
         PERFORM vc.update_reminder(1, v_early, 'text', now(), 'NONE', 'DONE');
         RAISE EXCEPTION 'unapproved status unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved status unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
     BEGIN
         PERFORM vc.create_reminder(1, 10, '', now(), 'NONE');
         RAISE EXCEPTION 'blank text unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%blank text unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 

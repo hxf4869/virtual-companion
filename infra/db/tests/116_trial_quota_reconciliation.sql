@@ -179,6 +179,9 @@ BEGIN
         PERFORM vc.grant_trial(v_owner, v_owner, 5, 14);
         RAISE EXCEPTION 'non-admin unexpectedly granted a trial';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-admin unexpectedly granted a trial%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not an active ADMIN%' THEN RAISE; END IF;
     END;
     RESET ROLE;
@@ -256,6 +259,9 @@ BEGIN
         PERFORM vc.admin_provider_registry(v_owner);
         RAISE EXCEPTION 'non-admin unexpectedly read the registry';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-admin unexpectedly read the registry%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not an active ADMIN%' THEN RAISE; END IF;
     END;
     RESET ROLE;

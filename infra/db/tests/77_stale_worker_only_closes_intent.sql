@@ -95,6 +95,9 @@ BEGIN
             'snap-77-req', 'snap-77-exec');
         RAISE EXCEPTION 'stale worker must not create a new attempt intent';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%stale worker must not create a new attempt intent%' THEN
+            RAISE;
+        END IF;
         IF position('no live claim' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;
@@ -105,6 +108,9 @@ BEGIN
         PERFORM vc.assert_active_claim(1, v_wi, v_token, 'FENCE-77');
         RAISE EXCEPTION 'stale worker guard must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%stale worker guard must fail%' THEN
+            RAISE;
+        END IF;
         IF position('not active' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;

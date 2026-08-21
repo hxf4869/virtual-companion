@@ -58,6 +58,9 @@ BEGIN
         PERFORM vc.active_retention_days('NOT_A_CATEGORY');
         RAISE EXCEPTION 'unknown category must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown category must fail closed%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%no active policy%' THEN
             RAISE;
         END IF;
@@ -217,6 +220,9 @@ BEGIN
         PERFORM vc.retention_purge_normal_chat(NULL);
         RAISE EXCEPTION 'NULL cutoff must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%NULL cutoff must fail closed%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%cutoff is required%' THEN
             RAISE;
         END IF;

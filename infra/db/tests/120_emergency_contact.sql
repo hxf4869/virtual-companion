@@ -78,6 +78,9 @@ BEGIN
         PERFORM vc.confirm_emergency_contact_verification(v_alice, 'deadbeef', 'SIMULATED_EMAIL_LINK', '2026-08');
         RAISE EXCEPTION 'wrong token unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%wrong token unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%verification token mismatch%' THEN RAISE; END IF;
     END;
 
@@ -99,6 +102,9 @@ BEGIN
         PERFORM vc.start_emergency_contact_verification(v_alice);
         RAISE EXCEPTION 'verified contact unexpectedly re-invited';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%verified contact unexpectedly re-invited%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%only a draft contact can be verified%' THEN RAISE; END IF;
     END;
 
@@ -139,6 +145,9 @@ BEGIN
         PERFORM vc.confirm_emergency_contact_verification(v_alice, v_token, 'SIMULATED_EMAIL_LINK', '2026-08');
         RAISE EXCEPTION 'stale invite unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%stale invite unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%verification invite expired%' THEN RAISE; END IF;
     END;
 
@@ -232,6 +241,9 @@ BEGIN
         PERFORM vc.upsert_emergency_contact(v_bob, '朋友', 'cipher-bob');
         RAISE EXCEPTION 'save without the separate consent unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%save without the separate consent unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%EMERGENCY_CONTACT consent must be granted%' THEN RAISE; END IF;
     END;
 
@@ -243,6 +255,9 @@ BEGIN
             current_setting('emc.a')::bigint, 'x', 'cipher-x');
         RAISE EXCEPTION 'owner-mismatched write unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner-mismatched write unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must match server-trusted context%' THEN RAISE; END IF;
     END;
 END $$;

@@ -31,6 +31,9 @@ BEGIN
         PERFORM vc.assert_active_claim(1, 1, 'TOK-X', 'FENCE-X');
         RAISE EXCEPTION 'assert_active_claim without a claim must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%assert_active_claim without a claim must fail%' THEN
+            RAISE;
+        END IF;
         IF position('not active' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;
@@ -62,6 +65,9 @@ BEGIN
         PERFORM vc.assert_active_claim(1, 1, 'WRONG-TOKEN', 'FENCE-76');
         RAISE EXCEPTION 'wrong token must fail the guard';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%wrong token must fail the guard%' THEN
+            RAISE;
+        END IF;
         IF position('not active' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;
@@ -72,6 +78,9 @@ BEGIN
         PERFORM vc.assert_active_claim(1, 1, v_token, 'WRONG-FENCE');
         RAISE EXCEPTION 'wrong fence must fail the guard even when the GUC matches';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%wrong fence must fail the guard even when the GUC matches%' THEN
+            RAISE;
+        END IF;
         IF position('not active' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;

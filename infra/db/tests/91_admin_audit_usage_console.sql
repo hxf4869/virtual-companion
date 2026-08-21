@@ -101,6 +101,9 @@ BEGIN
         PERFORM 1 FROM vc.identity_auth_event_list(v_user, NULL, 50);
         RAISE EXCEPTION 'non-ADMIN must not list the audit trail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-ADMIN must not list the audit trail%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected: generic fail-closed error
     END;
 END $$;
@@ -144,6 +147,9 @@ BEGIN
         PERFORM 1 FROM vc.admin_usage_summary(v_user, now() - interval '30 days');
         RAISE EXCEPTION 'non-ADMIN must not read the usage summary';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-ADMIN must not read the usage summary%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;

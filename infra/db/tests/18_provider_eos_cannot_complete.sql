@@ -34,6 +34,9 @@ BEGIN
             1, 5001, 6001, 'final answer', 'provider-a', 1, 1, 0, 'USD', 1, true, NULL);
         RAISE EXCEPTION 'finalize of an IN_PROGRESS generation unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%finalize of an IN_PROGRESS generation unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         -- expected: precondition requires FINAL_REVIEW (INV-GEN-003)
     END;
 

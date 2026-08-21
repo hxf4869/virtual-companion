@@ -120,6 +120,9 @@ BEGIN
             v_alice, 999, 'RELATIONSHIP', 'x', NULL, ARRAY[]::text[]);
         RAISE EXCEPTION 'foreign relationship unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%foreign relationship unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%relationship not found for owner%' THEN RAISE; END IF;
     END;
     BEGIN
@@ -127,6 +130,9 @@ BEGIN
             v_alice, 1, 'SESSION', 'x', NULL, ARRAY[]::text[]);
         RAISE EXCEPTION 'SESSION without conversation unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%SESSION without conversation unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%SESSION scope requires a conversation_id%' THEN RAISE; END IF;
     END;
     BEGIN
@@ -134,6 +140,9 @@ BEGIN
             v_alice, 1, 'ACCOUNT_PRIVATE', 'x', NULL, ARRAY[]::text[]);
         RAISE EXCEPTION 'unapproved scope unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved scope unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not enabled in Alpha%' THEN RAISE; END IF;
     END;
 END $$;
@@ -154,6 +163,9 @@ BEGIN
             current_setting('mas.a')::bigint, 1, 'RELATIONSHIP', 'x', NULL, ARRAY[]::text[]);
         RAISE EXCEPTION 'owner-mismatched auto-save unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner-mismatched auto-save unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must match server-trusted context%' THEN RAISE; END IF;
     END;
     IF NOT vc.get_memory_auto_save_pref(v_bob) THEN

@@ -80,6 +80,9 @@ BEGIN
         PERFORM vc.list_safety_events(v_user, NULL, 50);
         RAISE EXCEPTION 'non-admin unexpectedly read the safety queue';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-admin unexpectedly read the safety queue%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not an active ADMIN%' THEN
             RAISE;
         END IF;

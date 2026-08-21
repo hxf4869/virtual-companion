@@ -58,7 +58,9 @@ BEGIN
         -- If we reach here the assertion did not raise -- that is a regression.
         RAISE EXCEPTION 'V16 regression: polluted role was not detected by the assertion';
     EXCEPTION WHEN OTHERS THEN
-        -- Roll back the pollution regardless of outcome.
+        -- The regression signal above is intentional control flow into this
+        -- cleanup handler (the sentinel-re-raise idiom does not apply here):
+        -- roll back the pollution regardless of outcome, then re-assert.
         ALTER ROLE vc_worker NOBYPASSRLS;
         -- Re-assert clean state.
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='vc_worker' AND rolbypassrls) THEN

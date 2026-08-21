@@ -38,6 +38,9 @@ BEGIN
         PERFORM vc.activate_relationship(1, 20);
         RAISE EXCEPTION 'activating a foreign relationship must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%activating a foreign relationship must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not found (existence hidden)
     END;
 

@@ -32,6 +32,9 @@ BEGIN
         PERFORM * FROM vc.claim_work_items(2, 'FENCE-A', 30, 16);
         RAISE EXCEPTION 'claim_work_items should reject owner mismatch';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%claim_work_items should reject owner mismatch%' THEN
+            RAISE;
+        END IF;
         IF position('does not match server-trusted' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'claim_work_items: unexpected error: %', SQLERRM;
         END IF;

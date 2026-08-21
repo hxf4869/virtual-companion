@@ -103,6 +103,9 @@ BEGIN
             1, 1, 13, 10, 'x', 'm', '1', '1', 1.0, true, 'PREMIUM');
         RAISE EXCEPTION 'inverted range unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%inverted range unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%range%' THEN RAISE; END IF;
     END;
     BEGIN
@@ -110,6 +113,9 @@ BEGIN
             1, 1, 10, 11, 'x', 'm', '1', '1', 1.5, true, 'PREMIUM');
         RAISE EXCEPTION 'confidence > 1 unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%confidence > 1 unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%confidence%' THEN RAISE; END IF;
     END;
 
@@ -187,6 +193,9 @@ BEGIN
             1.0, true, 'PREMIUM');
         RAISE EXCEPTION 'owner-mismatched summary write unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner-mismatched summary write unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must match server-trusted context%' THEN RAISE; END IF;
     END;
 END $$;

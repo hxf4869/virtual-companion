@@ -50,6 +50,9 @@ BEGIN
         PERFORM vc.create_export_request(1);
         RAISE EXCEPTION 'second in-flight export unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%second in-flight export unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 
@@ -101,6 +104,9 @@ BEGIN
         PERFORM * FROM vc.get_export_request(2, v_export);
         RAISE EXCEPTION 'foreign owner id unexpectedly passed the trusted-owner assertion';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%foreign owner id unexpectedly passed the trusted-owner assertion%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;

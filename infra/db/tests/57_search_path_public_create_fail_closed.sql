@@ -65,6 +65,9 @@ BEGIN
             LANGUAGE sql AS $body$ SELECT 1 $body$;
         RAISE EXCEPTION 'G2: vc_api CREATE FUNCTION in public must be denied';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%G2: vc_api CREATE FUNCTION in public must be denied%' THEN
+            RAISE;
+        END IF;
         IF position('permission' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'G2: unexpected error denying vc_api CREATE in public: %', SQLERRM;
         END IF;

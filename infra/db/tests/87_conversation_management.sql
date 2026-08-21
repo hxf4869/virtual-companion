@@ -59,6 +59,9 @@ BEGIN
         PERFORM vc.rename_conversation(1, v_conv, repeat('x', 201));
         RAISE EXCEPTION 'overlong title must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%overlong title must fail closed%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 
@@ -127,12 +130,18 @@ BEGIN
         PERFORM vc.delete_conversation(1, 1);
         RAISE EXCEPTION 'delete must reject an owner mismatch';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%delete must reject an owner mismatch%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
     BEGIN
         PERFORM vc.rename_conversation(1, 1, 'x');
         RAISE EXCEPTION 'rename must reject an owner mismatch';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%rename must reject an owner mismatch%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;

@@ -2,10 +2,11 @@
 -- longer directly INSERT, UPDATE or DELETE on any business state table even
 -- when a valid owner context is bound. The RLS WITH CHECK is no longer the
 -- only guard: the REVOKE makes the statement fail with insufficient_privilege
--- before RLS is even consulted. Every write must go through the窄 SECURITY
--- DEFINER state-machine functions.
+-- before RLS is even consulted. Every write must go through the narrow
+-- SECURITY DEFINER state-machine functions.
 --
--- Covers the 17 tables whose DML was revoked in V16:
+-- Covers the 18 tables whose DML was revoked in V16 (spot checks sample a
+-- representative subset below):
 --   vc_user, relationship, conversation, message, generation,
 --   generation_route, generation_attempt, generation_candidate,
 --   memory_item, memory_evidence, authorization_snapshot,

@@ -57,6 +57,9 @@ BEGIN
             1, 6000, cid, 'bad', 'p', -5, 0, 0, 'USD', 0, false, NULL);
         RAISE EXCEPTION 'negative input_tokens finalize must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%negative input_tokens finalize must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected: check_violation from generation_usage_input_tokens_nonneg
     END;
     -- The failed finalize rolled back atomically: no usage row for gen 6000.
@@ -74,6 +77,9 @@ BEGIN
         VALUES (1, nextval('vc.finalize_row_id_seq'), 6001, 'RELEASE', -7, 'direct-dml');
         RAISE EXCEPTION 'negative quota_amount direct insert must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%negative quota_amount direct insert must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected: check_violation from quota_ledger_entry_quota_amount_nonneg
     END;
 
@@ -104,6 +110,9 @@ BEGIN
         PERFORM vc.record_quota_release(1, 6001, -1, 'bad-after-release');
         RAISE EXCEPTION 'negative quota_amount must still be rejected after a RELEASE exists';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%negative quota_amount must still be rejected after a RELEASE exists%' THEN
+            RAISE;
+        END IF;
         -- expected: non-negative guard fires before the idempotency check
     END;
 
@@ -112,6 +121,9 @@ BEGIN
         PERFORM vc.record_quota_release(1, 9999, 1, 'unknown-gen');
         RAISE EXCEPTION 'unknown generation must still be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown generation must still be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 END $$;

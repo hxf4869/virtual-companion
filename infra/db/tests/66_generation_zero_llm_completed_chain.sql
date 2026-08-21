@@ -144,6 +144,9 @@ BEGIN
         PERFORM * FROM vc.insert_generation_candidate(1, v_gen, 'late candidate', false);
         RAISE EXCEPTION 'insert into COMPLETED generation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%insert into COMPLETED generation must fail%' THEN
+            RAISE;
+        END IF;
         IF position('terminal' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'late insert: unexpected error: %', SQLERRM;
         END IF;

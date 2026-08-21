@@ -234,6 +234,9 @@ BEGIN
         PERFORM vc.requeue_retryable_failure(1, 1, v_token, 'FENCE-84D', 3);
         RAISE EXCEPTION 'requeue on a terminal item must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%requeue on a terminal item must fail closed%' THEN
+            RAISE;
+        END IF;
         IF position('no live claim' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;

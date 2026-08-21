@@ -166,6 +166,9 @@ BEGIN
         PERFORM vc.admin_memory_sampling(v_bob, NULL, 50);
         RAISE EXCEPTION 'non-admin unexpectedly read the memory sampling';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-admin unexpectedly read the memory sampling%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not an active ADMIN%' THEN RAISE; END IF;
     END;
     -- Non-positive acting ids fail closed too.
@@ -173,6 +176,9 @@ BEGIN
         PERFORM vc.admin_list_reports(0, NULL, 50);
         RAISE EXCEPTION 'zero admin id unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%zero admin id unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%admin account is required%' THEN RAISE; END IF;
     END;
     RESET ROLE;

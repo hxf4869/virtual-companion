@@ -108,6 +108,9 @@ BEGIN
             2, v_id, v_secret, 5000, 'sess-1', 'https://app.example', 'FETCH_SSE', 1, 0);
         RAISE EXCEPTION 'owner 2 must not consume owner 1 ticket';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner 2 must not consume owner 1 ticket%' THEN
+            RAISE;
+        END IF;
         -- expected: ticket invisible under owner 2 (FORCE RLS)
     END;
 END $$;

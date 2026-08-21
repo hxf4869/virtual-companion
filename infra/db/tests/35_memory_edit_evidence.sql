@@ -81,18 +81,27 @@ BEGIN
         PERFORM vc.update_memory(1, current_setting('app.rej')::bigint, 'rej-edited');
         RAISE EXCEPTION 'editing a REJECTED memory must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%editing a REJECTED memory must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: non-editable status
     END;
     BEGIN
         PERFORM vc.update_memory(1, current_setting('app.pend')::bigint, '   ');
         RAISE EXCEPTION 'blank summary must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%blank summary must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: summary required
     END;
     BEGIN
         PERFORM vc.update_memory(1, 999999, 'ghost');
         RAISE EXCEPTION 'absent id must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%absent id must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not found (existence hidden)
     END;
 END $$;
@@ -113,6 +122,9 @@ BEGIN
         PERFORM vc.update_memory(1, current_setting('app.acc')::bigint, 'after-delete');
         RAISE EXCEPTION 'editing a deleted memory must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%editing a deleted memory must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: deleted
     END;
     SELECT count(*) INTO n FROM vc.list_memory_evidence(1, current_setting('app.acc')::bigint);
@@ -134,6 +146,9 @@ BEGIN
         PERFORM vc.update_memory(2, current_setting('app.pend')::bigint, 'hijack');
         RAISE EXCEPTION 'cross-owner update must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cross-owner update must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not found (existence hidden)
     END;
     SELECT count(*) INTO n FROM vc.list_memory_evidence(2, current_setting('app.pend')::bigint);

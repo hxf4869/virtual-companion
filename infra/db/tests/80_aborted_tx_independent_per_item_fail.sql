@@ -62,9 +62,9 @@ RESET ROLE;
 
 -- ---------------------------------------------------------------------------
 -- 1) guarded finalize 事务内永久 PG 错误 → 事务真实进入 aborted → 整体回滚。
---    （模拟：IN_PROGRESS 状态下以非法目标 FINAL_REVIEW→FINAL_REVIEW 自转换触发
---    promote_generation 的 illegal transition RAISE；该错误不捕获，事务进入
---    aborted 状态，随后 ROLLBACK。此段临时关闭 ON_ERROR_STOP 以观察真实
+--    （模拟：IN_PROGRESS 状态下 promote_generation 直转 CANCELLED —— V25 状态
+--    机只允许终态化函数走 CANCELLED，promote 直转必 RAISE；该错误不捕获，事务
+--    进入 aborted 状态，随后 ROLLBACK。此段临时关闭 ON_ERROR_STOP 以观察真实
 --    aborted 语义，错误本身正是被测行为。）
 -- ---------------------------------------------------------------------------
 \set ON_ERROR_STOP off
@@ -82,8 +82,9 @@ BEGIN
     SELECT value INTO v_token FROM aborted_ctx WHERE key = 'tok';
 
     PERFORM vc.assert_active_claim(1, v_wi, v_token, 'FENCE-80');
-    -- 永久错误：非法的状态转换 RAISE（不捕获）→ 整个事务进入 aborted。
-    PERFORM vc.promote_generation(1, v_gen, 'FINAL_REVIEW');
+    -- 永久错误：IN_PROGRESS 直转 CANCELLED 是非法转换（promote 必 RAISE，
+    -- 不捕获）→ 整个事务进入 aborted。
+    PERFORM vc.promote_generation(1, v_gen, 'CANCELLED');
 END $$;
 ROLLBACK;
 RESET ROLE;

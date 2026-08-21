@@ -66,6 +66,9 @@ BEGIN
         PERFORM * FROM vc.claim_work_items(1, 'FENCE-B', 30, 16);
         RAISE EXCEPTION 'claim without server-trusted context should be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%claim without server-trusted context should be rejected%' THEN
+            RAISE;
+        END IF;
         IF position('server-trusted' in SQLERRM) = 0
            AND position('current_owner_id' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'claim without context: unexpected error: %', SQLERRM;

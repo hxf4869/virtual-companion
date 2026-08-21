@@ -112,6 +112,9 @@ BEGIN
         PERFORM vc.append_realtime_event(1, 5000, 1, 'safety.notice', '{}'::jsonb);
         RAISE EXCEPTION 'append to a terminal generation must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%append to a terminal generation must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected: cannot append to a terminal generation
     END;
 

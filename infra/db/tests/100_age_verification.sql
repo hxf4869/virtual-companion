@@ -46,6 +46,9 @@ BEGIN
         PERFORM vc.record_age_verification(1, 'NOT_A_STATE', 'x');
         RAISE EXCEPTION 'unapproved age state unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved age state unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 
@@ -54,6 +57,9 @@ BEGIN
         PERFORM * FROM vc.get_age_state(2);
         RAISE EXCEPTION 'foreign owner id unexpectedly passed the trusted-owner assertion';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%foreign owner id unexpectedly passed the trusted-owner assertion%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;

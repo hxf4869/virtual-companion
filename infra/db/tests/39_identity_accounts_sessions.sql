@@ -124,6 +124,9 @@ BEGIN
         PERFORM vc.identity_account_create(v_user, 'Bob', '$2a$10$x', 'USER', 'Bob');
         RAISE EXCEPTION 'a USER must not create accounts';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%a USER must not create accounts%' THEN
+            RAISE;
+        END IF;
         v_blocked := true;
     END;
     IF NOT v_blocked THEN RAISE EXCEPTION 'USER account creation must fail closed'; END IF;
@@ -215,6 +218,9 @@ BEGIN
         PERFORM vc.identity_refresh_token_issue(v_user, v_new_hash, now() + interval '7 days');
         RAISE EXCEPTION 'issue for a DISABLED account must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%issue for a DISABLED account must fail closed%' THEN
+            RAISE;
+        END IF;
         NULL;
     END;
 

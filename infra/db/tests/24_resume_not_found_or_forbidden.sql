@@ -54,6 +54,9 @@ BEGIN
         PERFORM * FROM vc.read_generation_snapshot(1, 9999);
         RAISE EXCEPTION 'snapshot on non-existent generation must raise';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%snapshot on non-existent generation must raise%' THEN
+            RAISE;
+        END IF;
         -- expected: not found for owner
     END;
 END $$;

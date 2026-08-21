@@ -44,6 +44,9 @@ BEGIN
         PERFORM vc.confirm_memory_candidate(1, v_cand);
         RAISE EXCEPTION 're-confirming an ACCEPTED memory must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%re-confirming an ACCEPTED memory must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not pending confirmation
     END;
 END $$;

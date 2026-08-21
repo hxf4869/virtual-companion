@@ -171,6 +171,9 @@ BEGIN
         PERFORM vc.wipe_all_chats(1);
         RAISE EXCEPTION 'owner-mismatched wipe unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner-mismatched wipe unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must match server-trusted context%' THEN
             RAISE;
         END IF;

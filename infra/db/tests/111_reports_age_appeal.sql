@@ -66,6 +66,9 @@ BEGIN
         PERFORM vc.create_report(1, NULL, 'NOT_A_REASON', 'x');
         RAISE EXCEPTION 'unapproved reason unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved reason unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%unapproved report reason%' THEN
             RAISE;
         END IF;
@@ -74,6 +77,9 @@ BEGIN
         PERFORM vc.create_report(1, NULL, 'OTHER', repeat('x', 2001));
         RAISE EXCEPTION 'oversized note unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%oversized note unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%note must be%' THEN
             RAISE;
         END IF;
@@ -101,6 +107,9 @@ BEGIN
         PERFORM vc.submit_age_appeal(1, '判错了');
         RAISE EXCEPTION 'AGE_UNKNOWN appeal unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%AGE_UNKNOWN appeal unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%cannot submit an appeal%' THEN
             RAISE;
         END IF;
@@ -124,6 +133,9 @@ BEGIN
         PERFORM vc.submit_age_appeal(1, '再提一次');
         RAISE EXCEPTION 'second appeal unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%second appeal unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%cannot submit an appeal%' THEN
             RAISE;
         END IF;
@@ -165,6 +177,9 @@ BEGIN
         PERFORM vc.submit_age_appeal(1, '越权提交');
         RAISE EXCEPTION 'owner-mismatched appeal unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner-mismatched appeal unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must match server-trusted context%' THEN
             RAISE;
         END IF;

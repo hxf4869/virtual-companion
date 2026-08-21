@@ -88,6 +88,9 @@ BEGIN
             v_alice, v_mem2, 'deterministic-hash', '1', 128, 'alpha-hash-64', '[1]');
         RAISE EXCEPTION 'dimension 128 unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%dimension 128 unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%dimension%' THEN RAISE; END IF;
     END;
 
@@ -176,6 +179,9 @@ BEGIN
             '[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]');
         RAISE EXCEPTION 'foreign memory embedding unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%foreign memory embedding unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%absent or deleted%' THEN RAISE; END IF;
     END;
 END $$;

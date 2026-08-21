@@ -49,6 +49,9 @@ BEGIN
                     RAISE EXCEPTION 'late promotion succeeded on cancelled turn %', i;
                 END IF;
             EXCEPTION WHEN OTHERS THEN
+                IF SQLERRM LIKE '%late promotion succeeded on cancelled turn%' THEN
+                    RAISE;
+                END IF;
                 v_late_rejected := v_late_rejected + 1;
             END;
             BEGIN
@@ -56,6 +59,9 @@ BEGIN
                     1, v_gen, 'late token output', false);
                 RAISE EXCEPTION 'late candidate accepted on cancelled turn %', i;
             EXCEPTION WHEN OTHERS THEN
+                IF SQLERRM LIKE '%late candidate accepted on cancelled turn%' THEN
+                    RAISE;
+                END IF;
                 NULL; -- terminal rejection expected
             END;
         END;

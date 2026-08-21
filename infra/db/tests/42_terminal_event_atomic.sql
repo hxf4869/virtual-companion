@@ -76,6 +76,9 @@ BEGIN
         PERFORM vc.append_realtime_event(1, 5000, 1, 'chat.delta', '{}'::jsonb);
         RAISE EXCEPTION 'append to a terminal generation must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%append to a terminal generation must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -84,6 +87,9 @@ BEGIN
         PERFORM vc.terminalize_generation(1, 5001, 'FAILED_FINAL', 'chat.completed');
         RAISE EXCEPTION 'chat.completed on FAILED_FINAL must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%chat.completed on FAILED_FINAL must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 

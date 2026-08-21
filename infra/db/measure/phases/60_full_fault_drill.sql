@@ -92,6 +92,9 @@ BEGIN
                 END IF;
                 END;
             EXCEPTION WHEN OTHERS THEN
+                IF SQLERRM LIKE '%duplicate finalize succeeded on%' THEN
+                    RAISE;
+                END IF;
                 v_dup_rejected := v_dup_rejected + 1;
             END;
             v_gen := NULL;

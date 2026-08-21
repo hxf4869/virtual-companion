@@ -48,18 +48,27 @@ BEGIN
         PERFORM vc.append_realtime_event(1, 5000, 1, 'foo', '{}'::jsonb);
         RAISE EXCEPTION 'unknown event type must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown event type must be rejected%' THEN
+            RAISE;
+        END IF;
         NULL;
     END;
     BEGIN
         PERFORM vc.append_realtime_event(1, 5000, 1, 'chat.delta', '{}'::jsonb);
         RAISE EXCEPTION 'non-durable chat.delta must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-durable chat.delta must be rejected%' THEN
+            RAISE;
+        END IF;
         NULL;
     END;
     BEGIN
         PERFORM vc.append_realtime_event(1, 5000, 1, 'chat.completed', '{}'::jsonb);
         RAISE EXCEPTION 'terminal chat.completed via append must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%terminal chat.completed via append must be rejected%' THEN
+            RAISE;
+        END IF;
         NULL;
     END;
 
@@ -106,6 +115,9 @@ BEGIN
         PERFORM vc.cancel_generation(1, 5001);
         RAISE EXCEPTION 're-cancel of a CANCELLED generation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%re-cancel of a CANCELLED generation must fail%' THEN
+            RAISE;
+        END IF;
         NULL;
     END;
     SELECT count(*) INTO n FROM vc.realtime_event WHERE generation_id = 5001;

@@ -47,6 +47,9 @@ BEGIN
         PERFORM vc.record_consent(1, 'FACE_DATA', 'v1', true);
         RAISE EXCEPTION 'unapproved consent type unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved consent type unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
     -- Blank version RAISEs.
@@ -54,6 +57,9 @@ BEGIN
         PERFORM vc.record_consent(1, 'PRIVACY_POLICY', '  ', true);
         RAISE EXCEPTION 'blank version unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%blank version unexpectedly succeeded%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;

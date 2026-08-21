@@ -52,12 +52,18 @@ BEGIN
         PERFORM vc.confirm_memory_candidate(1, v_acc);
         RAISE EXCEPTION 'confirming an already-deleted memory must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%confirming an already-deleted memory must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: deleted / not found (no existence disclosure)
     END;
     BEGIN
         PERFORM vc.reject_memory_candidate(1, v_rej);
         RAISE EXCEPTION 'rejecting an already-REJECTED memory must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%rejecting an already-REJECTED memory must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not pending confirmation
     END;
 

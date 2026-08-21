@@ -62,6 +62,9 @@ BEGIN
         PERFORM vc.promote_generation(1, v_gen, 'IN_PROGRESS');
         RAISE EXCEPTION 'FINAL_REVIEW -> IN_PROGRESS must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%FINAL_REVIEW -> IN_PROGRESS must fail closed%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;
@@ -132,6 +135,9 @@ BEGIN
     PERFORM vc.close_stale_attempt_intents(1, 1);
     RAISE EXCEPTION 'trusted-owner mismatch must fail closed';
 EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE '%trusted-owner mismatch must fail closed%' THEN
+        RAISE;
+    END IF;
     NULL; -- expected
 END $$;
 COMMIT;
@@ -171,10 +177,12 @@ BEGIN;
 SELECT vc.set_owner_context(2, 'n88e', encode(vc.hmac(convert_to('vc-owner-binding-v1|2|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n88e', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 DO $$
 BEGIN
-    PERFORM vc.generation_has_event(2, 1, 'chat.accepted');
-    RAISE EXCEPTION 'foreign generation_has_event must fail closed (missing)';
-EXCEPTION WHEN OTHERS THEN
-    NULL; -- expected: no such generation for owner 2
+    -- Fail-closed by design: a foreign generation is simply "no event" —
+    -- generation_has_event is owner-scoped in the WHERE clause (V33) and
+    -- returns false instead of raising so existence is never disclosed.
+    IF vc.generation_has_event(2, 1, 'chat.accepted') THEN
+        RAISE EXCEPTION 'foreign generation_has_event must fail closed (return false)';
+    END IF;
 END $$;
 COMMIT;
 

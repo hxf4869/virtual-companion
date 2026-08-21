@@ -60,6 +60,9 @@ BEGIN
         PERFORM 1 FROM vc.identity_account_list(v_user);
         RAISE EXCEPTION 'non-ADMIN must not list the registry';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-ADMIN must not list the registry%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected: generic fail-closed error
     END;
 
@@ -67,6 +70,9 @@ BEGIN
         PERFORM vc.identity_account_disable(v_user, v_admin);
         RAISE EXCEPTION 'non-ADMIN must not disable accounts';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-ADMIN must not disable accounts%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;
@@ -109,6 +115,9 @@ BEGIN
         PERFORM vc.identity_account_disable(v_admin, v_admin);
         RAISE EXCEPTION 'self-disable must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%self-disable must be rejected%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 
@@ -117,6 +126,9 @@ BEGIN
         PERFORM vc.identity_account_disable(v_admin, 999999999);
         RAISE EXCEPTION 'unknown target must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown target must fail closed%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 
@@ -154,6 +166,9 @@ BEGIN
             v_admin, 'cap-overflow', '$2a$10$cap.hash.placeholder', 'USER', 'Overflow');
         RAISE EXCEPTION 'create at capacity must fail closed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%create at capacity must fail closed%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected: capacity exceeded
     END;
 

@@ -51,4 +51,9 @@ END $$;
 -- owner context is bound (as postgres; the same function is world-executable
 -- and the narrow vc.identity_* SD functions stay granted to vc_api per V14).
 RESET ROLE;
-SELECT vc.current_owner_id() IS NULL AS context_unset_fail_closed_ok;
+DO $$
+BEGIN
+    IF vc.current_owner_id() IS NOT NULL THEN
+        RAISE EXCEPTION 'current_owner_id must stay NULL with no owner context';
+    END IF;
+END $$;

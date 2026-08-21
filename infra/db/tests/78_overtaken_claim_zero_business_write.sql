@@ -113,6 +113,9 @@ BEGIN
         PERFORM vc.assert_active_claim(1, v_wi, v_tok_a, 'FENCE-78-A');
         RAISE EXCEPTION 'overtaken worker guard must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%overtaken worker guard must fail%' THEN
+            RAISE;
+        END IF;
         IF position('not active' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;

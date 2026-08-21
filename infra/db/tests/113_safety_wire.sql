@@ -50,6 +50,9 @@ BEGIN
         PERFORM vc.promote_generation(1, v_gen, 'IN_PROGRESS');
         RAISE EXCEPTION 'INPUT_REVIEW -> IN_PROGRESS unexpectedly allowed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%INPUT_REVIEW -> IN_PROGRESS unexpectedly allowed%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%illegal transition%' THEN
             RAISE;
         END IF;
@@ -75,6 +78,9 @@ BEGIN
             1, v_gen, 'FAILED_FINAL', 'chat.failed', '{}'::jsonb);
         RAISE EXCEPTION 'INPUT_BLOCKED -> FAILED_FINAL unexpectedly allowed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%INPUT_BLOCKED -> FAILED_FINAL unexpectedly allowed%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%illegal transition%' THEN
             RAISE;
         END IF;
@@ -92,18 +98,27 @@ BEGIN
         PERFORM vc.record_safety_event(1, v_gen, 'OUTPUT', 'R3_HIGH', 'x');
         RAISE EXCEPTION 'unapproved stage unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved stage unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%unapproved stage%' THEN RAISE; END IF;
     END;
     BEGIN
         PERFORM vc.record_safety_event(1, v_gen, 'FINAL', 'R9_??', 'x');
         RAISE EXCEPTION 'unapproved risk unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unapproved risk unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%unapproved risk level%' THEN RAISE; END IF;
     END;
     BEGIN
         PERFORM vc.record_safety_event(1, v_gen, 'FINAL', 'R3_HIGH', '   ');
         RAISE EXCEPTION 'blank rule id unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%blank rule id unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%rule_id%' THEN RAISE; END IF;
     END;
 
@@ -134,6 +149,9 @@ BEGIN
             1, v_gen, 'FAILED_FINAL', 'chat.completed', '{}'::jsonb);
         RAISE EXCEPTION 'mismatched event/status unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%mismatched event/status unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%does not match%' THEN RAISE; END IF;
     END;
 END $$;
@@ -149,6 +167,9 @@ BEGIN
         PERFORM vc.record_safety_event(1, NULL, 'INPUT', 'R4_IMMINENT', 'x');
         RAISE EXCEPTION 'owner-mismatched safety event unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner-mismatched safety event unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must match server-trusted context%' THEN
             RAISE;
         END IF;

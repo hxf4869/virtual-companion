@@ -44,12 +44,18 @@ BEGIN
         PERFORM vc.create_invite_code(v_admin, 'short', now() + interval '1 day');
         RAISE EXCEPTION 'malformed code unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%malformed code unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%8..64%' THEN RAISE; END IF;
     END;
     BEGIN
         PERFORM vc.create_invite_code(v_admin, 'INVITE-PASTEXPIRY', now() - interval '1 day');
         RAISE EXCEPTION 'past expiry unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%past expiry unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%future%' THEN RAISE; END IF;
     END;
 
@@ -83,6 +89,9 @@ BEGIN
             'INVITE-ABC123XYZ', 'Carol-Invite', '$2a$10$carol.hash.placeholder', 'Carol');
         RAISE EXCEPTION 'used code unexpectedly redeemed twice';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%used code unexpectedly redeemed twice%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%invalid or expired%' THEN RAISE; END IF;
     END;
 
@@ -92,6 +101,9 @@ BEGIN
             'INVITE-UNKNOWN1', 'Dan-Invite', '$2a$10$dan.hash.placeholder', 'Dan');
         RAISE EXCEPTION 'unknown code unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown code unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%invalid or expired%' THEN RAISE; END IF;
     END;
 
@@ -111,6 +123,9 @@ BEGIN
             'INVITE-DISABLED', 'Eve-Invite', '$2a$10$eve.hash.placeholder', 'Eve');
         RAISE EXCEPTION 'disabled code unexpectedly redeemed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%disabled code unexpectedly redeemed%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%invalid or expired%' THEN RAISE; END IF;
     END;
 
@@ -119,6 +134,9 @@ BEGIN
         PERFORM vc.create_invite_code(v_user, 'INVITE-FORBID1', now() + interval '1 day');
         RAISE EXCEPTION 'non-admin unexpectedly minted a code';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%non-admin unexpectedly minted a code%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not an active ADMIN%' THEN RAISE; END IF;
     END;
 
@@ -161,6 +179,9 @@ BEGIN
         PERFORM vc.beta_service_window_state(v_owner + 1000, now());
         RAISE EXCEPTION 'owner-mismatched window state unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%owner-mismatched window state unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must match server-trusted context%' THEN RAISE; END IF;
     END;
     RESET ROLE;

@@ -38,6 +38,9 @@ BEGIN
         PERFORM vc.assert_active_claim(1, 1, v_token, 'FENCE-75');
         RAISE EXCEPTION 'assert_active_claim must reject a wall-clock-expired lease';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%assert_active_claim must reject a wall-clock-expired lease%' THEN
+            RAISE;
+        END IF;
         IF position('not active' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;

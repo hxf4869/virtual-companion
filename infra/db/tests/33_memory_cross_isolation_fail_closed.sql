@@ -24,14 +24,18 @@ BEGIN;
 SELECT vc.set_owner_context(1, 'n1', encode(vc.hmac(convert_to('vc-owner-binding-v1|1|' || pg_backend_pid() || '|' || pg_current_xact_id() || '|' || 'n1', 'UTF8'), convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'), 'sha256'), 'hex'));
 SET LOCAL ROLE vc_api;
 DO $$
-DECLARE v_a bigint; v_b bigint;
+DECLARE v_a bigint; v_b bigint; v_p bigint;
 BEGIN
     SELECT vc.create_memory_candidate(1, 10, 'RELATIONSHIP', 'rel-10-mem', NULL, ARRAY[]::text[]) INTO v_a;
     SELECT vc.create_memory_candidate(1, 11, 'RELATIONSHIP', 'rel-11-mem', NULL, ARRAY[]::text[]) INTO v_b;
+    -- app.memp stays PENDING so a cross-user confirm that lost the owner
+    -- isolation would actually succeed and trip the sentinel below.
+    SELECT vc.create_memory_candidate(1, 11, 'RELATIONSHIP', 'rel-11-pending', NULL, ARRAY[]::text[]) INTO v_p;
     PERFORM vc.confirm_memory_candidate(1, v_a);
     PERFORM vc.confirm_memory_candidate(1, v_b);
     PERFORM set_config('app.mema', v_a::text, false);
     PERFORM set_config('app.memb', v_b::text, false);
+    PERFORM set_config('app.memp', v_p::text, false);
 END $$;
 COMMIT;
 RESET ROLE;
@@ -64,9 +68,12 @@ BEGIN
     IF FOUND THEN RAISE EXCEPTION 'owner 2 must not read owner 1 memory'; END IF;
 
     BEGIN
-        PERFORM vc.confirm_memory_candidate(2, current_setting('app.mema')::bigint);
+        PERFORM vc.confirm_memory_candidate(2, current_setting('app.memp')::bigint);
         RAISE EXCEPTION 'cross-user confirm must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cross-user confirm must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not found (existence hidden)
     END;
 
@@ -74,6 +81,9 @@ BEGIN
         PERFORM vc.delete_memory(2, current_setting('app.mema')::bigint);
         RAISE EXCEPTION 'cross-user delete must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cross-user delete must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not found
     END;
 END $$;

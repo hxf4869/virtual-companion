@@ -48,6 +48,9 @@ BEGIN
         PERFORM vc.insert_generation_candidate(1, 5001, 'late candidate', false);
         RAISE EXCEPTION 'terminal generation must reject new candidates';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%terminal generation must reject new candidates%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -69,6 +72,9 @@ BEGIN
         PERFORM vc.insert_generation_candidate(1, 5002, 'second final', true);
         RAISE EXCEPTION 'a second final candidate must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%a second final candidate must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected: unique violation on generation_candidate_one_final
     END;
 
@@ -93,6 +99,9 @@ BEGIN
         PERFORM vc.record_quota_release(1, 5001, -1, 'bad-release');
         RAISE EXCEPTION 'negative quota_amount must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%negative quota_amount must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -101,6 +110,9 @@ BEGIN
         PERFORM vc.record_quota_release(1, 9999, 1, 'unknown-gen');
         RAISE EXCEPTION 'unknown generation must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown generation must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 END $$;

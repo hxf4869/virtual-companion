@@ -237,6 +237,9 @@ BEGIN
             'COMPANION_CHAT', ARRAY['MESSAGE_TEXT']);
         RAISE EXCEPTION 'unknown generation must raise';
     EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE '%unknown generation must raise%' THEN
+            RAISE;
+        END IF;
         -- expected: generation not found
     END;
 
@@ -247,6 +250,9 @@ BEGIN
             'COMPANION_CHAT', ARRAY['MESSAGE_TEXT']);
         RAISE EXCEPTION 'cross-owner call must raise';
     EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE '%cross-owner call must raise%' THEN
+            RAISE;
+        END IF;
         -- expected: trusted-owner assertion
     END;
 
@@ -257,6 +263,9 @@ BEGIN
             'COMPANION_CHAT', ARRAY['MESSAGE_TEXT']);
         RAISE EXCEPTION 'blank provider_id must raise';
     EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE '%blank provider_id must raise%' THEN
+            RAISE;
+        END IF;
         -- expected: provider_id is required
     END;
 END $$;

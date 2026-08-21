@@ -31,6 +31,9 @@ BEGIN
     RAISE EXCEPTION 'coordinator unexpectedly read work item payload';
 EXCEPTION
     WHEN insufficient_privilege OR others THEN
+        IF SQLERRM LIKE '%coordinator unexpectedly read work item payload%' THEN
+            RAISE;
+        END IF;
         IF sqlerrm NOT LIKE '%permission%' AND sqlerrm NOT LIKE '%payload%' THEN
             RAISE;
         END IF;
@@ -43,6 +46,9 @@ BEGIN
     RAISE EXCEPTION 'coordinator unexpectedly executed claim_work_items';
 EXCEPTION
     WHEN insufficient_privilege OR others THEN
+        IF SQLERRM LIKE '%coordinator unexpectedly executed claim_work_items%' THEN
+            RAISE;
+        END IF;
         IF sqlerrm NOT LIKE '%permission%' AND sqlerrm NOT LIKE '%execute%' THEN
             RAISE;
         END IF;

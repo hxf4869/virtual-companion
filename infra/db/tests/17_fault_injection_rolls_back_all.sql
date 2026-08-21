@@ -39,6 +39,9 @@ BEGIN
             'INJECT_ROLLBACK');
         RAISE EXCEPTION 'fault injection unexpectedly committed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%fault injection unexpectedly committed%' THEN
+            RAISE;
+        END IF;
         -- expected: injected fault aborted the finalize transaction
     END;
 

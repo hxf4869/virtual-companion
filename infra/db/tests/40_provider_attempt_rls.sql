@@ -76,6 +76,9 @@ BEGIN
         PERFORM vc.record_provider_attempt(1, 5000, 'provider-1', 'openai', 'MADE_UP', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'unsupported status must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unsupported status must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -84,6 +87,9 @@ BEGIN
         PERFORM vc.record_provider_attempt(1, 5000, 'provider-1', '  ', 'SUCCEEDED', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'blank supplier_name must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%blank supplier_name must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 
@@ -92,6 +98,9 @@ BEGIN
         PERFORM vc.record_provider_attempt(1, 9999, 'provider-1', 'openai', 'SUCCEEDED', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'unknown generation must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown generation must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected
     END;
 END $$;
@@ -116,6 +125,9 @@ BEGIN
         PERFORM vc.record_provider_attempt(2, 5000, 'provider-1', 'openai', 'SUCCEEDED', 'req-snap-1', 'exec-snap-1');
         RAISE EXCEPTION 'cross-tenant write must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cross-tenant write must be rejected%' THEN
+            RAISE;
+        END IF;
         -- expected: generation 5000 does not exist for owner 2
     END;
 END $$;

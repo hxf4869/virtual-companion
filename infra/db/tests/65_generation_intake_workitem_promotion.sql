@@ -60,6 +60,9 @@ BEGIN
         PERFORM vc.create_conversation(1, 1);
         RAISE EXCEPTION 'create_conversation without trusted context should fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%create_conversation without trusted context should fail%' THEN
+            RAISE;
+        END IF;
         IF position('must match server-trusted' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'create_conversation no-context: unexpected error: %', SQLERRM;
         END IF;
@@ -116,6 +119,9 @@ BEGIN
         PERFORM vc.enqueue_work_item(1, 'GENERATION', 1, NULL);
         RAISE EXCEPTION 'enqueue_work_item without trusted context should fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%enqueue_work_item without trusted context should fail%' THEN
+            RAISE;
+        END IF;
         IF position('must match server-trusted' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'enqueue no-context: unexpected error: %', SQLERRM;
         END IF;
@@ -162,6 +168,9 @@ BEGIN
         PERFORM vc.promote_generation(1, v_gen, 'FINAL_REVIEW');
         RAISE EXCEPTION 'CREATED->FINAL_REVIEW skip must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%CREATED->FINAL_REVIEW skip must fail%' THEN
+            RAISE;
+        END IF;
         IF position('illegal transition' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'skip promote: unexpected error: %', SQLERRM;
         END IF;
@@ -172,6 +181,9 @@ BEGIN
         PERFORM vc.promote_generation(1, v_gen, 'COMPLETED');
         RAISE EXCEPTION 'promote to COMPLETED must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%promote to COMPLETED must fail%' THEN
+            RAISE;
+        END IF;
         IF position('unsupported target status' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'promote COMPLETED: unexpected error: %', SQLERRM;
         END IF;

@@ -54,6 +54,9 @@ BEGIN
         PERFORM vc.cancel_generation(1, 1000);
         RAISE EXCEPTION 're-cancelling a CANCELLED generation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%re-cancelling a CANCELLED generation must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not cancellable
     END;
 
@@ -62,6 +65,9 @@ BEGIN
         PERFORM vc.cancel_generation(1, 1001);
         RAISE EXCEPTION 'cancelling a COMPLETED generation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cancelling a COMPLETED generation must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not cancellable
     END;
 
@@ -70,6 +76,9 @@ BEGIN
         PERFORM vc.cancel_generation(1, 1002);
         RAISE EXCEPTION 'cancelling a COMMITTING generation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cancelling a COMMITTING generation must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not cancellable
     END;
 END $$;
@@ -88,6 +97,9 @@ BEGIN
         PERFORM vc.cancel_generation(1, 2000);
         RAISE EXCEPTION 'cancelling a foreign generation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cancelling a foreign generation must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not found (existence hidden)
     END;
     -- Absent id must raise identically.
@@ -95,6 +107,9 @@ BEGIN
         PERFORM vc.cancel_generation(1, 9999);
         RAISE EXCEPTION 'cancelling an absent generation must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cancelling an absent generation must fail%' THEN
+            RAISE;
+        END IF;
         -- expected: not found
     END;
 END $$;

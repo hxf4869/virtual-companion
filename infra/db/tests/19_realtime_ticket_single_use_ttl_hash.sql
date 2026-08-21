@@ -67,6 +67,9 @@ BEGIN
             1, v_id, v_secret, 5000, 'sess-1', 'https://app.example', 'FETCH_SSE', 1, 0);
         RAISE EXCEPTION 'single-use ticket was consumed twice';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%single-use ticket was consumed twice%' THEN
+            RAISE;
+        END IF;
         -- expected: already consumed
     END;
 
@@ -76,6 +79,9 @@ BEGIN
             1, v_id, 'wrong-secret', 5000, 'sess-1', 'https://app.example', 'FETCH_SSE', 1, 0);
         RAISE EXCEPTION 'wrong secret unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%wrong secret unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         -- expected: invalid secret
     END;
 
@@ -87,6 +93,9 @@ BEGIN
             1, v_second, 'anything', 5000, 'sess-2', 'https://evil.example', 'FETCH_SSE', 1, 0);
         RAISE EXCEPTION 'boundTo mismatch unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%boundTo mismatch unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         -- expected: boundTo mismatch (secret also differs, still fails closed)
     END;
 
@@ -137,6 +146,9 @@ BEGIN
             1, v_id, v_secret, 5000, 'sess-ttl', 'https://app.example', 'FETCH_SSE', 1, 0);
         RAISE EXCEPTION 'expired ticket unexpectedly consumed';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%expired ticket unexpectedly consumed%' THEN
+            RAISE;
+        END IF;
         -- expected: ticket expired
     END;
 END $$;

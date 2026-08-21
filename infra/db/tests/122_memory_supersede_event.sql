@@ -88,6 +88,9 @@ BEGIN
             NULL, 'PLANNED', NULL);
         RAISE EXCEPTION 'event_status without event_at unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%event_status without event_at unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%require event_at%' THEN RAISE; END IF;
     END;
     BEGIN
@@ -96,6 +99,9 @@ BEGIN
             now() + interval '2 days', 'SOMEDAY', NULL);
         RAISE EXCEPTION 'unknown event_status unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%unknown event_status unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%unknown event_status%' THEN RAISE; END IF;
     END;
     BEGIN
@@ -104,6 +110,9 @@ BEGIN
             now() + interval '2 days', 'PLANNED', now() + interval '1 day');
         RAISE EXCEPTION 'expiry before start unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%expiry before start unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%must be after event_at%' THEN RAISE; END IF;
     END;
 
@@ -155,6 +164,9 @@ BEGIN
         PERFORM vc.confirm_memory_candidate(v_alice, v_c3, v_c3);
         RAISE EXCEPTION 'self-supersede unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%self-supersede unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%cannot supersede itself%' THEN RAISE; END IF;
     END;
     SELECT vc.create_memory_candidate(
@@ -164,6 +176,9 @@ BEGIN
         PERFORM vc.confirm_memory_candidate(v_alice, v_c3, v_c4);
         RAISE EXCEPTION 'PENDING supersede target unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%PENDING supersede target unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not an active canonical memory%' THEN RAISE; END IF;
     END;
     SELECT vc.create_memory_candidate(
@@ -181,6 +196,9 @@ BEGIN
             (SELECT out_id FROM vc.list_memory(v_alice, 2, false) LIMIT 1));
         RAISE EXCEPTION 'cross-relationship supersede unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%cross-relationship supersede unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%another relationship%' THEN RAISE; END IF;
     END;
 
@@ -231,6 +249,9 @@ BEGIN
             v_alice, v_c2, '用户换到 B 公司工作', NULL, 'COMPLETED', NULL);
         RAISE EXCEPTION 'event edit on a non-event row unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%event edit on a non-event row unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%require event_at%' THEN RAISE; END IF;
     END;
 
@@ -281,6 +302,9 @@ BEGIN
         PERFORM vc.confirm_memory_candidate(v_bob, v_c, v_alice + 1000000);
         RAISE EXCEPTION 'foreign supersede target unexpectedly accepted';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%foreign supersede target unexpectedly accepted%' THEN
+            RAISE;
+        END IF;
         IF SQLERRM NOT LIKE '%not found for owner%' THEN RAISE; END IF;
     END;
 END $$;

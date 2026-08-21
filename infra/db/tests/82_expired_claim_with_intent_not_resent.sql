@@ -63,7 +63,10 @@ RESET ROLE;
 
 -- owner 2 fixture（superuser 作用域）：claim 已提交但从未创建 intent。
 INSERT INTO vc.vc_user(id, display_name) VALUES (2, 'bob');
-INSERT INTO vc.work_item(owner_user_id, id, kind, ref_id, payload) VALUES (2, 1, 'GENERATION', 20, NULL);
+-- id from the shared sequence: a hardcoded id collides with ids already
+-- allocated by earlier tests (or after a sequence reset / single-file run).
+INSERT INTO vc.work_item(owner_user_id, id, kind, ref_id, payload)
+VALUES (2, nextval('vc.work_item_id_seq'), 'GENERATION', 20, NULL);
 UPDATE vc.work_item
    SET status = 'CLAIMED', claim_token = 'tok-b', claim_fence = 'FENCE-82-B',
        claimed_at = clock_timestamp(),

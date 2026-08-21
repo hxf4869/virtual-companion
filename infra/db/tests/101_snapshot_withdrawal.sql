@@ -62,6 +62,9 @@ BEGIN
         PERFORM * FROM vc.withdraw_authorization_snapshots(2);
         RAISE EXCEPTION 'foreign owner id unexpectedly passed the trusted-owner assertion';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%foreign owner id unexpectedly passed the trusted-owner assertion%' THEN
+            RAISE;
+        END IF;
         NULL; -- expected
     END;
 END $$;

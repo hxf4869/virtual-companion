@@ -216,6 +216,9 @@ BEGIN
             'snap-74-req', 'snap-74-exec');
         RAISE EXCEPTION 'intent with wrong claim token/fence hash must be rejected';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%intent with wrong claim token/fence hash must be rejected%' THEN
+            RAISE;
+        END IF;
         IF position('no live claim' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
         END IF;
@@ -235,6 +238,9 @@ BEGIN
             1, 1, 1, 'a', 'b', 'pa-74-3', 'p', 's', 'r', 'e');
         RAISE EXCEPTION 'create_attempt_intent without context must fail';
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE '%create_attempt_intent without context must fail%' THEN
+            RAISE;
+        END IF;
         IF position('server-trusted' in SQLERRM) = 0
            AND position('current_owner_id' in SQLERRM) = 0 THEN
             RAISE EXCEPTION 'unexpected error: %', SQLERRM;
