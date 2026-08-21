@@ -30,6 +30,15 @@
 {"severity":"P2","code":"DAU_CAP_REACHED","message":"daily active users reached the beta cap; new actives refused","occurredAt":"2026-08-21T12:00:00Z"}
 ```
 
+## 2b. BUDGET-HALT 硬预算停机（已接线，§22.18）
+
+- 配置：`virtual-companion.model-providers.budget-monthly-usd`（月度美元上限；
+  **默认 0 = 守卫关闭**，Technical Alpha 不设上限）。
+- 行为：每次外部 attempt 在 prepare 阶段（安全门之后、任何出站之前）读取
+  `generation_usage` 当月累计 actual_cost；达到上限即
+  `BLOCKED_BY_BUDGET`（fail-closed：无出站、无 attempt intent），指标记
+  `blocked_budget`，并发 P1 `BUDGET_HALT_REACHED` 告警（60s 节流）。
+
 ## 3. 已接线的自动告警
 
 | code | 级别 | 触发点 |

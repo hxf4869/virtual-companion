@@ -107,6 +107,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final SafetyEventService safetyEventService;
     private final ConversationSummaryService summaryService;
     private final com.virtualcompanion.runtime.observability.VcMetrics metrics;
+    private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -122,7 +123,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             SafetyClassifierPort safetyClassifier,
             SafetyEventService safetyEventService,
             ConversationSummaryService summaryService,
-            com.virtualcompanion.runtime.observability.VcMetrics metrics) {
+            com.virtualcompanion.runtime.observability.VcMetrics metrics,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -137,6 +139,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.safetyEventService = safetyEventService;
         this.summaryService = summaryService;
         this.metrics = metrics;
+        this.alertNotifier = alertNotifier;
     }
 
     @Override
@@ -214,7 +217,16 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 String fault = prepared.externalMode()
                         ? "external-" + outcome.terminal().name().toLowerCase(java.util.Locale.ROOT)
                         : "zero-llm-unexpected-outcome:" + outcome.terminal();
-                metricResult = "failed";
+                if (outcome.terminal() == LiveAttemptTerminal.BLOCKED_BY_BUDGET) {
+                    metricResult = "blocked_budget";
+                    metrics.generationTerminal(metricResult);
+                    alertNotifier.alert(
+                            com.virtualcompanion.runtime.observability.AlertSeverity.P1,
+                            "BUDGET_HALT_REACHED",
+                            "month-to-date spend reached the configured cap; outbound refused");
+                } else {
+                    metricResult = "failed";
+                }
                 failSegment(executor, claim, ownerUserId, generationId, fault);
                 log.warn("generation {} terminated as FAILED_FINAL for owner {} (outcome={})",
                         generationId, ownerUserId, outcome.terminal());

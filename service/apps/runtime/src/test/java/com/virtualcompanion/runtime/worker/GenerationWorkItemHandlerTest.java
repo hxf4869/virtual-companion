@@ -118,7 +118,8 @@ class GenerationWorkItemHandlerTest {
                 enqueueService, realtimeEventRepository, deltaBroker, conversationRepository,
                 generationRepository, safetyClassifier, safetyEventService,
                 summaryService,
-                com.virtualcompanion.runtime.observability.TestAlerts.metrics());
+                com.virtualcompanion.runtime.observability.TestAlerts.metrics(),
+                com.virtualcompanion.runtime.observability.TestAlerts.noop());
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
         // INC-MODE: non-incognito by default so the legacy MEM-LOOP tests

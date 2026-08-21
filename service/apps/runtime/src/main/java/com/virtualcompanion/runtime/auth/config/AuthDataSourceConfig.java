@@ -828,6 +828,7 @@ public class AuthDataSourceConfig {
             SafetyEventService safetyEventService,
             ConversationSummaryService conversationSummaryService,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -843,7 +844,8 @@ public class AuthDataSourceConfig {
                 safetyClassifierPort,
                 safetyEventService,
                 conversationSummaryService,
-                metrics);
+                metrics,
+                alertNotifier);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

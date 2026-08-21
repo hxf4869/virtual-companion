@@ -85,7 +85,19 @@ public class ApprovedModelProviderConfig {
             InMemoryAuthorizationSnapshotStore authorizationSnapshotStore,
             ApprovedModelProviders approvedModelProviders,
             GenerationRecovery generationRecovery,
-            ActiveInvocationRegistry activeInvocationRegistry) {
+            ActiveInvocationRegistry activeInvocationRegistry,
+            org.springframework.beans.factory.ObjectProvider<org.springframework.jdbc.core.JdbcTemplate> authJdbcTemplate,
+            @org.springframework.beans.factory.annotation.Value("${virtual-companion.model-providers.budget-monthly-usd:0}")
+            double budgetMonthlyUsd) {
+        // BUDGET-HALT (§22.18): month-to-date settled cost from generation_usage;
+        // a non-positive cap disables the guard (Technical Alpha default).
+        com.virtualcompanion.modelruntime.execution.BudgetGuard.MonthSpendReader reader =
+                () -> java.util.Optional.ofNullable(authJdbcTemplate.getIfAvailable())
+                        .map(jdbc -> jdbc.queryForObject(
+                                "SELECT COALESCE(sum(actual_cost), 0) FROM vc.generation_usage "
+                                        + "WHERE created_at >= date_trunc('month', now())",
+                                Double.class))
+                        .orElse(0.0);
         return new LiveModelInvoker(
                 deterministicRouter,
                 executionAuthorizationGuard,
@@ -93,6 +105,7 @@ public class ApprovedModelProviderConfig {
                 approvedModelProviders.locator(),
                 generationRecovery,
                 approvedModelProviders.supplierNames(),
-                activeInvocationRegistry);
+                activeInvocationRegistry,
+                new com.virtualcompanion.modelruntime.execution.BudgetGuard(reader, budgetMonthlyUsd));
     }
 }

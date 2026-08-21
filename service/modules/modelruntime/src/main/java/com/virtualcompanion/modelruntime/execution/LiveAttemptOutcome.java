@@ -85,7 +85,7 @@ public record LiveAttemptOutcome(
         return switch (terminal) {
             case SUCCEEDED, ZERO_LLM_COMPLETED -> com.virtualcompanion.catalog.RealtimeEventType.CHAT_COMPLETED;
             case CANCELLED, BLOCKED_BY_AUTHORIZATION -> com.virtualcompanion.catalog.RealtimeEventType.CHAT_CANCELLED;
-            case BLOCKED_BY_SAFETY -> com.virtualcompanion.catalog.RealtimeEventType.CHAT_BLOCKED;
+            case BLOCKED_BY_SAFETY, BLOCKED_BY_BUDGET -> com.virtualcompanion.catalog.RealtimeEventType.CHAT_BLOCKED;
             case FAILED, TIMED_OUT, NO_ELIGIBLE_DEPLOYMENT -> com.virtualcompanion.catalog.RealtimeEventType.CHAT_FAILED;
         };
     }

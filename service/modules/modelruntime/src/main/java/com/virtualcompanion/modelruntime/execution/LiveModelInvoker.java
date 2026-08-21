@@ -76,6 +76,7 @@ public final class LiveModelInvoker {
     private final GenerationRecovery recovery;
     private final Map<ProviderId, String> supplierNames;
     private final ActiveInvocationRegistry activeInvocations;
+    private final BudgetGuard budgetGuard; // nullable: disabled when no cap configured
 
     public LiveModelInvoker(
             DeterministicRouter router,
@@ -85,7 +86,7 @@ public final class LiveModelInvoker {
             GenerationRecovery recovery,
             Map<ProviderId, String> supplierNames) {
         this(router, authorizationGuard, authorizationSnapshotStore, adapterLocator,
-                recovery, supplierNames, new ActiveInvocationRegistry());
+                recovery, supplierNames, new ActiveInvocationRegistry(), null);
     }
 
     public LiveModelInvoker(
@@ -96,6 +97,19 @@ public final class LiveModelInvoker {
             GenerationRecovery recovery,
             Map<ProviderId, String> supplierNames,
             ActiveInvocationRegistry activeInvocations) {
+        this(router, authorizationGuard, authorizationSnapshotStore, adapterLocator,
+                recovery, supplierNames, activeInvocations, null);
+    }
+
+    public LiveModelInvoker(
+            DeterministicRouter router,
+            ExecutionAuthorizationGuard authorizationGuard,
+            AuthorizationSnapshotStore authorizationSnapshotStore,
+            AdapterLocator adapterLocator,
+            GenerationRecovery recovery,
+            Map<ProviderId, String> supplierNames,
+            ActiveInvocationRegistry activeInvocations,
+            BudgetGuard budgetGuard) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.authorizationGuard = Objects.requireNonNull(
                 authorizationGuard, "authorizationGuard must not be null");
@@ -106,6 +120,7 @@ public final class LiveModelInvoker {
         this.supplierNames = Map.copyOf(supplierNames);
         this.activeInvocations = Objects.requireNonNull(
                 activeInvocations, "activeInvocations must not be null");
+        this.budgetGuard = budgetGuard;
     }
 
     /**
@@ -218,6 +233,17 @@ public final class LiveModelInvoker {
                     decision.quotaReservation());
             return PreparedInvocation.terminalOnly(
                     decision, null, LiveAttemptTerminal.BLOCKED_BY_SAFETY, outcome, null);
+        }
+
+        // BUDGET-HALT (§22.18): month-to-date spend at/over the configured cap
+        // refuses the outbound BEFORE any adapter resolution — fail-closed, no
+        // outbound, no attempt intent.
+        if (budgetGuard != null && budgetGuard.exceeded()) {
+            RecoveryOutcome outcome = recovery.recover(
+                    decision.ownership(), RecoveryScenario.ALL_FAILURE,
+                    decision.quotaReservation());
+            return PreparedInvocation.terminalOnly(
+                    decision, null, LiveAttemptTerminal.BLOCKED_BY_BUDGET, outcome, null);
         }
 
         // 4. Resolve the approved adapter (fail-closed; never a guessed default).
