@@ -8,10 +8,10 @@ import java.util.Objects;
  *
  * <p>{@code status} is {@code PENDING} (work item enqueued), {@code READY}
  * (payload sealed with a short-lived one-time token), {@code FAILED} or
- * {@code EXPIRED} (payload purged after expiry). {@code downloadToken} is the
- * one-time secret the runtime folds into the {@code downloadUrl}; it is
- * nulled on consumption and on expiry. The payload itself is never part of
- * this record — only {@link ExportService#consume} returns it, exactly once.
+ * {@code EXPIRED} (payload purged after expiry). No download token here: the
+ * one-time secret exists only in the create response (its sha256 digest is
+ * what the row stores, V76). The payload itself is never part of this record
+ * — only {@link ExportService#consume} returns it, exactly once.
  */
 public record ExportRecord(
         long id,
@@ -19,8 +19,7 @@ public record ExportRecord(
         Instant requestedAt,
         Instant completedAt,
         Instant expiresAt,
-        String errorMessage,
-        String downloadToken) {
+        String errorMessage) {
 
     public ExportRecord {
         if (id <= 0) {

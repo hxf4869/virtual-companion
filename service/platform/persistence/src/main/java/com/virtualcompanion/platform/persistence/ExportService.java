@@ -15,10 +15,13 @@ import org.springframework.jdbc.core.RowMapper;
  * <p>{@link #create} inserts a PENDING request and enqueues the
  * {@code DATA_EXPORT} work item in one SD call (one in-flight export per
  * account — the eager pre-check maps to 400, the SD guard re-checks as
- * defense in depth). The worker seals the payload with {@link #complete}; a
- * download succeeds exactly once via {@link #consume} (token consumed in the
- * same statement), and {@link #expireStale} is the scheduled sweep that
- * purges expired READY payloads (过期后自动删除).
+ * defense in depth). The create call carries the one-time download token;
+ * only its sha256 digest is persisted (V76) and the plaintext is returned
+ * to the caller exactly once. The worker seals the payload with
+ * {@link #complete}; a download succeeds exactly once via {@link #consume}
+ * (the presented token is digested and consumed in the same statement), and
+ * {@link #expireStale} is the scheduled sweep that purges expired READY
+ * payloads (过期后自动删除).
  *
  * <p>Every user-scoped call re-verifies the trusted-owner context inside the
  * SD (V17 pattern); the runtime supplies the server-verified owner id.
@@ -45,10 +48,17 @@ public class ExportService {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     }
 
-    /** Create a PENDING export request (and its DATA_EXPORT work item). */
-    public long create(long ownerUserId) {
+    /**
+     * Create a PENDING export request (and its DATA_EXPORT work item). The
+     * one-time download token is passed through to the SD call, which stores
+     * only its sha256 digest (V76) — the plaintext never persists.
+     */
+    public long create(long ownerUserId, String token) {
         if (ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("token must not be blank");
         }
         // Eager one-in-flight check so the normal case maps to 400 (the SD
         // re-checks inside the same call as defense in depth).
@@ -58,7 +68,7 @@ public class ExportService {
             throw new IllegalArgumentException("an export is already in flight");
         }
         Long id = jdbc.queryForObject(
-                "SELECT vc.create_export_request(?)", Long.class, ownerUserId);
+                "SELECT vc.create_export_request(?, ?)", Long.class, ownerUserId, token);
         if (id == null || id <= 0) {
             throw new IllegalStateException("create_export_request returned no id");
         }
@@ -75,7 +85,7 @@ public class ExportService {
         }
         return jdbc.query(
                         "SELECT out_id, out_status, out_requested_at, out_completed_at, "
-                                + "out_expires_at, out_error_message, out_download_token "
+                                + "out_expires_at, out_error_message "
                                 + "FROM vc.get_export_request(?, ?)",
                         rowMapper(),
                         ownerUserId,
@@ -84,9 +94,11 @@ public class ExportService {
                 .findFirst();
     }
 
-    /** Seal a PENDING export as READY (worker). */
+    /** Seal a PENDING export as READY (worker). No token parameter:
+     * possession originates at create time (V76); only payload and expiry
+     * are sealed. */
     public boolean complete(
-            long ownerUserId, long exportId, String payload, String token, Instant expiresAt) {
+            long ownerUserId, long exportId, String payload, Instant expiresAt) {
         if (ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId must be positive");
         }
@@ -94,15 +106,13 @@ public class ExportService {
             throw new IllegalArgumentException("exportId must be positive");
         }
         Objects.requireNonNull(payload, "payload must not be null");
-        Objects.requireNonNull(token, "token must not be null");
         Objects.requireNonNull(expiresAt, "expiresAt must not be null");
         Integer rows = jdbc.queryForObject(
-                "SELECT vc.complete_export(?, ?, ?, ?, ?)",
+                "SELECT vc.complete_export(?, ?, ?, ?)",
                 Integer.class,
                 ownerUserId,
                 exportId,
                 payload,
-                token,
                 Timestamp.from(expiresAt));
         return rows != null && rows == 1;
     }
@@ -166,7 +176,6 @@ public class ExportService {
                         ? null : rs.getTimestamp("out_completed_at").toInstant(),
                 rs.getTimestamp("out_expires_at") == null
                         ? null : rs.getTimestamp("out_expires_at").toInstant(),
-                rs.getString("out_error_message"),
-                rs.getString("out_download_token"));
+                rs.getString("out_error_message"));
     }
 }

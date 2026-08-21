@@ -348,6 +348,7 @@ export interface ExportRequest {
   completedAt?: string
   expiresAt?: string
   errorMessage?: string
+  downloadToken?: string
   downloadUrl?: string
 }
 

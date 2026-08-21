@@ -89,6 +89,9 @@ notice and per-message aiGenerated markers. -->
       >
         下载导出文件
       </button>
+      <text v-if="store.canDownload()" class="status-meta" data-testid="export-once-hint">
+        下载链接仅在发起导出时生成一次，刷新或离开页面后无法找回；失效后请等过期再重新发起。
+      </text>
       <text v-if="store.download && !store.downloadFailed" class="status-meta">
         已下载（一次性链接已失效，页面保留本次内容预览）。
       </text>

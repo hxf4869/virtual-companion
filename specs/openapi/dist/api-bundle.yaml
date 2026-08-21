@@ -2020,7 +2020,9 @@ paths:
       summary: Enqueue an asynchronous data export (FR-DATA-002)
       description: Creates an export request and enqueues a DATA_EXPORT work item (vc.create_export_request); the worker builds
         the JSON document asynchronously and the status endpoint reports PENDING until READY. Only one in-flight export per
-        account is allowed. The download link is short-lived and one-time. Requires a server-verified authentication context.
+        account is allowed. The response issues the one-time download token EXACTLY ONCE (only its sha256 digest is stored,
+        V76); save downloadUrl immediately — status polls never carry it again. Requires a server-verified authentication
+        context.
       responses:
         '200':
           description: The created export request (PENDING)
@@ -2044,9 +2046,9 @@ paths:
     get:
       operationId: getExportStatus
       summary: Read one owned export request status (FR-DATA-002)
-      description: Status of the caller's export request via vc.get_export_request. While READY the response carries a short-lived
-        one-time downloadUrl; a foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires
-        a server-verified authentication context.
+      description: Status of the caller's export request via vc.get_export_request. The response never carries the download
+        token or URL (the token was issued once in the create response, V76); a foreign or absent id maps to NOT_FOUND_OR_FORBIDDEN
+        (existence is never disclosed). Requires a server-verified authentication context.
       parameters:
       - $ref: '#/components/parameters/ExportId'
       responses:
@@ -2072,9 +2074,10 @@ paths:
     get:
       operationId: downloadExport
       summary: One-time authenticated download of a READY export (FR-DATA-002)
-      description: Returns the export document exactly once (the token is consumed on success, vc.consume_export). The token
-        is only handed out inside the authenticated status response; expired, consumed, foreign or absent exports map to NOT_FOUND_OR_FORBIDDEN
-        (existence is never disclosed). Requires a server-verified authentication context.
+      description: Returns the export document exactly once (the token is consumed on success, vc.consume_export digests the
+        presented token before comparison). The token was issued once in the create response; expired, consumed, foreign or
+        absent exports map to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a server-verified authentication
+        context.
       parameters:
       - $ref: '#/components/parameters/ExportId'
       - $ref: '#/components/parameters/ExportToken'
@@ -4188,9 +4191,14 @@ components:
         errorMessage:
           type: string
           description: Stable failure reason, present only on FAILED
+        downloadToken:
+          type: string
+          description: One-time download secret, present ONLY in the create response (V76); only its sha256 digest is stored
+            server-side.
         downloadUrl:
           type: string
-          description: Short-lived one-time download link, present only while READY
+          description: Short-lived one-time download link, present ONLY in the create response; status polls never repeat
+            it.
     ExportDownload:
       type: object
       description: The exported user-data document (FR-DATA-002, one-time).

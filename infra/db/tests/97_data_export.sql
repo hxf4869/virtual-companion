@@ -1,10 +1,11 @@
 -- 97_data_export: DATA-EXPORT V42 — asynchronous user data export.
 --
--- Covers: create_export_request enqueues a DATA_EXPORT work item and refuses
--- a second in-flight request; count_inflight_exports is the eager pre-check;
--- complete_export seals PENDING→READY with payload/token/expiry;
--- get_export_request exposes status + token (never the payload) and RAISEs
--- for a foreign owner; consume_export returns the payload exactly once;
+-- Covers: create_export_request issues the one-time download token (only
+-- its sha256 digest is stored, V76) and refuses a second in-flight request;
+-- count_inflight_exports is the eager pre-check; complete_export seals
+-- PENDING→READY with payload/expiry; get_export_request exposes status only
+-- (never a token, never the payload) and RAISEs for a foreign owner;
+-- consume_export digests the presented token and returns the payload once;
 -- expire_stale_exports purges expired READY rows (过期后自动删除); a
 -- non-vc_api role cannot execute the functions; and create without a
 -- server-trusted owner context RAISEs.
@@ -31,8 +32,9 @@ DECLARE
     v_rows   integer;
     n        integer;
 BEGIN
-    -- Create: returns an id and the queue now carries a pending item.
-    v_export := vc.create_export_request(1);
+    -- Create: returns an id and the queue now carries a pending item; the
+    -- plaintext token exists only in this test's hands after the call.
+    v_export := vc.create_export_request(1, 'tok-1');
     IF v_export <= 0 THEN
         RAISE EXCEPTION 'create_export_request must return a positive id';
     END IF;
@@ -47,7 +49,7 @@ BEGIN
 
     -- A second in-flight request RAISEs.
     BEGIN
-        PERFORM vc.create_export_request(1);
+        PERFORM vc.create_export_request(1, 'tok-b');
         RAISE EXCEPTION 'second in-flight export unexpectedly succeeded';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE '%second in-flight export unexpectedly succeeded%' THEN
@@ -56,23 +58,22 @@ BEGIN
         NULL; -- expected
     END;
 
-    -- Seal: PENDING -> READY with payload, token and expiry.
+    -- Seal: PENDING -> READY with payload and expiry (no token parameter;
+    -- possession originates at create).
     v_rows := vc.complete_export(1, v_export, '{"exportId":"' || v_export || '"}',
-                                 'tok-1', now() + interval '1 hour');
+                                 now() + interval '1 hour');
     IF v_rows <> 1 THEN
         RAISE EXCEPTION 'complete_export must seal exactly one row (got %)', v_rows;
     END IF;
 
-    -- Status view: READY + token, and the payload is not exposed.
+    -- Status view: READY, and neither the token nor the payload is exposed.
     DECLARE
         v_status text;
-        v_token  text;
     BEGIN
-        SELECT out_status, out_download_token INTO v_status, v_token
+        SELECT out_status INTO v_status
           FROM vc.get_export_request(1, v_export);
-        IF v_status IS DISTINCT FROM 'READY' OR v_token IS DISTINCT FROM 'tok-1' THEN
-            RAISE EXCEPTION 'get_export_request must report READY with the token (got %/%)',
-                v_status, v_token;
+        IF v_status IS DISTINCT FROM 'READY' THEN
+            RAISE EXCEPTION 'get_export_request must report READY (got %)', v_status;
         END IF;
     END;
 
@@ -88,8 +89,8 @@ BEGIN
     END IF;
 
     -- Wrong token never consumes.
-    v_export := vc.create_export_request(1);
-    PERFORM vc.complete_export(1, v_export, '{"x":1}', 'tok-2', now() + interval '1 hour');
+    v_export := vc.create_export_request(1, 'tok-2');
+    PERFORM vc.complete_export(1, v_export, '{"x":1}', now() + interval '1 hour');
     SELECT count(*) INTO n FROM vc.consume_export(1, v_export, 'tok-wrong');
     IF n <> 0 THEN
         RAISE EXCEPTION 'wrong download token must not consume';
@@ -117,11 +118,15 @@ RESET ROLE;
 BEGIN;
 -- Backdate a READY export directly so the sweep has work to do.
 INSERT INTO vc.export_request(owner_user_id, id, status, requested_at, completed_at,
-                              expires_at, download_token, payload)
+                              expires_at, download_token_hash, payload)
 VALUES (1, 9001, 'READY', now() - interval '2 hours', now() - interval '2 hours',
-        now() - interval '1 hour', 'stale-tok', '{"stale":true}'),
+        now() - interval '1 hour',
+        encode(vc.digest(convert_to('stale-tok', 'UTF8'), 'sha256'), 'hex'),
+        '{"stale":true}'),
        (1, 9002, 'READY', now() - interval '2 hours', now() - interval '2 hours',
-        now() + interval '1 hour', 'live-tok', '{"live":true}');
+        now() + interval '1 hour',
+        encode(vc.digest(convert_to('live-tok', 'UTF8'), 'sha256'), 'hex'),
+        '{"live":true}');
 DO $$
 DECLARE
     v_rows integer;
@@ -141,6 +146,11 @@ BEGIN
     IF v_status IS DISTINCT FROM 'READY' THEN
         RAISE EXCEPTION 'live export must stay READY (got %)', v_status;
     END IF;
+    -- At rest, only the digest is stored — never the plaintext secret.
+    IF EXISTS (SELECT 1 FROM vc.export_request
+                WHERE download_token_hash IN ('stale-tok', 'live-tok')) THEN
+        RAISE EXCEPTION 'download_token_hash must store digests, not plaintext tokens';
+    END IF;
 END $$;
 COMMIT;
 
@@ -149,7 +159,7 @@ SET ROLE vc_worker;
 BEGIN;
 DO $$
 BEGIN
-    PERFORM * FROM vc.create_export_request(1);
+    PERFORM * FROM vc.create_export_request(1, 'tok-x');
     RAISE EXCEPTION 'vc_worker unexpectedly executed create_export_request';
 EXCEPTION
     WHEN insufficient_privilege THEN
@@ -163,7 +173,7 @@ BEGIN;
 SET LOCAL ROLE vc_api;
 DO $$
 BEGIN
-    PERFORM * FROM vc.create_export_request(1);
+    PERFORM * FROM vc.create_export_request(1, 'tok-x');
     RAISE EXCEPTION 'create_export_request without owner context unexpectedly succeeded';
 EXCEPTION
     WHEN OTHERS THEN

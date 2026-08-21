@@ -188,8 +188,9 @@ class SchemaReadinessHealthIndicatorTest {
         // purge SDs);
         // V72 = B1-SURVEY daily 被理解感 score capture (survey_response RLS table);
         // V73/V74/V75 = review-fix bundles (anchor FK column lists, RLS/REVOKE
-        // hardening + indexes, SD function guards).
+        // hardening + indexes, SD function guards);
+        // V76 = export download-token hashed at rest (issue-once semantics).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(75);
+                .isEqualTo(76);
     }
 }

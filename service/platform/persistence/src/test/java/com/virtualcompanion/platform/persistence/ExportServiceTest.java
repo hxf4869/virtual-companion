@@ -35,7 +35,7 @@ class ExportServiceTest {
                 eq("SELECT vc.count_inflight_exports(?)"), eq(Integer.class), eq(1L)))
                 .thenReturn(1);
 
-        assertThrows(IllegalArgumentException.class, () -> service.create(1L));
+        assertThrows(IllegalArgumentException.class, () -> service.create(1L, "tok-1"));
     }
 
     @Test
@@ -44,10 +44,10 @@ class ExportServiceTest {
                 eq("SELECT vc.count_inflight_exports(?)"), eq(Integer.class), eq(1L)))
                 .thenReturn(0);
         when(jdbc.queryForObject(
-                eq("SELECT vc.create_export_request(?)"), eq(Long.class), eq(1L)))
+                eq("SELECT vc.create_export_request(?, ?)"), eq(Long.class), eq(1L), eq("tok-1")))
                 .thenReturn(9L);
 
-        assertEquals(9L, service.create(1L));
+        assertEquals(9L, service.create(1L, "tok-1"));
     }
 
     @Test
@@ -65,7 +65,6 @@ class ExportServiceTest {
                     when(rs.getTimestamp("out_completed_at")).thenReturn(Timestamp.from(NOW));
                     when(rs.getTimestamp("out_expires_at")).thenReturn(Timestamp.from(NOW));
                     when(rs.getString("out_error_message")).thenReturn(null);
-                    when(rs.getString("out_download_token")).thenReturn("tok-1");
                     var mapper = invocation.getArgument(1, RowMapper.class);
                     return List.of(mapper.mapRow(rs, 1));
                 });
@@ -74,7 +73,6 @@ class ExportServiceTest {
 
         assertEquals(9L, record.id());
         assertEquals("READY", record.status());
-        assertEquals("tok-1", record.downloadToken());
         assertEquals(NOW, record.expiresAt());
     }
 
@@ -89,26 +87,24 @@ class ExportServiceTest {
     @Test
     void completeSealsOnlyWhenExactlyOneRowMoves() {
         when(jdbc.queryForObject(
-                eq("SELECT vc.complete_export(?, ?, ?, ?, ?)"),
+                eq("SELECT vc.complete_export(?, ?, ?, ?)"),
                 eq(Integer.class),
                 eq(1L),
                 eq(9L),
                 eq("{\"ok\":true}"),
-                eq("tok-1"),
                 eq(Timestamp.from(NOW))))
                 .thenReturn(1);
-        assertTrue(service.complete(1L, 9L, "{\"ok\":true}", "tok-1", NOW));
+        assertTrue(service.complete(1L, 9L, "{\"ok\":true}", NOW));
 
         when(jdbc.queryForObject(
-                eq("SELECT vc.complete_export(?, ?, ?, ?, ?)"),
+                eq("SELECT vc.complete_export(?, ?, ?, ?)"),
                 eq(Integer.class),
                 eq(1L),
                 eq(9L),
                 eq("{\"ok\":true}"),
-                eq("tok-1"),
                 eq(Timestamp.from(NOW))))
                 .thenReturn(0);
-        assertFalse(service.complete(1L, 9L, "{\"ok\":true}", "tok-1", NOW));
+        assertFalse(service.complete(1L, 9L, "{\"ok\":true}", NOW));
     }
 
     @Test

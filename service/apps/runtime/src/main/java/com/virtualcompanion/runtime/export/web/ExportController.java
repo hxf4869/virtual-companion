@@ -5,6 +5,7 @@ import com.virtualcompanion.platform.persistence.ExportService;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -20,10 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
  * Asynchronous data-export HTTP API (DATA-EXPORT / FR-DATA-002).
  *
  * <p>{@code POST /api/v1/exports} enqueues the export (one in-flight per
- * account, 400 otherwise); {@code GET /api/v1/exports/{exportId}} returns the
- * status and, while READY, the short-lived one-time {@code downloadUrl} built
- * from the sealed token; {@code GET /api/v1/exports/{exportId}/download}
- * consumes the token exactly once and returns the document. A foreign,
+ * account, 400 otherwise) and issues the one-time download token — the
+ * {@code downloadToken}/{@code downloadUrl} appear in THAT response only,
+ * while READY; {@code GET /api/v1/exports/{exportId}} returns the bare status
+ * (only the token's sha256 digest is persisted, V76);
+ * {@code GET /api/v1/exports/{exportId}/download} consumes the token exactly
+ * once and returns the document. A foreign,
  * absent, consumed or expired export maps to 404 NOT_FOUND_OR_FORBIDDEN
  * (existence is never disclosed).
  *
@@ -47,10 +50,16 @@ public class ExportController {
     @PostMapping("/exports")
     public ExportResponse create(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
-        long id = exportService.create(ownerUserId);
+        // V76: the one-time download secret is issued HERE and shown exactly
+        // once; only its sha256 digest is persisted (status polls never carry
+        // it — same issuance shape as the V8 realtime ticket).
+        String token = UUID.randomUUID().toString();
+        long id = exportService.create(ownerUserId, token);
         ExportRecord record = exportService.get(ownerUserId, id)
                 .orElseThrow(() -> new ResourceNotFoundException("export"));
-        return toResponse(record);
+        String downloadUrl = "/api/v1/exports/" + id + "/download?token="
+                + URLEncoder.encode(token, StandardCharsets.UTF_8);
+        return toResponse(record, token, downloadUrl);
     }
 
     @GetMapping("/exports/{exportId}")
@@ -60,7 +69,7 @@ public class ExportController {
         long id = parseRequiredId(exportId, "exportId");
         ExportRecord record = exportService.get(ownerUserId, id)
                 .orElseThrow(() -> new ResourceNotFoundException("export"));
-        return toResponse(record);
+        return toResponse(record, null, null);
     }
 
     @GetMapping("/exports/{exportId}/download")
@@ -76,13 +85,8 @@ public class ExportController {
                 .body(download.payload());
     }
 
-    private static ExportResponse toResponse(ExportRecord record) {
-        String downloadUrl = null;
-        if (ExportService.STATUS_READY.equals(record.status())
-                && record.downloadToken() != null) {
-            downloadUrl = "/api/v1/exports/" + record.id() + "/download?token="
-                    + URLEncoder.encode(record.downloadToken(), StandardCharsets.UTF_8);
-        }
+    private static ExportResponse toResponse(
+            ExportRecord record, String downloadToken, String downloadUrl) {
         return new ExportResponse(
                 record.id(),
                 record.status(),
@@ -90,6 +94,7 @@ public class ExportController {
                 record.completedAt() == null ? null : record.completedAt().toString(),
                 record.expiresAt() == null ? null : record.expiresAt().toString(),
                 record.errorMessage(),
+                downloadToken,
                 downloadUrl);
     }
 
@@ -105,7 +110,8 @@ public class ExportController {
         }
     }
 
-    /** Status body (OpenAPI {@code ExportRequest}). */
+    /** Status body (OpenAPI {@code ExportRequest}); {@code downloadToken} and
+     * {@code downloadUrl} are present only in the create response. */
     public record ExportResponse(
             long exportId,
             String status,
@@ -113,6 +119,7 @@ public class ExportController {
             String completedAt,
             String expiresAt,
             String errorMessage,
+            String downloadToken,
             String downloadUrl) {
     }
 }

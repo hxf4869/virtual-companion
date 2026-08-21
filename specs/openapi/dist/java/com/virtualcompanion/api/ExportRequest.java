@@ -8,6 +8,7 @@ public record ExportRequest(
     final String completedAt,
     final String expiresAt,
     final String errorMessage,
+    final String downloadToken,
     final String downloadUrl
 ) {
     public ExportRequest {
@@ -17,6 +18,7 @@ public record ExportRequest(
         // completedAt is nullable
         // expiresAt is nullable
         // errorMessage is nullable
+        // downloadToken is nullable
         // downloadUrl is nullable
     }
 }

@@ -13,13 +13,20 @@ const PENDING: ExportRequest = {
   requestedAt: "2026-08-17T12:00:00Z",
 };
 
+// V76: the create response issues the one-time download URL exactly once.
+const PENDING_CREATED: ExportRequest = {
+  ...PENDING,
+  downloadToken: "secret-tok",
+  downloadUrl: "/api/v1/exports/9/download?token=secret-tok",
+};
+
+// Status polls never repeat the token or URL (only the digest is stored).
 const READY: ExportRequest = {
   exportId: "9",
   status: "READY",
   requestedAt: "2026-08-17T12:00:00Z",
   completedAt: "2026-08-17T12:00:05Z",
   expiresAt: "2026-08-18T12:00:00Z",
-  downloadUrl: "/api/v1/exports/9/download?token=secret-tok",
 };
 
 const DOCUMENT: ExportDownload = {
@@ -45,7 +52,7 @@ function mockTransport(opts: {
     async request(method: string, path: string): Promise<{ ok: boolean; status: number; json: unknown }> {
       if (method === "POST") {
         const ok = opts.createOk ?? true;
-        return { ok, status: ok ? 200 : 400, json: ok ? (opts.createJson ?? PENDING) : null };
+        return { ok, status: ok ? 200 : 400, json: ok ? (opts.createJson ?? PENDING_CREATED) : null };
       }
       if (path.includes("/download")) {
         const ok = opts.downloadOk ?? true;
@@ -73,13 +80,14 @@ describe("useExportStore", () => {
     expect(store.actionError).toContain("失败");
   });
 
-  it("refresh replaces the status with the confirmed row", async () => {
+  it("refresh replaces the status but keeps the once-issued URL (V76)", async () => {
     const store = useExportStore();
     await store.create(mockTransport());
     expect(store.canDownload()).toBe(false);
 
     expect(await store.refresh(mockTransport({ getJson: READY }), "9")).toBe(true);
     expect(store.request?.status).toBe("READY");
+    expect(store.request?.downloadUrl).toBeUndefined();
     expect(store.canDownload()).toBe(true);
   });
 
@@ -106,9 +114,9 @@ describe("useExportStore", () => {
     expect(store.download).not.toBeNull();
   });
 
-  it("download without a READY downloadUrl is a silent no-op", async () => {
+  it("download without an issued URL is a silent no-op", async () => {
     const store = useExportStore();
-    await store.create(mockTransport());
+    await store.create(mockTransport({ createJson: PENDING }));
 
     expect(await store.downloadDocument(mockTransport())).toBe(false);
     expect(store.download).toBeNull();

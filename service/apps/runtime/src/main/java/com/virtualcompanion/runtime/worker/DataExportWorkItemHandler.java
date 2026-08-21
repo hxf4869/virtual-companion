@@ -21,7 +21,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -131,8 +130,7 @@ public class DataExportWorkItemHandler implements WorkItemHandler {
         ExportDocument document = buildDocument(ownerUserId, exportId);
         Instant expiresAt = Instant.now().plus(ttl);
         String payload = serialize(withExpiry(document, expiresAt));
-        String token = UUID.randomUUID().toString();
-        boolean sealed = exportService.complete(ownerUserId, exportId, payload, token, expiresAt);
+        boolean sealed = exportService.complete(ownerUserId, exportId, payload, expiresAt);
         if (!sealed) {
             throw new IllegalStateException(
                     "complete_export moved 0 rows for owner=" + ownerUserId + " export=" + exportId);

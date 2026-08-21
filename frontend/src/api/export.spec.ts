@@ -17,6 +17,7 @@ const REQUEST_JSON = {
   completedAt: "2026-08-17T12:00:05Z",
   expiresAt: "2026-08-18T12:00:00Z",
   errorMessage: null,
+  downloadToken: "secret-tok",
   downloadUrl: "/api/v1/exports/9/download?token=secret-tok",
 };
 
@@ -53,6 +54,7 @@ describe("export api client (FR-DATA-002)", () => {
     expect(calls).toEqual([{ method: "POST", path: "/api/v1/exports" }]);
     expect(created?.exportId).toBe("9");
     expect(created?.status).toBe("READY");
+    expect(created?.downloadToken).toBe("secret-tok");
     expect(created?.downloadUrl).toContain("secret-tok");
   });
 

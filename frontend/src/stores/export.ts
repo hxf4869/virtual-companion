@@ -17,6 +17,9 @@ import {
 
 export const useExportStore = defineStore("h5-export", () => {
   const request = ref<ExportRequest | null>(null);
+  // V76: the one-time download URL is issued ONLY in the create response and
+  // must survive status refreshes (which never repeat it).
+  const issuedDownloadUrl = ref<string | null>(null);
   const loadFailed = ref(false);
   const busy = ref(false);
   const actionError = ref("");
@@ -33,6 +36,7 @@ export const useExportStore = defineStore("h5-export", () => {
       const created = await createExport(transport);
       if (!created) return false;
       request.value = created;
+      issuedDownloadUrl.value = created.downloadUrl ?? null;
       download.value = null;
       return true;
     } catch {
@@ -61,9 +65,9 @@ export const useExportStore = defineStore("h5-export", () => {
     }
   }
 
-  /** Consume the one-time downloadUrl and keep the document for display. */
+  /** Consume the once-issued downloadUrl and keep the document for display. */
   async function downloadDocument(transport: ExportTransport): Promise<boolean> {
-    const downloadUrl = request.value?.downloadUrl;
+    const downloadUrl = issuedDownloadUrl.value;
     if (!downloadUrl || busy.value) return false;
     busy.value = true;
     downloadFailed.value = false;
@@ -80,13 +84,15 @@ export const useExportStore = defineStore("h5-export", () => {
     }
   }
 
-  /** Whether a download is still available (READY and token not consumed). */
+  /** Whether a download is still available (READY and the once-issued
+   * token not yet consumed). */
   function canDownload(): boolean {
-    return request.value?.status === "READY" && !!request.value?.downloadUrl;
+    return request.value?.status === "READY" && !!issuedDownloadUrl.value;
   }
 
   function reset(): void {
     request.value = null;
+    issuedDownloadUrl.value = null;
     loadFailed.value = false;
     busy.value = false;
     actionError.value = "";

@@ -1,9 +1,10 @@
 // DATA-EXPORT (FR-DATA-002): asynchronous data-export API client. The
 // transport is injected so stores and specs can mock request() exactly like
-// the other api clients. POST enqueues the export; the status GET exposes a
-// short-lived one-time downloadUrl while READY; the download GET consumes the
-// token exactly once and returns the document. Non-OK statuses throw a typed
-// error so the store never fakes a request or a download.
+// the other api clients. POST enqueues the export and issues the one-time
+// downloadToken/downloadUrl EXACTLY ONCE (V76: only a sha256 digest is
+// stored server-side); the status GET never repeats them; the download GET
+// consumes the token exactly once and returns the document. Non-OK statuses
+// throw a typed error so the store never fakes a request or a download.
 
 export interface ExportApiResponse {
   ok: boolean;
@@ -24,6 +25,7 @@ export interface ExportRequest {
   completedAt?: string;
   expiresAt?: string;
   errorMessage?: string;
+  downloadToken?: string;
   downloadUrl?: string;
 }
 
@@ -80,6 +82,7 @@ function asExportRequest(json: unknown): ExportRequest | null {
     completedAt: typeof o.completedAt === "string" ? o.completedAt : undefined,
     expiresAt: typeof o.expiresAt === "string" ? o.expiresAt : undefined,
     errorMessage: typeof o.errorMessage === "string" ? o.errorMessage : undefined,
+    downloadToken: typeof o.downloadToken === "string" ? o.downloadToken : undefined,
     downloadUrl: typeof o.downloadUrl === "string" ? o.downloadUrl : undefined,
   };
 }
@@ -132,7 +135,7 @@ export async function createExport(t: ExportTransport): Promise<ExportRequest | 
   return asExportRequest(r.json);
 }
 
-/** Status of one owned export (downloadUrl present only while READY). */
+/** Status of one owned export (never carries the token or URL; V76). */
 export async function getExport(
   t: ExportTransport,
   exportId: string,

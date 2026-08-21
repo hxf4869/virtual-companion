@@ -104,7 +104,7 @@ class DataExportWorkItemHandlerTest {
         handle(claim);
 
         verify(finalizeService, never()).assertActiveClaim(anyLong(), anyLong(), anyString(), anyString());
-        verify(exportService, never()).complete(anyLong(), anyLong(), anyString(), anyString(), any());
+        verify(exportService, never()).complete(anyLong(), anyLong(), anyString(), any());
     }
 
     @Test
@@ -125,16 +125,14 @@ class DataExportWorkItemHandlerTest {
                 new ReminderRecord(301L, 9L, "明天晚上问我面试", NOW, "NONE", "ACTIVE", NOW, NOW)));
         when(consentService.list(1L)).thenReturn(List.of(
                 new ConsentRecord(401L, "MODEL_TRAINING", "2026-08", false, NOW, NOW)));
-        when(exportService.complete(anyLong(), anyLong(), anyString(), anyString(), any()))
+        when(exportService.complete(anyLong(), anyLong(), anyString(), any()))
                 .thenReturn(true);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
         handle(exportClaim(1L, 9L));
 
         ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<String> token = ArgumentCaptor.forClass(String.class);
-        verify(exportService).complete(eq(1L), eq(9L), payload.capture(), token.capture(), any());
-        assertTrue(token.getValue().length() > 10);
+        verify(exportService).complete(eq(1L), eq(9L), payload.capture(), any());
         verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
 
@@ -165,7 +163,7 @@ class DataExportWorkItemHandlerTest {
         when(messageRepository.listByConversation(1L, 6L)).thenReturn(List.of());
         when(relationshipService.list(1L)).thenReturn(List.of());
         when(consentService.list(1L)).thenReturn(List.of());
-        when(exportService.complete(anyLong(), anyLong(), anyString(), anyString(), any()))
+        when(exportService.complete(anyLong(), anyLong(), anyString(), any()))
                 .thenReturn(true);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
@@ -179,7 +177,7 @@ class DataExportWorkItemHandlerTest {
     @Test
     void failedSealTerminalizesTheExportAndRethrows() {
         stubEmptyData(1L);
-        when(exportService.complete(anyLong(), anyLong(), anyString(), anyString(), any()))
+        when(exportService.complete(anyLong(), anyLong(), anyString(), any()))
                 .thenReturn(false);
 
         assertThrows(IllegalStateException.class, () -> handle(exportClaim(1L, 9L)));
@@ -198,6 +196,6 @@ class DataExportWorkItemHandlerTest {
         assertThrows(IllegalStateException.class, () -> handle(exportClaim(1L, 9L)));
 
         verify(exportService).fail(1L, 9L, DataExportWorkItemHandler.FAULT_EXPORT_FAILED);
-        verify(exportService, never()).complete(anyLong(), anyLong(), anyString(), anyString(), any());
+        verify(exportService, never()).complete(anyLong(), anyLong(), anyString(), any());
     }
 }

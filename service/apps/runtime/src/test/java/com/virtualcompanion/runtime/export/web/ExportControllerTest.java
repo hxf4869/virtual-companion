@@ -31,9 +31,10 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 /**
  * Standalone controller test for the data-export HTTP API (DATA-EXPORT /
- * FR-DATA-002): enqueue, status with the short-lived one-time downloadUrl,
- * the one-time download, the 400 INVALID_REQUEST for a second in-flight
- * export, and the 404 NOT_FOUND_OR_FORBIDDEN for foreign/absent/consumed.
+ * FR-DATA-002): enqueue with the once-issued download token (V76), the bare
+ * status view, the one-time download, the 400 INVALID_REQUEST for a second
+ * in-flight export, and the 404 NOT_FOUND_OR_FORBIDDEN for a
+ * foreign/absent/consumed export.
  */
 class ExportControllerTest {
 
@@ -70,28 +71,31 @@ class ExportControllerTest {
     }
 
     private static ExportRecord pending(long id) {
-        return new ExportRecord(id, "PENDING", NOW, null, null, null, null);
+        return new ExportRecord(id, "PENDING", NOW, null, null, null);
     }
 
     private static ExportRecord ready(long id) {
-        return new ExportRecord(id, "READY", NOW, NOW, NOW.plusSeconds(3600), null, "secret-tok");
+        return new ExportRecord(id, "READY", NOW, NOW, NOW.plusSeconds(3600), null);
     }
 
     @Test
-    void postEnqueuesAndReturnsThePendingRequest() throws Exception {
-        when(exportService.create(1L)).thenReturn(9L);
+    void postEnqueuesAndReturnsTheOnceIssuedToken() throws Exception {
+        when(exportService.create(eq(1L), anyString())).thenReturn(9L);
         when(exportService.get(1L, 9L)).thenReturn(Optional.of(pending(9L)));
 
         mockMvc.perform(post("/api/v1/exports"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.exportId").value(9))
                 .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.downloadUrl").doesNotExist());
+                .andExpect(jsonPath("$.downloadToken").isNotEmpty())
+                .andExpect(jsonPath("$.downloadUrl")
+                        .value(org.hamcrest.Matchers.startsWith(
+                                "/api/v1/exports/9/download?token=")));
     }
 
     @Test
     void postSecondInflightExportMapsTo400() throws Exception {
-        when(exportService.create(1L))
+        when(exportService.create(eq(1L), anyString()))
                 .thenThrow(new IllegalArgumentException("an export is already in flight"));
 
         mockMvc.perform(post("/api/v1/exports"))
@@ -100,15 +104,15 @@ class ExportControllerTest {
     }
 
     @Test
-    void statusExposesTheOneTimeDownloadUrlOnlyWhileReady() throws Exception {
+    void statusNeverCarriesTheTokenOrUrl() throws Exception {
         when(exportService.get(1L, 9L)).thenReturn(Optional.of(ready(9L)));
 
         mockMvc.perform(get("/api/v1/exports/9"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("READY"))
                 .andExpect(jsonPath("$.expiresAt").value("2026-08-17T13:00:00Z"))
-                .andExpect(jsonPath("$.downloadUrl")
-                        .value("/api/v1/exports/9/download?token=secret-tok"));
+                .andExpect(jsonPath("$.downloadToken").doesNotExist())
+                .andExpect(jsonPath("$.downloadUrl").doesNotExist());
     }
 
     @Test
