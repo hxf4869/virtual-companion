@@ -3,6 +3,7 @@ package com.virtualcompanion.modelanthropic;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
+import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.StopReason;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import tools.jackson.databind.DeserializationFeature;
@@ -59,6 +60,10 @@ final class AnthropicMessagesCodec {
             root.put("stream", request.streaming());
 
             if (request.responseMode() instanceof ResponseMode.StructuredJson structured) {
+                if (SizeLimits.utf8Bytes(structured.jsonSchema())
+                        > SizeLimits.MAX_SCHEMA_BYTES) {
+                    throw new AnthropicCodecException();
+                }
                 var schema = jsonMapper.readTree(structured.jsonSchema());
                 if (schema == null || !schema.isObject()) {
                     throw new AnthropicCodecException();
