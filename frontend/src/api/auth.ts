@@ -95,7 +95,9 @@ export async function logout(t: AuthTransport): Promise<boolean> {
  */
 export async function deleteAccount(t: AuthTransport): Promise<boolean> {
   const r = await t.request("DELETE", `${AUTH_BASE}/account`);
-  return r.ok;
+  // A 404 means the account is absent or already deleted — the caller still
+  // ends up logged out either way, so treat it as confirmed (see doc above).
+  return r.ok || r.status === 404;
 }
 
 /** ADMIN-UI: one created internal account (OpenAPI AccountResponse). */

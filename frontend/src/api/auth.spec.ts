@@ -146,10 +146,10 @@ describe("auth api client", () => {
     expect(t.request).toHaveBeenCalledWith("DELETE", "/api/v1/auth/account");
   });
 
-  it("deleteAccount maps a non-OK (already deleted) to false", async () => {
+  it("deleteAccount maps a 404 (absent/already deleted) to true so the client still logs out", async () => {
     const t = transportFor({ ok: false, status: 404, json: null });
 
-    expect(await deleteAccount(t)).toBe(false);
+    expect(await deleteAccount(t)).toBe(true);
   });
 
   it("rejects a malformed token payload without crashing", async () => {

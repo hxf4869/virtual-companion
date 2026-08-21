@@ -31,6 +31,11 @@ export const useIncognitoStore = defineStore("h5-incognito-pref", () => {
       const pref = await updateIncognitoPref(transport, next);
       defaultIncognito.value = pref.defaultIncognito;
       return true;
+    } catch {
+      // Transport/5xx throw: report a failed save instead of an unhandled
+      // rejection. A silent failure here would let the user believe a privacy
+      // preference took effect when it did not.
+      return false;
     } finally {
       busy.value = false;
     }

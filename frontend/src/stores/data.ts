@@ -32,20 +32,24 @@ export const useDataStore = defineStore("h5-data", () => {
     loadFailed.value = false;
     busy.value = true;
     try {
-      const [rels, convs, consentRows, mode] = await Promise.all([
+      // Ownership data fails the page as a whole; the service mode is
+      // advisory (non-fatal by contract) and per-relationship detail pages
+      // degrade to empty instead of failing the whole overview.
+      const [rels, convs, consentRows] = await Promise.all([
         listRelationships(transport),
         listConversations(transport),
         listConsents(transport),
-        getServiceMode(transport),
       ]);
       relationships.value = rels;
       conversations.value = convs;
       consents.value = consentRows;
-      serviceMode.value = mode;
-      const memoryPages = await Promise.all(rels.map((rel) => listMemories(transport, rel.relationshipId)));
+      serviceMode.value = await getServiceMode(transport).catch(() => null);
+      const memoryPages = await Promise.all(
+        rels.map((rel) => listMemories(transport, rel.relationshipId).catch(() => [])),
+      );
       memories.value = memoryPages.flat();
       const reminderPages = await Promise.all(
-        rels.map((rel) => listReminders(transport, rel.relationshipId)),
+        rels.map((rel) => listReminders(transport, rel.relationshipId).catch(() => [])),
       );
       reminders.value = reminderPages.flat();
     } catch {

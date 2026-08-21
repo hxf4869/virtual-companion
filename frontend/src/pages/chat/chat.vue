@@ -477,6 +477,16 @@
           <text>{{ statusText }}</text>
         </view>
 
+        <!-- SEND-FAIL: transport/5xx throw during send — restore the draft and
+             surface a retryable failure instead of a silent unhandled rejection. -->
+        <view v-if="sendError" class="chat-error" data-testid="chat-send-error" role="alert">
+          <text>消息发送失败，请重试</text>
+        </view>
+
+        <view v-if="actionError" class="chat-error" data-testid="chat-action-error" role="alert">
+          <text>操作未成功，请重试</text>
+        </view>
+
         <!-- USAGE-VIZ: settled token usage of the last completed turn -->
         <view
           v-if="usage"
@@ -669,6 +679,11 @@ export default defineComponent({
     });
     const inputText = ref("");
     const initError = ref(false);
+    // SEND-FAIL: transport/5xx throw during send (see onSend).
+    const sendError = ref(false);
+    // ACTION-FAIL: transport/5xx throw during conversation/message/
+    // relationship management ops (see guarded()).
+    const actionError = ref(false);
     const initRequestId = ref("");
     // REL-DEACT: two-step confirm state for the deactivate button (no modal).
     const confirmDeactivate = ref(false);
@@ -895,10 +910,31 @@ export default defineComponent({
       () => store.phase === "failed" && store.pendingUserContent.trim().length > 0,
     );
 
+    /**
+     * ACTION-FAIL wrapper: management writes (conversation/message/relationship
+     * ops) map a transport/5xx throw to a visible failure state instead of an
+     * unhandled rejection; a rejected write keeps its store semantics.
+     */
+    async function guarded<T>(fn: () => Promise<T>): Promise<T | undefined> {
+      actionError.value = false;
+      try {
+        return await fn();
+      } catch {
+        actionError.value = true;
+        return undefined;
+      }
+    }
+
     async function onRetry(): Promise<void> {
       if (!canRetry.value) return;
       const text = store.pendingUserContent;
-      await store.send(transport, deps, text);
+      sendError.value = false;
+      try {
+        await store.send(transport, deps, text);
+      } catch {
+        sendError.value = true;
+        return;
+      }
       if (store.phase === "completed") {
         await scheduleMemoryPrompt();
       }
@@ -908,7 +944,17 @@ export default defineComponent({
       const text = inputText.value.trim();
       if (!text || store.isStreaming) return;
       inputText.value = "";
-      await store.send(transport, deps, text);
+      sendError.value = false;
+      try {
+        await store.send(transport, deps, text);
+      } catch {
+        // Transport/5xx throw (ChatHttpError or fetch rejection): the turn was
+        // never accepted, so restore the draft for an explicit retry instead
+        // of losing it silently.
+        inputText.value = text;
+        sendError.value = true;
+        return;
+      }
       void usageHealth.heartbeat(transport);
       if (store.phase === "failed" && !store.generationId) {
         inputText.value = text;
@@ -948,14 +994,14 @@ export default defineComponent({
     }
 
     async function onRegenerate(msg: { messageId: string; content: string }): Promise<void> {
-      await store.regenerate(transport, deps, msg.messageId, msg.content);
+      await guarded(() => store.regenerate(transport, deps, msg.messageId, msg.content));
     }
 
     async function onSelectVersion(
       msg: { messageId: string },
       generationId: string,
     ): Promise<void> {
-      await store.selectVersion(transport, generationId, msg.messageId);
+      await guarded(() => store.selectVersion(transport, generationId, msg.messageId));
     }
 
     async function refreshVersions(): Promise<void> {
@@ -969,11 +1015,13 @@ export default defineComponent({
       await usageHealth.record(transport, "ENDED");
       const id = store.conversationId;
       if (!id) return;
-      const ended = await store.endToday(transport, id);
+      const ended = await guarded(() => store.endToday(transport, id));
       if (ended) {
         confirmEndToday.value = false;
-        await refreshConversationList();
-        await startConversation();
+        await guarded(async () => {
+          await refreshConversationList();
+          await startConversation();
+        });
       }
     }
 
@@ -1027,7 +1075,7 @@ export default defineComponent({
     async function onDeleteMessage(messageId: string): Promise<void> {
       if (confirmDeleteMsgId.value === messageId) {
         confirmDeleteMsgId.value = null;
-        await store.removeMessage(transport, messageId);
+        await guarded(() => store.removeMessage(transport, messageId));
         return;
       }
       confirmDeleteMsgId.value = messageId;
@@ -1041,7 +1089,8 @@ export default defineComponent({
       messageId: string;
       noMemory?: boolean;
     }): Promise<void> {
-      await store.setMessageNoMemory(transport, msg.messageId, !msg.noMemory);
+      await guarded(() =>
+        store.setMessageNoMemory(transport, msg.messageId, !msg.noMemory));
     }
 
     /**
@@ -1051,18 +1100,25 @@ export default defineComponent({
      * 「内容由 AI 生成，请核实后使用」— the export already labels every AI
      * message). The timer is cleared on unmount.
      */
-    function onCopyMessage(messageId: string, content: string, role: string): void {
+    async function onCopyMessage(messageId: string, content: string, role: string): Promise<void> {
       const text = (content ?? "").trim();
       if (!text) return;
       try {
         const clipboard = (globalThis.navigator as
           | (Navigator & { clipboard?: { writeText(t: string): Promise<void> } })
           | undefined)?.clipboard;
-        if (clipboard?.writeText) {
-          void clipboard.writeText(text);
-        } else {
-          legacyCopy(text);
+        let copied = false;
+        try {
+          if (clipboard?.writeText) {
+            await clipboard.writeText(text);
+            copied = true;
+          } else {
+            copied = legacyCopy(text);
+          }
+        } catch {
+          copied = false;
         }
+        if (!copied) return;
         copiedMsgId.value = messageId;
         if (role === "assistant") {
           const uniApi = (globalThis as Record<string, unknown>).uni as
@@ -1090,7 +1146,7 @@ export default defineComponent({
     }
 
     /** MSG-COPY fallback for browsers without the async clipboard API. */
-    function legacyCopy(text: string): void {
+    function legacyCopy(text: string): boolean {
       const textarea = globalThis.document.createElement("textarea");
       textarea.value = text;
       textarea.setAttribute("readonly", "");
@@ -1099,7 +1155,7 @@ export default defineComponent({
       globalThis.document.body.appendChild(textarea);
       textarea.select();
       try {
-        globalThis.document.execCommand("copy");
+        return globalThis.document.execCommand("copy");
       } finally {
         globalThis.document.body.removeChild(textarea);
       }
@@ -1222,10 +1278,12 @@ export default defineComponent({
         return;
       }
       confirmEndToday.value = false;
-      const ended = await store.endToday(transport, id);
+      const ended = await guarded(() => store.endToday(transport, id));
       if (ended) {
-        await refreshConversationList();
-        await startConversation();
+        await guarded(async () => {
+          await refreshConversationList();
+          await startConversation();
+        });
       }
     }
 
@@ -1238,17 +1296,19 @@ export default defineComponent({
         return;
       }
       confirmDeleteId.value = null;
-      const deleted = await store.removeConversation(transport, id);
-      if (deleted && !store.conversationId) {
-        // The deleted conversation was the open one: open or create a fresh one.
-        await refreshConversationList();
-        const latest = store.conversations[store.conversations.length - 1];
-        if (latest) {
-          await store.openConversation(transport, latest.conversationId);
-        } else {
-          await startConversation();
+      await guarded(async () => {
+        const deleted = await store.removeConversation(transport, id);
+        if (deleted && !store.conversationId) {
+          // The deleted conversation was the open one: open or create a fresh one.
+          await refreshConversationList();
+          const latest = store.conversations[store.conversations.length - 1];
+          if (latest) {
+            await store.openConversation(transport, latest.conversationId);
+          } else {
+            await startConversation();
+          }
         }
-      }
+      });
     }
 
     function startRename(): void {
@@ -1267,23 +1327,26 @@ export default defineComponent({
     async function onRenameConversation(): Promise<void> {
       const id = store.conversationId;
       if (!id) return;
-      const renamed = await store.renameConversation(transport, id, renameInput.value.trim());
+      const renamed = await guarded(() =>
+        store.renameConversation(transport, id, renameInput.value.trim()));
       if (renamed) {
         cancelRename();
       }
     }
 
     async function onLoadMore(): Promise<void> {
-      await store.loadMoreHistory(transport);
+      await guarded(() => store.loadMoreHistory(transport));
     }
 
     async function onRelActivate(relationshipId: string): Promise<void> {
-      const result = await relStore.activate(transport, relationshipId);
+      const result = await guarded(() => relStore.activate(transport, relationshipId));
       if (result) {
         initError.value = false;
         confirmDeactivate.value = false;
-        await startConversation();
-        await refreshImportPreview();
+        await guarded(async () => {
+          await startConversation();
+          await refreshImportPreview();
+        });
       }
     }
 
@@ -1323,12 +1386,14 @@ export default defineComponent({
     }
 
     async function onRelCreate(personaRef: string): Promise<void> {
-      const result = await relStore.create(transport, personaRef);
+      const result = await guarded(() => relStore.create(transport, personaRef));
       if (result) {
         initError.value = false;
         confirmDeactivate.value = false;
-        await startConversation();
-        await refreshImportPreview();
+        await guarded(async () => {
+          await startConversation();
+          await refreshImportPreview();
+        });
       }
     }
 
@@ -1345,7 +1410,7 @@ export default defineComponent({
         confirmDeactivate.value = true;
         return;
       }
-      const result = await relStore.deactivate(transport, id);
+      const result = await guarded(() => relStore.deactivate(transport, id));
       confirmDeactivate.value = false;
       if (result) {
         store.reset();
@@ -1495,6 +1560,8 @@ export default defineComponent({
       onUsageContinue,
       onUsageEnd,
       statusText,
+      sendError,
+      actionError,
       canRetry,
       roleLabel,
       personaDisplayName,

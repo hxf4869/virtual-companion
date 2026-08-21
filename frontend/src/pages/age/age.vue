@@ -94,6 +94,9 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
       <view v-else-if="appealResult === 'rejected'" class="error" data-testid="age-appeal-rejected" role="alert">
         <text>当前状态不能提交申诉，或理由不符合要求。结果不会被改写。</text>
       </view>
+      <view v-else-if="appealResult === 'network-error'" class="error" data-testid="age-appeal-network-error" role="alert">
+        <text>网络或服务暂不可用，申诉尚未提交，请稍后重试。</text>
+      </view>
 
       <view
         v-if="store.ageState === 'AGE_APPEAL_PENDING'"
@@ -147,7 +150,7 @@ export default {
     const store = useAgeStore();
     const actionError = ref("");
     const appealReason = ref("");
-    const appealResult = ref<"idle" | "ok" | "rejected">("idle");
+    const appealResult = ref<"idle" | "ok" | "rejected" | "network-error">("idle");
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -199,7 +202,8 @@ export default {
         if (e instanceof AgeHttpError && e.status === 400) {
           appealResult.value = "rejected";
         } else {
-          appealResult.value = "rejected";
+          // Transport/5xx: not a content rejection — a retry may succeed.
+          appealResult.value = "network-error";
         }
       }
     }

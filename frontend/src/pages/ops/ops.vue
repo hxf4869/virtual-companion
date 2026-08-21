@@ -47,7 +47,7 @@ role-plays an outage. ADMIN only. -->
 </template>
 
 <script lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 
 import { getServiceMode } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -69,8 +69,6 @@ export default {
       onUnauthorized: () => auth.onUnauthorized(),
     });
 
-    const isAdmin = computed(() => auth.role === "ADMIN");
-
     onMounted(async () => {
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
@@ -85,7 +83,11 @@ export default {
       } catch {
         modeFailed.value = true;
       }
-      version.value = await fetchVersion(transport);
+      try {
+        version.value = await fetchVersion(transport);
+      } catch {
+        version.value = null;
+      }
     });
 
     function goTo(url: string): void {
@@ -103,7 +105,7 @@ export default {
       }
     }
 
-    return { auth, isAdmin, version, modeLine, announce, modeFailed, goTo };
+    return { auth, version, modeLine, announce, modeFailed, goTo };
   },
 };
 </script>

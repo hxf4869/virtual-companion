@@ -163,6 +163,11 @@ export function applyTerminalSnapshot(prev: StreamState, events: StreamEvent[]):
   if (!terminalEvent) {
     return prev;
   }
+  // Same invariant as applyEvent: a stale-epoch snapshot (e.g. after a reset
+  // race) must not be accepted as a terminal under the previous epoch.
+  if (terminalEvent.streamEpoch !== prev.epoch) {
+    return { ...prev, status: "reset_required", events: [], cursor: 0 };
+  }
   const cursor = ordered.length === 0 ? prev.cursor : ordered[ordered.length - 1].eventSeq;
   return {
     status: "terminal",

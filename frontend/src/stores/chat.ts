@@ -133,8 +133,8 @@ export const useChatStore = defineStore("h5-chat", () => {
    * FEEDBACK: submit one feedback kind for the current generation. Repeated
    * submissions of the same kind are no-ops; an existence-hidden failure (the
    * generation is gone) is ignored so the UI never fakes success or discloses
-   * anything. Returns true only when the kind was (or already had been)
-   * recorded.
+   * anything. Returns true only when this call recorded the kind; a repeat
+   * of an already-recorded kind is a no-op and returns false.
    */
   async function sendFeedback(
     transport: ChatTransport,

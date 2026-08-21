@@ -54,9 +54,15 @@ export const useUsageHealthStore = defineStore("h5-usage-health", () => {
   }
 
   async function heartbeat(transport: UsageHealthTransport): Promise<void> {
-    const next = await usageHeartbeat(transport);
-    if (next) {
-      status.value = next;
+    // Non-fatal by contract (§20.7): a network/5xx throw must never break
+    // chat-page init or send; keep the previous status on failure.
+    try {
+      const next = await usageHeartbeat(transport);
+      if (next) {
+        status.value = next;
+      }
+    } catch {
+      // ignored: heartbeat is best-effort telemetry
     }
   }
 
@@ -72,6 +78,10 @@ export const useUsageHealthStore = defineStore("h5-usage-health", () => {
         shownForStartedAt.value = null;
       }
       return true;
+    } catch {
+      // Transport/5xx throw: report a rejected write (the banner stays so
+      // the user can retry) instead of an unhandled rejection.
+      return false;
     } finally {
       busy.value = false;
     }

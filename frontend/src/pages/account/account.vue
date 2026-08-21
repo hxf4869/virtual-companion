@@ -122,6 +122,8 @@ export default {
         surveyMsg.value = accepted
           ? "已记录今天的评分，谢谢你的反馈。"
           : "今天已经评过分了，明天再来吧。";
+      } catch {
+        surveyMsg.value = "评分提交失败，请稍后重试。";
       } finally {
         busy.value = false;
       }

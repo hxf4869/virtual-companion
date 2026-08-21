@@ -326,11 +326,6 @@ export async function wipeAllChats(t: ChatTransport): Promise<ChatWipeResult> {
 }
 
 /**
- * CONV-MGMT: rename one conversation (blank title clears it). Returns the
- * applied title on success, null on 403/404 (existence hidden); other non-OK
- * statuses throw.
- */
-/**
  * END-TODAY: end today's conversation. Incognito bodies are cleared on the
  * server. true only on confirmed OK; 403/404 map to false.
  */
@@ -351,6 +346,11 @@ export async function endConversation(
   return { ok: true, incognitoCleared };
 }
 
+/**
+ * CONV-MGMT: rename one conversation (blank title clears it). Returns the
+ * applied title on success, null on 403/404 (existence hidden); other non-OK
+ * statuses throw.
+ */
 export async function renameConversation(
   t: ChatTransport,
   conversationId: string,

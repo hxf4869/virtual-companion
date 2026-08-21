@@ -369,7 +369,11 @@ export default {
 
     async function onPickRelationship(relationshipId: string): Promise<void> {
       actionError.value = null;
-      await relStore.activate(transport, relationshipId);
+      try {
+        await relStore.activate(transport, relationshipId);
+      } catch {
+        actionError.value = "切换伙伴失败，请重试。";
+      }
     }
 
     function onRemindersChange(event: { detail?: { value?: boolean } }): void {
@@ -423,6 +427,9 @@ export default {
           actionError.value = "无法读取将清除的范围。";
           dangerKind.value = null;
         }
+      } catch {
+        actionError.value = "无法读取将清除的范围。";
+        dangerKind.value = null;
       } finally {
         dangerBusy.value = false;
       }
@@ -470,6 +477,8 @@ export default {
         } else {
           actionError.value = "重置失败，请重试。";
         }
+      } catch {
+        actionError.value = "重置失败，请重试。";
       } finally {
         dangerBusy.value = false;
       }
@@ -493,6 +502,8 @@ export default {
         } else {
           actionError.value = "删除失败，请重试。";
         }
+      } catch {
+        actionError.value = "删除失败，请重试。";
       } finally {
         dangerBusy.value = false;
       }
@@ -532,19 +543,25 @@ export default {
       if (!id) return;
       actionError.value = null;
       saved.value = false;
-      const result = await relStore.updatePrefs(transport, id, {
-        companionName: companionName.value.trim() || null,
-        userAddressAs: userAddressAs.value.trim() || null,
-        replyLength: replyLength.value,
-        initiative: initiative.value,
-        humor: humor.value,
-        advicePref: advicePref.value,
-        remindersAllowed: remindersAllowed.value,
-        memoryShareScope: memoryShareScope.value,
-        avoidTopics: [...avoidTopics.value],
-        gender: gender.value,
-        avatarRef: avatarRef.value,
-      });
+      let result: Awaited<ReturnType<typeof relStore.updatePrefs>>;
+      try {
+        result = await relStore.updatePrefs(transport, id, {
+          companionName: companionName.value.trim() || null,
+          userAddressAs: userAddressAs.value.trim() || null,
+          replyLength: replyLength.value,
+          initiative: initiative.value,
+          humor: humor.value,
+          advicePref: advicePref.value,
+          remindersAllowed: remindersAllowed.value,
+          memoryShareScope: memoryShareScope.value,
+          avoidTopics: [...avoidTopics.value],
+          gender: gender.value,
+          avatarRef: avatarRef.value,
+        });
+      } catch {
+        actionError.value = "保存失败，请重试。";
+        return;
+      }
       if (result) {
         saved.value = true;
       } else {

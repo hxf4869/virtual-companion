@@ -125,6 +125,22 @@ function asString(o: Record<string, unknown>, k: string): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
+const MEMORY_STATUSES: readonly MemoryStatus[] = [
+  "PROPOSED",
+  "PENDING_CONFIRMATION",
+  "ACCEPTED",
+  "REJECTED",
+  "EXPIRED",
+];
+const MEMORY_SCOPES: readonly MemoryScope[] = ["SESSION", "RELATIONSHIP"];
+const MEMORY_EVENT_STATUSES: readonly MemoryEventStatus[] = [
+  "PLANNED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "CANCELLED",
+  "UNKNOWN",
+];
+
 function asMemory(json: unknown): Memory | null {
   if (!json || typeof json !== "object") return null;
   const o = json as Record<string, unknown>;
@@ -132,7 +148,19 @@ function asMemory(json: unknown): Memory | null {
   const scope = asString(o, "scope");
   const summary = asString(o, "summary");
   const status = asString(o, "status");
-  if (!memoryId || !scope || !summary || !status) return null;
+  if (!memoryId || !summary) return null;
+  // Whitelist the enums (same pattern as chat/reminder/report clients): an
+  // unknown code from a version-skewed server drops the row instead of
+  // silently flowing into UI branch logic.
+  if (!scope || !MEMORY_SCOPES.includes(scope as MemoryScope)) return null;
+  if (!status || !MEMORY_STATUSES.includes(status as MemoryStatus)) return null;
+  const eventStatusRaw = asString(o, "eventStatus");
+  const eventStatus =
+    eventStatusRaw === undefined
+      ? undefined
+      : MEMORY_EVENT_STATUSES.includes(eventStatusRaw as MemoryEventStatus)
+        ? (eventStatusRaw as MemoryEventStatus)
+        : undefined;
   return {
     memoryId,
     scope: scope as MemoryScope,
@@ -145,7 +173,7 @@ function asMemory(json: unknown): Memory | null {
     supersededAt: asString(o, "supersededAt"),
     supersededByMemoryId: asString(o, "supersededByMemoryId"),
     eventAt: asString(o, "eventAt"),
-    eventStatus: asString(o, "eventStatus") as MemoryEventStatus | undefined,
+    eventStatus,
     eventExpiresAt: asString(o, "eventExpiresAt"),
   };
 }
@@ -223,7 +251,7 @@ export async function getMemory(
   t: MemoryTransport,
   memoryId: string,
 ): Promise<Memory | null> {
-  const r = await t.request("GET", `${MEM_BASE}/${memoryId}`);
+  const r = await t.request("GET", `${MEM_BASE}/${encodeURIComponent(memoryId)}`);
   guardJsonResult(r);
   return asMemory(r.json);
 }
@@ -240,7 +268,7 @@ export async function confirmMemory(
   supersedeMemoryId?: string,
 ): Promise<Memory | null> {
   const body = supersedeMemoryId ? { supersedeMemoryId } : undefined;
-  const r = await t.request("POST", `${MEM_BASE}/${memoryId}/confirm`, body);
+  const r = await t.request("POST", `${MEM_BASE}/${encodeURIComponent(memoryId)}/confirm`, body);
   guardJsonResult(r);
   return asMemory(r.json);
 }
@@ -250,7 +278,7 @@ export async function rejectMemory(
   t: MemoryTransport,
   memoryId: string,
 ): Promise<Memory | null> {
-  const r = await t.request("POST", `${MEM_BASE}/${memoryId}/reject`);
+  const r = await t.request("POST", `${MEM_BASE}/${encodeURIComponent(memoryId)}/reject`);
   guardJsonResult(r);
   return asMemory(r.json);
 }
@@ -270,7 +298,7 @@ export async function updateMemory(
   if (event?.eventAt) body.eventAt = event.eventAt;
   if (event?.eventStatus) body.eventStatus = event.eventStatus;
   if (event?.eventExpiresAt) body.eventExpiresAt = event.eventExpiresAt;
-  const r = await t.request("PATCH", `${MEM_BASE}/${memoryId}`, body);
+  const r = await t.request("PATCH", `${MEM_BASE}/${encodeURIComponent(memoryId)}`, body);
   guardJsonResult(r);
   return asMemory(r.json);
 }
@@ -285,7 +313,7 @@ export async function deleteMemory(
   t: MemoryTransport,
   memoryId: string,
 ): Promise<boolean> {
-  const r = await t.request("DELETE", `${MEM_BASE}/${memoryId}`);
+  const r = await t.request("DELETE", `${MEM_BASE}/${encodeURIComponent(memoryId)}`);
   if (r.ok) {
     return true;
   }
@@ -300,7 +328,7 @@ export async function listMemoryEvidence(
   t: MemoryTransport,
   memoryId: string,
 ): Promise<MemoryEvidence[]> {
-  const r = await t.request("GET", `${MEM_BASE}/${memoryId}/evidence`);
+  const r = await t.request("GET", `${MEM_BASE}/${encodeURIComponent(memoryId)}/evidence`);
   guardJsonResult(r);
   return asEvidenceArray(r.json);
 }

@@ -65,6 +65,10 @@ export const useReportStore = defineStore("h5-report", () => {
       reports.value = [created, ...reports.value];
       loaded.value = true;
       return true;
+    } catch {
+      // Transport/5xx throw: report it as a rejected write instead of an
+      // unhandled rejection, so the page shows its failure branch.
+      return false;
     } finally {
       busy.value = false;
     }

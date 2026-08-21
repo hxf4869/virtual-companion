@@ -61,6 +61,10 @@ export const useReminderStore = defineStore("h5-reminder", () => {
       if (!created) return false;
       reminders.value = [...reminders.value, created];
       return true;
+    } catch {
+      // Transport/5xx throw: report a rejected write instead of
+      // an unhandled rejection, so the page shows its failure branch.
+      return false;
     } finally {
       busy.value = false;
     }
@@ -82,6 +86,10 @@ export const useReminderStore = defineStore("h5-reminder", () => {
         r.reminderId === updated.reminderId ? updated : r,
       );
       return true;
+    } catch {
+      // Transport/5xx throw: report a rejected write instead of
+      // an unhandled rejection, so the page shows its failure branch.
+      return false;
     } finally {
       busy.value = false;
     }
@@ -97,6 +105,10 @@ export const useReminderStore = defineStore("h5-reminder", () => {
         reminders.value = reminders.value.filter((r) => r.reminderId !== reminderId);
       }
       return deleted;
+    } catch {
+      // Transport/5xx throw: report a rejected write instead of
+      // an unhandled rejection, so the page shows its failure branch.
+      return false;
     } finally {
       busy.value = false;
     }

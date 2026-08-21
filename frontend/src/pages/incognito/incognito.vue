@@ -43,12 +43,15 @@ next new conversation and states that 无痕 ≠ 无必要安全记录. -->
       >
         {{ store.defaultIncognito ? "关闭默认无痕" : "开启默认无痕" }}
       </button>
+      <view v-if="saveFailed" class="error" data-testid="incognito-save-failed" role="alert">
+        <text>保存失败，无痕默认设置未改变，请重试。</text>
+      </view>
     </template>
   </view>
 </template>
 
 <script lang="ts">
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
@@ -76,8 +79,12 @@ export default {
       await store.load(transport);
     }
 
+    const saveFailed = ref(false);
+
     async function onToggle(): Promise<void> {
-      await store.save(transport, !store.defaultIncognito);
+      saveFailed.value = false;
+      const saved = await store.save(transport, !store.defaultIncognito);
+      saveFailed.value = !saved;
     }
 
     function goTo(url: string): void {
@@ -95,7 +102,7 @@ export default {
       }
     }
 
-    return { store, onRetry, onToggle, goTo };
+    return { store, saveFailed, onRetry, onToggle, goTo };
   },
 };
 </script>

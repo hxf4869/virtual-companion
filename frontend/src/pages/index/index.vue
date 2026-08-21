@@ -647,7 +647,13 @@ onMounted(async () => {
   await refreshNextStep();
   // VERSION-UI: independent of the baseline preflight (public endpoint); a
   // non-OK response yields null and the stamp simply omits the fields.
-  versionInfo.value = await fetchVersion(transport);
+  // A transport failure also degrades to null (non-OK already does) — the
+  // stamp is best-effort and must never break page init.
+  try {
+    versionInfo.value = await fetchVersion(transport);
+  } catch {
+    versionInfo.value = null;
+  }
 });
 </script>
 

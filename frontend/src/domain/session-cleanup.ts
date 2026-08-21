@@ -12,8 +12,10 @@ import { useRelationshipStore } from "@/stores/relationship";
 import { useReminderStore } from "@/stores/reminder";
 import { useReportStore } from "@/stores/report";
 import { useUsageHealthStore } from "@/stores/usage-health";
+import { clearRequestId } from "@/domain/request-id";
 
 export function clearLocalSessionCaches(): void {
+  clearRequestId();
   const chat = useChatStore();
   chat.reset();
   chat.conversations = [];

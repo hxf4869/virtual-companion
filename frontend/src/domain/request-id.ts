@@ -23,6 +23,12 @@ export function lastRequestId(): string | null {
   return last;
 }
 
+/** §18.7: logout must drop in-memory caches; the next account never sees the
+ * previous account's last request id. */
+export function clearRequestId(): void {
+  last = null;
+}
+
 export function requestIdLabel(id: string | null = last): string {
   return id ? `请求号 ${id}` : "";
 }
