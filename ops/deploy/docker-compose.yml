@@ -1,0 +1,71 @@
+# DEPLOY Compose topology: PostgreSQL 18 + pgvector, the runtime jar, and a
+# Caddy edge serving the H5 bundle with TLS. Secrets come exclusively from
+# the deployment .env (cp .env.example .env) — never committed.
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.5-pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+    environment:
+      POSTGRES_PASSWORD: ${VC_POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: vc
+    # No host port: the database is reachable only inside the compose network.
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vc"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  runtime:
+    build:
+      context: ../..
+      dockerfile: ops/deploy/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Production profile is fail-closed: every switch below must be true and
+      # every secret injected, or startup refuses (see
+      # ProductionFailClosedEnvironmentPostProcessor).
+      SPRING_PROFILES_ACTIVE: production
+      VC_AUTH_ENABLED: "true"
+      VC_AUTH_DATASOURCE_ENABLED: "true"
+      VC_FLYWAY_ENABLED: "true"
+      VC_MIGRATOR_DB_URL: jdbc:postgresql://db:5432/vc
+      VC_MIGRATOR_DB_USERNAME: postgres
+      VC_MIGRATOR_DB_PASSWORD: ${VC_POSTGRES_PASSWORD}
+      VC_DB_URL: jdbc:postgresql://db:5432/vc
+      VC_DB_USERNAME: postgres
+      VC_DB_PASSWORD: ${VC_POSTGRES_PASSWORD}
+      VC_JWT_SECRET: ${VC_JWT_SECRET:?set in .env}
+      VC_OWNER_BINDING_SECRET: ${VC_OWNER_BINDING_SECRET:?set in .env}
+      VC_CRYPTO_REST_KEY: ${VC_CRYPTO_REST_KEY:?set in .env}
+      VC_ADMIN_SEED_USERNAME: ${VC_ADMIN_SEED_USERNAME:-}
+      VC_ADMIN_SEED_PASSWORD: ${VC_ADMIN_SEED_PASSWORD:-}
+      VC_ALERT_WEBHOOK_URL: ${VC_ALERT_WEBHOOK_URL:-}
+      VC_RETENTION_PURGE_ENABLED: ${VC_RETENTION_PURGE_ENABLED:-false}
+      VC_COMMIT: ${VC_COMMIT:-}
+    # No host port: the runtime is reachable only through the Caddy edge.
+    restart: unless-stopped
+
+  caddy:
+    build:
+      context: ../..
+      dockerfile: ops/deploy/Dockerfile.web
+    depends_on:
+      - runtime
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      VC_DOMAIN: ${VC_DOMAIN:?set in .env}
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:
