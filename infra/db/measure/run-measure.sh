@@ -67,7 +67,7 @@ REPORT="$REPORT_DIR/measure-report.md"
 } > "$REPORT"
 
 PHASES=("$@")
-[ ${#PHASES[@]} -eq 0 ] && PHASES=(10_protocol 20_cross_tenant 40_cancel_late 50_fault_injection 60_full_fault_drill 70_retry_disconnect)
+[ ${#PHASES[@]} -eq 0 ] && PHASES=(10_protocol 20_cross_tenant 40_cancel_late 50_fault_injection 60_full_fault_drill 70_retry_disconnect 80_mem_delete_resurrection 81_cross_relationship_recall)
 
 for phase in "${PHASES[@]}"; do
     echo "== phase $phase =="
