@@ -163,6 +163,17 @@ virtual-companion:
     timeout-connect: ${VC_EXTERNAL_TIMEOUT_CONNECT:10s}
     timeout-first-token: ${VC_EXTERNAL_TIMEOUT_FIRST_TOKEN:60s}
     timeout-total: ${VC_EXTERNAL_TIMEOUT_TOTAL:240s}
+  worker:
+    # EXTERNAL-LEASE: per-item claim lease applied when a GENERATION work
+    # item crosses into the external provider phase (prepared external attempt
+    # intent persisted). Real providers — reasoning models especially — can
+    # exceed the 30s default claim lease; an expiry mid-flight would reject the
+    # finalize segments and let the coordinator re-claim the item (duplicate
+    # provider calls). Renewed once per external attempt, inside the prepare
+    # transaction; the 30s default still covers every other work-item kind.
+    external-claim-lease-seconds: ${VC_WORKER_EXTERNAL_LEASE_SECONDS:300}
+    # GEN-RECONC: cadence of the stale-IN_PROGRESS reconcile poll.
+    reconcile-poll-delay-ms: ${VC_WORKER_RECONCILE_POLL_DELAY_MS:30000}
   context-budget:
     # CTX-BUDGET: deterministic input-token budget for one generation turn
     # (ContextBudget wired into the live invocation assembler). History is

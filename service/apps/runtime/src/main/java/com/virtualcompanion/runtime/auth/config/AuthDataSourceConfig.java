@@ -819,6 +819,9 @@ public class AuthDataSourceConfig {
             ObjectProvider<LiveModelInvoker> liveModelInvokerProvider,
             ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider,
             WorkItemEnqueueService workItemEnqueueService,
+            WorkItemClaimService workItemClaimService,
+            @Value("${virtual-companion.worker.external-claim-lease-seconds:300}")
+            int externalClaimLeaseSeconds,
             GenerationRepository generationRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
@@ -847,6 +850,8 @@ public class AuthDataSourceConfig {
                 liveModelInvokerProvider,
                 authorizationSnapshotServiceProvider,
                 workItemEnqueueService,
+                workItemClaimService,
+                externalClaimLeaseSeconds,
                 realtimeEventRepository,
                 liveDeltaBroker,
                 conversationRepository,
@@ -912,12 +917,17 @@ public class AuthDataSourceConfig {
      * GEN-RECONC: periodic reconciliation of generations stuck IN_PROGRESS
      * whose work item is already terminal (V33). Runs on its own cadence
      * independent of the claim coordinator poll; only active while this
-     * conditional configuration (auth + datasource enabled) is live.
+     * conditional configuration (auth + datasource enabled) is live. Every
+     * terminalize runs inside the owner-bound executor (V27
+     * {@code vc.set_owner_context}) — the SD terminalize function rejects a
+     * principal whose server-trusted owner context is absent or mismatched.
      */
     @Bean
     public GenerationReconcileScheduler generationReconcileScheduler(
-            GenerationFinalizeService generationFinalizeService) {
-        return new GenerationReconcileScheduler(generationFinalizeService);
+            GenerationFinalizeService generationFinalizeService,
+            OwnerContext ownerContext) {
+        return new GenerationReconcileScheduler(
+                generationFinalizeService, ownerContext::asOwner);
     }
 
     /**

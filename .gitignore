@@ -62,3 +62,6 @@ application-local.yaml
 .claude/settings.local.json
 id_rsa
 id_ed25519
+
+# Local deploy secrets overrides (never committed)
+ops/deploy/.local/

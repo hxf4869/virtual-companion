@@ -54,6 +54,7 @@ import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
+import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.safety.ClassifierReport;
@@ -84,10 +85,14 @@ class GenerationWorkItemHandlerTest {
 
     private static final String FALLBACK = DeterministicSafetyResponse.ZERO_LLM_FALLBACK;
 
+    /** EXTERNAL-LEASE: the lease the handler applies to external attempts. */
+    private static final int EXTERNAL_LEASE_SECONDS = 300;
+
     private final GenerationStateService stateService = mock(GenerationStateService.class);
     private final GenerationFinalizeService finalizeService = mock(GenerationFinalizeService.class);
     private final LiveInvocationAssembler assembler = mock(LiveInvocationAssembler.class);
     private final WorkItemEnqueueService enqueueService = mock(WorkItemEnqueueService.class);
+    private final WorkItemClaimService claimService = mock(WorkItemClaimService.class);
     private final RealtimeEventRepository realtimeEventRepository = mock(RealtimeEventRepository.class);
     private final LiveDeltaBroker deltaBroker = mock(LiveDeltaBroker.class);
     private final ConversationRepository conversationRepository = mock(ConversationRepository.class);
@@ -115,7 +120,8 @@ class GenerationWorkItemHandlerTest {
     void setUp() {
         handler = new GenerationWorkItemHandler(
                 stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
-                enqueueService, realtimeEventRepository, deltaBroker, conversationRepository,
+                enqueueService, claimService, EXTERNAL_LEASE_SECONDS,
+                realtimeEventRepository, deltaBroker, conversationRepository,
                 generationRepository, safetyClassifier, safetyEventService,
                 summaryService,
                 com.virtualcompanion.runtime.observability.TestAlerts.metrics(),
@@ -123,6 +129,8 @@ class GenerationWorkItemHandlerTest {
                 new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(3, 60_000));
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
+        when(claimService.renewPerItem(anyLong(), anyString(), anyString(), anyInt()))
+                .thenReturn(1);
         // INC-MODE: non-incognito by default so the legacy MEM-LOOP tests
         // keep expecting the extract enqueue.
         when(conversationRepository.isIncognitoForGeneration(anyLong(), anyLong()))
@@ -483,6 +491,59 @@ class GenerationWorkItemHandlerTest {
 
         verify(invoker).execute(any(), any());
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
+    }
+
+    @Test
+    void externalPrepareRenewsClaimLeaseForTheNetworkPhase() {
+        // EXTERNAL-LEASE: a real provider turn may outlive the default 30s
+        // claim lease; the handler must renew the per-item lease inside the
+        // prepare transaction, before the outbound.
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(generationClaim(1L, 10L));
+
+        // Prepared before the outbound, once, with the configured lease seconds.
+        verify(claimService).renewPerItem(1L, "token-1", "FENCE-A", EXTERNAL_LEASE_SECONDS);
+        verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
+    }
+
+    @Test
+    void leaseRenewalFailureForbidsTheOutbound() {
+        // EXTERNAL-LEASE fail closed: a renewal that writes 0 rows means the
+        // claim was already lost (expired / overtaken) — the outbound must
+        // never start and the handler surfaces the abort to the worker's
+        // independent per-item fail.
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(claimService.renewPerItem(1L, "token-1", "FENCE-A", EXTERNAL_LEASE_SECONDS))
+                .thenReturn(0);
+
+        assertThrows(IllegalStateException.class,
+                () -> handle(generationClaim(1L, 10L)));
+
+        verify(invoker, never()).execute(any(), any());
+        verify(finalizeService, never()).createAttemptIntent(
+                anyLong(), anyLong(), anyLong(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
     @Test

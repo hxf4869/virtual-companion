@@ -35,9 +35,13 @@ public class GenerationReconcileScheduler {
     static final String FAULT_RECONCILE_STALE = "reconcile-stale-in-progress";
 
     private final GenerationFinalizeService finalizeService;
+    private final WorkItemWorker.OwnerExecutor ownerExecutor;
 
-    public GenerationReconcileScheduler(GenerationFinalizeService finalizeService) {
+    public GenerationReconcileScheduler(
+            GenerationFinalizeService finalizeService,
+            WorkItemWorker.OwnerExecutor ownerExecutor) {
         this.finalizeService = finalizeService;
+        this.ownerExecutor = ownerExecutor;
     }
 
     /**
@@ -54,8 +58,13 @@ public class GenerationReconcileScheduler {
             }
             for (StaleGenerationRow row : stale) {
                 try {
-                    finalizeService.terminalizeAsFailed(
-                            row.ownerUserId(), row.generationId(), FAULT_RECONCILE_STALE);
+                    // V27 owner-bound: the terminalize SD function rejects a
+                    // principal whose server-trusted owner context is absent.
+                    ownerExecutor.asOwner(row.ownerUserId(), () ->
+                            finalizeService.terminalizeAsFailed(
+                                    row.ownerUserId(),
+                                    row.generationId(),
+                                    FAULT_RECONCILE_STALE));
                     log.warn(
                             "reconciled stale IN_PROGRESS generation {} for owner {} as FAILED_FINAL",
                             row.generationId(),

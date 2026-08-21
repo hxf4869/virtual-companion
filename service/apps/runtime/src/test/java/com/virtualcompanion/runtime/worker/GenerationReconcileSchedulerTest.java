@@ -1,8 +1,10 @@
 package com.virtualcompanion.runtime.worker;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -26,11 +28,18 @@ import org.junit.jupiter.api.Test;
 class GenerationReconcileSchedulerTest {
 
     private final GenerationFinalizeService finalizeService = mock(GenerationFinalizeService.class);
+    private final WorkItemWorker.OwnerExecutor ownerExecutor = mock(WorkItemWorker.OwnerExecutor.class);
     private GenerationReconcileScheduler scheduler;
 
     @BeforeEach
     void setUp() {
-        scheduler = new GenerationReconcileScheduler(finalizeService);
+        scheduler = new GenerationReconcileScheduler(finalizeService, ownerExecutor);
+        // V27 owner-bound: the mock executes the runnable synchronously, as the
+        // production OwnerContext does inside its transaction.
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(1)).run();
+            return null;
+        }).when(ownerExecutor).asOwner(anyLong(), any(Runnable.class));
     }
 
     @Test
@@ -58,6 +67,10 @@ class GenerationReconcileSchedulerTest {
                 1L, 11L, GenerationReconcileScheduler.FAULT_RECONCILE_STALE);
         verify(finalizeService).terminalizeAsFailed(
                 2L, 20L, GenerationReconcileScheduler.FAULT_RECONCILE_STALE);
+        // Every terminalize runs inside the owner-bound executor (V27): the SD
+        // reject a principal without the server-trusted owner context.
+        verify(ownerExecutor, org.mockito.Mockito.times(3))
+                .asOwner(anyLong(), any(Runnable.class));
     }
 
     @Test

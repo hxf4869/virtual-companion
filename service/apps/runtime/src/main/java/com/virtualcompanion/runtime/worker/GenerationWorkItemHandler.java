@@ -19,11 +19,13 @@ import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
+import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.safety.SafetyClassification;
 import com.virtualcompanion.safety.SafetyClassifierPort;
 import com.virtualcompanion.safety.SafetyStage;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -99,6 +101,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final ObjectProvider<LiveModelInvoker> liveModelInvokerProvider;
     private final ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider;
     private final WorkItemEnqueueService enqueueService;
+    private final WorkItemClaimService claimService;
+    private final int externalClaimLeaseSeconds;
     private final RealtimeEventRepository realtimeEventRepository;
     private final LiveDeltaBroker deltaBroker;
     private final ConversationRepository conversationRepository;
@@ -117,6 +121,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             ObjectProvider<LiveModelInvoker> liveModelInvokerProvider,
             ObjectProvider<AuthorizationSnapshotProvider> authorizationSnapshotServiceProvider,
             WorkItemEnqueueService enqueueService,
+            WorkItemClaimService claimService,
+            int externalClaimLeaseSeconds,
             RealtimeEventRepository realtimeEventRepository,
             LiveDeltaBroker deltaBroker,
             ConversationRepository conversationRepository,
@@ -133,6 +139,12 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.liveModelInvokerProvider = liveModelInvokerProvider;
         this.authorizationSnapshotServiceProvider = authorizationSnapshotServiceProvider;
         this.enqueueService = enqueueService;
+        this.claimService = Objects.requireNonNull(claimService, "claimService must not be null");
+        if (externalClaimLeaseSeconds <= 0) {
+            throw new IllegalArgumentException(
+                    "externalClaimLeaseSeconds must be positive");
+        }
+        this.externalClaimLeaseSeconds = externalClaimLeaseSeconds;
         this.realtimeEventRepository = realtimeEventRepository;
         this.deltaBroker = deltaBroker;
         this.conversationRepository = conversationRepository;
@@ -250,8 +262,11 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     metricResult = "failed";
                 }
                 failSegment(executor, claim, ownerUserId, generationId, fault);
-                log.warn("generation {} terminated as FAILED_FINAL for owner {} (outcome={})",
-                        generationId, ownerUserId, outcome.terminal());
+                log.warn("generation {} terminated as FAILED_FINAL for owner {} (outcome={}, failure={})",
+                        generationId, ownerUserId, outcome.terminal(),
+                        outcome.failureOptional()
+                                .map(f -> f.getClass().getSimpleName())
+                                .orElse("-"));
             }
         } catch (RuntimeException e) {
             log.error("generation handler failed for owner={} generation={} workItem={}",
@@ -319,6 +334,25 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     // as ABANDONED_LATE before persisting the new intent so the
                     // audit trail never ends on a permanently-open intent.
                     finalizeService.closeStaleAttemptIntents(ownerUserId, claim.id());
+                    // EXTERNAL-LEASE: a real provider turn (reasoning models in
+                    // particular) can far outlive the 30s default claim lease;
+                    // an expiry mid-flight would reject every later segment via
+                    // assert_active_claim (and the coordinator could re-claim
+                    // the item → duplicate provider calls). Renew the per-item
+                    // lease inside this prepare transaction so the network
+                    // phase and the finalize segments stay guarded. A renewal
+                    // of 0 rows means the claim is already lost: fail closed
+                    // before writing the attempt intent.
+                    int renewed = claimService.renewPerItem(
+                            claim.id(),
+                            claim.claimToken(),
+                            claim.claimFence(),
+                            externalClaimLeaseSeconds);
+                    if (renewed != 1) {
+                        throw new IllegalStateException(
+                                "external claim lease renewal failed (rows=" + renewed
+                                        + ") for work item " + claim.id());
+                    }
                     // Intent failure raises here → prepare-tx aborts → the
                     // outbound is forbidden (adapter zero calls, test 74).
                     finalizeService.createAttemptIntent(
