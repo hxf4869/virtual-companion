@@ -65,5 +65,8 @@ betaGate:
   namedSafetyOwnerRequired: true
   namedBackupRequired: true
   confirmedDutyRosterRequired: true
+  # 安全演练前置的证据由 docs/beta-readiness 承载（05-演练脚本、records/）；
+  # 此处登记为机器可读门禁，与 README「安全与发布状态」的 BLOCKED 前置清单对齐。
+  safetyDrillRequired: true
   ageStateRequired: ADULT_VERIFIED
   betaGenerationEnabledByDefault: false

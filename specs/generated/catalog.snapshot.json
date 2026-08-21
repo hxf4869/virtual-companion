@@ -1262,6 +1262,7 @@
           "namedSafetyOwnerRequired": true,
           "newGenerationCutoff": "22:00",
           "piaRequired": true,
+          "safetyDrillRequired": true,
           "timezone": "Asia/Shanghai"
         },
         "catalogId": "product-scope",
@@ -1301,7 +1302,7 @@
           "vector": "PGVECTOR_0.8.5"
         }
       },
-      "sha256": "297ab34fba052f67c2365ce471549c59b7b31d4dd825555255c6624a65e1a3a9"
+      "sha256": "c56002587131b6312b3fb323f3fa6e9722cb77ac26e74e20650bcaaeb0f25ea7"
     },
     "provider-attempt-statuses.yaml": {
       "document": {

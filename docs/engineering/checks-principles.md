@@ -62,7 +62,7 @@ YAML，反复验证本已不可变的过去。git 对象一旦提交即不可变
 | ├ frontend-test | ~2s | vitest 全量 |
 | └ frontend-type-check | ~2s | vue-tsc |
 | `./mvnw --batch-mode --no-transfer-progress verify` | ~19s | 后端 14 模块编译 + 全部 JUnit（JDK 25） |
-| `bash infra/db/run-rls-tests.sh` | Docker | 84 个 SQL/RLS/并发测试 |
+| `bash infra/db/run-rls-tests.sh` | Docker | 123 个 SQL/RLS/并发测试 |
 | CI（5 个 job） | — | checks / backend / database / frontend / supply-chain |
 
 生成物重生成：`python scripts/checks/catalog_tool.py generate`（catalog）、`scripts/dev/openapi_tool.py`（openapi）。
