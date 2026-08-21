@@ -159,7 +159,10 @@ virtual-companion:
     # EXTERNAL-TIMEOUT: real-provider budget for the external attempt path
     # (reasoning-model scaffolds consume time before the first content delta).
     # The defaults are generous so a local real-model deployment works out of
-    # the box; tighten per deployment as latency is measured.
+    # the box; tighten per deployment as latency is measured. COUPLING:
+    # timeout-total plus the finalize segments must stay under
+    # worker.external-claim-lease-seconds or the claim lease expires mid-flight
+    # again (the bug EXTERNAL-LEASE fixed).
     timeout-connect: ${VC_EXTERNAL_TIMEOUT_CONNECT:10s}
     timeout-first-token: ${VC_EXTERNAL_TIMEOUT_FIRST_TOKEN:60s}
     timeout-total: ${VC_EXTERNAL_TIMEOUT_TOTAL:240s}
@@ -171,6 +174,9 @@ virtual-companion:
     # finalize segments and let the coordinator re-claim the item (duplicate
     # provider calls). Renewed once per external attempt, inside the prepare
     # transaction; the 30s default still covers every other work-item kind.
+    # COUPLING: this lease is renewed once before the outbound, so it must
+    # cover external-attempt.timeout-total plus the finalize segments — raise
+    # it in lockstep whenever timeout-total grows past it.
     external-claim-lease-seconds: ${VC_WORKER_EXTERNAL_LEASE_SECONDS:300}
     # GEN-RECONC: cadence of the stale-IN_PROGRESS reconcile poll.
     reconcile-poll-delay-ms: ${VC_WORKER_RECONCILE_POLL_DELAY_MS:30000}

@@ -767,7 +767,8 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.model-providers.degraded:false}") boolean degraded,
             @Value("${virtual-companion.external-attempt.timeout-connect:10s}") Duration timeoutConnect,
             @Value("${virtual-companion.external-attempt.timeout-first-token:60s}") Duration timeoutFirstToken,
-            @Value("${virtual-companion.external-attempt.timeout-total:240s}") Duration timeoutTotal) {
+            @Value("${virtual-companion.external-attempt.timeout-total:240s}") Duration timeoutTotal,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
         return new LiveInvocationAssembler(
                 generationRepository,
                 conversationRepository,
@@ -783,7 +784,8 @@ public class AuthDataSourceConfig {
                 embeddingPort,
                 degraded,
                 new com.virtualcompanion.modelruntime.contract.TimeoutBudget(
-                        timeoutConnect, timeoutFirstToken, timeoutTotal));
+                        timeoutConnect, timeoutFirstToken, timeoutTotal),
+                restFieldCipher);
     }
 
     /** ENT-SNAP (V40): simulated entitlement mint/assign/list. */

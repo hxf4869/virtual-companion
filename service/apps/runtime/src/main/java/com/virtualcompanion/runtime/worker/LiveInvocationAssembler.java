@@ -22,6 +22,7 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.MemoryRecord;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageRepository;
+import com.virtualcompanion.platform.persistence.RestFieldCipher;
 import com.virtualcompanion.platform.persistence.CompanionPrefs;
 import com.virtualcompanion.platform.persistence.RelationshipRecord;
 import com.virtualcompanion.platform.persistence.RelationshipService;
@@ -99,6 +100,12 @@ public class LiveInvocationAssembler {
     private final boolean degraded;
     /** EXTERNAL-TIMEOUT: real-provider budget for the external attempt path. */
     private final TimeoutBudget externalTimeoutBudget;
+    /**
+     * CRYPTO-RECALL (§17.4): decrypts the stored user message that feeds the
+     * EMBED-RECALL semantic query. Nullable — the null cipher keeps legacy
+     * plaintext call sites (and unit tests) on the raw passthrough.
+     */
+    private final RestFieldCipher restFieldCipher;
 
     public LiveInvocationAssembler(
             GenerationRepository generationRepository,
@@ -130,7 +137,8 @@ public class LiveInvocationAssembler {
                 // deployments must pass an explicit budget via the configurable
                 // constructor (EXTERNAL-TIMEOUT).
                 new TimeoutBudget(
-                        Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)));
+                        Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)),
+                null);
     }
 
     public LiveInvocationAssembler(
@@ -146,7 +154,8 @@ public class LiveInvocationAssembler {
             EntitlementSnapshotService entitlementSnapshotService,
             EmbeddingPort embeddingPort,
             boolean degraded,
-            TimeoutBudget externalTimeoutBudget) {
+            TimeoutBudget externalTimeoutBudget,
+            RestFieldCipher restFieldCipher) {
         this.generationRepository = Objects.requireNonNull(generationRepository);
         this.conversationRepository = Objects.requireNonNull(conversationRepository);
         this.messageRepository = Objects.requireNonNull(messageRepository);
@@ -163,6 +172,7 @@ public class LiveInvocationAssembler {
         this.degraded = degraded;
         this.externalTimeoutBudget = Objects.requireNonNull(
                 externalTimeoutBudget, "externalTimeoutBudget must not be null");
+        this.restFieldCipher = restFieldCipher;
     }
 
     /**
@@ -490,7 +500,14 @@ public class LiveInvocationAssembler {
                             + "ORDER BY id DESC LIMIT 1",
                     String.class,
                     ownerUserId, conversationId);
-            return rows.isEmpty() ? null : rows.get(0);
+            if (rows.isEmpty()) {
+                return null;
+            }
+            // CRYPTO-RECALL: vc.message bodies are stored encrypted; the
+            // semantic query must carry plaintext or the embedding (and the
+            // cosine recall it drives) is meaningless. Legacy plaintext rows
+            // pass through decrypt unchanged.
+            return restFieldCipher == null ? rows.get(0) : restFieldCipher.decrypt(rows.get(0));
         } catch (org.springframework.dao.DataAccessException e) {
             return null;
         }

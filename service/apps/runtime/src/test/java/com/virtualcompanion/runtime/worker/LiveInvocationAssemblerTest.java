@@ -193,10 +193,60 @@ class LiveInvocationAssemblerTest {
                 generationRepository, conversationRepository, messageRepository, memoryService,
                 relationshipService, jdbcTemplate, "ZERO_LLM_FALLBACK",
                 ModelProtocol.OPENAI_CHAT_COMPLETIONS, BUDGET, entitlementSnapshotService,
-                new com.virtualcompanion.runtime.memory.DeterministicEmbedder(), false, budget)
+                new com.virtualcompanion.runtime.memory.DeterministicEmbedder(), false, budget, null)
                 .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
 
         assertEquals(budget, request.timeoutBudget());
+    }
+
+    @Test
+    void semanticRecallQueryDecryptsTheStoredUserMessage() {
+        // CRYPTO-RECALL: vc.message bodies are stored encrypted; the semantic
+        // recall query must decrypt before embedding or the cosine half of
+        // EMBED-RECALL silently degrades to nonsense vectors.
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
+                new ConversationRepository.Conversation(1L, 5L, 9L, null)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "irrelevant-history")));
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
+                .thenReturn(null);
+        when(entitlementSnapshotService.mint(org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(10L), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
+                        .MintedEntitlementSnapshot(9002L, "ECONOMY", "ECONOMY", "ECONOMY"));
+        String plaintext = "最近总是加班到很晚";
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(java.util.List.of());
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.empty());
+        com.virtualcompanion.platform.persistence.RestFieldCipher cipher =
+                new com.virtualcompanion.platform.persistence.RestFieldCipher(
+                        java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        when(jdbcTemplate.queryForList(
+                org.mockito.ArgumentMatchers.startsWith("SELECT content FROM vc.message"),
+                eq(String.class), eq(1L), eq(5L)))
+                .thenReturn(List.of(cipher.encrypt(plaintext)));
+        com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort =
+                mock(com.virtualcompanion.runtime.memory.EmbeddingPort.class);
+        when(embeddingPort.embed(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new float[] {0.1f, 0.2f});
+        when(embeddingPort.space()).thenReturn(
+                new com.virtualcompanion.runtime.memory.EmbeddingPort.EmbeddingSpace(
+                        "det", "1", 2, "det-1"));
+
+        new LiveInvocationAssembler(
+                generationRepository, conversationRepository, messageRepository, memoryService,
+                relationshipService, jdbcTemplate, "ZERO_LLM_FALLBACK",
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS, BUDGET, entitlementSnapshotService,
+                embeddingPort, false,
+                new com.virtualcompanion.modelruntime.contract.TimeoutBudget(
+                        java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(1),
+                        java.time.Duration.ofSeconds(1)),
+                cipher)
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        org.mockito.Mockito.verify(embeddingPort).embed(plaintext);
     }
 
     // ---- MEM-LOOP recall context ----
