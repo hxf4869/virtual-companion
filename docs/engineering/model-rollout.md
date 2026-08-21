@@ -46,3 +46,24 @@ provider 接线（R49 适配器）落地；本文先行钉死流程与回滚语�
 | 日期 | provider-id | model | 动作 | 备注 |
 |---|---|---|---|---|
 | （待填） | | | 登记/灰度/全量/回滚 | |
+
+
+## 6. 灵活供应商接线增量（已勘定,待执行）
+
+以 OpenCode Go / Hy3 为首个外部供应商(OpenAI 兼容,端点
+`https://opencode.ai/zen/go/v1/chat/completions`,模型 id `hy3`,直连探测
+已验证 key/协议/响应形状)。当前两道门阻止接入,实施清单:
+
+1. `OpenAiChatCompletionsConfig.requireEndpoint`:路径校验从「恰等于
+   /v1/chat/completions」放宽为「endsWith(/v1/chat/completions)」;
+2. 出站白名单可配:`ProviderEgressPolicy.defaults()` 在
+   OpenAiChatCompletionsConfig(:127)与 AnthropicMessagesConfig(:137)为
+   硬编码;新增可选构造参数注入额外批准主机(如 opencode.ai),经
+   Provisioner 从部署配置 `egress-allowed-hosts` 读入;
+3. `EgressDnsGuard`(session 内 DNS 解析守卫)同步使用注入策略;
+4. 部署配置:deployments 增 opencode-go 条目(enabled=true,model=hy3,
+   credential-secret=opencode-go-api-key),密钥经
+   VC_MODEL_SECRET_OPENCODE_GO_API_KEY 注入(本机 .env.local 已备);
+5. max-tokens 必须 ≥2048(Hy3 为推理模型,思考消耗 token,content 才产出);
+6. 测试:EgressPolicy 自定义主机用例 + 合约测试回归 + 本机全栈 E2E
+   (admin→invite→user→generation 走通 Hy3)。
