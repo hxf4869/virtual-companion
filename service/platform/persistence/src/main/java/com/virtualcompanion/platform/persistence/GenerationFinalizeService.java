@@ -183,7 +183,10 @@ public class GenerationFinalizeService {
         String cur = (currency == null || currency.isBlank()) ? "USD" : currency;
         String storedContent = cipher == null ? content : cipher.encrypt(content);
         Boolean finalized = jdbc.queryForObject(
-                "SELECT out_finalized FROM vc.finalize_generation(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+                // p_actual_cost is `numeric`; a Java double binds as float8 and
+                // PG's function resolution refuses the implicit candidate, so
+                // cast explicitly to numeric.
+                "SELECT out_finalized FROM vc.finalize_generation(?, ?, ?, ?, ?, ?, ?, ?::numeric, ?, ?, ?, NULL)",
                 Boolean.class,
                 ownerUserId,
                 generationId,

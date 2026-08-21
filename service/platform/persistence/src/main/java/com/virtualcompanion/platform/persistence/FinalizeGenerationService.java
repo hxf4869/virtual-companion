@@ -52,8 +52,11 @@ public class FinalizeGenerationService {
             String fault) {
         validateFinalize(ownerUserId, generationId, finalCandidateId, assistantContent, providerRef, currency);
         return jdbc.queryForObject(
+                // p_actual_cost is `numeric`; a Java double binds as float8 and
+                // PG's function resolution refuses the implicit candidate, so
+                // cast explicitly to numeric.
                 "SELECT out_generation_id, out_assistant_message_id, out_finalized "
-                        + "FROM vc.finalize_generation(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "FROM vc.finalize_generation(?, ?, ?, ?, ?, ?, ?, ?::numeric, ?, ?, ?, ?)",
                 (rs, rowNum) -> new FinalizeResult(
                         rs.getLong("out_generation_id"),
                         rs.getLong("out_assistant_message_id"),
