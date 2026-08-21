@@ -408,10 +408,17 @@ public class AuthDataSourceConfig {
         return new EmergencyContactService(authJdbcTemplate);
     }
 
-    /** DATA-EXPORT (V42): asynchronous user data export (FR-DATA-002). */
+    /**
+     * DATA-EXPORT (V42): asynchronous user data export (FR-DATA-002). The
+     * sealed document encrypts at rest with the CRYPTO-REST cipher; with the
+     * V76 hashed download token, a table reader now holds neither the
+     * document nor a working download secret.
+     */
     @Bean
-    public ExportService exportService(JdbcTemplate authJdbcTemplate) {
-        return new ExportService(authJdbcTemplate);
+    public ExportService exportService(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new ExportService(authJdbcTemplate, restFieldCipher);
     }
 
     /** AGE-MIN (V45): adult-verification result persistence (FR-AUTH-002). */

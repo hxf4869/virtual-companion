@@ -108,6 +108,49 @@ class ExportServiceTest {
     }
 
     @Test
+    void cipherEncryptsTheSealedPayloadAndDecryptsOnConsume() {
+        RestFieldCipher cipher = new RestFieldCipher(
+                java.util.Base64.getEncoder().encodeToString(new byte[32]));
+        ExportService encrypted = new ExportService(jdbc, cipher);
+        java.util.concurrent.atomic.AtomicReference<String> stored =
+                new java.util.concurrent.atomic.AtomicReference<>();
+
+        when(jdbc.queryForObject(
+                eq("SELECT vc.complete_export(?, ?, ?, ?)"),
+                eq(Integer.class),
+                eq(1L),
+                eq(9L),
+                any(),
+                eq(Timestamp.from(NOW))))
+                .thenAnswer(invocation -> {
+                    // args: (sql, type, owner, exportId, payload, expiresAt)
+                    stored.set(invocation.getArgument(4));
+                    return 1;
+                });
+        assertTrue(encrypted.complete(1L, 9L, "{\"ok\":true}", NOW));
+
+        // At rest: opaque ciphertext, never the export document itself.
+        assertTrue(stored.get().startsWith("enc1:"));
+        assertFalse(stored.get().contains("{\"ok\":true}"));
+
+        when(jdbc.query(
+                eq("SELECT out_payload, out_expires_at FROM vc.consume_export(?, ?, ?)"),
+                any(RowMapper.class),
+                eq(1L),
+                eq(9L),
+                eq("tok-1")))
+                .thenAnswer(invocation -> {
+                    ResultSet rs = mock(ResultSet.class);
+                    when(rs.getString("out_payload")).thenReturn(stored.get());
+                    when(rs.getTimestamp("out_expires_at")).thenReturn(Timestamp.from(NOW));
+                    var mapper = invocation.getArgument(1, RowMapper.class);
+                    return List.of(mapper.mapRow(rs, 1));
+                });
+
+        assertEquals("{\"ok\":true}", encrypted.consume(1L, 9L, "tok-1").orElseThrow().payload());
+    }
+
+    @Test
     void failMovesOnlyThePendingRow() {
         when(jdbc.queryForObject(
                 eq("SELECT vc.fail_export(?, ?, ?)"),

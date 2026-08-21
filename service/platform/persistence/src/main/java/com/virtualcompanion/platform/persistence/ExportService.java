@@ -18,7 +18,9 @@ import org.springframework.jdbc.core.RowMapper;
  * defense in depth). The create call carries the one-time download token;
  * only its sha256 digest is persisted (V76) and the plaintext is returned
  * to the caller exactly once. The worker seals the payload with
- * {@link #complete}; a download succeeds exactly once via {@link #consume}
+ * {@link #complete} — encrypted at rest when a cipher is wired, so a table
+ * reader holds neither the token nor the document; a download succeeds
+ * exactly once via {@link #consume}
  * (the presented token is digested and consumed in the same statement), and
  * {@link #expireStale} is the scheduled sweep that purges expired READY
  * payloads (过期后自动删除).
@@ -43,9 +45,21 @@ public class ExportService {
     }
 
     private final JdbcTemplate jdbc;
+    private final RestFieldCipher cipher;
 
     public ExportService(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    /**
+     * CRYPTO-REST (§17.4): when a cipher is wired, the sealed export document
+     * encrypts at rest ({@code enc1:…}) on complete and decrypts on the
+     * one-time consume — the database never sees the export body in
+     * plaintext. The null cipher keeps unit tests on raw passthrough.
+     */
+    public ExportService(JdbcTemplate jdbc, RestFieldCipher cipher) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+        this.cipher = cipher;
     }
 
     /**
@@ -107,12 +121,13 @@ public class ExportService {
         }
         Objects.requireNonNull(payload, "payload must not be null");
         Objects.requireNonNull(expiresAt, "expiresAt must not be null");
+        String storedPayload = cipher == null ? payload : cipher.encrypt(payload);
         Integer rows = jdbc.queryForObject(
                 "SELECT vc.complete_export(?, ?, ?, ?)",
                 Integer.class,
                 ownerUserId,
                 exportId,
-                payload,
+                storedPayload,
                 Timestamp.from(expiresAt));
         return rows != null && rows == 1;
     }
@@ -152,7 +167,7 @@ public class ExportService {
         return jdbc.query(
                         "SELECT out_payload, out_expires_at FROM vc.consume_export(?, ?, ?)",
                         (ResultSet rs, int rowNum) -> new ExportDownload(
-                                rs.getString("out_payload"),
+                                decrypt(rs.getString("out_payload")),
                                 rs.getTimestamp("out_expires_at").toInstant()),
                         ownerUserId,
                         exportId,
@@ -165,6 +180,11 @@ public class ExportService {
     public int expireStale() {
         Integer rows = jdbc.queryForObject("SELECT vc.expire_stale_exports()", Integer.class);
         return rows == null ? 0 : rows;
+    }
+
+    /** CRYPTO-REST: legacy plaintext passes through; the null cipher is raw. */
+    private String decrypt(String stored) {
+        return cipher == null ? stored : cipher.decrypt(stored);
     }
 
     private static RowMapper<ExportRecord> rowMapper() {
