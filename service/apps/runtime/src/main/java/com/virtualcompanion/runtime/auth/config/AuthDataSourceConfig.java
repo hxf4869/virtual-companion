@@ -723,8 +723,10 @@ public class AuthDataSourceConfig {
      * under the active tenant context.
      */
     @Bean
-    public MessageRepository messageRepository(JdbcTemplate authJdbcTemplate) {
-        return new MessageRepository(authJdbcTemplate);
+    public MessageRepository messageRepository(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new MessageRepository(authJdbcTemplate, restFieldCipher);
     }
 
     /**

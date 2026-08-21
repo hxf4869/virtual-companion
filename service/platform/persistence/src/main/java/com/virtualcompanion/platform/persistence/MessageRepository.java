@@ -19,9 +19,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class MessageRepository {
 
     private final JdbcTemplate jdbc;
+    private final RestFieldCipher cipher;
 
     public MessageRepository(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    /**
+     * CRYPTO-REST (§17.4): when a cipher is wired, stored message bodies
+     * decrypt on the model-facing read path ({@link #listByConversation}) —
+     * the assembler must never forward encrypted {@code enc1:…} blobs to a
+     * live provider. The null cipher keeps legacy call sites (and unit tests)
+     * on the raw passthrough.
+     */
+    public MessageRepository(JdbcTemplate jdbc, RestFieldCipher cipher) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+        this.cipher = cipher;
     }
 
     /**
@@ -118,7 +131,7 @@ public class MessageRepository {
                         rs.getLong("id"),
                         rs.getLong("conversation_id"),
                         rs.getString("role"),
-                        rs.getString("content"),
+                        decrypt(rs.getString("content")),
                         rs.getBoolean("no_memory")),
                 ownerUserId,
                 conversationId);
@@ -128,6 +141,11 @@ public class MessageRepository {
         ArrayList<Message> chronological = new ArrayList<>(recent);
         Collections.reverse(chronological);
         return chronological;
+    }
+
+    /** CRYPTO-REST: legacy plaintext passes through; the null cipher is raw. */
+    private String decrypt(String stored) {
+        return cipher == null ? stored : cipher.decrypt(stored);
     }
 
     /**
