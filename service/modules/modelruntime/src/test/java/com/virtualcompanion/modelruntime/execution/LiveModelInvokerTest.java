@@ -702,9 +702,9 @@ class LiveModelInvokerTest {
         private final java.util.ArrayList<Long> unregistered = new java.util.ArrayList<>();
 
         @Override
-        public void register(long generationId, ModelProtocolSession session) {
+        public void register(long generationId, long ownerUserId, ModelProtocolSession session) {
             registered.add(generationId);
-            super.register(generationId, session);
+            super.register(generationId, ownerUserId, session);
         }
 
         @Override

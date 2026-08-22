@@ -28,17 +28,30 @@ public class ActiveInvocationRegistry {
 
     private final ConcurrentMap<Long, ModelProtocolSession> activeSessions =
             new ConcurrentHashMap<>();
+    private final ConcurrentMap<Long, Long> owners = new ConcurrentHashMap<>();
 
     /** Register the running session for a generation (idempotent per generation). */
     public void register(long generationId, ModelProtocolSession session) {
+        register(generationId, 0L, session);
+    }
+
+    /** Register with owner so account deletion can cancel in-flight calls. */
+    public void register(long generationId, long ownerUserId, ModelProtocolSession session) {
         Objects.requireNonNull(session, "session must not be null");
         activeSessions.put(generationId, session);
+        if (ownerUserId > 0) {
+            owners.put(generationId, ownerUserId);
+        } else {
+            owners.remove(generationId);
+        }
     }
 
     /** Remove exactly the given session; a different registered session is kept. */
     public void unregister(long generationId, ModelProtocolSession session) {
         Objects.requireNonNull(session, "session must not be null");
-        activeSessions.remove(generationId, session);
+        if (activeSessions.remove(generationId, session)) {
+            owners.remove(generationId);
+        }
     }
 
     /**
@@ -54,5 +67,23 @@ public class ActiveInvocationRegistry {
         }
         session.cancel();
         return true;
+    }
+
+    /**
+     * Cooperative-cancel every in-flight session owned by {@code ownerUserId}.
+     *
+     * @return number of sessions signalled
+     */
+    public int cancelOwner(long ownerUserId) {
+        if (ownerUserId <= 0) {
+            return 0;
+        }
+        int signalled = 0;
+        for (var entry : owners.entrySet()) {
+            if (entry.getValue() == ownerUserId && cancel(entry.getKey())) {
+                signalled++;
+            }
+        }
+        return signalled;
     }
 }

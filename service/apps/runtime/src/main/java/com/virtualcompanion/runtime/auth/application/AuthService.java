@@ -9,6 +9,7 @@ import com.virtualcompanion.platform.persistence.TrialService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository.AuthenticatedIdentity;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository.RotatedSession;
+import com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthErrorException;
 import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
@@ -26,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
@@ -74,6 +76,7 @@ public class AuthService {
     private final TrialService trials;
     private final QuotaReconciliationService quotaReconciliation;
     private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
+    private final ObjectProvider<ActiveInvocationRegistry> activeInvocations;
 
     public AuthService(
             IdentityAccountRepository accounts,
@@ -87,6 +90,34 @@ public class AuthService {
             TrialService trials,
             QuotaReconciliationService quotaReconciliation,
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+        this(
+                accounts,
+                sessions,
+                passwordEncoder,
+                jwt,
+                refreshTtl,
+                adminConsole,
+                entitlementSnapshotService,
+                inviteCodes,
+                trials,
+                quotaReconciliation,
+                alertNotifier,
+                null);
+    }
+
+    public AuthService(
+            IdentityAccountRepository accounts,
+            IdentityRefreshTokenRepository sessions,
+            PasswordEncoder passwordEncoder,
+            JwtTokenService jwt,
+            Duration refreshTtl,
+            AdminConsoleService adminConsole,
+            EntitlementSnapshotService entitlementSnapshotService,
+            InviteCodeService inviteCodes,
+            TrialService trials,
+            QuotaReconciliationService quotaReconciliation,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            ObjectProvider<ActiveInvocationRegistry> activeInvocations) {
         this.accounts = accounts;
         this.sessions = sessions;
         this.passwordEncoder = passwordEncoder;
@@ -104,6 +135,7 @@ public class AuthService {
                 quotaReconciliation, "quotaReconciliation must not be null");
         this.alertNotifier = Objects.requireNonNull(
                 alertNotifier, "alertNotifier must not be null");
+        this.activeInvocations = activeInvocations;
         // A valid BCrypt hash so the unknown-account login path runs a real
         // (equally expensive) compare instead of short-circuiting.
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
@@ -302,6 +334,11 @@ public class AuthService {
                     "A valid account id is required");
         }
         try {
+            ActiveInvocationRegistry registry =
+                    activeInvocations == null ? null : activeInvocations.getIfAvailable();
+            if (registry != null) {
+                registry.cancelOwner(accountId);
+            }
             boolean deleted = accounts.deleteAccount(accountId);
             if (!deleted) {
                 throw genericError();

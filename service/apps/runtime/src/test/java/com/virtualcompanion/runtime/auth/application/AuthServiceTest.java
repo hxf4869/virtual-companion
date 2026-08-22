@@ -22,6 +22,7 @@ import com.virtualcompanion.platform.persistence.InviteCodeService;
 import com.virtualcompanion.platform.persistence.QuotaReconciliationService;
 import com.virtualcompanion.platform.persistence.TrialService;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository.RotatedSession;
+import com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthErrorException;
 import com.virtualcompanion.runtime.auth.web.AuthInputLimits;
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 class AuthServiceTest {
@@ -336,6 +338,26 @@ class AuthServiceTest {
 
         assertThat(response.ok()).isTrue();
         verify(accounts).deleteAccount(7L);
+    }
+
+    @Test
+    void deleteAccountCancelsInFlightInvocationsFirst() {
+        when(accounts.deleteAccount(7L)).thenReturn(true);
+        ActiveInvocationRegistry registry = mock(ActiveInvocationRegistry.class);
+        ObjectProvider<ActiveInvocationRegistry> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(registry);
+        AuthService deleting = new AuthService(
+                accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7),
+                adminConsole, entitlementSnapshotService, inviteCodes,
+                trials, quotaReconciliation,
+                com.virtualcompanion.runtime.observability.TestAlerts.noop(),
+                provider);
+
+        deleting.deleteAccount(7L);
+
+        var inOrder = org.mockito.Mockito.inOrder(registry, accounts);
+        inOrder.verify(registry).cancelOwner(7L);
+        inOrder.verify(accounts).deleteAccount(7L);
     }
 
     @Test

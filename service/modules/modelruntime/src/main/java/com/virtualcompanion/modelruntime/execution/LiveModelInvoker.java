@@ -412,7 +412,7 @@ public final class LiveModelInvoker {
         Long generationId = parseGenerationId(attempt);
         try (ModelProtocolSession session = adapter.open(protocolRequest)) {
             if (generationId != null) {
-                activeInvocations.register(generationId, session);
+                activeInvocations.register(generationId, parseOwnerId(attempt), session);
             }
             try {
                 return runSession(decision, binding, attempt, providerId, session, eventSink);
@@ -528,6 +528,15 @@ public final class LiveModelInvoker {
             return Long.valueOf(attempt.ownership().generationId());
         } catch (NumberFormatException notNumeric) {
             return null;
+        }
+    }
+
+    private static long parseOwnerId(ExternalAttemptBinding attempt) {
+        try {
+            long owner = Long.parseLong(attempt.ownership().ownerUserId());
+            return owner > 0 ? owner : 0L;
+        } catch (NumberFormatException notNumeric) {
+            return 0L;
         }
     }
 

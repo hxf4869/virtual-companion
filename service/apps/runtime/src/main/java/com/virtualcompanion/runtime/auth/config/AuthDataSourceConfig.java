@@ -287,7 +287,10 @@ public class AuthDataSourceConfig {
             InviteCodeService inviteCodeService,
             TrialService trialService,
             QuotaReconciliationService quotaReconciliationService,
-            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            org.springframework.beans.factory.ObjectProvider<
+                    com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry>
+                    activeInvocations) {
         return new AuthService(
                 identityAccountRepository,
                 identityRefreshTokenRepository,
@@ -299,7 +302,8 @@ public class AuthDataSourceConfig {
                 inviteCodeService,
                 trialService,
                 quotaReconciliationService,
-                alertNotifier);
+                alertNotifier,
+                activeInvocations);
     }
 
     /** ADMIN-OPS (V36): minimal internal admin console reads. */

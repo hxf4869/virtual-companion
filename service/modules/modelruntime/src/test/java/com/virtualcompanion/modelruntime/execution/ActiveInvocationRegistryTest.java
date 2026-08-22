@@ -1,5 +1,6 @@
 package com.virtualcompanion.modelruntime.execution;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -89,5 +90,18 @@ class ActiveInvocationRegistryTest {
         registry.unregister(2L, b);
         assertFalse(registry.cancel(1L));
         assertFalse(registry.cancel(2L));
+    }
+
+    @Test
+    void cancelOwnerSignalsOnlyThatOwnersSessions() {
+        ActiveInvocationRegistry registry = new ActiveInvocationRegistry();
+        RecordingSession a = new RecordingSession();
+        RecordingSession b = new RecordingSession();
+        registry.register(1L, 7L, a);
+        registry.register(2L, 8L, b);
+
+        assertEquals(1, registry.cancelOwner(7L));
+        assertTrue(a.cancelled);
+        assertFalse(b.cancelled);
     }
 }
