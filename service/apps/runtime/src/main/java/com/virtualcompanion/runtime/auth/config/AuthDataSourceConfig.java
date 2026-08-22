@@ -316,8 +316,14 @@ public class AuthDataSourceConfig {
     public AuthController authController(
             AuthService authService,
             AuthAbuseGuard authAbuseGuard,
-            com.virtualcompanion.runtime.observability.AlertProperties alertProperties) {
-        return new AuthController(authService, authAbuseGuard, alertProperties);
+            com.virtualcompanion.runtime.observability.AlertProperties alertProperties,
+            com.virtualcompanion.platform.persistence.OpsCase opsCase) {
+        return new AuthController(authService, authAbuseGuard, alertProperties, opsCase);
+    }
+
+    @Bean
+    public com.virtualcompanion.platform.persistence.OpsCase opsCase(JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.OpsCase(authJdbcTemplate);
     }
 
     @Bean

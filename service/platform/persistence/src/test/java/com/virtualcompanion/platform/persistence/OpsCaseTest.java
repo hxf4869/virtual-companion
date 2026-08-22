@@ -49,4 +49,18 @@ class OpsCaseTest {
         assertEquals("", snapshot.publicNote());
         verify(jdbc).query(eq(OpsCase.SNAPSHOT_SQL), any(RowMapper.class), eq(1L), eq(3L));
     }
+
+    @Test
+    void transitionPinsActionSql() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(
+                anyString(), any(RowMapper.class),
+                eq(1L), eq(3L), eq("ACK"), eq(null), eq(null)))
+                .thenReturn(List.of(new OpsCase.TransitionResult(3L, "ACKNOWLEDGED")));
+        OpsCase.TransitionResult result = new OpsCase(jdbc).transition(1L, 3L, "ACK", null, null);
+        assertEquals("ACKNOWLEDGED", result.status());
+        verify(jdbc).query(
+                eq(OpsCase.TRANSITION_SQL), any(RowMapper.class),
+                eq(1L), eq(3L), eq("ACK"), eq(null), eq(null));
+    }
 }

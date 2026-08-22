@@ -65,6 +65,7 @@ public class AuthController {
     private final AuthService authService;
     private final AuthAbuseGuard abuseGuard;
     private final com.virtualcompanion.runtime.observability.AlertProperties alertProperties;
+    private final com.virtualcompanion.platform.persistence.OpsCase opsCase;
 
     /**
      * Secure flag for the session cookies. Field-injected so the bean can be
@@ -87,9 +88,18 @@ public class AuthController {
             AuthService authService,
             AuthAbuseGuard abuseGuard,
             com.virtualcompanion.runtime.observability.AlertProperties alertProperties) {
+        this(authService, abuseGuard, alertProperties, null);
+    }
+
+    public AuthController(
+            AuthService authService,
+            AuthAbuseGuard abuseGuard,
+            com.virtualcompanion.runtime.observability.AlertProperties alertProperties,
+            com.virtualcompanion.platform.persistence.OpsCase opsCase) {
         this.authService = authService;
         this.abuseGuard = abuseGuard;
         this.alertProperties = alertProperties;
+        this.opsCase = opsCase;
     }
 
     @PostMapping("/login")
@@ -444,6 +454,43 @@ public class AuthController {
     }
 
     /** SAFETY-QUEUE (V59): ADMIN-only keyset page of the safety queue, newest first. */
+    @PostMapping("/admin/ops-cases/{caseId}/actions")
+    public java.util.Map<String, String> transitionOpsCase(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @PathVariable String caseId,
+            @RequestBody java.util.Map<String, String> body) {
+        if (opsCase == null || principal == null) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+        long id;
+        try {
+            id = Long.parseLong(caseId);
+        } catch (NumberFormatException bad) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "caseId is required");
+        }
+        String action = body == null ? null : body.get("action");
+        String assigneeRaw = body == null ? null : body.get("assigneeAccountId");
+        Long assignee = null;
+        if (assigneeRaw != null && !assigneeRaw.isBlank()) {
+            try {
+                assignee = Long.parseLong(assigneeRaw);
+            } catch (NumberFormatException bad) {
+                throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                        "assigneeAccountId is invalid");
+            }
+        }
+        String disposition = body == null ? null : body.get("dispositionReason");
+        try {
+            var result = opsCase.transition(principal.accountId(), id, action, assignee, disposition);
+            return java.util.Map.of("id", Long.toString(result.id()), "status", result.status());
+        } catch (org.springframework.dao.DataAccessException denied) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+    }
+
     @GetMapping("/admin/safety-events")
     public List<SafetyEventResponse> listSafetyEvents(
             @AuthenticationPrincipal JwtTokenService.Principal principal,

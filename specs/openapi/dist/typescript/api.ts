@@ -568,6 +568,12 @@ export interface SafetyEventItem {
   slaBreached: string
 }
 
+export interface OpsCaseActionRequest {
+  action: string
+  assigneeAccountId?: string
+  dispositionReason?: string
+}
+
 export interface OpsCase {
   id: string
   kind: string
@@ -759,6 +765,7 @@ export interface VirtualCompanionApiClient {
   recordSurvey(): Promise<SurveyAccepted>
   listMySurveys(): Promise<void>
   listSafetyEvents(): Promise<void>
+  transitionOpsCase(): Promise<OpsCase>
   listBetaReports(): Promise<void>
   listBetaAgeAppeals(): Promise<void>
   listBetaExportTasks(): Promise<void>

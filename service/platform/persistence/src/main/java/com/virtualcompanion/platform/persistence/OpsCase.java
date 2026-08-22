@@ -12,6 +12,8 @@ public final class OpsCase {
 
     static final String OPEN_SQL =
             "SELECT out_id, out_inserted FROM vc.open_ops_case(?, ?, ?, ?, ?)";
+    static final String TRANSITION_SQL =
+            "SELECT out_id, out_status FROM vc.transition_ops_case(?, ?, ?, ?, ?)";
     static final String SNAPSHOT_SQL =
             "SELECT out_id, out_kind, out_source_owner_user_id, out_source_id, out_status,"
                     + " out_severity, out_sla_hours, out_assignee_account_id,"
@@ -19,6 +21,9 @@ public final class OpsCase {
                     + " FROM vc.ops_case_snapshot(?, ?)";
 
     public record OpenResult(long id, boolean inserted) {
+    }
+
+    public record TransitionResult(long id, String status) {
     }
 
     public record Snapshot(
@@ -59,6 +64,29 @@ public final class OpsCase {
                 sourceId,
                 severity).stream().findFirst().orElseThrow(() ->
                 new IllegalStateException("open_ops_case returned no row"));
+    }
+
+    public TransitionResult transition(
+            long actingAccountId,
+            long caseId,
+            String action,
+            Long assigneeAccountId,
+            String dispositionReason) {
+        if (actingAccountId <= 0 || caseId <= 0) {
+            throw new IllegalArgumentException("ids must be positive");
+        }
+        Objects.requireNonNull(action, "action must not be null");
+        return jdbc.query(
+                TRANSITION_SQL,
+                (rs, rowNum) -> new TransitionResult(
+                        rs.getLong("out_id"),
+                        rs.getString("out_status")),
+                actingAccountId,
+                caseId,
+                action,
+                assigneeAccountId,
+                dispositionReason).stream().findFirst().orElseThrow(() ->
+                new IllegalStateException("transition_ops_case returned no row"));
     }
 
     public Snapshot snapshot(long actingAccountId, long caseId) {
