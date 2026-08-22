@@ -61,7 +61,7 @@ public class AuthService {
     private static final int MAX_USERNAME_LENGTH = 128;
     private static final int MAX_PASSWORD_LENGTH = 1024;
     private static final int MAX_DISPLAY_NAME_LENGTH = 256;
-    private static final int MAX_ROLE_LENGTH = 16;
+    private static final int MAX_ROLE_LENGTH = 32;
     private static final int MIN_PASSWORD_LENGTH = 8;
 
     private final IdentityAccountRepository accounts;
@@ -664,7 +664,11 @@ public class AuthService {
             throw invalidRequestError();
         }
         String normalized = role.toUpperCase(Locale.ROOT);
-        if (normalized.equals(ROLE_ADMIN) || normalized.equals("USER")) {
+        if (normalized.equals(ROLE_ADMIN)
+                || normalized.equals("USER")
+                || normalized.equals("SAFETY_REVIEWER")
+                || normalized.equals("PRIVACY_OPERATOR")
+                || normalized.equals("OPS_VIEWER")) {
             return normalized;
         }
         throw invalidRequestError();

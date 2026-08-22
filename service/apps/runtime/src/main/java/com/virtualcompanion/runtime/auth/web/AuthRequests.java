@@ -28,8 +28,9 @@ public final class AuthRequests {
     public record CreateAccountRequest(
             @NotBlank @Size(max = 64) String username,
             @NotBlank @Size(min = 8, max = 128) String password,
-            @Size(max = 16)
-            @Pattern(regexp = "(?i:ADMIN|USER)") String role,
+            @Size(max = 32)
+            @Pattern(regexp = "(?i:ADMIN|USER|SAFETY_REVIEWER|PRIVACY_OPERATOR|OPS_VIEWER)")
+            String role,
             @NotBlank @Size(max = 256) String displayName) {
     }
 
