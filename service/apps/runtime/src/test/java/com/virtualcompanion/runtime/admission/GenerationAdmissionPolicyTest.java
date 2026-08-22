@@ -97,4 +97,14 @@ class GenerationAdmissionPolicyTest {
                 Optional.of(GenerationAdmissionPolicy.BETA_GENERATION_DISABLED),
                 policy.rejectReason(facts));
     }
+
+    @Test
+    void enforceBlocksLiveExpansionWithoutEval() {
+        Facts facts = new Facts(
+                true, true, true, true, AgeState.ADULT_VERIFIED,
+                Set.of(), Set.of(), Optional.empty(), false);
+        assertEquals(
+                Optional.of(GenerationAdmissionPolicy.RELEASE_EVAL_BLOCKED),
+                policy.rejectReason(facts));
+    }
 }

@@ -578,6 +578,12 @@ public class AuthDataSourceConfig {
      * an explicit flag. Read failures fail closed.
      */
     @Bean
+    public com.virtualcompanion.platform.persistence.ReleaseGate releaseGate(
+            JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.ReleaseGate(authJdbcTemplate);
+    }
+
+    @Bean
     public com.virtualcompanion.runtime.admission.GenerationAdmission generationAdmission(
             IdentityAccountRepository identityAccountRepository,
             AgeVerificationService ageVerificationService,
@@ -588,7 +594,8 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.beta.generation-enabled:false}") boolean betaGenerationEnabled,
             @Value("${virtual-companion.admission.enforce:false}") boolean enforce,
             @Value("${virtual-companion.admission.required-consent-types:}")
-                    java.util.List<String> requiredConsentTypes) {
+                    java.util.List<String> requiredConsentTypes,
+            com.virtualcompanion.platform.persistence.ReleaseGate releaseGate) {
         return new com.virtualcompanion.runtime.admission.GenerationAdmissionService(
                 identityAccountRepository,
                 ageVerificationService,
@@ -598,7 +605,8 @@ public class AuthDataSourceConfig {
                 alertNotifier,
                 betaGenerationEnabled,
                 enforce,
-                requiredConsentTypes);
+                requiredConsentTypes,
+                releaseGate);
     }
 
     /** EMBED-RECALL (V62): deterministic embedder — the local recall floor. */

@@ -5,6 +5,7 @@ import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.platform.persistence.ConsentRecord;
 import com.virtualcompanion.platform.persistence.ConsentService;
 import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
+import com.virtualcompanion.platform.persistence.ReleaseGate;
 import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.runtime.observability.AlertNotifier;
 import com.virtualcompanion.runtime.observability.AlertSeverity;
@@ -35,6 +36,7 @@ public final class GenerationAdmissionService implements GenerationAdmission {
     private final boolean betaGenerationEnabled;
     private final boolean enforceConfigured;
     private final Set<String> requiredConsentTypes;
+    private final ReleaseGate releaseGate;
 
     public GenerationAdmissionService(
             IdentityAccountRepository accounts,
@@ -46,6 +48,30 @@ public final class GenerationAdmissionService implements GenerationAdmission {
             boolean betaGenerationEnabled,
             boolean enforceConfigured,
             List<String> requiredConsentTypes) {
+        this(
+                accounts,
+                ageVerificationService,
+                consentService,
+                serviceWindow,
+                serviceWindowService,
+                alertNotifier,
+                betaGenerationEnabled,
+                enforceConfigured,
+                requiredConsentTypes,
+                null);
+    }
+
+    public GenerationAdmissionService(
+            IdentityAccountRepository accounts,
+            AgeVerificationService ageVerificationService,
+            ConsentService consentService,
+            BetaServiceWindow serviceWindow,
+            ServiceWindowService serviceWindowService,
+            AlertNotifier alertNotifier,
+            boolean betaGenerationEnabled,
+            boolean enforceConfigured,
+            List<String> requiredConsentTypes,
+            ReleaseGate releaseGate) {
         this.accounts = Objects.requireNonNull(accounts);
         this.ageVerificationService = Objects.requireNonNull(ageVerificationService);
         this.consentService = Objects.requireNonNull(consentService);
@@ -60,6 +86,7 @@ public final class GenerationAdmissionService implements GenerationAdmission {
                         .filter(type -> type != null && !type.isBlank())
                         .map(String::trim)
                         .collect(Collectors.toUnmodifiableSet());
+        this.releaseGate = releaseGate;
     }
 
     @Override
@@ -109,6 +136,7 @@ public final class GenerationAdmissionService implements GenerationAdmission {
             windowReject = serviceWindow.rejectReason(
                     now, state.dailyActiveUsers(), state.ownerActiveToday());
         }
+        boolean liveExpansionAllowed = releaseGate == null || releaseGate.allowsLiveExpansion();
         return new GenerationAdmissionPolicy.Facts(
                 true,
                 accountActive,
@@ -117,6 +145,7 @@ public final class GenerationAdmissionService implements GenerationAdmission {
                 age,
                 granted,
                 requiredConsentTypes,
-                windowReject);
+                windowReject,
+                liveExpansionAllowed);
     }
 }
