@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.worker;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -111,6 +112,10 @@ class GenerationWorkItemHandlerTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<AuthorizationSnapshotProvider> snapshotProvider = mock(ObjectProvider.class);
 
+    /** METRICS-ALERT: in-memory registry so terminal counters are assertable. */
+    private final io.micrometer.core.instrument.simple.SimpleMeterRegistry metricsRegistry =
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+
     private GenerationWorkItemHandler handler;
 
     /** Synchronous segment executor: runs each segment immediately (mock has no transactions). */
@@ -124,7 +129,7 @@ class GenerationWorkItemHandlerTest {
                 realtimeEventRepository, deltaBroker, conversationRepository,
                 generationRepository, safetyClassifier, safetyEventService,
                 summaryService,
-                com.virtualcompanion.runtime.observability.TestAlerts.metrics(),
+                new com.virtualcompanion.runtime.observability.VcMetrics(metricsRegistry),
                 com.virtualcompanion.runtime.observability.TestAlerts.noop(),
                 new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(3, 60_000));
         when(invokerProvider.getIfAvailable()).thenReturn(null);
@@ -149,6 +154,11 @@ class GenerationWorkItemHandlerTest {
 
     private static WorkItemClaim generationClaim(long ownerId, long genId) {
         return new WorkItemClaim(ownerId, 1L, "GENERATION", genId, null, "token-1", "FENCE-A");
+    }
+
+    /** METRICS-ALERT: current vc_generation_total{result=<tag>} count. */
+    private double generationCount(String result) {
+        return metricsRegistry.counter("vc_generation_total", "result", result).count();
     }
 
     // ---- prepared invocation helpers ----
@@ -284,6 +294,7 @@ class GenerationWorkItemHandlerTest {
         verify(finalizeService).failWorkItem(1L, "token-1", "FENCE-A");
         verify(assembler, never()).assemble(anyLong(), anyLong());
         verify(enqueueService, never()).enqueue(anyLong(), anyString(), anyLong());
+        assertThat(generationCount("failed")).isEqualTo(1.0);
     }
 
     @Test
@@ -315,6 +326,7 @@ class GenerationWorkItemHandlerTest {
                 1L, 10L, 0L, "chat.accepted", "{\"generation_id\":10}");
         verify(realtimeEventRepository, never()).advanceSeq(anyLong(), anyLong(), anyInt());
         verify(deltaBroker).publishEnd(10L);
+        assertThat(generationCount("completed_zero_llm")).isEqualTo(1.0);
     }
 
     @Test
@@ -427,6 +439,8 @@ class GenerationWorkItemHandlerTest {
                 1L, 10L, 0L, "chat.accepted", "{\"generation_id\":10}");
         verify(realtimeEventRepository).advanceSeq(1L, 10L, 64);
         verify(deltaBroker).publishEnd(10L);
+        assertThat(generationCount("completed")).isEqualTo(1.0);
+        assertThat(generationCount("error")).isEqualTo(0.0);
     }
 
     @Test
@@ -575,6 +589,7 @@ class GenerationWorkItemHandlerTest {
         verify(finalizeService, never()).finalizeCompletedWithUsage(
                 anyLong(), anyLong(), anyLong(), any(), any(),
                 anyLong(), anyLong(), anyDouble(), any(), anyInt(), anyBoolean());
+        assertThat(generationCount("failed")).isEqualTo(1.0);
     }
 
     @Test
@@ -605,6 +620,7 @@ class GenerationWorkItemHandlerTest {
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
         verify(finalizeService, never()).failWorkItem(anyLong(), anyString(), anyString());
         verify(finalizeService, never()).insertCandidate(anyLong(), anyLong(), anyString());
+        assertThat(generationCount("retried")).isEqualTo(1.0);
     }
 
     @Test
@@ -795,6 +811,8 @@ class GenerationWorkItemHandlerTest {
                 anyLong(), anyLong(), anyLong(), any(), any(),
                 anyLong(), anyLong(), anyDouble(), any(), anyInt(), anyBoolean());
         verify(enqueueService, never()).enqueue(anyLong(), anyString(), anyLong());
+        assertThat(generationCount("blocked_output")).isEqualTo(1.0);
+        assertThat(generationCount("completed")).isEqualTo(0.0);
     }
 
     @Test

@@ -189,8 +189,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V72 = B1-SURVEY daily 被理解感 score capture (survey_response RLS table);
         // V73/V74/V75 = review-fix bundles (anchor FK column lists, RLS/REVOKE
         // hardening + indexes, SD function guards);
-        // V76 = export download-token hashed at rest (issue-once semantics).
+        // V76 = export download-token hashed at rest (issue-once semantics);
+        // V77 = METRICS-ALERT job_daily_active_users (vc_beta_dau gauge source).
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(76);
+                .isEqualTo(77);
     }
 }

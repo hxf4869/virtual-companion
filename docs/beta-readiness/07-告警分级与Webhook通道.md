@@ -12,11 +12,17 @@
 
 | 指标 | 标签 | 含义 |
 |---|---|---|
-| `vc_generation_total` | `result` | generation 终态计数：completed / completed_zero_llm / failed / retried / blocked_input / blocked_output |
+| `vc_generation_total` | `result` | generation 工作项处理终态计数：completed / completed_zero_llm / failed / retried / blocked_input / blocked_output / blocked_budget / error（每处理项恰好 +1，worker finally 单点记录） |
 | `vc_generation_duration` | `result` | 单个 generation 工作项处理耗时 |
 | `vc_tokens_total` | `kind=input/output` | finalize 结算的 token 用量 |
 | `vc_provider_attempt_total` | `result` | provider attempt 终态（LiveAttemptTerminal 名） |
 | `vc_safety_event_total` | `stage`, `risk` | 确定性安全事件（INPUT/INCREMENTAL/FINAL × risk-levels 目录码） |
+| `vc_beta_dau` | — | 当日活跃用户数（V77 `vc.job_daily_active_users`，按服务窗口时区日界，默认 60s 刷新，仅聚合计数） |
+
+- 抓取凭据口径：本地开发（auth 关闭）可直接访问；**auth 开启的部署中
+  `/actuator/prometheus` 与其余端点一致要求 Bearer 认证**——Prometheus 侧用
+  `authorization` 头携带有效账号令牌抓取，或由反代限制到内网并注入令牌。
+  专用抓取凭据（非用户账号）留待 Beta 部署时定，见 §6。
 
 ## 2. Webhook 通道（已接线）
 
@@ -54,13 +60,16 @@
 |---|---|---|
 | `DAU_CAP_REACHED` | P2 | Beta 服务窗口因 DAU 达上限拒绝新活跃用户（GenerationController SVC-WINDOW 分支） |
 | `ACCOUNT_DELETE_FAILED` | P1 | 自助注销遇数据访问异常（AuthService.deleteAccount；异常仍按原口径转为不披露错误） |
+| `RETENTION_PURGE_FAILED` | P1 | 分类清理单类失败（RetentionPurgeScheduler；其余类继续，下次运行天然重试） |
+| `BUDGET_HALT_REACHED` | P1 | 硬预算停机触发（BLOCKED_BY_BUDGET，见 §2b） |
 
 ## 4. R3/R4 SLA 可见性（已接线）
 
 - V69 重定义 `list_safety_events`：每行新增 `age_hours`（SQL 只报事实年龄）；
 - `GET /api/v1/auth/admin/safety-events` 响应新增 `ageHours` 与 `slaBreached`
   （阈值来自部署配置 `r3-sla-hours` 默认 24、`r4-sla-hours` 默认 1——**草案值，
-  Owner 复核**）；admin 安全队列据此可见超时行。
+  Owner 复核**）；
+- admin 安全队列每行展示事实年龄，`slaBreached` 行附「SLA 超时」标记。
 
 ## 5. 分级定义（§22.12 全集，Owner 复核）
 
@@ -90,3 +99,5 @@
 - `[告警接收端 URL]`（部署配置注入，不入仓库）
 - `[SLA 阈值复核]`：R3=24h / R4=1h 是否符合值班人力
 - `[升级路径]`：P0 无响应时的升级人与方式
+- `[抓取凭据方案]`：Prometheus 抓取是否引入专用凭据（非用户账号令牌），
+  还是维持账号令牌/反代注入（见 §1）

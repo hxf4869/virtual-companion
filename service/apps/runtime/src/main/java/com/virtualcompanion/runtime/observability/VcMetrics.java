@@ -3,6 +3,7 @@ package com.virtualcompanion.runtime.observability;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * METRICS-ALERT (§22.10 / §26.6): semantic facade over Micrometer so the
@@ -13,9 +14,13 @@ import java.util.concurrent.TimeUnit;
 public class VcMetrics {
 
     private final MeterRegistry registry;
+    private final AtomicLong dau = new AtomicLong();
 
     public VcMetrics(MeterRegistry registry) {
         this.registry = Objects.requireNonNull(registry, "registry must not be null");
+        // §26.6 DAU gauge: the registry holds only a weak reference, so the
+        // field above keeps the AtomicLong reachable for the whole app life.
+        registry.gauge("vc_beta_dau", this.dau);
     }
 
     /** One generation turn reached a terminal outcome. */
@@ -45,5 +50,10 @@ public class VcMetrics {
     public void safetyEvent(String stage, String riskLevel) {
         registry.counter("vc_safety_event_total", "stage", stage, "risk", riskLevel)
                 .increment();
+    }
+
+    /** Current daily-active-user count, refreshed by the metrics scheduler. */
+    public void dau(long value) {
+        dau.set(value);
     }
 }

@@ -60,4 +60,16 @@ class VcMetricsTest {
                 "vc_safety_event_total", "stage", "FINAL", "risk", "R4_IMMINENT").count())
                 .isEqualTo(1.0);
     }
+
+    @Test
+    void dauGaugeTracksTheLatestRefresh() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        VcMetrics metrics = new VcMetrics(registry);
+
+        metrics.dau(7);
+        assertThat(registry.get("vc_beta_dau").gauge().value()).isEqualTo(7.0);
+
+        metrics.dau(0);
+        assertThat(registry.get("vc_beta_dau").gauge().value()).isEqualTo(0.0);
+    }
 }

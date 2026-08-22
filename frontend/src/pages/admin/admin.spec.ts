@@ -102,6 +102,8 @@ describe("admin account page (ADMIN-UI)", () => {
                 riskLevel: "R4_IMMINENT",
                 ruleId: "input-imminent-self-harm",
                 createdAt: "2026-08-19T08:00:00Z",
+                ageHours: 0.1,
+                slaBreached: false,
               },
             ],
           };
@@ -265,6 +267,19 @@ describe("admin account page (ADMIN-UI)", () => {
                 riskLevel: "R4_IMMINENT",
                 ruleId: "input-imminent-self-harm",
                 createdAt: "2026-08-19T08:00:00Z",
+                ageHours: 0.1,
+                slaBreached: false,
+              },
+              {
+                id: "10",
+                ownerId: "8",
+                generationId: "56",
+                stage: "FINAL",
+                riskLevel: "R3_HIGH",
+                ruleId: "output-ai-identity-human-claim",
+                createdAt: "2026-08-18T08:00:00Z",
+                ageHours: 48.2,
+                slaBreached: true,
               },
             ],
           };
@@ -276,10 +291,17 @@ describe("admin account page (ADMIN-UI)", () => {
     await flushPromises();
 
     const rows = wrapper.findAll('[data-testid="safety-row"]');
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(rows[0].text()).toContain("R4_IMMINENT");
     expect(rows[0].text()).toContain("input-imminent-self-harm");
     expect(rows[0].text()).toContain("账号 7");
+    // METRICS-ALERT: the fact age renders for every row; the deployment
+    // threshold marks only the breached row.
+    const slaCells = wrapper.findAll('[data-testid="safety-sla"]');
+    expect(slaCells[0].text()).toContain("0.1h");
+    expect(slaCells[0].text()).not.toContain("SLA 超时");
+    expect(slaCells[1].text()).toContain("48.2h");
+    expect(slaCells[1].text()).toContain("SLA 超时");
     // Read-only queue: no triage/dispose action is offered.
     expect(wrapper.text()).not.toMatch(/处置|标记已处理|关闭工单/);
     wrapper.unmount();

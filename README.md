@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V68 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V77 迁移和完整 SQL/RLS/并发测试入口；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
@@ -32,6 +32,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
 
 - `GET /actuator/health`
+- `GET /actuator/prometheus`（METRICS-ALERT：`vc_*` 指标暴露；auth 开启时
+  与其余端点一致要求 Bearer 认证，抓取凭据口径见 `docs/beta-readiness/07`）
 - `GET /api/internal/baseline`
 - `GET /api/v1/version`（公开，OpenAPI `getVersion`）
 - `GET /api/v1/service-mode`（SVC-MODE：当前服务模式 FULL_AI / DEGRADED_AI /

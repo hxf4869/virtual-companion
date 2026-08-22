@@ -214,6 +214,10 @@
           <text class="audit-cell">{{ event.ruleId }}</text>
           <text class="audit-cell">账号 {{ event.ownerId }}</text>
           <text class="audit-cell">{{ event.createdAt }}</text>
+          <!-- METRICS-ALERT: 事实年龄 + 部署阈值判出的 SLA 超时标记，处置仍是人工。 -->
+          <text class="audit-cell" data-testid="safety-sla">
+            {{ event.ageHours }}h{{ event.slaBreached ? " · SLA 超时" : "" }}
+          </text>
         </view>
       </view>
 

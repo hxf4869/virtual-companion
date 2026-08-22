@@ -454,6 +454,8 @@ export interface SafetyEventItem {
   riskLevel: string;
   ruleId: string;
   createdAt: string;
+  ageHours: number;
+  slaBreached: boolean;
 }
 
 function asSafetyEvent(json: unknown): SafetyEventItem | null {
@@ -465,11 +467,14 @@ function asSafetyEvent(json: unknown): SafetyEventItem | null {
   const riskLevel = asString(o, "riskLevel");
   const ruleId = asString(o, "ruleId");
   const createdAt = asString(o, "createdAt");
-  if (!id || !ownerId || !stage || !riskLevel || !ruleId || !createdAt) {
+  const ageHours = typeof o.ageHours === "number" ? o.ageHours : undefined;
+  if (!id || !ownerId || !stage || !riskLevel || !ruleId || !createdAt
+      || ageHours === undefined) {
     return null;
   }
   return {
-    id, ownerId, stage, riskLevel, ruleId, createdAt,
+    id, ownerId, stage, riskLevel, ruleId, createdAt, ageHours,
+    slaBreached: o.slaBreached === true,
     generationId: asString(o, "generationId"),
   };
 }

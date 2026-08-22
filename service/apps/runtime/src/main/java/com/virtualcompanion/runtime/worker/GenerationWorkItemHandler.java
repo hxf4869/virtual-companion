@@ -167,7 +167,9 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         long ownerUserId = claim.ownerUserId();
         long generationId = claim.refId();
         // METRICS-ALERT (§22.10): one duration sample + one terminal counter
-        // per handled work item; result tags are the fixed strings below.
+        // per handled work item, both fired from the finally block below;
+        // result tags are the fixed strings assigned after each segment
+        // succeeds (an exception anywhere leaves the initial "error").
         long startNanos = System.nanoTime();
         String metricResult = "error";
         try {
@@ -175,8 +177,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             // front — the item re-enters the bounded RETRY-A backoff instead,
             // so a long outage dead-letters via the existing attempt budget.
             if (circuitBreaker != null && !circuitBreaker.allow("provider")) {
-                metricResult = "retried";
                 retrySegment(executor, claim, ownerUserId, generationId);
+                metricResult = "retried";
                 return;
             }
             // ---- prepare-tx ----
@@ -185,7 +187,6 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 // No provider runtime wired: degrade inside a guarded fail tx.
                 failSegment(executor, claim, ownerUserId, generationId, prepared.degradeFault());
                 metricResult = "failed";
-                metrics.generationTerminal(metricResult);
                 return;
             }
             // ---- external-no-db (adapter/session only, no database) ----
@@ -236,32 +237,31 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             }
             // ---- guarded finalize / guarded fail ----
             if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
-                metricResult = "completed";
-                finalizeExternalSuccess(
+                boolean outputBlocked = finalizeExternalSuccess(
                         executor, claim, ownerUserId, generationId, outcome, pausedDeltas.get());
+                metricResult = outputBlocked ? "blocked_output" : "completed";
             } else if (outcome.terminal() == LiveAttemptTerminal.ZERO_LLM_COMPLETED) {
-                metricResult = "completed_zero_llm";
                 finalizeZeroLlmSuccess(executor, claim, ownerUserId, generationId, outcome);
+                metricResult = "completed_zero_llm";
             } else if (prepared.externalMode() && retryableFailure(outcome)) {
                 // V29 RETRY-A: the adapter explicitly classified the failure as
                 // retryable; requeue with bounded backoff or dead-letter.
-                metricResult = "retried";
                 retrySegment(executor, claim, ownerUserId, generationId);
+                metricResult = "retried";
             } else {
                 String fault = prepared.externalMode()
                         ? "external-" + outcome.terminal().name().toLowerCase(java.util.Locale.ROOT)
                         : "zero-llm-unexpected-outcome:" + outcome.terminal();
-                if (outcome.terminal() == LiveAttemptTerminal.BLOCKED_BY_BUDGET) {
-                    metricResult = "blocked_budget";
-                    metrics.generationTerminal(metricResult);
+                boolean budgetHalted =
+                        outcome.terminal() == LiveAttemptTerminal.BLOCKED_BY_BUDGET;
+                if (budgetHalted) {
                     alertNotifier.alert(
                             com.virtualcompanion.runtime.observability.AlertSeverity.P1,
                             "BUDGET_HALT_REACHED",
                             "month-to-date spend reached the configured cap; outbound refused");
-                } else {
-                    metricResult = "failed";
                 }
                 failSegment(executor, claim, ownerUserId, generationId, fault);
+                metricResult = budgetHalted ? "blocked_budget" : "failed";
                 log.warn("generation {} terminated as FAILED_FINAL for owner {} (outcome={}, failure={})",
                         generationId, ownerUserId, outcome.terminal(),
                         outcome.failureOptional()
@@ -275,6 +275,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             // transaction, only the original item/token/fence).
             throw e;
         } finally {
+            metrics.generationTerminal(metricResult);
             metrics.generationDuration(startNanos, metricResult);
             // STREAM-LIVE: the live tail completes once this item is fully
             // processed (durable terminal state committed); the client's next
@@ -410,8 +411,12 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
      * was paused mid-stream) — no assistant message, no candidate, no memory
      * extraction; the work item still completes (the provider attempt itself
      * succeeded and is audited).
+     *
+     * @return {@code true} when the final review blocked the output (the
+     *         caller counts the item as {@code blocked_output} instead of
+     *         {@code completed}).
      */
-    private void finalizeExternalSuccess(
+    private boolean finalizeExternalSuccess(
             WorkItemWorker.OwnerExecutor executor,
             WorkItemClaim claim,
             long ownerUserId,
@@ -429,7 +434,6 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 safetyClassifier.classify(SafetyStage.OUTPUT, content);
         if (!finalReview.allowed()) {
             String ruleId = finalReview.hardRuleViolations().get(0);
-            metrics.generationTerminal("blocked_output");
             executor.asOwner(ownerUserId, () -> {
                 finalizeService.assertActiveClaim(
                         ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
@@ -457,7 +461,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             });
             log.warn("generation {} OUTPUT_BLOCKED by final review for owner {} (rule={}, pausedDeltas={})",
                     generationId, ownerUserId, ruleId, pausedDeltas);
-            return;
+            return true;
         }
 
         executor.asOwner(ownerUserId, () -> {
@@ -508,6 +512,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         });
         log.info("generation {} completed via external provider for owner {} (candidate in={} out={})",
                 generationId, ownerUserId, inputTokens, outputTokens);
+        return false;
     }
 
     /**

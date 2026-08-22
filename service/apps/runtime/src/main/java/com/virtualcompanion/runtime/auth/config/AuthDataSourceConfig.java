@@ -326,6 +326,20 @@ public class AuthDataSourceConfig {
     }
 
     /**
+     * METRICS-ALERT (§26.6): periodic {@code vc_beta_dau} gauge refresh from
+     * the V77 job SD — an aggregate count only (no owner identity, no
+     * content), so it runs with the live datasource like the other jobs.
+     */
+    @Bean
+    public com.virtualcompanion.runtime.observability.DauMetricsScheduler dauMetricsScheduler(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.runtime.observability.VcMetrics metrics,
+            com.virtualcompanion.runtime.servicemode.BetaServiceWindow betaServiceWindow) {
+        return new com.virtualcompanion.runtime.observability.DauMetricsScheduler(
+                authJdbcTemplate, metrics, betaServiceWindow);
+    }
+
+    /**
      * CRYPTO-REST one-shot backfill: opt-in via
      * {@code virtual-companion.crypto.backfill-enabled=true} for exactly one
      * boot after enabling at-rest encryption; idempotent, so an accidental
