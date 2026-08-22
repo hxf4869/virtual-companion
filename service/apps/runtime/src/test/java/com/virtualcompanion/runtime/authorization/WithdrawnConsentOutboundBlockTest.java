@@ -579,6 +579,9 @@ class WithdrawnConsentOutboundBlockTest {
                 new TimeoutBudget(
                         Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)),
                 List.of(),
-                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80));
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80),
+                // S0-26: 纯历史对话外发必须声明逐条类别（单条 USER 文本）。
+                com.virtualcompanion.modelruntime.execution.PayloadComposition
+                        .allMessageText(1));
     }
 }

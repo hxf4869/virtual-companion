@@ -148,9 +148,15 @@
 
 ### Owner 人工项（不阻塞代码轮；清单见 docs/beta-readiness 各文档 [待填]）
 
-- [x] B0 材料人工项：安全责任人/替补与值班表、法务审定、评审结论、
-      演练执行与归档（2026-08-22 Owner 确认四项均已落实；值班表落名于
-      不入库的 `docs/beta-readiness/duty-roster.local.md`）。
+- [ ] B0 材料人工项（逐项活状态以 docs/beta-readiness 各文档内清单为准）。
+      已有 2026-08-22 Owner 记录：紧急联系人「法律评审」「安全/专业评审」
+      落实、书面结论 Beta 启用（`docs/beta-readiness/02` §4 已勾选）。
+      按仓库现状仍未闭环：值班表载体为不入库的
+      `docs/beta-readiness/duty-roster.local.md`（.gitignore 忽略），当前
+      工作区副本四类角色均「待填」、升级路径未勾选，待 Owner 复核填写并
+      对齐 `01` §1；三份协议/隐私文本法务审定定版（`03` §5 发布前清单
+      未勾选）；演练执行与归档（`records/` 仅 2026-08-19 本地自动化留证，
+      双人值守/升级模拟/台账等正式演练环节仍待组织）。
 - [x] 紧急联系人能力开关评审（`emergency-contact.enabled` 默认 false）：
       2026-08-22 Owner 评审结论为 Beta 启用，真实发送渠道走 webhook 类
       （企业微信/飞书/自建接口类，凭据部署注入），接线任务见 R50；

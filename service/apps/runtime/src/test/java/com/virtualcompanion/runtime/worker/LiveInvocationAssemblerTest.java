@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.virtualcompanion.catalog.ModelProtocol;
 import com.virtualcompanion.conversation.contextplan.ContextBudget;
+import com.virtualcompanion.modelruntime.authorization.DataCategory;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolCapabilities;
 import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
@@ -366,6 +367,58 @@ class LiveInvocationAssemblerTest {
         assertTrue(request.messages().get(0).content().contains("Gentle Listener"));
         assertTrue(request.messages().get(0).content().contains("calm, reflective"));
         assertTrue(request.messages().get(1).content().contains("用户养了一只猫叫雪球"));
+    }
+
+    @Test
+    void externalPayloadCompositionDeclaresPerMessageDataCategories() {
+        // S0-26: the executable payload→category mapping — persona/preference
+        // SYSTEM block declares ACCOUNT_METADATA, memory recall SYSTEM block
+        // declares MEMORY_SNIPPET, every history turn declares MESSAGE_TEXT,
+        // parallel to the outbound message list.
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello"),
+                new MessageRepository.Message(2L, 101L, 5L, "assistant", "hi there")));
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.of(
+                new RelationshipRecord(9L, "gentle-listener", true, NOW)));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of(
+                new MemoryRecord(30L, null, "RELATIONSHIP", "用户养了一只猫叫雪球", "ACCEPTED",
+                        null, null, NOW)));
+        when(jdbcTemplate.queryForList(
+                org.mockito.ArgumentMatchers.startsWith("SELECT content FROM vc.message"),
+                eq(String.class), eq(1L), eq(5L)))
+                .thenReturn(List.of());
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        assertEquals(4, request.messages().size());
+        assertEquals(
+                List.of(
+                        DataCategory.ACCOUNT_METADATA,
+                        DataCategory.MEMORY_SNIPPET,
+                        DataCategory.MESSAGE_TEXT,
+                        DataCategory.MESSAGE_TEXT),
+                request.payloadComposition().messageCategories());
+        assertEquals(request.payloadComposition().messageCategories().size(),
+                request.messages().size());
+    }
+
+    @Test
+    void historyOnlyExternalPayloadDeclaresMessageTextOnly() {
+        // S0-26: with no persona block and empty recall, the composition is a
+        // plain MESSAGE_TEXT-only conversation payload.
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
+        when(jdbcTemplate.queryForList(
+                org.mockito.ArgumentMatchers.startsWith("SELECT content FROM vc.message"),
+                eq(String.class), eq(1L), eq(5L)))
+                .thenReturn(List.of());
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        assertEquals(List.of(DataCategory.MESSAGE_TEXT),
+                request.payloadComposition().presentCategories().stream().toList());
     }
 
     @Test

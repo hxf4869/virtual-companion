@@ -46,8 +46,23 @@ services:
       VC_ALERT_WEBHOOK_URL: ${VC_ALERT_WEBHOOK_URL:-}
       VC_RETENTION_PURGE_ENABLED: ${VC_RETENTION_PURGE_ENABLED:-false}
       VC_COMMIT: ${VC_COMMIT:-}
+      # S0-33 / §12.7 single-replica hard gate: the runtime declares exactly
+      # one replica. Any explicit value other than 1 makes the startup
+      # preflight refuse every instance, so an "intended scale-out" cannot be
+      # published. The hard membership enforcement (a second live instance is
+      # refused via the PostgreSQL advisory-lock lease) lives in the runtime.
+      VC_RUNTIME_REPLICAS: ${VC_RUNTIME_REPLICAS:-1}
     # No host port: the runtime is reachable only through the Caddy edge.
     restart: unless-stopped
+    # S0-33 / §12.7: deployment topology is pinned to a single runtime
+    # replica until shared Realtime/cancel/quota/breaker state is externalized
+    # (S2-37). Do NOT use `docker compose up --scale runtime=N` and do NOT run
+    # a second stack against the same database: the second instance is refused
+    # at startup by the runtime membership lease (exit 87,
+    # RUNTIME_SINGLETON_REFUSED), but the refusal is the gate — not a design
+    # that works.
+    deploy:
+      replicas: 1
 
   caddy:
     build:

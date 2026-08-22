@@ -29,6 +29,8 @@ final class ScriptedAdapter implements ModelProtocolAdapter {
     private final int nextFailureAfterEvents;
     private final RuntimeException nextFailure;
     private final List<InvocationBinding> openedBindings = new ArrayList<>();
+    /** S0-26: the full protocol requests received at open (payload capture). */
+    private final List<ModelProtocolRequest> openedRequests = new ArrayList<>();
     private final AtomicInteger cancellations = new AtomicInteger();
 
     ScriptedAdapter(
@@ -64,6 +66,7 @@ final class ScriptedAdapter implements ModelProtocolAdapter {
     @Override
     public ModelProtocolSession open(ModelProtocolRequest request) {
         openedBindings.add(request.binding());
+        openedRequests.add(request);
         return new ScriptedSession(
                 script.apply(request.binding()),
                 cancellations,
@@ -74,6 +77,11 @@ final class ScriptedAdapter implements ModelProtocolAdapter {
     /** Number of times {@code open} was called (zero means no outbound transfer). */
     int openCount() {
         return openedBindings.size();
+    }
+
+    /** The protocol request received at the n-th open (payload capture, S0-26). */
+    ModelProtocolRequest openedRequest(int index) {
+        return openedRequests.get(index);
     }
 
     int cancelCount() {

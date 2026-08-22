@@ -188,6 +188,10 @@ class LoopbackExternalInvocationTest {
                 new TimeoutBudget(
                         Duration.ofSeconds(1), Duration.ofSeconds(1), Duration.ofSeconds(1)),
                 List.of(),
-                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80));
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80),
+                // S0-26: a history-only external payload declares MESSAGE_TEXT
+                // per message; the undeclared shape now fails closed.
+                com.virtualcompanion.modelruntime.execution.PayloadComposition
+                        .allMessageText(1));
     }
 }

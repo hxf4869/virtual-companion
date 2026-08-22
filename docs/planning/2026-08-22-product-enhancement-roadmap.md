@@ -35,7 +35,7 @@
 | `S0-05` | `DONE`（对账见 §S0-05） | Help 已直达真实举报表单与本人处理状态，README 同步且不再有与 report 能力矛盾的现行说明；TODO.md 历史轮次记录按原样保留 |
 | `S0-10` | `PARTIAL` | supplier 熔断、健康感知路由和单机会话粘滞已完成；剩余 `C` 为动态 service-mode 聚合，不得重做 `A/B` |
 | `S0-25` | `PARTIAL / READY` | DB 撤回已实现，外发 Guard 仍依赖进程内镜像；需要补跨层“撤回后外发 0 次”闭环 |
-| `S0-26` | `PARTIAL / BLOCKED` | 实际 payload 与默认授权类别不一致；技术映射可分析，完整收口需 Owner 确认必要同意与数据类别 |
+| `S0-26` | `PARTIAL / READY`（对账见 §S0-26） | 强制链路已落地：payload 逐条类别声明＋外发前求交，未授权块实际删除、核心缺失/未声明 fail-closed；完整收口仍需 Owner 确认必要同意集合、细粒度撤回语义、persona 类别裁定与 region 批准表 |
 | `S0-27` | `PARTIAL / BLOCKED` | DB 角色已定义，但部署仍复用 `postgres`；凭据和目标环境拆分需 Owner 决策 |
 | `S0-33` | `PARTIAL / READY` | 当前实际依赖多个进程内状态；可加单副本硬门禁，多实例目标仍需 Owner 决策 |
 
@@ -326,6 +326,25 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-26 让授权快照的数据类别与真实 Provider Payload 一致
 
+- **当前对账（2026-08-23，强制链路已完成）**：payload 字段→purpose→data
+  category→provider/region 映射成为可执行物——组装器对每条外发消息声明
+  类别（`PayloadComposition`：persona/偏好 SYSTEM 块→`ACCOUNT_METADATA`、
+  记忆召回块→`MEMORY_SNIPPET`、历史对话→`MESSAGE_TEXT`）；
+  `LiveModelInvoker.prepareExternal` 在组装后、外发前把实际 payload 与
+  当前执行快照逐项求交：未授权的辅助块从 `ModelProtocolRequest` 中**实际
+  删除**（Prompt 声明不代替删除），`MESSAGE_TEXT` 本身未授权或组合未声明
+  一律 deny fail-closed（`BLOCKED_BY_AUTHORIZATION`＋配额释放）。缺
+  `MEMORY_SNIPPET` 授权时任何记忆文本均不出网；新 provider/region 漂移由
+  guard 的 requested↔execution 身份校验＋registry ADMITTED 拒绝（负例已补
+  region/provider 漂移与授权读取失败）。真实 adapter 捕获测试
+  `UnauthorizedMemoryOutboundCaptureTest`（真 OpenAI 编解码＋回环 HTTP）
+  证明未授权正文不在实际请求体。默认配置
+  `external-attempt.data-categories=MESSAGE_TEXT` 未扩大：默认部署的记忆/
+  persona 块被剥离而非放行，授权收紧方向正确。休眠外发面
+  （`OpenAiCompatEmbedder`/`OpenAiCompatModerationClient`，当前无生产调用方）
+  将来接线前必须纳入同一快照门禁，不得绕过 prepareExternal。**剩余 Owner 决策**
+  （不阻塞本技术收口）：必要同意集合定义、按类型细粒度撤回语义（当前任意
+  revoke 全量撤快照）、persona 块类别正式裁定、region 批准表。
 - **现状证据**：组装器会发送历史消息、记忆片段、persona 等数据，但默认快照主要声明 `MESSAGE_TEXT`；辅助 consent coverage 校验未形成强制链路。
 - **最小交付**：建立“payload 字段 → processing purpose → data category → provider/region”映射；组装后、外发前计算实际类别并与当前同意逐项求交；删去未授权上下文或拒绝外发。
 - **验收**：审计可以解释每一类数据为何被发送；缺 `MEMORY_SNIPPET` 授权时记忆不外发；新增 provider/region 超出授权时不能静默启用。

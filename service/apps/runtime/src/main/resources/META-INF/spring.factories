@@ -1,2 +1,3 @@
 org.springframework.boot.env.EnvironmentPostProcessor=\
-com.virtualcompanion.runtime.auth.config.ProductionFailClosedEnvironmentPostProcessor
+com.virtualcompanion.runtime.auth.config.ProductionFailClosedEnvironmentPostProcessor,\
+com.virtualcompanion.runtime.replica.SingleReplicaPreflightEnvironmentPostProcessor

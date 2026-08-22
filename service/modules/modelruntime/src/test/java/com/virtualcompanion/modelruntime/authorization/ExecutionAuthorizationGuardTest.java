@@ -213,6 +213,69 @@ class ExecutionAuthorizationGuardTest {
     }
 
     @Test
+    void deniesWhenExecutionRegionDriftsFromRequested() {
+        // S0-26 negative case (换 region): a new region is never silently
+        // enabled — the execution snapshot's region must equal the requested
+        // authorization's region or the attempt is denied fail closed.
+        store.put(activeSnapshot("req-1"));
+        store.put(new AuthorizationSnapshot(
+                new AuthorizationSnapshotId("exec-1"),
+                AuthorizationStatus.ACTIVE,
+                providerId,
+                new ProviderRegion("eu-central"),
+                new ProviderContractRef("contract-a"),
+                ProcessingPurpose.COMPANION_CHAT,
+                Set.of(DataCategory.MESSAGE_TEXT, DataCategory.USAGE_METADATA),
+                false,
+                false
+        ));
+
+        ExecutionAuthorizationDecision decision = guard.authorize(
+                binding("req-1", "exec-1")
+        );
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.denialReason().contains("provider/region/contract drifts"));
+        assertFalse(decision.externalDataTransferAllowed());
+    }
+
+    @Test
+    void deniesWhenExecutionProviderDriftsFromRequested() {
+        // S0-26 negative case (换 provider): a new provider is never silently
+        // enabled beyond the requested authorization. The drifted provider is
+        // itself ADMITTED, so the denial must come from the requested↔
+        // execution identity check, not from a registry miss.
+        ModelProtocolCapabilities caps =
+                new ModelProtocolCapabilities(Set.of(ModelProtocolCapabilities.Capability.STREAMING));
+        ProviderId otherProvider = new ProviderId("other-admitted-provider");
+        registry.register(new ProviderRegistration(
+                otherProvider,
+                ModelProtocol.FAKE,
+                caps,
+                new StubAdapter(ModelProtocol.FAKE, caps)
+        ));
+        store.put(activeSnapshot("req-1"));
+        store.put(new AuthorizationSnapshot(
+                new AuthorizationSnapshotId("exec-1"),
+                AuthorizationStatus.ACTIVE,
+                otherProvider,
+                activeSnapshot("req-1").region(),
+                new ProviderContractRef("contract-a"),
+                ProcessingPurpose.COMPANION_CHAT,
+                Set.of(DataCategory.MESSAGE_TEXT, DataCategory.USAGE_METADATA),
+                false,
+                false
+        ));
+
+        ExecutionAuthorizationDecision decision = guard.authorize(
+                binding("req-1", "exec-1")
+        );
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.denialReason().contains("provider/region/contract drifts"));
+    }
+
+    @Test
     void externalAttemptBindingRequiresBothSnapshotIds() {
         assertThrows(IllegalArgumentException.class, () ->
                 new InvocationBinding.ExternalAttemptBinding(

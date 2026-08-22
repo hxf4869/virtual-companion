@@ -18,6 +18,16 @@ import java.util.Objects;
  * transfer; only an adequate ALLOW releases an external attempt. The safety
  * signal itself is owned by the caller (the safety pipeline), which the live
  * invocation path only consumes.</p>
+ *
+ * <p>S0-26: {@code payloadComposition} declares, per message, the
+ * {@link com.virtualcompanion.modelruntime.authorization.DataCategory} that
+ * message carries (see {@link PayloadComposition}) so
+ * the invoker can intersect the actual outbound payload with the current
+ * execution authorization before any transfer. It may be {@code null} only for
+ * requests that can never reach an external attempt (the legacy 7-argument
+ * convenience constructor); an external attempt with an undeclared composition
+ * is denied fail-closed — an unclassified payload cannot be authorized
+ * item-by-item.</p>
  */
 public record LiveInvocationRequest(
         RoutingRequest routingRequest,
@@ -26,7 +36,25 @@ public record LiveInvocationRequest(
         boolean streaming,
         TimeoutBudget timeoutBudget,
         List<String> hardRuleViolations,
-        ClassifierReport classifierReport) {
+        ClassifierReport classifierReport,
+        PayloadComposition payloadComposition) {
+
+    /**
+     * Legacy shape: no declared payload composition. Requests built through
+     * this constructor are refused on the external path (S0-26 fail closed)
+     * and remain valid only for deterministic-source invocations.
+     */
+    public LiveInvocationRequest(
+            RoutingRequest routingRequest,
+            List<ProtocolMessage> messages,
+            ResponseMode responseMode,
+            boolean streaming,
+            TimeoutBudget timeoutBudget,
+            List<String> hardRuleViolations,
+            ClassifierReport classifierReport) {
+        this(routingRequest, messages, responseMode, streaming, timeoutBudget,
+                hardRuleViolations, classifierReport, null);
+    }
 
     public LiveInvocationRequest {
         Objects.requireNonNull(routingRequest, "routingRequest must not be null");
@@ -53,5 +81,12 @@ public record LiveInvocationRequest(
             }
         });
         Objects.requireNonNull(classifierReport, "classifierReport must not be null");
+        if (payloadComposition != null
+                && payloadComposition.messageCategories().size() != messages.size()) {
+            throw new IllegalArgumentException(
+                    "payloadComposition must classify exactly one category per message ("
+                            + payloadComposition.messageCategories().size()
+                            + " categories for " + messages.size() + " messages)");
+        }
     }
 }

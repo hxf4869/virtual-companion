@@ -318,6 +318,32 @@ public class LiveInvocationAssembler {
         List<ProtocolMessage> messages = loadMessages(
                 ownerUserId, ownership.conversationId(), messageTokenBudget(personaBlock, recallBlock));
         messages = prependBlocks(messages, personaBlock, recallBlock);
+        // S0-26: declare the data-category provenance of every message this
+        // assembler put into the outbound payload — the executable half of the
+        // "payload field → purpose → data category → provider/region" mapping:
+        //   persona/preference SYSTEM block  → ACCOUNT_METADATA
+        //     (owner-authored profile fields: companion name, address-as,
+        //      gender, avoid topics; the skeleton itself is approved catalog
+        //      content but shares the block, so the block carries the owner's
+        //      account-level profile data),
+        //   memory recall SYSTEM block       → MEMORY_SNIPPET,
+        //   conversation history turns       → MESSAGE_TEXT.
+        // The invoker intersects these declared categories with the CURRENT
+        // execution authorization before any transfer and deletes every block
+        // the snapshot does not authorize (fail closed when MESSAGE_TEXT
+        // itself is unauthorized or the composition is undeclared).
+        List<com.virtualcompanion.modelruntime.authorization.DataCategory> categories =
+                new ArrayList<>(messages.size());
+        if (personaBlock != null) {
+            categories.add(com.virtualcompanion.modelruntime.authorization.DataCategory.ACCOUNT_METADATA);
+        }
+        if (recallBlock != null) {
+            categories.add(com.virtualcompanion.modelruntime.authorization.DataCategory.MEMORY_SNIPPET);
+        }
+        int blockCount = categories.size();
+        for (int i = 0; i < messages.size() - blockCount; i++) {
+            categories.add(com.virtualcompanion.modelruntime.authorization.DataCategory.MESSAGE_TEXT);
+        }
         long fence = fenceValue(claimFence, readFence());
 
         RoutingRequest routing = new RoutingRequest(
@@ -342,7 +368,8 @@ public class LiveInvocationAssembler {
                 true,
                 externalTimeoutBudget,
                 List.of(),
-                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80));
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80),
+                new com.virtualcompanion.modelruntime.execution.PayloadComposition(categories));
     }
 
     /**

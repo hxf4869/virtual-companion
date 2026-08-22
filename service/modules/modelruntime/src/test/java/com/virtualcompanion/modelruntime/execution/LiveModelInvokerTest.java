@@ -878,6 +878,113 @@ class LiveModelInvokerTest {
     }
 
     @Test
+    void unauthorizedAuxiliaryBlocksAreDeletedFromTheOutboundPayload() {
+        // S0-26: the execution snapshot authorizes MESSAGE_TEXT only, but the
+        // assembled payload also carries a memory-recall SYSTEM block. The
+        // invoker must DELETE the unauthorized block from what the adapter
+        // receives — a prompt-level "do not use" never substitutes for
+        // deletion — and the remaining authorized turn still goes out.
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
+        List<ProtocolMessage> messages = List.of(
+                new ProtocolMessage(ProtocolMessage.Role.SYSTEM,
+                        "长期记忆：用户对花生过敏（2026-01-05 确认）"),
+                new ProtocolMessage(ProtocolMessage.Role.USER, "hello"));
+
+        LiveAttemptOutcome outcome = harness.invoker.invoke(request(
+                routing(ServiceClass.simulated()),
+                messages,
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95),
+                new ResponseMode.Text(),
+                PayloadComposition.of(DataCategory.MEMORY_SNIPPET, DataCategory.MESSAGE_TEXT)));
+
+        assertEquals(LiveAttemptTerminal.SUCCEEDED, outcome.terminal());
+        assertEquals(1, harness.adapter.openCount());
+        var sent = harness.adapter.openedRequest(0).messages();
+        assertEquals(1, sent.size(), "unauthorized MEMORY_SNIPPET block must be deleted,"
+                + " leaving only the authorized conversation turn");
+        assertEquals(ProtocolMessage.Role.USER, sent.getFirst().role());
+        assertEquals("hello", sent.getFirst().content());
+        assertFalse(sent.getFirst().content().contains("花生"),
+                "memory text must never reach the adapter payload");
+    }
+
+    @Test
+    void undeclaredPayloadCompositionDeniesTheOutboundFailClosed() {
+        // S0-26: an external attempt whose payload composition is undeclared
+        // cannot be authorized item-by-item — deny fail closed before any
+        // outbound transfer.
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
+
+        PreparedInvocation prepared = harness.invoker.prepare(new LiveInvocationRequest(
+                routing(ServiceClass.simulated()),
+                List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hello")),
+                new ResponseMode.Text(),
+                true,
+                new TimeoutBudget(
+                        Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(3)),
+                List.of(),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95)));
+
+        assertFalse(prepared.isExternal());
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, prepared.terminal());
+        assertEquals(0, harness.adapter.openCount());
+    }
+
+    @Test
+    void unauthorizedMessageTextDeniesTheWholeOutbound() {
+        // S0-26: conversation text cannot be stripped without voiding the
+        // turn — when MESSAGE_TEXT itself is not authorized, the entire
+        // outbound fails closed.
+        Harness harness = harnessWithExecutionCategories(
+                Scripts.success("world"),
+                Set.of(DataCategory.MEMORY_SNIPPET, DataCategory.ACCOUNT_METADATA));
+
+        LiveAttemptOutcome outcome = harness.invoker.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome.terminal());
+        assertTrue(outcome.audits().isEmpty());
+        assertEquals("", outcome.response());
+        assertEquals(0, harness.adapter.openCount());
+    }
+
+    /** Harness whose dual snapshots authorize exactly {@code categories}. */
+    private Harness harnessWithExecutionCategories(
+            Function<InvocationBinding, List<ModelProtocolEvent>> script,
+            Set<DataCategory> categories) {
+        quota.provision("owner-1", 5);
+        ScriptedAdapter adapter = new ScriptedAdapter(
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS, CAPABILITIES, script);
+        InMemoryProviderRegistry registry = new InMemoryProviderRegistry();
+        ProviderRegistration registration = new ProviderRegistration(
+                PROVIDER, adapter.protocol(), CAPABILITIES, adapter);
+        registry.register(registration);
+        InMemoryAuthorizationSnapshotStore store = new InMemoryAuthorizationSnapshotStore();
+        store.put(snapshotWithCategories("snap-req", AuthorizationStatus.ACTIVE, categories));
+        store.put(snapshotWithCategories("snap-exec", AuthorizationStatus.ACTIVE, categories));
+        ExecutionAuthorizationGuard guard = new ExecutionAuthorizationGuard(store, registry);
+        DeterministicRouter router = new DeterministicRouter(registry, quota);
+        GenerationRecovery recovery = new GenerationRecovery(quota);
+        AdapterLocator locator = new InMemoryAdapterLocator(List.of(registration));
+        LiveModelInvoker invoker = new LiveModelInvoker(
+                router, guard, store, locator, recovery, Map.of(PROVIDER, "OpenAI"));
+        return new Harness(adapter, invoker, new ActiveInvocationRegistry());
+    }
+
+    private static AuthorizationSnapshot snapshotWithCategories(
+            String id, AuthorizationStatus status, Set<DataCategory> categories) {
+        return new AuthorizationSnapshot(
+                new AuthorizationSnapshotId(id),
+                status,
+                PROVIDER,
+                REGION,
+                CONTRACT,
+                PURPOSE,
+                categories,
+                false,
+                false);
+    }
+
+    @Test
     void prepareDeniesAdapterMisconfigurationWithoutOutbound() {
         Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"), true);
 
@@ -1113,6 +1220,20 @@ class LiveModelInvokerTest {
             List<ProtocolMessage> messages,
             ClassifierReport classifierReport,
             ResponseMode responseMode) {
+        return request(
+                routingRequest,
+                messages,
+                classifierReport,
+                responseMode,
+                PayloadComposition.allMessageText(messages.size()));
+    }
+
+    private static LiveInvocationRequest request(
+            RoutingRequest routingRequest,
+            List<ProtocolMessage> messages,
+            ClassifierReport classifierReport,
+            ResponseMode responseMode,
+            PayloadComposition payloadComposition) {
         return new LiveInvocationRequest(
                 routingRequest,
                 messages,
@@ -1121,7 +1242,8 @@ class LiveModelInvokerTest {
                 new TimeoutBudget(
                         Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(3)),
                 List.of(),
-                classifierReport);
+                classifierReport,
+                payloadComposition);
     }
 
     private static RoutingRequest routing(ServiceClass serviceClass) {

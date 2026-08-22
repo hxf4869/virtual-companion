@@ -657,6 +657,13 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 由配置代码自身强制），但这不代表生产就绪。系统未开放注册、未启用真实支付、未授权保存真实用户数据。
 generation/realtime/memory 纵切已接通，但仅限本地开发与 CI 合成数据，不面向真实用户。
 
+**单副本硬门禁（S0-33 / §12.7）**：共享 Realtime/取消/授权/Quota/熔断状态外置前，runtime 严格单副本。
+Compose 固定 `VC_RUNTIME_REPLICAS=1`（`deploy.replicas: 1`）；声明副本数 ≠1 时 startup preflight 直接
+拒绝启动（所有 profile）；实例间用 PostgreSQL advisory lock（`vc.runtime.singleton`）互斥——第二个实例
+启动即被拒（`RUNTIME_SINGLETON_REFUSED`，退出码 87），崩溃恢复因会话锁自动释放而不会误起两个 active
+runtime。门禁无远程开关、不可被 feature flag 绕过；运维细节与 S2-37 外置清单见
+`ops/deploy/README.md` 与 `ops/deploy/smoke-drill.sh`。
+
 Duty-roster 检查通过不等于 Beta 获批；`realUserBeta` 在 PIA、伦理适用性、成年人验证、责任人、值班和安全
 演练形成证据前保持 `BLOCKED`，`realPayment` 在 Technical Alpha 保持 `FORBIDDEN`。真实 provider 外发还必须
 满足授权快照、最终安全审查、持久化 quota/registry、部署和密钥治理等独立门禁。

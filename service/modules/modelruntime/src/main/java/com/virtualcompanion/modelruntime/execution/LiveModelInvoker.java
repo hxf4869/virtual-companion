@@ -5,6 +5,7 @@ import com.virtualcompanion.catalog.RouteDecisionStatus;
 import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshot;
 import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotId;
 import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore;
+import com.virtualcompanion.modelruntime.authorization.DataCategory;
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationDecision;
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationGuard;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
@@ -13,6 +14,7 @@ import com.virtualcompanion.modelruntime.contract.InvocationBinding;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolRequest;
+import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.SizeLimits;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
 import com.virtualcompanion.modelruntime.contract.Utf8ByteAccumulator;
@@ -27,9 +29,11 @@ import com.virtualcompanion.modelruntime.routing.RecoveryScenario;
 import com.virtualcompanion.modelruntime.routing.RouteDecision;
 import com.virtualcompanion.safety.SafetyGate;
 import com.virtualcompanion.safety.SafetyVerdict;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -42,8 +46,12 @@ import java.util.logging.Logger;
  *       route + quota reservation, dual-snapshot {@link ExecutionAuthorizationGuard},
  *       execution-snapshot provider identity check (the ONLY database read of the
  *       whole invocation path, through {@link AuthorizationSnapshotStore#find}),
- *       {@link SafetyGate} ALLOW and adapter resolution — and materializes an
- *       immutable {@link PreparedInvocation} (attempt identity +
+ *       S0-26 payload-category authorization (the declared per-message data
+ *       categories are intersected with the current execution authorization;
+ *       unauthorized auxiliary blocks are deleted from the payload, an
+ *       unauthorized MESSAGE_TEXT or an undeclared composition denies the
+ *       attempt), {@link SafetyGate} ALLOW and adapter resolution — and
+ *       materializes an immutable {@link PreparedInvocation} (attempt identity +
  *       {@link ModelProtocolRequest}). The worker persists the {@code CREATED}
  *       attempt intent inside this same prepare transaction; an intent write
  *       failure aborts the transaction and forbids the outbound (adapter zero
@@ -239,6 +247,72 @@ public final class LiveModelInvoker {
                     decision, null, LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome, null);
         }
 
+        // 2b. S0-26 payload-category authorization: intersect the ACTUAL
+        //     outbound payload with the CURRENT execution authorization,
+        //     item by item, before anything is materialized for the adapter.
+        //     - An undeclared composition cannot be authorized item-by-item:
+        //       deny fail closed (never guess categories from content).
+        //     - Auxiliary context (memory recall = MEMORY_SNIPPET, persona /
+        //       preference block = ACCOUNT_METADATA) that the snapshot does
+        //       not authorize is DELETED from the payload — a prompt-level
+        //       "do not use" never substitutes for deletion.
+        //     - Conversation text itself (MESSAGE_TEXT) cannot be deleted
+        //       without voiding the turn: if it is not authorized, the whole
+        //       outbound fails closed.
+        //     The execution snapshot here is the same fresh authority read as
+        //     step 2 (re-read on every prepare), so a withdrawal or narrowing
+        //     committed after assembly is observed here.
+        PayloadComposition composition = request.payloadComposition();
+        if (composition == null) {
+            RecoveryOutcome outcome = recovery.recover(
+                    decision.ownership(), RecoveryScenario.CANCELLED,
+                    decision.quotaReservation());
+            return PreparedInvocation.terminalOnly(
+                    decision, null, LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome, null);
+        }
+        Set<DataCategory> authorizedCategories =
+                executionSnapshot.get().dataCategories();
+        java.util.LinkedHashSet<DataCategory> uncovered = new java.util.LinkedHashSet<>(
+                composition.presentCategories());
+        uncovered.removeAll(authorizedCategories);
+        List<ProtocolMessage> outboundMessages = request.messages();
+        if (!uncovered.isEmpty()) {
+            if (uncovered.contains(DataCategory.MESSAGE_TEXT)) {
+                // The conversation itself is unauthorized: nothing strippable remains.
+                logger.warning("external attempt denied: payload category MESSAGE_TEXT"
+                        + " is not authorized by the execution snapshot");
+                RecoveryOutcome outcome = recovery.recover(
+                        decision.ownership(), RecoveryScenario.CANCELLED,
+                        decision.quotaReservation());
+                return PreparedInvocation.terminalOnly(
+                        decision, null, LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome, null);
+            }
+            List<Integer> stripIndices = new java.util.ArrayList<>();
+            for (DataCategory unauthorized : uncovered) {
+                // Log the category code only — never message content.
+                logger.warning("stripping unauthorized payload category "
+                        + unauthorized + " from the outbound payload");
+                stripIndices.addAll(composition.indicesOf(unauthorized));
+            }
+            java.util.Collections.sort(stripIndices);
+            List<ProtocolMessage> stripped = new java.util.ArrayList<>();
+            for (int index = 0; index < outboundMessages.size(); index++) {
+                if (!stripIndices.contains(index)) {
+                    stripped.add(outboundMessages.get(index));
+                }
+            }
+            if (stripped.isEmpty()) {
+                // Every message was unauthorized auxiliary context: an empty
+                // payload cannot be sent, so deny instead.
+                RecoveryOutcome outcome = recovery.recover(
+                        decision.ownership(), RecoveryScenario.CANCELLED,
+                        decision.quotaReservation());
+                return PreparedInvocation.terminalOnly(
+                        decision, null, LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome, null);
+            }
+            outboundMessages = List.copyOf(stripped);
+        }
+
         // 3. Safety gate: only an adequate ALLOW releases an external attempt.
         SafetyVerdict verdict = SafetyGate.evaluate(
                 request.hardRuleViolations(), request.classifierReport());
@@ -278,9 +352,12 @@ public final class LiveModelInvoker {
                     new AdapterFailure.UpstreamUnavailable());
         }
 
+        // 5. Materialize the provider-neutral request from the AUTHORIZED
+        //    payload only: the stripped message list and its matching
+        //    composition (S0-26) are what every adapter receives and encodes.
         ModelProtocolRequest protocolRequest = new ModelProtocolRequest(
                 binding,
-                request.messages(),
+                outboundMessages,
                 request.responseMode(),
                 request.streaming(),
                 request.timeoutBudget());

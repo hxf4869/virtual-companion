@@ -60,6 +60,8 @@ import com.virtualcompanion.runtime.age.SimulatedAgeVerifier;
 import com.virtualcompanion.runtime.export.ExportExpiryScheduler;
 import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
+import com.virtualcompanion.runtime.replica.RuntimeSingletonLease;
+import com.virtualcompanion.runtime.replica.SingletonLeaseDataSource;
 import com.virtualcompanion.runtime.worker.DataExportWorkItemHandler;
 import com.virtualcompanion.runtime.worker.DispatchingWorkItemHandler;
 import com.virtualcompanion.runtime.worker.GenerationWorkItemHandler;
@@ -112,6 +114,16 @@ import org.springframework.transaction.support.TransactionTemplate;
         havingValue = "true")
 public class AuthDataSourceConfig {
 
+    /**
+     * S0-33 / §12.7: the single-replica hard gate is enforced on every
+     * connection of this DataSource. The returned
+     * {@link SingletonLeaseDataSource} wraps the Hikari pool and requires a
+     * PostgreSQL session-scoped advisory lock ({@code vc.runtime.singleton})
+     * before any data-path connection is handed out; a second live runtime
+     * instance sharing the deployment database is refused at startup (exit
+     * code 87) and can never serve. The declared replica count is additionally
+     * rejected by {@code SingleReplicaPreflightEnvironmentPostProcessor}.
+     */
     @Bean
     public DataSource authDataSource(
             @Value("${virtual-companion.auth.datasource.url:}") String url,
@@ -126,7 +138,12 @@ public class AuthDataSourceConfig {
         dataSource.setUsername(username);
         dataSource.setPassword(password);
         dataSource.setMaximumPoolSize(5);
-        return dataSource;
+        RuntimeSingletonLease lease = new RuntimeSingletonLease(
+                RuntimeSingletonLease.driverManagerConnector(url, username, password),
+                RuntimeSingletonLease.defaultHalt(
+                        org.slf4j.LoggerFactory.getLogger(RuntimeSingletonLease.class)),
+                RuntimeSingletonLease.DEFAULT_WATCHDOG_INTERVAL_MILLIS);
+        return new SingletonLeaseDataSource(dataSource, lease);
     }
 
     /**

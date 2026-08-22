@@ -58,6 +58,13 @@ virtual-companion:
     # (VC_COMMIT), never required so a local build serves the endpoint too.
     version: "@project.version@"
     commit: ${VC_COMMIT:}
+  # S0-33 / §12.7 single-replica hard gate: the deployment must declare exactly
+  # one runtime instance (default). Any explicit value other than 1 is refused
+  # by SingleReplicaPreflightEnvironmentPostProcessor in EVERY profile, before
+  # any bean exists; the runtime additionally enforces membership exclusivity
+  # with a PostgreSQL advisory-lock lease (see RuntimeSingletonLease).
+  runtime:
+    replicas: ${VC_RUNTIME_REPLICAS:1}
     # METRICS-ALERT (§26.6): webhook alert channel + R3/R4 SLA thresholds for
     # the admin safety queue. The URL is deployment-injected; blank disables
     # posting (metrics stay exposed, nothing is sent).
