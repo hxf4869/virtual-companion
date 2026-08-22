@@ -2,6 +2,7 @@ import { createPinia } from "pinia";
 import { createSSRApp } from "vue";
 
 import App from "./App.vue";
+import { attachAppNavigationGuards, bootstrapAuthSession } from "./domain/nav-runtime";
 import { useAuthStore } from "./stores/auth";
 
 export function createApp() {
@@ -18,6 +19,8 @@ export function createApp() {
   // frozen). Tokens are never written into chat drafts, memory content or any
   // model-bound context.
   void useAuthStore(pinia);
+  attachAppNavigationGuards();
+  bootstrapAuthSession();
 
   return {
     app,

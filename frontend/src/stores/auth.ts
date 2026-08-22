@@ -26,6 +26,7 @@ import {
   type AuthTokens,
   type AuthTransport,
 } from "@/api/auth";
+import { buildLoginHref, hrefFromLocation } from "@/domain/nav-guard";
 import { clearLocalSessionCaches } from "@/domain/session-cleanup";
 
 export type AuthErrorCode =
@@ -33,15 +34,22 @@ export type AuthErrorCode =
   | "network-failed"
   | "refresh-failed";
 
+export type SessionStatus = "unknown" | "anonymous" | "authenticated";
+
 function redirectToLogin(): void {
+  const current =
+    typeof location !== "undefined"
+      ? hrefFromLocation(location)
+      : "";
+  const url = buildLoginHref(current);
   try {
     const uniApi = (globalThis as Record<string, unknown>).uni as
       | { redirectTo?: (options: { url: string }) => void }
       | undefined;
     if (uniApi?.redirectTo) {
-      uniApi.redirectTo({ url: "/pages/login/login" });
+      uniApi.redirectTo({ url });
     } else if (typeof location !== "undefined") {
-      location.href = "/pages/login/login";
+      location.href = url;
     }
   } catch {
     // Never let the redirect machinery break an auth transition.
@@ -53,14 +61,20 @@ export const useAuthStore = defineStore("h5-auth", () => {
   const accountId = ref<string | null>(null);
   const role = ref<string | null>(null);
   const error = ref<AuthErrorCode | null>(null);
+  const settled = ref(false);
 
   const isAuthenticated = computed(() => accessToken.value !== null);
+  const sessionStatus = computed<SessionStatus>(() => {
+    if (accessToken.value) return "authenticated";
+    return settled.value ? "anonymous" : "unknown";
+  });
 
   /** Memory-only: never persists tokens to localStorage or any storage. */
   function persist(tokens: AuthTokens): void {
     accessToken.value = tokens.accessToken;
     accountId.value = tokens.accountId;
     role.value = tokens.role;
+    settled.value = true;
   }
 
   function clear(): void {
@@ -69,6 +83,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     accountId.value = null;
     role.value = null;
     error.value = null;
+    settled.value = true;
     if (hadSession) {
       clearLocalSessionCaches();
     }
@@ -166,6 +181,7 @@ export const useAuthStore = defineStore("h5-auth", () => {
     role,
     error,
     isAuthenticated,
+    sessionStatus,
     login,
     tryRefresh,
     renewAccessToken,

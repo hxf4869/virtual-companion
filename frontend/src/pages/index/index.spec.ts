@@ -152,6 +152,43 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     wrapper.unmount();
   });
 
+  it("S0-18: a failed age read does not display ready", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/age/state") {
+          return { ok: false, status: 500, json: async () => ({}) };
+        }
+        if (url === "/api/v1/consents") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { consentId: "1", consentType: "SERVICE_TERMS", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "2", consentType: "PRIVACY_POLICY", version: "2026-08", granted: true, grantedAt: "t" },
+              { consentId: "3", consentType: "AI_CONTENT_NOTICE", version: "2026-08", granted: true, grantedAt: "t" },
+            ],
+          };
+        }
+        if (url === "/api/v1/relationships") {
+          return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const auth = useAuthStore();
+    auth.accessToken = "a-token";
+    auth.role = "USER";
+    const wrapper = mountPage();
+    await flushPromises();
+    const gate = wrapper.find('[data-testid="admission-gate"]');
+    expect(gate.exists()).toBe(true);
+    expect(gate.attributes("data-state")).toBe("unknown");
+    expect(wrapper.find('[data-testid="next-step"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("renders internal entries for chat, memory, and login", () => {
     const wrapper = mountPage();
     const nav = wrapper.find('[data-testid="alpha-nav"]');

@@ -202,7 +202,17 @@
       </view>
 
       <view
-        v-if="auth.isAuthenticated && nextStep"
+        v-if="auth.isAuthenticated && admissionGate === 'unknown'"
+        class="next-step"
+        data-testid="admission-gate"
+        data-state="unknown"
+        role="status"
+      >
+        <text>正在确认访问条件，尚未就绪。</text>
+      </view>
+
+      <view
+        v-if="auth.isAuthenticated && nextStep && admissionGate !== 'unknown'"
         class="next-step"
         data-testid="next-step"
         role="status"
@@ -440,6 +450,7 @@ import { storeToRefs } from "pinia";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { deleteAccount } from "@/api/auth";
 import { fetchVersion, type VersionInfo } from "@/api/version";
+import { resolveAdmissionGate, type AdmissionGate } from "@/domain/nav-guard";
 import { resolveNextStep, type NextStep } from "@/domain/next-step";
 import { personaDisplayName } from "@/domain/persona";
 import { useAgeStore } from "@/stores/age";
@@ -454,6 +465,7 @@ const relStore = useRelationshipStore();
 const age = useAgeStore();
 const consent = useConsentStore();
 const nextStep = ref<NextStep | null>(null);
+const admissionGate = ref<AdmissionGate>("unknown");
 // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
 const transport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
@@ -572,15 +584,33 @@ const nextStepHref = computed(() => {
 async function refreshNextStep(): Promise<void> {
   if (!auth.isAuthenticated) {
     nextStep.value = null;
+    admissionGate.value = auth.sessionStatus === "anonymous" ? "blocked" : "unknown";
     return;
   }
   await Promise.all([age.load(transport), consent.load(transport)]);
+  const grantedTypes = consent.records
+    .filter((row) => row.granted)
+    .map((row) => row.consentType);
+  admissionGate.value = resolveAdmissionGate({
+    session: "authenticated",
+    role: auth.role,
+    ageKnown: !age.loadFailed,
+    ageLoadFailed: age.loadFailed,
+    ageState: age.ageState,
+    consentKnown: !consent.loadFailed,
+    consentLoadFailed: consent.loadFailed,
+    grantedTypes,
+  });
+  if (admissionGate.value === "unknown") {
+    nextStep.value = null;
+    return;
+  }
   nextStep.value = resolveNextStep({
     authenticated: true,
     ageKnown: !age.loadFailed,
     ageState: age.ageState,
     consentKnown: !consent.loadFailed,
-    grantedTypes: consent.records.filter((row) => row.granted).map((row) => row.consentType),
+    grantedTypes,
     hasCompanion: relStore.relationships.length > 0,
   });
 }

@@ -32,6 +32,14 @@ describe("H5 上线加固静态壳（§21.7）", () => {
   });
 });
 
+describe("S0-18 统一导航守卫入口", () => {
+  it("main.ts 安装拦截器并在会话解析后回跳", () => {
+    const main = readFileSync(join(process.cwd(), "src", "main.ts"), "utf8");
+    expect(main).toContain("attachAppNavigationGuards");
+    expect(main).toContain("bootstrapAuthSession");
+  });
+});
+
 describe("S0-06 同源会话：token 不进 localStorage", () => {
   it("auth store 源码不把 access/refresh token 写入 localStorage", () => {
     const authStore = readFileSync(

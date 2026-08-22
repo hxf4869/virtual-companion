@@ -594,6 +594,7 @@ import {
   type ServiceClassAssignmentItem,
   type UsageSummaryItem,
 } from "@/api/auth";
+import { OPERATOR_ROLES } from "@/domain/nav-guard";
 import type { PublicOpsCase } from "@/domain/ops-case-redact";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
@@ -655,10 +656,9 @@ export default defineComponent({
     const cases = ref<PublicOpsCase[]>([]);
     const casesFailed = ref(false);
     const isAdmin = computed(() => auth.role === "ADMIN");
-    const isOperator = computed(() =>
-      ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER"].includes(auth.role));
+    const isOperator = computed(() => auth.role != null && OPERATOR_ROLES.has(auth.role));
     const canMutateCases = computed(() =>
-      ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR"].includes(auth.role));
+      auth.role === "ADMIN" || auth.role === "SAFETY_REVIEWER" || auth.role === "PRIVACY_OPERATOR");
 
     // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
     const transport = createAuthenticatedTransport({

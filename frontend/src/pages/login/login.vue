@@ -144,6 +144,7 @@ import { computed, defineComponent, ref } from "vue";
 
 import { AuthHttpError, inviteRegister } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
+import { hrefFromLocation, resolvePostLoginHref } from "@/domain/nav-guard";
 import { resolveNextStep } from "@/domain/next-step";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAgeStore } from "@/stores/age";
@@ -265,7 +266,10 @@ export default defineComponent({
       const ok = await store.login(transport, username.value, password.value);
       submitting.value = false;
       if (ok) {
-        redirectHome(await destinationAfterLogin());
+        const current =
+          typeof location !== "undefined" ? hrefFromLocation(location) : "/pages/login/login";
+        const returned = resolvePostLoginHref(current, { fallback: "" });
+        redirectHome(returned || (await destinationAfterLogin()));
       } else {
         message.value =
           store.error === "network-failed"

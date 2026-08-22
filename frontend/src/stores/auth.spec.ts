@@ -68,6 +68,7 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(false);
     expect(store.accessToken).toBeNull();
     expect(store.accountId).toBeNull();
+    expect(store.sessionStatus).toBe("unknown");
   });
 
   it("confirms login and holds tokens in memory only (no localStorage writes)", async () => {
@@ -78,6 +79,7 @@ describe("useAuthStore", () => {
 
     expect(ok).toBe(true);
     expect(store.isAuthenticated).toBe(true);
+    expect(store.sessionStatus).toBe("authenticated");
     expect(store.accessToken).toBe("a");
     expect(store.accountId).toBe("7");
     expect(store.role).toBe("USER");
@@ -128,7 +130,16 @@ describe("useAuthStore", () => {
 
     expect(renewed).toBe(false);
     expect(store.isAuthenticated).toBe(false);
+    expect(store.sessionStatus).toBe("anonymous");
     expect(store.accessToken).toBeNull();
+  });
+
+  it("S0-18: a network refresh before any session stays unknown, not anonymous", async () => {
+    const store = useAuthStore();
+    const renewed = await store.tryRefresh(throwTransport());
+    expect(renewed).toBe(false);
+    expect(store.sessionStatus).toBe("unknown");
+    expect(store.isAuthenticated).toBe(false);
   });
 
   it("SESS-REVIVE: renewAccessToken reports renewed and rotates the token in place", async () => {
@@ -275,6 +286,26 @@ describe("useAuthStore", () => {
 
     expect(store.isAuthenticated).toBe(false);
     expect(store.accountId).toBeNull();
+    expect(store.sessionStatus).toBe("anonymous");
     expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+  });
+
+  it("S0-18: 401 from a protected page keeps path+query on the login return", async () => {
+    const store = useAuthStore();
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    vi.stubGlobal("location", {
+      pathname: "/",
+      search: "",
+      hash: "#/pages/chat/chat?relationshipId=7&conversationId=11",
+      href: "http://localhost/#/pages/chat/chat?relationshipId=7&conversationId=11",
+    });
+    await store.login(okTransport(sampleTokens("a")), "alice", "pw");
+
+    store.onUnauthorized();
+
+    expect(redirectTo).toHaveBeenCalledWith({
+      url: "/pages/login/login?return=%2Fpages%2Fchat%2Fchat%3FrelationshipId%3D7%26conversationId%3D11",
+    });
   });
 });

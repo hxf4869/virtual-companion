@@ -1,6 +1,11 @@
 <script lang="ts">
+import { enforceAppRoute } from "./domain/nav-runtime";
+
 export default {
   name: "VirtualCompanionApp",
+  onShow() {
+    enforceAppRoute();
+  },
 };
 </script>
 

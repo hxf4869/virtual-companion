@@ -17,6 +17,7 @@ describe("login page glue (P2-19 component test)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", undefined);
+    vi.stubGlobal("location", { pathname: "/", search: "", hash: "", href: "http://localhost/" });
   });
 
   it("renders stable aria-labels for both inputs (P3-04)", () => {
@@ -136,6 +137,29 @@ describe("login page glue (P2-19 component test)", () => {
     const { flushPromises } = await import("@vue/test-utils");
     await flushPromises();
     expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
+    wrapper.unmount();
+  });
+
+  it("S0-18: after login restores the captured path and query", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockResolvedValue(true);
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    vi.stubGlobal("location", {
+      pathname: "/",
+      search: "",
+      hash: "#/pages/login/login?return=%2Fpages%2Fmemory%2Fmemory%3FrelationshipId%3D7",
+      href: "http://localhost/#/pages/login/login?return=%2Fpages%2Fmemory%2Fmemory%3FrelationshipId%3D7",
+    });
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    await wrapper.find('input[aria-label="密码"]').setValue("secret");
+    await wrapper.find('button[data-testid="submit"]').trigger("click");
+    const { flushPromises } = await import("@vue/test-utils");
+    await flushPromises();
+    expect(redirectTo).toHaveBeenCalledWith({
+      url: "/pages/memory/memory?relationshipId=7",
+    });
     wrapper.unmount();
   });
 
