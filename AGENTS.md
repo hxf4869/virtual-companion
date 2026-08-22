@@ -10,6 +10,17 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 - 小步提交；不做与目标无关的重构；完成后必须验证并如实报告 PASS/FAIL/SKIP/NOT_RUN。
 - 不删测试、不加 skip、不吞退出码。
 
+## 产品材料与持续开发入口
+
+- `docs/source/v0.4/virtual-companion-v0.4-blueprint.md` 是目标产品与设计源快照，不是当前实现或机器真源；
+  冲突时依次以本文件、相关 Catalog/OpenAPI/contract、migration/RLS、当前代码与测试、README/TODO 为准。
+- `docs/planning/2026-08-22-product-enhancement-roadmap.md` 是候选 Backlog，不是完成状态真源。派发前只读取所选
+  ID 及其直接依赖，并先对照当前 `HEAD`、`TODO.md`、契约和调用链，避免重做或按过时现状开发。
+- 只有用户明确要求持续执行或使用 `/goal` 时，才进入 Goal 模式；一次只设一个可验证目标、一个路线图 ID
+  或其单一写入 owner 子交付，并明确停止条件和验证入口。普通请求不得自动扩展到下一个 Backlog 项。
+- 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、
+  机器真源和已对账的路线图条目，不恢复下述历史档案流程。
+
 ## 检查与工具链
 
 - 日常检查唯一入口：`bash scripts/check.sh`（秒级仓库检查 + 前端测试与类型检查，1 分钟内）。
@@ -22,6 +33,7 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
 ## 红线
 
 - 不提交密钥、Token、真实联系人或真实用户数据；真实 provider 凭据只允许部署配置注入。
+- 日志、指标和测试产物不得记录对话正文、密钥、Token、真实联系方式或稳定的敏感标识。
 - Technical Alpha 禁止真实支付与公开注册（`specs/catalog/product-scope.yaml`）。
 - 真实用户 Beta 的前置条件（PIA、成年验证、值班等）未满足前不得对真实用户开放。
 

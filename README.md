@@ -635,11 +635,14 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 
 - 架构决策：`docs/decisions/`；技术基线：`docs/engineering/technology-baseline.md`
 - 检查与流程设计原则：`docs/engineering/checks-principles.md`（新增任何检查前必读，防过度工程化复发）
-- 仓库边界：`docs/architecture/repository-structure.md`；原始需求快照：`docs/source/`（仅历史来源）
+- 仓库边界：`docs/architecture/repository-structure.md`；原始需求与设计快照：`docs/source/`（非当前实现真源）；
+  V0.4 产品蓝图入口：[`docs/source/v0.4/`](docs/source/v0.4/README.md)
 - 机器契约：`specs/catalog/`、`specs/contracts/`、`specs/openapi/`；`specs/generated/**` 为生成物，禁止手改
 - 2026-08-16 退役的旧任务治理体系（任务卡、Evidence、Handoff、账本）只读保留在
   `docs/tasks/`、`docs/evidence/`、`docs/handoffs/`、`docs/archive/`，仅供追溯
-- 当前待办：[`TODO.md`](TODO.md)
+- 当前待办：[`TODO.md`](TODO.md)；候选增强路线图：
+  [`docs/planning/2026-08-22-product-enhancement-roadmap.md`](docs/planning/2026-08-22-product-enhancement-roadmap.md)
+  （使用前必须与当前代码对账，不代表已授权或真实完成状态）
 
 ## 安全与发布状态
 
