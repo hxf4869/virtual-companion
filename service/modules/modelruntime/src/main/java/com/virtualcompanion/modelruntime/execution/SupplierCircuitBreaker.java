@@ -1,10 +1,13 @@
 package com.virtualcompanion.modelruntime.execution;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 /**
  * ROUTE-HARDEN (§12.12): per-supplier circuit breaker for live model
@@ -13,9 +16,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * its success closes the circuit, its failure re-opens with a fresh
  * cooldown. Thread-safe; keyed by supplier name.
  *
- * <p>Integration contract: the caller asks {@code allow(supplier)} before
- * resolving/outbound and reports {@code success(supplier)} /
- * {@code failure(supplier)} at the terminal.
+ * <p>Integration contract: routing consults the read-only {@link #circuitOpen}
+ * / {@link #blocked} views to skip or deprioritize an unhealthy supplier, and
+ * the worker asks {@code allow(supplier)} immediately before the outbound and
+ * reports {@code success(supplier)} / {@code failure(supplier)} at the
+ * terminal. The gate (not routing) consumes the half-open probe token, so a
+ * router read can never swallow a probe.
  */
 public final class SupplierCircuitBreaker {
 
@@ -37,6 +43,13 @@ public final class SupplierCircuitBreaker {
     private final Map<String, Slot> slots = new ConcurrentHashMap<>();
     private final int failureThreshold;
     private final long cooldownMillis;
+    /**
+     * Observability hooks registered post-construction ({@link #onOpened}):
+     * invoked at most once per CLOSED→OPEN trip with the supplier name. A
+     * failed half-open probe re-opens without re-firing (the outage is already
+     * known). Listeners must never throw — each call is guarded.
+     */
+    private final List<Consumer<String>> openedListeners = new CopyOnWriteArrayList<>();
 
     public SupplierCircuitBreaker(int failureThreshold, long cooldownMillis) {
         if (failureThreshold < 1) {
@@ -44,6 +57,15 @@ public final class SupplierCircuitBreaker {
         }
         this.failureThreshold = failureThreshold;
         this.cooldownMillis = cooldownMillis;
+    }
+
+    /**
+     * Register a CLOSED→OPEN trip listener (e.g. the alerting channel).
+     * Registration is idempotent per listener instance; exceptions thrown by
+     * the listener are swallowed so observability never breaks execution.
+     */
+    public void onOpened(Consumer<String> listener) {
+        openedListeners.add(java.util.Objects.requireNonNull(listener, "listener must not be null"));
     }
 
     /** Whether an outbound to this supplier may proceed right now. */
@@ -76,6 +98,7 @@ public final class SupplierCircuitBreaker {
         if (n >= failureThreshold && slot.state != State.OPEN) {
             slot.state = State.OPEN;
             slot.openedAtMillis.set(System.currentTimeMillis());
+            notifyOpened(supplier);
             return;
         }
         if (slot.state == State.OPEN) {
@@ -84,6 +107,40 @@ public final class SupplierCircuitBreaker {
             // probe instead of locking the breaker open forever.
             slot.openedAtMillis.set(System.currentTimeMillis());
             slot.probing.set(false);
+        }
+    }
+
+    /**
+     * Routing read view (§12.12): the circuit is OPEN — in cooldown or
+     * waiting for a probe. Never mutates state and never consumes the probe
+     * token, so routing may poll freely.
+     */
+    public boolean circuitOpen(String supplier) {
+        Slot slot = slots.get(supplier);
+        return slot != null && slot.state == State.OPEN;
+    }
+
+    /**
+     * Routing read view (§12.12): the circuit is OPEN <em>and</em> still
+     * inside its cooldown — no outbound may proceed for this supplier at all
+     * ({@code allow} would refuse even a probe). {@code circuitOpen && !blocked}
+     * marks the half-open probe window.
+     */
+    public boolean blocked(String supplier) {
+        Slot slot = slots.get(supplier);
+        if (slot == null || slot.state != State.OPEN) {
+            return false;
+        }
+        return System.currentTimeMillis() - slot.openedAtMillis.get() < cooldownMillis;
+    }
+
+    private void notifyOpened(String supplier) {
+        for (Consumer<String> listener : openedListeners) {
+            try {
+                listener.accept(supplier);
+            } catch (RuntimeException ignored) {
+                // Observability must never break the execution path.
+            }
         }
     }
 

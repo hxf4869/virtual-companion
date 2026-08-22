@@ -864,10 +864,8 @@ public class AuthDataSourceConfig {
             ConversationSummaryService conversationSummaryService,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
-            @Value("${virtual-companion.model-providers.circuit-failure-threshold:5}")
-            int circuitFailureThreshold,
-            @Value("${virtual-companion.model-providers.circuit-cooldown-millis:60000}")
-            long circuitCooldownMillis,
+            com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker,
+            com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -887,8 +885,10 @@ public class AuthDataSourceConfig {
                 conversationSummaryService,
                 metrics,
                 alertNotifier,
-                new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(
-                        circuitFailureThreshold, circuitCooldownMillis));
+                // ROUTE-HARDEN: shared singletons from RouteHealthConfig —
+                // routing must observe exactly what this worker records.
+                circuitBreaker,
+                deploymentAffinity);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,

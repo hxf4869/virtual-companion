@@ -117,21 +117,18 @@ class GenerationWorkItemHandlerTest {
             new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
 
     private GenerationWorkItemHandler handler;
+    /** ROUTE-HARDEN §12.8: real in-memory affinity store, asserted after success. */
+    private final com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity
+            deploymentAffinity = new com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity();
+    /** Breaker instance under test for supplier-scoped gate assertions. */
+    private com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker breakerRef;
 
     /** Synchronous segment executor: runs each segment immediately (mock has no transactions). */
     private final WorkItemWorker.OwnerExecutor executor = (ownerUserId, work) -> work.run();
 
     @BeforeEach
     void setUp() {
-        handler = new GenerationWorkItemHandler(
-                stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
-                enqueueService, claimService, EXTERNAL_LEASE_SECONDS,
-                realtimeEventRepository, deltaBroker, conversationRepository,
-                generationRepository, safetyClassifier, safetyEventService,
-                summaryService,
-                new com.virtualcompanion.runtime.observability.VcMetrics(metricsRegistry),
-                com.virtualcompanion.runtime.observability.TestAlerts.noop(),
-                new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(3, 60_000));
+        buildHandler(new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(3, 60_000));
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
         when(claimService.renewPerItem(anyLong(), anyString(), anyString(), anyInt()))
@@ -142,6 +139,20 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(false);
         when(generationRepository.hasCompletedSiblingVersion(anyLong(), anyLong()))
                 .thenReturn(false);
+    }
+
+    /** Rebuilds the handler around a specific breaker (gate tests need a custom threshold). */
+    private void buildHandler(com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker breaker) {
+        handler = new GenerationWorkItemHandler(
+                stateService, finalizeService, assembler, invokerProvider, snapshotProvider,
+                enqueueService, claimService, EXTERNAL_LEASE_SECONDS,
+                realtimeEventRepository, deltaBroker, conversationRepository,
+                generationRepository, safetyClassifier, safetyEventService,
+                summaryService,
+                new com.virtualcompanion.runtime.observability.VcMetrics(metricsRegistry),
+                com.virtualcompanion.runtime.observability.TestAlerts.noop(),
+                breaker,
+                deploymentAffinity);
     }
 
     private void handle(WorkItemClaim claim) {
@@ -441,6 +452,98 @@ class GenerationWorkItemHandlerTest {
         verify(deltaBroker).publishEnd(10L);
         assertThat(generationCount("completed")).isEqualTo(1.0);
         assertThat(generationCount("error")).isEqualTo(0.0);
+    }
+
+    @Test
+    void externalSuccessRecordsSessionDeploymentAffinity() {
+        // ROUTE-HARDEN §12.8: a successful turn pins the conversation to the
+        // deployment that served it; the next routing decision prefers it.
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(generationClaim(1L, 10L));
+
+        // OWN carries conversationId "5"; the attempt ran on alpha-loopback.
+        org.assertj.core.api.Assertions.assertThat(
+                        deploymentAffinity.sticky("5"))
+                .contains(new com.virtualcompanion.modelruntime.registry.ProviderId("alpha-loopback"));
+    }
+
+    @Test
+    void failedExternalAttemptCountsOnTheAttemptSupplierOnly() {
+        // ROUTE-HARDEN §12.12: failures are recorded per supplier (the audit's
+        // supplierName), never on a global key — other suppliers stay allowed.
+        breakerRef = new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(1, 60_000);
+        buildHandler(breakerRef);
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any(), any())).thenReturn(failedOutcome());
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "NON_RETRYABLE_FAILED"))
+                .thenReturn(1);
+        when(finalizeService.failWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(generationClaim(1L, 10L));
+
+        // The attempt's supplier tripped (threshold 1)…
+        org.assertj.core.api.Assertions.assertThat(breakerRef.circuitOpen("alpha-supplier")).isTrue();
+        // …while an unrelated supplier is untouched.
+        org.assertj.core.api.Assertions.assertThat(breakerRef.circuitOpen("other-supplier")).isFalse();
+    }
+
+    @Test
+    void openCircuitGateRefusesOutboundBeforeIntentAndRequeues() {
+        // ROUTE-HARDEN §12.12: with the attempt supplier's circuit OPEN, the
+        // outbound gate refuses BEFORE the attempt intent is written and the
+        // item re-enters the bounded RETRY-A budget instead of dead-looping.
+        breakerRef = new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(1, 60_000);
+        buildHandler(breakerRef);
+        breakerRef.failure("alpha-supplier"); // trip OPEN (threshold 1)
+        org.assertj.core.api.Assertions.assertThat(breakerRef.blocked("alpha-supplier")).isTrue();
+
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(finalizeService.requeueRetryableFailure(
+                anyLong(), anyLong(), anyString(), anyString(), anyInt()))
+                .thenReturn("REQUEUED");
+
+        handle(generationClaim(1L, 10L));
+
+        verify(finalizeService).requeueRetryableFailure(
+                eq(1L), eq(1L), eq("token-1"), eq("FENCE-A"),
+                eq(GenerationWorkItemHandler.MAX_PROVIDER_ATTEMPTS));
+        // No intent row, no outbound, no outcome audit.
+        verify(finalizeService, never()).createAttemptIntent(
+                anyLong(), anyLong(), anyLong(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(invoker, never()).execute(any(), any());
+        verify(finalizeService, never()).recordAttemptOutcome(anyLong(), anyString(), anyString());
+        verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
+        assertThat(generationCount("retried")).isEqualTo(1.0);
     }
 
     @Test

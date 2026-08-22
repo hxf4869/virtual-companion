@@ -105,12 +105,18 @@
       确定性规则降为兜底（成本边界已允许 MODEL_MODERATION）。
 - [ ] EMBED-PROVIDER EmbeddingPort 真实 embedding 供应商实现（现为确定性
       64 维哈希；§11.17 换型不改表）。
-- [ ] ROUTE-HARDEN 熔断/限流（连续失败摘除部署 + 半开恢复，补充现有
-      有界重试）+ 会话模型粘滞（同部署偏好，健康变化才在轮次边界切换；
-      §12.12、§12.8）。（进展：SupplierCircuitBreaker 组件+测试已交付;
-      与路由决策的接线及粘滞为下一增量）
+- [x] ROUTE-HARDEN 熔断/限流（连续失败摘除部署 + 半开恢复，补充现有
       有界重试）+ 会话模型粘滞（同部署偏好，健康变化才在轮次边界切换；
       §12.12、§12.8）。
+      交付：SupplierCircuitBreaker 以供应商粒度接入路由决策与出站门禁——
+      路由健康感知选路（粘滞的健康部署优先 → 首个健康候选 → 冷却期满的
+      半开探针兜底；候选全 OPEN 时降级 ZERO_LLM/NO_ELIGIBLE）；worker 把
+      allow() 门禁移到 attempt intent 落库之前（拒绝不产生 intent 行，走
+      既有 RETRY-A 有界预算，死信口径不变）；外部成功按会话记录部署粘滞
+      （进程内 conversation→deployment，单机 Compose 口径，重启后由首次
+      成功重建）；CLOSED→OPEN 触发 P2 PROVIDER_CIRCUIT_OPEN 告警并在
+      docs/beta-readiness/07 登记。验证：modelruntime 209/209、runtime 及
+      上游 608/608、check.sh 全绿（无契约/DB/前端改动面）。
 - [x] BUDGET-HALT 硬预算停机：provider 累计成本达部署配置上限时
       fail-closed 停止外发并告警（§22.18、§12.33 触发条件之一）。
 - [x] MODEL-ROLL 模型版本升级/灰度流程：登记→评测→小流量→回滚的流程

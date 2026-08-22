@@ -17,6 +17,7 @@ import com.virtualcompanion.modelruntime.registry.ProviderId;
 import com.virtualcompanion.modelruntime.registry.ProviderRegistration;
 import com.virtualcompanion.modelruntime.registry.ProviderRegistry;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -264,6 +265,133 @@ class DeterministicRouterTest {
         assertEquals(decision.decisionNo(), recomputed);
     }
 
+    // ---------- ROUTE-HARDEN: health-aware selection (§12.12 / §12.8) ----------
+
+    @Test
+    void blockedCandidateIsSkippedForTheNextHealthySortedCandidate() {
+        // alpha tripped OPEN; bravo healthy -> traffic fails over to bravo at
+        // this turn boundary instead of burning the attempt on alpha.
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("alpha", "bravo"), ledgerProvisioned(10),
+                new StubHealthPolicy(Map.of(new ProviderId("alpha"), RouteHealthPolicy.Health.BLOCKED)));
+        RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(RouteDecisionStatus.SELECTED, decision.status());
+        assertEquals(new ProviderId("bravo"), decision.selectedProviderId());
+        // The audit list stays the full deterministic candidate set.
+        assertEquals(List.of(new ProviderId("alpha"), new ProviderId("bravo")),
+                decision.consideredCandidates());
+    }
+
+    @Test
+    void allBlockedCandidatesDegradeToZeroLlm() {
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("p1"), ledgerProvisioned(10),
+                new StubHealthPolicy(Map.of(new ProviderId("p1"), RouteHealthPolicy.Health.BLOCKED)));
+        RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(RouteDecisionStatus.SELECTED, decision.status());
+        assertTrue(decision.selectedProviderIdOptional().isEmpty());
+        assertTrue(decision.bindingOptional().orElseThrow()
+                instanceof InvocationBinding.DeterministicSourceBinding);
+        assertEquals(List.of(new ProviderId("p1")), decision.consideredCandidates());
+    }
+
+    @Test
+    void allBlockedCandidatesYieldNoEligibleWhenZeroLlmForbidden() {
+        ServiceClass noZeroLlm = new ServiceClass("EXTERNAL_ONLY", true, false);
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("p1"), ledgerProvisioned(10),
+                new StubHealthPolicy(Map.of(new ProviderId("p1"), RouteHealthPolicy.Health.BLOCKED)));
+        RouteDecision decision = router.decide(standardRequest(noZeroLlm, FAKE, NO_CAPS));
+
+        assertEquals(RouteDecisionStatus.NO_ELIGIBLE_DEPLOYMENT, decision.status());
+    }
+
+    @Test
+    void stickyHealthyDeploymentWinsOverSortOrder() {
+        // §12.8 会话模型粘滞: conv-1's last successful deployment was bravo;
+        // while healthy it must be preferred over lexicographically-smaller alpha.
+        StubHealthPolicy policy = new StubHealthPolicy(Map.of());
+        policy.sticky.put("conv-1", new ProviderId("bravo"));
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("alpha", "bravo"), ledgerProvisioned(10), policy);
+        RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(new ProviderId("bravo"), decision.selectedProviderId());
+    }
+
+    @Test
+    void stickyDeploymentIsAbandonedWhenItsCircuitOpens() {
+        // §12.8 切换条件: health change only — an OPEN sticky circuit switches
+        // the conversation to the first healthy candidate at the turn boundary.
+        StubHealthPolicy policy = new StubHealthPolicy(
+                Map.of(new ProviderId("bravo"), RouteHealthPolicy.Health.BLOCKED));
+        policy.sticky.put("conv-1", new ProviderId("bravo"));
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("alpha", "bravo"), ledgerProvisioned(10), policy);
+        RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(new ProviderId("alpha"), decision.selectedProviderId());
+    }
+
+    @Test
+    void stickyDeploymentOutsideTheCandidateSetIsIgnored() {
+        // Sticky deployment no longer matches protocol/capabilities: legacy
+        // sorted order applies.
+        StubHealthPolicy policy = new StubHealthPolicy(Map.of());
+        policy.sticky.put("conv-1", new ProviderId("zulu"));
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("alpha", "bravo"), ledgerProvisioned(10), policy);
+        RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(new ProviderId("alpha"), decision.selectedProviderId());
+    }
+
+    @Test
+    void probeOnlyCandidateIsSelectedOnlyWhenNothingIsHealthy() {
+        // Half-open window: alpha is BLOCKED (in cooldown), bravo PROBE_ONLY
+        // (cooldown elapsed). No healthy candidate exists, so the turn acts as
+        // bravo's half-open probe.
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("alpha", "bravo"), ledgerProvisioned(10),
+                new StubHealthPolicy(Map.of(
+                        new ProviderId("alpha"), RouteHealthPolicy.Health.BLOCKED,
+                        new ProviderId("bravo"), RouteHealthPolicy.Health.PROBE_ONLY)));
+        RouteDecision probe = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+        assertEquals(new ProviderId("bravo"), probe.selectedProviderId());
+
+        // A healthy candidate always wins over a probe-only one.
+        DeterministicRouter withHealthy = new DeterministicRouter(
+                routerRegistry("alpha", "bravo"), ledgerProvisioned(10),
+                new StubHealthPolicy(Map.of(
+                        new ProviderId("alpha"), RouteHealthPolicy.Health.PROBE_ONLY,
+                        new ProviderId("bravo"), RouteHealthPolicy.Health.HEALTHY)));
+        assertEquals(new ProviderId("bravo"),
+                withHealthy.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS))
+                        .selectedProviderId());
+
+        // Sorted order breaks ties between two probe-only candidates.
+        DeterministicRouter bothProbe = new DeterministicRouter(
+                routerRegistry("alpha", "bravo"), ledgerProvisioned(10),
+                new StubHealthPolicy(Map.of(
+                        new ProviderId("alpha"), RouteHealthPolicy.Health.PROBE_ONLY,
+                        new ProviderId("bravo"), RouteHealthPolicy.Health.PROBE_ONLY)));
+        assertEquals(new ProviderId("alpha"),
+                bothProbe.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS))
+                        .selectedProviderId());
+    }
+
+    @Test
+    void unknownStickyConversationKeepsLegacySelectionOrder() {
+        StubHealthPolicy policy = new StubHealthPolicy(Map.of());
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("charlie", "alpha", "bravo"), ledgerProvisioned(10), policy);
+        RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(new ProviderId("alpha"), decision.selectedProviderId());
+    }
+
     // ---------- helpers ----------
 
     private static OwnershipTuple own() {
@@ -304,6 +432,26 @@ class DeterministicRouterTest {
     private static DeterministicRouter routerWithSingle(String id, ModelProtocol protocol,
                                                         ModelProtocolCapabilities caps, AdmissionStatus status) {
         return new DeterministicRouter(new StubRegistry().add(id, protocol, caps, status), ledgerProvisioned(10));
+    }
+
+    /** ROUTE-HARDEN stub: explicit health per provider + conversation stickiness. */
+    private static final class StubHealthPolicy implements RouteHealthPolicy {
+        final Map<String, ProviderId> sticky = new java.util.HashMap<>();
+        private final Map<ProviderId, Health> health;
+
+        StubHealthPolicy(Map<ProviderId, Health> health) {
+            this.health = health;
+        }
+
+        @Override
+        public Health health(ProviderId providerId) {
+            return health.getOrDefault(providerId, RouteHealthPolicy.Health.HEALTHY);
+        }
+
+        @Override
+        public Optional<ProviderId> stickyDeployment(String conversationId) {
+            return Optional.ofNullable(sticky.get(conversationId));
+        }
     }
 
     private static final class StubRegistry implements ProviderRegistry {

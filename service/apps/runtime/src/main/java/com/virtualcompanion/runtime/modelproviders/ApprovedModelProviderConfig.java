@@ -84,8 +84,14 @@ public class ApprovedModelProviderConfig {
     @Bean
     DeterministicRouter deterministicRouter(
             ApprovedModelProviders approvedModelProviders,
-            QuotaLedger quotaLedger) {
-        return new DeterministicRouter(approvedModelProviders.registry(), quotaLedger);
+            QuotaLedger quotaLedger,
+            com.virtualcompanion.modelruntime.routing.RouteHealthPolicy routeHealthPolicy) {
+        // ROUTE-HARDEN (§12.12 / §12.8): health-aware selection — the
+        // conversation's sticky deployment is preferred while healthy, OPEN
+        // supplier circuits are skipped (failover at the turn boundary), and
+        // a cooled-down OPEN supplier is only probed when nothing is healthy.
+        return new DeterministicRouter(
+                approvedModelProviders.registry(), quotaLedger, routeHealthPolicy);
     }
 
     @Bean

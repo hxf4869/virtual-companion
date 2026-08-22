@@ -1,5 +1,6 @@
 package com.virtualcompanion.modelruntime.execution;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -66,5 +67,79 @@ class SupplierCircuitBreakerTest {
         // overflow locked the breaker open until process restart).
         assertTrue(breaker.allow("x"));
         assertFalse(breaker.allow("x"));  // still exactly one probe
+    }
+
+    // ---- ROUTE-HARDEN: routing read views + open listener ----
+
+    @Test
+    void routingViewsDistinguishBlockedFromProbeWindow() throws Exception {
+        // 150ms cooldown: comfortably inside it right after the trip, and
+        // elapsed after a 300ms sleep.
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(2, 150);
+
+        // Closed: healthy on both views.
+        assertFalse(breaker.circuitOpen("s"));
+        assertFalse(breaker.blocked("s"));
+
+        // Tripped OPEN inside the cooldown: blocked for routing entirely.
+        breaker.failure("s");
+        breaker.failure("s");
+        assertTrue(breaker.circuitOpen("s"));
+        assertTrue(breaker.blocked("s"));
+
+        // Cooldown elapsed: still OPEN, but the half-open probe window —
+        // routing may select it as a last resort; the gate admits one probe.
+        Thread.sleep(300);
+        assertTrue(breaker.circuitOpen("s"));
+        assertFalse(breaker.blocked("s"));
+        assertTrue(breaker.allow("s"));
+
+        // Probe succeeded: fully closed again.
+        breaker.success("s");
+        assertFalse(breaker.circuitOpen("s"));
+        assertFalse(breaker.blocked("s"));
+    }
+
+    @Test
+    void unknownSupplierIsHealthyOnBothViews() {
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(3, 60_000);
+        assertFalse(breaker.circuitOpen("never-seen"));
+        assertFalse(breaker.blocked("never-seen"));
+    }
+
+    @Test
+    void openListenerFiresOncePerTripAndNeverOnProbeReOpen() throws Exception {
+        java.util.List<String> opened = new java.util.ArrayList<>();
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(2, 1);
+        breaker.onOpened(opened::add);
+
+        breaker.failure("a");
+        breaker.failure("a");                 // first trip CLOSED -> OPEN
+        assertEquals(java.util.List.of("a"), opened);
+        breaker.failure("a");                 // already OPEN: no new event
+        breaker.failure("a");
+        assertEquals(java.util.List.of("a"), opened);
+
+        Thread.sleep(5);
+        assertTrue(breaker.allow("a"));       // take the half-open probe
+        breaker.failure("a");                 // probe failed -> re-open silently
+        assertEquals(java.util.List.of("a"), opened);
+
+        Thread.sleep(5);
+        assertTrue(breaker.allow("a"));
+        breaker.success("a");                 // closed again
+
+        breaker.failure("a");
+        breaker.failure("a");                 // second trip fires again
+        assertEquals(java.util.List.of("a", "a"), opened);
+    }
+
+    @Test
+    void throwingListenerDoesNotBreakFailureRecording() {
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(1, 60_000);
+        breaker.onOpened(s -> { throw new IllegalStateException("webhook down"); });
+        breaker.failure("boom");              // listener throws; must be swallowed
+        assertFalse(breaker.allow("boom"));   // breaker still tripped OPEN
+        assertTrue(breaker.blocked("boom"));
     }
 }

@@ -36,14 +36,21 @@
 {"severity":"P2","code":"DAU_CAP_REACHED","message":"daily active users reached the beta cap; new actives refused","occurredAt":"2026-08-21T12:00:00Z"}
 ```
 
-## 2a. ROUTE-HARDEN 熔断器（已接线，§12.12）
+## 2a. ROUTE-HARDEN 熔断器（已接线，§12.12 / §12.8）
 
 - 配置：`virtual-companion.model-providers.circuit-failure-threshold`（默认 5）
   与 `circuit-cooldown-millis`（默认 60000）。
-- 行为：外部 attempt 连续失败达阈值即熔断 OPEN——后续外发在 prepare 前
-  被拒并进入既有 RETRY-A 有界重试（长故障经死信预算自然终止）；冷却期满
-  放行单个半开探针，成功闭合、失败重开。全局供应商粒度（单 live provider
-  阶段足够；多供应商粘滞随真实 provider 接线交付）。
+- 粒度与口径：**按供应商**（supplier name）计数——外部 attempt 连续失败达
+  阈值即该供应商熔断 OPEN；冷却期满放行单个半开探针（由 worker 出站门禁
+  `allow()` 认领，恰好一个），成功闭合、失败带新冷却重开。
+- 路由决策接入：路由健康感知选路——会话粘滞的健康部署优先，OPEN 供应商被
+  跳过（流量在轮次边界切换到健康候选），候选全 OPEN 时按既有口径降级
+  ZERO_LLM 或 NO_ELIGIBLE。
+- 出站门禁位置：worker 在 attempt intent 落库之前拒绝出站（无 intent 残留，
+  进入既有 RETRY-A 有界重试；长故障经死信预算自然终止）。
+- 会话模型粘滞（§12.8）：外部成功把 conversation→deployment 记入进程内
+  affinity（单机 Compose 口径，重启后首轮成功自然重建）；健康变化才在轮次
+  边界切换，已开始的流不在中途换模型（每 attempt 单一供应商会话）。
 
 ## 2b. BUDGET-HALT 硬预算停机（已接线，§22.18）
 
@@ -62,6 +69,7 @@
 | `ACCOUNT_DELETE_FAILED` | P1 | 自助注销遇数据访问异常（AuthService.deleteAccount；异常仍按原口径转为不披露错误） |
 | `RETENTION_PURGE_FAILED` | P1 | 分类清理单类失败（RetentionPurgeScheduler；其余类继续，下次运行天然重试） |
 | `BUDGET_HALT_REACHED` | P1 | 硬预算停机触发（BLOCKED_BY_BUDGET，见 §2b） |
+| `PROVIDER_CIRCUIT_OPEN` | P2 | 供应商熔断器 CLOSED→OPEN（连续失败达阈值；路由已切换/降级，半开探针成功后自动恢复，见 §2a） |
 
 ## 4. R3/R4 SLA 可见性（已接线）
 

@@ -113,6 +113,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final com.virtualcompanion.runtime.observability.VcMetrics metrics;
     private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
     private final com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker;
+    private final com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -132,7 +133,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             ConversationSummaryService summaryService,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
-            com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker) {
+            com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker,
+            com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -155,6 +157,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.metrics = metrics;
         this.alertNotifier = alertNotifier;
         this.circuitBreaker = circuitBreaker;
+        this.deploymentAffinity = Objects.requireNonNull(
+                deploymentAffinity, "deploymentAffinity must not be null");
     }
 
     @Override
@@ -173,20 +177,23 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         long startNanos = System.nanoTime();
         String metricResult = "error";
         try {
-            // ROUTE-HARDEN (§12.12): an OPEN circuit refuses the outbound up
-            // front — the item re-enters the bounded RETRY-A backoff instead,
-            // so a long outage dead-letters via the existing attempt budget.
-            if (circuitBreaker != null && !circuitBreaker.allow("provider")) {
-                retrySegment(executor, claim, ownerUserId, generationId);
-                metricResult = "retried";
-                return;
-            }
             // ---- prepare-tx ----
             Prepared prepared = prepareSegment(executor, claim, ownerUserId, generationId);
             if (prepared.degradeFault() != null) {
                 // No provider runtime wired: degrade inside a guarded fail tx.
                 failSegment(executor, claim, ownerUserId, generationId, prepared.degradeFault());
                 metricResult = "failed";
+                return;
+            }
+            if (prepared.refusedSupplier() != null) {
+                // ROUTE-HARDEN (§12.12): routing selected this supplier before
+                // the circuit tripped (or the half-open probe was already
+                // taken by a concurrent turn); the outbound gate refused it —
+                // no attempt intent exists, requeue via the bounded budget.
+                log.info("generation {} outbound refused by OPEN circuit for supplier {} (owner {})",
+                        generationId, prepared.refusedSupplier(), ownerUserId);
+                retrySegment(executor, claim, ownerUserId, generationId);
+                metricResult = "retried";
                 return;
             }
             // ---- external-no-db (adapter/session only, no database) ----
@@ -219,15 +226,25 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             };
             LiveAttemptOutcome outcome =
                     prepared.invokerValue().execute(prepared.invocationValue(), sink);
-            // ROUTE-HARDEN (§12.12): record the outbound result on the global
-            // supplier breaker — consecutive failures trip it OPEN and the
-            // gate below refuses new outbounds until the cooldown probe.
+            // ROUTE-HARDEN (§12.12): record the outbound result on the
+            // attempt's OWN supplier breaker — consecutive failures trip that
+            // supplier OPEN and routing skips it (failover at the next turn
+            // boundary); a success closes it and re-establishes session
+            // stickiness (§12.8). CANCELLED is the user's choice, not supplier
+            // health, and never counts.
             if (outcome.externalAttemptCreated()) {
+                ProviderAttemptAudit audit = outcome.audits().get(0);
                 if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
-                    circuitBreaker.success("provider");
+                    circuitBreaker.success(audit.supplierName());
+                    // 会话模型粘滞 (§12.8): remember the deployment that just
+                    // served this conversation so the next turn prefers it.
+                    deploymentAffinity.record(
+                            audit.ownership().conversationId(),
+                            new com.virtualcompanion.modelruntime.registry.ProviderId(
+                                    audit.providerId()));
                 } else if (outcome.terminal() == LiveAttemptTerminal.FAILED
                         || outcome.terminal() == LiveAttemptTerminal.TIMED_OUT) {
-                    circuitBreaker.failure("provider");
+                    circuitBreaker.failure(audit.supplierName());
                 }
             }
             // ---- audit-outcome-tx ----
@@ -354,6 +371,17 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                                 "external claim lease renewal failed (rows=" + renewed
                                         + ") for work item " + claim.id());
                     }
+                    // ROUTE-HARDEN (§12.12): final outbound gate, AFTER routing
+                    // picked the supplier but BEFORE the attempt intent — a
+                    // refusal here leaves no intent row at all and requeues via
+                    // the bounded RETRY-A budget instead of burning an outbound
+                    // on an OPEN circuit. This is also where the half-open
+                    // probe token is consumed (exactly one probe per cooldown).
+                    if (circuitBreaker != null
+                            && !circuitBreaker.allow(prepared.attempt().supplierName())) {
+                        ref[0] = Prepared.refused(prepared.attempt().supplierName());
+                        return;
+                    }
                     // Intent failure raises here → prepare-tx aborts → the
                     // outbound is forbidden (adapter zero calls, test 74).
                     finalizeService.createAttemptIntent(
@@ -372,14 +400,15 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     long nextSeq = realtimeEventRepository.advanceSeq(
                             ownerUserId, generationId, DELTA_SEQ_BLOCK);
                     ref[0] = new Prepared(
-                            invoker, prepared, null, true, epoch, nextSeq - DELTA_SEQ_BLOCK);
+                            invoker, prepared, null, null, true, epoch, nextSeq - DELTA_SEQ_BLOCK);
                 } else {
-                    ref[0] = new Prepared(invoker, prepared, null, false, epoch, 0L);
+                    ref[0] = new Prepared(invoker, prepared, null, null, false, epoch, 0L);
                 }
             } else {
                 LiveInvocationRequest request =
                         assembler.assemble(ownerUserId, generationId, claim.claimFence());
-                ref[0] = new Prepared(invoker, invoker.prepare(request), null, false, epoch, 0L);
+                ref[0] = new Prepared(
+                        invoker, invoker.prepare(request), null, null, false, epoch, 0L);
             }
         });
         return ref[0];
@@ -642,17 +671,24 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     }
 
     /** Immutable per-item prepare result: invoker, prepared invocation, external
-     *  mode, and the STREAM-LIVE stream (epoch, first reserved delta seq). */
+     *  mode, and the STREAM-LIVE stream (epoch, first reserved delta seq).
+     *  {@code refusedSupplier} is non-null when the circuit gate refused the
+     *  outbound before any attempt intent was written. */
     private record Prepared(
             LiveModelInvoker invokerValue,
             PreparedInvocation invocationValue,
             String degradeFault,
+            String refusedSupplier,
             boolean externalMode,
             long streamEpoch,
             long firstDeltaSeq) {
 
         static Prepared degrade(String fault) {
-            return new Prepared(null, null, fault, false, 0L, 0L);
+            return new Prepared(null, null, fault, null, false, 0L, 0L);
+        }
+
+        static Prepared refused(String supplierName) {
+            return new Prepared(null, null, null, supplierName, false, 0L, 0L);
         }
     }
 }

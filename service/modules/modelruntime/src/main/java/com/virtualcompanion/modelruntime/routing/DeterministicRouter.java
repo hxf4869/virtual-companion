@@ -19,8 +19,16 @@ import java.util.Optional;
  * deployment that matches the requested protocol and capabilities, reserving
  * one unit of synthetic quota; or it deterministically degrades to the ZERO_LLM
  * deterministic source; or it returns {@code NO_ELIGIBLE_DEPLOYMENT}. The same
- * request against the same registry and quota state always yields the same
- * selection, binding and {@code decisionNo}.
+ * request against the same registry, quota and {@link RouteHealthPolicy} state
+ * always yields the same selection, binding and {@code decisionNo}.
+ *
+ * <p>ROUTE-HARDEN (§12.12 / §12.8): when a {@link RouteHealthPolicy} is wired,
+ * selection is health-aware — the conversation's sticky deployment is preferred
+ * while healthy, circuit-OPEN suppliers are skipped in favor of healthy ones,
+ * and a cooled-down OPEN supplier is only selected as the half-open probe when
+ * no healthy candidate exists. Without a policy (or with
+ * {@link RouteHealthPolicy#none()}) selection stays the legacy first-sorted
+ * candidate.</p>
  *
  * <p>Routing never bypasses the {@link ProviderRegistry}: a selected deployment
  * is always a member of {@link ProviderRegistry#deployments()}. Routing never
@@ -38,10 +46,20 @@ public final class DeterministicRouter {
 
     private final ProviderRegistry registry;
     private final QuotaLedger quotaLedger;
+    /** ROUTE-HARDEN: supplier-health + session-stickiness view; never null. */
+    private final RouteHealthPolicy healthPolicy;
 
     public DeterministicRouter(ProviderRegistry registry, QuotaLedger quotaLedger) {
+        this(registry, quotaLedger, RouteHealthPolicy.none());
+    }
+
+    public DeterministicRouter(
+            ProviderRegistry registry,
+            QuotaLedger quotaLedger,
+            RouteHealthPolicy healthPolicy) {
         this.registry = Objects.requireNonNull(registry, "registry must not be null");
         this.quotaLedger = Objects.requireNonNull(quotaLedger, "quotaLedger must not be null");
+        this.healthPolicy = Objects.requireNonNull(healthPolicy, "healthPolicy must not be null");
     }
 
     /**
@@ -82,7 +100,12 @@ public final class DeterministicRouter {
                 || !hasAuthorizationSnapshots(request)) {
             return null;
         }
-        ProviderId selected = considered.get(0);
+        ProviderId selected = select(considered, request.ownership().conversationId());
+        if (selected == null) {
+            // ROUTE-HARDEN: every candidate is circuit-blocked — no external
+            // attempt this turn; fall through to ZERO_LLM / no-eligible.
+            return null;
+        }
         Optional<QuotaReservation> reservation = quotaLedger.reserve(
                 request.entitlement().ownerUserId(), EXTERNAL_ATTEMPT_QUOTA_UNITS);
         if (reservation.isEmpty()) {
@@ -96,6 +119,37 @@ public final class DeterministicRouter {
                 binding,
                 reservation.orElseThrow(),
                 considered);
+    }
+
+    /**
+     * ROUTE-HARDEN (§12.12 / §12.8) health-aware selection over the
+     * deterministic sorted candidates:
+     * <ol>
+     *   <li>the conversation's sticky deployment while it is HEALTHY (同部署
+     *       偏好 — persona/voice stability across turns);</li>
+     *   <li>the first HEALTHY candidate in sorted order (OPEN circuits are
+     *       skipped; failover happens at this turn boundary);</li>
+     *   <li>the first PROBE_ONLY candidate (cooldown elapsed — the turn acts
+     *       as the half-open probe; exactly-one-probe stays enforced by the
+     *       worker's outbound gate);</li>
+     *   <li>{@code null} when every candidate is BLOCKED.</li>
+     * </ol>
+     */
+    private ProviderId select(List<ProviderId> candidates, String conversationId) {
+        Optional<ProviderId> sticky = healthPolicy.stickyDeployment(conversationId)
+                .filter(candidates::contains);
+        if (sticky.isPresent() && healthPolicy.health(sticky.get()) == RouteHealthPolicy.Health.HEALTHY) {
+            return sticky.get();
+        }
+        for (RouteHealthPolicy.Health tier :
+                List.of(RouteHealthPolicy.Health.HEALTHY, RouteHealthPolicy.Health.PROBE_ONLY)) {
+            for (ProviderId candidate : candidates) {
+                if (healthPolicy.health(candidate) == tier) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
     }
 
     private List<ProviderId> matchedExternalCandidates(RoutingRequest request) {
