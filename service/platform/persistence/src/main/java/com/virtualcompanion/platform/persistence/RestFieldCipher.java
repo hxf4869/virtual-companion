@@ -31,7 +31,8 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>{@link #needsReencrypt} / {@link #reencrypt} are the checkpoint
  * rotation seam: a stored value that is plaintext, {@code enc1}, or
  * {@code enc2} under a non-current key is decrypted and rewritten under the
- * current write key. This class does not touch {@code conversation_summary}.
+ * current write key. Conversation summaries are wired through
+ * {@code ConversationSummaryService} (S0-32).
  */
 public final class RestFieldCipher {
 

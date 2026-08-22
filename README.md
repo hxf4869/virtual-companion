@@ -230,7 +230,7 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
 
 后端在运方面上还提供（2026-08-19 第三十八轮）：
 
-- L2 会话摘要（CONV-SUMMARY / §11.18）：V63 `vc.conversation_summary` 追加式
+- L2 会话摘要（CONV-SUMMARY / §11.18 / S0-32）：V63 `vc.conversation_summary` 追加式
   版本链——每行记录覆盖消息起止 ID、摘要模型与 Prompt 版本、置信度、校验位、
   产生档位与上一版本 id；**低质不覆盖高质**（ECONOMY 写入在已验证 PREMIUM 摘要
   之后被跳过，保留旧摘要待稳定档恢复）；`record_turn_summary` 在外部路径
@@ -238,6 +238,8 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   FR-CHAT-005；ZERO_LLM 不更新，FR-RES-002）。删除覆盖范围内的消息时同事务
   失效相关摘要（行保留供审计，读取只返回有效行；FR-CHAT-004 补全）。
   `GET /api/v1/conversations/{id}/summary` 读最新有效摘要（无摘要 available=false）。
+  摘要正文 at-rest 为 enc2 密文，仅 API 边界解密；备份/PITR 恢复后仍是密文，
+  不会以明文复活；checkpoint 回填见 V79。
 
 后端在运方面上还提供（2026-08-19 第三十七轮）：
 

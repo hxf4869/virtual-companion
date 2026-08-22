@@ -14,7 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * V78 SECURITY DEFINER helpers. The application holds the key; the database
  * never does. Opt-in via {@code virtual-companion.crypto.backfill-enabled=true}.
  * Idempotent — rows already under the current write prefix are skipped.
- * {@code conversation_summary} is not in this runner (S0-32).
+ * S0-32 also re-encrypts {@code conversation_summary.summary}.
  */
 public class DataCryptoBackfillRunner implements ApplicationRunner {
 
@@ -30,12 +30,23 @@ public class DataCryptoBackfillRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        long messages = backfill(
+                "vc.backfill_stale_cipher_message_batch",
+                "vc.backfill_replace_message_cipher");
+        long summaries = backfill(
+                "vc.backfill_stale_cipher_summary_batch",
+                "vc.backfill_replace_summary_cipher");
+        log.info("crypto backfill complete: {} stale message bodies and {} summaries re-encrypted",
+                messages, summaries);
+    }
+
+    private long backfill(String batchFunction, String replaceFunction) {
         long lastId = 0L;
         long total = 0L;
         while (true) {
             List<BackfillRow> batch = authJdbcTemplate.query(
                     "SELECT out_owner_user_id, out_id, out_content "
-                            + "FROM vc.backfill_stale_cipher_message_batch(?, ?, ?)",
+                            + "FROM " + batchFunction + "(?, ?, ?)",
                     (rs, rowNum) -> new BackfillRow(
                             rs.getLong("out_owner_user_id"),
                             rs.getLong("out_id"),
@@ -50,7 +61,7 @@ public class DataCryptoBackfillRunner implements ApplicationRunner {
             for (BackfillRow row : batch) {
                 String sealed = cipher.reencrypt(row.content());
                 Boolean updated = authJdbcTemplate.queryForObject(
-                        "SELECT vc.backfill_replace_message_cipher(?, ?, ?, ?)",
+                        "SELECT " + replaceFunction + "(?, ?, ?, ?)",
                         Boolean.class,
                         row.ownerUserId(),
                         row.id(),
@@ -62,13 +73,13 @@ public class DataCryptoBackfillRunner implements ApplicationRunner {
                 lastId = row.id();
             }
             total += converted;
-            log.info("crypto backfill: encrypted {} of {} scanned rows (through id {})",
-                    converted, batch.size(), lastId);
+            log.info("crypto backfill: {} encrypted {} of {} scanned rows (through id {})",
+                    batchFunction, converted, batch.size(), lastId);
             if (batch.size() < 500) {
                 break;
             }
         }
-        log.info("crypto backfill complete: {} stale bodies re-encrypted", total);
+        return total;
     }
 
     record BackfillRow(long ownerUserId, long id, String content) {

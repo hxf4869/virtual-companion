@@ -16,6 +16,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * higher-class one (returns empty). Message deletion invalidates covering
  * summaries in the same transaction (FR-CHAT-004); readers only see valid
  * rows.
+ *
+ * <p>S0-32: {@code summary} is encrypted at rest via {@link RestFieldCipher}
+ * (enc2 key id/version). The API/model boundary decrypts; SQL stores the
+ * opaque cipher. Invalidated rows keep the ciphertext (delete does not
+ * resurrect plaintext).
  */
 public class ConversationSummaryService {
 
@@ -34,9 +39,11 @@ public class ConversationSummaryService {
     }
 
     private final JdbcTemplate jdbc;
+    private final RestFieldCipher cipher;
 
-    public ConversationSummaryService(JdbcTemplate jdbc) {
+    public ConversationSummaryService(JdbcTemplate jdbc, RestFieldCipher cipher) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+        this.cipher = Objects.requireNonNull(cipher, "cipher must not be null");
     }
 
     static String normalizeClass(String serviceClass) {
@@ -63,11 +70,12 @@ public class ConversationSummaryService {
             throw new IllegalArgumentException("summary must be 1..4000 characters");
         }
         normalizeClass(serviceClass);
+        String sealed = cipher.encrypt(summary.trim());
         Long id = jdbc.queryForObject(
                 "SELECT vc.record_conversation_summary(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 Long.class,
                 ownerUserId, conversationId, fromMessageId, toMessageId,
-                summary.trim(), modelId, modelVersion, promptVersion,
+                sealed, modelId, modelVersion, promptVersion,
                 confidence, validated, serviceClass);
         if (id == null) {
             throw new IllegalStateException("record_conversation_summary returned no row");
@@ -92,6 +100,9 @@ public class ConversationSummaryService {
         if (id == null) {
             throw new IllegalStateException("record_turn_summary returned no row");
         }
+        if (id > 0) {
+            sealStoredSummary(ownerUserId, id);
+        }
         return id > 0 ? Optional.of(id) : Optional.empty();
     }
 
@@ -110,7 +121,7 @@ public class ConversationSummaryService {
                         rs.getLong("out_id"),
                         rs.getLong("out_from_message_id"),
                         rs.getLong("out_to_message_id"),
-                        rs.getString("out_summary"),
+                        cipher.decrypt(rs.getString("out_summary")),
                         rs.getString("out_model_id"),
                         rs.getString("out_model_version"),
                         rs.getString("out_prompt_version"),
@@ -122,5 +133,28 @@ public class ConversationSummaryService {
                 ownerUserId,
                 conversationId);
         return rows.stream().findFirst();
+    }
+
+    /**
+     * record_turn_summary composes a short deterministic plaintext in SQL;
+     * immediately rewrite that row under the current write key so the
+     * database never keeps a durable plaintext summary.
+     */
+    private void sealStoredSummary(long ownerUserId, long summaryId) {
+        String stored = jdbc.queryForObject(
+                "SELECT vc.conversation_summary_stored_text(?, ?)",
+                String.class,
+                ownerUserId,
+                summaryId);
+        if (stored == null) {
+            return;
+        }
+        jdbc.queryForObject(
+                "SELECT vc.backfill_replace_summary_cipher(?, ?, ?, ?)",
+                Boolean.class,
+                ownerUserId,
+                summaryId,
+                cipher.reencrypt(stored),
+                cipher.currentPrefix());
     }
 }

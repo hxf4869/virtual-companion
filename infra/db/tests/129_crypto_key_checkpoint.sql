@@ -72,10 +72,6 @@ BEGIN
             END IF;
     END;
 
-    IF to_regprocedure('vc.backfill_stale_cipher_summary_batch(bigint,int,text)') IS NOT NULL THEN
-        RAISE EXCEPTION 'S0-17-B must not add summary backfill helpers';
-    END IF;
-
     IF has_function_privilege(
             'vc_worker',
             'vc.backfill_stale_cipher_message_batch(bigint,integer,text)',

@@ -49,6 +49,9 @@ class DataCryptoBackfillRunnerTest {
         when(jdbc.queryForObject(contains("backfill_replace_message_cipher"),
                 eq(Boolean.class), any(), any(), any(), eq(cipher.currentPrefix())))
                 .thenReturn(true);
+        when(jdbc.query(contains("backfill_stale_cipher_summary_batch"),
+                any(RowMapper.class), any(), any(), eq(cipher.currentPrefix())))
+                .thenReturn(List.of());
 
         DataCryptoBackfillRunner runner = new DataCryptoBackfillRunner(jdbc, cipher);
         runner.run(null);

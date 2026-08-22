@@ -548,8 +548,10 @@ public class AuthDataSourceConfig {
 
     /** CONV-SUMMARY (V63): L2 conversation summaries (§11.18). */
     @Bean
-    public ConversationSummaryService conversationSummaryService(JdbcTemplate authJdbcTemplate) {
-        return new ConversationSummaryService(authJdbcTemplate);
+    public ConversationSummaryService conversationSummaryService(
+            JdbcTemplate authJdbcTemplate,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new ConversationSummaryService(authJdbcTemplate, restFieldCipher);
     }
 
     /** SAFETY-WIRE (V58): deterministic classifier — the local safety floor. */
