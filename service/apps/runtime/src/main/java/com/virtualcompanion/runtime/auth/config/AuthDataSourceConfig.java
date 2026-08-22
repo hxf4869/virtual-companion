@@ -337,8 +337,11 @@ public class AuthDataSourceConfig {
     @Bean
     public IdentityAuthEventPurgeScheduler identityAuthEventPurgeScheduler(
             JdbcTemplate authJdbcTemplate,
-            @Value("${virtual-companion.auth.audit-retention-days:180}") int retentionDays) {
-        return new IdentityAuthEventPurgeScheduler(authJdbcTemplate, retentionDays);
+            @Value("${virtual-companion.auth.audit-retention-days:180}") int retentionDays,
+            com.virtualcompanion.platform.persistence.JobLease jobLease,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+        return new IdentityAuthEventPurgeScheduler(
+                authJdbcTemplate, retentionDays, jobLease, alertNotifier);
     }
 
     /**
@@ -354,9 +357,10 @@ public class AuthDataSourceConfig {
             name = "virtual-companion.retention.enabled", havingValue = "true")
     public com.virtualcompanion.runtime.retention.RetentionPurgeScheduler retentionPurgeScheduler(
             JdbcTemplate authJdbcTemplate,
-            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            com.virtualcompanion.platform.persistence.JobLease jobLease) {
         return new com.virtualcompanion.runtime.retention.RetentionPurgeScheduler(
-                authJdbcTemplate, alertNotifier);
+                authJdbcTemplate, alertNotifier, jobLease);
     }
 
     /**
@@ -368,9 +372,16 @@ public class AuthDataSourceConfig {
     public com.virtualcompanion.runtime.observability.DauMetricsScheduler dauMetricsScheduler(
             JdbcTemplate authJdbcTemplate,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
-            com.virtualcompanion.runtime.servicemode.BetaServiceWindow betaServiceWindow) {
+            com.virtualcompanion.runtime.servicemode.BetaServiceWindow betaServiceWindow,
+            com.virtualcompanion.platform.persistence.JobLease jobLease) {
         return new com.virtualcompanion.runtime.observability.DauMetricsScheduler(
-                authJdbcTemplate, metrics, betaServiceWindow);
+                authJdbcTemplate, metrics, betaServiceWindow, jobLease);
+    }
+
+    @Bean
+    public com.virtualcompanion.platform.persistence.JobLease jobLease(
+            JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.JobLease(authJdbcTemplate);
     }
 
     @Bean
@@ -1139,7 +1150,9 @@ public class AuthDataSourceConfig {
      * conditional configuration (auth + datasource enabled) is live.
      */
     @Bean
-    public ExportExpiryScheduler exportExpiryScheduler(ExportService exportService) {
-        return new ExportExpiryScheduler(exportService);
+    public ExportExpiryScheduler exportExpiryScheduler(
+            ExportService exportService,
+            com.virtualcompanion.platform.persistence.JobLease jobLease) {
+        return new ExportExpiryScheduler(exportService, jobLease);
     }
 }

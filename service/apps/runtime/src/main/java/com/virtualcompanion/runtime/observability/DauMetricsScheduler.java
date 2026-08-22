@@ -1,8 +1,11 @@
 package com.virtualcompanion.runtime.observability;
 
+import com.virtualcompanion.platform.persistence.JobLease;
+import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
 import java.sql.Timestamp;
 import java.time.Instant;
-import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
+import java.util.OptionalLong;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,23 +27,47 @@ public class DauMetricsScheduler {
     private final JdbcTemplate authJdbcTemplate;
     private final VcMetrics metrics;
     private final BetaServiceWindow serviceWindow;
+    private final JobLease jobLease;
+    private final String holder = UUID.randomUUID().toString();
 
     public DauMetricsScheduler(
             JdbcTemplate authJdbcTemplate, VcMetrics metrics, BetaServiceWindow serviceWindow) {
+        this(authJdbcTemplate, metrics, serviceWindow, null);
+    }
+
+    public DauMetricsScheduler(
+            JdbcTemplate authJdbcTemplate,
+            VcMetrics metrics,
+            BetaServiceWindow serviceWindow,
+            JobLease jobLease) {
         this.authJdbcTemplate = authJdbcTemplate;
         this.metrics = metrics;
         this.serviceWindow = serviceWindow;
+        this.jobLease = jobLease;
     }
 
     @Scheduled(fixedDelayString = "${virtual-companion.observability.dau-poll-ms:60000}")
     public void pollDailyActiveUsers() {
+        OptionalLong runId = jobLease == null
+                ? OptionalLong.empty()
+                : jobLease.beginExclusive(JobLease.DAU_METRICS, holder, 30);
+        if (jobLease != null && runId.isEmpty()) {
+            return;
+        }
         Instant dayStart = serviceWindow.dayStart(Instant.now());
         try {
             Long dau = authJdbcTemplate.queryForObject(
                     "SELECT vc.job_daily_active_users(?)", Long.class, Timestamp.from(dayStart));
-            metrics.dau(dau == null ? 0L : dau);
+            long value = dau == null ? 0L : dau;
+            metrics.dau(value);
+            if (runId.isPresent()) {
+                jobLease.finishRun(runId.getAsLong(), "SUCCEEDED", "{\"dau\":" + value + "}", "");
+            }
         } catch (RuntimeException e) {
             log.error("daily-active-user metric poll failed", e);
+            if (runId.isPresent()) {
+                jobLease.finishRun(runId.getAsLong(), "FAILED", "{}", "poll_failed");
+            }
         }
     }
 }

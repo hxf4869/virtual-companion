@@ -5,12 +5,15 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.OptionalLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
+import com.virtualcompanion.platform.persistence.JobLease;
 import com.virtualcompanion.runtime.observability.AlertNotifier;
 import com.virtualcompanion.runtime.observability.AlertSeverity;
+import java.util.UUID;
 
 /**
  * RETENTION (§16.7 / R48): daily categorized purge driven by the versioned
@@ -47,10 +50,18 @@ public class RetentionPurgeScheduler {
 
     private final JdbcTemplate authJdbcTemplate;
     private final AlertNotifier alertNotifier;
+    private final JobLease jobLease;
+    private final String holder = UUID.randomUUID().toString();
 
     public RetentionPurgeScheduler(JdbcTemplate authJdbcTemplate, AlertNotifier alertNotifier) {
+        this(authJdbcTemplate, alertNotifier, null);
+    }
+
+    public RetentionPurgeScheduler(
+            JdbcTemplate authJdbcTemplate, AlertNotifier alertNotifier, JobLease jobLease) {
         this.authJdbcTemplate = authJdbcTemplate;
         this.alertNotifier = alertNotifier;
+        this.jobLease = jobLease;
     }
 
     /**
@@ -60,6 +71,13 @@ public class RetentionPurgeScheduler {
      */
     @Scheduled(cron = "${virtual-companion.retention.purge-cron:0 47 3 * * *}")
     public void purgeExpiredData() {
+        OptionalLong runId = jobLease == null
+                ? OptionalLong.empty()
+                : jobLease.beginExclusive(JobLease.RETENTION_PURGE, holder, 600);
+        if (jobLease != null && runId.isEmpty()) {
+            return;
+        }
+        Map<String, Integer> counts = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : PURGE_FUNCTIONS.entrySet()) {
             String category = entry.getKey();
             try {
@@ -73,14 +91,39 @@ public class RetentionPurgeScheduler {
                         "SELECT " + entry.getValue() + "(?)",
                         Integer.class,
                         Timestamp.from(cutoff));
+                int n = removed == null ? 0 : removed;
+                counts.put(category, n);
                 log.info("retention purge {}: removed {} rows older than {} days",
-                        category, removed == null ? 0 : removed, days);
+                        category, n, days);
             } catch (RuntimeException e) {
                 log.error("retention purge {} failed", category, e);
+                counts.put(category, -1);
                 alertNotifier.alert(AlertSeverity.P1,
                         "RETENTION_PURGE_FAILED",
-                        "category=" + category + ": " + e.getMessage());
+                        "category=" + category);
             }
         }
+        if (runId.isPresent()) {
+            boolean failed = counts.values().stream().anyMatch(n -> n < 0);
+            jobLease.finishRun(
+                    runId.getAsLong(),
+                    failed ? "FAILED" : "SUCCEEDED",
+                    countsJson(counts),
+                    failed ? "category_failed" : "");
+        }
+    }
+
+    private static String countsJson(Map<String, Integer> counts) {
+        StringBuilder json = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            if (!first) {
+                json.append(',');
+            }
+            first = false;
+            json.append('"').append(entry.getKey()).append('"')
+                    .append(':').append(entry.getValue());
+        }
+        return json.append('}').toString();
     }
 }

@@ -7,8 +7,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.virtualcompanion.platform.persistence.JobLease;
 import com.virtualcompanion.runtime.observability.AlertNotifier;
 import java.sql.Timestamp;
+import java.util.OptionalLong;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,5 +93,19 @@ class RetentionPurgeSchedulerTest {
         assertThat(purged).isEmpty();
         assertThat(alerts).hasSize(8);
         assertThat(alerts.get(0)).startsWith("P1:RETENTION_PURGE_FAILED:");
+    }
+
+    @Test
+    void lostLeaseDoesNotPurge() {
+        JobLease lease = mock(JobLease.class);
+        when(lease.beginExclusive(eq(JobLease.RETENTION_PURGE), any(), eq(600)))
+                .thenReturn(OptionalLong.empty());
+
+        new RetentionPurgeScheduler(jdbc, (severity, code, message) ->
+                alerts.add(severity + ":" + code + ":" + message), lease)
+                .purgeExpiredData();
+
+        assertThat(purged).isEmpty();
+        assertThat(alerts).isEmpty();
     }
 }

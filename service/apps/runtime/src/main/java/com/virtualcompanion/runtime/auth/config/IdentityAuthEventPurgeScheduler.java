@@ -1,8 +1,13 @@
 package com.virtualcompanion.runtime.auth.config;
 
+import com.virtualcompanion.platform.persistence.JobLease;
+import com.virtualcompanion.runtime.observability.AlertNotifier;
+import com.virtualcompanion.runtime.observability.AlertSeverity;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.OptionalLong;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,10 +38,23 @@ public class IdentityAuthEventPurgeScheduler {
 
     private final JdbcTemplate authJdbcTemplate;
     private final int retentionDays;
+    private final JobLease jobLease;
+    private final AlertNotifier alertNotifier;
+    private final String holder = UUID.randomUUID().toString();
 
     public IdentityAuthEventPurgeScheduler(JdbcTemplate authJdbcTemplate, int retentionDays) {
+        this(authJdbcTemplate, retentionDays, null, null);
+    }
+
+    public IdentityAuthEventPurgeScheduler(
+            JdbcTemplate authJdbcTemplate,
+            int retentionDays,
+            JobLease jobLease,
+            AlertNotifier alertNotifier) {
         this.authJdbcTemplate = authJdbcTemplate;
         this.retentionDays = retentionDays;
+        this.jobLease = jobLease;
+        this.alertNotifier = alertNotifier;
     }
 
     /**
@@ -47,11 +65,30 @@ public class IdentityAuthEventPurgeScheduler {
      */
     @Scheduled(cron = "${virtual-companion.auth.audit-purge-cron:0 17 3 * * *}")
     public void purgeExpiredAuthEvents() {
-        Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
-        Integer deleted = authJdbcTemplate.queryForObject(
-                PURGE_SQL, Integer.class, Timestamp.from(cutoff));
-        int removed = deleted == null ? 0 : deleted;
-        log.info("identity_auth_event retention purge: removed {} audit events older than {} days",
-                removed, retentionDays);
+        OptionalLong runId = jobLease == null
+                ? OptionalLong.empty()
+                : jobLease.beginExclusive(JobLease.AUTH_EVENT_PURGE, holder, 600);
+        if (jobLease != null && runId.isEmpty()) {
+            return;
+        }
+        try {
+            Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
+            Integer deleted = authJdbcTemplate.queryForObject(
+                    PURGE_SQL, Integer.class, Timestamp.from(cutoff));
+            int removed = deleted == null ? 0 : deleted;
+            log.info("identity_auth_event retention purge: removed {} audit events older than {} days",
+                    removed, retentionDays);
+            if (runId.isPresent()) {
+                jobLease.finishRun(runId.getAsLong(), "SUCCEEDED", "{\"removed\":" + removed + "}", "");
+            }
+        } catch (RuntimeException failed) {
+            log.error("identity_auth_event retention purge failed", failed);
+            if (alertNotifier != null) {
+                alertNotifier.alert(AlertSeverity.P1, "AUTH_EVENT_PURGE_FAILED", "auth event purge failed");
+            }
+            if (runId.isPresent()) {
+                jobLease.finishRun(runId.getAsLong(), "FAILED", "{}", "purge_failed");
+            }
+        }
     }
 }
