@@ -652,6 +652,7 @@ import { useIncognitoStore } from "@/stores/incognito";
 import type { MemoryImportPreview } from "@/api/relationship";
 import { requestIdLabel } from "@/domain/request-id";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
+import { installStreamLifecycle } from "@/domain/stream-recovery";
 
 function resolveOrigin(): string {
   return typeof window !== "undefined" && window.location && window.location.origin
@@ -894,11 +895,17 @@ export default defineComponent({
           // never a role-voiced crisis reply.
           return "这条内容没有通过安全审查，本轮不会继续。如果你正处于紧急危险，请联系当地紧急服务或你信任的真人。";
         case "failed":
-          if (store.outcome === "not_found_or_forbidden") {
+          if (store.outcome === "not_found_or_forbidden" || store.lastDisconnect === "permission") {
             return "未找到或无权访问（存在性不披露）";
           }
           if (store.terminalFault) {
             return faultText(store.terminalFault);
+          }
+          if (store.lastDisconnect === "network") {
+            return "网络中断，未确认的输入仍保留";
+          }
+          if (store.lastDisconnect === "service") {
+            return "服务暂时不可用，请稍后重试";
           }
           return "连接中断，请重试";
         default:
@@ -1445,7 +1452,18 @@ export default defineComponent({
       },
     );
 
+    let stopLifecycle: (() => void) | undefined;
     onMounted(async () => {
+      if (typeof document !== "undefined" && typeof window !== "undefined") {
+        stopLifecycle = installStreamLifecycle({
+          addEventListener: (name, handler) => window.addEventListener(name, handler),
+          removeEventListener: (name, handler) => window.removeEventListener(name, handler),
+          getVisibility: () => document.visibilityState,
+          onRecover: () => {
+            void store.recoverInFlight(deps);
+          },
+        });
+      }
       // SESS-REVIVE: restore the session from the HttpOnly refresh cookie
       // before any authenticated call, so a page reload stays logged in.
       if (!auth.isAuthenticated) {
@@ -1505,6 +1523,7 @@ export default defineComponent({
     });
 
     onUnmounted(() => {
+      stopLifecycle?.();
       clearMemoryPoll();
       store.cancel();
       store.reset();

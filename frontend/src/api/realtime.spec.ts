@@ -238,6 +238,29 @@ describe("streamGeneration failure", () => {
     expect(result.outcome).toBe("exhausted");
     expect(result.state.terminal).toBe(false);
   });
+
+  it("S0-20: transport failures retry with backoff until exhausted and do not invent a terminal", async () => {
+    const delays: number[] = [];
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => {
+        throw new Error("network");
+      }),
+      fetchSnapshot: vi.fn(async () => ({ ok: false, status: 500, events: [] })),
+    };
+
+    const result = await streamGeneration(deps, "gen-1", 1, undefined, {
+      sleep: async (ms) => {
+        delays.push(ms);
+      },
+      random: () => 0.5,
+    });
+
+    expect(result.outcome).toBe("exhausted");
+    expect(result.state.terminal).toBe(false);
+    expect(deps.resume).toHaveBeenCalledTimes(MAX_RESUME_ATTEMPTS);
+    expect(delays).toHaveLength(MAX_RESUME_ATTEMPTS - 1);
+    expect(delays[0]).toBe(250);
+  });
 });
 
 describe("streamGeneration bounded retry", () => {

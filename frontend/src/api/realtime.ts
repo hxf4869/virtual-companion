@@ -23,6 +23,7 @@ import {
   type StreamEvent,
   type StreamState,
 } from "@/domain/stream-reducer";
+import { nextResumeDelayMs } from "@/domain/stream-recovery";
 
 export const MAX_RESUME_ATTEMPTS = 8;
 
@@ -131,14 +132,21 @@ function terminalOutcome(state: StreamState): StreamOutcome {
  * Snapshot recovery only completes on a genuine terminal snapshot (P1-07);
  * every other snapshot outcome surfaces as exhausted.
  */
+export interface StreamGenerationOptions {
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
+  initialState?: StreamState;
+}
+
 export async function streamGeneration(
   deps: RealtimeDeps,
   generationId: string,
   initialEpoch: number,
   handle?: StreamHandle,
+  options?: StreamGenerationOptions,
 ): Promise<StreamResult> {
-  let state = initialState(initialEpoch);
-  let epoch = initialEpoch;
+  let state = options?.initialState ?? initialState(initialEpoch);
+  let epoch = state.epoch;
 
   for (let attempt = 0; attempt < MAX_RESUME_ATTEMPTS; attempt++) {
     if (isCancel(handle)) {
@@ -156,12 +164,14 @@ export async function streamGeneration(
         handle?.signal,
       );
     } catch {
-      // A transport failure is not auto-retried into a fabricated stream: the
-      // caller decides. Aborted transports are cancellation, everything else
-      // is exhausted (non-terminal) so the UI does not pretend success.
-      return isCancel(handle)
-        ? { state: cancelStream(state), outcome: "cancelled" }
-        : { state, outcome: "exhausted" };
+      if (isCancel(handle)) {
+        return { state: cancelStream(state), outcome: "cancelled" };
+      }
+      if (options?.sleep && attempt < MAX_RESUME_ATTEMPTS - 1) {
+        await options.sleep(nextResumeDelayMs(attempt, options.random ?? Math.random));
+        continue;
+      }
+      return { state, outcome: "exhausted" };
     }
 
     if (isCancel(handle)) {

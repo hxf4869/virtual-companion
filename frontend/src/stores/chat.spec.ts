@@ -158,6 +158,80 @@ describe("useChatStore", () => {
     expect(store.isTerminal).toBe(false);
   });
 
+  it("S0-20: recoverInFlight uses a terminal snapshot and does not resume a second generation", async () => {
+    const store = useChatStore();
+    store.generationId = "gen-1";
+    store.conversationId = "1";
+    store.phase = "streaming";
+    store.pendingUserContent = "hello";
+    const resume = vi.fn(async (): Promise<ResumeResult> => ({
+      disposition: "RESUMED",
+      events: [terminal(9, 1)],
+    }));
+    const deps: RealtimeDeps = {
+      resume,
+      fetchSnapshot: vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        events: [delta(1, 1, "Hi"), terminal(2, 1)],
+      })),
+    };
+
+    await store.recoverInFlight(deps);
+
+    expect(store.phase).toBe("completed");
+    expect(store.outcome).toBe("completed");
+    expect(resume).not.toHaveBeenCalled();
+    expect(store.pendingUserContent).toBe("");
+  });
+
+  it("S0-20: recoverInFlight resumes the same generation from the current cursor and keeps pending input until terminal", async () => {
+    const store = useChatStore();
+    store.generationId = "gen-1";
+    store.phase = "failed";
+    store.outcome = "exhausted";
+    store.pendingUserContent = "hello";
+    store.stream = {
+      status: "streaming",
+      epoch: 1,
+      cursor: 2,
+      events: [delta(1, 1, "Hel"), delta(2, 1, "lo")],
+      terminal: false,
+      terminalEventType: null,
+    };
+    const resume = vi.fn(async (req: { afterSeq: number; generationId: string }) => {
+      expect(req.generationId).toBe("gen-1");
+      expect(req.afterSeq).toBe(2);
+      return { disposition: "RESUMED" as const, events: [terminal(3, 1)] };
+    });
+    const deps: RealtimeDeps = {
+      resume,
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.recoverInFlight(deps);
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(store.phase).toBe("completed");
+    expect(store.generationId).toBe("gen-1");
+  });
+
+  it("S0-20: recoverInFlight is a no-op when a live stream handle already exists", async () => {
+    const store = useChatStore();
+    const resumeStart = { started: false };
+    const deps = blockingDeps(resumeStart);
+    const running = store.run(deps, "gen-live", 1);
+    await vi.waitFor(() => expect(resumeStart.started).toBe(true));
+    const fetchSnapshot = deps.fetchSnapshot as ReturnType<typeof vi.fn>;
+    fetchSnapshot.mockClear();
+
+    await store.recoverInFlight(deps);
+
+    expect(fetchSnapshot).not.toHaveBeenCalled();
+    store.cancel();
+    await running;
+  });
+
   it("reset returns to idle", async () => {
     const store = useChatStore();
     await store.run(successDeps(), "gen-1", 1);

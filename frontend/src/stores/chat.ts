@@ -56,7 +56,9 @@ import {
   type StreamHandle,
   type StreamOutcome,
 } from "@/api/realtime";
+import { classifyDisconnect, type DisconnectKind } from "@/domain/stream-recovery";
 import {
+  applyTerminalSnapshot,
   initialState,
   type StreamState,
   type StreamEvent,
@@ -79,6 +81,7 @@ export const useChatStore = defineStore("h5-chat", () => {
   const generationId = ref<string>("");
   const stream = ref<StreamState>(initialState(0));
   const outcome = ref<StreamOutcome | null>(null);
+  const lastDisconnect = ref<DisconnectKind | null>(null);
   const conversationId = ref<string>("");
   const messages = ref<Message[]>([]);
   // CONV-HIST: conversation list (first page) and the history load-more cursor.
@@ -216,6 +219,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     deps: RealtimeDeps,
     id: string,
     initialEpoch: number,
+    opts?: { resumeFrom?: StreamState },
   ): Promise<void> {
     const sequence = ++runSequence;
     // A new run cancels any in-flight predecessor (P2-14).
@@ -226,12 +230,20 @@ export const useChatStore = defineStore("h5-chat", () => {
     generationId.value = id;
     phase.value = "streaming";
     outcome.value = null;
-    stream.value = initialState(initialEpoch);
-    feedbackKinds.value = []; // FEEDBACK: fresh generation, fresh feedback state
+    lastDisconnect.value = null;
+    if (!opts?.resumeFrom) {
+      stream.value = initialState(initialEpoch);
+      feedbackKinds.value = []; // FEEDBACK: fresh generation, fresh feedback state
+    } else {
+      stream.value = opts.resumeFrom;
+    }
     const current = createStreamHandle();
     handle = current;
 
-    const result = await streamGeneration(deps, id, initialEpoch, current);
+    const result = await streamGeneration(deps, id, stream.value.epoch, current, {
+      initialState: opts?.resumeFrom,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
 
     // P2-17: only the current run commits; a stale run's late write is dropped.
     if (sequence !== runSequence) {
@@ -260,7 +272,76 @@ export const useChatStore = defineStore("h5-chat", () => {
       // TERM-SEM: failed / exhausted / not_found keep the content so the
       // page can offer a one-click retry of the same turn.
       phase.value = "failed";
+      lastDisconnect.value = classifyDisconnect({
+        navigatorOnline: typeof navigator === "undefined" ? undefined : navigator.onLine,
+        outcome: result.outcome,
+      });
     }
+  }
+
+  /**
+   * S0-20: after background/offline, take the generation snapshot as authority.
+   * Never creates a second generation; pending user input stays until a true
+   * terminal snapshot or a resumed stream completes.
+   */
+  async function recoverInFlight(deps: RealtimeDeps): Promise<void> {
+    const id = generationId.value;
+    if (!id) return;
+    if (phase.value === "completed" || phase.value === "cancelled" || phase.value === "blocked") {
+      return;
+    }
+    if (handle && !handle.cancelled) return;
+
+    let snapshot;
+    try {
+      snapshot = await deps.fetchSnapshot(id);
+    } catch {
+      lastDisconnect.value = "network";
+      return;
+    }
+    if (!snapshot.ok) {
+      lastDisconnect.value = classifyDisconnect({
+        resumeStatus: snapshot.status,
+        outcome: outcome.value,
+      });
+      return;
+    }
+    const snapshotEpoch = snapshot.events[0]?.streamEpoch ?? stream.value.epoch;
+    const base =
+      stream.value.epoch === snapshotEpoch || snapshot.events.length === 0
+        ? stream.value
+        : initialState(snapshotEpoch);
+    const next = applyTerminalSnapshot(base, snapshot.events);
+    stream.value = next;
+    if (next.terminal) {
+      const mapped =
+        next.terminalEventType === "chat.completed"
+          ? "completed"
+          : next.terminalEventType === "chat.cancelled"
+            ? "cancelled"
+            : next.terminalEventType === "chat.blocked"
+              ? "blocked"
+              : next.terminalEventType === "chat.failed"
+                ? "failed"
+                : "exhausted";
+      outcome.value = mapped;
+      if (mapped === "completed") {
+        phase.value = "completed";
+        pendingUserContent.value = "";
+        await refreshUsage(deps);
+      } else if (mapped === "cancelled") {
+        phase.value = "cancelled";
+        pendingUserContent.value = "";
+      } else if (mapped === "blocked") {
+        phase.value = "blocked";
+        pendingUserContent.value = "";
+      } else {
+        phase.value = "failed";
+      }
+      lastDisconnect.value = "terminal";
+      return;
+    }
+    await run(deps, id, next.epoch, { resumeFrom: next });
   }
 
   /**
@@ -296,6 +377,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     generationId.value = "";
     stream.value = initialState(0);
     outcome.value = null;
+    lastDisconnect.value = null;
     conversationId.value = "";
     messages.value = [];
     historyHasMore.value = false;
@@ -646,6 +728,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     generationId,
     stream,
     outcome,
+    lastDisconnect,
     conversationId,
     messages,
     conversations,
@@ -670,6 +753,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     terminalFault,
     displayMessages,
     run,
+    recoverInFlight,
     cancel,
     reset,
     initConversation,
