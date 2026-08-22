@@ -38,6 +38,8 @@ import com.virtualcompanion.platform.persistence.IncognitoPrefService;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotStore;
+import com.virtualcompanion.platform.persistence.JdbcProviderAdmissionAuthority;
+import com.virtualcompanion.platform.persistence.JdbcProviderDeploymentRepository;
 import com.virtualcompanion.platform.persistence.MemoryImportService;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
@@ -813,6 +815,24 @@ public class AuthDataSourceConfig {
     public JdbcAuthorizationSnapshotStore authorizationSnapshotAuthorityStore(
             JdbcTemplate authJdbcTemplate) {
         return new JdbcAuthorizationSnapshotStore(authJdbcTemplate);
+    }
+
+    /**
+     * S0-11-A: durable provider-deployment admission. Runtime roles SELECT
+     * {@code vc.provider_deployment}; coordinator writes transitions. The
+     * approved-provider registry overlays this authority onto config-wired
+     * adapters so an unadmitted row never becomes an outbound candidate.
+     */
+    @Bean
+    public JdbcProviderDeploymentRepository jdbcProviderDeploymentRepository(
+            JdbcTemplate authJdbcTemplate) {
+        return new JdbcProviderDeploymentRepository(authJdbcTemplate);
+    }
+
+    @Bean
+    public JdbcProviderAdmissionAuthority jdbcProviderAdmissionAuthority(
+            JdbcProviderDeploymentRepository jdbcProviderDeploymentRepository) {
+        return new JdbcProviderAdmissionAuthority(jdbcProviderDeploymentRepository);
     }
 
     private static Set<DataCategory> parseDataCategories(String csv) {

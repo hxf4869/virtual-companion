@@ -16,8 +16,8 @@ import org.springframework.jdbc.core.RowMapper;
  * {@code provider_deployment} table carries no {@code owner_user_id} and no RLS,
  * so every runtime role reads the same admitted deployments. Admission
  * transitions are written by the coordinator role. This repository is the
- * durable backing store behind the in-memory {@code ProviderRegistry}; it does
- * not own adapter lifecycle.
+ * durable admission source the runtime {@code ProviderRegistry} overlays onto
+ * locally wired adapters; it does not own adapter lifecycle.
  */
 public class JdbcProviderDeploymentRepository {
 

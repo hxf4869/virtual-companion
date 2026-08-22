@@ -9,12 +9,13 @@ import java.util.Objects;
 /**
  * The wired set of approved live model providers for one runtime.
  *
- * <p>Groups the in-memory {@link ProviderRegistry} (admitted approved
- * deployments), the {@link AdapterLocator} (provider id to concrete adapter)
- * and the runtime-configured supplier display names used by the audit chain.
- * A provider that is not part of this set is never reachable: the registry has
- * no deployment for it and the locator has no adapter for it, so routing and
- * invocation both fail closed.</p>
+ * <p>Groups the {@link ProviderRegistry} (approved deployments whose durable
+ * admission, when an authority is wired, comes from
+ * {@code vc.provider_deployment}), the {@link AdapterLocator} (provider id to
+ * concrete adapter) and the runtime-configured supplier display names used by
+ * the audit chain. A provider that is not part of this set, or that is not
+ * currently {@code ADMITTED} in the durable registry, is never reachable:
+ * routing and the pre-outbound guard both fail closed.</p>
  */
 public final class ApprovedModelProviders {
 

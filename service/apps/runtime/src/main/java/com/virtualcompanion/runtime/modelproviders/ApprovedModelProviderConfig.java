@@ -7,8 +7,11 @@ import com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.modelruntime.routing.DeterministicRouter;
 import com.virtualcompanion.modelruntime.routing.GenerationRecovery;
+import com.virtualcompanion.modelruntime.registry.AuthorityGatedProviderRegistry;
+import com.virtualcompanion.modelruntime.registry.ProviderRegistry;
 import com.virtualcompanion.modelruntime.routing.QuotaLedger;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotStore;
+import com.virtualcompanion.platform.persistence.JdbcProviderAdmissionAuthority;
 import java.nio.file.Path;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -28,6 +31,13 @@ import org.springframework.context.annotation.Configuration;
  * the pre-outbound authority, so a committed consent withdrawal stops every
  * queued task's next outbound on every instance; the in-memory store is only
  * the degenerate no-datasource fallback.</p>
+ *
+ * <p>S0-11-A: when the auth datasource is wired, {@link ApprovedModelProviders}
+ * overlays {@code vc.provider_deployment} admission onto the config-wired
+ * adapters. A config-enabled deployment that is missing, {@code DISABLED} or
+ * {@code REJECTED} in the table is never eligible for outbound. Without a
+ * datasource the process-local register-as-admitted path remains, matching
+ * the no-DB test context.</p>
  *
  * <p>The secret reader resolves credentials through the approved channel
  * (Docker secret / secret file / injected environment variable) and never
@@ -50,10 +60,34 @@ public class ApprovedModelProviderConfig {
             ProviderSecretReader providerSecretReader,
             @org.springframework.beans.factory.annotation.Value(
                     "${VC_MODEL_EGRESS_ALLOWED_HOSTS:}")
-            java.util.List<String> approvedEgressHosts) {
-        return ApprovedModelProviderProvisioner.provision(properties, providerSecretReader,
-            com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaultsPlus(
-                    approvedEgressHosts));
+            java.util.List<String> approvedEgressHosts,
+            org.springframework.beans.factory.ObjectProvider<JdbcProviderAdmissionAuthority>
+                    admissionAuthority) {
+        ApprovedModelProviders wired = ApprovedModelProviderProvisioner.provision(
+                properties,
+                providerSecretReader,
+                com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaultsPlus(
+                        approvedEgressHosts));
+        return new ApprovedModelProviders(
+                durableAdmissionRegistry(
+                        wired.registry(), admissionAuthority.getIfAvailable()),
+                wired.locator(),
+                wired.supplierNames());
+    }
+
+    /**
+     * S0-11-A: the runtime registry overlays durable DB admission whenever the
+     * auth datasource is wired. Config-enabled adapters remain in the locator;
+     * they are not admitted unless {@code vc.provider_deployment} currently
+     * reports {@code ADMITTED}. The in-memory registry is only the degenerate
+     * no-datasource fallback.
+     */
+    static ProviderRegistry durableAdmissionRegistry(
+            ProviderRegistry wired,
+            JdbcProviderAdmissionAuthority dbAuthority) {
+        return dbAuthority == null
+                ? wired
+                : new AuthorityGatedProviderRegistry(wired, dbAuthority);
     }
 
     /**
