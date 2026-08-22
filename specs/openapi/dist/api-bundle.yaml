@@ -4894,6 +4894,61 @@ components:
       - createdAt
       - ageHours
       - slaBreached
+    OpsCase:
+      type: object
+      description: Frozen ops-case envelope (S0-14-A). Links one report, safety-event or age-appeal intake row. Chat body
+        is never stored. slaHours is omitted until Owner sets a value — absence is not an SLA promise. assign/ack/escalate/resolve
+        stay S0-14-C.
+      required:
+      - id
+      - kind
+      - sourceOwnerId
+      - sourceId
+      - status
+      - severity
+      - openedAt
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+          - REPORT
+          - SAFETY
+          - AGE_APPEAL
+        sourceOwnerId:
+          type: string
+        sourceId:
+          type: string
+        status:
+          type: string
+          enum:
+          - OPEN
+          - ACKNOWLEDGED
+          - ASSIGNED
+          - ESCALATED
+          - RESOLVED
+        severity:
+          type: string
+          enum:
+          - P0
+          - P1
+          - P2
+        slaHours:
+          type: integer
+          nullable: true
+          description: Owner-set hours; null means no SLA promise.
+        assigneeAccountId:
+          type: string
+          nullable: true
+        dispositionReason:
+          type: string
+        publicNote:
+          type: string
+          description: User-visible note only; internal notes are not in this schema.
+        openedAt:
+          type: string
+          format: date-time
     BetaReportItem:
       type: object
       description: One report/complaint queue row (ADMIN-BETA, V64). Read-only; triage and disposition stay human actions

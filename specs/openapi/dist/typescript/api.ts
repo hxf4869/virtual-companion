@@ -568,6 +568,20 @@ export interface SafetyEventItem {
   slaBreached: string
 }
 
+export interface OpsCase {
+  id: string
+  kind: string
+  sourceOwnerId: string
+  sourceId: string
+  status: string
+  severity: string
+  slaHours?: string
+  assigneeAccountId?: string
+  dispositionReason?: string
+  publicNote?: string
+  openedAt: string
+}
+
 export interface BetaReportItem {
   id: string
   ownerId: string
