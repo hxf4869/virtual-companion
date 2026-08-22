@@ -56,4 +56,9 @@ public class VcMetrics {
     public void dau(long value) {
         dau.set(value);
     }
+
+    /** One alert-webhook outbox/delivery terminal (enqueued/duplicate/delivered/retried/dead/refused). */
+    public void alertWebhook(String result) {
+        registry.counter("vc_alert_webhook_delivery_total", "result", result).increment();
+    }
 }

@@ -1,79 +1,113 @@
 package com.virtualcompanion.runtime.observability;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import com.virtualcompanion.platform.persistence.AlertWebhookOutbox;
 import java.time.Instant;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
- * METRICS-ALERT (§26.6): webhook alert channel. The URL comes from
- * deployment configuration ({@code VC_ALERT_WEBHOOK_URL}); a blank URL
- * disables the notifier completely. Sends are async fire-and-forget with a
- * short connect timeout, failures are only logged, and identical codes are
- * throttled so a hot rejection loop cannot turn into a webhook flood.
+ * METRICS-ALERT (§26.6) / S0-31-A: alert sink. A blank webhook URL disables
+ * posting. When an outbox is wired the notifier only enqueues; the dispatcher
+ * signs, allowlists and retries. Without an outbox (no-DB tests) the notifier
+ * delivers directly. Failures never propagate into the business path.
  */
 public class WebhookAlertNotifier implements AlertNotifier {
 
     private static final Logger log = LoggerFactory.getLogger(WebhookAlertNotifier.class);
 
     private final AlertProperties properties;
-    private final ObjectMapper mapper =
-            new ObjectMapper().findAndRegisterModules();
-    private final HttpClient http;
+    private final ObjectProvider<AlertWebhookOutbox> outbox;
+    private final AlertWebhookOutbox directOutbox;
+    private final WebhookDelivery delivery;
+    private final VcMetrics metrics;
     private final ConcurrentHashMap<String, Long> lastSentAtMillis = new ConcurrentHashMap<>();
 
     public WebhookAlertNotifier(AlertProperties properties) {
+        this(properties, null, null, new WebhookDelivery(properties), null);
+    }
+
+    public WebhookAlertNotifier(
+            AlertProperties properties,
+            AlertWebhookOutbox outbox,
+            WebhookDelivery delivery,
+            VcMetrics metrics) {
+        this(properties, null, outbox, delivery, metrics);
+    }
+
+    public WebhookAlertNotifier(
+            AlertProperties properties,
+            ObjectProvider<AlertWebhookOutbox> outbox,
+            WebhookDelivery delivery,
+            VcMetrics metrics) {
+        this(properties, outbox, null, delivery, metrics);
+    }
+
+    private WebhookAlertNotifier(
+            AlertProperties properties,
+            ObjectProvider<AlertWebhookOutbox> outbox,
+            AlertWebhookOutbox directOutbox,
+            WebhookDelivery delivery,
+            VcMetrics metrics) {
         this.properties = properties;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(properties.connectTimeout())
-                .build();
+        this.outbox = outbox;
+        this.directOutbox = directOutbox;
+        this.delivery = delivery;
+        this.metrics = metrics;
     }
 
     @Override
     public void alert(AlertSeverity severity, String code, String message) {
-        String url = properties.webhookUrl();
-        if (url == null || url.isBlank()) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        Long last = lastSentAtMillis.get(code);
-        if (last != null && now - last < properties.throttleMillis()) {
-            return;
-        }
-        lastSentAtMillis.put(code, now);
-        String body;
         try {
-            body = mapper.writeValueAsString(Map.of(
-                    "severity", severity.name(),
-                    "code", code,
-                    "message", message,
-                    "occurredAt", Instant.now().toString()));
-        } catch (Exception e) {
-            log.warn("alert {} {} skipped: payload serialization failed", severity, code, e);
-            return;
+            String url = properties.webhookUrl();
+            if (url == null || url.isBlank()) {
+                return;
+            }
+            String safeCode = code == null ? "" : code.trim();
+            String safeMessage = message == null ? "" : message.trim();
+            if (safeCode.isEmpty() || safeMessage.isEmpty()) {
+                record("refused");
+                return;
+            }
+            AlertWebhookOutbox box = resolveOutbox();
+            if (box != null) {
+                int windowSeconds = Math.max(1, (int) (properties.throttleMillis() / 1000L));
+                AlertWebhookOutbox.EnqueueResult result = box.enqueue(
+                        severity.name(), safeCode, safeMessage, windowSeconds);
+                record(result.inserted() ? "enqueued" : "duplicate");
+                return;
+            }
+            long now = System.currentTimeMillis();
+            Long last = lastSentAtMillis.get(safeCode);
+            if (last != null && now - last < properties.throttleMillis()) {
+                record("duplicate");
+                return;
+            }
+            lastSentAtMillis.put(safeCode, now);
+            WebhookDelivery.Outcome outcome = delivery.post(
+                    severity.name(), safeCode, safeMessage, Instant.now());
+            record(switch (outcome) {
+                case DELIVERED -> "delivered";
+                case RETRYABLE -> "retried";
+                case REFUSED -> "refused";
+            });
+        } catch (RuntimeException failed) {
+            log.warn("alert {} {} skipped: sink failed", severity, code);
+            record("refused");
         }
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(properties.connectTimeout())
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build();
-        http.sendAsync(request, HttpResponse.BodyHandlers.discarding())
-                .whenComplete((response, error) -> {
-                    if (error != null) {
-                        log.warn("alert {} {} webhook delivery failed: {}",
-                                severity, code, error.toString());
-                    } else if (response.statusCode() >= 300) {
-                        log.warn("alert {} {} webhook returned HTTP {}",
-                                severity, code, response.statusCode());
-                    }
-                });
+    }
+
+    private AlertWebhookOutbox resolveOutbox() {
+        if (directOutbox != null) {
+            return directOutbox;
+        }
+        return outbox == null ? null : outbox.getIfAvailable();
+    }
+
+    private void record(String result) {
+        if (metrics != null) {
+            metrics.alertWebhook(result);
+        }
     }
 }

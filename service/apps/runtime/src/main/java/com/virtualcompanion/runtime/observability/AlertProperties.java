@@ -22,5 +22,13 @@ public record AlertProperties(
         @DefaultValue("24")
         long r3SlaHours,
         @DefaultValue("1")
-        long r4SlaHours) {
+        long r4SlaHours,
+        @DefaultValue("")
+        String webhookSecret,
+        @DefaultValue("")
+        String webhookAllowedHosts,
+        @DefaultValue("5")
+        int webhookMaxAttempts,
+        @DefaultValue("5")
+        int webhookBackoffSeconds) {
 }

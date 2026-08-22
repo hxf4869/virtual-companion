@@ -72,4 +72,19 @@ class VcMetricsTest {
         metrics.dau(0);
         assertThat(registry.get("vc_beta_dau").gauge().value()).isEqualTo(0.0);
     }
+
+    @Test
+    void alertWebhookCounterUsesResultTag() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        VcMetrics metrics = new VcMetrics(registry);
+
+        metrics.alertWebhook("delivered");
+        metrics.alertWebhook("refused");
+        metrics.alertWebhook("delivered");
+
+        assertThat(registry.counter("vc_alert_webhook_delivery_total", "result", "delivered").count())
+                .isEqualTo(2.0);
+        assertThat(registry.counter("vc_alert_webhook_delivery_total", "result", "refused").count())
+                .isEqualTo(1.0);
+    }
 }

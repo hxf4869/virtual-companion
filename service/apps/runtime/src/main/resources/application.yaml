@@ -79,11 +79,16 @@ virtual-companion:
     base-url: ${VC_MODERATION_BASE_URL:}
     model: ${VC_MODERATION_MODEL:omni-moderation-latest}
     api-key: ${VC_MODERATION_API_KEY:}
-    # METRICS-ALERT (§26.6): webhook alert channel + R3/R4 SLA thresholds for
-    # the admin safety queue. The URL is deployment-injected; blank disables
-    # posting (metrics stay exposed, nothing is sent).
+    # METRICS-ALERT / S0-31-A: webhook outbox + HMAC. URL/secret are
+    # deployment-injected; blank URL disables posting. Malicious/private
+    # hosts are refused. Metrics stay exposed either way.
   alerts:
     webhook-url: ${VC_ALERT_WEBHOOK_URL:}
+    webhook-secret: ${VC_ALERT_WEBHOOK_SECRET:}
+    webhook-allowed-hosts: ${VC_ALERT_WEBHOOK_ALLOWED_HOSTS:}
+    webhook-max-attempts: 5
+    webhook-backoff-seconds: 5
+    webhook-drain-ms: 5000
     connect-timeout: 2s
     throttle-millis: 60000
     r3-sla-hours: 24

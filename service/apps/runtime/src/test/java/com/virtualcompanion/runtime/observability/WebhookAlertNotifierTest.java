@@ -3,7 +3,14 @@ package com.virtualcompanion.runtime.observability;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.sun.net.httpserver.HttpServer;
+import com.virtualcompanion.platform.persistence.AlertWebhookOutbox;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,7 +35,8 @@ class WebhookAlertNotifierTest {
 
     private WebhookAlertNotifier notifier(String url) {
         return new WebhookAlertNotifier(
-                new AlertProperties(url, Duration.ofSeconds(2), 60_000L, 24L, 1L));
+                new AlertProperties(
+                        url, Duration.ofSeconds(2), 60_000L, 24L, 1L, "test-secret", "", 5, 5));
     }
 
     @Test
@@ -81,6 +89,28 @@ class WebhookAlertNotifierTest {
         }
         Thread.sleep(100);
         assertThat(hits.get()).isEqualTo(2);
+    }
+
+    @Test
+    void outboxPathEnqueuesInsteadOfPosting() {
+        AtomicInteger hits = new AtomicInteger();
+        AlertWebhookOutbox outbox = mock(AlertWebhookOutbox.class);
+        when(outbox.enqueue(anyString(), anyString(), anyString(), anyInt()))
+                .thenReturn(new AlertWebhookOutbox.EnqueueResult(1L, true));
+        WebhookAlertNotifier notifier = new WebhookAlertNotifier(
+                new AlertProperties(
+                        "http://127.0.0.1:1/hook",
+                        Duration.ofSeconds(2), 60_000L, 24L, 1L, "secret", "", 5, 5),
+                outbox,
+                new WebhookDelivery(new AlertProperties(
+                        "http://127.0.0.1:1/hook",
+                        Duration.ofSeconds(2), 60_000L, 24L, 1L, "secret", "", 5, 5)),
+                TestAlerts.metrics());
+
+        assertThatCode(() -> notifier.alert(AlertSeverity.P2, "DAU_CAP_REACHED", "m"))
+                .doesNotThrowAnyException();
+        verify(outbox).enqueue("P2", "DAU_CAP_REACHED", "m", 60);
+        assertThat(hits.get()).isEqualTo(0);
     }
 
     @Test

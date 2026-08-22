@@ -17,7 +17,17 @@ public class ObservabilityConfig {
     }
 
     @Bean
-    public AlertNotifier alertNotifier(AlertProperties properties) {
-        return new WebhookAlertNotifier(properties);
+    public WebhookDelivery webhookDelivery(AlertProperties properties) {
+        return new WebhookDelivery(properties);
+    }
+
+    @Bean
+    public AlertNotifier alertNotifier(
+            AlertProperties properties,
+            VcMetrics metrics,
+            WebhookDelivery webhookDelivery,
+            org.springframework.beans.factory.ObjectProvider<
+                    com.virtualcompanion.platform.persistence.AlertWebhookOutbox> outbox) {
+        return new WebhookAlertNotifier(properties, outbox, webhookDelivery, metrics);
     }
 }

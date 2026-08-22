@@ -373,6 +373,22 @@ public class AuthDataSourceConfig {
                 authJdbcTemplate, metrics, betaServiceWindow);
     }
 
+    @Bean
+    public com.virtualcompanion.platform.persistence.AlertWebhookOutbox alertWebhookOutbox(
+            JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.AlertWebhookOutbox(authJdbcTemplate);
+    }
+
+    @Bean
+    public com.virtualcompanion.runtime.observability.AlertWebhookDispatcher alertWebhookDispatcher(
+            com.virtualcompanion.platform.persistence.AlertWebhookOutbox alertWebhookOutbox,
+            com.virtualcompanion.runtime.observability.WebhookDelivery webhookDelivery,
+            com.virtualcompanion.runtime.observability.AlertProperties alertProperties,
+            com.virtualcompanion.runtime.observability.VcMetrics metrics) {
+        return new com.virtualcompanion.runtime.observability.AlertWebhookDispatcher(
+                alertWebhookOutbox, webhookDelivery, alertProperties, metrics);
+    }
+
     /**
      * CRYPTO-REST one-shot backfill: opt-in via
      * {@code virtual-companion.crypto.backfill-enabled=true} for exactly one
