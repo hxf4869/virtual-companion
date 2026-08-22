@@ -32,7 +32,7 @@
 |---|---|---|
 | `S0-03` | `DONE`（对账见 §S0-03） | 绑定已统一、校验与集成测试已补齐；后续派发前仍须按当前工作树复核 |
 | `S0-02` | `PARTIAL`（子交付 A 完成，见 §S0-02） | 时间真源已统一：Beta contract 同步 10:00–22:00 并有 catalog↔contract 漂移检查与五点边界回归；剩余 readiness/发布状态同步与 Owner 人工项，不得代填真实责任人或 Beta 批准状态 |
-| `S0-05` | `PARTIAL / READY` | Report 表单和接口已存在，Help 与部分说明仍声称接口未接通；同步真实入口、文案和测试 |
+| `S0-05` | `DONE`（对账见 §S0-05） | Help 已直达真实举报表单与本人处理状态，README 同步且不再有与 report 能力矛盾的现行说明；TODO.md 历史轮次记录按原样保留 |
 | `S0-10` | `PARTIAL` | supplier 熔断、健康感知路由和单机会话粘滞已完成；剩余 `C` 为动态 service-mode 聚合，不得重做 `A/B` |
 | `S0-25` | `PARTIAL / READY` | DB 撤回已实现，外发 Guard 仍依赖进程内镜像；需要补跨层“撤回后外发 0 次”闭环 |
 | `S0-26` | `PARTIAL / BLOCKED` | 实际 payload 与默认授权类别不一致；技术映射可分析，完整收口需 Owner 确认必要同意与数据类别 |
@@ -156,6 +156,13 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-05 修复 H5 Help/Report 与 README 的状态漂移
 
+- **当前对账（2026-08-22，已完成）**：`help.vue` 举报和申诉区删除「受理接口尚未
+  接通」，改为如实说明举报页的提交表单、成功/失败呈现与本人处理状态入口，
+  `help.spec.ts` 断言导航直达 `/pages/report/report` 且不出现编造热线/工单/SLA；
+  README 同步四处旧声明（REPORT-PAGE、MSG-REPORT、「我的数据」举报申诉括注、
+  AGE-MIN 申诉句），现行说明与 report 能力一致；report API/页面/成功失败分支
+  复用既有实现与测试（65 文件 745 用例 + type-check + check.sh 全绿）。
+  TODO.md 各轮「已完成」为带日期的历史记录，按原样保留。
 - **现状证据**：`frontend/src/pages/help/help.vue` 仍称“受理接口尚未接通”，但 report API、表单和本人列表已经存在；README 也保留类似旧声明。
 - **最小交付**：Help 直达真实举报表单和本人状态；删除过时文案；保留“不编造热线、工单号和处理时限”的边界。
 - **验收**：用户从 Help 能完成提交；成功/失败真实显示；仓库全局不再存在与当前 report 能力矛盾的说明。

@@ -1,4 +1,6 @@
-<!-- HELP (safety support): read-only boundaries. No ticket / appeal form. -->
+<!-- HELP (safety support): read-only boundaries. Reports & appeals go through
+     the real /pages/report/report intake (submission form + own status list).
+     No invented hotline, ticket numbers or SLA wording. -->
 <template>
   <view class="help-page">
     <view class="bar">
@@ -32,8 +34,18 @@
 
     <view class="section" data-testid="help-reports">
       <text class="section-title">举报和申诉</text>
-      <text class="empty">受理接口尚未接通。本页没有可提交的表单，也不会编造工单状态。</text>
-      <button data-testid="nav-report" class="nav-index" @click="goTo('/pages/report/report')">
+      <text class="row">
+        要举报内容或问题，可在「举报和申诉」页选择目录原因、填写描述后提交；提交成功或失败都会如实显示。
+      </text>
+      <text class="row">
+        你已提交的举报与处理状态也在该页查看。该页不承诺处理时限，也不编造工单编号。
+      </text>
+      <button
+        data-testid="nav-report"
+        class="nav-index"
+        aria-label="打开举报和申诉页"
+        @click="goTo('/pages/report/report')"
+      >
         打开举报和申诉页
       </button>
     </view>
@@ -88,7 +100,6 @@ export default {
   font-size: 24rpx;
 }
 .intro,
-.empty,
 .row {
   font-size: 24rpx;
   color: #8fa0bd;
