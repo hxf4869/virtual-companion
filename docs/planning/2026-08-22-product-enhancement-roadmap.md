@@ -31,7 +31,7 @@
 | 候选 | 当前判断 | 下一步边界 |
 |---|---|---|
 | `S0-03` | `DONE`（对账见 §S0-03） | 绑定已统一、校验与集成测试已补齐；后续派发前仍须按当前工作树复核 |
-| `S0-02` | `PARTIAL / READY` | Catalog、运行时和 README 已是 10:00–22:00，Beta contract 仍是旧窗口；可修技术漂移，不得代填真实责任人或 Beta 批准状态 |
+| `S0-02` | `PARTIAL`（子交付 A 完成，见 §S0-02） | 时间真源已统一：Beta contract 同步 10:00–22:00 并有 catalog↔contract 漂移检查与五点边界回归；剩余 readiness/发布状态同步与 Owner 人工项，不得代填真实责任人或 Beta 批准状态 |
 | `S0-05` | `PARTIAL / READY` | Report 表单和接口已存在，Help 与部分说明仍声称接口未接通；同步真实入口、文案和测试 |
 | `S0-10` | `PARTIAL` | supplier 熔断、健康感知路由和单机会话粘滞已完成；剩余 `C` 为动态 service-mode 聚合，不得重做 `A/B` |
 | `S0-25` | `PARTIAL / READY` | DB 撤回已实现，外发 Guard 仍依赖进程内镜像；需要补跨层“撤回后外发 0 次”闭环 |
@@ -124,7 +124,15 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-02 统一 Beta 时间、门禁与发布状态真源
 
-- **现状证据**：`product-scope.yaml`、代码和 README 是 10:00–22:00；`specs/contracts/beta-gate-contract.yaml` 仍为 20:30–00:00。`TODO.md` 又称人工项已落实，但 `docs/beta-readiness/README.md`、PIA/值班材料仍有 `[待填]`。
+- **当前对账（2026-08-22，子交付 A：时间真源统一）**：`product-scope.yaml`
+  betaGate 确定为机器真源；`beta-gate-contract.yaml` 窗口/值守字段已同步
+  10:00–22:00 族（opensAt 10:00、长会话截断 21:45、新代截止 22:00、在途宽限
+  22:10、值守 09:45–22:30）；`catalog_tool.py validate` 新增 catalog↔contract
+  关键字段漂移检查、`hardDefault=beta_generation_enabled_false` 钉住与时序
+  不变量校验；09:59/10:00/21:45/22:00/22:10 五个边界在运行时策略测试与目录
+  检查中口径一致；`betaGenerationEnabledByDefault=false` 不变。
+- **剩余**：readiness/发布状态文档与真实状态同步；责任人、目标环境、PIA、
+  值班与审核结论仍为 `[待填]`，真实 Beta 保持默认关闭。
 - **最小交付**：确定 `product-scope.yaml` 为机器真源；同步 Beta contract、README、部署默认和 readiness 文档；增加有业务价值的关键字段漂移检查，而不是恢复旧治理体系。
 - **验收**：09:59/10:00/21:45/22:00/22:10 边界测试一致；`betaGenerationEnabledByDefault=false`；所有“已就绪/未就绪”声明不互相矛盾。
 - **停止条件**：Owner 未给出真实责任人、目标环境或审核结论时只能标记 `BLOCKED/待填`，不得代填“已完成”。

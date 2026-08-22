@@ -90,17 +90,28 @@ class BetaServiceWindowTest {
 
     @Test
     void sameDayWindowClosesAtWindowUntil() {
-        // §24.7 Beta window: generative chat 10:00–22:00 Asia/Shanghai.
+        // §24.7 Beta window: generative chat 10:00–22:00 Asia/Shanghai. The
+        // five pinned boundary instants (S0-02) — 09:59 before open, 10:00
+        // open, 21:45 longConversationCutoff, 22:00 newGenerationCutoff,
+        // 22:10 inFlightGraceUntil — must classify identically in the catalog
+        // (product-scope betaGate), the contract (beta-gate-contract) and
+        // this runtime policy.
         BetaServiceWindow window = new BetaServiceWindow(
                 true, false, "10:00", "22:00", 10, "Asia/Shanghai");
         assertEquals(Optional.of("outside-generation-window"),
                 window.rejectReason(at(9, 59), 0, false));
         assertTrue(window.rejectReason(at(10, 0), 0, false).isEmpty());
+        // 21:45 longConversationCutoff: still before the 22:00 new-turn
+        // cutoff, so a new turn is accepted (the cutoff narrows long
+        // conversations, not the new-turn window itself).
+        assertTrue(window.rejectReason(at(21, 45), 0, false).isEmpty());
         assertTrue(window.rejectReason(at(21, 59), 0, false).isEmpty());
         assertEquals(Optional.of("outside-generation-window"),
                 window.rejectReason(at(22, 0), 0, false));
+        // 22:10 inFlightGraceUntil: grace only extends in-flight completion;
+        // new turns stay refused after the 22:00 cutoff.
         assertEquals(Optional.of("outside-generation-window"),
-                window.rejectReason(at(23, 30), 0, false));
+                window.rejectReason(at(22, 10), 0, false));
         assertEquals("10:00–22:00 Asia/Shanghai", window.windowLabel());
     }
 

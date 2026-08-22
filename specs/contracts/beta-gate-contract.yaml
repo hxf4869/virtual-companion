@@ -1,14 +1,17 @@
 schemaVersion: 1
 contractId: CONTROLLED_BETA_HARD_GATE
+# 时间字段机器真源是 specs/catalog/product-scope.yaml betaGate（§24.7 北京时间
+# 10:00–22:00，2026-08-19 Owner 决策；原 20:30–00:00 为早期草案）。本契约必须
+# 与其一致；scripts/checks/catalog_tool.py validate 强制两者同步（S0-02）。
 generationWindow:
   timezone: Asia/Shanghai
-  opensAt: '20:30'
-  longConversationCutoff: '23:45'
-  newGenerationCutoff: '00:00'
-  inFlightGraceUntil: '00:10'
+  opensAt: '10:00'
+  longConversationCutoff: '21:45'
+  newGenerationCutoff: '22:00'
+  inFlightGraceUntil: '22:10'
 dutyWindow:
-  startsAt: '20:15'
-  endsAt: '00:30'
+  startsAt: '09:45'
+  endsAt: '22:30'
 requiredBeforeEnable:
   - personal_information_protection_impact_assessment_completed
   - internal_product_ethics_review_completed

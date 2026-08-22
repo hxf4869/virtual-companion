@@ -103,6 +103,47 @@ def validate(root: Path) -> list[str]:
     for key, expected_value in expected_beta.items():
         if beta.get(key) != expected_value:
             errors.append(f"product-scope.yaml: betaGate.{key} must be {expected_value!r}")
+    # S0-02: product-scope.yaml betaGate is the machine source of truth for
+    # Beta service times; the beta-gate contract must mirror it, and the
+    # §24.7 instants must stay ordered (duty opens first, grace ends last).
+    contract = load_yaml(root / "specs/contracts/beta-gate-contract.yaml")
+    contract_expect = {
+        "generationWindow": {
+            "timezone": beta.get("timezone"),
+            "opensAt": beta.get("generationWindowFrom"),
+            "longConversationCutoff": beta.get("longConversationCutoff"),
+            "newGenerationCutoff": beta.get("newGenerationCutoff"),
+            "inFlightGraceUntil": beta.get("inFlightGraceUntil"),
+        },
+        "dutyWindow": {
+            "startsAt": beta.get("dutyFrom"),
+            "endsAt": beta.get("dutyUntil"),
+        },
+    }
+    for section, fields in contract_expect.items():
+        for field, expected in fields.items():
+            if contract.get(section, {}).get(field) != expected:
+                errors.append(
+                    f"beta-gate-contract.yaml: {section}.{field} must match "
+                    f"product-scope.yaml betaGate ({expected!r})")
+    if contract.get("hardDefault") != "beta_generation_enabled_false":
+        errors.append("beta-gate-contract.yaml: hardDefault must be beta_generation_enabled_false")
+    def _hhmm(value: str) -> int:
+        hours, minutes = str(value).split(":")
+        return int(hours) * 60 + int(minutes)
+    try:
+        ordered = (
+            _hhmm(beta["dutyFrom"]) <= _hhmm(beta["generationWindowFrom"])
+            < _hhmm(beta["longConversationCutoff"])
+            < _hhmm(beta["newGenerationCutoff"]) < _hhmm(beta["inFlightGraceUntil"])
+            <= _hhmm(beta["dutyUntil"]))
+    except (KeyError, ValueError):
+        ordered = False
+    if not ordered:
+        errors.append(
+            "product-scope.yaml: betaGate times must satisfy dutyFrom <= "
+            "generationWindowFrom <= longConversationCutoff < newGenerationCutoff "
+            "< inFlightGraceUntil <= dutyUntil")
     candidate = load_yaml(cdir / "memory-candidate-statuses.yaml")
     if candidate.get("alphaModelCandidateInitialStatus") != "PENDING_CONFIRMATION" or candidate.get("alphaModelCandidatesRequireConfirmation") is not True:
         errors.append("memory-candidate-statuses.yaml: Alpha model candidates must be PENDING_CONFIRMATION and require confirmation")
