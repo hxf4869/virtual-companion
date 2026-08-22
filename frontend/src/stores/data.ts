@@ -18,10 +18,12 @@ export interface DataTransport {
   }>;
 }
 
+export type DataMemory = Memory & { relationshipId: string };
+
 export const useDataStore = defineStore("h5-data", () => {
   const relationships = ref<Relationship[]>([]);
   const conversations = ref<ConversationListItem[]>([]);
-  const memories = ref<Memory[]>([]);
+  const memories = ref<DataMemory[]>([]);
   const reminders = ref<Reminder[]>([]);
   const consents = ref<ConsentRecord[]>([]);
   const serviceMode = ref<ServiceModeStatus | null>(null);
@@ -47,7 +49,10 @@ export const useDataStore = defineStore("h5-data", () => {
       const memoryPages = await Promise.all(
         rels.map((rel) => listMemories(transport, rel.relationshipId).catch(() => [])),
       );
-      memories.value = memoryPages.flat();
+      memories.value = memoryPages.flatMap((page, index) => {
+        const relationshipId = rels[index]?.relationshipId ?? "";
+        return page.map((row) => ({ ...row, relationshipId }));
+      });
       const reminderPages = await Promise.all(
         rels.map((rel) => listReminders(transport, rel.relationshipId).catch(() => [])),
       );

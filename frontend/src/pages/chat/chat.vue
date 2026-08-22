@@ -46,7 +46,7 @@
           data-testid="nav-companion"
           class="chat-nav-index"
           aria-label="角色设置"
-          @click="goTo('/pages/companion/companion')"
+          @click="goTo(companionHref())"
         >
           角色设置
         </button>
@@ -54,7 +54,7 @@
           data-testid="nav-reminder"
           class="chat-nav-index"
           aria-label="提醒管理"
-          @click="goTo('/pages/reminder/reminder')"
+          @click="goTo(reminderHref())"
         >
           提醒管理
         </button>
@@ -416,7 +416,7 @@
               <button
                 class="msg-copy"
                 data-testid="msg-report-open-page"
-                @click="goTo(`/pages/report/report?messageId=${encodeURIComponent(msg.messageId)}`)"
+                @click="goTo(reportHref(msg.messageId))"
               >
                 打开举报和申诉页提交
               </button>
@@ -651,6 +651,7 @@ import { useUsageHealthStore } from "@/stores/usage-health";
 import { useIncognitoStore } from "@/stores/incognito";
 import type { MemoryImportPreview } from "@/api/relationship";
 import { requestIdLabel } from "@/domain/request-id";
+import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 
 function resolveOrigin(): string {
   return typeof window !== "undefined" && window.location && window.location.origin
@@ -1182,26 +1183,46 @@ export default defineComponent({
       }
     }
 
+    function knownRelationshipIds(): string[] {
+      return relStore.relationships.map((row) => row.relationshipId);
+    }
+
     function memoryHref(): string {
-      const id = relStore.currentRelationshipId;
-      if (!id) return "/pages/memory/memory";
-      return `/pages/memory/memory?relationshipId=${encodeURIComponent(id)}`;
+      return buildContextHref("memory", {
+        relationshipId: relStore.currentRelationshipId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
     }
 
     function conversationsHref(): string {
-      const id = relStore.currentRelationshipId;
-      if (!id) return "/pages/conversations/conversations";
-      return `/pages/conversations/conversations?relationshipId=${encodeURIComponent(id)}`;
+      return buildContextHref("conversations", {
+        relationshipId: relStore.currentRelationshipId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
+    }
+
+    function companionHref(): string {
+      return buildContextHref("companion", {
+        relationshipId: relStore.currentRelationshipId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
+    }
+
+    function reminderHref(): string {
+      return buildContextHref("reminder", {
+        relationshipId: relStore.currentRelationshipId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
+    }
+
+    function reportHref(messageId: string): string {
+      return buildContextHref("report", { messageId });
     }
 
     function readQueryRelationshipId(): string {
       try {
         if (typeof location === "undefined") return "";
-        return (
-          new URLSearchParams(String(location.search || ""))
-            .get("relationshipId")
-            ?.trim() ?? ""
-        );
+        return readContextFromLocation(location).relationshipId ?? "";
       } catch {
         return "";
       }
@@ -1210,11 +1231,7 @@ export default defineComponent({
     function readQueryConversationId(): string {
       try {
         if (typeof location === "undefined") return "";
-        return (
-          new URLSearchParams(String(location.search || ""))
-            .get("conversationId")
-            ?.trim() ?? ""
-        );
+        return readContextFromLocation(location).conversationId ?? "";
       } catch {
         return "";
       }
@@ -1585,6 +1602,9 @@ export default defineComponent({
       goTo,
       memoryHref,
       conversationsHref,
+      companionHref,
+      reminderHref,
+      reportHref,
       onRelActivate,
       onRelCreate,
     };

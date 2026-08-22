@@ -60,9 +60,17 @@ export const useRelationshipStore = defineStore("h5-relationship", () => {
     error.value = null;
     try {
       relationships.value = await listRelationships(t);
-      const active = relationships.value.find((r) => r.active);
-      if (active) {
-        currentRelationshipId.value = active.relationshipId;
+      const activeIds = new Set(
+        relationships.value.filter((row) => row.active).map((row) => row.relationshipId),
+      );
+      if (currentRelationshipId.value && !activeIds.has(currentRelationshipId.value)) {
+        currentRelationshipId.value = null;
+      }
+      if (!currentRelationshipId.value) {
+        const active = relationships.value.find((row) => row.active);
+        if (active) {
+          currentRelationshipId.value = active.relationshipId;
+        }
       }
       status.value = "ready";
     } catch (e) {

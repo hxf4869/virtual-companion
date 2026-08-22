@@ -450,6 +450,7 @@ import { storeToRefs } from "pinia";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { deleteAccount } from "@/api/auth";
 import { fetchVersion, type VersionInfo } from "@/api/version";
+import { buildContextHref } from "@/domain/context-href";
 import { resolveAdmissionGate, type AdmissionGate } from "@/domain/nav-guard";
 import { resolveNextStep, type NextStep } from "@/domain/next-step";
 import { personaDisplayName } from "@/domain/persona";
@@ -555,22 +556,29 @@ function retryLoad(): void {
   }
 }
 
+function knownRelationshipIds(): string[] {
+  return relStore.relationships.map((row) => row.relationshipId);
+}
+
 function memoryHref(): string {
-  const id = relStore.currentRelationshipId;
-  if (!id) return "/pages/memory/memory";
-  return `/pages/memory/memory?relationshipId=${encodeURIComponent(id)}`;
+  return buildContextHref("memory", {
+    relationshipId: relStore.currentRelationshipId,
+    knownRelationshipIds: knownRelationshipIds(),
+  });
 }
 
 function chatHref(): string {
-  const id = relStore.currentRelationshipId;
-  if (!id) return "/pages/chat/chat";
-  return `/pages/chat/chat?relationshipId=${encodeURIComponent(id)}`;
+  return buildContextHref("chat", {
+    relationshipId: relStore.currentRelationshipId,
+    knownRelationshipIds: knownRelationshipIds(),
+  });
 }
 
 function conversationsHref(): string {
-  const id = relStore.currentRelationshipId;
-  if (!id) return "/pages/conversations/conversations";
-  return `/pages/conversations/conversations?relationshipId=${encodeURIComponent(id)}`;
+  return buildContextHref("conversations", {
+    relationshipId: relStore.currentRelationshipId,
+    knownRelationshipIds: knownRelationshipIds(),
+  });
 }
 
 const nextStepHref = computed(() => {

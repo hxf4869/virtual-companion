@@ -169,6 +169,7 @@ import {
 } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
@@ -214,7 +215,7 @@ export default {
     function readQueryRelationshipId(): string {
       try {
         if (typeof location === "undefined") return "";
-        return new URLSearchParams(String(location.search || "")).get("relationshipId")?.trim() ?? "";
+        return readContextFromLocation(location).relationshipId ?? "";
       } catch {
         return "";
       }
@@ -333,11 +334,13 @@ export default {
     }
 
     function openChat(item: ConversationListItem): void {
-      const params = new URLSearchParams({
-        relationshipId: item.relationshipId,
-        conversationId: item.conversationId,
-      });
-      goTo(`/pages/chat/chat?${params.toString()}`);
+      goTo(
+        buildContextHref("chat", {
+          relationshipId: item.relationshipId,
+          conversationId: item.conversationId,
+          knownRelationshipIds: relStore.relationships.map((row) => row.relationshipId),
+        }),
+      );
     }
 
     async function onWipePreview(): Promise<void> {
@@ -382,9 +385,10 @@ export default {
     }
 
     function chatHref(): string {
-      const id = relationshipId.value.trim();
-      if (!id) return "/pages/chat/chat";
-      return `/pages/chat/chat?relationshipId=${encodeURIComponent(id)}`;
+      return buildContextHref("chat", {
+        relationshipId: relationshipId.value,
+        knownRelationshipIds: relStore.relationships.map((row) => row.relationshipId),
+      });
     }
 
     function goTo(url: string): void {

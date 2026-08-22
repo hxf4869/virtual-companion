@@ -122,6 +122,7 @@ import { computed, onMounted, ref } from "vue";
 import type { Reminder, ReminderRecurrence } from "@/api/reminder";
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import { readContextFromLocation, sanitizeRelationshipId } from "@/domain/context-href";
 import { useAuthStore } from "@/stores/auth";
 import { useRelationshipStore } from "@/stores/relationship";
 import { useReminderStore } from "@/stores/reminder";
@@ -156,8 +157,14 @@ export default {
         await auth.tryRefresh(transport);
       }
       await relStore.load(transport);
-      if (relStore.currentRelationshipId) {
-        await onPickRelationship(relStore.currentRelationshipId);
+      const known = relStore.relationships.map((row) => row.relationshipId);
+      const fromQuery =
+        typeof location !== "undefined"
+          ? sanitizeRelationshipId(readContextFromLocation(location).relationshipId, known)
+          : null;
+      const id = fromQuery ?? relStore.currentRelationshipId;
+      if (id) {
+        await onPickRelationship(id);
       }
     });
 

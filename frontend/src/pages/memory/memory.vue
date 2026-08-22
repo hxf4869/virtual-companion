@@ -472,6 +472,7 @@ import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { matchesLooseText } from "@/domain/text-filter";
 import { formatTimestamp } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
@@ -596,11 +597,7 @@ const errorText = computed(() => {
 function readQueryRelationshipId(): string {
   try {
     if (typeof location === "undefined") return "";
-    return (
-      new URLSearchParams(String(location.search || ""))
-        .get("relationshipId")
-        ?.trim() ?? ""
-    );
+    return readContextFromLocation(location).relationshipId ?? "";
   } catch {
     return "";
   }
@@ -744,13 +741,20 @@ async function onDelete(id: string): Promise<void> {
 }
 
 function openDetail(id: string): void {
-  goTo(`/pages/memory-detail/memory-detail?memoryId=${encodeURIComponent(id)}`);
+  goTo(
+    buildContextHref("memory-detail", {
+      relationshipId: relationshipId.value,
+      memoryId: id,
+      knownRelationshipIds: relStore.relationships.map((row) => row.relationshipId),
+    }),
+  );
 }
 
 function chatHref(): string {
-  const id = relationshipId.value.trim();
-  if (!id) return "/pages/chat/chat";
-  return `/pages/chat/chat?relationshipId=${encodeURIComponent(id)}`;
+  return buildContextHref("chat", {
+    relationshipId: relationshipId.value,
+    knownRelationshipIds: relStore.relationships.map((row) => row.relationshipId),
+  });
 }
 
 function goTo(url: string): void {

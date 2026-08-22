@@ -73,6 +73,7 @@ import { onMounted, ref } from "vue";
 
 import { getMemory, listMemoryEvidence, type Memory, type MemoryEvidence } from "@/api/memory";
 import { createAuthenticatedTransport } from "@/api/transport";
+import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
@@ -94,7 +95,7 @@ export default {
     function readMemoryId(): string {
       try {
         if (typeof location === "undefined") return "";
-        return new URLSearchParams(String(location.search || "")).get("memoryId")?.trim() ?? "";
+        return readContextFromLocation(location).memoryId ?? "";
       } catch {
         return "";
       }
@@ -143,7 +144,15 @@ export default {
     }
 
     function memoryHref(): string {
-      return "/pages/memory/memory";
+      try {
+        const relationshipId =
+          typeof location !== "undefined"
+            ? readContextFromLocation(location).relationshipId
+            : null;
+        return buildContextHref("memory", { relationshipId });
+      } catch {
+        return buildContextHref("memory");
+      }
     }
 
     function goTo(url: string): void {

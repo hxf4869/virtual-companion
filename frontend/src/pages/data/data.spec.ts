@@ -152,10 +152,10 @@ describe("data page (FR-DATA-001)", () => {
 
     expect(navigateTo.mock.calls.map((call) => call[0])).toEqual([
       { url: "/pages/account/account" },
-      { url: "/pages/companion/companion" },
-      { url: "/pages/chat/chat?conversationId=11" },
-      { url: "/pages/memory-detail/memory-detail?memoryId=3" },
-      { url: "/pages/reminder/reminder" },
+      { url: "/pages/companion/companion?relationshipId=7" },
+      { url: "/pages/chat/chat?relationshipId=7&conversationId=11" },
+      { url: "/pages/memory-detail/memory-detail?relationshipId=7&memoryId=3" },
+      { url: "/pages/reminder/reminder?relationshipId=7" },
       { url: "/pages/consent/consent" },
       { url: "/pages/ai-notice/ai-notice" },
       { url: "/pages/report/report" },

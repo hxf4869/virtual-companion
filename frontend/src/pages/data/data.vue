@@ -42,7 +42,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           :key="rel.relationshipId"
           class="row row-link"
           data-testid="data-open-companion"
-          @click="goTo('/pages/companion/companion')"
+          @click="goTo(companionHref(rel.relationshipId))"
         >
           {{ rel.companionName || rel.personaRef }} · {{ rel.active ? "当前使用" : "未使用" }}
         </button>
@@ -56,7 +56,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           :key="item.conversationId"
           class="row row-link"
           data-testid="data-open-conversation"
-          @click="goTo(`/pages/chat/chat?conversationId=${encodeURIComponent(item.conversationId)}`)"
+          @click="goTo(conversationHref(item))"
         >
           {{ item.title || item.lastMessagePreview || `会话 ${item.conversationId}` }}
         </button>
@@ -70,7 +70,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           :key="item.memoryId"
           class="row row-link"
           data-testid="data-open-memory"
-          @click="goTo(`/pages/memory-detail/memory-detail?memoryId=${encodeURIComponent(item.memoryId)}`)"
+          @click="goTo(memoryHref(item))"
         >
           {{ item.summary }}（{{ item.status }}）
         </button>
@@ -84,7 +84,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           :key="item.reminderId"
           class="row row-link"
           data-testid="data-open-reminder"
-          @click="goTo('/pages/reminder/reminder')"
+          @click="goTo(reminderHref(item.relationshipId))"
         >
           {{ item.text }}
         </button>
@@ -137,6 +137,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
 import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import { buildContextHref } from "@/domain/context-href";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
 import { useDataStore } from "@/stores/data";
@@ -172,6 +173,40 @@ export default {
       requestIdCopy.value = store.loadFailed ? requestIdLabel() : "";
     }
 
+    function knownRelationshipIds(): string[] {
+      return store.relationships.map((row) => row.relationshipId);
+    }
+
+    function companionHref(relationshipId: string): string {
+      return buildContextHref("companion", {
+        relationshipId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
+    }
+
+    function conversationHref(item: { relationshipId: string; conversationId: string }): string {
+      return buildContextHref("chat", {
+        relationshipId: item.relationshipId,
+        conversationId: item.conversationId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
+    }
+
+    function memoryHref(item: { relationshipId?: string; memoryId: string }): string {
+      return buildContextHref("memory-detail", {
+        relationshipId: item.relationshipId,
+        memoryId: item.memoryId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
+    }
+
+    function reminderHref(relationshipId: string): string {
+      return buildContextHref("reminder", {
+        relationshipId,
+        knownRelationshipIds: knownRelationshipIds(),
+      });
+    }
+
     function goTo(url: string): void {
       try {
         const uniApi = (globalThis as Record<string, unknown>).uni as
@@ -187,7 +222,19 @@ export default {
       }
     }
 
-    return { auth, store, reportStore, REPORT_REASON_LABELS, requestIdCopy, onRetry, goTo };
+    return {
+      auth,
+      store,
+      reportStore,
+      REPORT_REASON_LABELS,
+      requestIdCopy,
+      onRetry,
+      goTo,
+      companionHref,
+      conversationHref,
+      memoryHref,
+      reminderHref,
+    };
   },
 };
 </script>

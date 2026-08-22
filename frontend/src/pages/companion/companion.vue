@@ -287,6 +287,7 @@ import {
 } from "@/api/relationship";
 import { COMPANION_AVATAR_OPTIONS } from "@/domain/companion-presentation";
 import { createAuthenticatedTransport } from "@/api/transport";
+import { readContextFromLocation, sanitizeRelationshipId } from "@/domain/context-href";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useRelationshipStore } from "@/stores/relationship";
@@ -593,6 +594,14 @@ export default {
 
     onMounted(async () => {
       await relStore.load(transport);
+      const known = relStore.relationships.map((row) => row.relationshipId);
+      const fromQuery =
+        typeof location !== "undefined"
+          ? sanitizeRelationshipId(readContextFromLocation(location).relationshipId, known)
+          : null;
+      if (fromQuery) {
+        relStore.currentRelationshipId = fromQuery;
+      }
       await refreshImportPreview();
     });
 

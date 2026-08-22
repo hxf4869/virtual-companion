@@ -119,6 +119,17 @@ describe("useRelationshipStore", () => {
     expect(store.current).toBeNull();
   });
 
+  it("S0-19: load drops a current id that is missing or no longer active", async () => {
+    const store = useRelationshipStore();
+    store.currentRelationshipId = "gone";
+    await store.load(mockTransport({ list: [INACTIVE] }));
+    expect(store.currentRelationshipId).toBeNull();
+
+    store.currentRelationshipId = "2";
+    await store.load(mockTransport({ list: [INACTIVE] }));
+    expect(store.currentRelationshipId).toBeNull();
+  });
+
   it("load with an empty list keeps current null", async () => {
     const store = useRelationshipStore();
     const transport = mockTransport({ list: [] });
