@@ -41,14 +41,27 @@ public class JwtTokenService {
         this.issuer = issuer;
     }
 
-    /** Issue a signed access token for an authenticated account. */
+    /** Issue a signed access token for an authenticated account (epoch 1). */
     public String issueAccessToken(long accountId, String role, String username) {
+        return issueAccessToken(accountId, role, username, 1L);
+    }
+
+    /**
+     * Issue a signed access token bound to the account's current session epoch.
+     * A later bump of {@code sessionEpoch} makes this token fail the filter
+     * even if it has not expired.
+     */
+    public String issueAccessToken(long accountId, String role, String username, long sessionEpoch) {
+        if (sessionEpoch < 1) {
+            throw new IllegalArgumentException("sessionEpoch must be positive");
+        }
         Instant now = Instant.now();
         return Jwts.builder()
                 .issuer(issuer)
                 .subject(Long.toString(accountId))
                 .claim("role", role)
                 .claim("username", username)
+                .claim("se", sessionEpoch)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(accessTtl)))
                 .signWith(key)
@@ -78,10 +91,15 @@ public class JwtTokenService {
             long accountId = Long.parseLong(claims.getSubject());
             String role = claims.get("role", String.class);
             String username = claims.get("username", String.class);
-            if (role == null || role.isBlank()) {
+            Number epochClaim = claims.get("se", Number.class);
+            if (role == null || role.isBlank() || epochClaim == null) {
                 return null;
             }
-            return new Principal(accountId, role, username);
+            long sessionEpoch = epochClaim.longValue();
+            if (sessionEpoch < 1) {
+                return null;
+            }
+            return new Principal(accountId, role, username, sessionEpoch);
         } catch (RuntimeException e) {
             return null;
         }
@@ -91,7 +109,11 @@ public class JwtTokenService {
      * The server-verified identity bound to an access token. {@code accountId}
      * is both the identity account id and the owner_user_id used for RLS.
      */
-    public record Principal(long accountId, String role, String username) {
+    public record Principal(long accountId, String role, String username, long sessionEpoch) {
+
+        public Principal(long accountId, String role, String username) {
+            this(accountId, role, username, 1L);
+        }
 
         public Principal {
             if (accountId <= 0) {
@@ -99,6 +121,9 @@ public class JwtTokenService {
             }
             if (role == null || role.isBlank()) {
                 throw new IllegalArgumentException("role is required");
+            }
+            if (sessionEpoch < 1) {
+                throw new IllegalArgumentException("sessionEpoch must be positive");
             }
         }
     }

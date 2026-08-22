@@ -21,18 +21,27 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * rejects it with AUTHENTICATION_REQUIRED -- the principal can never come from
  * a request field or a development header (INV-TENANT-001).
  *
- * <p>This filter is deliberately database-free: status checks happen at login
- * and refresh, so a per-request token validation needs no lookup. Access tokens
- * expire in 2h by default.
+ * <p>S0-30: when an {@link AccessSnapshot.Authority} is wired (auth
+ * datasource present), the filter re-reads status and session epoch on every
+ * request. A disable/logout bump or an unreadable authority leaves the
+ * context empty (fail closed). Without an authority the filter stays
+ * signature-only, matching the no-DB test context.
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtTokenService tokenService;
+    private final AccessSnapshot.Authority accessAuthority;
 
     public JwtAuthenticationFilter(JwtTokenService tokenService) {
+        this(tokenService, null);
+    }
+
+    public JwtAuthenticationFilter(
+            JwtTokenService tokenService, AccessSnapshot.Authority accessAuthority) {
         this.tokenService = tokenService;
+        this.accessAuthority = accessAuthority;
     }
 
     @Override
@@ -44,7 +53,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith(BEARER_PREFIX)) {
             String token = header.substring(BEARER_PREFIX.length()).trim();
             JwtTokenService.Principal principal = tokenService.verifyAccessToken(token);
-            if (principal != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (principal != null
+                    && accessAllows(principal)
+                    && SecurityContextHolder.getContext().getAuthentication() == null) {
                 var authentication = new UsernamePasswordAuthenticationToken(
                         principal,
                         null,
@@ -54,5 +65,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private boolean accessAllows(JwtTokenService.Principal principal) {
+        if (accessAuthority == null) {
+            return true;
+        }
+        try {
+            return accessAuthority.find(principal.accountId())
+                    .map(snapshot -> snapshot.allowsAccess(principal.sessionEpoch()))
+                    .orElse(false);
+        } catch (RuntimeException authorityFailure) {
+            return false;
+        }
     }
 }

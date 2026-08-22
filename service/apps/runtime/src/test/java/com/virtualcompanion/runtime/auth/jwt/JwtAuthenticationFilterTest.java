@@ -40,9 +40,74 @@ class JwtAuthenticationFilterTest {
         JwtTokenService.Principal principal = (JwtTokenService.Principal) authentication.getPrincipal();
         assertThat(principal.accountId()).isEqualTo(7L);
         assertThat(principal.role()).isEqualTo("ADMIN");
+        assertThat(principal.sessionEpoch()).isEqualTo(1L);
         assertThat(authentication.getAuthorities())
                 .extracting("authority")
                 .containsExactly("ROLE_ADMIN");
+    }
+
+    @Test
+    void epochMismatchLeavesSecurityContextEmpty() throws Exception {
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                service(), accountId -> java.util.Optional.of(
+                        new AccessSnapshot("ACTIVE", 2L, "USER")));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization",
+                "Bearer " + service().issueAccessToken(7L, "USER", "alice", 1L));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void disabledAccountLeavesSecurityContextEmpty() throws Exception {
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                service(), accountId -> java.util.Optional.of(
+                        new AccessSnapshot("DISABLED", 1L, "USER")));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization",
+                "Bearer " + service().issueAccessToken(7L, "USER", "alice", 1L));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void unreadableAuthorityFailsClosed() throws Exception {
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                service(), accountId -> {
+                    throw new IllegalStateException("authority unavailable");
+                });
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization",
+                "Bearer " + service().issueAccessToken(7L, "USER", "alice", 1L));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void matchingEpochAndActiveStatusBindPrincipal() throws Exception {
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                service(), accountId -> java.util.Optional.of(
+                        new AccessSnapshot("ACTIVE", 3L, "USER")));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization",
+                "Bearer " + service().issueAccessToken(7L, "USER", "alice", 3L));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authentication).isNotNull();
+        JwtTokenService.Principal principal = (JwtTokenService.Principal) authentication.getPrincipal();
+        assertThat(principal.sessionEpoch()).isEqualTo(3L);
     }
 
     @Test

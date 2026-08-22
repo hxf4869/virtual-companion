@@ -25,6 +25,23 @@ class JwtTokenServiceTest {
         assertThat(principal.accountId()).isEqualTo(1001L);
         assertThat(principal.role()).isEqualTo("ADMIN");
         assertThat(principal.username()).isEqualTo("root");
+        assertThat(principal.sessionEpoch()).isEqualTo(1L);
+    }
+
+    @Test
+    void accessTokenCarriesSessionEpoch() {
+        String token = service().issueAccessToken(1001L, "USER", "alice", 4L);
+
+        JwtTokenService.Principal principal = service().verifyAccessToken(token);
+
+        assertThat(principal).isNotNull();
+        assertThat(principal.sessionEpoch()).isEqualTo(4L);
+    }
+
+    @Test
+    void rejectsNonPositiveSessionEpoch() {
+        assertThatThrownBy(() -> service().issueAccessToken(7L, "USER", "alice", 0L))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

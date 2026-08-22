@@ -172,6 +172,23 @@ public class IdentityAccountRepository {
         return status;
     }
 
+    /**
+     * S0-30: status + session epoch + role for one account. Empty when the
+     * account does not exist (existence is not disclosed to the caller).
+     */
+    public Optional<IdentityAccessSnapshot> accessSnapshot(long accountId) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        return jdbc.query(
+                "SELECT out_status, out_session_epoch, out_role FROM vc.identity_access_snapshot(?)",
+                (rs, rowNum) -> new IdentityAccessSnapshot(
+                        rs.getString("out_status"),
+                        rs.getInt("out_session_epoch"),
+                        rs.getString("out_role")),
+                accountId).stream().findFirst();
+    }
+
     public boolean disableAccount(long actingAccountId, long targetAccountId) {
         if (actingAccountId <= 0) {
             throw new IllegalArgumentException("actingAccountId must be positive");
@@ -234,6 +251,21 @@ public class IdentityAccountRepository {
      * and rejects DISABLED accounts; both failures map to the same
      * AUTHENTICATION_REQUIRED / NOT_FOUND_OR_FORBIDDEN surface (no disclosure).
      */
+    /** S0-30 durable access snapshot used to invalidate Bearer tokens. */
+    public record IdentityAccessSnapshot(String status, int sessionEpoch, String role) {
+        public IdentityAccessSnapshot {
+            if (status == null || status.isBlank()) {
+                throw new IllegalArgumentException("status is required");
+            }
+            if (sessionEpoch < 1) {
+                throw new IllegalArgumentException("sessionEpoch must be positive");
+            }
+            if (role == null || role.isBlank()) {
+                throw new IllegalArgumentException("role is required");
+            }
+        }
+    }
+
     public record AuthenticatedIdentity(
             long accountId,
             String role,

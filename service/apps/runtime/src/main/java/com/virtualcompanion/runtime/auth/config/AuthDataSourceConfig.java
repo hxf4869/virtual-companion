@@ -262,6 +262,20 @@ public class AuthDataSourceConfig {
     }
 
     @Bean
+    public com.virtualcompanion.platform.persistence.SensitiveRouteAdmission sensitiveRouteAdmission(
+            JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.SensitiveRouteAdmission(authJdbcTemplate);
+    }
+
+    @Bean
+    public com.virtualcompanion.runtime.auth.jwt.AccessSnapshot.Authority accessSnapshotAuthority(
+            IdentityAccountRepository identityAccountRepository) {
+        return accountId -> identityAccountRepository.accessSnapshot(accountId)
+                .map(snapshot -> new com.virtualcompanion.runtime.auth.jwt.AccessSnapshot(
+                        snapshot.status(), snapshot.sessionEpoch(), snapshot.role()));
+    }
+
+    @Bean
     public AuthService authService(
             IdentityAccountRepository identityAccountRepository,
             IdentityRefreshTokenRepository identityRefreshTokenRepository,

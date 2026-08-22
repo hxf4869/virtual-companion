@@ -166,7 +166,11 @@ public class AuthService {
         }
         RotatedSession session = rotated.get();
         String canonicalUsername = normalizeUsername(session.username());
-        String accessToken = jwt.issueAccessToken(session.accountId(), session.role(), canonicalUsername);
+        String accessToken = jwt.issueAccessToken(
+                session.accountId(),
+                session.role(),
+                canonicalUsername,
+                currentSessionEpoch(session.accountId()));
         return new IssuedSession(
                 new AuthResponse(
                         accessToken,
@@ -591,7 +595,8 @@ public class AuthService {
     private IssuedSession issueTokens(long accountId, String role, String username) {
         String refreshToken = RefreshTokens.generate();
         sessions.issue(accountId, RefreshTokens.sha256Hex(refreshToken), OffsetDateTime.now().plus(refreshTtl));
-        String accessToken = jwt.issueAccessToken(accountId, role, username);
+        String accessToken = jwt.issueAccessToken(
+                accountId, role, username, currentSessionEpoch(accountId));
         return new IssuedSession(
                 new AuthResponse(
                         accessToken,
@@ -600,6 +605,13 @@ public class AuthService {
                         Long.toString(accountId),
                         role),
                 refreshToken);
+    }
+
+    private long currentSessionEpoch(long accountId) {
+        return accounts.accessSnapshot(accountId)
+                .filter(snapshot -> STATUS_ACTIVE.equals(snapshot.status()))
+                .map(snapshot -> (long) snapshot.sessionEpoch())
+                .orElseThrow(AuthService::disabledError);
     }
 
     /** Refresh-session TTL in seconds (used for the vc_refresh cookie Max-Age). */

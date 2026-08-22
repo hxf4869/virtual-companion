@@ -68,8 +68,12 @@ public class AuthSecurityConfig {
     }
 
     @Bean
-    public JwtAuthenticationFilter jwtAuthenticationFilter(JwtTokenService jwtTokenService) {
-        return new JwtAuthenticationFilter(jwtTokenService);
+    public JwtAuthenticationFilter jwtAuthenticationFilter(
+            JwtTokenService jwtTokenService,
+            ObjectProvider<com.virtualcompanion.runtime.auth.jwt.AccessSnapshot.Authority>
+                    accessSnapshotAuthority) {
+        return new JwtAuthenticationFilter(
+                jwtTokenService, accessSnapshotAuthority.getIfAvailable());
     }
 
     /**
@@ -115,7 +119,9 @@ public class AuthSecurityConfig {
             @Value("${virtual-companion.auth.cors-allowed-origins:}") List<String> allowedOrigins,
             AuthAbuseGuard authAbuseGuard,
             JwtAuthenticationFilter jwtAuthenticationFilter,
-            OwnerInjectionFilter ownerInjectionFilter) throws Exception {
+            OwnerInjectionFilter ownerInjectionFilter,
+            ObjectProvider<com.virtualcompanion.platform.persistence.SensitiveRouteAdmission>
+                    sensitiveRouteAdmission) throws Exception {
         CookieCsrfGuardFilter cookieCsrfGuardFilter = new CookieCsrfGuardFilter(allowedOrigins);
         AuthSourceAdmissionFilter authSourceAdmissionFilter =
                 new AuthSourceAdmissionFilter(authAbuseGuard);
@@ -146,6 +152,9 @@ public class AuthSecurityConfig {
                         }))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(ownerInjectionFilter, JwtAuthenticationFilter.class)
+                .addFilterAfter(
+                        new SensitiveRouteAdmissionFilter(sensitiveRouteAdmission),
+                        OwnerInjectionFilter.class)
                 .addFilterBefore(authRequestBodyLimitFilter, JwtAuthenticationFilter.class)
                 .addFilterBefore(authSourceAdmissionFilter, AuthRequestBodyLimitFilter.class)
                 .addFilterBefore(cookieCsrfGuardFilter, AuthSourceAdmissionFilter.class);

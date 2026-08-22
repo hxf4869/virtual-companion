@@ -64,7 +64,11 @@ class AuthServiceTest {
         quotaReconciliation = mock(QuotaReconciliationService.class);
         when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$dummyhashplaceholder");
         when(jwt.accessTtl()).thenReturn(Duration.ofHours(2));
-        when(jwt.issueAccessToken(anyLong(), anyString(), anyString())).thenReturn("access-token");
+        when(jwt.issueAccessToken(anyLong(), anyString(), anyString(), anyLong()))
+                .thenReturn("access-token");
+        when(accounts.accessSnapshot(anyLong())).thenReturn(java.util.Optional.of(
+                new com.virtualcompanion.platform.persistence.IdentityAccountRepository.IdentityAccessSnapshot(
+                        "ACTIVE", 1, "USER")));
         service = new AuthService(
                 accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7),
                 adminConsole, entitlementSnapshotService, inviteCodes,
@@ -89,7 +93,7 @@ class AuthServiceTest {
         assertThat(response.role()).isEqualTo("USER");
         verify(accounts).recordLoginSuccess(7, "alice");
         verify(passwordEncoder).matches(rawPassword, "hash");
-        verify(jwt).issueAccessToken(7L, "USER", "alice");
+        verify(jwt).issueAccessToken(7L, "USER", "alice", 1L);
 
         // Only the sha256 hash of the returned raw token is persisted.
         ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
@@ -153,7 +157,7 @@ class AuthServiceTest {
         assertThat(response.role()).isEqualTo("USER");
         assertThat(response.accessToken()).isEqualTo("access-token");
         assertThat(session.refreshToken()).isNotBlank();
-        verify(jwt).issueAccessToken(7L, "USER", "alice");
+        verify(jwt).issueAccessToken(7L, "USER", "alice", 1L);
 
         // The old hash is used for lookup, never the raw token.
         ArgumentCaptor<String> oldHash = ArgumentCaptor.forClass(String.class);
