@@ -59,4 +59,22 @@ class ServiceModeServiceTest {
         assertThat(status.mode()).isEqualTo("DEGRADED_AI");
         assertThat(status.summary()).contains("降级");
     }
+
+    @Test
+    void blockedSupplierDegradesAndAllBlockedBecomesZeroLlm() {
+        com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker breaker =
+                new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(1, 60_000);
+        breaker.success("anthropic");
+        breaker.failure("openai");
+        org.springframework.beans.factory.ObjectProvider<
+                com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker> provider =
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        org.mockito.Mockito.when(provider.getIfAvailable()).thenReturn(breaker);
+
+        ServiceModeService degraded = new ServiceModeService(providers(true), provider);
+        assertThat(degraded.current().mode()).isEqualTo("DEGRADED_AI");
+
+        breaker.failure("anthropic");
+        assertThat(degraded.current().mode()).isEqualTo("ZERO_LLM");
+    }
 }

@@ -1,7 +1,9 @@
 package com.virtualcompanion.runtime.servicemode;
 
+import com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker;
 import com.virtualcompanion.runtime.modelproviders.ModelProviderProperties;
 import java.util.Objects;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -34,22 +36,36 @@ public class ServiceModeService {
     public static final String MODE_DEGRADED_AI = "DEGRADED_AI";
 
     private final ModelProviderProperties properties;
+    private final ObjectProvider<SupplierCircuitBreaker> circuitBreaker;
 
     public ServiceModeService(ModelProviderProperties properties) {
+        this(properties, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ServiceModeService(
+            ModelProviderProperties properties,
+            ObjectProvider<SupplierCircuitBreaker> circuitBreaker) {
         this.properties = Objects.requireNonNull(properties, "properties must not be null");
+        this.circuitBreaker = circuitBreaker;
     }
 
     /** The current mode and its plain-language summary. */
     public Status current() {
-        if (properties.enabled()) {
-            if (properties.degraded()) {
-                // §12.10 D2 / FR-ENT-006: 降级不是用户选择，明说较低等级运行。
-                return new Status(MODE_DEGRADED_AI,
-                        "当前以较低服务等级运行（降级）：可以继续对话，质量可能低于正常水平");
-            }
-            return new Status(MODE_FULL_AI, "正常模型服务");
+        if (!properties.enabled()) {
+            return new Status(MODE_ZERO_LLM, "当前为无生成模型的受限服务：消息会保存为记录，可查看历史和记忆中心");
         }
-        return new Status(MODE_ZERO_LLM, "当前为无生成模型的受限服务：消息会保存为记录，可查看历史和记忆中心");
+        SupplierCircuitBreaker breaker =
+                circuitBreaker == null ? null : circuitBreaker.getIfAvailable();
+        if (breaker != null && breaker.allTrackedSuppliersBlocked()) {
+            return new Status(MODE_ZERO_LLM,
+                    "当前模型供应商均不可用：消息会保存为记录，可查看历史和记忆中心");
+        }
+        if (properties.degraded() || (breaker != null && breaker.anySupplierBlocked())) {
+            return new Status(MODE_DEGRADED_AI,
+                    "当前以较低服务等级运行（降级）：可以继续对话，质量可能低于正常水平");
+        }
+        return new Status(MODE_FULL_AI, "正常模型服务");
     }
 
     /** Wire status (OpenAPI {@code ServiceModeStatus}). */

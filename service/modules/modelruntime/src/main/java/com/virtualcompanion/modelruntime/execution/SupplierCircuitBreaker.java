@@ -134,6 +134,19 @@ public final class SupplierCircuitBreaker {
         return System.currentTimeMillis() - slot.openedAtMillis.get() < cooldownMillis;
     }
 
+    /** S0-10C: at least one tracked supplier is OPEN inside cooldown. */
+    public boolean anySupplierBlocked() {
+        return slots.keySet().stream().anyMatch(this::blocked);
+    }
+
+    /** S0-10C: every tracked supplier is OPEN inside cooldown. Empty is false. */
+    public boolean allTrackedSuppliersBlocked() {
+        if (slots.isEmpty()) {
+            return false;
+        }
+        return slots.keySet().stream().allMatch(this::blocked);
+    }
+
     private void notifyOpened(String supplier) {
         for (Consumer<String> listener : openedListeners) {
             try {
