@@ -114,6 +114,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
     private final com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker;
     private final com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity;
+    private final ObjectProvider<com.virtualcompanion.platform.persistence.JdbcProductQuotaBook>
+            productQuotaBookProvider;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -134,7 +136,9 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
             com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker,
-            com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity) {
+            com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity,
+            ObjectProvider<com.virtualcompanion.platform.persistence.JdbcProductQuotaBook>
+                    productQuotaBookProvider) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -159,6 +163,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.circuitBreaker = circuitBreaker;
         this.deploymentAffinity = Objects.requireNonNull(
                 deploymentAffinity, "deploymentAffinity must not be null");
+        this.productQuotaBookProvider = Objects.requireNonNull(
+                productQuotaBookProvider, "productQuotaBookProvider must not be null");
     }
 
     @Override
@@ -263,6 +269,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             } else if (prepared.externalMode() && retryableFailure(outcome)) {
                 // V29 RETRY-A: the adapter explicitly classified the failure as
                 // retryable; requeue with bounded backoff or dead-letter.
+                executor.asOwner(ownerUserId, () -> releaseProductQuota(outcome.decision()));
                 retrySegment(executor, claim, ownerUserId, generationId);
                 metricResult = "retried";
             } else {
@@ -277,6 +284,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                             "BUDGET_HALT_REACHED",
                             "month-to-date spend reached the configured cap; outbound refused");
                 }
+                executor.asOwner(ownerUserId, () -> releaseProductQuota(outcome.decision()));
                 failSegment(executor, claim, ownerUserId, generationId, fault);
                 metricResult = budgetHalted ? "blocked_budget" : "failed";
                 log.warn("generation {} terminated as FAILED_FINAL for owner {} (outcome={}, failure={})",
@@ -380,6 +388,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     // probe token is consumed (exactly one probe per cooldown).
                     if (circuitBreaker != null
                             && !circuitBreaker.allow(prepared.attempt().supplierName())) {
+                        releaseProductQuota(prepared.decision());
                         ref[0] = Prepared.refused(prepared.attempt().supplierName());
                         return;
                     }
@@ -425,6 +434,28 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private void persistRouteDecision(
             long ownerUserId, long generationId, PreparedInvocation prepared) {
         finalizeService.recordRouteDecision(ownerUserId, generationId, prepared.decision());
+    }
+
+    private void settleProductQuota(com.virtualcompanion.modelruntime.routing.RouteDecision decision) {
+        var reservation = decision.quotaReservation();
+        if (reservation == null) {
+            return;
+        }
+        var book = productQuotaBookProvider.getIfAvailable();
+        if (book != null) {
+            book.settle(reservation);
+        }
+    }
+
+    private void releaseProductQuota(com.virtualcompanion.modelruntime.routing.RouteDecision decision) {
+        var reservation = decision.quotaReservation();
+        if (reservation == null) {
+            return;
+        }
+        var book = productQuotaBookProvider.getIfAvailable();
+        if (book != null) {
+            book.release(reservation);
+        }
     }
 
     /** Audit-outcome segment: update the same intent row (never a second row). */
@@ -477,6 +508,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         if (!finalReview.allowed()) {
             String ruleId = finalReview.hardRuleViolations().get(0);
             executor.asOwner(ownerUserId, () -> {
+                settleProductQuota(outcome.decision());
                 finalizeService.assertActiveClaim(
                         ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
                 stateService.promote(ownerUserId, generationId, GenerationStateService.FINAL_REVIEW);
@@ -507,6 +539,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         }
 
         executor.asOwner(ownerUserId, () -> {
+            settleProductQuota(outcome.decision());
             // Explicit claim guard first (work_item_id + token + fence, never a GUC).
             finalizeService.assertActiveClaim(
                     ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());

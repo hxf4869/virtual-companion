@@ -29,9 +29,9 @@ import java.util.Objects;
  */
 public final class GenerationRecovery {
 
-    private final QuotaLedger quotaLedger;
+    private final QuotaBook quotaLedger;
 
-    public GenerationRecovery(QuotaLedger quotaLedger) {
+    public GenerationRecovery(QuotaBook quotaLedger) {
         this.quotaLedger = Objects.requireNonNull(quotaLedger, "quotaLedger must not be null");
     }
 

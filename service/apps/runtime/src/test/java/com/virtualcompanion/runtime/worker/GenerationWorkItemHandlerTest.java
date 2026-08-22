@@ -112,6 +112,10 @@ class GenerationWorkItemHandlerTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<AuthorizationSnapshotProvider> snapshotProvider = mock(ObjectProvider.class);
 
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<com.virtualcompanion.platform.persistence.JdbcProductQuotaBook>
+            quotaBookProvider = mock(ObjectProvider.class);
+
     /** METRICS-ALERT: in-memory registry so terminal counters are assertable. */
     private final io.micrometer.core.instrument.simple.SimpleMeterRegistry metricsRegistry =
             new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
@@ -152,7 +156,8 @@ class GenerationWorkItemHandlerTest {
                 new com.virtualcompanion.runtime.observability.VcMetrics(metricsRegistry),
                 com.virtualcompanion.runtime.observability.TestAlerts.noop(),
                 breaker,
-                deploymentAffinity);
+                deploymentAffinity,
+                quotaBookProvider);
     }
 
     private void handle(WorkItemClaim claim) {

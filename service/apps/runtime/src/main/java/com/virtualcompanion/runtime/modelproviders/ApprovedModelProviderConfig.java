@@ -9,6 +9,7 @@ import com.virtualcompanion.modelruntime.routing.DeterministicRouter;
 import com.virtualcompanion.modelruntime.routing.GenerationRecovery;
 import com.virtualcompanion.modelruntime.registry.AuthorityGatedProviderRegistry;
 import com.virtualcompanion.modelruntime.registry.ProviderRegistry;
+import com.virtualcompanion.modelruntime.routing.QuotaBook;
 import com.virtualcompanion.modelruntime.routing.QuotaLedger;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotStore;
 import com.virtualcompanion.platform.persistence.JdbcProviderAdmissionAuthority;
@@ -108,6 +109,24 @@ public class ApprovedModelProviderConfig {
         return new QuotaLedger(UNLIMITED_SYNTHETIC_ALLOWANCE);
     }
 
+    /**
+     * S0-11-C: when the auth datasource is wired, routing reserves against the
+     * durable product-quota book so remaining survives restart and concurrent
+     * prepares cannot oversell. Recovery stays on the process-local ledger
+     * because {@code LiveModelInvoker.execute} has no database access; the
+     * worker settles or releases the durable reservation in the next owner
+     * transaction.
+     */
+    @Bean
+    QuotaBook quotaBook(
+            org.springframework.beans.factory.ObjectProvider<
+                    com.virtualcompanion.platform.persistence.JdbcProductQuotaBook> durable,
+            QuotaLedger quotaLedger) {
+        com.virtualcompanion.platform.persistence.JdbcProductQuotaBook db =
+                durable.getIfAvailable();
+        return db != null ? db : quotaLedger;
+    }
+
     /** Practically-unbounded synthetic per-owner allowance (see {@link #quotaLedger()}). */
     private static final long UNLIMITED_SYNTHETIC_ALLOWANCE = Long.MAX_VALUE;
 
@@ -152,14 +171,14 @@ public class ApprovedModelProviderConfig {
     @Bean
     DeterministicRouter deterministicRouter(
             ApprovedModelProviders approvedModelProviders,
-            QuotaLedger quotaLedger,
+            QuotaBook quotaBook,
             com.virtualcompanion.modelruntime.routing.RouteHealthPolicy routeHealthPolicy) {
         // ROUTE-HARDEN (§12.12 / §12.8): health-aware selection — the
         // conversation's sticky deployment is preferred while healthy, OPEN
         // supplier circuits are skipped (failover at the turn boundary), and
         // a cooled-down OPEN supplier is only probed when nothing is healthy.
         return new DeterministicRouter(
-                approvedModelProviders.registry(), quotaLedger, routeHealthPolicy);
+                approvedModelProviders.registry(), quotaBook, routeHealthPolicy);
     }
 
     @Bean

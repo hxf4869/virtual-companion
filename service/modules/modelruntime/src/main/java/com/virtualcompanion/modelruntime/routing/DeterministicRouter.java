@@ -45,17 +45,17 @@ public final class DeterministicRouter {
     static final long EXTERNAL_ATTEMPT_QUOTA_UNITS = 1L;
 
     private final ProviderRegistry registry;
-    private final QuotaLedger quotaLedger;
+    private final QuotaBook quotaLedger;
     /** ROUTE-HARDEN: supplier-health + session-stickiness view; never null. */
     private final RouteHealthPolicy healthPolicy;
 
-    public DeterministicRouter(ProviderRegistry registry, QuotaLedger quotaLedger) {
+    public DeterministicRouter(ProviderRegistry registry, QuotaBook quotaLedger) {
         this(registry, quotaLedger, RouteHealthPolicy.none());
     }
 
     public DeterministicRouter(
             ProviderRegistry registry,
-            QuotaLedger quotaLedger,
+            QuotaBook quotaLedger,
             RouteHealthPolicy healthPolicy) {
         this.registry = Objects.requireNonNull(registry, "registry must not be null");
         this.quotaLedger = Objects.requireNonNull(quotaLedger, "quotaLedger must not be null");
@@ -94,7 +94,9 @@ public final class DeterministicRouter {
                     RouteAudit.ALL_CANDIDATES_CIRCUIT_BLOCKED);
         }
         Optional<QuotaReservation> reservation = quotaLedger.reserve(
-                request.entitlement().ownerUserId(), EXTERNAL_ATTEMPT_QUOTA_UNITS);
+                request.entitlement().ownerUserId(),
+                request.ownership().generationId(),
+                EXTERNAL_ATTEMPT_QUOTA_UNITS);
         if (reservation.isEmpty()) {
             return fallbackOrNone(
                     request, ownership, serviceClass, considered,

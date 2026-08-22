@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * reservation-level idempotency a repeated release could incorrectly refund
  * units still held by another active reservation and re-open over-reservation.
  */
-public final class QuotaLedger {
+public final class QuotaLedger implements QuotaBook {
 
     private final ConcurrentHashMap<String, Long> remainingByOwner = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> ceilingByOwner = new ConcurrentHashMap<>();

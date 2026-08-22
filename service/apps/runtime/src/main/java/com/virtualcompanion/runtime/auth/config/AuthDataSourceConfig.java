@@ -38,6 +38,7 @@ import com.virtualcompanion.platform.persistence.IncognitoPrefService;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvider;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotStore;
+import com.virtualcompanion.platform.persistence.JdbcProductQuotaBook;
 import com.virtualcompanion.platform.persistence.JdbcProviderAdmissionAuthority;
 import com.virtualcompanion.platform.persistence.JdbcProviderDeploymentRepository;
 import com.virtualcompanion.platform.persistence.MemoryImportService;
@@ -835,6 +836,18 @@ public class AuthDataSourceConfig {
         return new JdbcProviderAdmissionAuthority(jdbcProviderDeploymentRepository);
     }
 
+    /**
+     * S0-11-C: durable non-monetary product quota. Runtime SELECT only;
+     * reserve/settle/release go through SECURITY DEFINER functions.
+     */
+    @Bean
+    public JdbcProductQuotaBook jdbcProductQuotaBook(
+            JdbcTemplate authJdbcTemplate,
+            @Value("${virtual-companion.product-quota.default-allowance:1000000}")
+            long defaultAllowance) {
+        return new JdbcProductQuotaBook(authJdbcTemplate, defaultAllowance);
+    }
+
     private static Set<DataCategory> parseDataCategories(String csv) {
         if (csv == null || csv.isBlank()) {
             throw new IllegalArgumentException(
@@ -998,6 +1011,7 @@ public class AuthDataSourceConfig {
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
             com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker,
             com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity,
+            ObjectProvider<JdbcProductQuotaBook> productQuotaBookProvider,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -1020,7 +1034,8 @@ public class AuthDataSourceConfig {
                 // ROUTE-HARDEN: shared singletons from RouteHealthConfig —
                 // routing must observe exactly what this worker records.
                 circuitBreaker,
-                deploymentAffinity);
+                deploymentAffinity,
+                productQuotaBookProvider);
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,
