@@ -558,9 +558,14 @@ public class AuthDataSourceConfig {
     }
 
     /** EMBED-RECALL (V62): deterministic embedder — the local recall floor. */
+    /**
+     * S0-09: EmbeddingPort is always validated (dimension/finite/space).
+     * Real provider embeddings stay default-off.
+     */
     @Bean
     public com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort() {
-        return new com.virtualcompanion.runtime.memory.DeterministicEmbedder();
+        return new com.virtualcompanion.runtime.memory.ValidatingEmbeddingPort(
+                new com.virtualcompanion.runtime.memory.DeterministicEmbedder());
     }
 
     /** ENT-TRIAL (V61): simulated trial grants (FR-ENT-005). */
