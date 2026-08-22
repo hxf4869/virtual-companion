@@ -13,15 +13,16 @@
     </view>
 
     <view
-      v-if="auth.role !== 'ADMIN'"
+      v-if="!isOperator"
       class="admin-notice"
       data-testid="admin-not-allowed"
       role="status"
     >
-      <text>当前账号不是管理员，无法开通账户。</text>
+      <text>当前账号不是运营人员，无法查看工单。</text>
     </view>
 
     <template v-else>
+      <template v-if="isAdmin">
       <view class="admin-form">
         <input
           v-model="username"
@@ -487,6 +488,63 @@
           <text>{{ `已分配：${scResult.username} → ${scResult.serviceClass}` }}</text>
         </view>
       </view>
+      </template>
+
+      <!-- S0-14-D: redacted ops-case queue. Never renders body/providerRef/internal notes. -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">工单（脱敏）</text>
+          <button
+            data-testid="refresh-cases"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshCases"
+          >
+            刷新
+          </button>
+        </view>
+        <view v-if="casesFailed" class="admin-error" data-testid="cases-failed" role="alert">
+          <text>工单加载失败，请重试。</text>
+        </view>
+        <view
+          v-else-if="cases.length === 0"
+          class="admin-empty"
+          data-testid="cases-empty"
+        >
+          <text>暂无工单。</text>
+        </view>
+        <view
+          v-for="row in cases"
+          :key="row.id"
+          class="audit-row"
+          data-testid="ops-case-row"
+        >
+          <text class="audit-cell">{{ row.kind }}</text>
+          <text class="audit-cell">{{ row.status }}</text>
+          <text class="audit-cell">{{ row.severity }}</text>
+          <text class="audit-cell">账号 {{ row.sourceOwnerId }}</text>
+          <text class="audit-cell">{{ row.publicNote || "无公开说明" }}</text>
+          <text class="audit-cell">{{ row.openedAt }}</text>
+          <button
+            v-if="canMutateCases && row.status !== 'RESOLVED'"
+            data-testid="ops-case-ack"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onCaseAction(row.id, 'ACK')"
+          >
+            确认
+          </button>
+          <button
+            v-if="canMutateCases && row.status !== 'RESOLVED'"
+            data-testid="ops-case-resolve"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onCaseAction(row.id, 'RESOLVE')"
+          >
+            结案
+          </button>
+        </view>
+      </view>
     </template>
   </view>
 </template>
@@ -517,7 +575,9 @@ import {
   providerRegistry,
   quotaReconciliation,
   listAuditEvents,
+  listOpsCases,
   listSafetyEvents,
+  transitionOpsCase,
   listServiceClassAssignments,
   usageSummary,
   type AccountListItem,
@@ -534,6 +594,7 @@ import {
   type ServiceClassAssignmentItem,
   type UsageSummaryItem,
 } from "@/api/auth";
+import type { PublicOpsCase } from "@/domain/ops-case-redact";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 
@@ -591,6 +652,13 @@ export default defineComponent({
     const scAccountId = ref("");
     const scClass = ref<"ECONOMY" | "PREMIUM">("ECONOMY");
     const scResult = ref<{ username: string; serviceClass: string } | null>(null);
+    const cases = ref<PublicOpsCase[]>([]);
+    const casesFailed = ref(false);
+    const isAdmin = computed(() => auth.role === "ADMIN");
+    const isOperator = computed(() =>
+      ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER"].includes(auth.role));
+    const canMutateCases = computed(() =>
+      ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR"].includes(auth.role));
 
     // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
     const transport = createAuthenticatedTransport({
@@ -604,10 +672,11 @@ export default defineComponent({
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
       }
-      // ADMIN-ACCTS: the registry is loaded once the session state is known.
-      await refreshAccounts();
-      // ADMIN-OPS: usage + audit load only for admins.
-      if (auth.role === "ADMIN") {
+      if (isOperator.value) {
+        await refreshCases();
+      }
+      if (isAdmin.value) {
+        await refreshAccounts();
         await refreshUsage();
         await refreshAudit();
         await refreshSafety();
@@ -617,6 +686,41 @@ export default defineComponent({
         await refreshServiceClasses();
       }
     });
+
+    async function refreshCases(): Promise<void> {
+      casesFailed.value = false;
+      try {
+        cases.value = await listOpsCases(transport);
+      } catch {
+        casesFailed.value = true;
+      }
+    }
+
+    async function onRefreshCases(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshCases();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function onCaseAction(caseId: string, action: "ACK" | "RESOLVE"): Promise<void> {
+      busy.value = true;
+      try {
+        await transitionOpsCase(
+          transport,
+          caseId,
+          action,
+          action === "RESOLVE" ? "handled" : undefined,
+        );
+        await refreshCases();
+      } catch {
+        casesFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
 
     /** ADMIN-OPS: reload the usage summary (non-fatal failure keeps rows). */
     async function refreshUsage(): Promise<void> {
@@ -974,6 +1078,13 @@ export default defineComponent({
       onLoadMoreAudit,
       onRefreshServiceClasses,
       onAssignServiceClass,
+      cases,
+      casesFailed,
+      isAdmin,
+      isOperator,
+      canMutateCases,
+      onRefreshCases,
+      onCaseAction,
       goTo,
     };
   },

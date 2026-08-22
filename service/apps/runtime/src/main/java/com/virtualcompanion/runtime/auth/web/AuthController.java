@@ -454,6 +454,37 @@ public class AuthController {
     }
 
     /** SAFETY-QUEUE (V59): ADMIN-only keyset page of the safety queue, newest first. */
+    @GetMapping("/admin/ops-cases")
+    public List<java.util.Map<String, Object>> listOpsCases(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @org.springframework.web.bind.annotation.RequestParam(name = "after", required = false)
+                    String after,
+            @org.springframework.web.bind.annotation.RequestParam(name = "limit", required = false)
+                    Integer limit) {
+        if (opsCase == null || principal == null) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+        Long afterId = null;
+        if (after != null && !after.isBlank()) {
+            try {
+                afterId = Long.parseLong(after);
+            } catch (NumberFormatException bad) {
+                throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                        "after is invalid");
+            }
+        }
+        int page = limit == null ? 50 : Math.max(1, Math.min(limit, 200));
+        try {
+            return opsCase.list(principal.accountId(), afterId, page).stream()
+                    .map(AuthController::toPublicOpsCase)
+                    .toList();
+        } catch (org.springframework.dao.DataAccessException denied) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+    }
+
     @PostMapping("/admin/ops-cases/{caseId}/actions")
     public java.util.Map<String, String> transitionOpsCase(
             @AuthenticationPrincipal JwtTokenService.Principal principal,
@@ -489,6 +520,28 @@ public class AuthController {
             throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
                     "This action is not available");
         }
+    }
+
+    /** S0-14-D: never include internal notes, providerRef, or chat body. */
+    static java.util.Map<String, Object> toPublicOpsCase(
+            com.virtualcompanion.platform.persistence.OpsCase.Snapshot row) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("id", Long.toString(row.id()));
+        out.put("kind", row.kind());
+        out.put("sourceOwnerId", Long.toString(row.sourceOwnerUserId()));
+        out.put("sourceId", Long.toString(row.sourceId()));
+        out.put("status", row.status());
+        out.put("severity", row.severity());
+        if (row.slaHours() != null) {
+            out.put("slaHours", row.slaHours());
+        }
+        if (row.assigneeAccountId() != null) {
+            out.put("assigneeAccountId", Long.toString(row.assigneeAccountId()));
+        }
+        out.put("dispositionReason", row.dispositionReason());
+        out.put("publicNote", row.publicNote());
+        out.put("openedAt", row.openedAt().toString());
+        return out;
     }
 
     @GetMapping("/admin/safety-events")

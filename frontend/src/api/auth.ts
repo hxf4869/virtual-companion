@@ -13,6 +13,8 @@
 // with credentials:"include" (see transport.ts). The response body no longer
 // contains a refreshToken, so AuthTokens has no such field.
 
+import { redactOpsCase, type PublicOpsCase } from "@/domain/ops-case-redact";
+
 export interface AuthApiResponse {
   ok: boolean;
   status: number;
@@ -484,6 +486,45 @@ function asSafetyEvent(json: unknown): SafetyEventItem | null {
  * all owners (ADMIN only, read-only — triage stays human). A non-OK response
  * throws; transport failures propagate.
  */
+export async function listOpsCases(
+  t: AuthTransport,
+  after?: string,
+  limit?: number,
+): Promise<PublicOpsCase[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/ops-cases${keysetQuery(after, limit)}`);
+  if (!r.ok || !Array.isArray(r.json)) {
+    throw new AuthHttpError(r.status);
+  }
+  const out: PublicOpsCase[] = [];
+  for (const item of r.json) {
+    const parsed = redactOpsCase(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+export async function transitionOpsCase(
+  t: AuthTransport,
+  caseId: string,
+  action: "ACK" | "ASSIGN" | "ESCALATE" | "RESOLVE",
+  dispositionReason?: string,
+): Promise<{ id: string; status: string }> {
+  const r = await t.request("POST", `${AUTH_BASE}/admin/ops-cases/${encodeURIComponent(caseId)}/actions`, {
+    action,
+    dispositionReason,
+  });
+  if (!r.ok || !r.json || typeof r.json !== "object") {
+    throw new AuthHttpError(r.status);
+  }
+  const o = r.json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const status = asString(o, "status");
+  if (!id || !status) {
+    throw new AuthHttpError(r.status);
+  }
+  return { id, status };
+}
+
 export async function listSafetyEvents(
   t: AuthTransport,
   after?: string,

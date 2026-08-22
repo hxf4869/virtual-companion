@@ -765,6 +765,7 @@ export interface VirtualCompanionApiClient {
   recordSurvey(): Promise<SurveyAccepted>
   listMySurveys(): Promise<void>
   listSafetyEvents(): Promise<void>
+  listOpsCases(): Promise<void>
   transitionOpsCase(): Promise<OpsCase>
   listBetaReports(): Promise<void>
   listBetaAgeAppeals(): Promise<void>

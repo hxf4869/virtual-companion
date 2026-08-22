@@ -84,6 +84,7 @@
     "recordSurvey",
     "listMySurveys",
     "listSafetyEvents",
+    "listOpsCases",
     "transitionOpsCase",
     "listBetaReports",
     "listBetaAgeAppeals",
@@ -97,6 +98,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "0c472693076e974b0d681d80e230da55c8ad878ab7aac9477862f81ca1e96775"
+    "sha256": "2f6d9ae8b744f1fd6b15fcb21ffea9e3682ae30774c329ed5be1e39646e5179f"
   }
 }

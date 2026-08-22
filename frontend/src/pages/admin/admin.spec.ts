@@ -306,6 +306,50 @@ describe("admin account page (ADMIN-UI)", () => {
     expect(wrapper.text()).not.toMatch(/处置|标记已处理|关闭工单/);
     wrapper.unmount();
   });
+
+  it("S0-14-D: renders redacted ops cases and never shows body/providerRef/internal notes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("/api/v1/auth/admin/ops-cases") && (init?.method ?? "GET") === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              {
+                id: "3",
+                kind: "REPORT",
+                sourceOwnerId: "7",
+                sourceId: "9",
+                status: "OPEN",
+                severity: "P2",
+                publicNote: "公开说明",
+                dispositionReason: "",
+                openedAt: "2026-08-23T00:00:00Z",
+                internalNote: "secret-operator-memo",
+                providerRef: "alpha-simulated",
+                body: "用户聊天原文",
+              },
+            ],
+          };
+        }
+        return { ok: true, status: 200, json: async () => [] };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+    const rows = wrapper.findAll('[data-testid="ops-case-row"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].text()).toContain("REPORT");
+    expect(rows[0].text()).toContain("公开说明");
+    expect(rows[0].text()).not.toContain("secret-operator-memo");
+    expect(rows[0].text()).not.toContain("alpha-simulated");
+    expect(rows[0].text()).not.toContain("用户聊天原文");
+    expect(wrapper.find('[data-testid="ops-case-ack"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("ADMIN-BETA: renders the four read-only console queues on mount", async () => {
     vi.stubGlobal(
       "fetch",

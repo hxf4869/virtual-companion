@@ -63,4 +63,16 @@ class OpsCaseTest {
                 eq(OpsCase.TRANSITION_SQL), any(RowMapper.class),
                 eq(1L), eq(3L), eq("ACK"), eq(null), eq(null));
     }
+
+    @Test
+    void listPinsRedactedSql() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        Instant opened = Instant.parse("2026-08-23T00:00:00Z");
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(1L), eq(null), eq(50)))
+                .thenReturn(List.of(new OpsCase.Snapshot(
+                        3L, "REPORT", 7L, 9L, "OPEN", "P2",
+                        null, null, "", "", opened)));
+        assertEquals(1, new OpsCase(jdbc).list(1L, null, 50).size());
+        verify(jdbc).query(eq(OpsCase.LIST_SQL), any(RowMapper.class), eq(1L), eq(null), eq(50));
+    }
 }

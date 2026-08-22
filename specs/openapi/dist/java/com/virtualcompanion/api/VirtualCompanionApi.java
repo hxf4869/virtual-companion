@@ -251,6 +251,9 @@ public interface VirtualCompanionApi {
     /** ADMIN-only keyset page of the safety queue (SAFETY-QUEUE, §20.5). */
     Void listSafetyEvents();
 
+    /** Operator keyset page of redacted ops cases (S0-14-D). */
+    Void listOpsCases();
+
     /** ACK/ASSIGN/ESCALATE/RESOLVE an ops case (S0-14-C). */
     OpsCase transitionOpsCase();
 

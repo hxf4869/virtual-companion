@@ -2917,6 +2917,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/ops-cases:
+    get:
+      operationId: listOpsCases
+      summary: Operator keyset page of redacted ops cases (S0-14-D)
+      description: >-
+        Newest-first list of ops cases the caller may see. Response never
+        includes chat body, providerRef, or internal notes.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Redacted ops-case rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OpsCase'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller is not an operator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/admin/ops-cases/{caseId}/actions:
     post:
       operationId: transitionOpsCase
