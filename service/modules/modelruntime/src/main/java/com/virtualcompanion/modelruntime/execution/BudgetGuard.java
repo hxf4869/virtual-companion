@@ -8,21 +8,41 @@ package com.virtualcompanion.modelruntime.execution;
  */
 public final class BudgetGuard {
 
-    /** Reads the month-to-date settled cost in USD (deployment-persisted). */
+    /** Reads the month-to-date settled+held cost in USD (deployment-persisted). */
     public interface MonthSpendReader {
         double monthToDateUsd();
     }
 
+    /**
+     * S0-29: a current versioned unit price must exist before an outbound is
+     * allowed under a positive cap. Unknown price fails closed.
+     */
+    public interface PricePresence {
+        boolean currentPriceKnown();
+    }
+
     private final MonthSpendReader reader;
     private final double capUsd;
+    private final PricePresence prices;
 
     public BudgetGuard(MonthSpendReader reader, double capUsd) {
+        this(reader, capUsd, () -> true);
+    }
+
+    public BudgetGuard(MonthSpendReader reader, double capUsd, PricePresence prices) {
         this.reader = java.util.Objects.requireNonNull(reader, "reader must not be null");
         this.capUsd = capUsd;
+        this.prices = java.util.Objects.requireNonNull(prices, "prices must not be null");
     }
 
     public boolean exceeded() {
-        return capUsd > 0 && reader.monthToDateUsd() >= capUsd;
+        if (capUsd <= 0) {
+            return false;
+        }
+        if (!prices.currentPriceKnown()) {
+            return true;
+        }
+        return reader.monthToDateUsd() >= capUsd;
     }
 
     public double capUsd() {

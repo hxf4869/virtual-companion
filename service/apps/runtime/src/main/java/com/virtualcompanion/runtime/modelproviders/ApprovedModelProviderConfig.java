@@ -205,15 +205,17 @@ public class ApprovedModelProviderConfig {
             org.springframework.beans.factory.ObjectProvider<org.springframework.jdbc.core.JdbcTemplate> authJdbcTemplate,
             @org.springframework.beans.factory.annotation.Value("${virtual-companion.model-providers.budget-monthly-usd:0}")
             double budgetMonthlyUsd) {
-        // BUDGET-HALT (§22.18): month-to-date settled cost from generation_usage;
-        // a non-positive cap disables the guard (Technical Alpha default).
+        // S0-29 / BUDGET-HALT: month-to-date settled+reserved cost; a
+        // non-positive cap disables the guard (Technical Alpha default).
+        // Unknown/missing unit prices fail closed while the cap is on.
+        org.springframework.jdbc.core.JdbcTemplate jdbc = authJdbcTemplate.getIfAvailable();
         com.virtualcompanion.modelruntime.execution.BudgetGuard.MonthSpendReader reader =
-                () -> java.util.Optional.ofNullable(authJdbcTemplate.getIfAvailable())
-                        .map(jdbc -> jdbc.queryForObject(
-                                "SELECT COALESCE(sum(actual_cost), 0) FROM vc.generation_usage "
-                                        + "WHERE created_at >= date_trunc('month', now())",
-                                Double.class))
-                        .orElse(0.0);
+                () -> jdbc == null ? 0.0
+                        : java.util.Optional.ofNullable(jdbc.queryForObject(
+                                "SELECT vc.month_cost_spend()", Double.class)).orElse(0.0);
+        com.virtualcompanion.modelruntime.execution.BudgetGuard.PricePresence prices =
+                () -> jdbc == null || Boolean.TRUE.equals(jdbc.queryForObject(
+                        "SELECT vc.model_unit_price_present()", Boolean.class));
         return new LiveModelInvoker(
                 deterministicRouter,
                 executionAuthorizationGuard,
@@ -227,6 +229,7 @@ public class ApprovedModelProviderConfig {
                 generationRecovery,
                 approvedModelProviders.supplierNames(),
                 activeInvocationRegistry,
-                new com.virtualcompanion.modelruntime.execution.BudgetGuard(reader, budgetMonthlyUsd));
+                new com.virtualcompanion.modelruntime.execution.BudgetGuard(
+                        reader, budgetMonthlyUsd, prices));
     }
 }

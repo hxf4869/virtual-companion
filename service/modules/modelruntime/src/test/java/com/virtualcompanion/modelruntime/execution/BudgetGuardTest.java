@@ -26,4 +26,16 @@ class BudgetGuardTest {
         BudgetGuard off = new BudgetGuard(() -> 1_000_000.0, 0.0);
         assertFalse(off.exceeded());
     }
+
+    @Test
+    void unknownPriceFailsClosedWhenCapIsPositive() {
+        BudgetGuard g = new BudgetGuard(() -> 0.0, 10.0, () -> false);
+        assertTrue(g.exceeded());
+    }
+
+    @Test
+    void unknownPriceDoesNotTripWhenCapDisabled() {
+        BudgetGuard g = new BudgetGuard(() -> 0.0, 0.0, () -> false);
+        assertFalse(g.exceeded());
+    }
 }
