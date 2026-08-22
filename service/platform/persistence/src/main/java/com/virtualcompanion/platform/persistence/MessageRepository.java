@@ -28,7 +28,7 @@ public class MessageRepository {
     /**
      * CRYPTO-REST (§17.4): when a cipher is wired, stored message bodies
      * decrypt on the model-facing read path ({@link #listByConversation}) —
-     * the assembler must never forward encrypted {@code enc1:…} blobs to a
+     * the assembler must never forward encrypted {@code enc2:…} blobs to a
      * live provider. The null cipher keeps legacy call sites (and unit tests)
      * on the raw passthrough.
      */

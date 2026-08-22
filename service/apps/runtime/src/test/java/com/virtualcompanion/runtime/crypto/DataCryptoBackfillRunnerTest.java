@@ -17,9 +17,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
 /**
- * CRYPTO-REST backfill: pages plaintext rows through the V71 helpers,
- * encrypts each body (the UPDATE argument carries the enc1: form), and stops
- * when a short page ends the scan.
+ * S0-17-B checkpoint backfill: pages stale rows through the V78 helpers,
+ * re-encrypts each body under the current enc2 write prefix, and stops when
+ * a short page ends the scan.
  */
 class DataCryptoBackfillRunnerTest {
 
@@ -27,12 +27,13 @@ class DataCryptoBackfillRunnerTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void encryptsLegacyBatchesAndStopsOnShortPage() throws Exception {
+    void reencryptsStaleBatchesAndStopsOnShortPage() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         AtomicInteger page = new AtomicInteger();
+        RestFieldCipher cipher = new RestFieldCipher(KEY);
 
-        when(jdbc.query(contains("backfill_plain_message_batch"),
-                any(RowMapper.class), any(), any())).thenAnswer(inv -> {
+        when(jdbc.query(contains("backfill_stale_cipher_message_batch"),
+                any(RowMapper.class), any(), any(), eq(cipher.currentPrefix()))).thenAnswer(inv -> {
                     int p = page.getAndIncrement();
                     if (p > 0) {
                         return List.of();
@@ -45,18 +46,19 @@ class DataCryptoBackfillRunnerTest {
                     when(rs.getString("out_content")).thenReturn("legacy body");
                     return List.of(mapper.mapRow(rs, 0));
                 });
-        when(jdbc.queryForObject(contains("backfill_encrypt_message_content"),
-                eq(Boolean.class), any(), any(), any())).thenReturn(true);
+        when(jdbc.queryForObject(contains("backfill_replace_message_cipher"),
+                eq(Boolean.class), any(), any(), any(), eq(cipher.currentPrefix())))
+                .thenReturn(true);
 
-        DataCryptoBackfillRunner runner =
-                new DataCryptoBackfillRunner(jdbc, new RestFieldCipher(KEY));
+        DataCryptoBackfillRunner runner = new DataCryptoBackfillRunner(jdbc, cipher);
         runner.run(null);
 
         ArgumentCaptor<String> sealed = ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(jdbc).queryForObject(
-                contains("backfill_encrypt_message_content"), eq(Boolean.class),
-                eq(7L), eq(42L), sealed.capture());
-        assertThat(sealed.getValue()).startsWith("enc1:");
+                contains("backfill_replace_message_cipher"), eq(Boolean.class),
+                eq(7L), eq(42L), sealed.capture(), eq(cipher.currentPrefix()));
+        assertThat(sealed.getValue()).startsWith("enc2:default:1:");
+        assertThat(cipher.decrypt(sealed.getValue())).isEqualTo("legacy body");
         assertThat(page.get()).isEqualTo(1);
     }
 }

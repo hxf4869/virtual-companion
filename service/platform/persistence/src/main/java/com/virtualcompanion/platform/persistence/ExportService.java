@@ -53,7 +53,7 @@ public class ExportService {
 
     /**
      * CRYPTO-REST (§17.4): when a cipher is wired, the sealed export document
-     * encrypts at rest ({@code enc1:…}) on complete and decrypts on the
+     * encrypts at rest ({@code enc2:…}) on complete and decrypts on the
      * one-time consume — the database never sees the export body in
      * plaintext. The null cipher keeps unit tests on raw passthrough.
      */

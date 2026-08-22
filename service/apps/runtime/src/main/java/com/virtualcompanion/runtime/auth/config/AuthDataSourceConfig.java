@@ -404,8 +404,24 @@ public class AuthDataSourceConfig {
     @Bean
     public com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher(
             @org.springframework.beans.factory.annotation.Value(
-                    "${virtual-companion.crypto.rest-key}") String restKey) {
-        return new com.virtualcompanion.platform.persistence.RestFieldCipher(restKey);
+                    "${virtual-companion.crypto.rest-key}") String restKey,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${virtual-companion.crypto.rest-key-id:default}") String restKeyId,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${virtual-companion.crypto.rest-key-version:1}") int restKeyVersion,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${virtual-companion.crypto.previous-rest-key:}") String previousRestKey,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${virtual-companion.crypto.previous-rest-key-id:}") String previousRestKeyId,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${virtual-companion.crypto.previous-rest-key-version:0}") int previousRestKeyVersion) {
+        return new com.virtualcompanion.platform.persistence.RestFieldCipher(
+                restKeyId,
+                restKeyVersion,
+                restKey,
+                previousRestKeyId,
+                previousRestKeyVersion,
+                previousRestKey);
     }
 
     @Bean

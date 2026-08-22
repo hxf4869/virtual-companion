@@ -84,6 +84,13 @@ virtual-companion:
   # default is development-only and rejected in the production profile.
   crypto:
     rest-key: ${VC_CRYPTO_REST_KEY:ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=}
+    # S0-17-B: generic key id/version. Single-write always uses this slot;
+    # dual-read also accepts enc1: and the optional previous slot.
+    rest-key-id: ${VC_CRYPTO_REST_KEY_ID:default}
+    rest-key-version: ${VC_CRYPTO_REST_KEY_VERSION:1}
+    previous-rest-key: ${VC_CRYPTO_PREVIOUS_REST_KEY:}
+    previous-rest-key-id: ${VC_CRYPTO_PREVIOUS_REST_KEY_ID:}
+    previous-rest-key-version: ${VC_CRYPTO_PREVIOUS_REST_KEY_VERSION:0}
   auth:
     # Master switch for the self-hosted identity component. Off by default so a
     # plain runtime context (tests, baseline) needs no secret and no database.

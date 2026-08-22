@@ -130,7 +130,7 @@ class ExportServiceTest {
         assertTrue(encrypted.complete(1L, 9L, "{\"ok\":true}", NOW));
 
         // At rest: opaque ciphertext, never the export document itself.
-        assertTrue(stored.get().startsWith("enc1:"));
+        assertTrue(stored.get().startsWith("enc2:"));
         assertFalse(stored.get().contains("{\"ok\":true}"));
 
         when(jdbc.query(
