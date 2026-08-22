@@ -163,6 +163,49 @@ describe("data page (FR-DATA-001)", () => {
     wrapper.unmount();
   });
 
+  it("S0-21: a memory domain failure does not render as empty memory data", async () => {
+    stubFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/relationships/7/memories") {
+          return { ok: false, status: 500, json: async () => null };
+        }
+        if (url === "/api/v1/relationships") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => [
+              { relationshipId: 7, personaRef: "gentle-listener", active: true, ...DEFAULT_COMPANION_PREFS, companionName: "小安" },
+            ],
+          };
+        }
+        if (url === "/api/v1/conversations") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url === "/api/v1/consents") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url === "/api/v1/service-mode") {
+          return { ok: true, status: 200, json: async () => ({ mode: "ZERO_LLM", summary: "受限" }) };
+        }
+        if (url === "/api/v1/relationships/7/reminders") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        if (url === "/api/v1/reports") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mount(DataPage, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="data-partial"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="data-memories"]').text()).not.toContain("没有记忆记录");
+    wrapper.unmount();
+  });
+
   it("shows the load failure without inventing rows", async () => {
     stubFetch(true);
     const wrapper = mount(DataPage, { attachTo: document.body });

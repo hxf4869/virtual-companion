@@ -9,6 +9,14 @@ import { listConsents, type ConsentRecord } from "@/api/consent";
 import { listMemories, type Memory } from "@/api/memory";
 import { listRelationships, type Relationship } from "@/api/relationship";
 import { listReminders, type Reminder } from "@/api/reminder";
+import {
+  IDLE_ASYNC,
+  beginAsync,
+  markFailure,
+  markPartial,
+  markSuccess,
+  type AsyncState,
+} from "@/domain/async-state";
 
 export interface DataTransport {
   request(method: string, path: string, body?: unknown): Promise<{
@@ -29,10 +37,14 @@ export const useDataStore = defineStore("h5-data", () => {
   const serviceMode = ref<ServiceModeStatus | null>(null);
   const loadFailed = ref(false);
   const busy = ref(false);
+  const asyncState = ref<AsyncState>({ ...IDLE_ASYNC });
 
   async function load(transport: DataTransport): Promise<void> {
     loadFailed.value = false;
     busy.value = true;
+    asyncState.value = beginAsync(asyncState.value);
+    const previousMemories = memories.value;
+    const previousReminders = reminders.value;
     try {
       // Ownership data fails the page as a whole; the service mode is
       // advisory (non-fatal by contract) and per-relationship detail pages
@@ -46,19 +58,46 @@ export const useDataStore = defineStore("h5-data", () => {
       conversations.value = convs;
       consents.value = consentRows;
       serviceMode.value = await getServiceMode(transport).catch(() => null);
+      const failedDomains: string[] = [];
       const memoryPages = await Promise.all(
-        rels.map((rel) => listMemories(transport, rel.relationshipId).catch(() => [])),
+        rels.map(async (rel) => {
+          try {
+            const page = await listMemories(transport, rel.relationshipId);
+            return page.map((row) => ({ ...row, relationshipId: rel.relationshipId }));
+          } catch {
+            failedDomains.push("memory");
+            return previousMemories.filter((row) => row.relationshipId === rel.relationshipId);
+          }
+        }),
       );
-      memories.value = memoryPages.flatMap((page, index) => {
-        const relationshipId = rels[index]?.relationshipId ?? "";
-        return page.map((row) => ({ ...row, relationshipId }));
-      });
+      memories.value = memoryPages.flat();
       const reminderPages = await Promise.all(
-        rels.map((rel) => listReminders(transport, rel.relationshipId).catch(() => [])),
+        rels.map(async (rel) => {
+          try {
+            return await listReminders(transport, rel.relationshipId);
+          } catch {
+            failedDomains.push("reminder");
+            return previousReminders.filter((row) => row.relationshipId === rel.relationshipId);
+          }
+        }),
       );
       reminders.value = reminderPages.flat();
+      const uniqueFailed = [...new Set(failedDomains)];
+      if (uniqueFailed.length > 0) {
+        asyncState.value = {
+          ...markPartial(uniqueFailed),
+          stale: previousMemories.length > 0 || previousReminders.length > 0,
+        };
+      } else {
+        asyncState.value = markSuccess();
+      }
     } catch {
       loadFailed.value = true;
+      asyncState.value = markFailure(
+        asyncState.value,
+        "overview",
+        relationships.value.length > 0,
+      );
     } finally {
       busy.value = false;
     }
@@ -73,6 +112,7 @@ export const useDataStore = defineStore("h5-data", () => {
     serviceMode.value = null;
     loadFailed.value = false;
     busy.value = false;
+    asyncState.value = { ...IDLE_ASYNC };
   }
 
   return {
@@ -83,6 +123,7 @@ export const useDataStore = defineStore("h5-data", () => {
     consents,
     serviceMode,
     loadFailed,
+    asyncState,
     busy,
     load,
     reset,

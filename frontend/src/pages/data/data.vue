@@ -21,9 +21,20 @@ Uses existing list APIs; report/appeal status reads the report intake list
     </view>
 
     <view v-if="store.loadFailed" class="error" data-testid="data-load-failed" role="alert">
-      <text>数据加载失败，请重试。</text>
-      <text v-if="requestIdCopy">{{ requestIdCopy }}</text>
-      <button data-testid="data-retry" class="nav-index" :disabled="store.busy" @click="onRetry">重试</button>
+      <ErrorNotice message="数据加载失败，请重试。" :request-id="store.asyncState.requestId ?? undefined" :stale="store.asyncState.stale" />
+      <RetryButton data-testid="data-retry" :disabled="store.busy" @retry="onRetry" />
+    </view>
+    <view
+      v-else-if="store.asyncState.status === 'partial'"
+      class="error"
+      data-testid="data-partial"
+    >
+      <ErrorNotice
+        message="部分数据读取失败，未当作空结果。"
+        :request-id="store.asyncState.requestId ?? undefined"
+        :stale="store.asyncState.stale"
+      />
+      <RetryButton :disabled="store.busy" @retry="onRetry" />
     </view>
 
     <template v-if="!store.loadFailed">
@@ -74,7 +85,10 @@ Uses existing list APIs; report/appeal status reads the report intake list
         >
           {{ item.summary }}（{{ item.status }}）
         </button>
-        <text v-if="store.memories.length === 0" class="empty">没有记忆记录。</text>
+        <EmptyState
+          v-if="store.memories.length === 0 && !store.asyncState.failedDomains.includes('memory')"
+          message="没有记忆记录。"
+        />
       </view>
 
       <view class="section" data-testid="data-reminders">
@@ -88,7 +102,10 @@ Uses existing list APIs; report/appeal status reads the report intake list
         >
           {{ item.text }}
         </button>
-        <text v-if="store.reminders.length === 0" class="empty">没有提醒记录。</text>
+        <EmptyState
+          v-if="store.reminders.length === 0 && !store.asyncState.failedDomains.includes('reminder')"
+          message="没有提醒记录。"
+        />
       </view>
 
       <view class="section" data-testid="data-consents">
@@ -137,6 +154,9 @@ Uses existing list APIs; report/appeal status reads the report intake list
 import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import EmptyState from "@/components/EmptyState.vue";
+import ErrorNotice from "@/components/ErrorNotice.vue";
+import RetryButton from "@/components/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
@@ -145,6 +165,7 @@ import { REPORT_REASON_LABELS, useReportStore } from "@/stores/report";
 
 export default {
   name: "DataPage",
+  components: { EmptyState, ErrorNotice, RetryButton },
   setup() {
     const auth = useAuthStore();
     const store = useDataStore();

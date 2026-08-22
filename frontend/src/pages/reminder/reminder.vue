@@ -73,7 +73,12 @@ which only changes state on a confirmed API result. -->
       </view>
 
       <view v-if="store.loadFailed" class="error" data-testid="reminder-load-failed" role="alert">
-        <text>提醒列表加载失败，请重试。</text>
+        <ErrorNotice
+          message="提醒列表加载失败，请重试。"
+          :request-id="reminderRequestId ?? undefined"
+          :stale="store.reminders.length > 0"
+        />
+        <RetryButton :disabled="store.busy" @retry="retryReminders" />
       </view>
 
       <view
@@ -121,15 +126,18 @@ import { computed, onMounted, ref } from "vue";
 
 import type { Reminder, ReminderRecurrence } from "@/api/reminder";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ErrorNotice from "@/components/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import RetryButton from "@/components/RetryButton.vue";
 import { readContextFromLocation, sanitizeRelationshipId } from "@/domain/context-href";
+import { lastRequestId } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
 import { useRelationshipStore } from "@/stores/relationship";
 import { useReminderStore } from "@/stores/reminder";
 
 export default {
   name: "ReminderPage",
-  components: { RelationshipSelector },
+  components: { RelationshipSelector, ErrorNotice, RetryButton },
   setup() {
     const auth = useAuthStore();
     const relStore = useRelationshipStore();
@@ -168,8 +176,17 @@ export default {
       }
     });
 
+    const reminderRequestId = computed(() => lastRequestId());
+
     async function onPickRelationship(relationshipId: string): Promise<void> {
       await store.load(transport, relationshipId);
+    }
+
+    async function retryReminders(): Promise<void> {
+      const id = store.relationshipId || relStore.currentRelationshipId;
+      if (id) {
+        await onPickRelationship(id);
+      }
     }
 
     async function onCreate(): Promise<void> {
@@ -235,6 +252,8 @@ export default {
       remindAtLocal,
       recurrence,
       canCreate,
+      reminderRequestId,
+      retryReminders,
       onPickRelationship,
       onCreate,
       onDismiss,

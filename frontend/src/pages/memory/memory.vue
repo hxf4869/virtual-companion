@@ -103,11 +103,17 @@ states carry alert/live a11y semantics. -->
       <text>已填入关系，请点击刷新记忆。</text>
     </view>
 
-    <view
+    <ErrorNotice
       v-if="memory.error"
-      class="error"
-      role="alert"
-    >{{ errorText }}</view>
+      :message="errorText"
+      :request-id="memoryRequestId ?? undefined"
+      :stale="memory.canonicalCount > 0 || memory.pendingCount > 0"
+    />
+    <RetryButton
+      v-if="memory.error === 'load-failed'"
+      :disabled="busy"
+      @retry="reload"
+    />
 
     <!-- MEM-AUTO-SAVE (§7.4): the low-sensitivity auto-save switch. Only the
          fixed whitelist categories (称呼/口味/作息) auto-save; every auto row
@@ -471,9 +477,12 @@ states carry alert/live a11y semantics. -->
 import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import ErrorNotice from "@/components/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import RetryButton from "@/components/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { matchesLooseText } from "@/domain/text-filter";
+import { lastRequestId } from "@/domain/request-id";
 import { formatTimestamp } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 import type { Memory, MemoryEventStatus, MemoryTransport } from "@/api/memory";
@@ -548,10 +557,10 @@ const visibleExpired = computed(() => visibleMemories(memory.expired));
 const visibleSuperseded = computed(() => visibleMemories(memory.superseded));
 const visibleDeleted = computed(() => visibleMemories(memory.deleted));
 const showEmptyPending = computed(
-  () => hasLoaded.value && memory.pendingCount === 0,
+  () => hasLoaded.value && memory.pendingCount === 0 && memory.error !== "load-failed",
 );
 const showEmptyCanonical = computed(
-  () => hasLoaded.value && memory.canonicalCount === 0,
+  () => hasLoaded.value && memory.canonicalCount === 0 && memory.error !== "load-failed",
 );
 const showEmptyRelationshipId = computed(
   () =>
@@ -574,6 +583,8 @@ const transport: MemoryTransport = createAuthenticatedTransport({
   renewAccessToken: () => auth.renewAccessToken(transport),
   onUnauthorized: () => auth.onUnauthorized(),
 });
+
+const memoryRequestId = computed(() => lastRequestId());
 
 const errorText = computed(() => {
   const map: Record<MemoryErrorCode, string> = {

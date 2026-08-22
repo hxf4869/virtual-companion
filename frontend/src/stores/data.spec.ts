@@ -114,4 +114,25 @@ describe("useDataStore", () => {
     expect(store.relationships).toEqual([]);
     expect(store.memories).toEqual([]);
   });
+
+  it("S0-21: a memory list failure is partial, not an empty memory success", async () => {
+    const store = useDataStore();
+    const { transport } = mockTransport();
+    const failing = {
+      async request(method: string, path: string) {
+        if (path === "/api/v1/relationships/7/memories") {
+          return { ok: false, status: 500, json: null };
+        }
+        return transport.request(method, path);
+      },
+    };
+
+    await store.load(failing);
+
+    expect(store.loadFailed).toBe(false);
+    expect(store.asyncState.status).toBe("partial");
+    expect(store.asyncState.failedDomains).toContain("memory");
+    expect(store.memories).toEqual([]);
+    expect(store.asyncState.stale).toBe(false);
+  });
 });
