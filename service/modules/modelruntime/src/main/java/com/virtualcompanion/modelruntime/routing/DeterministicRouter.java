@@ -70,46 +70,35 @@ public final class DeterministicRouter {
         OwnershipTuple ownership = request.ownership();
         ServiceClass serviceClass = request.entitlement().serviceClass();
 
-        List<ProviderId> considered = serviceClass.externalAttemptAllowed()
-                ? matchedExternalCandidates(request)
-                : List.of();
-
-        RouteDecision external = tryExternal(request, ownership, serviceClass, considered);
-        if (external != null) {
-            return external;
+        if (!serviceClass.externalAttemptAllowed()) {
+            return fallbackOrNone(
+                    request, ownership, serviceClass, List.of(),
+                    RouteAudit.SERVICE_CLASS_FORBIDS_EXTERNAL);
         }
 
-        if (serviceClass.zeroLlmFallbackAllowed() && hasZeroLlmSource(request)) {
-            InvocationBinding binding = new InvocationBinding.DeterministicSourceBinding(
-                    ownership, request.zeroLlmSourceId(), request.fence());
-            return RouteDecision.selected(
-                    ownership, serviceClass.code(), null, binding, null, considered);
+        List<ProviderId> considered = matchedExternalCandidates(request);
+        if (considered.isEmpty()) {
+            return fallbackOrNone(
+                    request, ownership, serviceClass, considered,
+                    RouteAudit.NO_ADMITTED_CANDIDATE);
         }
-
-        return RouteDecision.noEligible(ownership, serviceClass.code(), considered);
-    }
-
-    private RouteDecision tryExternal(
-            RoutingRequest request,
-            OwnershipTuple ownership,
-            ServiceClass serviceClass,
-            List<ProviderId> considered
-    ) {
-        if (!serviceClass.externalAttemptAllowed()
-                || considered.isEmpty()
-                || !hasAuthorizationSnapshots(request)) {
-            return null;
+        if (!hasAuthorizationSnapshots(request)) {
+            return fallbackOrNone(
+                    request, ownership, serviceClass, considered,
+                    RouteAudit.MISSING_AUTHORIZATION_SNAPSHOTS);
         }
         ProviderId selected = select(considered, request.ownership().conversationId());
         if (selected == null) {
-            // ROUTE-HARDEN: every candidate is circuit-blocked — no external
-            // attempt this turn; fall through to ZERO_LLM / no-eligible.
-            return null;
+            return fallbackOrNone(
+                    request, ownership, serviceClass, considered,
+                    RouteAudit.ALL_CANDIDATES_CIRCUIT_BLOCKED);
         }
         Optional<QuotaReservation> reservation = quotaLedger.reserve(
                 request.entitlement().ownerUserId(), EXTERNAL_ATTEMPT_QUOTA_UNITS);
         if (reservation.isEmpty()) {
-            return null;
+            return fallbackOrNone(
+                    request, ownership, serviceClass, considered,
+                    RouteAudit.QUOTA_EXHAUSTED);
         }
         InvocationBinding binding = externalAttemptBinding(request, ownership, selected);
         return RouteDecision.selected(
@@ -118,7 +107,34 @@ public final class DeterministicRouter {
                 selected,
                 binding,
                 reservation.orElseThrow(),
-                considered);
+                considered,
+                RouteAudit.selectedExternal(serviceClass.code()));
+    }
+
+    private RouteDecision fallbackOrNone(
+            RoutingRequest request,
+            OwnershipTuple ownership,
+            ServiceClass serviceClass,
+            List<ProviderId> considered,
+            String declineReason
+    ) {
+        if (serviceClass.zeroLlmFallbackAllowed() && hasZeroLlmSource(request)) {
+            InvocationBinding binding = new InvocationBinding.DeterministicSourceBinding(
+                    ownership, request.zeroLlmSourceId(), request.fence());
+            return RouteDecision.selected(
+                    ownership,
+                    serviceClass.code(),
+                    null,
+                    binding,
+                    null,
+                    considered,
+                    RouteAudit.zeroLlmFallback(serviceClass.code(), declineReason));
+        }
+        return RouteDecision.noEligible(
+                ownership,
+                serviceClass.code(),
+                considered,
+                RouteAudit.none(serviceClass.code(), declineReason));
     }
 
     /**

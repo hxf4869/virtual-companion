@@ -1,7 +1,10 @@
 package com.virtualcompanion.platform.persistence;
 
+import com.virtualcompanion.modelruntime.registry.ProviderId;
+import com.virtualcompanion.modelruntime.routing.RouteDecision;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Types;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -468,6 +471,53 @@ public class GenerationFinalizeService {
 
     /** GEN-RECONC: one stale generation pair for the reconciliation scheduler. */
     public record StaleGenerationRow(long ownerUserId, long generationId) {}
+
+    /**
+     * S0-11-B: persist an immutable route decision (V81
+     * {@code vc.record_route_decision}). Same {@code decision_ref} is
+     * idempotent when the payload matches and fail-closed when it differs.
+     * Direct table DML stays revoked.
+     */
+    public long recordRouteDecision(
+            long ownerUserId, long generationId, RouteDecision decision) {
+        validateIds(ownerUserId, generationId);
+        Objects.requireNonNull(decision, "decision must not be null");
+        String selected = decision.selectedProviderId() == null
+                ? null
+                : decision.selectedProviderId().value();
+        String[] candidates = decision.consideredCandidates().stream()
+                .map(ProviderId::value)
+                .toArray(String[]::new);
+        List<Long> rows = jdbc.query(
+                RECORD_ROUTE_DECISION_SQL,
+                ps -> {
+                    int i = 1;
+                    ps.setLong(i++, ownerUserId);
+                    ps.setLong(i++, generationId);
+                    ps.setString(i++, decision.decisionNo());
+                    ps.setString(i++, decision.status().code());
+                    ps.setString(i++, decision.audit().policyVersion());
+                    ps.setString(i++, decision.audit().entitledServiceClass());
+                    ps.setString(i++, decision.audit().actualServiceClass());
+                    ps.setString(i++, decision.audit().outcomeReason());
+                    if (selected == null) {
+                        ps.setNull(i++, Types.VARCHAR);
+                    } else {
+                        ps.setString(i++, selected);
+                    }
+                    ps.setArray(i, ps.getConnection().createArrayOf("text", candidates));
+                },
+                (rs, rowNum) -> rs.getLong("out_id"));
+        if (rows.size() != 1) {
+            throw new IllegalStateException(
+                    "record_route_decision returned " + rows.size() + " rows");
+        }
+        return rows.getFirst();
+    }
+
+    static final String RECORD_ROUTE_DECISION_SQL = """
+            SELECT out_id FROM vc.record_route_decision(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """;
 
     private int terminalizePerItem(String sql, long workItemId, String claimToken, String claimFence) {
         requireNonBlank(claimToken, "claimToken");

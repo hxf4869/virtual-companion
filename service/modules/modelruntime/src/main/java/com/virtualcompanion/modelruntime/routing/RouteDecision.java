@@ -18,11 +18,10 @@ import java.util.Optional;
  * content therefore share the same decisionNo, and constructing a
  * {@code RouteDecision} with a non-matching decisionNo fails closed.
  *
- * <p>{@code consideredCandidates} is the deterministic, sorted set of external
- * deployments the router evaluated (admitted, protocol- and capability-matched,
- * ordered by {@link ProviderId#value()}); it is empty when the service class
- * forbids external attempts. It exists for audit only and does not feed the
- * decisionNo.
+ * <p>{@code consideredCandidates} and {@link RouteAudit} exist for audit only
+ * and do not feed the {@code decisionNo}. Together they reconstruct why a
+ * deployment was selected, why the router degraded, and which service class
+ * the owner was entitled to versus what was actually used.
  */
 public record RouteDecision(
         String decisionNo,
@@ -32,7 +31,8 @@ public record RouteDecision(
         ProviderId selectedProviderId,
         InvocationBinding binding,
         QuotaReservation quotaReservation,
-        List<ProviderId> consideredCandidates
+        List<ProviderId> consideredCandidates,
+        RouteAudit audit
 ) {
 
     public RouteDecision {
@@ -42,6 +42,7 @@ public record RouteDecision(
         Objects.requireNonNull(serviceClassCode, "serviceClassCode must not be null");
         Objects.requireNonNull(consideredCandidates, "consideredCandidates must not be null");
         consideredCandidates = List.copyOf(consideredCandidates);
+        Objects.requireNonNull(audit, "audit must not be null");
         if (status == RouteDecisionStatus.SELECTED) {
             Objects.requireNonNull(binding, "binding must not be null for SELECTED");
         }
@@ -66,6 +67,28 @@ public record RouteDecision(
             QuotaReservation quotaReservation,
             List<ProviderId> consideredCandidates
     ) {
+        return selected(
+                ownership,
+                serviceClassCode,
+                selectedProviderId,
+                binding,
+                quotaReservation,
+                consideredCandidates,
+                selectedProviderId != null
+                        ? RouteAudit.selectedExternal(serviceClassCode)
+                        : RouteAudit.zeroLlmFallback(
+                                serviceClassCode, RouteAudit.SELECTED_ZERO_LLM_FALLBACK));
+    }
+
+    public static RouteDecision selected(
+            OwnershipTuple ownership,
+            String serviceClassCode,
+            ProviderId selectedProviderId,
+            InvocationBinding binding,
+            QuotaReservation quotaReservation,
+            List<ProviderId> consideredCandidates,
+            RouteAudit audit
+    ) {
         String decisionNo = computeDecisionNo(
                 RouteDecisionStatus.SELECTED, ownership, serviceClassCode, selectedProviderId, binding);
         return new RouteDecision(
@@ -76,7 +99,8 @@ public record RouteDecision(
                 selectedProviderId,
                 binding,
                 quotaReservation,
-                consideredCandidates);
+                consideredCandidates,
+                audit);
     }
 
     /**
@@ -86,6 +110,19 @@ public record RouteDecision(
             OwnershipTuple ownership,
             String serviceClassCode,
             List<ProviderId> consideredCandidates
+    ) {
+        return noEligible(
+                ownership,
+                serviceClassCode,
+                consideredCandidates,
+                RouteAudit.none(serviceClassCode, RouteAudit.NO_ELIGIBLE_DEPLOYMENT));
+    }
+
+    public static RouteDecision noEligible(
+            OwnershipTuple ownership,
+            String serviceClassCode,
+            List<ProviderId> consideredCandidates,
+            RouteAudit audit
     ) {
         String decisionNo = computeDecisionNo(
                 RouteDecisionStatus.NO_ELIGIBLE_DEPLOYMENT,
@@ -101,7 +138,8 @@ public record RouteDecision(
                 null,
                 null,
                 null,
-                consideredCandidates);
+                consideredCandidates,
+                audit);
     }
 
     public Optional<ProviderId> selectedProviderIdOptional() {

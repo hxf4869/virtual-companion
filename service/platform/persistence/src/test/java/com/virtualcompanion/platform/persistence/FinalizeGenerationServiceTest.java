@@ -2,17 +2,28 @@ package com.virtualcompanion.platform.persistence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.virtualcompanion.modelruntime.contract.InvocationBinding;
+import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
+import com.virtualcompanion.modelruntime.registry.ProviderId;
+import com.virtualcompanion.modelruntime.routing.QuotaReservation;
+import com.virtualcompanion.modelruntime.routing.RouteDecision;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementSetter;
+import org.springframework.jdbc.core.RowMapper;
 
 /**
  * Pure unit tests for the {@link FinalizeGenerationService.FinalizeResult} value
@@ -173,6 +184,31 @@ class FinalizeGenerationServiceTest {
                 "SELECT vc.complete_work_item(?, ?, ?)", Integer.class, 101L, "tok", "FENCE-A");
         verify(jdbc).queryForObject(
                 "SELECT vc.fail_work_item(?, ?, ?)", Integer.class, 101L, "tok", "FENCE-A");
+    }
+
+    @Test
+    void recordRouteDecisionPinsInsertOnlySql() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        GenerationFinalizeService service = new GenerationFinalizeService(jdbc);
+        OwnershipTuple ownership = new OwnershipTuple("7", "1", "2", "9001");
+        RouteDecision decision = RouteDecision.selected(
+                ownership,
+                "SIMULATED",
+                new ProviderId("alpha-loopback"),
+                new InvocationBinding.ExternalAttemptBinding(
+                        ownership, "pa-1", 1L, "snap-req", "snap-exec"),
+                new QuotaReservation("qr-1", "7", 1L, 9L),
+                List.of(new ProviderId("alpha-loopback")));
+        when(jdbc.query(anyString(), any(PreparedStatementSetter.class), any(RowMapper.class)))
+                .thenReturn(List.of(42L));
+
+        assertEquals(42L, service.recordRouteDecision(7L, 9001L, decision));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(PreparedStatementSetter.class), any(RowMapper.class));
+        assertEquals(GenerationFinalizeService.RECORD_ROUTE_DECISION_SQL, sql.getValue());
+        assertFalse(sql.getValue().contains("UPDATE"));
+        assertFalse(sql.getValue().contains("DELETE"));
     }
 }
 

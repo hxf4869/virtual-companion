@@ -346,6 +346,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                         snapshots.executionId(),
                         claim.claimFence());
                 PreparedInvocation prepared = invoker.prepare(request);
+                persistRouteDecision(ownerUserId, generationId, prepared);
                 if (prepared.isExternal()) {
                     // GEN-RECONC: a previous run of this work item may have left
                     // a CREATED intent behind (retry / crash recovery). Close it
@@ -407,11 +408,23 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             } else {
                 LiveInvocationRequest request =
                         assembler.assemble(ownerUserId, generationId, claim.claimFence());
-                ref[0] = new Prepared(
-                        invoker, invoker.prepare(request), null, null, false, epoch, 0L);
+                PreparedInvocation prepared = invoker.prepare(request);
+                persistRouteDecision(ownerUserId, generationId, prepared);
+                ref[0] = new Prepared(invoker, prepared, null, null, false, epoch, 0L);
             }
         });
         return ref[0];
+    }
+
+    /**
+     * S0-11-B: persist the immutable route decision inside the prepare
+     * transaction so a later crash still leaves "why this deployment / why
+     * ZERO_LLM / why no-eligible" reconstructable. Failure aborts prepare
+     * and forbids outbound.
+     */
+    private void persistRouteDecision(
+            long ownerUserId, long generationId, PreparedInvocation prepared) {
+        finalizeService.recordRouteDecision(ownerUserId, generationId, prepared.decision());
     }
 
     /** Audit-outcome segment: update the same intent row (never a second row). */

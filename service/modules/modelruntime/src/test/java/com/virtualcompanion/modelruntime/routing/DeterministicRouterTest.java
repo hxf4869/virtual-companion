@@ -249,7 +249,8 @@ class DeterministicRouterTest {
         OwnershipTuple ownership = own();
         assertThrows(IllegalArgumentException.class, () -> new RouteDecision(
                 "rd-tampered", RouteDecisionStatus.NO_ELIGIBLE_DEPLOYMENT, ownership, "SIMULATED",
-                null, null, null, List.of()));
+                null, null, null, List.of(),
+                RouteAudit.none("SIMULATED", RouteAudit.NO_ELIGIBLE_DEPLOYMENT)));
     }
 
     @Test
@@ -390,6 +391,59 @@ class DeterministicRouterTest {
         RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
 
         assertEquals(new ProviderId("alpha"), decision.selectedProviderId());
+    }
+
+    @Test
+    void auditRecordsSelectedExternalWithMatchingEntitledAndActualClass() {
+        RouteDecision decision = routerWithCandidates("p1")
+                .decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(RouteAudit.POLICY_VERSION, decision.audit().policyVersion());
+        assertEquals("SIMULATED", decision.audit().entitledServiceClass());
+        assertEquals("SIMULATED", decision.audit().actualServiceClass());
+        assertEquals(RouteAudit.SELECTED_EXTERNAL, decision.audit().outcomeReason());
+    }
+
+    @Test
+    void auditRecordsZeroLlmFallbackWhenNoAdmittedCandidate() {
+        RouteDecision decision = routerWithCandidates()
+                .decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(RouteAudit.ACTUAL_ZERO_LLM, decision.audit().actualServiceClass());
+        assertEquals(RouteAudit.NO_ADMITTED_CANDIDATE, decision.audit().outcomeReason());
+        assertEquals("SIMULATED", decision.audit().entitledServiceClass());
+    }
+
+    @Test
+    void auditRecordsServiceClassForbidsExternalOnZeroLlmOnly() {
+        RouteDecision decision = routerWithCandidates("p1")
+                .decide(standardRequest(ServiceClass.zeroLlmOnly(), FAKE, NO_CAPS));
+
+        assertEquals(RouteAudit.SERVICE_CLASS_FORBIDS_EXTERNAL, decision.audit().outcomeReason());
+        assertEquals(RouteAudit.ACTUAL_ZERO_LLM, decision.audit().actualServiceClass());
+        assertTrue(decision.consideredCandidates().isEmpty());
+    }
+
+    @Test
+    void auditRecordsQuotaExhaustedWhenReserveFails() {
+        DeterministicRouter router = new DeterministicRouter(routerRegistry("p1"), new QuotaLedger());
+        ServiceClass noZeroLlm = new ServiceClass("EXTERNAL_ONLY", true, false);
+        RouteDecision decision = router.decide(standardRequest(noZeroLlm, FAKE, NO_CAPS));
+
+        assertEquals(RouteDecisionStatus.NO_ELIGIBLE_DEPLOYMENT, decision.status());
+        assertEquals(RouteAudit.QUOTA_EXHAUSTED, decision.audit().outcomeReason());
+        assertEquals(RouteAudit.ACTUAL_NONE, decision.audit().actualServiceClass());
+    }
+
+    @Test
+    void auditRecordsCircuitBlockedWhenEveryCandidateIsOpen() {
+        DeterministicRouter router = new DeterministicRouter(
+                routerRegistry("p1"), ledgerProvisioned(10),
+                new StubHealthPolicy(Map.of(new ProviderId("p1"), RouteHealthPolicy.Health.BLOCKED)));
+        RouteDecision decision = router.decide(standardRequest(ServiceClass.simulated(), FAKE, NO_CAPS));
+
+        assertEquals(RouteAudit.ALL_CANDIDATES_CIRCUIT_BLOCKED, decision.audit().outcomeReason());
+        assertEquals(RouteAudit.ACTUAL_ZERO_LLM, decision.audit().actualServiceClass());
     }
 
     // ---------- helpers ----------
