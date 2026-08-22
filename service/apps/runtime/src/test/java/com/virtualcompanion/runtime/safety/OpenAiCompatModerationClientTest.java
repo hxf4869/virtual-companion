@@ -66,4 +66,12 @@ class OpenAiCompatModerationClientTest {
         assertThrows(IllegalStateException.class, () -> new OpenAiCompatModerationClient(
                 "http://127.0.0.1:1/v1", "m", "k").moderate("x"));
     }
+
+    @Test
+    void missingResultsFailsClosedInsteadOfClean() {
+        assertThrows(IllegalStateException.class,
+                () -> OpenAiCompatModerationClient.parse("{}"));
+        assertThrows(IllegalStateException.class,
+                () -> OpenAiCompatModerationClient.parse("{\"results\":[]}"));
+    }
 }

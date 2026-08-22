@@ -583,10 +583,32 @@ public class AuthDataSourceConfig {
         return new ConversationSummaryService(authJdbcTemplate, restFieldCipher);
     }
 
-    /** SAFETY-WIRE (V58): deterministic classifier — the local safety floor. */
+    /**
+     * S0-07: CompositeSafetyClassifier — deterministic hard rules first.
+     * Real moderation stays default-off; when enabled the provider can only
+     * raise risk and any transport/schema failure blocks.
+     */
     @Bean
-    public com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort() {
-        return new com.virtualcompanion.safety.DeterministicSafetyClassifier();
+    public com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort(
+            @Value("${virtual-companion.moderation.enabled:false}") boolean moderationEnabled,
+            @Value("${virtual-companion.moderation.base-url:}") String moderationBaseUrl,
+            @Value("${virtual-companion.moderation.model:omni-moderation-latest}") String moderationModel,
+            @Value("${virtual-companion.moderation.api-key:}") String moderationApiKey) {
+        com.virtualcompanion.safety.SafetyClassifierPort hard =
+                new com.virtualcompanion.safety.DeterministicSafetyClassifier();
+        if (!moderationEnabled) {
+            return new com.virtualcompanion.safety.CompositeSafetyClassifier(hard);
+        }
+        if (moderationBaseUrl == null || moderationBaseUrl.isBlank()
+                || moderationApiKey == null || moderationApiKey.isBlank()) {
+            throw new IllegalStateException(
+                    "moderation.enabled=true requires base-url and api-key (fail-closed)");
+        }
+        var client = new com.virtualcompanion.runtime.safety.OpenAiCompatModerationClient(
+                moderationBaseUrl, moderationModel, moderationApiKey);
+        return new com.virtualcompanion.safety.CompositeSafetyClassifier(
+                hard,
+                new com.virtualcompanion.runtime.safety.ProviderModerationClassifier(client));
     }
 
     /** USAGE-HEALTH (V52): continuous-use reminder prefs + heartbeat. */

@@ -35,9 +35,13 @@ public final class OpenAiCompatModerationClient {
     /** Moderate one text; returns flagged flag plus the tripped category names. */
     public ModerationResult moderate(String text) {
         Objects.requireNonNull(text, "text must not be null");
-        String safe = com.virtualcompanion.runtime.memory.OpenAiCompatEmbedder
-                .escapeJsonString(text);
-        String body = "{\"model\":\"" + model + "\",\"input\":\"" + safe + "\"}";
+        String body;
+        try {
+            body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
+                    java.util.Map.of("model", model, "input", text));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("moderations request could not be serialized", e);
+        }
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/moderations"))
                 .timeout(Duration.ofSeconds(20))
@@ -66,8 +70,13 @@ public final class OpenAiCompatModerationClient {
         } catch (Exception e) {
             throw new IllegalArgumentException("moderations payload is not JSON", e);
         }
-        com.fasterxml.jackson.databind.JsonNode r0 = root.path("results").path(0);
-        boolean flagged = r0.path("flagged").asBoolean(false);
+        com.fasterxml.jackson.databind.JsonNode results = root.get("results");
+        if (results == null || !results.isArray() || results.isEmpty()
+                || !results.get(0).isObject() || !results.get(0).has("flagged")) {
+            throw new IllegalStateException("moderations payload missing results[0].flagged");
+        }
+        com.fasterxml.jackson.databind.JsonNode r0 = results.get(0);
+        boolean flagged = r0.get("flagged").asBoolean();
         List<String> categories = new ArrayList<>();
         com.fasterxml.jackson.databind.JsonNode cats = r0.path("categories");
         if (cats.isObject()) {
