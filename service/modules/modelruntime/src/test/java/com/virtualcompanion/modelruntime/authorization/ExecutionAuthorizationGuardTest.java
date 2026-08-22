@@ -15,7 +15,9 @@ import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
 import com.virtualcompanion.modelruntime.registry.InMemoryProviderRegistry;
 import com.virtualcompanion.modelruntime.registry.ProviderId;
 import com.virtualcompanion.modelruntime.registry.ProviderRegistration;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -257,6 +259,147 @@ class ExecutionAuthorizationGuardTest {
                 ProcessingPurpose.MEMORY_EXTRACT,
                 Set.of(DataCategory.MESSAGE_TEXT)
         ));
+    }
+
+    /**
+     * S0-25: an unreadable authority read denies the attempt instead of
+     * failing open or falling back to any stale local state. Distinct from an
+     * authoritative "missing" so audits name the real failure mode.
+     */
+    @Test
+    void requestedAuthorityReadFailureDeniesFailClosed() {
+        ExecutionAuthorizationGuard failing =
+                new ExecutionAuthorizationGuard(throwingStore(new IllegalStateException("db down")), registry);
+
+        ExecutionAuthorizationDecision decision = failing.authorize(binding("req-1", "exec-1"));
+
+        assertFalse(decision.allowed());
+        assertFalse(decision.externalDataTransferAllowed());
+        assertEquals(QuotaAction.RELEASE, decision.quotaAction());
+        assertTrue(decision.denialReason().contains("requested snapshot authority read failed"));
+    }
+
+    @Test
+    void executionAuthorityReadFailureDeniesFailClosed() {
+        // The requested read succeeds; the execution read throws — the second
+        // authority lookup must also fail closed.
+        store.put(activeSnapshot("req-1"));
+        ExecutionAuthorizationGuard flaky = new ExecutionAuthorizationGuard(
+                new AuthorizationSnapshotStore() {
+                    private int calls;
+
+                    @Override
+                    public AuthorizationSnapshot put(AuthorizationSnapshot snapshot) {
+                        throw new UnsupportedOperationException("not used");
+                    }
+
+                    @Override
+                    public Optional<AuthorizationSnapshot> find(AuthorizationSnapshotId id) {
+                        if (++calls == 1) {
+                            return Optional.of(activeSnapshot(id.value()));
+                        }
+                        throw new java.util.concurrent.RejectedExecutionException("pool exhausted");
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot withdraw(AuthorizationSnapshotId id) {
+                        throw new UnsupportedOperationException("not used");
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot narrow(
+                            AuthorizationSnapshotId id, AuthorizationSnapshot narrowed) {
+                        throw new UnsupportedOperationException("not used");
+                    }
+                },
+                registry);
+
+        ExecutionAuthorizationDecision decision = flaky.authorize(binding("req-1", "exec-1"));
+
+        assertFalse(decision.allowed());
+        assertFalse(decision.externalDataTransferAllowed());
+        assertEquals(QuotaAction.RELEASE, decision.quotaAction());
+        assertTrue(decision.denialReason().contains("execution snapshot authority read failed"));
+    }
+
+    @Test
+    void authorityRecoversAfterTransientFailureWithoutStaleCache() {
+        // A failed read must not poison or cache anything: once the authority
+        // answers again, the decision reflects its current state.
+        AtomicBoolean healthy = new AtomicBoolean(false);
+        ExecutionAuthorizationGuard recovering = new ExecutionAuthorizationGuard(
+                new AuthorizationSnapshotStore() {
+                    @Override
+                    public AuthorizationSnapshot put(AuthorizationSnapshot snapshot) {
+                        throw new UnsupportedOperationException("not used");
+                    }
+
+                    @Override
+                    public Optional<AuthorizationSnapshot> find(AuthorizationSnapshotId id) {
+                        if (!healthy.get()) {
+                            throw new IllegalStateException("db down");
+                        }
+                        return Optional.of(withdrawnSnapshot(id.value()));
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot withdraw(AuthorizationSnapshotId id) {
+                        throw new UnsupportedOperationException("not used");
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot narrow(
+                            AuthorizationSnapshotId id, AuthorizationSnapshot narrowed) {
+                        throw new UnsupportedOperationException("not used");
+                    }
+                },
+                registry);
+
+        assertFalse(recovering.authorize(binding("req-1", "exec-1")).allowed());
+
+        healthy.set(true);
+        ExecutionAuthorizationDecision after = recovering.authorize(binding("req-1", "exec-1"));
+        assertFalse(after.allowed());
+        assertTrue(after.denialReason().contains("WITHDRAWN"));
+    }
+
+    private static AuthorizationSnapshotStore throwingStore(RuntimeException failure) {
+        return new AuthorizationSnapshotStore() {
+            @Override
+            public AuthorizationSnapshot put(AuthorizationSnapshot snapshot) {
+                throw new UnsupportedOperationException("not used");
+            }
+
+            @Override
+            public Optional<AuthorizationSnapshot> find(AuthorizationSnapshotId id) {
+                throw failure;
+            }
+
+            @Override
+            public AuthorizationSnapshot withdraw(AuthorizationSnapshotId id) {
+                throw new UnsupportedOperationException("not used");
+            }
+
+            @Override
+            public AuthorizationSnapshot narrow(
+                    AuthorizationSnapshotId id, AuthorizationSnapshot narrowed) {
+                throw new UnsupportedOperationException("not used");
+            }
+        };
+    }
+
+    private AuthorizationSnapshot withdrawnSnapshot(String id) {
+        return new AuthorizationSnapshot(
+                new AuthorizationSnapshotId(id),
+                AuthorizationStatus.WITHDRAWN,
+                providerId,
+                new ProviderRegion("local"),
+                new ProviderContractRef("contract-a"),
+                ProcessingPurpose.COMPANION_CHAT,
+                Set.of(DataCategory.MESSAGE_TEXT),
+                false,
+                false
+        );
     }
 
     private AuthorizationSnapshot activeSnapshot(String id) {

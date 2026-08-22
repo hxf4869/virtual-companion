@@ -212,13 +212,24 @@ public final class LiveModelInvoker {
         //    could be routed to provider X (INV-AUTH-001). Fail closed.
         //    This store lookup is the only database read of the invocation path
         //    and is therefore confined to the prepare phase (TASK-0194).
+        //    S0-25: an unreadable authority read is also a block — the same
+        //    fail-closed disposition as a denial, never a fallback to stale
+        //    process-local state.
         ProviderId providerId = Objects.requireNonNull(
                 decision.selectedProviderId(),
                 "external SELECTED decision must carry a provider id");
         AuthorizationSnapshotId executionSnapshotId =
                 new AuthorizationSnapshotId(binding.executionAuthorizationSnapshotId());
-        Optional<AuthorizationSnapshot> executionSnapshot =
-                authorizationSnapshotStore.find(executionSnapshotId);
+        final Optional<AuthorizationSnapshot> executionSnapshot;
+        try {
+            executionSnapshot = authorizationSnapshotStore.find(executionSnapshotId);
+        } catch (RuntimeException authorityFailure) {
+            RecoveryOutcome outcome = recovery.recover(
+                    decision.ownership(), RecoveryScenario.CANCELLED,
+                    decision.quotaReservation());
+            return PreparedInvocation.terminalOnly(
+                    decision, null, LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, outcome, null);
+        }
         if (executionSnapshot.isEmpty()
                 || !executionSnapshot.get().providerId().equals(providerId)) {
             RecoveryOutcome outcome = recovery.recover(

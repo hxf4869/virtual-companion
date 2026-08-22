@@ -778,6 +778,68 @@ class LiveModelInvokerTest {
     }
 
     @Test
+    void prepareBlocksWhenExecutionSnapshotAuthorityReadFails() {
+        // S0-25: the guard's two authority reads succeed (calls 1-2), but the
+        // execution-snapshot identity re-read (call 3) hits an authority
+        // failure — prepare must fail closed to BLOCKED_BY_AUTHORIZATION,
+        // never fall back to stale state or open a session.
+        AtomicInteger calls = new AtomicInteger();
+        InMemoryAuthorizationSnapshotStore inner = new InMemoryAuthorizationSnapshotStore();
+        inner.put(snapshot("snap-req", AuthorizationStatus.ACTIVE, PROVIDER));
+        inner.put(snapshot("snap-exec", AuthorizationStatus.ACTIVE, PROVIDER));
+        com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore flakyStore =
+                new com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore() {
+                    @Override
+                    public Optional<AuthorizationSnapshot> find(AuthorizationSnapshotId id) {
+                        if (calls.incrementAndGet() > 2) {
+                            throw new IllegalStateException("connection refused");
+                        }
+                        return inner.find(id);
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot put(AuthorizationSnapshot s) {
+                        return inner.put(s);
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot withdraw(AuthorizationSnapshotId id) {
+                        return inner.withdraw(id);
+                    }
+
+                    @Override
+                    public AuthorizationSnapshot narrow(
+                            AuthorizationSnapshotId id, AuthorizationSnapshot narrowed) {
+                        return inner.narrow(id, narrowed);
+                    }
+                };
+
+        quota.provision("owner-1", 5);
+        ScriptedAdapter adapter = new ScriptedAdapter(
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                CAPABILITIES,
+                Scripts.success("world"));
+        InMemoryProviderRegistry registry = new InMemoryProviderRegistry();
+        ProviderRegistration registration = new ProviderRegistration(
+                PROVIDER, adapter.protocol(), CAPABILITIES, adapter);
+        registry.register(registration);
+        ExecutionAuthorizationGuard guard = new ExecutionAuthorizationGuard(flakyStore, registry);
+        DeterministicRouter router = new DeterministicRouter(registry, quota);
+        GenerationRecovery recovery = new GenerationRecovery(quota);
+        LiveModelInvoker invoker = new LiveModelInvoker(
+                router,
+                guard,
+                flakyStore,
+                new InMemoryAdapterLocator(List.of(registration)),
+                recovery,
+                Map.of(PROVIDER, "OpenAI"));
+
+        PreparedInvocation prepared = invoker.prepare(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, prepared.terminal());
+    }
+
+    @Test
     void prepareBlocksBeforeOutboundWhenExecutionSnapshotMissing() {
         Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
 

@@ -1,12 +1,14 @@
 package com.virtualcompanion.runtime.modelproviders;
 
 import com.virtualcompanion.modelruntime.authorization.ExecutionAuthorizationGuard;
+import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore;
 import com.virtualcompanion.modelruntime.authorization.InMemoryAuthorizationSnapshotStore;
 import com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry;
 import com.virtualcompanion.modelruntime.execution.LiveModelInvoker;
 import com.virtualcompanion.modelruntime.routing.DeterministicRouter;
 import com.virtualcompanion.modelruntime.routing.GenerationRecovery;
 import com.virtualcompanion.modelruntime.routing.QuotaLedger;
+import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotStore;
 import java.nio.file.Path;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -19,6 +21,13 @@ import org.springframework.context.annotation.Configuration;
  * With the switch off (the default) no live provider beans exist and every
  * external attempt fails closed at routing with no eligible deployment —
  * credentials are never read and no outbound surface is reachable.</p>
+ *
+ * <p>S0-25: the {@code ExecutionAuthorizationGuard} and the invoker's
+ * execution-snapshot identity check read the DB-backed
+ * {@code JdbcAuthorizationSnapshotStore} (when the auth datasource is wired) as
+ * the pre-outbound authority, so a committed consent withdrawal stops every
+ * queued task's next outbound on every instance; the in-memory store is only
+ * the degenerate no-datasource fallback.</p>
  *
  * <p>The secret reader resolves credentials through the approved channel
  * (Docker secret / secret file / injected environment variable) and never
@@ -73,12 +82,37 @@ public class ApprovedModelProviderConfig {
         return new InMemoryAuthorizationSnapshotStore();
     }
 
+    /**
+     * S0-25: the pre-outbound snapshot authority is the DB-backed
+     * {@link JdbcAuthorizationSnapshotStore} whenever the auth datasource is
+     * wired — every {@code ExecutionAuthorizationGuard} decision and the
+     * invoker's execution-snapshot identity check then re-read
+     * {@code vc.authorization_snapshot}, so a committed consent withdrawal is
+     * observed before the next outbound attempt on every instance. The
+     * in-memory store remains only for the degenerate model-providers-enabled
+     * runtime without a datasource, where no snapshots can be minted and every
+     * external attempt already fails closed at the guard ("snapshot missing").
+     *
+     * @param dbAuthority the DB-backed authority, or {@code null} when the
+     *                    auth datasource is not wired
+     */
+    static AuthorizationSnapshotStore preOutboundAuthority(
+            JdbcAuthorizationSnapshotStore dbAuthority,
+            InMemoryAuthorizationSnapshotStore processLocalFallback) {
+        return dbAuthority != null ? dbAuthority : processLocalFallback;
+    }
+
     @Bean
     ExecutionAuthorizationGuard executionAuthorizationGuard(
             InMemoryAuthorizationSnapshotStore authorizationSnapshotStore,
+            org.springframework.beans.factory.ObjectProvider<JdbcAuthorizationSnapshotStore>
+                    authorizationSnapshotAuthorityStore,
             ApprovedModelProviders approvedModelProviders) {
         return new ExecutionAuthorizationGuard(
-                authorizationSnapshotStore, approvedModelProviders.registry());
+                preOutboundAuthority(
+                        authorizationSnapshotAuthorityStore.getIfAvailable(),
+                        authorizationSnapshotStore),
+                approvedModelProviders.registry());
     }
 
     @Bean
@@ -110,6 +144,8 @@ public class ApprovedModelProviderConfig {
             DeterministicRouter deterministicRouter,
             ExecutionAuthorizationGuard executionAuthorizationGuard,
             InMemoryAuthorizationSnapshotStore authorizationSnapshotStore,
+            org.springframework.beans.factory.ObjectProvider<JdbcAuthorizationSnapshotStore>
+                    authorizationSnapshotAuthorityStore,
             ApprovedModelProviders approvedModelProviders,
             GenerationRecovery generationRecovery,
             ActiveInvocationRegistry activeInvocationRegistry,
@@ -128,7 +164,12 @@ public class ApprovedModelProviderConfig {
         return new LiveModelInvoker(
                 deterministicRouter,
                 executionAuthorizationGuard,
-                authorizationSnapshotStore,
+                // S0-25: the execution-snapshot identity check reads the same
+                // DB-backed authority as the guard (in-memory only when no
+                // datasource exists — see preOutboundAuthority).
+                preOutboundAuthority(
+                        authorizationSnapshotAuthorityStore.getIfAvailable(),
+                        authorizationSnapshotStore),
                 approvedModelProviders.locator(),
                 generationRecovery,
                 approvedModelProviders.supplierNames(),

@@ -45,8 +45,10 @@ import org.junit.jupiter.api.Test;
 /**
  * In-process end-to-end test of the external completion path (TASK-0181):
  * the runtime wiring used by the generation worker — provider registry with a
- * loopback (FAKE) deployment, in-memory authorization snapshot store holding
- * the dual snapshots the JDBC provider mirrors, {@code ExecutionAuthorizationGuard},
+ * loopback (FAKE) deployment, an authorization snapshot store holding the dual
+ * snapshots (S0-25: the store the guard reads is the DB-backed authority; this
+ * test exercises the same guard→invoker chain over an equivalent store),
+ * {@code ExecutionAuthorizationGuard},
  * {@code DeterministicRouter} and {@code LiveModelInvoker} — is assembled and
  * one external invocation runs through guard -> loopback adapter -> terminal.
  *

@@ -1,10 +1,6 @@
 package com.virtualcompanion.platform.persistence;
 
 import com.virtualcompanion.catalog.ModelProtocol;
-import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshot;
-import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotId;
-import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore;
-import com.virtualcompanion.modelruntime.authorization.AuthorizationStatus;
 import com.virtualcompanion.modelruntime.authorization.DataCategory;
 import com.virtualcompanion.modelruntime.authorization.ProcessingPurpose;
 import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
@@ -22,14 +18,20 @@ import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.jdbc.core.RowMapper;
 
 /**
- * JDBC {@link AuthorizationSnapshotProvider} (TASK-0181).
+ * JDBC {@link AuthorizationSnapshotProvider} (TASK-0181, S0-25).
  *
  * <p>Mints the dual requested + execution authorization snapshots for one
  * generation's external attempt through the V26 SECURITY DEFINER function
  * {@code vc.create_authorization_snapshots} (the only runtime write path after
- * V16 revoked direct INSERT/UPDATE/DELETE from every runtime role), then mirrors
- * the two {@link AuthorizationSnapshot} values into the in-memory store the
- * {@code ExecutionAuthorizationGuard} reads before the invoker opens a session.
+ * V16 revoked direct INSERT/UPDATE/DELETE from every runtime role). The minted
+ * rows in {@code vc.authorization_snapshot} ARE the authoritative pre-outbound
+ * state: since S0-25 the {@code ExecutionAuthorizationGuard} and the invoker's
+ * execution-snapshot identity check re-read that table (via
+ * {@link JdbcAuthorizationSnapshotStore}) immediately before every outbound
+ * transfer, so a consent withdrawal committed after minting — on any instance —
+ * is observed before the next attempt. No process-local mirror exists anymore:
+ * a per-instance copy could stay ACTIVE while the authority is WITHDRAWN,
+ * which is exactly the S0-25 gap.
  *
  * <p>The snapshot provider id is derived from the runtime
  * {@link ProviderRegistry} with exactly the {@code DeterministicRouter}
@@ -55,7 +57,6 @@ public class JdbcAuthorizationSnapshotProvider implements AuthorizationSnapshotP
             """;
 
     private final JdbcTemplate jdbc;
-    private final AuthorizationSnapshotStore mirrorStore;
     private final ProviderRegistry registry;
     private final ModelProtocol externalProtocol;
     private final ProviderRegion region;
@@ -65,7 +66,6 @@ public class JdbcAuthorizationSnapshotProvider implements AuthorizationSnapshotP
 
     public JdbcAuthorizationSnapshotProvider(
             JdbcTemplate jdbc,
-            AuthorizationSnapshotStore mirrorStore,
             ProviderRegistry registry,
             ModelProtocol externalProtocol,
             ProviderRegion region,
@@ -73,7 +73,6 @@ public class JdbcAuthorizationSnapshotProvider implements AuthorizationSnapshotP
             ProcessingPurpose purpose,
             Set<DataCategory> dataCategories) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
-        this.mirrorStore = Objects.requireNonNull(mirrorStore, "mirrorStore must not be null");
         this.registry = Objects.requireNonNull(registry, "registry must not be null");
         this.externalProtocol = Objects.requireNonNull(
                 externalProtocol, "externalProtocol must not be null");
@@ -112,12 +111,10 @@ public class JdbcAuthorizationSnapshotProvider implements AuthorizationSnapshotP
         }
 
         CreatedSnapshotIds created = rows.getFirst();
-        AuthorizationSnapshot requested = snapshot(providerId, created.requestedId());
-        AuthorizationSnapshot execution = snapshot(providerId, created.executionId());
-        // Mirror both snapshots into the store the ExecutionAuthorizationGuard
-        // reads; a store failure fails closed before any outbound transfer.
-        mirrorStore.put(requested);
-        mirrorStore.put(execution);
+        // S0-25: no process-local mirroring. The DB rows minted above are the
+        // authority the guard re-reads before every outbound; a per-instance
+        // copy could diverge from a committed withdrawal (multi-instance or
+        // same-instance race), so none is kept.
         return new SnapshotIds(created.requestedId(), created.executionId());
     }
 
@@ -131,19 +128,6 @@ public class JdbcAuthorizationSnapshotProvider implements AuthorizationSnapshotP
                 .orElseThrow(() -> new IllegalStateException(
                         "no admitted provider deployment matches protocol " + externalProtocol
                                 + "; cannot mint authorization snapshots"));
-    }
-
-    private AuthorizationSnapshot snapshot(ProviderId providerId, String snapshotId) {
-        return new AuthorizationSnapshot(
-                new AuthorizationSnapshotId(snapshotId),
-                AuthorizationStatus.ACTIVE,
-                providerId,
-                region,
-                contractRef,
-                purpose,
-                dataCategories,
-                false,
-                false);
     }
 
     private static void validateIds(long ownerUserId, long generationId) {

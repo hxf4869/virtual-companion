@@ -10,9 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.virtualcompanion.catalog.ModelProtocol;
-import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshot;
-import com.virtualcompanion.modelruntime.authorization.AuthorizationSnapshotStore;
-import com.virtualcompanion.modelruntime.authorization.AuthorizationStatus;
 import com.virtualcompanion.modelruntime.authorization.DataCategory;
 import com.virtualcompanion.modelruntime.authorization.ProcessingPurpose;
 import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
@@ -37,10 +34,11 @@ import org.springframework.jdbc.core.PreparedStatementSetter;
 import org.springframework.jdbc.core.RowMapper;
 
 /**
- * Pure unit tests for {@link JdbcAuthorizationSnapshotProvider} (TASK-0181):
- * the V26 {@code create_authorization_snapshots} call (SQL text, parameter
- * order, text[] array) is pinned, the minted dual snapshots are mirrored into
- * the store the guard reads, the provider id is derived with the
+ * Pure unit tests for {@link JdbcAuthorizationSnapshotProvider} (TASK-0181,
+ * S0-25): the V26 {@code create_authorization_snapshots} call (SQL text,
+ * parameter order, text[] array) is pinned, the minted dual ids are returned
+ * without any process-local mirroring (the DB rows are the authority the guard
+ * re-reads pre-outbound), the provider id is derived with the
  * {@code DeterministicRouter} candidate rule, and every degraded path fails
  * closed. The real database behavior is proven by infra/db test 68.
  */
@@ -51,7 +49,6 @@ class JdbcAuthorizationSnapshotProviderTest {
     private static final ProviderContractRef CONTRACT = new ProviderContractRef("alpha-standard");
 
     private final JdbcTemplate jdbc = Mockito.mock(JdbcTemplate.class);
-    private final AuthorizationSnapshotStore mirrorStore = mock(AuthorizationSnapshotStore.class);
 
     private InMemoryProviderRegistry registry;
     private JdbcAuthorizationSnapshotProvider provider;
@@ -61,7 +58,6 @@ class JdbcAuthorizationSnapshotProviderTest {
         registry = new InMemoryProviderRegistry();
         provider = new JdbcAuthorizationSnapshotProvider(
                 jdbc,
-                mirrorStore,
                 registry,
                 ModelProtocol.FAKE,
                 REGION,
@@ -98,7 +94,7 @@ class JdbcAuthorizationSnapshotProviderTest {
     }
 
     @Test
-    void createForMintsBothSnapshotsAndMirrorsThem() {
+    void createForReturnsMintedIdsWithoutProcessLocalMirroring() {
         registry.register(registration(PROVIDER, ModelProtocol.FAKE));
         stubCreatedIds(jdbc, "snap-req-1", "snap-exec-1");
 
@@ -106,17 +102,9 @@ class JdbcAuthorizationSnapshotProviderTest {
 
         assertEquals("snap-req-1", ids.requestedId());
         assertEquals("snap-exec-1", ids.executionId());
-        ArgumentCaptor<AuthorizationSnapshot> mirrored = ArgumentCaptor.forClass(AuthorizationSnapshot.class);
-        verify(mirrorStore, Mockito.times(2)).put(mirrored.capture());
-        for (AuthorizationSnapshot snapshot : mirrored.getAllValues()) {
-            assertEquals(AuthorizationStatus.ACTIVE, snapshot.status());
-            assertEquals(PROVIDER, snapshot.providerId());
-            assertEquals(REGION, snapshot.region());
-            assertEquals(CONTRACT, snapshot.contractRef());
-            assertEquals(ProcessingPurpose.COMPANION_CHAT, snapshot.purpose());
-            assertEquals(Set.of(DataCategory.MESSAGE_TEXT), snapshot.dataCategories());
-            assertTrue(!snapshot.taskCancelled() && !snapshot.sourceDataDeleted());
-        }
+        // S0-25: the only writes are the V26 SD call — no snapshot is copied
+        // into any process-local store (jdbc.update is never touched).
+        verify(jdbc, Mockito.never()).update(anyString(), ArgumentMatchers.any(Object[].class));
     }
 
     @Test
@@ -204,7 +192,7 @@ class JdbcAuthorizationSnapshotProviderTest {
     @Test
     void constructorRejectsEmptyCategories() {
         assertThrows(IllegalArgumentException.class, () -> new JdbcAuthorizationSnapshotProvider(
-                jdbc, mirrorStore, registry, ModelProtocol.FAKE, REGION, CONTRACT,
+                jdbc, registry, ModelProtocol.FAKE, REGION, CONTRACT,
                 ProcessingPurpose.COMPANION_CHAT, Set.of()));
     }
 }

@@ -2,7 +2,6 @@ package com.virtualcompanion.runtime.auth.config;
 
 import com.virtualcompanion.catalog.ModelProtocol;
 import com.virtualcompanion.modelruntime.authorization.DataCategory;
-import com.virtualcompanion.modelruntime.authorization.InMemoryAuthorizationSnapshotStore;
 import com.virtualcompanion.modelruntime.authorization.ProcessingPurpose;
 import com.virtualcompanion.modelruntime.authorization.ProviderContractRef;
 import com.virtualcompanion.modelruntime.authorization.ProviderRegion;
@@ -38,6 +37,7 @@ import com.virtualcompanion.platform.persistence.IdentityAccountRepository;
 import com.virtualcompanion.platform.persistence.IncognitoPrefService;
 import com.virtualcompanion.platform.persistence.IdentityRefreshTokenRepository;
 import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotProvider;
+import com.virtualcompanion.platform.persistence.JdbcAuthorizationSnapshotStore;
 import com.virtualcompanion.platform.persistence.MemoryImportService;
 import com.virtualcompanion.platform.persistence.MemoryService;
 import com.virtualcompanion.platform.persistence.MessageHistoryService;
@@ -665,13 +665,16 @@ public class AuthDataSourceConfig {
 
     /**
      * TASK-0181: JDBC {@link AuthorizationSnapshotProvider} wiring the V26
-     * {@code create_authorization_snapshots} SECURITY DEFINER function and
-     * mirroring the minted dual snapshots into the in-memory store the
-     * {@code ExecutionAuthorizationGuard} reads. The provider id is derived
-     * from the live registry with the {@code DeterministicRouter} candidate
-     * rule; region / contract / purpose / data categories come from the
-     * {@code virtual-companion.external-attempt} configuration (defaults align
-     * with the infra/db test 67/68 fixtures).
+     * {@code create_authorization_snapshots} SECURITY DEFINER function.
+     * S0-25: the minted rows in {@code vc.authorization_snapshot} are the
+     * authoritative pre-outbound state — the guard re-reads them through
+     * {@link #authorizationSnapshotAuthorityStore(JdbcTemplate)} immediately
+     * before every outbound transfer, so no process-local mirror is kept (a
+     * stale per-instance copy could stay ACTIVE across a committed withdrawal).
+     * The provider id is derived from the live registry with the
+     * {@code DeterministicRouter} candidate rule; region / contract / purpose /
+     * data categories come from the {@code virtual-companion.external-attempt}
+     * configuration (defaults align with the infra/db test 67/68 fixtures).
      *
      * <p>Active only when the live model-provider runtime is wired
      * ({@code model-providers.enabled=true}, the same condition as
@@ -688,7 +691,6 @@ public class AuthDataSourceConfig {
             havingValue = "true")
     public AuthorizationSnapshotProvider authorizationSnapshotProvider(
             JdbcTemplate authJdbcTemplate,
-            InMemoryAuthorizationSnapshotStore authorizationSnapshotStore,
             ApprovedModelProviders approvedModelProviders,
             @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol,
             @Value("${virtual-companion.external-attempt.region:us}") String region,
@@ -697,13 +699,29 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.external-attempt.data-categories:MESSAGE_TEXT}") String dataCategories) {
         return new JdbcAuthorizationSnapshotProvider(
                 authJdbcTemplate,
-                authorizationSnapshotStore,
                 approvedModelProviders.registry(),
                 externalProtocol,
                 new ProviderRegion(region),
                 new ProviderContractRef(contractRef),
                 ProcessingPurpose.valueOf(purpose),
                 parseDataCategories(dataCategories));
+    }
+
+    /**
+     * S0-25: the DB-backed pre-outbound authorization authority. The
+     * {@code ExecutionAuthorizationGuard} and the invoker's execution-snapshot
+     * identity check read {@code vc.authorization_snapshot} through this store
+     * inside the worker's owner-bound prepare transaction, so a consent
+     * withdrawal committed by any instance (V46
+     * {@code vc.withdraw_authorization_snapshots}) is observed before the next
+     * outbound attempt, and an unreadable authority fails closed instead of
+     * falling back to process-local state. RLS keeps every read scoped to the
+     * bound owner; V3 grants vc_api SELECT.
+     */
+    @Bean
+    public JdbcAuthorizationSnapshotStore authorizationSnapshotAuthorityStore(
+            JdbcTemplate authJdbcTemplate) {
+        return new JdbcAuthorizationSnapshotStore(authJdbcTemplate);
     }
 
     private static Set<DataCategory> parseDataCategories(String csv) {

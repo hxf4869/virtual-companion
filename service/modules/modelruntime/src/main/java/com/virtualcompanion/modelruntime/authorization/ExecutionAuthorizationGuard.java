@@ -5,7 +5,6 @@ import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.registry.AdmissionStatus;
 import com.virtualcompanion.modelruntime.registry.ProviderRegistry;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -16,6 +15,16 @@ import java.util.Set;
  * must bind both a requested and an execution authorization snapshot, and
  * execution-time checks must fail closed with no external data transfer and
  * quota release on denial.
+ * <p>
+ * S0-25: the injected store is the <em>authoritative</em> pre-outbound state
+ * (in the runtime wiring, the JDBC-backed {@code vc.authorization_snapshot}
+ * reader — shared, withdrawal-visible across instances). Both snapshots are
+ * re-read at every {@link #authorize} call — never cached from a previous
+ * decision — so a consent withdrawal that flipped the stored rows to
+ * {@code WITHDRAWN} is observed by the next outbound attempt. A failed or
+ * unreadable authority read denies the attempt (fail closed): a stale
+ * process-local mirror must never be consulted as a fallback, and no outbound
+ * transfer may proceed when the authority cannot answer.
  */
 public final class ExecutionAuthorizationGuard {
 
@@ -43,19 +52,33 @@ public final class ExecutionAuthorizationGuard {
         AuthorizationSnapshotId executionId =
                 new AuthorizationSnapshotId(binding.executionAuthorizationSnapshotId());
 
-        Optional<AuthorizationSnapshot> requestedOpt = snapshotStore.find(requestedId);
-        if (requestedOpt.isEmpty()) {
+        // S0-25: both snapshots are re-read from the authority at every call.
+        // A throwing authority read denies (fail closed) — it is distinct from
+        // an authoritative "missing", and never falls back to stale local state.
+        final AuthorizationSnapshot requested;
+        try {
+            requested = snapshotStore.find(requestedId).orElse(null);
+        } catch (RuntimeException authorityFailure) {
+            return ExecutionAuthorizationDecision.deny(
+                    "CANCELLED_BY_AUTHORIZATION: requested snapshot authority read"
+                            + " failed (fail closed, no fallback)");
+        }
+        if (requested == null) {
             return ExecutionAuthorizationDecision.deny(
                     "CANCELLED_BY_AUTHORIZATION: requested snapshot missing");
         }
-        Optional<AuthorizationSnapshot> executionOpt = snapshotStore.find(executionId);
-        if (executionOpt.isEmpty()) {
+        final AuthorizationSnapshot execution;
+        try {
+            execution = snapshotStore.find(executionId).orElse(null);
+        } catch (RuntimeException authorityFailure) {
+            return ExecutionAuthorizationDecision.deny(
+                    "CANCELLED_BY_AUTHORIZATION: execution snapshot authority read"
+                            + " failed (fail closed, no fallback)");
+        }
+        if (execution == null) {
             return ExecutionAuthorizationDecision.deny(
                     "CANCELLED_BY_AUTHORIZATION: execution snapshot missing");
         }
-
-        AuthorizationSnapshot requested = requestedOpt.get();
-        AuthorizationSnapshot execution = executionOpt.get();
 
         ExecutionAuthorizationDecision requestedDecision = evaluateSnapshot(
                 requested,

@@ -307,6 +307,19 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-25 让同意撤回立即作用于实际执行授权
 
+- **当前对账（2026-08-22，已完成）**：外发前授权复核改为读取 DB 权威
+  `vc.authorization_snapshot`（`AuthDataSourceConfig` 新增
+  `JdbcAuthorizationSnapshotStore` authority bean；`ApprovedModelProviderConfig`
+  的 guard 与 invoker 执行快照身份复核均经 `preOutboundAuthority` 优先接 DB），
+  进程内镜像从生产链路移除（`JdbcAuthorizationSnapshotProvider` 不再 mirror）；
+  `ExecutionAuthorizationGuard`/`LiveModelInvoker` 权威读取失败一律 deny
+  fail-closed（与「快照缺失」区分审计原因）。跨层闭环测试
+  `WithdrawnConsentOutboundBlockTest`（铸快照→撤回→排队任务执行→adapter 调用
+  0 次；并发撤回不复活；多实例共享权威；陈旧镜像不可救；DB 断连 fail-closed）
+  + `PreOutboundAuthorityWiringTest` + guard/invoker 单测 + DB 测试 126
+  （撤回提交后权威读只见 WITHDRAWN、历史审计可读、重复撤回 0 行）。
+  线性化点为 prepare 事务内的权威读：撤回在其后提交的在途外发按已授权完成，
+  重试/下一次外发必被拒。无 Redis、无消息总线、无 Auth 重构。
 - **现状证据**：撤回会把数据库 snapshot 改为 `WITHDRAWN`，但外发 guard 使用的 `InMemoryAuthorizationSnapshotStore` 可能仍保留 ACTIVE；多实例时镜像更不一致。
 - **最小交付**：以 DB 为执行前权威状态，或实现可靠共享撤回状态；每次外发前复核 requested/execution 双快照；权威读取失败 fail-closed。
 - **验收**：先铸快照、再撤回、最后执行排队任务时 provider HTTP 调用数为 0；并发撤回和多实例测试均拒绝；历史审计仍可读取但不能继续处理。
