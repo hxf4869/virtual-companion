@@ -583,9 +583,12 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   generation；prepare 重跑闭合遗留 CREATED attempt intent 且 `chat.accepted` 不重复落库；
   调度任务周期清扫 work_item 已终态但 generation 仍 IN_PROGRESS 的孤儿（终态化为 FAILED_FINAL +
   `chat.failed`，前端有对应友好文案）。
-- 上下文 token 预算（CTX-BUDGET）：`virtual-companion.generation.context-budget.*` 配置输入/
-  输出 token 与轮次预算，组装器按确定性估算（UTF-8 字节/4）从最新消息回溯裁剪历史，召回记忆占
-  输入预算三分之一。
+- 上下文 token 预算（CTX-BUDGET / S0-03）：类型安全绑定
+  `virtual-companion.context-budget.*`（`VC_CONTEXT_MAX_INPUT_TOKENS` /
+  `VC_CONTEXT_MAX_OUTPUT_TOKENS` / `VC_CONTEXT_MAX_TURNS`，唯一绑定面
+  ContextBudgetProperties），校验正数值与「输出预算必须小于输入预算」组合，
+  非法值启动即失败；组装器按确定性估算（UTF-8 字节/4）从最新消息回溯裁剪历史，
+  召回记忆占输入预算三分之一。
 - 采样参数部署配置（SAMPLE-CFG）：`model-providers.deployments[].temperature` 与 OpenAI 的
   `max-tokens` 由 codec 透传进每次请求（OpenAI 0..2、Anthropic 0..1，缺省 1.0）。
 

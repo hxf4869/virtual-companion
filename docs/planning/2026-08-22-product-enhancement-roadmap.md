@@ -30,7 +30,7 @@
 
 | 候选 | 当前判断 | 下一步边界 |
 |---|---|---|
-| `S0-03` | `PARTIAL / READY` | 预算裁剪已实现，但 `application.yaml` 与 Spring 注入读取不同配置路径；只修绑定、校验和集成测试，不重写组装算法 |
+| `S0-03` | `DONE`（对账见 §S0-03） | 绑定已统一、校验与集成测试已补齐；后续派发前仍须按当前工作树复核 |
 | `S0-02` | `PARTIAL / READY` | Catalog、运行时和 README 已是 10:00–22:00，Beta contract 仍是旧窗口；可修技术漂移，不得代填真实责任人或 Beta 批准状态 |
 | `S0-05` | `PARTIAL / READY` | Report 表单和接口已存在，Help 与部分说明仍声称接口未接通；同步真实入口、文案和测试 |
 | `S0-10` | `PARTIAL` | supplier 熔断、健康感知路由和单机会话粘滞已完成；剩余 `C` 为动态 service-mode 聚合，不得重做 `A/B` |
@@ -131,6 +131,9 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-03 修复上下文预算配置绑定漂移
 
+- **当前对账**：已修复——组装器改经类型安全 `ContextBudgetProperties`（唯一路径
+  `virtual-companion.context-budget.*`，`VC_CONTEXT_*` 注入生效）；正数值与
+  「输出<输入」组合校验在绑定层执行，非法值启动失败；绑定/接线/边界测试齐备。
 - **现状证据**：`application.yaml` 使用 `virtual-companion.context-budget.*`，`AuthDataSourceConfig` 读取 `virtual-companion.generation.context-budget.*`，部署变量可能静默回退到默认值。
 - **最小交付**：改为类型安全 `@ConfigurationProperties`；统一路径；校验 input/output/turn 数值和组合；增加绑定集成测试。
 - **验收**：注入 `VC_CONTEXT_MAX_INPUT_TOKENS=4000` 后组装器确实使用 4000；非法值启动失败；历史、召回和输出预算均有边界测试。

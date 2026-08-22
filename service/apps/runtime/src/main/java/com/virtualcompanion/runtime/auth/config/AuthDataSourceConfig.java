@@ -781,9 +781,13 @@ public class AuthDataSourceConfig {
             JdbcTemplate authJdbcTemplate,
             @Value("${virtual-companion.zero-llm.source-id:ZERO_LLM_FALLBACK}") String zeroLlmSourceId,
             @Value("${virtual-companion.external-attempt.protocol:OPENAI_CHAT_COMPLETIONS}") ModelProtocol externalProtocol,
-            @Value("${virtual-companion.generation.context-budget.max-input-tokens:8000}") int maxInputTokens,
-            @Value("${virtual-companion.generation.context-budget.max-output-tokens:2048}") int maxOutputTokens,
-            @Value("${virtual-companion.generation.context-budget.max-turns:64}") int maxTurns,
+            // S0-03: the context budget binds through the type-safe
+            // ContextBudgetProperties (canonical path
+            // virtual-companion.context-budget.*, VC_CONTEXT_* env vars). The
+            // former virtual-companion.generation.context-budget.* @Values read
+            // a path application.yaml never declared, silently ignoring the
+            // deployment variables.
+            com.virtualcompanion.runtime.worker.ContextBudgetProperties contextBudgetProperties,
             EntitlementSnapshotService entitlementSnapshotService,
             com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort,
             @Value("${virtual-companion.model-providers.degraded:false}") boolean degraded,
@@ -800,8 +804,7 @@ public class AuthDataSourceConfig {
                 authJdbcTemplate,
                 zeroLlmSourceId,
                 externalProtocol,
-                new com.virtualcompanion.conversation.contextplan.ContextBudget(
-                        maxInputTokens, maxOutputTokens, maxTurns),
+                contextBudgetProperties.toBudget(),
                 entitlementSnapshotService,
                 embeddingPort,
                 degraded,

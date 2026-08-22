@@ -176,6 +176,16 @@ public class LiveInvocationAssembler {
     }
 
     /**
+     * CTX-BUDGET (S0-03): the wired per-turn budget. Exposes the bound value so
+     * configuration binding tests can prove the deployment variables actually
+     * reached this assembler (and later observability can report it) without
+     * reaching into private state.
+     */
+    public ContextBudget budget() {
+        return budget;
+    }
+
+    /**
      * Assemble the ZERO_LLM {@code LiveInvocationRequest} for one generation.
      *
      * @throws IllegalStateException if the generation or its conversation cannot
