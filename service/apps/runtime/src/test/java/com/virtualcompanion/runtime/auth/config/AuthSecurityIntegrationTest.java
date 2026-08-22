@@ -31,6 +31,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 /**
  * Proves the Spring Security configuration loads and enforces the hybrid
@@ -213,6 +215,26 @@ class AuthSecurityIntegrationTest {
                 .isSameAs(authService);
         assertThat(ReflectionTestUtils.getField(controller, "abuseGuard"))
                 .isSameAs(authAbuseGuard);
+    }
+
+    @Test
+    void corsAllowsPutAndKeepsCredentialsDisabledWithoutWildcard() {
+        CorsConfigurationSource source = context.getBean(
+                "corsConfigurationSource", CorsConfigurationSource.class);
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/consents");
+        CorsConfiguration cors = source.getCorsConfiguration(request);
+        assertThat(cors).isNotNull();
+        assertThat(cors.getAllowedMethods()).contains("PUT", "POST", "GET");
+        assertThat(Boolean.TRUE.equals(cors.getAllowCredentials())).isFalse();
+        assertThat(cors.getAllowedOrigins() == null ? List.of() : cors.getAllowedOrigins())
+                .noneMatch(origin -> origin.contains("*"));
+    }
+
+    @Test
+    void csrfFilterConstructorRejectsWildcardOrigin() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> new CookieCsrfGuardFilter(List.of("*")));
     }
 
     @Test

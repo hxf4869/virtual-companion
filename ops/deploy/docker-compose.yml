@@ -46,6 +46,10 @@ services:
       VC_ALERT_WEBHOOK_URL: ${VC_ALERT_WEBHOOK_URL:-}
       VC_RETENTION_PURGE_ENABLED: ${VC_RETENTION_PURGE_ENABLED:-false}
       VC_COMMIT: ${VC_COMMIT:-}
+      # S0-06: H5 and API are same-origin behind Caddy. The Origin allow-list
+      # is the public https origin of VC_DOMAIN so browser POSTs/PUTs are not
+      # rejected by CookieCsrfGuardFilter. Wildcards are refused at startup.
+      VC_CORS_ALLOWED_ORIGINS: https://${VC_DOMAIN}
       # S0-33 / §12.7 single-replica hard gate: the runtime declares exactly
       # one replica. Any explicit value other than 1 makes the startup
       # preflight refuse every instance, so an "intended scale-out" cannot be

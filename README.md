@@ -657,6 +657,12 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 由配置代码自身强制），但这不代表生产就绪。系统未开放注册、未启用真实支付、未授权保存真实用户数据。
 generation/realtime/memory 纵切已接通，但仅限本地开发与 CI 合成数据，不面向真实用户。
 
+**H5/API 同源（S0-06 / ADR-0005）**：Technical Alpha/受控 Beta 只支持 Caddy（或 Vite `/api` 代理）把
+H5 与 `/api/*` 挂在同一 host-origin。Origin 白名单为精确 `http(s)` origin，Compose 注入
+`https://$VC_DOMAIN`；通配符在启动时拒绝。CORS 含 PUT，但 `allowCredentials` 保持 false（cookie
+走同源，不靠跨域 CORS）。CSRF/Origin 门禁保持开启；access token 只留内存，不写 `localStorage`。
+同站不同源或跨站不是受支持模型。
+
 **单副本硬门禁（S0-33 / §12.7）**：共享 Realtime/取消/授权/Quota/熔断状态外置前，runtime 严格单副本。
 Compose 固定 `VC_RUNTIME_REPLICAS=1`（`deploy.replicas: 1`）；声明副本数 ≠1 时 startup preflight 直接
 拒绝启动（所有 profile）；实例间用 PostgreSQL advisory lock（`vc.runtime.singleton`）互斥——第二个实例

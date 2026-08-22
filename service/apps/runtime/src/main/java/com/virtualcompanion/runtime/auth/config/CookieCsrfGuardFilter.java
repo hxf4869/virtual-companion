@@ -45,7 +45,7 @@ public class CookieCsrfGuardFilter extends OncePerRequestFilter {
     private final List<String> allowedOrigins;
 
     public CookieCsrfGuardFilter(List<String> allowedOrigins) {
-        this.allowedOrigins = allowedOrigins == null ? List.of() : List.copyOf(allowedOrigins);
+        this.allowedOrigins = OriginAllowlist.parse(allowedOrigins);
     }
 
     @Override
@@ -56,7 +56,7 @@ public class CookieCsrfGuardFilter extends OncePerRequestFilter {
             return;
         }
         String origin = request.getHeader("Origin");
-        if (origin != null && !allowedOrigins.contains(origin)) {
+        if (!OriginAllowlist.allows(allowedOrigins, origin)) {
             reject(response, "Origin is not allowed");
             return;
         }

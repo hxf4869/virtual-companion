@@ -31,3 +31,14 @@ describe("H5 上线加固静态壳（§21.7）", () => {
     expect(html).not.toMatch(/gtag|analytics|hm\.baidu|sentry/i);
   });
 });
+
+describe("S0-06 同源会话：token 不进 localStorage", () => {
+  it("auth store 源码不把 access/refresh token 写入 localStorage", () => {
+    const authStore = readFileSync(
+      join(process.cwd(), "src", "stores", "auth.ts"),
+      "utf8",
+    );
+    expect(authStore).toMatch(/NO token or identity field is ever written to localStorage/);
+    expect(authStore).not.toMatch(/localStorage\.setItem/);
+  });
+});

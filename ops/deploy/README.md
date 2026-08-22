@@ -41,6 +41,16 @@ curl -sI https://"$VC_DOMAIN"/ | head -1              # 200,H5 壳
 且首个实例持续 UP）→ 缩回 1 恢复 → 清理。演练记录归档到
 `docs/beta-readiness/records/`。
 
+## H5/API 同源（S0-06 / ADR-0005）
+
+Caddy 在同一 `VC_DOMAIN` 提供 H5 壳和 `/api/*`。这是 Technical Alpha/受控 Beta **唯一受支持**
+的浏览器会话模型：
+
+- runtime 注入 `VC_CORS_ALLOWED_ORIGINS=https://$VC_DOMAIN`（精确 origin，禁止 `*`）；
+- CSRF + Origin 门禁保持开启；cookie SameSite=Lax；access token 不进 `localStorage`；
+- 不要把 H5 放到另一个站点或子域再打 API——那不是当前受支持部署，也不能靠放开 CORS
+  或关闭 CSRF 来“打通”。
+
 ## 单副本硬门禁（S0-33 / §12.7）
 
 Technical Alpha/Beta **严格单副本**：共享 Realtime、在途取消、授权镜像、Quota、

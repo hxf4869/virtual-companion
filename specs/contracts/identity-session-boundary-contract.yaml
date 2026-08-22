@@ -394,6 +394,16 @@ resolvedOwnerDecisions:
       token 永不进入响应体或脚本可读存储；Bearer-only 无会话 cookie 的请求
       不受 CSRF 约束（Origin 校验保持）；登录（尚无会话 cookie）不强制 CSRF
       token。对应实现：AuthController cookie 下发 + CookieCsrfGuardFilter。
+  - decisionId: h5_api_same_origin_deploy
+    resolvedAt: "2026-08-23"
+    approvedBy: repository-owner
+    source: S0-06
+    resolution: >-
+      Technical Alpha/受控 Beta 只支持同源反代（Caddy 或 Vite /api 代理）。
+      Origin 白名单必须是精确 http(s) origin，禁止通配符；Compose 注入
+      https://$VC_DOMAIN。CORS 方法含 PUT；allowCredentials 保持 false。
+      不得关闭 CSRF、放开任意 origin 或把 token 写入 localStorage。同站不同源
+      与跨站不是受支持模型。
   - decisionId: public_api_paths_http_statuses_and_error_envelope
     resolvedAt: "2026-08-08"
     approvedBy: repository-owner

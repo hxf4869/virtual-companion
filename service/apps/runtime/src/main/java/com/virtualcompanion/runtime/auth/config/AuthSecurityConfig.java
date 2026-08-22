@@ -93,13 +93,17 @@ public class AuthSecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${virtual-companion.auth.cors-allowed-origins:}") List<String> allowedOrigins) {
+        List<String> origins = OriginAllowlist.parse(allowedOrigins);
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(allowedOrigins);
-        config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedOrigins(origins);
+        // S0-06: PUT is a real H5 method (consents, prefs). Wildcard origins
+        // and credentialed CORS are not a supported deploy; cookies travel
+        // same-origin via Caddy, not Access-Control-Allow-Credentials.
+        config.setAllowedMethods(OriginAllowlist.allowedMethods());
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", CookieCsrfGuardFilter.CSRF_HEADER));
         // REQUEST-ID: the correlation header must be readable cross-origin.
         config.setExposedHeaders(List.of(RequestIdFilter.HEADER));
-        config.setAllowCredentials(false);
+        config.setAllowCredentials(OriginAllowlist.allowCredentials());
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
