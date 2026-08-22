@@ -528,6 +528,35 @@ public class AuthDataSourceConfig {
                 enabled, paused, windowFrom, windowUntil, maxDailyActiveUsers, zone);
     }
 
+    /**
+     * S0-04: server generation admission. Required consents stay empty until
+     * product/legal confirm the set; enforcement follows the Beta window or
+     * an explicit flag. Read failures fail closed.
+     */
+    @Bean
+    public com.virtualcompanion.runtime.admission.GenerationAdmission generationAdmission(
+            IdentityAccountRepository identityAccountRepository,
+            AgeVerificationService ageVerificationService,
+            ConsentService consentService,
+            com.virtualcompanion.runtime.servicemode.BetaServiceWindow betaServiceWindow,
+            ServiceWindowService serviceWindowService,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            @Value("${virtual-companion.beta.generation-enabled:false}") boolean betaGenerationEnabled,
+            @Value("${virtual-companion.admission.enforce:false}") boolean enforce,
+            @Value("${virtual-companion.admission.required-consent-types:}")
+                    java.util.List<String> requiredConsentTypes) {
+        return new com.virtualcompanion.runtime.admission.GenerationAdmissionService(
+                identityAccountRepository,
+                ageVerificationService,
+                consentService,
+                betaServiceWindow,
+                serviceWindowService,
+                alertNotifier,
+                betaGenerationEnabled,
+                enforce,
+                requiredConsentTypes);
+    }
+
     /** EMBED-RECALL (V62): deterministic embedder — the local recall floor. */
     @Bean
     public com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort() {

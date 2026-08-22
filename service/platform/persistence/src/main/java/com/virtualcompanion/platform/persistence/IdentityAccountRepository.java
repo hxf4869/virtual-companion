@@ -154,6 +154,24 @@ public class IdentityAccountRepository {
      * {@code vc.identity_account_disable}. Self-disable and non-ADMIN callers
      * fail closed inside the function; an unknown target fails closed too.
      */
+    /**
+     * S0-04: the caller's own account status. Foreign or missing ids fail
+     * closed inside {@code vc.identity_account_status}.
+     */
+    public String statusOf(long accountId) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        String status = jdbc.queryForObject(
+                "SELECT vc.identity_account_status(?)",
+                String.class,
+                accountId);
+        if (status == null || status.isBlank()) {
+            throw new IllegalStateException("identity_account_status returned no status");
+        }
+        return status;
+    }
+
     public boolean disableAccount(long actingAccountId, long targetAccountId) {
         if (actingAccountId <= 0) {
             throw new IllegalArgumentException("actingAccountId must be positive");

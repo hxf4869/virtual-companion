@@ -10,6 +10,7 @@ import com.virtualcompanion.platform.persistence.GenerationStateService;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.runtime.admission.GenerationAdmission;
 import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
 import com.virtualcompanion.runtime.web.ServiceWindowClosedException;
 import com.virtualcompanion.safety.ExitIntentDetector;
@@ -75,6 +76,7 @@ public class GenerationController {
     private final GenerationCancelService cancelService;
     private final BetaServiceWindow serviceWindow;
     private final ServiceWindowService serviceWindowService;
+    private final GenerationAdmission admission;
     private final com.virtualcompanion.runtime.observability.VcMetrics metrics;
     private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
 
@@ -89,6 +91,7 @@ public class GenerationController {
             GenerationCancelService cancelService,
             BetaServiceWindow serviceWindow,
             ServiceWindowService serviceWindowService,
+            GenerationAdmission admission,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         this.receiveService = receiveService;
@@ -101,6 +104,7 @@ public class GenerationController {
         this.cancelService = cancelService;
         this.serviceWindow = serviceWindow;
         this.serviceWindowService = serviceWindowService;
+        this.admission = admission;
         this.metrics = metrics;
         this.alertNotifier = alertNotifier;
     }
@@ -112,10 +116,10 @@ public class GenerationController {
             @Valid @RequestBody SendGenerationRequest request) {
         long conversation = parseId(conversationId, "conversationId");
 
-        // SVC-WINDOW (§24.7 / FR-RES-002): outside the Beta generation window
-        // (or paused, or over the daily-active cap) new generative turns are
-        // refused up front — nothing is persisted. Disabled by default so
-        // local development and CI never hit the gate.
+        // S0-04: server admission (account, Beta switch, adult, consents,
+        // service window/DAU) is the security source. Frontend next-step
+        // copy cannot create a generation. Read failures fail closed.
+        admission.assertAdmitted(ownerUserId);
         assertServiceWindowOpen(ownerUserId);
 
         // CHAT-MODE: eager validation rejects unapproved modes with a 400

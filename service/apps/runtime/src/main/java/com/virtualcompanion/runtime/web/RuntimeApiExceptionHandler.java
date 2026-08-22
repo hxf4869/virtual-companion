@@ -62,6 +62,21 @@ public class RuntimeApiExceptionHandler {
     }
 
     /**
+     * S0-04: generation admission denied. Adult failures use the catalog
+     * AGE_VERIFICATION_REQUIRED code; every other gate uses
+     * BETA_OPERATIONS_NOT_READY. History/memory/data rights stay available.
+     */
+    @ExceptionHandler(com.virtualcompanion.runtime.admission.AdmissionDeniedException.class)
+    public ResponseEntity<ErrorEnvelope> handleAdmissionDenied(
+            com.virtualcompanion.runtime.admission.AdmissionDeniedException e) {
+        String code = "adult-verification-required".equals(e.reason())
+                ? "AGE_VERIFICATION_REQUIRED"
+                : "BETA_OPERATIONS_NOT_READY";
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorEnvelope(code, e.getMessage()));
+    }
+
+    /**
      * EMERGENCY-CONTACT (§20.14): the capability is disabled on this
      * deployment (enablement requires the §20.14 review). 403
      * BETA_OPERATIONS_NOT_READY, fail closed on every endpoint.

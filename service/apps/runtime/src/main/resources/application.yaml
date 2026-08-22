@@ -65,6 +65,14 @@ virtual-companion:
   # with a PostgreSQL advisory-lock lease (see RuntimeSingletonLease).
   runtime:
     replicas: ${VC_RUNTIME_REPLICAS:1}
+  # S0-04: generation admission. Beta generation stays off; required consents
+  # are empty until product/legal freeze the set. enforce=false means Alpha
+  # still generates; turning the Beta window on also enforces adult/consent.
+  beta:
+    generation-enabled: ${VC_BETA_GENERATION_ENABLED:false}
+  admission:
+    enforce: ${VC_ADMISSION_ENFORCE:false}
+    required-consent-types: ${VC_ADMISSION_REQUIRED_CONSENTS:}
     # METRICS-ALERT (§26.6): webhook alert channel + R3/R4 SLA thresholds for
     # the admin safety queue. The URL is deployment-injected; blank disables
     # posting (metrics stay exposed, nothing is sent).

@@ -78,6 +78,7 @@ class GenerationControllerTest {
                 receiveService, enqueueService, generationRepository, generationStateService,
                 finalizeService, new DeterministicSafetyClassifier(), safetyEventService,
                 cancelService, window, serviceWindowService,
+                ownerUserId -> { },
                 com.virtualcompanion.runtime.observability.TestAlerts.metrics(),
                 com.virtualcompanion.runtime.observability.TestAlerts.noop());
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
