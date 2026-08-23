@@ -310,8 +310,13 @@ states carry alert/live a11y semantics. -->
               >
                 编辑
               </button>
-              <button size="mini" :disabled="busy" @click="onDelete(m.memoryId)">
-                删除
+              <button
+                size="mini"
+                data-testid="memory-delete"
+                :disabled="busy"
+                @click="onDelete(m.memoryId)"
+              >
+                {{ confirmDeleteId === m.memoryId ? "确认删除这条记忆？" : "删除" }}
               </button>
               <button
                 size="mini"
@@ -363,8 +368,13 @@ states carry alert/live a11y semantics. -->
               >
                 编辑
               </button>
-              <button size="mini" :disabled="busy" @click="onDelete(m.memoryId)">
-                删除
+              <button
+                size="mini"
+                data-testid="memory-delete"
+                :disabled="busy"
+                @click="onDelete(m.memoryId)"
+              >
+                {{ confirmDeleteId === m.memoryId ? "确认删除这条记忆？" : "删除" }}
               </button>
               <button
                 size="mini"
@@ -742,10 +752,19 @@ async function onSave(id: string): Promise<void> {
   }
 }
 
+const confirmDeleteId = ref<string | null>(null);
+
 async function onDelete(id: string): Promise<void> {
+  if (confirmDeleteId.value !== id) {
+    confirmDeleteId.value = id;
+    return;
+  }
   busy.value = true;
   try {
     await memory.remove(transport, id);
+    if (memory.error === null) {
+      confirmDeleteId.value = null;
+    }
   } finally {
     busy.value = false;
   }

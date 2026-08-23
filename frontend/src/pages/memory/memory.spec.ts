@@ -253,6 +253,49 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("S0-22: the first delete click does not send a delete request", async () => {
+    const store = useMemoryStore();
+    const remove = vi.spyOn(store, "remove").mockResolvedValue();
+    vi.spyOn(store, "load").mockImplementation(async () => {
+      store.canonical = [canonicalMemory("c-del", "喜欢安静的晚上")];
+    });
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+
+    const del = wrapper.find('[data-testid="memory-delete"]');
+    expect(del.exists()).toBe(true);
+    await del.trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(remove).not.toHaveBeenCalled();
+    expect(del.text()).toContain("确认删除");
+    expect(wrapper.text()).toContain("喜欢安静的晚上");
+    wrapper.unmount();
+  });
+
+  it("S0-22: confirmed delete runs once; a failed delete keeps the row", async () => {
+    const store = useMemoryStore();
+    const remove = vi.spyOn(store, "remove").mockImplementation(async () => {
+      store.error = "delete-failed";
+    });
+    vi.spyOn(store, "load").mockImplementation(async () => {
+      store.canonical = [canonicalMemory("c-del", "喜欢安静的晚上")];
+    });
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
+    await wrapper.findAll("button")[0].trigger("click");
+    await flushPromises();
+
+    const del = wrapper.find('[data-testid="memory-delete"]');
+    await del.trigger("click");
+    await del.trigger("click");
+    await flushPromises();
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("喜欢安静的晚上");
+    wrapper.unmount();
+  });
+
   it("renders a back-to-index entry before a relationship id is entered", () => {
     const wrapper = mountPage();
     const nav = wrapper.find('[data-testid="nav-index"]');

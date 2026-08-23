@@ -89,7 +89,7 @@ describe("age page (FR-AUTH-002)", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="age-state-label"]').text()).toBe("尚未核验");
-    expect(wrapper.find('[data-testid="age-state-code"]').text()).toBe("AGE_UNKNOWN");
+    expect(wrapper.find('[data-testid="age-state-code"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="age-verify"]').exists()).toBe(true);
     expect(wrapper.text()).toContain("不保存身份证件");
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
@@ -113,6 +113,17 @@ describe("age page (FR-AUTH-002)", () => {
     expect(useAgeStore().ageState).toBe("ADULT_VERIFIED");
     expect(wrapper.find('[data-testid="age-verified"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="age-verify"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("alpha-simulated");
+    wrapper.unmount();
+  });
+
+  it("S0-22: ordinary age UI hides providerRef and shows a friendly method", async () => {
+    stubFetch({ state: "ADULT_VERIFIED" });
+    const wrapper = mount(AgePage, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="age-provider"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("alpha-simulated");
+    expect(wrapper.find('[data-testid="age-method"]').text()).toContain("模拟核验");
     wrapper.unmount();
   });
 

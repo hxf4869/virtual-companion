@@ -48,9 +48,8 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
       <view class="state-card" data-testid="age-state">
         <text class="label">当前状态</text>
         <text class="state" data-testid="age-state-label">{{ store.label }}</text>
-        <text class="meta" data-testid="age-state-code">{{ store.ageState }}</text>
-        <text v-if="store.record.providerRef" class="meta" data-testid="age-provider">
-          供应商凭证：{{ store.record.providerRef }}
+        <text v-if="methodLabel" class="meta" data-testid="age-method">
+          核验方式：{{ methodLabel }}
         </text>
         <text v-if="store.record.verifiedAt" class="meta" data-testid="age-verified-at">
           记录时间：{{ store.record.verifiedAt }}
@@ -140,6 +139,7 @@ import { computed, onMounted, ref } from "vue";
 
 import { AgeHttpError } from "@/api/age";
 import { createAuthenticatedTransport } from "@/api/transport";
+import { publicAgeMethodLabel } from "@/domain/public-age-display";
 import { useAgeStore } from "@/stores/age";
 import { useAuthStore } from "@/stores/auth";
 
@@ -159,6 +159,7 @@ export default {
     });
 
     const canSubmitAppeal = computed(() => appealReason.value.trim().length > 0);
+    const methodLabel = computed(() => publicAgeMethodLabel(store.record.providerRef));
 
     onMounted(async () => {
       if (!auth.isAuthenticated) {
@@ -229,6 +230,7 @@ export default {
       appealReason,
       appealResult,
       canSubmitAppeal,
+      methodLabel,
       onRetry,
       onVerify,
       onSubmitAppeal,
