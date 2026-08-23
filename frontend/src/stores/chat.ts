@@ -63,6 +63,13 @@ import {
   type StreamState,
   type StreamEvent,
 } from "@/domain/stream-reducer";
+import {
+  canRestore,
+  clearRestorableGeneration,
+  loadRestorableGeneration,
+  safeSessionStorage,
+  saveRestorableGeneration,
+} from "@/domain/generation-restore";
 
 export type ChatPhase =
   | "idle"
@@ -114,6 +121,28 @@ export const useChatStore = defineStore("h5-chat", () => {
   const serviceMode = ref<ServiceModeStatus | null>(null);
   // INC-MODE (FR-CHAT-005): whether the OPEN conversation is incognito.
   const activeIncognito = ref(false);
+  // S0-20 review-fix: owner/relationship binding for the refresh-recovery
+  // entry. Ids only — the page binds them after auth; an empty accountId
+  // disables saving entirely (no owner, no restore).
+  const boundAccountId = ref("");
+  const boundRelationshipId = ref("");
+
+  /** S0-20: bind the recovery entry to the live account + relationship. */
+  function bindGenerationContext(accountId: string, relationshipId: string): void {
+    boundAccountId.value = accountId ?? "";
+    boundRelationshipId.value = relationshipId ?? "";
+  }
+
+  function saveRestorable(): void {
+    if (!generationId.value || !conversationId.value) return;
+    saveRestorableGeneration(safeSessionStorage(), {
+      accountId: boundAccountId.value,
+      relationshipId: boundRelationshipId.value,
+      conversationId: conversationId.value,
+      generationId: generationId.value,
+      savedAtEpochMs: Date.now(),
+    });
+  }
 
   /** SVC-MODE: load the current service mode (non-fatal). */
   async function loadServiceMode(transport: ChatTransport): Promise<void> {
@@ -231,6 +260,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     phase.value = "streaming";
     outcome.value = null;
     lastDisconnect.value = null;
+    // S0-20: persist non-sensitive ids so a full page reload can find the
+    // pending turn again (server snapshot remains the authority).
+    saveRestorable();
     if (!opts?.resumeFrom) {
       stream.value = initialState(initialEpoch);
       feedbackKinds.value = []; // FEEDBACK: fresh generation, fresh feedback state
@@ -277,6 +309,9 @@ export const useChatStore = defineStore("h5-chat", () => {
         outcome: result.outcome,
       });
     }
+    // S0-20: the turn reached its durable terminal here — the recovery entry
+    // must not survive it (a reload shows the settled state from history).
+    clearRestorableGeneration(safeSessionStorage());
   }
 
   /**
@@ -300,6 +335,11 @@ export const useChatStore = defineStore("h5-chat", () => {
       return;
     }
     if (!snapshot.ok) {
+      // S0-20: a gone generation (404) means the stored id is stale — drop
+      // it instead of re-finding a dead turn on every reload.
+      if (snapshot.status === 404) {
+        clearRestorableGeneration(safeSessionStorage());
+      }
       lastDisconnect.value = classifyDisconnect({
         resumeStatus: snapshot.status,
         outcome: outcome.value,
@@ -339,9 +379,44 @@ export const useChatStore = defineStore("h5-chat", () => {
         phase.value = "failed";
       }
       lastDisconnect.value = "terminal";
+      clearRestorableGeneration(safeSessionStorage());
       return;
     }
     await run(deps, id, next.epoch, { resumeFrom: next });
+  }
+
+  /**
+   * S0-20 review-fix: after a FULL PAGE RELOAD the in-memory generation id is
+   * gone. If sessionStorage still holds a fresh, owner-bound entry matching
+   * the account + relationship + open conversation, re-anchor on it and let
+   * {@link recoverInFlight} take the server snapshot as authority (resume or
+   * terminal mapping — never a second generation, never a faked completed).
+   * Any mismatch or expiry silently drops the entry.
+   */
+  async function tryRestoreAfterReload(
+    deps: RealtimeDeps,
+    ctx: { accountId: string; relationshipId: string },
+  ): Promise<boolean> {
+    if (!conversationId.value) return false; // no open conversation to attach to
+    if (phase.value === "streaming") return false; // live stream owns the turn
+    const storage = safeSessionStorage();
+    const stored = loadRestorableGeneration(storage);
+    if (!stored) return false;
+    const context = {
+      accountId: ctx.accountId,
+      relationshipId: ctx.relationshipId,
+      conversationId: conversationId.value,
+    };
+    if (!context.accountId || !context.relationshipId) return false;
+    if (!canRestore(stored, context)) {
+      // Account switch / relationship switch / different conversation:
+      // never surface another binding's pending turn.
+      clearRestorableGeneration(storage);
+      return false;
+    }
+    generationId.value = stored.generationId;
+    await recoverInFlight(deps);
+    return true;
   }
 
   /**
@@ -365,6 +440,8 @@ export const useChatStore = defineStore("h5-chat", () => {
       }
     }
     current.abort();
+    // S0-20: the user chose to leave this turn — drop the recovery entry.
+    clearRestorableGeneration(safeSessionStorage());
   }
 
   function reset(): void {
@@ -392,6 +469,11 @@ export const useChatStore = defineStore("h5-chat", () => {
     // called by startConversation() and must NOT clear it.
     handle = null;
     lastTransport = null;
+    // S0-20: logout / conversation teardown drops the recovery entry and its
+    // owner binding (换号/登出后不得恢复上一账号的在途状态).
+    boundAccountId.value = "";
+    boundRelationshipId.value = "";
+    clearRestorableGeneration(safeSessionStorage());
   }
 
   /**
@@ -754,6 +836,8 @@ export const useChatStore = defineStore("h5-chat", () => {
     displayMessages,
     run,
     recoverInFlight,
+    tryRestoreAfterReload,
+    bindGenerationContext,
     cancel,
     reset,
     initConversation,

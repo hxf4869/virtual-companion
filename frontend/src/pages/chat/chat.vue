@@ -1506,6 +1506,17 @@ export default defineComponent({
         } else {
           await startConversation();
         }
+        // S0-20 review-fix: bind the recovery entry to this account +
+        // relationship, then re-anchor any pending generation from the server
+        // snapshot after a full page reload. Mismatches/expiry drop silently.
+        store.bindGenerationContext(
+          auth.accountId ?? "",
+          relStore.currentRelationshipId,
+        );
+        await store.tryRestoreAfterReload(deps, {
+          accountId: auth.accountId ?? "",
+          relationshipId: relStore.currentRelationshipId,
+        });
         // MEM-PROMPT: surface candidates from earlier turns on entry too.
         await store.refreshPendingMemoryCount(
           transport,
