@@ -129,6 +129,54 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void passwordMustChangeBlocksBusinessPathsWith403() throws Exception {
+        // S0-15 review-fix: an admin-reset account must not use any business
+        // endpoint until it changed its password — 403 PASSWORD_CHANGE_REQUIRED.
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                service(), accountId -> java.util.Optional.of(
+                        new AccessSnapshot("ACTIVE", 1L, "USER", true)));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setMethod("GET");
+        request.setRequestURI("/api/v1/relationships");
+        request.addHeader("Authorization",
+                "Bearer " + service().issueAccessToken(7L, "USER", "alice", 1L));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("PASSWORD_CHANGE_REQUIRED");
+    }
+
+    @Test
+    void passwordMustChangeStillAllowsTheChangeLogoutAndRefreshPaths() throws Exception {
+        // The restricted session may only perform the change (or leave /
+        // keep itself alive) — these paths bind the principal normally.
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                service(), accountId -> java.util.Optional.of(
+                        new AccessSnapshot("ACTIVE", 1L, "USER", true)));
+        for (String[] allowed : new String[][] {
+                {"POST", "/api/v1/auth/password"},
+                {"POST", "/api/v1/auth/logout"},
+                {"POST", "/api/v1/auth/refresh"}}) {
+            SecurityContextHolder.clearContext();
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            request.setMethod(allowed[0]);
+            request.setRequestURI(allowed[1]);
+            request.addHeader("Authorization",
+                    "Bearer " + service().issueAccessToken(7L, "USER", "alice", 1L));
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            filter.doFilter(request, response, new MockFilterChain());
+
+            assertThat(SecurityContextHolder.getContext().getAuthentication())
+                    .as("allowed path %s %s", allowed[0], allowed[1])
+                    .isNotNull();
+        }
+    }
+
+    @Test
     void missingHeaderLeavesSecurityContextEmpty() throws Exception {
         JwtAuthenticationFilter filter = new JwtAuthenticationFilter(service());
         MockHttpServletRequest request = new MockHttpServletRequest();

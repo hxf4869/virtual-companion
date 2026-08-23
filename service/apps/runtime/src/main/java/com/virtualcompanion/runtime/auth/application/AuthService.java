@@ -163,7 +163,9 @@ public class AuthService {
             throw disabledError();
         }
         accounts.recordLoginSuccess(account.accountId(), canonicalUsername);
-        return issueTokens(account.accountId(), account.role(), canonicalUsername);
+        return issueTokens(
+                account.accountId(), account.role(), canonicalUsername,
+                account.passwordMustChange());
     }
 
     /**
@@ -198,18 +200,21 @@ public class AuthService {
         }
         RotatedSession session = rotated.get();
         String canonicalUsername = normalizeUsername(session.username());
+        IdentityAccountRepository.IdentityAccessSnapshot snapshot =
+                currentAccessSnapshot(session.accountId());
         String accessToken = jwt.issueAccessToken(
                 session.accountId(),
                 session.role(),
                 canonicalUsername,
-                currentSessionEpoch(session.accountId()));
+                snapshot.sessionEpoch());
         return new IssuedSession(
                 new AuthResponse(
                         accessToken,
                         "Bearer",
                         jwt.accessTtl().getSeconds(),
                         Long.toString(session.accountId()),
-                        session.role()),
+                        session.role(),
+                        snapshot.passwordMustChange()),
                 newRefreshToken);
     }
 
@@ -775,7 +780,8 @@ public class AuthService {
                 canonicalUsername, passwordEncoder.encode(password), canonicalDisplayName);
     }
 
-    private IssuedSession issueTokens(long accountId, String role, String username) {
+    private IssuedSession issueTokens(
+            long accountId, String role, String username, boolean passwordMustChange) {
         String refreshToken = RefreshTokens.generate();
         sessions.issue(accountId, RefreshTokens.sha256Hex(refreshToken), OffsetDateTime.now().plus(refreshTtl));
         String accessToken = jwt.issueAccessToken(
@@ -786,14 +792,19 @@ public class AuthService {
                         "Bearer",
                         jwt.accessTtl().getSeconds(),
                         Long.toString(accountId),
-                        role),
+                        role,
+                        passwordMustChange),
                 refreshToken);
     }
 
     private long currentSessionEpoch(long accountId) {
+        return currentAccessSnapshot(accountId).sessionEpoch();
+    }
+
+    /** ACTIVE-only snapshot; a missing or non-ACTIVE account fails closed. */
+    private IdentityAccountRepository.IdentityAccessSnapshot currentAccessSnapshot(long accountId) {
         return accounts.accessSnapshot(accountId)
                 .filter(snapshot -> STATUS_ACTIVE.equals(snapshot.status()))
-                .map(snapshot -> (long) snapshot.sessionEpoch())
                 .orElseThrow(AuthService::disabledError);
     }
 

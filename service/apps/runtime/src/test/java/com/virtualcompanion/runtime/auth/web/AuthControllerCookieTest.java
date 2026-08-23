@@ -164,6 +164,6 @@ class AuthControllerCookieTest {
     }
 
     private static AuthResponse sampleResponse() {
-        return new AuthResponse("access-token", "Bearer", 7200, "7", "USER");
+        return new AuthResponse("access-token", "Bearer", 7200, "7", "USER", false);
     }
 }

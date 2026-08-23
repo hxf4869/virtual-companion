@@ -183,11 +183,13 @@ public class IdentityAccountRepository {
             throw new IllegalArgumentException("accountId must be positive");
         }
         return jdbc.query(
-                "SELECT out_status, out_session_epoch, out_role FROM vc.identity_access_snapshot(?)",
+                "SELECT out_status, out_session_epoch, out_role, out_password_must_change "
+                        + "FROM vc.identity_access_snapshot(?)",
                 (rs, rowNum) -> new IdentityAccessSnapshot(
                         rs.getString("out_status"),
                         rs.getInt("out_session_epoch"),
-                        rs.getString("out_role")),
+                        rs.getString("out_role"),
+                        rs.getBoolean("out_password_must_change")),
                 accountId).stream().findFirst();
     }
 
@@ -306,7 +308,8 @@ public class IdentityAccountRepository {
      * AUTHENTICATION_REQUIRED / NOT_FOUND_OR_FORBIDDEN surface (no disclosure).
      */
     /** S0-30 durable access snapshot used to invalidate Bearer tokens. */
-    public record IdentityAccessSnapshot(String status, int sessionEpoch, String role) {
+    public record IdentityAccessSnapshot(
+            String status, int sessionEpoch, String role, boolean passwordMustChange) {
         public IdentityAccessSnapshot {
             if (status == null || status.isBlank()) {
                 throw new IllegalArgumentException("status is required");

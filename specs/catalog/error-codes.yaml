@@ -39,3 +39,5 @@ entries:
   order: 17
 - code: SCHEMA_UNAVAILABLE
   order: 18
+- code: PASSWORD_CHANGE_REQUIRED
+  order: 19

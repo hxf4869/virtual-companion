@@ -4883,6 +4883,11 @@ components:
         role:
           type: string
           description: ADMIN or USER
+        passwordMustChange:
+          type: boolean
+          description: True when this session was issued against an admin-set temporary password. Such a session is restricted
+            to the password-change flow (POST /auth/password, /auth/logout, /auth/refresh) until a new password is set; every
+            other request answers 403 PASSWORD_CHANGE_REQUIRED.
     AuthSession:
       type: object
       description: One live refresh family. Never includes token hash, IP, or fingerprint.

@@ -12,13 +12,19 @@ public final class AuthResponses {
     private AuthResponses() {
     }
 
-    /** {@code POST /api/v1/auth/login} and {@code /refresh}. */
+    /**
+     * {@code POST /api/v1/auth/login} and {@code /refresh}.
+     * {@code passwordMustChange} is true for an admin-issued temporary
+     * credential: the session is restricted to the password-change flow
+     * until {@code POST /api/v1/auth/password} succeeds (S0-15 review-fix).
+     */
     public record AuthResponse(
             String accessToken,
             String tokenType,
             long expiresInSeconds,
             String accountId,
-            String role) {
+            String role,
+            boolean passwordMustChange) {
     }
 
     /**

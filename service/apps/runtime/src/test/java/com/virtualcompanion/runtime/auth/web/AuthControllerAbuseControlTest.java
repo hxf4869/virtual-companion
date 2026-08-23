@@ -189,7 +189,7 @@ class AuthControllerAbuseControlTest {
 
     private static IssuedSession session(String refreshToken) {
         return new IssuedSession(
-                new AuthResponse("access-token", "Bearer", 7200, "7", "USER"),
+                new AuthResponse("access-token", "Bearer", 7200, "7", "USER", false),
                 refreshToken);
     }
 

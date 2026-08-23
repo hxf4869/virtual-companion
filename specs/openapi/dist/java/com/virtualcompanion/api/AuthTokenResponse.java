@@ -6,7 +6,8 @@ public record AuthTokenResponse(
     final String tokenType,
     final String expiresInSeconds,
     final String accountId,
-    final String role
+    final String role,
+    final String passwordMustChange
 ) {
     public AuthTokenResponse {
         java.util.Objects.requireNonNull(accessToken, "accessToken must not be null");
@@ -14,5 +15,6 @@ public record AuthTokenResponse(
         java.util.Objects.requireNonNull(expiresInSeconds, "expiresInSeconds must not be null");
         java.util.Objects.requireNonNull(accountId, "accountId must not be null");
         java.util.Objects.requireNonNull(role, "role must not be null");
+        // passwordMustChange is nullable
     }
 }

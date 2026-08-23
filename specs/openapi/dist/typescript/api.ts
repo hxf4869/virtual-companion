@@ -484,6 +484,7 @@ export interface AuthTokenResponse {
   expiresInSeconds: string
   accountId: string
   role: string
+  passwordMustChange?: string
 }
 
 export interface AuthSession {

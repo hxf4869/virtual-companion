@@ -11,7 +11,8 @@ import java.util.Optional;
  * observed before the next sensitive call. Missing or unreadable snapshots
  * fail closed.
  */
-public record AccessSnapshot(String status, long sessionEpoch, String role) {
+public record AccessSnapshot(
+        String status, long sessionEpoch, String role, boolean passwordMustChange) {
 
     public AccessSnapshot {
         Objects.requireNonNull(status, "status must not be null");
@@ -22,6 +23,11 @@ public record AccessSnapshot(String status, long sessionEpoch, String role) {
             throw new IllegalArgumentException("sessionEpoch must be positive");
         }
         Objects.requireNonNull(role, "role must not be null");
+    }
+
+    /** Back-compatible read path for callers that ignore the must-change gate. */
+    public AccessSnapshot(String status, long sessionEpoch, String role) {
+        this(status, sessionEpoch, role, false);
     }
 
     /**

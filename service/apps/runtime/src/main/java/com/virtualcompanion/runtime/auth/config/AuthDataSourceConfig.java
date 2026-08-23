@@ -272,7 +272,8 @@ public class AuthDataSourceConfig {
             IdentityAccountRepository identityAccountRepository) {
         return accountId -> identityAccountRepository.accessSnapshot(accountId)
                 .map(snapshot -> new com.virtualcompanion.runtime.auth.jwt.AccessSnapshot(
-                        snapshot.status(), snapshot.sessionEpoch(), snapshot.role()));
+                        snapshot.status(), snapshot.sessionEpoch(), snapshot.role(),
+                        snapshot.passwordMustChange()));
     }
 
     @Bean

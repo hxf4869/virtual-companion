@@ -70,7 +70,7 @@ class AuthServiceTest {
                 .thenReturn("access-token");
         when(accounts.accessSnapshot(anyLong())).thenReturn(java.util.Optional.of(
                 new com.virtualcompanion.platform.persistence.IdentityAccountRepository.IdentityAccessSnapshot(
-                        "ACTIVE", 1, "USER")));
+                        "ACTIVE", 1, "USER", false)));
         service = new AuthService(
                 accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7),
                 adminConsole, entitlementSnapshotService, inviteCodes,

@@ -204,8 +204,9 @@ class SchemaReadinessHealthIndicatorTest {
         // V88/V89/V90/V91 = S0-14 ops_case state machine + RBAC + actions + list;
         // V92 = S0-15 refresh session family registry + password change;
         // V93 = review-fix: advance_release_gate + ops_case_event grants
-        // pulled back from runtime roles.
+        // pulled back from runtime roles;
+        // V94 = review-fix: access snapshot carries password_must_change.
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(93);
+                .isEqualTo(94);
     }
 }
