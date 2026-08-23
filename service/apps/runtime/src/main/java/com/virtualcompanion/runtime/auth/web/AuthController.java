@@ -4,8 +4,11 @@ import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
 import com.virtualcompanion.runtime.auth.application.AuthService;
 import com.virtualcompanion.runtime.auth.config.CookieCsrfGuardFilter;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
+import com.virtualcompanion.runtime.auth.web.AuthRequests.AdminResetPasswordRequest;
+import com.virtualcompanion.runtime.auth.web.AuthRequests.ChangePasswordRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.LoginRequest;
+import com.virtualcompanion.runtime.auth.web.AuthRequests.ReauthRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.ServiceClassAssignRequest;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountListItem;
 import com.virtualcompanion.runtime.auth.web.AuthResponses.AccountResponse;
@@ -132,6 +135,44 @@ public class AuthController {
         return authService.logout(principal.accountId(), refreshToken);
     }
 
+    @GetMapping("/sessions")
+    public List<AuthResponses.SessionListItem> listSessions(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @CookieValue(name = CookieCsrfGuardFilter.REFRESH_COOKIE, required = false) String refreshToken) {
+        return authService.listSessions(principal, refreshToken);
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public LogoutResponse revokeSession(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @PathVariable String sessionId) {
+        return authService.revokeSession(principal, sessionId);
+    }
+
+    @PostMapping("/sessions/revoke-all")
+    public AuthResponses.RevokeAllResponse revokeAllSessions(
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        return authService.revokeAllSessions(principal);
+    }
+
+    @PostMapping("/password")
+    public AuthResponses.PasswordChangedResponse changePassword(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @Valid @RequestBody ChangePasswordRequest request,
+            HttpServletResponse response) {
+        AuthResponses.PasswordChangedResponse result =
+                authService.changePassword(principal, request.currentPassword(), request.newPassword());
+        clearSessionCookies(response);
+        return result;
+    }
+
+    @PostMapping("/reauth")
+    public AuthResponses.ReauthResponse reauth(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @Valid @RequestBody ReauthRequest request) {
+        return authService.reauth(principal, request.password());
+    }
+
     /**
      * ACCT-DELETE (FR-AUTH-004): self-service deletion of the caller's own
      * account. The session cookies are cleared so the client ends up logged
@@ -166,6 +207,14 @@ public class AuthController {
             @PathVariable String accountId,
             @AuthenticationPrincipal JwtTokenService.Principal principal) {
         return authService.disableAccount(principal, parseAccountId(accountId));
+    }
+
+    @PostMapping("/admin/accounts/{accountId}/reset-password")
+    public AuthResponses.AdminResetResponse adminResetPassword(
+            @PathVariable String accountId,
+            @Valid @RequestBody AdminResetPasswordRequest request,
+            @AuthenticationPrincipal JwtTokenService.Principal principal) {
+        return authService.adminResetPassword(principal, parseAccountId(accountId), request.newPassword());
     }
 
     /** ADMIN-OPS (V36): keyset page of the audit trail, newest first. */

@@ -699,6 +699,95 @@ class AuthServiceTest {
         verifyNoInteractions(accounts, sessions, passwordEncoder, jwt);
     }
 
+    @Test
+    void s015ListsLiveSessionsWithoutTokenHash() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(sessions.listSessions(eq(7L), any()))
+                .thenReturn(java.util.List.of(
+                        new IdentityRefreshTokenRepository.SessionView(
+                                3L, "fam-1", "h5", java.time.OffsetDateTime.parse("2026-08-23T00:00:00Z"),
+                                java.time.OffsetDateTime.parse("2026-08-23T01:00:00Z"),
+                                java.time.OffsetDateTime.parse("2026-08-30T00:00:00Z"), true)));
+
+        var rows = service.listSessions(user, "raw-refresh-token");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).id()).isEqualTo("3");
+        assertThat(rows.get(0).current()).isTrue();
+        assertThat(rows.get(0).clientLabel()).isEqualTo("h5");
+        verify(sessions).listSessions(7L, RefreshTokens.sha256Hex("raw-refresh-token"));
+    }
+
+    @Test
+    void s015RevokeSessionRevokesOwnedFamily() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(sessions.revokeSession(7L, 3L)).thenReturn(true);
+
+        assertThat(service.revokeSession(user, "3").ok()).isTrue();
+        verify(sessions).revokeSession(7L, 3L);
+    }
+
+    @Test
+    void s015RevokeAllSessions() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(sessions.revokeAll(7L)).thenReturn(2);
+
+        assertThat(service.revokeAllSessions(user).revoked()).isEqualTo(2);
+        verify(sessions).revokeAll(7L);
+    }
+
+    @Test
+    void s015ChangePasswordRevokesFamiliesAndDoesNotMentionDelivery() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(accounts.authenticate("alice"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
+        when(passwordEncoder.matches("OldPass1!", "hash")).thenReturn(true);
+        when(passwordEncoder.encode("NewPass1!")).thenReturn("new-hash");
+        when(accounts.changePassword(7L, "new-hash")).thenReturn(true);
+        when(sessions.revokeAll(7L)).thenReturn(1);
+
+        var result = service.changePassword(user, "OldPass1!", "NewPass1!");
+
+        assertThat(result.ok()).isTrue();
+        verify(sessions).revokeAll(7L);
+        verify(accounts).changePassword(7L, "new-hash");
+        assertThat(result.toString().toLowerCase()).doesNotContain("sent");
+    }
+
+    @Test
+    void s015AdminResetRequiresReauthAndNeverClaimsSent() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        when(accounts.reauthValid(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.adminResetPassword(admin, 7L, "TempPass1!"))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code()).isEqualTo("ACCESS_DENIED"));
+        verify(accounts, never()).adminResetPassword(anyLong(), anyLong(), anyString());
+
+        when(accounts.reauthValid(1L)).thenReturn(true);
+        when(passwordEncoder.encode("TempPass1!")).thenReturn("temp-hash");
+        when(accounts.adminResetPassword(1L, 7L, "temp-hash")).thenReturn(true);
+        when(sessions.revokeAll(7L)).thenReturn(1);
+
+        var result = service.adminResetPassword(admin, 7L, "TempPass1!");
+        assertThat(result.ok()).isTrue();
+        assertThat(result.passwordMustChange()).isTrue();
+        assertThat(result.toString().toLowerCase()).doesNotContain("sent");
+        verify(sessions).revokeAll(7L);
+    }
+
+    @Test
+    void s015ReauthConfirmsPasswordWithoutForgingAChannel() {
+        JwtTokenService.Principal admin = new JwtTokenService.Principal(1, "ADMIN", "root");
+        when(accounts.authenticate("root"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(1, "ADMIN", "ACTIVE", "hash")));
+        when(passwordEncoder.matches("Adm1n!pass", "hash")).thenReturn(true);
+        when(accounts.recordReauth(1L)).thenReturn(true);
+
+        assertThat(service.reauth(admin, "Adm1n!pass").ok()).isTrue();
+        verify(accounts).recordReauth(1L);
+    }
+
     private void assertInvalidLogout(String refreshToken) {
         clearInvocations(accounts, sessions, passwordEncoder, jwt);
 

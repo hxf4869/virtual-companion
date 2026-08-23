@@ -39,4 +39,20 @@ public final class AuthRequests {
             @NotBlank String accountId,
             @NotBlank String serviceClass) {
     }
+
+    /** {@code POST /api/v1/auth/password}. */
+    public record ChangePasswordRequest(
+            @NotBlank @Size(min = 8, max = 128) String currentPassword,
+            @NotBlank @Size(min = 8, max = 128) String newPassword) {
+    }
+
+    /** {@code POST /api/v1/auth/reauth}. */
+    public record ReauthRequest(
+            @NotBlank @Size(max = 128) String password) {
+    }
+
+    /** {@code POST /api/v1/auth/admin/accounts/{id}/reset-password}. */
+    public record AdminResetPasswordRequest(
+            @NotBlank @Size(min = 8, max = 128) String newPassword) {
+    }
 }

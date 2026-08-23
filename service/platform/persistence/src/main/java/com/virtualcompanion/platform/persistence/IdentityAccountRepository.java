@@ -32,13 +32,15 @@ public class IdentityAccountRepository {
     public Optional<AuthenticatedIdentity> authenticate(String username) {
         validateUsername(username);
         return jdbc.query(
-                "SELECT out_account_id, out_role, out_status, out_password_hash "
+                "SELECT out_account_id, out_role, out_status, out_password_hash, "
+                        + "out_password_must_change "
                         + "FROM vc.identity_authenticate(?)",
                 (rs, rowNum) -> new AuthenticatedIdentity(
                         rs.getLong("out_account_id"),
                         rs.getString("out_role"),
                         rs.getString("out_status"),
-                        rs.getString("out_password_hash")),
+                        rs.getString("out_password_hash"),
+                        rs.getBoolean("out_password_must_change")),
                 username).stream().findFirst();
     }
 
@@ -212,6 +214,58 @@ public class IdentityAccountRepository {
      * event. FALSE for an absent, already-deleted or disabled account
      * (existence is never disclosed).
      */
+    public boolean changePassword(long accountId, String passwordHash) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        validatePasswordHash(passwordHash);
+        Boolean ok = jdbc.queryForObject(
+                "SELECT vc.identity_change_password(?, ?)",
+                Boolean.class,
+                accountId,
+                passwordHash);
+        return Boolean.TRUE.equals(ok);
+    }
+
+    public boolean adminResetPassword(long actingAccountId, long targetAccountId, String passwordHash) {
+        if (actingAccountId <= 0) {
+            throw new IllegalArgumentException("actingAccountId must be positive");
+        }
+        if (targetAccountId <= 0) {
+            throw new IllegalArgumentException("targetAccountId must be positive");
+        }
+        validatePasswordHash(passwordHash);
+        Boolean ok = jdbc.queryForObject(
+                "SELECT vc.identity_admin_reset_password(?, ?, ?)",
+                Boolean.class,
+                actingAccountId,
+                targetAccountId,
+                passwordHash);
+        return Boolean.TRUE.equals(ok);
+    }
+
+    public boolean recordReauth(long accountId) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        Boolean ok = jdbc.queryForObject(
+                "SELECT vc.identity_record_reauth(?)",
+                Boolean.class,
+                accountId);
+        return Boolean.TRUE.equals(ok);
+    }
+
+    public boolean reauthValid(long accountId) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        Boolean ok = jdbc.queryForObject(
+                "SELECT vc.identity_reauth_valid(?)",
+                Boolean.class,
+                accountId);
+        return Boolean.TRUE.equals(ok);
+    }
+
     public boolean deleteAccount(long accountId) {
         if (accountId <= 0) {
             throw new IllegalArgumentException("accountId must be positive");
@@ -270,7 +324,13 @@ public class IdentityAccountRepository {
             long accountId,
             String role,
             String status,
-            String passwordHash) {
+            String passwordHash,
+            boolean passwordMustChange) {
+
+        public AuthenticatedIdentity(
+                long accountId, String role, String status, String passwordHash) {
+            this(accountId, role, status, passwordHash, false);
+        }
 
         public AuthenticatedIdentity {
             if (accountId <= 0) {

@@ -486,6 +486,46 @@ export interface AuthTokenResponse {
   role: string
 }
 
+export interface AuthSession {
+  id: string
+  familyId: string
+  clientLabel?: string
+  createdAt: string
+  lastSeenAt: string
+  expiresAt: string
+  current: string
+}
+
+export interface RevokeAllSessionsResponse {
+  revoked: string
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+}
+
+export interface PasswordChangedResponse {
+  ok: string
+}
+
+export interface ReauthRequest {
+  password: string
+}
+
+export interface ReauthResponse {
+  ok: string
+}
+
+export interface AdminResetPasswordRequest {
+  newPassword: string
+}
+
+export interface AdminResetResponse {
+  ok: string
+  passwordMustChange: string
+}
+
 export interface LogoutResponse {
   ok: string
 }
@@ -752,6 +792,12 @@ export interface VirtualCompanionApiClient {
   login(): Promise<AuthTokenResponse>
   refresh(): Promise<AuthTokenResponse>
   logout(): Promise<LogoutResponse>
+  listAuthSessions(): Promise<void>
+  revokeAuthSession(): Promise<LogoutResponse>
+  revokeAllAuthSessions(): Promise<RevokeAllSessionsResponse>
+  changeAuthPassword(): Promise<PasswordChangedResponse>
+  reauthAuth(): Promise<ReauthResponse>
+  adminResetPassword(): Promise<AdminResetResponse>
   deleteAccount(): Promise<AccountDeletedResponse>
   createInternalAccount(): Promise<AccountResponse>
   listInternalAccounts(): Promise<void>

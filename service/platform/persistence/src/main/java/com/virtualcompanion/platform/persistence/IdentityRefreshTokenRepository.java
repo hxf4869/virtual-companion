@@ -85,6 +85,68 @@ public class IdentityRefreshTokenRepository {
         return Boolean.TRUE.equals(revoked);
     }
 
+    public java.util.List<SessionView> listSessions(long accountId, String currentTokenHash) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        return jdbc.query(
+                "SELECT out_id, out_family_id, out_client_label, out_created_at, "
+                        + "out_last_seen_at, out_expires_at, out_current "
+                        + "FROM vc.identity_list_sessions(?, ?)",
+                (rs, rowNum) -> new SessionView(
+                        rs.getLong("out_id"),
+                        rs.getObject("out_family_id") == null
+                                ? "" : rs.getObject("out_family_id").toString(),
+                        rs.getString("out_client_label"),
+                        rs.getObject("out_created_at", OffsetDateTime.class),
+                        rs.getObject("out_last_seen_at", OffsetDateTime.class),
+                        rs.getObject("out_expires_at", OffsetDateTime.class),
+                        rs.getBoolean("out_current")),
+                accountId,
+                currentTokenHash);
+    }
+
+    public boolean revokeSession(long accountId, long sessionId) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        if (sessionId <= 0) {
+            throw new IllegalArgumentException("sessionId must be positive");
+        }
+        Boolean ok = jdbc.queryForObject(
+                "SELECT vc.identity_revoke_session(?, ?)",
+                Boolean.class,
+                accountId,
+                sessionId);
+        return Boolean.TRUE.equals(ok);
+    }
+
+    public int revokeAll(long accountId) {
+        if (accountId <= 0) {
+            throw new IllegalArgumentException("accountId must be positive");
+        }
+        Integer n = jdbc.queryForObject(
+                "SELECT vc.identity_revoke_all_sessions(?)",
+                Integer.class,
+                accountId);
+        return n == null ? 0 : n;
+    }
+
+    public record SessionView(
+            long id,
+            String familyId,
+            String clientLabel,
+            OffsetDateTime createdAt,
+            OffsetDateTime lastSeenAt,
+            OffsetDateTime expiresAt,
+            boolean current) {
+        public SessionView {
+            if (id <= 0) {
+                throw new IllegalArgumentException("id must be positive");
+            }
+        }
+    }
+
     static void validateTokenHash(String tokenHash) {
         if (tokenHash == null || tokenHash.isBlank()) {
             throw new IllegalArgumentException("tokenHash is required");

@@ -2440,6 +2440,176 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/sessions:
+    get:
+      operationId: listAuthSessions
+      summary: List live refresh sessions for the caller
+      description: >-
+        Returns the caller's live (unrevoked, unexpired) refresh families.
+        Never includes token hashes, IP addresses, or device fingerprints.
+        The current cookie, when present, is marked current=true.
+      parameters:
+        - in: cookie
+          name: vc_refresh
+          required: false
+          schema:
+            type: string
+            x-utf8-max-bytes: 512
+      responses:
+        '200':
+          description: Live sessions (empty list when none)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuthSession'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/sessions/{sessionId}:
+    delete:
+      operationId: revokeAuthSession
+      summary: Revoke one refresh family
+      description: >-
+        Revokes the named live session and its rotation family. Foreign or
+        unknown ids fail closed without disclosing existence. Idempotent.
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Revoked (or already absent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/sessions/revoke-all:
+    post:
+      operationId: revokeAllAuthSessions
+      summary: Revoke every live refresh session for the caller
+      description: >-
+        Revokes all live refresh families for the authenticated account and
+        bumps session epoch. Does not send mail or SMS.
+      responses:
+        '200':
+          description: Count of revoked live rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeAllSessionsResponse'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/password:
+    post:
+      operationId: changeAuthPassword
+      summary: Change the caller's password
+      description: >-
+        Verifies the current password, stores a new BCrypt hash, revokes every
+        refresh family, and bumps session epoch. Never claims a message was sent.
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed; refresh cookie is cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordChangedResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Current password rejected or no session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/reauth:
+    post:
+      operationId: reauthAuth
+      summary: Confirm the caller's password for a short admin window
+      description: >-
+        Re-checks the password and, on success, opens a 15-minute re-auth
+        window required for admin password reset. Does not send mail or SMS.
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReauthRequest'
+      responses:
+        '200':
+          description: Re-auth recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReauthResponse'
+        '401':
+          description: Password rejected or no session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/accounts/{accountId}/reset-password:
+    post:
+      operationId: adminResetPassword
+      summary: ADMIN one-time password reset
+      description: >-
+        Sets a new password hash, forces passwordMustChange, revokes the
+        target's refresh families, and bumps epoch. Requires a recent admin
+        re-auth. Never claims a reset was emailed or texted.
+      parameters:
+        - in: path
+          name: accountId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminResetPasswordRequest'
+      responses:
+        '200':
+          description: Reset applied locally; no outbound message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminResetResponse'
+        '403':
+          description: ADMIN re-auth missing or caller is not ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/auth/account:
     delete:
       operationId: deleteAccount
@@ -5071,6 +5241,89 @@ components:
         role:
           type: string
           description: ADMIN or USER
+    AuthSession:
+      type: object
+      description: One live refresh family. Never includes token hash, IP, or fingerprint.
+      required:
+        - id
+        - familyId
+        - createdAt
+        - lastSeenAt
+        - expiresAt
+        - current
+      properties:
+        id:
+          type: string
+        familyId:
+          type: string
+        clientLabel:
+          type: string
+          description: Coarse client label such as h5; never a device fingerprint
+        createdAt:
+          type: string
+        lastSeenAt:
+          type: string
+        expiresAt:
+          type: string
+        current:
+          type: boolean
+    RevokeAllSessionsResponse:
+      type: object
+      required:
+        - revoked
+      properties:
+        revoked:
+          type: integer
+          format: int32
+    ChangePasswordRequest:
+      type: object
+      required:
+        - currentPassword
+        - newPassword
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+    PasswordChangedResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+    ReauthRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+    ReauthResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+    AdminResetPasswordRequest:
+      type: object
+      required:
+        - newPassword
+      properties:
+        newPassword:
+          type: string
+    AdminResetResponse:
+      type: object
+      required:
+        - ok
+        - passwordMustChange
+      properties:
+        ok:
+          type: boolean
+        passwordMustChange:
+          type: boolean
+          description: Always true; the caller must change the password on next login. Never implies a message was sent.
     LogoutResponse:
       type: object
       description: Idempotent logout acknowledgment.

@@ -229,6 +229,152 @@ public class AuthService {
         return new LogoutResponse(true);
     }
 
+    public java.util.List<AuthResponses.SessionListItem> listSessions(
+            JwtTokenService.Principal principal, String refreshToken) {
+        if (principal == null) {
+            throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
+                    "A valid bearer token is required");
+        }
+        String currentHash = null;
+        if (refreshToken != null && !refreshToken.isBlank()
+                && AuthInputLimits.withinUtf8Bytes(
+                        refreshToken, AuthInputLimits.MAX_REFRESH_TOKEN_UTF8_BYTES)) {
+            currentHash = RefreshTokens.sha256Hex(refreshToken);
+        }
+        try {
+            return sessions.listSessions(principal.accountId(), currentHash).stream()
+                    .map(row -> new AuthResponses.SessionListItem(
+                            Long.toString(row.id()),
+                            row.familyId() == null ? "" : row.familyId(),
+                            row.clientLabel() == null ? "" : row.clientLabel(),
+                            row.createdAt() == null ? "" : row.createdAt().toString(),
+                            row.lastSeenAt() == null ? "" : row.lastSeenAt().toString(),
+                            row.expiresAt() == null ? "" : row.expiresAt().toString(),
+                            row.current()))
+                    .toList();
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    public LogoutResponse revokeSession(JwtTokenService.Principal principal, String sessionId) {
+        if (principal == null) {
+            throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
+                    "A valid bearer token is required");
+        }
+        long id;
+        try {
+            id = Long.parseLong(sessionId);
+        } catch (NumberFormatException bad) {
+            throw invalidRequestError();
+        }
+        if (id <= 0) {
+            throw invalidRequestError();
+        }
+        try {
+            sessions.revokeSession(principal.accountId(), id);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+        return new LogoutResponse(true);
+    }
+
+    public AuthResponses.RevokeAllResponse revokeAllSessions(JwtTokenService.Principal principal) {
+        if (principal == null) {
+            throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
+                    "A valid bearer token is required");
+        }
+        try {
+            int n = sessions.revokeAll(principal.accountId());
+            return new AuthResponses.RevokeAllResponse(n);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+    }
+
+    public AuthResponses.PasswordChangedResponse changePassword(
+            JwtTokenService.Principal principal, String currentPassword, String newPassword) {
+        if (principal == null) {
+            throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
+                    "A valid bearer token is required");
+        }
+        if (currentPassword == null || currentPassword.isBlank()
+                || newPassword == null || newPassword.isBlank()) {
+            throw invalidRequestError();
+        }
+        validatePasswordPolicy(newPassword);
+        Optional<AuthenticatedIdentity> identity = accounts.authenticate(principal.username());
+        if (identity.isEmpty()
+                || identity.get().accountId() != principal.accountId()
+                || !STATUS_ACTIVE.equals(identity.get().status())
+                || !passwordEncoder.matches(currentPassword, identity.get().passwordHash())) {
+            throw credentialsError();
+        }
+        try {
+            boolean ok = accounts.changePassword(
+                    principal.accountId(), passwordEncoder.encode(newPassword));
+            if (!ok) {
+                throw genericError();
+            }
+            sessions.revokeAll(principal.accountId());
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+        return new AuthResponses.PasswordChangedResponse(true);
+    }
+
+    public AuthResponses.AdminResetResponse adminResetPassword(
+            JwtTokenService.Principal principal, long targetAccountId, String newPassword) {
+        requireAdmin(principal);
+        if (targetAccountId <= 0 || newPassword == null || newPassword.isBlank()) {
+            throw invalidRequestError();
+        }
+        validatePasswordPolicy(newPassword);
+        if (!accounts.reauthValid(principal.accountId())) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "Re-authentication is required");
+        }
+        try {
+            boolean ok = accounts.adminResetPassword(
+                    principal.accountId(),
+                    targetAccountId,
+                    passwordEncoder.encode(newPassword));
+            if (!ok) {
+                throw genericError();
+            }
+            sessions.revokeAll(targetAccountId);
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+        return new AuthResponses.AdminResetResponse(true, true);
+    }
+
+    public AuthResponses.ReauthResponse reauth(JwtTokenService.Principal principal, String password) {
+        if (principal == null) {
+            throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
+                    "A valid bearer token is required");
+        }
+        if (password == null || password.isBlank()) {
+            throw invalidRequestError();
+        }
+        Optional<AuthenticatedIdentity> identity = accounts.authenticate(principal.username());
+        if (identity.isEmpty()
+                || identity.get().accountId() != principal.accountId()
+                || !STATUS_ACTIVE.equals(identity.get().status())
+                || !passwordEncoder.matches(password, identity.get().passwordHash())) {
+            throw credentialsError();
+        }
+        try {
+            boolean ok = accounts.recordReauth(principal.accountId());
+            if (!ok) {
+                throw genericError();
+            }
+        } catch (DataAccessException e) {
+            throw genericError();
+        }
+        return new AuthResponses.ReauthResponse(true);
+    }
+
     /**
      * ADMIN-only account creation (no public registration). The principal's
      * role comes from the verified access token; the database function

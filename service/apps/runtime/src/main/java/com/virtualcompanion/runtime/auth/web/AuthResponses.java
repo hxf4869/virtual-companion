@@ -33,6 +33,33 @@ public final class AuthResponses {
     public record LogoutResponse(boolean ok) {
     }
 
+    /** {@code GET /api/v1/auth/sessions}. Never includes token hash or IP. */
+    public record SessionListItem(
+            String id,
+            String familyId,
+            String clientLabel,
+            String createdAt,
+            String lastSeenAt,
+            String expiresAt,
+            boolean current) {
+    }
+
+    /** {@code POST /api/v1/auth/sessions/revoke-all}. */
+    public record RevokeAllResponse(int revoked) {
+    }
+
+    /** {@code POST /api/v1/auth/password}. */
+    public record PasswordChangedResponse(boolean ok) {
+    }
+
+    /** {@code POST /api/v1/auth/admin/accounts/{id}/reset-password}. Never claims a message was sent. */
+    public record AdminResetResponse(boolean ok, boolean passwordMustChange) {
+    }
+
+    /** {@code POST /api/v1/auth/reauth}. */
+    public record ReauthResponse(boolean ok) {
+    }
+
     /** {@code POST /api/v1/auth/admin/accounts}. */
     public record AccountResponse(
             String accountId,

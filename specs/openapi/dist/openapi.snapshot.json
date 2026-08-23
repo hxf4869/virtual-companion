@@ -71,6 +71,12 @@
     "login",
     "refresh",
     "logout",
+    "listAuthSessions",
+    "revokeAuthSession",
+    "revokeAllAuthSessions",
+    "changeAuthPassword",
+    "reauthAuth",
+    "adminResetPassword",
     "deleteAccount",
     "createInternalAccount",
     "listInternalAccounts",
@@ -98,6 +104,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "2f6d9ae8b744f1fd6b15fcb21ffea9e3682ae30774c329ed5be1e39646e5179f"
+    "sha256": "e52dcdd705172fec67fd58b801ed8e1a484052c78f0cb3cb398789b8efa553c4"
   }
 }

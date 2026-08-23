@@ -212,6 +212,24 @@ public interface VirtualCompanionApi {
     /** Revoke a refresh session. */
     LogoutResponse logout();
 
+    /** List live refresh sessions for the caller. */
+    Void listAuthSessions();
+
+    /** Revoke one refresh family. */
+    LogoutResponse revokeAuthSession();
+
+    /** Revoke every live refresh session for the caller. */
+    RevokeAllSessionsResponse revokeAllAuthSessions();
+
+    /** Change the caller's password. */
+    PasswordChangedResponse changeAuthPassword();
+
+    /** Confirm the caller's password for a short admin window. */
+    ReauthResponse reauthAuth();
+
+    /** ADMIN one-time password reset. */
+    AdminResetResponse adminResetPassword();
+
     /** Delete the caller's own account (FR-AUTH-004). */
     AccountDeletedResponse deleteAccount();
 
