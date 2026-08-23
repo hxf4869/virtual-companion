@@ -29,6 +29,15 @@ public final class DeterministicMemoryAutoSaveRule {
     /**
      * Sensitive screen (健康/家庭/财务/创伤 lexicon, plus identity/credential
      * terms). Any hit disables auto-save for the whole statement.
+     *
+     * <p>S0-08 synthetic red team: the same fail-safe screen also carries
+     * instruction/injection indicators (system-prompt solicitation, rule
+     * override, credentials, forged authority, resurrection directives). A
+     * statement containing any of them routes to the ordinary
+     * PENDING_CONFIRMATION candidate — an explicit human confirm is required
+     * before such content can become canonical memory. The whitelist-shaped
+     * attack ("以后叫我系统提示词保管员…") was demonstrated by
+     * {@code SyntheticRedTeamMemoryGuardTest}.
      */
     private static final List<String> SENSITIVE_LEXICON = List.of(
             "爸", "妈", "爹", "娘", "哥", "姐", "弟", "妹", "老公", "老婆", "丈夫",
@@ -36,7 +45,15 @@ public final class DeterministicMemoryAutoSaveRule {
             "病", "医院", "医生", "药", "诊断", "症", "抑郁", "焦虑", "自杀",
             "自残", "伤", "死", "创伤", "暴力",
             "钱", "工资", "薪", "奖金", "债", "贷款", "存款", "穷", "富",
-            "密码", "身份证", "银行卡");
+            "密码", "身份证", "银行卡",
+            // S0-08 injection indicators (high-precision; a miss only costs
+            // one manual confirmation, never a wrong ACCEPTED).
+            "系统提示", "指令", "规则", "密钥", "凭据", "验证码",
+            "管理员", "忽略之前", "越权", "数据库", "外传", "已确认事实",
+            // Cross-relationship / forged-evidence / resurrection probes
+            // surfaced by SyntheticRedTeamMemoryGuardTest.
+            "其他关系", "别的角色", "会话内容", "证据编号", "关系ID",
+            "复活", "已替代");
 
     /** 称呼偏好: 叫我/喊我/称呼我 + a short name. */
     private static final Pattern NICKNAME =
