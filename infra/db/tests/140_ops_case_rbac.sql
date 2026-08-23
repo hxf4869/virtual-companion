@@ -99,11 +99,31 @@ BEGIN
     END;
 
     PERFORM vc.read_ops_case_internal_note(v_priv, v_report_case);
+END $$;
+COMMIT;
+RESET ROLE;
+
+-- V93 review-fix: runtime roles hold NO table privilege on the audit log
+-- (V89's SELECT grant was removed — cross-owner audit metadata must not be
+-- readable by worker/coordinator/dispatcher). The audit count is asserted
+-- from the migration-owner session instead of under SET ROLE vc_api.
+DO $$
+DECLARE
+    v_report_case bigint;
+    v_n integer;
+BEGIN
+    IF has_table_privilege('vc_api', 'vc.ops_case_event', 'SELECT') THEN
+        RAISE EXCEPTION 'vc_api must not read ops_case_event directly';
+    END IF;
+    IF has_table_privilege('vc_worker', 'vc.ops_case_event', 'SELECT') THEN
+        RAISE EXCEPTION 'vc_worker must not read ops_case_event directly';
+    END IF;
+
+    SELECT id INTO v_report_case FROM vc.ops_case
+     WHERE kind = 'REPORT' ORDER BY id LIMIT 1;
     SELECT count(*) INTO v_n FROM vc.ops_case_event
      WHERE case_id = v_report_case AND event_type = 'BODY_ACCESS';
     IF v_n <> 1 THEN
         RAISE EXCEPTION 'BODY_ACCESS must be audited, got %', v_n;
     END IF;
 END $$;
-COMMIT;
-RESET ROLE;

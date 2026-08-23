@@ -535,7 +535,7 @@ public class AuthController {
     }
 
     @PostMapping("/admin/ops-cases/{caseId}/actions")
-    public java.util.Map<String, String> transitionOpsCase(
+    public java.util.Map<String, Object> transitionOpsCase(
             @AuthenticationPrincipal JwtTokenService.Principal principal,
             @PathVariable String caseId,
             @RequestBody java.util.Map<String, String> body) {
@@ -563,8 +563,12 @@ public class AuthController {
         }
         String disposition = body == null ? null : body.get("dispositionReason");
         try {
-            var result = opsCase.transition(principal.accountId(), id, action, assignee, disposition);
-            return java.util.Map.of("id", Long.toString(result.id()), "status", result.status());
+            opsCase.transition(principal.accountId(), id, action, assignee, disposition);
+            // The OpenAPI contract declares the full OpsCase envelope for this
+            // endpoint ("the case after the transition") — re-read the
+            // post-transition snapshot so clients get the same masked shape
+            // as GET list/snapshot instead of a narrow {id,status} pair.
+            return toPublicOpsCase(opsCase.snapshot(principal.accountId(), id));
         } catch (org.springframework.dao.DataAccessException denied) {
             throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
                     "This action is not available");

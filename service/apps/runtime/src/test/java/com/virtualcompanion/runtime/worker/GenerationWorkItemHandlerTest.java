@@ -59,6 +59,7 @@ import com.virtualcompanion.platform.persistence.WorkItemClaimService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.safety.ClassifierReport;
+import com.virtualcompanion.safety.CompositeSafetyClassifier;
 import com.virtualcompanion.safety.DeterministicSafetyClassifier;
 import com.virtualcompanion.safety.DeterministicSafetyResponse;
 import java.time.Duration;
@@ -100,7 +101,7 @@ class GenerationWorkItemHandlerTest {
     private final GenerationRepository generationRepository = mock(GenerationRepository.class);
     // SAFETY-WIRE: the real deterministic classifier (pure, no I/O) so the
     // existing fixtures flow through the same gate as production.
-    private final com.virtualcompanion.safety.SafetyClassifierPort safetyClassifier =
+    private com.virtualcompanion.safety.SafetyClassifierPort safetyClassifier =
             new DeterministicSafetyClassifier();
     private final SafetyEventService safetyEventService = mock(SafetyEventService.class);
     private final ConversationSummaryService summaryService =
@@ -460,6 +461,48 @@ class GenerationWorkItemHandlerTest {
         verify(deltaBroker).publishEnd(10L);
         assertThat(generationCount("completed")).isEqualTo(1.0);
         assertThat(generationCount("error")).isEqualTo(0.0);
+    }
+
+    @Test
+    void providerOnlyFinalBlockTerminalizesAsBlockedInsteadOfCrashing() {
+        // S0-07: the composite classifier can BLOCK without any hard-rule
+        // violation (provider-flagged escalation or fail-closed UNAVAILABLE).
+        // The final review must terminalize OUTPUT_BLOCKED with the stable
+        // INTERNAL_BLOCK rule id instead of crashing on an empty violations
+        // list — a crash would skip terminalization, requeue the item and
+        // repeat the provider outbound.
+        safetyClassifier = new CompositeSafetyClassifier(
+                new DeterministicSafetyClassifier(),
+                (stage, text) -> {
+                    throw new IllegalStateException("moderation provider down");
+                });
+        buildHandler(new com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker(3, 60_000));
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        // "real output" trips no deterministic hard rule; only the (failing)
+        // provider leg blocks — the exact production fail-closed shape.
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
+        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
+        when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
+
+        handle(generationClaim(1L, 10L));
+
+        verify(finalizeService).terminalizeAsBlocked(1L, 10L, "INTERNAL_BLOCK");
+        verify(finalizeService, never())
+                .insertCandidate(anyLong(), anyLong(), anyString());
+        verify(finalizeService, never()).finalizeCompletedWithUsage(
+                anyLong(), anyLong(), anyLong(), anyString(),
+                anyString(), anyLong(), anyLong(), anyDouble(), anyString(), anyInt(), anyBoolean());
+        verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
+        verify(safetyEventService).record(
+                eq(1L), eq(10L), anyString(), anyString(), eq("INTERNAL_BLOCK"));
     }
 
     @Test

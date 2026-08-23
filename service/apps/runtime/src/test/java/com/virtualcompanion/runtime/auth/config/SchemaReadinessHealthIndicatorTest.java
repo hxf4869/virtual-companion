@@ -202,8 +202,10 @@ class SchemaReadinessHealthIndicatorTest {
         // V86 = S0-31-B scheduler lease + run history;
         // V87 = S0-24-A staged release gate;
         // V88/V89/V90/V91 = S0-14 ops_case state machine + RBAC + actions + list;
-        // V92 = S0-15 refresh session family registry + password change.
+        // V92 = S0-15 refresh session family registry + password change;
+        // V93 = review-fix: advance_release_gate + ops_case_event grants
+        // pulled back from runtime roles.
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(92);
+                .isEqualTo(93);
     }
 }

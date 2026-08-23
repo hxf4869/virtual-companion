@@ -506,7 +506,15 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         SafetyClassification finalReview =
                 safetyClassifier.classify(SafetyStage.OUTPUT, content);
         if (!finalReview.allowed()) {
-            String ruleId = finalReview.hardRuleViolations().get(0);
+            // S0-07: a composite classifier can block without any hard-rule
+            // hit (provider-flagged escalation or fail-closed UNAVAILABLE).
+            // Terminalize with the controller's stable INTERNAL_BLOCK rule id
+            // instead of crashing on an empty list — an IndexOutOfBounds here
+            // would skip OUTPUT_BLOCKED terminalization and requeue the item,
+            // repeating the provider outbound.
+            String ruleId = finalReview.hardRuleViolations().isEmpty()
+                    ? "INTERNAL_BLOCK"
+                    : finalReview.hardRuleViolations().get(0);
             executor.asOwner(ownerUserId, () -> {
                 settleProductQuota(outcome.decision());
                 finalizeService.assertActiveClaim(

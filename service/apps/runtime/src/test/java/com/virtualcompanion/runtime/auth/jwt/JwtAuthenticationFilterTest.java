@@ -111,6 +111,24 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void roleDemotionWithoutEpochBumpLeavesSecurityContextEmpty() throws Exception {
+        // S0-30: a demoted account (ADMIN→USER) whose epoch was not bumped
+        // must still fail closed — the snapshot role must equal the token
+        // role, so an old ADMIN JWT cannot ride out its remaining lifetime.
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                service(), accountId -> java.util.Optional.of(
+                        new AccessSnapshot("ACTIVE", 1L, "USER")));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization",
+                "Bearer " + service().issueAccessToken(7L, "ADMIN", "root", 1L));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
     void missingHeaderLeavesSecurityContextEmpty() throws Exception {
         JwtAuthenticationFilter filter = new JwtAuthenticationFilter(service());
         MockHttpServletRequest request = new MockHttpServletRequest();

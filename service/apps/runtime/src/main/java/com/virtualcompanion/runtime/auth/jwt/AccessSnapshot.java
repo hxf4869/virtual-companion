@@ -24,8 +24,17 @@ public record AccessSnapshot(String status, long sessionEpoch, String role) {
         Objects.requireNonNull(role, "role must not be null");
     }
 
-    public boolean allowsAccess(long presentedEpoch) {
-        return "ACTIVE".equals(status) && sessionEpoch == presentedEpoch;
+    /**
+     * S0-30: the presented token is valid only when the account is ACTIVE,
+     * the session epoch matches (disable/logout/password-change bump) and the
+     * granted role still equals the snapshot role — a demotion (降权) without
+     * an epoch bump therefore fails closed on the next authenticated request
+     * instead of riding a long-lived JWT.
+     */
+    public boolean allowsAccess(long presentedEpoch, String presentedRole) {
+        return "ACTIVE".equals(status)
+                && sessionEpoch == presentedEpoch
+                && role.equals(presentedRole);
     }
 
     @FunctionalInterface

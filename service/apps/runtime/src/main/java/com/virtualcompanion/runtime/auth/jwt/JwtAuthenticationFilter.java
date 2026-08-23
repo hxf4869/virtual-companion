@@ -73,7 +73,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         try {
             return accessAuthority.find(principal.accountId())
-                    .map(snapshot -> snapshot.allowsAccess(principal.sessionEpoch()))
+                    .map(snapshot -> snapshot.allowsAccess(
+                            principal.sessionEpoch(), principal.role()))
                     .orElse(false);
         } catch (RuntimeException authorityFailure) {
             return false;
