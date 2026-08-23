@@ -1,4 +1,4 @@
-package com.virtualcompanion.runtime.web;
+package com.virtualcompanion.runtime.servicemode;
 
 /**
  * SVC-WINDOW (§24.7 / FR-RES-002): a new generative turn was refused by the

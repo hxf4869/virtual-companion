@@ -191,7 +191,19 @@ class SchemaReadinessHealthIndicatorTest {
         // hardening + indexes, SD function guards);
         // V76 = export download-token hashed at rest (issue-once semantics);
         // V77 = METRICS-ALERT job_daily_active_users (vc_beta_dau gauge source).
+        // V78 = S0-17-B crypto key id/version checkpoint re-encrypt;
+        // V79 = S0-32 conversation summary at-rest cipher;
+        // V80 = S0-04 generation admission gate tables;
+        // V81 = S0-11-B immutable route decision audit;
+        // V82 = S0-11-C shared non-monetary quota book;
+        // V83 = S0-29 model cost budget (reserved spend ceiling);
+        // V84 = S0-30 session epoch + sensitive-route admission;
+        // V85 = S0-31-A alert webhook outbox + HMAC + host allowlist;
+        // V86 = S0-31-B scheduler lease + run history;
+        // V87 = S0-24-A staged release gate;
+        // V88/V89/V90/V91 = S0-14 ops_case state machine + RBAC + actions + list;
+        // V92 = S0-15 refresh session family registry + password change.
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(77);
+                .isEqualTo(92);
     }
 }

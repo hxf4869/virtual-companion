@@ -12,7 +12,7 @@ import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
 import com.virtualcompanion.runtime.admission.GenerationAdmission;
 import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
-import com.virtualcompanion.runtime.web.ServiceWindowClosedException;
+import com.virtualcompanion.runtime.servicemode.ServiceWindowClosedException;
 import com.virtualcompanion.safety.ExitIntentDetector;
 import com.virtualcompanion.safety.SafetyClassification;
 import com.virtualcompanion.safety.SafetyClassifierPort;

@@ -10,7 +10,7 @@ import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.runtime.observability.AlertNotifier;
 import com.virtualcompanion.runtime.observability.AlertSeverity;
 import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
-import com.virtualcompanion.runtime.web.ServiceWindowClosedException;
+import com.virtualcompanion.runtime.servicemode.ServiceWindowClosedException;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;

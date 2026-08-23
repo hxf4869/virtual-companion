@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.web;
 
+import com.virtualcompanion.runtime.servicemode.ServiceWindowClosedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
