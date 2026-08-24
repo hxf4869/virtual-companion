@@ -309,9 +309,12 @@ export const useChatStore = defineStore("h5-chat", () => {
         outcome: result.outcome,
       });
     }
-    // S0-20: the turn reached its durable terminal here — the recovery entry
-    // must not survive it (a reload shows the settled state from history).
-    clearRestorableGeneration(safeSessionStorage());
+    // Only a durable terminal may clear refresh recovery. Transport exhaustion
+    // and existence-hidden resume failures are non-terminal: keep the owner-bound
+    // identifiers so online/visibility or a reload can re-check the snapshot.
+    if (result.outcome !== "exhausted" && result.outcome !== "not_found_or_forbidden") {
+      clearRestorableGeneration(safeSessionStorage());
+    }
   }
 
   /**
@@ -346,10 +349,16 @@ export const useChatStore = defineStore("h5-chat", () => {
       });
       return;
     }
-    const snapshotEpoch = snapshot.events[0]?.streamEpoch ?? stream.value.epoch;
+    // A freshly-created generation can legitimately have an empty snapshot.
+    // A reloaded store starts at the idle sentinel epoch 0, which is not a
+    // valid realtime cursor and would make ticket minting fail with 400. Use
+    // the protocol's initial positive epoch; if the server has already reset
+    // to a later epoch, the resume response will authoritatively redirect us.
+    const current = stream.value.epoch > 0 ? stream.value : initialState(1);
+    const snapshotEpoch = snapshot.events[0]?.streamEpoch ?? current.epoch;
     const base =
-      stream.value.epoch === snapshotEpoch || snapshot.events.length === 0
-        ? stream.value
+      current.epoch === snapshotEpoch || snapshot.events.length === 0
+        ? current
         : initialState(snapshotEpoch);
     const next = applyTerminalSnapshot(base, snapshot.events);
     stream.value = next;
@@ -442,6 +451,26 @@ export const useChatStore = defineStore("h5-chat", () => {
     current.abort();
     // S0-20: the user chose to leave this turn — drop the recovery entry.
     clearRestorableGeneration(safeSessionStorage());
+  }
+
+  /**
+   * S0-20: detach the page from a live stream without cancelling the durable
+   * generation. A route change or full reload destroys the current fetch, but
+   * the privacy-safe recovery entry must survive so the next page instance can
+   * re-anchor from the server snapshot.
+   */
+  function detachInFlight(): void {
+    if (handle) {
+      handle.cancelled = true;
+      handle.abort();
+    }
+    runSequence += 1; // the aborted run must not commit "cancelled" and clear recovery
+    handle = null;
+    lastTransport = null;
+    if (phase.value === "streaming") {
+      phase.value = "failed";
+      lastDisconnect.value = "network";
+    }
   }
 
   function reset(): void {
@@ -747,6 +776,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     await run(deps, generation.generationId, 1);
     // CONV-HIST: append the pages after the loaded window instead of reloading
     // from scratch, so a long conversation keeps its earlier window intact.
+    // A previously exhausted window has historyHasMore=false, but this turn
+    // has just committed new rows after that cursor and must reopen one page.
+    historyHasMore.value = true;
     await advanceHistory(transport);
   }
 
@@ -839,6 +871,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     tryRestoreAfterReload,
     bindGenerationContext,
     cancel,
+    detachInFlight,
     reset,
     initConversation,
     send,

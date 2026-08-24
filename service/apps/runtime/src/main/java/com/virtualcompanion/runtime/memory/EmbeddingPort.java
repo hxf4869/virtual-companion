@@ -17,6 +17,18 @@ public interface EmbeddingPort {
     /** Embed one text into the port's space. */
     float[] embed(String text);
 
+    /**
+     * Owner-aware path used by every runtime caller. Local implementations may
+     * delegate to {@link #embed(String)}; external implementations override it
+     * to enforce current consent before sending any text.
+     */
+    default float[] embed(long ownerUserId, String text) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        return embed(text);
+    }
+
     /** Immutable space identity (§11.17). */
     record EmbeddingSpace(String modelId, String modelVersion, int dimension, String spaceId) {
     }

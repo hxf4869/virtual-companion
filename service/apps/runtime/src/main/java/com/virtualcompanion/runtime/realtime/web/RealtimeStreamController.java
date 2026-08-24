@@ -1,17 +1,22 @@
 package com.virtualcompanion.runtime.realtime.web;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.virtualcompanion.platform.persistence.GenerationRecord;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.RealtimeResumeService;
 import com.virtualcompanion.platform.persistence.ResumeResult;
 import com.virtualcompanion.platform.persistence.RealtimeTicketRepository;
+import com.virtualcompanion.platform.persistence.SensitiveRouteAdmission;
+import com.virtualcompanion.runtime.web.RuntimeRateLimitException;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.dao.DataAccessException;
@@ -75,6 +80,10 @@ public class RealtimeStreamController {
     static final String TRANSPORT_FETCH_SSE = "FETCH_SSE";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<List<Map<String, Object>>> EVENT_LIST_TYPE =
+            new TypeReference<>() {};
+    private static final TypeReference<Map<String, Object>> SNAPSHOT_TYPE =
+            new TypeReference<>() {};
     private static final String EVENT_SNAPSHOT = "snapshot";
     private static final String EVENT_GAP = "stream.gap";
     private static final String EVENT_RESET = "stream.reset";
@@ -83,6 +92,8 @@ public class RealtimeStreamController {
     /** STREAM-LIVE: live-tail poll cadence and hard deadline (millis). */
     static final long LIVE_TAIL_POLL_MILLIS = 1000L;
     static final long LIVE_TAIL_TIMEOUT_MILLIS = 120_000L;
+    static final int SSE_MAX_CONCURRENT = 3;
+    static final int SSE_LEASE_TTL_SECONDS = 130;
 
     /** Generation statuses that can never emit live deltas again. */
     private static final Set<String> TERMINAL_STATUSES = Set.of(
@@ -93,6 +104,7 @@ public class RealtimeStreamController {
     private final RealtimeResumeService resumeService;
     private final GenerationRepository generationRepository;
     private final LiveDeltaBroker deltaBroker;
+    private ObjectProvider<SensitiveRouteAdmission> sensitiveAdmission;
 
     /** Overridable in tests: the live-tail hard deadline (millis). */
     long liveTailTimeoutMillis = LIVE_TAIL_TIMEOUT_MILLIS;
@@ -106,6 +118,18 @@ public class RealtimeStreamController {
         this.resumeService = resumeService;
         this.generationRepository = generationRepository;
         this.deltaBroker = deltaBroker;
+        this.sensitiveAdmission = null;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RealtimeStreamController(
+            RealtimeTicketRepository ticketRepository,
+            RealtimeResumeService resumeService,
+            GenerationRepository generationRepository,
+            LiveDeltaBroker deltaBroker,
+            ObjectProvider<SensitiveRouteAdmission> sensitiveAdmission) {
+        this(ticketRepository, resumeService, generationRepository, deltaBroker);
+        this.sensitiveAdmission = sensitiveAdmission;
     }
 
     @GetMapping(value = "/realtime/streams/{generationId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -133,6 +157,26 @@ public class RealtimeStreamController {
         // No server-side timeout: the resume is one-shot and completes once the
         // currently buffered durable events are flushed.
         SseEmitter emitter = new SseEmitter(0L);
+        SensitiveRouteAdmission limiter =
+                sensitiveAdmission == null ? null : sensitiveAdmission.getIfAvailable();
+        SensitiveRouteAdmission.Lease acquired = limiter == null
+                ? null
+                : limiter.acquireLease(
+                        ownerUserId, SensitiveRouteAdmission.SSE,
+                        SSE_MAX_CONCURRENT, SSE_LEASE_TTL_SECONDS);
+        if (acquired != null && !acquired.admitted()) {
+            throw new RuntimeRateLimitException(acquired.retryAfterSeconds());
+        }
+        AtomicBoolean leaseReleased = new AtomicBoolean();
+        Runnable releaseLease = () -> {
+            if (limiter != null && acquired != null
+                    && leaseReleased.compareAndSet(false, true)) {
+                limiter.releaseLease(ownerUserId, acquired.leaseId());
+            }
+        };
+        emitter.onCompletion(releaseLease);
+        emitter.onTimeout(releaseLease);
+        emitter.onError(ignored -> releaseLease.run());
 
         // Consume the single-use ticket: validates the sha256 secret, the boundTo
         // seven-tuple, single-use and the 45s TTL. Any failure fails closed as a
@@ -150,8 +194,10 @@ public class RealtimeStreamController {
                     epoch,
                     afterSeq);
         } catch (BadSqlGrammarException e) {
+            releaseLease.run();
             throw e;
         } catch (RuntimeException e) {
+            releaseLease.run();
             deny(emitter);
             return emitter;
         }
@@ -161,32 +207,41 @@ public class RealtimeStreamController {
             result = resumeService.resume(ownerUserId, genId, epoch, afterSeq);
         } catch (BadSqlGrammarException e) {
             // Schema unavailable (SQLSTATE 42xxx): let the global advice map 503.
+            releaseLease.run();
             throw e;
         } catch (DataAccessException e) {
             // Same translation as the ticket path: the global
             // AuthExceptionHandler would mis-map a DataAccessException to 401,
             // which would make SSE clients think the session died and log out.
+            releaseLease.run();
             deny(emitter);
             return emitter;
         }
-        dispatch(emitter, result, ownerUserId, genId);
+        try {
+            dispatch(emitter, result, ownerUserId, genId, epoch, afterSeq);
+        } catch (RuntimeException failure) {
+            releaseLease.run();
+            throw failure;
+        }
         return emitter;
     }
 
-    private void dispatch(SseEmitter emitter, ResumeResult result, long ownerUserId, long genId) {
+    private void dispatch(
+            SseEmitter emitter, ResumeResult result, long ownerUserId, long genId,
+            long epoch, long afterSeq) {
         try {
             switch (result.disposition()) {
                 case ResumeResult.DISPOSITION_RESUMED -> {
-                    sendDurableEvents(emitter, result.eventsJson());
+                    long cursor = sendDurableEvents(emitter, result.eventsJson(), afterSeq);
                     // STREAM-LIVE: while the generation is still running the
                     // stream stays open and forwards live deltas; the tail
                     // completes the emitter itself.
-                    liveTail(emitter, ownerUserId, genId);
+                    liveTail(emitter, ownerUserId, genId, epoch, cursor);
                     return;
                 }
                 case ResumeResult.DISPOSITION_TERMINAL_SNAPSHOT -> {
                     sendSnapshot(emitter, result.snapshotJson());
-                    sendDurableEvents(emitter, result.eventsJson());
+                    sendDurableEvents(emitter, result.eventsJson(), afterSeq);
                 }
                 case ResumeResult.DISPOSITION_GAP_EXPIRED -> emitter.send(SseEmitter.event().name(EVENT_GAP));
                 case ResumeResult.DISPOSITION_RESET_REQUIRED -> emitter.send(SseEmitter.event().name(EVENT_RESET));
@@ -209,10 +264,15 @@ public class RealtimeStreamController {
      * delivers the durable terminal event/snapshot. Deltas published before
      * this subscription are lost and surface as the sanctioned gap recovery.
      */
-    private void liveTail(SseEmitter emitter, long ownerUserId, long genId) {
+    private void liveTail(
+            SseEmitter emitter, long ownerUserId, long genId, long epoch, long cursor) {
         GenerationRecord record = generationRepository.find(ownerUserId, genId).orElse(null);
-        if (record == null || TERMINAL_STATUSES.contains(record.status())) {
+        if (record == null) {
             emitter.complete();
+            return;
+        }
+        if (TERMINAL_STATUSES.contains(record.status())) {
+            completeWithCommittedTerminal(emitter, ownerUserId, genId, epoch, cursor);
             return;
         }
         try (LiveDeltaBroker.Subscriber subscriber = deltaBroker.subscribe(genId)) {
@@ -235,6 +295,7 @@ public class RealtimeStreamController {
                         .name(event.eventType())
                         .id(String.valueOf(event.eventSeq()))
                         .data(envelope));
+                cursor = Math.max(cursor, event.eventSeq());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -242,7 +303,28 @@ public class RealtimeStreamController {
             emitter.completeWithError(e);
             return;
         }
-        emitter.complete();
+        GenerationRecord completed = generationRepository.find(ownerUserId, genId).orElse(null);
+        if (completed != null && TERMINAL_STATUSES.contains(completed.status())) {
+            completeWithCommittedTerminal(emitter, ownerUserId, genId, epoch, cursor);
+        } else {
+            emitter.complete();
+        }
+    }
+
+    private void completeWithCommittedTerminal(
+            SseEmitter emitter, long ownerUserId, long genId, long epoch, long cursor) {
+        try {
+            ResumeResult committed = resumeService.resume(ownerUserId, genId, epoch, cursor);
+            if (ResumeResult.DISPOSITION_TERMINAL_SNAPSHOT.equals(committed.disposition())) {
+                sendSnapshot(emitter, committed.snapshotJson());
+                sendDurableEvents(emitter, committed.eventsJson(), cursor);
+            } else if (ResumeResult.DISPOSITION_RESUMED.equals(committed.disposition())) {
+                sendDurableEvents(emitter, committed.eventsJson(), cursor);
+            }
+            emitter.complete();
+        } catch (IOException | RuntimeException failure) {
+            emitter.completeWithError(failure);
+        }
     }
 
     /** Fail-closed single event: emit stream.denied and complete without reason. */
@@ -255,26 +337,42 @@ public class RealtimeStreamController {
         }
     }
 
-    private static void sendDurableEvents(SseEmitter emitter, String eventsJson) throws IOException {
-        JsonNode array = MAPPER.readTree(eventsJson);
-        if (array == null || !array.isArray()) {
-            return;
+    private static long sendDurableEvents(
+            SseEmitter emitter, String eventsJson, long cursor) throws IOException {
+        List<Map<String, Object>> events = MAPPER.readValue(eventsJson, EVENT_LIST_TYPE);
+        long advanced = cursor;
+        if (events == null) {
+            return advanced;
         }
-        for (JsonNode node : array) {
-            JsonNode eventNode = node.get("event");
-            String eventName = eventNode == null ? "event" : eventNode.asText();
-            SseEventBuilder builder = SseEmitter.event().name(eventName).data(node);
-            JsonNode seq = node.get("eventSeq");
-            if (seq != null && !seq.isNull()) {
-                builder.id(seq.asText());
+        for (Map<String, Object> event : events) {
+            Object eventType = event.get("event");
+            String eventName = eventType == null ? "event" : String.valueOf(eventType);
+            SseEventBuilder builder = SseEmitter.event().name(eventName).data(event);
+            Object seq = event.get("eventSeq");
+            Long sequence = null;
+            if (seq != null) {
+                try {
+                    sequence = seq instanceof Number number
+                            ? number.longValue() : Long.parseLong(String.valueOf(seq));
+                } catch (NumberFormatException ignored) {
+                    // Preserve a malformed opaque event for fail-safe compatibility.
+                }
+                if (sequence != null && sequence <= advanced) {
+                    continue;
+                }
+                builder.id(String.valueOf(seq));
             }
             emitter.send(builder);
+            if (sequence != null) {
+                advanced = Math.max(advanced, sequence);
+            }
         }
+        return advanced;
     }
 
     private static void sendSnapshot(SseEmitter emitter, String snapshotJson) throws IOException {
-        JsonNode snapshot = MAPPER.readTree(snapshotJson);
-        if (snapshot != null && !snapshot.isNull()) {
+        Map<String, Object> snapshot = MAPPER.readValue(snapshotJson, SNAPSHOT_TYPE);
+        if (snapshot != null) {
             emitter.send(SseEmitter.event().name(EVENT_SNAPSHOT).data(snapshot));
         }
     }

@@ -94,6 +94,24 @@ describe("reminder page (FR-NOTIFY-001)", () => {
     expect(text).toBe("明天晚上问我面试怎么样");
     expect(remindAt).toMatch(/^2026-08-17T\d{2}:\d{2}:00/);
     expect(recurrence).toBe("NONE");
+    expect(wrapper.find('[data-testid="reminder-write-status"]').text()).toContain("已添加");
+    wrapper.unmount();
+  });
+
+  it("S0-21: a rejected write shows an error and keeps the entered form", async () => {
+    const wrapper = mount(ReminderPage, { attachTo: document.body });
+    await flushPromises();
+    const store = useReminderStore();
+    vi.spyOn(store, "create").mockResolvedValue(false);
+
+    await wrapper.find('[data-testid="reminder-text"]').setValue("不要丢失这段输入");
+    await wrapper.find('[data-testid="reminder-at"]').setValue("2026-08-17T21:00");
+    await wrapper.find('[data-testid="reminder-create"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="async-error"]').text()).toContain("未添加");
+    expect((wrapper.find('[data-testid="reminder-text"]').element as HTMLInputElement).value)
+      .toBe("不要丢失这段输入");
     wrapper.unmount();
   });
 

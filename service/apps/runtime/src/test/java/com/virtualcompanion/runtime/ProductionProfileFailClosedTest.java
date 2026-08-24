@@ -31,27 +31,49 @@ class ProductionProfileFailClosedTest {
                 .profiles("production")
                 .run())
                 .satisfies(t -> assertThat(chainMessages(t))
-                        .containsAnyOf("VC_AUTH_ENABLED", "VC_AUTH_DATASOURCE_ENABLED"));
+                        .containsAnyOf(
+                                "VC_AUTH_ENABLED", "VC_AUTH_DATASOURCE_ENABLED",
+                                "VC_ENFORCE_DB_LEAST_PRIVILEGE"));
     }
 
     @Test
-    void productionProfileWithAuthEnvironmentStarts() {
-        try (org.springframework.context.ConfigurableApplicationContext context =
-                new SpringApplicationBuilder(VirtualCompanionRuntimeApplication.class)
-                        .profiles("production")
-                        .properties(
-                                "VC_AUTH_ENABLED=true",
-                                "VC_AUTH_DATASOURCE_ENABLED=true",
-                                "VC_FLYWAY_ENABLED=false",
-                                "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-                                "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
-                                "VC_DB_URL=jdbc:postgresql://127.0.0.1:5432/vc",
-                                "VC_DB_USERNAME=vc",
-                                "VC_DB_PASSWORD=vc",
-                                "VC_CRYPTO_REST_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
-                        .run()) {
-            assertThat(context.isRunning()).isTrue();
-        }
+    void productionProfileWithRequiredEnvironmentPassesTheEarlyGuard() {
+        org.springframework.mock.env.MockEnvironment environment =
+                new org.springframework.mock.env.MockEnvironment();
+        environment.setActiveProfiles("production");
+        environment.withProperty("virtual-companion.auth.enabled", "true")
+                .withProperty("virtual-companion.auth.datasource-enabled", "true")
+                .withProperty("virtual-companion.auth.enforce-db-least-privilege", "true")
+                .withProperty("virtual-companion.auth.shared-rate-enabled", "true")
+                .withProperty("virtual-companion.auth.shared-rate-secret",
+                        "abcdef0123456789abcdef0123456789")
+                .withProperty("virtual-companion.auth.cookie-secure", "true")
+                .withProperty(
+                        "virtual-companion.crypto.rest-key",
+                        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+
+        org.assertj.core.api.Assertions.assertThatCode(() ->
+                new com.virtualcompanion.runtime.auth.config
+                        .ProductionFailClosedEnvironmentPostProcessor()
+                        .postProcessEnvironment(environment, null))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void productionRejectsDisabledDatabaseLeastPrivilegeProof() {
+        org.springframework.mock.env.MockEnvironment environment =
+                new org.springframework.mock.env.MockEnvironment();
+        environment.setActiveProfiles("production");
+        environment.withProperty("virtual-companion.auth.enabled", "true")
+                .withProperty("virtual-companion.auth.datasource-enabled", "true")
+                .withProperty("virtual-companion.auth.enforce-db-least-privilege", "false")
+                .withProperty(
+                        "virtual-companion.crypto.rest-key",
+                        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+        assertThatThrownBy(() -> new com.virtualcompanion.runtime.auth.config
+                .ProductionFailClosedEnvironmentPostProcessor()
+                .postProcessEnvironment(environment, null))
+                .hasMessageContaining("VC_ENFORCE_DB_LEAST_PRIVILEGE");
     }
 
     @Test
@@ -65,6 +87,9 @@ class ProductionProfileFailClosedTest {
                 .properties(
                         "VC_AUTH_ENABLED=false",
                         "VC_AUTH_DATASOURCE_ENABLED=true",
+                        "VC_ENFORCE_DB_LEAST_PRIVILEGE=true",
+                        "VC_SHARED_RATE_LIMIT_ENABLED=true",
+                        "VC_SHARED_RATE_LIMIT_SECRET=abcdef0123456789abcdef0123456789",
                         "VC_FLYWAY_ENABLED=false",
                         "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -85,6 +110,9 @@ class ProductionProfileFailClosedTest {
                 .properties(
                         "VC_AUTH_ENABLED=true",
                         "VC_AUTH_DATASOURCE_ENABLED=false",
+                        "VC_ENFORCE_DB_LEAST_PRIVILEGE=true",
+                        "VC_SHARED_RATE_LIMIT_ENABLED=true",
+                        "VC_SHARED_RATE_LIMIT_SECRET=abcdef0123456789abcdef0123456789",
                         "VC_FLYWAY_ENABLED=false",
                         "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -109,6 +137,9 @@ class ProductionProfileFailClosedTest {
                 .properties(
                         "VC_AUTH_ENABLED=true",
                         "VC_AUTH_DATASOURCE_ENABLED=true",
+                        "VC_ENFORCE_DB_LEAST_PRIVILEGE=true",
+                        "VC_SHARED_RATE_LIMIT_ENABLED=true",
+                        "VC_SHARED_RATE_LIMIT_SECRET=abcdef0123456789abcdef0123456789",
                         "VC_AUTH_COOKIE_SECURE=false",
                         "VC_FLYWAY_ENABLED=false",
                         "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -133,6 +164,9 @@ class ProductionProfileFailClosedTest {
                 .properties(
                         "VC_AUTH_ENABLED=true",
                         "VC_AUTH_DATASOURCE_ENABLED=true",
+                        "VC_ENFORCE_DB_LEAST_PRIVILEGE=true",
+                        "VC_SHARED_RATE_LIMIT_ENABLED=true",
+                        "VC_SHARED_RATE_LIMIT_SECRET=abcdef0123456789abcdef0123456789",
                         "VC_FLYWAY_ENABLED=true",
                         "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -156,6 +190,9 @@ class ProductionProfileFailClosedTest {
                 .properties(
                         "VC_AUTH_ENABLED=true",
                         "VC_AUTH_DATASOURCE_ENABLED=true",
+                        "VC_ENFORCE_DB_LEAST_PRIVILEGE=true",
+                        "VC_SHARED_RATE_LIMIT_ENABLED=true",
+                        "VC_SHARED_RATE_LIMIT_SECRET=abcdef0123456789abcdef0123456789",
                         "VC_FLYWAY_ENABLED=true",
                         "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                         "VC_DB_URL=jdbc:postgresql://127.0.0.1:59999/vc",

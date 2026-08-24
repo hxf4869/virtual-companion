@@ -15,6 +15,6 @@ public record AuthTokenResponse(
         java.util.Objects.requireNonNull(expiresInSeconds, "expiresInSeconds must not be null");
         java.util.Objects.requireNonNull(accountId, "accountId must not be null");
         java.util.Objects.requireNonNull(role, "role must not be null");
-        // passwordMustChange is nullable
+        java.util.Objects.requireNonNull(passwordMustChange, "passwordMustChange must not be null");
     }
 }

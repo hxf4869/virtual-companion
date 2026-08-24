@@ -77,6 +77,7 @@ public class AuthService {
     private final QuotaReconciliationService quotaReconciliation;
     private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
     private final ObjectProvider<ActiveInvocationRegistry> activeInvocations;
+    private ObjectProvider<AccountDeletionCoordinator> deletionCoordinators;
 
     public AuthService(
             IdentityAccountRepository accounts,
@@ -136,9 +137,30 @@ public class AuthService {
         this.alertNotifier = Objects.requireNonNull(
                 alertNotifier, "alertNotifier must not be null");
         this.activeInvocations = activeInvocations;
+        this.deletionCoordinators = null;
         // A valid BCrypt hash so the unknown-account login path runs a real
         // (equally expensive) compare instead of short-circuiting.
         this.dummyHash = passwordEncoder.encode("virtual-companion-timing-equalization");
+    }
+
+    public AuthService(
+            IdentityAccountRepository accounts,
+            IdentityRefreshTokenRepository sessions,
+            PasswordEncoder passwordEncoder,
+            JwtTokenService jwt,
+            Duration refreshTtl,
+            AdminConsoleService adminConsole,
+            EntitlementSnapshotService entitlementSnapshotService,
+            InviteCodeService inviteCodes,
+            TrialService trials,
+            QuotaReconciliationService quotaReconciliation,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            ObjectProvider<ActiveInvocationRegistry> activeInvocations,
+            ObjectProvider<AccountDeletionCoordinator> deletionCoordinators) {
+        this(accounts, sessions, passwordEncoder, jwt, refreshTtl, adminConsole,
+                entitlementSnapshotService, inviteCodes, trials, quotaReconciliation,
+                alertNotifier, activeInvocations);
+        this.deletionCoordinators = deletionCoordinators;
     }
 
     /**
@@ -485,10 +507,16 @@ public class AuthService {
                     "A valid account id is required");
         }
         try {
-            ActiveInvocationRegistry registry =
-                    activeInvocations == null ? null : activeInvocations.getIfAvailable();
-            if (registry != null) {
-                registry.cancelOwner(accountId);
+            AccountDeletionCoordinator coordinator = deletionCoordinators == null
+                    ? null : deletionCoordinators.getIfAvailable();
+            if (coordinator != null) {
+                coordinator.prepare(accountId);
+            } else {
+                ActiveInvocationRegistry registry =
+                        activeInvocations == null ? null : activeInvocations.getIfAvailable();
+                if (registry != null) {
+                    registry.cancelOwner(accountId);
+                }
             }
             boolean deleted = accounts.deleteAccount(accountId);
             if (!deleted) {
@@ -501,6 +529,13 @@ public class AuthService {
             alertNotifier.alert(com.virtualcompanion.runtime.observability.AlertSeverity.P1,
                     "ACCOUNT_DELETE_FAILED",
                     "account deletion failed with a data-access exception");
+            throw genericError();
+        } catch (AuthErrorException expected) {
+            throw expected;
+        } catch (RuntimeException failure) {
+            alertNotifier.alert(com.virtualcompanion.runtime.observability.AlertSeverity.P1,
+                    "ACCOUNT_DELETE_FAILED",
+                    "account deletion failed during cancellation coordination");
             throw genericError();
         }
         return new AuthResponses.AccountDeletedResponse(true);

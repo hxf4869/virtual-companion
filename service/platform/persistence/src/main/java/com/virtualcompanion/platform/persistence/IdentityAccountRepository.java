@@ -222,9 +222,8 @@ public class IdentityAccountRepository {
         }
         validatePasswordHash(passwordHash);
         Boolean ok = jdbc.queryForObject(
-                "SELECT vc.identity_change_password(?, ?)",
+                "SELECT vc.identity_change_current_password(?)",
                 Boolean.class,
-                accountId,
                 passwordHash);
         return Boolean.TRUE.equals(ok);
     }
@@ -238,9 +237,8 @@ public class IdentityAccountRepository {
         }
         validatePasswordHash(passwordHash);
         Boolean ok = jdbc.queryForObject(
-                "SELECT vc.identity_admin_reset_password(?, ?, ?)",
+                "SELECT vc.identity_admin_reset_password_current(?, ?)",
                 Boolean.class,
-                actingAccountId,
                 targetAccountId,
                 passwordHash);
         return Boolean.TRUE.equals(ok);
@@ -251,9 +249,8 @@ public class IdentityAccountRepository {
             throw new IllegalArgumentException("accountId must be positive");
         }
         Boolean ok = jdbc.queryForObject(
-                "SELECT vc.identity_record_reauth(?)",
-                Boolean.class,
-                accountId);
+                "SELECT vc.identity_record_current_reauth()",
+                Boolean.class);
         return Boolean.TRUE.equals(ok);
     }
 
@@ -262,9 +259,8 @@ public class IdentityAccountRepository {
             throw new IllegalArgumentException("accountId must be positive");
         }
         Boolean ok = jdbc.queryForObject(
-                "SELECT vc.identity_reauth_valid(?)",
-                Boolean.class,
-                accountId);
+                "SELECT vc.identity_current_reauth_valid()",
+                Boolean.class);
         return Boolean.TRUE.equals(ok);
     }
 
@@ -273,9 +269,8 @@ public class IdentityAccountRepository {
             throw new IllegalArgumentException("accountId must be positive");
         }
         Boolean deleted = jdbc.queryForObject(
-                "SELECT vc.identity_account_delete(?)",
-                Boolean.class,
-                accountId);
+                "SELECT vc.identity_account_delete_current()",
+                Boolean.class);
         return Boolean.TRUE.equals(deleted);
     }
 

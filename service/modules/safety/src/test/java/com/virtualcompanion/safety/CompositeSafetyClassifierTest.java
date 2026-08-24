@@ -52,6 +52,18 @@ class CompositeSafetyClassifierTest {
     }
 
     @Test
+    void lowConfidenceCleanProviderFailsClosed() {
+        SafetyClassifierPort uncertain = (stage, text) -> new SafetyClassification(
+                RiskLevel.R0_NORMAL,
+                List.of(),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.79),
+                SafetyVerdict.ALLOW);
+        SafetyClassification result = new CompositeSafetyClassifier(HARD, uncertain)
+                .classify(SafetyStage.OUTPUT, "ordinary chat");
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+    }
+
+    @Test
     void providerThrowFailsClosed() {
         SafetyClassifierPort boom = (stage, text) -> {
             throw new IllegalStateException("timeout");

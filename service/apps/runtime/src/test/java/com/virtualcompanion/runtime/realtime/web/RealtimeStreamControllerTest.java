@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.realtime.web;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -19,12 +20,15 @@ import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.RealtimeResumeService;
 import com.virtualcompanion.platform.persistence.ResumeResult;
 import com.virtualcompanion.platform.persistence.RealtimeTicketRepository;
+import com.virtualcompanion.platform.persistence.SensitiveRouteAdmission;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
+import com.virtualcompanion.runtime.web.RuntimeRateLimitException;
 import java.sql.SQLException;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.dao.DataAccessException;
@@ -97,6 +101,31 @@ class RealtimeStreamControllerTest {
                 .build();
     }
 
+    @Test
+    void sharedConcurrentSseLeaseRejectsBeforeConsumingTicket() {
+        SensitiveRouteAdmission limiter = mock(SensitiveRouteAdmission.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SensitiveRouteAdmission> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(limiter);
+        when(limiter.acquireLease(
+                OWNER, SensitiveRouteAdmission.SSE,
+                RealtimeStreamController.SSE_MAX_CONCURRENT,
+                RealtimeStreamController.SSE_LEASE_TTL_SECONDS))
+                .thenReturn(new SensitiveRouteAdmission.Lease(null, false, 9));
+        RealtimeStreamController limited = new RealtimeStreamController(
+                ticketRepository, resumeService, generationRepository, deltaBroker, provider);
+
+        RuntimeRateLimitException denied = assertThrows(
+                RuntimeRateLimitException.class,
+                () -> limited.openStream(
+                        OWNER, Long.toString(GENERATION), Long.toString(TICKET),
+                        SECRET, SESSION, ORIGIN, Long.toString(EPOCH), null));
+
+        assertTrue(denied.retryAfterSeconds() >= 1);
+        verify(ticketRepository, never()).consume(
+                anyLong(), anyLong(), any(), anyLong(), any(), any(), any(), anyLong(), anyLong());
+    }
+
     /** The RESUMED tests run against a TERMINAL generation so the live tail
      *  completes immediately (no broker subscription). */
     private void stubTerminalGeneration() {
@@ -145,6 +174,9 @@ class RealtimeStreamControllerTest {
         when(resumeService.resume(OWNER, GENERATION, EPOCH, 0L))
                 .thenReturn(new ResumeResult("RESUMED", durableEvents("chat.accepted", 3L), "null"));
         stubTerminalGeneration();
+        when(resumeService.resume(OWNER, GENERATION, EPOCH, 3L))
+                .thenReturn(new ResumeResult(
+                        ResumeResult.DISPOSITION_TERMINAL_SNAPSHOT, "[]", "{}"));
 
         mockMvc.perform(asyncDispatch(openStream(null)))
                 .andExpect(status().isOk())
@@ -240,6 +272,9 @@ class RealtimeStreamControllerTest {
         when(resumeService.resume(OWNER, GENERATION, EPOCH, 5L))
                 .thenReturn(new ResumeResult("RESUMED", durableEvents("chat.accepted", 6L), "null"));
         stubTerminalGeneration();
+        when(resumeService.resume(OWNER, GENERATION, EPOCH, 6L))
+                .thenReturn(new ResumeResult(
+                        ResumeResult.DISPOSITION_TERMINAL_SNAPSHOT, "[]", "{}"));
 
         mockMvc.perform(asyncDispatch(openStream("5")))
                 .andExpect(status().isOk())
@@ -279,6 +314,39 @@ class RealtimeStreamControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"payload\":\"Hel\"")));
 
         verify(deltaBroker).subscribe(GENERATION);
+    }
+
+    @Test
+    void liveEndMarkerFlushesCommittedTerminalSnapshotBeforeClosing() throws Exception {
+        when(ticketRepository.consume(
+                OWNER, TICKET, SECRET, GENERATION, SESSION, ORIGIN,
+                "FETCH_SSE", EPOCH, 0L)).thenReturn(true);
+        when(resumeService.resume(OWNER, GENERATION, EPOCH, 0L))
+                .thenReturn(new ResumeResult(
+                        ResumeResult.DISPOSITION_RESUMED,
+                        durableEvents("chat.accepted", 1L), "null"));
+        when(resumeService.resume(OWNER, GENERATION, EPOCH, 2L))
+                .thenReturn(new ResumeResult(
+                        ResumeResult.DISPOSITION_TERMINAL_SNAPSHOT,
+                        durableEvents("chat.failed", 3L),
+                        "{\"status\":\"FAILED_FINAL\"}"));
+        when(generationRepository.find(OWNER, GENERATION)).thenReturn(
+                Optional.of(new GenerationRecord(
+                        OWNER, GENERATION, 5L, "lg-7", "IN_PROGRESS", null)),
+                Optional.of(new GenerationRecord(
+                        OWNER, GENERATION, 5L, "lg-7", "FAILED_FINAL", null)));
+        LiveDeltaBroker.Subscriber subscriber = mock(LiveDeltaBroker.Subscriber.class);
+        when(deltaBroker.subscribe(GENERATION)).thenReturn(subscriber);
+        when(subscriber.poll(anyLong())).thenReturn(
+                new LiveDeltaBroker.LiveEvent(EPOCH, 2L, "chat.delta", "partial"),
+                LiveDeltaBroker.LiveEvent.end());
+
+        mockMvc.perform(asyncDispatch(openStream(null)))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:snapshot")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("FAILED_FINAL")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:chat.failed")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id:3")));
     }
 
     @Test

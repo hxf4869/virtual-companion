@@ -48,17 +48,14 @@ public class AgeController {
     private final AgeVerificationService ageVerificationService;
     private final AgeAppealService ageAppealService;
     private final AgeVerificationPort ageVerificationPort;
-    private final SimulatedAgeVerifier simulatedAgeVerifier;
 
     public AgeController(
             AgeVerificationService ageVerificationService,
             AgeAppealService ageAppealService,
-            AgeVerificationPort ageVerificationPort,
-            SimulatedAgeVerifier simulatedAgeVerifier) {
+            AgeVerificationPort ageVerificationPort) {
         this.ageVerificationService = ageVerificationService;
         this.ageAppealService = ageAppealService;
         this.ageVerificationPort = ageVerificationPort;
-        this.simulatedAgeVerifier = simulatedAgeVerifier;
     }
 
     /** The caller's effective age state (AGE_UNKNOWN when never verified). */
@@ -69,27 +66,38 @@ public class AgeController {
     }
 
     /**
-     * Run the simulated adult verification. The current state is resolved
-     * (AGE_UNKNOWN default), the port flow is walked with every transition
-     * checked against the catalog table, and each step is appended to the
-     * result history. A state that cannot reach ADULT_VERIFIED maps to
+     * Run the configured adult verification port. The provider result is obtained
+     * and validated before any state write; the catalog-approved transition flow
+     * is then appended as history. Default Technical Alpha configuration remains
+     * simulated. A state that cannot reach a terminal provider verdict maps to
      * 400 INVALID_REQUEST (fail closed).
      */
     @PostMapping("/age/verification")
     public AgeStateResponse verify(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
         AgeState current = currentState(ownerUserId);
-        List<AgeState> flow = simulatedAgeVerifier.flowFor(current);
-        if (flow.isEmpty()) {
-            // Already verified: idempotent success without a new write.
-            if (current == AgeState.ADULT_VERIFIED) {
-                return toResponse(ageVerificationService.get(ownerUserId).orElse(null));
-            }
-            // Minor / appeal / suspended: the catalog forbids reaching
-            // ADULT_VERIFIED — fail closed.
-            throw new IllegalArgumentException(
-                    "the current age state cannot complete adult verification");
+        if (current == AgeState.ADULT_VERIFIED) {
+            return toResponse(ageVerificationService.get(ownerUserId).orElse(null));
         }
+        List<AgeState> prelude = switch (current) {
+            case AGE_UNKNOWN -> List.of(
+                    AgeState.ADULT_SELF_DECLARED, AgeState.ADULT_VERIFICATION_REQUIRED);
+            case ADULT_SELF_DECLARED, MINOR_SUSPECTED ->
+                    List.of(AgeState.ADULT_VERIFICATION_REQUIRED);
+            case ADULT_VERIFICATION_REQUIRED, AGE_REVERIFY_REQUIRED -> List.of();
+            default -> throw new IllegalArgumentException(
+                    "the current age state cannot complete adult verification");
+        };
+
+        // Provider failure or an unsupported/ambiguous result happens before any
+        // state write, so self-declaration can never masquerade as verification.
+        AgeVerificationResult result = ageVerificationPort.verify(ownerUserId);
+        if (result.state() != AgeState.ADULT_VERIFIED
+                && result.state() != AgeState.MINOR_VERIFIED) {
+            throw new IllegalStateException("age provider returned a non-terminal verification result");
+        }
+        List<AgeState> flow = new java.util.ArrayList<>(prelude);
+        flow.add(result.state());
         AgeState previous = current;
         for (AgeState next : flow) {
             if (!AgeStateTransitions.allows(previous, next)) {
@@ -99,9 +107,6 @@ public class AgeController {
             }
             previous = next;
         }
-        AgeVerificationResult result = ageVerificationPort.verify(ownerUserId);
-        // Persist every flow step with the same provider reference (append-only
-        // history; the latest row is the effective state).
         for (AgeState step : flow) {
             ageVerificationService.record(
                     ownerUserId, step.code(), result.providerRef());

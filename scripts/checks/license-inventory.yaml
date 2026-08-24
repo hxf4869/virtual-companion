@@ -105,7 +105,7 @@ mavenDirectDependencies:
     artifactId: virtual-companion-safety
     licenseFamily: INTERNAL
 # frontend 直接依赖（package.json dependencies + devDependencies 去重）
-# 实际 = 6 dependencies + 14 devDependencies = 20
+# 实际 = 6 dependencies + 15 devDependencies = 21
 frontendDirectDependencies:
   # --- @dcloudio (uni-app, Apache-2.0) ---
   - name: "@dcloudio/uni-app"
@@ -167,6 +167,10 @@ frontendDirectDependencies:
   # --- happy-dom (MIT) ---
   - name: happy-dom
     licenseFamily: MIT
+    scope: dev
+  # --- Playwright browser E2E (Apache-2.0) ---
+  - name: "@playwright/test"
+    licenseFamily: Apache-2.0
     scope: dev
 # 例外账本（有到期日的受控接受；check_licenses.py 校验 expiresAt > 今天才生效）
 exceptions: []

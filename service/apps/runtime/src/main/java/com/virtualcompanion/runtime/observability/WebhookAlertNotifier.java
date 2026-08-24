@@ -8,10 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 
 /**
- * METRICS-ALERT (§26.6) / S0-31-A: alert sink. A blank webhook URL disables
+ * METRICS-ALERT (§26.6) / S0-31-A: alert sink. A blank provider target disables
  * posting. When an outbox is wired the notifier only enqueues; the dispatcher
- * signs, allowlists and retries. Without an outbox (no-DB tests) the notifier
- * delivers directly. Failures never propagate into the business path.
+ * authenticates, allowlists and retries. Without an outbox (no-DB tests) the
+ * notifier delivers directly. Failures never propagate into the business path.
  */
 public class WebhookAlertNotifier implements AlertNotifier {
 
@@ -60,8 +60,7 @@ public class WebhookAlertNotifier implements AlertNotifier {
     @Override
     public void alert(AlertSeverity severity, String code, String message) {
         try {
-            String url = properties.webhookUrl();
-            if (url == null || url.isBlank()) {
+            if (!delivery.isConfigured()) {
                 return;
             }
             String safeCode = code == null ? "" : code.trim();

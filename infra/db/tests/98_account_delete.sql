@@ -11,7 +11,8 @@
 
 \set ON_ERROR_STOP on
 
-TRUNCATE vc.identity_auth_event, vc.identity_refresh_token, vc.identity_account,
+TRUNCATE vc.account_deletion_intent, vc.identity_auth_event,
+         vc.identity_refresh_token, vc.identity_account,
          vc.export_request, vc.consent_record, vc.entitlement_snapshot,
          vc.service_class_assignment, vc.reminder, vc.generation_feedback,
          vc.memory_evidence, vc.memory_item, vc.generation_candidate,

@@ -1,6 +1,7 @@
 package com.virtualcompanion.runtime.modelproviders;
 
 import com.virtualcompanion.modelruntime.execution.AdapterLocator;
+import com.virtualcompanion.modelruntime.execution.ProviderDeploymentMetadata;
 import com.virtualcompanion.modelruntime.registry.ProviderId;
 import com.virtualcompanion.modelruntime.registry.ProviderRegistry;
 import java.util.Map;
@@ -22,14 +23,24 @@ public final class ApprovedModelProviders {
     private final ProviderRegistry registry;
     private final AdapterLocator locator;
     private final Map<ProviderId, String> supplierNames;
+    private final Map<ProviderId, ProviderDeploymentMetadata> deploymentMetadata;
 
     public ApprovedModelProviders(
             ProviderRegistry registry,
             AdapterLocator locator,
             Map<ProviderId, String> supplierNames) {
+        this(registry, locator, supplierNames, Map.of());
+    }
+
+    public ApprovedModelProviders(
+            ProviderRegistry registry,
+            AdapterLocator locator,
+            Map<ProviderId, String> supplierNames,
+            Map<ProviderId, ProviderDeploymentMetadata> deploymentMetadata) {
         this.registry = Objects.requireNonNull(registry, "registry must not be null");
         this.locator = Objects.requireNonNull(locator, "locator must not be null");
         this.supplierNames = Map.copyOf(supplierNames);
+        this.deploymentMetadata = Map.copyOf(deploymentMetadata);
     }
 
     public ProviderRegistry registry() {
@@ -42,5 +53,9 @@ public final class ApprovedModelProviders {
 
     public Map<ProviderId, String> supplierNames() {
         return supplierNames;
+    }
+
+    public Map<ProviderId, ProviderDeploymentMetadata> deploymentMetadata() {
+        return deploymentMetadata;
     }
 }

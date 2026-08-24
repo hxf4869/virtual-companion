@@ -18,6 +18,14 @@ import org.springframework.jdbc.core.RowMapper;
 public class AgeAppealService {
 
     public static final int MAX_REASON_LENGTH = 500;
+    private static final java.util.Set<String> RESOLUTION_DECISIONS = java.util.Set.of(
+            "APPROVE_ADULT", "DENY_MINOR", "REVERIFY", "SUSPEND");
+    static final String RESOLVE_SQL =
+            "SELECT out_appeal_id, out_decision, out_age_state, out_resolved_at "
+                    + "FROM vc.resolve_age_appeal(?, ?, ?, ?)";
+
+    public record Resolution(
+            long appealId, String decision, String ageState, java.time.Instant resolvedAt) {}
 
     private final JdbcTemplate jdbc;
 
@@ -57,6 +65,30 @@ public class AgeAppealService {
             throw new IllegalStateException("submit_age_appeal returned no id");
         }
         return id;
+    }
+
+    public Resolution resolve(
+            long actingAccountId, long appealId, String decision, String resolutionNote) {
+        if (actingAccountId <= 0 || appealId <= 0) {
+            throw new IllegalArgumentException("actor and appeal ids must be positive");
+        }
+        if (decision == null || !RESOLUTION_DECISIONS.contains(decision)) {
+            throw new IllegalArgumentException("unsupported age appeal decision");
+        }
+        String note = resolutionNote == null ? "" : resolutionNote.trim();
+        if (note.isEmpty() || note.length() > 240) {
+            throw new IllegalArgumentException("resolutionNote must be 1..240 trimmed characters");
+        }
+        return jdbc.query(
+                RESOLVE_SQL,
+                (rs, rowNum) -> new Resolution(
+                        rs.getLong("out_appeal_id"),
+                        rs.getString("out_decision"),
+                        rs.getString("out_age_state"),
+                        rs.getTimestamp("out_resolved_at").toInstant()),
+                actingAccountId, appealId, decision, note)
+                .stream().findFirst().orElseThrow(() ->
+                        new IllegalStateException("resolve_age_appeal returned no row"));
     }
 
     /**

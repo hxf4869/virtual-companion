@@ -9,7 +9,9 @@ import java.time.Duration;
 public final class TestAlerts {
 
     public static AlertProperties props() {
-        return new AlertProperties("", Duration.ofSeconds(2), 60_000L, 24L, 1L, "", "", 5, 5);
+        return new AlertProperties(
+                "", "generic", Duration.ofSeconds(2), 60_000L, 24L, 1L,
+                "", "", "", "", "", 5, 5);
     }
 
     public static AlertNotifier noop() {

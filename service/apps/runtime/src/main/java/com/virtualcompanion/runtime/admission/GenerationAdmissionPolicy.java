@@ -11,10 +11,9 @@ import java.util.Set;
  * age, consent or the service window is deny (fail-closed).
  *
  * <p>When {@code enforceAdultAndConsent} is false (Technical Alpha default,
- * Beta window off) the gate still refuses a disabled account, a closed
- * window, and read failures. Adult/consent/Beta-switch checks apply only
- * when enforcement is on; the required-consent set is configuration, never
- * guessed.
+ * Beta window off), only the adult/consent/Beta-switch checks are skipped.
+ * Account, service-window and release-gate checks always apply; the required
+ * consent set is configuration, never guessed.
  */
 public final class GenerationAdmissionPolicy {
 
@@ -76,14 +75,14 @@ public final class GenerationAdmissionPolicy {
         if (facts.windowReject().isPresent()) {
             return facts.windowReject();
         }
+        if (!facts.liveExpansionAllowed()) {
+            return Optional.of(RELEASE_EVAL_BLOCKED);
+        }
         if (!facts.enforceAdultAndConsent()) {
             return Optional.empty();
         }
         if (!facts.betaGenerationEnabled()) {
             return Optional.of(BETA_GENERATION_DISABLED);
-        }
-        if (!facts.liveExpansionAllowed()) {
-            return Optional.of(RELEASE_EVAL_BLOCKED);
         }
         if (facts.ageState() != AgeState.ADULT_VERIFIED) {
             return Optional.of(ADULT_VERIFICATION_REQUIRED);

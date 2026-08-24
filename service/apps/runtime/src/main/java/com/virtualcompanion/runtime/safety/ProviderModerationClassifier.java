@@ -29,13 +29,13 @@ public final class ProviderModerationClassifier implements SafetyClassifierPort 
             return new SafetyClassification(
                     RiskLevel.R3_HIGH,
                     List.of(),
-                    new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 1.0),
+                    new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, result.confidence()),
                     SafetyVerdict.BLOCK);
         }
         return new SafetyClassification(
                 RiskLevel.R0_NORMAL,
                 List.of(),
-                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 1.0),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, result.confidence()),
                 SafetyVerdict.ALLOW);
     }
 }

@@ -22,7 +22,9 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V77 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V105 迁移和完整 SQL/RLS/并发测试入口；
+- S0-27 部署数据库隔离：独立 `vc_migrator` 与无 DDL/BYPASSRLS 的
+  `vc_runtime_login` composite 最小角色，分离 Secret、production startup 权限实检；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
@@ -44,8 +46,16 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/sessions`、`DELETE /api/v1/auth/sessions/{sessionId}`、
+  `POST /api/v1/auth/sessions/revoke-all`（S0-15：refresh family 会话时间与当前标记，
+  不返回 token/IP/设备指纹；V102 由 HMAC owner context 决定 actor）、
+  `POST /api/v1/auth/password`、`POST /api/v1/auth/reauth`、
+  `POST /api/v1/auth/admin/accounts/{accountId}/reset-password`（改密撤销旧 family；
+  ADMIN re-auth 后设置临时密码并强制首次改密，不伪造邮件/短信发送）、
 - `DELETE /api/v1/auth/account`（ACCT-DELETE / FR-AUTH-004：自助注销，删除
-  身份与全部业务数据并保留合规审计日志；注销墓碑使登录/刷新立即失效）
+  前先独立提交 V103 deletion intent，取消本机/跨实例 provider session、可取消
+  generation 与 work item，并阻断晚到 message/memory/vector/export；删除后仅保留
+  无用户名明文的完成 tombstone 与合规审计，登录/刷新和同名重建均 fail-closed）
 - `POST /api/v1/auth/admin/accounts`、`GET /api/v1/auth/admin/accounts`（账户列表）、
   `POST /api/v1/auth/admin/accounts/{accountId}/disable`（禁用，幂等；开通受
   betaGate maxEnabledAccounts=30 容量门禁约束）、`GET /api/v1/auth/admin/audit`
@@ -60,7 +70,18 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   （QUOTA-PERSIST：配额对账与持久化模型注册表，ADMIN-only）、
   `GET /api/v1/auth/admin/reports`、`GET /api/v1/auth/admin/age-appeals`、
   `GET /api/v1/auth/admin/export-tasks`、`GET /api/v1/auth/admin/memory-sampling`
-  （ADMIN-BETA：举报/年龄申诉/导出任务/记忆异常抽样四个只读队列，ADMIN-only）、
+  （ADMIN-BETA：举报/年龄申诉/导出任务/记忆异常抽样队列，默认脱敏）、
+  `POST /api/v1/auth/admin/age-appeals/{appealId}/resolve`（S0-12：ACTIVE
+  ADMIN/PRIVACY_OPERATOR 人工 approve/deny/reverify/suspend，SQL 重验角色并审计 actor）、
+  `GET /api/v1/auth/admin/ops-cases`、
+  `POST /api/v1/auth/admin/ops-cases/{caseId}/actions`、
+  `PUT /api/v1/auth/admin/ops-cases/{caseId}/notes`、
+  `GET /api/v1/auth/admin/ops-cases/{caseId}/internal-note`（S0-14：report/age/R3/R4
+  自动生产、R4 自动升级、细粒度角色、单调状态机；列表脱敏，内部备注读取留
+  BODY_ACCESS 审计，`slaHours` 为空不代表承诺）、
+  `POST /api/v1/auth/admin/retention-holds`、
+  `DELETE /api/v1/auth/admin/retention-holds/{holdId}`（S0-17：仅 ACTIVE
+  ADMIN/PRIVACY_OPERATOR，固定 category/reason code；dry-run 与 purge 同时遵守）、
   `GET /api/v1/trial-status`（ENT-TRIAL：本人试用剩余额度）、
   `GET/PUT /api/v1/emergency-contact`、`POST /api/v1/emergency-contact/verify-start`、
   `POST /api/v1/emergency-contact/verify-confirm`、`POST /api/v1/emergency-contact/revoke`
@@ -104,7 +125,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - `POST /api/v1/age/appeal`、`GET /api/v1/age/appeals`
   （AGE-APPEAL / FR-AUTH-002：年龄申诉提交，仅
   ADULT_VERIFICATION_REQUIRED / MINOR_SUSPECTED 可提交（目录转移表），同事务
-  追加 AGE_APPEAL_PENDING 状态行；申诉记录 newest-first keyset；处置人工）
+  追加 AGE_APPEAL_PENDING 状态行；申诉记录 newest-first keyset；人工处置走上述
+  resolve API）；真实成年核验 `HttpAgeVerificationAdapter` 默认关闭，只外发 HMAC
+  假名并严格接受 immutable provider version + adult/minor age band，失败发生在状态
+  写入前；启用边界见 `docs/beta-readiness/12-成年核验与申诉处置.md`。
 - `GET /api/v1/incognito-pref`、`PUT /api/v1/incognito-pref`（INC-PREF /
   FR-CHAT-005：下次新会话是否默认无痕；不翻转已有会话）
 - `PUT /api/v1/consents`、`GET /api/v1/consents`（CONSENT / FR-AUTH-003/005：
@@ -137,7 +161,8 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   (generation, kind) 幂等一行，kind 按 message-feedback-kinds 目录校验）
 - `POST /api/v1/realtime/tickets`、`GET /api/v1/realtime/streams/{generationId}`（Fetch-SSE
   恢复流；非终态 generation 保持连接并实时直推 `chat.delta` 增量，断线经 durable 事件与
-  snapshot 恢复，缺失 delta 永不补齐；realtime 请求与 REST 一样支持 401 单次静默刷新重放）
+  snapshot 恢复；live end marker 在关闭前补取 committed terminal snapshot/event，timeout/失败不误报
+  为传输中断；缺失 delta 永不编造；realtime 请求与 REST 一样支持 401 单次静默刷新重放）
 - 8 个 memory 端点（candidates/list/get/update/delete/confirm/reject/evidence）+
   `GET/PUT /api/v1/memories/auto-save`（MEM-AUTO-SAVE 低敏自动保存开关，§7.4）
 
@@ -233,13 +258,14 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
 - L2 会话摘要（CONV-SUMMARY / §11.18 / S0-32）：V63 `vc.conversation_summary` 追加式
   版本链——每行记录覆盖消息起止 ID、摘要模型与 Prompt 版本、置信度、校验位、
   产生档位与上一版本 id；**低质不覆盖高质**（ECONOMY 写入在已验证 PREMIUM 摘要
-  之后被跳过，保留旧摘要待稳定档恢复）；`record_turn_summary` 在外部路径
-  finalize 同事务追加确定性摘要（快照 actual 档驱动质量档；无痕会话不更新，
-  FR-CHAT-005；ZERO_LLM 不更新，FR-RES-002）。删除覆盖范围内的消息时同事务
-  失效相关摘要（行保留供审计，读取只返回有效行；FR-CHAT-004 补全）。
-  `GET /api/v1/conversations/{id}/summary` 读最新有效摘要（无摘要 available=false）。
-  摘要正文 at-rest 为 enc2 密文，仅 API 边界解密；备份/PITR 恢复后仍是密文，
-  不会以明文复活；checkpoint 回填见 V79。
+  之后被跳过，保留旧摘要待稳定档恢复）。V108 已删除 SQL plaintext
+  `record_turn_summary` 并撤销旧 writer 的 runtime 权限；外部 finalize 在同一 owner 事务
+  读取仅含 ID/count/actual 档的 metadata，Java AES-GCM 后调用 enc2-only wrapper。无痕会话
+  metadata 为空，ZERO_LLM 不更新。删除覆盖范围内消息时同事务移除派生摘要并断开存续链；
+  conversation/清空聊天/账号注销继续级联清除。
+  `GET /api/v1/conversations/{id}/summary` 只在 API 边界解密最新有效摘要（无摘要
+  `available=false`）；V79 stale-cipher keyset 回填可重跑，production 在回填未完成时拒启。
+  备份/PITR drill 断言有效 summary 仍为不含正文的 `enc2` 密文。
 
 后端在运方面上还提供（2026-08-19 第三十七轮）：
 
@@ -268,6 +294,23 @@ CI 合成数据，不应被描述成已可供真实用户调用。真实 provide
   未结算、失败未冲正）与 `admin_provider_registry`（V4 持久化部署注册表）；
   `GET /auth/admin/quota-reconciliation`、`GET /auth/admin/provider-registry`，
   admin 页对账与注册表区。
+- 模型成本硬保护（S0-29）：V105 provider/model/version 单价历史与月度原子
+  reserve/settle/release；owner+work item retry 幂等、并发月行锁不越 ceiling，
+  unknown price/非正 cap fail-closed，80/95/100% 固定告警。仅供应商成本，不含支付/订单。
+- 账号即时失效与高成本端点保护（S0-30）：V84/V92/V94 以 session epoch + durable
+  access snapshot 使禁用、降权、logout、会话撤销和改密在下一次 Bearer 请求即失效；
+  generation/export/report 使用 DB 共享频率窗。V106 再补仅持久化来源 HMAC 摘要的
+  login/refresh 共享窗口，以及 owner-bound generation/SSE 并发租约；统一 429 +
+  `Retry-After`，SSE 完成/超时/错误释放，异常由 TTL 回收。危机/紧急联系人端点不参与限流。
+- 可靠告警与维护任务（S0-31）：V85 durable webhook outbox 具备 code/window 去重、
+  `SKIP LOCKED` 认领、崩溃回收、HMAC/host allowlist、5 次退避和 dead-letter/指标；
+  V86 为 retention/auth-audit/DAU/export-expiry 提供排他 lease、pause/dry-run 和聚合 run
+  history，V107 暴露无用户数据的 last-success/latest-status freshness。失败与 stale/hung
+  任务发送固定 P1 码；retention dry-run 真实执行 legal-hold-aware 估算并记录分类计数。
+- 会话摘要静态加密（S0-32）：V79 keyset backfill 覆盖 plaintext/enc1/旧 enc2；V108
+  删除 SQL plaintext turn writer、撤销旧 runtime 写权限，仅允许 metadata → Java AES-GCM
+  → enc2-only wrapper。API/模型读取才解密；incognito 不产摘要，单消息删除清除覆盖摘要，
+  conversation/聊天清空/账号注销继续级联清除。日志与迁移检查只含固定元数据/计数。
 
 后端在运方面上还提供（2026-08-19 第三十五轮）：
 

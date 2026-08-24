@@ -92,7 +92,7 @@ public class IdentityRefreshTokenRepository {
         return jdbc.query(
                 "SELECT out_id, out_family_id, out_client_label, out_created_at, "
                         + "out_last_seen_at, out_expires_at, out_current "
-                        + "FROM vc.identity_list_sessions(?, ?)",
+                        + "FROM vc.identity_list_current_sessions(?)",
                 (rs, rowNum) -> new SessionView(
                         rs.getLong("out_id"),
                         rs.getObject("out_family_id") == null
@@ -102,7 +102,6 @@ public class IdentityRefreshTokenRepository {
                         rs.getObject("out_last_seen_at", OffsetDateTime.class),
                         rs.getObject("out_expires_at", OffsetDateTime.class),
                         rs.getBoolean("out_current")),
-                accountId,
                 currentTokenHash);
     }
 
@@ -114,9 +113,8 @@ public class IdentityRefreshTokenRepository {
             throw new IllegalArgumentException("sessionId must be positive");
         }
         Boolean ok = jdbc.queryForObject(
-                "SELECT vc.identity_revoke_session(?, ?)",
+                "SELECT vc.identity_revoke_current_session(?)",
                 Boolean.class,
-                accountId,
                 sessionId);
         return Boolean.TRUE.equals(ok);
     }
@@ -126,9 +124,8 @@ public class IdentityRefreshTokenRepository {
             throw new IllegalArgumentException("accountId must be positive");
         }
         Integer n = jdbc.queryForObject(
-                "SELECT vc.identity_revoke_all_sessions(?)",
-                Integer.class,
-                accountId);
+                "SELECT vc.identity_revoke_all_current_sessions()",
+                Integer.class);
         return n == null ? 0 : n;
     }
 

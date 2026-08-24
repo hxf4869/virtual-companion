@@ -92,8 +92,13 @@
     "listSafetyEvents",
     "listOpsCases",
     "transitionOpsCase",
+    "updateOpsCaseNote",
+    "readOpsCaseInternalNote",
+    "setRetentionLegalHold",
+    "releaseRetentionLegalHold",
     "listBetaReports",
     "listBetaAgeAppeals",
+    "resolveAgeAppeal",
     "listBetaExportTasks",
     "listBetaMemorySampling",
     "getEmergencyContact",
@@ -104,6 +109,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "e41cdf57933862ab0754912bd9349ddaa66cc76ed0dfbdf26a0b4e01944346d5"
+    "sha256": "0501a9cf32c82da443e3eaca7a2ee54057a0f72124277fc5032b900450e0bc33"
   }
 }

@@ -270,6 +270,11 @@ describe("memory page glue (P2-19 component test)", () => {
     await wrapper.vm.$nextTick();
     expect(remove).not.toHaveBeenCalled();
     expect(del.text()).toContain("确认删除");
+    const confirmation = wrapper.find('[data-testid="memory-delete-confirm"]');
+    expect(confirmation.text()).toContain("喜欢安静的晚上");
+    expect(confirmation.text()).toContain("当前角色专属");
+    expect(confirmation.text()).toContain("来源链接也不再展示");
+    expect(confirmation.text()).toContain("删除失败时本条会保留");
     expect(wrapper.text()).toContain("喜欢安静的晚上");
     wrapper.unmount();
   });
@@ -386,14 +391,14 @@ describe("memory page glue (P2-19 component test)", () => {
   });
 
   it("prefills relationship id from the query and does not auto-load", async () => {
-    vi.stubGlobal("location", { search: "?relationshipId=rel-1" });
+    vi.stubGlobal("location", { search: "?relationshipId=rel-pick-1" });
     const store = useMemoryStore();
     const loadSpy = vi.spyOn(store, "load");
     const wrapper = mountPage();
     await flushPromises();
 
     const input = wrapper.find('input[aria-label="relationship id"]');
-    expect((input.element as HTMLInputElement).value).toBe("rel-1");
+    expect((input.element as HTMLInputElement).value).toBe("rel-pick-1");
     expect(loadSpy).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="empty-relationship-id"]').exists()).toBe(
@@ -409,6 +414,17 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("drops a query relationship that is absent from the loaded relationship list", async () => {
+    vi.stubGlobal("location", { search: "?relationshipId=rel-missing" });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const input = wrapper.find('input[aria-label="relationship id"]');
+    expect((input.element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("shows an empty-relationship-id status when the field is blank", () => {
     const wrapper = mountPage();
     const empty = wrapper.find('[data-testid="empty-relationship-id"]');
@@ -421,7 +437,7 @@ describe("memory page glue (P2-19 component test)", () => {
   });
 
   it("hides the prefill hint after a successful load", async () => {
-    vi.stubGlobal("location", { search: "?relationshipId=rel-1" });
+    vi.stubGlobal("location", { search: "?relationshipId=rel-pick-1" });
     const store = useMemoryStore();
     vi.spyOn(store, "load").mockResolvedValue();
     const wrapper = mountPage();
@@ -454,7 +470,7 @@ describe("memory page glue (P2-19 component test)", () => {
     const memLoadSpy = vi.spyOn(memStore, "load");
 
     await wrapper.find('[data-testid="relationship-select"]').setValue("rel-pick-1");
-    await wrapper.vm.$nextTick();
+    await flushPromises();
 
     const input = wrapper.find('input[aria-label="relationship id"]');
     expect((input.element as HTMLInputElement).value).toBe("rel-pick-1");

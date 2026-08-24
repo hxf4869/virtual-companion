@@ -41,3 +41,5 @@ entries:
   order: 18
 - code: PASSWORD_CHANGE_REQUIRED
   order: 19
+- code: RATE_LIMITED
+  order: 20

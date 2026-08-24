@@ -67,4 +67,19 @@ class JobLeaseTest {
         assertTrue(new JobLease(jdbc).finishRun(9L, "SUCCEEDED", "{\"removed\":1}", ""));
         assertEquals(JobLease.START_SQL, "SELECT vc.start_job_run(?)");
     }
+
+    @Test
+    void readHealthPinsMetadataOnlyFunction() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        JobLease.Health health = new JobLease.Health(
+                "DAU_METRICS", false, false, java.time.Instant.EPOCH,
+                "SUCCEEDED", java.time.Instant.EPOCH, java.time.Instant.EPOCH);
+        when(jdbc.query(eq(JobLease.HEALTH_SQL), any(RowMapper.class)))
+                .thenReturn(List.of(health));
+
+        List<JobLease.Health> rows = new JobLease(jdbc).readHealth();
+
+        assertEquals(List.of(health), rows);
+        verify(jdbc).query(eq(JobLease.HEALTH_SQL), any(RowMapper.class));
+    }
 }

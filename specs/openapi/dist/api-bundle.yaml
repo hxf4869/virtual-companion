@@ -976,6 +976,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: RATE_LIMITED — shared per-owner generation admission rejected the request
+          headers:
+            Retry-After:
+              description: Seconds until the caller should retry
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/conversations/{conversationId}/messages:
     get:
       operationId: listMessages
@@ -1340,6 +1352,18 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: RATE_LIMITED — shared per-owner concurrent SSE lease limit reached
+          headers:
+            Retry-After:
+              description: Seconds until the caller should retry
+              schema:
+                type: integer
+                minimum: 1
           content:
             application/json:
               schema:
@@ -1819,6 +1843,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: RATE_LIMITED — shared per-owner report admission rejected the request
+          headers:
+            Retry-After:
+              description: Seconds until the caller should retry
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
     get:
       operationId: listReports
       summary: The caller's reports, newest first (FR-DATA-001)
@@ -2038,6 +2074,18 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '429':
+          description: RATE_LIMITED — shared per-owner export admission rejected the request
+          headers:
+            Retry-After:
+              description: Seconds until the caller should retry
+              schema:
+                type: integer
+                minimum: 1
           content:
             application/json:
               schema:
@@ -2393,12 +2441,13 @@ paths:
     delete:
       operationId: deleteAccount
       summary: Delete the caller's own account (FR-AUTH-004)
-      description: 'Self-service account deletion (注销受理). The caller''s account and refresh sessions are deleted and all business
-        data owned by the account is removed through the vc_user cascade (conversations, messages, memories, reminders, consents,
-        exports, work items). The append-only compliance audit trail (identity_auth_event) is kept — the product explains
-        the retention before confirming. Login with the deleted username and any refresh session stop working immediately
-        (deletion tombstone: the account no longer exists, so recovery is impossible). An already-deleted or disabled account
-        maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a valid Bearer access token.'
+      description: Self-service account deletion (注销受理). Before the destructive cascade, V103 independently commits an owner-bound
+        deletion intent, cancels durable generation/work and cooperatively signals provider sessions on every instance. The
+        intent blocks new outbound and late message/memory/vector/export writes. The caller's account, refresh sessions and
+        owned business data are then removed through the vc_user cascade. The append-only compliance audit and a tombstone
+        containing only account id plus username digest survive; the deleted username cannot be recreated. An already-deleted
+        or disabled account maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a valid Bearer access
+        token.
       responses:
         '200':
           description: The account was deleted
@@ -2873,8 +2922,8 @@ paths:
     post:
       operationId: transitionOpsCase
       summary: ACK/ASSIGN/ESCALATE/RESOLVE an ops case (S0-14-C)
-      description: Mutates one frozen ops case. OPS_VIEWER and USER are denied in SQL. RESOLVE requires dispositionReason.
-        SLA hours are not invented here.
+      description: Mutates one frozen ops case. OPS_VIEWER and USER are denied in SQL. RESOLVE requires dispositionReason;
+        AGE_APPEAL must use the dedicated review-decision endpoint. SLA hours are not invented here.
       security:
       - bearerAuth: []
       parameters:
@@ -2896,6 +2945,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpsCase'
+        '400':
+          description: Invalid action, assignee or disposition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -2904,6 +2959,160 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
           description: The caller cannot mutate this case kind
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/ops-cases/{caseId}/notes:
+    put:
+      operationId: updateOpsCaseNote
+      summary: Update an audited internal or public case note (S0-14)
+      description: Mutation-capable operators only and kind-scoped in SQL. INTERNAL text never appears in the redacted response;
+        PUBLIC text is user-safe.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpsCaseNoteRequest'
+      responses:
+        '200':
+          description: Redacted case after the audited note update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsCase'
+        '400':
+          description: Invalid visibility or note length
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Caller cannot mutate this case kind
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/ops-cases/{caseId}/internal-note:
+    get:
+      operationId: readOpsCaseInternalNote
+      summary: Read one case-scoped internal note with BODY_ACCESS audit
+      description: ADMIN or the permitted specialist role only. OPS_VIEWER is denied; every successful read appends a BODY_ACCESS
+        event.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Internal note for this one authorized case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsCaseInternalNote'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Caller lacks case-scoped body access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/retention-holds:
+    post:
+      operationId: setRetentionLegalHold
+      summary: Set an owner/category legal hold (S0-17)
+      description: ACTIVE ADMIN or PRIVACY_OPERATOR only. Uses fixed category/reason codes; no case body or free-text reason
+        is stored. Purge and dry-run both honor it.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetentionLegalHoldRequest'
+      responses:
+        '200':
+          description: Active legal hold id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionLegalHoldResponse'
+        '400':
+          description: Invalid owner/category/reason
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Caller lacks the retention-hold role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/retention-holds/{holdId}:
+    delete:
+      operationId: releaseRetentionLegalHold
+      summary: Release one active legal hold (S0-17)
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: holdId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Idempotent release result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionLegalHoldReleaseResponse'
+        '400':
+          description: Invalid hold id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Caller lacks the retention-hold role
           content:
             application/json:
               schema:
@@ -2956,7 +3165,8 @@ paths:
       operationId: listBetaAgeAppeals
       summary: ADMIN-only keyset page of the age-appeal queue (ADMIN-BETA, §8.2)
       description: Newest-first keyset page of the age-appeal intake queue across all owners (vc.admin_list_age_appeals, V64).
-        The acting account is re-verified as an ACTIVE ADMIN inside the SD function. Read-only; resolution stays a human action.
+        The acting account is re-verified as an ACTIVE ADMIN inside the SD function. The queue read is non-mutating; human
+        disposition uses the separate resolve endpoint.
       security:
       - bearerAuth: []
       parameters:
@@ -2989,6 +3199,52 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '403':
           description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/age-appeals/{appealId}/resolve:
+    post:
+      operationId: resolveAgeAppeal
+      summary: Human age-appeal disposition (S0-12)
+      description: ADMIN or PRIVACY_OPERATOR only. Resolves one SUBMITTED appeal to ADULT_VERIFIED, MINOR_VERIFIED, AGE_REVERIFY_REQUIRED
+        or AGE_ACCESS_SUSPENDED through the audited SECURITY DEFINER path. The endpoint never accepts or returns identity-document
+        or biometric data.
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: appealId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgeAppealResolutionRequest'
+      responses:
+        '200':
+          description: Appeal resolved and effective age state appended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgeAppealResolutionResponse'
+        '400':
+          description: Invalid decision/state transition or already-resolved appeal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Caller is not an active ADMIN or PRIVACY_OPERATOR
           content:
             application/json:
               schema:
@@ -3386,6 +3642,51 @@ components:
           type: string
           format: date-time
           description: Resolution time (RFC 3339), present once resolved.
+    AgeAppealResolutionRequest:
+      type: object
+      required:
+      - decision
+      - resolutionNote
+      properties:
+        decision:
+          type: string
+          enum:
+          - APPROVE_ADULT
+          - DENY_MINOR
+          - REVERIFY
+          - SUSPEND
+        resolutionNote:
+          type: string
+          minLength: 1
+          maxLength: 240
+          description: Human reviewer rationale; never identity-document or biometric content.
+    AgeAppealResolutionResponse:
+      type: object
+      required:
+      - appealId
+      - decision
+      - ageState
+      - resolvedAt
+      properties:
+        appealId:
+          type: string
+        decision:
+          type: string
+          enum:
+          - APPROVE_ADULT
+          - DENY_MINOR
+          - REVERIFY
+          - SUSPEND
+        ageState:
+          type: string
+          enum:
+          - ADULT_VERIFIED
+          - MINOR_VERIFIED
+          - AGE_REVERIFY_REQUIRED
+          - AGE_ACCESS_SUSPENDED
+        resolvedAt:
+          type: string
+          format: date-time
     CreateReportRequest:
       type: object
       description: Report/complaint submission body (FR-DATA-001, §20.15). The message anchor is optional; when present it
@@ -4866,6 +5167,7 @@ components:
       - expiresInSeconds
       - accountId
       - role
+      - passwordMustChange
       properties:
         accessToken:
           type: string
@@ -5241,11 +5543,82 @@ components:
         dispositionReason:
           type: string
           description: Required for RESOLVE; catalog-sized operator text, not chat body.
+    RetentionLegalHoldRequest:
+      type: object
+      required:
+      - ownerUserId
+      - category
+      - reasonCode
+      properties:
+        ownerUserId:
+          type: string
+        category:
+          type: string
+          enum:
+          - ALL
+          - NORMAL_CHAT
+          - DELETED_CHAT
+          - MEMORY_CANDIDATE
+          - REJECTED_CANDIDATE
+          - MODEL_CALL_DETAIL
+          - SAFETY_LOG
+          - EXPORT_RESIDUE
+          - STREAM_FRAGMENT
+        reasonCode:
+          type: string
+          enum:
+          - LEGAL
+          - REGULATORY
+          - DISPUTE
+          - SAFETY_REVIEW
+    RetentionLegalHoldResponse:
+      type: object
+      required:
+      - holdId
+      - status
+      properties:
+        holdId:
+          type: string
+        status:
+          type: string
+          enum:
+          - ACTIVE
+    RetentionLegalHoldReleaseResponse:
+      type: object
+      required:
+      - released
+      properties:
+        released:
+          type: boolean
+    OpsCaseNoteRequest:
+      type: object
+      required:
+      - visibility
+      - note
+      properties:
+        visibility:
+          type: string
+          enum:
+          - INTERNAL
+          - PUBLIC
+        note:
+          type: string
+          maxLength: 500
+          description: INTERNAL max 500; PUBLIC max 240. Empty text clears the selected note.
+    OpsCaseInternalNote:
+      type: object
+      required:
+      - note
+      properties:
+        note:
+          type: string
+          maxLength: 500
+          description: Case-scoped operator note; every successful read is audited.
     OpsCase:
       type: object
       description: Frozen ops-case envelope (S0-14-A). Links one report, safety-event or age-appeal intake row. Chat body
-        is never stored. slaHours is omitted until Owner sets a value — absence is not an SLA promise. assign/ack/escalate/resolve
-        stay S0-14-C.
+        is never stored. slaHours is omitted until Owner sets a value — absence is not an SLA promise. Intake producers open
+        cases automatically; mutation and note reads are audited.
       required:
       - id
       - kind

@@ -1,6 +1,7 @@
 -- 124_retention_policy_purge: RETENTION V70 — versioned policy + categorized
--- purges. Covers: active_retention_days reads the seeded draft and fails
--- closed on unknown categories; per-category purges remove only aged rows
+-- purges. Covers: seeded policy is explicitly activated only inside this test,
+-- active_retention_days then reads it and fails closed on unknown categories;
+-- per-category purges remove only aged rows
 -- (fresh rows survive); NORMAL_CHAT invalidates summaries covering purged
 -- messages in the same pass; DELETED_CHAT is a documented no-op; terminal-only
 -- export sweep keeps live PENDING rows.
@@ -49,7 +50,10 @@ BEGIN
         convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'),
         'sha256'), 'hex'));
 
-    -- Policy reads: seeded draft v1 and fail-closed unknown category.
+    -- Test-only approval: production v1 remains DRAFT until Owner/legal review.
+    UPDATE vc.data_retention_policy SET status = 'ACTIVE' WHERE policy_version = 1;
+
+    -- Policy reads: explicitly activated v1 and fail-closed unknown category.
     v_days := vc.active_retention_days('NORMAL_CHAT');
     IF v_days <> 365 THEN
         RAISE EXCEPTION 'NORMAL_CHAT draft period must be 365, got %', v_days;

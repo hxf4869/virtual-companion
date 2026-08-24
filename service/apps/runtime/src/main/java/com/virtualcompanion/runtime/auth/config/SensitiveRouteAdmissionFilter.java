@@ -23,6 +23,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public final class SensitiveRouteAdmissionFilter extends OncePerRequestFilter {
 
     static final int GENERATION_LIMIT = 20;
+    static final int GENERATION_MAX_CONCURRENT = 4;
     static final int SSE_LIMIT = 10;
     static final int EXPORT_LIMIT = 5;
     static final int REPORT_LIMIT = 10;
@@ -53,6 +54,21 @@ public final class SensitiveRouteAdmissionFilter extends OncePerRequestFilter {
                 principal.accountId(), spec.route(), spec.limit(), spec.windowSeconds());
         if (!decision.admitted()) {
             AuthRateLimitResponse.write(response, decision.retryAfterSeconds());
+            return;
+        }
+        if (SensitiveRouteAdmission.GENERATION.equals(spec.route())) {
+            SensitiveRouteAdmission.Lease lease = limiter.acquireLease(
+                    principal.accountId(), SensitiveRouteAdmission.GENERATION,
+                    GENERATION_MAX_CONCURRENT, SHORT_WINDOW_SECONDS);
+            if (!lease.admitted()) {
+                AuthRateLimitResponse.write(response, lease.retryAfterSeconds());
+                return;
+            }
+            try {
+                filterChain.doFilter(request, response);
+            } finally {
+                limiter.releaseLease(principal.accountId(), lease.leaseId());
+            }
             return;
         }
         filterChain.doFilter(request, response);

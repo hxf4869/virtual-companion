@@ -248,9 +248,12 @@ function mapFrames(frames: SseFrame[], fallbackEpoch: number): ResumeResult {
   return result;
 }
 
-function extractSnapshotEvents(data: unknown, fallbackEpoch: number): StreamEvent[] {
+function extractSnapshotEvents(data: unknown, fallbackEpoch: number): StreamEvent[] | null {
   if (!isRecord(data) || !Array.isArray(data.events)) {
-    return [];
+    // The runtime emits snapshot metadata followed by the ordered durable
+    // event frames. Missing `events` means "use those frames", not an
+    // authoritative empty terminal snapshot.
+    return null;
   }
   const events: StreamEvent[] = [];
   for (const candidate of data.events) {

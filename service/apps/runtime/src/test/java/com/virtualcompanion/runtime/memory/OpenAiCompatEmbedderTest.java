@@ -44,12 +44,14 @@ class OpenAiCompatEmbedderTest {
         String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
 
         float[] v = new OpenAiCompatEmbedder(url, "text-embedding-3-small", "sk-test")
-                .embed("hello");
+                .embed("hello", 3);
 
         assertArrayEquals(new float[]{0.5f, -1.25f, 2.0f}, v);
         assertEquals("AUTH:Bearer sk-test", captured.toString().split("\n")[0]);
         org.junit.jupiter.api.Assertions.assertTrue(
                 captured.toString().contains("\"model\":\"text-embedding-3-small\""));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                captured.toString().contains("\"dimensions\":3"));
     }
 
     @Test
@@ -61,5 +63,13 @@ class OpenAiCompatEmbedderTest {
 
         assertThrows(IllegalStateException.class,
                 () -> new OpenAiCompatEmbedder(url, "m", "k").embed("x"));
+    }
+
+    @Test
+    void nonNumericAndNonFiniteVectorValuesFailClosed() {
+        assertThrows(IllegalArgumentException.class, () -> OpenAiCompatEmbedder.parseVector(
+                "{\"data\":[{\"embedding\":[0.1,\"not-a-number\"]}]}"));
+        assertThrows(IllegalArgumentException.class, () -> OpenAiCompatEmbedder.parseVector(
+                "{\"data\":[{\"embedding\":[1e400]}]}"));
     }
 }

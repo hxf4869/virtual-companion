@@ -1,11 +1,8 @@
 package com.virtualcompanion.runtime.retention;
 
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.OptionalLong;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -51,6 +48,7 @@ public class RetentionPurgeScheduler {
     private final JdbcTemplate authJdbcTemplate;
     private final AlertNotifier alertNotifier;
     private final JobLease jobLease;
+    private final boolean dryRun;
     private final String holder = UUID.randomUUID().toString();
 
     public RetentionPurgeScheduler(JdbcTemplate authJdbcTemplate, AlertNotifier alertNotifier) {
@@ -59,9 +57,18 @@ public class RetentionPurgeScheduler {
 
     public RetentionPurgeScheduler(
             JdbcTemplate authJdbcTemplate, AlertNotifier alertNotifier, JobLease jobLease) {
+        this(authJdbcTemplate, alertNotifier, jobLease, false);
+    }
+
+    public RetentionPurgeScheduler(
+            JdbcTemplate authJdbcTemplate,
+            AlertNotifier alertNotifier,
+            JobLease jobLease,
+            boolean dryRun) {
         this.authJdbcTemplate = authJdbcTemplate;
         this.alertNotifier = alertNotifier;
         this.jobLease = jobLease;
+        this.dryRun = dryRun;
     }
 
     /**
@@ -71,12 +78,13 @@ public class RetentionPurgeScheduler {
      */
     @Scheduled(cron = "${virtual-companion.retention.purge-cron:0 47 3 * * *}")
     public void purgeExpiredData() {
-        OptionalLong runId = jobLease == null
-                ? OptionalLong.empty()
-                : jobLease.beginExclusive(JobLease.RETENTION_PURGE, holder, 600);
-        if (jobLease != null && runId.isEmpty()) {
+        Optional<JobLease.Run> run = jobLease == null
+                ? Optional.empty()
+                : jobLease.beginExclusiveRun(JobLease.RETENTION_PURGE, holder, 600);
+        if (jobLease != null && run.isEmpty()) {
             return;
         }
+        boolean effectiveDryRun = dryRun || run.map(JobLease.Run::dryRun).orElse(false);
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : PURGE_FUNCTIONS.entrySet()) {
             String category = entry.getKey();
@@ -86,28 +94,27 @@ public class RetentionPurgeScheduler {
                 if (days == null || days <= 0) {
                     throw new IllegalStateException("policy returned no positive retain_days");
                 }
-                Instant cutoff = Instant.now().minus(days, ChronoUnit.DAYS);
                 Integer removed = authJdbcTemplate.queryForObject(
-                        "SELECT " + entry.getValue() + "(?)",
-                        Integer.class,
-                        Timestamp.from(cutoff));
+                        "SELECT vc.run_retention_category(?, ?)",
+                        Integer.class, category, effectiveDryRun);
                 int n = removed == null ? 0 : removed;
                 counts.put(category, n);
-                log.info("retention purge {}: removed {} rows older than {} days",
-                        category, n, days);
+                log.info("retention {} {}: {} rows older than {} days",
+                        effectiveDryRun ? "dry-run" : "purge", category, n, days);
             } catch (RuntimeException e) {
-                log.error("retention purge {} failed", category, e);
+                log.error("retention category {} failed", category, e);
                 counts.put(category, -1);
                 alertNotifier.alert(AlertSeverity.P1,
                         "RETENTION_PURGE_FAILED",
                         "category=" + category);
             }
         }
-        if (runId.isPresent()) {
+        if (run.isPresent()) {
             boolean failed = counts.values().stream().anyMatch(n -> n < 0);
+            String status = failed ? "FAILED" : effectiveDryRun ? "DRY_RUN" : "SUCCEEDED";
             jobLease.finishRun(
-                    runId.getAsLong(),
-                    failed ? "FAILED" : "SUCCEEDED",
+                    run.get().id(),
+                    status,
                     countsJson(counts),
                     failed ? "category_failed" : "");
         }

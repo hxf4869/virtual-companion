@@ -56,7 +56,8 @@ public class JdbcAuthorizationSnapshotStore implements AuthorizationSnapshotStor
             INSERT INTO vc.authorization_snapshot
                 (owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
                  purpose, data_categories, task_cancelled, source_data_deleted)
-            VALUES (vc.current_owner_id(), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            SELECT vc.current_owner_id(), ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT vc.account_deletion_intent_active_current()
             ON CONFLICT (owner_user_id, snapshot_id) DO NOTHING
             """;
 
@@ -79,6 +80,7 @@ public class JdbcAuthorizationSnapshotStore implements AuthorizationSnapshotStor
                    purpose, data_categories, task_cancelled, source_data_deleted
             FROM vc.authorization_snapshot
             WHERE snapshot_id = ?
+              AND NOT vc.account_deletion_intent_active_current()
             """;
 
     @Override

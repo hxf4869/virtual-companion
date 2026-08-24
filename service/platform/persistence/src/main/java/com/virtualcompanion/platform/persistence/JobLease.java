@@ -1,6 +1,9 @@
 package com.virtualcompanion.platform.persistence;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -18,8 +21,24 @@ public final class JobLease {
             "SELECT out_acquired, out_paused, out_dry_run FROM vc.try_acquire_job_lease(?, ?, ?)";
     static final String START_SQL = "SELECT vc.start_job_run(?)";
     static final String FINISH_SQL = "SELECT vc.finish_job_run(?, ?, ?::jsonb, ?)";
+    static final String HEALTH_SQL = "SELECT * FROM vc.list_job_health()";
 
     public record Permit(boolean acquired, boolean paused, boolean dryRun) {
+    }
+
+    /** Acquired run plus the database-controlled dry-run mode. */
+    public record Run(long id, boolean dryRun) {
+    }
+
+    /** Fixed scheduler metadata only; no owner or user content is exposed. */
+    public record Health(
+            String jobName,
+            boolean paused,
+            boolean dryRun,
+            Instant lastSuccessAt,
+            String latestStatus,
+            Instant latestStartedAt,
+            Instant latestFinishedAt) {
     }
 
     private final JdbcTemplate jdbc;
@@ -55,21 +74,29 @@ public final class JobLease {
         return id;
     }
 
+    /** Acquire the named lease, open a run, and preserve DB dry-run mode for the caller. */
+    public Optional<Run> beginExclusiveRun(String jobName, String holder, int leaseSeconds) {
+        Permit permit = tryAcquire(jobName, holder, leaseSeconds);
+        if (!permit.acquired()) {
+            return Optional.empty();
+        }
+        return Optional.of(new Run(startRun(jobName), permit.dryRun()));
+    }
+
     /**
      * Acquire the named lease and open a run. Empty means this process must
      * skip (lost leader, paused, or dry-run already recorded).
      */
     public OptionalLong beginExclusive(String jobName, String holder, int leaseSeconds) {
-        Permit permit = tryAcquire(jobName, holder, leaseSeconds);
-        if (!permit.acquired()) {
+        Optional<Run> run = beginExclusiveRun(jobName, holder, leaseSeconds);
+        if (run.isEmpty()) {
             return OptionalLong.empty();
         }
-        long runId = startRun(jobName);
-        if (permit.dryRun()) {
-            finishRun(runId, "DRY_RUN", "{}", "");
+        if (run.get().dryRun()) {
+            finishRun(run.get().id(), "DRY_RUN", "{}", "");
             return OptionalLong.empty();
         }
-        return OptionalLong.of(runId);
+        return OptionalLong.of(run.get().id());
     }
 
     public boolean finishRun(long runId, String status, String countsJson, String error) {
@@ -85,5 +112,22 @@ public final class JobLease {
                 countsJson == null || countsJson.isBlank() ? "{}" : countsJson,
                 error);
         return Boolean.TRUE.equals(done);
+    }
+
+    public List<Health> readHealth() {
+        return jdbc.query(
+                HEALTH_SQL,
+                (rs, rowNum) -> new Health(
+                        rs.getString("out_job_name"),
+                        rs.getBoolean("out_paused"),
+                        rs.getBoolean("out_dry_run"),
+                        instant(rs.getTimestamp("out_last_success_at")),
+                        rs.getString("out_latest_status"),
+                        instant(rs.getTimestamp("out_latest_started_at")),
+                        instant(rs.getTimestamp("out_latest_finished_at"))));
+    }
+
+    private static Instant instant(java.sql.Timestamp value) {
+        return value == null ? null : value.toInstant();
     }
 }

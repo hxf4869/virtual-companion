@@ -16,6 +16,7 @@ public class AlertWebhookDispatcher {
 
     private final AlertWebhookOutbox outbox;
     private final WebhookDelivery delivery;
+    private final FallbackWebhookDelivery fallbackDelivery;
     private final AlertProperties properties;
     private final VcMetrics metrics;
 
@@ -24,16 +25,26 @@ public class AlertWebhookDispatcher {
             WebhookDelivery delivery,
             AlertProperties properties,
             VcMetrics metrics) {
+        this(outbox, delivery, null, properties, metrics);
+    }
+
+    public AlertWebhookDispatcher(
+            AlertWebhookOutbox outbox,
+            WebhookDelivery delivery,
+            FallbackWebhookDelivery fallbackDelivery,
+            AlertProperties properties,
+            VcMetrics metrics) {
         this.outbox = outbox;
         this.delivery = delivery;
+        this.fallbackDelivery = fallbackDelivery;
         this.properties = properties;
         this.metrics = metrics;
     }
 
     @Scheduled(fixedDelayString = "${virtual-companion.alerts.webhook-drain-ms:5000}")
     public void drain() {
-        String url = properties.webhookUrl();
-        if (url == null || url.isBlank()) {
+        if (!delivery.isConfigured()
+                && (fallbackDelivery == null || !fallbackDelivery.isConfigured())) {
             return;
         }
         try {
@@ -42,7 +53,24 @@ public class AlertWebhookDispatcher {
                         claimed.severity(),
                         claimed.code(),
                         claimed.message(),
-                        claimed.occurredAt());
+                        claimed.occurredAt(),
+                        "vca-" + claimed.id() + "-" + claimed.occurredAt().toEpochMilli());
+                if (outcome != WebhookDelivery.Outcome.DELIVERED
+                        && fallbackDelivery != null
+                        && fallbackDelivery.isConfigured()) {
+                    WebhookDelivery.Outcome fallback = fallbackDelivery.post(
+                            claimed.severity(),
+                            claimed.code(),
+                            claimed.message(),
+                            claimed.occurredAt());
+                    if (fallback == WebhookDelivery.Outcome.DELIVERED) {
+                        outcome = WebhookDelivery.Outcome.DELIVERED;
+                        metrics.alertWebhook("fallback_delivered");
+                    } else if (outcome == WebhookDelivery.Outcome.REFUSED
+                            && fallback == WebhookDelivery.Outcome.RETRYABLE) {
+                        outcome = WebhookDelivery.Outcome.RETRYABLE;
+                    }
+                }
                 switch (outcome) {
                     case DELIVERED -> {
                         outbox.complete(claimed.id(), "DELIVERED", "",

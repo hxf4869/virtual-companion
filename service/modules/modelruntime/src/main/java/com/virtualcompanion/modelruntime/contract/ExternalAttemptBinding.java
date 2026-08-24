@@ -21,6 +21,11 @@ public record ExternalAttemptBinding(
         long fence,
         String providerId,
         String supplierName,
+        String modelId,
+        String modelRevision,
+        String configVersion,
+        String promptBundleVersion,
+        String personaBundleVersion,
         String requestedAuthorizationSnapshotId,
         String executionAuthorizationSnapshotId) {
 
@@ -30,6 +35,13 @@ public record ExternalAttemptBinding(
         fence = ContractChecks.requireNonNegative(fence, "fence");
         providerId = ContractChecks.requireNonBlank(providerId, "providerId");
         supplierName = ContractChecks.requireNonBlank(supplierName, "supplierName");
+        modelId = ContractChecks.requireNonBlank(modelId, "modelId");
+        modelRevision = ContractChecks.requireNonBlank(modelRevision, "modelRevision");
+        configVersion = ContractChecks.requireNonBlank(configVersion, "configVersion");
+        promptBundleVersion = ContractChecks.requireNonBlank(
+                promptBundleVersion, "promptBundleVersion");
+        personaBundleVersion = ContractChecks.requireNonBlank(
+                personaBundleVersion, "personaBundleVersion");
         requestedAuthorizationSnapshotId = ContractChecks.requireNonBlank(
                 requestedAuthorizationSnapshotId,
                 "requestedAuthorizationSnapshotId"

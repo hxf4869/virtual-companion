@@ -68,7 +68,8 @@ describe("memory detail page", () => {
       true,
     );
     expect(wrapper.find('[data-testid="memory-summary"]').text()).toContain("喜欢安静的晚上");
-    expect(wrapper.find('[data-testid="memory-status"]').text()).toContain("ACCEPTED");
+    expect(wrapper.find('[data-testid="memory-status"]').text()).toContain("已保存");
+    expect(wrapper.find('[data-testid="memory-scope"]').text()).toContain("当前角色专属");
     expect(wrapper.find('[data-testid="memory-evidence"]').text()).toContain("message:9");
     wrapper.unmount();
   });

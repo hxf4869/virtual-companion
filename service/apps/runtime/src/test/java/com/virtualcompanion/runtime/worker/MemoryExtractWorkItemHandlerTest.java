@@ -282,7 +282,7 @@ class MemoryExtractWorkItemHandlerTest {
         when(embeddingPort.space()).thenReturn(
                 new com.virtualcompanion.runtime.memory.EmbeddingPort.EmbeddingSpace(
                         "deterministic-hash", "1", 64, "alpha-hash-64"));
-        when(embeddingPort.embed(anyString())).thenReturn(new float[64]);
+        when(embeddingPort.embed(eq(1L), anyString())).thenReturn(new float[64]);
         MemoryRecord autoSaved = new MemoryRecord(
                 202L, null, "RELATIONSHIP", "称呼偏好：小雪", "ACCEPTED", null, null, NOW, true);
         when(memoryService.createAutoSaved(1L, 9L, "RELATIONSHIP", "称呼偏好：小雪",

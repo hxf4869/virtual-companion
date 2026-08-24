@@ -167,7 +167,9 @@ class LoopbackExternalInvocationTest {
                 store,
                 locator,
                 recovery,
-                Map.of(PROVIDER, "alpha-supplier"));
+                Map.of(PROVIDER, "alpha-supplier"),
+                Map.of(PROVIDER, new com.virtualcompanion.modelruntime.execution.ProviderDeploymentMetadata(
+                        "loopback-model", "loopback-rev-v1", "loopback-config-v1")));
     }
 
     private static LiveInvocationRequest request(String requestedId, String executionId) {
@@ -192,6 +194,7 @@ class LoopbackExternalInvocationTest {
                 // S0-26: a history-only external payload declares MESSAGE_TEXT
                 // per message; the undeclared shape now fails closed.
                 com.virtualcompanion.modelruntime.execution.PayloadComposition
-                        .allMessageText(1));
+                        .allMessageText(1),
+                "companion-chat-v1", "gentle-listener-v1");
     }
 }

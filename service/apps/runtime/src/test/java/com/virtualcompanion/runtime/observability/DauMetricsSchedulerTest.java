@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -47,7 +49,10 @@ class DauMetricsSchedulerTest {
 
     @Test
     void failedPollKeepsThePreviousValueWithoutPropagating() {
-        DauMetricsScheduler scheduler = new DauMetricsScheduler(jdbc, metrics, window);
+        List<String> alerts = new ArrayList<>();
+        DauMetricsScheduler scheduler = new DauMetricsScheduler(
+                jdbc, metrics, window, null,
+                (severity, code, message) -> alerts.add(severity + ":" + code + ":" + message));
         when(jdbc.queryForObject(anyString(), any(Class.class), any(Timestamp.class)))
                 .thenReturn(5L);
         scheduler.pollDailyActiveUsers();
@@ -57,5 +62,7 @@ class DauMetricsSchedulerTest {
         scheduler.pollDailyActiveUsers();
 
         assertThat(registry.get("vc_beta_dau").gauge().value()).isEqualTo(5.0);
+        assertThat(alerts).containsExactly(
+                "P1:DAU_METRICS_FAILED:daily active user aggregate refresh failed");
     }
 }

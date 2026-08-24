@@ -55,8 +55,8 @@ BEGIN
 
     SELECT out_id, out_inserted INTO v_case, v_inserted
       FROM vc.open_ops_case(v_admin, 'REPORT', v_user, v_report, 'P2');
-    IF v_case IS NULL OR v_inserted IS NOT TRUE THEN
-        RAISE EXCEPTION 'first open_ops_case must insert';
+    IF v_case IS NULL OR v_inserted IS NOT FALSE THEN
+        RAISE EXCEPTION 'intake trigger must open the case before manual idempotent lookup';
     END IF;
 
     SELECT out_id, out_inserted INTO v_again, v_inserted

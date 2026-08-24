@@ -22,6 +22,76 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text data-testid="account-role">{{ auth.role ?? "未知" }}</text>
       </view>
 
+      <view class="card" data-testid="password-card">
+        <text class="label">修改密码</text>
+        <text v-if="auth.passwordMustChange" class="error" data-testid="password-required">
+          管理员设置了临时密码。完成修改前只能修改密码、刷新或登出。
+        </text>
+        <input
+          v-model="currentPassword"
+          data-testid="current-password"
+          class="account-input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="当前密码"
+          aria-label="当前密码"
+        />
+        <input
+          v-model="newPassword"
+          data-testid="new-password"
+          class="account-input"
+          type="password"
+          autocomplete="new-password"
+          placeholder="新密码"
+          aria-label="新密码"
+        />
+        <input
+          v-model="confirmPassword"
+          data-testid="confirm-password"
+          class="account-input"
+          type="password"
+          autocomplete="new-password"
+          placeholder="再次输入新密码"
+          aria-label="确认新密码"
+        />
+        <button
+          data-testid="change-password"
+          class="nav-index"
+          :disabled="busy || !canChangePassword"
+          @click="onChangePassword"
+        >
+          修改并撤销全部旧会话
+        </button>
+        <text v-if="passwordMessage" class="meta" data-testid="password-message">
+          {{ passwordMessage }}
+        </text>
+      </view>
+
+      <view v-if="!auth.passwordMustChange" class="card" data-testid="sessions-card">
+        <view class="actions">
+          <button class="nav-index" data-testid="sessions-refresh" :disabled="busy" @click="loadSessions">
+            刷新会话
+          </button>
+          <button class="nav-index danger-btn" data-testid="sessions-revoke-all" :disabled="busy" @click="onRevokeAll">
+            撤销全部会话
+          </button>
+        </view>
+        <text v-if="sessionsFailed" class="error" data-testid="sessions-error">会话加载失败，请重试。</text>
+        <text v-else-if="sessions.length === 0" class="meta">暂无有效会话。</text>
+        <view v-for="session in sessions" :key="session.id" class="session-row" data-testid="session-row">
+          <text>{{ session.clientLabel || "客户端" }}{{ session.current ? "（当前）" : "" }}</text>
+          <text class="meta">最近使用：{{ session.lastSeenAt }}；到期：{{ session.expiresAt }}</text>
+          <button
+            class="nav-index"
+            data-testid="session-revoke"
+            :disabled="busy"
+            @click="onRevokeSession(session.id)"
+          >
+            撤销该会话
+          </button>
+        </view>
+      </view>
+
       <button data-testid="account-logout" class="nav-index" :disabled="busy" @click="onLogout">
         登出
       </button>
@@ -86,9 +156,17 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
 </template>
 
 <script lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
-import { deleteAccount, recordSurvey } from "@/api/auth";
+import {
+  changeAuthPassword,
+  deleteAccount,
+  listAuthSessions,
+  recordSurvey,
+  revokeAllAuthSessions,
+  revokeAuthSession,
+  type AuthSession,
+} from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { useAuthStore } from "@/stores/auth";
 
@@ -100,6 +178,16 @@ export default {
     const deleteError = ref("");
     const busy = ref(false);
     const surveyMsg = ref("");
+    const sessions = ref<AuthSession[]>([]);
+    const sessionsFailed = ref(false);
+    const currentPassword = ref("");
+    const newPassword = ref("");
+    const confirmPassword = ref("");
+    const passwordMessage = ref("");
+    const canChangePassword = computed(() =>
+      currentPassword.value.length > 0
+      && newPassword.value.length >= 12
+      && newPassword.value === confirmPassword.value);
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -111,8 +199,73 @@ export default {
       if (!auth.isAuthenticated) {
         await auth.tryRefresh(transport);
       }
+      if (auth.isAuthenticated && !auth.passwordMustChange) {
+        await loadSessions();
+      }
     });
 
+
+    async function loadSessions(): Promise<void> {
+      sessionsFailed.value = false;
+      try {
+        sessions.value = await listAuthSessions(transport);
+      } catch {
+        sessionsFailed.value = true;
+      }
+    }
+
+    async function onRevokeSession(sessionId: string): Promise<void> {
+      if (busy.value) return;
+      busy.value = true;
+      try {
+        const ok = await revokeAuthSession(transport, sessionId);
+        const renewed = ok && await auth.tryRefresh(transport);
+        if (!renewed) {
+          auth.clear();
+          goTo("/pages/login/login");
+          return;
+        }
+        await loadSessions();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function onRevokeAll(): Promise<void> {
+      if (busy.value) return;
+      busy.value = true;
+      try {
+        await revokeAllAuthSessions(transport);
+        auth.clear();
+        goTo("/pages/login/login");
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function onChangePassword(): Promise<void> {
+      if (busy.value || !canChangePassword.value) return;
+      busy.value = true;
+      passwordMessage.value = "";
+      try {
+        const ok = await changeAuthPassword(
+          transport, currentPassword.value, newPassword.value,
+        );
+        if (!ok) {
+          passwordMessage.value = "修改失败：请检查当前密码和新密码要求。";
+          return;
+        }
+        currentPassword.value = "";
+        newPassword.value = "";
+        confirmPassword.value = "";
+        auth.clear();
+        goTo("/pages/login/login");
+      } catch {
+        passwordMessage.value = "修改失败，请重试。";
+      } finally {
+        busy.value = false;
+      }
+    }
 
     async function onSurvey(score: number): Promise<void> {
       if (busy.value) return;
@@ -175,7 +328,28 @@ export default {
       }
     }
 
-    return { auth, deleteOpen, deleteError, busy, surveyMsg, onSurvey, onLogout, onConfirmDelete, goTo };
+    return {
+      auth,
+      deleteOpen,
+      deleteError,
+      busy,
+      surveyMsg,
+      sessions,
+      sessionsFailed,
+      currentPassword,
+      newPassword,
+      confirmPassword,
+      passwordMessage,
+      canChangePassword,
+      loadSessions,
+      onRevokeSession,
+      onRevokeAll,
+      onChangePassword,
+      onSurvey,
+      onLogout,
+      onConfirmDelete,
+      goTo,
+    };
   },
 };
 </script>
@@ -233,6 +407,21 @@ export default {
   display: flex;
   gap: 8rpx;
 }
+.account-input {
+  padding: 12rpx;
+  border: 2rpx solid #425579;
+  border-radius: 8rpx;
+  color: #f5f5f5;
+}
+
+.session-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid #425579;
+}
+
 .error {
   color: #f0b4b4;
 }

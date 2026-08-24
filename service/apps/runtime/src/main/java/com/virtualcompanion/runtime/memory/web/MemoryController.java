@@ -151,7 +151,7 @@ public class MemoryController {
                     space.modelId(), space.modelVersion(),
                     space.dimension(), space.spaceId(),
                     com.virtualcompanion.runtime.memory.DeterministicEmbedder
-                            .toVectorLiteral(embeddingPort.embed(confirmed.summary())));
+                            .toVectorLiteral(embeddingPort.embed(ownerUserId, confirmed.summary())));
         } catch (RuntimeException e) {
             // The confirmation stays canonical; semantic recall catches up on
             // the next confirm of the same memory (idempotent upsert).
@@ -239,7 +239,7 @@ public class MemoryController {
 
     private static MemoryResponse toMemoryResponse(MemoryRecord record) {
         return new MemoryResponse(
-                record.id(),
+                Long.toString(record.id()),
                 record.scope(),
                 record.summary(),
                 record.status(),
@@ -269,7 +269,7 @@ public class MemoryController {
 
     private static MemoryEvidenceResponse toEvidenceResponse(MemoryEvidenceRecord record) {
         return new MemoryEvidenceResponse(
-                record.id(),
+                Long.toString(record.id()),
                 record.sourceRef(),
                 record.createdAt() == null ? null : record.createdAt().toString());
     }
@@ -301,7 +301,7 @@ public class MemoryController {
 
     /** Response body (OpenAPI {@code Memory}). */
     public record MemoryResponse(
-            long memoryId,
+            String memoryId,
             String scope,
             String summary,
             String status,
@@ -326,7 +326,7 @@ public class MemoryController {
 
     /** Response body (OpenAPI {@code MemoryEvidence}). */
     public record MemoryEvidenceResponse(
-            long evidenceId,
+            String evidenceId,
             String sourceRef,
             String createdAt) {
     }

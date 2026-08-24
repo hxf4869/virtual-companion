@@ -1,5 +1,6 @@
 package com.virtualcompanion.runtime.export.web;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.virtualcompanion.platform.persistence.ExportRecord;
 import com.virtualcompanion.platform.persistence.ExportService;
 import com.virtualcompanion.runtime.web.ResourceNotFoundException;
@@ -112,6 +113,7 @@ public class ExportController {
 
     /** Status body (OpenAPI {@code ExportRequest}); {@code downloadToken} and
      * {@code downloadUrl} are present only in the create response. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ExportResponse(
             long exportId,
             String status,

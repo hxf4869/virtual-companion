@@ -6,9 +6,9 @@ import java.util.Objects;
 
 /**
  * AGE-MIN (FR-AUTH-002): the age-verification PORT. Independent of any
- * provider so a real verification vendor can be wired later without touching
- * the callers — Technical Alpha ships only the deterministic simulated
- * implementation ({@link SimulatedAgeVerifier}).
+ * provider so the caller is unchanged when the default-off real adapter is
+ * enabled. Technical Alpha continues to inject {@link SimulatedAgeVerifier}
+ * unless the separately approved provider configuration is complete.
  *
  * <p>The result carries the verified age band ({@link AgeState}), the
  * provider reference and the verification time — never the identity document.

@@ -361,6 +361,29 @@ class AuthServiceTest {
     }
 
     @Test
+    void deleteAccountCommitsDurableIntentBeforeDestructiveDelete() {
+        when(accounts.deleteAccount(7L)).thenReturn(true);
+        AccountDeletionCoordinator coordinator = mock(AccountDeletionCoordinator.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<AccountDeletionCoordinator> coordinators = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ActiveInvocationRegistry> active = mock(ObjectProvider.class);
+        when(coordinators.getIfAvailable()).thenReturn(coordinator);
+        AuthService deleting = new AuthService(
+                accounts, sessions, passwordEncoder, jwt, Duration.ofDays(7),
+                adminConsole, entitlementSnapshotService, inviteCodes,
+                trials, quotaReconciliation,
+                com.virtualcompanion.runtime.observability.TestAlerts.noop(),
+                active, coordinators);
+
+        deleting.deleteAccount(7L);
+
+        var order = org.mockito.Mockito.inOrder(coordinator, accounts);
+        order.verify(coordinator).prepare(7L);
+        order.verify(accounts).deleteAccount(7L);
+    }
+
+    @Test
     void deleteAccountRejectsNonPositiveId() {
         assertThatThrownBy(() -> service.deleteAccount(0L))
                 .isInstanceOf(AuthErrorException.class)

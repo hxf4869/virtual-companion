@@ -14,6 +14,10 @@ TRUNCATE vc.work_item, vc.attempt_intent, vc.generation_usage,
          vc.generation_candidate, vc.generation, vc.message, vc.conversation,
          vc.relationship, vc.authorization_snapshot, vc.vc_user CASCADE;
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice');
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (1, 'alice-79', 'test-hash', 'USER', 'ACTIVE', 'alice');
+UPDATE vc.release_gate SET stage='BETA', eval_passed=true,
+    policy_version='test-policy-79', canary_owner_user_id=NULL WHERE id=1;
 INSERT INTO vc.authorization_snapshot(
     owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
     purpose, data_categories, task_cancelled, source_data_deleted)
@@ -56,7 +60,8 @@ BEGIN
         1, v_wi, v_gen,
         encode(vc.digest(convert_to(v_token, 'UTF8'), 'sha256'), 'hex'),
         encode(vc.digest(convert_to('FENCE-79', 'UTF8'), 'sha256'), 'hex'),
-        'pa-79-1', 'alpha-loopback', 'alpha-supplier', 'snap-79-req', 'snap-79-exec');
+        'pa-79-1', 'alpha-loopback', 'alpha-supplier', 'snap-79-req', 'snap-79-exec',
+        'test-model', 'test-rev', 'test-prompt', 'test-persona', 'test-config');
     -- 段 2：audit outcome（外发后）。
     SELECT vc.record_attempt_outcome(1, 'pa-79-1', 'SUCCEEDED') INTO v_rows;
     IF v_rows <> 1 THEN

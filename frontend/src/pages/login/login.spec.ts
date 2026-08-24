@@ -45,6 +45,20 @@ describe("login page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
+  it("submits from the password field with the Enter key", async () => {
+    const store = useAuthStore();
+    const loginSpy = vi.spyOn(store, "login").mockResolvedValue(false);
+    const wrapper = mountPage();
+
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    const password = wrapper.find('input[aria-label="密码"]');
+    await password.setValue("wrong");
+    await password.trigger("keydown", { key: "Enter" });
+
+    expect(loginSpy).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
   it("REQ-ID: a failed login shows the last request id when one was recorded", async () => {
     const { rememberRequestId } = await import("@/domain/request-id");
     rememberRequestId("req-login-1");
@@ -98,6 +112,26 @@ describe("login page glue (P2-19 component test)", () => {
     await wrapper.find('button[data-testid="submit"]').trigger("click");
     expect(loginSpy).not.toHaveBeenCalled();
 
+    wrapper.unmount();
+  });
+
+  it("S0-15 sends a temporary-password session directly to the forced change flow", async () => {
+    const store = useAuthStore();
+    vi.spyOn(store, "login").mockImplementation(async () => {
+      store.passwordMustChange = true;
+      return true;
+    });
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    const wrapper = mountPage();
+    await wrapper.find('input[aria-label="用户名"]').setValue("alice");
+    await wrapper.find('input[aria-label="密码"]').setValue("temporary");
+    await wrapper.find('button[data-testid="submit"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect(redirectTo).toHaveBeenCalledWith({
+      url: "/pages/account/account?passwordChange=required",
+    });
     wrapper.unmount();
   });
 

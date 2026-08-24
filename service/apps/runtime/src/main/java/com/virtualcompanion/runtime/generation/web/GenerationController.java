@@ -18,7 +18,12 @@ import com.virtualcompanion.safety.SafetyClassification;
 import com.virtualcompanion.safety.SafetyClassifierPort;
 import com.virtualcompanion.safety.SafetyStage;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -65,6 +70,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class GenerationController {
 
     private static final String WORK_ITEM_KIND = "GENERATION";
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<List<Map<String, Object>>> SNAPSHOT_EVENTS_TYPE =
+            new TypeReference<>() {};
 
     private final GenerationReceiveService receiveService;
     private final WorkItemEnqueueService enqueueService;
@@ -277,8 +285,16 @@ public class GenerationController {
         return new GenerationSnapshotResponse(
                 snapshot.status(),
                 snapshot.assistantMessageId(),
-                snapshot.eventsJson(),
+                parseSnapshotEvents(snapshot.eventsJson()),
                 usage);
+    }
+
+    private static List<Map<String, Object>> parseSnapshotEvents(String eventsJson) {
+        try {
+            return MAPPER.readValue(eventsJson, SNAPSHOT_EVENTS_TYPE);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("generation snapshot events are malformed", e);
+        }
     }
 
     private static long parseId(String raw, String name) {
@@ -317,7 +333,7 @@ public class GenerationController {
     public record GenerationSnapshotResponse(
             String status,
             Long assistantMessageId,
-            String events,
+            List<Map<String, Object>> events,
             @JsonInclude(JsonInclude.Include.NON_NULL) UsageResponse usage) {
 
         /** Settled provider usage (OpenAPI {@code GenerationUsage}). */

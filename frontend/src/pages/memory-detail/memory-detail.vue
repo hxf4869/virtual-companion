@@ -36,8 +36,8 @@ Reuses GET /memories/{id} and GET /memories/{id}/evidence. Existence hidden. -->
       <view class="card" data-testid="memory-card">
         <text class="label">摘要</text>
         <text class="summary" data-testid="memory-summary">{{ record.summary }}</text>
-        <text class="meta" data-testid="memory-status">状态 {{ record.status }}</text>
-        <text class="meta" data-testid="memory-scope">范围 {{ record.scope }}</text>
+        <text class="meta" data-testid="memory-status">状态 {{ publicMemoryStatusLabel(record.status) }}</text>
+        <text class="meta" data-testid="memory-scope">范围 {{ publicMemoryScopeLabel(record.scope) }}</text>
         <text v-if="record.createdAt" class="meta" data-testid="memory-created">
           记录时间 {{ record.createdAt }}
         </text>
@@ -74,6 +74,7 @@ import { onMounted, ref } from "vue";
 import { getMemory, listMemoryEvidence, type Memory, type MemoryEvidence } from "@/api/memory";
 import { createAuthenticatedTransport } from "@/api/transport";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
+import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
@@ -187,6 +188,8 @@ export default {
       memoryHref,
       goTo,
       eventStatusLabel,
+      publicMemoryScopeLabel,
+      publicMemoryStatusLabel,
     };
   },
 };

@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import AccountPage from "./account.vue";
 import { useAuthStore } from "@/stores/auth";
 
-function stubFetch(opts?: { deleteStatus?: number }): { calls: { method: string; url: string }[] } {
+function stubFetch(opts?: { deleteStatus?: number; refreshSuccess?: boolean }): {
+  calls: { method: string; url: string }[];
+} {
   const calls: { method: string; url: string }[] = [];
   vi.stubGlobal(
     "fetch",
@@ -18,6 +20,36 @@ function stubFetch(opts?: { deleteStatus?: number }): { calls: { method: string;
       if (url === "/api/v1/auth/account" && method === "DELETE") {
         const status = opts?.deleteStatus ?? 200;
         return { ok: status === 200, status, json: async () => (status === 200 ? { ok: true } : null) };
+      }
+      if (url === "/api/v1/auth/sessions" && method === "GET") {
+        return {
+          ok: true, status: 200, json: async () => [{
+            id: "11", familyId: "family-opaque", clientLabel: "h5",
+            createdAt: "2026-08-24T00:00:00Z",
+            lastSeenAt: "2026-08-24T01:00:00Z",
+            expiresAt: "2026-08-31T00:00:00Z", current: true,
+          }],
+        };
+      }
+      if (url === "/api/v1/auth/password" && method === "POST") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      if (url === "/api/v1/auth/sessions/revoke-all" && method === "POST") {
+        return { ok: true, status: 200, json: async () => ({ revoked: 1 }) };
+      }
+      if (url.startsWith("/api/v1/auth/sessions/") && method === "DELETE") {
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      if (url === "/api/v1/auth/refresh" && method === "POST") {
+        if (!opts?.refreshSuccess) {
+          return { ok: false, status: 401, json: async () => null };
+        }
+        return {
+          ok: true, status: 200, json: async () => ({
+            accessToken: "renewed", tokenType: "Bearer", expiresInSeconds: 7200,
+            accountId: "42", role: "USER", passwordMustChange: false,
+          }),
+        };
       }
       if (url === "/api/v1/auth/logout" && method === "POST") {
         return { ok: true, status: 200, json: async () => ({}) };
@@ -47,6 +79,9 @@ describe("account page", () => {
     expect(wrapper.find('[data-testid="account-role"]').text()).toContain("USER");
     expect(wrapper.find('[data-testid="public-computer-hint"]').text()).toContain("公共电脑");
     expect(wrapper.find('[data-testid="survey-card"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
+    expect(wrapper.get('[data-testid="session-row"]').text()).toContain("h5（当前）");
+    expect(wrapper.text()).not.toContain("family-opaque");
     expect(wrapper.find('[data-testid="account-signed-out"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -60,6 +95,34 @@ describe("account page", () => {
     expect(wrapper.find('[data-testid="public-computer-hint"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="account-logout"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="delete-account-open"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("forces an admin-reset session through password change only", async () => {
+    const { calls } = stubFetch();
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "temporary-access";
+    auth.accountId = "42";
+    auth.role = "USER";
+    auth.passwordMustChange = true;
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="password-required"]').text()).toContain("临时密码");
+    expect(wrapper.find('[data-testid="sessions-card"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="current-password"]').setValue("TempPass1!");
+    await wrapper.get('[data-testid="new-password"]').setValue("NewPassword1!");
+    await wrapper.get('[data-testid="confirm-password"]').setValue("NewPassword1!");
+    await wrapper.get('[data-testid="change-password"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/auth/password"))
+      .toBe(true);
+    expect(auth.accessToken).toBeNull();
+    expect(auth.passwordMustChange).toBe(false);
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
     wrapper.unmount();
   });
 

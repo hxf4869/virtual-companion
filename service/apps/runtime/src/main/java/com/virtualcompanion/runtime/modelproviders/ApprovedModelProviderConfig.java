@@ -73,7 +73,8 @@ public class ApprovedModelProviderConfig {
                 durableAdmissionRegistry(
                         wired.registry(), admissionAuthority.getIfAvailable()),
                 wired.locator(),
-                wired.supplierNames());
+                wired.supplierNames(),
+                wired.deploymentMetadata());
     }
 
     /**
@@ -193,6 +194,49 @@ public class ApprovedModelProviderConfig {
     }
 
     @Bean
+    com.virtualcompanion.modelruntime.execution.BudgetGuard budgetGuard(
+            org.springframework.beans.factory.ObjectProvider<org.springframework.jdbc.core.JdbcTemplate> authJdbcTemplate,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${virtual-companion.model-providers.budget-monthly-usd:0}")
+            double budgetMonthlyUsd) {
+        org.springframework.jdbc.core.JdbcTemplate jdbc = authJdbcTemplate.getIfAvailable();
+        com.virtualcompanion.modelruntime.execution.BudgetGuard.MonthSpendReader reader =
+                () -> jdbc == null ? 0.0
+                        : java.util.Optional.ofNullable(jdbc.queryForObject(
+                                "SELECT vc.month_cost_spend()", Double.class)).orElse(0.0);
+        com.virtualcompanion.modelruntime.execution.BudgetGuard.PricePresence prices =
+                () -> jdbc == null || Boolean.TRUE.equals(jdbc.queryForObject(
+                        "SELECT vc.model_unit_price_present()", Boolean.class));
+        return new com.virtualcompanion.modelruntime.execution.BudgetGuard(
+                reader, budgetMonthlyUsd, prices);
+    }
+
+    @Bean
+    com.virtualcompanion.platform.persistence.ModelCostReservationService
+            modelCostReservationService(
+                    ModelProviderProperties properties,
+                    org.springframework.beans.factory.ObjectProvider<
+                            org.springframework.jdbc.core.JdbcTemplate> authJdbcTemplate,
+                    @org.springframework.beans.factory.annotation.Value(
+                            "${virtual-companion.model-providers.budget-monthly-usd:0}")
+                            double budgetMonthlyUsd,
+                    @org.springframework.beans.factory.annotation.Value(
+                            "${virtual-companion.auth.datasource-enabled:false}")
+                            boolean authDatasourceEnabled) {
+        org.springframework.jdbc.core.JdbcTemplate jdbc = authJdbcTemplate.getIfAvailable();
+        boolean billable = properties.deployments().stream()
+                .anyMatch(deployment -> deployment.enabled()
+                        && !"FAKE".equalsIgnoreCase(deployment.protocol()));
+        if (billable && authDatasourceEnabled && (jdbc == null || budgetMonthlyUsd <= 0)) {
+            throw new IllegalStateException(
+                    "billable provider deployments require a positive monthly budget and database");
+        }
+        return new com.virtualcompanion.platform.persistence.ModelCostReservationService(
+                jdbc, java.math.BigDecimal.valueOf(
+                        authDatasourceEnabled ? Math.max(0, budgetMonthlyUsd) : 0));
+    }
+
+    @Bean
     LiveModelInvoker liveModelInvoker(
             DeterministicRouter deterministicRouter,
             ExecutionAuthorizationGuard executionAuthorizationGuard,
@@ -202,20 +246,7 @@ public class ApprovedModelProviderConfig {
             ApprovedModelProviders approvedModelProviders,
             GenerationRecovery generationRecovery,
             ActiveInvocationRegistry activeInvocationRegistry,
-            org.springframework.beans.factory.ObjectProvider<org.springframework.jdbc.core.JdbcTemplate> authJdbcTemplate,
-            @org.springframework.beans.factory.annotation.Value("${virtual-companion.model-providers.budget-monthly-usd:0}")
-            double budgetMonthlyUsd) {
-        // S0-29 / BUDGET-HALT: month-to-date settled+reserved cost; a
-        // non-positive cap disables the guard (Technical Alpha default).
-        // Unknown/missing unit prices fail closed while the cap is on.
-        org.springframework.jdbc.core.JdbcTemplate jdbc = authJdbcTemplate.getIfAvailable();
-        com.virtualcompanion.modelruntime.execution.BudgetGuard.MonthSpendReader reader =
-                () -> jdbc == null ? 0.0
-                        : java.util.Optional.ofNullable(jdbc.queryForObject(
-                                "SELECT vc.month_cost_spend()", Double.class)).orElse(0.0);
-        com.virtualcompanion.modelruntime.execution.BudgetGuard.PricePresence prices =
-                () -> jdbc == null || Boolean.TRUE.equals(jdbc.queryForObject(
-                        "SELECT vc.model_unit_price_present()", Boolean.class));
+            com.virtualcompanion.modelruntime.execution.BudgetGuard budgetGuard) {
         return new LiveModelInvoker(
                 deterministicRouter,
                 executionAuthorizationGuard,
@@ -228,8 +259,8 @@ public class ApprovedModelProviderConfig {
                 approvedModelProviders.locator(),
                 generationRecovery,
                 approvedModelProviders.supplierNames(),
+                approvedModelProviders.deploymentMetadata(),
                 activeInvocationRegistry,
-                new com.virtualcompanion.modelruntime.execution.BudgetGuard(
-                        reader, budgetMonthlyUsd, prices));
+                budgetGuard);
     }
 }

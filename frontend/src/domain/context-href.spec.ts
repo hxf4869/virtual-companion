@@ -13,7 +13,7 @@ describe("sanitizeRelationshipId", () => {
     expect(sanitizeRelationshipId("gone", ["7"])).toBeNull();
     expect(sanitizeRelationshipId("7", ["7", "8"])).toBe("7");
     expect(sanitizeRelationshipId("7")).toBe("7");
-    expect(sanitizeRelationshipId("7", [])).toBe("7");
+    expect(sanitizeRelationshipId("7", [])).toBeNull();
   });
 });
 

@@ -2,6 +2,7 @@ package com.virtualcompanion.modelruntime.execution;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,7 +37,9 @@ import com.virtualcompanion.modelruntime.registry.ProviderRegistration;
 import com.virtualcompanion.modelruntime.routing.DeterministicRouter;
 import com.virtualcompanion.modelruntime.routing.Entitlement;
 import com.virtualcompanion.modelruntime.routing.GenerationRecovery;
+import com.virtualcompanion.modelruntime.routing.QuotaBook;
 import com.virtualcompanion.modelruntime.routing.QuotaLedger;
+import com.virtualcompanion.modelruntime.routing.QuotaReservation;
 import com.virtualcompanion.modelruntime.port.ModelProtocolSession;
 import com.virtualcompanion.modelruntime.routing.RoutingRequest;
 import com.virtualcompanion.modelruntime.routing.ServiceClass;
@@ -67,6 +70,12 @@ class LiveModelInvokerTest {
             new OwnershipTuple("owner-1", "rel-1", "conv-1", "gen-1");
     private static final ProviderId PROVIDER = new ProviderId("openai-approved");
     private static final ProviderId OTHER_PROVIDER = new ProviderId("openai-other");
+    private static final Map<ProviderId, ProviderDeploymentMetadata> DEPLOYMENT_METADATA =
+            Map.of(
+                    PROVIDER, new ProviderDeploymentMetadata(
+                            "gpt-test", "gpt-test-revision", "test-config-v1"),
+                    OTHER_PROVIDER, new ProviderDeploymentMetadata(
+                            "gpt-other", "gpt-other-revision", "other-config-v1"));
     private static final ModelProtocolCapabilities CAPABILITIES =
             new ModelProtocolCapabilities(Set.of(
                     ModelProtocolCapabilities.Capability.STREAMING,
@@ -765,7 +774,8 @@ class LiveModelInvokerTest {
                 countingStore,
                 new InMemoryAdapterLocator(List.of(registration)),
                 recovery,
-                Map.of(PROVIDER, "OpenAI"));
+                Map.of(PROVIDER, "OpenAI"),
+                DEPLOYMENT_METADATA);
 
         PreparedInvocation prepared = invoker.prepare(adequateRequest());
         int findsAfterPrepare = finds.get();
@@ -832,11 +842,104 @@ class LiveModelInvokerTest {
                 flakyStore,
                 new InMemoryAdapterLocator(List.of(registration)),
                 recovery,
-                Map.of(PROVIDER, "OpenAI"));
+                Map.of(PROVIDER, "OpenAI"),
+                DEPLOYMENT_METADATA);
 
         PreparedInvocation prepared = invoker.prepare(adequateRequest());
 
         assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, prepared.terminal());
+    }
+
+    @Test
+    void unexpectedPrepareFailureAfterRouteReservationReleasesInMemoryQuotaAndRethrows() {
+        quota.provision("owner-1", 5);
+        ScriptedAdapter adapter = new ScriptedAdapter(
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                CAPABILITIES,
+                Scripts.success("world"));
+        InMemoryProviderRegistry registry = new InMemoryProviderRegistry();
+        ProviderRegistration registration = new ProviderRegistration(
+                PROVIDER, adapter.protocol(), CAPABILITIES, adapter);
+        registry.register(registration);
+        InMemoryAuthorizationSnapshotStore store = new InMemoryAuthorizationSnapshotStore();
+        store.put(snapshot("snap-req", AuthorizationStatus.ACTIVE, PROVIDER));
+        store.put(snapshot("snap-exec", AuthorizationStatus.ACTIVE, PROVIDER));
+        ExecutionAuthorizationGuard guard = new ExecutionAuthorizationGuard(store, registry);
+        IllegalArgumentException prepareFailure =
+                new IllegalArgumentException("unexpected adapter lookup failure");
+        AdapterLocator throwingLocator = providerId -> {
+            throw prepareFailure;
+        };
+        LiveModelInvoker invoker = new LiveModelInvoker(
+                new DeterministicRouter(registry, quota),
+                guard,
+                store,
+                throwingLocator,
+                new GenerationRecovery(quota),
+                Map.of(PROVIDER, "OpenAI"),
+                DEPLOYMENT_METADATA);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> invoker.prepare(adequateRequest()));
+
+        assertSame(prepareFailure, thrown);
+        assertEquals(5L, quota.remaining("owner-1"));
+        assertEquals(0, adapter.openCount());
+    }
+
+    @Test
+    void prepareRecoveryFailureIsSuppressedWithoutMaskingOriginalFailure() {
+        IllegalStateException recoveryFailure =
+                new IllegalStateException("in-memory quota release failed");
+        QuotaReservation reservation =
+                new QuotaReservation("reservation-prepare-failure", "owner-1", 1L, 4L);
+        QuotaBook failingQuota = new QuotaBook() {
+            @Override
+            public Optional<QuotaReservation> reserve(String ownerUserId, long units) {
+                return Optional.of(reservation);
+            }
+
+            @Override
+            public long release(QuotaReservation ignored) {
+                throw recoveryFailure;
+            }
+
+            @Override
+            public long remaining(String ownerUserId) {
+                return 4L;
+            }
+        };
+        ScriptedAdapter adapter = new ScriptedAdapter(
+                ModelProtocol.OPENAI_CHAT_COMPLETIONS,
+                CAPABILITIES,
+                Scripts.success("world"));
+        InMemoryProviderRegistry registry = new InMemoryProviderRegistry();
+        ProviderRegistration registration = new ProviderRegistration(
+                PROVIDER, adapter.protocol(), CAPABILITIES, adapter);
+        registry.register(registration);
+        InMemoryAuthorizationSnapshotStore store = new InMemoryAuthorizationSnapshotStore();
+        store.put(snapshot("snap-req", AuthorizationStatus.ACTIVE, PROVIDER));
+        store.put(snapshot("snap-exec", AuthorizationStatus.ACTIVE, PROVIDER));
+        IllegalArgumentException prepareFailure =
+                new IllegalArgumentException("unexpected adapter lookup failure");
+        LiveModelInvoker invoker = new LiveModelInvoker(
+                new DeterministicRouter(registry, failingQuota),
+                new ExecutionAuthorizationGuard(store, registry),
+                store,
+                providerId -> {
+                    throw prepareFailure;
+                },
+                new GenerationRecovery(failingQuota),
+                Map.of(PROVIDER, "OpenAI"),
+                DEPLOYMENT_METADATA);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> invoker.prepare(adequateRequest()));
+
+        assertSame(prepareFailure, thrown);
+        assertEquals(1, thrown.getSuppressed().length);
+        assertSame(recoveryFailure, thrown.getSuppressed()[0]);
+        assertEquals(0, adapter.openCount());
     }
 
     @Test
@@ -923,10 +1026,51 @@ class LiveModelInvokerTest {
                 new TimeoutBudget(
                         Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(3)),
                 List.of(),
-                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95)));
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95),
+                null,
+                "companion-chat-v1",
+                "gentle-listener-v1"));
 
         assertFalse(prepared.isExternal());
         assertEquals(LiveAttemptTerminal.BLOCKED_BY_AUTHORIZATION, prepared.terminal());
+        assertEquals(0, harness.adapter.openCount());
+    }
+
+    @Test
+    void missingReleaseBundleVersionsFailClosedAndReleaseQuotaBeforeAdapter() {
+        Harness harness = harness(false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"));
+        LiveInvocationRequest legacyExternal = new LiveInvocationRequest(
+                routing(ServiceClass.simulated()),
+                List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hello")),
+                new ResponseMode.Text(),
+                true,
+                new TimeoutBudget(
+                        Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(3)),
+                List.of(),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.95),
+                PayloadComposition.allMessageText(1));
+
+        LiveAttemptOutcome outcome = harness.invoker.invoke(legacyExternal);
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failure() instanceof AdapterFailure.UnsupportedBinding);
+        assertEquals(com.virtualcompanion.modelruntime.routing.QuotaDisposition.RELEASED,
+                outcome.recovery().quotaDisposition());
+        assertEquals(0, harness.adapter.openCount());
+    }
+
+    @Test
+    void selectedProviderMissingDeploymentMetadataFailsClosedAndReleasesQuota() {
+        Harness harness = harness(
+                false, Scripts.success("world"), Map.of(PROVIDER, "OpenAI"),
+                false, PROVIDER, -1, null, new ActiveInvocationRegistry(), null, Map.of());
+
+        LiveAttemptOutcome outcome = harness.invoker.invoke(adequateRequest());
+
+        assertEquals(LiveAttemptTerminal.FAILED, outcome.terminal());
+        assertTrue(outcome.failure() instanceof AdapterFailure.UnsupportedBinding);
+        assertEquals(com.virtualcompanion.modelruntime.routing.QuotaDisposition.RELEASED,
+                outcome.recovery().quotaDisposition());
         assertEquals(0, harness.adapter.openCount());
     }
 
@@ -966,7 +1110,8 @@ class LiveModelInvokerTest {
         GenerationRecovery recovery = new GenerationRecovery(quota);
         AdapterLocator locator = new InMemoryAdapterLocator(List.of(registration));
         LiveModelInvoker invoker = new LiveModelInvoker(
-                router, guard, store, locator, recovery, Map.of(PROVIDER, "OpenAI"));
+                router, guard, store, locator, recovery, Map.of(PROVIDER, "OpenAI"),
+                DEPLOYMENT_METADATA);
         return new Harness(adapter, invoker, new ActiveInvocationRegistry());
     }
 
@@ -1104,6 +1249,22 @@ class LiveModelInvokerTest {
             RuntimeException nextFailure,
             ActiveInvocationRegistry activeInvocationRegistry,
             BudgetGuard budgetGuard) {
+        return harness(denyExecution, script, supplierNames, emptyLocator, snapshotProvider,
+                nextFailureAfterEvents, nextFailure, activeInvocationRegistry, budgetGuard,
+                DEPLOYMENT_METADATA);
+    }
+
+    private Harness harness(
+            boolean denyExecution,
+            Function<InvocationBinding, List<ModelProtocolEvent>> script,
+            Map<ProviderId, String> supplierNames,
+            boolean emptyLocator,
+            ProviderId snapshotProvider,
+            int nextFailureAfterEvents,
+            RuntimeException nextFailure,
+            ActiveInvocationRegistry activeInvocationRegistry,
+            BudgetGuard budgetGuard,
+            Map<ProviderId, ProviderDeploymentMetadata> metadata) {
         quota.provision("owner-1", 5);
         ScriptedAdapter adapter = new ScriptedAdapter(
                 ModelProtocol.OPENAI_CHAT_COMPLETIONS,
@@ -1141,7 +1302,7 @@ class LiveModelInvokerTest {
                 : new InMemoryAdapterLocator(List.of(registration));
         LiveModelInvoker invoker = new LiveModelInvoker(
                 router, guard, store, locator, recovery, supplierNames,
-                activeInvocationRegistry, budgetGuard);
+                metadata, activeInvocationRegistry, budgetGuard);
         return new Harness(adapter, invoker, activeInvocationRegistry);
     }
 
@@ -1243,7 +1404,9 @@ class LiveModelInvokerTest {
                         Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(3)),
                 List.of(),
                 classifierReport,
-                payloadComposition);
+                payloadComposition,
+                "companion-chat-v1",
+                "gentle-listener-v1");
     }
 
     private static RoutingRequest routing(ServiceClass serviceClass) {

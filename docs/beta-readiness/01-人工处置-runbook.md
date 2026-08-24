@@ -22,30 +22,31 @@
 
 | 事件 | 自动动作（已实现） | 人工确认 | 目标完成 | 超时动作 |
 |---|---|---:|---:|---|
-| R4_IMMINENT | 2 秒内安全提示、停止普通回复（`SafetyGate`/`DeterministicSafetyClassifier` 硬规则 BLOCK，R33/R34）、P0 告警（safety_event 落库即进队列） | ≤5 分钟 | ≤15 分钟形成决定 | 关闭新增请求（Beta 服务时段开关手动停服）、升级替补/负责人 |
-| R3_HIGH | 安全回复、创建 Case（safety_event 队列行） | ≤15 分钟 | ≤30 分钟初次复核 | 停止新增 Beta 用户并告警 |
+| R4_IMMINENT | 2 秒内安全提示、停止普通回复；safety_event 与 V101 P0 ESCALATED Case 同事务落库；P0 告警 | ≤5 分钟 | ≤15 分钟形成决定 | 关闭新增请求（Beta 服务时段开关手动停服）、升级替补/负责人 |
+| R3_HIGH | 安全回复；safety_event 与 V101 P1 Case 同事务落库 | ≤15 分钟 | ≤30 分钟初次复核 | 停止新增 Beta 用户并告警 |
 | R2_ELEVATED | 降低依赖性表达、抽检队列 | ≤4 小时 | 当日 | 次日复盘 |
 | 普通举报 | 回执（create_report 落库，V56） | 1 工作日 | 3 工作日内结论或进度 | 升级运营负责人 |
 | 删除/注销失败 | 自动阻断再处理 | ≤30 分钟 | 24 小时内恢复或人工完成 | 停用相关写入链路 |
 
 ## 3. R4_IMMINENT 处置流程（P0）
 
-1. **发现**：管理端 → 安全事件队列（`GET /api/v1/auth/admin/safety-events`，
-   admin 页「安全事件队列（只读）」区，R34/V59），或每周复盘导出。
+1. **发现**：管理端 → 脱敏工单队列（`GET /api/v1/auth/admin/ops-cases`）；
+   R4 safety_event 自动对应 P0 ESCALATED Case，安全事件只读队列保留元数据复核。
 2. **2 秒内自动动作（系统已做，无需人工）**：确定性安全提示替代角色回复；
    该 turn 终止为 INPUT_BLOCKED（V58 SAFETY-WIRE），durable 事件留痕。
 3. **≤5 分钟人工确认**：值班人打开队列行，核对 stage（INPUT/INCREMENTAL/FINAL）、
    rule id、risk level。队列行**不含聊天原文**（设计如此）——需要原文时走
    限时 Case Access（§16.4：目的限定 + 审计，不授全库权限；Alpha 期间由
    隐私负责人手工执行 SQL 并记录操作日志）。
-4. **≤15 分钟形成决定**，三选一，记录在案（Owner 建立外部 Case 台账）：
+4. **≤15 分钟形成决定**，三选一，写入当前 OpsCase（操作与 actor 自动审计）：
    a. **不联络**（默认）：继续观察，Case 关闭并写结论；
    b. **平台内介入**：暂停该账号新增生成（禁用账号 `POST /auth/admin/accounts/{id}/disable`
       为最重手段，慎用），以官方身份发送说明（Beta 期间通过站外联系方式）；
    c. **联络紧急联系人**：仅当满足 §20.14 联络规则全部条件（见 B0-02），
       由安全责任人本人或其明示授权者执行，**禁止半自动外呼**。
 5. **升级路径**：值班人 → 安全责任人（主）→ 替补；每级 5 分钟未响应自动升级。
-6. **记录**：决定、依据、时间线、执行人写入 Case 台账；每周复盘（§20.12）归档。
+6. **记录**：ACK/ASSIGN/ESCALATE/RESOLVE、公开/内部说明及内部备注读取均留审计；
+   周复盘（§20.12）继续归档。
 
 ## 4. R3_HIGH 处置流程
 
@@ -59,10 +60,11 @@
 
 - 入口：聊天页单条消息「举报」（report.vue，附可选说明）；成年误判「申诉」
   （age.vue，仅 ADULT_VERIFICATION_REQUIRED/MINOR_SUSPECTED 可发起，二次提交拒绝）。
-- 队列：admin 页「举报队列 / 年龄申诉队列（只读）」（R39/V64，newest-first）。
-- 处置：1 工作日内人工确认；3 工作日内结论或进度说明（§20.15）。
-  举报状态流转 SUBMITTED → RESOLVED 由 DBA/值班人经 SQL 更新并在台账记录
-  （Alpha 管理端刻意只读，处置动作不进 API）。
+- 队列：V101 在 report/age appeal intake 插入事务内自动建立脱敏 OpsCase；管理端
+  「工单（脱敏）」按角色范围展示，不含聊天正文、providerRef 或内部备注。
+- 处置：允许的操作人员通过 ACK/ASSIGN/ESCALATE、INTERNAL/PUBLIC note 与 RESOLVE
+  留下 actor 审计；REPORT 结案同步本人可见的 RESOLVED/公开说明。年龄申诉必须走
+  approve/deny/reverify/suspend 专用决定，不能用通用 RESOLVE 绕过年龄状态机。
 - 红线：不得让 AI 自动审核自己生成的原回复并自动驳回（§20.15）。
 
 ## 6. 数据任务失败（导出 / 删除 / 注销）

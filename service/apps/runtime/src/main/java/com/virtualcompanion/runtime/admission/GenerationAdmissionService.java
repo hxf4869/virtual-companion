@@ -1,6 +1,7 @@
 package com.virtualcompanion.runtime.admission;
 
 import com.virtualcompanion.catalog.AgeState;
+import com.virtualcompanion.platform.persistence.AccountDeletionIntentService;
 import com.virtualcompanion.platform.persistence.AgeVerificationService;
 import com.virtualcompanion.platform.persistence.ConsentRecord;
 import com.virtualcompanion.platform.persistence.ConsentService;
@@ -37,29 +38,7 @@ public final class GenerationAdmissionService implements GenerationAdmission {
     private final boolean enforceConfigured;
     private final Set<String> requiredConsentTypes;
     private final ReleaseGate releaseGate;
-
-    public GenerationAdmissionService(
-            IdentityAccountRepository accounts,
-            AgeVerificationService ageVerificationService,
-            ConsentService consentService,
-            BetaServiceWindow serviceWindow,
-            ServiceWindowService serviceWindowService,
-            AlertNotifier alertNotifier,
-            boolean betaGenerationEnabled,
-            boolean enforceConfigured,
-            List<String> requiredConsentTypes) {
-        this(
-                accounts,
-                ageVerificationService,
-                consentService,
-                serviceWindow,
-                serviceWindowService,
-                alertNotifier,
-                betaGenerationEnabled,
-                enforceConfigured,
-                requiredConsentTypes,
-                null);
-    }
+    private AccountDeletionIntentService deletionIntents;
 
     public GenerationAdmissionService(
             IdentityAccountRepository accounts,
@@ -86,11 +65,42 @@ public final class GenerationAdmissionService implements GenerationAdmission {
                         .filter(type -> type != null && !type.isBlank())
                         .map(String::trim)
                         .collect(Collectors.toUnmodifiableSet());
-        this.releaseGate = releaseGate;
+        this.releaseGate = Objects.requireNonNull(releaseGate);
+        this.deletionIntents = null;
+    }
+
+    public GenerationAdmissionService(
+            IdentityAccountRepository accounts,
+            AgeVerificationService ageVerificationService,
+            ConsentService consentService,
+            BetaServiceWindow serviceWindow,
+            ServiceWindowService serviceWindowService,
+            AlertNotifier alertNotifier,
+            boolean betaGenerationEnabled,
+            boolean enforceConfigured,
+            List<String> requiredConsentTypes,
+            ReleaseGate releaseGate,
+            AccountDeletionIntentService deletionIntents) {
+        this(accounts, ageVerificationService, consentService, serviceWindow,
+                serviceWindowService, alertNotifier, betaGenerationEnabled,
+                enforceConfigured, requiredConsentTypes, releaseGate);
+        this.deletionIntents = Objects.requireNonNull(deletionIntents);
     }
 
     @Override
     public void assertAdmitted(long ownerUserId) {
+        if (deletionIntents != null) {
+            final boolean deleting;
+            try {
+                deleting = deletionIntents.activeCurrent(ownerUserId);
+            } catch (RuntimeException authorityFailure) {
+                throw new AdmissionDeniedException(
+                        GenerationAdmissionPolicy.ADMISSION_READ_FAILED);
+            }
+            if (deleting) {
+                throw new AdmissionDeniedException("account-deletion-in-progress");
+            }
+        }
         GenerationAdmissionPolicy.Facts facts;
         try {
             facts = loadFacts(ownerUserId);
@@ -136,7 +146,7 @@ public final class GenerationAdmissionService implements GenerationAdmission {
             windowReject = serviceWindow.rejectReason(
                     now, state.dailyActiveUsers(), state.ownerActiveToday());
         }
-        boolean liveExpansionAllowed = releaseGate == null || releaseGate.allowsLiveExpansion();
+        boolean liveExpansionAllowed = releaseGate.allowsGenerationFor(ownerUserId);
         return new GenerationAdmissionPolicy.Facts(
                 true,
                 accountActive,

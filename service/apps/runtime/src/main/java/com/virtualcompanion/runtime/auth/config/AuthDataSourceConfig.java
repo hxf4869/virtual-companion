@@ -84,6 +84,7 @@ import java.util.Set;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
@@ -136,6 +137,10 @@ public class AuthDataSourceConfig {
             throw new IllegalStateException(
                     "virtual-companion.auth.datasource.url (VC_DB_URL) is required when the auth datasource is enabled");
         }
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalStateException(
+                    "VC_DB_USERNAME and VC_DB_PASSWORD are required for the runtime datasource");
+        }
         HikariDataSource dataSource = new HikariDataSource();
         dataSource.setJdbcUrl(url);
         dataSource.setUsername(username);
@@ -163,7 +168,8 @@ public class AuthDataSourceConfig {
     public FlywayConfigurationCustomizer flywayMigratorCredentialsGuard(
             @Value("${spring.flyway.url:}") String url,
             @Value("${spring.flyway.user:}") String username,
-            @Value("${spring.flyway.password:}") String password) {
+            @Value("${spring.flyway.password:}") String password,
+            @Value("${virtual-companion.auth.datasource.username:}") String runtimeUsername) {
         if (url == null || url.isBlank()) {
             throw new IllegalStateException(
                     "spring.flyway.url (VC_MIGRATOR_DB_URL) is required when in-app Flyway is enabled");
@@ -175,6 +181,14 @@ public class AuthDataSourceConfig {
         if (password == null || password.isBlank()) {
             throw new IllegalStateException(
                     "spring.flyway.password (VC_MIGRATOR_DB_PASSWORD) is required when in-app Flyway is enabled");
+        }
+        if (runtimeUsername == null || runtimeUsername.isBlank()) {
+            throw new IllegalStateException(
+                    "virtual-companion.auth.datasource.username (VC_DB_USERNAME) is required");
+        }
+        if (username.equalsIgnoreCase(runtimeUsername)) {
+            throw new IllegalStateException(
+                    "migrator and runtime database principals must be different");
         }
         return configuration -> {
             // Validation is the point; the Flyway connection itself is built
@@ -234,6 +248,15 @@ public class AuthDataSourceConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(
+            name = "virtual-companion.auth.enforce-db-least-privilege",
+            havingValue = "true")
+    public RuntimeDatabasePrivilegeGuard runtimeDatabasePrivilegeGuard(
+            JdbcTemplate authJdbcTemplate) {
+        return new RuntimeDatabasePrivilegeGuard(authJdbcTemplate);
+    }
+
+    @Bean
     public IdentityAccountRepository identityAccountRepository(JdbcTemplate authJdbcTemplate) {
         return new IdentityAccountRepository(authJdbcTemplate);
     }
@@ -268,6 +291,17 @@ public class AuthDataSourceConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(
+            name = "virtual-companion.auth.shared-rate-enabled", havingValue = "true")
+    public com.virtualcompanion.runtime.auth.application.SharedSourceAdmission
+            sharedSourceAdmission(
+                    JdbcTemplate authJdbcTemplate,
+                    @Value("${virtual-companion.auth.shared-rate-secret:}") String secret) {
+        return new com.virtualcompanion.runtime.auth.application.SharedSourceAdmission(
+                authJdbcTemplate, secret);
+    }
+
+    @Bean
     public com.virtualcompanion.runtime.auth.jwt.AccessSnapshot.Authority accessSnapshotAuthority(
             IdentityAccountRepository identityAccountRepository) {
         return accountId -> identityAccountRepository.accessSnapshot(accountId)
@@ -291,7 +325,10 @@ public class AuthDataSourceConfig {
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
             org.springframework.beans.factory.ObjectProvider<
                     com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry>
-                    activeInvocations) {
+                    activeInvocations,
+            org.springframework.beans.factory.ObjectProvider<
+                    com.virtualcompanion.runtime.auth.application.AccountDeletionCoordinator>
+                    deletionCoordinators) {
         return new AuthService(
                 identityAccountRepository,
                 identityRefreshTokenRepository,
@@ -304,7 +341,7 @@ public class AuthDataSourceConfig {
                 trialService,
                 quotaReconciliationService,
                 alertNotifier,
-                activeInvocations);
+                activeInvocations, deletionCoordinators);
     }
 
     /** ADMIN-OPS (V36): minimal internal admin console reads. */
@@ -325,6 +362,44 @@ public class AuthDataSourceConfig {
     @Bean
     public com.virtualcompanion.platform.persistence.OpsCase opsCase(JdbcTemplate authJdbcTemplate) {
         return new com.virtualcompanion.platform.persistence.OpsCase(authJdbcTemplate);
+    }
+
+    @Bean
+    public com.virtualcompanion.platform.persistence.AccountDeletionIntentService
+            accountDeletionIntentService(JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.AccountDeletionIntentService(
+                authJdbcTemplate);
+    }
+
+    @Bean
+    public com.virtualcompanion.platform.persistence.RetentionLegalHoldService
+            retentionLegalHoldService(JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.RetentionLegalHoldService(
+                authJdbcTemplate);
+    }
+
+    @Bean
+    public com.virtualcompanion.runtime.auth.application.AccountDeletionCoordinator
+            accountDeletionCoordinator(
+                    OwnerContext ownerContext,
+                    com.virtualcompanion.platform.persistence.AccountDeletionIntentService intents,
+                    org.springframework.beans.factory.ObjectProvider<
+                            com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry>
+                            activeInvocations) {
+        return new com.virtualcompanion.runtime.auth.application.AccountDeletionCoordinator(
+                ownerContext, intents, activeInvocations);
+    }
+
+    @Bean
+    public com.virtualcompanion.runtime.auth.application.AccountDeletionCancellationPoller
+            accountDeletionCancellationPoller(
+                    com.virtualcompanion.platform.persistence.AccountDeletionIntentService intents,
+                    org.springframework.beans.factory.ObjectProvider<
+                            com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry>
+                            activeInvocations,
+                    OwnerContext ownerContext) {
+        return new com.virtualcompanion.runtime.auth.application.AccountDeletionCancellationPoller(
+                intents, activeInvocations, ownerContext);
     }
 
     @Bean
@@ -369,9 +444,10 @@ public class AuthDataSourceConfig {
     public com.virtualcompanion.runtime.retention.RetentionPurgeScheduler retentionPurgeScheduler(
             JdbcTemplate authJdbcTemplate,
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
-            com.virtualcompanion.platform.persistence.JobLease jobLease) {
+            com.virtualcompanion.platform.persistence.JobLease jobLease,
+            @Value("${virtual-companion.retention.dry-run:true}") boolean dryRun) {
         return new com.virtualcompanion.runtime.retention.RetentionPurgeScheduler(
-                authJdbcTemplate, alertNotifier, jobLease);
+                authJdbcTemplate, alertNotifier, jobLease, dryRun);
     }
 
     /**
@@ -384,9 +460,10 @@ public class AuthDataSourceConfig {
             JdbcTemplate authJdbcTemplate,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
             com.virtualcompanion.runtime.servicemode.BetaServiceWindow betaServiceWindow,
-            com.virtualcompanion.platform.persistence.JobLease jobLease) {
+            com.virtualcompanion.platform.persistence.JobLease jobLease,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         return new com.virtualcompanion.runtime.observability.DauMetricsScheduler(
-                authJdbcTemplate, metrics, betaServiceWindow, jobLease);
+                authJdbcTemplate, metrics, betaServiceWindow, jobLease, alertNotifier);
     }
 
     @Bean
@@ -396,19 +473,55 @@ public class AuthDataSourceConfig {
     }
 
     @Bean
+    public com.virtualcompanion.runtime.observability.JobHealthMonitor jobHealthMonitor(
+            com.virtualcompanion.platform.persistence.JobLease jobLease,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            @Value("${virtual-companion.retention.enabled:false}") boolean retentionEnabled,
+            @Value("${virtual-companion.jobs.dau-stale-seconds:300}") long dauStaleSeconds,
+            @Value("${virtual-companion.jobs.export-stale-seconds:300}") long exportStaleSeconds,
+            @Value("${virtual-companion.jobs.auth-purge-stale-seconds:93600}")
+                    long authPurgeStaleSeconds,
+            @Value("${virtual-companion.jobs.retention-stale-seconds:93600}")
+                    long retentionStaleSeconds) {
+        return new com.virtualcompanion.runtime.observability.JobHealthMonitor(
+                jobLease, alertNotifier, retentionEnabled, dauStaleSeconds, exportStaleSeconds,
+                authPurgeStaleSeconds, retentionStaleSeconds);
+    }
+
+    @Bean
     public com.virtualcompanion.platform.persistence.AlertWebhookOutbox alertWebhookOutbox(
             JdbcTemplate authJdbcTemplate) {
         return new com.virtualcompanion.platform.persistence.AlertWebhookOutbox(authJdbcTemplate);
     }
 
     @Bean
+    public com.virtualcompanion.platform.persistence.ProviderRollbackService providerRollbackService(
+            JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.ProviderRollbackService(authJdbcTemplate);
+    }
+
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "virtual-companion.model-providers.enabled", havingValue = "true")
+    public com.virtualcompanion.runtime.observability.DurableProviderRollbackListener
+            durableProviderRollbackListener(
+                    com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker,
+                    com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders providers,
+                    com.virtualcompanion.platform.persistence.ProviderRollbackService rollbackService,
+                    com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+        return new com.virtualcompanion.runtime.observability.DurableProviderRollbackListener(
+                circuitBreaker, providers, rollbackService, alertNotifier);
+    }
+
+    @Bean
     public com.virtualcompanion.runtime.observability.AlertWebhookDispatcher alertWebhookDispatcher(
             com.virtualcompanion.platform.persistence.AlertWebhookOutbox alertWebhookOutbox,
             com.virtualcompanion.runtime.observability.WebhookDelivery webhookDelivery,
+            com.virtualcompanion.runtime.observability.FallbackWebhookDelivery fallbackWebhookDelivery,
             com.virtualcompanion.runtime.observability.AlertProperties alertProperties,
             com.virtualcompanion.runtime.observability.VcMetrics metrics) {
         return new com.virtualcompanion.runtime.observability.AlertWebhookDispatcher(
-                alertWebhookOutbox, webhookDelivery, alertProperties, metrics);
+                alertWebhookOutbox, webhookDelivery, fallbackWebhookDelivery, alertProperties, metrics);
     }
 
     /**
@@ -424,6 +537,21 @@ public class AuthDataSourceConfig {
             JdbcTemplate authJdbcTemplate,
             com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
         return new com.virtualcompanion.runtime.crypto.DataCryptoBackfillRunner(
+                authJdbcTemplate, restFieldCipher);
+    }
+
+    /** Fail closed when stale effective summaries exist but backfill is disabled. */
+    @Bean
+    @org.springframework.context.annotation.Profile("production")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "virtual-companion.crypto.backfill-enabled",
+            havingValue = "false",
+            matchIfMissing = true)
+    public com.virtualcompanion.runtime.crypto.ConversationSummaryCipherReadiness
+            conversationSummaryCipherReadiness(
+                    JdbcTemplate authJdbcTemplate,
+                    com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
+        return new com.virtualcompanion.runtime.crypto.ConversationSummaryCipherReadiness(
                 authJdbcTemplate, restFieldCipher);
     }
 
@@ -585,8 +713,9 @@ public class AuthDataSourceConfig {
 
     /**
      * S0-04: server generation admission. Required consents stay empty until
-     * product/legal confirm the set; enforcement follows the Beta window or
-     * an explicit flag. Read failures fail closed.
+     * product/legal confirm the set; adult/consent enforcement follows the
+     * Beta window or an explicit flag. The durable release gate and read
+     * failures always fail closed.
      */
     @Bean
     public com.virtualcompanion.platform.persistence.ReleaseGate releaseGate(
@@ -606,7 +735,8 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.admission.enforce:false}") boolean enforce,
             @Value("${virtual-companion.admission.required-consent-types:}")
                     java.util.List<String> requiredConsentTypes,
-            com.virtualcompanion.platform.persistence.ReleaseGate releaseGate) {
+            com.virtualcompanion.platform.persistence.ReleaseGate releaseGate,
+            com.virtualcompanion.platform.persistence.AccountDeletionIntentService deletionIntents) {
         return new com.virtualcompanion.runtime.admission.GenerationAdmissionService(
                 identityAccountRepository,
                 ageVerificationService,
@@ -617,7 +747,8 @@ public class AuthDataSourceConfig {
                 betaGenerationEnabled,
                 enforce,
                 requiredConsentTypes,
-                releaseGate);
+                releaseGate,
+                deletionIntents);
     }
 
     /** EMBED-RECALL (V62): deterministic embedder — the local recall floor. */
@@ -626,9 +757,57 @@ public class AuthDataSourceConfig {
      * Real provider embeddings stay default-off.
      */
     @Bean
-    public com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort() {
-        return new com.virtualcompanion.runtime.memory.ValidatingEmbeddingPort(
-                new com.virtualcompanion.runtime.memory.DeterministicEmbedder());
+    public com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort(
+            com.virtualcompanion.platform.persistence.ConsentService consentService,
+            com.virtualcompanion.platform.persistence.AccountDeletionIntentService deletionIntents,
+            @Value("${virtual-companion.embedding.enabled:false}") boolean enabled,
+            @Value("${virtual-companion.embedding.base-url:}") String baseUrl,
+            @Value("${virtual-companion.embedding.model:}") String model,
+            @Value("${virtual-companion.embedding.model-version:}") String modelVersion,
+            @Value("${virtual-companion.embedding.dimension:64}") int dimension,
+            @Value("${virtual-companion.embedding.space-id:}") String spaceId,
+            @Value("${virtual-companion.embedding.api-key:}") String apiKey) {
+        com.virtualcompanion.runtime.memory.EmbeddingPort selected;
+        if (!enabled) {
+            selected = new com.virtualcompanion.runtime.memory.DeterministicEmbedder();
+        } else {
+            if (baseUrl == null || baseUrl.isBlank()
+                    || model == null || model.isBlank()
+                    || modelVersion == null || modelVersion.isBlank()
+                    || spaceId == null || spaceId.isBlank()
+                    || apiKey == null || apiKey.isBlank()) {
+                throw new IllegalStateException(
+                        "embedding.enabled=true requires base-url, model, model-version, space-id and api-key");
+            }
+            var client = new com.virtualcompanion.runtime.memory.OpenAiCompatEmbedder(
+                    baseUrl, model, apiKey);
+            selected = new com.virtualcompanion.runtime.memory.ConsentGatedEmbeddingPort(
+                    new com.virtualcompanion.runtime.memory.OpenAiCompatEmbeddingPort(
+                            client, model, modelVersion, dimension, spaceId),
+                    consentService, deletionIntents);
+        }
+        return new com.virtualcompanion.runtime.memory.ValidatingEmbeddingPort(selected);
+    }
+
+    @Bean
+    public com.virtualcompanion.platform.persistence.EmbeddingReembedService embeddingReembedService(
+            JdbcTemplate authJdbcTemplate) {
+        return new com.virtualcompanion.platform.persistence.EmbeddingReembedService(authJdbcTemplate);
+    }
+
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = {"virtual-companion.embedding.enabled",
+                    "virtual-companion.embedding.reembed-enabled"},
+            havingValue = "true")
+    public com.virtualcompanion.runtime.memory.EmbeddingReembedScheduler embeddingReembedScheduler(
+            com.virtualcompanion.platform.persistence.EmbeddingReembedService reembedService,
+            com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher,
+            @Value("${virtual-companion.embedding.source-space-id:alpha-hash-64}") String sourceSpaceId,
+            @Value("${virtual-companion.embedding.reembed-batch-size:16}") int batchSize) {
+        return new com.virtualcompanion.runtime.memory.EmbeddingReembedScheduler(
+                reembedService, embeddingPort, restFieldCipher, sourceSpaceId, batchSize);
     }
 
     /** ENT-TRIAL (V61): simulated trial grants (FR-ENT-005). */
@@ -661,6 +840,9 @@ public class AuthDataSourceConfig {
             @Value("${virtual-companion.moderation.enabled:false}") boolean moderationEnabled,
             @Value("${virtual-companion.moderation.base-url:}") String moderationBaseUrl,
             @Value("${virtual-companion.moderation.model:omni-moderation-latest}") String moderationModel,
+            @Value("${virtual-companion.moderation.provider-ref:}") String moderationProviderRef,
+            @Value("${virtual-companion.moderation.model-version:}") String moderationModelVersion,
+            @Value("${virtual-companion.moderation.min-clean-confidence:0.8}") double minCleanConfidence,
             @Value("${virtual-companion.moderation.api-key:}") String moderationApiKey) {
         com.virtualcompanion.safety.SafetyClassifierPort hard =
                 new com.virtualcompanion.safety.DeterministicSafetyClassifier();
@@ -668,12 +850,16 @@ public class AuthDataSourceConfig {
             return new com.virtualcompanion.safety.CompositeSafetyClassifier(hard);
         }
         if (moderationBaseUrl == null || moderationBaseUrl.isBlank()
+                || moderationModel == null || moderationModel.isBlank()
+                || moderationProviderRef == null || moderationProviderRef.isBlank()
+                || moderationModelVersion == null || moderationModelVersion.isBlank()
                 || moderationApiKey == null || moderationApiKey.isBlank()) {
             throw new IllegalStateException(
-                    "moderation.enabled=true requires base-url and api-key (fail-closed)");
+                    "moderation.enabled=true requires base-url, model, provider-ref, model-version and api-key (fail-closed)");
         }
         var client = new com.virtualcompanion.runtime.safety.OpenAiCompatModerationClient(
-                moderationBaseUrl, moderationModel, moderationApiKey);
+                moderationBaseUrl, moderationModel, moderationApiKey, moderationProviderRef,
+                moderationModelVersion, minCleanConfidence);
         return new com.virtualcompanion.safety.CompositeSafetyClassifier(
                 hard,
                 new com.virtualcompanion.runtime.safety.ProviderModerationClassifier(client));
@@ -703,17 +889,40 @@ public class AuthDataSourceConfig {
         return new MemoryImportService(authJdbcTemplate);
     }
 
-    /** AGE-MIN: the simulated verification port (Alpha; no real vendor). */
+    /** S0-12: simulated by default; real adapter requires explicit complete config. */
     @Bean
-    public AgeVerificationPort ageVerificationPort() {
-        return new SimulatedAgeVerifier();
+    public AgeVerificationPort ageVerificationPort(
+            @Value("${virtual-companion.age-provider.enabled:false}") boolean enabled,
+            @Value("${virtual-companion.age-provider.endpoint:}") String endpoint,
+            @Value("${virtual-companion.age-provider.api-key:}") String apiKey,
+            @Value("${virtual-companion.age-provider.provider-ref:}") String providerRef,
+            @Value("${virtual-companion.age-provider.provider-version:}") String providerVersion,
+            @Value("${virtual-companion.age-provider.subject-secret:}") String subjectSecret,
+            @Value("${virtual-companion.age-provider.allowed-hosts:}") java.util.List<String> allowedHosts) {
+        if (!enabled) {
+            return new SimulatedAgeVerifier();
+        }
+        java.net.URI configuredEndpoint = java.net.URI.create(endpoint);
+        java.util.List<String> explicitHosts = allowedHosts == null
+                ? java.util.List.of()
+                : allowedHosts.stream()
+                        .filter(host -> host != null && !host.isBlank())
+                        .map(String::trim)
+                        .toList();
+        String configuredHost = configuredEndpoint.getHost();
+        if (configuredHost == null
+                || (!(com.virtualcompanion.modelruntime.port.EgressDnsGuard.LOOPBACK_HOST
+                                .equals(configuredHost))
+                        && explicitHosts.stream().noneMatch(configuredHost::equalsIgnoreCase))) {
+            throw new IllegalArgumentException(
+                    "enabled age provider endpoint host must be explicitly allowed");
+        }
+        return new com.virtualcompanion.runtime.age.HttpAgeVerificationAdapter(
+                endpoint, apiKey, providerRef, providerVersion, subjectSecret,
+                com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaultsPlus(explicitHosts),
+                com.virtualcompanion.modelruntime.port.EgressDnsGuard.defaults());
     }
 
-    /** AGE-MIN: the simulated verifier, exposed for the flow walk. */
-    @Bean
-    public SimulatedAgeVerifier simulatedAgeVerifier() {
-        return new SimulatedAgeVerifier();
-    }
 
     @Bean
     public GenerationRepository generationRepository(JdbcTemplate authJdbcTemplate) {
@@ -1064,6 +1273,7 @@ public class AuthDataSourceConfig {
             ConversationListService conversationListService,
             ReminderService reminderService,
             ConsentService consentService,
+            com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort,
             com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort,
             SafetyEventService safetyEventService,
             ConversationSummaryService conversationSummaryService,
@@ -1071,7 +1281,11 @@ public class AuthDataSourceConfig {
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
             com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker,
             com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity,
-            ObjectProvider<JdbcProductQuotaBook> productQuotaBookProvider,
+            @Qualifier("jdbcProductQuotaBook") JdbcProductQuotaBook productQuotaBook,
+            ObjectProvider<com.virtualcompanion.platform.persistence.ModelCostReservationService>
+                    modelCostReservations,
+            @Value("${virtual-companion.model-providers.budget-reservation-output-tokens:8192}")
+                    int budgetReservationOutputTokens,
             @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
@@ -1095,14 +1309,20 @@ public class AuthDataSourceConfig {
                 // routing must observe exactly what this worker records.
                 circuitBreaker,
                 deploymentAffinity,
-                productQuotaBookProvider);
+                productQuotaBook);
+        com.virtualcompanion.platform.persistence.ModelCostReservationService costReservations =
+                modelCostReservations.getIfAvailable();
+        if (costReservations != null) {
+            generationHandler.withModelCostReservations(
+                    costReservations, budgetReservationOutputTokens);
+        }
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
                 conversationRepository,
                 messageRepository,
                 memoryService,
                 generationFinalizeService,
-                embeddingPort());
+                embeddingPort);
         DataExportWorkItemHandler dataExportHandler = new DataExportWorkItemHandler(
                 generationFinalizeService,
                 exportService,
@@ -1171,7 +1391,8 @@ public class AuthDataSourceConfig {
     @Bean
     public ExportExpiryScheduler exportExpiryScheduler(
             ExportService exportService,
-            com.virtualcompanion.platform.persistence.JobLease jobLease) {
-        return new ExportExpiryScheduler(exportService, jobLease);
+            com.virtualcompanion.platform.persistence.JobLease jobLease,
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
+        return new ExportExpiryScheduler(exportService, jobLease, alertNotifier);
     }
 }

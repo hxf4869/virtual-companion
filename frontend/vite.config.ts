@@ -8,6 +8,9 @@ export default defineConfig({
   // public/robots.txt 进入构建产物根目录（搜索引擎收录策略）。
   publicDir: "public",
   server: {
+    // S0-23 E2E：显式绑定 IPv4 回环，Playwright/代理的 127.0.0.1 解析与
+    // vite 默认（可能落在 ::1）保持一致；本地开发不受影响。
+    host: "127.0.0.1",
     proxy: {
       "/api": {
         target: process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:8080",

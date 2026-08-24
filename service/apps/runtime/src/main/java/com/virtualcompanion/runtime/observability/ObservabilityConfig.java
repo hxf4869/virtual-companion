@@ -22,6 +22,11 @@ public class ObservabilityConfig {
     }
 
     @Bean
+    public FallbackWebhookDelivery fallbackWebhookDelivery(AlertFallbackProperties properties) {
+        return new FallbackWebhookDelivery(properties);
+    }
+
+    @Bean
     public AlertNotifier alertNotifier(
             AlertProperties properties,
             VcMetrics metrics,

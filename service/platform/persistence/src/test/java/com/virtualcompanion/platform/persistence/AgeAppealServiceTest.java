@@ -50,6 +50,45 @@ class AgeAppealServiceTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void resolvesThroughTheRestrictedFunctionAndMapsResult() {
+        when(jdbc.query(
+                eq(AgeAppealService.RESOLVE_SQL),
+                any(RowMapper.class),
+                eq(41L),
+                eq(7L),
+                eq("REVERIFY"),
+                eq("重新核验")))
+                .thenAnswer(invocation -> {
+                    RowMapper<AgeAppealService.Resolution> mapper =
+                            (RowMapper<AgeAppealService.Resolution>) invocation.getArgument(1);
+                    ResultSet rs = mock(ResultSet.class);
+                    when(rs.getLong("out_appeal_id")).thenReturn(7L);
+                    when(rs.getString("out_decision")).thenReturn("REVERIFY");
+                    when(rs.getString("out_age_state")).thenReturn("AGE_REVERIFY_REQUIRED");
+                    when(rs.getTimestamp("out_resolved_at")).thenReturn(Timestamp.from(NOW));
+                    return List.of(mapper.mapRow(rs, 0));
+                });
+
+        AgeAppealService.Resolution result =
+                service.resolve(41L, 7L, "REVERIFY", " 重新核验 ");
+        assertEquals(7L, result.appealId());
+        assertEquals("REVERIFY", result.decision());
+        assertEquals("AGE_REVERIFY_REQUIRED", result.ageState());
+        assertEquals(NOW, result.resolvedAt());
+    }
+
+    @Test
+    void resolveRejectsUnsupportedOrMissingHumanDecision() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.resolve(41L, 7L, "UNKNOWN", "note"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.resolve(41L, 7L, "SUSPEND", " "));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.resolve(0L, 7L, "SUSPEND", "note"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void listMapsTheOwnerScopedRows() {
         when(jdbc.query(
                 anyString(),

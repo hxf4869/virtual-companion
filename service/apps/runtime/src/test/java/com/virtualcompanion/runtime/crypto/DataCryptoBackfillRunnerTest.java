@@ -52,6 +52,10 @@ class DataCryptoBackfillRunnerTest {
         when(jdbc.query(contains("backfill_stale_cipher_summary_batch"),
                 any(RowMapper.class), any(), any(), eq(cipher.currentPrefix())))
                 .thenReturn(List.of());
+        when(jdbc.queryForObject(
+                eq(ConversationSummaryCipherReadiness.READY_SQL),
+                eq(Boolean.class), eq(cipher.currentPrefix())))
+                .thenReturn(true);
 
         DataCryptoBackfillRunner runner = new DataCryptoBackfillRunner(jdbc, cipher);
         runner.run(null);
@@ -63,5 +67,43 @@ class DataCryptoBackfillRunnerTest {
         assertThat(sealed.getValue()).startsWith("enc2:default:1:");
         assertThat(cipher.decrypt(sealed.getValue())).isEqualTo("legacy body");
         assertThat(page.get()).isEqualTo(1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void reencryptsLegacyConversationSummaryBeforeTheDatabaseWrite() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        RestFieldCipher cipher = new RestFieldCipher(KEY);
+        when(jdbc.query(contains("backfill_stale_cipher_message_batch"),
+                any(RowMapper.class), any(), any(), eq(cipher.currentPrefix())))
+                .thenReturn(List.of());
+        when(jdbc.query(contains("backfill_stale_cipher_summary_batch"),
+                any(RowMapper.class), any(), any(), eq(cipher.currentPrefix())))
+                .thenAnswer(inv -> {
+                    RowMapper<DataCryptoBackfillRunner.BackfillRow> mapper =
+                            (RowMapper<DataCryptoBackfillRunner.BackfillRow>) inv.getArgument(1);
+                    ResultSet rs = mock(ResultSet.class);
+                    when(rs.getLong("out_owner_user_id")).thenReturn(8L);
+                    when(rs.getLong("out_id")).thenReturn(51L);
+                    when(rs.getString("out_content")).thenReturn("legacy sensitive summary");
+                    return List.of(mapper.mapRow(rs, 0));
+                });
+        when(jdbc.queryForObject(contains("backfill_replace_summary_cipher"),
+                eq(Boolean.class), any(), any(), any(), eq(cipher.currentPrefix())))
+                .thenReturn(true);
+        when(jdbc.queryForObject(
+                eq(ConversationSummaryCipherReadiness.READY_SQL),
+                eq(Boolean.class), eq(cipher.currentPrefix())))
+                .thenReturn(true);
+
+        new DataCryptoBackfillRunner(jdbc, cipher).run(null);
+
+        ArgumentCaptor<String> sealed = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(jdbc).queryForObject(
+                contains("backfill_replace_summary_cipher"), eq(Boolean.class),
+                eq(8L), eq(51L), sealed.capture(), eq(cipher.currentPrefix()));
+        assertThat(sealed.getValue()).startsWith("enc2:default:1:");
+        assertThat(sealed.getValue()).doesNotContain("legacy sensitive summary");
+        assertThat(cipher.decrypt(sealed.getValue())).isEqualTo("legacy sensitive summary");
     }
 }

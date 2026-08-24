@@ -99,6 +99,12 @@ public final class SingletonLeaseDataSource implements DataSource, InitializingB
 
     @Override
     public <T> T unwrap(Class<T> iface) throws SQLException {
+        // Some frameworks unwrap a DataSource before obtaining connections. Gate
+        // that escape hatch too; REFUSED/UNAVAILABLE must never expose the pool.
+        if (iface.isInstance(this)) {
+            return iface.cast(this);
+        }
+        lease.ensureHeld();
         return delegate.unwrap(iface);
     }
 

@@ -198,6 +198,8 @@ components:
       - AUTH_RATE_LIMITED
       - INTERNAL_ERROR
       - SCHEMA_UNAVAILABLE
+      - PASSWORD_CHANGE_REQUIRED
+      - RATE_LIMITED
     MessageFeedbackKind:
       type: string
       enum:

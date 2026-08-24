@@ -14,6 +14,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -164,6 +166,30 @@ class MemoryServiceTest {
         assertNotNull(result.get(0).deletedAt());
         assertNull(result.get(0).relationshipId());
         verify(jdbc).query(eq(LIST_SQL), any(RowMapper.class), eq(1L), eq(7L), eq(true));
+    }
+
+    @Test
+    void listPreservesSqlNullAsAnAbsentDeletedAt() throws Exception {
+        ResultSet row = mock(ResultSet.class);
+        when(row.getLong("out_id")).thenReturn(6L);
+        when(row.getString("out_scope")).thenReturn("RELATIONSHIP");
+        when(row.getString("out_summary")).thenReturn("current");
+        when(row.getString("out_status")).thenReturn("PENDING_CONFIRMATION");
+        when(row.wasNull()).thenReturn(true);
+        when(row.getTimestamp("out_deleted_at")).thenReturn(null);
+        when(row.getTimestamp("out_created_at")).thenReturn(Timestamp.from(NOW));
+
+        when(jdbc.query(eq(LIST_SQL), any(RowMapper.class), eq(1L), eq(7L), eq(true)))
+                .thenAnswer(invocation -> {
+                    RowMapper<MemoryRecord> mapper = invocation.getArgument(1);
+                    return List.of(mapper.mapRow(row, 0));
+                });
+
+        List<MemoryRecord> result = service.list(1L, 7L, true);
+
+        assertEquals(1, result.size());
+        assertNull(result.get(0).deletedAt());
+        assertEquals(NOW, result.get(0).createdAt());
     }
 
     @Test

@@ -20,6 +20,7 @@ export const OPERATOR_ROLES: ReadonlySet<string> = new Set([
 export interface GateSnapshot {
   session: SessionStatus;
   role: string | null;
+  passwordMustChange?: boolean;
   ageKnown: boolean;
   ageLoadFailed: boolean;
   ageState: string | null;
@@ -27,6 +28,8 @@ export interface GateSnapshot {
   consentLoadFailed: boolean;
   grantedTypes: ReadonlyArray<string>;
 }
+
+export const PASSWORD_CHANGE_HREF = "/pages/account/account?passwordChange=required";
 
 const PUBLIC_PATHS = new Set([
   "/pages/index/index",
@@ -91,7 +94,18 @@ export function buildLoginHref(fromHref: string): string {
 
 export function parseReturnHref(loginHref: string): string | null {
   const query = queryOf(loginHref);
-  return normalizeInternalHref(query.get("return"));
+  let raw = query.get("return");
+  // S0-18 review-fix (E2E finding): the uni hash router re-encodes the
+  // already encoded return value on each hash rewrite (%2F -> %252F ...).
+  // Peel every extra percent-encoding layer before validating.
+  for (let i = 0; raw && i < 3 && /^%[0-9a-f]{2}/i.test(raw); i++) {
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+      break; // Keep the raw value; normalizeInternalHref rejects malformed input.
+    }
+  }
+  return normalizeInternalHref(raw);
 }
 
 export function resolvePostLoginHref(
@@ -115,6 +129,10 @@ export function resolveAdmissionGate(snapshot: GateSnapshot): AdmissionGate {
 export function applyInterceptorUrl(targetHref: string, snapshot: GateSnapshot): string {
   const href = targetHref.startsWith("/pages/") ? targetHref : normalizeInternalHref(targetHref) ?? targetHref;
   if (snapshot.session === "unknown") return href;
+  if (snapshot.session === "authenticated" && snapshot.passwordMustChange
+      && pathOf(href) !== "/pages/account/account") {
+    return PASSWORD_CHANGE_HREF;
+  }
   const page = classifyPage(href);
   if (page === "public" || page === "login") return href;
   if (snapshot.session === "anonymous") {
@@ -126,6 +144,7 @@ export function applyInterceptorUrl(targetHref: string, snapshot: GateSnapshot):
 export function shouldRenderPageData(href: string, snapshot: GateSnapshot): boolean {
   const page = classifyPage(href);
   if (snapshot.session !== "authenticated") return false;
+  if (snapshot.passwordMustChange && pathOf(href) !== "/pages/account/account") return false;
   if (page === "admin") {
     return snapshot.role !== null && OPERATOR_ROLES.has(snapshot.role);
   }

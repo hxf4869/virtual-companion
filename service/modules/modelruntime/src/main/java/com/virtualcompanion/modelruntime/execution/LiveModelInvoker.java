@@ -87,6 +87,7 @@ public final class LiveModelInvoker {
     private final AdapterLocator adapterLocator;
     private final GenerationRecovery recovery;
     private final Map<ProviderId, String> supplierNames;
+    private final Map<ProviderId, ProviderDeploymentMetadata> deploymentMetadata;
     private final ActiveInvocationRegistry activeInvocations;
     private final BudgetGuard budgetGuard; // nullable: disabled when no cap configured
 
@@ -98,7 +99,19 @@ public final class LiveModelInvoker {
             GenerationRecovery recovery,
             Map<ProviderId, String> supplierNames) {
         this(router, authorizationGuard, authorizationSnapshotStore, adapterLocator,
-                recovery, supplierNames, new ActiveInvocationRegistry(), null);
+                recovery, supplierNames, Map.of(), new ActiveInvocationRegistry(), null);
+    }
+
+    public LiveModelInvoker(
+            DeterministicRouter router,
+            ExecutionAuthorizationGuard authorizationGuard,
+            AuthorizationSnapshotStore authorizationSnapshotStore,
+            AdapterLocator adapterLocator,
+            GenerationRecovery recovery,
+            Map<ProviderId, String> supplierNames,
+            Map<ProviderId, ProviderDeploymentMetadata> deploymentMetadata) {
+        this(router, authorizationGuard, authorizationSnapshotStore, adapterLocator,
+                recovery, supplierNames, deploymentMetadata, new ActiveInvocationRegistry(), null);
     }
 
     public LiveModelInvoker(
@@ -110,7 +123,7 @@ public final class LiveModelInvoker {
             Map<ProviderId, String> supplierNames,
             ActiveInvocationRegistry activeInvocations) {
         this(router, authorizationGuard, authorizationSnapshotStore, adapterLocator,
-                recovery, supplierNames, activeInvocations, null);
+                recovery, supplierNames, Map.of(), activeInvocations, null);
     }
 
     public LiveModelInvoker(
@@ -122,6 +135,20 @@ public final class LiveModelInvoker {
             Map<ProviderId, String> supplierNames,
             ActiveInvocationRegistry activeInvocations,
             BudgetGuard budgetGuard) {
+        this(router, authorizationGuard, authorizationSnapshotStore, adapterLocator,
+                recovery, supplierNames, Map.of(), activeInvocations, budgetGuard);
+    }
+
+    public LiveModelInvoker(
+            DeterministicRouter router,
+            ExecutionAuthorizationGuard authorizationGuard,
+            AuthorizationSnapshotStore authorizationSnapshotStore,
+            AdapterLocator adapterLocator,
+            GenerationRecovery recovery,
+            Map<ProviderId, String> supplierNames,
+            Map<ProviderId, ProviderDeploymentMetadata> deploymentMetadata,
+            ActiveInvocationRegistry activeInvocations,
+            BudgetGuard budgetGuard) {
         this.router = Objects.requireNonNull(router, "router must not be null");
         this.authorizationGuard = Objects.requireNonNull(
                 authorizationGuard, "authorizationGuard must not be null");
@@ -130,6 +157,7 @@ public final class LiveModelInvoker {
         this.adapterLocator = Objects.requireNonNull(adapterLocator, "adapterLocator must not be null");
         this.recovery = Objects.requireNonNull(recovery, "recovery must not be null");
         this.supplierNames = Map.copyOf(supplierNames);
+        this.deploymentMetadata = Map.copyOf(deploymentMetadata);
         this.activeInvocations = Objects.requireNonNull(
                 activeInvocations, "activeInvocations must not be null");
         this.budgetGuard = budgetGuard;
@@ -145,25 +173,42 @@ public final class LiveModelInvoker {
     public PreparedInvocation prepare(LiveInvocationRequest request) {
         Objects.requireNonNull(request, "request must not be null");
         RouteDecision decision = router.decide(request.routingRequest());
-        if (decision.status() != RouteDecisionStatus.SELECTED) {
-            RecoveryOutcome outcome = recovery.recover(
-                    decision.ownership(), RecoveryScenario.NO_CAPACITY,
-                    decision.quotaReservation());
-            return PreparedInvocation.terminalOnly(
-                    decision, null, LiveAttemptTerminal.NO_ELIGIBLE_DEPLOYMENT, outcome, null);
+        try {
+            if (decision.status() != RouteDecisionStatus.SELECTED) {
+                RecoveryOutcome outcome = recovery.recover(
+                        decision.ownership(), RecoveryScenario.NO_CAPACITY,
+                        decision.quotaReservation());
+                return PreparedInvocation.terminalOnly(
+                        decision, null, LiveAttemptTerminal.NO_ELIGIBLE_DEPLOYMENT, outcome, null);
+            }
+            InvocationBinding binding = decision.binding();
+            Objects.requireNonNull(binding, "SELECTED decision must carry a binding");
+            if (binding instanceof InvocationBinding.DeterministicSourceBinding) {
+                RecoveryOutcome outcome = recovery.completeZeroLlm(
+                        decision.ownership(), decision.quotaReservation());
+                return PreparedInvocation.terminalOnly(
+                        decision, binding, LiveAttemptTerminal.ZERO_LLM_COMPLETED, outcome, null);
+            }
+            if (binding instanceof InvocationBinding.ExternalAttemptBinding external) {
+                return prepareExternal(request, decision, external);
+            }
+            throw new IllegalStateException("unexpected SELECTED binding type: " + binding);
+        } catch (RuntimeException prepareFailure) {
+            // Direct/in-memory callers have no owner DB transaction whose
+            // rollback can undo the reservation. Recover their process-local
+            // quota here; the production durable reservation belongs to the
+            // surrounding prepare transaction and rolls back with this error.
+            try {
+                recovery.recover(
+                        decision.ownership(), RecoveryScenario.ALL_FAILURE,
+                        decision.quotaReservation());
+            } catch (RuntimeException recoveryFailure) {
+                if (recoveryFailure != prepareFailure) {
+                    prepareFailure.addSuppressed(recoveryFailure);
+                }
+            }
+            throw prepareFailure;
         }
-        InvocationBinding binding = decision.binding();
-        Objects.requireNonNull(binding, "SELECTED decision must carry a binding");
-        if (binding instanceof InvocationBinding.DeterministicSourceBinding) {
-            RecoveryOutcome outcome = recovery.completeZeroLlm(
-                    decision.ownership(), decision.quotaReservation());
-            return PreparedInvocation.terminalOnly(
-                    decision, binding, LiveAttemptTerminal.ZERO_LLM_COMPLETED, outcome, null);
-        }
-        if (binding instanceof InvocationBinding.ExternalAttemptBinding external) {
-            return prepareExternal(request, decision, external);
-        }
-        throw new IllegalStateException("unexpected SELECTED binding type: " + binding);
     }
 
     /**
@@ -226,6 +271,26 @@ public final class LiveModelInvoker {
         ProviderId providerId = Objects.requireNonNull(
                 decision.selectedProviderId(),
                 "external SELECTED decision must carry a provider id");
+        if (request.promptBundleVersion() == null
+                || request.promptBundleVersion().isBlank()
+                || request.personaBundleVersion() == null
+                || request.personaBundleVersion().isBlank()) {
+            RecoveryOutcome outcome = recovery.recover(
+                    decision.ownership(), RecoveryScenario.ALL_FAILURE,
+                    decision.quotaReservation());
+            return PreparedInvocation.terminalOnly(
+                    decision, binding, LiveAttemptTerminal.FAILED, outcome,
+                    new AdapterFailure.UnsupportedBinding());
+        }
+        ProviderDeploymentMetadata metadata = deploymentMetadata.get(providerId);
+        if (metadata == null) {
+            RecoveryOutcome outcome = recovery.recover(
+                    decision.ownership(), RecoveryScenario.ALL_FAILURE,
+                    decision.quotaReservation());
+            return PreparedInvocation.terminalOnly(
+                    decision, binding, LiveAttemptTerminal.FAILED, outcome,
+                    new AdapterFailure.UnsupportedBinding());
+        }
         AuthorizationSnapshotId executionSnapshotId =
                 new AuthorizationSnapshotId(binding.executionAuthorizationSnapshotId());
         final Optional<AuthorizationSnapshot> executionSnapshot;
@@ -368,6 +433,11 @@ public final class LiveModelInvoker {
                 binding.fence(),
                 providerId.value(),
                 supplierName,
+                metadata.modelId(),
+                metadata.modelRevision(),
+                metadata.configVersion(),
+                request.promptBundleVersion(),
+                request.personaBundleVersion(),
                 binding.requestedAuthorizationSnapshotId(),
                 binding.executionAuthorizationSnapshotId());
 

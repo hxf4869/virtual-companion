@@ -349,6 +349,49 @@ describe("independent conversation list page", () => {
     wrapper.unmount();
   });
 
+  it("S0-21: load-more failure keeps rows and retries only the next keyset", async () => {
+    const page1 = Array.from({ length: 20 }, (_, i) =>
+      item({ conversationId: `c${i + 1}`, title: `会话 ${i + 1}` }),
+    );
+    let pageCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url === "/api/v1/relationships" && method === "GET") {
+          return { ok: true, status: 200, json: async () => [REL] };
+        }
+        if (url.startsWith("/api/v1/conversations") && method === "GET") {
+          pageCalls += 1;
+          if (url.includes("after=c20") && pageCalls === 2) {
+            return { ok: false, status: 500, json: async () => ({ code: "INTERNAL_ERROR" }) };
+          }
+          if (url.includes("after=c20")) {
+            return { ok: true, status: 200, json: async () => [item({ conversationId: "c21" })] };
+          }
+          return { ok: true, status: 200, json: async () => page1 };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="conversations-load-more"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(20);
+    expect(wrapper.text()).toContain("更多会话加载失败");
+    expect(wrapper.find('[data-testid="conversations-load-more"]').text()).toContain("重试");
+
+    await wrapper.find('[data-testid="conversations-load-more"]').trigger("click");
+    await flushPromises();
+    expect(pageCalls).toBe(3);
+    expect(wrapper.findAll('[data-testid="conversation-card"]')).toHaveLength(21);
+    expect(wrapper.text()).not.toContain("更多会话加载失败");
+    wrapper.unmount();
+  });
+
   it("CHAT-WIPE: previews counts, wipes after the two-step confirm and clears the list", async () => {
     const { calls } = stubFetch({ conversations: [item()] });
     const wrapper = mount(ConversationsPage, { attachTo: document.body });

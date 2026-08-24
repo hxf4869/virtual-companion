@@ -4,6 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -13,9 +18,9 @@ import org.junit.jupiter.api.Test;
 class SupplierCircuitBreakerTest {
 
     @Test
-    void tripsAfterConsecutiveFailuresAndRecoversAfterCooldown() throws Exception {
-        // 1ms cooldown so the probe window opens almost immediately.
-        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(3, 1);
+    void tripsAfterConsecutiveFailuresAndRecoversAfterCooldown() {
+        MutableClock clock = new MutableClock();
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(3, 1, clock);
 
         assertTrue(breaker.allow("sup-a"));
         breaker.failure("sup-a");
@@ -25,7 +30,7 @@ class SupplierCircuitBreakerTest {
 
         assertFalse(breaker.allow("sup-a"));
 
-        Thread.sleep(5); // cooldown elapses -> one half-open probe admitted
+        clock.advanceMillis(1); // cooldown elapses -> one half-open probe admitted
         assertTrue(breaker.allow("sup-a"));
         assertFalse(breaker.allow("sup-a")); // only one probe
 
@@ -53,15 +58,16 @@ class SupplierCircuitBreakerTest {
     }
 
     @Test
-    void failedHalfOpenProbeReOpens() throws Exception {
-        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(1, 1);
+    void failedHalfOpenProbeReOpens() {
+        MutableClock clock = new MutableClock();
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(1, 1, clock);
         breaker.failure("x");
         assertFalse(breaker.allow("x"));
-        Thread.sleep(5);
+        clock.advanceMillis(1);
         assertTrue(breaker.allow("x"));   // half-open probe
         breaker.failure("x");             // probe failed -> re-open
         assertFalse(breaker.allow("x"));  // still open until next cooldown
-        Thread.sleep(5);
+        clock.advanceMillis(1);
         // The failed probe must re-open with a FRESH cooldown: after it
         // elapses, a new probe is admitted (regression: the old probe-token
         // overflow locked the breaker open until process restart).
@@ -72,10 +78,9 @@ class SupplierCircuitBreakerTest {
     // ---- ROUTE-HARDEN: routing read views + open listener ----
 
     @Test
-    void routingViewsDistinguishBlockedFromProbeWindow() throws Exception {
-        // 150ms cooldown: comfortably inside it right after the trip, and
-        // elapsed after a 300ms sleep.
-        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(2, 150);
+    void routingViewsDistinguishBlockedFromProbeWindow() {
+        MutableClock clock = new MutableClock();
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(2, 150, clock);
 
         // Closed: healthy on both views.
         assertFalse(breaker.circuitOpen("s"));
@@ -89,7 +94,7 @@ class SupplierCircuitBreakerTest {
 
         // Cooldown elapsed: still OPEN, but the half-open probe window —
         // routing may select it as a last resort; the gate admits one probe.
-        Thread.sleep(300);
+        clock.advanceMillis(150);
         assertTrue(breaker.circuitOpen("s"));
         assertFalse(breaker.blocked("s"));
         assertTrue(breaker.allow("s"));
@@ -108,9 +113,10 @@ class SupplierCircuitBreakerTest {
     }
 
     @Test
-    void openListenerFiresOncePerTripAndNeverOnProbeReOpen() throws Exception {
+    void openListenerFiresOncePerTripAndNeverOnProbeReOpen() {
         java.util.List<String> opened = new java.util.ArrayList<>();
-        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(2, 1);
+        MutableClock clock = new MutableClock();
+        SupplierCircuitBreaker breaker = new SupplierCircuitBreaker(2, 1, clock);
         breaker.onOpened(opened::add);
 
         breaker.failure("a");
@@ -120,12 +126,12 @@ class SupplierCircuitBreakerTest {
         breaker.failure("a");
         assertEquals(java.util.List.of("a"), opened);
 
-        Thread.sleep(5);
+        clock.advanceMillis(1);
         assertTrue(breaker.allow("a"));       // take the half-open probe
         breaker.failure("a");                 // probe failed -> re-open silently
         assertEquals(java.util.List.of("a"), opened);
 
-        Thread.sleep(5);
+        clock.advanceMillis(1);
         assertTrue(breaker.allow("a"));
         breaker.success("a");                 // closed again
 
@@ -141,5 +147,33 @@ class SupplierCircuitBreakerTest {
         breaker.failure("boom");              // listener throws; must be swallowed
         assertFalse(breaker.allow("boom"));   // breaker still tripped OPEN
         assertTrue(breaker.blocked("boom"));
+    }
+
+    private static final class MutableClock extends Clock {
+        private final AtomicLong millis = new AtomicLong();
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return Instant.ofEpochMilli(millis.get());
+        }
+
+        @Override
+        public long millis() {
+            return millis.get();
+        }
+
+        private void advanceMillis(long value) {
+            millis.addAndGet(value);
+        }
     }
 }

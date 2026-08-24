@@ -41,7 +41,10 @@ describe("RelationshipSelector (TASK-0187)", () => {
     expect(options).toHaveLength(3); // placeholder + 2 relationships
     expect(options[0].attributes("value")).toBe("");
     expect(options[1].attributes("value")).toBe("1");
-    expect(options[1].text()).toContain("gentle-listener");
+    expect(options[1].text()).toContain("温和倾听者");
+    expect(options[1].text()).not.toContain("gentle-listener");
+    expect(options[2].text()).toContain("陪伴角色");
+    expect(options[2].text()).not.toContain("other");
     expect(options[1].text()).toContain("活跃");
   });
 

@@ -33,6 +33,18 @@ export interface AgeAppealRecord {
   resolvedAt?: string
 }
 
+export interface AgeAppealResolutionRequest {
+  decision: string
+  resolutionNote: string
+}
+
+export interface AgeAppealResolutionResponse {
+  appealId: string
+  decision: string
+  ageState: string
+  resolvedAt: string
+}
+
 export interface CreateReportRequest {
   messageId?: string
   reason: string
@@ -484,7 +496,7 @@ export interface AuthTokenResponse {
   expiresInSeconds: string
   accountId: string
   role: string
-  passwordMustChange?: string
+  passwordMustChange: string
 }
 
 export interface AuthSession {
@@ -613,6 +625,30 @@ export interface OpsCaseActionRequest {
   action: string
   assigneeAccountId?: string
   dispositionReason?: string
+}
+
+export interface RetentionLegalHoldRequest {
+  ownerUserId: string
+  category: string
+  reasonCode: string
+}
+
+export interface RetentionLegalHoldResponse {
+  holdId: string
+  status: string
+}
+
+export interface RetentionLegalHoldReleaseResponse {
+  released: string
+}
+
+export interface OpsCaseNoteRequest {
+  visibility: string
+  note: string
+}
+
+export interface OpsCaseInternalNote {
+  note: string
 }
 
 export interface OpsCase {
@@ -814,8 +850,13 @@ export interface VirtualCompanionApiClient {
   listSafetyEvents(): Promise<void>
   listOpsCases(): Promise<void>
   transitionOpsCase(): Promise<OpsCase>
+  updateOpsCaseNote(): Promise<OpsCase>
+  readOpsCaseInternalNote(): Promise<OpsCaseInternalNote>
+  setRetentionLegalHold(): Promise<RetentionLegalHoldResponse>
+  releaseRetentionLegalHold(): Promise<RetentionLegalHoldReleaseResponse>
   listBetaReports(): Promise<void>
   listBetaAgeAppeals(): Promise<void>
+  resolveAgeAppeal(): Promise<AgeAppealResolutionResponse>
   listBetaExportTasks(): Promise<void>
   listBetaMemorySampling(): Promise<void>
   getEmergencyContact(): Promise<EmergencyContact>

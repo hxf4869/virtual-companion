@@ -87,7 +87,9 @@
       "INVALID_REQUEST",
       "AUTH_RATE_LIMITED",
       "INTERNAL_ERROR",
-      "SCHEMA_UNAVAILABLE"
+      "SCHEMA_UNAVAILABLE",
+      "PASSWORD_CHANGE_REQUIRED",
+      "RATE_LIMITED"
     ],
     "GenerationState": [
       "CREATED",
@@ -341,6 +343,7 @@
             "to": [
               "ADULT_VERIFIED",
               "MINOR_VERIFIED",
+              "AGE_REVERIFY_REQUIRED",
               "AGE_ACCESS_SUSPENDED"
             ]
           },
@@ -354,7 +357,7 @@
           }
         ]
       },
-      "sha256": "cd508b7b7086c49718fdb0899db640a8e91a86d6a27f4f67a7ff2b84578a2347"
+      "sha256": "50566e6ad322384d4d691980ea70c388903dd0b20fad78c9be4371d00f920af4"
     },
     "catalog-manifest.yaml": {
       "document": {
@@ -747,11 +750,19 @@
           {
             "code": "SCHEMA_UNAVAILABLE",
             "order": 18
+          },
+          {
+            "code": "PASSWORD_CHANGE_REQUIRED",
+            "order": 19
+          },
+          {
+            "code": "RATE_LIMITED",
+            "order": 20
           }
         ],
         "schemaVersion": 1
       },
-      "sha256": "9cba87074f2d2471e3cc9b653cde0204806685156facfb075d03e3301fce292b"
+      "sha256": "25ca55c3522ce9d8c0e7a24f6c5670b9ae504272f7bde5cbff1b30f357a0dee6"
     },
     "generation-states.yaml": {
       "document": {

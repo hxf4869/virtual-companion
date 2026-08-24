@@ -118,6 +118,55 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("shows friendly copy for the backend timeout fault code", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "failed";
+    store.stream = {
+      status: "terminal",
+      epoch: 1,
+      cursor: 1,
+      events: [
+        {
+          eventSeq: 1,
+          streamEpoch: 1,
+          eventType: "chat.failed",
+          payload: { fault: "external-timed_out" },
+        },
+      ],
+      terminal: true,
+      terminalEventType: "chat.failed",
+    };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="status"]').text()).toBe("模型响应超时");
+    wrapper.unmount();
+  });
+
+  it("reloads committed history after a restored generation settles", async () => {
+    stubFetch({
+      conversationsJson: [
+        {
+          conversationId: 1,
+          relationshipId: 1,
+          lastMessagePreview: "恢复中的消息",
+        },
+      ],
+    });
+    const store = useChatStore();
+    const restoreSpy = vi.spyOn(store, "tryRestoreAfterReload").mockResolvedValue(true);
+    const historySpy = vi.spyOn(store, "loadHistory").mockResolvedValue();
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(restoreSpy).toHaveBeenCalledOnce();
+    expect(historySpy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
   it("CHAT-MODE: renders the four quick-mode chips and selects on click", async () => {
     const wrapper = mountPage();
     await flushPromises();

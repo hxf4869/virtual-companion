@@ -38,6 +38,11 @@ public class ConversationSummaryService {
             Long prevId, java.time.Instant createdAt) {
     }
 
+    record TurnMetadata(
+            long conversationId, long fromMessageId, long toMessageId,
+            long messageCount, String serviceClass) {
+    }
+
     private final JdbcTemplate jdbc;
     private final RestFieldCipher cipher;
 
@@ -72,7 +77,7 @@ public class ConversationSummaryService {
         normalizeClass(serviceClass);
         String sealed = cipher.encrypt(summary.trim());
         Long id = jdbc.queryForObject(
-                "SELECT vc.record_conversation_summary(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "SELECT vc.record_encrypted_conversation_summary(?, ?, ?, ?, ?, ?, ?, ?, ?::real, ?, ?)",
                 Long.class,
                 ownerUserId, conversationId, fromMessageId, toMessageId,
                 sealed, modelId, modelVersion, promptVersion,
@@ -92,18 +97,30 @@ public class ConversationSummaryService {
         if (ownerUserId <= 0 || generationId <= 0) {
             throw new IllegalArgumentException("ids must be positive");
         }
-        Long id = jdbc.queryForObject(
-                "SELECT vc.record_turn_summary(?, ?)",
-                Long.class,
+        List<TurnMetadata> rows = jdbc.query(
+                "SELECT out_conversation_id, out_from_message_id, out_to_message_id, "
+                        + "out_message_count, out_service_class "
+                        + "FROM vc.conversation_summary_turn_metadata(?, ?)",
+                (rs, rowNum) -> new TurnMetadata(
+                        rs.getLong("out_conversation_id"),
+                        rs.getLong("out_from_message_id"),
+                        rs.getLong("out_to_message_id"),
+                        rs.getLong("out_message_count"),
+                        rs.getString("out_service_class")),
                 ownerUserId,
                 generationId);
-        if (id == null) {
-            throw new IllegalStateException("record_turn_summary returned no row");
+        if (rows.isEmpty()) {
+            return Optional.empty();
         }
-        if (id > 0) {
-            sealStoredSummary(ownerUserId, id);
-        }
-        return id > 0 ? Optional.of(id) : Optional.empty();
+        TurnMetadata metadata = rows.getFirst();
+        String summary = "会话进展摘要（确定性）：截至消息 "
+                + metadata.toMessageId() + "，本会话共 "
+                + metadata.messageCount() + " 条消息。";
+        return record(
+                ownerUserId, metadata.conversationId(),
+                metadata.fromMessageId(), metadata.toMessageId(),
+                summary, MODEL_ID, MODEL_VERSION, PROMPT_VERSION,
+                1.0, true, normalizeClass(metadata.serviceClass()));
     }
 
     /** The newest VALID summary of the conversation (empty when none). */
@@ -133,28 +150,5 @@ public class ConversationSummaryService {
                 ownerUserId,
                 conversationId);
         return rows.stream().findFirst();
-    }
-
-    /**
-     * record_turn_summary composes a short deterministic plaintext in SQL;
-     * immediately rewrite that row under the current write key so the
-     * database never keeps a durable plaintext summary.
-     */
-    private void sealStoredSummary(long ownerUserId, long summaryId) {
-        String stored = jdbc.queryForObject(
-                "SELECT vc.conversation_summary_stored_text(?, ?)",
-                String.class,
-                ownerUserId,
-                summaryId);
-        if (stored == null) {
-            return;
-        }
-        jdbc.queryForObject(
-                "SELECT vc.backfill_replace_summary_cipher(?, ?, ?, ?)",
-                Boolean.class,
-                ownerUserId,
-                summaryId,
-                cipher.reencrypt(stored),
-                cipher.currentPrefix());
     }
 }

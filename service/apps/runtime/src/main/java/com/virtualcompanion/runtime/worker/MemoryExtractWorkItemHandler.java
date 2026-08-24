@@ -184,7 +184,7 @@ public class MemoryExtractWorkItemHandler implements WorkItemHandler {
                     space.modelId(), space.modelVersion(),
                     space.dimension(), space.spaceId(),
                     com.virtualcompanion.runtime.memory.DeterministicEmbedder
-                            .toVectorLiteral(embeddingPort.embed(record.summary())));
+                            .toVectorLiteral(embeddingPort.embed(ownerUserId, record.summary())));
         } catch (RuntimeException e) {
             log.debug("auto-saved memory {} embedding deferred: {}", record.id(),
                     e.getMessage());

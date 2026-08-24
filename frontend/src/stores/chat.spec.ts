@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useChatStore } from "@/stores/chat";
 import { TERMINAL_EVENT_TYPE, type StreamEvent } from "@/domain/stream-reducer";
@@ -113,6 +113,10 @@ describe("useChatStore", () => {
     setActivePinia(createPinia());
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("runs to completed and exposes only the contiguous delta draft", async () => {
     const store = useChatStore();
     await store.run(successDeps(), "gen-1", 1);
@@ -156,6 +160,31 @@ describe("useChatStore", () => {
     expect(store.phase).toBe("failed");
     expect(store.outcome).toBe("not_found_or_forbidden");
     expect(store.isTerminal).toBe(false);
+  });
+
+  it("S0-20: transport exhaustion keeps the refresh recovery binding", async () => {
+    const rows = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => rows.get(key) ?? null,
+      setItem: (key: string, value: string) => rows.set(key, value),
+      removeItem: (key: string) => rows.delete(key),
+    });
+    const store = useChatStore();
+    store.conversationId = "conv-1";
+    store.bindGenerationContext("account-1", "rel-1");
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => ({
+        disposition: "RESUMED",
+        events: [],
+      })),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.run(deps, "gen-pending", 1);
+
+    expect(store.phase).toBe("failed");
+    expect(store.outcome).toBe("exhausted");
+    expect(rows.get("vc.gen.restore")).toContain('"generationId":"gen-pending"');
   });
 
   it("S0-20: recoverInFlight uses a terminal snapshot and does not resume a second generation", async () => {
@@ -216,6 +245,25 @@ describe("useChatStore", () => {
     expect(store.generationId).toBe("gen-1");
   });
 
+  it("S0-20: an empty snapshot after reload resumes from a valid initial epoch", async () => {
+    const store = useChatStore();
+    store.generationId = "gen-created";
+    store.phase = "failed";
+    const resume = vi.fn(async (req: { streamEpoch: number }): Promise<ResumeResult> => {
+      expect(req.streamEpoch).toBe(1);
+      return { disposition: "RESUMED", events: [terminal(1, 1)] };
+    });
+    const deps: RealtimeDeps = {
+      resume,
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    await store.recoverInFlight(deps);
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(store.phase).toBe("completed");
+  });
+
   it("S0-20: recoverInFlight is a no-op when a live stream handle already exists", async () => {
     const store = useChatStore();
     const resumeStart = { started: false };
@@ -230,6 +278,48 @@ describe("useChatStore", () => {
     expect(fetchSnapshot).not.toHaveBeenCalled();
     store.cancel();
     await running;
+  });
+
+  it("S0-20: page detach preserves the recovery entry for the next store instance", async () => {
+    const rows = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => rows.get(key) ?? null,
+      setItem: (key: string, value: string) => rows.set(key, value),
+      removeItem: (key: string) => rows.delete(key),
+    });
+
+    const store = useChatStore();
+    store.conversationId = "1";
+    store.bindGenerationContext("1001", "7");
+    const resumeStart = { started: false };
+    const running = store.run(blockingDeps(resumeStart), "gen-reload", 1);
+    await vi.waitFor(() => expect(resumeStart.started).toBe(true));
+
+    store.detachInFlight();
+    await running;
+
+    expect(rows.get("vc.gen.restore")).toContain('"generationId":"gen-reload"');
+    expect(store.phase).toBe("failed");
+
+    setActivePinia(createPinia());
+    const reloaded = useChatStore();
+    reloaded.conversationId = "1";
+    reloaded.bindGenerationContext("1001", "7");
+    const fetchSnapshot = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      events: [terminal(1, 1)],
+    }));
+
+    const restored = await reloaded.tryRestoreAfterReload(
+      { resume: vi.fn(), fetchSnapshot },
+      { accountId: "1001", relationshipId: "7" },
+    );
+
+    expect(restored).toBe(true);
+    expect(fetchSnapshot).toHaveBeenCalledWith("gen-reload");
+    expect(reloaded.phase).toBe("completed");
+    expect(rows.has("vc.gen.restore")).toBe(false);
   });
 
   it("reset returns to idle", async () => {
@@ -470,15 +560,26 @@ describe("useChatStore", () => {
 
   it("send mints idempotency key, creates generation, streams, reloads history", async () => {
     const store = useChatStore();
-    const transport = mockChatTransport({
-      messagesJson: [
-        { messageId: 10, conversationId: 1, role: "user", content: "Hello" },
-        { messageId: 11, conversationId: 1, role: "assistant", content: "Hi" },
-      ],
-    });
+    const messages: Array<Record<string, unknown>> = [];
+    const transport = mockChatTransport({ messagesJson: messages });
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (): Promise<ResumeResult> => {
+        messages.push(
+          { messageId: 10, conversationId: 1, role: "user", content: "Hello" },
+          { messageId: 11, conversationId: 1, role: "assistant", content: "Hi" },
+        );
+        return {
+          disposition: "RESUMED",
+          events: [delta(1, 1, "Hel"), terminal(2, 1)],
+        };
+      }),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
 
     await store.initConversation(transport, "1");
-    await store.send(transport, successDeps(), "Hello");
+    expect(store.messages).toEqual([]);
+    expect(store.historyHasMore).toBe(false);
+    await store.send(transport, deps, "Hello");
 
     expect(store.phase).toBe("completed");
     expect(store.outcome).toBe("completed");
@@ -908,7 +1009,7 @@ describe("useChatStore", () => {
             eventSeq: 1,
             streamEpoch: 1,
             eventType: "chat.failed",
-            payload: { fault: "external-timed-out" },
+            payload: { fault: "external-timed_out" },
           },
         ],
       })),
@@ -918,7 +1019,7 @@ describe("useChatStore", () => {
     await store.run(deps, "gen-1", 1);
 
     expect(store.phase).toBe("failed");
-    expect(store.terminalFault).toBe("external-timed-out");
+    expect(store.terminalFault).toBe("external-timed_out");
   });
 
   it("terminalFault is null on a completed stream", async () => {

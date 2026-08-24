@@ -2,6 +2,7 @@ package com.virtualcompanion.runtime.age.web;
 
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -46,7 +47,6 @@ class AgeControllerTest {
     private AgeVerificationService ageVerificationService;
     private AgeAppealService ageAppealService;
     private AgeVerificationPort port;
-    private SimulatedAgeVerifier simulated;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -54,9 +54,8 @@ class AgeControllerTest {
         ageVerificationService = mock(AgeVerificationService.class);
         ageAppealService = mock(AgeAppealService.class);
         port = mock(AgeVerificationPort.class);
-        simulated = new SimulatedAgeVerifier();
         AgeController controller =
-                new AgeController(ageVerificationService, ageAppealService, port, simulated);
+                new AgeController(ageVerificationService, ageAppealService, port);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new RuntimeApiExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
@@ -142,13 +141,16 @@ class AgeControllerTest {
     }
 
     @Test
-    void verificationFailsClosedFromMinorOrSuspendedStates() throws Exception {
-        when(ageVerificationService.get(1L))
-                .thenReturn(Optional.of(record("MINOR_SUSPECTED")));
+    void verificationFailsClosedFromTerminalOrAppealPendingStates() throws Exception {
+        for (String state : List.of(
+                "MINOR_VERIFIED", "AGE_ACCESS_SUSPENDED", "AGE_APPEAL_PENDING")) {
+            when(ageVerificationService.get(1L))
+                    .thenReturn(Optional.of(record(state)));
 
-        mockMvc.perform(post("/api/v1/age/verification"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+            mockMvc.perform(post("/api/v1/age/verification"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        }
     }
 
     @Test
@@ -164,6 +166,21 @@ class AgeControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.providerRef").value("vendor-x"));
         verify(ageVerificationService).record(1L, "ADULT_VERIFIED", "vendor-x");
+    }
+
+    @Test
+    void providerFailureWritesNoSelfDeclarationOrVerificationState() throws Exception {
+        when(ageVerificationService.get(1L)).thenReturn(Optional.empty());
+        when(port.verify(1L)).thenThrow(new IllegalStateException("provider unavailable"));
+
+        mockMvc.perform(post("/api/v1/age/verification"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+
+        verify(ageVerificationService, never()).record(
+                anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test

@@ -121,15 +121,23 @@ public class AuthSecurityConfig {
             JwtAuthenticationFilter jwtAuthenticationFilter,
             OwnerInjectionFilter ownerInjectionFilter,
             ObjectProvider<com.virtualcompanion.platform.persistence.SensitiveRouteAdmission>
-                    sensitiveRouteAdmission) throws Exception {
+                    sensitiveRouteAdmission,
+            ObjectProvider<com.virtualcompanion.runtime.auth.application.SharedSourceAdmission>
+                    sharedSourceAdmission) throws Exception {
         CookieCsrfGuardFilter cookieCsrfGuardFilter = new CookieCsrfGuardFilter(allowedOrigins);
         AuthSourceAdmissionFilter authSourceAdmissionFilter =
-                new AuthSourceAdmissionFilter(authAbuseGuard);
+                new AuthSourceAdmissionFilter(authAbuseGuard, sharedSourceAdmission);
         AuthRequestBodyLimitFilter authRequestBodyLimitFilter = new AuthRequestBodyLimitFilter();
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // SSE completes through a Servlet ASYNC dispatch. Persist the
+                // bearer context only in the request-attribute repository
+                // selected by STATELESS so that dispatch remains authorized;
+                // this does not create an HttpSession or carry identity to a
+                // different request.
+                .securityContext(context -> context.requireExplicitSave(false))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh")
                             .permitAll()

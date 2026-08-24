@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 /**
  * TERM-SEM: the catch-all handler keeps 5xx responses on the uniform
@@ -77,5 +78,19 @@ class RuntimeApiExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         assertThat(response.getBody().code()).isEqualTo("SCHEMA_UNAVAILABLE");
+    }
+
+    @Test
+    void rateLimitWritesJsonDirectlyForPreStreamSseRejection() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        handler.handleRuntimeRateLimit(new RuntimeRateLimitException(7), response);
+
+        assertThat(response.getStatus()).isEqualTo(429);
+        assertThat(response.getHeader("Retry-After")).isEqualTo("7");
+        assertThat(response.getContentType()).startsWith("application/json");
+        assertThat(response.getContentAsString()).isEqualTo(
+                "{\"code\":\"RATE_LIMITED\",\"message\":"
+                        + "\"The route is temporarily rate limited\"}");
     }
 }

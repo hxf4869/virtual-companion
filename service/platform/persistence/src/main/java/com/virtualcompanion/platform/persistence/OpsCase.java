@@ -24,6 +24,10 @@ public final class OpsCase {
                     + " out_severity, out_sla_hours, out_assignee_account_id,"
                     + " out_disposition_reason, out_public_note, out_opened_at"
                     + " FROM vc.ops_case_snapshot(?, ?)";
+    static final String UPDATE_NOTE_SQL =
+            "SELECT vc.update_ops_case_note(?, ?, ?, ?)";
+    static final String INTERNAL_NOTE_SQL =
+            "SELECT vc.read_ops_case_internal_note(?, ?)";
 
     public record OpenResult(long id, boolean inserted) {
     }
@@ -116,6 +120,34 @@ public final class OpsCase {
                 actingAccountId,
                 caseId).stream().findFirst().orElseThrow(() ->
                 new IllegalStateException("ops_case_snapshot returned no row"));
+    }
+
+    public boolean updateNote(
+            long actingAccountId, long caseId, String visibility, String note) {
+        if (actingAccountId <= 0 || caseId <= 0) {
+            throw new IllegalArgumentException("ids must be positive");
+        }
+        if (!"INTERNAL".equals(visibility) && !"PUBLIC".equals(visibility)) {
+            throw new IllegalArgumentException("visibility must be INTERNAL or PUBLIC");
+        }
+        String normalized = Objects.requireNonNull(note, "note must not be null").trim();
+        int max = "INTERNAL".equals(visibility) ? 500 : 240;
+        if (normalized.length() > max) {
+            throw new IllegalArgumentException("note is too long");
+        }
+        Boolean updated = jdbc.queryForObject(
+                UPDATE_NOTE_SQL, Boolean.class,
+                actingAccountId, caseId, visibility, normalized);
+        return Boolean.TRUE.equals(updated);
+    }
+
+    public String readInternalNote(long actingAccountId, long caseId) {
+        if (actingAccountId <= 0 || caseId <= 0) {
+            throw new IllegalArgumentException("ids must be positive");
+        }
+        String note = jdbc.queryForObject(
+                INTERNAL_NOTE_SQL, String.class, actingAccountId, caseId);
+        return note == null ? "" : note;
     }
 
     private static Snapshot mapSnapshot(java.sql.ResultSet rs) throws java.sql.SQLException {

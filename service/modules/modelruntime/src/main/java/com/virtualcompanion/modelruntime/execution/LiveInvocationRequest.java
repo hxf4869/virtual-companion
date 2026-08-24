@@ -37,7 +37,23 @@ public record LiveInvocationRequest(
         TimeoutBudget timeoutBudget,
         List<String> hardRuleViolations,
         ClassifierReport classifierReport,
-        PayloadComposition payloadComposition) {
+        PayloadComposition payloadComposition,
+        String promptBundleVersion,
+        String personaBundleVersion) {
+
+    /** Legacy shape retained for deterministic and compatibility tests. */
+    public LiveInvocationRequest(
+            RoutingRequest routingRequest,
+            List<ProtocolMessage> messages,
+            ResponseMode responseMode,
+            boolean streaming,
+            TimeoutBudget timeoutBudget,
+            List<String> hardRuleViolations,
+            ClassifierReport classifierReport,
+            PayloadComposition payloadComposition) {
+        this(routingRequest, messages, responseMode, streaming, timeoutBudget,
+                hardRuleViolations, classifierReport, payloadComposition, null, null);
+    }
 
     /**
      * Legacy shape: no declared payload composition. Requests built through
@@ -53,7 +69,7 @@ public record LiveInvocationRequest(
             List<String> hardRuleViolations,
             ClassifierReport classifierReport) {
         this(routingRequest, messages, responseMode, streaming, timeoutBudget,
-                hardRuleViolations, classifierReport, null);
+                hardRuleViolations, classifierReport, null, null, null);
     }
 
     public LiveInvocationRequest {

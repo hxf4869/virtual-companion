@@ -15,6 +15,7 @@ export function currentAuthSnapshot(): GateSnapshot {
   return {
     session: auth.sessionStatus,
     role: auth.role,
+    passwordMustChange: auth.passwordMustChange,
     ageKnown: false,
     ageLoadFailed: false,
     ageState: null,
@@ -32,7 +33,12 @@ function redirectTo(url: string): void {
     if (uniApi?.redirectTo) {
       uniApi.redirectTo({ url });
     } else if (typeof location !== "undefined") {
-      location.href = url;
+      // S0-18 review-fix (E2E finding): a path-form href like
+      // /pages/login/login?return=... loses the query when the uni hash
+      // router normalizes the entry URL — the post-login return target was
+      // silently dropped. Keeping the redirect in hash form preserves the
+      // full href exactly like the navigateTo interceptor does.
+      location.href = url.startsWith("/pages/") ? `/#${url}` : url;
     }
   } catch {
     // Presentation-only navigation.

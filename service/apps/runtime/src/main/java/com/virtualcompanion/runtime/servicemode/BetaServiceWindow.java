@@ -64,6 +64,11 @@ public final class BetaServiceWindow {
         return enabled;
     }
 
+    /** Whether the operator's manual generation stop is active. */
+    public boolean paused() {
+        return paused;
+    }
+
     /** The window day start of {@code now} as an instant (zone midnight). */
     public Instant dayStart(Instant now) {
         return ZonedDateTime.ofInstant(now, zone).toLocalDate().atStartOfDay(zone).toInstant();

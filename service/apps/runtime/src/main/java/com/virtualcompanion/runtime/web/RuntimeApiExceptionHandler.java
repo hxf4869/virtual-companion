@@ -1,6 +1,8 @@
 package com.virtualcompanion.runtime.web;
 
 import com.virtualcompanion.runtime.servicemode.ServiceWindowClosedException;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -87,6 +89,22 @@ public class RuntimeApiExceptionHandler {
             EmergencyContactDisabledException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ErrorEnvelope("BETA_OPERATIONS_NOT_READY", e.getMessage()));
+    }
+
+    @ExceptionHandler(RuntimeRateLimitException.class)
+    public void handleRuntimeRateLimit(
+            RuntimeRateLimitException e, HttpServletResponse response) throws IOException {
+        // Write directly so a 429 raised before an SSE stream opens is not forced
+        // through that handler's text/event-stream content negotiation.
+        response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        response.setHeader(
+                org.springframework.http.HttpHeaders.RETRY_AFTER,
+                Integer.toString(e.retryAfterSeconds()));
+        response.setCharacterEncoding(java.nio.charset.StandardCharsets.UTF_8.name());
+        response.setContentType(org.springframework.http.MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write(
+                "{\"code\":\"RATE_LIMITED\",\"message\":"
+                        + "\"The route is temporarily rate limited\"}");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

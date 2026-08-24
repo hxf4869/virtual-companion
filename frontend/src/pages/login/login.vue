@@ -46,6 +46,7 @@
         placeholder="密码"
         aria-label="密码"
         autocomplete="current-password"
+        @keydown.enter="onSubmit"
       />
       <button
         class="login-submit"
@@ -144,7 +145,7 @@ import { computed, defineComponent, ref } from "vue";
 
 import { AuthHttpError, inviteRegister } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
-import { hrefFromLocation, resolvePostLoginHref } from "@/domain/nav-guard";
+import { hrefFromLocation, PASSWORD_CHANGE_HREF, resolvePostLoginHref } from "@/domain/nav-guard";
 import { resolveNextStep } from "@/domain/next-step";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAgeStore } from "@/stores/age";
@@ -207,7 +208,7 @@ export default defineComponent({
         if (uniApi?.navigateTo) {
           uniApi.navigateTo({ url });
         } else if (typeof location !== "undefined") {
-          location.href = url;
+          location.href = url.startsWith("/pages/") ? `/#${url}` : url;
         }
       } catch {
         // Presentation-only navigation; never break login submit/fail.
@@ -222,7 +223,7 @@ export default defineComponent({
         if (uniApi?.redirectTo) {
           uniApi.redirectTo({ url });
         } else if (typeof location !== "undefined") {
-          location.href = url;
+          location.href = url.startsWith("/pages/") ? `/#${url}` : url;
         }
       } catch {
         // Never let navigation break a successful login transition.
@@ -246,9 +247,16 @@ export default defineComponent({
     function focusUsername(): void {
       try {
         if (typeof document !== "undefined") {
-          const field = document.querySelector<HTMLInputElement>(
-            '[data-testid="username"]',
-          );
+          // uni h5 renders <uni-input data-testid="username"> wrapping the
+          // native input — focus must land on the real, focusable element
+          // (E2E finding: focusing the wrapper is a silent no-op).
+          const field =
+            document.querySelector<HTMLInputElement>(
+              '[data-testid="username"] input',
+            ) ??
+            document.querySelector<HTMLInputElement>(
+              '[data-testid="username"]',
+            );
           field?.focus();
         }
       } catch {
@@ -266,6 +274,10 @@ export default defineComponent({
       const ok = await store.login(transport, username.value, password.value);
       submitting.value = false;
       if (ok) {
+        if (store.passwordMustChange) {
+          redirectHome(PASSWORD_CHANGE_HREF);
+          return;
+        }
         const current =
           typeof location !== "undefined" ? hrefFromLocation(location) : "/pages/login/login";
         const returned = resolvePostLoginHref(current, { fallback: "" });

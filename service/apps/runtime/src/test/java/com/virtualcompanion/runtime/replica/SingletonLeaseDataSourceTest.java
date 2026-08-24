@@ -65,7 +65,7 @@ class SingletonLeaseDataSourceTest {
         guarded.afterPropertiesSet();
 
         Connection connection = guarded.getConnection();
-
+        assertThat(guarded.unwrap(DataSource.class)).isSameAs(guarded);
         assertThat(connection).isSameAs(pooledConnection);
         verify(delegate).getConnection();
         assertThat(halts.get()).isZero();
@@ -84,6 +84,10 @@ class SingletonLeaseDataSourceTest {
         assertThatThrownBy(() -> guarded.getConnection("u", "p"))
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining(REFUSAL_MARKER);
+        assertThatThrownBy(() -> guarded.unwrap(CloseableDataSource.class))
+                .isInstanceOf(SQLException.class)
+                .hasMessageContaining(REFUSAL_MARKER);
+        verify(delegate, org.mockito.Mockito.never()).unwrap(CloseableDataSource.class);
         verify(delegate, org.mockito.Mockito.never()).getConnection();
     }
 

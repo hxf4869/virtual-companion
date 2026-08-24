@@ -3,8 +3,8 @@
 #
 # Proves — not assumes — that a restored database is usable:
 #   Phase A  logical: pg_dump -Fc -> drop db -> pg_restore -> assert seeded
-#            business rows survive (message content, memory status, export
-#            residue), the delete-tombstone still blocks a deleted account,
+#            business rows survive (message content, memory status, encrypted
+#            conversation summary, export residue), the delete-tombstone still blocks a deleted account,
 #            and the restored schema passes the cross-tenant RLS tests
 #            (01/02/70 re-run against the RESTORED cluster).
 #   Phase B  physical: pg_basebackup + forced WAL switches with a
@@ -86,7 +86,7 @@ docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q \
 
 echo "== seeding drill data =="
 docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q <<'SQL' >>"$LOG_DIR/seed.log" 2>&1
-TRUNCATE vc.safety_event, vc.export_request, vc.memory_item, vc.message,
+TRUNCATE vc.conversation_summary, vc.safety_event, vc.export_request, vc.memory_item, vc.message,
          vc.conversation, vc.relationship, vc.generation,
          vc.identity_auth_event, vc.identity_refresh_token, vc.identity_account,
          vc.vc_user CASCADE;
@@ -96,11 +96,15 @@ DECLARE
     v_alice bigint;
     v_bob   bigint;
     v_carol bigint;
+    v_dave  bigint;
+    v_from_message bigint;
+    v_to_message bigint;
 BEGIN
     SELECT vc.identity_admin_seed('root-bk', '$2a$10$seed.hash.placeholder', 'Root') INTO v_admin;
     SELECT vc.identity_account_create(v_admin, 'alice-bk', '$2a$10$alice.hash.placeholder', 'USER', 'Alice') INTO v_alice;
     SELECT vc.identity_account_create(v_admin, 'bob-bk',   '$2a$10$bob.hash.placeholder',   'USER', 'Bob')   INTO v_bob;
     SELECT vc.identity_account_create(v_admin, 'carol-bk', '$2a$10$carol.hash.placeholder', 'USER', 'Carol') INTO v_carol;
+    SELECT vc.identity_account_create(v_admin, 'dave-bk',  '$2a$10$dave.hash.placeholder',  'USER', 'Dave')  INTO v_dave;
 
     INSERT INTO vc.relationship(owner_user_id, id, persona_ref, active)
     VALUES (v_alice, 1, 'gentle-listener', true);
@@ -112,6 +116,14 @@ BEGIN
         convert_to((SELECT secret FROM vc._owner_binding_secret WHERE id = 1), 'UTF8'),
         'sha256'), 'hex'));
     PERFORM vc.receive_generation(v_alice, 1, 'bk-key-1', 'user', 'drill-message-plaintext');
+    SELECT min(id), max(id) INTO v_from_message, v_to_message
+      FROM vc.message WHERE owner_user_id = v_alice AND conversation_id = 1;
+    INSERT INTO vc.conversation_summary(
+        owner_user_id, id, conversation_id, from_message_id, to_message_id, summary,
+        model_id, model_version, prompt_version, confidence, validated, service_class)
+    VALUES (
+        v_alice, nextval('vc.conversation_summary_id_seq'), 1, v_from_message, v_to_message,
+        'enc2:default:1:QUJDRA==', 'backup-drill', '1', '1', 1.0, true, 'ECONOMY');
 
     INSERT INTO vc.memory_item(owner_user_id, id, relationship_id, scope,
                                summary, status)
@@ -136,6 +148,30 @@ echo "== Phase A: logical backup (pg_dump -Fc) =="
 docker exec "$CID" pg_dump -U "$DB_USER" -Fc "$DB_NAME" > "$LOG_DIR/drill.dump"
 echo "  dump size: $(wc -c < "$LOG_DIR/drill.dump") bytes"
 
+echo "== external deletion manifest: delete after logical backup =="
+docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q <<'SQL' >>"$LOG_DIR/seed.log" 2>&1
+DO $$
+DECLARE v_dave bigint;
+BEGIN
+    SELECT id INTO v_dave FROM vc.identity_account WHERE username = 'dave-bk';
+    IF NOT vc.identity_account_delete(v_dave) THEN
+        RAISE EXCEPTION 'post-backup dave deletion failed';
+    END IF;
+END $$;
+SQL
+docker exec "$CID" psql -U "$DB_USER" -d "$DB_NAME" -t -A -F '|' -c \
+  "SELECT out_account_id, out_username_digest, out_status, out_requested_at, out_completed_at
+     FROM vc.export_account_deletion_tombstones()
+    WHERE out_account_id = (SELECT account_id FROM vc.identity_auth_event
+                             WHERE username = 'dave-bk' ORDER BY id DESC LIMIT 1)" \
+  > "$LOG_DIR/deletion-tombstone.manifest"
+IFS='|' read -r T_ACCOUNT T_DIGEST T_STATUS T_REQUESTED T_COMPLETED \
+  < "$LOG_DIR/deletion-tombstone.manifest"
+[ -n "$T_ACCOUNT" ] && [ "$T_STATUS" = "COMPLETED" ] && [ "${#T_DIGEST}" -eq 64 ] || {
+  echo "FAIL: external deletion tombstone manifest invalid" >&2; exit 14;
+}
+echo "  tombstone manifest exported outside the backup/PITR boundary (digest only)"
+
 echo "== Phase B prep: physical base backup + WAL with post-backup marker =="
 docker exec "$CID" psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT pg_switch_wal()" >/dev/null
 docker exec "$CID" pg_basebackup -U "$DB_USER" -D - -Ft -X fetch > "$LOG_DIR/base.tar"
@@ -155,15 +191,36 @@ echo "== Phase A restore: pg_restore =="
 docker exec -i "$CID" pg_restore -U "$DB_USER" -d "$DB_NAME" --no-owner < "$LOG_DIR/drill.dump" >>"$LOG_DIR/restore.log" 2>&1 \
     || { echo "pg_restore failed (see $LOG_DIR/restore.log)" >&2; exit 4; }
 
+echo "== Phase A restore: reconcile external deletion tombstone (dry-run -> apply) =="
+RECONCILE_ARGS=(-v "account=$T_ACCOUNT" -v "digest=$T_DIGEST" \
+  -v "requested=$T_REQUESTED" -v "completed=$T_COMPLETED")
+DRY_MATCH=$(docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -t -A \
+  "${RECONCILE_ARGS[@]}" <<'SQL'
+SELECT vc.reconcile_account_deletion_tombstone(
+  :account::bigint, :'digest', :'requested'::timestamptz, :'completed'::timestamptz, false);
+SQL
+)
+[ "$DRY_MATCH" = "1" ] || { echo "FAIL: tombstone dry-run expected 1, got $DRY_MATCH" >&2; exit 15; }
+APPLY_MATCH=$(docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -t -A \
+  "${RECONCILE_ARGS[@]}" <<'SQL'
+SELECT vc.reconcile_account_deletion_tombstone(
+  :account::bigint, :'digest', :'requested'::timestamptz, :'completed'::timestamptz, true);
+SQL
+)
+[ "$APPLY_MATCH" = "1" ] || { echo "FAIL: tombstone apply expected 1, got $APPLY_MATCH" >&2; exit 16; }
+echo "  external tombstone dry-run and apply OK"
+
 echo "== Phase A verification: business rows survive =="
 VERIFY=$(docker exec -i "$CID" psql -U "$DB_USER" -d "$DB_NAME" -t -A -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 DECLARE
     v_msg text;
     v_mem text;
+    v_summary text;
     v_exp int;
     v_tombstone int;
     v_audit int;
+    v_external_tombstone int;
 BEGIN
     SELECT content INTO v_msg FROM vc.message WHERE content LIKE 'drill-message-%';
     IF v_msg IS NULL THEN
@@ -172,6 +229,11 @@ BEGIN
     SELECT summary INTO v_mem FROM vc.memory_item WHERE status = 'ACCEPTED';
     IF v_mem IS DISTINCT FROM 'drill-memory-summary' THEN
         RAISE EXCEPTION 'restored memory status/summary wrong';
+    END IF;
+    SELECT summary INTO v_summary FROM vc.conversation_summary WHERE valid;
+    IF v_summary IS NULL OR v_summary NOT LIKE 'enc2:%'
+       OR v_summary LIKE '%drill-message-plaintext%' THEN
+        RAISE EXCEPTION 'restored conversation summary is not opaque ciphertext';
     END IF;
     SELECT count(*) INTO v_exp FROM vc.export_request WHERE status = 'READY';
     IF v_exp <> 1 THEN
@@ -184,12 +246,21 @@ BEGIN
     IF v_tombstone <> 0 OR v_audit < 2 THEN
         RAISE EXCEPTION 'delete tombstone broken (account=%, audit=%)', v_tombstone, v_audit;
     END IF;
+    SELECT count(*) INTO v_tombstone FROM vc.identity_account WHERE username = 'dave-bk';
+    SELECT count(*) INTO v_external_tombstone FROM vc.account_deletion_intent
+     WHERE account_id = (SELECT account_id FROM vc.identity_auth_event
+                          WHERE username = 'dave-bk' ORDER BY id DESC LIMIT 1)
+       AND status = 'COMPLETED';
+    IF v_tombstone <> 0 OR v_external_tombstone <> 1 THEN
+        RAISE EXCEPTION 'external delete manifest reconciliation broken (account=%, tombstone=%)',
+            v_tombstone, v_external_tombstone;
+    END IF;
 END $$;
 SELECT 'PHASE-A-DATA-OK';
 SQL
 )
 grep -q 'PHASE-A-DATA-OK' <<<"$VERIFY" || { echo "$VERIFY" >&2; exit 5; }
-echo "  data assertions OK (content/memory/export/tombstone)"
+echo "  data assertions OK (content/memory/summary-cipher/export/tombstone)"
 
 echo "== Phase A verification: RLS holds on the restored schema =="
 for t in 01_cross_user_read_denied 02_cross_relationship_reference_denied 70_owner_forged_binding_denied; do

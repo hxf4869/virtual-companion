@@ -11,8 +11,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * S0-04: the shipped admission policy is the security source for new
- * generations. Reads fail closed; adult/consent apply only when enforced;
- * required consents come from configuration and are never invented.
+ * generations. Reads and the release gate always fail closed; adult/consent
+ * apply only when enforced; required consents come from configuration and
+ * are never invented.
  */
 class GenerationAdmissionPolicyTest {
 
@@ -25,8 +26,18 @@ class GenerationAdmissionPolicyTest {
     }
 
     @Test
-    void alphaAllowsWhenAccountActiveAndWindowOpen() {
+    void alphaAllowsWhenAccountWindowAndReleaseGateAllow() {
         assertTrue(policy.rejectReason(alphaOk()).isEmpty());
+    }
+
+    @Test
+    void releaseGateBlocksEvenWhenAdultAndConsentEnforcementIsOff() {
+        Facts facts = new Facts(
+                true, true, false, false, AgeState.AGE_UNKNOWN,
+                Set.of(), Set.of(), Optional.empty(), false);
+        assertEquals(
+                Optional.of(GenerationAdmissionPolicy.RELEASE_EVAL_BLOCKED),
+                policy.rejectReason(facts));
     }
 
     @Test

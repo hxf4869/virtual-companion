@@ -20,6 +20,9 @@ import com.virtualcompanion.platform.persistence.GenerationStateService.Generati
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.ServiceWindowService;
 import com.virtualcompanion.platform.persistence.WorkItemEnqueueService;
+import com.virtualcompanion.runtime.admission.AdmissionDeniedException;
+import com.virtualcompanion.runtime.admission.GenerationAdmission;
+import com.virtualcompanion.runtime.admission.GenerationAdmissionPolicy;
 import com.virtualcompanion.runtime.servicemode.BetaServiceWindow;
 import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.web.RuntimeApiExceptionHandler;
@@ -74,11 +77,15 @@ class GenerationControllerTest {
     }
 
     private void setUpWithWindow(BetaServiceWindow window) {
+        setUpWithAdmission(window, ownerUserId -> { });
+    }
+
+    private void setUpWithAdmission(BetaServiceWindow window, GenerationAdmission admission) {
         GenerationController controller = new GenerationController(
                 receiveService, enqueueService, generationRepository, generationStateService,
                 finalizeService, new DeterministicSafetyClassifier(), safetyEventService,
                 cancelService, window, serviceWindowService,
-                ownerUserId -> { },
+                admission,
                 com.virtualcompanion.runtime.observability.TestAlerts.metrics(),
                 com.virtualcompanion.runtime.observability.TestAlerts.noop());
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
@@ -111,6 +118,34 @@ class GenerationControllerTest {
     // ------------------------------------------------------------------
     // POST /api/v1/conversations/{conversationId}/generations
     // ------------------------------------------------------------------
+
+    @Test
+    void releaseGateDenialHappensBeforeGenerationPersistence() throws Exception {
+        setUpWithAdmission(
+                new BetaServiceWindow(false, false, "20:30", 10, "Asia/Shanghai"),
+                ownerUserId -> {
+                    throw new AdmissionDeniedException(
+                            GenerationAdmissionPolicy.RELEASE_EVAL_BLOCKED);
+                });
+
+        mockMvc.perform(post("/api/v1/conversations/100/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"key-canary\",\"userContent\":\"hello\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BETA_OPERATIONS_NOT_READY"));
+
+        verify(receiveService, never()).receive(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString());
+        verify(enqueueService, never()).enqueue(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong());
+    }
 
     @Test
     void sendGenerationRefusedOutsideTheServiceWindowBeforeAnythingPersists() throws Exception {
@@ -342,7 +377,7 @@ class GenerationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.assistantMessageId").value(300))
-                .andExpect(jsonPath("$.events").value("[{\"event\":\"chat.completed\"}]"))
+                .andExpect(jsonPath("$.events[0].event").value("chat.completed"))
                 .andExpect(jsonPath("$.usage.inputTokens").value(42))
                 .andExpect(jsonPath("$.usage.outputTokens").value(58));
 

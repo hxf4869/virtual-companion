@@ -52,6 +52,24 @@ public class ProductionFailClosedEnvironmentPostProcessor implements Environment
                     "virtual-companion.auth.datasource-enabled (VC_AUTH_DATASOURCE_ENABLED) must "
                             + "be true in the production profile; an explicit false is rejected");
         }
+        String leastPrivilege = environment.getProperty(
+                "virtual-companion.auth.enforce-db-least-privilege");
+        if (!"true".equalsIgnoreCase(leastPrivilege)) {
+            throw new IllegalStateException(
+                    "virtual-companion.auth.enforce-db-least-privilege "
+                            + "(VC_ENFORCE_DB_LEAST_PRIVILEGE) must be true in production");
+        }
+        String sharedRateEnabled = environment.getProperty(
+                "virtual-companion.auth.shared-rate-enabled");
+        String sharedRateSecret = environment.getProperty(
+                "virtual-companion.auth.shared-rate-secret");
+        if (!"true".equalsIgnoreCase(sharedRateEnabled)
+                || sharedRateSecret == null
+                || sharedRateSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException(
+                    "VC_SHARED_RATE_LIMIT_ENABLED must be true and "
+                            + "VC_SHARED_RATE_LIMIT_SECRET must contain at least 32 bytes in production");
+        }
         String cookieSecure = environment.getProperty("virtual-companion.auth.cookie-secure");
         if ("false".equalsIgnoreCase(cookieSecure)) {
             throw new IllegalStateException(

@@ -14,6 +14,10 @@
 TRUNCATE vc.work_item, vc.attempt_intent, vc.generation, vc.message, vc.conversation,
          vc.relationship, vc.authorization_snapshot, vc.vc_user CASCADE;
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice');
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (1, 'alice-77', 'test-hash', 'USER', 'ACTIVE', 'alice');
+UPDATE vc.release_gate SET stage='BETA', eval_passed=true,
+    policy_version='test-policy-77', canary_owner_user_id=NULL WHERE id=1;
 INSERT INTO vc.authorization_snapshot(
     owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
     purpose, data_categories, task_cancelled, source_data_deleted)
@@ -58,7 +62,8 @@ BEGIN
         encode(vc.digest(convert_to(v_token, 'UTF8'), 'sha256'), 'hex'),
         encode(vc.digest(convert_to('FENCE-77', 'UTF8'), 'sha256'), 'hex'),
         'pa-77-1', 'alpha-loopback', 'alpha-supplier',
-        'snap-77-req', 'snap-77-exec');
+        'snap-77-req', 'snap-77-exec',
+        'test-model', 'test-rev', 'test-prompt', 'test-persona', 'test-config');
 END $$;
 COMMIT;
 RESET ROLE;
@@ -92,7 +97,8 @@ BEGIN
             encode(vc.digest(convert_to(v_token, 'UTF8'), 'sha256'), 'hex'),
             encode(vc.digest(convert_to('FENCE-77', 'UTF8'), 'sha256'), 'hex'),
             'pa-77-2', 'alpha-loopback', 'alpha-supplier',
-            'snap-77-req', 'snap-77-exec');
+            'snap-77-req', 'snap-77-exec',
+            'test-model', 'test-rev', 'test-prompt', 'test-persona', 'test-config');
         RAISE EXCEPTION 'stale worker must not create a new attempt intent';
     EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE '%stale worker must not create a new attempt intent%' THEN
@@ -137,11 +143,13 @@ DECLARE
     v_n  int;
     v_st text;
     v_ws text;
+    v_terminal timestamptz;
 BEGIN
-    SELECT count(*), max(status) INTO v_n, v_st
+    SELECT count(*), max(status), max(terminal_at) INTO v_n, v_st, v_terminal
       FROM vc.attempt_intent WHERE owner_user_id = 1;
-    IF v_n <> 1 OR v_st <> 'ABANDONED_LATE' THEN
-        RAISE EXCEPTION 'expected exactly 1 ABANDONED_LATE intent, got rows=% status=%', v_n, v_st;
+    IF v_n <> 1 OR v_st <> 'ABANDONED_LATE' OR v_terminal IS NULL THEN
+        RAISE EXCEPTION 'expected exactly 1 terminal ABANDONED_LATE intent, got rows=% status=% terminal=%',
+            v_n, v_st, v_terminal;
     END IF;
     SELECT status INTO v_ws FROM vc.work_item WHERE id = (SELECT value::bigint FROM stale_ctx WHERE key = 'wi');
     IF v_ws <> 'CLAIMED' THEN

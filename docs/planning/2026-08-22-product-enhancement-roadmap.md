@@ -33,11 +33,15 @@
 | `S0-03` | `DONE`（对账见 §S0-03） | 绑定已统一、校验与集成测试已补齐；后续派发前仍须按当前工作树复核 |
 | `S0-02` | `PARTIAL`（子交付 A 完成，见 §S0-02） | 时间真源已统一：Beta contract 同步 10:00–22:00 并有 catalog↔contract 漂移检查与五点边界回归；剩余 readiness/发布状态同步与 Owner 人工项，不得代填真实责任人或 Beta 批准状态 |
 | `S0-05` | `DONE`（对账见 §S0-05） | Help 已直达真实举报表单与本人处理状态，README 同步且不再有与 report 能力矛盾的现行说明；TODO.md 历史轮次记录按原样保留 |
-| `S0-10` | `PARTIAL` | supplier 熔断、健康感知路由和单机会话粘滞已完成；剩余 `C` 为动态 service-mode 聚合，不得重做 `A/B` |
-| `S0-25` | `PARTIAL / READY` | DB 撤回已实现，外发 Guard 仍依赖进程内镜像；需要补跨层“撤回后外发 0 次”闭环 |
-| `S0-26` | `PARTIAL / READY`（对账见 §S0-26） | 强制链路已落地：payload 逐条类别声明＋外发前求交，未授权块实际删除、核心缺失/未声明 fail-closed；完整收口仍需 Owner 确认必要同意集合、细粒度撤回语义、persona 类别裁定与 region 批准表 |
-| `S0-27` | `PARTIAL / BLOCKED` | DB 角色已定义，但部署仍复用 `postgres`；凭据和目标环境拆分需 Owner 决策 |
-| `S0-33` | `PARTIAL / READY` | 当前实际依赖多个进程内状态；可加单副本硬门禁，多实例目标仍需 Owner 决策 |
+| `S0-10` | `DONE`（对账见 §S0-10） | supplier 熔断、健康感知粘滞与动态 ServiceMode 聚合 A/B/C 均已完成；权威读取失败不误报 FULL_AI |
+| `S0-11` | `DONE`（对账见 §S0-11） | durable registry admission、不可变 route decision 与共享产品 quota 已进入 worker prepare/finalize/补偿真链路；货币成本独立由 S0-29 收口 |
+| `S0-25` | `DONE`（对账见 §S0-25） | DB 权威快照已进入外发前线性化复核；撤回后 queued/retry adapter 调用 0，多实例/断连 fail-closed 与审计保留均有回归 |
+| `S0-26` | `DONE`（本地技术交付；对账见 §S0-26） | payload 逐块分类、外发前求交与实际删除已强制；核心缺失/未声明/provider-region 漂移 fail-closed。必要同意集合、细粒度撤回、persona 类别与 region 批准仍是 Owner 产品/合规决策 |
+| `S0-27` | `DONE`（本地技术交付） | runtime/migrator 已使用独立登录与密钥，启动最小权限实检、空库迁移和角色隔离 drill 均已通过；目标环境凭据仍只允许部署注入 |
+| `S0-30` | `DONE`（本地技术交付） | V84/V92/V94 已完成 access epoch 即时失效和共享业务频率窗；V106 补齐 HMAC 化登录/刷新来源窗及 generation/SSE 并发租约，429/Retry-After、SQL 155 和单测已验证；紧急联系人不在限流路由内 |
+| `S0-31` | `DONE`（本地技术交付） | V85 durable outbox 与 V86 maintenance lease/run history 已接通；V107 补齐 last-success/latest-status、失败及 stale/hung 自动告警，retention dry-run 分类计数已验证；真实替补 endpoint 与人工升级链仍属外部运营前置 |
+| `S0-32` | `DONE`（本地技术交付） | V79 summary dual-read/keyset 回填与 V108 encrypted-only writer 已收口；incognito、单消息删除及级联清除已验证；生产 KMS/旧 key 保留与备份取回演练仍为 Owner 外部前置 |
+| `S0-33` | `DONE`（本地技术交付） | Compose replicas=1、全 profile 声明预检与 PostgreSQL session advisory-lock 成员排他均为硬失败；双实例合成 smoke、故障恢复和 S2-37 外置/退出门槛已记录 |
 
 ## 2. 本文如何判断“值得做”
 
@@ -178,12 +182,25 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-07 接通真实 moderation 的 fail-closed 复合分类器
 
+- **当前对账（2026-08-24）**：本地技术实现已完成：复合分类器三阶段共用，
+  provider 只能升险；timeout/HTTP/错 schema/flag 冲突/低置信均 fail-closed；
+  请求 Jackson 序列化，审计日志只含 provider/model/version/latency/result code；
+  开关默认关闭且启用时要求完整 provider/version/Secret 配置。真实供应商、地区、
+  保留、费用和凭据未获批，故 S0-07 整体为 `BLOCKED_EXTERNAL`。
+
 - **现状证据**：`OpenAiCompatModerationClient` 已存在，但不实现 `SafetyClassifierPort`；运行时始终注入 `DeterministicSafetyClassifier`；provider 响应缺 `results[0]` 时当前解析可能得到 clean。
 - **最小交付**：实现 `CompositeSafetyClassifier`：确定性硬规则先行，provider 只能提升风险；超时、无响应、错 schema、低置信或冲突一律阻断；输入/增量/最终三阶段共用；请求用 Jackson 序列化。
 - **依赖**：Owner 决定供应商、区域、数据保留、成本上限和 Secret 注入；默认关闭。
 - **验收**：异常响应没有 delta/completed；硬规则不可被 provider 降级；只记录 provider/model/版本/延迟/结果码，不记录正文或密钥；安全合同测试通过。
 
 #### S0-08 建立 Prompt Injection 与 Memory Poisoning 专项防线
+
+- **当前对账（2026-08-24，已完成）**：输入侧高精度 prompt override、系统提示
+  索取、跨关系/跨用户/凭据提取在本地硬规则阻断；输出侧明确的系统提示/密钥
+  泄漏形态在最终/增量复核阻断。召回块用不可伪造的 untrusted-memory 边界和
+  “低优先级数据、绝非指令”规则，换行/边界标记会转义；assistant 自述不进入
+  候选，注入形态只到 PENDING_CONFIRMATION。未开放工具、数据库或跨用户检索。
+  合成红队与 payload capture 通过，跨关系 1,000 探测泄漏 0。
 
 - **现状证据**：确定性分类器明确将 Prompt Injection 留给真实 provider；现有上下文虽然分 system/persona/memory/user，但没有完整的注入/记忆污染策略与回归集。
 - **最小交付**：上下文分区加不可混淆标签；记忆只作为低优先级数据；禁止 assistant 自述成为 user fact；检测系统提示索取、跨关系记忆索取、凭据/内部信息泄漏；异常候选进入人工确认。
@@ -193,6 +210,14 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-09 接通真实 EmbeddingPort 与安全迁移
 
+- **当前对账（2026-08-24）**：本地技术实现已完成。OpenAI-compatible adapter
+  实现 `EmbeddingPort`，Jackson 请求显式 64 维；空/错维/非数值/NaN/Infinity
+  fail-closed，model/version/space lineage 固定。外部调用要求 owner-bound
+  `THIRD_PARTY_MODEL_PROCESSING` 与 `SENSITIVE_DATA_PROCESSING` 双同意；失败退回
+  结构化召回。V99 支持同一 memory 双 space、checkpoint、暂停/恢复、逐项失败
+  隔离、成功前禁止旧 space 退役。默认关闭。真实供应商、地区、费用、凭据和正式
+  同意 taxonomy 未获批，故整体为 `BLOCKED_EXTERNAL`。
+
 - **现状证据**：`OpenAiCompatEmbedder` 是独立 client，不实现 `EmbeddingPort`；运行时固定 `DeterministicEmbedder`；未形成真实向量维度/finite/space 校验和 re-embed 流程。
 - **最小交付**：provider adapter、配置/Secret、dimension/space/model/version 校验；失败时退回结构化召回；后台 re-embed job 支持 checkpoint、双 space 迁移和旧 space 退役。
 - **验收**：空向量、错维度、NaN/Infinity 拒绝；不同 space 永不混用；provider 故障不阻断聊天、手工记忆和删除；删除/替代行不会因旧索引复活。
@@ -200,12 +225,20 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-10 完成按 supplier 熔断、会话粘滞和动态服务状态
 
-- **当前对账**：`8c9711b5` 已完成按实际 supplier 记账、健康感知选路、半开探针和单机会话粘滞；
-  `ServiceModeService` 仍只读取静态 `enabled/degraded`，不反映实际健康、预算、人工停服和可用候选。
-- **剩余最小交付**：只实施子交付 `C` 的动态 service-mode 聚合，并消费现有 route health；不要重做 breaker、router 或 affinity。
+- **当前对账（2026-08-24，A/B/C 已完成）**：supplier breaker、半开 probe、
+  会话粘滞与健康感知路由保持原实现；`ServiceModeService` 现按 owner 聚合发布
+  gate、Beta 开关/时段/人工停服、durable admitted deployment、费用 guard、
+  supplier circuit 和 ZERO_LLM 实际可用性。权威读取失败不再误报 FULL_AI；
+  endpoint 使用平实 `FULL_AI/DEGRADED_AI/ZERO_LLM/MAINTENANCE` 文案。
 - **验收**：A 故障不摘除 B；半开仅一个 probe；切换不重复外发/扣减；授权快照中的 provider 与实际 outbound 一致；用户看到的状态与真实可用性一致。
 
 #### S0-11 将持久化 Registry、路由决策和权益配额对齐
+
+- **当前对账（2026-08-24，已完成）**：DB admission 每次读覆盖配置 registry，
+  missing/DISABLED/REJECTED/读取失败均不 eligible；V81 的 route decision
+  insert-only 记录 candidates、reason、policy、应得/实际等级和选择/fallback；V82
+  产品 quota 在 owner 行锁下原子 reserve/settle/release、重启持久且并发不超卖。
+  worker prepare/finalize/异常补偿真实消费上述路径；货币成本仍只归 S0-29。
 
 - **现状证据**：runtime 使用内存 Registry 与近似无限 synthetic quota；`JdbcProviderDeploymentRepository`、quota reconciliation 主要用于持久化/管理读取；实际路由按简单确定性顺序。
 - **最小交付**：让 DB admission 成为运行真源；形成不可变 route decision（候选、拒绝原因、选中部署、策略版本、应得/实际等级、fallback）；对调用次数/token/模拟权益等产品 quota 做共享 reserve/settle/release。货币价格、成本上限和供应商账单只归 S0-29。
@@ -213,6 +246,16 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 - **停止条件**：不把套餐直接绑定供应商模型，不提前接真实订单。
 
 #### S0-12 接入真实成年核验 Adapter 和申诉处置
+
+- **当前对账（2026-08-24，本地技术交付完成，`BLOCKED_EXTERNAL`）**：新增默认关闭的
+  `HttpAgeVerificationAdapter`，仅发送部署 Secret 派生的 HMAC 假名，严格接受
+  adult/minor age band + immutable provider version；任何外发、解析或冲突失败均在
+  状态写入前 fail-closed。V100 与 resolve API 已提供 ACTIVE `ADMIN`/
+  `PRIVACY_OPERATOR` 的 approve/deny/reverify/suspend、actor/时间审计和关联 OpsCase
+  原子关闭；V1–V100 与 SQL 148、Java contract、OpenAPI/Catalog 均通过。真实供应商、
+  PIA/DPA/区域/费用、Secret、值班责任人与合成演练未获批，因此开关保持 false，
+  该条目不能标记整体 DONE。操作边界见
+  `docs/beta-readiness/12-成年核验与申诉处置.md`。
 
 - **现状证据**：`AgeVerificationPort` seam、状态机和申诉 intake 已有，但只注入 `SimulatedAgeVerifier`，申诉队列只读。
 - **最小交付**：真实 adapter 只保存 age band/result/providerRef/时间；不保存证件或生物原文；provider 失败/冲突 fail-closed；增加人工 resolve/deny/reverify 状态变化与审计。
@@ -222,6 +265,14 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-13 接通紧急联系人真实 Webhook 渠道
 
+- **当前对账（2026-08-24，`BLOCKED_EXTERNAL`）**：V65 的独立同意、AES-GCM
+  密文存储、hash-only 一次性 token、7 天邀请期限、180 天验证期限、变更降回
+  DRAFT、撤回终态和读取审计均已存在，默认能力开关仍为 false；Java/SQL/前端
+  现有回归已随全量门禁通过。真实 channel 仍没有平台、接收 endpoint、签名协议、
+  Secret、联系人侧可达页面、责任人话术或启用前演练，无法在不替 Owner 选型、
+  不虚构收件语义的前提下安全实现。因此不增加假 webhook、不返回“已发送”，
+  也不启用能力；R50 与 `docs/beta-readiness/02` §4 继续作为外部阻塞。
+
 - **现状证据**：联系人保存、加密、邀请 token、确认、变更、撤回都已实现，但 `verify-start` 仍返回模拟 token；功能默认关闭；TODO R50 未完成。
 - **最小交付**：企业微信/飞书/自建 webhook 三选一；签名、超时、有界重试、幂等 delivery、发送审计；payload 最小化；验证链接一次性且短效。
 - **依赖**：Owner 选平台、提供部署 Secret、确认数据处理；按 `docs/beta-readiness/02` 完成演练。
@@ -230,12 +281,30 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-14 建立举报、安全事件、年龄申诉的 Case Workflow
 
+- **当前对账（2026-08-24，已完成）**：V88–V91 的 case/RBAC/actions/redacted
+  list 基础上，V101 将 report、age appeal 与 R3/R4 safety intake 原子接入生产者；
+  R4 自动生成 P0 `ESCALATED` case，R3 生成 P1 case，且均不虚构 `slaHours`。
+  transition 现为单调状态机、校验 active 且 kind-compatible assignee，REPORT 结案
+  同步 owner 状态；AGE_APPEAL 必须走带年龄决定的专用处置。INTERNAL/PUBLIC note
+  写入、显式内部备注读取及 BODY_ACCESS 全部审计，redacted list/响应仍不含内部备注、
+  providerRef 或聊天正文；H5 结案要求人工理由，不再写固定 `handled`。SQL 149、
+  Java/前端定向回归与 OpenAPI 已覆盖 producer→workflow→owner status 消费链。
+
 - **现状证据**：report/safety/appeal 只有 intake 和 admin 只读列表；`ReportRecord` 虽有 RESOLVED，但没有 assign/ack/escalate/resolve API；当前仅有单一 ADMIN 角色。
 - **最小交付**：统一或相互关联的 case 状态机；severity、SLA、assignee、处置原因、内部备注；`SAFETY_REVIEWER`/`PRIVACY_OPERATOR`/`OPS_VIEWER` 最小分权；默认脱敏摘要，正文访问需 case scope。
 - **验收**：R3/R4 可自动升级；状态变化和正文访问均审计；普通 admin 不能随意浏览全量聊天；用户只看自己的状态和公开说明，不看到内部备注。
 - **停止条件**：不编造热线、监管工单号、处置承诺或尚未批准的 SLA。
 
 #### S0-15 补 Refresh 会话/设备撤销、凭据重置与管理员 Re-auth
+
+- **当前对账（2026-08-24，已完成）**：V92 已提供 refresh family、current/last-seen
+  会话列表、单 family/全部撤销、延迟 replay family revoke、改密、ADMIN 15 分钟
+  re-auth 与临时密码强制首次改密；V94 将 `passwordMustChange` 纳入每次请求的
+  access snapshot 并把临时会话限制在 password/logout/refresh。V102 再撤销 vc_api
+  对 caller-supplied actor 函数的权限，runtime 只能经 HMAC owner context wrapper
+  列表/撤销/改密/re-auth/reset。H5 现保留并强制消费 `passwordMustChange`，统一导航
+  到改密页；账号页可查看非敏感会话时间并撤销、改密，管理页必须 re-auth 后才可
+  设置临时密码，明确不声称邮件/短信已发送。SQL 143/150、Java 与前端回归通过。
 
 - **现状证据**：已有 refresh rotation、logout、账号删除，但没有活动 refresh family/会话列表、单设备撤销、revoke-all、密码修改/安全重置。
 - **最小交付**：refresh family/device registry；当前/最近登录；单会话与全部撤销；受控 Beta 先做管理员发起的一次性重置并强制首次改密；管理员操作 re-auth，公开版前再上 MFA/WebAuthn。
@@ -244,11 +313,32 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-16 账号删除前终止 owner 的在途 Provider 调用
 
+- **当前对账（2026-08-24，已完成）**：进程内 `cancelOwner` 已先于账号删除；
+  V103 进一步用 `REQUIRES_NEW` owner-bound 事务先提交 durable deletion intent，
+  原子取消可取消 generation 与 PENDING/CLAIMED work item，并以 5 分钟 cancellation
+  target 让各实例轮询并协作取消本机 provider session。intent 存聚合取消计数而不存
+  用户名明文，COMPLETED tombstone 在 owner cascade 后保留并阻止用户名复用。新
+  generation/work item 与晚到 message/candidate/memory/vector/export 写入由触发器拒绝；
+  admission、execution authorization snapshot 及真实 embedding 在外发前再检查 intent。
+  删除/协调失败沿用 P1 `ACCOUNT_DELETE_FAILED`，成功前后审计 REQUESTED/DELETE。
+  SQL 151、Java coordinator/poller/admission/embedding 与全量 DB 回归通过。
+
 - **现状证据**：V43 会级联删除数据，但 `AuthService.deleteAccount()` 未先 cancel `ActiveInvocationRegistry` 中的 owner 调用；晚到 finalize 通常会被 fence 拒绝，但供应商调用仍可能耗时、计费或保留数据。
 - **最小交付**：先写 deletion/withdrawal intent；阻止新任务；按 owner 取消 in-flight generation/session；执行前再校验账号和授权；跨实例通过持久化取消意图协作。
 - **验收**：注销后无新 outbound；晚到结果不写 message/memory/vector/export；取消与供应商终止结果可审计；删除失败触发现有告警而不误报完成。
 
 #### S0-17 激活前补齐 Retention、通用密钥版本基础和删除防复活
+
+- **当前对账（2026-08-24，本地技术交付完成，`BLOCKED_EXTERNAL`）**：B 已由
+  V78 `enc2:keyId:keyVersion` single-write、当前/上一 key dual-read、checkpoint
+  re-encrypt 与 V79 summary 接线完成。A 新增 V104 显式 DRAFT/ACTIVE/RETIRED，
+  runtime 只能调用 active-policy wrapper；scheduler 双门禁为 enabled=false + dry-run=true，
+  run history 保留逐类计数/失败，legal hold 按 owner/category 生效。C 由 V103 在线
+  tombstone 阻断晚到 message/memory/vector/export，V104 提供 migration-owner-only
+  digest manifest export/reconcile；备份演练已真实验证旧 dump 复活后 dry-run→apply。
+  SQL 124/152、scheduler/crypto 回归和完整 backup/PITR drill 通过。真实周期批准、
+  KMS/轮换责任人与 manifest 的独立加密存储仍需 Owner/法务，故 policy 保持 DRAFT、
+  purge 保持关闭，不能标记整体 DONE。
 
 - **现状证据**：V70 policy 仍是 DRAFT、scheduler 默认关闭；`RestFieldCipher` 已覆盖主要正文，但通用 key ID/version/rotation、向量/导出/备份恢复后的删除传播还未完全闭环。
 - **最小交付**：A）Owner/专业人员批准 ACTIVE policy，补 dry-run/统计/分类失败隔离/legal hold；B）只建立通用 key ID/version、dual-read/single-write 和 checkpoint re-encrypt 基础；C）明确 export/vector/backup 的删除墓碑传播。`conversation_summary` 的字段接线和数据回填只归 S0-32。
@@ -295,10 +385,23 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 - **最小交付**：用隔离 Postgres、runtime、worker、Fake/Failure provider 和真实 H5，先只覆盖 6 条高价值旅程：登录/回跳、首次门禁、创建角色→聊天、SSE 断线恢复、记忆确认/删除/溯源、导出刷新恢复；再加键盘/焦点和窄屏。
 - **验收**：测试跑真实 HTTP/SSE 和 worker 链路；能注入 provider timeout/safety block；失败能定位请求号；不依赖生产凭据；CI 耗时符合 `docs/engineering/checks-principles.md`，新增长检查前另行说明。
 - **停止条件**：不为了 E2E 恢复旧 Evidence/Harness 体系，不为每个按钮复制低价值脚本。
+- **2026-08-24 对账（DONE）**：Playwright 以 390×844、单 worker 启动隔离 PostgreSQL/runtime/H5/loopback provider，7 条旅程覆盖上述六条及 provider safety/timeout。栈使用独立 `vc_migrator`/`vc_runtime_login`、启动最小权限实检、共享来源限流和 V105 合成单价/预算，不复用超级用户 runtime；终态前 SSE end marker 会补取 committed snapshot/durable event，timeout 不再误显示为连接中断。最终全量 7/7 PASS，request-id、真实 HTTP/SSE/worker 与 teardown 清理均验证；仍不进入秒级 `scripts/check.sh`。
 
 #### S0-24 建立真实 Provider 的分阶段启用与回滚门禁
 
-- **现状证据**：provider adapter、模型 rollout 文档、预算 guard、指标已有，但真实 moderation/embedding、实际健康状态、真实成本和部署 smoke 尚未共同验收。
+- **当前对账（2026-08-24）**：A 已完成。固定 `e2e-synthetic-v1`
+  将 1,000 条红队语料、safety/moderation、429/5xx/断流/超时合约、
+  Admission fail-closed 与两条回环真实浏览器纵切合并为单一离线入口，
+  起止均确认 `SYNTHETIC/eval=false`；一次低成本真实 Provider 合成
+  smoke 也已 PASS 并恢复 `DISABLED`。B1 已完成数据库单账号绑定、runtime
+  无条件 fail-closed 和 operator-only 推进，但未选择账号、未启动真实
+  Canary。B2 的 V96/V97 已完成 attempt 起止/首输出/固定失败分类观测，及
+  实际 deployment model/revision/config、prompt/persona、release policy 的
+  外发前不可变绑定；真实 Canary 的 P95、滚动成功率与账单数据尚未产生。
+  C 的主告警飞书通道已真实收件；V98 已把连续失败熔断接成 durable DISABLED
+  与脱敏回滚历史，Safety leak 只允许 OPERATOR；独立 generic signed 替补
+  webhook 已接线、默认关闭。真实替补 endpoint/升级人员、真实账单漂移和付费
+  Canary 数据仍未产生，因此 S0-24 整体仍非 DONE。
 - **最小交付**：合成流量 smoke → 固定 eval/red-team → 单个内部账号 canary → 小流量 Beta；每步绑定 model/prompt/config 版本、阈值、自动/人工回滚条件和告警接收端。
 - **验收**：验证首 token/完成时延、429/5xx/断流、审核异常、预算停机、降级文案、账单漂移；任一门禁失败都不能扩大流量；凭据仅部署注入。
 - **停止条件**：D0 未给出 GO、S0-04/07/12 未完成、告警无人接收或值班不可持续时不得开放真实用户。
@@ -352,17 +455,45 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 
 #### S0-27 分离 runtime、worker、coordinator 与 migrator 数据库权限
 
+- **当前对账（2026-08-24，已完成）**：Compose 不再把 `postgres` 注入 runtime。
+  新 volume 以独立 `vc_migrator` 登录初始化，`vc_runtime_login` 使用不同 Secret，且只
+  继承现有 `vc_api/vc_worker/vc_job_coordinator/vc_dispatcher` NOLOGIN/NOBYPASSRLS
+  角色（当前单进程的最小可行 composite role）。production 强制
+  `VC_ENFORCE_DB_LEAST_PRIVILEGE=true`；startup 查询并拒绝 SUPERUSER、BYPASSRLS、
+  CREATEDB/CREATEROLE/schema CREATE、migrator 同身份或缺少最小成员资格。Flyway
+  也显式拒绝与 runtime 同用户名。匿名 `run-role-separation-drill.sh` 已证明 runtime
+  不能 CREATE 或读取 owner-binding Secret，migrator 仍可从空库应用 V1–V108；旧
+  volume 的一次性角色 bootstrap 与独立凭据流程已写入部署文档。
+
 - **现状证据**：部署 Compose 中 runtime/migrator 仍可能使用 `postgres`，与既有 `vc_api`、`vc_worker`、coordinator、migrator 权限设计不一致。
 - **最小交付**：迁移专用角色；runtime API/worker/job 分凭据或最小可行角色；撤销运行时 DDL、BYPASSRLS、无必要 schema/table 权限；Secret 分开注入。
 - **验收**：权限测试证明 runtime 不能 CREATE/ALTER/DROP、不能直读受保护表/密钥、不能跨 owner；migrator 仍可从空库和上一版本升级。
 
 #### S0-28 对齐 Anthropic 与 OpenAI 的 Egress/SSRF 策略
 
+- **当前对账（2026-08-24，已完成）**：`AnthropicMessagesConfig` 新增与 OpenAI
+  相同的 `ProviderEgressPolicy` 注入构造，Provisioner 对两种协议传入同一
+  `VC_MODEL_EGRESS_ALLOWED_HOSTS` 合并策略；默认构造仍只允许冻结官方 host/loopback。
+  两侧继续使用 `EgressDnsGuard` 在连接前复核实际解析地址，HttpClient 强制
+  `Redirect.NEVER`。定向测试覆盖 Anthropic 自定义批准 host、默认拒绝、非 443、
+  metadata/private literal，并复用共享 policy/DNS 测试及两协议 contract 的 DNS
+  rebinding/redirect/凭据不转发断言。
+
 - **现状证据**：OpenAI adapter 接收部署 allowlist；Anthropic config 仍固定 defaults，额外批准主机不生效，容易促使运营绕过正确的统一入口。
 - **最小交付**：两个协议适配器消费同一 `ProviderEgressPolicy`；覆盖自定义合法主机、私网、metadata、DNS 变化、重定向和端口测试。
 - **验收**：批准主机可达；未批准/私网/metadata/危险重定向失败；Authorization/API key 不随重定向泄露。
 
 #### S0-29 将硬预算改为原子预留、结算和释放
+
+- **当前对账（2026-08-24，已完成）**：V105 将 price 改为
+  `(provider, model, version)` 历史，按 effective/current version 冻结 input/output
+  单价；prepare 在 attempt intent/任何出站之前，以 owner+work item 幂等键和月行锁原子
+  reserve，未知价、非正 ceiling、并发超额全部 fail-closed。retry 同部署复用 hold，
+  换部署/失败/取消/超时 release，成功按实际 token settle，正常完成把 actual USD 写入
+  usage。80/95/100% 使用固定无标识告警码。billable Provider + datasource 若没有正 cap
+  启动即拒绝；FAKE/loopback 与 ZERO_LLM 不计费。SQL 154 含双连接并发只允许一个 hold、
+  retry/settle/release 幂等与 exact-cap/unknown-price；worker 定向回归验证 reserve→
+  settle→finalize actual cost 消费链。该成本账不包含订单/支付/用户收费。
 
 - **现状证据**：BudgetGuard 主要读取已结算 `actual_cost`，真实成本当前仍可能为 0；并发请求可同时通过检查后超支。
 - **最小交付**：版本化价格表；DB 原子 cost reservation；完成时 actual settle，失败/取消/安全阻断 release；80/95/100% 阈值和未知价格 fail-closed。
@@ -374,12 +505,14 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 - **现状证据**：access JWT 默认可在生命周期内无 DB 校验继续使用；禁用/角色变更主要在 login/refresh 生效；认证 abuse guard 为进程内且未覆盖 generation/SSE/export/report。
 - **最小交付**：短 TTL + session epoch/token version 或受控 introspection；禁用、降权、logout、改密递增 epoch；共享限流覆盖登录、生成并发、导出频率、SSE 连接/时长和举报滥用。
 - **验收**：禁用/降权后的下一次敏感请求即拒绝；两实例共享限额；稳定返回 429 + retry hint；不记录原始凭据或把危机求助误限流掉。
+- **2026-08-24 对账（本地技术交付 DONE）**：V84 的 `session_epoch`/access snapshot 与 V92/V94 的 logout、会话撤销和改密递增已覆盖即时失效；generation/export/report 的共享频率窗继续由 DB 原子函数承担。V106 新增仅保存来源 HMAC 摘要的 login/refresh 共享窗口，以及 owner-bound generation/SSE 并发租约（过期自动回收、opaque lease 释放）；SSE 在 completion/timeout/error 路径释放。429 统一返回 `Retry-After`，OpenAPI 与 error catalog 已同步；紧急联系人路由明确不进入该过滤器。SQL 135/150/155、相关 Java 测试和 production fail-closed 预检通过。受 S0-33 单副本硬门禁约束，不实际启动双 runtime；跨调用者共享与竞争串行化由数据库行锁/advisory lock 验证。
 
 #### S0-31 让告警和定时任务具备可证明的送达与单实例执行
 
 - **现状证据**：Webhook 告警目前 fire-and-forget，失败仅 WARN；DAU/retention scheduler 没有 leader/lease、run history、freshness；多副本可能重复 purge 或保持旧 gauge。
 - **最小交付**：有限 outbox/retry、HMAC 签名、host allowlist、去重、delivery 指标；scheduler leader/lease；记录开始/结束/分类计数/last-success；dry-run、pause、legal hold。
 - **验收**：接收端短故障后可恢复送达且有重试上限；恶意 URL 拒绝；两实例只有一个 purge；任务过期/失败自动告警；消息不含用户正文。
+- **2026-08-24 对账（本地技术交付 DONE）**：V85 outbox 已具备 code/window 去重、`SKIP LOCKED`、IN_FLIGHT 崩溃回收、5 次指数退避、dead-letter/指标；generic 独立 HMAC、三类协议的固定/allowlist 出站策略及私网/DNS/重定向拒绝均有测试，短故障→RETRY→DELIVERED 已补回归。V86 对 retention/auth-audit/DAU/export-expiry 提供 DB 排他租约、pause 与聚合 run history；retention 的部署/DB dry-run 均执行同一 legal-hold-aware 估算并以 DRY_RUN + 分类计数结束。V107 提供无用户数据的 last-success/latest-status，固定 P1 码覆盖任务直接失败、无新成功与 STARTED 超时。SQL 136/137/156 与相关 Java 测试通过。受 S0-33 约束不实际运行双 runtime，但数据库竞争与 `SKIP LOCKED` 语义已验证。真实替补 endpoint/接收人与完整人工升级链仍为外部运营前置，不影响本地技术交付结论。
 
 #### S0-32 加密会话摘要及其迁移/删除链路
 
@@ -387,6 +520,7 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 - **依赖**：先完成 S0-17-B 的通用 key ID/version 与 dual-read/single-write 基础；本任务是 summary 字段接线和存量 summary backfill 的唯一 owner。
 - **最小交付**：摘要写读接入通用 cipher/key version；可重入 summary backfill；导出边界解密；删除覆盖消息时失效；备份/轮换流程纳入。
 - **验收**：数据库与备份中的有效 summary 为加密格式；API/模型边界才解密；日志无明文；回填中断可继续；无痕/删除/账号注销无残留。
+- **2026-08-24 对账（本地技术交付 DONE）**：V79 已将 conversation summary 纳入 RestFieldCipher dual-read 与 stale-cipher keyset/条件替换；回填重跑会跳过当前 prefix，日志仅函数名、数量和数值 ID。V108 进一步删除会短暂插入 plaintext 的 SQL turn writer、撤销旧 runtime writer 权限，并以只返回 IDs/count/service-class 的 metadata → Java AES-GCM → enc2-only wrapper 替代；普通写同样在 JDBC 前加密，API/worker 读取才解密。incognito 返回空 metadata；单消息删除在同事务移除覆盖摘要，conversation 删除/清空聊天/账号注销继续 FK cascade，升级时清理历史 invalid 摘要。SQL 118/130/157 与 summary/backfill/controller/worker 测试通过。备份只含 ciphertext 的代码与本地恢复边界已收口；生产 KMS、previous key 保留/销毁和备份取回演练仍需 Owner，不伪造完成。
 
 #### S0-33 在共享状态完成前硬性限制单副本部署
 
@@ -394,6 +528,7 @@ S0 也不是全部并行。凡是同时修改 OpenAPI、Catalog 或同一 migrat
 - **最小交付**：在 Compose/部署配置、startup preflight 和运维文档中将 Technical Alpha/Beta runtime 副本数固定为 1；若发现集群 membership 或声明副本数大于 1 则启动/发布失败；明确列出外置状态清单和进入 S2-37 的指标门槛。
 - **验收**：单副本正常；副本数大于 1 的合成部署被硬阻断，而不是仅告警；故障恢复不会误起两个 active runtime；门禁不能被普通 feature flag 远程绕过。
 - **停止条件**：本项只诚实限制当前能力，不授权顺手引入 Redis、消息总线、WebSocket 或 HA 平台。
+- **2026-08-24 对账（本地技术交付 DONE）**：Compose 固定 `deploy.replicas: 1` 并注入 `VC_RUNTIME_REPLICAS=1`；profile-independent EnvironmentPostProcessor 在 bean 创建前拒绝任何非 1/非法声明。对“两个实例都谎报 1”的路径，`SingletonLeaseDataSource` 在所有连接与 unwrap 入口前要求 dedicated PostgreSQL session advisory lock；第二实例记录 `RUNTIME_SINGLETON_REFUSED`、每条数据路径 fail-closed 并 exit 87，watchdog 在租约 session 死亡/丢失时同样 fail-stop，正常崩溃则由 session 关闭自动释放、无陈旧 lease。单元测试覆盖 HELD/REFUSED/UNAVAILABLE/watchdog，部署 smoke 覆盖声明 2 拒启、`--scale runtime=2` 第二实例拒绝且第一实例保持 UP、缩回 1 恢复。`ops/deploy/README.md` 已列进程内/已外置状态，以及仅触发 ADR 的容量/不可用阈值和解除门禁所需的双实例故障证据；未引入 Redis、总线、WebSocket 或 HA。
 
 ## 6. S1：受控 Beta 核心价值和运营闭环（37 项）
 
@@ -682,7 +817,7 @@ D0 决策 S0-01
 | S0-11 | A DB admission 真源；B route-decision 审计；C 非货币权益 quota | router wiring 和公共配置由一个集成 owner |
 | S0-14 | A case schema/state；B RBAC；C assign/resolve API；D 脱敏 UI | schema/OpenAPI 先冻结，后续只消费 |
 | S0-17 | A retention policy/runner；B 仅做通用 key version/dual-read/single-write；C PITR 删除防复活 | B 先于 S0-32；summary 接线/backfill 只归 S0-32；deletion taxonomy 和 migration 号统一协调 |
-| S0-24 | A 合成 smoke/eval；B canary 阈值；C rollback/告警 | 只有 A PASS 才允许内部 canary |
+| S0-24 | A 合成 smoke/eval（已完成）；B1 单账号硬门禁（已完成、未启用）；B2a 版本/观测底座（已完成）；B2b 真实 canary（未开始）；C durable rollback/主+替补通道代码（已完成，真实替补与运营演练未完成） | A 已 PASS；B1 只能放行数据库绑定的唯一账号；B2b 仍须锁定内部账号与供应商不可变 revision，不得开放真实用户 |
 | S0-31 | A 可靠 webhook outbox；B scheduler leader/history | 共用告警码/指标契约，DB migration 串行 |
 
 S0-15 与 S0-30、S0-11 与 S0-29 已按责任拆开：前者分别负责 refresh family 与 access 失效/业务限流，后者分别负责产品权益 quota 与货币成本预算。实现 Agent 不得再把它们合并成一个“大 Auth”或“大计费”重构。

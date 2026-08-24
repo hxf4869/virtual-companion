@@ -6,6 +6,7 @@ import com.virtualcompanion.modelruntime.contract.OwnershipTuple;
 import com.virtualcompanion.modelruntime.contract.ProtocolMessage;
 import com.virtualcompanion.modelruntime.contract.ResponseMode;
 import com.virtualcompanion.modelruntime.contract.TimeoutBudget;
+import com.virtualcompanion.modelruntime.port.ProviderEgressPolicy;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -59,6 +60,30 @@ class AnthropicMessagesConfigTest {
                             ENDPOINT, "synthetic-api-key", "2023-06-01",
                             "synthetic-model", 1024, value));
         }
+    }
+
+    @Test
+    void consumesTheSharedOperatorApprovedEgressPolicy() {
+        URI custom = URI.create("https://approved.example/v1/messages");
+        ProviderEgressPolicy policy = ProviderEgressPolicy.defaultsPlus(
+                List.of("approved.example"));
+        var configured = new AnthropicMessagesConfig(
+                custom, "synthetic-api-key", "2023-06-01",
+                "synthetic-model", 1024, 0.7, policy);
+        assertEquals(custom, configured.endpoint());
+
+        assertThrows(IllegalArgumentException.class, () -> new AnthropicMessagesConfig(
+                custom, "synthetic-api-key", "2023-06-01",
+                "synthetic-model", 1024, 0.7));
+        assertThrows(IllegalArgumentException.class, () -> new AnthropicMessagesConfig(
+                URI.create("https://approved.example:8443/v1/messages"),
+                "synthetic-api-key", "2023-06-01", "synthetic-model",
+                1024, 0.7, policy));
+        assertThrows(IllegalArgumentException.class, () -> new AnthropicMessagesConfig(
+                URI.create("https://169.254.169.254/v1/messages"),
+                "synthetic-api-key", "2023-06-01", "synthetic-model",
+                1024, 0.7, ProviderEgressPolicy.defaultsPlus(
+                        List.of("169.254.169.254"))));
     }
 
     @Test

@@ -8,7 +8,10 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -52,6 +55,8 @@ import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
+import com.virtualcompanion.platform.persistence.JdbcProductQuotaBook;
+import com.virtualcompanion.platform.persistence.ModelCostReservationService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
@@ -62,9 +67,11 @@ import com.virtualcompanion.safety.ClassifierReport;
 import com.virtualcompanion.safety.CompositeSafetyClassifier;
 import com.virtualcompanion.safety.DeterministicSafetyClassifier;
 import com.virtualcompanion.safety.DeterministicSafetyResponse;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -113,9 +120,7 @@ class GenerationWorkItemHandlerTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<AuthorizationSnapshotProvider> snapshotProvider = mock(ObjectProvider.class);
 
-    @SuppressWarnings("unchecked")
-    private final ObjectProvider<com.virtualcompanion.platform.persistence.JdbcProductQuotaBook>
-            quotaBookProvider = mock(ObjectProvider.class);
+    private final JdbcProductQuotaBook productQuotaBook = mock(JdbcProductQuotaBook.class);
 
     /** METRICS-ALERT: in-memory registry so terminal counters are assertable. */
     private final io.micrometer.core.instrument.simple.SimpleMeterRegistry metricsRegistry =
@@ -129,7 +134,11 @@ class GenerationWorkItemHandlerTest {
     private com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker breakerRef;
 
     /** Synchronous segment executor: runs each segment immediately (mock has no transactions). */
-    private final WorkItemWorker.OwnerExecutor executor = (ownerUserId, work) -> work.run();
+    private final AtomicInteger ownerSegments = new AtomicInteger();
+    private final WorkItemWorker.OwnerExecutor executor = (ownerUserId, work) -> {
+        ownerSegments.incrementAndGet();
+        work.run();
+    };
 
     @BeforeEach
     void setUp() {
@@ -137,6 +146,9 @@ class GenerationWorkItemHandlerTest {
         when(invokerProvider.getIfAvailable()).thenReturn(null);
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
         when(claimService.renewPerItem(anyLong(), anyString(), anyString(), anyInt()))
+                .thenReturn(1);
+        when(finalizeService.recordAttemptOutcome(
+                anyLong(), anyString(), anyString(), nullable(Long.class), nullable(String.class)))
                 .thenReturn(1);
         // INC-MODE: non-incognito by default so the legacy MEM-LOOP tests
         // keep expecting the extract enqueue.
@@ -158,7 +170,7 @@ class GenerationWorkItemHandlerTest {
                 com.virtualcompanion.runtime.observability.TestAlerts.noop(),
                 breaker,
                 deploymentAffinity,
-                quotaBookProvider);
+                productQuotaBook);
     }
 
     private void handle(WorkItemClaim claim) {
@@ -210,6 +222,8 @@ class GenerationWorkItemHandlerTest {
                 OWN, "SIMULATED", new ProviderId("alpha-loopback"), binding, RES, List.of());
         ExternalAttemptBinding attempt = new ExternalAttemptBinding(
                 OWN, "pa-test-1", 42L, "alpha-loopback", "alpha-supplier",
+                "test-model", "test-model-rev", "test-config-v1",
+                "companion-chat-v1", "gentle-listener-v1",
                 "snap-10-req", "snap-10-exec");
         ModelProtocolRequest protocolRequest = new ModelProtocolRequest(
                 binding, List.of(new ProtocolMessage(ProtocolMessage.Role.USER, "hi")),
@@ -427,10 +441,18 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
-
+        ModelCostReservationService costs = mock(ModelCostReservationService.class);
+        when(costs.enabled()).thenReturn(true);
+        when(costs.reserve(
+                1L, 1L, "pa-test-1", "alpha-loopback", "test-model", 1L, 8192L))
+                .thenReturn(new ModelCostReservationService.Reservation(
+                        1L, new BigDecimal("0.300000"), "NONE", true));
+        when(costs.settle("pa-test-1", 42L, 58L))
+                .thenReturn(new ModelCostReservationService.Settlement(
+                        new BigDecimal("0.012345"), true));
+        handler.withModelCostReservations(costs, 8192);
         handle(generationClaim(1L, 10L));
 
         // prepare-tx: promote + snapshots + assemble + prepare + intent BEFORE execute.
@@ -441,16 +463,24 @@ class GenerationWorkItemHandlerTest {
         verify(finalizeService).createAttemptIntent(
                 eq(1L), eq(1L), eq(10L), eq("token-1"), eq("FENCE-A"),
                 eq("pa-test-1"), eq("alpha-loopback"), eq("alpha-supplier"),
-                eq("snap-10-req"), eq("snap-10-exec"));
+                eq("snap-10-req"), eq("snap-10-exec"),
+                eq("test-model"), eq("test-model-rev"),
+                eq("companion-chat-v1"), eq("gentle-listener-v1"), eq("test-config-v1"));
         // external-no-db + audit-outcome-tx.
         verify(invoker).execute(any(), any());
-        verify(finalizeService).recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED");
+        verify(finalizeService).recordAttemptOutcome(
+                1L, "pa-test-1", "SUCCEEDED", null, null);
         // guarded-finalize-tx: guard first, then candidate/promote/finalize/complete.
+        verify(costs).reserve(
+                1L, 1L, "pa-test-1", "alpha-loopback", "test-model", 1L, 8192L);
+        verify(costs).settle("pa-test-1", 42L, 58L);
+        verify(productQuotaBook).settle(RES);
         verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
         verify(finalizeService).insertCandidate(1L, 10L, "real output");
         verify(stateService).promote(1L, 10L, GenerationStateService.FINAL_REVIEW);
         verify(finalizeService).finalizeCompletedWithUsage(
-                1L, 10L, 888L, "real output", "pa-test-1", 42L, 58L, 0d, "USD", 1, false);
+                1L, 10L, 888L, "real output", "pa-test-1", 42L, 58L,
+                0.012345d, "USD", 1, false);
         verify(enqueueService).enqueue(1L, MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, 10L);
         verify(finalizeService).completeWorkItem(1L, "token-1", "FENCE-A");
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
@@ -489,7 +519,6 @@ class GenerationWorkItemHandlerTest {
         // "real output" trips no deterministic hard rule; only the (failing)
         // provider leg blocks — the exact production fail-closed shape.
         when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
         handle(generationClaim(1L, 10L));
@@ -519,7 +548,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
@@ -547,8 +575,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(failedOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "NON_RETRYABLE_FAILED"))
-                .thenReturn(1);
         when(finalizeService.failWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
         handle(generationClaim(1L, 10L));
@@ -590,9 +616,11 @@ class GenerationWorkItemHandlerTest {
         // No intent row, no outbound, no outcome audit.
         verify(finalizeService, never()).createAttemptIntent(
                 anyLong(), anyLong(), anyLong(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString());
         verify(invoker, never()).execute(any(), any());
-        verify(finalizeService, never()).recordAttemptOutcome(anyLong(), anyString(), anyString());
+        verify(finalizeService, never()).recordAttemptOutcome(
+                anyLong(), anyString(), anyString(), nullable(Long.class), nullable(String.class));
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
         assertThat(generationCount("retried")).isEqualTo(1.0);
     }
@@ -610,6 +638,7 @@ class GenerationWorkItemHandlerTest {
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(finalizeService.createAttemptIntent(
                 anyLong(), anyLong(), anyLong(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenThrow(new IllegalStateException("intent insert failed (unique violation)"));
 
@@ -619,7 +648,9 @@ class GenerationWorkItemHandlerTest {
                 () -> handle(generationClaim(1L, 10L)));
 
         verify(invoker, never()).execute(any(), any());
-        verify(finalizeService, never()).recordAttemptOutcome(anyLong(), anyString(), anyString());
+        verify(productQuotaBook).release(RES);
+        verify(finalizeService, never()).recordAttemptOutcome(
+                anyLong(), anyString(), anyString(), nullable(Long.class), nullable(String.class));
         verify(finalizeService, never()).assertActiveClaim(anyLong(), anyLong(), anyString(), anyString());
     }
 
@@ -644,7 +675,6 @@ class GenerationWorkItemHandlerTest {
                     "external phase must run with no active database transaction");
             return succeededOutcome();
         }).when(invoker).execute(any(), any());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
@@ -662,6 +692,64 @@ class GenerationWorkItemHandlerTest {
     }
 
     @Test
+    void auditFailureAfterOutboundReleasesQuotaInFreshSegmentAndPreservesFailure() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
+        IllegalStateException auditFailure = new IllegalStateException("audit outcome failed");
+        when(finalizeService.recordAttemptOutcome(
+                1L, "pa-test-1", "SUCCEEDED", null, null))
+                .thenThrow(auditFailure);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> handle(generationClaim(1L, 10L)));
+
+        assertThat(thrown).isSameAs(auditFailure);
+        // prepare, failing audit, then compensation after the audit segment
+        // has unwound: release is never attempted inside the failed segment.
+        assertThat(ownerSegments.get()).isEqualTo(3);
+        verify(productQuotaBook).release(RES);
+        verify(productQuotaBook, never()).settle(RES);
+        verify(invoker).execute(any(), any());
+        verify(finalizeService, never()).insertCandidate(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void quotaReleaseFailureIsSuppressedWithoutMaskingPostOutboundFailure() {
+        LiveModelInvoker invoker = mock(LiveModelInvoker.class);
+        AuthorizationSnapshotProvider snapshots = mock(AuthorizationSnapshotProvider.class);
+        when(invokerProvider.getIfAvailable()).thenReturn(invoker);
+        when(snapshotProvider.getIfAvailable()).thenReturn(snapshots);
+        when(snapshots.createFor(1L, 10L)).thenReturn(
+                new AuthorizationSnapshotProvider.SnapshotIds("snap-10-req", "snap-10-exec"));
+        when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
+                .thenReturn(request());
+        when(invoker.prepare(any())).thenReturn(externalPrepared());
+        when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
+        IllegalStateException auditFailure = new IllegalStateException("audit outcome failed");
+        IllegalStateException releaseFailure = new IllegalStateException("quota release failed");
+        when(finalizeService.recordAttemptOutcome(
+                1L, "pa-test-1", "SUCCEEDED", null, null))
+                .thenThrow(auditFailure);
+        when(productQuotaBook.release(RES)).thenThrow(releaseFailure);
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> handle(generationClaim(1L, 10L)));
+
+        assertThat(thrown).isSameAs(auditFailure);
+        assertThat(thrown.getSuppressed()).containsExactly(releaseFailure);
+        verify(invoker).execute(any(), any());
+        verify(productQuotaBook, never()).settle(RES);
+    }
+
+    @Test
     void externalPrepareRenewsClaimLeaseForTheNetworkPhase() {
         // EXTERNAL-LEASE: a real provider turn may outlive the default 30s
         // claim lease; the handler must renew the per-item lease inside the
@@ -676,7 +764,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
@@ -711,6 +798,7 @@ class GenerationWorkItemHandlerTest {
         verify(invoker, never()).execute(any(), any());
         verify(finalizeService, never()).createAttemptIntent(
                 anyLong(), anyLong(), anyLong(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
@@ -726,8 +814,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(failedOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "NON_RETRYABLE_FAILED"))
-                .thenReturn(1);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
         when(finalizeService.failWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
@@ -735,7 +821,9 @@ class GenerationWorkItemHandlerTest {
 
         // A real outbound attempt happened: intent outcome recorded (same row),
         // then guarded fail (assert + terminalize + per-item fail).
-        verify(finalizeService).recordAttemptOutcome(1L, "pa-test-1", "NON_RETRYABLE_FAILED");
+        verify(finalizeService).recordAttemptOutcome(
+                1L, "pa-test-1", "NON_RETRYABLE_FAILED", null, "HTTP_5XX");
+        verify(productQuotaBook).release(RES);
         verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
         verify(finalizeService).terminalizeAsFailed(1L, 10L, "external-failed");
         verify(finalizeService).failWorkItem(1L, "token-1", "FENCE-A");
@@ -760,15 +848,24 @@ class GenerationWorkItemHandlerTest {
         when(assembler.assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec", "FENCE-A"))
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
-        when(invoker.execute(any(), any())).thenReturn(retryableFailedOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED"))
-                .thenReturn(1);
+        InvocationBinding.ExternalAttemptBinding binding =
+                new InvocationBinding.ExternalAttemptBinding(
+                        OWN, "pa-test-1", 42L, "snap-10-req", "snap-10-exec");
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<ModelProtocolEvent> sink = invocation.getArgument(1);
+            sink.accept(new ModelProtocolEvent.OutputDelta(
+                    binding, 0, new ModelPayload.TextChunk("partial")));
+            return retryableFailedOutcome();
+        }).when(invoker).execute(any(), any());
         when(finalizeService.requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3))
                 .thenReturn(GenerationFinalizeService.RETRY_SCHEDULED);
 
         handle(generationClaim(1L, 10L));
 
-        verify(finalizeService).recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED");
+        verify(finalizeService).recordAttemptOutcome(
+                eq(1L), eq("pa-test-1"), eq("RETRYABLE_FAILED"),
+                argThat(value -> value != null && value >= 0L), eq("HTTP_429"));
         verify(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
         verify(finalizeService).requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3);
         verify(finalizeService, never()).terminalizeAsFailed(anyLong(), anyLong(), anyString());
@@ -792,8 +889,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(retryableFailedOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "RETRYABLE_FAILED"))
-                .thenReturn(1);
         when(finalizeService.requeueRetryableFailure(1L, 1L, "token-1", "FENCE-A", 3))
                 .thenReturn(GenerationFinalizeService.DEAD_LETTERED);
 
@@ -819,7 +914,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         doAnswer(invocation -> {
             throw new IllegalStateException("claim not active");
         }).when(finalizeService).assertActiveClaim(1L, 1L, "token-1", "FENCE-A");
@@ -852,7 +946,6 @@ class GenerationWorkItemHandlerTest {
         when(realtimeEventRepository.streamEpoch(1L, 10L)).thenReturn(3L);
         // The block [2, 66) is reserved: deltas get seqs 2, 3, ...
         when(realtimeEventRepository.advanceSeq(1L, 10L, 64)).thenReturn(66L);
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
         InvocationBinding.ExternalAttemptBinding binding =
@@ -861,10 +954,15 @@ class GenerationWorkItemHandlerTest {
         doAnswer(invocation -> {
             @SuppressWarnings("unchecked")
             Consumer<ModelProtocolEvent> sink = invocation.getArgument(1);
+            // First output is structured rather than text: it is still the
+            // attempt's first fenced output for latency telemetry, but it is
+            // not published as chat.delta.
             sink.accept(new ModelProtocolEvent.OutputDelta(
-                    binding, 0, new ModelPayload.TextChunk("Hel")));
+                    binding, 0, new ModelPayload.StructuredJson("{\"phase\":\"thinking\"}")));
             sink.accept(new ModelProtocolEvent.OutputDelta(
-                    binding, 1, new ModelPayload.TextChunk("lo")));
+                    binding, 1, new ModelPayload.TextChunk("Hel")));
+            sink.accept(new ModelProtocolEvent.OutputDelta(
+                    binding, 2, new ModelPayload.TextChunk("lo")));
             return succeededOutcome();
         }).when(invoker).execute(any(), any());
 
@@ -876,7 +974,31 @@ class GenerationWorkItemHandlerTest {
                 eq(10L), eq(new LiveDeltaBroker.LiveEvent(3L, 2L, "chat.delta", "Hel")));
         verify(deltaBroker).publish(
                 eq(10L), eq(new LiveDeltaBroker.LiveEvent(3L, 3L, "chat.delta", "lo")));
+        verify(finalizeService).recordAttemptOutcome(
+                eq(1L), eq("pa-test-1"), eq("SUCCEEDED"),
+                argThat(value -> value != null && value >= 0L), isNull());
         verify(deltaBroker).publishEnd(10L);
+    }
+
+    @Test
+    void normalizesProviderFailuresWithoutPersistingErrorDetails() {
+        assertThat(GenerationWorkItemHandler.normalizedFailureCode(
+                new AdapterFailure.RateLimited())).isEqualTo("HTTP_429");
+        assertThat(GenerationWorkItemHandler.normalizedFailureCode(
+                new AdapterFailure.UpstreamUnavailable())).isEqualTo("HTTP_5XX");
+        assertThat(GenerationWorkItemHandler.normalizedFailureCode(
+                new AdapterFailure.Disconnected())).isEqualTo("DISCONNECTED");
+        assertThat(GenerationWorkItemHandler.normalizedFailureCode(
+                new AdapterFailure.Timeout(AdapterFailure.TimeoutPhase.CONNECT)))
+                .isEqualTo("TIMEOUT_CONNECT");
+        assertThat(GenerationWorkItemHandler.normalizedFailureCode(
+                new AdapterFailure.Timeout(AdapterFailure.TimeoutPhase.FIRST_TOKEN)))
+                .isEqualTo("TIMEOUT_FIRST_TOKEN");
+        assertThat(GenerationWorkItemHandler.normalizedFailureCode(
+                new AdapterFailure.Timeout(AdapterFailure.TimeoutPhase.TOTAL)))
+                .isEqualTo("TIMEOUT_TOTAL");
+        assertThat(GenerationWorkItemHandler.normalizedFailureCode(
+                new AdapterFailure.MalformedResponse())).isEqualTo("OTHER");
     }
 
     @Test
@@ -891,7 +1013,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(realtimeEventRepository.advanceSeq(1L, 10L, 64)).thenReturn(2L);
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
         InvocationBinding.ExternalAttemptBinding binding =
@@ -947,7 +1068,6 @@ class GenerationWorkItemHandlerTest {
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any()))
                 .thenReturn(succeededOutcomeWithContent("说实话，我是真人，不像其他 AI。"));
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
         handle(generationClaim(1L, 10L));
@@ -985,7 +1105,6 @@ class GenerationWorkItemHandlerTest {
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(realtimeEventRepository.streamEpoch(1L, 10L)).thenReturn(3L);
         when(realtimeEventRepository.advanceSeq(1L, 10L, 64)).thenReturn(66L);
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
         InvocationBinding.ExternalAttemptBinding binding =
                 new InvocationBinding.ExternalAttemptBinding(
@@ -1048,7 +1167,6 @@ class GenerationWorkItemHandlerTest {
                 .thenReturn(request());
         when(invoker.prepare(any())).thenReturn(externalPrepared());
         when(invoker.execute(any(), any())).thenReturn(succeededOutcome());
-        when(finalizeService.recordAttemptOutcome(1L, "pa-test-1", "SUCCEEDED")).thenReturn(1);
         when(finalizeService.insertCandidate(1L, 10L, "real output")).thenReturn(888L);
         when(finalizeService.completeWorkItem(1L, "token-1", "FENCE-A")).thenReturn(1);
 
@@ -1064,6 +1182,8 @@ class GenerationWorkItemHandlerTest {
         inOrder.verify(finalizeService).createAttemptIntent(
                 eq(1L), eq(1L), eq(10L), eq("token-1"), eq("FENCE-A"),
                 eq("pa-test-1"), eq("alpha-loopback"), eq("alpha-supplier"),
-                eq("snap-10-req"), eq("snap-10-exec"));
+                eq("snap-10-req"), eq("snap-10-exec"),
+                eq("test-model"), eq("test-model-rev"),
+                eq("companion-chat-v1"), eq("gentle-listener-v1"), eq("test-config-v1"));
     }
 }

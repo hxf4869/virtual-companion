@@ -7,6 +7,7 @@ import com.virtualcompanion.modelopenai.OpenAiChatCompletionsAdapter;
 import com.virtualcompanion.modelopenai.OpenAiChatCompletionsConfig;
 import com.virtualcompanion.modelruntime.execution.AdapterLocator;
 import com.virtualcompanion.modelruntime.execution.InMemoryAdapterLocator;
+import com.virtualcompanion.modelruntime.execution.ProviderDeploymentMetadata;
 import com.virtualcompanion.modelruntime.port.ModelProtocolAdapter;
 import com.virtualcompanion.modelruntime.registry.InMemoryProviderRegistry;
 import com.virtualcompanion.modelruntime.registry.ProviderId;
@@ -46,6 +47,7 @@ final class ApprovedModelProviderProvisioner {
         InMemoryProviderRegistry registry = new InMemoryProviderRegistry();
         List<ProviderRegistration> registrations = new ArrayList<>();
         Map<ProviderId, String> supplierNames = new HashMap<>();
+        Map<ProviderId, ProviderDeploymentMetadata> deploymentMetadata = new HashMap<>();
 
         for (ModelProviderProperties.Deployment deployment : properties.deployments()) {
             Objects.requireNonNull(deployment, "deployments must not contain null");
@@ -53,16 +55,19 @@ final class ApprovedModelProviderProvisioner {
                 continue;
             }
             ProviderId providerId = new ProviderId(deployment.providerId());
+            ProviderDeploymentMetadata metadata = new ProviderDeploymentMetadata(
+                    deployment.model(), deployment.modelRevision(), deployment.configVersion());
             ModelProtocolAdapter adapter = buildAdapter(deployment, secretReader, egressPolicy);
             ProviderRegistration registration = new ProviderRegistration(
                     providerId, adapter.protocol(), adapter.capabilities(), adapter);
             registry.register(registration);
             registrations.add(registration);
             supplierNames.put(providerId, deployment.supplierName());
+            deploymentMetadata.put(providerId, metadata);
         }
 
         AdapterLocator locator = new InMemoryAdapterLocator(registrations);
-        return new ApprovedModelProviders(registry, locator, supplierNames);
+        return new ApprovedModelProviders(registry, locator, supplierNames, deploymentMetadata);
     }
 
     private static ModelProtocolAdapter buildAdapter(
@@ -96,7 +101,8 @@ final class ApprovedModelProviderProvisioner {
                                 deployment.anthropicVersion(),
                                 deployment.model(),
                                 deployment.maxTokens(),
-                                deployment.temperature()));
+                                deployment.temperature(),
+                                egressPolicy));
             }
             // TASK-0181: the operator-configured loopback deployment
             // (protocol=FAKE) exercises the real external runtime path

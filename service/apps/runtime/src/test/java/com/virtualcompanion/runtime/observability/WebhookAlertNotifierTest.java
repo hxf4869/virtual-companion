@@ -36,7 +36,8 @@ class WebhookAlertNotifierTest {
     private WebhookAlertNotifier notifier(String url) {
         return new WebhookAlertNotifier(
                 new AlertProperties(
-                        url, Duration.ofSeconds(2), 60_000L, 24L, 1L, "test-secret", "", 5, 5));
+                        url, "generic", Duration.ofSeconds(2), 60_000L, 24L, 1L,
+                        "test-secret", "", "", "", "", 5, 5));
     }
 
     @Test
@@ -100,17 +101,35 @@ class WebhookAlertNotifierTest {
         WebhookAlertNotifier notifier = new WebhookAlertNotifier(
                 new AlertProperties(
                         "http://127.0.0.1:1/hook",
-                        Duration.ofSeconds(2), 60_000L, 24L, 1L, "secret", "", 5, 5),
+                        "generic", Duration.ofSeconds(2), 60_000L, 24L, 1L,
+                        "secret", "", "", "", "", 5, 5),
                 outbox,
                 new WebhookDelivery(new AlertProperties(
                         "http://127.0.0.1:1/hook",
-                        Duration.ofSeconds(2), 60_000L, 24L, 1L, "secret", "", 5, 5)),
+                        "generic", Duration.ofSeconds(2), 60_000L, 24L, 1L,
+                        "secret", "", "", "", "", 5, 5)),
                 TestAlerts.metrics());
 
         assertThatCode(() -> notifier.alert(AlertSeverity.P2, "DAU_CAP_REACHED", "m"))
                 .doesNotThrowAnyException();
         verify(outbox).enqueue("P2", "DAU_CAP_REACHED", "m", 60);
         assertThat(hits.get()).isEqualTo(0);
+    }
+
+    @Test
+    void configuredFeishuAppBotEnqueuesWithoutWebhookUrl() {
+        AlertWebhookOutbox outbox = mock(AlertWebhookOutbox.class);
+        when(outbox.enqueue(anyString(), anyString(), anyString(), anyInt()))
+                .thenReturn(new AlertWebhookOutbox.EnqueueResult(2L, true));
+        AlertProperties properties = new AlertProperties(
+                "", "feishu-app-bot", Duration.ofSeconds(2), 60_000L, 24L, 1L,
+                "", "cli_test", "app-secret", "oc_test_chat", "", 5, 5);
+        WebhookAlertNotifier notifier = new WebhookAlertNotifier(
+                properties, outbox, new WebhookDelivery(properties), TestAlerts.metrics());
+
+        notifier.alert(AlertSeverity.P2, "PROVIDER_CIRCUIT_OPEN", "supplier unavailable");
+
+        verify(outbox).enqueue("P2", "PROVIDER_CIRCUIT_OPEN", "supplier unavailable", 60);
     }
 
     @Test

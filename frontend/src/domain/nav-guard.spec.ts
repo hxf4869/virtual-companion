@@ -68,6 +68,19 @@ describe("normalizeInternalHref + login return", () => {
     expect(parseReturnHref(login)).toBe(original);
   });
 
+  it("peels hash-router re-encoding without allowing a nested open redirect", () => {
+    expect(
+      parseReturnHref(
+        "/pages/login/login?return=%252Fpages%252Fmemory%252Fmemory%253FrelationshipId%253D7",
+      ),
+    ).toBe("/pages/memory/memory?relationshipId=7");
+    expect(
+      parseReturnHref(
+        "/pages/login/login?return=https%253A%252F%252Fevil.example%252Fpages%252Fchat%252Fchat",
+      ),
+    ).toBeNull();
+  });
+
   it("does not attach a return to public pages", () => {
     expect(buildLoginHref("/pages/index/index")).toBe("/pages/login/login");
     expect(buildLoginHref("/pages/help/help")).toBe("/pages/login/login");
@@ -150,6 +163,21 @@ describe("applyInterceptorUrl", () => {
       buildLoginHref("/pages/admin/admin"),
     );
     expect(applyInterceptorUrl("/pages/ops/ops", AUTHED)).toBe("/pages/ops/ops");
+  });
+
+  it("forces temporary-password sessions to the account password flow", () => {
+    const reset = { ...AUTHED, passwordMustChange: true };
+    expect(applyInterceptorUrl("/pages/chat/chat", reset)).toBe(
+      "/pages/account/account?passwordChange=required",
+    );
+    expect(applyInterceptorUrl("/pages/index/index", reset)).toBe(
+      "/pages/account/account?passwordChange=required",
+    );
+    expect(applyInterceptorUrl("/pages/account/account?passwordChange=required", reset)).toBe(
+      "/pages/account/account?passwordChange=required",
+    );
+    expect(shouldRenderPageData("/pages/chat/chat", reset)).toBe(false);
+    expect(shouldRenderPageData("/pages/account/account", reset)).toBe(true);
   });
 });
 

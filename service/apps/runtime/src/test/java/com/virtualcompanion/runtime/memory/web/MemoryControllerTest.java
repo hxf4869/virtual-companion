@@ -102,11 +102,11 @@ class MemoryControllerTest {
                         .content("{\"scope\":\"SESSION\",\"summary\":\"likes hiking\","
                                 + "\"conversationId\":\"100\",\"evidence\":[\"ref-1\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.memoryId").value(42))
+                .andExpect(jsonPath("$.memoryId").value("42"))
                 .andExpect(jsonPath("$.scope").value("SESSION"))
                 .andExpect(jsonPath("$.summary").value("likes hiking"))
                 .andExpect(jsonPath("$.status").value("PENDING_CONFIRMATION"))
-                .andExpect(jsonPath("$.conversationId").value(100))
+                .andExpect(jsonPath("$.conversationId").value("100"))
                 .andExpect(jsonPath("$.createdAt").value("2026-08-12T12:00:00Z"));
 
         verify(memoryService).create(1L, 7L, "SESSION", "likes hiking", 100L, List.of("ref-1"), null, null, null);
@@ -165,7 +165,7 @@ class MemoryControllerTest {
         mockMvc.perform(get("/api/v1/relationships/7/memories"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].memoryId").value(42))
+                .andExpect(jsonPath("$[0].memoryId").value("42"))
                 .andExpect(jsonPath("$[0].scope").value("SESSION"))
                 .andExpect(jsonPath("$[0].status").value("ACCEPTED"));
 
@@ -193,7 +193,7 @@ class MemoryControllerTest {
         mockMvc.perform(get("/api/v1/relationships/7/memories").param("includeDeleted", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].memoryId").value(42))
+                .andExpect(jsonPath("$[0].memoryId").value("42"))
                 .andExpect(jsonPath("$[0].deletedAt").value("2026-08-18T12:00:00Z"));
     }
 
@@ -223,8 +223,8 @@ class MemoryControllerTest {
 
         mockMvc.perform(get("/api/v1/memories/42"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.memoryId").value(42))
-                .andExpect(jsonPath("$.conversationId").value(100));
+                .andExpect(jsonPath("$.memoryId").value("42"))
+                .andExpect(jsonPath("$.conversationId").value("100"));
 
         verify(memoryService).get(1L, 42L);
     }
@@ -258,7 +258,7 @@ class MemoryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"summary\":\"new summary\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.memoryId").value(55))
+                .andExpect(jsonPath("$.memoryId").value("55"))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
         verify(memoryService).update(1L, 55L, "new summary", null, null, null);
@@ -294,7 +294,7 @@ class MemoryControllerTest {
 
         mockMvc.perform(delete("/api/v1/memories/55"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.memoryId").value(55))
+                .andExpect(jsonPath("$.memoryId").value("55"))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
         verify(memoryService).delete(1L, 55L);
@@ -319,7 +319,7 @@ class MemoryControllerTest {
 
         mockMvc.perform(post("/api/v1/memories/55/confirm"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.memoryId").value(55))
+                .andExpect(jsonPath("$.memoryId").value("55"))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
         verify(memoryService).confirm(1L, 55L, null);
@@ -340,7 +340,7 @@ class MemoryControllerTest {
 
         mockMvc.perform(post("/api/v1/memories/55/reject"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.memoryId").value(55))
+                .andExpect(jsonPath("$.memoryId").value("55"))
                 .andExpect(jsonPath("$.status").value("REJECTED"));
 
         verify(memoryService).reject(1L, 55L);
@@ -431,7 +431,7 @@ class MemoryControllerTest {
         mockMvc.perform(get("/api/v1/memories/55/evidence"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].evidenceId").value(11))
+                .andExpect(jsonPath("$[0].evidenceId").value("11"))
                 .andExpect(jsonPath("$[0].sourceRef").value("ref-1"))
                 .andExpect(jsonPath("$[0].createdAt").value("2026-08-12T12:00:00Z"));
 

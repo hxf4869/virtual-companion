@@ -1,7 +1,9 @@
 package com.virtualcompanion.modelruntime.execution;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,6 +45,7 @@ public final class SupplierCircuitBreaker {
     private final Map<String, Slot> slots = new ConcurrentHashMap<>();
     private final int failureThreshold;
     private final long cooldownMillis;
+    private final Clock clock;
     /**
      * Observability hooks registered post-construction ({@link #onOpened}):
      * invoked at most once per CLOSED→OPEN trip with the supplier name. A
@@ -52,11 +55,16 @@ public final class SupplierCircuitBreaker {
     private final List<Consumer<String>> openedListeners = new CopyOnWriteArrayList<>();
 
     public SupplierCircuitBreaker(int failureThreshold, long cooldownMillis) {
+        this(failureThreshold, cooldownMillis, Clock.systemUTC());
+    }
+
+    SupplierCircuitBreaker(int failureThreshold, long cooldownMillis, Clock clock) {
         if (failureThreshold < 1) {
             throw new IllegalArgumentException("failureThreshold must be >= 1");
         }
         this.failureThreshold = failureThreshold;
         this.cooldownMillis = cooldownMillis;
+        this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
     /**
@@ -77,7 +85,7 @@ public final class SupplierCircuitBreaker {
         // OPEN: allow exactly one probe once the cooldown has elapsed
         // (half-open). A second concurrent probe loses the CAS and waits.
         long openedAt = slot.openedAtMillis.get();
-        boolean cooledDown = System.currentTimeMillis() - openedAt >= cooldownMillis;
+        boolean cooledDown = clock.millis() - openedAt >= cooldownMillis;
         if (!cooledDown) {
             return false;
         }
@@ -97,7 +105,7 @@ public final class SupplierCircuitBreaker {
         int n = slot.consecutiveFailures.incrementAndGet();
         if (n >= failureThreshold && slot.state != State.OPEN) {
             slot.state = State.OPEN;
-            slot.openedAtMillis.set(System.currentTimeMillis());
+            slot.openedAtMillis.set(clock.millis());
             notifyOpened(supplier);
             return;
         }
@@ -105,7 +113,7 @@ public final class SupplierCircuitBreaker {
             // A failed half-open probe re-opens with a fresh cooldown and
             // releases the probe token so the next cooldown admits a new
             // probe instead of locking the breaker open forever.
-            slot.openedAtMillis.set(System.currentTimeMillis());
+            slot.openedAtMillis.set(clock.millis());
             slot.probing.set(false);
         }
     }
@@ -131,7 +139,7 @@ public final class SupplierCircuitBreaker {
         if (slot == null || slot.state != State.OPEN) {
             return false;
         }
-        return System.currentTimeMillis() - slot.openedAtMillis.get() < cooldownMillis;
+        return clock.millis() - slot.openedAtMillis.get() < cooldownMillis;
     }
 
     /** S0-10C: at least one tracked supplier is OPEN inside cooldown. */

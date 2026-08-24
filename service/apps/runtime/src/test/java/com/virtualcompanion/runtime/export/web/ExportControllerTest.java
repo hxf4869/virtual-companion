@@ -112,7 +112,11 @@ class ExportControllerTest {
                 .andExpect(jsonPath("$.status").value("READY"))
                 .andExpect(jsonPath("$.expiresAt").value("2026-08-17T13:00:00Z"))
                 .andExpect(jsonPath("$.downloadToken").doesNotExist())
-                .andExpect(jsonPath("$.downloadUrl").doesNotExist());
+                .andExpect(jsonPath("$.downloadUrl").doesNotExist())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("\"downloadToken\""))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("\"downloadUrl\""))));
     }
 
     @Test

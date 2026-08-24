@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.sql.ResultSet;
@@ -35,7 +36,7 @@ class ConversationSummaryServiceTest {
     @Test
     void recordEncryptsPlaintextBeforeTheSdCall() {
         when(jdbc.queryForObject(
-                contains("record_conversation_summary"),
+                contains("?::real"),
                 eq(Long.class),
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(9L);
@@ -47,7 +48,7 @@ class ConversationSummaryServiceTest {
         assertThat(id).contains(9L);
         ArgumentCaptor<String> stored = ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForObject(
-                contains("record_conversation_summary"),
+                contains("?::real"),
                 eq(Long.class),
                 eq(1L), eq(2L), eq(10L), eq(11L), stored.capture(),
                 eq("deterministic-summarizer"), eq("1"), eq("1"),
@@ -87,25 +88,55 @@ class ConversationSummaryServiceTest {
     }
 
     @Test
-    void recordTurnSummarySealsSqlPlaintextUnderTheCurrentKey() {
-        when(jdbc.queryForObject(contains("record_turn_summary"), eq(Long.class), eq(1L), eq(100L)))
+    @SuppressWarnings("unchecked")
+    void recordTurnSummaryEncryptsBeforeTheOnlyDatabaseWrite() throws Exception {
+        when(jdbc.query(
+                contains("conversation_summary_turn_metadata"),
+                any(RowMapper.class), eq(1L), eq(100L)))
+                .thenAnswer(inv -> {
+                    RowMapper<ConversationSummaryService.TurnMetadata> mapper =
+                            (RowMapper<ConversationSummaryService.TurnMetadata>) inv.getArgument(1);
+                    ResultSet rs = mock(ResultSet.class);
+                    when(rs.getLong("out_conversation_id")).thenReturn(2L);
+                    when(rs.getLong("out_from_message_id")).thenReturn(10L);
+                    when(rs.getLong("out_to_message_id")).thenReturn(11L);
+                    when(rs.getLong("out_message_count")).thenReturn(2L);
+                    when(rs.getString("out_service_class")).thenReturn("ECONOMY");
+                    return List.of(mapper.mapRow(rs, 0));
+                });
+        when(jdbc.queryForObject(
+                contains("?::real"),
+                eq(Long.class),
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(9L);
-        when(jdbc.queryForObject(
-                contains("conversation_summary_stored_text"), eq(String.class), eq(1L), eq(9L)))
-                .thenReturn("会话进展摘要（确定性）：截至消息 11，共 2 条。");
-        when(jdbc.queryForObject(
-                contains("backfill_replace_summary_cipher"),
-                eq(Boolean.class), eq(1L), eq(9L), any(), eq(cipher.currentPrefix())))
-                .thenReturn(true);
 
         assertThat(service.recordTurnSummary(1L, 100L)).contains(9L);
 
         ArgumentCaptor<String> sealed = ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForObject(
-                contains("backfill_replace_summary_cipher"),
-                eq(Boolean.class), eq(1L), eq(9L), sealed.capture(), eq(cipher.currentPrefix()));
+                contains("?::real"),
+                eq(Long.class),
+                eq(1L), eq(2L), eq(10L), eq(11L), sealed.capture(),
+                eq("deterministic-summarizer"), eq("1"), eq("1"),
+                eq(1.0), eq(true), eq("ECONOMY"));
         assertThat(sealed.getValue()).startsWith("enc2:default:1:");
+        assertThat(sealed.getValue()).doesNotContain("会话进展摘要");
         assertThat(cipher.decrypt(sealed.getValue()))
-                .isEqualTo("会话进展摘要（确定性）：截至消息 11，共 2 条。");
+                .isEqualTo("会话进展摘要（确定性）：截至消息 11，本会话共 2 条消息。");
+    }
+
+    @Test
+    void missingOrIncognitoTurnMetadataPerformsNoSummaryWrite() {
+        when(jdbc.query(
+                contains("conversation_summary_turn_metadata"),
+                any(RowMapper.class), eq(1L), eq(100L)))
+                .thenReturn(List.of());
+
+        assertThat(service.recordTurnSummary(1L, 100L)).isEmpty();
+
+        verify(jdbc).query(
+                contains("conversation_summary_turn_metadata"),
+                any(RowMapper.class), eq(1L), eq(100L));
+        verifyNoMoreInteractions(jdbc);
     }
 }

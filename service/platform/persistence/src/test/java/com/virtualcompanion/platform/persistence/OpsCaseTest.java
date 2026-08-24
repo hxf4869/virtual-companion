@@ -75,4 +75,20 @@ class OpsCaseTest {
         assertEquals(1, new OpsCase(jdbc).list(1L, null, 50).size());
         verify(jdbc).query(eq(OpsCase.LIST_SQL), any(RowMapper.class), eq(1L), eq(null), eq(50));
     }
+
+    @Test
+    void noteMethodsUseRestrictedFunctions() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(
+                eq(OpsCase.UPDATE_NOTE_SQL), eq(Boolean.class),
+                eq(1L), eq(3L), eq("PUBLIC"), eq("用户可见说明")))
+                .thenReturn(true);
+        when(jdbc.queryForObject(
+                eq(OpsCase.INTERNAL_NOTE_SQL), eq(String.class), eq(1L), eq(3L)))
+                .thenReturn("内部备注");
+        OpsCase cases = new OpsCase(jdbc);
+
+        assertTrue(cases.updateNote(1L, 3L, "PUBLIC", " 用户可见说明 "));
+        assertEquals("内部备注", cases.readInternalNote(1L, 3L));
+    }
 }

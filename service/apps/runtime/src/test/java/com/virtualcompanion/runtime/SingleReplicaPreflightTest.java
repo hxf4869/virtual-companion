@@ -24,6 +24,9 @@ class SingleReplicaPreflightTest {
     private static final String[] SINGLE_REPLICA_PRODUCTION_ENV = {
         "VC_AUTH_ENABLED=true",
         "VC_AUTH_DATASOURCE_ENABLED=true",
+        "VC_ENFORCE_DB_LEAST_PRIVILEGE=true",
+        "VC_SHARED_RATE_LIMIT_ENABLED=true",
+        "VC_SHARED_RATE_LIMIT_SECRET=abcdef0123456789abcdef0123456789",
         "VC_FLYWAY_ENABLED=false",
         "VC_JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "VC_OWNER_BINDING_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef",

@@ -104,28 +104,31 @@ class FinalizeGenerationServiceTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         GenerationFinalizeService service = new GenerationFinalizeService(jdbc);
         when(jdbc.queryForObject(
-                eq("SELECT out_provider_attempt_id FROM vc.create_attempt_intent(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+                eq("SELECT out_provider_attempt_id FROM vc.create_attempt_intent(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
                 eq(String.class),
                 eq(7L), eq(101L), eq(9001L),
                 eq(sha256Hex("raw-token")), eq(sha256Hex("FENCE-A")),
                 eq("pa-1"), eq("alpha-loopback"), eq("alpha-supplier"),
-                eq("snap-req"), eq("snap-exec")))
+                eq("snap-req"), eq("snap-exec"), eq("model-id"), eq("model-rev"),
+                eq("prompt-v1"), eq("persona-v1"), eq("config-v1")))
                 .thenReturn("pa-1");
 
         String attemptId = service.createAttemptIntent(
                 7L, 101L, 9001L, "raw-token", "FENCE-A",
-                "pa-1", "alpha-loopback", "alpha-supplier", "snap-req", "snap-exec");
+                "pa-1", "alpha-loopback", "alpha-supplier", "snap-req", "snap-exec",
+                "model-id", "model-rev", "prompt-v1", "persona-v1", "config-v1");
 
         assertEquals("pa-1", attemptId);
         // The raw token/fence never appear in the SQL — only their hashes
         // (the eq(...) matchers above would fail if the raw values were passed).
         verify(jdbc).queryForObject(
-                eq("SELECT out_provider_attempt_id FROM vc.create_attempt_intent(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
+                eq("SELECT out_provider_attempt_id FROM vc.create_attempt_intent(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
                 eq(String.class),
                 eq(7L), eq(101L), eq(9001L),
                 eq(sha256Hex("raw-token")), eq(sha256Hex("FENCE-A")),
                 eq("pa-1"), eq("alpha-loopback"), eq("alpha-supplier"),
-                eq("snap-req"), eq("snap-exec"));
+                eq("snap-req"), eq("snap-exec"), eq("model-id"), eq("model-rev"),
+                eq("prompt-v1"), eq("persona-v1"), eq("config-v1"));
     }
 
     @Test
@@ -133,9 +136,11 @@ class FinalizeGenerationServiceTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         GenerationFinalizeService service = new GenerationFinalizeService(jdbc);
         assertThrows(IllegalArgumentException.class, () -> service.createAttemptIntent(
-                7L, 101L, 9001L, "  ", "FENCE-A", "pa-1", "p", "s", "r", "e"));
+                7L, 101L, 9001L, "  ", "FENCE-A", "pa-1", "p", "s", "r", "e",
+                "m", "mr", "pb", "per", "cfg"));
         assertThrows(IllegalArgumentException.class, () -> service.createAttemptIntent(
-                7L, 101L, 9001L, "tok", "  ", "pa-1", "p", "s", "r", "e"));
+                7L, 101L, 9001L, "tok", "  ", "pa-1", "p", "s", "r", "e",
+                "m", "mr", "pb", "per", "cfg"));
     }
 
     @Test
@@ -150,6 +155,30 @@ class FinalizeGenerationServiceTest {
         verify(jdbc).queryForObject(
                 "SELECT vc.record_attempt_outcome(?, ?, ?)", Integer.class,
                 7L, "pa-1", "SUCCEEDED");
+    }
+
+    @Test
+    void recordAttemptOutcomePersistsTelemetryWithTheTerminalTransition() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        GenerationFinalizeService service = new GenerationFinalizeService(jdbc);
+        when(jdbc.queryForObject(
+                "SELECT vc.record_attempt_outcome(?, ?, ?, ?, ?)", Integer.class,
+                7L, "pa-1", "RETRYABLE_FAILED", 4321L, "HTTP_429")).thenReturn(1);
+
+        assertEquals(1, service.recordAttemptOutcome(
+                7L, "pa-1", "RETRYABLE_FAILED", 4321L, "HTTP_429"));
+        verify(jdbc).queryForObject(
+                "SELECT vc.record_attempt_outcome(?, ?, ?, ?, ?)", Integer.class,
+                7L, "pa-1", "RETRYABLE_FAILED", 4321L, "HTTP_429");
+    }
+
+    @Test
+    void recordAttemptOutcomeRejectsNegativeLatencyBeforeJdbc() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        GenerationFinalizeService service = new GenerationFinalizeService(jdbc);
+
+        assertThrows(IllegalArgumentException.class, () -> service.recordAttemptOutcome(
+                7L, "pa-1", "SUCCEEDED", -1L, null));
     }
 
     @Test
@@ -211,4 +240,3 @@ class FinalizeGenerationServiceTest {
         assertFalse(sql.getValue().contains("DELETE"));
     }
 }
-

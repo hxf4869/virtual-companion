@@ -72,8 +72,8 @@
       ——终态计数收敛 worker finally 单点（completed/failed 全路径不再
       漏计）、`vc_beta_dau` gauge（V77 job SD + 60s 轮询）、admin 队列
       前端展示 ageHours/slaBreached（超时行「SLA 超时」标记）、07 补
-      抓取凭据口径与告警码登记。告警接收端 URL 与 SLA 阈值复核见 07 §6
-      Owner 待填。
+      抓取凭据口径与告警码登记。2026-08-24 飞书应用机器人真实群投递
+      PASS；替补、升级路径与 SLA 阈值复核见 07 §6 Owner 待填。
 
 ### R47 生产部署与备份基线（§14.6、§22.13、§21.7，B1 前置）
 
@@ -81,6 +81,27 @@
       （本机冒烟演练全通:fail-closed 拒启+健康/H5/API 探针;远端落地待
       Owner 提供服务器信息）
       + production profile 部署演练；目标环境/域名/备案路径见「待决」。
+      2026-08-24 S0-27：migrator/runtime 分离登录与 Secret、startup 权限实检及匿名
+      role-separation drill 已完成；完整 Compose smoke PASS。
+- [x] S0-30 账号即时失效与高成本端点保护：session epoch/durable access snapshot 已覆盖
+      禁用、降权、logout、会话撤销和改密；V84 共享 generation/export/report 频率窗，
+      V106 HMAC 化 login/refresh 来源窗与 generation/SSE 并发租约已接入；429 +
+      Retry-After、SQL 135/150/155、Java 单测、OpenAPI/catalog 和 production fail-closed
+      预检均通过；紧急联系人明确不限流。
+- [x] S0-31 可靠告警与定时任务：V85 outbox 的去重/认领/崩溃回收/HMAC/allowlist/
+      有界退避/dead-letter 与短故障恢复已验证；V86 maintenance lease、pause、聚合
+      run history 已覆盖四类任务，retention DB/部署 dry-run 真实估算并记录 DRY_RUN；
+      V107 last-success/latest-status 及失败、stale/hung 固定 P1 告警已接入。真实替补
+      endpoint/接收人和完整人工升级链仍为 Owner 外部项。
+- [x] S0-32 会话摘要加密：V79 dual-read/keyset 回填 + V108 encrypted-only runtime
+      writer 已收口；旧 SQL plaintext writer 删除，普通/turn 写在 JDBC 前即 enc2，读取边界
+      解密；incognito 无 metadata，单消息删除移除覆盖摘要，conversation/清空/注销级联。
+      SQL 118/130/157 与 summary/backfill/controller/worker 定向测试通过；生产 KMS、旧 key
+      保留与备份取回演练仍需 Owner。
+- [x] S0-33 单副本硬门禁：Compose `replicas:1`、所有 profile 声明预检、dedicated
+      PostgreSQL advisory-lock 成员排他与 watchdog/exit-87 fail-stop 已接通；所有 connection
+      和 DataSource unwrap 入口均 fail-closed。单测覆盖 HELD/REFUSED/UNAVAILABLE/lost lease，
+      Compose smoke 覆盖声明 2、实际 scale 2 拒绝及缩回 1 恢复；S2-37 触发/退出条件已入文档。
 - [x] BACKUP 备份与恢复：全量备份 + WAL/PITR 策略、恢复演练脚本；恢复后
       验证 RLS、删除墓碑与记忆状态，而不只验证数据库能启动（§22.13）。
 - [x] H5-HARDEN H5 上线加固：robots/搜索收录策略、页面缓存控制、分享卡
@@ -88,16 +109,15 @@
 
 ### R48 数据保留与静态加密（§16.5 / §16.7，Beta 前置，Owner 2026-08-19 决定都做）
 
-- [x] RETENTION data_retention_policy 版本化（目录或表）+ 分类清理任务：
-      普通聊天、已删除聊天、记忆候选、被拒绝候选、模型调用明细、内容
-      安全日志、导出残留、流式片段；现状仅身份审计日志有 180 天清理（V22）。
+- [x] RETENTION 本地技术闭环：V70 分类策略/清理 + V104 显式 DRAFT/ACTIVE/RETIRED、
+      policy-bound runtime wrapper、默认 dry-run、逐类统计/失败隔离、legal hold 与
+      PITR digest tombstone reconcile；真实 policy 周期、manifest 外部存储和真实 purge
+      仍需 Owner/法务批准，当前开关 false/dry-run true。
 - [x] CRYPTO-REST 聊天正文与高敏记忆应用层加密：密钥部署注入、密钥与
       数据分离、存量数据迁移，与导出/摘要/向量/RLS 测试兼容；复用 V65
       紧急联系人 AES-256-GCM 模式。（交付：正文+记忆摘要全行加密,
       RestFieldCipher 网关式接入,V71 回填助手,生产 fail-closed 密钥守卫;
       见 docs/beta-readiness/09）
-      数据分离、存量数据迁移，与导出/摘要/向量/RLS 测试兼容；复用 V65
-      紧急联系人 AES-256-GCM 模式。
 
 ### R49 真实 provider 接线硬化（Beta 启动时）
 
@@ -124,6 +144,10 @@
 
 ### R50 紧急联系人真实发送渠道（Beta 启动时；2026-08-22 评审决定启用）
 
+- **2026-08-24 对账：`BLOCKED_EXTERNAL`**。本地 V65 生命周期与默认关闭门禁已复验；
+  平台/endpoint/签名协议/Secret、联系人侧页面、话术责任人和端到端演练均未提供，
+  不以假 webhook 或手工 token 冒充真实发送。
+
 - [ ] EMERGENCY-CHANNEL webhook 外发：真实发送替代 SIMULATED_EMAIL_LINK
       （企业微信/飞书/自建接口类 webhook，平台选型见「待决」，凭据只允许
       部署注入），验证链接可达与验证/变更/撤回语义不回退（§20.14）；
@@ -135,8 +159,9 @@
 
 - [x] B1-SURVEY 被理解感评分与产品指标采集（随机会话后 1–5 分，n≥200；
       §26.5 五项产品门槛的数据来源，现无任何采集入口）。
-- [x] B1-COST 实际单位成本与供应商账单对账报告（§25.9、§22.19；
-      现有 admin_usage_summary 是模拟口径）。
+- [ ] B1-COST `BLOCKED_EXTERNAL`：真实供应商账单抓取与批准容差报告待 Beta 输入；
+      本地 V105 versioned unit price + 原子 reserve/settle/release、正常完成 actual USD
+      usage、月度 snapshot 与并发 ceiling 已完成，不以模拟口径冒充真实账单对账。
 
 ### D0 产品发现（Beta 前置门禁，§7.2 / §24.1，Owner 2026-08-19 决定正式补做）
 
@@ -684,16 +709,39 @@
 > 注：旧 backlog 中 13 张未交付规划卡（TASK-0039~0041、0043~0047、0049~0053）均为旧治理体系自身的
 > 提速任务，随治理机制于 2026-08-16 退役而全部作废；历史规划见 `docs/archive/task-backlog.yaml`。
 
+## 2026-08-24 S0 本地技术收口验证
+
+- [x] JDK 25 全量 `./mvnw ... verify`：15 个 reactor 模块成功，runtime 815 tests
+      PASS（0 failure/error/skip）。
+- [x] PostgreSQL 18 + pgvector：V1–V108 迁移、157 个 DB/RLS SQL tests、独立
+      migrator/runtime role drill 全部 PASS。
+- [x] `scripts/check.sh`：Catalog/OpenAPI validate+drift、付费边界、license、前端
+      Vitest 与 type-check 全 PASS；Playwright 隔离真实栈 7/7 PASS。
+- [x] production Compose smoke：缺密钥拒启、声明/实际双副本拒绝、单实例健康与缩容
+      恢复 PASS；logical backup+RLS restore+外部删除墓碑+PITR+summary ciphertext PASS。
+- [x] 验证后已清理临时容器/监听端口和 smoke Secret 文件；Provider/年龄/retention
+      真实开关保持关闭，无生产部署、付费 Canary、push/PR 或真实用户放量。
+
 ## 待决（需要你拍板后再做）
 
-- 真实成年核验供应商选型（决定启动受控 Beta 时再定；申诉提交接口已在 R31）。
-- 紧急联系人 webhook 平台选型（企业微信/飞书/自建接口；2026-08-22 已定
-  webhook 方向，R50 接线的前置输入）。
-- 真实 moderation / embedding 供应商选型与启用时点（Beta 启动时；R43 先扩
-  确定性规则，R49 预留接线位）。
-- Beta 部署目标环境、域名与备案路径（R47 的前置输入；§21.7）。
-- 告警接收端 webhook URL（07 §6 Owner 待填；通道已交付，部署注入、
-  留空即禁用，无需再选邮件/webhook）。
+- D0 产品发现形成 Go / Pivot / Stop；未有结论前不进入真实用户 Beta。即使 GO，
+  PIA、成年验证、值班/升级链、伦理适用性和受控名单仍须逐项批准。
+- 真实成年核验供应商、处理区域、PIA/DPA、费用、Secret 与申诉责任人选型；
+  默认关闭的 Adapter 和人工处置本地能力已完成（S0-12），外部批准前不得启用。
+- 真实 moderation / embedding 供应商、处理区域、保留/删除、费用与必要同意集合；
+  adapter/迁移/严格 fail-closed 已完成，默认开关继续关闭。
+- S0-24 真实 Canary：唯一内部账号、供应商 immutable model revision、费用额度、
+  账单容差和 Owner 放量/回滚批准；当前 ReleaseGate 与 Provider 保持关闭。
+- 紧急联系人真实 webhook endpoint/签名/接收人及端到端演练；方向已定 webhook，
+  但不得用假 URL 或 SIMULATED_EMAIL_LINK 冒充真实送达。
+- retention ACTIVE 周期、legal hold 责任人、真实 purge 批准、删除 manifest 外部
+  加密存储；生产 KMS、current/previous key 保留/销毁与备份取回演练。
+- Beta 部署目标环境、域名、备案路径和运维账号；本地 Compose/角色隔离/备份/
+  单副本 smoke 已通过，不代表远端发布授权。
+- 告警替补接收人、独立 signed webhook endpoint、升级链与 SLA 阈值复核；主飞书
+  应用机器人已真实收件，但不能代替完整值班闭环。
+- 导出页整页刷新后是否允许重新取得一次性下载能力；需要新的列表/授权/URL 安全
+  契约，当前仅保证页面内刷新与一次性 URL，不擅自扩展。
 - 真实支付、公开注册、语音/图像/WebSocket/恋爱模式/主动推送（公开付费版前）。
 - 公开付费版其余前置（§7.5、§25.10）：第二真实供应商或可执行备用路径、
   公开管理后台 RBAC + Case Access/break-glass（FR-ADMIN-001/002）、真实

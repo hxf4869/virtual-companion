@@ -2,6 +2,8 @@ package com.virtualcompanion.runtime.export;
 
 import com.virtualcompanion.platform.persistence.ExportService;
 import com.virtualcompanion.platform.persistence.JobLease;
+import com.virtualcompanion.runtime.observability.AlertNotifier;
+import com.virtualcompanion.runtime.observability.AlertSeverity;
 import java.util.OptionalLong;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -15,10 +17,9 @@ import org.springframework.scheduling.annotation.Scheduled;
  * {@code EXPIRED} with the payload and one-time token purged by
  * {@code vc.expire_stale_exports}. Technical Alpha stores the document inline
  * (no object storage), so purging the payload column is the Alpha realization
- * of deleting the object-storage file. A sweep failure is logged and the next
- * scheduled round still runs (same resilience shape as the other scheduled
- * maintenance jobs). The bean is registered by {@code AuthDataSourceConfig}
- * only while the auth datasource is enabled.
+ * of deleting the object-storage file. A sweep failure records a FAILED run,
+ * emits fixed P1 {@code EXPORT_EXPIRY_FAILED}, and retries on the next cadence.
+ * The bean exists only while the auth datasource is enabled.
  */
 public class ExportExpiryScheduler {
 
@@ -26,15 +27,24 @@ public class ExportExpiryScheduler {
 
     private final ExportService exportService;
     private final JobLease jobLease;
+    private final AlertNotifier alertNotifier;
     private final String holder = UUID.randomUUID().toString();
 
     public ExportExpiryScheduler(ExportService exportService) {
-        this(exportService, null);
+        this(exportService, null, null);
     }
 
     public ExportExpiryScheduler(ExportService exportService, JobLease jobLease) {
+        this(exportService, jobLease, null);
+    }
+
+    public ExportExpiryScheduler(
+            ExportService exportService,
+            JobLease jobLease,
+            AlertNotifier alertNotifier) {
         this.exportService = exportService;
         this.jobLease = jobLease;
+        this.alertNotifier = alertNotifier;
     }
 
     /** One sweep. Runs on its own slow cadence — expiry is an hourly concern. */
@@ -56,6 +66,12 @@ public class ExportExpiryScheduler {
             }
         } catch (RuntimeException e) {
             log.error("data-export expiry sweep failed; will retry next run", e);
+            if (alertNotifier != null) {
+                alertNotifier.alert(
+                        AlertSeverity.P1,
+                        "EXPORT_EXPIRY_FAILED",
+                        "data export expiry sweep failed");
+            }
             if (runId.isPresent()) {
                 jobLease.finishRun(runId.getAsLong(), "FAILED", "{}", "sweep_failed");
             }

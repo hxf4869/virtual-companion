@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  adminResetPassword,
   assignServiceClass,
+  changeAuthPassword,
   createAccount,
   deleteAccount,
   disableAccount,
   listAccounts,
+  listAuthSessions,
   listAuditEvents,
   createInvite,
   disableInvite,
@@ -18,6 +21,9 @@ import {
   login,
   logout,
   refresh,
+  reauthAuth,
+  revokeAllAuthSessions,
+  revokeAuthSession,
   usageSummary,
   type AuthApiResponse,
   type AuthTransport,
@@ -38,6 +44,7 @@ describe("auth api client", () => {
         expiresInSeconds: 7200,
         accountId: "7",
         role: "ADMIN",
+        passwordMustChange: true,
       },
     });
 
@@ -49,6 +56,7 @@ describe("auth api client", () => {
       expiresInSeconds: 7200,
       accountId: "7",
       role: "ADMIN",
+      passwordMustChange: true,
     });
     expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/login", {
       username: "root",
@@ -67,6 +75,7 @@ describe("auth api client", () => {
         expiresInSeconds: 7200,
         accountId: "7",
         role: "USER",
+        passwordMustChange: false,
       },
     });
 
@@ -74,6 +83,18 @@ describe("auth api client", () => {
 
     expect(tokens?.accessToken).toBe("a-token");
     expect(tokens).not.toHaveProperty("refreshToken");
+  });
+
+  it("rejects a token response without passwordMustChange instead of bypassing reset", async () => {
+    const t = transportFor({
+      ok: true,
+      status: 200,
+      json: {
+        accessToken: "a-token", tokenType: "Bearer", expiresInSeconds: 7200,
+        accountId: "7", role: "USER",
+      },
+    });
+    await expect(login(t, "root", "pw")).resolves.toBeNull();
   });
 
   it("maps a non-OK login to null (existence never disclosed)", async () => {
@@ -112,6 +133,7 @@ describe("auth api client", () => {
         expiresInSeconds: 7200,
         accountId: "7",
         role: "USER",
+        passwordMustChange: false,
       },
     });
 
@@ -137,6 +159,36 @@ describe("auth api client", () => {
 
     expect(await logout(t)).toBe(true);
     expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/logout");
+  });
+
+  it("supports session registry, revoke, password change and admin re-auth/reset", async () => {
+    const sessions = transportFor({
+      ok: true, status: 200, json: [{
+        id: "11", familyId: "family", clientLabel: "h5",
+        createdAt: "c", lastSeenAt: "l", expiresAt: "e", current: true,
+      }],
+    });
+    await expect(listAuthSessions(sessions)).resolves.toEqual([{
+      id: "11", familyId: "family", clientLabel: "h5",
+      createdAt: "c", lastSeenAt: "l", expiresAt: "e", current: true,
+    }]);
+
+    const revoked = transportFor({ ok: true, status: 200, json: { ok: true } });
+    await expect(revokeAuthSession(revoked, "11")).resolves.toBe(true);
+    expect(revoked.request).toHaveBeenCalledWith("DELETE", "/api/v1/auth/sessions/11");
+
+    await expect(revokeAllAuthSessions(transportFor({
+      ok: true, status: 200, json: { revoked: 2 },
+    }))).resolves.toBe(2);
+    await expect(changeAuthPassword(transportFor({
+      ok: true, status: 200, json: { ok: true },
+    }), "OldPass1!", "NewPassword1!")).resolves.toBe(true);
+    await expect(reauthAuth(transportFor({
+      ok: true, status: 200, json: { ok: true },
+    }), "AdminPass1!")).resolves.toBe(true);
+    await expect(adminResetPassword(transportFor({
+      ok: true, status: 200, json: { ok: true, passwordMustChange: true },
+    }), "7", "TempPassword1!")).resolves.toBe(true);
   });
 
   it("deleteAccount sends a DELETE to the account path and is true on OK", async () => {

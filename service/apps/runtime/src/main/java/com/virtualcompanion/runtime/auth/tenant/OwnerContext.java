@@ -7,6 +7,7 @@ import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -63,18 +64,32 @@ public class OwnerContext {
      * The mapping is direct: user_id == owner_user_id.
      */
     public void asOwner(long ownerUserId, Runnable work) {
+        runBound(transactions, ownerUserId, work);
+    }
+
+    /** Persist a fail-closed intent independently before a destructive outer transaction. */
+    public void asOwnerRequiresNew(long ownerUserId, Runnable work) {
+        var manager = transactions.getTransactionManager();
+        if (manager == null) {
+            throw new IllegalStateException("transaction manager is required");
+        }
+        TransactionTemplate requiresNew = new TransactionTemplate(manager);
+        requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        runBound(requiresNew, ownerUserId, work);
+    }
+
+    private void runBound(TransactionTemplate template, long ownerUserId, Runnable work) {
         if (ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId must be positive");
         }
-        transactions.executeWithoutResult(status -> {
+        template.executeWithoutResult(status -> {
             Map<String, Object> ids = jdbc.queryForMap(
                     "SELECT pg_backend_pid() AS pid, pg_current_xact_id()::text AS xact");
             String nonce = newNonce();
-            String proof = proofFor(ownerUserId, String.valueOf(ids.get("pid")), String.valueOf(ids.get("xact")), nonce);
-            // set_owner_context RETURNS void: the SELECT form still produces
-            // one result row, which update() cannot absorb (pgjdbc: "a result
-            // was returned when none was expected" — found by the B0-05
-            // supplier-failure drill, 2026-08-19), so the row is drained.
+            String proof = proofFor(
+                    ownerUserId, String.valueOf(ids.get("pid")),
+                    String.valueOf(ids.get("xact")), nonce);
+            // The SELECT result row must be drained; update() cannot absorb it.
             jdbc.query("SELECT vc.set_owner_context(?, ?, ?)", rs -> {
                 rs.next();
                 return null;

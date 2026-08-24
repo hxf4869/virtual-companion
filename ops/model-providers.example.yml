@@ -25,6 +25,10 @@ virtual-companion:
         protocol: OPENAI_CHAT_COMPLETIONS
         supplier-name: OpenAI
         model: gpt-4.1-mini
+        # 必须填写供应商明确提供的不可变 revision；不得复制可变 model alias。
+        model-revision: replace-with-openai-immutable-supplier-revision
+        # 运营方每次变更该 deployment 配置时自增/换版。
+        config-version: openai-standard-v1
         endpoint: https://api.openai.com/v1/chat/completions
         credential-secret: openai-bearer-token
               # MODEL-ROLL（§12.14）：灰度顺序 = deployments 列表序（排后承接
@@ -39,6 +43,10 @@ virtual-companion:
         protocol: ANTHROPIC_MESSAGES
         supplier-name: Anthropic
         model: claude-sonnet-4-5
+        # 必须填写供应商明确提供的不可变 revision；不得复制可变 model alias。
+        model-revision: replace-with-anthropic-immutable-supplier-revision
+        # 运营方每次变更该 deployment 配置时自增/换版。
+        config-version: anthropic-standard-v1
         endpoint: https://api.anthropic.com/v1/messages
         credential-secret: anthropic-api-key
         anthropic-version: '2023-06-01'
@@ -47,18 +55,27 @@ virtual-companion:
         temperature: 0.7
         enabled: false
 
-    # MODERATION/EMBED（§20.10/§11.17/R49）：真实审核与向量化的灵活接入位。
-    # 两者均为 OpenAI 兼容协议（/moderations、/embeddings），任何兼容第三方
-    # 只需替换 base-url 与模型名；credential-secret 只写名字，值走
-    # VC_MODEL_SECRET_* 或 /run/secrets 注入。默认关闭——关闭时确定性规则与
-    # 确定性 embedder 兜底，行为与现状一致。
-    # moderation:
-    #   provider: openai-compat
-    #   base-url: https://api.openai.com/v1
-    #   model: omni-moderation-latest
-    #   credential-secret: openai-api-key
-    # embeddings:
-    #   provider: openai-compat
-    #   base-url: https://api.example-vendor.com/v1
-    #   model: text-embedding-3-small
-    #   credential-secret: vendor-api-key
+  # S0-07: real moderation is an independent default-off SafetyClassifierPort.
+  # The API key is never written here; inject only VC_MODERATION_API_KEY from a
+  # deployment Secret/private environment. provider-ref/model-version are audit
+  # labels and must describe the selected supplier; no supplier is implied.
+  moderation:
+    enabled: false
+    provider-ref: replace-with-approved-moderation-provider
+    base-url: https://moderation.example-vendor.invalid/v1
+    model: replace-with-approved-moderation-model
+    model-version: replace-with-immutable-moderation-revision
+    min-clean-confidence: 0.8
+
+  # S0-09: external embeddings are owner-consent gated and fixed to the
+  # registered 64-dimensional pgvector space. API key: VC_EMBEDDING_API_KEY only.
+  embedding:
+    enabled: false
+    base-url: https://embedding.example-vendor.invalid/v1
+    model: replace-with-approved-embedding-model
+    model-version: replace-with-immutable-embedding-revision
+    dimension: 64
+    space-id: replace-with-unique-model-version-dimension-space-id
+    reembed-enabled: false
+    source-space-id: alpha-hash-64
+    reembed-batch-size: 16

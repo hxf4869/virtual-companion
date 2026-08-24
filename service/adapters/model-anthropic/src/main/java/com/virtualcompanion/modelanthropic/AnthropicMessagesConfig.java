@@ -31,6 +31,7 @@ public final class AnthropicMessagesConfig {
     private final String model;
     private final int maxTokens;
     private final double temperature;
+    private final ProviderEgressPolicy egressPolicy;
 
     public AnthropicMessagesConfig(
             URI endpoint,
@@ -50,12 +51,27 @@ public final class AnthropicMessagesConfig {
             int maxTokens,
             double temperature
     ) {
-        this.endpoint = requireEndpoint(endpoint);
+        this(endpoint, apiKey, anthropicVersion, model, maxTokens, temperature,
+                ProviderEgressPolicy.defaults());
+    }
+
+    /** S0-28: the same operator-approved egress policy used by every protocol. */
+    public AnthropicMessagesConfig(
+            URI endpoint,
+            String apiKey,
+            String anthropicVersion,
+            String model,
+            int maxTokens,
+            double temperature,
+            ProviderEgressPolicy egressPolicy
+    ) {
+        this.endpoint = requireEndpoint(endpoint, egressPolicy);
         this.apiKey = requireSecret(apiKey);
         this.anthropicVersion = requireNonBlank(anthropicVersion, "anthropicVersion");
         this.model = requireNonBlank(model, "model");
         this.maxTokens = requireMaxTokens(maxTokens);
         this.temperature = requireTemperature(temperature);
+        this.egressPolicy = Objects.requireNonNull(egressPolicy, "egressPolicy");
     }
 
     public URI endpoint() {
@@ -113,7 +129,7 @@ public final class AnthropicMessagesConfig {
                 + "]";
     }
 
-    private static URI requireEndpoint(URI value) {
+    private static URI requireEndpoint(URI value, ProviderEgressPolicy policy) {
         Objects.requireNonNull(value, "endpoint must not be null");
         var scheme = value.getScheme();
         if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
@@ -134,7 +150,7 @@ public final class AnthropicMessagesConfig {
                     "endpoint must not include user info, query, or fragment"
             );
         }
-        ProviderEgressPolicy.defaults().requireAllowed(value);
+        Objects.requireNonNull(policy, "egressPolicy").requireAllowed(value);
         return value;
     }
 

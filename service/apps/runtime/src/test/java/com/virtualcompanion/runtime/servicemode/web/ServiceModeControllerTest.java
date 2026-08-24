@@ -57,7 +57,7 @@ class ServiceModeControllerTest {
 
     @Test
     void returnsTheCurrentModeAndSummary() throws Exception {
-        when(serviceModeService.current())
+        when(serviceModeService.current(1L))
                 .thenReturn(new ServiceModeService.Status("ZERO_LLM", "当前为无生成模型的受限服务"));
 
         mockMvc.perform(get("/api/v1/service-mode"))

@@ -43,6 +43,7 @@ public final class AgeStateTransitions {
                 EnumSet.of(
                         AgeState.ADULT_VERIFIED,
                         AgeState.MINOR_VERIFIED,
+                        AgeState.AGE_REVERIFY_REQUIRED,
                         AgeState.AGE_ACCESS_SUSPENDED));
         TRANSITIONS.put(
                 AgeState.AGE_REVERIFY_REQUIRED,

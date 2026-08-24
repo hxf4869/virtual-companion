@@ -47,6 +47,9 @@ class AgeStateTransitionsTest {
         assertThat(AgeStateTransitions.allows(AgeState.AGE_APPEAL_PENDING, AgeState.MINOR_VERIFIED))
                 .isTrue();
         assertThat(AgeStateTransitions.allows(
+                        AgeState.AGE_APPEAL_PENDING, AgeState.AGE_REVERIFY_REQUIRED))
+                .isTrue();
+        assertThat(AgeStateTransitions.allows(
                         AgeState.AGE_APPEAL_PENDING, AgeState.AGE_ACCESS_SUSPENDED))
                 .isTrue();
         assertThat(AgeStateTransitions.allows(

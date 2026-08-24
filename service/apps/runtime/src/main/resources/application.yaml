@@ -65,9 +65,10 @@ virtual-companion:
   # with a PostgreSQL advisory-lock lease (see RuntimeSingletonLease).
   runtime:
     replicas: ${VC_RUNTIME_REPLICAS:1}
-  # S0-04: generation admission. Beta generation stays off; required consents
-  # are empty until product/legal freeze the set. enforce=false means Alpha
-  # still generates; turning the Beta window on also enforces adult/consent.
+  # S0-04/S0-24: generation admission. Beta generation stays off; required
+  # consents are empty until product/legal freeze the set. enforce=false skips
+  # only adult/consent/Beta-switch checks; the durable release gate always
+  # applies. Turning the Beta window on also enforces adult/consent.
   beta:
     generation-enabled: ${VC_BETA_GENERATION_ENABLED:false}
   admission:
@@ -78,14 +79,52 @@ virtual-companion:
     enabled: ${VC_MODERATION_ENABLED:false}
     base-url: ${VC_MODERATION_BASE_URL:}
     model: ${VC_MODERATION_MODEL:omni-moderation-latest}
+    provider-ref: ${VC_MODERATION_PROVIDER_REF:}
+    model-version: ${VC_MODERATION_MODEL_VERSION:}
+    min-clean-confidence: ${VC_MODERATION_MIN_CLEAN_CONFIDENCE:0.8}
     api-key: ${VC_MODERATION_API_KEY:}
-    # METRICS-ALERT / S0-31-A: webhook outbox + HMAC. URL/secret are
-    # deployment-injected; blank URL disables posting. Malicious/private
-    # hosts are refused. Metrics stay exposed either way.
+  # S0-09: real embeddings default-off. External calls additionally require
+  # current THIRD_PARTY_MODEL_PROCESSING + SENSITIVE_DATA_PROCESSING consents.
+  embedding:
+    enabled: ${VC_EMBEDDING_ENABLED:false}
+    base-url: ${VC_EMBEDDING_BASE_URL:}
+    model: ${VC_EMBEDDING_MODEL:}
+    model-version: ${VC_EMBEDDING_MODEL_VERSION:}
+    dimension: ${VC_EMBEDDING_DIMENSION:64}
+    space-id: ${VC_EMBEDDING_SPACE_ID:}
+    api-key: ${VC_EMBEDDING_API_KEY:}
+    reembed-enabled: ${VC_EMBEDDING_REEMBED_ENABLED:false}
+    source-space-id: ${VC_EMBEDDING_SOURCE_SPACE_ID:alpha-hash-64}
+    reembed-batch-size: ${VC_EMBEDDING_REEMBED_BATCH_SIZE:16}
+    reembed-drain-ms: ${VC_EMBEDDING_REEMBED_DRAIN_MS:30000}
+  # S0-12: real age verification default-off. No document or biometric payload
+  # is accepted by this runtime; only an HMAC-pseudonymous subject is sent.
+  age-provider:
+    enabled: ${VC_AGE_PROVIDER_ENABLED:false}
+    endpoint: ${VC_AGE_PROVIDER_ENDPOINT:}
+    api-key: ${VC_AGE_PROVIDER_API_KEY:}
+    provider-ref: ${VC_AGE_PROVIDER_REF:}
+    provider-version: ${VC_AGE_PROVIDER_VERSION:}
+    subject-secret: ${VC_AGE_PROVIDER_SUBJECT_SECRET:}
+    allowed-hosts: ${VC_AGE_PROVIDER_ALLOWED_HOSTS:}
+  # METRICS-ALERT / S0-31-A: outbox plus provider-specific authentication.
+  # Generic/custom-bot URL and all credentials are deployment-injected.
+  # A blank provider target disables posting; metrics stay exposed.
   alerts:
     webhook-url: ${VC_ALERT_WEBHOOK_URL:}
+    webhook-provider: ${VC_ALERT_WEBHOOK_PROVIDER:generic}
     webhook-secret: ${VC_ALERT_WEBHOOK_SECRET:}
+    feishu-app-id: ${VC_ALERT_FEISHU_APP_ID:}
+    feishu-app-secret: ${VC_ALERT_FEISHU_APP_SECRET:}
+    feishu-chat-id: ${VC_ALERT_FEISHU_CHAT_ID:}
     webhook-allowed-hosts: ${VC_ALERT_WEBHOOK_ALLOWED_HOSTS:}
+    # Independent generic signed webhook. Blank keeps the fallback disabled;
+    # it never reuses the primary URL, secret or Feishu target.
+    fallback:
+      webhook-url: ${VC_ALERT_FALLBACK_WEBHOOK_URL:}
+      webhook-secret: ${VC_ALERT_FALLBACK_WEBHOOK_SECRET:}
+      webhook-allowed-hosts: ${VC_ALERT_FALLBACK_WEBHOOK_ALLOWED_HOSTS:}
+      connect-timeout: ${VC_ALERT_FALLBACK_CONNECT_TIMEOUT:2s}
     webhook-max-attempts: 5
     webhook-backoff-seconds: 5
     webhook-drain-ms: 5000
@@ -98,7 +137,17 @@ virtual-companion:
   # pending Owner/legal review; flip to true only after that review.
   retention:
     enabled: ${VC_RETENTION_PURGE_ENABLED:false}
+    dry-run: ${VC_RETENTION_DRY_RUN:true}
     purge-cron: "0 47 3 * * *"
+  # S0-31: durable job-run freshness. Fixed metadata only; stale/hung jobs
+  # emit fixed operational codes through the durable alert outbox.
+  jobs:
+    health-poll-ms: ${VC_JOB_HEALTH_POLL_MS:60000}
+    health-initial-delay-ms: ${VC_JOB_HEALTH_INITIAL_DELAY_MS:60000}
+    dau-stale-seconds: ${VC_JOB_DAU_STALE_SECONDS:300}
+    export-stale-seconds: ${VC_JOB_EXPORT_STALE_SECONDS:300}
+    auth-purge-stale-seconds: ${VC_JOB_AUTH_PURGE_STALE_SECONDS:93600}
+    retention-stale-seconds: ${VC_JOB_RETENTION_STALE_SECONDS:93600}
   # CRYPTO-REST (§17.4): at-rest key injected by deployment; the shipped
   # default is development-only and rejected in the production profile.
   crypto:
@@ -117,6 +166,9 @@ virtual-companion:
     # When true (and auth.enabled=true) the runtime wires a DataSource and the
     # V14 SECURITY DEFINER identity repositories. Credentials come from env.
     datasource-enabled: ${VC_AUTH_DATASOURCE_ENABLED:false}
+    enforce-db-least-privilege: ${VC_ENFORCE_DB_LEAST_PRIVILEGE:false}
+    shared-rate-enabled: ${VC_SHARED_RATE_LIMIT_ENABLED:false}
+    shared-rate-secret: ${VC_SHARED_RATE_LIMIT_SECRET:}
     # HMAC-SHA256 signing secret (>= 256 bits). Injected via env/secrets; never
     # committed. An empty value fails closed at bean creation.
     jwt-secret: ${VC_JWT_SECRET:}
@@ -154,6 +206,8 @@ virtual-companion:
     # runtime wires no live provider, so every external attempt fails closed at
     # routing with no eligible deployment and no credential is ever read.
     enabled: ${VC_MODEL_PROVIDERS_ENABLED:false}
+    budget-monthly-usd: ${VC_MODEL_BUDGET_MONTHLY_USD:0}
+    budget-reservation-output-tokens: ${VC_MODEL_BUDGET_RESERVATION_OUTPUT_TOKENS:8192}
     # Directory holding Docker-style secret files (default /run/secrets on
     # Linux deployments). Local/Windows development may instead set
     # VC_MODEL_SECRET_<NAME> environment variables, where <NAME> is the
@@ -246,6 +300,9 @@ virtual-companion:
   auth:
     enabled: ${VC_AUTH_ENABLED}
     datasource-enabled: ${VC_AUTH_DATASOURCE_ENABLED}
+    enforce-db-least-privilege: ${VC_ENFORCE_DB_LEAST_PRIVILEGE}
+    shared-rate-enabled: ${VC_SHARED_RATE_LIMIT_ENABLED}
+    shared-rate-secret: ${VC_SHARED_RATE_LIMIT_SECRET}
     # TASK-0191: production has no default -- a missing VC_OWNER_BINDING_SECRET
     # fails startup (fail-closed), matching the jwt/migrator pattern above.
     owner-binding-secret: ${VC_OWNER_BINDING_SECRET}

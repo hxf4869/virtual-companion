@@ -72,6 +72,63 @@ describe("admin account page (ADMIN-UI)", () => {
     wrapper.unmount();
   });
 
+  it("S0-15 requires admin re-auth before one-time reset and never claims delivery", async () => {
+    const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const method = init?.method ?? "GET";
+        calls.push({
+          url, method,
+          body: init?.body ? JSON.parse(String(init.body)) as unknown : undefined,
+        });
+        if (url === "/api/v1/auth/admin/accounts" && method === "GET") {
+          return {
+            ok: true, status: 200, json: async () => [
+              { accountId: "1", username: "root", role: "ADMIN", status: "ACTIVE", displayName: "Root" },
+              { accountId: "7", username: "alice", role: "USER", status: "ACTIVE", displayName: "Alice" },
+            ],
+          };
+        }
+        if (url === "/api/v1/auth/reauth" && method === "POST") {
+          return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        }
+        if (url === "/api/v1/auth/admin/accounts/7/reset-password" && method === "POST") {
+          return {
+            ok: true, status: 200,
+            json: async () => ({ ok: true, passwordMustChange: true }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => [] };
+      }),
+    );
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="reset-account-select"]').trigger("click");
+    expect((wrapper.get('[data-testid="reset-account-id"]').element as HTMLInputElement).value)
+      .toBe("7");
+    expect(wrapper.get('[data-testid="admin-reset-password"]').attributes("disabled"))
+      .toBeDefined();
+    await wrapper.get('[data-testid="admin-reauth-password"]').setValue("AdminPass1!");
+    await wrapper.get('[data-testid="admin-reauth"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-testid="reset-temporary-password"]').setValue("TempPassword1!");
+    await wrapper.get('[data-testid="admin-reset-password"]').trigger("click");
+    await flushPromises();
+
+    expect(calls).toContainEqual({
+      url: "/api/v1/auth/reauth", method: "POST", body: { password: "AdminPass1!" },
+    });
+    expect(calls).toContainEqual({
+      url: "/api/v1/auth/admin/accounts/7/reset-password",
+      method: "POST", body: { newPassword: "TempPassword1!" },
+    });
+    expect(wrapper.get('[data-testid="admin-reset-message"]').text()).toContain("系统未发送消息");
+    wrapper.unmount();
+  });
+
   it("renders the usage summary and audit trail on mount (ADMIN-OPS)", async () => {
     vi.stubGlobal(
       "fetch",
@@ -308,11 +365,15 @@ describe("admin account page (ADMIN-UI)", () => {
   });
 
   it("S0-14-D: renders redacted ops cases and never shows body/providerRef/internal notes", async () => {
+    let transitionBody: Record<string, unknown> | null = null;
+    const noteBodies: Record<string, unknown>[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input.toString();
-        if (url.startsWith("/api/v1/auth/admin/ops-cases") && (init?.method ?? "GET") === "GET") {
+        if ((url === "/api/v1/auth/admin/ops-cases"
+            || url.startsWith("/api/v1/auth/admin/ops-cases?"))
+            && (init?.method ?? "GET") === "GET") {
           return {
             ok: true,
             status: 200,
@@ -334,6 +395,34 @@ describe("admin account page (ADMIN-UI)", () => {
             ],
           };
         }
+        if (url.endsWith("/api/v1/auth/admin/ops-cases/3/notes") && init?.method === "PUT") {
+          if (init.body) noteBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: "3", kind: "REPORT", sourceOwnerId: "7", sourceId: "9",
+              status: "OPEN", severity: "P2", publicNote: "用户可见更新",
+              dispositionReason: "", openedAt: "2026-08-23T00:00:00Z",
+            }),
+          };
+        }
+        if (url.endsWith("/api/v1/auth/admin/ops-cases/3/internal-note")
+            && (init?.method ?? "GET") === "GET") {
+          return { ok: true, status: 200, json: async () => ({ note: "内部复核备注" }) };
+        }
+        if (url.endsWith("/api/v1/auth/admin/ops-cases/3/actions") && init?.method === "POST") {
+          transitionBody = init.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: "3", kind: "REPORT", sourceOwnerId: "7", sourceId: "9",
+              status: "RESOLVED", severity: "P2", publicNote: "公开说明",
+              dispositionReason: "人工复核完成", openedAt: "2026-08-23T00:00:00Z",
+            }),
+          };
+        }
         return { ok: true, status: 200, json: async () => [] };
       }),
     );
@@ -347,6 +436,31 @@ describe("admin account page (ADMIN-UI)", () => {
     expect(rows[0].text()).not.toContain("alpha-simulated");
     expect(rows[0].text()).not.toContain("用户聊天原文");
     expect(wrapper.find('[data-testid="ops-case-ack"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="ops-case-public-note"]').setValue("用户可见更新");
+    await wrapper.get('[data-testid="ops-case-save-public-note"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-testid="ops-case-internal-note"]').setValue("内部复核备注");
+    await wrapper.get('[data-testid="ops-case-save-internal-note"]').trigger("click");
+    await flushPromises();
+    expect(noteBodies).toEqual([
+      { visibility: "PUBLIC", note: "用户可见更新" },
+      { visibility: "INTERNAL", note: "内部复核备注" },
+    ]);
+    await wrapper.get('[data-testid="ops-case-read-internal-note"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="ops-case-internal-note-read"]').text())
+      .toContain("内部复核备注");
+    const resolve = wrapper.get('[data-testid="ops-case-resolve"]');
+    expect(resolve.attributes("disabled")).toBeDefined();
+    await wrapper.get('[data-testid="ops-case-disposition"]').setValue("人工复核完成");
+    expect(resolve.attributes("disabled")).toBeUndefined();
+    await resolve.trigger("click");
+    await flushPromises();
+    expect(transitionBody).toMatchObject({
+      action: "RESOLVE",
+      dispositionReason: "人工复核完成",
+    });
+    expect(JSON.stringify(transitionBody)).not.toContain("handled");
     wrapper.unmount();
   });
 

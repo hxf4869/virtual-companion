@@ -1,7 +1,7 @@
 -- 130_conversation_summary_cipher: S0-32 V79 — summary stored-text reader
 -- and stale-cipher scan/replace. Covers: plaintext summaries are scanned;
 -- current enc2 is skipped; replace is idempotent; vc_worker has no EXECUTE;
--- delete-invalidated rows remain in the table (ciphertext is not wiped).
+-- restored legacy invalid rows do not block effective-summary readiness.
 
 \set ON_ERROR_STOP on
 
@@ -34,6 +34,10 @@ BEGIN
         RAISE EXCEPTION 'stale summary batch should return plaintext and enc1, got %', v_n;
     END IF;
 
+    IF vc.conversation_summary_cipher_ready('enc2:default:1:') THEN
+        RAISE EXCEPTION 'plaintext effective summary must fail startup readiness';
+    END IF;
+
     v_ok := vc.backfill_replace_summary_cipher(
         1, 1, 'enc2:default:1:rewritten', 'enc2:default:1:');
     IF v_ok IS NOT TRUE THEN
@@ -46,8 +50,12 @@ BEGIN
         RAISE EXCEPTION 'already-current summary must not be replaced';
     END IF;
 
-    -- Invalidated row (delete coverage) is still scanned — ciphertext stays,
-    -- never converted back to plaintext.
+    IF NOT vc.conversation_summary_cipher_ready('enc2:default:1:') THEN
+        RAISE EXCEPTION 'current effective summaries must pass startup readiness';
+    END IF;
+
+    -- A directly restored legacy invalid row is ignored by effective-row readiness;
+    -- backfill can still re-encrypt it if an isolated recovery imports one.
     SELECT count(*) INTO v_n
       FROM vc.conversation_summary WHERE id = 3 AND valid = false;
     IF v_n <> 1 THEN

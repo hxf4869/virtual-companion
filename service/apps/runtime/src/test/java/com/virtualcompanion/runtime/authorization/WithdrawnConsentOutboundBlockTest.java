@@ -443,7 +443,9 @@ class WithdrawnConsentOutboundBlockTest {
             AdapterLocator locator = new InMemoryAdapterLocator(List.of(registration(counting)));
             this.invoker = new LiveModelInvoker(
                     router, guard, authorityStore, locator, recovery,
-                    Map.of(PROVIDER, "alpha-supplier"));
+                    Map.of(PROVIDER, "alpha-supplier"),
+                    Map.of(PROVIDER, new com.virtualcompanion.modelruntime.execution.ProviderDeploymentMetadata(
+                            "loopback-model", "loopback-rev-v1", "loopback-config-v1")));
         }
     }
 
@@ -582,6 +584,7 @@ class WithdrawnConsentOutboundBlockTest {
                 new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80),
                 // S0-26: 纯历史对话外发必须声明逐条类别（单条 USER 文本）。
                 com.virtualcompanion.modelruntime.execution.PayloadComposition
-                        .allMessageText(1));
+                        .allMessageText(1),
+                "companion-chat-v1", "gentle-listener-v1");
     }
 }

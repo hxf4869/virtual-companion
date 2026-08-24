@@ -27,14 +27,39 @@ public final class OpenAiCompatEmbedder {
         this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
         this.model = Objects.requireNonNull(model, "model");
         this.apiKey = Objects.requireNonNull(apiKey, "apiKey");
-        this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        this.http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
     }
 
     /** Embed one text; returns the vendor's vector as float[]. */
     public float[] embed(String text) {
+        return embed(text, null);
+    }
+
+    /** Request an explicit output dimension for providers that support it. */
+    public float[] embed(String text, int dimensions) {
+        if (dimensions <= 0) {
+            throw new IllegalArgumentException("dimensions must be positive");
+        }
+        return embed(text, Integer.valueOf(dimensions));
+    }
+
+    private float[] embed(String text, Integer dimensions) {
         Objects.requireNonNull(text, "text must not be null");
-        String body = "{\"model\":\"" + escapeJsonString(model)
-                + "\",\"input\":\"" + escapeJsonString(text) + "\"}";
+        var payload = new java.util.LinkedHashMap<String, Object>();
+        payload.put("model", model);
+        payload.put("input", text);
+        if (dimensions != null) {
+            payload.put("dimensions", dimensions);
+        }
+        String body;
+        try {
+            body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException serialization) {
+            throw new IllegalStateException("embeddings request could not be serialized", serialization);
+        }
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/embeddings"))
                 .timeout(Duration.ofSeconds(20))
@@ -45,8 +70,11 @@ public final class OpenAiCompatEmbedder {
         HttpResponse<String> response;
         try {
             response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (Exception e) {
-            throw new IllegalStateException("embeddings call failed", e);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("embeddings call interrupted", interrupted);
+        } catch (java.io.IOException transport) {
+            throw new IllegalStateException("embeddings call failed", transport);
         }
         if (response.statusCode() >= 300) {
             throw new IllegalStateException(
@@ -99,7 +127,16 @@ public final class OpenAiCompatEmbedder {
         }
         float[] v = new float[arr.size()];
         for (int i = 0; i < arr.size(); i++) {
-            v[i] = (float) arr.get(i).asDouble();
+            com.fasterxml.jackson.databind.JsonNode value = arr.get(i);
+            if (value == null || !value.isNumber()) {
+                throw new IllegalArgumentException("embedding vector contains a non-numeric value");
+            }
+            double parsed = value.doubleValue();
+            float narrowed = (float) parsed;
+            if (!Double.isFinite(parsed) || !Float.isFinite(narrowed)) {
+                throw new IllegalArgumentException("embedding vector contains a non-finite value");
+            }
+            v[i] = narrowed;
         }
         return v;
     }

@@ -17,8 +17,8 @@ export const PERSONA_OPTIONS: readonly PersonaOption[] = [
   },
 ];
 
-/** Display name for a persona template id; falls back to the raw id. */
+/** Display name for a persona template id; unknown ids stay redacted. */
 export function personaDisplayName(templateId: string): string {
   const option = PERSONA_OPTIONS.find((o) => o.templateId === templateId);
-  return option ? option.displayName : templateId;
+  return option?.displayName ?? "陪伴角色";
 }

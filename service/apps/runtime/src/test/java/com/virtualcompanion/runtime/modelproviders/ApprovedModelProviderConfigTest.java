@@ -30,6 +30,8 @@ import org.springframework.boot.test.context.SpringBootTest;
         "virtual-companion.model-providers.deployments[0].protocol=OPENAI_CHAT_COMPLETIONS",
         "virtual-companion.model-providers.deployments[0].supplier-name=OpenAI",
         "virtual-companion.model-providers.deployments[0].model=gpt-4o-mini",
+        "virtual-companion.model-providers.deployments[0].model-revision=gpt-4o-mini-test-rev",
+        "virtual-companion.model-providers.deployments[0].config-version=openai-test-config-v1",
         "virtual-companion.model-providers.deployments[0].endpoint=http://127.0.0.1:1/v1/chat/completions",
         "virtual-companion.model-providers.deployments[0].credential-secret=openai-key",
         "virtual-companion.model-providers.deployments[0].enabled=true"})
@@ -66,6 +68,8 @@ class ApprovedModelProviderConfigTest {
         ProviderId providerId = new ProviderId("openai-approved");
         assertNotNull(approvedModelProviders.locator().adapterFor(providerId));
         assertEquals("OpenAI", approvedModelProviders.supplierNames().get(providerId));
+        assertEquals("gpt-4o-mini-test-rev",
+                approvedModelProviders.deploymentMetadata().get(providerId).modelRevision());
         assertNotNull(liveModelInvoker);
         assertNotNull(deterministicRouter);
         assertNotNull(quotaLedger);

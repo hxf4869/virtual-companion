@@ -104,7 +104,65 @@
           >
             禁用
           </button>
+          <button
+            v-if="account.status === 'ACTIVE' && account.accountId !== auth.accountId"
+            size="mini"
+            data-testid="reset-account-select"
+            :disabled="busy"
+            @click="resetAccountId = account.accountId"
+          >
+            安全重置
+          </button>
         </view>
+      </view>
+
+      <view class="admin-form" data-testid="admin-reset-card">
+        <text class="account-list-title">管理员安全重置</text>
+        <text class="admin-hint">先用当前管理员密码 re-auth（15 分钟），再设置目标账号临时密码。系统不会发送邮件或短信，须走已批准的线下渠道。</text>
+        <input
+          v-model="reauthPassword"
+          class="admin-input"
+          data-testid="admin-reauth-password"
+          type="password"
+          autocomplete="current-password"
+          placeholder="当前管理员密码"
+          aria-label="当前管理员密码"
+        />
+        <button
+          class="admin-nav-index"
+          data-testid="admin-reauth"
+          :disabled="busy || !reauthPassword"
+          @click="onAdminReauth"
+        >
+          确认管理员身份
+        </button>
+        <input
+          v-model="resetAccountId"
+          class="admin-input"
+          data-testid="reset-account-id"
+          placeholder="目标账号编号"
+          aria-label="目标账号编号"
+        />
+        <input
+          v-model="resetPassword"
+          class="admin-input"
+          data-testid="reset-temporary-password"
+          type="password"
+          autocomplete="new-password"
+          placeholder="临时密码"
+          aria-label="临时密码"
+        />
+        <button
+          class="admin-nav-index"
+          data-testid="admin-reset-password"
+          :disabled="busy || !reauthOk || !resetAccountId || resetPassword.length < 12"
+          @click="onAdminResetPassword"
+        >
+          设置临时密码并撤销旧会话
+        </button>
+        <text v-if="resetMessage" class="admin-hint" data-testid="admin-reset-message">
+          {{ resetMessage }}
+        </text>
       </view>
 
       <view v-if="result" class="admin-result" data-testid="account-result" role="status">
@@ -525,6 +583,67 @@
           <text class="audit-cell">账号 {{ row.sourceOwnerId }}</text>
           <text class="audit-cell">{{ row.publicNote || "无公开说明" }}</text>
           <text class="audit-cell">{{ row.openedAt }}</text>
+          <input
+            v-if="canMutateCases && row.status !== 'RESOLVED'"
+            v-model="caseDisposition[row.id]"
+            data-testid="ops-case-disposition"
+            class="admin-input"
+            maxlength="240"
+            placeholder="结案说明（结案时必填）"
+            aria-label="结案说明"
+          />
+          <input
+            v-if="canMutateCases"
+            v-model="casePublicNote[row.id]"
+            data-testid="ops-case-public-note"
+            class="admin-input"
+            maxlength="240"
+            :placeholder="row.publicNote || '用户可见说明'"
+            aria-label="用户可见说明"
+          />
+          <button
+            v-if="canMutateCases"
+            data-testid="ops-case-save-public-note"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onCaseNote(row.id, 'PUBLIC')"
+          >
+            保存公开说明
+          </button>
+          <input
+            v-if="canMutateCases"
+            v-model="caseInternalDraft[row.id]"
+            data-testid="ops-case-internal-note"
+            class="admin-input"
+            maxlength="500"
+            placeholder="内部备注（不向用户展示）"
+            aria-label="内部备注"
+          />
+          <button
+            v-if="canMutateCases"
+            data-testid="ops-case-save-internal-note"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onCaseNote(row.id, 'INTERNAL')"
+          >
+            保存内部备注
+          </button>
+          <button
+            v-if="canMutateCases"
+            data-testid="ops-case-read-internal-note"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onReadInternalNote(row.id)"
+          >
+            读取内部备注
+          </button>
+          <text
+            v-if="caseInternalRead[row.id] !== undefined"
+            class="audit-cell"
+            data-testid="ops-case-internal-note-read"
+          >
+            {{ caseInternalRead[row.id] || "无内部备注" }}
+          </text>
           <button
             v-if="canMutateCases && row.status !== 'RESOLVED'"
             data-testid="ops-case-ack"
@@ -538,7 +657,7 @@
             v-if="canMutateCases && row.status !== 'RESOLVED'"
             data-testid="ops-case-resolve"
             class="admin-nav-index"
-            :disabled="busy"
+            :disabled="busy || !caseDisposition[row.id]?.trim()"
             @click="onCaseAction(row.id, 'RESOLVE')"
           >
             结案
@@ -560,6 +679,7 @@
 import { computed, defineComponent, onMounted, ref } from "vue";
 
 import {
+  adminResetPassword,
   assignServiceClass,
   createAccount,
   createInvite,
@@ -575,9 +695,12 @@ import {
   providerRegistry,
   quotaReconciliation,
   listAuditEvents,
+  reauthAuth,
   listOpsCases,
+  readOpsCaseInternalNote,
   listSafetyEvents,
   transitionOpsCase,
+  updateOpsCaseNote,
   listServiceClassAssignments,
   usageSummary,
   type AccountListItem,
@@ -618,6 +741,11 @@ export default defineComponent({
       status: string;
     } | null>(null);
     const failed = ref(false);
+    const reauthPassword = ref("");
+    const reauthOk = ref(false);
+    const resetAccountId = ref("");
+    const resetPassword = ref("");
+    const resetMessage = ref("");
     // ADMIN-ACCTS: the account registry loaded on mount and after mutations.
     const accounts = ref<AccountListItem[]>([]);
     const loadFailed = ref(false);
@@ -654,6 +782,10 @@ export default defineComponent({
     const scClass = ref<"ECONOMY" | "PREMIUM">("ECONOMY");
     const scResult = ref<{ username: string; serviceClass: string } | null>(null);
     const cases = ref<PublicOpsCase[]>([]);
+    const caseDisposition = ref<Record<string, string>>({});
+    const casePublicNote = ref<Record<string, string>>({});
+    const caseInternalDraft = ref<Record<string, string>>({});
+    const caseInternalRead = ref<Record<string, string>>({});
     const casesFailed = ref(false);
     const isAdmin = computed(() => auth.role === "ADMIN");
     const isOperator = computed(() => auth.role != null && OPERATOR_ROLES.has(auth.role));
@@ -706,15 +838,50 @@ export default defineComponent({
     }
 
     async function onCaseAction(caseId: string, action: "ACK" | "RESOLVE"): Promise<void> {
+      const disposition = action === "RESOLVE" ? caseDisposition.value[caseId]?.trim() : undefined;
+      if (action === "RESOLVE" && !disposition) return;
       busy.value = true;
       try {
         await transitionOpsCase(
           transport,
           caseId,
           action,
-          action === "RESOLVE" ? "handled" : undefined,
+          disposition,
         );
+        if (action === "RESOLVE") delete caseDisposition.value[caseId];
         await refreshCases();
+      } catch {
+        casesFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function onCaseNote(
+      caseId: string,
+      visibility: "INTERNAL" | "PUBLIC",
+    ): Promise<void> {
+      busy.value = true;
+      const note = visibility === "PUBLIC"
+        ? (casePublicNote.value[caseId] ?? "")
+        : (caseInternalDraft.value[caseId] ?? "");
+      try {
+        await updateOpsCaseNote(transport, caseId, visibility, note);
+        if (visibility === "PUBLIC") delete casePublicNote.value[caseId];
+        await refreshCases();
+      } catch {
+        casesFailed.value = true;
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function onReadInternalNote(caseId: string): Promise<void> {
+      busy.value = true;
+      try {
+        const note = await readOpsCaseInternalNote(transport, caseId);
+        caseInternalRead.value[caseId] = note;
+        caseInternalDraft.value[caseId] = note;
       } catch {
         casesFailed.value = true;
       } finally {
@@ -978,6 +1145,48 @@ export default defineComponent({
       }
     }
 
+    async function onAdminReauth(): Promise<void> {
+      if (busy.value || !reauthPassword.value) return;
+      busy.value = true;
+      resetMessage.value = "";
+      try {
+        reauthOk.value = await reauthAuth(transport, reauthPassword.value);
+        resetMessage.value = reauthOk.value
+          ? "管理员身份已确认，15 分钟内可执行一次性重置。"
+          : "管理员身份确认失败。";
+        reauthPassword.value = "";
+      } catch {
+        reauthOk.value = false;
+        resetMessage.value = "管理员身份确认失败。";
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function onAdminResetPassword(): Promise<void> {
+      if (busy.value || !reauthOk.value || !resetAccountId.value
+          || resetPassword.value.length < 12) return;
+      busy.value = true;
+      resetMessage.value = "";
+      try {
+        const ok = await adminResetPassword(
+          transport, resetAccountId.value.trim(), resetPassword.value,
+        );
+        resetMessage.value = ok
+          ? "临时密码已设置，旧会话已撤销；系统未发送消息，请走批准的线下渠道。"
+          : "安全重置失败，请重新确认管理员身份。";
+        if (ok) {
+          resetPassword.value = "";
+          reauthOk.value = false;
+        }
+      } catch {
+        resetMessage.value = "安全重置失败，请重新确认管理员身份。";
+        reauthOk.value = false;
+      } finally {
+        busy.value = false;
+      }
+    }
+
     const canSubmit = computed(
       () =>
         username.value.trim().length > 0 &&
@@ -1035,6 +1244,13 @@ export default defineComponent({
       busy,
       result,
       failed,
+      reauthPassword,
+      reauthOk,
+      resetAccountId,
+      resetPassword,
+      resetMessage,
+      onAdminReauth,
+      onAdminResetPassword,
       accounts,
       loadFailed,
       usageRows,
@@ -1079,12 +1295,18 @@ export default defineComponent({
       onRefreshServiceClasses,
       onAssignServiceClass,
       cases,
+      caseDisposition,
+      casePublicNote,
+      caseInternalDraft,
+      caseInternalRead,
       casesFailed,
       isAdmin,
       isOperator,
       canMutateCases,
       onRefreshCases,
       onCaseAction,
+      onCaseNote,
+      onReadInternalNote,
       goTo,
     };
   },

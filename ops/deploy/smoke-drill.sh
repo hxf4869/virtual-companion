@@ -11,7 +11,10 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ENVFILE="$ROOT/ops/deploy/.env.smoke"
 COMPOSE="docker compose --env-file $ENVFILE -f $ROOT/ops/deploy/docker-compose.yml -p vc-smoke"
 
-cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
+cleanup() {
+  $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
+  rm -f -- "$ENVFILE"
+}
 trap cleanup EXIT
 
 echo "== build artifacts =="
@@ -39,6 +42,8 @@ fi
 JAVA_BIN="$JDK25/bin/java"
 if env SPRING_PROFILES_ACTIVE=production \
     VC_AUTH_ENABLED=true VC_AUTH_DATASOURCE_ENABLED=true \
+    VC_ENFORCE_DB_LEAST_PRIVILEGE=true \
+    VC_SHARED_RATE_LIMIT_ENABLED=true VC_SHARED_RATE_LIMIT_SECRET="$KEY32" \
     VC_FLYWAY_ENABLED=false \
     VC_JWT_SECRET="$KEY32" VC_OWNER_BINDING_SECRET="$KEY32" \
     "$JAVA_BIN" -jar "$JAR" \
@@ -56,6 +61,8 @@ echo "== single-replica: declared replicas > 1 must refuse startup (S0-33) =="
 # warned — misconfiguration must not be publishable.
 if env SPRING_PROFILES_ACTIVE=production \
     VC_AUTH_ENABLED=true VC_AUTH_DATASOURCE_ENABLED=true \
+    VC_ENFORCE_DB_LEAST_PRIVILEGE=true \
+    VC_SHARED_RATE_LIMIT_ENABLED=true VC_SHARED_RATE_LIMIT_SECRET="$KEY32" \
     VC_FLYWAY_ENABLED=false \
     VC_JWT_SECRET="$KEY32" VC_OWNER_BINDING_SECRET="$KEY32" \
     VC_CRYPTO_REST_KEY="$KEY32" VC_RUNTIME_REPLICAS=2 \
@@ -71,9 +78,13 @@ echo "  OK: declared replicas=2 refused with 'VC_RUNTIME_REPLICAS'"
 echo "== full stack up =="
 cat > "$ENVFILE" <<EOF
 VC_DOMAIN=localhost
-VC_POSTGRES_PASSWORD=smoke-postgres
+VC_HTTP_PORT=18080
+VC_HTTPS_PORT=18443
+VC_MIGRATOR_DB_PASSWORD=smoke-migrator
+VC_RUNTIME_DB_PASSWORD=smoke-runtime
 VC_JWT_SECRET=$KEY32
 VC_OWNER_BINDING_SECRET=$KEY32
+VC_SHARED_RATE_LIMIT_SECRET=$KEY32
 VC_CRYPTO_REST_KEY=$KEY32
 VC_RUNTIME_REPLICAS=1
 EOF
@@ -82,13 +93,13 @@ $COMPOSE up -d --build >>"$ROOT/ops/deploy/smoke-up.log" 2>&1
 echo "== health + H5 + API probes =="
 ok=0
 for _ in $(seq 1 60); do
-    if curl -sk -m 3 https://localhost/actuator/health | grep -q '"UP"'; then ok=1; break; fi
+    if curl -sk -m 3 https://localhost:18443/actuator/health | grep -q '"UP"'; then ok=1; break; fi
     sleep 2
 done
 [ "$ok" = 1 ] || { echo "FAIL: health never went UP (see smoke-up.log)" >&2; exit 7; }
-curl -sk -m 3 https://localhost/ | grep -q '<div id="app">' \
+curl -sk -m 3 https://localhost:18443/ | grep -q '<div id="app">' \
     || { echo "FAIL: H5 shell not served" >&2; exit 8; }
-code=$(curl -sk -m 3 -o /dev/null -w '%{http_code}' https://localhost/api/v1/version)
+code=$(curl -sk -m 3 -o /dev/null -w '%{http_code}' https://localhost:18443/api/v1/version)
 [ "$code" = 200 ] || { echo "FAIL: /api/v1/version got $code" >&2; exit 9; }
 echo "  OK: health UP, H5 shell served, public version API 200"
 
@@ -97,9 +108,12 @@ echo "== single-replica: scaling runtime to 2 must not produce two active runtim
 # be refused at startup (RUNTIME_SINGLETON_REFUSED, exit 87) and never serve.
 $COMPOSE up -d --no-deps --scale runtime=2 runtime >>"$ROOT/ops/deploy/smoke-up.log" 2>&1
 sleep 30
-if ! $COMPOSE logs --no-color runtime 2>/dev/null | grep -q "RUNTIME_SINGLETON_REFUSED"; then
-    echo "FAIL: no singleton refusal observed after --scale runtime=2" >&2
-    $COMPOSE ps >>"$ROOT/ops/deploy/smoke-up.log" 2>&1 || true
+refused=0
+$COMPOSE logs --no-color runtime 2>/dev/null | grep -q "RUNTIME_SINGLETON_REFUSED" && refused=1
+$COMPOSE ps -a runtime 2>/dev/null | grep -q "Restarting (87)" && refused=1
+if [ "$refused" -ne 1 ]; then
+    echo "FAIL: no singleton refusal/exit-87 observed after --scale runtime=2" >&2
+    $COMPOSE ps -a >>"$ROOT/ops/deploy/smoke-up.log" 2>&1 || true
     exit 12
 fi
 # Caddy round-robins between both upstreams while the second instance is in
@@ -107,7 +121,7 @@ fi
 # instance instead of a single probe.
 ok=0
 for _ in $(seq 1 10); do
-    if curl -sk -m 3 https://localhost/actuator/health 2>/dev/null | grep -q '"UP"'; then ok=1; break; fi
+    if curl -sk -m 3 https://localhost:18443/actuator/health 2>/dev/null | grep -q '"UP"'; then ok=1; break; fi
     sleep 2
 done
 [ "$ok" = 1 ] || { echo "FAIL: no healthy runtime while a second one was refused" >&2; exit 13; }
@@ -117,7 +131,7 @@ echo "== single-replica: scaling back to 1 restores the single healthy runtime =
 $COMPOSE up -d --no-deps --scale runtime=1 runtime >>"$ROOT/ops/deploy/smoke-up.log" 2>&1
 ok=0
 for _ in $(seq 1 10); do
-    if curl -sk -m 3 https://localhost/actuator/health 2>/dev/null | grep -q '"UP"'; then ok=1; break; fi
+    if curl -sk -m 3 https://localhost:18443/actuator/health 2>/dev/null | grep -q '"UP"'; then ok=1; break; fi
     sleep 2
 done
 [ "$ok" = 1 ] || { echo "FAIL: health did not recover after scale back to 1" >&2; exit 14; }

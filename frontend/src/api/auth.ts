@@ -31,6 +31,7 @@ export interface AuthTokens {
   expiresInSeconds: number;
   accountId: string;
   role: string;
+  passwordMustChange: boolean;
 }
 
 const AUTH_BASE = "/api/v1/auth";
@@ -47,7 +48,9 @@ function asTokens(json: unknown): AuthTokens | null {
   const accountId = asString(o, "accountId");
   const role = asString(o, "role");
   const expiresInSeconds = Number(o.expiresInSeconds);
-  if (!accessToken || !accountId || !role || !Number.isFinite(expiresInSeconds)) {
+  const passwordMustChange = o.passwordMustChange;
+  if (!accessToken || !accountId || !role || !Number.isFinite(expiresInSeconds)
+      || typeof passwordMustChange !== "boolean") {
     return null;
   }
   return {
@@ -56,6 +59,7 @@ function asTokens(json: unknown): AuthTokens | null {
     expiresInSeconds,
     accountId,
     role,
+    passwordMustChange,
   };
 }
 
@@ -86,6 +90,89 @@ export async function refresh(t: AuthTransport): Promise<AuthTokens | null> {
 export async function logout(t: AuthTransport): Promise<boolean> {
   const r = await t.request("POST", `${AUTH_BASE}/logout`);
   return r.ok;
+}
+
+export interface AuthSession {
+  id: string;
+  familyId: string;
+  clientLabel?: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  current: boolean;
+}
+
+function asAuthSession(json: unknown): AuthSession | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const id = asString(o, "id");
+  const familyId = asString(o, "familyId");
+  const createdAt = asString(o, "createdAt");
+  const lastSeenAt = asString(o, "lastSeenAt");
+  const expiresAt = asString(o, "expiresAt");
+  if (!id || !familyId || !createdAt || !lastSeenAt || !expiresAt
+      || typeof o.current !== "boolean") return null;
+  return {
+    id, familyId, createdAt, lastSeenAt, expiresAt, current: o.current,
+    clientLabel: asString(o, "clientLabel"),
+  };
+}
+
+export async function listAuthSessions(t: AuthTransport): Promise<AuthSession[]> {
+  const r = await t.request("GET", `${AUTH_BASE}/sessions`);
+  if (!r.ok || !Array.isArray(r.json)) throw new AuthHttpError(r.status);
+  const sessions = r.json.map(asAuthSession);
+  if (sessions.some((session) => session === null)) throw new AuthHttpError(r.status);
+  return sessions as AuthSession[];
+}
+
+export async function revokeAuthSession(
+  t: AuthTransport,
+  sessionId: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "DELETE", `${AUTH_BASE}/sessions/${encodeURIComponent(sessionId)}`,
+  );
+  return r.ok;
+}
+
+export async function revokeAllAuthSessions(t: AuthTransport): Promise<number> {
+  const r = await t.request("POST", `${AUTH_BASE}/sessions/revoke-all`);
+  if (!r.ok || !r.json || typeof r.json !== "object") throw new AuthHttpError(r.status);
+  const revoked = Number((r.json as Record<string, unknown>).revoked);
+  if (!Number.isInteger(revoked) || revoked < 0) throw new AuthHttpError(r.status);
+  return revoked;
+}
+
+export async function changeAuthPassword(
+  t: AuthTransport,
+  currentPassword: string,
+  newPassword: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "POST", `${AUTH_BASE}/password`, { currentPassword, newPassword },
+  );
+  return r.ok && (r.json as Record<string, unknown> | null)?.ok === true;
+}
+
+export async function reauthAuth(t: AuthTransport, password: string): Promise<boolean> {
+  const r = await t.request("POST", `${AUTH_BASE}/reauth`, { password });
+  return r.ok && (r.json as Record<string, unknown> | null)?.ok === true;
+}
+
+export async function adminResetPassword(
+  t: AuthTransport,
+  accountId: string,
+  newPassword: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "POST",
+    `${AUTH_BASE}/admin/accounts/${encodeURIComponent(accountId)}/reset-password`,
+    { newPassword },
+  );
+  if (!r.ok || !r.json || typeof r.json !== "object") return false;
+  const o = r.json as Record<string, unknown>;
+  return o.ok === true && o.passwordMustChange === true;
 }
 
 /**
@@ -523,6 +610,38 @@ export async function transitionOpsCase(
     throw new AuthHttpError(r.status);
   }
   return { id, status };
+}
+
+export async function updateOpsCaseNote(
+  t: AuthTransport,
+  caseId: string,
+  visibility: "INTERNAL" | "PUBLIC",
+  note: string,
+): Promise<PublicOpsCase> {
+  const r = await t.request(
+    "PUT",
+    `${AUTH_BASE}/admin/ops-cases/${encodeURIComponent(caseId)}/notes`,
+    { visibility, note },
+  );
+  const parsed = r.ok ? redactOpsCase(r.json) : null;
+  if (!parsed) throw new AuthHttpError(r.status);
+  return parsed;
+}
+
+export async function readOpsCaseInternalNote(
+  t: AuthTransport,
+  caseId: string,
+): Promise<string> {
+  const r = await t.request(
+    "GET",
+    `${AUTH_BASE}/admin/ops-cases/${encodeURIComponent(caseId)}/internal-note`,
+  );
+  if (!r.ok || !r.json || typeof r.json !== "object") {
+    throw new AuthHttpError(r.status);
+  }
+  const note = (r.json as Record<string, unknown>).note;
+  if (typeof note !== "string") throw new AuthHttpError(r.status);
+  return note;
 }
 
 export async function listSafetyEvents(

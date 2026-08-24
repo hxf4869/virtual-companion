@@ -36,6 +36,14 @@ public class DataCryptoBackfillRunner implements ApplicationRunner {
         long summaries = backfill(
                 "vc.backfill_stale_cipher_summary_batch",
                 "vc.backfill_replace_summary_cipher");
+        Boolean ready = authJdbcTemplate.queryForObject(
+                ConversationSummaryCipherReadiness.READY_SQL,
+                Boolean.class,
+                cipher.currentPrefix());
+        if (!Boolean.TRUE.equals(ready)) {
+            throw new IllegalStateException(
+                    "conversation summary cipher backfill did not converge");
+        }
         log.info("crypto backfill complete: {} stale message bodies and {} summaries re-encrypted",
                 messages, summaries);
     }

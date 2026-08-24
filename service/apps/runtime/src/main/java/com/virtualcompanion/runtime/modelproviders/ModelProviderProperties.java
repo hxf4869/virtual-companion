@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -66,6 +67,8 @@ public record ModelProviderProperties(
             @NotBlank String protocol,
             @NotBlank String supplierName,
             @NotBlank String model,
+            String modelRevision,
+            String configVersion,
             @NotBlank String endpoint,
             @NotBlank String credentialSecret,
             String anthropicVersion,
@@ -73,10 +76,29 @@ public record ModelProviderProperties(
             Double temperature,
             boolean enabled) {
 
+        @ConstructorBinding
         public Deployment {
+            modelRevision = modelRevision == null ? "" : modelRevision;
+            configVersion = configVersion == null ? "" : configVersion;
             anthropicVersion = anthropicVersion == null ? "" : anthropicVersion;
             maxTokens = maxTokens == null ? 0 : maxTokens;
             temperature = temperature == null ? 1.0 : temperature;
+        }
+
+        /** Legacy configuration shape; safe only while this deployment is disabled. */
+        public Deployment(
+                String providerId,
+                String protocol,
+                String supplierName,
+                String model,
+                String endpoint,
+                String credentialSecret,
+                String anthropicVersion,
+                Integer maxTokens,
+                Double temperature,
+                boolean enabled) {
+            this(providerId, protocol, supplierName, model, "", "", endpoint,
+                    credentialSecret, anthropicVersion, maxTokens, temperature, enabled);
         }
 
         boolean anthropicConfigured() {

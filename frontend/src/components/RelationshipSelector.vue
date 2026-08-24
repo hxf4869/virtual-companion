@@ -20,7 +20,7 @@
           :key="rel.relationshipId"
           :value="rel.relationshipId"
         >
-          {{ rel.personaRef }}{{ rel.active ? "（活跃）" : "" }}
+          {{ personaDisplayName(rel.personaRef) }}{{ rel.active ? "（活跃）" : "" }}
         </option>
       </select>
     </view>
@@ -85,7 +85,7 @@
 import { computed, defineComponent, ref, type PropType } from "vue";
 
 import type { Relationship } from "@/api/relationship";
-import { PERSONA_OPTIONS } from "@/domain/persona";
+import { PERSONA_OPTIONS, personaDisplayName } from "@/domain/persona";
 import type { RelationshipStatus } from "@/stores/relationship";
 
 export default defineComponent({
@@ -151,6 +151,7 @@ export default defineComponent({
     return {
       templateId,
       personaOptions,
+      personaDisplayName,
       canCreate,
       showEmptyRelationships,
       emptyRelationshipsText,

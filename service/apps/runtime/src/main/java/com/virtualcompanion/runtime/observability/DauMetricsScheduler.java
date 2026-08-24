@@ -15,9 +15,9 @@ import org.springframework.scheduling.annotation.Scheduled;
  * METRICS-ALERT (§22.10 / §26.6): refreshes the {@code vc_beta_dau} gauge
  * from the V77 job SD. The day boundary follows the beta service-window zone
  * — the same zone the DAU cap enforces — whether or not the gate itself is
- * enabled. A failed poll only logs an error: the gauge keeps its last value
- * until the next pass (scrape/health is the detection path for a dead poll,
- * not the alert webhook). The bean is registered by
+ * enabled. A failed poll keeps the last gauge value, records a FAILED run and
+ * emits the fixed P1 {@code DAU_METRICS_FAILED} alert; freshness monitoring
+ * independently catches a poll loop that stops running.
  * {@code AuthDataSourceConfig} only while the auth datasource is live.
  */
 public class DauMetricsScheduler {
@@ -28,11 +28,12 @@ public class DauMetricsScheduler {
     private final VcMetrics metrics;
     private final BetaServiceWindow serviceWindow;
     private final JobLease jobLease;
+    private final AlertNotifier alertNotifier;
     private final String holder = UUID.randomUUID().toString();
 
     public DauMetricsScheduler(
             JdbcTemplate authJdbcTemplate, VcMetrics metrics, BetaServiceWindow serviceWindow) {
-        this(authJdbcTemplate, metrics, serviceWindow, null);
+        this(authJdbcTemplate, metrics, serviceWindow, null, null);
     }
 
     public DauMetricsScheduler(
@@ -40,10 +41,20 @@ public class DauMetricsScheduler {
             VcMetrics metrics,
             BetaServiceWindow serviceWindow,
             JobLease jobLease) {
+        this(authJdbcTemplate, metrics, serviceWindow, jobLease, null);
+    }
+
+    public DauMetricsScheduler(
+            JdbcTemplate authJdbcTemplate,
+            VcMetrics metrics,
+            BetaServiceWindow serviceWindow,
+            JobLease jobLease,
+            AlertNotifier alertNotifier) {
         this.authJdbcTemplate = authJdbcTemplate;
         this.metrics = metrics;
         this.serviceWindow = serviceWindow;
         this.jobLease = jobLease;
+        this.alertNotifier = alertNotifier;
     }
 
     @Scheduled(fixedDelayString = "${virtual-companion.observability.dau-poll-ms:60000}")
@@ -65,6 +76,12 @@ public class DauMetricsScheduler {
             }
         } catch (RuntimeException e) {
             log.error("daily-active-user metric poll failed", e);
+            if (alertNotifier != null) {
+                alertNotifier.alert(
+                        AlertSeverity.P1,
+                        "DAU_METRICS_FAILED",
+                        "daily active user aggregate refresh failed");
+            }
             if (runId.isPresent()) {
                 jobLease.finishRun(runId.getAsLong(), "FAILED", "{}", "poll_failed");
             }

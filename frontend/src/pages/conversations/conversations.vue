@@ -29,11 +29,9 @@
       aria-label="按标题或预览筛选"
     />
 
-    <view v-if="loadFailed" class="error" data-testid="conversations-load-failed" role="alert">
-      <text>会话列表加载失败，请重试。</text>
-      <button data-testid="conversations-retry" class="nav-index" :disabled="busy" @click="reload">
-        重试
-      </button>
+    <view v-if="loadFailed" class="error" data-testid="conversations-load-failed">
+      <ErrorNotice message="会话列表加载失败，请重试。" :stale="items.length > 0" />
+      <RetryButton data-testid="conversations-retry" :disabled="busy" @retry="reload" />
     </view>
 
     <view
@@ -102,6 +100,11 @@
         </button>
       </view>
     </view>
+    <ErrorNotice
+      v-if="loadMoreFailed"
+      message="更多会话加载失败；已加载内容保持不变。"
+      :stale="true"
+    />
     <button
       v-if="hasMore"
       data-testid="conversations-load-more"
@@ -109,7 +112,7 @@
       :disabled="busy"
       @click="loadMore"
     >
-      加载更多
+      {{ loadMoreFailed ? "重试加载更多" : "加载更多" }}
     </button>
 
     <!-- CHAT-WIPE (FR-DATA-003 全部聊天删除): preview first, then a two-step
@@ -168,7 +171,9 @@ import {
   type ConversationListItem,
 } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ErrorNotice from "@/components/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import RetryButton from "@/components/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";
@@ -177,7 +182,7 @@ import { useRelationshipStore } from "@/stores/relationship";
 
 export default {
   name: "ConversationsPage",
-  components: { RelationshipSelector },
+  components: { ErrorNotice, RelationshipSelector, RetryButton },
   setup() {
     const auth = useAuthStore();
     const relStore = useRelationshipStore();
@@ -193,6 +198,7 @@ export default {
     const confirmDeleteId = ref<string | null>(null);
     const confirmEndId = ref<string | null>(null);
     const hasMore = ref(false);
+    const loadMoreFailed = ref(false);
     const PAGE_SIZE = 20;
     // CHAT-WIPE state: preview → two-step confirm → done/failed notice.
     const wipePreview = ref<ChatWipePreview | null>(null);
@@ -223,7 +229,8 @@ export default {
 
     async function reload(): Promise<void> {
       loadFailed.value = false;
-      loaded.value = false;
+      loadMoreFailed.value = false;
+      loaded.value = items.value.length > 0;
       busy.value = true;
       try {
         const filter = relationshipId.value.trim();
@@ -232,8 +239,7 @@ export default {
         hasMore.value = page.length === PAGE_SIZE;
         loaded.value = true;
       } catch {
-        items.value = [];
-        hasMore.value = false;
+        // Preserve rows from the same filter and mark them stale in the notice.
         loadFailed.value = true;
       } finally {
         busy.value = false;
@@ -242,6 +248,7 @@ export default {
 
     async function loadMore(): Promise<void> {
       if (!hasMore.value || busy.value || items.value.length === 0) return;
+      loadMoreFailed.value = false;
       busy.value = true;
       try {
         const filter = relationshipId.value.trim();
@@ -255,7 +262,8 @@ export default {
         items.value = [...items.value, ...page];
         hasMore.value = page.length === PAGE_SIZE;
       } catch {
-        // Keep the loaded rows; do not invent a next page.
+        // Keep loaded rows and the cursor; retry repeats only this page.
+        loadMoreFailed.value = true;
       } finally {
         busy.value = false;
       }
@@ -263,6 +271,13 @@ export default {
 
     function onPickRelationship(id: string): void {
       if (!id) return;
+      if (relationshipId.value !== id) {
+        items.value = [];
+        loaded.value = false;
+        hasMore.value = false;
+        loadFailed.value = false;
+        loadMoreFailed.value = false;
+      }
       relationshipId.value = id;
       void reload();
     }
@@ -412,7 +427,7 @@ export default {
       }
       await relStore.load(transport);
       const prefill = readQueryRelationshipId();
-      if (prefill) {
+      if (prefill && relStore.relationships.some((row) => row.relationshipId === prefill)) {
         relationshipId.value = prefill;
       }
       await reload();
@@ -441,6 +456,7 @@ export default {
       chatHref,
       goTo,
       hasMore,
+      loadMoreFailed,
       loadMore,
       wipePreview,
       wipeDone,

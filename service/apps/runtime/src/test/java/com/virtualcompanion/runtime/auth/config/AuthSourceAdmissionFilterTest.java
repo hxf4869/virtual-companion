@@ -58,6 +58,37 @@ class AuthSourceAdmissionFilterTest {
     }
 
     @Test
+    void sharedDatabaseSourceLimitFailsClosedBeforeBodyRead() throws Exception {
+        com.virtualcompanion.runtime.auth.application.SharedSourceAdmission shared =
+                org.mockito.Mockito.mock(
+                        com.virtualcompanion.runtime.auth.application.SharedSourceAdmission.class);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<
+                com.virtualcompanion.runtime.auth.application.SharedSourceAdmission> provider =
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        org.mockito.Mockito.when(provider.getIfAvailable()).thenReturn(shared);
+        org.mockito.Mockito.when(shared.admit(
+                "LOGIN", "192.0.2.55",
+                AuthSourceAdmissionFilter.SHARED_LOGIN_LIMIT,
+                AuthSourceAdmissionFilter.SHARED_WINDOW_SECONDS))
+                .thenReturn(new com.virtualcompanion.runtime.auth.application
+                        .SharedSourceAdmission.Decision(false, 17));
+        AuthSourceAdmissionFilter filter = new AuthSourceAdmissionFilter(
+                new AuthAbuseGuard(), provider);
+        CountingRequest request = request(
+                "POST", AuthSourceAdmissionFilter.LOGIN_PATH, "192.0.2.55", null);
+        AtomicBoolean called = new AtomicBoolean();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> called.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(429);
+        assertThat(response.getHeader("Retry-After")).isEqualTo("17");
+        assertThat(request.reads()).isZero();
+        assertThat(called).isFalse();
+    }
+
+    @Test
     void bulkheadRejectionDoesNotEnterTheBodyFilterOrWait() throws Exception {
         AuthAbuseGuard guard = new AuthAbuseGuard();
         AuthSourceAdmissionFilter sourceFilter = new AuthSourceAdmissionFilter(guard);

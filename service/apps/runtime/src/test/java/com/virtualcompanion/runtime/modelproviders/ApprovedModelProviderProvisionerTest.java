@@ -63,7 +63,8 @@ class ApprovedModelProviderProvisionerTest {
     void rejectsUnknownProtocolFailClosed() {
         ModelProviderProperties.Deployment unapproved = new ModelProviderProperties.Deployment(
                 "responses-provider", "OPENAI_RESPONSES", "OpenAI Responses",
-                "gpt-5", "http://127.0.0.1:1/v1/responses", "openai-key", "", 0, null, true);
+                "gpt-5", "gpt-5-rev", "responses-cfg-v1",
+                "http://127.0.0.1:1/v1/responses", "openai-key", "", 0, null, true);
 
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class, () -> provision(unapproved));
@@ -74,7 +75,8 @@ class ApprovedModelProviderProvisionerTest {
     void anthropicDeploymentRequiresVersionAndMaxTokens() {
         ModelProviderProperties.Deployment incomplete = new ModelProviderProperties.Deployment(
                 "anthropic-approved", "ANTHROPIC_MESSAGES", "Anthropic",
-                "claude-sonnet-5", "http://127.0.0.1:1/v1/messages",
+                "claude-sonnet-5", "claude-rev", "anthropic-cfg-v1",
+                "http://127.0.0.1:1/v1/messages",
                 "anthropic-key", "", 0, null, true);
 
         IllegalStateException exception = assertThrows(
@@ -119,10 +121,38 @@ class ApprovedModelProviderProvisionerTest {
     }
 
     @Test
+    void legacyMissingVersionsIsSafeWhileDeploymentDisabled() {
+        ModelProviderProperties.Deployment legacyDisabled = new ModelProviderProperties.Deployment(
+                "legacy-disabled", "OPENAI_CHAT_COMPLETIONS", "Legacy",
+                "model-alias", "http://127.0.0.1:1/v1/chat/completions",
+                "secret-that-does-not-exist", "", 0, null, false);
+
+        ApprovedModelProviders set = provision(legacyDisabled);
+
+        assertTrue(set.registry().deployments().isEmpty());
+        assertTrue(set.deploymentMetadata().isEmpty());
+    }
+
+    @Test
+    void enabledDeploymentMissingVersionsFailsBeforeCredentialRead() {
+        ModelProviderProperties.Deployment legacyEnabled = new ModelProviderProperties.Deployment(
+                "legacy-enabled", "OPENAI_CHAT_COMPLETIONS", "Legacy",
+                "model-alias", "http://127.0.0.1:1/v1/chat/completions",
+                "secret-that-does-not-exist", "", 0, null, true);
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class, () -> provision(legacyEnabled));
+
+        assertTrue(failure.getMessage().contains("modelRevision"));
+        assertFalse(failure.getMessage().contains("secret-that-does-not-exist"));
+    }
+
+    @Test
     void missingCredentialFailsClosed() {
         ModelProviderProperties.Deployment missingSecret = new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
-                "gpt-4o-mini", "http://127.0.0.1:1/v1/chat/completions",
+                "gpt-4o-mini", "gpt-rev", "openai-cfg-v1",
+                "http://127.0.0.1:1/v1/chat/completions",
                 "does-not-exist", "", 0, null, true);
 
         assertThrows(IllegalStateException.class, () -> provision(missingSecret));
@@ -132,17 +162,34 @@ class ApprovedModelProviderProvisionerTest {
     void endpointOutsideEgressAllowlistFailsClosed() {
         ModelProviderProperties.Deployment unapproved = new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
-                "gpt-4o-mini", "https://evil.example.com/v1/chat/completions",
+                "gpt-4o-mini", "gpt-rev", "openai-cfg-v1",
+                "https://evil.example.com/v1/chat/completions",
                 "openai-key", "", 0, null, true);
 
         assertThrows(IllegalArgumentException.class, () -> provision(unapproved));
     }
 
     @Test
+    void anthropicCustomHostUsesTheSameApprovedPolicyAsOpenAi() {
+        ModelProviderProperties.Deployment custom = new ModelProviderProperties.Deployment(
+                "anthropic-approved", "ANTHROPIC_MESSAGES", "Anthropic",
+                "claude-sonnet-5", "claude-rev", "anthropic-cfg-v1",
+                "https://approved.example/v1/messages",
+                "anthropic-key", "2023-06-01", 2048, null, true);
+        assertThrows(IllegalArgumentException.class, () -> provision(custom));
+        ApprovedModelProviders set = provisionWithPolicy(
+                com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaultsPlus(
+                        List.of("approved.example")),
+                custom);
+        assertNotNull(set.locator().adapterFor(new ProviderId("anthropic-approved")));
+    }
+
+    @Test
     void traversalSecretReferenceFailsClosed() {
         ModelProviderProperties.Deployment traversal = new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
-                "gpt-4o-mini", "http://127.0.0.1:1/v1/chat/completions",
+                "gpt-4o-mini", "gpt-rev", "openai-cfg-v1",
+                "http://127.0.0.1:1/v1/chat/completions",
                 "../openai-key", "", 0, null, true);
 
         assertThrows(IllegalArgumentException.class, () -> provision(traversal));
@@ -150,17 +197,25 @@ class ApprovedModelProviderProvisionerTest {
 
     private ApprovedModelProviders provision(
             ModelProviderProperties.Deployment... deployments) {
+        return provisionWithPolicy(
+                com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaults(),
+                deployments);
+    }
+
+    private ApprovedModelProviders provisionWithPolicy(
+            com.virtualcompanion.modelruntime.port.ProviderEgressPolicy policy,
+            ModelProviderProperties.Deployment... deployments) {
         ModelProviderProperties properties =
                 new ModelProviderProperties(true, tempDir.toString(), List.of(deployments), false);
-        return ApprovedModelProviderProvisioner.provision(properties,
-                new ProviderSecretReader(tempDir),
-                com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaults());
+        return ApprovedModelProviderProvisioner.provision(
+                properties, new ProviderSecretReader(tempDir), policy);
     }
 
     private static ModelProviderProperties.Deployment openai(String secret, boolean enabled) {
         return new ModelProviderProperties.Deployment(
                 "openai-approved", "OPENAI_CHAT_COMPLETIONS", "OpenAI",
-                "gpt-4o-mini", "http://127.0.0.1:1/v1/chat/completions",
+                "gpt-4o-mini", "gpt-rev", "openai-cfg-v1",
+                "http://127.0.0.1:1/v1/chat/completions",
                 secret, "", 0, null, enabled);
     }
 
@@ -174,7 +229,8 @@ class ApprovedModelProviderProvisionerTest {
             int maxTokens) {
         return new ModelProviderProperties.Deployment(
                 "anthropic-approved", "ANTHROPIC_MESSAGES", "Anthropic",
-                "claude-sonnet-5", "http://127.0.0.1:1/v1/messages",
+                "claude-sonnet-5", "claude-rev", "anthropic-cfg-v1",
+                "http://127.0.0.1:1/v1/messages",
                 secret, "2023-06-01", maxTokens, null, enabled);
     }
 }

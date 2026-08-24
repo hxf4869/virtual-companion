@@ -20,8 +20,10 @@ Phase A（逻辑）：
 1. `pg_dump -Fc` → **drop database** → `pg_restore`；
 2. 业务数据断言：消息正文、记忆状态（ACCEPTED）、导出残留行逐项核对；
    会话摘要在备份中为 enc2 密文（S0-32），恢复后仍由应用层解密，不会以明文复活；
-3. **删除墓碑**：已注销账号（carol）在恢复后仍无法存在（账号行 0、审计行
-   保留）——墓碑语义穿越恢复；
+3. **删除墓碑（两条路径）**：备份前已注销账号随备份恢复后仍不存在；另一个账号在
+   `pg_dump` 之后删除，digest-only manifest 保存在备份/PITR 边界之外。恢复旧 dump 后
+   先 dry-run reconcile（命中 1、零写），再 apply，确认复活账号与其业务数据重新删除、
+   COMPLETED tombstone 落回恢复库；
 4. **RLS 在恢复后的集群上成立**：重跑 01 跨用户读拒绝 / 02 跨关系引用拒绝 /
    70 伪造 owner 绑定拒绝三个真实攻击面测试。
 
@@ -37,4 +39,5 @@ Phase B（物理 PITR）：
 - `[WAL 归档存储位置与加密方式]`
 - `[每日 pg_dump 的宿主与产物保管]`
 - `[RPO/RTO 复核结论]`
+- `[account deletion digest manifest 的独立加密存储、访问角色与恢复顺序]`
 - 定期（建议每月）跑一次本演练脚本

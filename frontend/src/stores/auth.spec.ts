@@ -33,13 +33,14 @@ function throwTransport(): AuthTransport {
   return { request: vi.fn(async () => Promise.reject(new Error("offline"))) };
 }
 
-function sampleTokens(accessToken = "a"): AuthTokens {
+function sampleTokens(accessToken = "a", passwordMustChange = false): AuthTokens {
   return {
     accessToken,
     tokenType: "Bearer",
     expiresInSeconds: 7200,
     accountId: "7",
     role: "USER",
+    passwordMustChange,
   };
 }
 
@@ -89,6 +90,14 @@ describe("useAuthStore", () => {
     expect(storage.getItem("vc.refreshToken")).toBeNull();
   });
 
+  it("carries the server-enforced temporary-password flag in memory", async () => {
+    const store = useAuthStore();
+    await store.login(okTransport(sampleTokens("temporary", true)), "alice", "pw");
+    expect(store.passwordMustChange).toBe(true);
+    store.clear();
+    expect(store.passwordMustChange).toBe(false);
+  });
+
   it("does not authenticate on a server rejection (existence hidden)", async () => {
     const store = useAuthStore();
 
@@ -120,6 +129,33 @@ describe("useAuthStore", () => {
     expect(store.accessToken).toBe("a2");
     // The cookie-based refresh sends no body and no token argument.
     expect(t.request).toHaveBeenCalledWith("POST", "/api/v1/auth/refresh");
+  });
+
+  it("coalesces concurrent bootstrap, page and 401 refreshes", async () => {
+    const store = useAuthStore();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const request = vi.fn(async () => {
+      await gate;
+      return { ok: true, status: 200, json: sampleTokens("fresh") };
+    });
+    const t: AuthTransport = { request };
+
+    const bootstrap = store.tryRefresh(t);
+    const pageMount = store.tryRefresh(t);
+    const replay401 = store.renewAccessToken(t);
+
+    expect(request).toHaveBeenCalledTimes(1);
+    release();
+    await expect(Promise.all([bootstrap, pageMount, replay401])).resolves.toEqual([
+      true,
+      true,
+      "renewed",
+    ]);
+    expect(store.accessToken).toBe("fresh");
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("clears the session when a refresh is rejected (no fabricated continuation)", async () => {
@@ -307,5 +343,23 @@ describe("useAuthStore", () => {
     expect(redirectTo).toHaveBeenCalledWith({
       url: "/pages/login/login?return=%2Fpages%2Fchat%2Fchat%3FrelationshipId%3D7%26conversationId%3D11",
     });
+  });
+
+  it("S0-18: a 401 raised on login keeps the existing return target", async () => {
+    const store = useAuthStore();
+    const redirectTo = vi.fn();
+    vi.stubGlobal("uni", { redirectTo });
+    vi.stubGlobal("location", {
+      pathname: "/",
+      search: "",
+      hash: "#/pages/login/login?return=%2Fpages%2Fmemory%2Fmemory%3FrelationshipId%3D7",
+      href: "http://localhost/#/pages/login/login?return=%2Fpages%2Fmemory%2Fmemory%3FrelationshipId%3D7",
+    });
+    await store.login(okTransport(sampleTokens("a")), "alice", "pw");
+
+    store.onUnauthorized();
+
+    expect(store.sessionStatus).toBe("anonymous");
+    expect(redirectTo).not.toHaveBeenCalled();
   });
 });

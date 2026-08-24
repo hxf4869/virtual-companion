@@ -166,6 +166,27 @@ describe("resume: SSE disposition mapping", () => {
     expect(result.events[0].eventType).toBe("chat.completed");
   });
 
+  it("uses durable frames when terminal snapshot metadata omits events", async () => {
+    const chunks = [
+      "event: snapshot\n",
+      'data: {"status":"OUTPUT_BLOCKED","generationId":101}\n\n',
+      "event: chat.accepted\n",
+      'id: 1\ndata: {"event":"chat.accepted","eventSeq":1,"streamEpoch":1,"payload":{}}\n\n',
+      "event: chat.blocked\n",
+      'id: 2\ndata: {"event":"chat.blocked","eventSeq":2,"streamEpoch":1,"payload":{"fault":"external-blocked_by_safety"}}\n\n',
+    ];
+    const { fn } = mintThenStream(200, { ticketId: "t1", secret: "s1" }, chunks);
+    const deps = createBrowserRealtimeDeps(CONTEXT, fn);
+
+    const result = await deps.resume({ generationId: "101", afterSeq: 0, streamEpoch: 1 });
+
+    expect(result.disposition).toBe("TERMINAL_SNAPSHOT");
+    expect(result.events.map((e) => e.eventType)).toEqual([
+      "chat.accepted",
+      "chat.blocked",
+    ]);
+  });
+
   it("maps stream.gap to GAP_EXPIRED", async () => {
     const { fn } = mintThenStream(200, { ticketId: "t1", secret: "s1" }, ["event: stream.gap\n\n"]);
     const deps = createBrowserRealtimeDeps(CONTEXT, fn);

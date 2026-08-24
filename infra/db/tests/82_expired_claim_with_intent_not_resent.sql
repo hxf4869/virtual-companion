@@ -11,6 +11,10 @@
 TRUNCATE vc.work_item, vc.attempt_intent, vc.generation, vc.message, vc.conversation,
          vc.relationship, vc.authorization_snapshot, vc.vc_user CASCADE;
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice');
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (1, 'alice-82', 'test-hash', 'USER', 'ACTIVE', 'alice');
+UPDATE vc.release_gate SET stage='BETA', eval_passed=true,
+    policy_version='test-policy-82', canary_owner_user_id=NULL WHERE id=1;
 INSERT INTO vc.authorization_snapshot(
     owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
     purpose, data_categories, task_cancelled, source_data_deleted)
@@ -52,7 +56,8 @@ BEGIN
         1, v_wi, v_gen,
         encode(vc.digest(convert_to(v_token, 'UTF8'), 'sha256'), 'hex'),
         encode(vc.digest(convert_to('FENCE-82-A', 'UTF8'), 'sha256'), 'hex'),
-        'pa-82-a', 'alpha-loopback', 'alpha-supplier', 'snap-82-req', 'snap-82-exec');
+        'pa-82-a', 'alpha-loopback', 'alpha-supplier', 'snap-82-req', 'snap-82-exec',
+        'test-model', 'test-rev', 'test-prompt', 'test-persona', 'test-config');
     INSERT INTO resend_ctx VALUES ('wi-a', v_wi::text);
 
     -- owner 2 的 work item（claim 后崩溃于 prepare 前，无 intent）。
@@ -97,6 +102,7 @@ DECLARE
     v_sa text;
     v_sb text;
     v_ast text;
+    v_terminal timestamptz;
     v_owners int;
 BEGIN
     SELECT status INTO v_sa
@@ -109,9 +115,11 @@ BEGIN
     IF v_sb <> 'PENDING' THEN
         RAISE EXCEPTION 'claim without intent must return PENDING (retryable), got %', v_sb;
     END IF;
-    SELECT max(status) INTO v_ast FROM vc.attempt_intent WHERE provider_attempt_id = 'pa-82-a';
-    IF v_ast <> 'ABANDONED_LATE' THEN
-        RAISE EXCEPTION 'created intent of a never-resent claim must close as ABANDONED_LATE, got %', v_ast;
+    SELECT max(status), max(terminal_at) INTO v_ast, v_terminal
+      FROM vc.attempt_intent WHERE provider_attempt_id = 'pa-82-a';
+    IF v_ast <> 'ABANDONED_LATE' OR v_terminal IS NULL THEN
+        RAISE EXCEPTION 'created intent of a never-resent claim must close with terminal_at (status=%, terminal=%)',
+            v_ast, v_terminal;
     END IF;
 END $$;
 

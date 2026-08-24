@@ -32,7 +32,7 @@ public class ServiceModeController {
     @GetMapping("/service-mode")
     public ServiceModeStatusResponse getServiceMode(
             @AuthenticationPrincipal(expression = "accountId") long ownerUserId) {
-        ServiceModeService.Status status = serviceModeService.current();
+        ServiceModeService.Status status = serviceModeService.current(ownerUserId);
         return new ServiceModeStatusResponse(status.mode(), status.summary());
     }
 

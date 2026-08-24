@@ -242,7 +242,12 @@ states carry alert/live a11y semantics. -->
           </option>
         </select>
         <view class="actions">
-          <button size="mini" :disabled="busy" @click="onConfirm(m.memoryId)">
+          <button
+            size="mini"
+            data-testid="memory-confirm"
+            :disabled="busy"
+            @click="onConfirm(m.memoryId)"
+          >
             确认
           </button>
           <button size="mini" :disabled="busy" @click="onReject(m.memoryId)">
@@ -295,13 +300,23 @@ states carry alert/live a11y semantics. -->
                 保存
               </button>
             </view>
-            <text class="meta">{{ m.scope }}</text>
+            <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
               {{ formatTimestamp(m.createdAt) }}
             </text>
             <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
               事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
             </text>
+            <view
+              v-if="confirmDeleteId === m.memoryId"
+              class="delete-confirm"
+              data-testid="memory-delete-confirm"
+              role="alert"
+            >
+              <text>
+                将删除“{{ m.summary }}”（{{ publicMemoryScopeLabel(m.scope) }}）。删除后不再用于回复，来源链接也不再展示；删除失败时本条会保留。
+              </text>
+            </view>
             <view class="actions">
               <button
                 size="mini"
@@ -353,13 +368,23 @@ states carry alert/live a11y semantics. -->
                 保存
               </button>
             </view>
-            <text class="meta">{{ m.scope }}</text>
+            <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
               {{ formatTimestamp(m.createdAt) }}
             </text>
             <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
               事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
             </text>
+            <view
+              v-if="confirmDeleteId === m.memoryId"
+              class="delete-confirm"
+              data-testid="memory-delete-confirm"
+              role="alert"
+            >
+              <text>
+                将删除“{{ m.summary }}”（{{ publicMemoryScopeLabel(m.scope) }}）。删除后不再用于回复，来源链接也不再展示；删除失败时本条会保留。
+              </text>
+            </view>
             <view class="actions">
               <button
                 size="mini"
@@ -491,6 +516,7 @@ import ErrorNotice from "@/components/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import RetryButton from "@/components/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
+import { publicMemoryScopeLabel } from "@/domain/public-memory-display";
 import { matchesLooseText } from "@/domain/text-filter";
 import { lastRequestId } from "@/domain/request-id";
 import { formatTimestamp } from "@/domain/timestamp";
@@ -649,10 +675,11 @@ onMounted(async () => {
   if (!auth.isAuthenticated) {
     await auth.tryRefresh(transport);
   }
-  void relStore.load(transport);
+  await relStore.load(transport);
   void loadAutoSave();
   const prefill = readQueryRelationshipId();
-  if (prefill && !relationshipId.value) {
+  const known = knownRelationshipIds();
+  if (prefill && known?.includes(prefill) && !relationshipId.value) {
     relationshipId.value = prefill;
     focusReload();
   }
@@ -770,12 +797,18 @@ async function onDelete(id: string): Promise<void> {
   }
 }
 
+function knownRelationshipIds(): string[] | undefined {
+  return relStore.status === "ready"
+    ? relStore.relationships.map((row) => row.relationshipId)
+    : undefined;
+}
+
 function openDetail(id: string): void {
   goTo(
     buildContextHref("memory-detail", {
       relationshipId: relationshipId.value,
       memoryId: id,
-      knownRelationshipIds: relStore.relationships.map((row) => row.relationshipId),
+      knownRelationshipIds: knownRelationshipIds(),
     }),
   );
 }
@@ -783,7 +816,7 @@ function openDetail(id: string): void {
 function chatHref(): string {
   return buildContextHref("chat", {
     relationshipId: relationshipId.value,
-    knownRelationshipIds: relStore.relationships.map((row) => row.relationshipId),
+    knownRelationshipIds: knownRelationshipIds(),
   });
 }
 

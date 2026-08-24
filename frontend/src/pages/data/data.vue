@@ -55,7 +55,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           data-testid="data-open-companion"
           @click="goTo(companionHref(rel.relationshipId))"
         >
-          {{ rel.companionName || rel.personaRef }} · {{ rel.active ? "当前使用" : "未使用" }}
+          {{ rel.companionName || personaDisplayName(rel.personaRef) }} · {{ rel.active ? "当前使用" : "未使用" }}
         </button>
         <text v-if="store.relationships.length === 0" class="empty">没有关系记录。</text>
       </view>
@@ -158,6 +158,7 @@ import EmptyState from "@/components/EmptyState.vue";
 import ErrorNotice from "@/components/ErrorNotice.vue";
 import RetryButton from "@/components/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
+import { personaDisplayName } from "@/domain/persona";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
 import { useDataStore } from "@/stores/data";
@@ -248,6 +249,7 @@ export default {
       store,
       reportStore,
       REPORT_REASON_LABELS,
+      personaDisplayName,
       requestIdCopy,
       onRetry,
       goTo,

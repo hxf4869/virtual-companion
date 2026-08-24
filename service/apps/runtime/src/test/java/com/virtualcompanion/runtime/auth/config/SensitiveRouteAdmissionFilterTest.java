@@ -46,6 +46,32 @@ class SensitiveRouteAdmissionFilterTest {
     }
 
     @Test
+    void generationConcurrentLeaseIsSharedAndReleasedAroundTheRequest() throws Exception {
+        SensitiveRouteAdmission limiter = mock(SensitiveRouteAdmission.class);
+        when(limiter.admit(anyLong(), anyString(), anyInt(), anyInt()))
+                .thenReturn(new SensitiveRouteAdmission.Decision(true, 1));
+        java.util.UUID leaseId = java.util.UUID.randomUUID();
+        when(limiter.acquireLease(
+                7L, SensitiveRouteAdmission.GENERATION,
+                SensitiveRouteAdmissionFilter.GENERATION_MAX_CONCURRENT, 60))
+                .thenReturn(new SensitiveRouteAdmission.Lease(leaseId, true, 1));
+        when(limiter.releaseLease(7L, leaseId)).thenReturn(true);
+        bindPrincipal();
+        SensitiveRouteAdmissionFilter filter = new SensitiveRouteAdmissionFilter(provider(limiter));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/api/v1/conversations/5/generations");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(limiter).acquireLease(
+                7L, SensitiveRouteAdmission.GENERATION,
+                SensitiveRouteAdmissionFilter.GENERATION_MAX_CONCURRENT, 60);
+        verify(limiter).releaseLease(7L, leaseId);
+    }
+
+    @Test
     void emergencyContactIsNeverLimited() throws Exception {
         SensitiveRouteAdmission limiter = mock(SensitiveRouteAdmission.class);
         bindPrincipal();

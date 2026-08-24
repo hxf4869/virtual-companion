@@ -38,6 +38,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -551,6 +552,11 @@ public class AuthController {
                     "caseId is required");
         }
         String action = body == null ? null : body.get("action");
+        if (action == null
+                || !java.util.Set.of("ACK", "ASSIGN", "ESCALATE", "RESOLVE").contains(action)) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "action is invalid");
+        }
         String assigneeRaw = body == null ? null : body.get("assigneeAccountId");
         Long assignee = null;
         if (assigneeRaw != null && !assigneeRaw.isBlank()) {
@@ -562,6 +568,16 @@ public class AuthController {
             }
         }
         String disposition = body == null ? null : body.get("dispositionReason");
+        if ("ASSIGN".equals(action) && assignee == null) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "assigneeAccountId is required");
+        }
+        if ("RESOLVE".equals(action)
+                && (disposition == null || disposition.isBlank()
+                        || disposition.trim().length() > 240)) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "dispositionReason is required");
+        }
         try {
             opsCase.transition(principal.accountId(), id, action, assignee, disposition);
             // The OpenAPI contract declares the full OpsCase envelope for this
@@ -569,6 +585,63 @@ public class AuthController {
             // post-transition snapshot so clients get the same masked shape
             // as GET list/snapshot instead of a narrow {id,status} pair.
             return toPublicOpsCase(opsCase.snapshot(principal.accountId(), id));
+        } catch (org.springframework.dao.DataAccessException denied) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+    }
+
+    @PutMapping("/admin/ops-cases/{caseId}/notes")
+    public java.util.Map<String, Object> updateOpsCaseNote(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @PathVariable String caseId,
+            @RequestBody java.util.Map<String, String> body) {
+        if (opsCase == null || principal == null || body == null) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+        long id;
+        try {
+            id = Long.parseLong(caseId);
+        } catch (NumberFormatException bad) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "caseId is invalid");
+        }
+        String visibility = body.get("visibility");
+        String note = body.get("note");
+        int max = "INTERNAL".equals(visibility) ? 500 : 240;
+        if (!("INTERNAL".equals(visibility) || "PUBLIC".equals(visibility))
+                || note == null || note.trim().length() > max) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "note request is invalid");
+        }
+        try {
+            opsCase.updateNote(principal.accountId(), id, visibility, note);
+            return toPublicOpsCase(opsCase.snapshot(principal.accountId(), id));
+        } catch (org.springframework.dao.DataAccessException denied) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+    }
+
+    @GetMapping("/admin/ops-cases/{caseId}/internal-note")
+    public java.util.Map<String, Object> readOpsCaseInternalNote(
+            @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @PathVariable String caseId) {
+        if (opsCase == null || principal == null) {
+            throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
+                    "This action is not available");
+        }
+        long id;
+        try {
+            id = Long.parseLong(caseId);
+        } catch (NumberFormatException bad) {
+            throw new AuthErrorException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "caseId is invalid");
+        }
+        try {
+            return java.util.Map.of(
+                    "note", opsCase.readInternalNote(principal.accountId(), id));
         } catch (org.springframework.dao.DataAccessException denied) {
             throw new AuthErrorException(HttpStatus.FORBIDDEN, "ACCESS_DENIED",
                     "This action is not available");

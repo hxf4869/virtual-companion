@@ -72,6 +72,20 @@ which only changes state on a confirmed API result. -->
         </button>
       </view>
 
+      <view
+        v-if="writeStatus === 'loading' || writeStatus === 'ready'"
+        class="notice"
+        data-testid="reminder-write-status"
+        role="status"
+      >
+        <text>{{ writeMessage }}</text>
+      </view>
+      <ErrorNotice
+        v-else-if="writeStatus === 'error'"
+        :message="writeMessage"
+        :request-id="writeRequestId ?? undefined"
+      />
+
       <view v-if="store.loadFailed" class="error" data-testid="reminder-load-failed" role="alert">
         <ErrorNotice
           message="提醒列表加载失败，请重试。"
@@ -129,6 +143,7 @@ import { createAuthenticatedTransport } from "@/api/transport";
 import ErrorNotice from "@/components/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import RetryButton from "@/components/RetryButton.vue";
+import type { AsyncStatus } from "@/domain/async-state";
 import { readContextFromLocation, sanitizeRelationshipId } from "@/domain/context-href";
 import { lastRequestId } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
@@ -146,6 +161,9 @@ export default {
     const text = ref("");
     const remindAtLocal = ref("");
     const recurrence = ref<ReminderRecurrence>("NONE");
+    const writeStatus = ref<AsyncStatus>("idle");
+    const writeMessage = ref("");
+    const writeRequestId = ref<string | null>(null);
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -179,6 +197,9 @@ export default {
     const reminderRequestId = computed(() => lastRequestId());
 
     async function onPickRelationship(relationshipId: string): Promise<void> {
+      writeStatus.value = "idle";
+      writeMessage.value = "";
+      writeRequestId.value = null;
       await store.load(transport, relationshipId);
     }
 
@@ -191,25 +212,43 @@ export default {
 
     async function onCreate(): Promise<void> {
       if (!canCreate.value) return;
+      writeStatus.value = "loading";
+      writeMessage.value = "正在添加提醒…";
       const created = await store.create(
         transport,
         text.value.trim(),
         new Date(remindAtLocal.value).toISOString(),
         recurrence.value,
       );
+      writeRequestId.value = lastRequestId();
       if (created) {
         text.value = "";
         remindAtLocal.value = "";
         recurrence.value = "NONE";
+        writeStatus.value = "ready";
+        writeMessage.value = "提醒已添加。";
+      } else {
+        writeStatus.value = "error";
+        writeMessage.value = "提醒未添加，请重试。";
       }
     }
 
     async function onDismiss(reminder: Reminder): Promise<void> {
-      await store.dismiss(transport, reminder);
+      writeStatus.value = "loading";
+      writeMessage.value = "正在更新提醒…";
+      const dismissed = await store.dismiss(transport, reminder);
+      writeRequestId.value = lastRequestId();
+      writeStatus.value = dismissed ? "ready" : "error";
+      writeMessage.value = dismissed ? "提醒已标记完成。" : "提醒未更新，请重试。";
     }
 
     async function onDelete(reminderId: string): Promise<void> {
-      await store.remove(transport, reminderId);
+      writeStatus.value = "loading";
+      writeMessage.value = "正在删除提醒…";
+      const deleted = await store.remove(transport, reminderId);
+      writeRequestId.value = lastRequestId();
+      writeStatus.value = deleted ? "ready" : "error";
+      writeMessage.value = deleted ? "提醒已删除。" : "提醒未删除，请重试。";
     }
 
     function formatRemindAt(instant: string): string {
@@ -253,6 +292,9 @@ export default {
       recurrence,
       canCreate,
       reminderRequestId,
+      writeStatus,
+      writeMessage,
+      writeRequestId,
       retryReminders,
       onPickRelationship,
       onCreate,

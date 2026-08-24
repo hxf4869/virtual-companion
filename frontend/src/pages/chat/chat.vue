@@ -864,7 +864,7 @@ export default defineComponent({
       const map: Record<string, string> = {
         "model-providers-disabled": "模型服务未启用",
         "external-blocked_by_safety": "回复未通过安全审查",
-        "external-timed-out": "模型响应超时",
+        "external-timed_out": "模型响应超时",
         "external-failed": "模型服务失败",
         "external-no_eligible_deployment": "当前没有可用的模型部署",
         "external-dead-lettered": "模型服务多次失败，本轮已放弃",
@@ -1513,10 +1513,17 @@ export default defineComponent({
           auth.accountId ?? "",
           relStore.currentRelationshipId,
         );
-        await store.tryRestoreAfterReload(deps, {
+        const restored = await store.tryRestoreAfterReload(deps, {
           accountId: auth.accountId ?? "",
           relationshipId: relStore.currentRelationshipId,
         });
+        // The conversation history was loaded before recovery. A generation
+        // may commit while the snapshot/resume call is in flight, so refresh
+        // once after a restored turn settles to include its durable assistant
+        // message instead of leaving only the pre-terminal user row onscreen.
+        if (restored) {
+          await store.loadHistory(transport);
+        }
         // MEM-PROMPT: surface candidates from earlier turns on entry too.
         await store.refreshPendingMemoryCount(
           transport,
@@ -1536,8 +1543,9 @@ export default defineComponent({
     onUnmounted(() => {
       stopLifecycle?.();
       clearMemoryPoll();
-      store.cancel();
-      store.reset();
+      // A page teardown is not an explicit user cancellation. Keep the
+      // non-sensitive recovery binding so a reload can resume this generation.
+      store.detachInFlight();
       usageHealth.reset();
       if (usagePulseTimer !== undefined) {
         clearInterval(usagePulseTimer);
@@ -1655,6 +1663,7 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16rpx;
   font-size: 32rpx;
   font-weight: 600;
@@ -1710,7 +1719,9 @@ export default defineComponent({
 .chat-header-nav {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12rpx;
+  min-width: 0;
 }
 .chat-nav-index {
   flex: 0 0 auto;
@@ -1742,11 +1753,14 @@ export default defineComponent({
 .conversation-panel {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12rpx;
   margin-bottom: 24rpx;
+  min-width: 0;
 }
 .conversation-list {
-  flex: 1;
+  flex: 1 1 100%;
+  min-width: 0;
   white-space: nowrap;
 }
 .conversation-item {
@@ -1875,10 +1889,12 @@ export default defineComponent({
   display: flex;
   align-items: center;
   gap: 12rpx;
+  min-width: 0;
 }
 /* CHAT-MODE: quick-mode chips above the input row. */
 .chat-mode-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12rpx;
   margin-bottom: 12rpx;
 }
@@ -2020,6 +2036,7 @@ export default defineComponent({
 }
 .chat-input {
   flex: 1;
+  min-width: 0;
   padding: 16rpx;
   border-radius: 12rpx;
   border: 2rpx solid #2a3a5a;

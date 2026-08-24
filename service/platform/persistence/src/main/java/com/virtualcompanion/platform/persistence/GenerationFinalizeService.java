@@ -282,7 +282,12 @@ public class GenerationFinalizeService {
             String providerId,
             String supplierName,
             String requestedSnapshotId,
-            String executionSnapshotId) {
+            String executionSnapshotId,
+            String modelId,
+            String modelRevision,
+            String promptBundleVersion,
+            String personaBundleVersion,
+            String configVersion) {
         validateIds(ownerUserId, generationId);
         if (workItemId <= 0) {
             throw new IllegalArgumentException("workItemId must be positive");
@@ -294,8 +299,13 @@ public class GenerationFinalizeService {
         requireNonBlank(supplierName, "supplierName");
         requireNonBlank(requestedSnapshotId, "requestedSnapshotId");
         requireNonBlank(executionSnapshotId, "executionSnapshotId");
+        requireNonBlank(modelId, "modelId");
+        requireNonBlank(modelRevision, "modelRevision");
+        requireNonBlank(promptBundleVersion, "promptBundleVersion");
+        requireNonBlank(personaBundleVersion, "personaBundleVersion");
+        requireNonBlank(configVersion, "configVersion");
         String attemptId = jdbc.queryForObject(
-                "SELECT out_provider_attempt_id FROM vc.create_attempt_intent(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "SELECT out_provider_attempt_id FROM vc.create_attempt_intent(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 String.class,
                 ownerUserId,
                 workItemId,
@@ -306,7 +316,12 @@ public class GenerationFinalizeService {
                 providerId,
                 supplierName,
                 requestedSnapshotId,
-                executionSnapshotId);
+                executionSnapshotId,
+                modelId,
+                modelRevision,
+                promptBundleVersion,
+                personaBundleVersion,
+                configVersion);
         if (attemptId == null || attemptId.isBlank()) {
             throw new IllegalStateException("create_attempt_intent returned no provider_attempt_id");
         }
@@ -328,6 +343,38 @@ public class GenerationFinalizeService {
                 ownerUserId,
                 providerAttemptId,
                 status);
+        return rows == null ? 0 : rows;
+    }
+
+    /**
+     * S0-24-B2: atomically close an attempt intent with its monotonic
+     * first-output latency and normalized failure category. A {@code null}
+     * latency means that no fenced output delta reached the in-memory sink;
+     * failure details are deliberately restricted to the fixed category and
+     * never include exception messages or provider response bodies.
+     */
+    public int recordAttemptOutcome(
+            long ownerUserId,
+            String providerAttemptId,
+            String status,
+            Long firstOutputLatencyMs,
+            String failureCode) {
+        requireNonBlank(providerAttemptId, "providerAttemptId");
+        requireNonBlank(status, "status");
+        if (firstOutputLatencyMs != null && firstOutputLatencyMs < 0) {
+            throw new IllegalArgumentException("firstOutputLatencyMs must be non-negative");
+        }
+        if (failureCode != null) {
+            requireNonBlank(failureCode, "failureCode");
+        }
+        Integer rows = jdbc.queryForObject(
+                "SELECT vc.record_attempt_outcome(?, ?, ?, ?, ?)",
+                Integer.class,
+                ownerUserId,
+                providerAttemptId,
+                status,
+                firstOutputLatencyMs,
+                failureCode);
         return rows == null ? 0 : rows;
     }
 

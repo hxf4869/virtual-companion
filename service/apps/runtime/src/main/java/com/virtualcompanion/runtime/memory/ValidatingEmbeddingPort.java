@@ -23,4 +23,10 @@ public final class ValidatingEmbeddingPort implements EmbeddingPort {
     public float[] embed(String text) {
         return EmbeddingVectorGuard.requireValid(inner.embed(text), inner.space());
     }
+
+    @Override
+    public float[] embed(long ownerUserId, String text) {
+        return EmbeddingVectorGuard.requireValid(
+                inner.embed(ownerUserId, text), inner.space());
+    }
 }

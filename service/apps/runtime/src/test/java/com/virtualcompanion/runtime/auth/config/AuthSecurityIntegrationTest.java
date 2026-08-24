@@ -2,9 +2,12 @@ package com.virtualcompanion.runtime.auth.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.virtualcompanion.runtime.auth.application.AuthAbuseGuard;
@@ -23,16 +26,25 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * Proves the Spring Security configuration loads and enforces the hybrid
@@ -51,6 +63,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
         "virtual-companion.auth.enabled=true",
         "virtual-companion.auth.jwt-secret=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 })
+@Import(AuthSecurityIntegrationTest.AsyncSecurityProbeConfiguration.class)
 class AuthSecurityIntegrationTest {
 
     @Autowired
@@ -108,6 +121,32 @@ class AuthSecurityIntegrationTest {
         mockMvc.perform(get("/api/v1/auth/anything")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound()); // no controller without datasource; security passed
+    }
+
+    @Test
+    void bearerContextSurvivesSseAsyncDispatchWithoutCreatingSession() throws Exception {
+        String token = jwtTokenService.issueAccessToken(7L, "USER", "alice");
+
+        MvcResult initial = mockMvc.perform(get("/api/internal/async-security-probe")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        assertThat(initial.getRequest().getSession(false)).isNull();
+
+        MvcResult completed = mockMvc.perform(asyncDispatch(initial))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:probe")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data:7")))
+                .andReturn();
+        assertThat(completed.getRequest().getSession(false)).isNull();
+    }
+
+    @Test
+    void sseAsyncEndpointStillRejectsAnonymousInitialRequest() throws Exception {
+        mockMvc.perform(get("/api/internal/async-security-probe"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
     }
 
     @Test
@@ -335,5 +374,28 @@ class AuthSecurityIntegrationTest {
 
     private static long count(List<Filter> filters, Class<? extends Filter> type) {
         return filters.stream().filter(type::isInstance).count();
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class AsyncSecurityProbeConfiguration {
+        @Bean
+        AsyncSecurityProbeController asyncSecurityProbeController() {
+            return new AsyncSecurityProbeController();
+        }
+    }
+
+    @RestController
+    static class AsyncSecurityProbeController {
+        @GetMapping(
+                value = "/api/internal/async-security-probe",
+                produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+        SseEmitter stream(
+                @AuthenticationPrincipal(expression = "accountId") long ownerUserId)
+                throws java.io.IOException {
+            SseEmitter emitter = new SseEmitter(1_000L);
+            emitter.send(SseEmitter.event().name("probe").data(ownerUserId));
+            emitter.complete();
+            return emitter;
+        }
     }
 }

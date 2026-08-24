@@ -15,6 +15,10 @@ TRUNCATE vc.work_item, vc.attempt_intent, vc.generation_usage,
          vc.generation_candidate, vc.generation, vc.message, vc.conversation,
          vc.relationship, vc.authorization_snapshot, vc.vc_user CASCADE;
 INSERT INTO vc.vc_user(id, display_name) VALUES (1, 'alice');
+INSERT INTO vc.identity_account(id, username, password_hash, role, status, display_name)
+VALUES (1, 'alice-78', 'test-hash', 'USER', 'ACTIVE', 'alice');
+UPDATE vc.release_gate SET stage='BETA', eval_passed=true,
+    policy_version='test-policy-78', canary_owner_user_id=NULL WHERE id=1;
 INSERT INTO vc.authorization_snapshot(
     owner_user_id, snapshot_id, status, provider_id, region, contract_ref,
     purpose, data_categories, task_cancelled, source_data_deleted)
@@ -159,7 +163,8 @@ BEGIN
         1, v_wi, v_gen,
         encode(vc.digest(convert_to(v_tok_b, 'UTF8'), 'sha256'), 'hex'),
         encode(vc.digest(convert_to('FENCE-78-B', 'UTF8'), 'sha256'), 'hex'),
-        'pa-78-b', 'alpha-loopback', 'alpha-supplier', 'snap-78-req', 'snap-78-exec');
+        'pa-78-b', 'alpha-loopback', 'alpha-supplier', 'snap-78-req', 'snap-78-exec',
+        'test-model', 'test-rev', 'test-prompt', 'test-persona', 'test-config');
     SELECT vc.record_attempt_outcome(1, 'pa-78-b', 'SUCCEEDED') INTO v_rows;
     IF v_rows <> 1 THEN
         RAISE EXCEPTION 'outcome update must affect 1 row, got %', v_rows;

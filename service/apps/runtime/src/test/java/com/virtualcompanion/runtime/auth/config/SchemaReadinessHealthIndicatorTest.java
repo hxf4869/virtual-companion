@@ -205,8 +205,20 @@ class SchemaReadinessHealthIndicatorTest {
         // V92 = S0-15 refresh session family registry + password change;
         // V93 = review-fix: advance_release_gate + ops_case_event grants
         // pulled back from runtime roles;
-        // V94 = review-fix: access snapshot carries password_must_change.
+        // V94 = review-fix: access snapshot carries password_must_change;
+        // V95 = S0-24-B single-owner CANARY release gate;
+        // V96 = S0-24-B2 durable per-attempt observability;
+        // V97 = immutable release bundle; V98 = durable rollback; V99 = re-embed checkpoint;
+        // V100 = S0-12 human age-appeal disposition;
+        // V101 = S0-14 automatic case producers, notes and monotonic transitions;
+        // V102 = S0-15 owner-bound session/password runtime functions;
+        // V103 = S0-16 durable account-deletion intent and cancellation;
+        // V104 = S0-17 retention holds/dry-run and PITR tombstone reconcile;
+        // V105 = S0-29 atomic model-cost reservation/settlement;
+        // V106 = S0-30 shared auth-source and concurrent sensitive-route limits;
+        // V107 = S0-31 fixed scheduler freshness projection;
+        // V108 = S0-32 encrypted-only conversation-summary runtime writes.
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(94);
+                .isEqualTo(108);
     }
 }

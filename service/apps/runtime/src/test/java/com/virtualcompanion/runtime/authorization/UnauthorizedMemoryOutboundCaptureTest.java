@@ -182,7 +182,9 @@ class UnauthorizedMemoryOutboundCaptureTest {
                 store,
                 locator,
                 recovery,
-                Map.of(PROVIDER, "capture-supplier"));
+                Map.of(PROVIDER, "capture-supplier"),
+                Map.of(PROVIDER, new com.virtualcompanion.modelruntime.execution.ProviderDeploymentMetadata(
+                        "capture-model", "capture-rev-v1", "capture-config-v1")));
     }
 
     /** Dual ACTIVE snapshots authorizing MESSAGE_TEXT only (default intent). */
@@ -225,6 +227,7 @@ class UnauthorizedMemoryOutboundCaptureTest {
                         Duration.ofSeconds(5), Duration.ofSeconds(30), Duration.ofSeconds(30)),
                 List.of(),
                 new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80),
-                PayloadComposition.of(DataCategory.MEMORY_SNIPPET, DataCategory.MESSAGE_TEXT));
+                PayloadComposition.of(DataCategory.MEMORY_SNIPPET, DataCategory.MESSAGE_TEXT),
+                "companion-chat-v1", "gentle-listener-v1");
     }
 }

@@ -1,6 +1,7 @@
 package com.virtualcompanion.runtime.worker;
 
 import com.virtualcompanion.catalog.ProviderAttemptStatus;
+import com.virtualcompanion.modelruntime.contract.AdapterFailure;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
 import com.virtualcompanion.modelruntime.contract.TokenUsage;
@@ -16,6 +17,8 @@ import com.virtualcompanion.platform.persistence.ConversationSummaryService;
 import com.virtualcompanion.platform.persistence.GenerationFinalizeService;
 import com.virtualcompanion.platform.persistence.GenerationRepository;
 import com.virtualcompanion.platform.persistence.GenerationStateService;
+import com.virtualcompanion.platform.persistence.JdbcProductQuotaBook;
+import com.virtualcompanion.platform.persistence.ModelCostReservationService;
 import com.virtualcompanion.platform.persistence.RealtimeEventRepository;
 import com.virtualcompanion.platform.persistence.SafetyEventService;
 import com.virtualcompanion.platform.persistence.WorkItemClaim;
@@ -26,6 +29,7 @@ import com.virtualcompanion.safety.SafetyClassification;
 import com.virtualcompanion.safety.SafetyClassifierPort;
 import com.virtualcompanion.safety.SafetyStage;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -114,8 +118,9 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier;
     private final com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker;
     private final com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity;
-    private final ObjectProvider<com.virtualcompanion.platform.persistence.JdbcProductQuotaBook>
-            productQuotaBookProvider;
+    private final JdbcProductQuotaBook productQuotaBook;
+    private ModelCostReservationService modelCosts;
+    private int costReservationOutputTokens = 8192;
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -137,8 +142,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
             com.virtualcompanion.modelruntime.execution.SupplierCircuitBreaker circuitBreaker,
             com.virtualcompanion.modelruntime.routing.SessionDeploymentAffinity deploymentAffinity,
-            ObjectProvider<com.virtualcompanion.platform.persistence.JdbcProductQuotaBook>
-                    productQuotaBookProvider) {
+            JdbcProductQuotaBook productQuotaBook) {
         this.stateService = stateService;
         this.finalizeService = finalizeService;
         this.assembler = assembler;
@@ -163,8 +167,19 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.circuitBreaker = circuitBreaker;
         this.deploymentAffinity = Objects.requireNonNull(
                 deploymentAffinity, "deploymentAffinity must not be null");
-        this.productQuotaBookProvider = Objects.requireNonNull(
-                productQuotaBookProvider, "productQuotaBookProvider must not be null");
+        this.productQuotaBook = Objects.requireNonNull(
+                productQuotaBook, "productQuotaBook must not be null");
+        this.modelCosts = null;
+    }
+
+    public GenerationWorkItemHandler withModelCostReservations(
+            ModelCostReservationService service, int estimatedOutputTokens) {
+        this.modelCosts = Objects.requireNonNull(service, "service must not be null");
+        if (estimatedOutputTokens <= 0) {
+            throw new IllegalArgumentException("estimatedOutputTokens must be positive");
+        }
+        this.costReservationOutputTokens = estimatedOutputTokens;
+        return this;
     }
 
     @Override
@@ -182,6 +197,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         // succeeds (an exception anywhere leaves the initial "error").
         long startNanos = System.nanoTime();
         String metricResult = "error";
+        com.virtualcompanion.modelruntime.routing.RouteDecision outboundDecision = null;
         try {
             // ---- prepare-tx ----
             Prepared prepared = prepareSegment(executor, claim, ownerUserId, generationId);
@@ -212,9 +228,16 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             // final-review backstop resolves the stream).
             AtomicInteger pausedDeltas = new AtomicInteger();
             AtomicLong nextDeltaSeq = new AtomicLong(prepared.firstDeltaSeq());
+            AtomicLong firstOutputNanos = new AtomicLong();
             Consumer<ModelProtocolEvent> sink = event -> {
-                if (!(event instanceof ModelProtocolEvent.OutputDelta delta)
-                        || !(delta.payload() instanceof ModelPayload.TextChunk chunk)) {
+                if (!(event instanceof ModelProtocolEvent.OutputDelta delta)) {
+                    return;
+                }
+                // S0-24-B2: this callback is deliberately memory-only. The
+                // invoker forwards only fenced protocol events, so the first
+                // accepted OutputDelta (text or structured) marks first output.
+                firstOutputNanos.compareAndSet(0L, System.nanoTime());
+                if (!(delta.payload() instanceof ModelPayload.TextChunk chunk)) {
                     return;
                 }
                 long seq = nextDeltaSeq.getAndIncrement();
@@ -230,8 +253,21 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     }
                 }
             };
+            long outboundStartNanos = System.nanoTime();
+            if (prepared.externalMode()) {
+                // Once execute is entered, every later callback/DB segment is
+                // post-outbound. Keep the durable reservation reachable so an
+                // unexpected breaker/affinity/audit/finalize failure can be
+                // compensated in a fresh owner transaction.
+                outboundDecision = prepared.invocationValue().decision();
+            }
             LiveAttemptOutcome outcome =
                     prepared.invokerValue().execute(prepared.invocationValue(), sink);
+            long firstOutputMark = firstOutputNanos.get();
+            Long firstOutputLatencyMs = firstOutputMark == 0L
+                    ? null
+                    : TimeUnit.NANOSECONDS.toMillis(
+                            Math.max(0L, firstOutputMark - outboundStartNanos));
             // ROUTE-HARDEN (§12.12): record the outbound result on the
             // attempt's OWN supplier breaker — consecutive failures trip that
             // supplier OPEN and routing skips it (failover at the next turn
@@ -253,15 +289,21 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     circuitBreaker.failure(audit.supplierName());
                 }
             }
+            double actualCostUsd = 0d;
             // ---- audit-outcome-tx ----
             if (outcome.externalAttemptCreated()) {
                 metrics.providerAttempt(outcome.terminal().name());
-                auditOutcomeSegment(executor, ownerUserId, outcome);
+                actualCostUsd = auditOutcomeSegment(
+                        executor, ownerUserId, outcome, firstOutputLatencyMs);
+            } else if (prepared.externalMode() && modelCosts != null && modelCosts.enabled()) {
+                String attemptId = prepared.invocationValue().attempt().providerAttemptId();
+                executor.asOwner(ownerUserId, () -> modelCosts.release(attemptId));
             }
             // ---- guarded finalize / guarded fail ----
             if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
                 boolean outputBlocked = finalizeExternalSuccess(
-                        executor, claim, ownerUserId, generationId, outcome, pausedDeltas.get());
+                        executor, claim, ownerUserId, generationId, outcome,
+                        pausedDeltas.get(), actualCostUsd);
                 metricResult = outputBlocked ? "blocked_output" : "completed";
             } else if (outcome.terminal() == LiveAttemptTerminal.ZERO_LLM_COMPLETED) {
                 finalizeZeroLlmSuccess(executor, claim, ownerUserId, generationId, outcome);
@@ -294,6 +336,18 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                                 .orElse("-"));
             }
         } catch (RuntimeException e) {
+            if (outboundDecision != null && outboundDecision.quotaReservation() != null) {
+                try {
+                    var decision = outboundDecision;
+                    executor.asOwner(ownerUserId, () -> releaseProductQuota(decision));
+                } catch (RuntimeException releaseFailure) {
+                    // Preserve the real post-outbound failure as the primary
+                    // cause; quota release is idempotent and safe to retry.
+                    if (releaseFailure != e) {
+                        e.addSuppressed(releaseFailure);
+                    }
+                }
+            }
             log.error("generation handler failed for owner={} generation={} workItem={}",
                     ownerUserId, generationId, claim.id(), e);
             // The worker performs the independent per-item fail (fresh
@@ -320,7 +374,10 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             long ownerUserId,
             long generationId) {
         final Prepared[] ref = new Prepared[1];
-        executor.asOwner(ownerUserId, () -> {
+        final com.virtualcompanion.modelruntime.routing.RouteDecision[] reservedDecision =
+                new com.virtualcompanion.modelruntime.routing.RouteDecision[1];
+        try {
+            executor.asOwner(ownerUserId, () -> {
             stateService.promote(ownerUserId, generationId, GenerationStateService.IN_PROGRESS);
             // STREAM-LIVE: the turn is accepted once the worker picked it up —
             // the durable chat.accepted event is seq 1 of the generation stream.
@@ -354,6 +411,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                         snapshots.executionId(),
                         claim.claimFence());
                 PreparedInvocation prepared = invoker.prepare(request);
+                reservedDecision[0] = prepared.decision();
                 persistRouteDecision(ownerUserId, generationId, prepared);
                 if (prepared.isExternal()) {
                     // GEN-RECONC: a previous run of this work item may have left
@@ -392,6 +450,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                         ref[0] = Prepared.refused(prepared.attempt().supplierName());
                         return;
                     }
+                    reserveModelCost(ownerUserId, claim.id(), prepared);
                     // Intent failure raises here → prepare-tx aborts → the
                     // outbound is forbidden (adapter zero calls, test 74).
                     finalizeService.createAttemptIntent(
@@ -404,7 +463,12 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                             prepared.attempt().providerId(),
                             prepared.attempt().supplierName(),
                             prepared.attempt().requestedAuthorizationSnapshotId(),
-                            prepared.attempt().executionAuthorizationSnapshotId());
+                            prepared.attempt().executionAuthorizationSnapshotId(),
+                            prepared.attempt().modelId(),
+                            prepared.attempt().modelRevision(),
+                            prepared.attempt().promptBundleVersion(),
+                            prepared.attempt().personaBundleVersion(),
+                            prepared.attempt().configVersion());
                     // STREAM-LIVE: reserve the delta seq block (deltas consume
                     // seq without persisting, V8 advance_realtime_seq).
                     long nextSeq = realtimeEventRepository.advanceSeq(
@@ -418,13 +482,70 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 LiveInvocationRequest request =
                         assembler.assemble(ownerUserId, generationId, claim.claimFence());
                 PreparedInvocation prepared = invoker.prepare(request);
+                reservedDecision[0] = prepared.decision();
                 persistRouteDecision(ownerUserId, generationId, prepared);
                 ref[0] = new Prepared(invoker, prepared, null, null, false, epoch, 0L);
             }
-        });
+            });
+        } catch (RuntimeException prepareFailure) {
+            // V97: an intent/release-gate failure rolls back the prepare tx,
+            // but the route may already have reserved durable product quota.
+            // Release only after that rollback, in a fresh owner segment.
+            var decision = reservedDecision[0];
+            if (decision != null && decision.quotaReservation() != null) {
+                try {
+                    executor.asOwner(ownerUserId, () -> releaseProductQuota(decision));
+                } catch (RuntimeException releaseFailure) {
+                    if (releaseFailure != prepareFailure) {
+                        prepareFailure.addSuppressed(releaseFailure);
+                    }
+                }
+            }
+            if (isModelCostReservationFailure(prepareFailure)) {
+                alertNotifier.alert(
+                        com.virtualcompanion.runtime.observability.AlertSeverity.P1,
+                        "BUDGET_HALT_REACHED",
+                        "atomic model cost reservation refused outbound");
+            }
+            throw prepareFailure;
+        }
         return ref[0];
     }
 
+
+    private void reserveModelCost(
+            long ownerUserId, long workItemId, PreparedInvocation prepared) {
+        if (modelCosts == null || !modelCosts.enabled()) {
+            return;
+        }
+        long characters = prepared.protocolRequest().messages().stream()
+                .mapToLong(message -> message.content().codePointCount(
+                        0, message.content().length()))
+                .sum();
+        long estimatedInputTokens = Math.max(1L, (characters + 3L) / 4L);
+        ModelCostReservationService.Reservation reservation = modelCosts.reserve(
+                ownerUserId,
+                workItemId,
+                prepared.attempt().providerAttemptId(),
+                prepared.attempt().providerId(),
+                prepared.attempt().modelId(),
+                estimatedInputTokens,
+                costReservationOutputTokens);
+        if (!reservation.inserted() || "NONE".equals(reservation.threshold())) {
+            return;
+        }
+        com.virtualcompanion.runtime.observability.AlertSeverity severity =
+                switch (reservation.threshold()) {
+                    case "BUDGET_100" ->
+                            com.virtualcompanion.runtime.observability.AlertSeverity.P0;
+                    case "BUDGET_95" ->
+                            com.virtualcompanion.runtime.observability.AlertSeverity.P1;
+                    default -> com.virtualcompanion.runtime.observability.AlertSeverity.P2;
+                };
+        alertNotifier.alert(
+                severity, reservation.threshold(),
+                "model cost reservation crossed a fixed monthly threshold");
+    }
     /**
      * S0-11-B: persist the immutable route decision inside the prepare
      * transaction so a later crash still leaves "why this deployment / why
@@ -441,10 +562,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         if (reservation == null) {
             return;
         }
-        var book = productQuotaBookProvider.getIfAvailable();
-        if (book != null) {
-            book.settle(reservation);
-        }
+        productQuotaBook.settle(reservation);
     }
 
     private void releaseProductQuota(com.virtualcompanion.modelruntime.routing.RouteDecision decision) {
@@ -452,26 +570,77 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         if (reservation == null) {
             return;
         }
-        var book = productQuotaBookProvider.getIfAvailable();
-        if (book != null) {
-            book.release(reservation);
-        }
+        productQuotaBook.release(reservation);
     }
 
     /** Audit-outcome segment: update the same intent row (never a second row). */
-    private void auditOutcomeSegment(
+    private double auditOutcomeSegment(
             WorkItemWorker.OwnerExecutor executor,
             long ownerUserId,
-            LiveAttemptOutcome outcome) {
+            LiveAttemptOutcome outcome,
+            Long firstOutputLatencyMs) {
         ProviderAttemptAudit audit = outcome.audits().get(0);
+        String failureCode = outcome.failureOptional()
+                .map(GenerationWorkItemHandler::normalizedFailureCode)
+                .orElse(null);
+        double[] actualCostUsd = {0d};
         executor.asOwner(ownerUserId, () -> {
             int rows = finalizeService.recordAttemptOutcome(
-                    ownerUserId, audit.providerAttemptId(), audit.status().code());
+                    ownerUserId,
+                    audit.providerAttemptId(),
+                    audit.status().code(),
+                    firstOutputLatencyMs,
+                    failureCode);
             if (rows != 1) {
                 throw new IllegalStateException(
                         "record_attempt_outcome did not update the intent (rows=" + rows + ")");
             }
+            if (modelCosts != null && modelCosts.enabled()) {
+                TokenUsage usage = outcome.usage();
+                long inputTokens = usage == null ? 0L : usage.inputTokens();
+                long outputTokens = usage == null ? 0L : usage.outputTokens();
+                if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
+                    actualCostUsd[0] = modelCosts.settle(
+                            audit.providerAttemptId(), inputTokens, outputTokens)
+                            .actualUsd().doubleValue();
+                } else {
+                    modelCosts.release(audit.providerAttemptId());
+                }
+            }
         });
+        return actualCostUsd[0];
+    }
+
+    private static boolean isModelCostReservationFailure(Throwable failure) {
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current.getMessage() != null
+                    && current.getMessage().contains("reserve_model_cost:")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Fixed-cardinality failure normalization; never persists exception text. */
+    static String normalizedFailureCode(AdapterFailure failure) {
+        Objects.requireNonNull(failure, "failure must not be null");
+        if (failure instanceof AdapterFailure.RateLimited) {
+            return "HTTP_429";
+        }
+        if (failure instanceof AdapterFailure.UpstreamUnavailable) {
+            return "HTTP_5XX";
+        }
+        if (failure instanceof AdapterFailure.Disconnected) {
+            return "DISCONNECTED";
+        }
+        if (failure instanceof AdapterFailure.Timeout timeout) {
+            return switch (timeout.phase()) {
+                case CONNECT -> "TIMEOUT_CONNECT";
+                case FIRST_TOKEN -> "TIMEOUT_FIRST_TOKEN";
+                case TOTAL -> "TIMEOUT_TOTAL";
+            };
+        }
+        return "OTHER";
     }
 
     /**
@@ -495,7 +664,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             long ownerUserId,
             long generationId,
             LiveAttemptOutcome outcome,
-            int pausedDeltas) {
+            int pausedDeltas,
+            double actualCostUsd) {
         ProviderAttemptAudit audit = outcome.audits().get(0);
         TokenUsage usage = outcome.usage();
         long inputTokens = usage == null ? 0L : usage.inputTokens();
@@ -572,7 +742,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     attemptId,
                     inputTokens,
                     outputTokens,
-                    0d,
+                    actualCostUsd,
                     "USD",
                     1,
                     false);

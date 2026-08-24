@@ -684,7 +684,7 @@ public class MemoryService {
                         : cipher.decrypt(rs.getString("out_summary")),
                 rs.getString("out_status"),
                 nullableLong(rs, "out_conversation_id"),
-                toInstant(rs, "out_deleted_at"),
+                nullableInstant(rs, "out_deleted_at"),
                 toInstant(rs, "out_created_at"),
                 rs.getBoolean("out_auto_saved"),
                 nullableInstant(rs, "out_superseded_at"),

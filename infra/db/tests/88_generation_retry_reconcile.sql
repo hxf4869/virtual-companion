@@ -114,9 +114,12 @@ BEGIN
         RAISE EXCEPTION 'close must report 2 closed intents, got %', v_n;
     END IF;
     SELECT count(*) INTO v_n FROM vc.attempt_intent
-     WHERE work_item_id = v_wi AND status = 'ABANDONED_LATE';
+     WHERE work_item_id = v_wi
+       AND status = 'ABANDONED_LATE'
+       AND terminal_at IS NOT NULL
+       AND failure_code IS NULL;
     IF v_n <> 2 THEN
-        RAISE EXCEPTION 'both intents must be ABANDONED_LATE, got %', v_n;
+        RAISE EXCEPTION 'both intents must be terminal ABANDONED_LATE without failure codes, got %', v_n;
     END IF;
 
     -- Second call closes nothing.

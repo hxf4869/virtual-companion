@@ -275,11 +275,26 @@ public interface VirtualCompanionApi {
     /** ACK/ASSIGN/ESCALATE/RESOLVE an ops case (S0-14-C). */
     OpsCase transitionOpsCase();
 
+    /** Update an audited internal or public case note (S0-14). */
+    OpsCase updateOpsCaseNote();
+
+    /** Read one case-scoped internal note with BODY_ACCESS audit. */
+    OpsCaseInternalNote readOpsCaseInternalNote();
+
+    /** Set an owner/category legal hold (S0-17). */
+    RetentionLegalHoldResponse setRetentionLegalHold();
+
+    /** Release one active legal hold (S0-17). */
+    RetentionLegalHoldReleaseResponse releaseRetentionLegalHold();
+
     /** ADMIN-only keyset page of the report queue (ADMIN-BETA, §8.2). */
     Void listBetaReports();
 
     /** ADMIN-only keyset page of the age-appeal queue (ADMIN-BETA, §8.2). */
     Void listBetaAgeAppeals();
+
+    /** Human age-appeal disposition (S0-12). */
+    AgeAppealResolutionResponse resolveAgeAppeal();
 
     /** ADMIN-only keyset page of the export-task queue (ADMIN-BETA, §8.2). */
     Void listBetaExportTasks();

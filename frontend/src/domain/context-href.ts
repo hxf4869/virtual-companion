@@ -42,8 +42,7 @@ export function sanitizeRelationshipId(
   const value = typeof id === "string" ? id.trim() : "";
   if (!value) return null;
   if (
-    knownRelationshipIds &&
-    knownRelationshipIds.length > 0 &&
+    knownRelationshipIds !== undefined &&
     !knownRelationshipIds.includes(value)
   ) {
     return null;
