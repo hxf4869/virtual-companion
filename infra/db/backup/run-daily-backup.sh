@@ -17,8 +17,10 @@
 #       NOT migrated: they keep aging out via the 7-day retention.
 #   $VC_BACKUP_MANIFEST_DIR/deletion-manifest-YYYYMMDD-HHMMSS.enc (0600)
 #       vc.export_account_deletion_tombstones() rows, separately encrypted in
-#       the SAME authenticated container format (a tampered tombstone manifest
-#       must never be applied to a restored database).
+#       the SAME authenticated container format.  A pre-V104 database has no
+#       export function yet, so its upgrade-before backup gets an authenticated
+#       empty manifest (a tampered manifest must never be applied to a restored
+#       database).
 #
 # Configuration (environment; no secrets may ever be committed):
 #   VC_BACKUP_DIR             default ~/.virtual-companion/backups
@@ -284,9 +286,26 @@ retention_prune "$BACKUP_DIR_RESOLVED" 'vc-backup-*.tar.enc'
 
 # ---- ⑤ deletion tombstone manifest -> separate encrypted location ----
 echo "== [5/6] deletion tombstone manifest (separate encrypted location) =="
-pg_exec psql -U "$PG_USER" -d "$DB_NAME" -t -A -F '|' -c \
-  "SELECT out_account_id, out_username_digest, out_status, out_requested_at, out_completed_at
-     FROM vc.export_account_deletion_tombstones()" > "$WORK/deletion-tombstone.tsv"
+TOMBSTONE_EXPORT_AVAILABLE="$(pg_exec psql -U "$PG_USER" -d "$DB_NAME" -t -A -c \
+  "SELECT to_regprocedure('vc.export_account_deletion_tombstones()') IS NOT NULL")"
+case "$TOMBSTONE_EXPORT_AVAILABLE" in
+    t)
+        pg_exec psql -U "$PG_USER" -d "$DB_NAME" -t -A -F '|' -c \
+          "SELECT out_account_id, out_username_digest, out_status, out_requested_at, out_completed_at
+             FROM vc.export_account_deletion_tombstones()" > "$WORK/deletion-tombstone.tsv"
+        ;;
+    f)
+        # V104 creates the tombstone table and export function atomically.  If
+        # the function is absent there cannot be pre-existing tombstone rows;
+        # retain a separately authenticated empty manifest for restore parity.
+        : > "$WORK/deletion-tombstone.tsv"
+        echo "  pre-V104 schema: export function absent; sealing empty manifest"
+        ;;
+    *)
+        echo "FAIL: unexpected tombstone export availability result" >&2
+        exit 1
+        ;;
+esac
 TOMBSTONE_ROWS="$(wc -l < "$WORK/deletion-tombstone.tsv" | tr -d ' ')"
 MANIFEST_FILE="$MANIFEST_DIR_RESOLVED/deletion-manifest-$STAMP.enc"
 MANIFEST_TMP="$MANIFEST_DIR_RESOLVED/.deletion-manifest-$STAMP.enc.tmp"

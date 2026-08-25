@@ -123,6 +123,10 @@ tar 内含 `db.dump`、`objects/`（FULL 模式）、`backup-manifest.txt`（时
 WARNING 只会沉底，`LastExitStatus` 失败是唯一可靠可见的信号，防止「看起来完整的
 欠覆盖备份」静默累积；归档内的 `backup-manifest.txt` 也标 `mode=DB_ONLY`。
 
+旧 volume 在 V104 之前尚无墓碑导出函数。升级前备份应显式设置
+`VC_BACKUP_PG_USER=postgres`；脚本会为该 pre-V104 状态生成认证加密的空墓碑清单。
+函数一旦存在，权限错误或导出失败仍会硬失败，不会降级为空清单。
+
 ### launchd 定时（模板 + Owner 手工装载）
 
 模板：`launchd/com.virtualcompanion.daily-backup.plist.template`（每天 04:30）。
