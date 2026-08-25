@@ -62,8 +62,10 @@ services:
         mc alias set local http://minio:9000 "$$VC_EXPORT_S3_ACCESS_KEY" "$$VC_EXPORT_S3_SECRET_KEY"
         mc mb --ignore-existing local/"$$VC_EXPORT_S3_BUCKET"
         perm=$$(mc anonymous get local/"$$VC_EXPORT_S3_BUCKET")
-        echo "$$perm" | grep -Eq "none|private" \
-          || { echo 'export bucket must not allow anonymous access'; exit 1; }
+        case "$$perm" in
+          *none*|*private*) ;;
+          *) echo 'export bucket must not allow anonymous access'; exit 1 ;;
+        esac
     restart: "no"
 
   runtime:
@@ -95,6 +97,7 @@ services:
       VC_SHARED_RATE_LIMIT_ENABLED: "true"
       VC_SHARED_RATE_LIMIT_SECRET: ${VC_SHARED_RATE_LIMIT_SECRET:?set in .env}
       VC_CRYPTO_REST_KEY: ${VC_CRYPTO_REST_KEY:?set in .env}
+      VC_CRYPTO_BACKFILL_ENABLED: ${VC_CRYPTO_BACKFILL_ENABLED:-false}
       VC_ADMIN_SEED_USERNAME: ${VC_ADMIN_SEED_USERNAME:-}
       VC_ADMIN_SEED_PASSWORD: ${VC_ADMIN_SEED_PASSWORD:-}
       VC_ALERT_WEBHOOK_URL: ${VC_ALERT_WEBHOOK_URL:-}

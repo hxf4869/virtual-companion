@@ -50,6 +50,9 @@
 #   MinIO object export (FULL mode):
 #   VC_BACKUP_S3_ENDPOINT       e.g. http://127.0.0.1:9000
 #   VC_BACKUP_S3_ACCESS_KEY     / VC_BACKUP_S3_SECRET_KEY / VC_BACKUP_S3_BUCKET
+#   VC_BACKUP_S3_DOCKER_NETWORK optional network for the pinned mc container;
+#                                use the Compose network with a service-DNS
+#                                endpoint when MinIO has no published host port
 #   VC_BACKUP_MC_IMAGE          default minio/mc pinned digest
 #   SKIP semantics (fail-safe choice): if NONE of the four S3 vars is set the
 #   run still produces a DB-only archive, prints an explicit `SKIP: object
@@ -102,6 +105,7 @@ S3_ENDPOINT="${VC_BACKUP_S3_ENDPOINT:-}"
 S3_ACCESS_KEY="${VC_BACKUP_S3_ACCESS_KEY:-}"
 S3_SECRET_KEY="${VC_BACKUP_S3_SECRET_KEY:-}"
 S3_BUCKET="${VC_BACKUP_S3_BUCKET:-}"
+S3_DOCKER_NETWORK="${VC_BACKUP_S3_DOCKER_NETWORK:-}"
 MC_IMAGE="${VC_BACKUP_MC_IMAGE:-$MC_IMAGE_DEFAULT}"
 
 # ---- fail-closed configuration checks -------------------------------
@@ -198,6 +202,10 @@ echo "  db.dump: $DUMP_BYTES bytes"
 OBJECT_COUNT=0
 if [ "$OBJECT_MODE" = "FULL" ]; then
     echo "== [2/6] MinIO object export (bucket=$S3_BUCKET) =="
+    # mc mirror may leave the destination absent for a legitimately empty
+    # bucket.  Materialize it so the archive and object count still represent
+    # an explicit, restorable zero-object snapshot.
+    mkdir -p "$WORK/objects"
     MC_SCHEME="http://"
     MC_HOSTPART="${S3_ENDPOINT#http://}"
     MC_SCHEME_BARE="${S3_ENDPOINT%%://*}"
@@ -209,11 +217,17 @@ if [ "$OBJECT_MODE" = "FULL" ]; then
         OBJECTS_TARGET="$WORK/objects"              # local mc reaches 127.0.0.1 directly
         mc_run() { env MC_HOST_local="$MC_HOST_URL" "$MC_BIN" "$@"; }
     else
-        # dockerized mc: rewrite a loopback host to the host gateway; $WORK is
-        # mounted at /work so mirrored objects land on the host side.
-        MC_HOST_URL="$(sed -E 's#@(127\.0\.0\.1|localhost)([:/])#@host.docker.internal\2#' <<<"$MC_HOST_URL")"
+        # dockerized mc: an explicit Compose network reaches an unpublished
+        # MinIO service by DNS.  Otherwise preserve the loopback-to-host
+        # behavior used by standalone drills.
+        MC_DOCKER_ARGS=(--rm)
+        if [ -n "$S3_DOCKER_NETWORK" ]; then
+            MC_DOCKER_ARGS+=(--network "$S3_DOCKER_NETWORK")
+        else
+            MC_HOST_URL="$(sed -E 's#@(127\.0\.0\.1|localhost)([:/])#@host.docker.internal\2#' <<<"$MC_HOST_URL")"
+        fi
         OBJECTS_TARGET="/work/objects"
-        mc_run() { docker run --rm -e MC_HOST_local="$MC_HOST_URL" \
+        mc_run() { docker run "${MC_DOCKER_ARGS[@]}" -e MC_HOST_local="$MC_HOST_URL" \
                     -v "$WORK:/work" "$MC_IMAGE" "$@"; }
     fi
     # bucket must exist — an explicit hard error, never a silent empty export.

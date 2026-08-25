@@ -34,6 +34,7 @@ import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -91,6 +92,11 @@ class AuthSecurityIntegrationTest {
     void baselineIsPublicWhenAuthEnabled() throws Exception {
         mockMvc.perform(get("/api/internal/baseline"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void jwtOnlySecurityDoesNotProvisionGeneratedDevelopmentUser() {
+        assertThat(context.getBeansOfType(UserDetailsService.class)).isEmpty();
     }
 
     @Test

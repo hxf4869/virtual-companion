@@ -296,6 +296,9 @@ python3 不可用。pg_dump 与 mc mirror 是两次独立捕获、**不是原子
 不一致；恢复顺序=DB 恢复→先 reconcile→对象恢复+墓碑过滤→再开放读取）。
 恢复演练（含对象逐字节校验与备份前/后删除防复活断言）：
 `bash infra/db/backup/run-restore-drill.sh`（建议每月一次）。
+本地 Compose 不发布 MinIO 宿主端口；日常备份配置必须使用
+`VC_BACKUP_S3_ENDPOINT=http://minio:9000` 与
+`VC_BACKUP_S3_DOCKER_NETWORK=vc-local_default`，让 pinned `mc` 容器加入私有网络。
 
 定时：参照 `infra/db/backup/launchd/com.virtualcompanion.daily-backup.plist.template`
 （每天 04:30）创建 0600 env 文件后 `launchctl bootstrap gui/$(id -u) <plist>` 并 kickstart
@@ -334,6 +337,9 @@ docker compose --env-file .env.local -f docker-compose.yml up -d --build
 
 该组合不装配真实 provider，不读取 provider 凭据；`VC_ZERO_LLM_SOURCE_ID`
 可留默认 `ZERO_LLM_FALLBACK`。
+旧 volume 升级若启动门禁提示需要静态加密回填，仅限一次启动设置
+`VC_CRYPTO_BACKFILL_ENABLED=true`；日志出现 `crypto backfill complete` 后立即改回
+`false` 并重建 runtime。回填幂等，中断后可重跑。
 
 - `.local/application-provider.yml` 的 `weixin-ds-flash` deployment 需补 `model-revision`
   与 `config-version`（非空必填；Owner 向渠道确认不可变 revision 后填入——只有别名时

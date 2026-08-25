@@ -101,7 +101,9 @@ tar 内含 `db.dump`、`objects/`（FULL 模式）、`backup-manifest.txt`（时
     函数已 `REVOKE ... FROM PUBLIC`，只有 migration-owner 角色可执行）。
 - MinIO：`VC_BACKUP_S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET`；本机有 `mc` 就用本机
   的，否则用 pinned digest 的 `minio/mc` 容器（loopback endpoint 自动改写为
-  `host.docker.internal`）。
+  `host.docker.internal`）。MinIO 不发布宿主端口时，设
+  `VC_BACKUP_S3_DOCKER_NETWORK=<compose-network>` 并使用容器服务 DNS endpoint
+  （Dogfood 默认：`vc-local_default` + `http://minio:9000`）。
 
 ### 退出码契约（launchd `LastExitStatus` 判读）
 

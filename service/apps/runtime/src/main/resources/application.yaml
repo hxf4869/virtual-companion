@@ -187,6 +187,9 @@ virtual-companion:
   # default is development-only and rejected in the production profile.
   crypto:
     rest-key: ${VC_CRYPTO_REST_KEY:ZGV2LW9ubHktYWxwaGEta2V5LWRvLW5vdC11c2UtaW4=}
+    # One-shot, idempotent upgrade bridge for pre-encryption data.  Keep false
+    # during normal operation; the readiness gate refuses stale summaries.
+    backfill-enabled: ${VC_CRYPTO_BACKFILL_ENABLED:false}
     # S0-17-B: generic key id/version. Single-write always uses this slot;
     # dual-read also accepts enc1: and the optional previous slot.
     rest-key-id: ${VC_CRYPTO_REST_KEY_ID:default}

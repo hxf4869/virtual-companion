@@ -143,6 +143,16 @@ class DeployConfigChainTest {
     }
 
     @Test
+    void cryptoBackfillOneShotFlagPassesThroughTheWholeChain() throws IOException {
+        assertThat(envExample()).containsEntry("VC_CRYPTO_BACKFILL_ENABLED", "false");
+        assertThat(composePassthroughs())
+                .containsEntry("VC_CRYPTO_BACKFILL_ENABLED", "VC_CRYPTO_BACKFILL_ENABLED");
+        assertThat(composeLine("VC_CRYPTO_BACKFILL_ENABLED")).contains(":-false");
+        assertThat(applicationYaml())
+                .contains("backfill-enabled: ${VC_CRYPTO_BACKFILL_ENABLED:false}");
+    }
+
+    @Test
     void theDoubledPlanNameKeyExistsNowhere() throws IOException {
         String legacyKey = "VC_PROVIDER_PLAN_PLAN_NAME";
         assertThat(envExample())
