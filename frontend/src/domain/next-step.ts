@@ -57,8 +57,10 @@ export function resolveNextStep(input: NextStepInput): NextStep {
   if (!input.hasCompanion) {
     return {
       kind: "companion",
-      href: "/pages/chat/chat",
-      copy: "还没有角色",
+      // 前端产品化重构：唯一的关系创建流程落在陪伴设置页；聊天空态只
+      // 跳转到这里，不再复制一套创建表单。
+      href: "/pages/companion/companion",
+      copy: "还没有陪伴，先创建一个",
       action: "去创建",
     };
   }

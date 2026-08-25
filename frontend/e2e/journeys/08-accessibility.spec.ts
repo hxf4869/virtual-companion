@@ -112,13 +112,13 @@ test("login：axe 全量 + 键盘 Tab 焦点顺序 + Enter/Space 激活", async 
   await page.locator('[data-testid="password"] input').fill(user.password);
   await expect(submit).toHaveAttribute("tabindex", "0");
 
-  // 键盘可达性抽查：Tab 顺序必须先用户名、再密码、后 submit（导航按钮在
-  // 前，故断言相对顺序而非相邻性）。uni-button 的 tabindex/role 由全局
-  // a11y 修补补齐——submit 不可聚焦时这里必须失败，不允许条件化放行。
+  // 键盘可达性抽查：Tab 顺序必须先用户名、再密码、后 submit（故断言相对
+  // 顺序而非相邻性）。uni-button 的 tabindex/role 由全局 a11y 修补补齐
+  // ——submit 不可聚焦时这里必须失败，不允许条件化放行。
   // 必须在 submit enabled（tabindex=0）之后执行，禁用态它本来就不可聚焦；
-  // fill 会把焦点留在最后一个输入框，这里显式聚焦 username 之前的导航按钮
-  // 作为 Tab 起点（username 自身作起点不会进入 order）。
-  await page.getByTestId("nav-index").focus();
+  // fill 会把焦点留在最后一个输入框，这里从 body 起步连续 Tab（登录页
+  // 产品化后不再有导航按钮作 Tab 起点；username 自身作起点不会进入 order）。
+  await page.evaluate(() => document.body.focus());
   const order: string[] = [];
   for (let i = 0; i < 25; i += 1) {
     await page.keyboard.press("Tab");
@@ -255,7 +255,7 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
         uniApi?.redirectTo({ url: "/pages/index/index" });
       });
     }
-    await expect(page.getByTestId("alpha-nav")).toBeVisible();
+    await expect(page.getByTestId("home-hero")).toBeVisible();
     await expectAccessible(page, "index");
   });
 

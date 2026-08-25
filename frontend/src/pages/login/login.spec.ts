@@ -135,7 +135,7 @@ describe("login page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("NEXT-STEP: after login with no companion, goes to chat", async () => {
+  it("NEXT-STEP: after login with no companion, goes to the unified creation flow", async () => {
     const store = useAuthStore();
     vi.spyOn(store, "login").mockResolvedValue(true);
     const redirectTo = vi.fn();
@@ -170,7 +170,7 @@ describe("login page glue (P2-19 component test)", () => {
     await wrapper.find('button[data-testid="submit"]').trigger("click");
     const { flushPromises } = await import("@vue/test-utils");
     await flushPromises();
-    expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
+    expect(redirectTo).toHaveBeenCalledWith({ url: "/pages/companion/companion" });
     wrapper.unmount();
   });
 
@@ -205,71 +205,17 @@ describe("login page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("renders a back-to-index entry before submit", () => {
+  // 前端产品化重构：登录页只保留登录主层级（375px 溢出根因的边界台导航
+  // 入口已移除）。准入前的可达路径由 nav-guard 守卫保证，不再在登录页
+  // 平铺内部导航。
+  it("does not expose internal page entries before submit", () => {
     const wrapper = mountPage();
-    const nav = wrapper.find('[data-testid="nav-index"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("返回边界台");
+    expect(wrapper.find('[data-testid="nav-index"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="nav-memory"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("navigates to the index page without calling login", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    const store = useAuthStore();
-    const loginSpy = vi.spyOn(store, "login");
-
-    await wrapper.find('[data-testid="nav-index"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/index/index" });
-    expect(loginSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("renders a chat entry before submit", () => {
-    const wrapper = mountPage();
-    const nav = wrapper.find('[data-testid="nav-chat"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("离线聊天");
-    wrapper.unmount();
-  });
-
-  it("navigates to the chat page without calling login", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    const store = useAuthStore();
-    const loginSpy = vi.spyOn(store, "login");
-
-    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
-    expect(loginSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("renders a memory entry before submit", () => {
-    const wrapper = mountPage();
-    const nav = wrapper.find('[data-testid="nav-memory"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("记忆管理");
-    wrapper.unmount();
-  });
-
-  it("navigates to the memory page without calling login", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    const store = useAuthStore();
-    const loginSpy = vi.spyOn(store, "login");
-
-    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
-    expect(loginSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
   it("INVITE: the code panel stays closed until toggled, then shows the gated wording on 403", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: false,

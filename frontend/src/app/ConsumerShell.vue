@@ -5,8 +5,8 @@
          渲染底栏（登录态）；沉浸式/准入/内部页不消费本组件。 -->
     <PageHeader
       :title="headerTitle"
-      :show-back="spec.shell === 'consumer-sub'"
-      :back-label="`返回`"
+      :show-back="spec.shell === 'consumer-sub' || spec.shell === 'admission'"
+      back-label="返回"
       :back-fallback="backFallback"
     >
       <template v-if="$slots['header-actions']" #actions>
@@ -62,8 +62,9 @@ export default defineComponent({
 
     const headerTitle = computed(() => props.title ?? spec.value.title);
 
-    // 二级页的返回兜底：所属 tab 根页。
+    // 返回兜底：二级页回所属 tab 根；线性准入页回首页。
     const backFallback = computed(() => {
+      if (spec.value.shell === "admission") return "/pages/index/index";
       const tab = CONSUMER_TABS.find((entry) => entry.key === spec.value.tab);
       return tab?.href ?? "/pages/index/index";
     });

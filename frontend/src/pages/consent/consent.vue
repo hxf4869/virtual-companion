@@ -3,26 +3,7 @@ append-only: every grant/revoke appends a new versioned row and this page shows
 the effective latest row per type. The Alpha demo pins the version the user saw
 to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
 <template>
-  <view class="consent-page">
-    <view class="bar">
-      <text class="title">同意管理</text>
-      <button
-        data-testid="nav-chat"
-        class="nav-index"
-        aria-label="离线聊天"
-        @click="goTo('/pages/chat/chat')"
-      >
-        离线聊天
-      </button>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
-    </view>
+  <ConsumerShell route="/pages/consent/consent">
 
     <view class="intro">
       <text>
@@ -40,7 +21,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
       <text>同意记录加载失败，请重试。</text>
       <button
         data-testid="consent-retry"
-        class="nav-index"
+        class="vc-btn"
         :disabled="store.busy"
         @click="onRetry"
       >
@@ -72,7 +53,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
         </text>
         <button
           data-testid="consent-grant"
-          class="nav-index grant-btn"
+          class="vc-btn vc-btn--primary"
           :disabled="store.busy || store.grantedFor(option.type) === true"
           @click="onToggle(option.type, true)"
         >
@@ -81,7 +62,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
         <button
           v-if="revokeTarget !== option.type"
           data-testid="consent-revoke"
-          class="nav-index revoke-btn"
+          class="vc-btn vc-btn--danger"
           :disabled="store.busy || store.grantedFor(option.type) !== true"
           @click="openRevoke(option.type)"
         >
@@ -95,7 +76,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
           <text class="consent-note">撤回需重新输入当前密码确认。</text>
           <input
             v-model="revokePassword"
-            class="emc-input"
+            class="vc-input"
             data-testid="consent-revoke-password"
             type="password"
             autocomplete="current-password"
@@ -105,7 +86,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
           <view class="revoke-actions">
             <button
               data-testid="consent-revoke-cancel"
-              class="nav-index"
+              class="vc-btn"
               :disabled="store.busy"
               @click="closeRevoke"
             >
@@ -113,7 +94,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
             </button>
             <button
               data-testid="consent-revoke-confirm"
-              class="nav-index revoke-btn"
+              class="vc-btn vc-btn--danger"
               :disabled="store.busy"
               @click="onToggle(option.type, false)"
             >
@@ -158,21 +139,21 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
       <view v-if="!emergencyContact" class="emc-form">
         <input
           v-model="emcLabel"
-          class="emc-input"
+          class="vc-input"
           data-testid="emc-label"
           placeholder="称呼（如：妈妈）"
           aria-label="紧急联系人称呼"
         />
         <input
           v-model="emcContact"
-          class="emc-input"
+          class="vc-input"
           data-testid="emc-contact"
           placeholder="联系方式（Alpha 演示数据）"
           aria-label="紧急联系人联系方式"
         />
         <button
           data-testid="emc-save"
-          class="nav-index grant-btn"
+          class="vc-btn vc-btn--primary"
           :disabled="store.busy || !emcLabel.trim() || !emcContact.trim()"
           @click="onSaveContact"
         >
@@ -196,7 +177,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
         <view v-if="emergencyContact.status === 'DRAFT'" class="emc-form">
           <button
             data-testid="emc-invite"
-            class="nav-index"
+            class="vc-btn"
             :disabled="store.busy"
             @click="onStartVerification"
           >
@@ -208,14 +189,14 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
           </view>
           <input
             v-model="confirmToken"
-            class="emc-input"
+            class="vc-input"
             data-testid="emc-confirm-token"
             placeholder="（模拟）联系人输入邀请码确认接受"
             aria-label="联系人邀请码"
           />
           <button
             data-testid="emc-confirm"
-            class="nav-index grant-btn"
+            class="vc-btn vc-btn--primary"
             :disabled="store.busy || !confirmToken.trim()"
             @click="onConfirmVerification"
           >
@@ -225,7 +206,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
 
         <button
           data-testid="emc-revoke"
-          class="nav-index revoke-btn"
+          class="vc-btn vc-btn--danger"
           :disabled="store.busy"
           @click="onRevokeContact"
         >
@@ -233,7 +214,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
         </button>
       </template>
     </view>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -254,6 +235,7 @@ import {
   type EmergencyContact,
 } from "@/api/emergency-contact";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { CONSENT_OPTIONS, useConsentStore } from "@/stores/consent";
 
@@ -442,21 +424,6 @@ export default {
       return "none";
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only navigation.
-      }
-    }
-
     return {
       CONSENT_OPTIONS,
       CONSENT_VERSION,
@@ -483,166 +450,207 @@ export default {
       versionFor,
       statusLabel,
       statusTone,
-      goTo,
     };
   },
 };
 </script>
 
 <style scoped>
-.consent-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
-.nav-index {
-  flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
-.grant-btn {
-  background-color: #16503e;
-}
-.revoke-btn {
-  background-color: #5a1a1a;
-}
 .intro {
-  margin: 16rpx 0;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
-  color: #8fa0bd;
+  margin: 0 0 var(--vc-space-4);
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
 }
+
+.vc-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.vc-btn::after {
+  border: 0;
+}
+
+.vc-btn--primary {
+  border: 0;
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+}
+
+.vc-btn--danger {
+  border-color: var(--vc-danger);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+}
+
+.vc-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-md);
+}
+
 .consent-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12rpx;
-  padding: 14rpx 16rpx;
-  margin-top: 12rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  border: 2rpx solid #2a3a5a;
+  gap: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  margin-top: var(--vc-space-3);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
 }
+
 .consent-copy {
-  flex: 1 1 320rpx;
+  flex: 1 1 16em;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  gap: 4px;
 }
+
 .consent-label {
-  font-size: 26rpx;
+  font-size: var(--vc-text-md);
+  font-weight: 600;
 }
+
 .consent-note {
-  font-size: 22rpx;
-  color: #8fa0bd;
+  font-size: var(--vc-text-xs);
+  color: var(--vc-muted);
 }
+
 .consent-meta {
-  font-size: 20rpx;
-  color: #5f7194;
+  font-size: var(--vc-text-xs);
+  color: var(--vc-muted);
 }
+
 .consent-status {
   flex: 0 0 auto;
-  font-size: 24rpx;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
+
 .consent-status--granted {
-  color: #89d3cc;
+  color: var(--vc-success);
 }
+
 .consent-status--revoked {
-  color: #f19a94;
+  color: var(--vc-danger);
 }
+
 .consent-status--none {
-  color: #8fa0bd;
+  color: var(--vc-muted);
 }
+
 .revoke-confirm {
-  flex: 1 1 100%;
   display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-  margin-top: 8rpx;
-  padding: 14rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #5a1a1a;
-  background-color: #16233f;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  flex: 1 1 100%;
+  padding: var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-danger-bg);
 }
+
+.revoke-confirm .vc-input {
+  flex: 1 1 12em;
+  width: auto;
+}
+
 .revoke-actions {
   display: flex;
-  gap: 12rpx;
+  gap: var(--vc-space-2);
 }
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
 .emc-section {
-  margin-top: 32rpx;
-  padding: 16rpx;
-  border-radius: 12rpx;
-  background-color: #16233f;
-  border: 2rpx solid #2a3a5a;
+  margin-top: var(--vc-space-6);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
+
 .emc-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12rpx;
-  margin-bottom: 8rpx;
+  gap: var(--vc-space-3);
 }
+
 .emc-title {
-  font-size: 30rpx;
-  font-weight: 600;
+  font-size: var(--vc-text-md);
+  font-weight: 650;
 }
+
+.emc-section .intro {
+  background: transparent;
+  padding: var(--vc-space-2) 0 0;
+}
+
 .emc-form {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 12rpx;
-  margin-top: 12rpx;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
 }
-.emc-input {
-  flex: 1 1 280rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 26rpx;
+
+.emc-form .vc-input {
+  flex: 1 1 12em;
+  width: auto;
 }
+
+.emc-hint {
+  flex: 1 1 100%;
+  color: var(--vc-warning);
+  font-size: var(--vc-text-xs);
+}
+
 .emc-card {
-  margin-top: 12rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
+  gap: 4px;
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  overflow-wrap: anywhere;
 }
+
 .emc-line {
-  font-size: 26rpx;
-}
-.emc-hint {
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #f19a94;
-}
-.error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
 </style>

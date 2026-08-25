@@ -50,11 +50,11 @@ describe("resolveNextStep (§8.1 first-run)", () => {
     expect(step.copy).toContain("协议");
   });
 
-  it("points to chat when the account has no companion yet", () => {
+  it("points to the unified companion creation flow when no companion exists", () => {
     const step = resolveNextStep({ ...READY, hasCompanion: false });
     expect(step.kind).toBe("companion");
-    expect(step.href).toBe("/pages/chat/chat");
-    expect(step.copy).toContain("还没有角色");
+    expect(step.href).toBe("/pages/companion/companion");
+    expect(step.copy).toContain("还没有陪伴");
   });
 
   it("offers to resume chat when the first-run checklist is complete", () => {
