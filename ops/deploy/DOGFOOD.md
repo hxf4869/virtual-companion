@@ -321,6 +321,20 @@ docker compose --env-file .env.local exec db psql -U vc_migrator -d vc \
 
 ## 11. 真实 provider 运行前置（DOGFOOD-05）
 
+Owner 尚未批准真实 provider 时，本地 Dogfood 使用确定性 `ZERO_LLM`：
+
+```bash
+# .env.local（私有，不入库）
+VC_MODEL_PROVIDERS_ENABLED=false
+VC_ZERO_LLM_ENABLED=true
+
+# 只启动基础栈；不加载 docker-compose.override.yml
+docker compose --env-file .env.local -f docker-compose.yml up -d --build
+```
+
+该组合不装配真实 provider，不读取 provider 凭据；`VC_ZERO_LLM_SOURCE_ID`
+可留默认 `ZERO_LLM_FALLBACK`。
+
 - `.local/application-provider.yml` 的 `weixin-ds-flash` deployment 需补 `model-revision`
   与 `config-version`（非空必填；Owner 向渠道确认不可变 revision 后填入——只有别名时
   不得自造 revision，见 TODO `OWNER-INPUT-PROVIDER-REVISION`）。

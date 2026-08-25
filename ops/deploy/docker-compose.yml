@@ -108,6 +108,8 @@ services:
       VC_ALERT_FALLBACK_WEBHOOK_SECRET: ${VC_ALERT_FALLBACK_WEBHOOK_SECRET:-}
       VC_ALERT_FALLBACK_WEBHOOK_ALLOWED_HOSTS: ${VC_ALERT_FALLBACK_WEBHOOK_ALLOWED_HOSTS:-}
       VC_MODEL_PROVIDERS_ENABLED: ${VC_MODEL_PROVIDERS_ENABLED:-false}
+      VC_ZERO_LLM_ENABLED: ${VC_ZERO_LLM_ENABLED:-false}
+      VC_ZERO_LLM_SOURCE_ID: ${VC_ZERO_LLM_SOURCE_ID:-ZERO_LLM_FALLBACK}
       # DOGFOOD-STABILIZATION-03: while the GENERATION provider's terms are
       # unverified (default false) every outbound MESSAGE_TEXT — current turn
       # and history — must pass the local sensitive-data detector before any
