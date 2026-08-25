@@ -29,6 +29,19 @@ does not push. -->
       @create="onRelCreate"
     />
 
+    <view
+      v-if="relStore.status === 'ready'"
+      class="notice"
+      data-testid="current-relationship"
+      role="status"
+    >
+      <text>{{
+        relStore.current
+          ? `当前关系：${personaDisplayName(relStore.current.personaRef)}`
+          : "还没有当前关系。"
+      }}</text>
+    </view>
+
     <view v-if="actionError" class="error" data-testid="companion-action-failed" role="alert">
       <text>{{ actionError }}</text>
     </view>
@@ -273,6 +286,7 @@ import {
 import { COMPANION_AVATAR_OPTIONS } from "@/domain/companion-presentation";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { personaDisplayName } from "@/domain/persona";
 import { readContextFromLocation, sanitizeRelationshipId } from "@/domain/context-href";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -605,6 +619,7 @@ export default {
 
     return {
       relStore,
+      personaDisplayName,
       companionName,
       userAddressAs,
       replyLength,

@@ -1,7 +1,7 @@
 <template>
   <!-- DOGFOOD-09：页面容器声明 main landmark。沉浸式对话详情：无四入口
        底栏，自带头部（返回 + 当前陪伴 + AI 标识 + 上下文菜单）。 -->
-  <view class="chat-page" role="main">
+  <view class="chat-page">
     <header class="chat-header" role="banner">
       <button
         type="button"
@@ -116,6 +116,7 @@
       </view>
     </AppSheet>
 
+    <view class="chat-main" role="main">
     <!-- SVC-MODE (FR-RES-005): the service mode is an ops fact, shown plainly
          and never role-played. -->
     <view
@@ -646,7 +647,7 @@
           <button
             data-testid="send"
             class="chat-send"
-            :disabled="isStreaming || !canSend"
+            :disabled="isStreaming || !canSend || !store.conversationId"
             @click="onSend"
           >
             发送
@@ -671,6 +672,7 @@
         </view>
       </template>
     </template>
+    </view>
   </view>
 </template>
 
@@ -1033,7 +1035,13 @@ export default defineComponent({
 
     async function onSend(): Promise<void> {
       const text = inputText.value.trim();
+      // 会话尚未初始化完成时不得发送：轮次无法被接受，静默丢草稿是
+      // 不诚实状态（Phase 7 harden，E2E 03 在新 IA 下暴露）。
       if (!text || store.isStreaming) return;
+      if (!store.conversationId) {
+        sendError.value = true;
+        return;
+      }
       inputText.value = "";
       sendError.value = false;
       try {
@@ -1749,6 +1757,13 @@ export default defineComponent({
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--vc-env);
+}
+
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .chat-header {

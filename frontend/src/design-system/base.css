@@ -94,6 +94,13 @@ page,
   color-scheme: dark light;
 }
 
+/* 全局盒模型：所有尺寸含 padding 与 border（修复 390px 下 2px 溢出类缺陷）。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 /* ---- 全局排版 ---- */
 
 page {

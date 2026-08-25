@@ -118,29 +118,27 @@ test("login：axe 全量 + 键盘 Tab 焦点顺序 + Enter/Space 激活", async 
   // 必须在 submit enabled（tabindex=0）之后执行，禁用态它本来就不可聚焦；
   // fill 会把焦点留在最后一个输入框，这里从 body 起步连续 Tab（登录页
   // 产品化后不再有导航按钮作 Tab 起点；username 自身作起点不会进入 order）。
-  await page.evaluate(() => document.body.focus());
+  // Android Chrome 的顺序焦点起点是“最后聚焦的元素”（blur 不重置），
+  // 桌面/webkit 则从 body 起。两种引擎都用“走满一个焦点环”的方式验证
+  // 相对顺序：username → password → submit 的首次出现必须依次递增。
   const order: string[] = [];
-  for (let i = 0; i < 25; i += 1) {
+  for (let i = 0; i < 14; i += 1) {
     await page.keyboard.press("Tab");
     const testId = await page.evaluate(() => {
       const active = document.activeElement;
       const host = active?.closest("[data-testid]");
       return host?.getAttribute("data-testid") ?? null;
     });
-    if (testId && !order.includes(testId)) order.push(testId);
-    if (testId === "submit") break;
+    if (testId) order.push(testId);
   }
-  expect(order).toContain("username");
-  expect(order).toContain("password");
-  expect(order).toContain("submit");
-  expect(
-    order.indexOf("username"),
-    `tab 顺序异常：${order.join(" -> ")}`,
-  ).toBeLessThan(order.indexOf("password"));
-  expect(
-    order.indexOf("password"),
-    `tab 顺序异常：${order.join(" -> ")}`,
-  ).toBeLessThan(order.indexOf("submit"));
+  // 环形走查：找到 username 之后出现的 password、password 之后出现的
+  // submit（环起点的元素会在开头先出现一次）。
+  const u = order.indexOf("username");
+  expect(u, `tab 顺序异常：${order.join(" -> ")}`).toBeGreaterThanOrEqual(0);
+  const p = order.indexOf("password", u + 1);
+  expect(p, `tab 顺序异常：${order.join(" -> ")}`).toBeGreaterThan(u);
+  const sb = order.indexOf("submit", p + 1);
+  expect(sb, `tab 顺序异常：${order.join(" -> ")}`).toBeGreaterThan(p);
 
   // Space 激活（无导航副作用的控件）：uni-button 是自定义元素，Space 的
   // 默认行为是滚动页面；全局修补在 keydown 阶段只拦截滚动并 arm（repeat
@@ -266,9 +264,11 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
     // （activeCompanionLimit 内），此时聊天页直接进入会话面板。
     await navigateToPage(page, "/pages/companion/companion");
     await expect(page.getByTestId("relationship-selector")).toBeVisible();
-    const hasCompanion = await page
-      .getByTestId("current-relationship")
-      .isVisible();
+    // current-relationship 状态行在"还没有"时也渲染（relStore ready 后出现），
+    // 判断依据是内容而不是可见性。
+    const status = page.getByTestId("current-relationship");
+    await expect(status).toBeVisible({ timeout: 15_000 });
+    const hasCompanion = (await status.textContent()).includes("当前关系：");
     if (!hasCompanion) {
       const persona = page.getByTestId("persona-select");
       await expect(persona).toBeEnabled();
