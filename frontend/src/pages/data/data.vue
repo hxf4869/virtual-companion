@@ -154,9 +154,9 @@ Uses existing list APIs; report/appeal status reads the report intake list
 import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
-import EmptyState from "@/components/EmptyState.vue";
-import ErrorNotice from "@/components/ErrorNotice.vue";
-import RetryButton from "@/components/RetryButton.vue";
+import EmptyState from "@/design-system/EmptyState.vue";
+import ErrorNotice from "@/design-system/ErrorNotice.vue";
+import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
 import { personaDisplayName } from "@/domain/persona";
 import { requestIdLabel } from "@/domain/request-id";

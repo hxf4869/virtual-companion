@@ -140,9 +140,9 @@ import { computed, onMounted, ref } from "vue";
 
 import type { Reminder, ReminderRecurrence } from "@/api/reminder";
 import { createAuthenticatedTransport } from "@/api/transport";
-import ErrorNotice from "@/components/ErrorNotice.vue";
+import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
-import RetryButton from "@/components/RetryButton.vue";
+import RetryButton from "@/design-system/RetryButton.vue";
 import type { AsyncStatus } from "@/domain/async-state";
 import { readContextFromLocation, sanitizeRelationshipId } from "@/domain/context-href";
 import { lastRequestId } from "@/domain/request-id";

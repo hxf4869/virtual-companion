@@ -171,9 +171,9 @@ import {
   type ConversationListItem,
 } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
-import ErrorNotice from "@/components/ErrorNotice.vue";
+import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
-import RetryButton from "@/components/RetryButton.vue";
+import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";

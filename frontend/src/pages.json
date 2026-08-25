@@ -1,130 +1,151 @@
 {
-	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+	"pages": [
 		{
 			"path": "pages/index/index",
 			"style": {
-				"navigationBarTitleText": "Technical Alpha 边界台"
+				"navigationBarTitleText": "首页",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/chat/chat",
 			"style": {
-				"navigationBarTitleText": "离线聊天恢复"
+				"navigationBarTitleText": "对话",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/conversations/conversations",
 			"style": {
-				"navigationBarTitleText": "会话列表"
+				"navigationBarTitleText": "对话",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/memory/memory",
 			"style": {
-				"navigationBarTitleText": "记忆管理"
+				"navigationBarTitleText": "记忆",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/memory-detail/memory-detail",
 			"style": {
-				"navigationBarTitleText": "记忆详情"
+				"navigationBarTitleText": "记忆详情",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/reminder/reminder",
 			"style": {
-				"navigationBarTitleText": "提醒管理"
+				"navigationBarTitleText": "提醒",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/companion/companion",
 			"style": {
-				"navigationBarTitleText": "角色设置"
+				"navigationBarTitleText": "陪伴设置",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/consent/consent",
 			"style": {
-				"navigationBarTitleText": "同意管理"
+				"navigationBarTitleText": "同意管理",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/age/age",
 			"style": {
-				"navigationBarTitleText": "成年核验"
+				"navigationBarTitleText": "成年状态",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/export/export",
 			"style": {
-				"navigationBarTitleText": "数据导出"
+				"navigationBarTitleText": "数据导出",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/data/data",
 			"style": {
-				"navigationBarTitleText": "我的数据"
+				"navigationBarTitleText": "我的数据",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/help/help",
 			"style": {
-				"navigationBarTitleText": "帮助与安全支持"
+				"navigationBarTitleText": "帮助与反馈",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/report/report",
 			"style": {
-				"navigationBarTitleText": "举报和申诉"
+				"navigationBarTitleText": "举报和申诉",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/ai-notice/ai-notice",
 			"style": {
-				"navigationBarTitleText": "模型与 AI 标识"
+				"navigationBarTitleText": "AI 说明",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/health/health",
 			"style": {
-				"navigationBarTitleText": "使用时长"
+				"navigationBarTitleText": "使用与休息",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/incognito/incognito",
 			"style": {
-				"navigationBarTitleText": "无痕模式"
+				"navigationBarTitleText": "无痕默认",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/login/login",
 			"style": {
-				"navigationBarTitleText": "登录"
+				"navigationBarTitleText": "登录",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/account/account",
 			"style": {
-				"navigationBarTitleText": "账号与注销"
+				"navigationBarTitleText": "我的",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/ops/ops",
 			"style": {
-				"navigationBarTitleText": "运行与合规"
+				"navigationBarTitleText": "运行与合规",
+				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/admin/admin",
 			"style": {
-				"navigationBarTitleText": "账户管理"
+				"navigationBarTitleText": "内部管理",
+				"navigationStyle": "custom"
 			}
 		}
 	],
 	"globalStyle": {
+		"navigationStyle": "custom",
+		"navigationBarTitleText": "虚拟陪伴",
 		"navigationBarTextStyle": "white",
-		"navigationBarTitleText": "Technical Alpha 边界台",
-		"navigationBarBackgroundColor": "#14213D",
-		"backgroundColor": "#14213D"
+		"navigationBarBackgroundColor": "#151d2b",
+		"backgroundColor": "#151d2b"
 	}
 }

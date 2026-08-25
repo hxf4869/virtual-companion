@@ -515,9 +515,9 @@ states carry alert/live a11y semantics. -->
 import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
-import ErrorNotice from "@/components/ErrorNotice.vue";
+import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
-import RetryButton from "@/components/RetryButton.vue";
+import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { publicMemoryScopeLabel } from "@/domain/public-memory-display";
 import { matchesLooseText } from "@/domain/text-filter";

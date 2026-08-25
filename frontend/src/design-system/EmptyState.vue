@@ -14,3 +14,14 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+.empty-state {
+  padding: var(--vc-space-6) var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  text-align: center;
+}
+</style>
