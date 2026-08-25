@@ -15,6 +15,14 @@ const REL = {
   createdAt: "2026-08-18T00:00:00Z",
 };
 
+/** 行级管理操作（改名/结束/删除）收进"管理"展开区（Phase 3 IA）。 */
+async function openManage(wrapper: { find: (sel: string) => { attributes: (n: string) => string | undefined; trigger: (e: string) => Promise<void> } }): Promise<void> {
+  const btn = wrapper.find('[data-testid^="conversation-manage-"]');
+  if (btn.attributes("aria-expanded") !== "true") {
+    await btn.trigger("click");
+  }
+}
+
 function item(overrides: Record<string, unknown> = {}) {
   return {
     conversationId: "c1",
@@ -222,6 +230,7 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
     await wrapper.find('[data-testid="conversation-rename-input"]').setValue("新标题");
     await wrapper.find('[data-testid="conversation-rename-save"]').trigger("click");
@@ -244,11 +253,13 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     const del = wrapper.find('[data-testid="conversation-delete"]');
     await del.trigger("click");
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
     await flushPromises();
     expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/v1/conversations/c1")).toBe(
@@ -263,7 +274,9 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
     await flushPromises();
 
@@ -277,9 +290,11 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-end"]').trigger("click");
     expect(calls.some((c) => c.url.endsWith("/end"))).toBe(false);
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-end"]').trigger("click");
     await flushPromises();
     expect(

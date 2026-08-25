@@ -18,7 +18,9 @@ test("a user can create a relationship and complete a real chat turn", async ({
   const session = await uiLogin(page, user);
   await prepareGenerationAccess(session.accessToken);
 
-  await navigateToPage(page, "/pages/chat/chat");
+  // 统一创建流程在陪伴设置页（前端产品化重构 Phase 3）；聊天空态只提供
+  // 跳转入口。
+  await navigateToPage(page, "/pages/companion/companion");
   await expect(page.getByTestId("relationship-selector")).toBeVisible();
 
   const persona = page.getByTestId("persona-select");
@@ -26,6 +28,11 @@ test("a user can create a relationship and complete a real chat turn", async ({
   await persona.selectOption("gentle-listener");
   await page.getByTestId("create-relationship").click();
 
+  await expect(page.getByTestId("current-relationship")).toContainText(
+    "当前关系：温和倾听者",
+  );
+
+  await navigateToPage(page, "/pages/chat/chat");
   await expect(page.getByTestId("current-relationship")).toContainText(
     "当前关系：温和倾听者",
   );

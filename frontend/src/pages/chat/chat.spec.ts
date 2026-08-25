@@ -50,6 +50,31 @@ function mountPage() {
   return mount(ChatPage, { attachTo: document.body });
 }
 
+/** 消息级操作收进"更多"展开区：先展开再触发原 testid（Phase 3 IA）。 */
+async function openMsgMenu(
+  wrapper: ReturnType<typeof mountPage>,
+  messageId: string,
+): Promise<void> {
+  const more = wrapper.find(`[data-testid="msg-more-${messageId}"]`);
+  if (more.attributes("aria-expanded") !== "true") {
+    await more.trigger("click");
+  }
+}
+
+/** 头部上下文操作（记忆/设置/提醒/首页/登录/登出）收进 Action Sheet。 */
+async function openContextSheet(
+  wrapper: ReturnType<typeof mountPage>,
+): Promise<void> {
+  await wrapper.find('[data-testid="chat-context-open"]').trigger("click");
+}
+
+/** 会话管理（改名/结束/删除）收进 Action Sheet。 */
+async function openConvSheet(
+  wrapper: ReturnType<typeof mountPage>,
+): Promise<void> {
+  await wrapper.find('[data-testid="conversation-manage"]').trigger("click");
+}
+
 describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -296,6 +321,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const removeSpy = vi.spyOn(store, "removeMessage").mockResolvedValue(true);
     await wrapper.vm.$nextTick();
 
+    await openMsgMenu(wrapper, "m1");
     const button = wrapper.find('[data-testid="msg-delete-m1"]');
     expect(button.exists()).toBe(true);
     expect(button.text()).toContain("删除");
@@ -306,6 +332,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(wrapper.find('[data-testid="msg-delete-m1"]').text()).toContain("确认删除");
 
     // Second click confirms and deletes through the store.
+    await openMsgMenu(wrapper, "m1");
     await wrapper.find('[data-testid="msg-delete-m1"]').trigger("click");
     expect(removeSpy).toHaveBeenCalledWith(expect.anything(), "m1");
     wrapper.unmount();
@@ -328,6 +355,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     ];
     await wrapper.vm.$nextTick();
 
+    await openMsgMenu(wrapper, "m1");
     const copyButton = wrapper.find('[data-testid="msg-copy-m1"]');
     expect(copyButton.exists()).toBe(true);
     expect(copyButton.text()).toContain("复制");
@@ -358,6 +386,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     ];
     await wrapper.vm.$nextTick();
 
+    await openMsgMenu(wrapper, "u1");
     await wrapper.find('[data-testid="msg-copy-u1"]').trigger("click");
     await flushPromises();
 
@@ -382,6 +411,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     ];
     await wrapper.vm.$nextTick();
 
+    await openMsgMenu(wrapper, "m1");
     const button = wrapper.find('[data-testid="msg-report-m1"]');
     expect(button.exists()).toBe(true);
     expect(button.text()).toContain("举报");
@@ -458,6 +488,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const noMemorySpy = vi.spyOn(store, "setMessageNoMemory").mockResolvedValue(true);
     await wrapper.vm.$nextTick();
 
+    await openMsgMenu(wrapper, "m1");
     const button = wrapper.find('[data-testid="msg-no-memory-m1"]');
     expect(button.exists()).toBe(true);
     expect(button.text()).toContain("不记住");
@@ -486,6 +517,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const noMemorySpy = vi.spyOn(store, "setMessageNoMemory").mockResolvedValue(true);
     await wrapper.vm.$nextTick();
 
+    await openMsgMenu(wrapper, "m1");
     const button = wrapper.find('[data-testid="msg-no-memory-m1"]');
     expect(button.text()).toContain("恢复记忆");
 
@@ -811,9 +843,10 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
+    await openContextSheet(wrapper);
     const nav = wrapper.find('[data-testid="nav-index"]');
     expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("返回边界台");
+    expect(nav.text()).toContain("返回首页");
     wrapper.unmount();
   });
 
@@ -826,6 +859,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const sendSpy = vi.spyOn(store, "send");
     const cancelSpy = vi.spyOn(store, "cancel");
 
+    await openContextSheet(wrapper);
     await wrapper.find('[data-testid="nav-index"]').trigger("click");
 
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/index/index" });
@@ -858,6 +892,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
+    await openContextSheet(wrapper);
     const nav = wrapper.find('[data-testid="nav-memory"]');
     expect(nav.exists()).toBe(true);
     expect(nav.text()).toContain("记忆管理");
@@ -873,6 +908,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const sendSpy = vi.spyOn(store, "send");
     const cancelSpy = vi.spyOn(store, "cancel");
 
+    await openContextSheet(wrapper);
     await wrapper.find('[data-testid="nav-memory"]').trigger("click");
 
     expect(navigateTo).toHaveBeenCalledWith({
@@ -890,6 +926,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
+    await openContextSheet(wrapper);
     await wrapper.find('[data-testid="nav-memory"]').trigger("click");
 
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
@@ -901,6 +938,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
+    await openContextSheet(wrapper);
     const nav = wrapper.find('[data-testid="nav-login"]');
     expect(nav.exists()).toBe(true);
     expect(nav.text()).toContain("登录");
@@ -917,6 +955,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const sendSpy = vi.spyOn(store, "send");
     const cancelSpy = vi.spyOn(store, "cancel");
 
+    await openContextSheet(wrapper);
     await wrapper.find('[data-testid="nav-login"]').trigger("click");
 
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
@@ -932,6 +971,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
+    await openContextSheet(wrapper);
     const logout = wrapper.find('[data-testid="logout"]');
     expect(logout.exists()).toBe(true);
     expect(logout.text()).toContain("登出");
@@ -949,6 +989,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
+    await openContextSheet(wrapper);
     await wrapper.find('[data-testid="logout"]').trigger("click");
     await flushPromises();
 
@@ -1000,6 +1041,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const renameSpy = vi.spyOn(store, "renameConversation").mockResolvedValue(true);
     store.conversationId = "9";
 
+    await openConvSheet(wrapper);
     await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
     await wrapper.find('[data-testid="rename-input"]').setValue("新标题");
     await wrapper.find('[data-testid="rename-apply"]').trigger("click");
@@ -1021,11 +1063,13 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     store.conversationId = "9";
 
     // First click arms the confirm; nothing is deleted yet.
+    await openConvSheet(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
     expect(removeSpy).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
 
     // Second click deletes.
+    await openConvSheet(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
     expect(removeSpy).toHaveBeenCalledWith(expect.anything(), "9");
     wrapper.unmount();
@@ -1356,6 +1400,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
+    await openConvSheet(wrapper);
     const button = wrapper.find('[data-testid="end-today"]');
     expect(button.exists()).toBe(true);
     expect(button.text()).toContain("结束今天的对话");
@@ -1367,6 +1412,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(wrapper.find('[data-testid="end-today"]').text()).toContain("确认结束？");
     expect(useRelationshipStore().currentRelationshipId).toBe("1");
 
+    await openConvSheet(wrapper);
     await wrapper.find('[data-testid="end-today"]').trigger("click");
     await flushPromises();
 
@@ -1474,6 +1520,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     };
     await wrapper.vm.$nextTick();
 
+    await openMsgMenu(wrapper, "9");
     expect(wrapper.find('[data-testid="regenerate"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="version-row"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="version-2"]').attributes("aria-pressed")).toBe("true");

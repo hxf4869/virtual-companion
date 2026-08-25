@@ -486,14 +486,13 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("points an empty relationship list to offline chat", async () => {
+  it("points an empty relationship list to the unified creation flow", async () => {
     stubRelationshipFetch([]);
     const wrapper = mountPage();
     await flushPromises();
     const empty = wrapper.find('[data-testid="empty-relationships"]');
     expect(empty.exists()).toBe(true);
-    expect(empty.text()).toContain("离线聊天");
-    expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(true);
+    expect(empty.text()).toContain("创建你的陪伴");
     wrapper.unmount();
   });
 

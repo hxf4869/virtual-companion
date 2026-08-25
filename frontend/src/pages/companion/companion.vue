@@ -35,13 +35,15 @@ does not push. -->
       </text>
     </view>
 
+    <!-- 统一创建流程：创建只在这里提供；聊天空态与准入下一步都跳转到
+         本页，不复制第二套表单。 -->
     <RelationshipSelector
       :relationships="relStore.relationships"
       :current-id="relStore.currentRelationshipId"
       :status="relStore.status"
       :busy="relStore.status === 'loading'"
-      :show-create="false"
       @activate="onPickRelationship"
+      @create="onRelCreate"
     />
 
     <view v-if="actionError" class="error" data-testid="companion-action-failed" role="alert">
@@ -377,6 +379,18 @@ export default {
       }
     }
 
+    async function onRelCreate(personaRef: string): Promise<void> {
+      actionError.value = null;
+      try {
+        const created = await relStore.create(transport, personaRef);
+        if (!created) {
+          actionError.value = "创建失败，请重试。";
+        }
+      } catch {
+        actionError.value = "创建失败，请重试。";
+      }
+    }
+
     function onRemindersChange(event: { detail?: { value?: boolean } }): void {
       remindersAllowed.value = event.detail?.value === true;
     }
@@ -637,6 +651,7 @@ export default {
       onConfirmReset,
       onConfirmDelete,
       onPickRelationship,
+      onRelCreate,
       onRemindersChange,
       onTopicChange,
       onGenderChange,

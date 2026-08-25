@@ -131,7 +131,7 @@ export default defineComponent({
     const emptyRelationshipsText = computed(() =>
       props.showCreate
         ? "还没有关系。请先新建一条陪伴关系。"
-        : "还没有关系。请到离线聊天新建。",
+        : "还没有关系。选择一个人设，创建你的陪伴。",
     );
 
     function onSelect(event: Event): void {

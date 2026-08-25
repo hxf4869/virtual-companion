@@ -1,9 +1,20 @@
 <template>
-  <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
+  <!-- DOGFOOD-09：页面容器声明 main landmark。沉浸式对话详情：无四入口
+       底栏，自带头部（返回 + 当前陪伴 + AI 标识 + 上下文菜单）。 -->
   <view class="chat-page" role="main">
-    <view class="chat-header">
-      <view class="chat-header-identity">
-        <text class="chat-header-title" role="heading" aria-level="1">Technical Alpha · 离线聊天</text>
+    <header class="chat-header" role="banner">
+      <button
+        type="button"
+        class="chat-header__back vc-tap"
+        data-testid="nav-conversations"
+        aria-label="返回对话列表"
+        @click="goTo(conversationsHref())"
+      >
+        <AppIcon name="back" :size="20" />
+      </button>
+
+      <view class="chat-header__identity">
+        <text class="vc-sr-only" role="heading" aria-level="1">对话</text>
         <view v-if="relStore.current" class="chat-header-companion">
           <text
             class="chat-companion-avatar"
@@ -17,6 +28,7 @@
             {{ headerCompanionName }}
           </text>
         </view>
+        <text v-else class="chat-companion-name">对话</text>
         <text
           v-if="headerConversationTitle"
           class="chat-conversation-title"
@@ -26,66 +38,83 @@
         </text>
         <text class="chat-ai-label" data-testid="chat-ai-label">AI 陪伴 · 非真人</text>
       </view>
-      <view class="chat-header-nav">
-        <button
-          data-testid="nav-conversations"
-          class="chat-nav-index"
-          aria-label="会话列表"
-          @click="goTo(conversationsHref())"
-        >
-          会话列表
-        </button>
+
+      <button
+        type="button"
+        class="chat-header__more vc-tap"
+        data-testid="chat-context-open"
+        aria-label="打开更多操作"
+        :aria-expanded="contextSheetOpen ? 'true' : 'false'"
+        @click="contextSheetOpen = true"
+      >
+        <AppIcon name="more" :size="20" />
+      </button>
+    </header>
+
+    <AppSheet
+      :open="contextSheetOpen"
+      title="更多操作"
+      @close="contextSheetOpen = false"
+    >
+      <view class="chat-sheet-list" role="menu">
         <button
           data-testid="nav-memory"
-          class="chat-nav-index"
+          class="chat-sheet-item"
+          role="menuitem"
           aria-label="记忆管理"
-          @click="goTo(memoryHref())"
+          @click="contextSheetOpen = false; goTo(memoryHref())"
         >
           记忆管理
         </button>
         <button
           data-testid="nav-companion"
-          class="chat-nav-index"
+          class="chat-sheet-item"
+          role="menuitem"
           aria-label="角色设置"
-          @click="goTo(companionHref())"
+          @click="contextSheetOpen = false; goTo(companionHref())"
         >
           角色设置
         </button>
         <button
           data-testid="nav-reminder"
-          class="chat-nav-index"
+          class="chat-sheet-item"
+          role="menuitem"
           aria-label="提醒管理"
-          @click="goTo(reminderHref())"
+          @click="contextSheetOpen = false; goTo(reminderHref())"
         >
           提醒管理
         </button>
         <button
           data-testid="nav-index"
-          class="chat-nav-index"
-          aria-label="返回边界台"
-          @click="goTo('/pages/index/index')"
+          class="chat-sheet-item"
+          role="menuitem"
+          aria-label="返回首页"
+          @click="contextSheetOpen = false; goTo('/pages/index/index')"
         >
-          返回边界台
+          返回首页
         </button>
         <button
+          v-if="!auth.isAuthenticated"
           data-testid="nav-login"
-          class="chat-nav-index"
+          class="chat-sheet-item"
+          role="menuitem"
           aria-label="登录"
-          @click="goTo('/pages/login/login')"
+          @click="contextSheetOpen = false; goTo('/pages/login/login')"
         >
           登录
         </button>
         <button
           v-if="auth.isAuthenticated"
           data-testid="logout"
-          class="chat-nav-index logout-btn"
+          class="chat-sheet-item chat-sheet-item--danger"
+          role="menuitem"
           aria-label="登出"
-          @click="onLogout"
+          @click="contextSheetOpen = false; onLogout()"
         >
           登出
         </button>
       </view>
-    </view>
+    </AppSheet>
 
     <!-- SVC-MODE (FR-RES-005): the service mode is an ops fact, shown plainly
          and never role-played. -->
@@ -194,15 +223,28 @@
         <text>当前为无痕会话：不会产生长期记忆候选；必要的安全与法定记录仍会保留。</text>
       </view>
 
-      <RelationshipSelector
-        v-if="!hasRelationship"
-        :relationships="relStore.relationships"
-        :current-id="relStore.currentRelationshipId"
-        :status="relStore.status"
-        :busy="relStore.status === 'loading'"
-        @activate="onRelActivate"
-        @create="onRelCreate"
-      />
+      <template v-if="!hasRelationship">
+        <!-- 统一创建流程在陪伴设置页；聊天空态只保留入口与既有关系的
+             激活，不复制一份创建表单。 -->
+        <view class="chat-create-entry" data-testid="chat-create-companion">
+          <text class="chat-create-entry__lead">还没有陪伴关系。</text>
+          <button
+            class="chat-create-entry__btn"
+            data-testid="chat-create-companion-go"
+            @click="goTo('/pages/companion/companion')"
+          >
+            去创建陪伴
+          </button>
+        </view>
+        <RelationshipSelector
+          :relationships="relStore.relationships"
+          :current-id="relStore.currentRelationshipId"
+          :status="relStore.status"
+          :busy="relStore.status === 'loading'"
+          :show-create="false"
+          @activate="onRelActivate"
+        />
+      </template>
 
       <template v-else>
         <!-- CONV-HIST: conversation list / switch / new conversation -->
@@ -239,32 +281,54 @@
           >
             {{ incognitoNext ? "无痕：开" : "无痕：关" }}
           </button>
-          <!-- CONV-MGMT: per-conversation rename + two-step delete -->
           <button
-            data-testid="conversation-rename"
-            class="chat-nav-index conv-mgmt-btn"
+            data-testid="conversation-manage"
+            class="conv-mgmt-btn"
             :disabled="isStreaming || !store.conversationId"
-            @click="startRename"
+            :aria-expanded="convSheetOpen ? 'true' : 'false'"
+            @click="convSheetOpen = true"
           >
-            改名
-          </button>
-          <button
-            data-testid="conversation-delete"
-            class="chat-nav-index conv-mgmt-btn conv-delete-btn"
-            :disabled="isStreaming || !store.conversationId"
-            @click="onDeleteConversation"
-          >
-            {{ confirmDeleteId ? "确认删除？" : "删除" }}
-          </button>
-          <button
-            data-testid="end-today"
-            class="chat-nav-index conv-mgmt-btn"
-            :disabled="isStreaming || !store.conversationId"
-            @click="onEndToday"
-          >
-            {{ confirmEndToday ? "确认结束？" : "结束今天的对话" }}
+            管理
           </button>
         </view>
+
+        <!-- CONV-MGMT: rename + two-step delete + end-today, collected into
+             one action sheet instead of a flat button row. -->
+        <AppSheet
+          :open="convSheetOpen"
+          title="会话管理"
+          @close="convSheetOpen = false"
+        >
+          <view class="chat-sheet-list" role="menu">
+            <button
+              data-testid="conversation-rename"
+              class="chat-sheet-item"
+              role="menuitem"
+              :disabled="isStreaming || !store.conversationId"
+              @click="startRename"
+            >
+              改名
+            </button>
+            <button
+              data-testid="end-today"
+              class="chat-sheet-item"
+              role="menuitem"
+              :disabled="isStreaming || !store.conversationId"
+              @click="onEndToday"
+            >
+              {{ confirmEndToday ? "确认结束？" : "结束今天的对话" }}
+            </button>
+            <button
+              data-testid="conversation-delete"
+              class="chat-sheet-item chat-sheet-item--danger"
+              role="menuitem"
+              :disabled="isStreaming || !store.conversationId"
+              @click="onDeleteConversation"
+            >
+              {{ confirmDeleteId ? "确认删除？" : "删除会话" }}
+            </button>
+          </view>
+        </AppSheet>
 
         <!-- CONV-MGMT: inline rename row -->
         <view v-if="renaming" class="rename-row" data-testid="rename-row">
@@ -353,11 +417,27 @@
               </view>
             </view>
             <text v-else class="msg-content">{{ msg.content }}</text>
+            <!-- 消息级低频操作收进"更多"展开区，不再整行平铺；两步确认
+                 与版本切换仍在原 testid 上。 -->
+            <button
+              v-if="!msg.messageId.startsWith('__') && !isStreaming"
+              class="msg-more"
+              :data-testid="`msg-more-${msg.messageId}`"
+              :aria-expanded="openMsgId === msg.messageId ? 'true' : 'false'"
+              :aria-label="openMsgId === msg.messageId ? '收起这条消息的操作' : '展开这条消息的操作'"
+              @click="toggleMsgMenu(msg.messageId)"
+            >
+              更多
+            </button>
+            <view
+              v-if="openMsgId === msg.messageId"
+              class="msg-actions"
+              :data-testid="`msg-actions-${msg.messageId}`"
+            >
             <!-- MSG-COPY: copy this message's text (best effort, no server
                  call; the label flips briefly as visual feedback). Assistant
                  copies carry the AI-content notice (COPY-LABEL / §21.4.1). -->
             <button
-              v-if="!msg.messageId.startsWith('__') && !isStreaming"
               class="msg-copy"
               :data-testid="`msg-copy-${msg.messageId}`"
               :aria-label="copiedMsgId === msg.messageId
@@ -372,11 +452,7 @@
             <!-- MEM-NEG (V44): 不记住 negative-memory marker, user messages
                  only (assistant text is never an extraction source). -->
             <button
-              v-if="
-                msg.role === 'user' &&
-                !msg.messageId.startsWith('__') &&
-                !isStreaming
-              "
+              v-if="msg.role === 'user'"
               class="msg-no-memory"
               :class="{ 'msg-no-memory--on': msg.noMemory }"
               :data-testid="`msg-no-memory-${msg.messageId}`"
@@ -388,7 +464,6 @@
             <!-- MSG-DELETE: two-step delete for persisted messages only
                  (the streaming/pending placeholders are not deletable). -->
             <button
-              v-if="!msg.messageId.startsWith('__') && !isStreaming"
               class="msg-delete"
               :data-testid="`msg-delete-${msg.messageId}`"
               :aria-label="confirmDeleteMsgId === msg.messageId ? '确认删除这条消息' : '删除这条消息'"
@@ -399,7 +474,6 @@
             <!-- MSG-REPORT (REPORT-BE): the intake page takes the submission;
                  no invented tickets, statuses or SLA wording inline. -->
             <button
-              v-if="!msg.messageId.startsWith('__') && !isStreaming"
               class="msg-copy"
               :data-testid="`msg-report-${msg.messageId}`"
               :aria-label="reportMsgId === msg.messageId ? '收起举报说明' : '举报这条消息'"
@@ -423,7 +497,7 @@
               </button>
             </view>
             <button
-              v-if="canRegenerateMessage(msg) && !isStreaming"
+              v-if="canRegenerateMessage(msg)"
               class="msg-copy"
               data-testid="regenerate"
               aria-label="重新生成这条回复"
@@ -450,6 +524,7 @@
               >
                 版本 {{ index + 1 }}
               </button>
+            </view>
             </view>
           </view>
           <view
@@ -646,6 +721,8 @@ import type { RealtimeDeps } from "@/api/realtime";
 import { asFeedbackKind } from "@/api/chat";
 import type { ConversationListItem } from "@/api/chat";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import AppIcon from "@/design-system/AppIcon.vue";
+import AppSheet from "@/design-system/AppSheet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useRelationshipStore } from "@/stores/relationship";
@@ -664,7 +741,7 @@ function resolveOrigin(): string {
 
 export default defineComponent({
   name: "ChatPage",
-  components: { RelationshipSelector },
+  components: { RelationshipSelector, AppIcon, AppSheet },
   setup() {
     const store = useChatStore();
     const relStore = useRelationshipStore();
@@ -698,6 +775,10 @@ export default defineComponent({
     const renameInput = ref("");
     // MSG-DELETE: two-step confirm state for per-message deletion.
     const confirmDeleteMsgId = ref<string | null>(null);
+    // 消息级"更多"展开状态与上下文/会话管理 Action Sheet。
+    const openMsgId = ref<string | null>(null);
+    const contextSheetOpen = ref(false);
+    const convSheetOpen = ref(false);
     // MSG-REPORT: local disclosure only — no ticket API in Alpha.
     const reportMsgId = ref<string | null>(null);
     // MSG-COPY: the message currently shown as "已复制" (brief visual feedback).
@@ -1077,6 +1158,10 @@ export default defineComponent({
     }
 
     /** MSG-REPORT: toggle the "not wired" notice. Never calls an API. */
+    function toggleMsgMenu(messageId: string): void {
+      openMsgId.value = openMsgId.value === messageId ? null : messageId;
+    }
+
     function onReportMessage(messageId: string): void {
       reportMsgId.value = reportMsgId.value === messageId ? null : messageId;
     }
@@ -1597,6 +1682,10 @@ export default defineComponent({
       confirmDeleteId,
       confirmDeleteMsgId,
       reportMsgId,
+      openMsgId,
+      contextSheetOpen,
+      convSheetOpen,
+      toggleMsgMenu,
       onReportMessage,
       copiedMsgId,
       onCopyMessage,
@@ -1653,413 +1742,687 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* 沉浸式对话：暮色头部 + 暖纸对话面。消息内容占主导；状态行如实呈现。 */
 .chat-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--vc-env);
 }
+
 .chat-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--vc-z-header);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vc-space-2);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: calc(var(--vc-space-2) + env(safe-area-inset-top, 0px))
+    var(--vc-space-2);
+  background: var(--vc-env-raised);
+  border-bottom: 1px solid var(--vc-border-env);
+}
+
+.chat-header__back,
+.chat-header__more {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16rpx;
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-bottom: 24rpx;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
 }
-.chat-header-identity {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
+
+.chat-header__back::after,
+.chat-header__more::after {
+  border: 0;
+}
+
+.chat-header__identity {
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--vc-space-2);
+  flex-wrap: wrap;
 }
+
 .chat-header-companion {
   display: flex;
   align-items: center;
-  gap: 10rpx;
+  gap: var(--vc-space-2);
+  min-width: 0;
 }
+
 .chat-companion-avatar {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 50%;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20rpx;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: var(--vc-radius-s);
+  font-size: var(--vc-text-sm);
   font-weight: 700;
 }
-.chat-companion-avatar--rose {
-  background-color: #5a2a3a;
-  color: #f0c8d4;
-}
-.chat-companion-avatar--teal {
-  background-color: #1a3a3a;
-  color: #b8e0d8;
-}
-.chat-companion-avatar--gold {
-  background-color: #3a3420;
-  color: #e8dcc8;
-}
+
 .chat-companion-name {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #d5deee;
-}
-.chat-conversation-title {
-  font-size: 22rpx;
-  color: #c5d0e4;
-}
-.chat-ai-label {
-  font-size: 22rpx;
-  font-weight: 500;
-  color: #8fa0bd;
-}
-.chat-header-nav {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  min-width: 0;
-}
-.chat-nav-index {
-  flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-  font-weight: 600;
-}
-.current-relationship {
-  margin: -8rpx 0 24rpx;
-  font-size: 24rpx;
-  font-weight: 400;
-  opacity: 0.78;
-}
-.chat-error {
-  padding: 24rpx;
-  background-color: #5a1a1a;
-  border-radius: 12rpx;
-}
-.chat-history {
-  overflow-y: auto;
-  margin-bottom: 24rpx;
-  -webkit-overflow-scrolling: touch;
-}
-.virt-spacer {
-  width: 100%;
-  pointer-events: none;
-}
-.conversation-panel {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-bottom: 24rpx;
-  min-width: 0;
-}
-.conversation-list {
-  flex: 1 1 100%;
-  min-width: 0;
-  white-space: nowrap;
-}
-.conversation-item {
-  flex: 0 0 auto;
-  display: inline-block;
-  max-width: 280rpx;
   overflow: hidden;
+  color: var(--vc-on-env);
+  font-size: var(--vc-text-md);
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 12rpx;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
 }
+
+.chat-conversation-title {
+  overflow: hidden;
+  color: var(--vc-on-env-muted);
+  font-size: var(--vc-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-ai-label {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--vc-border-env);
+  border-radius: 999px;
+  color: var(--vc-on-env-muted);
+  font-size: var(--vc-text-xs);
+  white-space: nowrap;
+}
+
+/* Action Sheet 内的菜单行 */
+.chat-sheet-list {
+  display: grid;
+}
+
+.chat-sheet-item {
+  min-height: 48px;
+  margin: 0;
+  padding: var(--vc-space-3) var(--vc-space-2);
+  border: 0;
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-md);
+  text-align: left;
+}
+
+.chat-sheet-item::after {
+  border: 0;
+}
+
+.chat-sheet-item--danger {
+  color: var(--vc-danger);
+}
+
+/* 状态与系统横幅：平实呈现，绝不角色化。 */
+.service-mode,
+.usage-health-banner,
+.chat-usage,
+.memory-prompt,
+.incognito-notice,
+.current-relationship {
+  box-sizing: border-box;
+  width: calc(100% - var(--vc-space-6));
+  max-width: 720px;
+  margin: var(--vc-space-2) auto 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+}
+
+.usage-health-banner {
+  border-color: var(--vc-warning);
+  background: var(--vc-warning-bg);
+}
+
+.usage-health-actions {
+  display: flex;
+  gap: var(--vc-space-2);
+  margin-left: auto;
+}
+
+.current-relationship {
+  color: var(--vc-muted);
+}
+
+.chat-create-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-3);
+  width: calc(100% - var(--vc-space-6));
+  max-width: 720px;
+  margin: var(--vc-space-5) auto 0;
+  padding: var(--vc-space-5);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+}
+
+.chat-create-entry__lead {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.chat-create-entry__btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 650;
+}
+
+.chat-create-entry__btn::after {
+  border: 0;
+}
+
+/* 会话切换条 */
+.conversation-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  width: calc(100% - var(--vc-space-6));
+  max-width: 720px;
+  margin: var(--vc-space-3) auto 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
+}
+
+.conversation-list {
+  display: flex;
+  gap: var(--vc-space-1);
+  flex: 1 1 100%;
+  white-space: nowrap;
+}
+
+.conversation-item {
+  flex: 0 0 auto;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-xs);
+}
+
+.conversation-item::after {
+  border: 0;
+}
+
 .conversation-item.active {
-  background-color: #2a6a9a;
+  background: var(--vc-primary);
+  border-color: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font-weight: 600;
 }
+
+.incognito-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.conversation-item.active .incognito-badge {
+  background: rgba(36, 26, 8, 0.16);
+  color: var(--vc-on-primary);
+}
+
+.chat-nav-index {
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.chat-nav-index::after {
+  border: 0;
+}
+
+.deactivate-btn {
+  border-color: var(--vc-danger);
+  color: var(--vc-danger);
+}
+
 .conv-mgmt-btn {
-  margin-left: 4rpx;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-xs);
 }
-.conv-delete-btn {
-  background-color: #5a1a1a;
+
+.conv-mgmt-btn::after {
+  border: 0;
 }
+
+.incognito-toggle-on {
+  background: var(--vc-sunken);
+  border-color: var(--vc-border-strong);
+  font-weight: 600;
+}
+
 .rename-row {
   display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 24rpx;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  width: calc(100% - var(--vc-space-6));
+  max-width: 720px;
+  margin: var(--vc-space-2) auto 0;
 }
+
 .rename-input {
-  flex: 1;
-  padding: 12rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 26rpx;
+  flex: 1 1 12em;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-md);
 }
-.deactivate-btn {
-  margin-left: 16rpx;
-  background-color: #5a1a1a;
-  color: #ffffff;
+
+/* 对话历史：暖纸面上的安静滚动区 */
+.chat-history {
+  box-sizing: border-box;
+  width: calc(100% - var(--vc-space-6));
+  max-width: 720px;
+  margin: var(--vc-space-3) auto 0;
+  padding: var(--vc-space-3) 0;
+  overflow-y: auto;
+  border-radius: var(--vc-radius-l);
+  background: var(--vc-paper);
+  border: 1px solid var(--vc-border);
 }
-.history-more {
-  display: flex;
-  justify-content: center;
-  padding: 12rpx 0;
-}
+
 .chat-empty {
-  padding: 24rpx;
-  opacity: 0.75;
-  font-size: 26rpx;
+  padding: var(--vc-space-7) var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  text-align: center;
 }
+
 .chat-message {
-  padding: 16rpx;
-  margin-bottom: 12rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: var(--vc-space-2) var(--vc-space-4);
 }
-.chat-message.assistant {
-  background-color: #1a3a2a;
+
+.chat-message.user {
+  align-items: flex-end;
 }
+
 .role-tag {
-  font-size: 22rpx;
-  opacity: 0.6;
-  margin-right: 12rpx;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  margin-bottom: 2px;
 }
+
 .msg-content {
-  font-size: 28rpx;
+  max-width: 86%;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
+  font-size: var(--vc-text-md);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
 }
-.md-p,
-.md-ul,
+
+.chat-message.user .msg-content {
+  background: var(--vc-sunken);
+}
+
+.md-p {
+  margin: 0 0 var(--vc-space-1);
+}
+
 .md-code {
-  display: block;
-  margin-bottom: 8rpx;
+  padding: var(--vc-space-2);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-env);
+  color: var(--vc-on-env);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--vc-text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+
+.md-ul {
+  margin: 0 0 var(--vc-space-1);
+  padding-left: var(--vc-space-5);
+}
+
+.md-li {
+  margin-bottom: 2px;
+}
+
 .md-strong {
   font-weight: 700;
 }
-.md-em {
-  font-style: italic;
-}
-.md-code,
-.md-code text {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 24rpx;
-  white-space: pre-wrap;
-}
-.md-li {
-  padding-left: 16rpx;
-}
+
 .md-truncated {
   display: block;
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #8fa0bd;
+  margin-top: var(--vc-space-1);
+  color: var(--vc-warning);
+  font-size: var(--vc-text-xs);
 }
-.chat-draft {
-  min-height: 80rpx;
-  padding: 24rpx;
-  background-color: #1c2b4a;
-  border-radius: 12rpx;
-  margin-bottom: 24rpx;
+
+/* 消息级"更多"与展开操作区 */
+.msg-more {
+  min-height: 32px;
+  margin: var(--vc-space-1) 0 0;
+  padding: 0 var(--vc-space-3);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--vc-muted);
+  font: inherit;
+  font-size: var(--vc-text-xs);
 }
-.chat-status {
-  font-size: 26rpx;
-  opacity: 0.85;
-  margin-bottom: 24rpx;
+
+.msg-more::after {
+  border: 0;
 }
-.chat-usage {
-  font-size: 24rpx;
-  opacity: 0.7;
-  margin-bottom: 24rpx;
-}
-.memory-prompt {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 16rpx;
-  margin-bottom: 24rpx;
-  background-color: #1a3a2a;
-  border-radius: 12rpx;
-  font-size: 26rpx;
-}
-.chat-input-area {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  min-width: 0;
-}
-/* CHAT-MODE: quick-mode chips above the input row. */
-.chat-mode-row {
+
+.msg-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
-  margin-bottom: 12rpx;
+  gap: var(--vc-space-1);
+  margin-top: var(--vc-space-1);
+  justify-content: flex-start;
 }
-.chat-mode-chip {
-  padding: 8rpx 20rpx;
-  border-radius: 999rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #b8c4d8;
-  font-size: 24rpx;
+
+.chat-message.user .msg-actions {
+  justify-content: flex-end;
 }
-.chat-mode-chip-active {
-  background-color: #2a6a9a;
-  border-color: #2a6a9a;
-  color: #ffffff;
+
+.msg-copy,
+.msg-no-memory,
+.msg-delete {
+  min-height: 32px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: 999px;
+  background: var(--vc-card);
+  color: var(--vc-muted);
+  font: inherit;
+  font-size: var(--vc-text-xs);
 }
-.chat-mode-chip[disabled] {
-  opacity: 0.5;
+
+.msg-copy::after,
+.msg-no-memory::after,
+.msg-delete::after {
+  border: 0;
 }
-/* SVC-MODE: plain service-mode status line (never role-played). */
-.service-mode {
-  margin: 0 24rpx 16rpx;
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  border: 2rpx solid #2a3a5a;
-  font-size: 24rpx;
-  color: #b8c4d8;
+
+.msg-no-memory--on {
+  color: var(--vc-warning);
+  border-color: var(--vc-warning);
 }
-.usage-health-banner {
-  margin: 0 24rpx 16rpx;
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #2a2430;
-  border: 2rpx solid #5a4a3a;
-  font-size: 24rpx;
-  color: #e8dcc8;
+
+.msg-delete {
+  color: var(--vc-danger);
+  border-color: var(--vc-danger);
 }
-.usage-health-actions {
+
+.msg-report-notice {
+  flex: 1 1 100%;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
   display: flex;
-  gap: 12rpx;
-  margin-top: 12rpx;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  align-items: center;
 }
-/* FEEDBACK: one-tap feedback chips on the finished reply. */
+
+.version-row {
+  flex: 1 1 100%;
+  display: flex;
+  gap: var(--vc-space-1);
+  flex-wrap: wrap;
+}
+
+.history-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--vc-space-3) 0;
+}
+
+/* 草稿与状态行 */
+.chat-draft,
+.chat-status,
+.chat-error,
+.chat-feedback-row,
+.chat-mode-row {
+  box-sizing: border-box;
+  width: calc(100% - var(--vc-space-6));
+  max-width: 720px;
+  margin: var(--vc-space-2) auto 0;
+  font-size: var(--vc-text-xs);
+}
+
+.chat-draft {
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+  overflow-wrap: anywhere;
+}
+
+.chat-status {
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
+  color: var(--vc-muted);
+}
+
+.chat-error {
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+}
+
 .chat-feedback-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10rpx;
-  margin-bottom: 16rpx;
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
 }
+
 .chat-feedback-label {
-  font-size: 24rpx;
-  color: #8fa0bd;
-  margin-right: 4rpx;
+  color: var(--vc-muted);
 }
+
 .chat-feedback-chip {
-  padding: 6rpx 16rpx;
-  border-radius: 999rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #b8c4d8;
-  font-size: 22rpx;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-xs);
 }
+
+.chat-feedback-chip::after {
+  border: 0;
+}
+
 .chat-feedback-chip[disabled] {
-  opacity: 0.6;
-  border-color: #2a6a9a;
-  color: #ffffff;
+  color: var(--vc-muted);
 }
-/* MSG-DELETE: per-message two-step delete control. */
-.msg-delete {
-  margin-top: 8rpx;
-  align-self: flex-start;
-  padding: 4rpx 14rpx;
-  font-size: 22rpx;
-  border-radius: 999rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #b8c4d8;
+
+.memory-prompt {
+  border-color: var(--vc-primary);
 }
-/* MSG-COPY: same pill as delete, next to it. */
-.msg-copy {
-  margin-top: 8rpx;
-  margin-left: 8rpx;
-  align-self: flex-start;
-  padding: 4rpx 14rpx;
-  font-size: 22rpx;
-  border-radius: 999rpx;
-  border: 2rpx solid #16503e;
-  background-color: #16503e;
-  color: #d8f2ea;
+
+/* 模式切换与输入区 */
+.chat-mode-row {
+  display: flex;
+  gap: var(--vc-space-1);
+  flex-wrap: wrap;
 }
-.msg-report-notice {
-  margin-top: 8rpx;
-  padding: 10rpx 12rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  color: #8fa0bd;
-  font-size: 22rpx;
-  line-height: 1.5;
+
+.chat-mode-chip {
+  min-height: 32px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: 999px;
+  background: var(--vc-card);
+  color: var(--vc-muted);
+  font: inherit;
+  font-size: var(--vc-text-xs);
 }
-/* MEM-NEG (V44): 不记住 marker pill; the on state is visually distinct. */
-.msg-no-memory {
-  margin-top: 8rpx;
-  margin-left: 8rpx;
-  align-self: flex-start;
-  padding: 4rpx 14rpx;
-  font-size: 22rpx;
-  border-radius: 999rpx;
-  border: 2rpx solid #5a4a1a;
-  background-color: #4a3d16;
-  color: #e4b96d;
+
+.chat-mode-chip::after {
+  border: 0;
 }
-.msg-no-memory--on {
-  border-color: #8a6a1a;
-  color: #f5d78e;
+
+.chat-mode-chip-active {
+  background: var(--vc-primary);
+  border-color: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font-weight: 600;
 }
-/* INC-MODE: incognito badge, notice and toggle. */
-.incognito-badge {
-  margin-left: 8rpx;
-  padding: 0 10rpx;
-  border-radius: 999rpx;
-  background-color: #5a4a1a;
-  color: #f5d9a0;
-  font-size: 20rpx;
+
+.chat-input-area {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--vc-z-content);
+  display: flex;
+  gap: var(--vc-space-2);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 720px;
+  margin: var(--vc-space-3) auto 0;
+  padding: var(--vc-space-2)
+    calc(var(--vc-space-3) + env(safe-area-inset-right, 0px))
+    calc(var(--vc-space-2) + env(safe-area-inset-bottom, 0px))
+    calc(var(--vc-space-3) + env(safe-area-inset-left, 0px));
+  background: var(--vc-env-raised);
+  border-top: 1px solid var(--vc-border-env);
 }
-.incognito-notice {
-  margin: 0 24rpx 16rpx;
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #3a2f12;
-  border: 2rpx solid #5a4a1a;
-  font-size: 24rpx;
-  color: #f5d9a0;
-}
-.incognito-toggle-on {
-  background-color: #5a4a1a;
-  color: #f5d9a0;
-}
+
 .chat-input {
-  flex: 1;
-  min-width: 0;
-  padding: 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 28rpx;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-paper);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-md);
 }
+
 .chat-send {
-  background-color: #2a6a9a;
-  color: #ffffff;
+  min-height: 48px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-weight: 650;
 }
-.chat-cancel {
-  background-color: #e63946;
-  color: #ffffff;
+
+.chat-send::after {
+  border: 0;
 }
-.logout-btn {
-  background-color: #5a1a1a;
-  color: #ffffff;
-}
+
+.chat-cancel,
 .chat-retry {
-  background-color: #2a6a9a;
-  color: #ffffff;
+  min-height: 48px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+}
+
+.chat-cancel::after,
+.chat-retry::after {
+  border: 0;
+}
+
+.chat-error,
+.chat-init-error {
+  width: calc(100% - var(--vc-space-6));
+  max-width: 720px;
+  margin: var(--vc-space-2) auto 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-xs);
 }
 </style>

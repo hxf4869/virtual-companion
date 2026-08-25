@@ -262,13 +262,14 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
   test("chat 聊天：axe 全量", async () => {
     // 服务端准入已在 beforeAll 满足。走真实 UI 建立关系（与 journey 03
     // 相同路径），保证页面渲染出关系面板与输入区，而不是空选择态。
-    await navigateToPage(page, "/pages/chat/chat");
-    // relStore.status === 'ready' 后 currentRelationshipId 才最终确定。
-    // 全量套跑时先执行的引擎可能已为本账号建立 active 关系
-    // （activeCompanionLimit 内），此时选择器不渲染、直接进入会话面板。
-    await expect(page.getByTestId("current-relationship")).toBeVisible();
-    const selector = page.getByTestId("relationship-selector");
-    if (await selector.isVisible()) {
+    // 统一创建流程在陪伴设置页；本账号在全量套跑中可能已有 active 关系
+    // （activeCompanionLimit 内），此时聊天页直接进入会话面板。
+    await navigateToPage(page, "/pages/companion/companion");
+    await expect(page.getByTestId("relationship-selector")).toBeVisible();
+    const hasCompanion = await page
+      .getByTestId("current-relationship")
+      .isVisible();
+    if (!hasCompanion) {
       const persona = page.getByTestId("persona-select");
       await expect(persona).toBeEnabled();
       await persona.selectOption("gentle-listener");
@@ -277,6 +278,10 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
         "当前关系：",
       );
     }
+    await navigateToPage(page, "/pages/chat/chat");
+    await expect(page.getByTestId("current-relationship")).toContainText(
+      "当前关系：",
+    );
     await expect(page.getByTestId("conversation-panel")).toBeVisible();
 
     await expectAccessible(page, "chat");
