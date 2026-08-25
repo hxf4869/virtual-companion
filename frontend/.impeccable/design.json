@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-26T06:10:00+08:00",
+  "title": "Design System: Virtual Companion — The Lit Window",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Window Amber 窗光琥珀", "canonical": "#e8b45c", "tonalRamp": ["#3a2a0c", "#5c430f", "#8a661f", "#b98d3b", "#e8b45c", "#f0c884", "#f7dcae", "#fcefdb"] },
+      "env": { "role": "neutral", "displayName": "Dusk Blue 暮色墨蓝", "canonical": "#151d2b", "tonalRamp": ["#0a0f18", "#151d2b", "#1b2636", "#232f42", "#33425a", "#5d6d88", "#93a1ba", "#d3dbe8"] },
+      "paper": { "role": "neutral", "displayName": "Warm Paper 暖纸", "canonical": "#f7f4ed", "tonalRamp": ["#f7f4ed", "#efe9df", "#e2dac9", "#c9bfa8", "#a89d84", "#7d745f", "#556478", "#1f2b3a"] },
+      "card": { "role": "neutral", "displayName": "Card 卡面", "canonical": "#fffdf8" },
+      "ink": { "role": "neutral", "displayName": "Ink 墨字", "canonical": "#1f2b3a" },
+      "muted": { "role": "neutral", "displayName": "Muted 次要文字", "canonical": "#556478" },
+      "glow": { "role": "primary", "displayName": "Glow on Env 环境暖光", "canonical": "#e5b566" },
+      "danger": { "role": "tertiary", "displayName": "Danger 危险", "canonical": "#b3261e" },
+      "warning": { "role": "tertiary", "displayName": "Warning 警告", "canonical": "#8a5c00" },
+      "success": { "role": "tertiary", "displayName": "Success 成功", "canonical": "#2e6b4f" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "登录主张、关系首页伴侣名。" },
+      "headline": { "displayName": "Headline", "purpose": "PageHeader 页面主标题。" },
+      "title": { "displayName": "Title", "purpose": "卡片与区块标题。" },
+      "body": { "displayName": "Body", "purpose": "正文与控件文字。" },
+      "label": { "displayName": "Label", "purpose": "字段标签、状态字、meta 行。" }
+    },
+    "shadows": [
+      { "name": "sheet-ambient", "value": "0 -8px 32px rgba(10, 15, 24, 0.35)", "purpose": "底部弹层（AppSheet）唯一的环境影；其余层级靠色温与明度。" }
+    ],
+    "motion": [
+      { "name": "fast", "value": "140ms", "purpose": "轻状态切换。" },
+      { "name": "base", "value": "220ms", "purpose": "默认状态过渡。" },
+      { "name": "ease-out", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "唯一缓动；动效只允许 transform/opacity，reduced-motion 下关闭。" }
+    ],
+    "breakpoints": [
+      { "name": "base", "value": "375px", "purpose": "最小基准视口（无横向溢出断言）。" },
+      { "name": "phone", "value": "390px", "purpose": "主证据视口（390×844 截图矩阵）。" },
+      { "name": "sheet-center", "value": "600px", "purpose": "弹层从底部 sheet 切换为居中卡片。" },
+      { "name": "tablet", "value": "768px", "purpose": "平板断点（内容列居中收束）。" },
+      { "name": "desktop", "value": "1440px", "purpose": "桌面断点（截图证据 index/chat/admin 1440×900）。" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "一屏一处的琥珀主动作（继续聊聊/登录/发送）。",
+      "html": "<button class=\"ds-btn-primary\">继续聊聊</button>",
+      "css": ".ds-btn-primary { background: var(--vc-primary, #e8b45c); color: var(--vc-on-primary, #241a08); font-size: 15px; font-weight: 600; min-height: 44px; min-width: 44px; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; transition: background 220ms cubic-bezier(0.22,1,0.36,1); } .ds-btn-primary:hover { background: var(--vc-primary-hover, #d9a441); } .ds-btn-primary:focus-visible { outline: 2px solid var(--vc-focus, #7d5a00); outline-offset: 2px; }"
+    },
+    {
+      "name": "Env Button",
+      "kind": "button",
+      "refersTo": "button-env",
+      "description": "环境浮面上的次级操作（头部动作、暗面按钮）。",
+      "html": "<button class=\"ds-btn-env\">更多</button>",
+      "css": ".ds-btn-env { background: var(--vc-env-raised, #1b2636); color: var(--vc-on-env, #e9eef7); font-size: 15px; min-height: 44px; min-width: 44px; padding: 10px 16px; border: 1px solid rgba(233,238,247,0.18); border-radius: 8px; cursor: pointer; transition: background 220ms; } .ds-btn-env:hover { background: var(--vc-env-hover, #232f42); } .ds-btn-env:focus-visible { outline: 2px solid var(--vc-focus-on-env, #f0c983); outline-offset: 2px; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "暖纸底上的亮卡面；无投影，靠明度分层。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">最近会话</div><div class=\"ds-card-body\">未发送消息的会话</div></div>",
+      "css": ".ds-card { background: var(--vc-card, #fffdf8); color: var(--vc-ink, #1f2b3a); border: 1px solid var(--vc-border, #d9d2c4); border-radius: 16px; padding: 16px; } .ds-card-title { font-size: 17px; font-weight: 600; } .ds-card-body { font-size: 13px; color: var(--vc-muted, #556478); margin-top: 4px; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "登录与表单输入；控件边界 3.8:1。",
+      "html": "<input class=\"ds-input\" placeholder=\"用户名\" />",
+      "css": ".ds-input { background: var(--vc-card, #fffdf8); color: var(--vc-ink, #1f2b3a); font-size: 15px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--vc-border-strong, #857a67); border-radius: 8px; } .ds-input:focus-visible { outline: 2px solid var(--vc-focus, #7d5a00); outline-offset: 2px; } .ds-input::placeholder { color: var(--vc-muted, #556478); }"
+    },
+    {
+      "name": "Bottom Nav",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "四入口底栏（首页/对话/记忆/我的）；活动项文字用环境暖光。",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-item is-active\">首页</button><button class=\"ds-nav-item\">对话</button><button class=\"ds-nav-item\">记忆</button><button class=\"ds-nav-item\">我的</button></nav>",
+      "css": ".ds-nav { display: flex; background: var(--vc-env-raised, #1b2636); border-top: 1px solid rgba(233,238,247,0.18); padding: 6px 8px; } .ds-nav-item { flex: 1; background: none; color: var(--vc-on-env-muted, #a3b1c6); font-size: 12px; font-weight: 500; min-height: 44px; border: none; border-radius: 8px; cursor: pointer; } .ds-nav-item.is-active { color: var(--vc-glow, #e5b566); background: var(--vc-env-hover, #232f42); } .ds-nav-item:focus-visible { outline: 2px solid var(--vc-focus-on-env, #f0c983); outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "语义状态胶囊；永远带文字，不只靠颜色。",
+      "html": "<span class=\"ds-chip ds-chip--danger\">已断开</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; font-size: 12px; font-weight: 500; padding: 2px 10px; border-radius: 8px; } .ds-chip--danger { background: var(--vc-danger-bg, #f9e7e4); color: var(--vc-danger, #b3261e); } .ds-chip--warning { background: var(--vc-warning-bg, #f6ecd7); color: var(--vc-warning, #8a5c00); } .ds-chip--success { background: var(--vc-success-bg, #e6efe9); color: var(--vc-success, #2e6b4f); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lit Window / 一盏仍亮着的窗",
+    "overview": "夜晚的墨蓝环境里，亮着一扇温暖的纸色窗。环境层（暮色墨蓝）包裹纸面层（清晰明亮的内容面板），琥珀暖光只给主动作与活动态。它表达产品的核心叙事：安静、在场、不喧哗的陪伴。密度克制、留白充分；每个屏幕只有一个暖光主动作；深度靠色温与明度分层，不靠投影。",
+    "keyCharacteristics": [
+      "环境（墨蓝）与内容（暖纸）强分层；纸面永不沉入环境色",
+      "暖光 = 主动作，一屏一处，稀缺即语义",
+      "中文人文无衬线系统栈，层级只靠字号与字重",
+      "4px 间距基；卡面 12–16px、控件 8px；触摸目标 ≥44px",
+      "语义状态色先有事实再有色，永远配文字"
+    ],
+    "rules": [
+      { "name": "The One Lit Window Rule", "body": "每屏至多一处琥珀主动作；活动 tab 与焦点是它仅有的非按钮用法。", "section": "colors" },
+      { "name": "The Paper Never Sinks Rule", "body": "可读内容只出现在纸面层或环境层高对比文字上；禁止在墨蓝底上直接排正文段落。", "section": "colors" },
+      { "name": "The Weight-Not-Face Rule", "body": "层级只由字号与字重表达；不得引入新字族、字距眉标或装饰性大写微标签。", "section": "typography" },
+      { "name": "The Temperature Rule", "body": "深度 = 色温与明度差（墨蓝→暖纸→卡面）；禁止用投影造层级，弹层环境影是唯一例外。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 每个新页面只用语义 token（--vc-*），从 design-system/base.css 取值",
+      "Do 保持环境/纸面/暖光三层结构",
+      "Do 图标用 AppIcon 原生 SVG（1.6 线宽）；动效只用 transform/opacity 并尊重 prefers-reduced-motion",
+      "Do 状态变化同时给文字，不只靠颜色"
+    ],
+    "donts": [
+      "Don't 新增 raw hex、页面私有导航色或未计算的对比度组合",
+      "Don't 用 emoji 作结构图标；不用渐变文字、kicker/眉标、硬偏移投影",
+      "Don't 让琥珀出现在一屏多处",
+      "Don't 引入外部字体或第二字族"
+    ]
+  }
+}
