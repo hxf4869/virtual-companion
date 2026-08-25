@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html>
+<!-- DOGFOOD-09（ADR-0006 §1.4）：lang 声明简体中文；不禁用用户缩放，
+     系统字体放大与手动捏合缩放必须可用（可访问性验收项）。 -->
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/static/logo.png" />
@@ -7,7 +9,7 @@
       var coverSupport = 'CSS' in window && typeof CSS.supports === 'function' && (CSS.supports('top: env(a)') ||
         CSS.supports('top: constant(a)'))
       document.write(
-        '<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0' +
         (coverSupport ? ', viewport-fit=cover' : '') + '" />')
     </script>
     <title>AI 陪伴 · 内部测试版</title>

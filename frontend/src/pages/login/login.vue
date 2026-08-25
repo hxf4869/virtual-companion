@@ -1,7 +1,9 @@
 <template>
-  <view class="login-page">
+  <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义
+       （uni-app h5 不会为 view/text 生成任何 landmark/heading）。 -->
+  <view class="login-page" role="main">
     <view class="login-header">
-      <text>Virtual Companion · 登录</text>
+      <text role="heading" aria-level="1">Virtual Companion · 登录</text>
       <view class="login-header-nav">
         <button
           data-testid="nav-index"
@@ -386,8 +388,17 @@ export default defineComponent({
 }
 .login-submit {
   margin-top: 12rpx;
-  background-color: #2a9d8f;
+  /* DOGFOOD-STABILIZATION-03 缺陷 F：白字对原主题青 #2a9d8f 对比度仅
+     3.32:1 < WCAG AA 4.5:1（axe color-contrast 在启用态扫描会失败）。
+     加深为同色系深青 #1e8076 → 4.77:1，保持品牌观感。 */
+  background-color: #1e8076;
   color: #ffffff;
+}
+/* disabled 态不受对比度约束（axe 跳过禁用元素），但全局 uni-button[disabled]
+   的 #6e6e6e 灰字叠在加深的启用青上会从 1.53:1 退化到 1.07:1；换成更深的
+   失活底 #17403c（2.24:1）保持禁用观感可辨且不劣于原状。 */
+.login-submit[disabled] {
+  background-color: #17403c;
 }
 .login-error {
   color: #e63946;

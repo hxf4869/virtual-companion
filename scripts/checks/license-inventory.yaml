@@ -76,6 +76,10 @@ mavenDirectDependencies:
   - groupId: com.fasterxml.jackson.core
     artifactId: jackson-databind
     licenseFamily: Apache-2.0
+  # --- MinIO Java SDK (Apache-2.0; DOGFOOD-02 本地对象存储消费者) ---
+  - groupId: io.minio
+    artifactId: minio
+    licenseFamily: Apache-2.0
   # --- 内部模块（INTERNAL） ---
   - groupId: com.virtualcompanion
     artifactId: virtual-companion-catalog
@@ -171,6 +175,10 @@ frontendDirectDependencies:
   # --- Playwright browser E2E (Apache-2.0) ---
   - name: "@playwright/test"
     licenseFamily: Apache-2.0
+    scope: dev
+  # --- DOGFOOD-09: axe 自动化可访问性检查（axe-core 及 wrapper 均 MPL-2.0） ---
+  - name: "@axe-core/playwright"
+    licenseFamily: MPL-2.0
     scope: dev
 # 例外账本（有到期日的受控接受；check_licenses.py 校验 expiresAt > 今天才生效）
 exceptions: []

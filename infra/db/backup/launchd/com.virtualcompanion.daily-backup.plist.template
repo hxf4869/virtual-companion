@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DOGFOOD-03: launchd template for the daily 04:30 local encrypted backup.
+
+     Copy to ~/Library/LaunchAgents/com.virtualcompanion.daily-backup.plist and
+     replace every {{PLACEHOLDER}} (see infra/db/backup/README.md for the full
+     bootstrap steps). SECRETS NEVER GO IN THIS FILE:
+
+       - the passphrase lives only in a 0600 env file (VC_BACKUP_PASSPHRASE) or
+         a 0600 keyfile (VC_BACKUP_PASSPHRASE_FILE), loaded by the 0600 wrapper
+         referenced in ProgramArguments below;
+       - MinIO credentials belong in the same 0600 env file, not in the plist.
+
+     Placeholders:
+       {{VC_BACKUP_WRAPPER}}  absolute path of the 0600 wrapper script, e.g.
+                              /Users/OWNER/.virtualcompanion/etc/daily-backup-wrapper.sh
+       {{VC_LOG_DIR}}         directory for launchd stdout/stderr logs, e.g.
+                              /Users/OWNER/.virtualcompanion/logs
+
+     Non-secret environment defaults are set here only because launchd does not
+     inherit the user shell profile; adjust them if the defaults change.
+
+     The authenticated-encryption layer (VCBAE1 HMAC-SHA256 seal) needs python3
+     (stdlib only). launchd does not inherit the user PATH either: the backup
+     script falls back to /usr/bin/python3 (Xcode Command Line Tools); if that
+     is missing, set VC_BACKUP_PYTHON to an absolute python3 path in the 0600
+     env file loaded by the wrapper. Exit-code meanings for `launchctl print`:
+     0 FULL ok | 2 DB-only SKIP (S3 vars unset) | 4 MinIO unreachable/rejected
+     | 5 partial S3 config | 6/7 self-check | 8 auth-encryption/python3.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.virtualcompanion.daily-backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{VC_BACKUP_WRAPPER}}</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>{{VC_LOG_DIR}}/daily-backup.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{VC_LOG_DIR}}/daily-backup.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>VC_BACKUP_DIR</key>
+        <string>/Users/OWNER/.virtualcompanion/backups</string>
+        <key>VC_BACKUP_MANIFEST_DIR</key>
+        <string>/Users/OWNER/.virtualcompanion/deletion-manifests</string>
+        <key>VC_BACKUP_COMPOSE_PROJECT</key>
+        <string>vc-local</string>
+        <key>VC_BACKUP_COMPOSE_SERVICE</key>
+        <string>db</string>
+        <key>VC_BACKUP_PG_USER</key>
+        <string>vc_migrator</string>
+        <key>VC_BACKUP_DB_NAME</key>
+        <string>vc</string>
+    </dict>
+</dict>
+</plist>

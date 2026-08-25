@@ -38,5 +38,9 @@ test("login preserves a protected deep link and its query", async ({
     (url) => url.hash === `#${target}`,
     { timeout: 20_000 },
   );
-  await expect(page.getByText("记忆管理", { exact: true })).toBeVisible();
+  // DOGFOOD-09：memory 页现在有与导航栏标题同文案的一级标题（视觉隐藏），
+  // getByText 会同时命中两者；改用 heading 角色精确断言页面已到记忆管理。
+  await expect(
+    page.getByRole("heading", { name: "记忆管理" }),
+  ).toBeVisible();
 });

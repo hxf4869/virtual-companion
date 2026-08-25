@@ -217,8 +217,16 @@ class SchemaReadinessHealthIndicatorTest {
         // V105 = S0-29 atomic model-cost reservation/settlement;
         // V106 = S0-30 shared auth-source and concurrent sensitive-route limits;
         // V107 = S0-31 fixed scheduler freshness projection;
-        // V108 = S0-32 encrypted-only conversation-summary runtime writes.
+        // V108 = S0-32 encrypted-only conversation-summary runtime writes;
+        // V109 = DOGFOOD-02 export object storage (object_key/object_bytes);
+        // V110 = DOGFOOD-STABILIZATION export object lifecycle;
+        // V111 = DOGFOOD-STABILIZATION retention category activation probe;
+        // V112 = DOGFOOD-STABILIZATION-03 message model-egress eligibility;
+        // V113 = DOGFOOD-STABILIZATION-03 export account-deletion barrier.
+        // V112 = DOGFOOD-STABILIZATION message model eligibility + backfill;
+        // V113 = export deletion barrier + owner-scoped pointer advisory lock;
+        // V114 = DOGFOOD-STABILIZATION-04 export upload intents + reclaim.
         assertThat(SchemaReadinessHealthIndicator.expectedSchemaVersionFromClasspath())
-                .isEqualTo(108);
+                .isEqualTo(114);
     }
 }

@@ -59,6 +59,11 @@ public class WebhookAlertNotifier implements AlertNotifier {
 
     @Override
     public void alert(AlertSeverity severity, String code, String message) {
+        alert(severity, code, message, properties.throttleMillis());
+    }
+
+    @Override
+    public void alert(AlertSeverity severity, String code, String message, long dedupWindowMillis) {
         try {
             if (!delivery.isConfigured()) {
                 return;
@@ -69,9 +74,12 @@ public class WebhookAlertNotifier implements AlertNotifier {
                 record("refused");
                 return;
             }
+            long windowMillis = Math.max(1L, dedupWindowMillis);
             AlertWebhookOutbox box = resolveOutbox();
             if (box != null) {
-                int windowSeconds = Math.max(1, (int) (properties.throttleMillis() / 1000L));
+                // Durable per-code dedup: the outbox window is supplied by the
+                // caller, so a day-sized window survives same-day restarts.
+                int windowSeconds = (int) Math.max(1L, windowMillis / 1000L);
                 AlertWebhookOutbox.EnqueueResult result = box.enqueue(
                         severity.name(), safeCode, safeMessage, windowSeconds);
                 record(result.inserted() ? "enqueued" : "duplicate");
@@ -79,7 +87,7 @@ public class WebhookAlertNotifier implements AlertNotifier {
             }
             long now = System.currentTimeMillis();
             Long last = lastSentAtMillis.get(safeCode);
-            if (last != null && now - last < properties.throttleMillis()) {
+            if (last != null && now - last < windowMillis) {
                 record("duplicate");
                 return;
             }

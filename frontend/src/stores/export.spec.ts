@@ -69,20 +69,28 @@ describe("useExportStore", () => {
     setActivePinia(createPinia());
   });
 
-  it("create stores only a confirmed request", async () => {
+  it("create stores only a confirmed request and forwards the current password", async () => {
     const store = useExportStore();
-    expect(await store.create(mockTransport())).toBe(true);
+    const bodies: unknown[] = [];
+    const recording = {
+      async request(method: string, _path: string, body?: unknown) {
+        if (method === "POST") bodies.push(body);
+        return { ok: true, status: 200, json: PENDING_CREATED };
+      },
+    } as ExportTransport;
+    expect(await store.create(recording, "Current-Pass-1!")).toBe(true);
     expect(store.request?.exportId).toBe("9");
     expect(store.request?.status).toBe("PENDING");
+    expect(bodies).toEqual([{ currentPassword: "Current-Pass-1!" }]);
 
-    expect(await store.create(mockTransport({ createOk: false }))).toBe(false);
+    expect(await store.create(mockTransport({ createOk: false }), "Current-Pass-1!")).toBe(false);
     expect(store.request?.status).toBe("PENDING");
     expect(store.actionError).toContain("失败");
   });
 
   it("refresh replaces the status but keeps the once-issued URL (V76)", async () => {
     const store = useExportStore();
-    await store.create(mockTransport());
+    await store.create(mockTransport(), "Current-Pass-1!");
     expect(store.canDownload()).toBe(false);
 
     expect(await store.refresh(mockTransport({ getJson: READY }), "9")).toBe(true);
@@ -93,7 +101,7 @@ describe("useExportStore", () => {
 
   it("refresh failure flags loadFailed without dropping the request", async () => {
     const store = useExportStore();
-    await store.create(mockTransport());
+    await store.create(mockTransport(), "Current-Pass-1!");
 
     expect(await store.refresh(mockTransport({ getOk: false }), "9")).toBe(false);
     expect(store.loadFailed).toBe(true);
@@ -102,7 +110,7 @@ describe("useExportStore", () => {
 
   it("download consumes the link and keeps the document only on success", async () => {
     const store = useExportStore();
-    await store.create(mockTransport());
+    await store.create(mockTransport(), "Current-Pass-1!");
     await store.refresh(mockTransport({ getJson: READY }), "9");
 
     expect(await store.downloadDocument(mockTransport())).toBe(true);
@@ -116,7 +124,7 @@ describe("useExportStore", () => {
 
   it("download without an issued URL is a silent no-op", async () => {
     const store = useExportStore();
-    await store.create(mockTransport({ createJson: PENDING }));
+    await store.create(mockTransport({ createJson: PENDING }), "Current-Pass-1!");
 
     expect(await store.downloadDocument(mockTransport())).toBe(false);
     expect(store.download).toBeNull();

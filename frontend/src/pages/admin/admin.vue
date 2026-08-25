@@ -172,6 +172,63 @@
         <text>开通失败，请检查输入或权限（不会披露用户名是否存在）。</text>
       </view>
 
+      <!-- DOGFOOD-05 (ADR-0006 §3.3): provider plan status card. UNKNOWN
+           renders no quota, allowance or cost figure at all — never a zero
+           or fabricated remaining amount. -->
+      <view class="ops-section">
+        <view class="account-list-head">
+          <text class="account-list-title">Provider 套餐状态</text>
+          <button
+            data-testid="refresh-provider-plan"
+            class="admin-nav-index"
+            :disabled="busy"
+            @click="onRefreshProviderPlan"
+          >
+            刷新
+          </button>
+        </view>
+        <view
+          v-if="planFailed"
+          class="admin-error"
+          data-testid="provider-plan-failed"
+          role="alert"
+        >
+          <text>套餐状态加载失败，请重试。</text>
+        </view>
+        <view
+          v-else-if="providerPlan?.status === 'VALID'"
+          class="audit-row"
+          data-testid="provider-plan-row"
+        >
+          <text class="audit-cell">套餐：{{ providerPlan.planName || "（未命名）" }}</text>
+          <text class="audit-cell">
+            适用期：{{ providerPlan.validFrom || "?" }} ~ {{ providerPlan.validUntil || "?" }}
+          </text>
+          <text class="audit-cell">
+            限额：{{ providerPlan.tokenCap == null ? "未配置" : providerPlan.tokenCap }} tokens /
+            {{ providerPlan.requestCap == null ? "未配置" : providerPlan.requestCap }} 次请求
+          </text>
+          <text v-if="providerPlan.monthCostUsd != null" class="audit-cell">
+            本月已结算成本：{{ providerPlan.monthCostUsd.toFixed(4) }} USD
+          </text>
+        </view>
+        <view
+          v-else-if="providerPlan?.status === 'UNKNOWN'"
+          class="admin-error"
+          data-testid="provider-plan-unknown"
+          role="alert"
+        >
+          <text>UNKNOWN（配置缺失或过期）——额度与成本信息不可用，不显示任何估算值。</text>
+        </view>
+        <view
+          v-else-if="providerPlan?.status === 'DISABLED'"
+          class="admin-empty"
+          data-testid="provider-plan-disabled"
+        >
+          <text>套餐监控未启用。</text>
+        </view>
+      </view>
+
       <!-- ADMIN-OPS: per-day usage/cost summary -->
       <view class="ops-section">
         <view class="account-list-head">
@@ -703,6 +760,7 @@ import {
   updateOpsCaseNote,
   listServiceClassAssignments,
   usageSummary,
+  providerPlanStatus,
   type AccountListItem,
   type AuditEventListItem,
   type BetaAgeAppealItem,
@@ -716,6 +774,7 @@ import {
   type SafetyEventItem,
   type ServiceClassAssignmentItem,
   type UsageSummaryItem,
+  type ProviderPlanStatus,
 } from "@/api/auth";
 import { OPERATOR_ROLES } from "@/domain/nav-guard";
 import type { PublicOpsCase } from "@/domain/ops-case-redact";
@@ -752,6 +811,9 @@ export default defineComponent({
     // ADMIN-OPS: usage summary + audit trail state.
     const usageRows = ref<UsageSummaryItem[]>([]);
     const usageFailed = ref(false);
+    // DOGFOOD-05 (ADR-0006 §3.3): provider plan status card state.
+    const providerPlan = ref<ProviderPlanStatus | null>(null);
+    const planFailed = ref(false);
     const auditEvents = ref<AuditEventListItem[]>([]);
     const auditFailed = ref(false);
     const auditHasMore = ref(false);
@@ -809,6 +871,7 @@ export default defineComponent({
       }
       if (isAdmin.value) {
         await refreshAccounts();
+        await refreshProviderPlan();
         await refreshUsage();
         await refreshAudit();
         await refreshSafety();
@@ -903,6 +966,33 @@ export default defineComponent({
       busy.value = true;
       try {
         await refreshUsage();
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    /**
+     * DOGFOOD-05: reload the provider plan status. A null result (non-OK or
+     * unparseable) shows one generic failure — no invented plan state.
+     */
+    async function refreshProviderPlan(): Promise<void> {
+      planFailed.value = false;
+      try {
+        const parsed = await providerPlanStatus(transport);
+        if (parsed) {
+          providerPlan.value = parsed;
+        } else {
+          planFailed.value = true;
+        }
+      } catch {
+        planFailed.value = true;
+      }
+    }
+
+    async function onRefreshProviderPlan(): Promise<void> {
+      busy.value = true;
+      try {
+        await refreshProviderPlan();
       } finally {
         busy.value = false;
       }
@@ -1255,6 +1345,9 @@ export default defineComponent({
       loadFailed,
       usageRows,
       usageFailed,
+      providerPlan,
+      planFailed,
+      onRefreshProviderPlan,
       auditEvents,
       auditFailed,
       auditHasMore,

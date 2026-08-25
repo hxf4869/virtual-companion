@@ -288,6 +288,36 @@ public class LiveInvocationAssembler {
             String requestedSnapshotId,
             String executionSnapshotId,
             String claimFence) {
+        return assembleExternalInvocation(
+                ownerUserId, generationId, requestedSnapshotId, executionSnapshotId, claimFence)
+                .request();
+    }
+
+    /**
+     * DOGFOOD-STABILIZATION-04 (audit defect C): the external invocation plus
+     * the persisted message id behind every MESSAGE_TEXT position of the
+     * payload. {@code messageTextMessageIds()} is aligned with the
+     * composition's MESSAGE_TEXT positions (a null entry marks the
+     * synthesized placeholder that keeps the request non-empty on an empty
+     * eligible history) so the egress gate can report WHICH persisted rows
+     * caused a refusal and the worker can mark exactly those rows
+     * model-ineligible — never a re-classification of text.
+     */
+    public record AssembledExternalInvocation(
+            LiveInvocationRequest request, List<Long> messageTextMessageIds) {
+    }
+
+    /**
+     * Assemble the external invocation with the persisted-id mapping (see
+     * {@link AssembledExternalInvocation}); parameters as
+     * {@link #assembleExternal(long, long, String, String, String)}.
+     */
+    public AssembledExternalInvocation assembleExternalInvocation(
+            long ownerUserId,
+            long generationId,
+            String requestedSnapshotId,
+            String executionSnapshotId,
+            String claimFence) {
         Objects.requireNonNull(requestedSnapshotId, "requestedSnapshotId must not be null");
         Objects.requireNonNull(executionSnapshotId, "executionSnapshotId must not be null");
         if (requestedSnapshotId.isBlank() || executionSnapshotId.isBlank()) {
@@ -316,13 +346,15 @@ public class LiveInvocationAssembler {
         // is approved out of band — only the approved skeleton fields are
         // rendered, nothing is invented. CHAT-MODE: an explicitly requested
         // LISTEN/DISCUSS overrides the persona default for this turn.
-        // CTX-BUDGET: both SYSTEM blocks are budgeted first, history takes the
-        // remaining input tokens (most recent messages kept first).
+        // CTX-BUDGET: both SYSTEM blocks are budgeted first, history takes
+        // the remaining input tokens (most recent messages kept first).
         String personaBlock = personaBlock(ownerUserId, ownership, context.mode());
         String recallBlock = recallBlock(ownerUserId, ownership);
-        List<ProtocolMessage> messages = loadMessages(
-                ownerUserId, ownership.conversationId(), messageTokenBudget(personaBlock, recallBlock));
-        messages = prependBlocks(messages, personaBlock, recallBlock);
+        LoadedHistory history = loadMessagesWithIds(
+                ownerUserId, ownership.conversationId(),
+                messageTokenBudget(personaBlock, recallBlock));
+        List<ProtocolMessage> messages =
+                prependBlocks(history.messages(), personaBlock, recallBlock);
         // S0-26: declare the data-category provenance of every message this
         // assembler put into the outbound payload — the executable half of the
         // "payload field → purpose → data category → provider/region" mapping:
@@ -366,17 +398,19 @@ public class LiveInvocationAssembler {
         // EXTERNAL-TIMEOUT: real providers (reasoning models in particular)
         // need a generous budget — a 1s total would time out before the first
         // content delta; the budget is deployment-tunable, not hard-coded.
-        return new LiveInvocationRequest(
-                routing,
-                messages,
-                new ResponseMode.Text(),
-                true,
-                externalTimeoutBudget,
-                List.of(),
-                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80),
-                new com.virtualcompanion.modelruntime.execution.PayloadComposition(categories),
-                PROMPT_BUNDLE_VERSION,
-                PERSONA_BUNDLE_VERSION);
+        return new AssembledExternalInvocation(
+                new LiveInvocationRequest(
+                        routing,
+                        messages,
+                        new ResponseMode.Text(),
+                        true,
+                        externalTimeoutBudget,
+                        List.of(),
+                        new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 0.80),
+                        new com.virtualcompanion.modelruntime.execution.PayloadComposition(categories),
+                        PROMPT_BUNDLE_VERSION,
+                        PERSONA_BUNDLE_VERSION),
+                history.messageIds());
     }
 
     /**
@@ -414,13 +448,34 @@ public class LiveInvocationAssembler {
      * the budget is exhausted no older message is added (at least the newest
      * one is always kept). The result is returned oldest-first as before, and
      * the list never exceeds {@link #MAX_MESSAGES} entries.
+     *
+     * <p>DOGFOOD-STABILIZATION-03 (audit defect A): this is the MODEL-FACING
+     * read — only {@code model_eligible} rows load. A message whose turn was
+     * INPUT_BLOCKED / OUTPUT_BLOCKED or cancelled stays persisted for data
+     * rights (the export document still reads it via the unfiltered
+     * {@code listByConversation}) but its text never enters a provider
+     * request. Eligibility is the persisted V112 fact, never a re-run of any
+     * classifier over the text.</p>
      */
     private List<ProtocolMessage> loadMessages(
             long ownerUserId, String conversationIdStr, int maxMessageTokens) {
+        return loadMessagesWithIds(ownerUserId, conversationIdStr, maxMessageTokens).messages();
+    }
+
+    /**
+     * DOGFOOD-STABILIZATION-04 (audit defect C): the model-facing history
+     * load, keeping each outbound MESSAGE_TEXT position's persisted message
+     * id. {@code messageIds} is parallel to the returned oldest-first message
+     * list; the empty-history placeholder carries {@code null} (it is
+     * platform-authored, not a persisted row).
+     */
+    private LoadedHistory loadMessagesWithIds(
+            long ownerUserId, String conversationIdStr, int maxMessageTokens) {
         long conversationId = Long.parseLong(conversationIdStr);
         List<com.virtualcompanion.platform.persistence.MessageRepository.Message> rows =
-                messageRepository.listByConversation(ownerUserId, conversationId);
+                messageRepository.listModelEligibleByConversation(ownerUserId, conversationId);
         List<ProtocolMessage> newestFirst = new ArrayList<>();
+        List<Long> newestFirstIds = new ArrayList<>();
         int usedTokens = 0;
         for (int i = rows.size() - 1; i >= 0 && newestFirst.size() < MAX_MESSAGES; i--) {
             com.virtualcompanion.platform.persistence.MessageRepository.Message m = rows.get(i);
@@ -434,18 +489,28 @@ public class LiveInvocationAssembler {
                 break;
             }
             newestFirst.add(new ProtocolMessage(toRole(m.role()), clamped));
+            newestFirstIds.add(m.id());
             usedTokens += tokens;
         }
         if (newestFirst.isEmpty()) {
             // Constructor requires a non-empty list; ZERO_LLM never reads it, so a
             // single placeholder keeps the request valid without inventing history.
-            return List.of(new ProtocolMessage(ProtocolMessage.Role.USER, PLACEHOLDER_USER_CONTENT));
+            // The placeholder has no persisted id (List.of rejects nulls).
+            return new LoadedHistory(
+                    List.of(new ProtocolMessage(ProtocolMessage.Role.USER, PLACEHOLDER_USER_CONTENT)),
+                    java.util.Collections.singletonList(null));
         }
         List<ProtocolMessage> oldestFirst = new ArrayList<>(newestFirst.size());
+        List<Long> oldestFirstIds = new ArrayList<>(newestFirstIds.size());
         for (int i = newestFirst.size() - 1; i >= 0; i--) {
             oldestFirst.add(newestFirst.get(i));
+            oldestFirstIds.add(newestFirstIds.get(i));
         }
-        return oldestFirst;
+        return new LoadedHistory(oldestFirst, oldestFirstIds);
+    }
+
+    /** Model-facing history: outbound messages plus their persisted ids. */
+    private record LoadedHistory(List<ProtocolMessage> messages, List<Long> messageIds) {
     }
 
     /**

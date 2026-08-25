@@ -32,22 +32,56 @@ function recorder(
 }
 
 describe("consent api client (FR-AUTH-003)", () => {
-  it("PUTs the versioned grant/revoke body and parses the record", async () => {
+  it("PUTs a revocation with the current password (ADR-0006 §7.7) and parses the record", async () => {
     const { transport, calls } = recorder({ ok: true, status: 200, json: RECORD_JSON });
 
-    const recorded = await recordConsent(transport, "MODEL_TRAINING", "2026-08", false);
+    const recorded = await recordConsent(
+      transport, "MODEL_TRAINING", "2026-08", false, "Current-Pass-1!",
+    );
 
     expect(calls).toEqual([
       {
         method: "PUT",
         path: "/api/v1/consents",
-        body: { consentType: "MODEL_TRAINING", version: "2026-08", granted: false },
+        body: {
+          consentType: "MODEL_TRAINING",
+          version: "2026-08",
+          granted: false,
+          currentPassword: "Current-Pass-1!",
+        },
       },
     ]);
     expect(recorded?.consentId).toBe("12");
     expect(recorded?.consentType).toBe("SERVICE_TERMS");
     expect(recorded?.granted).toBe(true);
     expect(recorded?.revokedAt).toBeUndefined();
+  });
+
+  it("PUTs a grant without any password field (grants stay passwordless)", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: RECORD_JSON });
+
+    await recordConsent(transport, "SERVICE_TERMS", "2026-08", true);
+
+    expect(calls).toEqual([
+      {
+        method: "PUT",
+        path: "/api/v1/consents",
+        body: { consentType: "SERVICE_TERMS", version: "2026-08", granted: true },
+      },
+    ]);
+  });
+
+  it("PUTs a passwordless revocation as a blank currentPassword (server fails it closed)", async () => {
+    const { transport, calls } = recorder({ ok: true, status: 200, json: RECORD_JSON });
+
+    await recordConsent(transport, "MODEL_TRAINING", "2026-08", false);
+
+    expect(calls[0]?.body).toEqual({
+      consentType: "MODEL_TRAINING",
+      version: "2026-08",
+      granted: false,
+      currentPassword: "",
+    });
   });
 
   it("lists the effective records and drops malformed rows", async () => {

@@ -147,7 +147,7 @@ describe("account page", () => {
     wrapper.unmount();
   });
 
-  it("deletes the account only after the two-step confirm", async () => {
+  it("deletes the account only after the two-step confirm with the current password", async () => {
     const { calls } = stubFetch();
     const navigateTo = vi.fn();
     vi.stubGlobal("uni", { navigateTo });
@@ -163,14 +163,65 @@ describe("account page", () => {
     expect(wrapper.find('[data-testid="delete-account-confirm"]').text()).toContain(
       "合规审计日志无法立即清除",
     );
+    // The password re-entry gate is present before any request.
+    expect(wrapper.find('[data-testid="delete-account-password"]').exists()).toBe(true);
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
 
+    await wrapper.find('[data-testid="delete-account-password"]').setValue("Current-Pass-1!");
     await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
     await flushPromises();
 
     expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/v1/auth/account")).toBe(true);
     expect(auth.accessToken).toBeNull();
     expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
+    wrapper.unmount();
+  });
+
+  it("never sends the deletion without a password re-entry", async () => {
+    const { calls } = stubFetch();
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.accountId = "42";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    expect(wrapper.find('[data-testid="delete-account-error"]').text()).toContain("当前密码");
+    expect(auth.accessToken).toBe("t");
+    wrapper.unmount();
+  });
+
+  it("keeps the form and session when the server rejects the password", async () => {
+    stubFetch({ deleteStatus: 404 });
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.accountId = "42";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
+    await wrapper.find('[data-testid="delete-account-password"]').setValue("wrong");
+    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="delete-account-error"]').text()).toContain(
+      "当前密码不正确",
+    );
+    // Fail-closed: the form stays open, the input is not cleared, and the
+    // session survives so the caller can retry.
+    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
+    expect((wrapper.find('[data-testid="delete-account-password"]').element as HTMLInputElement)
+      .value).toBe("wrong");
+    expect(auth.accessToken).toBe("t");
+    expect(navigateTo).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

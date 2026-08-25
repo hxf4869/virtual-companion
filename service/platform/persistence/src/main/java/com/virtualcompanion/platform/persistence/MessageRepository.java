@@ -40,8 +40,12 @@ public class MessageRepository {
     /**
      * One {@code vc.message} row. {@code noMemory} is the MEM-NEG (V44)
      * negative-memory marker: memory extraction skips messages flagged true.
-     * The legacy 5-arg constructor keeps pre-V44 call sites compiling; the
-     * marker defaults to false.
+     * {@code modelEligible} is the model-egress eligibility (V112,
+     * DOGFOOD-STABILIZATION-03 audit defect A): false means the message's turn
+     * was blocked or cancelled — the row stays readable for data rights but
+     * its text must never enter a provider request. The legacy 5-arg
+     * constructor keeps pre-V44 call sites compiling; both markers default
+     * (noMemory=false, modelEligible=true).
      */
     public record Message(
             long ownerUserId,
@@ -49,10 +53,17 @@ public class MessageRepository {
             long conversationId,
             String role,
             String content,
-            boolean noMemory) {
+            boolean noMemory,
+            boolean modelEligible) {
+
+        public Message(
+                long ownerUserId, long id, long conversationId,
+                String role, String content, boolean noMemory) {
+            this(ownerUserId, id, conversationId, role, content, noMemory, true);
+        }
 
         public Message(long ownerUserId, long id, long conversationId, String role, String content) {
-            this(ownerUserId, id, conversationId, role, content, false);
+            this(ownerUserId, id, conversationId, role, content, false, true);
         }
 
         public Message {
@@ -92,7 +103,8 @@ public class MessageRepository {
     /** Find a message by composite owner + id (RLS-scoped). */
     public Optional<Message> find(long ownerUserId, long id) {
         return jdbc.query(
-                "SELECT owner_user_id, id, conversation_id, role, content, no_memory "
+                "SELECT owner_user_id, id, conversation_id, role, content, no_memory, "
+                        + "model_eligible "
                         + "FROM vc.message WHERE owner_user_id = ? AND id = ?",
                 (rs, rowNum) -> new Message(
                         rs.getLong("owner_user_id"),
@@ -100,7 +112,8 @@ public class MessageRepository {
                         rs.getLong("conversation_id"),
                         rs.getString("role"),
                         decrypt(rs.getString("content")),
-                        rs.getBoolean("no_memory")),
+                        rs.getBoolean("no_memory"),
+                        rs.getBoolean("model_eligible")),
                 ownerUserId,
                 id).stream().findFirst();
     }
@@ -124,10 +137,29 @@ public class MessageRepository {
      * never loads the full history (TASK-0176 ZERO_LLM assembler).
      */
     public List<Message> listByConversation(long ownerUserId, long conversationId) {
+        return listRecent(ownerUserId, conversationId, false);
+    }
+
+    /**
+     * DOGFOOD-STABILIZATION-03 (audit defect A): the MODEL-FACING history
+     * read. Identical shape to {@link #listByConversation} but restricted to
+     * {@code model_eligible} rows — a message whose turn was blocked or
+     * cancelled stays persisted for data rights yet never enters a provider
+     * request. Eligibility is a persisted fact (V112), never re-derived by
+     * classifying the text again.
+     */
+    public List<Message> listModelEligibleByConversation(long ownerUserId, long conversationId) {
+        return listRecent(ownerUserId, conversationId, true);
+    }
+
+    private List<Message> listRecent(
+            long ownerUserId, long conversationId, boolean modelEligibleOnly) {
         List<Message> recent = jdbc.query(
-                "SELECT owner_user_id, id, conversation_id, role, content, no_memory "
+                "SELECT owner_user_id, id, conversation_id, role, content, no_memory, "
+                        + "model_eligible "
                         + "FROM vc.message "
                         + "WHERE owner_user_id = ? AND conversation_id = ? "
+                        + (modelEligibleOnly ? "AND model_eligible " : "")
                         + "ORDER BY id DESC LIMIT 64",
                 (rs, rowNum) -> new Message(
                         rs.getLong("owner_user_id"),
@@ -135,7 +167,8 @@ public class MessageRepository {
                         rs.getLong("conversation_id"),
                         rs.getString("role"),
                         decrypt(rs.getString("content")),
-                        rs.getBoolean("no_memory")),
+                        rs.getBoolean("no_memory"),
+                        rs.getBoolean("model_eligible")),
                 ownerUserId,
                 conversationId);
         if (recent.size() <= 1) {

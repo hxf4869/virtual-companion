@@ -248,6 +248,9 @@ public interface VirtualCompanionApi {
     /** Per-day usage and cost summary (ADMIN only, ADMIN-OPS). */
     Void getAdminUsageSummary();
 
+    /** Provider plan status (ADMIN only, DOGFOOD-05). */
+    ProviderPlanStatusItem getAdminProviderPlan();
+
     /** Grant a simulated PREMIUM trial budget (ENT-TRIAL, ADMIN only). */
     TrialGrantResponse grantTrial();
 

@@ -22,6 +22,7 @@
     "vue-i18n": "9.14.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@dcloudio/types": "3.4.31",
     "@dcloudio/uni-cli-shared": "3.0.0-5010520260709002",
     "@dcloudio/uni-stacktracey": "3.0.0-5010520260709002",

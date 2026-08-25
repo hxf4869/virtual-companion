@@ -168,3 +168,10 @@ heap ≥70% 持续 15 分钟且已排除单请求异常；已批准的维护/可
   `VC_RETENTION_DRY_RUN=true`，复核 run history 与 legal hold 后另行批准真实删除。
   account deletion digest manifest 必须加密保存在备份/PITR 边界之外，恢复时先
   dry-run reconcile 再 apply（见 `infra/db/backup/README.md`）。
+
+## Owner-only 本地 dogfood（ADR-0006）
+
+单 Owner、Mac 单实例、`VC_DOMAIN` 设为局域网 IP 的 7 天 dogfood 运行手册见
+[`DOGFOOD.md`](DOGFOOD.md)：私有配置 0600 清单、手机信任内部 CA 步骤、
+`VC_BETA_GENERATION_ENABLED` 注入与 ReleaseGate CANARY 单账号绑定的具体命令。
+该手册只覆盖本地 dogfood，不授权远端部署或真实用户 Beta。

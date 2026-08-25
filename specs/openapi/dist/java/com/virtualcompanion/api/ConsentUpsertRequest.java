@@ -4,11 +4,13 @@ package com.virtualcompanion.api;
 public record ConsentUpsertRequest(
     final String consentType,
     final String version,
-    final String granted
+    final String granted,
+    final String currentPassword
 ) {
     public ConsentUpsertRequest {
         java.util.Objects.requireNonNull(consentType, "consentType must not be null");
         java.util.Objects.requireNonNull(version, "version must not be null");
         java.util.Objects.requireNonNull(granted, "granted must not be null");
+        // currentPassword is nullable
     }
 }

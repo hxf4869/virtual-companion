@@ -10,6 +10,10 @@ Webhook 替补通道与主通道失败后的 outbox 投递已接线、默认关�
 指标暴露、自动告警点和 R3/R4 SLA 队列可见性。其余人工升级条目仍待 Owner
 落实。
 
+> ADR-0006 的 Owner-only dogfood 期间只由 Owner 本人在本机查看告警，不启用外部告警
+> 接收端。飞书投递记录只证明未来通道的历史 smoke 能力，不代表本轮 dogfood 正在使用
+> 该通道，也不补齐 Beta 替补和值班升级链。
+
 ## 1. 指标暴露（已接线）
 
 - 端点：`GET /actuator/prometheus`（Prometheus 文本格式；`/actuator/health` 不变）。

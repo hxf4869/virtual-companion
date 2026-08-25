@@ -3,8 +3,9 @@
 // existing chat/memory/login routes without changing baseline preflight.
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { installH5A11yShims } from "@/platform/h5-a11y";
 import { useAuthStore } from "@/stores/auth";
 import { useRelationshipStore } from "@/stores/relationship";
 
@@ -492,86 +493,190 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     wrapper.unmount();
   });
 
-  // ---- ACCT-DELETE (FR-AUTH-004): self-service deletion danger zone ----
+  // ---- ACCT-DELETE (FR-AUTH-004) + DOGFOOD-08: deletion needs server-side
+  // ---- current-password re-authentication on the account page. ----
 
-  it("two-step deletion confirms, deletes, clears the session and routes to login", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url === "/api/v1/auth/account" && (init?.method ?? "GET") === "DELETE") {
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
-      }
-      return { ok: true, status: 200, json: async () => ({}) };
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "a-token";
-    const wrapper = mountPage();
-    await flushPromises();
-
-    // First step: no confirm panel until the danger zone is opened.
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
-    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain("合规审计日志无法立即清除");
-
-    // Second step: confirm deletes and clears the local session.
-    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
-    await flushPromises();
-
-    const deleteCall = fetchMock.mock.calls.find(
-      (call) => String(call[0]) === "/api/v1/auth/account",
-    );
-    expect(deleteCall).toBeDefined();
-    expect(deleteCall![1]?.method).toBe("DELETE");
-    expect(auth.accessToken).toBeNull();
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
-    wrapper.unmount();
-  });
-
-  it("cancel closes the deletion confirm panel without calling the API", async () => {
+  it("deletion entry navigates to the account page without deleting in place", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
       ok: true,
       status: 200,
       json: async () => ({}),
     }));
     vi.stubGlobal("fetch", fetchMock);
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
     const wrapper = mountPage();
     await flushPromises();
 
     await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
+    await flushPromises();
 
-    await wrapper.find('[data-testid="delete-account-cancel"]').trigger("click");
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/account/account" });
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/auth/account"))).toBe(
+      false,
+    );
+    wrapper.unmount();
+  });
+});
 
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(false);
-    expect(
-      fetchMock.mock.calls.some((call) => String(call[0]).includes("/auth/account")),
-    ).toBe(false);
+// ---- DOGFOOD-STABILIZATION-05 缺陷四：index 两个操作按钮的键盘长按重复激活 ----
+// 页面真实组件级测试：mount 整个 index 页（happy-dom 下模板 <button> 渲染为
+// 原生按钮），安装与 main.ts 相同的全局 h5-a11y 状态机后派发真实
+// KeyboardEvent。长按 = 一次 repeat=false keydown + 多次 repeat=true keydown；
+// 断言按钮动作（retryLoad / toggleTechnicalDetails）各自只发生一次。
+describe("index 操作按钮键盘长按语义（DOGFOOD-STABILIZATION-05 缺陷四）", () => {
+  // 与 h5-a11y.spec.ts 相同的模块级单例语义：整个文件只安装一次。
+  beforeAll(() => {
+    installH5A11yShims();
+  });
+
+  // 本 describe 位于外层 glue 块之外，这里复制其 mount 前置条件。
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.stubGlobal("uni", {
+      navigateTo: vi.fn(),
+    });
+    stubRelationshipFetch();
+  });
+
+  function keydown(target: Element, key: string, repeat = false): void {
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        repeat,
+      }),
+    );
+  }
+
+  function keyup(target: Element, key: string): void {
+    target.dispatchEvent(
+      new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true }),
+    );
+  }
+
+  async function baselineMock() {
+    const baselineModule = await import("@/api/baseline");
+    return baselineModule.fetchBaseline as ReturnType<typeof vi.fn>;
+  }
+
+  /** 与 VERSION-UI 用例同构的成功基线：让 state 进入 ready，技术详情按钮
+   *  的 toggle 守卫（state === "ready"）才会放行动作。 */
+  const READY_BASELINE = {
+    application: "virtual-companion",
+    phase: "TECHNICAL_ALPHA",
+    transport: "HTTP_SSE",
+    technology: {
+      javaVersion: "25",
+      springBootVersion: "4.1.0",
+      springAiVersion: "1.0.0",
+      springModulithVersion: "1.4.0",
+    },
+    catalogs: {
+      source: "specs/generated/catalog.snapshot.json",
+      riskLevels: [],
+      generationStates: [],
+      memoryScopes: [],
+      modelProtocols: [],
+      serviceModes: [],
+    },
+    capabilities: {
+      source:
+        "specs/generated/catalog.snapshot.json#sources/product-scope.yaml/document",
+      publicRegistrationEnabled: false,
+      paymentEnabled: false,
+      romanceModeEnabled: false,
+      voiceEnabled: false,
+      imageEnabled: false,
+      websocketEnabled: false,
+      betaGenerationEnabledByDefault: false,
+    },
+  };
+
+  it("retry 按钮：Enter 首次 keydown 激活一次重新校验，长按 repeat 不再触发", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const fetchBaselineMock = await baselineMock();
+    fetchBaselineMock.mockClear();
+    const retry = wrapper.find(".retry").element;
+
+    keydown(retry, "Enter");
+    await flushPromises();
+    expect(fetchBaselineMock).toHaveBeenCalledTimes(1);
+
+    // 模拟系统长按 repeat。每次 repeat 之间 flush：本地预检早已落定（真实
+    // 长按下 OS repeat 间隔远大于该耗时，state 已离开 loading），页面上
+    // 旧的 keydown 处理器此时会逐次再次触发 retryLoad。
+    for (let i = 0; i < 3; i += 1) {
+      keydown(retry, "Enter", true);
+      await flushPromises();
+    }
+    expect(fetchBaselineMock).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 
-  it("a failed deletion keeps the panel open and shows the error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        if (url === "/api/v1/auth/account" && (init?.method ?? "GET") === "DELETE") {
-          return { ok: false, status: 500, json: async () => null };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
+  it("retry 按钮：Space 长按期间（含全部 repeat keydown）零激活，keyup 恰好补发一次", async () => {
     const wrapper = mountPage();
     await flushPromises();
+    const fetchBaselineMock = await baselineMock();
+    fetchBaselineMock.mockClear();
+    const retry = wrapper.find(".retry").element;
 
-    await wrapper.find('[data-testid="delete-account-open"]').trigger("click");
-    await wrapper.find('[data-testid="delete-account-confirm-btn"]').trigger("click");
+    keydown(retry, " ");
+    for (let i = 0; i < 4; i += 1) {
+      keydown(retry, " ", true);
+      await flushPromises();
+    }
+    expect(fetchBaselineMock).not.toHaveBeenCalled();
+
+    keyup(retry, " ");
     await flushPromises();
+    expect(fetchBaselineMock).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
 
-    expect(wrapper.find('[data-testid="delete-account-confirm"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="delete-account-error"]').text()).toContain("未获确认");
+  it("技术详情按钮：Enter 首次 keydown 展开一次，长按 repeat 不再翻转收起", async () => {
+    const fetchBaselineMock = await baselineMock();
+    fetchBaselineMock.mockResolvedValueOnce(READY_BASELINE);
+    const wrapper = mountPage();
+    await flushPromises();
+    const toggle = wrapper.find("#technical-detail-toggle");
+    expect(toggle.attributes("aria-disabled")).toBe("false");
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+
+    keydown(toggle.element, "Enter");
+    await flushPromises();
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+
+    // 3 次 repeat 若仍走旧的 keydown 处理器（共 4 次翻转），会回到 false。
+    for (let i = 0; i < 3; i += 1) {
+      keydown(toggle.element, "Enter", true);
+      await flushPromises();
+    }
+    expect(toggle.attributes("aria-expanded")).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("技术详情按钮：Space 长按期间保持收起，keyup 恰好展开一次", async () => {
+    const fetchBaselineMock = await baselineMock();
+    fetchBaselineMock.mockResolvedValueOnce(READY_BASELINE);
+    const wrapper = mountPage();
+    await flushPromises();
+    const toggle = wrapper.find("#technical-detail-toggle");
+
+    keydown(toggle.element, " ");
+    for (let i = 0; i < 4; i += 1) {
+      keydown(toggle.element, " ", true);
+      await flushPromises();
+    }
+    // 按住期间（1 次首按 + 4 次 repeat）不得激活：旧的 keydown 处理器会
+    // 翻转 5 次（奇数）而显示展开。
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+
+    keyup(toggle.element, " ");
+    await flushPromises();
+    expect(toggle.attributes("aria-expanded")).toBe("true");
     wrapper.unmount();
   });
 });

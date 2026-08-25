@@ -55,17 +55,36 @@ virtual-companion:
         temperature: 0.7
         enabled: false
 
+  # DOGFOOD-05（ADR-0006 §3.3）：动态套餐私有配置。套餐名称/限额/适用期只放
+  # 仓库外的本机私有运行配置（或 VC_PROVIDER_PLAN_* 环境变量），不得写死在
+  # 代码、Catalog 或 UI。enabled=false（默认）→ 状态 DISABLED；enabled=true 但
+  # 适用期缺失/非法/已过期 → 状态 UNKNOWN：允许唯一 Owner canary 继续，但每自然日
+  # 至多一条 P2 PROVIDER_PLAN_UNKNOWN 告警，且任何界面不得显示 0 成本或虚构剩余
+  # 额度。cap 未配置时保持缺失（null），绝不当作 0。
+  provider-plan:
+    enabled: false
+    plan-name: replace-with-private-plan-label
+    # 适用期闭区间（含两端）；缺失或 valid-from > valid-until 均判 UNKNOWN。
+    valid-from: 2026-01-01
+    valid-until: 2026-01-31
+    # 套餐未声明则整键省略（或留空），不要写 0。
+    token-cap: 1000000
+    request-cap: 500
+
   # S0-07: real moderation is an independent default-off SafetyClassifierPort.
   # The API key is never written here; inject only VC_MODERATION_API_KEY from a
   # deployment Secret/private environment. provider-ref/model-version are audit
   # labels and must describe the selected supplier; no supplier is implied.
+  # DOGFOOD-STABILIZATION-02: mode=chat-completions is the only accepted mode
+  # this round (openai-moderations is refused at wiring until its client
+  # carries equal egress/DNS/response-size protections).
   moderation:
     enabled: false
+    mode: chat-completions
     provider-ref: replace-with-approved-moderation-provider
     base-url: https://moderation.example-vendor.invalid/v1
     model: replace-with-approved-moderation-model
     model-version: replace-with-immutable-moderation-revision
-    min-clean-confidence: 0.8
 
   # S0-09: external embeddings are owner-consent gated and fixed to the
   # registered 64-dimensional pgvector space. API key: VC_EMBEDDING_API_KEY only.

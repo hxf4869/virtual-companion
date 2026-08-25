@@ -2195,8 +2195,11 @@ paths:
         vc.record_consent (append-only history; the latest row per type is the
         effective state). consentType follows the FR-AUTH-003 catalogue;
         version is the policy document version the user saw. Withdrawing
-        MODEL_TRAINING never affects basic chat service. Requires a
-        server-verified authentication context.
+        MODEL_TRAINING never affects basic chat service. ADR-0006 §7.7:
+        a revocation (granted=false) is a high-risk operation and MUST carry
+        the caller's CURRENT password (verified synchronously, fail-closed,
+        no time window); a grant (granted=true) is low-risk and never asks
+        for one. Requires a server-verified authentication context.
       requestBody:
         required: true
         content:
@@ -2211,13 +2214,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConsentRecord'
         '400':
-          description: Unapproved consent type or an invalid body
+          description: Unapproved consent type, an invalid body, or a revocation without a currentPassword
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Wrong current password on a revocation; existence is not disclosed
           content:
             application/json:
               schema:
@@ -2252,10 +2261,22 @@ paths:
         Creates an export request and enqueues a DATA_EXPORT work item
         (vc.create_export_request); the worker builds the JSON document
         asynchronously and the status endpoint reports PENDING until READY.
-        Only one in-flight export per account is allowed. The response issues
-        the one-time download token EXACTLY ONCE (only its sha256 digest is
-        stored, V76); save downloadUrl immediately — status polls never carry
-        it again. Requires a server-verified authentication context.
+        Only one in-flight export per account is allowed. ADR-0006 §7.7:
+        creating an export is a high-risk data-rights operation — the body
+        must carry the caller's CURRENT password and it is verified
+        synchronously (fail-closed, no time window) before anything is
+        enqueued; a wrong password never discloses whether it differs from
+        an absent account (NOT_FOUND_OR_FORBIDDEN). The response issues the
+        one-time download token EXACTLY ONCE (only its sha256 digest is
+        stored, V76); save downloadUrl immediately — status polls never
+        carry it again. Requires a server-verified authentication context.
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportCreateRequest'
       responses:
         '200':
           description: The created export request (PENDING)
@@ -2264,13 +2285,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExportRequest'
         '400':
-          description: An export for this account is already in flight
+          description: An export for this account is already in flight, or the body is missing/invalid
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Wrong current password; existence is not disclosed
           content:
             application/json:
               schema:
@@ -2663,16 +2690,27 @@ paths:
       operationId: deleteAccount
       summary: Delete the caller's own account (FR-AUTH-004)
       description: >-
-        Self-service account deletion (注销受理). Before the destructive cascade,
-        V103 independently commits an owner-bound deletion intent, cancels durable
-        generation/work and cooperatively signals provider sessions on every instance.
-        The intent blocks new outbound and late message/memory/vector/export writes.
-        The caller's account, refresh sessions and owned business data are then removed
-        through the vc_user cascade. The append-only compliance audit and a tombstone
-        containing only account id plus username digest survive; the deleted username
-        cannot be recreated. An already-deleted or disabled account maps to
-        NOT_FOUND_OR_FORBIDDEN (existence is never disclosed). Requires a valid Bearer
-        access token.
+        Self-service account deletion (注销受理). ADR-0006 §7.7: the caller
+        must re-enter the CURRENT password in the body; it is verified
+        synchronously (fail-closed, no time window) before anything is
+        deleted, and a wrong password keeps the session alive. Before the
+        destructive cascade, V103 independently commits an owner-bound deletion
+        intent, cancels durable generation/work and cooperatively signals
+        provider sessions on every instance. The intent blocks new outbound
+        and late message/memory/vector/export writes. The caller's account,
+        refresh sessions and owned business data are then removed through the
+        vc_user cascade. The append-only compliance audit and a tombstone
+        containing only account id plus username digest survive; the deleted
+        username cannot be recreated. An already-deleted or disabled account
+        maps to NOT_FOUND_OR_FORBIDDEN (existence is never disclosed).
+        Requires a valid Bearer access token.
+      requestBody:
+        required: true
+        x-raw-max-bytes: 16384
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteAccountRequest'
       responses:
         '200':
           description: The account was deleted
@@ -2680,6 +2718,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountDeletedResponse'
+        '400':
+          description: Missing, unreadable or invalid request body (blank currentPassword)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -2687,7 +2731,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: Account absent, already deleted or disabled; existence is not disclosed
+          description: Wrong current password, or account absent, already deleted or disabled; existence is not disclosed
           content:
             application/json:
               schema:
@@ -2874,6 +2918,39 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/UsageSummaryItem'
+        '401':
+          description: No valid server-verified authentication context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller lacks the ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/auth/admin/provider-plan:
+    get:
+      operationId: getAdminProviderPlan
+      summary: Provider plan status (ADMIN only, DOGFOOD-05)
+      description: >-
+        Derived state of the machine-local private provider plan (ADR-0006
+        §3.3). VALID means today lies inside the configured applicability
+        window; UNKNOWN means the plan is enabled but its window is missing,
+        invalid or expired — the single Owner canary continues, a P2
+        PROVIDER_PLAN_UNKNOWN alert fires at most once per day, and no zero
+        cost or fabricated remaining allowance is ever returned. Caps the
+        private configuration does not state stay null. monthCostUsd carries
+        the real settled month-to-date spend or null. Requires a valid Bearer
+        access token whose account is an ACTIVE ADMIN.
+      responses:
+        '200':
+          description: The derived plan status with verbatim plan facts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderPlanStatusItem'
         '401':
           description: No valid server-verified authentication context
           content:
@@ -5012,6 +5089,15 @@ components:
         granted:
           type: boolean
           description: true grants (or re-grants), false revokes
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: >-
+            ADR-0006 §7.7: the caller's freshly re-entered CURRENT password.
+            REQUIRED when granted is false (revocation — verified
+            synchronously server-side, fail-closed); ignored for grants
+            (granted=true). Never logged, never echoed.
     ConsentRecord:
       type: object
       description: One versioned consent record (FR-AUTH-003).
@@ -5042,6 +5128,21 @@ components:
           type: string
           format: date-time
           description: Revocation timestamp, present only on a revoke record
+    ExportCreateRequest:
+      type: object
+      description: >-
+        Body for enqueueing a data export (FR-DATA-002, ADR-0006 §7.7).
+      required:
+        - currentPassword
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: >-
+            The caller's freshly re-entered CURRENT password; verified
+            synchronously server-side (fail-closed) before the export is
+            enqueued. Never logged, never echoed.
     ExportRequest:
       type: object
       description: One asynchronous data-export request (FR-DATA-002).
@@ -5612,6 +5713,20 @@ components:
       properties:
         password:
           type: string
+    DeleteAccountRequest:
+      type: object
+      description: >-
+        Body for deleting the caller's own account (FR-AUTH-004, ADR-0006
+        §7.7): the freshly re-entered CURRENT password gates the destructive
+        cascade. Never logged, never echoed.
+      required:
+        - currentPassword
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The caller's CURRENT password, re-entered immediately before deletion
     ReauthResponse:
       type: object
       required:
@@ -6366,6 +6481,68 @@ components:
         cost:
           type: number
           description: Settled actual cost that day (USD unless the deployment currency differs)
+    ProviderPlanStatusItem:
+      type: object
+      description: >-
+        DOGFOOD-05 (ADR-0006 §3.3): the derived provider-plan state with the
+        operator-supplied plan facts carried verbatim. A cap the private
+        configuration does not state stays null (never zero-substituted) and
+        under status UNKNOWN no quota, remaining allowance or cost figure may
+        be displayed.
+      required:
+        - status
+        - reason
+      properties:
+        status:
+          type: string
+          enum:
+            - VALID
+            - UNKNOWN
+            - DISABLED
+          description: >-
+            VALID while today lies inside the configured applicability window;
+            UNKNOWN when the plan is enabled but the window is missing,
+            invalid or expired; DISABLED when plan monitoring is off.
+        reason:
+          type: string
+          enum:
+            - OK
+            - PLAN_DISABLED
+            - WINDOW_MISSING
+            - WINDOW_INVALID
+            - NOT_YET_VALID
+            - EXPIRED
+          description: Fixed machine reason for the derived status.
+        planName:
+          type: string
+          nullable: true
+          description: Operator-supplied plan label (machine-local private config).
+        validFrom:
+          type: string
+          format: date
+          nullable: true
+          description: First day the plan applies (inclusive), when stated.
+        validUntil:
+          type: string
+          format: date
+          nullable: true
+          description: Last day the plan applies (inclusive), when stated.
+        tokenCap:
+          type: integer
+          format: int64
+          nullable: true
+          description: Stated plan token cap; null means the plan states none (never zero).
+        requestCap:
+          type: integer
+          format: int64
+          nullable: true
+          description: Stated plan request cap; null means the plan states none (never zero).
+        monthCostUsd:
+          type: number
+          nullable: true
+          description: >-
+            Real settled month-to-date spend (vc.month_cost_spend), or null
+            when no usage data is available; never a fabricated substitute.
     AccountResponse:
       type: object
       description: An internal account (ADMIN creation result).

@@ -494,6 +494,56 @@ public class AuthService {
     }
 
     /**
+     * ADR-0006 §7.7 (DOGFOOD-08): synchronous current-password verification for
+     * high-risk self-service operations (account deletion, export creation,
+     * consent withdrawal). The check is bound to the verified Bearer principal
+     * (the stored identity must carry the principal's account id and stay
+     * ACTIVE), so it is inherently per-request — no time window, no
+     * cross-session reuse. A missing account still runs the dummy BCrypt
+     * compare so the unknown-account path costs the same as a real one. Wrong
+     * password, missing account and status mismatch are indistinguishable
+     * (one 404 NOT_FOUND_OR_FORBIDDEN surface; "password wrong" is never
+     * separable from "account wrong").
+     */
+    public void assertCurrentPassword(
+            JwtTokenService.Principal principal, String rawPassword) {
+        if (principal == null) {
+            throw new AuthErrorException(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
+                    "A valid bearer token is required");
+        }
+        if (rawPassword == null || rawPassword.isBlank()
+                || !AuthInputLimits.withinUtf8Bytes(
+                        rawPassword, AuthInputLimits.MAX_PASSWORD_UTF8_BYTES)
+                || rawPassword.length() > MAX_PASSWORD_LENGTH) {
+            throw invalidRequestError();
+        }
+        Optional<AuthenticatedIdentity> identity = accounts.authenticate(principal.username());
+        // Timing equalization (same as login): an absent identity still runs a
+        // real BCrypt compare against the dummy hash.
+        String storedHash = identity.map(AuthenticatedIdentity::passwordHash).orElse(dummyHash);
+        boolean passwordOk = passwordEncoder.matches(rawPassword, storedHash);
+        if (identity.isEmpty()
+                || identity.get().accountId() != principal.accountId()
+                || !STATUS_ACTIVE.equals(identity.get().status())
+                || !passwordOk) {
+            throw credentialsError();
+        }
+    }
+
+    /**
+     * ACCT-DELETE (FR-AUTH-004) + ADR-0006 §7.7 (DOGFOOD-08): delete the
+     * caller's own account after the caller re-enters the CURRENT password.
+     * The credential check runs first and fail-closed: a wrong password never
+     * reaches the destructive cascade (the controller keeps the session
+     * cookies alive on failure).
+     */
+    public AuthResponses.AccountDeletedResponse deleteAccount(
+            JwtTokenService.Principal principal, String currentPassword) {
+        assertCurrentPassword(principal, currentPassword);
+        return deleteAccount(principal.accountId());
+    }
+
+    /**
      * ACCT-DELETE (V43): delete the caller's own account (FR-AUTH-004). The
      * SD function only deletes an ACTIVE account and cascades the vc_user
      * root, so refresh sessions and all business data disappear while the

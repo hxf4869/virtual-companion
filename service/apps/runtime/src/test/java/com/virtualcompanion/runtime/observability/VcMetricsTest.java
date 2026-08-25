@@ -3,6 +3,7 @@ package com.virtualcompanion.runtime.observability;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,6 +36,29 @@ class VcMetricsTest {
 
         assertThat(registry.timer("vc_generation_duration", "result", "completed").count())
                 .isEqualTo(1L);
+    }
+
+    @Test
+    void firstTokenRecordsUnderTheCanaryTimer() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        VcMetrics metrics = new VcMetrics(registry);
+
+        metrics.firstToken(1_500_000_000L);
+        metrics.firstToken(300_000_000L);
+
+        io.micrometer.core.instrument.Timer timer = registry.timer("vc_generation_first_token");
+        assertThat(timer.count()).isEqualTo(2L);
+        assertThat(timer.max(TimeUnit.SECONDS)).isLessThanOrEqualTo(2.0);
+    }
+
+    @Test
+    void firstTokenIgnoresNegativeSamples() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        VcMetrics metrics = new VcMetrics(registry);
+
+        metrics.firstToken(-1L);
+
+        assertThat(registry.timer("vc_generation_first_token").count()).isZero();
     }
 
     @Test

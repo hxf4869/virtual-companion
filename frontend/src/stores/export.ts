@@ -26,21 +26,25 @@ export const useExportStore = defineStore("h5-export", () => {
   const download = ref<ExportDownload | null>(null);
   const downloadFailed = ref(false);
 
-  /** Enqueue a new export (the server rejects a second in-flight one). */
-  async function create(transport: ExportTransport): Promise<boolean> {
+  /**
+   * Enqueue a new export (the server rejects a second in-flight one).
+   * ADR-0006 §7.7: the caller's re-entered current password travels in the
+   * body and the server verifies it fail-closed before enqueueing.
+   */
+  async function create(transport: ExportTransport, currentPassword: string): Promise<boolean> {
     if (busy.value) return false;
     busy.value = true;
     actionError.value = "";
     downloadFailed.value = false;
     try {
-      const created = await createExport(transport);
+      const created = await createExport(transport, currentPassword);
       if (!created) return false;
       request.value = created;
       issuedDownloadUrl.value = created.downloadUrl ?? null;
       download.value = null;
       return true;
     } catch {
-      actionError.value = "发起导出失败，请重试。";
+      actionError.value = "发起导出失败：请检查当前密码后重试。";
       return false;
     } finally {
       busy.value = false;

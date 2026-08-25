@@ -4,9 +4,10 @@ the short-lived one-time download link while READY and performs the download
 through the authenticated transport. The document carries the AI-content
 notice and per-message aiGenerated markers. -->
 <template>
-  <view class="export-page">
+  <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
+  <view class="export-page" role="main">
     <view class="bar">
-      <text class="title">数据导出</text>
+      <text class="title" role="heading" aria-level="1">数据导出</text>
       <button
         data-testid="nav-chat"
         class="nav-index"
@@ -32,6 +33,9 @@ notice and per-message aiGenerated markers. -->
       </text>
     </view>
 
+    <view v-if="passwordError" class="error" data-testid="export-password-error" role="alert">
+      <text>{{ passwordError }}</text>
+    </view>
     <view v-if="store.actionError" class="error" data-testid="export-action-failed" role="alert">
       <text>{{ store.actionError }}</text>
     </view>
@@ -43,6 +47,15 @@ notice and per-message aiGenerated markers. -->
     </view>
 
     <view class="actions">
+      <input
+        v-model="exportPassword"
+        data-testid="export-password"
+        class="export-input"
+        type="password"
+        autocomplete="current-password"
+        placeholder="当前密码（发起导出前确认）"
+        aria-label="发起导出当前密码"
+      />
       <button
         data-testid="export-create"
         class="nav-index primary-btn"
@@ -130,6 +143,10 @@ export default {
     const auth = useAuthStore();
     const store = useExportStore();
     const lastExportId = ref<string | null>(null);
+    // ADR-0006 §7.7 (DOGFOOD-08): creating an export requires the freshly
+    // re-entered CURRENT password; the server verifies it fail-closed.
+    const exportPassword = ref("");
+    const passwordError = ref("");
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -146,10 +163,19 @@ export default {
     });
 
     async function onCreate(): Promise<void> {
-      const created = await store.create(transport);
+      // Empty re-entry never sends the request; the input stays for retry.
+      if (!exportPassword.value) {
+        passwordError.value = "请输入当前密码后再发起导出。";
+        return;
+      }
+      passwordError.value = "";
+      const created = await store.create(transport, exportPassword.value);
       if (created && store.request) {
         lastExportId.value = store.request.exportId;
+        exportPassword.value = "";
       }
+      // A failed create keeps the input for retry; the store's actionError
+      // banner surfaces the server refusal (wrong password fails closed).
     }
 
     async function onRefresh(): Promise<void> {
@@ -202,6 +228,8 @@ export default {
     return {
       store,
       lastExportId,
+      exportPassword,
+      passwordError,
       onCreate,
       onRefresh,
       onDownload,
@@ -256,6 +284,15 @@ export default {
   flex-wrap: wrap;
   gap: 12rpx;
   margin: 16rpx 0;
+}
+.export-input {
+  flex: 1 1 320rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  border: 2rpx solid #2a3a5a;
+  background-color: #1c2b4a;
+  color: #f5f5f5;
+  font-size: 26rpx;
 }
 .status-card {
   display: flex;

@@ -12,6 +12,10 @@
           </text>
         </view>
 
+        <!-- DOGFOOD-STABILIZATION-05 缺陷四：Enter/Space 键盘激活统一由
+             h5-a11y 状态机提供（Enter keydown 单次、Space keydown arm +
+             keyup 单次 click，repeat 一律不激活），页面不得再挂按钮级
+             keydown 处理器，否则长按 repeat 会多次触发动作。 -->
         <button
           class="retry"
           :disabled="state === 'loading'"
@@ -20,8 +24,6 @@
           :aria-disabled="state === 'loading' ? 'true' : 'false'"
           :aria-label="state === 'loading' ? '正在校验 Runtime' : '重新校验 Runtime'"
           @click="retryLoad"
-          @keydown.enter.prevent="retryLoad"
-          @keydown.space.prevent="retryLoad"
         >
           <text class="retry__mark" aria-hidden="true">↻</text>
           <text>{{ state === "loading" ? "校验中…" : "重新校验" }}</text>
@@ -355,6 +357,7 @@
       </view>
 
       <view class="technical">
+        <!-- 键盘激活同上：统一走 h5-a11y 状态机，不挂页面级 keydown 处理器。 -->
         <button
           id="technical-detail-toggle"
           class="technical__toggle"
@@ -365,8 +368,6 @@
           :aria-expanded="detailsOpen ? 'true' : 'false'"
           aria-controls="technical-detail-panel"
           @click="toggleTechnicalDetails"
-          @keydown.enter.prevent="toggleTechnicalDetails"
-          @keydown.space.prevent="toggleTechnicalDetails"
         >
           <view class="technical__toggle-copy">
             <text class="section-label section-label--dark">RAW DETAIL</text>
@@ -392,47 +393,19 @@
         </view>
       </view>
 
-      <!-- ACCT-DELETE (FR-AUTH-004): self-service account deletion danger zone.
-           Two-step confirm states the retention honestly before acting. -->
+      <!-- ACCT-DELETE (FR-AUTH-004) + DOGFOOD-08: server-side deletion now
+           re-authenticates the current password, so the flow lives on the
+           account page; this entry only navigates there. -->
       <view class="danger-zone">
         <button
           data-testid="delete-account-open"
           class="alpha-nav__link danger-btn"
           role="button"
-          aria-label="注销账号"
-          @click="deleteOpen = true"
+          aria-label="注销账号，前往账号与注销页"
+          @click="goTo('/pages/account/account')"
         >
           <text>注销账号</text>
         </button>
-        <view v-if="deleteOpen" class="danger-confirm" data-testid="delete-account-confirm">
-          <text class="danger-copy">
-            注销后：业务数据（聊天、记忆、提醒、同意记录、导出）将立即删除；
-            合规审计日志无法立即清除，将按既定保留期留存；注销后无法恢复登录。
-          </text>
-          <view class="danger-actions">
-            <button
-              data-testid="delete-account-cancel"
-              class="alpha-nav__link"
-              role="button"
-              :disabled="deleteBusy"
-              @click="deleteOpen = false"
-            >
-              <text>取消</text>
-            </button>
-            <button
-              data-testid="delete-account-confirm-btn"
-              class="alpha-nav__link danger-btn"
-              role="button"
-              :disabled="deleteBusy"
-              @click="onConfirmDelete"
-            >
-              <text>{{ deleteBusy ? "注销中…" : "确认注销" }}</text>
-            </button>
-          </view>
-          <text v-if="deleteError" class="danger-error" data-testid="delete-account-error">
-            {{ deleteError }}
-          </text>
-        </view>
       </view>
 
       <view class="footer-note">
@@ -448,7 +421,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 
 import { createAuthenticatedTransport } from "@/api/transport";
-import { deleteAccount } from "@/api/auth";
 import { fetchVersion, type VersionInfo } from "@/api/version";
 import { buildContextHref } from "@/domain/context-href";
 import { resolveAdmissionGate, type AdmissionGate } from "@/domain/nav-guard";
@@ -487,10 +459,6 @@ const detailsOpen = ref(false);
 // VERSION-UI: build identity for the boundary console stamp (public contract
 // endpoint; a failure degrades to null and the stamp simply stays empty).
 const versionInfo = ref<VersionInfo | null>(null);
-// ACCT-DELETE (FR-AUTH-004): two-step self-service deletion danger zone.
-const deleteOpen = ref(false);
-const deleteBusy = ref(false);
-const deleteError = ref("");
 
 const connectionTitle = computed(() => {
   switch (state.value) {
@@ -641,31 +609,6 @@ function goTo(url: string): void {
 function toggleTechnicalDetails(): void {
   if (state.value === "ready") {
     detailsOpen.value = !detailsOpen.value;
-  }
-}
-
-/**
- * ACCT-DELETE (FR-AUTH-004): confirm the self-service deletion. On a
- * confirmed server result the local session is cleared and the page returns
- * to the login route; the server-side tombstone already blocks login/refresh.
- */
-async function onConfirmDelete(): Promise<void> {
-  if (deleteBusy.value) return;
-  deleteBusy.value = true;
-  deleteError.value = "";
-  try {
-    const ok = await deleteAccount(transport);
-    if (!ok) {
-      deleteError.value = "注销请求未获确认，请重试。";
-      return;
-    }
-    auth.clear();
-    deleteOpen.value = false;
-    goTo("/pages/login/login");
-  } catch {
-    deleteError.value = "注销失败，请重试。";
-  } finally {
-    deleteBusy.value = false;
   }
 }
 

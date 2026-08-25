@@ -16,6 +16,95 @@
       V67 + Java 修复 + 测试守卫已提交，演练记录归档
       `docs/beta-readiness/records/`（0915a643，2026-08-19）。
 
+### 2026-08-24 Owner-only 本地 7 天 Dogfood（当前执行序列）
+
+> 唯一决策真源：`docs/decisions/0006-owner-only-local-dogfood-boundary.md`。
+> 这是 Owner 单账号探索性自测，不代替 D0、正式 Canary 或真实用户 Beta。派发时逐项
+> 对照当前代码；已满足则报告 `ALREADY_DONE`，不得为完成编号重写。
+> 2026-08-24 稳定化整改（DOGFOOD-STABILIZATION-01）后：checkbox 只在「代码与自动化
+> 验证完成且无 Owner 人工步骤残留」时勾选；`[ ]` 条目标注 `READY_FOR_OWNER` 等
+> 终态，其 Owner 人工项以各条内说明为准。
+
+- [x] `DOGFOOD-00` Owner 决策冻结：人员、设备、provider、数据、记忆、保留、备份和
+      明确不授权范围已写入 ADR-0006。
+- [ ] `DOGFOOD-01` `READY_FOR_OWNER`（代码侧 2026-08-24 完成，真机 LAN 访问与
+      证书信任为 Owner 人工项）：Caddy `default_sni` 修复 IP 无 SNI 握手、compose
+      透传 `VC_BETA_GENERATION_ENABLED`、CANARY 绑定命令实测（fail-closed+成功+
+      回退）、私有配置全部 0600；运行手册 `ops/deploy/DOGFOOD.md`。
+- [x] `DOGFOOD-02` `TECHNICAL_DONE`（2026-08-24 稳定化整改完成）：V109/V110 对象
+      生命周期——上传后封存失败先落 V110 指针（FAILED-with-pointer）再补偿删除，
+      双败 P1 `EXPORT_OBJECT_ORPHAN_RISK`（无指针孤儿路径归零）；一次性下载成功后
+      删对象清指针；EXPIRED+FAILED 双清扫、删除失败 JobRun 如实 FAILED；账号删除
+      先清全部导出对象（失败即中止+P1，幂等可重试）；EXPORT_RESIDUE 清理跳过带
+      指针行；对象内容为 RestFieldCipher AES-GCM envelope（明文 JSON 不出主机）；
+      presigned 端口/TTL 配置/演练声明删除，口径改为「私有 bucket + 一次性应用
+      下载 URL」；真实 MinIO 演练 + tests/160 + handler/scheduler/controller/
+      coordinator 单测全绿。
+- [ ] `DOGFOOD-03` `READY_FOR_OWNER`（脚本与演练 2026-08-24 稳定化完成，launchd
+      装载与 passphrase 保管为 Owner 项）：`run-daily-backup.sh` 修复 EP_URL bug、
+      bucket 不可达稳定脱敏 exit 4；备份升级 VCBAE1 认证加密（encrypt-then-MAC，
+      PBKDF2-HMAC-SHA256，密钥不进 argv，篡改/错误口令在解密前失败）；演练改真实
+      key 布局 `exports/{owner}/{exportId}.json` 并逐字节校验对象内容；备份前/
+      后删除两场景防复活断言（账号、消息、记忆、向量、导出对象五类）；README
+      如实声明 pg_dump 与 mc mirror 非原子快照；`run-restore-drill.sh` 全链路 PASS。
+- [x] `DOGFOOD-04` `TECHNICAL_DONE`（2026-08-24 稳定化整改完成）：composite
+      hard rules first——本地非全净（非 R0/ALLOW/无违规）直接返回，计数测试钉死
+      远程调用为 0；`ChatCompletionsSafetyClient` 复用 ProviderEgressPolicy 精确
+      host 白名单 + EgressDnsGuard DNS 防重绑定 + 响应 128KiB 上限 + violations
+      必须存在且非 null；远程调用受 `OwnerGatedSafetyClassifier` 门禁：ADR-0006
+      五类必要同意（硬编码不依赖 yaml 默认空配置）、账号删除意图、provider
+      ADMITTED 准入、条款未核验时仅放行本地敏感检查全净正文，任何拒绝或读取
+      失败零 HTTP fail-closed；每轮输入/最终各最多一次、流式增量零远程（计数
+      断言）。
+- [ ] `DOGFOOD-05` `READY_FOR_OWNER`（代码侧 2026-08-24 稳定化完成，7 天运行与
+      条款/revision 输入为 Owner 项）：R4 最终输出计为 canary 失败且最终复核
+      通过前不记 supplier circuit 成功；durable rollback 失败时 P0 +
+      `LocalDeploymentIsolation` 进程内隔离该精确 deployment（下一次路由零外发，
+      注册表过滤测试钉死）；套餐 canonical key 全链一致
+      （VC_PROVIDER_PLAN_*，VALID_UNTIL 拼写修正，无旧别名）；UNKNOWN 每日一条
+      P2 且跨当日重启经持久 outbox 天窗去重（不新增状态文件）；smoke 对账：仓库
+      内可复核记录为 2026-08-23 合成 smoke（in 25/out 5 tokens，脚本总时长 4.1s，
+      首 token NOT_MEASURED，见
+      `docs/beta-readiness/records/2026-08-23-S0-24-真实Provider合成Smoke.md`）；
+      此前声称的 2026-08-24「2.2s COMPLETED、in12/out26」无仓库内可复核证据，
+      改记 UNVERIFIED/NOT_MEASURED，本轮起不再调用真实 provider。
+- [x] `DOGFOOD-06` `DONE`（仅影子评测，不切默认/不写现行空间）：
+      `ShadowEmbeddingEvalTest`（环境变量门禁，默认跳过）Ollama qwen3-embedding:0.6b
+      64 维（dimensions=64 MRL 可行）vs 确定性 64 维：Recall@3 1.000 vs 0.750、误召回
+      0.125 vs 0.000@0.60、跨关系污染 0.167 vs 0.056；记录
+      `docs/beta-readiness/records/2026-08-24-dogfood06-shadow-embedding.md`；
+      不切默认/不写现行空间/不迁移 DB。
+- [ ] `DOGFOOD-07` `READY_FOR_OWNER`（代码侧 2026-08-24 稳定化完成，真实清理由
+      Owner 按序启用，不设 VC_RETENTION_DRY_RUN=false）：激活/回退 SQL
+      `infra/db/dogfood/activate-normal-chat-30d.sql`（幂等，其余类别保持 DRAFT）+
+      tests/159（dry-run 仅计 >30 天、真实 purge 只删过期、ACCEPTED 记忆保留）+
+      稳定化：V111 `retention_category_active` 探针 + 调度器 DRAFT 类别记 SKIP、
+      不发 P1、整 run 不因此 FAILED（tests/161 + 1 ACTIVE + 7 DRAFT 单测）；
+      已激活类别读取/SQL 失败仍 fail-closed P1；启用顺序见 DOGFOOD.md §10。
+- [x] `DOGFOOD-08` 高风险操作重新认证（2026-08-24 DONE）：账号删除/创建导出/撤回同意
+      服务端同步校验当前密码（BCrypt + timing 均衡，错密码 404 同面 fail-closed，
+      不复用 15 分钟 reauth 窗口）；OpenAPI 同步 + 三页密码输入 UI + 负例回归 +
+      E2E 06 更新；index 页无密码注销入口改为跳转 account 页。
+- [ ] `DOGFOOD-09` `READY_FOR_OWNER`（自动化侧 2026-08-24 稳定化完成，真机
+      VoiceOver/TalkBack 冒烟为 Owner 人工项）：axe 无禁用规则、无对比度放行，
+      四条历史禁用规则（label/landmark-one-main/region/page-has-heading-one）已
+      真实修复——`src/platform/h5-a11y.ts` 全局 DOM 修补（uni-input aria-label
+      落到内部原生 input、uni-button tabindex/role + Enter/Space 激活、
+      uni-page-head banner）+ 每页 role=main 与一级标题语义；键盘断言含 Tab 到
+      submit、Space 激活、Enter 完整登录；chromium/webkit-iphone/chromium-android
+      三 project 19/19 全绿。
+- [ ] `DOGFOOD-10 / A4` `READY_FOR_OWNER`：Owner 连续 7 天、每天至少一次核心旅程；
+      每日体验入口/健康观察/脱敏反馈方式/双端手工清单已备好
+      （`ops/deploy/DOGFOOD.md` §12+附录 A）。不设通过阈值，最终只提交脱敏问题摘要、
+      严重程度和建议顺序，不形成 `GO/PIVOT/STOP` 或 Beta 放行结论。
+- [ ] `OWNER-INPUT-PROVIDER-TERMS`：Owner 提供登录后条款/隐私页面截图或可核验 URL。
+      在地区、保留、训练使用与删除机制确认前，只允许通过本地敏感检查的
+      `MESSAGE_TEXT`，账号元数据、记忆片段与敏感内容外发保持关闭；该阻塞不得阻止
+      `DOGFOOD-01/02/03/06/08/09` 以及上述降级范围内的 `DOGFOOD-10` 继续。
+- [ ] `OWNER-INPUT-PROVIDER-REVISION`：确认渠道是否暴露不可变 model revision；若只提供
+      `Deepseek-v4-flash` 别名，不得自造 revision，S0-24 正式 Canary 继续
+      `BLOCKED_EXTERNAL`，但可在 ADR-0006 的收缩边界内如实记录 Owner dogfood 结果。
+
 ### R43 安全审核覆盖扩充（Beta 前置）——已完成（2026-08-19）
 
 - [x] SAFETY-RULES-2 确定性规则扩充 §20.10/§20.11 最低覆盖：输出侧补
@@ -165,7 +254,8 @@
 
 ### D0 产品发现（Beta 前置门禁，§7.2 / §24.1，Owner 2026-08-19 决定正式补做）
 
-- [ ] D0-PLAN 招募条件、筛选问卷与访谈提纲（Agent 代拟，Owner 执行）。
+- [ ] D0-PLAN `DEFERRED_NO_SAMPLE`：当前没有可招募用户；招募条件、筛选问卷与访谈
+      提纲保留，Owner dogfood 不计入正式样本。
 - [ ] D0-RUN 15–20 次问题访谈 + ≥10 次原型体验（现有 H5 + 测试账号作
       原型载体）；7 天内二次回访邀请不带情绪施压。
 - [ ] D0-DECIDE Go/Pivot/Stop 决策写入 `docs/decisions/`（ADR）；不达线
@@ -186,8 +276,8 @@
       2026-08-22 Owner 评审结论为 Beta 启用，真实发送渠道走 webhook 类
       （企业微信/飞书/自建接口类，凭据部署注入），接线任务见 R50；
       接线交付前开关维持 false，不在无真实外发的情况下启用。
-- [ ] A4 内部验收：2026-08-22 Owner 决定将「5 名内部测试者连续使用 7 天」
-      （§25.7）调整为 Owner 单人测试；执行后回填结论。
+- [ ] A4 内部验收 `IN_PROGRESS`：按 ADR-0006 调整为 Owner 单人连续 7 天探索性
+      dogfood，不设通过阈值；执行后只回填脱敏问题和体验观察，不替代 D0 或 Beta 门禁。
 
 ## 已完成（2026-08-19 第三十一～四十一轮）：需求文档差距收尾（R31-R41）
 
@@ -722,26 +812,26 @@
 - [x] 验证后已清理临时容器/监听端口和 smoke Secret 文件；Provider/年龄/retention
       真实开关保持关闭，无生产部署、付费 Canary、push/PR 或真实用户放量。
 
-## 待决（需要你拍板后再做）
+## 待决（真实 Beta / 外部条件；Owner-only dogfood 不关闭这些事项）
 
 - D0 产品发现形成 Go / Pivot / Stop；未有结论前不进入真实用户 Beta。即使 GO，
   PIA、成年验证、值班/升级链、伦理适用性和受控名单仍须逐项批准。
 - 真实成年核验供应商、处理区域、PIA/DPA、费用、Secret 与申诉责任人选型；
   默认关闭的 Adapter 和人工处置本地能力已完成（S0-12），外部批准前不得启用。
-- 真实 moderation / embedding 供应商、处理区域、保留/删除、费用与必要同意集合；
-  adapter/迁移/严格 fail-closed 已完成，默认开关继续关闭。
-- S0-24 真实 Canary：唯一内部账号、供应商 immutable model revision、费用额度、
-  账单容差和 Owner 放量/回滚批准；当前 ReleaseGate 与 Provider 保持关闭。
-- 紧急联系人真实 webhook endpoint/签名/接收人及端到端演练；方向已定 webhook，
-  但不得用假 URL 或 SIMULATED_EMAIL_LINK 冒充真实送达。
+- WeChat ChatAPI 已获准用于 Owner-only dogfood，但其权威条款、处理区域、保留/删除、
+  训练使用和费用仍未核验；这不等于真实用户 Beta 的 moderation/generation 供应商批准。
+  本地 Qwen embedding 仅做影子评测，也不等于真实 embedding 已接入。
+- S0-24 正式 Canary/Beta：immutable model revision、真实费用/账单容差、值班替补和
+  放量/回滚批准仍缺失；Owner 单账号 dogfood 不能把该条目标记 DONE。
+- 紧急联系人真实 webhook endpoint/签名/接收人及端到端演练；Owner dogfood 已决定
+  保持关闭，但不得因此删除未来 Beta 阻塞，也不得用假 URL 冒充真实送达。
 - retention ACTIVE 周期、legal hold 责任人、真实 purge 批准、删除 manifest 外部
   加密存储；生产 KMS、current/previous key 保留/销毁与备份取回演练。
-- Beta 部署目标环境、域名、备案路径和运维账号；本地 Compose/角色隔离/备份/
-  单副本 smoke 已通过，不代表远端发布授权。
+- Beta 部署目标环境、域名、备案路径和运维账号；本机同源、MinIO、备份和单副本
+  dogfood 不代表远端发布授权。
 - 告警替补接收人、独立 signed webhook endpoint、升级链与 SLA 阈值复核；主飞书
   应用机器人已真实收件，但不能代替完整值班闭环。
-- 导出页整页刷新后是否允许重新取得一次性下载能力；需要新的列表/授权/URL 安全
-  契约，当前仅保证页面内刷新与一次性 URL，不擅自扩展。
+- 导出链接继续保持一次性；刷新、过期或下载后由 Owner 重新发起导出，不扩展为可重复 URL。
 - 真实支付、公开注册、语音/图像/WebSocket/恋爱模式/主动推送（公开付费版前）。
 - 公开付费版其余前置（§7.5、§25.10）：第二真实供应商或可执行备用路径、
   公开管理后台 RBAC + Case Access/break-glass（FR-ADMIN-001/002）、真实

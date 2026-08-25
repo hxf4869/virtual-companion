@@ -342,6 +342,7 @@ export interface ConsentUpsertRequest {
   consentType: string
   version: string
   granted: string
+  currentPassword?: string
 }
 
 export interface ConsentRecord {
@@ -351,6 +352,10 @@ export interface ConsentRecord {
   granted: string
   grantedAt: string
   revokedAt?: string
+}
+
+export interface ExportCreateRequest {
+  currentPassword: string
 }
 
 export interface ExportRequest {
@@ -524,6 +529,10 @@ export interface PasswordChangedResponse {
 
 export interface ReauthRequest {
   password: string
+}
+
+export interface DeleteAccountRequest {
+  currentPassword: string
 }
 
 export interface ReauthResponse {
@@ -751,6 +760,17 @@ export interface UsageSummaryItem {
   cost: string
 }
 
+export interface ProviderPlanStatusItem {
+  status: string
+  reason: string
+  planName?: string
+  validFrom?: string
+  validUntil?: string
+  tokenCap?: string
+  requestCap?: string
+  monthCostUsd?: string
+}
+
 export interface AccountResponse {
   accountId: string
   username: string
@@ -841,6 +861,7 @@ export interface VirtualCompanionApiClient {
   disableInternalAccount(): Promise<DisableAccountResponse>
   listAdminAuditEvents(): Promise<void>
   getAdminUsageSummary(): Promise<void>
+  getAdminProviderPlan(): Promise<ProviderPlanStatusItem>
   grantTrial(): Promise<TrialGrantResponse>
   quotaReconciliation(): Promise<QuotaReconciliation>
   providerRegistry(): Promise<void>

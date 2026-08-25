@@ -35,6 +35,10 @@ class RetentionPurgeSchedulerTest {
         jdbc = mock(JdbcTemplate.class);
         purged.clear();
         alerts.clear();
+        // Activation probe: every category ACTIVE by default (individual
+        // tests flip selected categories to DRAFT).
+        when(jdbc.queryForObject(contains("retention_category_active"), eq(Boolean.class),
+                any(Object[].class))).thenReturn(true);
         when(jdbc.queryForObject(contains("active_retention_days"), eq(Integer.class),
                 any(Object[].class))).thenAnswer(inv -> {
                     String category = (String) inv.getArgument(2);
@@ -88,9 +92,50 @@ class RetentionPurgeSchedulerTest {
     }
 
     @Test
-    void missingPolicyRowFailsClosedAndAlerts() {
+    void activatedCategoryWithBrokenPolicyFailsClosedAndAlerts() {
+        // The activation probe passed but the policy read broke — an
+        // ACTIVATED category still fails closed with a P1.
         when(jdbc.queryForObject(contains("active_retention_days"), eq(Integer.class),
                 any(Object[].class))).thenReturn(null);
+
+        scheduler().purgeExpiredData();
+
+        assertThat(purged).isEmpty();
+        assertThat(alerts).hasSize(8);
+        assertThat(alerts.get(0)).startsWith("P1:RETENTION_PURGE_FAILED:");
+    }
+
+    @Test
+    void draftCategoriesAreSkippedWithoutAlertsAndTheRunStaysSucceeded() {
+        // DOGFOOD-STABILIZATION audit: 1 ACTIVE + 7 DRAFT — only the ACTIVE
+        // category purges, DRAFT categories record SKIP with no P1, and the
+        // JobRun is not FAILED.
+        when(jdbc.queryForObject(contains("retention_category_active"), eq(Boolean.class),
+                any(Object[].class))).thenAnswer(inv ->
+                "NORMAL_CHAT".equals(inv.getArgument(2)));
+        JobLease lease = mock(JobLease.class);
+        when(lease.beginExclusiveRun(eq(JobLease.RETENTION_PURGE), any(), eq(600)))
+                .thenReturn(Optional.of(new JobLease.Run(21L, false)));
+        when(lease.finishRun(eq(21L), eq("SUCCEEDED"), anyString(), eq("")))
+                .thenReturn(true);
+
+        new RetentionPurgeScheduler(jdbc, (severity, code, message) ->
+                alerts.add(severity + ":" + code + ":" + message), lease)
+                .purgeExpiredData();
+
+        assertThat(purged).containsExactly("NORMAL_CHAT");
+        assertThat(alerts).isEmpty();
+        // The run reports SUCCEEDED with SKIP markers for the DRAFT rest.
+        verify(lease).finishRun(eq(21L), eq("SUCCEEDED"),
+                contains("\"DELETED_CHAT\":\"SKIP\""), eq(""));
+        verify(lease).finishRun(eq(21L), eq("SUCCEEDED"),
+                contains("\"NORMAL_CHAT\":\"1\""), eq(""));
+    }
+
+    @Test
+    void activationProbeReadFailureFailsClosedWithP1() {
+        when(jdbc.queryForObject(contains("retention_category_active"), eq(Boolean.class),
+                any(Object[].class))).thenThrow(new IllegalStateException("db down"));
 
         scheduler().purgeExpiredData();
 
@@ -116,6 +161,8 @@ class RetentionPurgeSchedulerTest {
     @Test
     void explicitDryRunUsesEstimateWrapperForEveryCategory() {
         JdbcTemplate dryJdbc = mock(JdbcTemplate.class);
+        when(dryJdbc.queryForObject(contains("retention_category_active"), eq(Boolean.class),
+                any(Object[].class))).thenReturn(true);
         when(dryJdbc.queryForObject(contains("active_retention_days"), eq(Integer.class),
                 any(Object[].class))).thenReturn(30);
         when(dryJdbc.queryForObject(contains("run_retention_category"), eq(Integer.class),
@@ -137,6 +184,8 @@ class RetentionPurgeSchedulerTest {
         when(lease.finishRun(eq(11L), eq("DRY_RUN"), anyString(), eq("")))
                 .thenReturn(true);
         JdbcTemplate dryJdbc = mock(JdbcTemplate.class);
+        when(dryJdbc.queryForObject(contains("retention_category_active"), eq(Boolean.class),
+                any(Object[].class))).thenReturn(true);
         when(dryJdbc.queryForObject(contains("active_retention_days"), eq(Integer.class),
                 any(Object[].class))).thenReturn(30);
         when(dryJdbc.queryForObject(contains("run_retention_category"), eq(Integer.class),
@@ -148,6 +197,6 @@ class RetentionPurgeSchedulerTest {
 
         verify(dryJdbc, times(8)).queryForObject(
                 contains("run_retention_category"), eq(Integer.class), any(), eq(true));
-        verify(lease).finishRun(eq(11L), eq("DRY_RUN"), contains("\"NORMAL_CHAT\":3"), eq(""));
+        verify(lease).finishRun(eq(11L), eq("DRY_RUN"), contains("\"NORMAL_CHAT\":\"3\""), eq(""));
     }
 }

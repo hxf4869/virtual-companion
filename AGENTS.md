@@ -16,6 +16,9 @@ PostgreSQL 18 + pgvector。Technical Alpha：Generation/Realtime/Memory 纵切�
   冲突时依次以本文件、相关 Catalog/OpenAPI/contract、migration/RLS、当前代码与测试、README/TODO 为准。
 - `docs/planning/2026-08-22-product-enhancement-roadmap.md` 是候选 Backlog，不是完成状态真源。派发前只读取所选
   ID 及其直接依赖，并先对照当前 `HEAD`、`TODO.md`、契约和调用链，避免重做或按过时现状开发。
+- 当前 Owner-only 本地 7 天 dogfood 的决策边界只见
+  `docs/decisions/0006-owner-only-local-dogfood-boundary.md`，执行顺序只见 `TODO.md` 的
+  `DOGFOOD-*` 段；该范围不授权 D0、真实用户 Beta、远端部署或生产发布。
 - 只有用户明确要求持续执行或使用 `/goal` 时，才进入 Goal 模式；一次只设一个可验证目标、一个路线图 ID
   或其单一写入 owner 子交付，并明确停止条件和验证入口。普通请求不得自动扩展到下一个 Backlog 项。
 - 不安装 Goal Kit 的 `.agent` 状态、外部循环器或第二套检查/交接体系；跨任务恢复依赖当前 Git 状态、

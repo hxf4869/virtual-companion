@@ -7,6 +7,7 @@ import com.virtualcompanion.runtime.auth.jwt.JwtTokenService;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.AdminResetPasswordRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.ChangePasswordRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.CreateAccountRequest;
+import com.virtualcompanion.runtime.auth.web.AuthRequests.DeleteAccountRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.LoginRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.ReauthRequest;
 import com.virtualcompanion.runtime.auth.web.AuthRequests.ServiceClassAssignRequest;
@@ -175,17 +176,22 @@ public class AuthController {
     }
 
     /**
-     * ACCT-DELETE (FR-AUTH-004): self-service deletion of the caller's own
-     * account. The session cookies are cleared so the client ends up logged
-     * out even before the access token expires; the SD deletion is the
-     * tombstone that blocks login/refresh from then on.
+     * ACCT-DELETE (FR-AUTH-004) + ADR-0006 §7.7 (DOGFOOD-08): self-service
+     * deletion of the caller's own account. The caller must re-enter the
+     * CURRENT password; the service verifies it fail-closed before the
+     * destructive cascade, so the session cookies are only cleared after a
+     * confirmed deletion (a wrong password keeps the caller logged in) — the
+     * SD deletion is the tombstone that blocks login/refresh from then on.
      */
     @DeleteMapping("/account")
     public AccountDeletedResponse deleteAccount(
             @AuthenticationPrincipal JwtTokenService.Principal principal,
+            @Valid @RequestBody DeleteAccountRequest request,
             HttpServletResponse response) {
+        AccountDeletedResponse deleted =
+                authService.deleteAccount(principal, request.currentPassword());
         clearSessionCookies(response);
-        return authService.deleteAccount(principal.accountId());
+        return deleted;
     }
 
     @PostMapping("/admin/accounts")

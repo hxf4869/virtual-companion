@@ -75,14 +75,35 @@ virtual-companion:
     enforce: ${VC_ADMISSION_ENFORCE:false}
     required-consent-types: ${VC_ADMISSION_REQUIRED_CONSENTS:}
   # S0-07: real moderation default-off. Hard rules always run.
+  # DOGFOOD-04 (ADR-0006 §5): mode picks the remote family; both share the
+  # same base-url semantics (OpenAI-compatible root, e.g. .../v1):
+  # - chat-completions: POST {base-url}/chat/completions with a strict JSON
+  #   classification prompt, minimal output budget and no persona/memory
+  #   context (for channels without /moderations, e.g. WeChat ChatAPI —
+  #   endpoint/credential only via env injection, never defaulted here).
+  #   Dogfood 用这一模式（ops/deploy/.env.example 注入 chat-completions）。
+  # - openai-moderations: REFUSED at wiring this round (DOGFOOD-STABILIZATION
+  #   -02) — its client lacks the egress allowlist / DNS-rebinding guard /
+  #   bounded response body that chat-completions enforces, so the reachable
+  #   configuration is rejected instead of shipping an unprotected default
+  #   path. Re-enable only together with equal protections.
+  # chat-completions fails closed below the fixed 0.80 adequate-confidence
+  # threshold. Streaming incremental review is always local deterministic,
+  # regardless of mode. At most one INPUT and one FINAL remote call per turn.
   moderation:
     enabled: ${VC_MODERATION_ENABLED:false}
+    mode: ${VC_MODERATION_MODE:chat-completions}
     base-url: ${VC_MODERATION_BASE_URL:}
     model: ${VC_MODERATION_MODEL:omni-moderation-latest}
     provider-ref: ${VC_MODERATION_PROVIDER_REF:}
     model-version: ${VC_MODERATION_MODEL_VERSION:}
-    min-clean-confidence: ${VC_MODERATION_MIN_CLEAN_CONFIDENCE:0.8}
     api-key: ${VC_MODERATION_API_KEY:}
+    # ADR-0006 §4.3: stays false until the Owner provides verifiable provider
+    # terms; while false the remote safety leg only sees locally clean text.
+    provider-terms-verified: ${VC_MODERATION_PROVIDER_TERMS_VERIFIED:false}
+    # Exact host allowlist for the moderation endpoint (beyond the built-in
+    # approved set); empty means only the built-in set + loopback.
+    allowed-hosts: ${VC_MODERATION_ALLOWED_HOSTS:}
   # S0-09: real embeddings default-off. External calls additionally require
   # current THIRD_PARTY_MODEL_PROCESSING + SENSITIVE_DATA_PROCESSING consents.
   embedding:
@@ -148,6 +169,20 @@ virtual-companion:
     export-stale-seconds: ${VC_JOB_EXPORT_STALE_SECONDS:300}
     auth-purge-stale-seconds: ${VC_JOB_AUTH_PURGE_STALE_SECONDS:93600}
     retention-stale-seconds: ${VC_JOB_RETENTION_STALE_SECONDS:93600}
+  # DATA-EXPORT (V42/V109): one-time download TTL and the expiry sweep
+  # cadence. object-storage (DOGFOOD-02, ADR-0006 §7.3) is opt-in — when
+  # enabled the export document lives in the local MinIO private bucket
+  # instead of the inline payload column. Enabled requires every key below
+  # (fail-closed at wiring); credentials only come from deployment env.
+  data-export:
+    ttl-seconds: ${VC_EXPORT_TTL_SECONDS:86400}
+    expiry-poll-delay-ms: ${VC_EXPORT_EXPIRY_POLL_MS:60000}
+    object-storage:
+      enabled: ${VC_EXPORT_S3_ENABLED:false}
+      endpoint: ${VC_EXPORT_S3_ENDPOINT:}
+      access-key: ${VC_EXPORT_S3_ACCESS_KEY:}
+      secret-key: ${VC_EXPORT_S3_SECRET_KEY:}
+      bucket: ${VC_EXPORT_S3_BUCKET:}
   # CRYPTO-REST (§17.4): at-rest key injected by deployment; the shipped
   # default is development-only and rejected in the production profile.
   crypto:
@@ -206,6 +241,14 @@ virtual-companion:
     # runtime wires no live provider, so every external attempt fails closed at
     # routing with no eligible deployment and no credential is ever read.
     enabled: ${VC_MODEL_PROVIDERS_ENABLED:false}
+    # DOGFOOD-STABILIZATION-03 (audit defect B): while the GENERATION
+    # provider's terms are unverified (Owner has not confirmed the channel's
+    # data-processing terms, default false), every outbound MESSAGE_TEXT —
+    # current turn and history — must pass the local sensitive-data detector
+    # before any provider HTTP (fail closed, zero calls on a hit, independent
+    # of VC_MODERATION_ENABLED). Flip to true only after the Owner verifies
+    # the terms and records the immutable model revision.
+    generation-provider-terms-verified: ${VC_GENERATION_PROVIDER_TERMS_VERIFIED:false}
     budget-monthly-usd: ${VC_MODEL_BUDGET_MONTHLY_USD:0}
     budget-reservation-output-tokens: ${VC_MODEL_BUDGET_RESERVATION_OUTPUT_TOKENS:8192}
     # Directory holding Docker-style secret files (default /run/secrets on
@@ -227,6 +270,17 @@ virtual-companion:
     # Stable identifier recorded as the deterministic source id / decision
     # identity (audit only; never a credential or model name).
     source-id: ${VC_ZERO_LLM_SOURCE_ID:ZERO_LLM_FALLBACK}
+  # DOGFOOD-05 (ADR-0006 §3.3): dynamic provider plan — private, applicability-
+  # windowed quota facts only. The plan never gates an outbound (the Owner
+  # canary continues while UNKNOWN); missing caps stay null and are never
+  # read as zero. All values live in machine-local private configuration.
+  provider-plan:
+    enabled: ${VC_PROVIDER_PLAN_ENABLED:false}
+    plan-name: ${VC_PROVIDER_PLAN_NAME:}
+    valid-from: ${VC_PROVIDER_PLAN_VALID_FROM:}
+    valid-until: ${VC_PROVIDER_PLAN_VALID_UNTIL:}
+    token-cap: ${VC_PROVIDER_PLAN_TOKEN_CAP:}
+    request-cap: ${VC_PROVIDER_PLAN_REQUEST_CAP:}
   external-attempt:
     # TASK-0177: tunes the external-attempt RoutingRequest so the router selects
     # an admitted deployment of this protocol when the external persistence path

@@ -3,6 +3,13 @@
 # Cache policy completes H5-HARDEN (§21.7): hashed assets immutable,
 # the SPA shell no-cache, security headers everywhere.
 
+{
+	# LAN/IP dogfood (ADR-0006): browsers never send SNI for plain IP
+	# addresses (RFC 6066), so https://<LAN-IP> would fail the TLS handshake
+	# without a fallback name. Point it at the single served VC_DOMAIN.
+	default_sni {$VC_DOMAIN}
+}
+
 {$VC_DOMAIN} {
 	encode gzip
 

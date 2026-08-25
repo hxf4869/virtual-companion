@@ -176,17 +176,25 @@ export async function adminResetPassword(
 }
 
 /**
- * ACCT-DELETE (FR-AUTH-004): delete the caller's own account. The server
- * clears session cookies and the deletion tombstone blocks login/refresh
- * from then on; business data is removed and the compliance audit trail is
- * kept. true only on a confirmed deletion; a 404 (absent/already deleted)
- * also maps to true so the client ends up logged out either way.
+ * ACCT-DELETE (FR-AUTH-004) + ADR-0006 §7.7 (DOGFOOD-08): delete the caller's
+ * own account. The server verifies the freshly re-entered CURRENT password
+ * fail-closed before the destructive cascade, then clears session cookies and
+ * the deletion tombstone blocks login/refresh from then on; business data is
+ * removed and the compliance audit trail is kept. true ONLY on a confirmed
+ * deletion: a wrong password maps to the server's non-disclosing 404 (same
+ * surface as absent/already-deleted), so a non-OK is reported as false and
+ * the caller keeps the session (fail-closed re-entry).
  */
-export async function deleteAccount(t: AuthTransport): Promise<boolean> {
-  const r = await t.request("DELETE", `${AUTH_BASE}/account`);
-  // A 404 means the account is absent or already deleted — the caller still
-  // ends up logged out either way, so treat it as confirmed (see doc above).
-  return r.ok || r.status === 404;
+export async function deleteAccount(
+  t: AuthTransport,
+  currentPassword?: string,
+): Promise<boolean> {
+  const r = await t.request(
+    "DELETE",
+    `${AUTH_BASE}/account`,
+    { currentPassword: currentPassword ?? "" },
+  );
+  return r.ok;
 }
 
 /** ADMIN-UI: one created internal account (OpenAPI AccountResponse). */
@@ -909,6 +917,67 @@ export async function usageSummary(
     if (parsed) out.push(parsed);
   }
   return out;
+}
+
+/**
+ * DOGFOOD-05 (ADR-0006 §3.3): derived provider-plan status. Under UNKNOWN
+ * the page must not render any quota, remaining allowance or cost figure —
+ * null caps mean "not stated", never zero.
+ */
+export interface ProviderPlanStatus {
+  status: "VALID" | "UNKNOWN" | "DISABLED";
+  reason: string;
+  planName?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  tokenCap?: number | null;
+  requestCap?: number | null;
+  monthCostUsd?: number | null;
+}
+
+const PROVIDER_PLAN_STATES: ReadonlySet<string> = new Set(["VALID", "UNKNOWN", "DISABLED"]);
+
+function asProviderPlanStatus(json: unknown): ProviderPlanStatus | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const status = asString(o, "status");
+  const reason = asString(o, "reason");
+  if (!status || !PROVIDER_PLAN_STATES.has(status) || !reason) {
+    return null;
+  }
+  const tokenCap = o.tokenCap == null ? null : Number(o.tokenCap);
+  const requestCap = o.requestCap == null ? null : Number(o.requestCap);
+  const monthCostUsd = o.monthCostUsd == null ? null : Number(o.monthCostUsd);
+  if ((tokenCap != null && !Number.isFinite(tokenCap))
+      || (requestCap != null && !Number.isFinite(requestCap))
+      || (monthCostUsd != null && !Number.isFinite(monthCostUsd))) {
+    return null;
+  }
+  return {
+    status: status as ProviderPlanStatus["status"],
+    reason,
+    planName: asString(o, "planName"),
+    validFrom: asString(o, "validFrom"),
+    validUntil: asString(o, "validUntil"),
+    tokenCap,
+    requestCap,
+    monthCostUsd,
+  };
+}
+
+/**
+ * DOGFOOD-05: provider-plan status (ADMIN only). Returns null on a non-OK or
+ * unparseable response so the page can show one generic failure state without
+ * inventing a plan.
+ */
+export async function providerPlanStatus(
+  t: AuthTransport,
+): Promise<ProviderPlanStatus | null> {
+  const r = await t.request("GET", `${AUTH_BASE}/admin/provider-plan`);
+  if (!r.ok) {
+    return null;
+  }
+  return asProviderPlanStatus(r.json);
 }
 
 /** ENT-SNAP (V40): one service-class assignment registry row. */

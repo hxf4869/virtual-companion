@@ -51,6 +51,16 @@ public final class AuthRequests {
             @NotBlank @Size(max = 128) String password) {
     }
 
+    /**
+     * ADR-0006 §7.7 (DOGFOOD-08): {@code DELETE /api/v1/auth/account} body.
+     * The caller must re-enter the CURRENT password immediately before the
+     * destructive cascade; a wrong, blank or missing password fails closed
+     * before anything is deleted.
+     */
+    public record DeleteAccountRequest(
+            @NotBlank @Size(max = 128) String currentPassword) {
+    }
+
     /** {@code POST /api/v1/auth/admin/accounts/{id}/reset-password}. */
     public record AdminResetPasswordRequest(
             @NotBlank @Size(min = 8, max = 128) String newPassword) {

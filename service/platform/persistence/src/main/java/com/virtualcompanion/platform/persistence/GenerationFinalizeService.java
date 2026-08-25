@@ -262,6 +262,40 @@ public class GenerationFinalizeService {
     }
 
     /**
+     * DOGFOOD-STABILIZATION-04 (audit defect C): mark SPECIFIC persisted
+     * messages model-ineligible (V112 {@code vc.mark_messages_model_ineligible})
+     * — the generation egress gate's rejection path. Call it in the SAME
+     * owner transaction as the turn's terminalization: the offending rows
+     * (which may belong to older turns) lose model-egress eligibility
+     * atomically with the terminal state, and a later flip of the provider
+     * terms flag can never re-release them.
+     *
+     * @return rows flipped to model_eligible=false
+     */
+    public int markMessagesModelIneligible(long ownerUserId, java.util.List<Long> messageIds) {
+        if (ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId must be positive");
+        }
+        if (messageIds == null || messageIds.isEmpty()) {
+            return 0;
+        }
+        Long[] ids = messageIds.toArray(new Long[0]);
+        Integer rows = jdbc.queryForObject(
+                "SELECT vc.mark_messages_model_ineligible(?, ?)",
+                Integer.class,
+                ownerUserId,
+                new org.springframework.jdbc.core.support.AbstractSqlTypeValue() {
+                    @Override
+                    protected Object createTypeValue(
+                            java.sql.Connection con, int sqlType, String typeName)
+                            throws java.sql.SQLException {
+                        return con.createArrayOf("bigint", ids);
+                    }
+                });
+        return rows == null ? 0 : rows;
+    }
+
+    /**
      * TASK-0194: persist the {@code CREATED} attempt intent BEFORE any outbound
      * (V28 {@code vc.create_attempt_intent}). The intent binds owner, work
      * item, generation, SHA-256 hashes of the claim token/fence, the unique

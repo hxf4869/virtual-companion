@@ -3,6 +3,7 @@ package com.virtualcompanion.runtime.auth.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -149,10 +150,13 @@ class AuthControllerCookieTest {
 
     @Test
     void deleteAccountClearsBothSessionCookies() throws Exception {
-        when(authService.deleteAccount(7))
+        when(authService.deleteAccount(
+                new JwtTokenService.Principal(7, "USER", "alice"), "Current-Pass-1!"))
                 .thenReturn(new AuthResponses.AccountDeletedResponse(true));
 
         mockMvc.perform(delete("/api/v1/auth/account")
+                        .contentType("application/json")
+                        .content("{\"currentPassword\":\"Current-Pass-1!\"}")
                         .cookie(
                                 new Cookie(CookieCsrfGuardFilter.REFRESH_COOKIE, "cookie-token"),
                                 new Cookie(CookieCsrfGuardFilter.CSRF_COOKIE, "csrf-value")))
@@ -160,7 +164,41 @@ class AuthControllerCookieTest {
                 .andExpect(jsonPath("$.ok").value(true))
                 .andExpect(cookie().maxAge(CookieCsrfGuardFilter.REFRESH_COOKIE, 0))
                 .andExpect(cookie().maxAge(CookieCsrfGuardFilter.CSRF_COOKIE, 0));
-        verify(authService).deleteAccount(7);
+        verify(authService).deleteAccount(
+                new JwtTokenService.Principal(7, "USER", "alice"), "Current-Pass-1!");
+    }
+
+    @Test
+    void deleteAccountWithoutABodyFailsClosedTo400BeforeTheService() throws Exception {
+        mockMvc.perform(delete("/api/v1/auth/account")
+                        .cookie(
+                                new Cookie(CookieCsrfGuardFilter.REFRESH_COOKIE, "cookie-token"),
+                                new Cookie(CookieCsrfGuardFilter.CSRF_COOKIE, "csrf-value")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        verify(authService, never()).deleteAccount(org.mockito.ArgumentMatchers.anyLong());
+        verify(authService, never()).deleteAccount(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deleteAccountWithAWrongPasswordKeepsTheSessionCookies() throws Exception {
+        when(authService.deleteAccount(
+                new JwtTokenService.Principal(7, "USER", "alice"), "wrong"))
+                .thenThrow(new AuthErrorException(
+                        HttpStatus.NOT_FOUND, "NOT_FOUND_OR_FORBIDDEN",
+                        "Invalid username or password"));
+
+        mockMvc.perform(delete("/api/v1/auth/account")
+                        .contentType("application/json")
+                        .content("{\"currentPassword\":\"wrong\"}")
+                        .cookie(
+                                new Cookie(CookieCsrfGuardFilter.REFRESH_COOKIE, "cookie-token"),
+                                new Cookie(CookieCsrfGuardFilter.CSRF_COOKIE, "csrf-value")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND_OR_FORBIDDEN"))
+                // ADR-0006 §7.7: a failed re-entry never logs the caller out.
+                .andExpect(cookie().doesNotExist(CookieCsrfGuardFilter.REFRESH_COOKIE));
     }
 
     private static AuthResponse sampleResponse() {

@@ -69,9 +69,88 @@ class CompositeSafetyClassifierTest {
             throw new IllegalStateException("timeout");
         };
         CompositeSafetyClassifier composite = new CompositeSafetyClassifier(HARD, boom);
-        SafetyClassification result = composite.classify(SafetyStage.INPUT, "ordinary chat");
+        SafetyClassification result = composite.classify(7L, SafetyStage.INPUT, "ordinary chat");
         assertEquals(SafetyVerdict.BLOCK, result.verdict());
         assertEquals(SafetyClassifierOutcome.UNAVAILABLE, result.report().outcome());
+    }
+
+    @Test
+    void hardBlockMakesZeroRemoteCalls() {
+        // DOGFOOD-STABILIZATION audit: a local hard-rule block is terminal —
+        // the provider leg is never consulted (counting fake proves zero).
+        java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        SafetyClassifierPort counting = (stage, text) -> {
+            calls.incrementAndGet();
+            return allow();
+        };
+        CompositeSafetyClassifier composite = new CompositeSafetyClassifier(HARD, counting);
+        SafetyClassification result = composite.classify(7L, SafetyStage.INPUT, "我现在11岁");
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertFalse(result.hardRuleViolations().isEmpty());
+        assertEquals(0, calls.get());
+    }
+
+    @Test
+    void cleanInputMakesExactlyOneRemoteCall() {
+        java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        // The owner-aware entry is a default method, so the counting stub is
+        // an anonymous class overriding it (a lambda could only implement the
+        // owner-less SAM).
+        SafetyClassifierPort counting = new SafetyClassifierPort() {
+            @Override
+            public SafetyClassification classify(SafetyStage stage, String text) {
+                throw new AssertionError("the owner-less entry must not reach the remote leg");
+            }
+
+            @Override
+            public SafetyClassification classify(long ownerUserId, SafetyStage stage, String text) {
+                assertEquals(7L, ownerUserId);
+                calls.incrementAndGet();
+                return allow();
+            }
+        };
+        CompositeSafetyClassifier composite = new CompositeSafetyClassifier(HARD, counting);
+        SafetyClassification result = composite.classify(7L, SafetyStage.INPUT, "today was ordinary");
+        assertTrue(result.allowed());
+        assertEquals(1, calls.get());
+    }
+
+    @Test
+    void ownerlessCleanInputNeverReachesTheRemoteLeg() {
+        // Without an owner context the remote leg stays unusable (the runtime
+        // egress gate is owner-bound); the outcome is the same fail-closed
+        // block as a transport failure, with zero remote calls.
+        java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        SafetyClassifierPort counting = (stage, text) -> {
+            calls.incrementAndGet();
+            return allow();
+        };
+        CompositeSafetyClassifier composite = new CompositeSafetyClassifier(HARD, counting);
+        SafetyClassification result = composite.classify(SafetyStage.INPUT, "today was ordinary");
+        assertEquals(SafetyVerdict.BLOCK, result.verdict());
+        assertEquals(SafetyClassifierOutcome.UNAVAILABLE, result.report().outcome());
+        assertEquals(0, calls.get());
+    }
+
+    @Test
+    void isCleanRequiresR0AllowAndNoHardRuleHits() {
+        assertTrue(CompositeSafetyClassifier.isClean(allow()));
+        // ALLOW but above R0 (e.g. distress) is not clean and stays local.
+        assertFalse(CompositeSafetyClassifier.isClean(new SafetyClassification(
+                RiskLevel.R1_DISTRESS,
+                List.of(),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 1.0),
+                SafetyVerdict.ALLOW)));
+        // ALLOW with a hard-rule hit cannot occur through SafetyGate, but the
+        // predicate is verified independently.
+        assertFalse(CompositeSafetyClassifier.isClean(new SafetyClassification(
+                RiskLevel.R0_NORMAL,
+                List.of("some-rule"),
+                new ClassifierReport(SafetyClassifierOutcome.CLASSIFIED, 1.0),
+                SafetyVerdict.ALLOW)));
     }
 
     private static SafetyClassification allow() {

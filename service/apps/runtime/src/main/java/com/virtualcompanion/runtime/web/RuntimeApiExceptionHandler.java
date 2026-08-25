@@ -91,6 +91,19 @@ public class RuntimeApiExceptionHandler {
                 .body(new ErrorEnvelope("BETA_OPERATIONS_NOT_READY", e.getMessage()));
     }
 
+    /**
+     * ADR-0006 §7.7 (DOGFOOD-08): the freshly re-entered current password did
+     * not verify for a high-risk self-service operation (export creation,
+     * consent withdrawal). 404 NOT_FOUND_OR_FORBIDDEN — wrong password and
+     * gone account are indistinguishable, and no detail is disclosed.
+     */
+    @ExceptionHandler(CurrentPasswordMismatchException.class)
+    public ResponseEntity<ErrorEnvelope> handleCurrentPasswordMismatch(
+            CurrentPasswordMismatchException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorEnvelope("NOT_FOUND_OR_FORBIDDEN", e.getMessage()));
+    }
+
     @ExceptionHandler(RuntimeRateLimitException.class)
     public void handleRuntimeRateLimit(
             RuntimeRateLimitException e, HttpServletResponse response) throws IOException {

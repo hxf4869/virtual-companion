@@ -134,7 +134,8 @@ class ExportServiceTest {
         assertFalse(stored.get().contains("{\"ok\":true}"));
 
         when(jdbc.query(
-                eq("SELECT out_payload, out_expires_at FROM vc.consume_export(?, ?, ?)"),
+                eq("SELECT out_payload, out_object_key, out_object_bytes, "
+                                + "out_expires_at FROM vc.consume_export(?, ?, ?)"),
                 any(RowMapper.class),
                 eq(1L),
                 eq(9L),
@@ -165,7 +166,8 @@ class ExportServiceTest {
     @Test
     void consumeReturnsThePayloadExactlyOnceAndIsEmptyOnSecondCall() {
         when(jdbc.query(
-                eq("SELECT out_payload, out_expires_at FROM vc.consume_export(?, ?, ?)"),
+                eq("SELECT out_payload, out_object_key, out_object_bytes, "
+                                + "out_expires_at FROM vc.consume_export(?, ?, ?)"),
                 any(RowMapper.class),
                 eq(1L),
                 eq(9L),
@@ -198,5 +200,91 @@ class ExportServiceTest {
                 .thenReturn(3);
 
         assertEquals(3, service.expireStale());
+    }
+
+    @Test
+    void completeObjectSealsWithThePointerAndNullPayload() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.complete_export(?, ?, NULL::text, ?, ?, ?)"),
+                eq(Integer.class),
+                eq(1L),
+                eq(9L),
+                eq(Timestamp.from(NOW)),
+                eq("exports/1/9.json"),
+                eq(1024L)))
+                .thenReturn(1);
+
+        assertTrue(service.completeObject(
+                1L, 9L, "exports/1/9.json", 1024L, NOW));
+    }
+
+    @Test
+    void completeObjectRejectsABlankKeyOrNegativeBytes() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.completeObject(1L, 9L, " ", 10L, NOW));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.completeObject(1L, 9L, "exports/1/9.json", -1L, NOW));
+    }
+
+    @Test
+    void consumeMapsTheObjectPointerInObjectMode() {
+        when(jdbc.query(
+                eq("SELECT out_payload, out_object_key, out_object_bytes, "
+                        + "out_expires_at FROM vc.consume_export(?, ?, ?)"),
+                any(RowMapper.class),
+                eq(1L),
+                eq(9L),
+                eq("tok-1")))
+                .thenAnswer(invocation -> {
+                    ResultSet rs = mock(ResultSet.class);
+                    when(rs.getString("out_payload")).thenReturn(null);
+                    when(rs.getString("out_object_key")).thenReturn("exports/1/9.json");
+                    when(rs.getObject("out_object_bytes")).thenReturn(2048L);
+                    when(rs.getLong("out_object_bytes")).thenReturn(2048L);
+                    when(rs.getTimestamp("out_expires_at")).thenReturn(Timestamp.from(NOW));
+                    var mapper = invocation.getArgument(1, RowMapper.class);
+                    return List.of(mapper.mapRow(rs, 1));
+                });
+
+        ExportService.ExportDownload download =
+                service.consume(1L, 9L, "tok-1").orElseThrow();
+        assertEquals("exports/1/9.json", download.objectKey());
+        assertEquals(2048L, download.objectBytes());
+        assertEquals(NOW, download.expiresAt());
+    }
+
+    @Test
+    void listExpiredObjectsMapsTheSweepWorklist() {
+        when(jdbc.query(
+                eq("SELECT out_owner_user_id, out_id, out_object_key "
+                        + "FROM vc.list_expired_export_objects()"),
+                any(RowMapper.class)))
+                .thenAnswer(invocation -> {
+                    ResultSet rs = mock(ResultSet.class);
+                    when(rs.getLong("out_owner_user_id")).thenReturn(1L);
+                    when(rs.getLong("out_id")).thenReturn(9L);
+                    when(rs.getString("out_object_key")).thenReturn("exports/1/9.json");
+                    var mapper = invocation.getArgument(1, RowMapper.class);
+                    return List.of(mapper.mapRow(rs, 1));
+                });
+
+        java.util.List<ExportService.ExpiredExportObject> stale =
+                service.listExpiredObjects();
+        assertEquals(1, stale.size());
+        assertEquals(new ExportService.ExpiredExportObject(1L, 9L, "exports/1/9.json"),
+                stale.getFirst());
+    }
+
+    @Test
+    void clearObjectRunsTheCasUpdate() {
+        when(jdbc.queryForObject(
+                eq("SELECT vc.clear_export_object(?, ?, ?)"),
+                eq(Integer.class),
+                eq(1L),
+                eq(9L),
+                eq("exports/1/9.json")))
+                .thenReturn(1);
+
+        assertTrue(service.clearObject(1L, 9L, "exports/1/9.json"));
     }
 }

@@ -83,6 +83,7 @@
     "disableInternalAccount",
     "listAdminAuditEvents",
     "getAdminUsageSummary",
+    "getAdminProviderPlan",
     "grantTrial",
     "quotaReconciliation",
     "providerRegistry",
@@ -109,6 +110,6 @@
   ],
   "source": {
     "path": "specs/openapi/virtual-companion.yaml",
-    "sha256": "0501a9cf32c82da443e3eaca7a2ee54057a0f72124277fc5032b900450e0bc33"
+    "sha256": "17c6d7583c892a12d8f592145bceeded62b416b00c36c57683d019632051b411"
   }
 }

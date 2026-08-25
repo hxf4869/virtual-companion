@@ -55,6 +55,18 @@ public class ApprovedModelProviderConfig {
         return new ProviderSecretReader(Path.of(properties.secretRoot()));
     }
 
+    /**
+     * DOGFOOD-STABILIZATION audit (ADR-0006 §3.4): process-local one-way
+     * isolation set consulted on every routing read. When a safety-leak
+     * durable rollback write fails, the safety-leak disabler isolates the
+     * exact deployment here so the next routing attempt has zero egress even
+     * though the DB still reports ADMITTED.
+     */
+    @Bean
+    com.virtualcompanion.modelruntime.registry.LocalDeploymentIsolation localDeploymentIsolation() {
+        return new com.virtualcompanion.modelruntime.registry.LocalDeploymentIsolation();
+    }
+
     @Bean
     ApprovedModelProviders approvedModelProviders(
             ModelProviderProperties properties,
@@ -63,15 +75,20 @@ public class ApprovedModelProviderConfig {
                     "${VC_MODEL_EGRESS_ALLOWED_HOSTS:}")
             java.util.List<String> approvedEgressHosts,
             org.springframework.beans.factory.ObjectProvider<JdbcProviderAdmissionAuthority>
-                    admissionAuthority) {
+                    admissionAuthority,
+            com.virtualcompanion.modelruntime.registry.LocalDeploymentIsolation
+                    localDeploymentIsolation) {
         ApprovedModelProviders wired = ApprovedModelProviderProvisioner.provision(
                 properties,
                 providerSecretReader,
                 com.virtualcompanion.modelruntime.port.ProviderEgressPolicy.defaultsPlus(
                         approvedEgressHosts));
         return new ApprovedModelProviders(
-                durableAdmissionRegistry(
-                        wired.registry(), admissionAuthority.getIfAvailable()),
+                new com.virtualcompanion.modelruntime.registry
+                        .IsolationFilteredProviderRegistry(
+                        durableAdmissionRegistry(
+                                wired.registry(), admissionAuthority.getIfAvailable()),
+                        localDeploymentIsolation),
                 wired.locator(),
                 wired.supplierNames(),
                 wired.deploymentMetadata());

@@ -1,6 +1,7 @@
 package com.virtualcompanion.runtime.worker;
 
 import com.virtualcompanion.catalog.ProviderAttemptStatus;
+import com.virtualcompanion.catalog.RiskLevel;
 import com.virtualcompanion.modelruntime.contract.AdapterFailure;
 import com.virtualcompanion.modelruntime.contract.ModelPayload;
 import com.virtualcompanion.modelruntime.contract.ModelProtocolEvent;
@@ -112,6 +113,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final ConversationRepository conversationRepository;
     private final GenerationRepository generationRepository;
     private final SafetyClassifierPort safetyClassifier;
+    /** DOGFOOD-04 (ADR-0006 §5.1): local-only classifier for streamed fragments. */
+    private final SafetyClassifierPort incrementalSafetyClassifier;
     private final SafetyEventService safetyEventService;
     private final ConversationSummaryService summaryService;
     private final com.virtualcompanion.runtime.observability.VcMetrics metrics;
@@ -121,6 +124,28 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
     private final JdbcProductQuotaBook productQuotaBook;
     private ModelCostReservationService modelCosts;
     private int costReservationOutputTokens = 8192;
+    /**
+     * DOGFOOD-05 (ADR-0006 §3.4): optional rolling canary window over the
+     * last 20 real provider attempts (null in the no-metrics wiring).
+     */
+    private com.virtualcompanion.runtime.observability.RollingOutcomeWindow canaryOutcomeWindow;
+    /**
+     * DOGFOOD-05 (ADR-0006 §3.4): optional safety-leak disabler invoked when
+     * the FINAL output review returns R4_IMMINENT (null when no durable
+     * rollback service is wired, e.g. no-database tests).
+     */
+    private com.virtualcompanion.runtime.observability.SafetyLeakProviderDisabler
+            safetyLeakDisabler;
+    /**
+     * DOGFOOD-STABILIZATION-03 (audit defect B): sensitive-data gate at the
+     * generation provider's final egress boundary. Defaults to a gate with
+     * UNVERIFIED provider terms (detection on) so no wiring can silently ship
+     * the unprotected default path; the production wiring overrides it with
+     * the configured terms flag.
+     */
+    private com.virtualcompanion.runtime.safety.GenerationEgressSensitiveGate
+            generationEgressGate =
+                    new com.virtualcompanion.runtime.safety.GenerationEgressSensitiveGate(false);
 
     public GenerationWorkItemHandler(
             GenerationStateService stateService,
@@ -136,6 +161,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             ConversationRepository conversationRepository,
             GenerationRepository generationRepository,
             SafetyClassifierPort safetyClassifier,
+            SafetyClassifierPort incrementalSafetyClassifier,
             SafetyEventService safetyEventService,
             ConversationSummaryService summaryService,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
@@ -160,6 +186,8 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         this.conversationRepository = conversationRepository;
         this.generationRepository = generationRepository;
         this.safetyClassifier = safetyClassifier;
+        this.incrementalSafetyClassifier = Objects.requireNonNull(
+                incrementalSafetyClassifier, "incrementalSafetyClassifier must not be null");
         this.safetyEventService = safetyEventService;
         this.summaryService = summaryService;
         this.metrics = metrics;
@@ -182,6 +210,32 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         return this;
     }
 
+    /** DOGFOOD-05: attach the rolling canary window (idempotent builder). */
+    public GenerationWorkItemHandler withCanaryOutcomeWindow(
+            com.virtualcompanion.runtime.observability.RollingOutcomeWindow window) {
+        this.canaryOutcomeWindow = Objects.requireNonNull(window, "window must not be null");
+        return this;
+    }
+
+    /** DOGFOOD-05: attach the safety-leak disabler (idempotent builder). */
+    public GenerationWorkItemHandler withSafetyLeakDisabler(
+            com.virtualcompanion.runtime.observability.SafetyLeakProviderDisabler disabler) {
+        this.safetyLeakDisabler = Objects.requireNonNull(disabler, "disabler must not be null");
+        return this;
+    }
+
+    /**
+     * DOGFOOD-STABILIZATION-03 (audit defect B): attach the generation egress
+     * sensitive-data gate (idempotent builder). The production wiring passes
+     * the configured generation provider terms flag; tests pass an explicit
+     * verified gate to exercise the open path.
+     */
+    public GenerationWorkItemHandler withGenerationEgressSensitiveGate(
+            com.virtualcompanion.runtime.safety.GenerationEgressSensitiveGate gate) {
+        this.generationEgressGate = Objects.requireNonNull(gate, "gate must not be null");
+        return this;
+    }
+
     @Override
     public void handle(WorkItemClaim claim) {
         if (!KIND_GENERATION.equals(claim.kind())) {
@@ -197,6 +251,10 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         // succeeds (an exception anywhere leaves the initial "error").
         long startNanos = System.nanoTime();
         String metricResult = "error";
+        // DOGFOOD-05 (ADR-0006 §3.4): tri-state canary outcome — TRUE/FALSE
+        // only for terminal results of a REAL provider attempt, null for
+        // ZERO_LLM/degrade paths that never entered the rolling window.
+        Boolean canarySuccess = null;
         com.virtualcompanion.modelruntime.routing.RouteDecision outboundDecision = null;
         try {
             // ---- prepare-tx ----
@@ -243,8 +301,12 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 long seq = nextDeltaSeq.getAndIncrement();
                 if (prepared.externalMode()
                         && seq - prepared.firstDeltaSeq() < DELTA_SEQ_BLOCK) {
+                    // DOGFOOD-04 (ADR-0006 §5.1/§5.3): incremental review of
+                    // streamed fragments is ALWAYS the local deterministic
+                    // rules — never the composite — so remote moderation adds
+                    // no per-chunk calls and cannot slow or break the stream.
                     SafetyClassification incremental =
-                            safetyClassifier.classify(SafetyStage.OUTPUT, chunk.text());
+                            incrementalSafetyClassifier.classify(SafetyStage.OUTPUT, chunk.text());
                     if (incremental.allowed()) {
                         deltaBroker.publish(generationId, new LiveDeltaBroker.LiveEvent(
                                 prepared.streamEpoch(), seq, "chat.delta", chunk.text()));
@@ -268,26 +330,26 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                     ? null
                     : TimeUnit.NANOSECONDS.toMillis(
                             Math.max(0L, firstOutputMark - outboundStartNanos));
+            // DOGFOOD-05 (ADR-0006 §3.4): first-token latency sample — at
+            // most once per work item (firstOutputNanos is set via a single
+            // compareAndSet), only for real provider attempts that produced
+            // output. Feeds the vc_generation_first_token P95 (≤60s bar).
+            if (firstOutputLatencyMs != null) {
+                metrics.firstToken(TimeUnit.MILLISECONDS.toNanos(firstOutputLatencyMs));
+            }
             // ROUTE-HARDEN (§12.12): record the outbound result on the
             // attempt's OWN supplier breaker — consecutive failures trip that
             // supplier OPEN and routing skips it (failover at the next turn
             // boundary); a success closes it and re-establishes session
             // stickiness (§12.8). CANCELLED is the user's choice, not supplier
-            // health, and never counts.
-            if (outcome.externalAttemptCreated()) {
-                ProviderAttemptAudit audit = outcome.audits().get(0);
-                if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
-                    circuitBreaker.success(audit.supplierName());
-                    // 会话模型粘滞 (§12.8): remember the deployment that just
-                    // served this conversation so the next turn prefers it.
-                    deploymentAffinity.record(
-                            audit.ownership().conversationId(),
-                            new com.virtualcompanion.modelruntime.registry.ProviderId(
-                                    audit.providerId()));
-                } else if (outcome.terminal() == LiveAttemptTerminal.FAILED
-                        || outcome.terminal() == LiveAttemptTerminal.TIMED_OUT) {
-                    circuitBreaker.failure(audit.supplierName());
-                }
+            // health, and never counts. DOGFOOD-STABILIZATION audit: for a
+            // SUCCEEDED transport the circuit success is recorded only AFTER
+            // the final safety review passes — a blocked output (R4 or any
+            // hard-rule hit) must not first count the supplier as healthy.
+            if (outcome.externalAttemptCreated()
+                    && (outcome.terminal() == LiveAttemptTerminal.FAILED
+                        || outcome.terminal() == LiveAttemptTerminal.TIMED_OUT)) {
+                circuitBreaker.failure(outcome.audits().get(0).supplierName());
             }
             double actualCostUsd = 0d;
             // ---- audit-outcome-tx ----
@@ -301,16 +363,55 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             }
             // ---- guarded finalize / guarded fail ----
             if (outcome.terminal() == LiveAttemptTerminal.SUCCEEDED) {
-                boolean outputBlocked = finalizeExternalSuccess(
+                String blockedRiskCode = finalizeExternalSuccess(
                         executor, claim, ownerUserId, generationId, outcome,
                         pausedDeltas.get(), actualCostUsd);
+                boolean outputBlocked = blockedRiskCode != null;
                 metricResult = outputBlocked ? "blocked_output" : "completed";
+                if (outcome.externalAttemptCreated()) {
+                    ProviderAttemptAudit audit = outcome.audits().get(0);
+                    if (outputBlocked) {
+                        // DOGFOOD-STABILIZATION audit: the final review did
+                        // not pass — the supplier circuit records no success
+                        // and no sticky affinity for this turn; R4 handled
+                        // below additionally disables/locally isolates the
+                        // deployment. (Not a transport failure either: the
+                        // breaker's consecutive-failure count is untouched.)
+                        canarySuccess = false;
+                    } else {
+                        circuitBreaker.success(audit.supplierName());
+                        // 会话模型粘滞 (§12.8): remember the deployment that
+                        // just served this conversation so the next turn
+                        // prefers it.
+                        deploymentAffinity.record(
+                                audit.ownership().conversationId(),
+                                new com.virtualcompanion.modelruntime.registry.ProviderId(
+                                        audit.providerId()));
+                        canarySuccess = true;
+                    }
+                }
+                // DOGFOOD-05 (ADR-0006 §3.4): the operationalized "safety
+                // leak" is a FINAL output review verdict of R4_IMMINENT
+                // (local or remote leg). Durably disable the deployment that
+                // actually served the attempt — AFTER the blocked finalize
+                // committed, so a rollback failure degrades to an alert
+                // instead of rolling back OUTPUT_BLOCKED and requeueing the
+                // item (which would repeat the provider outbound). Recovery
+                // stays a manual Owner decision (ADR §3.4).
+                if (outputBlocked && safetyLeakDisabler != null
+                        && RiskLevel.R4_IMMINENT.code().equals(blockedRiskCode)) {
+                    safetyLeakDisabler.disableDeployment(
+                            outcome.audits().get(0).providerId());
+                }
             } else if (outcome.terminal() == LiveAttemptTerminal.ZERO_LLM_COMPLETED) {
                 finalizeZeroLlmSuccess(executor, claim, ownerUserId, generationId, outcome);
                 metricResult = "completed_zero_llm";
             } else if (prepared.externalMode() && retryableFailure(outcome)) {
                 // V29 RETRY-A: the adapter explicitly classified the failure as
                 // retryable; requeue with bounded backoff or dead-letter.
+                if (outcome.externalAttemptCreated()) {
+                    canarySuccess = false;
+                }
                 executor.asOwner(ownerUserId, () -> releaseProductQuota(outcome.decision()));
                 retrySegment(executor, claim, ownerUserId, generationId);
                 metricResult = "retried";
@@ -326,6 +427,9 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                             "BUDGET_HALT_REACHED",
                             "month-to-date spend reached the configured cap; outbound refused");
                 }
+                if (outcome.externalAttemptCreated()) {
+                    canarySuccess = false;
+                }
                 executor.asOwner(ownerUserId, () -> releaseProductQuota(outcome.decision()));
                 failSegment(executor, claim, ownerUserId, generationId, fault);
                 metricResult = budgetHalted ? "blocked_budget" : "failed";
@@ -335,6 +439,16 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                                 .map(f -> f.getClass().getSimpleName())
                                 .orElse("-"));
             }
+        } catch (com.virtualcompanion.runtime.safety.GenerationEgressBlockedException e) {
+            // DOGFOOD-STABILIZATION-04 (audit defect C): the egress gate
+            // refused the outbound. The prepare transaction above already
+            // rolled back (zero provider HTTP); this dedicated segment marks
+            // the offending persisted rows model-ineligible and terminalizes
+            // the turn in ONE transaction — never the generic per-item fail,
+            // which would leave the rows model_eligible=true and re-poison
+            // every later turn.
+            egressBlockedSegment(executor, claim, ownerUserId, generationId, e);
+            metricResult = "blocked_input";
         } catch (RuntimeException e) {
             if (outboundDecision != null && outboundDecision.quotaReservation() != null) {
                 try {
@@ -356,6 +470,11 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         } finally {
             metrics.generationTerminal(metricResult);
             metrics.generationDuration(startNanos, metricResult);
+            if (canaryOutcomeWindow != null && canarySuccess != null) {
+                // DOGFOOD-05: rolling 20-attempt canary window (real provider
+                // turns only; null keeps ZERO_LLM/degrade paths out).
+                canaryOutcomeWindow.record(canarySuccess);
+            }
             // STREAM-LIVE: the live tail completes once this item is fully
             // processed (durable terminal state committed); the client's next
             // resume attempt then delivers the terminal snapshot.
@@ -404,12 +523,27 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             if (snapshotService != null) {
                 AuthorizationSnapshotProvider.SnapshotIds snapshots =
                         snapshotService.createFor(ownerUserId, generationId);
-                LiveInvocationRequest request = assembler.assembleExternal(
+                var assembled = assembler.assembleExternalInvocation(
                         ownerUserId,
                         generationId,
                         snapshots.requestedId(),
                         snapshots.executionId(),
                         claim.claimFence());
+                LiveInvocationRequest request = assembled.request();
+                // DOGFOOD-STABILIZATION-03 (audit defect B): the sensitive-data
+                // gate at the generation egress boundary — independent of
+                // VC_MODERATION_ENABLED. While the generation provider's terms
+                // are unverified, the actually-outbound MESSAGE_TEXT (current
+                // turn + history that made the payload) must be free of
+                // personal data BEFORE any provider HTTP. DOGFOOD-STABILIZATION
+                // -04 (audit defect C): a hit throws the dedicated exception
+                // carrying the OFFENDING ROW IDS — the prepare transaction
+                // rolls back, execute is never entered (zero generation HTTP),
+                // and the catch below marks exactly those rows
+                // model-ineligible in the same transaction as a clear
+                // terminal state, so the next clean turn is not poisoned and
+                // a later terms flip can never re-release them.
+                generationEgressGate.review(request, assembled.messageTextMessageIds());
                 PreparedInvocation prepared = invoker.prepare(request);
                 reservedDecision[0] = prepared.decision();
                 persistRouteDecision(ownerUserId, generationId, prepared);
@@ -652,13 +786,14 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
      * minimal safety-event row (plus one INCREMENTAL row when any fragment
      * was paused mid-stream) — no assistant message, no candidate, no memory
      * extraction; the work item still completes (the provider attempt itself
-     * succeeded and is audited).
+     * succeeded and is audited).</p>
      *
-     * @return {@code true} when the final review blocked the output (the
-     *         caller counts the item as {@code blocked_output} instead of
-     *         {@code completed}).
+     * @return the blocked final-review risk-level code (catalog code such as
+     *         {@code R4_IMMINENT}; {@code null} when the output was allowed)
+     *         — the caller counts the item as {@code blocked_output} and, on
+     *         R4, triggers the DOGFOOD-05 safety-leak provider disable.
      */
-    private boolean finalizeExternalSuccess(
+    private String finalizeExternalSuccess(
             WorkItemWorker.OwnerExecutor executor,
             WorkItemClaim claim,
             long ownerUserId,
@@ -674,7 +809,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         String attemptId = audit.providerAttemptId();
 
         SafetyClassification finalReview =
-                safetyClassifier.classify(SafetyStage.OUTPUT, content);
+                safetyClassifier.classify(ownerUserId, SafetyStage.OUTPUT, content);
         if (!finalReview.allowed()) {
             // S0-07: a composite classifier can block without any hard-rule
             // hit (provider-flagged escalation or fail-closed UNAVAILABLE).
@@ -713,7 +848,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
             });
             log.warn("generation {} OUTPUT_BLOCKED by final review for owner {} (rule={}, pausedDeltas={})",
                     generationId, ownerUserId, ruleId, pausedDeltas);
-            return true;
+            return finalReview.riskLevel().code();
         }
 
         executor.asOwner(ownerUserId, () -> {
@@ -765,7 +900,7 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
         });
         log.info("generation {} completed via external provider for owner {} (candidate in={} out={})",
                 generationId, ownerUserId, inputTokens, outputTokens);
-        return false;
+        return null;
     }
 
     /**
@@ -802,9 +937,63 @@ public class GenerationWorkItemHandler implements WorkItemHandler {
                 generationId, ownerUserId, outcome.response().length());
     }
 
-    /** Guarded fail tx: claim guard + FAILED_FINAL + per-item fail (atomic). */
-    private void failSegment(
+    /**
+     * DOGFOOD-STABILIZATION-04 (audit defect C): the egress gate's rejection
+     * segment — ONE fresh owner transaction that (a) re-asserts the live
+     * claim, (b) marks the offending persisted rows model-ineligible (V112,
+     * by id — they may belong to older turns), (c) terminalizes the turn with
+     * a clear state (INPUT_REVIEW → INPUT_BLOCKED on the catalog edge; a
+     * retry already committed to IN_PROGRESS falls to FAILED_FINAL), and
+     * (d) completes the work item. Swallows the gate exception: the item is
+     * DONE once adjudicated, so the worker must not requeue or dead-letter
+     * it (a retry would loop on the same poisoned history). Exception text
+     * carries category names only.
+     */
+    private void egressBlockedSegment(
             WorkItemWorker.OwnerExecutor executor,
+            WorkItemClaim claim,
+            long ownerUserId,
+            long generationId,
+            com.virtualcompanion.runtime.safety.GenerationEgressBlockedException blocked) {
+        executor.asOwner(ownerUserId, () -> {
+            finalizeService.assertActiveClaim(
+                    ownerUserId, claim.id(), claim.claimToken(), claim.claimFence());
+            finalizeService.markMessagesModelIneligible(ownerUserId, blocked.messageIds());
+            String status = generationRepository
+                    .find(ownerUserId, generationId)
+                    .map(com.virtualcompanion.platform.persistence.GenerationRecord::status)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "generation " + generationId + " vanished before egress block"));
+            if ("CREATED".equals(status)) {
+                stateService.promote(ownerUserId, generationId, GenerationStateService.INPUT_REVIEW);
+                finalizeService.terminalizeAsInputBlocked(
+                        ownerUserId, generationId, "EGRESS_SENSITIVE_DATA");
+            } else {
+                // IN_PROGRESS (retry committed it before the gate ran): the
+                // INPUT_BLOCKED edge is unreachable, terminalize FAILED_FINAL
+                // with the fixed fault code instead.
+                finalizeService.terminalizeAsFailed(
+                        ownerUserId, generationId, "egress-sensitive-data");
+            }
+            metrics.safetyEvent(
+                    SafetyEventService.STAGE_INPUT, RiskLevel.R2_ELEVATED.code());
+            safetyEventService.record(
+                    ownerUserId, generationId, SafetyEventService.STAGE_INPUT,
+                    RiskLevel.R2_ELEVATED.code(), "EGRESS_SENSITIVE_DATA");
+            int rows = finalizeService.completeWorkItem(
+                    claim.id(), claim.claimToken(), claim.claimFence());
+            if (rows != 1) {
+                throw new IllegalStateException(
+                        "per-item complete inside the egress block returned rows=" + rows);
+            }
+        });
+        log.warn("generation {} INPUT_BLOCKED by the generation egress gate for owner {} "
+                        + "(categories={}, offendingRows={})",
+                generationId, ownerUserId, blocked.categories(), blocked.messageIds().size());
+    }
+
+    /** Guarded fail tx: claim guard + FAILED_FINAL + per-item fail (atomic). */
+    private void failSegment(            WorkItemWorker.OwnerExecutor executor,
             WorkItemClaim claim,
             long ownerUserId,
             long generationId,

@@ -22,7 +22,7 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
 - Catalog、OpenAPI、关键技术契约和确定性生成物；
 - Java 25 + Spring Boot 4.1 的 14 模块 Maven reactor，包含 Safety、Conversation、Model Runtime、
   Persistence 以及 Fake、Failure、OpenAI Chat Completions、Anthropic Messages adapters；
-- PostgreSQL 18 + pgvector 的 V1-V105 迁移和完整 SQL/RLS/并发测试入口；
+- PostgreSQL 18 + pgvector 的 V1-V111 迁移和完整 SQL/RLS/并发测试入口；
 - S0-27 部署数据库隔离：独立 `vc_migrator` 与无 DDL/BYPASSRLS 的
   `vc_runtime_login` composite 最小角色，分离 Secret、production startup 权限实检；
 - 自托管 Auth 的 login、refresh rotation、logout、admin account provisioning、cookie/CSRF、输入边界、
@@ -694,13 +694,21 @@ Windows + WSL2 Docker 的本机辅助入口位于 `scripts/dev/*.ps1`。这些�
 - 当前待办：[`TODO.md`](TODO.md)；候选增强路线图：
   [`docs/planning/2026-08-22-product-enhancement-roadmap.md`](docs/planning/2026-08-22-product-enhancement-roadmap.md)
   （使用前必须与当前代码对账，不代表已授权或真实完成状态）
+- 当前 Owner-only 本地 7 天 dogfood 的唯一决策边界：
+  [`ADR-0006`](docs/decisions/0006-owner-only-local-dogfood-boundary.md)；执行状态只在 `TODO.md`
+  跟踪，不把 dogfood 结果当作 D0 或真实用户 Beta 放行。
 
 ## 安全与发布状态
 
-当前只允许本地开发和 CI 使用合成数据。普通 profile 的 Auth 与 live provider 均默认关闭；production profile
+默认只允许本地开发和 CI 使用合成数据。普通 profile 的 Auth 与 live provider 均默认关闭；production profile
 要求 Auth 和 datasource 两个开关显式为 `true`：缺少任一配置或显式 `false` 都会启动失败（fail-closed，
 由配置代码自身强制），但这不代表生产就绪。系统未开放注册、未启用真实支付、未授权保存真实用户数据。
 generation/realtime/memory 纵切已接通，但仅限本地开发与 CI 合成数据，不面向真实用户。
+
+**Owner-only dogfood 例外（ADR-0006）**：Owner 可在本机单账号、单实例、仓库外私有配置和受控
+设备上执行 7 天自测，并在数据门禁内调用指定真实 generation provider。该例外尚未表示功能已经启用，
+也不改变公开注册、真实用户 Beta、真实支付、远端部署和生产发布仍关闭的状态；provider credential、
+原始对话、账号标识与套餐数值不得进入仓库。
 
 **H5/API 同源（S0-06 / ADR-0005）**：Technical Alpha/受控 Beta 只支持 Caddy（或 Vite `/api` 代理）把
 H5 与 `/api/*` 挂在同一 host-origin。Origin 白名单为精确 `http(s)` origin，Compose 注入

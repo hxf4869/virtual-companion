@@ -1,9 +1,10 @@
 <!-- ACCT-PAGE: account identity, logout, and self-service deletion.
 Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
 <template>
-  <view class="account-page">
+  <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
+  <view class="account-page" role="main">
     <view class="bar">
-      <text class="title">账号与注销</text>
+      <text class="title" role="heading" aria-level="1">账号与注销</text>
       <button data-testid="nav-index" class="nav-index" aria-label="返回边界台" @click="goTo('/pages/index/index')">
         返回边界台
       </button>
@@ -135,8 +136,17 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
             注销后：业务数据（聊天、记忆、提醒、同意记录、导出）将立即删除；
             合规审计日志无法立即清除，将按既定保留期留存；注销后无法恢复登录。
           </text>
+          <input
+            v-model="deletePassword"
+            data-testid="delete-account-password"
+            class="account-input"
+            type="password"
+            autocomplete="current-password"
+            placeholder="当前密码（注销前需重新输入）"
+            aria-label="注销确认当前密码"
+          />
           <view class="actions">
-            <button data-testid="delete-account-cancel" class="nav-index" :disabled="busy" @click="deleteOpen = false">
+            <button data-testid="delete-account-cancel" class="nav-index" :disabled="busy" @click="closeDelete">
               取消
             </button>
             <button
@@ -176,6 +186,9 @@ export default {
     const auth = useAuthStore();
     const deleteOpen = ref(false);
     const deleteError = ref("");
+    // ADR-0006 §7.7 (DOGFOOD-08): the destructive deletion requires the
+    // freshly re-entered CURRENT password; the server verifies it fail-closed.
+    const deletePassword = ref("");
     const busy = ref(false);
     const surveyMsg = ref("");
     const sessions = ref<AuthSession[]>([]);
@@ -293,18 +306,32 @@ export default {
       }
     }
 
+    function closeDelete(): void {
+      deleteOpen.value = false;
+      deleteError.value = "";
+      deletePassword.value = "";
+    }
+
     async function onConfirmDelete(): Promise<void> {
       if (busy.value) return;
+      // Empty re-entry never leaves the page: no request, keep the form.
+      if (!deletePassword.value) {
+        deleteError.value = "请输入当前密码以确认注销。";
+        return;
+      }
       busy.value = true;
       deleteError.value = "";
       try {
-        const ok = await deleteAccount(transport);
+        const ok = await deleteAccount(transport, deletePassword.value);
         if (!ok) {
-          deleteError.value = "注销请求未获确认，请重试。";
+          // Wrong password (or server refusal): keep the form + input so the
+          // caller can retry; the session stays alive.
+          deleteError.value = "当前密码不正确，注销未执行。";
           return;
         }
         auth.clear();
         deleteOpen.value = false;
+        deletePassword.value = "";
         goTo("/pages/login/login");
       } catch {
         deleteError.value = "注销失败，请重试。";
@@ -332,6 +359,7 @@ export default {
       auth,
       deleteOpen,
       deleteError,
+      deletePassword,
       busy,
       surveyMsg,
       sessions,
@@ -348,6 +376,7 @@ export default {
       onSurvey,
       onLogout,
       onConfirmDelete,
+      closeDelete,
       goTo,
     };
   },

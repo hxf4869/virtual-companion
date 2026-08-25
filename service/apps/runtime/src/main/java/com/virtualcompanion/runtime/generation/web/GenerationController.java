@@ -225,7 +225,7 @@ public class GenerationController {
             return false;
         }
         SafetyClassification classification =
-                safetyClassifier.classify(SafetyStage.INPUT, content);
+                safetyClassifier.classify(ownerUserId, SafetyStage.INPUT, content);
         if (classification.allowed()) {
             return false;
         }

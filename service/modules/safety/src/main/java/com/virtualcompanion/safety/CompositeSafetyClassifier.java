@@ -10,6 +10,14 @@ import java.util.Objects;
  * first; an optional provider classifier may only raise risk. Timeouts,
  * missing schema, low confidence and conflicts block. Real moderation is
  * wired by the runtime and stays default-off.
+ *
+ * <p>Hard rules first is enforced structurally (DOGFOOD-04 audit): a local
+ * result that is not fully clean (ALLOW, no hard-rule hits, R0) is terminal
+ * and the provider leg is never consulted — zero remote calls for blocked
+ * or locally-flagged input. Only clean input reaches the remote classifier,
+ * and the remote leg is expected to be owner-gated by the runtime wiring;
+ * without an owner context it fails closed exactly like a transport
+ * failure.</p>
  */
 public final class CompositeSafetyClassifier implements SafetyClassifierPort {
 
@@ -28,17 +36,47 @@ public final class CompositeSafetyClassifier implements SafetyClassifierPort {
 
     @Override
     public SafetyClassification classify(SafetyStage stage, String text) {
+        return classify(0L, stage, text);
+    }
+
+    @Override
+    public SafetyClassification classify(long ownerUserId, SafetyStage stage, String text) {
         SafetyClassification hard = hardRules.classify(stage, text);
         if (provider == null) {
             return hard;
         }
+        if (!isClean(hard)) {
+            // Hard rules are terminal: the remote classifier can never
+            // lower the risk, so consulting it would only leak locally
+            // flagged text over the wire.
+            return hard;
+        }
+        if (ownerUserId <= 0) {
+            // Clean input still refuses the remote leg without an owner
+            // context (the runtime gate is owner-bound by design); the
+            // owner-less entry keeps the same fail-closed outcome as a
+            // transport failure.
+            return merge(hard, unavailable());
+        }
         SafetyClassification extra;
         try {
-            extra = provider.classify(stage, text);
+            extra = provider.classify(ownerUserId, stage, text);
         } catch (RuntimeException ignored) {
             extra = unavailable();
         }
         return merge(hard, extra);
+    }
+
+    /**
+     * Only a fully clean local result may leave the host: ALLOW verdict, no
+     * hard-rule hits and risk level R0. Locally flagged distress/crisis or
+     * any hard-rule hit stays local (ADR-0006 §4.3/§5.4). Public so runtime
+     * egress gates reuse the exact same cleanliness predicate.
+     */
+    public static boolean isClean(SafetyClassification classification) {
+        return classification.verdict() == SafetyVerdict.ALLOW
+                && classification.hardRuleViolations().isEmpty()
+                && classification.riskLevel() == RiskLevel.R0_NORMAL;
     }
 
     /**

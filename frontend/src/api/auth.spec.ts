@@ -191,17 +191,21 @@ describe("auth api client", () => {
     }), "7", "TempPassword1!")).resolves.toBe(true);
   });
 
-  it("deleteAccount sends a DELETE to the account path and is true on OK", async () => {
+  it("deleteAccount sends a DELETE with the current password body and is true on OK", async () => {
     const t = transportFor({ ok: true, status: 200, json: { ok: true } });
 
-    expect(await deleteAccount(t)).toBe(true);
-    expect(t.request).toHaveBeenCalledWith("DELETE", "/api/v1/auth/account");
+    expect(await deleteAccount(t, "Current-Pass-1!")).toBe(true);
+    expect(t.request).toHaveBeenCalledWith(
+      "DELETE",
+      "/api/v1/auth/account",
+      { currentPassword: "Current-Pass-1!" },
+    );
   });
 
-  it("deleteAccount maps a 404 (absent/already deleted) to true so the client still logs out", async () => {
+  it("deleteAccount maps a wrong-password 404 to false so the caller keeps the session", async () => {
     const t = transportFor({ ok: false, status: 404, json: null });
 
-    expect(await deleteAccount(t)).toBe(true);
+    expect(await deleteAccount(t, "wrong")).toBe(false);
   });
 
   it("rejects a malformed token payload without crashing", async () => {

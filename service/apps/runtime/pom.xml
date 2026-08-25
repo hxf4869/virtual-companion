@@ -117,6 +117,19 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- DOGFOOD-02 (ADR-0006 §7.3): MinIO Java SDK for the local
+             object-storage consumer of data exports. Used only behind the
+             ExportObjectStorage port/adapter (MinioExportObjectStorage);
+             credentials come from deployment env, never from the repo.
+             8.5.17 is the last 8.x stable line: the 9.0.x line depends on
+             okhttp 5.x, whose Maven artifact is an empty KMP shell (JVM
+             classes live in okhttp-jvm), which breaks plain Maven builds. -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.17</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

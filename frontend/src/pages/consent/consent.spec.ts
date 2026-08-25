@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ConsentPage from "./consent.vue";
+import { ConsentHttpError } from "@/api/consent";
 import { useConsentStore } from "@/stores/consent";
 
 const EFFECTIVE = [
@@ -86,7 +87,7 @@ describe("consent page (FR-AUTH-003)", () => {
     wrapper.unmount();
   });
 
-  it("routes a grant through the store with the pinned version", async () => {
+  it("routes a grant through the store with the pinned version (no password gate)", async () => {
     const wrapper = mount(ConsentPage, { attachTo: document.body });
     await flushPromises();
 
@@ -94,6 +95,8 @@ describe("consent page (FR-AUTH-003)", () => {
     const setSpy = vi.spyOn(store, "setConsent").mockResolvedValue(true);
 
     const training = rowByLabel(wrapper, "模型训练/产品改进");
+    // ADR-0006 §7.7: the grant direction never shows a password panel.
+    expect(training.find('[data-testid="consent-revoke-panel"]').exists()).toBe(false);
     await training.find('[data-testid="consent-grant"]').trigger("click");
     await flushPromises();
 
@@ -103,7 +106,34 @@ describe("consent page (FR-AUTH-003)", () => {
     wrapper.unmount();
   });
 
-  it("routes a revoke through the store for an already granted type", async () => {
+  it("routes a revoke through the store with the re-entered password", async () => {
+    const wrapper = mount(ConsentPage, { attachTo: document.body });
+    await flushPromises();
+
+    const store = useConsentStore();
+    const setSpy = vi.spyOn(store, "setConsent").mockResolvedValue(true);
+
+    const terms = rowByLabel(wrapper, "用户服务协议");
+    // Step 1: the revoke click opens the inline password panel (no request yet).
+    await terms.find('[data-testid="consent-revoke"]').trigger("click");
+    await flushPromises();
+    const panel = terms.find('[data-testid="consent-revoke-panel"]');
+    expect(panel.exists()).toBe(true);
+    expect(setSpy).not.toHaveBeenCalled();
+
+    // Step 2: confirm with the current password.
+    await panel.find('[data-testid="consent-revoke-password"]').setValue("Current-Pass-1!");
+    await panel.find('[data-testid="consent-revoke-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(setSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy.mock.calls[0].slice(1))
+      .toEqual(["SERVICE_TERMS", "2026-08", false, "Current-Pass-1!"]);
+
+    wrapper.unmount();
+  });
+
+  it("never sends a revoke without the password re-entry", async () => {
     const wrapper = mount(ConsentPage, { attachTo: document.body });
     await flushPromises();
 
@@ -112,10 +142,35 @@ describe("consent page (FR-AUTH-003)", () => {
 
     const terms = rowByLabel(wrapper, "用户服务协议");
     await terms.find('[data-testid="consent-revoke"]').trigger("click");
+    const panel = terms.find('[data-testid="consent-revoke-panel"]');
+    await panel.find('[data-testid="consent-revoke-confirm"]').trigger("click");
     await flushPromises();
 
-    expect(setSpy).toHaveBeenCalledTimes(1);
-    expect(setSpy.mock.calls[0].slice(1)).toEqual(["SERVICE_TERMS", "2026-08", false]);
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="consent-action-failed"]').text()).toContain("当前密码");
+    // The panel stays open for a retry.
+    expect(terms.find('[data-testid="consent-revoke-panel"]').exists()).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it("keeps the revoke panel open when the server rejects the password (404)", async () => {
+    const wrapper = mount(ConsentPage, { attachTo: document.body });
+    await flushPromises();
+
+    const store = useConsentStore();
+    vi.spyOn(store, "setConsent").mockRejectedValue(new ConsentHttpError(404));
+
+    const terms = rowByLabel(wrapper, "用户服务协议");
+    await terms.find('[data-testid="consent-revoke"]').trigger("click");
+    const panel = terms.find('[data-testid="consent-revoke-panel"]');
+    await panel.find('[data-testid="consent-revoke-password"]').setValue("wrong");
+    await panel.find('[data-testid="consent-revoke-confirm"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="consent-action-failed"]').text())
+      .toContain("当前密码不正确");
+    expect(terms.find('[data-testid="consent-revoke-panel"]').exists()).toBe(true);
 
     wrapper.unmount();
   });

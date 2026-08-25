@@ -21,6 +21,51 @@ services:
       timeout: 3s
       retries: 30
 
+  # DOGFOOD-02 (ADR-0006 §7.3): local MinIO object storage for data exports.
+  # Private bucket only — no cloud object storage, no anonymous access. The
+  # bucket itself is created once by minio-init; the runtime refuses to start
+  # in object mode unless the bucket already exists (no auto-creation).
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    environment:
+      MINIO_ROOT_USER: ${VC_EXPORT_S3_ACCESS_KEY:?set in .env}
+      MINIO_ROOT_PASSWORD: ${VC_EXPORT_S3_SECRET_KEY:?set in .env}
+    command: server /data --console-address ":9001"
+    # No host port: MinIO is reachable only inside the compose network; the
+    # runtime serves export downloads server-side, so clients never talk to
+    # MinIO directly.
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  # One-shot bucket provisioning: create the export bucket if missing and
+  # verify it is NOT anonymously readable (private by default).
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      VC_EXPORT_S3_ACCESS_KEY: ${VC_EXPORT_S3_ACCESS_KEY:?set in .env}
+      VC_EXPORT_S3_SECRET_KEY: ${VC_EXPORT_S3_SECRET_KEY:?set in .env}
+      VC_EXPORT_S3_BUCKET: ${VC_EXPORT_S3_BUCKET:-vc-exports}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mc alias set local http://minio:9000 "$$VC_EXPORT_S3_ACCESS_KEY" "$$VC_EXPORT_S3_SECRET_KEY"
+        mc mb --ignore-existing local/"$$VC_EXPORT_S3_BUCKET"
+        perm=$$(mc anonymous get local/"$$VC_EXPORT_S3_BUCKET")
+        echo "$$perm" | grep -Eq "none|private" \
+          || { echo 'export bucket must not allow anonymous access'; exit 1; }
+    restart: "no"
+
   runtime:
     build:
       context: ../..
@@ -28,6 +73,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     environment:
       # Production profile is fail-closed: every switch below must be true and
       # every secret injected, or startup refuses (see
@@ -61,15 +108,33 @@ services:
       VC_ALERT_FALLBACK_WEBHOOK_SECRET: ${VC_ALERT_FALLBACK_WEBHOOK_SECRET:-}
       VC_ALERT_FALLBACK_WEBHOOK_ALLOWED_HOSTS: ${VC_ALERT_FALLBACK_WEBHOOK_ALLOWED_HOSTS:-}
       VC_MODEL_PROVIDERS_ENABLED: ${VC_MODEL_PROVIDERS_ENABLED:-false}
+      # DOGFOOD-STABILIZATION-03: while the GENERATION provider's terms are
+      # unverified (default false) every outbound MESSAGE_TEXT — current turn
+      # and history — must pass the local sensitive-data detector before any
+      # provider HTTP (independent of VC_MODERATION_ENABLED; fail closed).
+      VC_GENERATION_PROVIDER_TERMS_VERIFIED: ${VC_GENERATION_PROVIDER_TERMS_VERIFIED:-false}
       VC_MODEL_BUDGET_MONTHLY_USD: ${VC_MODEL_BUDGET_MONTHLY_USD:-0}
       VC_MODEL_BUDGET_RESERVATION_OUTPUT_TOKENS: ${VC_MODEL_BUDGET_RESERVATION_OUTPUT_TOKENS:-8192}
       VC_MODERATION_ENABLED: ${VC_MODERATION_ENABLED:-false}
+      # DOGFOOD-STABILIZATION-02: dogfood uses chat-completions;
+      # openai-moderations is refused at wiring this round (its client lacks
+      # the egress/DNS/response-size protections chat-completions enforces).
+      VC_MODERATION_MODE: ${VC_MODERATION_MODE:-chat-completions}
       VC_MODERATION_PROVIDER_REF: ${VC_MODERATION_PROVIDER_REF:-}
       VC_MODERATION_BASE_URL: ${VC_MODERATION_BASE_URL:-}
       VC_MODERATION_MODEL: ${VC_MODERATION_MODEL:-}
       VC_MODERATION_MODEL_VERSION: ${VC_MODERATION_MODEL_VERSION:-}
-      VC_MODERATION_MIN_CLEAN_CONFIDENCE: ${VC_MODERATION_MIN_CLEAN_CONFIDENCE:-0.8}
       VC_MODERATION_API_KEY: ${VC_MODERATION_API_KEY:-}
+      VC_MODERATION_PROVIDER_TERMS_VERIFIED: ${VC_MODERATION_PROVIDER_TERMS_VERIFIED:-false}
+      VC_MODERATION_ALLOWED_HOSTS: ${VC_MODERATION_ALLOWED_HOSTS:-}
+      # DOGFOOD-05 (ADR-0006 §3.3): provider plan quota facts (missing/expired
+      # shows UNKNOWN on the admin page with a daily P2; never a zero cost).
+      VC_PROVIDER_PLAN_ENABLED: ${VC_PROVIDER_PLAN_ENABLED:-false}
+      VC_PROVIDER_PLAN_NAME: ${VC_PROVIDER_PLAN_NAME:-}
+      VC_PROVIDER_PLAN_VALID_FROM: ${VC_PROVIDER_PLAN_VALID_FROM:-}
+      VC_PROVIDER_PLAN_VALID_UNTIL: ${VC_PROVIDER_PLAN_VALID_UNTIL:-}
+      VC_PROVIDER_PLAN_TOKEN_CAP: ${VC_PROVIDER_PLAN_TOKEN_CAP:-}
+      VC_PROVIDER_PLAN_REQUEST_CAP: ${VC_PROVIDER_PLAN_REQUEST_CAP:-}
       VC_EMBEDDING_ENABLED: ${VC_EMBEDDING_ENABLED:-false}
       VC_EMBEDDING_BASE_URL: ${VC_EMBEDDING_BASE_URL:-}
       VC_EMBEDDING_MODEL: ${VC_EMBEDDING_MODEL:-}
@@ -89,10 +154,26 @@ services:
       VC_AGE_PROVIDER_ALLOWED_HOSTS: ${VC_AGE_PROVIDER_ALLOWED_HOSTS:-}
       VC_RETENTION_PURGE_ENABLED: ${VC_RETENTION_PURGE_ENABLED:-false}
       VC_RETENTION_DRY_RUN: ${VC_RETENTION_DRY_RUN:-true}
+      # DOGFOOD-02 (ADR-0006 §7.3): local MinIO object storage for exports.
+      # Default off (inline payload column); the dogfood .env flips it on.
+      # When on, the runtime fail-closes unless the bucket exists (created
+      # by minio-init). Endpoint is compose-internal; clients never reach
+      # MinIO directly — downloads are served by the runtime.
+      VC_EXPORT_S3_ENABLED: ${VC_EXPORT_S3_ENABLED:-false}
+      VC_EXPORT_S3_ENDPOINT: http://minio:9000
+      VC_EXPORT_S3_ACCESS_KEY: ${VC_EXPORT_S3_ACCESS_KEY}
+      VC_EXPORT_S3_SECRET_KEY: ${VC_EXPORT_S3_SECRET_KEY}
+      VC_EXPORT_S3_BUCKET: ${VC_EXPORT_S3_BUCKET:-vc-exports}
       VC_JOB_DAU_STALE_SECONDS: ${VC_JOB_DAU_STALE_SECONDS:-300}
       VC_JOB_EXPORT_STALE_SECONDS: ${VC_JOB_EXPORT_STALE_SECONDS:-300}
       VC_JOB_AUTH_PURGE_STALE_SECONDS: ${VC_JOB_AUTH_PURGE_STALE_SECONDS:-93600}
       VC_JOB_RETENTION_STALE_SECONDS: ${VC_JOB_RETENTION_STALE_SECONDS:-93600}
+      # S0-24 generation admission switch (application.yaml
+      # virtual-companion.beta.generation-enabled). Default stays false; the
+      # Owner-only dogfood overrides it in the private .env (see DOGFOOD.md).
+      # Even when true, the durable release gate (vc.release_gate_snapshot,
+      # CANARY stage) still restricts generation to the single bound owner.
+      VC_BETA_GENERATION_ENABLED: ${VC_BETA_GENERATION_ENABLED:-false}
       VC_COMMIT: ${VC_COMMIT:-}
       # S0-06: H5 and API are same-origin behind Caddy. The Origin allow-list
       # is the public https origin of VC_DOMAIN so browser POSTs/PUTs are not
@@ -134,5 +215,6 @@ services:
 
 volumes:
   db-data:
+  minio-data:
   caddy-data:
   caddy-config:

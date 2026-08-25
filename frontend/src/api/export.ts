@@ -2,9 +2,11 @@
 // transport is injected so stores and specs can mock request() exactly like
 // the other api clients. POST enqueues the export and issues the one-time
 // downloadToken/downloadUrl EXACTLY ONCE (V76: only a sha256 digest is
-// stored server-side); the status GET never repeats them; the download GET
-// consumes the token exactly once and returns the document. Non-OK statuses
-// throw a typed error so the store never fakes a request or a download.
+// stored server-side); ADR-0006 §7.7: the POST body carries the caller's
+// re-entered current password (server-side fail-closed verification). The
+// status GET never repeats them; the download GET consumes the token exactly
+// once and returns the document. Non-OK statuses throw a typed error so the
+// store never fakes a request or a download.
 
 export interface ExportApiResponse {
   ok: boolean;
@@ -126,9 +128,18 @@ function assertExportDownloadPath(path: string): void {
   }
 }
 
-/** Enqueue an asynchronous export for the caller. */
-export async function createExport(t: ExportTransport): Promise<ExportRequest | null> {
-  const r = await t.request("POST", EXPORTS_BASE);
+/**
+ * Enqueue an asynchronous export for the caller. ADR-0006 §7.7 (DOGFOOD-08):
+ * the body carries the caller's freshly re-entered CURRENT password; the
+ * server verifies it fail-closed before enqueuing anything.
+ */
+export async function createExport(
+  t: ExportTransport,
+  currentPassword?: string,
+): Promise<ExportRequest | null> {
+  const r = await t.request("POST", EXPORTS_BASE, {
+    currentPassword: currentPassword ?? "",
+  });
   if (!r.ok) {
     throw new ExportHttpError(r.status);
   }

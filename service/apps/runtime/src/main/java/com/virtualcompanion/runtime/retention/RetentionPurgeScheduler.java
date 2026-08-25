@@ -75,6 +75,13 @@ public class RetentionPurgeScheduler {
      * Fire once a day in the small hours (off-peak, after the audit purge).
      * The cron is configurable so an operator can tune cadence without a code
      * change; periods come exclusively from the policy table.
+     *
+     * <p>DOGFOOD-STABILIZATION audit: a category with no ACTIVE policy row
+     * (DRAFT) records {@code SKIP} — no alert, and the run does not become
+     * FAILED merely because inactive categories exist. An ACTIVATED category
+     * whose probe/policy read or purge SQL fails still fails closed: one P1
+     * {@code RETENTION_PURGE_FAILED} per failing category and a FAILED run
+     * overall.</p>
      */
     @Scheduled(cron = "${virtual-companion.retention.purge-cron:0 47 3 * * *}")
     public void purgeExpiredData() {
@@ -85,10 +92,20 @@ public class RetentionPurgeScheduler {
             return;
         }
         boolean effectiveDryRun = dryRun || run.map(JobLease.Run::dryRun).orElse(false);
-        Map<String, Integer> counts = new LinkedHashMap<>();
+        Map<String, String> counts = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : PURGE_FUNCTIONS.entrySet()) {
             String category = entry.getKey();
             try {
+                // Activation probe first: DRAFT categories skip silently, a
+                // failing probe (activated or not) stays fail-closed.
+                Boolean activated = authJdbcTemplate.queryForObject(
+                        "SELECT vc.retention_category_active(?)", Boolean.class, category);
+                if (!Boolean.TRUE.equals(activated)) {
+                    counts.put(category, "SKIP");
+                    log.info("retention category {} has no ACTIVE policy (DRAFT); skipped",
+                            category);
+                    continue;
+                }
                 Integer days = authJdbcTemplate.queryForObject(
                         "SELECT vc.active_retention_days(?)", Integer.class, category);
                 if (days == null || days <= 0) {
@@ -98,19 +115,19 @@ public class RetentionPurgeScheduler {
                         "SELECT vc.run_retention_category(?, ?)",
                         Integer.class, category, effectiveDryRun);
                 int n = removed == null ? 0 : removed;
-                counts.put(category, n);
+                counts.put(category, String.valueOf(n));
                 log.info("retention {} {}: {} rows older than {} days",
                         effectiveDryRun ? "dry-run" : "purge", category, n, days);
             } catch (RuntimeException e) {
                 log.error("retention category {} failed", category, e);
-                counts.put(category, -1);
+                counts.put(category, "FAIL");
                 alertNotifier.alert(AlertSeverity.P1,
                         "RETENTION_PURGE_FAILED",
                         "category=" + category);
             }
         }
         if (run.isPresent()) {
-            boolean failed = counts.values().stream().anyMatch(n -> n < 0);
+            boolean failed = counts.containsValue("FAIL");
             String status = failed ? "FAILED" : effectiveDryRun ? "DRY_RUN" : "SUCCEEDED";
             jobLease.finishRun(
                     run.get().id(),
@@ -120,16 +137,16 @@ public class RetentionPurgeScheduler {
         }
     }
 
-    private static String countsJson(Map<String, Integer> counts) {
+    private static String countsJson(Map<String, String> counts) {
         StringBuilder json = new StringBuilder("{");
         boolean first = true;
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+        for (Map.Entry<String, String> entry : counts.entrySet()) {
             if (!first) {
                 json.append(',');
             }
             first = false;
             json.append('"').append(entry.getKey()).append('"')
-                    .append(':').append(entry.getValue());
+                    .append(':').append('"').append(entry.getValue()).append('"');
         }
         return json.append('}').toString();
     }

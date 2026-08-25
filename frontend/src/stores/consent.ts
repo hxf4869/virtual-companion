@@ -43,18 +43,23 @@ export const useConsentStore = defineStore("h5-consent", () => {
 
   /**
    * Grant or revoke one consent type at the version the user saw. The
-   * confirmed record replaces the effective row for its type.
+   * confirmed record replaces the effective row for its type. ADR-0006 §7.7:
+   * a revocation (granted=false) must pass the caller's re-entered current
+   * password (verified fail-closed server-side); grants stay passwordless.
    */
   async function setConsent(
     transport: ConsentTransport,
     consentType: ConsentType,
     version: string,
     granted: boolean,
+    currentPassword?: string,
   ): Promise<boolean> {
     if (busy.value) return false;
     busy.value = true;
     try {
-      const recorded = await recordConsent(transport, consentType, version, granted);
+      const recorded = await recordConsent(
+        transport, consentType, version, granted, currentPassword,
+      );
       if (!recorded) return false;
       records.value = [
         ...records.value.filter((r) => r.consentType !== consentType),

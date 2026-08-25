@@ -81,13 +81,14 @@ describe("export page (FR-DATA-002)", () => {
     vi.stubGlobal("uni", undefined);
   });
 
-  it("enqueues an export and shows the pending status card", async () => {
+  it("enqueues an export with the password re-entry and shows the pending status card", async () => {
     stubFetch(null);
     const wrapper = mount(ExportPage, { attachTo: document.body });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="export-status-card"]').exists()).toBe(false);
 
+    await wrapper.find('[data-testid="export-password"]').setValue("Current-Pass-1!");
     await wrapper.find('[data-testid="export-create"]').trigger("click");
     await flushPromises();
 
@@ -102,6 +103,7 @@ describe("export page (FR-DATA-002)", () => {
     const wrapper = mount(ExportPage, { attachTo: document.body });
     await flushPromises();
 
+    await wrapper.find('[data-testid="export-password"]').setValue("Current-Pass-1!");
     await wrapper.find('[data-testid="export-create"]').trigger("click");
     await flushPromises();
 
@@ -123,19 +125,43 @@ describe("export page (FR-DATA-002)", () => {
     wrapper.unmount();
   });
 
-  it("shows the action-failed banner when enqueue is rejected", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: false, status: 400, json: async () => null })),
+  it("never sends the create request without a password re-entry", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL) => ({ ok: true, status: 200, json: async () => CREATED_JSON }),
     );
+    vi.stubGlobal("fetch", fetchMock);
     const wrapper = mount(ExportPage, { attachTo: document.body });
     await flushPromises();
 
     await wrapper.find('[data-testid="export-create"]').trigger("click");
     await flushPromises();
 
+    // Only the session refresh may happen on mount — never the export POST.
+    const exportCalls = fetchMock.mock.calls.filter(
+      (call) => String(call[0]).includes("/api/v1/exports"),
+    );
+    expect(exportCalls).toHaveLength(0);
+    expect(wrapper.find('[data-testid="export-password-error"]').text()).toContain("当前密码");
+
+    wrapper.unmount();
+  });
+
+  it("shows the action-failed banner and keeps the input when the password is rejected", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 404, json: async () => null }));
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(ExportPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="export-password"]').setValue("wrong");
+    await wrapper.find('[data-testid="export-create"]').trigger("click");
+    await flushPromises();
+
     expect(wrapper.find('[data-testid="export-action-failed"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="export-action-failed"]').text()).toContain("发起导出失败");
+    // Fail-closed re-entry: the typed password survives for a retry.
+    expect((wrapper.find('[data-testid="export-password"]').element as HTMLInputElement).value)
+      .toBe("wrong");
+    expect(wrapper.find('[data-testid="export-status-card"]').exists()).toBe(false);
 
     wrapper.unmount();
   });
@@ -145,6 +171,7 @@ describe("export page (FR-DATA-002)", () => {
     const wrapper = mount(ExportPage, { attachTo: document.body });
     await flushPromises();
 
+    await wrapper.find('[data-testid="export-password"]').setValue("Current-Pass-1!");
     await wrapper.find('[data-testid="export-create"]').trigger("click");
     await flushPromises();
     await wrapper.find('[data-testid="export-refresh"]').trigger("click");

@@ -92,15 +92,23 @@ function asConsentRecord(json: unknown): ConsentRecord | null {
 
 /**
  * Append a versioned grant/revoke consent record. Non-OK statuses throw a
- * typed error so the store never fakes a grant.
+ * typed error so the store never fakes a grant. ADR-0006 §7.7 (DOGFOOD-08):
+ * a revocation (granted=false) must carry the caller's freshly re-entered
+ * CURRENT password (verified fail-closed server-side); grants stay
+ * passwordless.
  */
 export async function recordConsent(
   t: ConsentTransport,
   consentType: ConsentType,
   version: string,
   granted: boolean,
+  currentPassword?: string,
 ): Promise<ConsentRecord | null> {
-  const r = await t.request("PUT", CONSENTS_BASE, { consentType, version, granted });
+  const body: Record<string, unknown> = { consentType, version, granted };
+  if (granted === false) {
+    body.currentPassword = currentPassword ?? "";
+  }
+  const r = await t.request("PUT", CONSENTS_BASE, body);
   if (!r.ok) {
     throw new ConsentHttpError(r.status);
   }

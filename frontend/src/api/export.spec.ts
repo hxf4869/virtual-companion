@@ -34,11 +34,14 @@ const DOWNLOAD_JSON = {
 
 function recorder(
   response: { ok: boolean; status: number; json: unknown },
-): { transport: ExportTransport; calls: { method: string; path: string }[] } {
-  const calls: { method: string; path: string }[] = [];
+): {
+  transport: ExportTransport;
+  calls: { method: string; path: string; body?: unknown }[];
+} {
+  const calls: { method: string; path: string; body?: unknown }[] = [];
   const transport: ExportTransport = {
-    request: vi.fn(async (method: string, path: string) => {
-      calls.push({ method, path });
+    request: vi.fn(async (method: string, path: string, body?: unknown) => {
+      calls.push({ method, path, body });
       return { ...response };
     }),
   };
@@ -46,12 +49,18 @@ function recorder(
 }
 
 describe("export api client (FR-DATA-002)", () => {
-  it("POSTs the enqueue and parses the request", async () => {
+  it("POSTs the enqueue with the current password (ADR-0006 §7.7) and parses the request", async () => {
     const { transport, calls } = recorder({ ok: true, status: 200, json: REQUEST_JSON });
 
-    const created = await createExport(transport);
+    const created = await createExport(transport, "Current-Pass-1!");
 
-    expect(calls).toEqual([{ method: "POST", path: "/api/v1/exports" }]);
+    expect(calls).toEqual([
+      {
+        method: "POST",
+        path: "/api/v1/exports",
+        body: { currentPassword: "Current-Pass-1!" },
+      },
+    ]);
     expect(created?.exportId).toBe("9");
     expect(created?.status).toBe("READY");
     expect(created?.downloadToken).toBe("secret-tok");

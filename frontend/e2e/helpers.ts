@@ -32,6 +32,9 @@ export const E2E_USER_SUFFIXES = [
   "memory-lifecycle",
   "export-lifecycle",
   "provider-faults",
+  // DOGFOOD-09：可访问性 journey（08）的独立账号，避免与其他 journey 的
+  // 关系/记忆状态互相污染。
+  "accessibility",
 ] as const;
 
 export type E2EUserSuffix = (typeof E2E_USER_SUFFIXES)[number];
@@ -135,9 +138,14 @@ export async function seedE2EUsers(): Promise<void> {
   }
 }
 
-/** Return one account from the pool created by global setup. */
+/**
+ * Return one account from the pool created by global setup.
+ * The request context is unused (pool is pre-seeded); it stays in the
+ * signature for call-site stability and may be omitted — e.g. from
+ * beforeAll, where the test-scoped `request` fixture is unavailable.
+ */
 export async function provisionUser(
-  _request: APIRequestContext,
+  _request: APIRequestContext | undefined,
   suffix: E2EUserSuffix,
 ): Promise<E2EUser> {
   return userFor(suffix);

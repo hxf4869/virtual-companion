@@ -30,6 +30,19 @@ describe("H5 上线加固静态壳（§21.7）", () => {
   it("入口 HTML 不引入任何监控/统计脚本", () => {
     expect(html).not.toMatch(/gtag|analytics|hm\.baidu|sentry/i);
   });
+
+  // DOGFOOD-09（ADR-0006 §1.4）：字体放大是双端验收项，入口壳禁止
+  // 重新引入 user-scalable=no / maximum-scale / minimum-scale。
+  it("viewport 不禁用用户缩放", () => {
+    expect(html).toContain('name="viewport"');
+    expect(html).toContain("width=device-width");
+    expect(html).not.toContain("user-scalable=no");
+    expect(html).not.toMatch(/maximum-scale|minimum-scale/);
+  });
+
+  it("html 根元素声明页面语言 zh-CN", () => {
+    expect(html).toMatch(/<html[^>]*\blang="zh-CN"/);
+  });
 });
 
 describe("S0-18 统一导航守卫入口", () => {

@@ -194,6 +194,81 @@ describe("admin account page (ADMIN-UI)", () => {
     wrapper.unmount();
   });
 
+  // DOGFOOD-05 (ADR-0006 §3.3): the provider plan card must render the three
+  // states; UNKNOWN never shows any quota, allowance or cost figure.
+  function stubPlanFetch(plan: unknown): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === "/api/v1/auth/admin/provider-plan" && (init?.method ?? "GET") === "GET") {
+          return { ok: true, status: 200, json: async () => plan };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
+      }),
+    );
+  }
+
+  it("DOGFOOD-05: a VALID plan renders name, window and stated caps", async () => {
+    stubPlanFetch({
+      status: "VALID",
+      reason: "OK",
+      planName: "dogfood-plan",
+      validFrom: "2026-08-24",
+      validUntil: "2026-08-30",
+      tokenCap: 1000000,
+      requestCap: 200,
+      monthCostUsd: 0.1234,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const row = wrapper.get('[data-testid="provider-plan-row"]');
+    expect(row.text()).toContain("dogfood-plan");
+    expect(row.text()).toContain("2026-08-24");
+    expect(row.text()).toContain("1000000");
+    expect(row.text()).toContain("200");
+    expect(row.text()).toContain("0.1234");
+    expect(wrapper.find('[data-testid="provider-plan-unknown"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("DOGFOOD-05: an UNKNOWN plan shows no zero or fabricated allowance", async () => {
+    stubPlanFetch({
+      status: "UNKNOWN",
+      reason: "EXPIRED",
+      planName: "old-plan",
+      validFrom: "2026-07-01",
+      validUntil: "2026-08-01",
+      tokenCap: 999999,
+      requestCap: 5,
+      monthCostUsd: 0,
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const unknown = wrapper.get('[data-testid="provider-plan-unknown"]');
+    expect(unknown.text()).toContain("UNKNOWN");
+    expect(unknown.text()).toContain("配置缺失或过期");
+    // No quota/allowance/cost figure anywhere: the VALID row never renders.
+    expect(wrapper.find('[data-testid="provider-plan-row"]').exists()).toBe(false);
+    const planText = wrapper.get('[data-testid="provider-plan-unknown"]').text();
+    expect(planText).not.toMatch(/\d/);
+    wrapper.unmount();
+  });
+
+  it("DOGFOOD-05: a DISABLED plan renders the plain off state", async () => {
+    stubPlanFetch({ status: "DISABLED", reason: "PLAN_DISABLED" });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="provider-plan-disabled"]').text())
+      .toContain("套餐监控未启用");
+    expect(wrapper.find('[data-testid="provider-plan-row"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="provider-plan-unknown"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("ENT-SNAP: renders the assignment registry and assigns a class", async () => {
     vi.stubGlobal(
       "fetch",

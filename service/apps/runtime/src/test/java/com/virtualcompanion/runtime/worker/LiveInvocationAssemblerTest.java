@@ -77,7 +77,7 @@ class LiveInvocationAssemblerTest {
                 new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
         when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
                 new ConversationRepository.Conversation(1L, 5L, 9L, null)));
-        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+        when(messageRepository.listModelEligibleByConversation(1L, 5L)).thenReturn(List.of(
                 new MessageRepository.Message(1L, 100L, 5L, "user", "hello"),
                 new MessageRepository.Message(1L, 101L, 5L, "assistant", "hi there")));
         String fenceUuid = "12345678-1234-1234-1234-123456789abc";
@@ -116,7 +116,7 @@ class LiveInvocationAssemblerTest {
                 new GenerationRecord(2L, 20L, 7L, "gen-2", "IN_PROGRESS", "idem-2")));
         when(conversationRepository.find(anyLong(), anyLong())).thenReturn(Optional.of(
                 new ConversationRepository.Conversation(2L, 7L, 11L, null)));
-        when(messageRepository.listByConversation(anyLong(), anyLong())).thenReturn(List.of());
+        when(messageRepository.listModelEligibleByConversation(anyLong(), anyLong())).thenReturn(List.of());
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
                 .thenReturn(null);
@@ -139,7 +139,7 @@ class LiveInvocationAssemblerTest {
                 new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
         when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
                 new ConversationRepository.Conversation(1L, 5L, 9L, null)));
-        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+        when(messageRepository.listModelEligibleByConversation(1L, 5L)).thenReturn(List.of(
                 new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
@@ -175,7 +175,7 @@ class LiveInvocationAssemblerTest {
                 new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
         when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
                 new ConversationRepository.Conversation(1L, 5L, 9L, null)));
-        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+        when(messageRepository.listModelEligibleByConversation(1L, 5L)).thenReturn(List.of(
                 new MessageRepository.Message(1L, 100L, 5L, "user", "hello")));
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
@@ -211,7 +211,7 @@ class LiveInvocationAssemblerTest {
                 new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
         when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
                 new ConversationRepository.Conversation(1L, 5L, 9L, null)));
-        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+        when(messageRepository.listModelEligibleByConversation(1L, 5L)).thenReturn(List.of(
                 new MessageRepository.Message(1L, 100L, 5L, "user", "irrelevant-history")));
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
@@ -252,6 +252,68 @@ class LiveInvocationAssemblerTest {
         org.mockito.Mockito.verify(embeddingPort).embed(1L, plaintext);
     }
 
+    // ---- DOGFOOD-STABILIZATION-03 (audit defect A): model eligibility ----
+
+    @Test
+    void modelIneligibleHistoryNeverReachesTheProviderRequest() {
+        // The model-facing read is the eligibility-filtered one: the blocked
+        // turn's text is still persisted (the unfiltered data-rights read
+        // returns it) but the assembler never asks for — and never carries —
+        // that row.
+        when(generationRepository.find(1L, 10L)).thenReturn(Optional.of(
+                new GenerationRecord(1L, 10L, 5L, "gen-logical", "IN_PROGRESS", "idem-1")));
+        when(conversationRepository.find(1L, 5L)).thenReturn(Optional.of(
+                new ConversationRepository.Conversation(1L, 5L, 9L, null)));
+        when(messageRepository.listByConversation(1L, 5L)).thenReturn(List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user",
+                        "我的手机号是13800138000，记一下", false, false),
+                new MessageRepository.Message(1L, 101L, 5L, "user",
+                        "今天天气不错，我们随便聊聊。", false, true)));
+        when(messageRepository.listModelEligibleByConversation(1L, 5L)).thenReturn(List.of(
+                new MessageRepository.Message(1L, 101L, 5L, "user",
+                        "今天天气不错，我们随便聊聊。", false, true)));
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
+                .thenReturn(null);
+        when(entitlementSnapshotService.mint(org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(10L), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(new com.virtualcompanion.platform.persistence.EntitlementSnapshotService
+                        .MintedEntitlementSnapshot(9001L, "ECONOMY", "ECONOMY", "ECONOMY"));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+        when(relationshipService.get(1L, 9L)).thenReturn(Optional.empty());
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        String payload = request.messages().stream()
+                .map(ProtocolMessage::content)
+                .reduce("", (a, b) -> a + "\n" + b);
+        assertFalse(payload.contains("13800138000"));
+        assertTrue(payload.contains("今天天气不错，我们随便聊聊。"));
+        org.mockito.Mockito.verify(messageRepository, org.mockito.Mockito.never())
+                .listByConversation(1L, 5L);
+    }
+
+    @Test
+    void everyModelEligibleMessageCarriesTheMessageTextCategory() {
+        // The eligibility filter must not corrupt the payload composition:
+        // every surviving history row still declares MESSAGE_TEXT.
+        stubOwnershipAndMessages(1L, 10L, 5L, 9L, List.of(
+                new MessageRepository.Message(1L, 100L, 5L, "user", "hello", false, true),
+                new MessageRepository.Message(1L, 101L, 5L, "assistant", "hi", false, true)));
+        when(memoryService.recall(1L, 9L, 5L, 20)).thenReturn(List.of());
+        when(jdbcTemplate.queryForList(
+                org.mockito.ArgumentMatchers.startsWith("SELECT content FROM vc.message"),
+                eq(String.class), eq(1L), eq(5L)))
+                .thenReturn(List.of());
+
+        LiveInvocationRequest request = assembler("SRC")
+                .assembleExternal(1L, 10L, "snap-10-req", "snap-10-exec");
+
+        assertEquals(List.of(DataCategory.MESSAGE_TEXT, DataCategory.MESSAGE_TEXT),
+                request.payloadComposition().messageCategories());
+    }
+
     // ---- MEM-LOOP recall context ----
 
     private void stubOwnershipAndMessages(long owner, long generationId, long conversationId,
@@ -260,7 +322,7 @@ class LiveInvocationAssemblerTest {
                 new GenerationRecord(owner, generationId, conversationId, "gen", "IN_PROGRESS", "idem")));
         when(conversationRepository.find(owner, conversationId)).thenReturn(Optional.of(
                 new ConversationRepository.Conversation(owner, conversationId, relationshipId, null)));
-        when(messageRepository.listByConversation(owner, conversationId)).thenReturn(messages);
+        when(messageRepository.listModelEligibleByConversation(owner, conversationId)).thenReturn(messages);
         when(jdbcTemplate.queryForObject(
                 eq("SELECT current_setting('vc.job_fence', true)"), eq(String.class)))
                 .thenReturn(null);

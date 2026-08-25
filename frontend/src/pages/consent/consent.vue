@@ -79,13 +79,48 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
           同意
         </button>
         <button
+          v-if="revokeTarget !== option.type"
           data-testid="consent-revoke"
           class="nav-index revoke-btn"
           :disabled="store.busy || store.grantedFor(option.type) !== true"
-          @click="onToggle(option.type, false)"
+          @click="openRevoke(option.type)"
         >
           撤回
         </button>
+
+        <!-- ADR-0006 §7.7 (DOGFOOD-08): a revocation is high-risk — the
+             caller must re-enter the CURRENT password inline (grants never
+             show this panel). -->
+        <view v-else class="revoke-confirm" data-testid="consent-revoke-panel">
+          <text class="consent-note">撤回需重新输入当前密码确认。</text>
+          <input
+            v-model="revokePassword"
+            class="emc-input"
+            data-testid="consent-revoke-password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="当前密码"
+            aria-label="撤回确认当前密码"
+          />
+          <view class="revoke-actions">
+            <button
+              data-testid="consent-revoke-cancel"
+              class="nav-index"
+              :disabled="store.busy"
+              @click="closeRevoke"
+            >
+              取消
+            </button>
+            <button
+              data-testid="consent-revoke-confirm"
+              class="nav-index revoke-btn"
+              :disabled="store.busy"
+              @click="onToggle(option.type, false)"
+            >
+              确认撤回
+            </button>
+          </view>
+        </view>
       </view>
     </template>
 
@@ -208,6 +243,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
 import { onMounted, ref } from "vue";
 
 import type { ConsentType } from "@/api/consent";
+import { ConsentHttpError } from "@/api/consent";
 import {
   confirmEmergencyContactVerification,
   EmergencyContactHttpError,
@@ -230,6 +266,11 @@ export default {
     const auth = useAuthStore();
     const store = useConsentStore();
     const actionError = ref("");
+
+    // ADR-0006 §7.7 (DOGFOOD-08): the revocation flow opens an inline
+    // password confirm; grants never ask for one.
+    const revokeTarget = ref<ConsentType | null>(null);
+    const revokePassword = ref("");
 
     // EMERGENCY-CONTACT (§20.14): the lifecycle card state.
     const emergencyContact = ref<EmergencyContact | null>(null);
@@ -328,15 +369,58 @@ export default {
       await store.load(transport);
     }
 
+    function openRevoke(type: ConsentType): void {
+      if (store.busy) return;
+      revokeTarget.value = type;
+      revokePassword.value = "";
+      actionError.value = "";
+    }
+
+    function closeRevoke(): void {
+      revokeTarget.value = null;
+      revokePassword.value = "";
+    }
+
     async function onToggle(type: ConsentType, granted: boolean): Promise<void> {
       actionError.value = "";
+      if (granted) {
+        // Grant: low-risk, no password gate.
+        revokeTarget.value = null;
+        revokePassword.value = "";
+        try {
+          const ok = await store.setConsent(transport, type, CONSENT_VERSION, true);
+          if (!ok) {
+            actionError.value = "操作未获服务端确认，请重试。";
+          }
+        } catch {
+          actionError.value = "同意提交失败，请重试。";
+        }
+        return;
+      }
+      if (revokeTarget.value !== type) {
+        openRevoke(type);
+        return;
+      }
+      // Revocation: empty re-entry never sends the request.
+      if (!revokePassword.value) {
+        actionError.value = "请输入当前密码以确认撤回。";
+        return;
+      }
       try {
-        const ok = await store.setConsent(transport, type, CONSENT_VERSION, granted);
+        const ok = await store.setConsent(
+          transport, type, CONSENT_VERSION, false, revokePassword.value,
+        );
         if (!ok) {
           actionError.value = "操作未获服务端确认，请重试。";
+          return;
         }
-      } catch {
-        actionError.value = granted ? "同意提交失败，请重试。" : "撤回提交失败，请重试。";
+        closeRevoke();
+      } catch (e) {
+        // A wrong password maps to the server's non-disclosing 404 — keep
+        // the panel open so the caller can retry with the right password.
+        actionError.value = e instanceof ConsentHttpError && e.status === 404
+          ? "当前密码不正确，撤回未执行。"
+          : "撤回提交失败，请重试。";
       }
     }
 
@@ -378,6 +462,8 @@ export default {
       CONSENT_VERSION,
       store,
       actionError,
+      revokeTarget,
+      revokePassword,
       emergencyContact,
       emcLabel,
       emcContact,
@@ -392,6 +478,8 @@ export default {
       onRevokeContact,
       onRetry,
       onToggle,
+      openRevoke,
+      closeRevoke,
       versionFor,
       statusLabel,
       statusTone,
@@ -480,6 +568,21 @@ export default {
 }
 .consent-status--none {
   color: #8fa0bd;
+}
+.revoke-confirm {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 8rpx;
+  padding: 14rpx;
+  border-radius: 12rpx;
+  border: 2rpx solid #5a1a1a;
+  background-color: #16233f;
+}
+.revoke-actions {
+  display: flex;
+  gap: 12rpx;
 }
 .emc-section {
   margin-top: 32rpx;

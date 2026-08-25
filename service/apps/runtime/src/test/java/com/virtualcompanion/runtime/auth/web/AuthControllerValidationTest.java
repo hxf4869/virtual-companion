@@ -123,6 +123,34 @@ class AuthControllerValidationTest {
         assertInvalid("/api/v1/auth/admin/accounts", body, sentinel);
     }
 
+    /**
+     * ADR-0006 §7.7 (DOGFOOD-08): the destructive account deletion must carry
+     * a non-blank currentPassword; a missing body or a blank password is a
+     * fixed 400 INVALID_REQUEST that never reaches the service.
+     */
+    @ParameterizedTest
+    @MethodSource("invalidDeleteAccountBodies")
+    void invalidDeleteAccountBodyReturnsFixedEnvelopeWithoutCallingService(String body)
+            throws Exception {
+        MockHttpServletRequestBuilder request =
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/v1/auth/account")
+                .contentType(MediaType.APPLICATION_JSON);
+        if (body != null) {
+            request.content(body);
+        }
+        MvcResult result = mockMvc.perform(request)
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("The request is invalid"))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain("currentPassword", "rejected");
+        verifyNoInteractions(authService);
+    }
+
     private void assertInvalid(String path, String body, String sentinel) throws Exception {
         MockHttpServletRequestBuilder request = post(path).contentType(MediaType.APPLICATION_JSON);
         if (body != null) {
@@ -143,6 +171,18 @@ class AuthControllerValidationTest {
             assertThat(response).doesNotContain(sentinel);
         }
         verifyNoInteractions(authService);
+    }
+
+    private static Stream<Arguments> invalidDeleteAccountBodies() {
+        return Stream.of(
+                Arguments.of((Object) null),
+                Arguments.of("null"),
+                Arguments.of("{"),
+                Arguments.of("{}"),
+                Arguments.of("{\"currentPassword\":null}"),
+                Arguments.of("{\"currentPassword\":\"\"}"),
+                Arguments.of("{\"currentPassword\":\"   \"}"),
+                Arguments.of("{\"currentPassword\":\"" + "p".repeat(129) + "\"}"));
     }
 
     private static HandlerMethodArgumentResolver adminPrincipalResolver() {

@@ -60,6 +60,8 @@ import com.virtualcompanion.runtime.auth.tenant.OwnerContext;
 import com.virtualcompanion.runtime.auth.web.AuthController;
 import com.virtualcompanion.runtime.age.AgeVerificationPort;
 import com.virtualcompanion.runtime.age.SimulatedAgeVerifier;
+import com.virtualcompanion.runtime.export.ExportObjectStorage;
+import com.virtualcompanion.runtime.export.MinioExportObjectStorage;
 import com.virtualcompanion.runtime.export.ExportExpiryScheduler;
 import com.virtualcompanion.runtime.modelproviders.ApprovedModelProviders;
 import com.virtualcompanion.runtime.realtime.LiveDeltaBroker;
@@ -350,6 +352,21 @@ public class AuthDataSourceConfig {
         return new AdminConsoleService(authJdbcTemplate);
     }
 
+    /**
+     * ADR-0006 §7.7 (DOGFOOD-08): shared current-password gate for the
+     * high-risk self-service operations OUTSIDE the auth module (export
+     * creation, consent withdrawal). Lives in the shared web module so the
+     * export/consent slices never depend on the auth module (which would be a
+     * Modulith cycle — auth already wires the export expiry scheduler).
+     */
+    @Bean
+    public com.virtualcompanion.runtime.web.CurrentPasswordGuard currentPasswordGuard(
+            IdentityAccountRepository identityAccountRepository,
+            org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
+        return new com.virtualcompanion.runtime.web.CurrentPasswordGuard(
+                identityAccountRepository, passwordEncoder);
+    }
+
     @Bean
     public AuthController authController(
             AuthService authService,
@@ -385,9 +402,23 @@ public class AuthDataSourceConfig {
                     com.virtualcompanion.platform.persistence.AccountDeletionIntentService intents,
                     org.springframework.beans.factory.ObjectProvider<
                             com.virtualcompanion.modelruntime.execution.ActiveInvocationRegistry>
-                            activeInvocations) {
+                            activeInvocations,
+                    org.springframework.beans.factory.ObjectProvider<ExportObjectStorage>
+                            exportObjectStorage,
+                    org.springframework.beans.factory.ObjectProvider<
+                            com.virtualcompanion.platform.persistence.ExportService>
+                            exportService,
+                    com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         return new com.virtualcompanion.runtime.auth.application.AccountDeletionCoordinator(
-                ownerContext, intents, activeInvocations);
+                ownerContext,
+                intents,
+                activeInvocations,
+                // DOGFOOD-STABILIZATION audit: remove the owner's export
+                // bucket objects BEFORE the account cascade destroys the
+                // pointers; a deletion failure aborts the account deletion.
+                exportObjectStorage,
+                exportService,
+                alertNotifier);
     }
 
     @Bean
@@ -511,6 +542,24 @@ public class AuthDataSourceConfig {
                     com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
         return new com.virtualcompanion.runtime.observability.DurableProviderRollbackListener(
                 circuitBreaker, providers, rollbackService, alertNotifier);
+    }
+
+    /**
+     * DOGFOOD-05 (ADR-0006 §3.4): the FINAL-output R4 safety-leak path to the
+     * same durable rollback seam. Wired only while live providers are on; the
+     * generation handler treats it as optional (no-database tests run null).
+     */
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "virtual-companion.model-providers.enabled", havingValue = "true")
+    public com.virtualcompanion.runtime.observability.SafetyLeakProviderDisabler
+            safetyLeakProviderDisabler(
+                    com.virtualcompanion.platform.persistence.ProviderRollbackService rollbackService,
+                    com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+                    com.virtualcompanion.modelruntime.registry.LocalDeploymentIsolation
+                            localDeploymentIsolation) {
+        return new com.virtualcompanion.runtime.observability.SafetyLeakProviderDisabler(
+                rollbackService, alertNotifier, localDeploymentIsolation);
     }
 
     @Bean
@@ -649,6 +698,41 @@ public class AuthDataSourceConfig {
             JdbcTemplate authJdbcTemplate,
             com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher) {
         return new ExportService(authJdbcTemplate, restFieldCipher);
+    }
+
+    /**
+     * DOGFOOD-02 (ADR-0006 §7.3): local MinIO object-storage consumer for
+     * data exports. Opt-in — the bean exists only while
+     * {@code virtual-companion.data-export.object-storage.enabled=true}.
+     * Fail-closed like {@code ProductionFailClosed}: with the switch on,
+     * every setting (endpoint/access key/secret key/bucket) must be present
+     * and the bucket must already exist (provisioned by the compose
+     * {@code minio-init} service), otherwise startup refuses. Credentials
+     * come from deployment env only and are never logged.
+     */
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+            name = "virtual-companion.data-export.object-storage.enabled",
+            havingValue = "true")
+    public ExportObjectStorage exportObjectStorage(
+            @Value("${virtual-companion.data-export.object-storage.endpoint:}")
+                    String endpoint,
+            @Value("${virtual-companion.data-export.object-storage.access-key:}")
+                    String accessKey,
+            @Value("${virtual-companion.data-export.object-storage.secret-key:}")
+                    String secretKey,
+            @Value("${virtual-companion.data-export.object-storage.bucket:}")
+                    String bucket) {
+        if (endpoint == null || endpoint.isBlank()
+                || accessKey == null || accessKey.isBlank()
+                || secretKey == null || secretKey.isBlank()
+                || bucket == null || bucket.isBlank()) {
+            throw new IllegalStateException(
+                    "data-export object-storage is enabled but endpoint/access-key/secret-key/"
+                            + "bucket are not fully configured (VC_EXPORT_S3_*): refusing to "
+                            + "start");
+        }
+        return new MinioExportObjectStorage(endpoint, accessKey, secretKey, bucket);
     }
 
     /** AGE-MIN (V45): adult-verification result persistence (FR-AUTH-002). */
@@ -834,16 +918,41 @@ public class AuthDataSourceConfig {
      * S0-07: CompositeSafetyClassifier — deterministic hard rules first.
      * Real moderation stays default-off; when enabled the provider can only
      * raise risk and any transport/schema failure blocks.
+     *
+     * <p>DOGFOOD-04 (ADR-0006 §5.2): {@code virtual-companion.moderation.mode}
+     * selects the remote family while both share the same base-url semantics
+     * (OpenAI-compatible root such as {@code .../v1}):
+     * {@code openai-moderations} → {@code POST {base-url}/moderations}
+     * (default, unchanged); {@code chat-completions} → strict JSON
+     * classification via {@code POST {base-url}/chat/completions} for
+     * channels without a /moderations endpoint. The actual endpoint and
+     * credential are deployment-injected only. {@code @Primary} keeps every
+     * by-type consumer (e.g. the input-side controller) on this composite
+     * once the incremental-only bean below also exists. The remote leg is
+     * wrapped in {@code OwnerGatedSafetyClassifier} (ADR-0006 §4) and only
+     * ever sees locally clean input (hard rules first, zero remote calls on
+     * any local block).
      */
     @Bean
+    @org.springframework.context.annotation.Primary
     public com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort(
+            ConsentService consentService,
+            com.virtualcompanion.platform.persistence.AccountDeletionIntentService deletionIntents,
+            com.virtualcompanion.platform.persistence.JdbcProviderDeploymentRepository
+                    providerDeployments,
+            OwnerContext ownerContext,
+            DataSourceTransactionManager authTransactionManager,
             @Value("${virtual-companion.moderation.enabled:false}") boolean moderationEnabled,
+            @Value("${virtual-companion.moderation.mode:chat-completions}") String moderationMode,
             @Value("${virtual-companion.moderation.base-url:}") String moderationBaseUrl,
             @Value("${virtual-companion.moderation.model:omni-moderation-latest}") String moderationModel,
             @Value("${virtual-companion.moderation.provider-ref:}") String moderationProviderRef,
             @Value("${virtual-companion.moderation.model-version:}") String moderationModelVersion,
-            @Value("${virtual-companion.moderation.min-clean-confidence:0.8}") double minCleanConfidence,
-            @Value("${virtual-companion.moderation.api-key:}") String moderationApiKey) {
+            @Value("${virtual-companion.moderation.api-key:}") String moderationApiKey,
+            @Value("${virtual-companion.moderation.provider-terms-verified:false}")
+                    boolean moderationProviderTermsVerified,
+            @Value("${virtual-companion.moderation.allowed-hosts:}")
+                    java.util.List<String> moderationAllowedHosts) {
         com.virtualcompanion.safety.SafetyClassifierPort hard =
                 new com.virtualcompanion.safety.DeterministicSafetyClassifier();
         if (!moderationEnabled) {
@@ -857,12 +966,72 @@ public class AuthDataSourceConfig {
             throw new IllegalStateException(
                     "moderation.enabled=true requires base-url, model, provider-ref, model-version and api-key (fail-closed)");
         }
-        var client = new com.virtualcompanion.runtime.safety.OpenAiCompatModerationClient(
-                moderationBaseUrl, moderationModel, moderationApiKey, moderationProviderRef,
-                moderationModelVersion, minCleanConfidence);
-        return new com.virtualcompanion.safety.CompositeSafetyClassifier(
-                hard,
-                new com.virtualcompanion.runtime.safety.ProviderModerationClassifier(client));
+        var egressPolicy = com.virtualcompanion.modelruntime.port.ProviderEgressPolicy
+                .defaultsPlus(moderationAllowedHosts);
+        com.virtualcompanion.runtime.safety.ProviderModerationClassifier provider;
+        if ("chat-completions".equals(moderationMode)) {
+            provider = new com.virtualcompanion.runtime.safety.ProviderModerationClassifier(
+                    new com.virtualcompanion.runtime.safety.ChatCompletionsSafetyClient(
+                            moderationBaseUrl, moderationModel, moderationApiKey,
+                            moderationProviderRef, moderationModelVersion,
+                            egressPolicy,
+                            com.virtualcompanion.modelruntime.port.EgressDnsGuard.defaults()));
+        } else if ("openai-moderations".equals(moderationMode)) {
+            // DOGFOOD-STABILIZATION-02 audit: this branch's client does not
+            // yet carry the egress allowlist / DNS-rebinding guard / bounded
+            // response body that chat-completions enforces, so the reachable
+            // configuration is refused this round instead of shipping an
+            // unprotected default path. Re-enable only together with equal
+            // protections in OpenAiCompatModerationClient.
+            throw new IllegalStateException(
+                    "moderation.mode=openai-moderations is disabled this round (no egress/"
+                            + "DNS/response-size protections); use chat-completions "
+                            + "(VC_MODERATION_MODE=chat-completions)");
+        } else {
+            throw new IllegalStateException(
+                    "moderation.mode must be openai-moderations or chat-completions (fail-closed)");
+        }
+        // DOGFOOD-STABILIZATION audit (ADR-0006 §4/§5): the remote leg is
+        // owner-gated per call — deletion intent, the fixed five-type
+        // necessary-consent set, current provider admission and (until the
+        // provider terms are verified) the local sensitive-data detector must
+        // all pass before any HTTP leaves the host; every deny or read failure
+        // fails closed with zero remote calls. DOGFOOD-STABILIZATION-02: the
+        // probe phase runs inside one short owner-bound transaction
+        // (OwnerContext::asOwner) because the worker's FINAL classification
+        // executes outside any owner transaction; the HTTP phase itself stays
+        // DB-free.
+        com.virtualcompanion.runtime.safety.OwnerGatedSafetyClassifier gated =
+                new com.virtualcompanion.runtime.safety.OwnerGatedSafetyClassifier(
+                        provider,
+                        (ownerUserId, consentType) -> consentService
+                                .findLatestByType(ownerUserId, consentType)
+                                .map(com.virtualcompanion.platform.persistence.ConsentRecord::granted)
+                                .orElse(false),
+                        deletionIntents::activeCurrent,
+                        providerRef -> providerDeployments.findByProviderId(providerRef)
+                                .map(com.virtualcompanion.platform.persistence
+                                        .ProviderDeploymentRecord::isAdmitted)
+                                .orElse(false),
+                        moderationProviderRef,
+                        moderationProviderTermsVerified,
+                        new com.virtualcompanion.runtime.safety.OwnerBoundTransactionalExecutor(
+                                ownerContext::asOwner,
+                                ownerContext::asOwnerRequiresNew,
+                                authTransactionManager));
+        return new com.virtualcompanion.safety.CompositeSafetyClassifier(hard, gated);
+    }
+
+    /**
+     * DOGFOOD-04 (ADR-0006 §5.1/§5.3): the streaming incremental review is
+     * ALWAYS the local deterministic classifier — never the composite — so
+     * enabling remote moderation can never add per-fragment remote calls.
+     * Remote classification stays bounded to one INPUT and one FINAL call
+     * per turn through the primary composite above.
+     */
+    @Bean
+    public com.virtualcompanion.safety.SafetyClassifierPort safetyIncrementalClassifier() {
+        return new com.virtualcompanion.safety.DeterministicSafetyClassifier();
     }
 
     /** USAGE-HEALTH (V52): continuous-use reminder prefs + heartbeat. */
@@ -1274,7 +1443,10 @@ public class AuthDataSourceConfig {
             ReminderService reminderService,
             ConsentService consentService,
             com.virtualcompanion.runtime.memory.EmbeddingPort embeddingPort,
+            @Qualifier("safetyClassifierPort")
             com.virtualcompanion.safety.SafetyClassifierPort safetyClassifierPort,
+            @Qualifier("safetyIncrementalClassifier")
+            com.virtualcompanion.safety.SafetyClassifierPort safetyIncrementalClassifier,
             SafetyEventService safetyEventService,
             ConversationSummaryService conversationSummaryService,
             com.virtualcompanion.runtime.observability.VcMetrics metrics,
@@ -1286,7 +1458,16 @@ public class AuthDataSourceConfig {
                     modelCostReservations,
             @Value("${virtual-companion.model-providers.budget-reservation-output-tokens:8192}")
                     int budgetReservationOutputTokens,
-            @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds) {
+            @Value("${virtual-companion.data-export.ttl-seconds:86400}") long exportTtlSeconds,
+            @Value("${virtual-companion.model-providers.generation-provider-terms-verified:false}")
+                    boolean generationProviderTermsVerified,
+            ObjectProvider<ExportObjectStorage> exportObjectStorage,
+            com.virtualcompanion.platform.persistence.AccountDeletionIntentService deletionIntents,
+            com.virtualcompanion.platform.persistence.RestFieldCipher restFieldCipher,
+            com.virtualcompanion.runtime.observability.RollingOutcomeWindow rollingOutcomeWindow,
+            ObjectProvider<
+                    com.virtualcompanion.runtime.observability.SafetyLeakProviderDisabler>
+                    safetyLeakDisabler) {
         GenerationWorkItemHandler generationHandler = new GenerationWorkItemHandler(
                 generationStateService,
                 generationFinalizeService,
@@ -1301,6 +1482,9 @@ public class AuthDataSourceConfig {
                 conversationRepository,
                 generationRepository,
                 safetyClassifierPort,
+                // DOGFOOD-04 (ADR-0006 §5.1): streaming incremental review is
+                // local-only; the composite stays on the final review above.
+                safetyIncrementalClassifier,
                 safetyEventService,
                 conversationSummaryService,
                 metrics,
@@ -1315,6 +1499,21 @@ public class AuthDataSourceConfig {
         if (costReservations != null) {
             generationHandler.withModelCostReservations(
                     costReservations, budgetReservationOutputTokens);
+        }
+        // DOGFOOD-05 (ADR-0006 §3.4): rolling canary window + R4 safety-leak
+        // durable disable (the disabler bean exists only while live model
+        // providers are enabled).
+        generationHandler.withCanaryOutcomeWindow(rollingOutcomeWindow);
+        // DOGFOOD-STABILIZATION-03 (audit defect B): sensitive-data gate at the
+        // generation egress boundary — on unless the Owner verified the
+        // generation provider's terms (VC_GENERATION_PROVIDER_TERMS_VERIFIED).
+        generationHandler.withGenerationEgressSensitiveGate(
+                new com.virtualcompanion.runtime.safety.GenerationEgressSensitiveGate(
+                        generationProviderTermsVerified));
+        com.virtualcompanion.runtime.observability.SafetyLeakProviderDisabler disabler =
+                safetyLeakDisabler.getIfAvailable();
+        if (disabler != null) {
+            generationHandler.withSafetyLeakDisabler(disabler);
         }
         MemoryExtractWorkItemHandler memoryExtractHandler = new MemoryExtractWorkItemHandler(
                 generationRepository,
@@ -1333,7 +1532,17 @@ public class AuthDataSourceConfig {
                 reminderService,
                 consentService,
                 new ObjectMapper(),
-                Duration.ofSeconds(exportTtlSeconds));
+                Duration.ofSeconds(exportTtlSeconds),
+                // DOGFOOD-02: null in inline mode; the MinIO adapter bean only
+                // exists while object-storage.enabled=true. Object mode also
+                // carries the AES-GCM envelope cipher and the orphan-risk
+                // alerter (DOGFOOD-STABILIZATION audit). DOGFOOD-STABILIZATION
+                // -02: the deletion-intent probe blocks new seals once the
+                // account deletion intent is persisted (ADR-0006 §7 order).
+                exportObjectStorage.getIfAvailable(),
+                restFieldCipher,
+                alertNotifier,
+                deletionIntents);
         return new DispatchingWorkItemHandler(Map.of(
                 GenerationWorkItemHandler.KIND_GENERATION, generationHandler,
                 MemoryExtractWorkItemHandler.KIND_MEMORY_EXTRACT, memoryExtractHandler,
@@ -1384,15 +1593,42 @@ public class AuthDataSourceConfig {
     }
 
     /**
-     * DATA-EXPORT (V42): periodic expiry sweep of READY exports (FR-DATA-002
-     * 过期后自动删除). Runs on its own slow cadence; only active while this
-     * conditional configuration (auth + datasource enabled) is live.
+     * DATA-EXPORT (V42/V109): periodic expiry sweep of READY exports
+     * (FR-DATA-002 过期后自动删除), plus the DOGFOOD-02 object-deletion pass
+     * when object mode is on. Runs on its own slow cadence; only active
+     * while this conditional configuration (auth + datasource enabled) is
+     * live.
      */
     @Bean
     public ExportExpiryScheduler exportExpiryScheduler(
             ExportService exportService,
             com.virtualcompanion.platform.persistence.JobLease jobLease,
-            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier) {
-        return new ExportExpiryScheduler(exportService, jobLease, alertNotifier);
+            com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+            ObjectProvider<ExportObjectStorage> exportObjectStorage) {
+        return new ExportExpiryScheduler(
+                exportService, jobLease, alertNotifier, exportObjectStorage.getIfAvailable());
+    }
+
+    /**
+     * DOGFOOD-STABILIZATION-04 (audit defect E): periodic reclaim of
+     * crash-after-put export objects — the durable consumer of the V114
+     * upload-intent rows. Object mode only; without storage there is nothing
+     * to reclaim (and no upload could ever have happened).
+     */
+    @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(
+            value = ExportObjectStorage.class)
+    public com.virtualcompanion.runtime.export.ExportUploadReconciliationScheduler
+            exportUploadReconciliationScheduler(
+                    ExportService exportService,
+                    com.virtualcompanion.runtime.observability.AlertNotifier alertNotifier,
+                    ObjectProvider<ExportObjectStorage> exportObjectStorage) {
+        ExportObjectStorage storage = exportObjectStorage.getIfAvailable();
+        if (storage == null) {
+            throw new IllegalStateException(
+                    "export upload reconciliation requires object storage");
+        }
+        return new com.virtualcompanion.runtime.export.ExportUploadReconciliationScheduler(
+                exportService, storage, alertNotifier);
     }
 }

@@ -1,8 +1,9 @@
 <template>
-  <view class="chat-page">
+  <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
+  <view class="chat-page" role="main">
     <view class="chat-header">
       <view class="chat-header-identity">
-        <text class="chat-header-title">Technical Alpha · 离线聊天</text>
+        <text class="chat-header-title" role="heading" aria-level="1">Technical Alpha · 离线聊天</text>
         <view v-if="relStore.current" class="chat-header-companion">
           <text
             class="chat-companion-avatar"
@@ -563,6 +564,7 @@
             class="chat-input"
             data-testid="message-input"
             placeholder="输入消息…"
+            aria-label="消息输入"
             :disabled="isStreaming"
             @keydown.enter="onSend"
           />

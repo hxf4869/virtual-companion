@@ -18,4 +18,17 @@ public interface SafetyClassifierPort {
      * @param text  the content to classify; never null
      */
     SafetyClassification classify(SafetyStage stage, String text);
+
+    /**
+     * Owner-bound classification for implementations whose remote leg is
+     * egress-gated per account (consents, deletion intent, provider
+     * admission — DOGFOOD-04 audit). The default delegates to the plain
+     * method so purely local classifiers need no changes; remote-gated
+     * implementations make the owner-less method deliberately unusable.
+     *
+     * @param ownerUserId the account owning the classified content
+     */
+    default SafetyClassification classify(long ownerUserId, SafetyStage stage, String text) {
+        return classify(stage, text);
+    }
 }

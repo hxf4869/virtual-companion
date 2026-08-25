@@ -811,6 +811,120 @@ class AuthServiceTest {
         verify(accounts).recordReauth(1L);
     }
 
+    @Test
+    void dogfood08AssertCurrentPasswordAcceptsTheMatchingPassword() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(accounts.authenticate("alice"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
+        when(passwordEncoder.matches("Current-Pass-1!", "hash")).thenReturn(true);
+
+        service.assertCurrentPassword(user, "Current-Pass-1!");
+
+        verify(passwordEncoder).matches("Current-Pass-1!", "hash");
+    }
+
+    @Test
+    void dogfood08AssertCurrentPasswordMapsAWrongPasswordToTheNonDisclosing404() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(accounts.authenticate("alice"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
+        when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.assertCurrentPassword(user, "wrong"))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> {
+                    assertThat(((AuthErrorException) e).code())
+                            .isEqualTo("NOT_FOUND_OR_FORBIDDEN");
+                    assertThat(((AuthErrorException) e).status())
+                            .isEqualTo(HttpStatus.NOT_FOUND);
+                });
+    }
+
+    @Test
+    void dogfood08AssertCurrentPasswordRejectsMissingOrBlankBeforeAnyLookup() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        clearInvocations(accounts, passwordEncoder);
+
+        for (String blank : new String[] {null, "", "   "}) {
+            assertThatThrownBy(() -> service.assertCurrentPassword(user, blank))
+                    .isInstanceOf(AuthErrorException.class)
+                    .satisfies(e -> assertThat(((AuthErrorException) e).code())
+                            .isEqualTo("INVALID_REQUEST"));
+        }
+        // The blank path never reaches the repository or a BCrypt compare
+        // (the constructor's dummy-hash encode is cleared above).
+        verifyNoInteractions(accounts, passwordEncoder);
+    }
+
+    @Test
+    void dogfood08AssertCurrentPasswordEqualizesTimingForAMissingAccount() {
+        // The unknown-account path still runs one real (dummy-hash) BCrypt
+        // compare so it costs the same as a known account — the surface never
+        // distinguishes "wrong password" from "account gone".
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(accounts.authenticate("alice")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.assertCurrentPassword(user, "Current-Pass-1!"))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code())
+                        .isEqualTo("NOT_FOUND_OR_FORBIDDEN"));
+        verify(passwordEncoder)
+                .matches("Current-Pass-1!", "$2a$10$dummyhashplaceholder");
+    }
+
+    @Test
+    void dogfood08AssertCurrentPasswordBindsToThePrincipalAccount() {
+        // A stored identity for the same username but a DIFFERENT account id
+        // (or a non-ACTIVE status) fails closed identically.
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(accounts.authenticate("alice"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(8, "USER", "ACTIVE", "hash")));
+        when(passwordEncoder.matches("Current-Pass-1!", "hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.assertCurrentPassword(user, "Current-Pass-1!"))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code())
+                        .isEqualTo("NOT_FOUND_OR_FORBIDDEN"));
+
+        when(accounts.authenticate("alice"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "DISABLED", "hash")));
+        assertThatThrownBy(() -> service.assertCurrentPassword(user, "Current-Pass-1!"))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code())
+                        .isEqualTo("NOT_FOUND_OR_FORBIDDEN"));
+    }
+
+    @Test
+    void dogfood08DeleteAccountVerifiesTheCurrentPasswordBeforeTheCascade() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(accounts.authenticate("alice"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
+        when(passwordEncoder.matches("Current-Pass-1!", "hash")).thenReturn(true);
+        when(accounts.deleteAccount(7L)).thenReturn(true);
+
+        assertThat(service.deleteAccount(user, "Current-Pass-1!").ok()).isTrue();
+
+        // The credential gate (authenticate) runs before the destructive
+        // delete on the same collaborator.
+        var inOrder = org.mockito.Mockito.inOrder(accounts);
+        inOrder.verify(accounts).authenticate("alice");
+        inOrder.verify(accounts).deleteAccount(7L);
+    }
+
+    @Test
+    void dogfood08DeleteAccountWithAWrongPasswordNeverDeletes() {
+        JwtTokenService.Principal user = new JwtTokenService.Principal(7, "USER", "alice");
+        when(accounts.authenticate("alice"))
+                .thenReturn(Optional.of(new AuthenticatedIdentity(7, "USER", "ACTIVE", "hash")));
+        when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.deleteAccount(user, "wrong"))
+                .isInstanceOf(AuthErrorException.class)
+                .satisfies(e -> assertThat(((AuthErrorException) e).code())
+                        .isEqualTo("NOT_FOUND_OR_FORBIDDEN"));
+        verify(accounts, never()).deleteAccount(anyLong());
+    }
+
     private void assertInvalidLogout(String refreshToken) {
         clearInvocations(accounts, sessions, passwordEncoder, jwt);
 

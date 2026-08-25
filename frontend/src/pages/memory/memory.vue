@@ -7,7 +7,10 @@ TASK-0105 (P2-16/P3-03/P3-04): transport is the shared authenticated transport
 confirmed save; empty evidence does not render a container; error and busy
 states carry alert/live a11y semantics. -->
 <template>
-  <view class="memory-page">
+  <!-- DOGFOOD-09：页面容器声明 main landmark；本页没有可见页面标题，用与
+       导航栏标题同文案的视觉隐藏一级标题保住标题语义。 -->
+  <view class="memory-page" role="main">
+    <text class="vc-sr-only" role="heading" aria-level="1">记忆管理</text>
     <view class="bar">
       <input
         v-model="relationshipId"
@@ -869,7 +872,7 @@ function goTo(url: string): void {
   color: #444;
 }
 .hint {
-  color: #888;
+  color: #5a6b7b;
   font-size: 12px;
   display: block;
   margin-bottom: 8px;
