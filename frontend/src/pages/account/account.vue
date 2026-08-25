@@ -2,13 +2,9 @@
 Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
 <template>
   <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
-  <view class="account-page" role="main">
-    <view class="bar">
-      <text class="title" role="heading" aria-level="1">账号与注销</text>
-      <button data-testid="nav-index" class="nav-index" aria-label="返回边界台" @click="goTo('/pages/index/index')">
-        返回边界台
-      </button>
-    </view>
+  <ConsumerShell route="/pages/account/account">
+
+    
 
     <view v-if="!auth.isAuthenticated" class="notice" data-testid="account-signed-out" role="status">
       <text>当前未登录。登录后再查看账号或注销。</text>
@@ -22,6 +18,46 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text class="label">角色</text>
         <text data-testid="account-role">{{ auth.role ?? "未知" }}</text>
       </view>
+
+      <!-- "我的"分组入口：全部二级任务的发现路径（Phase 5 IA）。 -->
+      <nav class="hub" data-testid="me-hub" aria-label="我的分组入口">
+        <button
+          v-for="entry in HUB_ENTRIES"
+          :key="entry.href"
+          class="row-link"
+          :data-testid="`me-${entry.testid}`"
+          @click="goTo(entry.href)"
+        >
+          <text class="hub-copy">
+            <text class="hub-group">{{ entry.group }}</text>
+            <text class="hub-label">{{ entry.label }}</text>
+          </text>
+          <text class="hub-note">{{ entry.note }}</text>
+        </button>
+      </nav>
+
+      <!-- Internal Shell 入口：仅操作者角色可见；普通用户看不到入口与
+           内部数据轮廓。 -->
+      <nav
+        v-if="operatorVisible"
+        class="hub hub--internal"
+        data-testid="me-internal"
+        aria-label="内部入口"
+      >
+        <button
+          v-for="entry in INTERNAL_ENTRIES"
+          :key="entry.href"
+          class="row-link"
+          :data-testid="`me-${entry.testid}`"
+          @click="goTo(entry.href)"
+        >
+          <text class="hub-copy">
+            <text class="hub-group">内部</text>
+            <text class="hub-label">{{ entry.label }}</text>
+          </text>
+          <text class="hub-note">{{ entry.note }}</text>
+        </button>
+      </nav>
 
       <view class="card" data-testid="password-card">
         <text class="label">修改密码</text>
@@ -162,7 +198,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         </view>
       </view>
     </template>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -178,11 +214,34 @@ import {
   type AuthSession,
 } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
+import { isOperatorRole } from "@/app/navigation";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
   name: "AccountPage",
+  components: { ConsumerShell },
   setup() {
+    // "我的"分组导航（静态 IA 数据；运行时消费导航模型的分组）。
+    const HUB_ENTRIES = [
+      { group: "陪伴", label: "陪伴设置", note: "称呼、偏好与危险操作", href: "/pages/companion/companion", testid: "companion" },
+      { group: "提醒", label: "提醒", note: "本地列表，不会主动推送", href: "/pages/reminder/reminder", testid: "reminder" },
+      { group: "健康", label: "使用与休息", note: "连续使用提醒间隔", href: "/pages/health/health", testid: "health" },
+      { group: "隐私", label: "无痕默认", note: "下次新会话是否默认无痕", href: "/pages/incognito/incognito", testid: "incognito" },
+      { group: "隐私", label: "成年状态", note: "核验结果与申诉", href: "/pages/age/age", testid: "age" },
+      { group: "隐私", label: "同意管理", note: "版本化同意与撤回", href: "/pages/consent/consent", testid: "consent" },
+      { group: "隐私", label: "AI 说明", note: "模型与 AI 标识", href: "/pages/ai-notice/ai-notice", testid: "ai-notice" },
+      { group: "数据", label: "我的数据", note: "账号数据汇总", href: "/pages/data/data", testid: "data" },
+      { group: "数据", label: "数据导出", note: "二次认证后异步导出", href: "/pages/export/export", testid: "export" },
+      { group: "帮助", label: "帮助与反馈", note: "边界说明与支持", href: "/pages/help/help", testid: "help" },
+      { group: "帮助", label: "举报和申诉", note: "人工处理，不编造工单", href: "/pages/report/report", testid: "report" },
+    ] as const;
+    const INTERNAL_ENTRIES = [
+      { group: "内部", label: "运行与合规", note: "Runtime 与边界状态", href: "/pages/ops/ops", testid: "ops" },
+      { group: "内部", label: "内部管理", note: "账户/审计/队列", href: "/pages/admin/admin", testid: "admin" },
+    ] as const;
+    const operatorVisible = computed(() => isOperatorRole(auth.role));
+
     const auth = useAuthStore();
     const deleteOpen = ref(false);
     const deleteError = ref("");
@@ -356,6 +415,9 @@ export default {
     }
 
     return {
+      HUB_ENTRIES,
+      INTERNAL_ENTRIES,
+      operatorVisible,
       auth,
       deleteOpen,
       deleteError,
@@ -384,74 +446,264 @@ export default {
 </script>
 
 <style scoped>
-.account-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
+/* The Lit Window 语义 token（Phase 5 迁移）。 */
+.intro {
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
+
+.section {
+  margin-bottom: var(--vc-space-5);
 }
-.title {
-  font-size: 32rpx;
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
+  font-weight: 650;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
   font-weight: 600;
-  margin-right: auto;
+  color: var(--vc-muted);
 }
-.nav-index {
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
-.danger-btn {
-  background-color: #5a1a1a;
-}
-.card,
-.notice,
-.danger {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
-  line-height: 1.6;
-  color: #d5deee;
-}
+
 .label {
-  font-size: 22rpx;
-  color: #8fa0bd;
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
 }
+
 .meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
 .actions {
   display: flex;
-  gap: 8rpx;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
 }
-.account-input {
-  padding: 12rpx;
-  border: 2rpx solid #425579;
-  border-radius: 8rpx;
-  color: #f5f5f5;
+
+.nav-index {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.page-act {
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
+}
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-md);
+}
+.danger-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-6);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+}
+
+.danger-title {
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+  font-weight: 650;
+}
+
+.danger-lead,
+.danger-copy {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  line-height: 1.7;
+}
+
+.danger-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-danger);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 650;
+}
+
+.danger-btn::after {
+  border: 0;
+}
+
+.danger-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-2);
+  width: 100%;
+}
+.hub {
+  margin: var(--vc-space-4) 0;
+}
+
+.hub .row-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vc-space-3);
+}
+
+.hub-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hub-group {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.hub-label {
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.hub-note {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  text-align: right;
+}
+
+.hub--internal {
+  padding: var(--vc-space-2) var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
 
 .session-row {
   display: flex;
-  flex-direction: column;
-  gap: 6rpx;
-  padding-top: 10rpx;
-  border-top: 1rpx solid #425579;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-2) 0;
+  border-bottom: 1px solid var(--vc-border);
+  font-size: var(--vc-text-sm);
 }
 
-.error {
-  color: #f0b4b4;
+.notice {
+  display: block;
+  margin: var(--vc-space-2) 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
 </style>

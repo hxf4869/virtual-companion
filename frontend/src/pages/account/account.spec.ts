@@ -224,4 +224,74 @@ describe("account page", () => {
     expect(navigateTo).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
+  // ---- Phase 5 IA："我的"分组入口 + 操作者内部区 ----
+
+  it("renders the me hub with all secondary entries for a USER session", async () => {
+    stubFetch();
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    const hub = wrapper.find('[data-testid="me-hub"]');
+    expect(hub.exists()).toBe(true);
+    expect(hub.attributes("aria-label")).toBe("我的分组入口");
+    for (const tid of [
+      "me-companion",
+      "me-reminder",
+      "me-health",
+      "me-incognito",
+      "me-age",
+      "me-consent",
+      "me-ai-notice",
+      "me-data",
+      "me-export",
+      "me-help",
+      "me-report",
+    ]) {
+      expect(wrapper.find(`[data-testid="${tid}"]`).exists(), tid).toBe(true);
+    }
+    // 普通用户看不到内部入口与内部数据轮廓。
+    expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="me-ops"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="me-admin"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("navigates to a hub entry without calling any account API", async () => {
+    const { calls } = stubFetch();
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="me-companion"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/companion/companion" });
+    expect(calls.some((call) => String(call).includes("/auth/account"))).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the internal section only for operator roles", async () => {
+    stubFetch();
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.role = "ADMIN";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="me-ops"]').trigger("click");
+    const navigateTo = (globalThis as { uni?: { navigateTo: ReturnType<typeof vi.fn> } })
+      .uni?.navigateTo;
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/ops/ops" });
+    await wrapper.find('[data-testid="me-admin"]').trigger("click");
+    expect(navigateTo).toHaveBeenLastCalledWith({ url: "/pages/admin/admin" });
+    wrapper.unmount();
+  });
 });

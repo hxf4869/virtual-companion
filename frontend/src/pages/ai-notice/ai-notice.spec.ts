@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AiNoticePage from "./ai-notice.vue";
 
 describe("AI notice page", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
   it("identifies assistant output as AI-generated and does not offer a model picker", () => {
     vi.stubGlobal("uni", { navigateTo: vi.fn() });
     const wrapper = mount(AiNoticePage, { attachTo: document.body });

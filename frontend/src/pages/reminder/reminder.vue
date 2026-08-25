@@ -3,26 +3,9 @@ Technical Alpha stores and lists reminders only — no push transport
 (product-scope: 不提供主动消息). Every mutation routes through the store,
 which only changes state on a confirmed API result. -->
 <template>
-  <view class="reminder-page">
-    <view class="bar">
-      <text class="title">提醒管理</text>
-      <button
-        data-testid="nav-chat"
-        class="nav-index"
-        aria-label="离线聊天"
-        @click="goTo('/pages/chat/chat')"
-      >
-        离线聊天
-      </button>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
-    </view>
+  <ConsumerShell route="/pages/reminder/reminder">
+
+    
 
     <RelationshipSelector
       :relationships="relStore.relationships"
@@ -129,7 +112,7 @@ which only changes state on a confirmed API result. -->
     <view v-else class="empty" data-testid="reminder-no-rel">
       <text>请先选择一个关系。</text>
     </view>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -140,6 +123,7 @@ import { computed, onMounted, ref } from "vue";
 
 import type { Reminder, ReminderRecurrence } from "@/api/reminder";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
@@ -152,7 +136,7 @@ import { useReminderStore } from "@/stores/reminder";
 
 export default {
   name: "ReminderPage",
-  components: { RelationshipSelector, ErrorNotice, RetryButton },
+  components: { ConsumerShell, RelationshipSelector, ErrorNotice, RetryButton },
   setup() {
     const auth = useAuthStore();
     const relStore = useRelationshipStore();
@@ -309,87 +293,286 @@ export default {
 </script>
 
 <style scoped>
-.reminder-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
+/* The Lit Window 语义 token（Phase 5 迁移）。 */
+.intro {
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
+
+.section {
+  margin-bottom: var(--vc-space-5);
 }
-.title {
-  font-size: 32rpx;
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
+  font-weight: 650;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
   font-weight: 600;
-  margin-right: auto;
+  color: var(--vc-muted);
 }
-.nav-index {
-  flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
+
+.label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
 }
-.delete-btn {
-  background-color: #5a1a1a;
+
+.meta {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
-.reminder-form {
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
+.actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
-  margin: 16rpx 0;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
 }
-.reminder-input {
-  flex: 1 1 240rpx;
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 26rpx;
+
+.nav-index {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
+
+.nav-index::after {
+  border: 0;
+}
+
+.page-act {
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
+}
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-md);
+}
+.primary-btn,
+.save-btn,
+.submit-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 650;
+}
+
+.primary-btn::after,
+.save-btn::after,
+.submit-btn::after {
+  border: 0;
+}
+
+.primary-btn[disabled],
+.save-btn[disabled],
+.submit-btn[disabled] {
+  color: var(--vc-muted);
+}
+.danger-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-6);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+}
+
+.danger-title {
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+  font-weight: 650;
+}
+
+.danger-lead,
+.danger-copy {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  line-height: 1.7;
+}
+
+.danger-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-danger);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 650;
+}
+
+.danger-btn::after {
+  border: 0;
+}
+
+.danger-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-2);
+  width: 100%;
+}
+.reminder-form {
+  display: grid;
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+}
+
+.reminder-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-md);
+}
+
 .reminder-select {
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 26rpx;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-md);
 }
+
 .reminder-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12rpx;
-  padding: 14rpx 16rpx;
-  margin-top: 12rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  border: 2rpx solid #2a3a5a;
+  justify-content: space-between;
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border-bottom: 1px solid var(--vc-border);
 }
-.reminder-text {
-  flex: 1;
-  font-size: 26rpx;
+
+.reminder-row:last-child {
+  border-bottom: 0;
 }
+
 .reminder-meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
-  flex: 0 0 auto;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
-.error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
+
+.delete-btn {
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-muted);
+  font: inherit;
+  font-size: var(--vc-text-xs);
 }
-.empty {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
-  color: #8fa0bd;
+
+.delete-btn::after {
+  border: 0;
 }
 </style>
