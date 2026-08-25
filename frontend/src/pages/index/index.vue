@@ -599,7 +599,7 @@ function goTo(url: string): void {
     if (uniApi?.navigateTo) {
       uniApi.navigateTo({ url });
     } else if (typeof location !== "undefined") {
-      location.href = url;
+      location.href = url.startsWith("/pages/") ? `/#${url}` : url;
     }
   } catch {
     // Presentation-only navigation; never break the preflight console.

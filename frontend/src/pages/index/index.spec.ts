@@ -227,6 +227,20 @@ describe("index page glue (TASK-0204 internal page nav)", () => {
     wrapper.unmount();
   });
 
+  it("keeps internal navigation in the H5 hash router when global uni navigation is unavailable", async () => {
+    stubRelationshipFetch([ACTIVE_RELATIONSHIP]);
+    vi.stubGlobal("uni", undefined);
+    const locationStub = { href: "" };
+    vi.stubGlobal("location", locationStub);
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
+
+    expect(locationStub.href).toBe("/#/pages/chat/chat?relationshipId=rel-index-1");
+    wrapper.unmount();
+  });
+
   it("carries current relationship id to memory after load", async () => {
     stubRelationshipFetch([ACTIVE_RELATIONSHIP]);
     const navigateTo = vi.fn();
