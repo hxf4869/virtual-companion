@@ -38,9 +38,9 @@ test("login preserves a protected deep link and its query", async ({
     (url) => url.hash === `#${target}`,
     { timeout: 20_000 },
   );
-  // DOGFOOD-09：memory 页现在有与导航栏标题同文案的一级标题（视觉隐藏），
-  // getByText 会同时命中两者；改用 heading 角色精确断言页面已到记忆管理。
+  // Phase 4 IA：页面标题由 PageHeader 渲染（记忆）；用 heading 角色断言
+  // 深链确实落到了记忆页。
   await expect(
-    page.getByRole("heading", { name: "记忆管理" }),
+    page.getByRole("heading", { name: "记忆" }),
   ).toBeVisible();
 });
