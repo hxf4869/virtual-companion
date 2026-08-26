@@ -296,11 +296,12 @@ describe("account page", () => {
   });
 
   it("internal entries are route-specific: each operator role sees only what it can enter", async () => {
+    // 与页面真实守卫一致：ops（Runtime 预检）仅 ADMIN；admin 面全操作者可进。
     const cases: Array<{ role: string; ops: boolean; admin: boolean }> = [
       { role: "ADMIN", ops: true, admin: true },
-      { role: "SAFETY_REVIEWER", ops: true, admin: false },
-      { role: "PRIVACY_OPERATOR", ops: true, admin: true },
-      { role: "OPS_VIEWER", ops: true, admin: false },
+      { role: "SAFETY_REVIEWER", ops: false, admin: true },
+      { role: "PRIVACY_OPERATOR", ops: false, admin: true },
+      { role: "OPS_VIEWER", ops: false, admin: true },
     ];
     for (const c of cases) {
       setActivePinia(createPinia());

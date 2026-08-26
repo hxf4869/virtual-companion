@@ -571,7 +571,7 @@
           data-testid="usage"
           role="status"
         >
-          <text>{{ `本轮用量：输入 ${usage.inputTokens} / 输出 ${usage.outputTokens} tokens` }}</text>
+          <text>{{ `本轮用量：输入 ${usage.inputTokens} / 输出 ${usage.outputTokens} 词元` }}</text>
         </view>
 
         <!-- FEEDBACK (FR-CHAT-003): one-tap feedback on the finished reply -->
@@ -733,7 +733,7 @@ import { useIncognitoStore } from "@/stores/incognito";
 import type { MemoryImportPreview } from "@/api/relationship";
 import { requestIdLabel } from "@/domain/request-id";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
-import { isReadableConversationText } from "@/domain/conversation-display";
+import { readableConversationTitle } from "@/domain/conversation-display";
 import { installStreamLifecycle } from "@/domain/stream-recovery";
 
 function resolveOrigin(): string {
@@ -760,10 +760,9 @@ export default defineComponent({
       const id = store.conversationId;
       if (!id) return "";
       const item = store.conversations.find((row) => row.conversationId === id);
-      if (!item) return "";
-      // P1-5：密文/不可读标题不进头部，避免暴露 enc2 内部值。
-      const title = (item.title ?? "").trim();
-      return isReadableConversationText(title) ? title : "";
+      // P1-2：头部不直接读原始 title/preview，统一走安全展示 helper，
+      // 密文/空值回落到产品文案或真实日期，绝不露出内部值。
+      return item ? readableConversationTitle(item) : "";
     });
     const inputText = ref("");
     const initError = ref(false);
@@ -858,6 +857,23 @@ export default defineComponent({
       if (height > 0) historyViewportPx.value = height;
     }
 
+    /**
+     * LANDSCAPE/深链：historyEl 可能晚于 onMounted 出现（关系异步加载后才
+     * 渲染消息区）。ref 一变化就（重）绑定 ResizeObserver，保证直接深链或
+     * 刷新后虚拟窗口也用实测高度；卸载时统一断开。
+     */
+    function bindHistoryObserver(): void {
+      if (typeof ResizeObserver === "undefined") return;
+      historyObserver?.disconnect();
+      const el = historyNode();
+      if (!el) return;
+      historyObserver = new ResizeObserver(() => measureHistory());
+      historyObserver.observe(el);
+      measureHistory();
+    }
+
+    watch(historyEl, () => bindHistoryObserver());
+
     const virtualWindow = computed(() =>
       computeVirtualWindow({
         count: messages.value.length,
@@ -951,17 +967,13 @@ export default defineComponent({
       return role;
     }
 
-    /** CONV-HIST: short label — the rename title wins, else the preview. */
+    /**
+     * CONV-HIST: short label — 统一走安全展示 helper（title → preview → 带真实
+     * 日期的“未命名会话”），截断只发生在密文过滤之后，绝不拼接内部 ID。
+     */
     function conversationLabel(conv: ConversationListItem): string {
-      const title = (conv.title ?? "").trim();
-      if (title) {
-        return title.length > 16 ? `${title.slice(0, 16)}…` : title;
-      }
-      const preview = (conv.lastMessagePreview ?? "").trim();
-      if (preview) {
-        return preview.length > 16 ? `${preview.slice(0, 16)}…` : preview;
-      }
-      return `会话 #${conv.conversationId}`;
+      const safe = readableConversationTitle(conv);
+      return safe.length > 16 ? `${safe.slice(0, 16)}…` : safe;
     }
 
     /**
@@ -1583,15 +1595,9 @@ export default defineComponent({
           },
         });
       }
-      // LANDSCAPE: 首次与后续尺寸变化都重测消息区真实高度，驱动虚拟窗口。
-      measureHistory();
-      if (typeof ResizeObserver !== "undefined") {
-        const el = historyNode();
-        if (el) {
-          historyObserver = new ResizeObserver(() => measureHistory());
-          historyObserver.observe(el);
-        }
-      }
+      // LANDSCAPE: 首次与后续尺寸变化都重测消息区真实高度，驱动虚拟窗口；
+      // historyEl 晚出现时由 ref watch 兜底（深链/刷新场景）。
+      bindHistoryObserver();
       // SESS-REVIVE: restore the session from the HttpOnly refresh cookie
       // before any authenticated call, so a page reload stays logged in.
       if (!auth.isAuthenticated) {
@@ -1928,13 +1934,15 @@ export default defineComponent({
   color: var(--vc-danger);
 }
 
-/* 状态与系统横幅：平实呈现，绝不角色化。 */
+/* 状态与系统横幅：平实呈现，绝不角色化。列内行一律 flex:none——高度不足
+   时进入滚动而不是被压扁（flex-shrink 会连 44px 按钮一起裁掉）。 */
 .service-mode,
 .usage-health-banner,
 .chat-usage,
 .memory-prompt,
 .incognito-notice,
 .current-relationship {
+  flex: none;
   box-sizing: border-box;
   width: calc(100% - var(--vc-space-6));
   max-width: 720px;
@@ -1967,6 +1975,7 @@ export default defineComponent({
 }
 
 .chat-create-entry {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2005,6 +2014,7 @@ export default defineComponent({
 
 /* 会话切换条 */
 .conversation-panel {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2065,6 +2075,7 @@ export default defineComponent({
 }
 
 .chat-nav-index {
+  flex: 0 0 auto;
   min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
@@ -2087,6 +2098,7 @@ export default defineComponent({
 }
 
 .conv-mgmt-btn {
+  flex: 0 0 auto;
   min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
@@ -2109,6 +2121,7 @@ export default defineComponent({
 }
 
 .rename-row {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: var(--vc-space-2);
@@ -2122,7 +2135,8 @@ export default defineComponent({
   box-sizing: border-box;
   min-height: 44px;
   padding: 0 var(--vc-space-3);
-  border: 1px solid var(--vc-border-strong);
+  /* 暗面（chat env）上的真实控件边界 ≥3:1，不用装饰级 border。 */
+  border: 1px solid var(--vc-border-env-strong);
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
@@ -2310,6 +2324,7 @@ export default defineComponent({
 .chat-error,
 .chat-feedback-row,
 .chat-mode-row {
+  flex: none;
   box-sizing: border-box;
   width: calc(100% - var(--vc-space-6));
   max-width: 720px;
@@ -2356,6 +2371,7 @@ export default defineComponent({
 }
 
 .chat-feedback-chip {
+  flex: none;
   min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
@@ -2387,6 +2403,7 @@ export default defineComponent({
 }
 
 .chat-mode-chip {
+  flex: none;
   min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
@@ -2491,41 +2508,18 @@ export default defineComponent({
 }
 
 /* LANDSCAPE / 短视口（≤480px 高）：优先保留消息阅读与输入。
-   输入栏 fixed 常驻视口底（页面为它留出底垫，绝不覆盖消息）；
-   中段（状态/反馈/模式）整体可滚，语义不丢；模式行 sticky 贴在
-   中段可视底；消息区用 dvh 相对高度（96–240px clamp）。 */
+   输入栏 fixed 常驻视口底；真实滚动容器（chat-main）自身预留底部空间
+   （1px 顶边框 + 4px 上下内距 + 44px 控件 = 53px），滚动内容绝不滑入
+   输入栏下方。行级元素一律 flex:none——只滚不压，状态、当前关系、反馈
+   与模式行都可滚动进入完整可见区（不再依赖 sticky）。 */
 @media (max-height: 480px) {
-  .chat-page {
-    height: 100vh;
-    height: 100dvh;
-    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
-  }
-
   .chat-main {
     overflow-y: auto;
+    /* 1px 顶边框 + 4px 上下内距 + 46px 输入控件（uni-input 宿主含 1px 内距，
+     * 原生 input 实际 ≥44px 触控高）= 55px 输入栏真实高度。 */
+    padding-bottom: calc(55px + env(safe-area-inset-bottom, 0px));
   }
 
-  .chat-history {
-    flex: none;
-    height: clamp(96px, 38dvh, 240px);
-    min-height: 96px;
-  }
-
-  .chat-mode-row {
-    position: sticky;
-    bottom: 0;
-    padding: var(--vc-space-1) var(--vc-space-2);
-    background: var(--vc-env);
-    z-index: var(--vc-z-content);
-  }
-
-  .chat-input-area {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: 0 auto;
-  }
   .chat-header {
     padding-top: var(--vc-space-1);
     padding-bottom: var(--vc-space-1);
@@ -2558,23 +2552,22 @@ export default defineComponent({
     white-space: nowrap;
   }
 
-  .chat-mode-row,
-  .chat-feedback-row {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    margin-top: var(--vc-space-1);
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .chat-mode-chip,
-  .chat-feedback-chip {
+  .chat-history {
     flex: none;
+    height: clamp(96px, 38dvh, 240px);
+    min-height: 96px;
+    margin-top: var(--vc-space-1);
+    padding: var(--vc-space-2) 0;
   }
 
   .chat-input-area {
-    margin-top: var(--vc-space-1);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0 auto;
     padding-top: var(--vc-space-1);
-    padding-bottom: var(--vc-space-1);
+    padding-bottom: calc(var(--vc-space-1) + env(safe-area-inset-bottom, 0px));
   }
 
   .chat-input,
@@ -2584,10 +2577,9 @@ export default defineComponent({
     min-height: 44px;
   }
 
-  .chat-history {
-    min-height: 96px;
-    margin-top: var(--vc-space-1);
-    padding: var(--vc-space-2) 0;
+  /* uni-input 宿主有内建内距：46px 宿主让原生 input 达到 ≥44px 触控高。 */
+  .chat-input {
+    min-height: 46px;
   }
 }
 </style>

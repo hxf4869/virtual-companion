@@ -47,9 +47,9 @@ export interface RouteSpec {
   readonly allowedQuery: readonly string[];
   /**
    * 路由级角色白名单（route-specific）：只有列出角色可见/可进入。
-   * 未设置表示不按角色限制。内部页按契约细分：ops 只读状态对全部
-   * 操作者开放；admin 的账户/审计/申诉面按 OpenAPI 只对 ADMIN 与
-   * PRIVACY_OPERATOR 开放。
+   * 未设置表示不按角色限制。与页面真实守卫一一对应：ops 的 Runtime 预检
+   * 面仅 ADMIN；admin 面对全部操作者开放（分区权限在页面内部，不放宽
+   * 后端权限）。
    */
   readonly allowedRoles?: readonly string[];
 }
@@ -239,7 +239,7 @@ export const ROUTES: readonly RouteSpec[] = [
     section: "internal",
     meGroup: null,
     allowedQuery: [],
-    allowedRoles: ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER"],
+    allowedRoles: ["ADMIN"],
   },
   {
     path: "/pages/admin/admin",
@@ -249,7 +249,7 @@ export const ROUTES: readonly RouteSpec[] = [
     section: "internal",
     meGroup: null,
     allowedQuery: [],
-    allowedRoles: ["ADMIN", "PRIVACY_OPERATOR"],
+    allowedRoles: ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER"],
   },
 ];
 

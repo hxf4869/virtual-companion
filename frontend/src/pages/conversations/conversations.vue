@@ -55,7 +55,7 @@
         v-if="readableConversationTitle(item) !== readableConversationPreview(item)"
         class="meta"
       >{{ readableConversationPreview(item) }}</text>
-      <text v-if="item.createdAt" class="meta">{{ item.createdAt }}</text>
+      <text v-if="item.createdAt" class="meta">{{ formatLocalDateTime(item.createdAt) }}</text>
       <text v-if="item.incognito" class="meta" data-testid="conversation-incognito">无痕</text>
       <view class="actions">
         <button data-testid="conversation-open" class="conv-btn conv-btn--primary" @click="openChat(item)">
@@ -199,6 +199,7 @@ import {
   readableConversationPreview,
   readableConversationTitle,
 } from "@/domain/conversation-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
@@ -465,6 +466,7 @@ export default {
     return {
       relStore,
       readableConversationTitle,
+      formatLocalDateTime,
       readableConversationPreview,
       items,
       visibleItems,

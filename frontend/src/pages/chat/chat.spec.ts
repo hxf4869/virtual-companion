@@ -725,6 +725,144 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  // P1-2：头部与会话 chip 不得直接展示原始 title/preview——密文、空值、
+  // 内部 conversationId 一律经 conversation-display helper 过滤后再截断。
+  it("CONV-LABEL: an opaque enc2 title falls back to the readable preview, never the ciphertext", async () => {
+    stubFetch({
+      conversationsJson: [
+        {
+          conversationId: 773,
+          relationshipId: 1,
+          title: `enc2:${"A".repeat(120)}`,
+          lastMessagePreview: "今晚早点休息",
+          createdAt: "2026-08-18T12:00:00Z",
+          incognito: false,
+        },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const chips = wrapper.findAll('[data-testid="conversation-item"]');
+    expect(chips).toHaveLength(1);
+    expect(chips[0].text()).toContain("今晚早点休息");
+    expect(wrapper.find('[data-testid="chat-conversation-title"]').text()).toContain("今晚早点休息");
+
+    const pageText = wrapper.text();
+    expect(pageText).not.toMatch(/enc1:|enc2:/i);
+    expect(pageText).not.toContain("773");
+    wrapper.unmount();
+  });
+
+  it("CONV-LABEL: an opaque preview falls back to 未命名会话 with the real createdAt date", async () => {
+    stubFetch({
+      conversationsJson: [
+        {
+          conversationId: 774,
+          relationshipId: 1,
+          title: "",
+          lastMessagePreview: `enc1:${"B".repeat(120)}`,
+          createdAt: "2026-08-18T12:00:00Z",
+          incognito: false,
+        },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // chip 承载 16 字符截断；头部承载完整 fallback。
+    const datedFallback = "未命名会话（2026-08-18）";
+    expect(wrapper.find('[data-testid="conversation-item"]').text()).toBe(
+      `${datedFallback.slice(0, 16)}…`,
+    );
+    expect(wrapper.find('[data-testid="chat-conversation-title"]').text()).toContain(
+      datedFallback,
+    );
+
+    const pageText = wrapper.text();
+    expect(pageText).not.toMatch(/enc1:|enc2:/i);
+    expect(pageText).not.toContain("774");
+    wrapper.unmount();
+  });
+
+  it("CONV-LABEL: empty title and preview fall back to plain 未命名会话", async () => {
+    stubFetch({
+      conversationsJson: [
+        {
+          conversationId: 775,
+          relationshipId: 1,
+          title: "",
+          lastMessagePreview: "",
+          createdAt: "not-a-date",
+          incognito: false,
+        },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conversation-item"]').text()).toContain("未命名会话");
+    expect(wrapper.find('[data-testid="conversation-item"]').text()).not.toContain("未命名会话（");
+    expect(wrapper.find('[data-testid="chat-conversation-title"]').text()).toContain("未命名会话");
+
+    const pageText = wrapper.text();
+    expect(pageText).not.toMatch(/enc1:|enc2:/i);
+    expect(pageText).not.toContain("775");
+    wrapper.unmount();
+  });
+
+  it("CONV-LABEL: truncation happens after the safe text is resolved (chip ≤16 chars, header full)", async () => {
+    const longTitle = "这是一个超过十六个字符的可读会话标题用于验证截断";
+    stubFetch({
+      conversationsJson: [
+        {
+          conversationId: 776,
+          relationshipId: 1,
+          title: longTitle,
+          lastMessagePreview: "preview-not-used",
+          createdAt: "2026-08-18T12:00:00Z",
+          incognito: false,
+        },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const chip = wrapper.find('[data-testid="conversation-item"]').text();
+    expect(chip).toBe(`${longTitle.slice(0, 16)}…`);
+    // 头部承载完整可读标题，不做 chip 级截断。
+    expect(wrapper.find('[data-testid="chat-conversation-title"]').text()).toContain(longTitle);
+    wrapper.unmount();
+  });
+
+  it("LANDSCAPE: binds the ResizeObserver when the history element appears after the async load", async () => {
+    const observed: Element[] = [];
+    let disconnected = false;
+    class FakeResizeObserver {
+      observe(el: Element): void {
+        observed.push(el);
+      }
+      disconnect(): void {
+        disconnected = true;
+      }
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+
+    // 关系在 mount 后异步加载：historyEl 晚于 onMounted 出现（深链/刷新同型）。
+    const wrapper = mountPage();
+    expect(observed).toHaveLength(0);
+    await flushPromises();
+
+    const history = wrapper.find('[data-testid="history"]');
+    expect(history.exists()).toBe(true);
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toBe(history.element);
+
+    wrapper.unmount();
+    expect(disconnected).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
   it("INC-MODE: the toggle decides the next conversation's incognito flag", async () => {
     const wrapper = mountPage();
     await flushPromises();

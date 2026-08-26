@@ -192,7 +192,7 @@ states carry alert/live a11y semantics. -->
         class="card pending"
       >
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }}</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
         <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
           事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
         </text>
@@ -399,7 +399,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些候选已被拒绝，不作为已保存事实。</text>
       <view v-for="m in visibleRejected" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · {{ m.status }}</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · {{ publicMemoryStatusLabel(m.status) }}</text>
         <view class="actions">
           <button
             size="mini"
@@ -422,7 +422,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些记录已过期，不作为已保存事实。</text>
       <view v-for="m in visibleExpired" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · {{ m.status }}</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · {{ publicMemoryStatusLabel(m.status) }}</text>
         <view class="actions">
           <button
             size="mini"
@@ -445,7 +445,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些记忆已被更新的确认事实替代，不作为已保存事实。</text>
       <view v-for="m in visibleSuperseded" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · 已被替代</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · 已被替代</text>
         <view class="actions">
           <button
             size="mini"
@@ -468,7 +468,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些记录已删除，不作为已保存事实。</text>
       <view v-for="m in visibleDeleted" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · 已删除</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · 已删除</text>
         <view class="actions">
           <button
             size="mini"
@@ -492,7 +492,7 @@ import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
-import { publicMemoryScopeLabel } from "@/domain/public-memory-display";
+import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { matchesLooseText } from "@/domain/text-filter";
 import { lastRequestId } from "@/domain/request-id";
 import { formatTimestamp } from "@/domain/timestamp";

@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { classifyPage } from "@/domain/nav-guard";
+import { canEnterAdminPage, canEnterOpsPage, classifyPage } from "@/domain/nav-guard";
 
 import {
   CONSUMER_TABS,
@@ -252,14 +252,14 @@ describe("deep-link query contract", () => {
 });
 
 describe("route-specific allowedRoles (internal entries)", () => {
-  it("ops is visible to every operator role; admin only to ADMIN and PRIVACY_OPERATOR", () => {
+  it("ops is ADMIN-only; admin is open to every operator role", () => {
     const ops = routeSpecOf("/pages/ops/ops")!;
     const admin = routeSpecOf("/pages/admin/admin")!;
     const matrix: Record<string, { ops: boolean; admin: boolean }> = {
       ADMIN: { ops: true, admin: true },
-      SAFETY_REVIEWER: { ops: true, admin: false },
-      PRIVACY_OPERATOR: { ops: true, admin: true },
-      OPS_VIEWER: { ops: true, admin: false },
+      SAFETY_REVIEWER: { ops: false, admin: true },
+      PRIVACY_OPERATOR: { ops: false, admin: true },
+      OPS_VIEWER: { ops: false, admin: true },
       USER: { ops: false, admin: false },
     };
     for (const [role, expected] of Object.entries(matrix)) {
@@ -273,4 +273,25 @@ describe("route-specific allowedRoles (internal entries)", () => {
     expect(isVisibleToRole(home, "USER")).toBe(true);
     expect(isVisibleToRole(home, null)).toBe(true);
   });
+});
+
+describe("internal entry visibility matches the target page guards", () => {
+  // 交叉对账：入口可见性（navigation.allowedRoles）必须与目标页面自己的
+  // 守卫（ops 仅 ADMIN；admin 全操作者可进，分区权限在页面内部）一致。
+  const ops = routeSpecOf("/pages/ops/ops")!;
+  const admin = routeSpecOf("/pages/admin/admin")!;
+  const roles = [
+    "ADMIN",
+    "SAFETY_REVIEWER",
+    "PRIVACY_OPERATOR",
+    "OPS_VIEWER",
+    "USER",
+    null,
+  ];
+  for (const role of roles) {
+    it(`entry visibility equals page guards for ${role ?? "no role"}`, () => {
+      expect(isVisibleToRole(ops, role)).toBe(canEnterOpsPage(role));
+      expect(isVisibleToRole(admin, role)).toBe(canEnterAdminPage(role));
+    });
+  }
 });

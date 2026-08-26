@@ -87,7 +87,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           data-testid="data-open-memory"
           @click="goTo(memoryHref(item))"
         >
-          {{ item.summary }}（{{ item.status }}）
+          {{ item.summary }}（{{ publicMemoryStatusLabel(item.status) }}）
         </button>
         <EmptyState
           v-if="store.memories.length === 0 && !store.asyncState.failedDomains.includes('memory')"
@@ -164,6 +164,7 @@ import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
 import { readableConversationTitle } from "@/domain/conversation-display";
+import { publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { personaDisplayName } from "@/domain/persona";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
@@ -255,6 +256,7 @@ export default {
       store,
       reportStore,
       readableConversationTitle,
+      publicMemoryStatusLabel,
       REPORT_REASON_LABELS,
       personaDisplayName,
       requestIdCopy,
@@ -342,10 +344,11 @@ export default {
 }
 
 .page-act {
-  min-height: 40px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-env);
+  /* 暗面页头上的真实控件边界 ≥3:1。 */
+  border: 1px solid var(--vc-border-env-strong);
   border-radius: var(--vc-radius-s);
   background: transparent;
   color: var(--vc-on-env);

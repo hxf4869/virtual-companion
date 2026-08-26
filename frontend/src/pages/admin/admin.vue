@@ -792,7 +792,7 @@ import {
   type UsageSummaryItem,
   type ProviderPlanStatus,
 } from "@/api/auth";
-import { OPERATOR_ROLES } from "@/domain/nav-guard";
+import { canEnterAdminPage } from "@/domain/nav-guard";
 import type { PublicOpsCase } from "@/domain/ops-case-redact";
 import { createAuthenticatedTransport } from "@/api/transport";
 import InternalShell from "@/app/InternalShell.vue";
@@ -889,7 +889,7 @@ export default defineComponent({
     const caseInternalRead = ref<Record<string, string>>({});
     const casesFailed = ref(false);
     const isAdmin = computed(() => auth.role === "ADMIN");
-    const isOperator = computed(() => auth.role != null && OPERATOR_ROLES.has(auth.role));
+    const isOperator = computed(() => canEnterAdminPage(auth.role));
     const canMutateCases = computed(() =>
       auth.role === "ADMIN" || auth.role === "SAFETY_REVIEWER" || auth.role === "PRIVACY_OPERATOR");
 
@@ -1523,7 +1523,8 @@ export default defineComponent({
   flex: 1 1 10em;
   min-height: 44px;
   padding: 0 var(--vc-space-3);
-  border: 1px solid var(--vc-border-env);
+  /* 暗面上的真实控件边界 ≥3:1，不用装饰级 border-env。 */
+  border: 1px solid var(--vc-border-env-strong);
   border-radius: var(--vc-radius-s);
   background: var(--vc-env);
   color: var(--vc-on-env);

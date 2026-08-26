@@ -88,6 +88,7 @@ import { fetchVersion, type VersionInfo } from "@/api/version";
 import InternalShell from "@/app/InternalShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useBaselineStore } from "@/stores/baseline";
+import { canEnterOpsPage } from "@/domain/nav-guard";
 
 export default {
   name: "OpsPage",
@@ -108,7 +109,7 @@ export default {
       errorKind,
       capabilityGates,
     } = storeToRefs(baselineStore);
-    const isAdminRole = computed(() => auth.role === "ADMIN");
+    const isAdminRole = computed(() => canEnterOpsPage(auth.role));
     const runtimeTitle = computed(() => {
       switch (state.value) {
         case "ready":

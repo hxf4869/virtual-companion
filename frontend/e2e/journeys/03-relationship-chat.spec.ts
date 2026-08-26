@@ -129,3 +129,118 @@ test("a message report deep link carries messageId into the submit payload", asy
   const body = (await payloadPromise).postDataJSON() as { messageId?: string };
   expect(body.messageId).toBe(messageId);
 });
+
+// P1-1 回归（812×375 横屏）：真实浏览器几何断言。行级元素只滚不压——
+// 当前关系按钮不被裁切（≥44px）、消息区 ≥96px、输入栏完整；滚动到底后
+// mode/feedback 行完整可见且与固定输入栏不重叠。
+test("landscape 812x375 keeps the chat usable: rows scroll, nothing squashed or covered", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const user = await provisionUser(request, "relationship-chat");
+  let session: Awaited<ReturnType<typeof uiLogin>>;
+  try {
+    session = await uiLogin(page, user);
+  } catch (err) {
+    if (!String(err).includes("429")) throw err;
+    await page.waitForTimeout(65_000);
+    session = await uiLogin(page, user);
+  }
+  await prepareGenerationAccess(session.accessToken);
+
+  await navigateToPage(page, "/pages/companion/companion");
+  await page.getByTestId("persona-select").selectOption("gentle-listener");
+  await page.getByTestId("create-relationship").click();
+  await expect(page.getByTestId("current-relationship")).toContainText(
+    "当前关系：温和倾听者",
+  );
+
+  await navigateToPage(page, "/pages/chat/chat");
+  const input = page.locator('[data-testid="message-input"] input');
+  await expect(input).toBeVisible();
+  await input.fill("横屏短视口下也要能完整读到这条消息。");
+  await page.getByTestId("send").click();
+  await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
+    timeout: 30_000,
+  });
+
+  await page.setViewportSize({ width: 812, height: 375 });
+  const measure = () =>
+    page.evaluate(() => {
+      const box = (el: Element | null) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          top: r.top,
+          bottom: r.bottom,
+          left: r.left,
+          right: r.right,
+          width: r.width,
+          height: r.height,
+        };
+      };
+      const history = document.querySelector('[data-testid="history"]');
+      return {
+        viewportHeight: window.innerHeight,
+        relation: box(document.querySelector('[data-testid="current-relationship"]')),
+        relationBtn: box(document.querySelector('[data-testid="deactivate-relationship"]')),
+        history: box(history),
+        historyClientHeight: history ? history.clientHeight : 0,
+        message: box(document.querySelector('[data-testid="assistant-md"]')),
+        inputArea: box(document.querySelector(".chat-input-area")),
+        input: box(document.querySelector('[data-testid="message-input"] input')),
+        modeRow: box(document.querySelector('[data-testid="mode-row"]')),
+        feedbackRow: box(document.querySelector('[data-testid="feedback-row"]')),
+        mainScroll: (() => {
+          const main = document.querySelector(".chat-main") as HTMLElement | null;
+          return main
+            ? { scrollTop: main.scrollTop, scrollHeight: main.scrollHeight, clientHeight: main.clientHeight }
+            : null;
+        })(),
+      };
+    });
+
+  const before = await measure();
+  // 当前关系按钮：真实高度 ≥44px，且完整落在视口内（没有被行容器裁掉）。
+  expect(before.relationBtn, "relation button box").not.toBeNull();
+  expect(before.relationBtn!.height).toBeGreaterThanOrEqual(44);
+  expect(before.relationBtn!.width).toBeGreaterThanOrEqual(44);
+  expect(before.relationBtn!.bottom).toBeLessThanOrEqual(before.viewportHeight + 0.5);
+  expect(before.relation!.height).toBeGreaterThanOrEqual(before.relationBtn!.height);
+
+  // 消息区：实际高度 ≥96px，且助手回复真实渲染（可读）。
+  expect(before.historyClientHeight).toBeGreaterThanOrEqual(96);
+  expect(before.message!.height).toBeGreaterThan(12);
+  expect(before.message!.width).toBeGreaterThan(60);
+
+  // 输入栏：完整落在视口底部，不缺一角。
+  expect(before.inputArea!.bottom).toBeLessThanOrEqual(before.viewportHeight + 0.5);
+  expect(before.inputArea!.top).toBeGreaterThanOrEqual(before.viewportHeight - 80);
+  expect(before.input!.height).toBeGreaterThanOrEqual(44);
+
+  // 滚动到底：mode/feedback 行完整可见，且不与固定输入栏重叠。
+  const scrolled = await page.evaluate(() => {
+    const main = document.querySelector(".chat-main") as HTMLElement | null;
+    if (!main) return false;
+    main.scrollTop = main.scrollHeight;
+    return true;
+  });
+  expect(scrolled).toBe(true);
+  await page.waitForTimeout(150);
+  const after = await measure();
+  expect(after.mainScroll!.scrollHeight).toBeGreaterThan(after.mainScroll!.clientHeight);
+  for (const [name, row] of [["mode-row", after.modeRow], ["feedback-row", after.feedbackRow]] as const) {
+    expect(row, `${name} box`).not.toBeNull();
+    expect(row!.bottom).toBeLessThanOrEqual(after.inputArea!.top + 0.5);
+    expect(row!.top).toBeGreaterThanOrEqual(0);
+    expect(row!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  // 整页无横向溢出。
+  const geometry = await page.evaluate(() => ({
+    pageWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+});
