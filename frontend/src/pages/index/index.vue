@@ -160,6 +160,7 @@ import { listConversations, type ConversationListItem } from "@/api/chat";
 import { goTo } from "@/app/navigate";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import { buildContextHref } from "@/domain/context-href";
+import { readableConversationTitle } from "@/domain/conversation-display";
 import { resolveAdmissionGate, type AdmissionGate } from "@/domain/nav-guard";
 import { resolveNextStep, type NextStep } from "@/domain/next-step";
 import { personaDisplayName } from "@/domain/persona";
@@ -260,7 +261,11 @@ const conversationSummary = computed(() => {
     }
     return channelText(conversationChannel, "还没有会话");
   }
-  const base = latest.title?.trim() || latest.lastMessagePreview?.trim() || "未发送消息的会话";
+  // P1-5：enc2 密文/空值不直接展示，统一走用户可读标题 helper。
+  const base =
+    readableConversationTitle(latest) === "未命名会话"
+      ? "未发送消息的会话"
+      : readableConversationTitle(latest);
   return channelText(conversationChannel, latest.incognito ? `无痕 · ${base}` : base);
 });
 
@@ -617,5 +622,44 @@ defineExpose({ loadSummaries });
 
 .home-row:focus-visible {
   outline-offset: -2px;
+}
+
+/* LANDSCAPE / 短视口：压缩首屏信息优先级——伴侣名与主动作保留，
+   摘要行收窄，保证四入口底栏之上能看到完整主动作与至少一行摘要。 */
+@media (max-height: 480px) {
+  .home-hero {
+    gap: var(--vc-space-2);
+    padding: var(--vc-space-4);
+  }
+
+  .home-hero__companion {
+    font-size: var(--vc-text-xl);
+  }
+
+  .home-hero__lead {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+  }
+
+  .home-hero__primary {
+    min-height: 44px;
+    margin-top: var(--vc-space-1);
+  }
+
+  .home-hero--entry {
+    margin-top: var(--vc-space-4);
+  }
+
+  .home-summaries {
+    gap: var(--vc-space-1);
+    margin-top: var(--vc-space-3);
+  }
+
+  .home-row {
+    min-height: 44px;
+    padding: var(--vc-space-1) var(--vc-space-3);
+  }
 }
 </style>

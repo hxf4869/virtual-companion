@@ -50,8 +50,11 @@
       class="card"
       data-testid="conversation-card"
     >
-      <text class="summary">{{ item.title || item.lastMessagePreview || `会话 ${item.conversationId}` }}</text>
-      <text v-if="item.title && item.lastMessagePreview" class="meta">{{ item.lastMessagePreview }}</text>
+      <text class="summary" data-testid="conversation-title">{{ readableConversationTitle(item) }}</text>
+      <text
+        v-if="readableConversationTitle(item) !== readableConversationPreview(item)"
+        class="meta"
+      >{{ readableConversationPreview(item) }}</text>
       <text v-if="item.createdAt" class="meta">{{ item.createdAt }}</text>
       <text v-if="item.incognito" class="meta" data-testid="conversation-incognito">无痕</text>
       <view class="actions">
@@ -192,6 +195,10 @@ import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
+import {
+  readableConversationPreview,
+  readableConversationTitle,
+} from "@/domain/conversation-display";
 import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
@@ -457,6 +464,8 @@ export default {
 
     return {
       relStore,
+      readableConversationTitle,
+      readableConversationPreview,
       items,
       visibleItems,
       filterQuery,
@@ -505,7 +514,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .conv-new-chat {
@@ -609,7 +618,7 @@ export default {
   border: 1px solid var(--vc-border-strong);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 /* 危险区：预览 → 两步确认；文案只陈述数量。 */

@@ -2,7 +2,7 @@
   <!-- DOGFOOD-09：页面容器声明 main landmark。沉浸式对话详情：无四入口
        底栏，自带头部（返回 + 当前陪伴 + AI 标识 + 上下文菜单）。 -->
   <view class="chat-page">
-    <header class="chat-header" role="banner">
+    <header class="chat-header vc-chrome" role="banner">
       <button
         type="button"
         class="chat-header__back vc-tap"
@@ -360,9 +360,9 @@
         </view>
 
         <view
+          ref="historyEl"
           class="chat-history"
           data-testid="history"
-          :style="{ height: historyViewportPx + 'px' }"
           @scroll="onHistoryScroll"
         >
           <view
@@ -733,6 +733,7 @@ import { useIncognitoStore } from "@/stores/incognito";
 import type { MemoryImportPreview } from "@/api/relationship";
 import { requestIdLabel } from "@/domain/request-id";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
+import { isReadableConversationText } from "@/domain/conversation-display";
 import { installStreamLifecycle } from "@/domain/stream-recovery";
 
 function resolveOrigin(): string {
@@ -758,7 +759,11 @@ export default defineComponent({
     const headerConversationTitle = computed(() => {
       const id = store.conversationId;
       if (!id) return "";
-      return (store.conversations.find((item) => item.conversationId === id)?.title ?? "").trim();
+      const item = store.conversations.find((row) => row.conversationId === id);
+      if (!item) return "";
+      // P1-5：密文/不可读标题不进头部，避免暴露 enc2 内部值。
+      const title = (item.title ?? "").trim();
+      return isReadableConversationText(title) ? title : "";
     });
     const inputText = ref("");
     const initError = ref(false);
@@ -833,12 +838,31 @@ export default defineComponent({
 
     const messages = computed(() => store.messages);
     const historyScrollTop = ref(0);
-    const historyViewportPx = VIRTUAL_VIEWPORT_HEIGHT;
+    // LANDSCAPE: 消息区高度由外壳按真实可用高度分配（flex），虚拟窗口用
+    // 实测 clientHeight 计算；测不到（happy-dom）时退回常量，测试仍确定。
+    const historyEl = ref<unknown>(null);
+    const historyViewportPx = ref(VIRTUAL_VIEWPORT_HEIGHT);
+    let historyObserver: { disconnect(): void; observe(target: Element): void } | null = null;
+
+    /** 模板 ref 在 uni-h5 可能是元素或组件实例（带 $el），统一取真实节点。 */
+    function historyNode(): HTMLElement | null {
+      const raw: unknown = historyEl.value;
+      if (raw instanceof HTMLElement) return raw;
+      const el = (raw as { $el?: unknown } | null)?.$el;
+      return el instanceof HTMLElement ? el : null;
+    }
+
+    function measureHistory(): void {
+      const el = historyNode();
+      const height = el ? el.clientHeight : 0;
+      if (height > 0) historyViewportPx.value = height;
+    }
+
     const virtualWindow = computed(() =>
       computeVirtualWindow({
         count: messages.value.length,
         scrollTop: historyScrollTop.value,
-        viewportHeight: historyViewportPx,
+        viewportHeight: historyViewportPx.value,
         estimateHeight: VIRTUAL_ESTIMATE_HEIGHT,
         overscan: VIRTUAL_OVERSCAN,
       }),
@@ -1559,6 +1583,15 @@ export default defineComponent({
           },
         });
       }
+      // LANDSCAPE: 首次与后续尺寸变化都重测消息区真实高度，驱动虚拟窗口。
+      measureHistory();
+      if (typeof ResizeObserver !== "undefined") {
+        const el = historyNode();
+        if (el) {
+          historyObserver = new ResizeObserver(() => measureHistory());
+          historyObserver.observe(el);
+        }
+      }
       // SESS-REVIVE: restore the session from the HttpOnly refresh cookie
       // before any authenticated call, so a page reload stays logged in.
       if (!auth.isAuthenticated) {
@@ -1637,6 +1670,8 @@ export default defineComponent({
 
     onUnmounted(() => {
       stopLifecycle?.();
+      historyObserver?.disconnect();
+      historyObserver = null;
       clearMemoryPoll();
       // A page teardown is not an explicit user cancellation. Keep the
       // non-sensitive recovery binding so a reload can resume this generation.
@@ -1658,6 +1693,7 @@ export default defineComponent({
       relStore,
       store,
       auth,
+      historyEl,
       headerCompanionName,
       headerAvatar,
       headerConversationTitle,
@@ -1750,12 +1786,15 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* 沉浸式对话：暮色头部 + 暖纸对话面。消息内容占主导；状态行如实呈现。 */
+/* 沉浸式对话：暮色头部 + 暖纸对话面。消息内容占主导；状态行如实呈现。
+   LANDSCAPE: 外壳锁定视口高度，唯一滚动区是消息历史；输入栏不再依赖
+   sticky（外壳不滚动，输入栏常驻底部），消息区高度 = 真实剩余空间。 */
 .chat-page {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--vc-env);
 }
 
@@ -1764,11 +1803,13 @@ export default defineComponent({
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-header {
-  position: sticky;
-  top: 0;
+  flex: none;
+  position: static;
   z-index: var(--vc-z-header);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1779,7 +1820,9 @@ export default defineComponent({
   max-width: 720px;
   margin: 0 auto;
   padding: calc(var(--vc-space-2) + env(safe-area-inset-top, 0px))
-    var(--vc-space-2);
+    calc(var(--vc-space-2) + env(safe-area-inset-right, 0px))
+    var(--vc-space-2)
+    calc(var(--vc-space-2) + env(safe-area-inset-left, 0px));
   background: var(--vc-env-raised);
   border-bottom: 1px solid var(--vc-border-env);
 }
@@ -1789,8 +1832,8 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -1852,7 +1895,7 @@ export default defineComponent({
   flex: 0 0 auto;
   padding: 2px 8px;
   border: 1px solid var(--vc-border-env);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   color: var(--vc-on-env-muted);
   font-size: var(--vc-text-xs);
   white-space: nowrap;
@@ -1984,11 +2027,11 @@ export default defineComponent({
 
 .conversation-item {
   flex: 0 0 auto;
-  min-height: 40px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: transparent;
   color: var(--vc-ink);
   font: inherit;
@@ -2010,7 +2053,7 @@ export default defineComponent({
   display: inline-block;
   margin-left: 4px;
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: var(--vc-sunken);
   color: var(--vc-muted);
   font-size: var(--vc-text-xs);
@@ -2022,7 +2065,7 @@ export default defineComponent({
 }
 
 .chat-nav-index {
-  min-height: 40px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-strong);
@@ -2044,7 +2087,7 @@ export default defineComponent({
 }
 
 .conv-mgmt-btn {
-  min-height: 40px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
@@ -2083,11 +2126,14 @@ export default defineComponent({
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
-/* 对话历史：暖纸面上的安静滚动区 */
+/* 对话历史：暖纸面上的安静滚动区。高度由外壳 flex 分配（不再固定 640px），
+   虚拟窗口用实测 clientHeight 对齐。 */
 .chat-history {
+  flex: 1 1 auto;
+  min-height: 96px;
   box-sizing: border-box;
   width: calc(100% - var(--vc-space-6));
   max-width: 720px;
@@ -2175,11 +2221,11 @@ export default defineComponent({
 
 /* 消息级"更多"与展开操作区 */
 .msg-more {
-  min-height: 32px;
+  min-height: 44px;
   margin: var(--vc-space-1) 0 0;
   padding: 0 var(--vc-space-3);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: transparent;
   color: var(--vc-muted);
   font: inherit;
@@ -2205,11 +2251,11 @@ export default defineComponent({
 .msg-copy,
 .msg-no-memory,
 .msg-delete {
-  min-height: 32px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: var(--vc-card);
   color: var(--vc-muted);
   font: inherit;
@@ -2310,11 +2356,11 @@ export default defineComponent({
 }
 
 .chat-feedback-chip {
-  min-height: 32px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: transparent;
   color: var(--vc-ink);
   font: inherit;
@@ -2341,11 +2387,11 @@ export default defineComponent({
 }
 
 .chat-mode-chip {
-  min-height: 32px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: var(--vc-card);
   color: var(--vc-muted);
   font: inherit;
@@ -2364,8 +2410,8 @@ export default defineComponent({
 }
 
 .chat-input-area {
-  position: sticky;
-  bottom: 0;
+  flex: none;
+  position: static;
   z-index: var(--vc-z-content);
   display: flex;
   gap: var(--vc-space-2);
@@ -2378,11 +2424,12 @@ export default defineComponent({
     calc(var(--vc-space-2) + env(safe-area-inset-bottom, 0px))
     calc(var(--vc-space-3) + env(safe-area-inset-left, 0px));
   background: var(--vc-env-raised);
-  border-top: 1px solid var(--vc-border-env);
+  border-top: 1px solid var(--vc-border-strong);
 }
 
 .chat-input {
   flex: 1 1 auto;
+  min-width: 0;
   box-sizing: border-box;
   min-height: 48px;
   padding: 0 var(--vc-space-3);
@@ -2390,7 +2437,8 @@ export default defineComponent({
   border-radius: var(--vc-radius-s);
   background: var(--vc-paper);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  /* iOS Safari 聚焦自动缩放阈值：输入字号不小于 16px。 */
+  font-size: 16px;
 }
 
 .chat-send {
@@ -2416,7 +2464,8 @@ export default defineComponent({
   flex: 0 0 auto;
   margin: 0;
   padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-env);
+  /* 真实控件边界 ≥3:1：暗面上的操作按钮不用装饰级 border-env。 */
+  border: 1px solid var(--vc-glow);
   border-radius: var(--vc-radius-s);
   background: transparent;
   color: var(--vc-on-env);
@@ -2439,5 +2488,74 @@ export default defineComponent({
   background: var(--vc-danger-bg);
   color: var(--vc-danger);
   font-size: var(--vc-text-xs);
+}
+
+/* LANDSCAPE / 短视口（≤480px 高）：优先保留消息阅读与输入。
+   非核心状态压缩为单行（语义不丢失：文字仍在，按钮仍可达），
+   chips 行保持 44px 触控高度但改为横向滚动不换行，避免叠加占满高度。 */
+@media (max-height: 480px) {
+  .chat-header {
+    padding-top: var(--vc-space-1);
+    padding-bottom: var(--vc-space-1);
+  }
+
+  .service-mode,
+  .usage-health-banner,
+  .chat-usage,
+  .memory-prompt,
+  .incognito-notice,
+  .current-relationship,
+  .chat-status,
+  .chat-draft,
+  .chat-error,
+  .chat-init-error {
+    margin-top: var(--vc-space-1);
+    padding: var(--vc-space-1) var(--vc-space-2);
+    font-size: var(--vc-text-xs);
+  }
+
+  .current-relationship {
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .current-relationship text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-mode-row,
+  .chat-feedback-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-top: var(--vc-space-1);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chat-mode-chip,
+  .chat-feedback-chip {
+    flex: none;
+  }
+
+  .chat-input-area {
+    margin-top: var(--vc-space-1);
+    padding-top: var(--vc-space-1);
+    padding-bottom: var(--vc-space-1);
+  }
+
+  .chat-input,
+  .chat-send,
+  .chat-cancel,
+  .chat-retry {
+    min-height: 44px;
+  }
+
+  .chat-history {
+    min-height: 96px;
+    margin-top: var(--vc-space-1);
+    padding: var(--vc-space-2) 0;
+  }
 }
 </style>

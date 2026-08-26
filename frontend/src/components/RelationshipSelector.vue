@@ -183,6 +183,7 @@ export default defineComponent({
 }
 .rel-select {
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: var(--vc-space-2) var(--vc-space-3);
   border-radius: var(--vc-radius-s);
@@ -190,15 +191,18 @@ export default defineComponent({
   background-color: var(--vc-sunken);
   color: var(--vc-ink);
   font: inherit;
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .rel-create {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--vc-space-3);
 }
 .rel-input {
-  flex: 1;
+  /* min-width:0 让 select 能在窄屏收缩；放不下时按钮换到下一行独占。 */
+  flex: 1 1 16em;
+  min-width: 0;
   min-height: 44px;
   padding: var(--vc-space-2) var(--vc-space-3);
   border-radius: var(--vc-radius-s);
@@ -206,15 +210,17 @@ export default defineComponent({
   background-color: var(--vc-sunken);
   color: var(--vc-ink);
   font: inherit;
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .rel-create-btn {
+  flex: none;
   min-height: 44px;
   padding: 0 var(--vc-space-4);
   border-radius: var(--vc-radius-s);
   background-color: var(--vc-primary);
   color: var(--vc-on-primary);
   font-weight: 600;
+  white-space: nowrap;
 }
 .rel-create-btn::after {
   border: 0;

@@ -15,7 +15,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
     </template>
 
 
-    
+   
 
     <view class="intro">
       <text>
@@ -73,7 +73,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           data-testid="data-open-conversation"
           @click="goTo(conversationHref(item))"
         >
-          {{ item.title || item.lastMessagePreview || `会话 ${item.conversationId}` }}
+          {{ readableConversationTitle(item) }}
         </button>
         <text v-if="store.conversations.length === 0" class="empty">没有会话记录。</text>
       </view>
@@ -163,6 +163,7 @@ import EmptyState from "@/design-system/EmptyState.vue";
 import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
+import { readableConversationTitle } from "@/domain/conversation-display";
 import { personaDisplayName } from "@/domain/persona";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
@@ -253,6 +254,7 @@ export default {
       auth,
       store,
       reportStore,
+      readableConversationTitle,
       REPORT_REASON_LABELS,
       personaDisplayName,
       requestIdCopy,
@@ -406,7 +408,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .row-link {
   display: flex;
