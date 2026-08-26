@@ -4,7 +4,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
   <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
   <ConsumerShell route="/pages/account/account">
 
-    
+   
 
     <view v-if="!auth.isAuthenticated" class="notice" data-testid="account-signed-out" role="status">
       <text>当前未登录。登录后再查看账号或注销。</text>
@@ -21,19 +21,22 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
 
       <!-- "我的"分组入口：全部二级任务的发现路径（Phase 5 IA）。 -->
       <nav class="hub" data-testid="me-hub" aria-label="我的分组入口">
-        <button
-          v-for="entry in HUB_ENTRIES"
-          :key="entry.href"
-          class="row-link"
-          :data-testid="`me-${entry.testid}`"
-          @click="goTo(entry.href)"
-        >
-          <text class="hub-copy">
-            <text class="hub-group">{{ entry.group }}</text>
-            <text class="hub-label">{{ entry.label }}</text>
-          </text>
-          <text class="hub-note">{{ entry.note }}</text>
-        </button>
+        <!-- 分组名作为独立分隔行；行内只显示标签，避免"陪伴·陪伴设置"式粘连。 -->
+        <template v-for="group in groupedHubEntries" :key="group.name">
+          <text class="hub-group" role="presentation">{{ group.name }}</text>
+          <button
+            v-for="entry in group.entries"
+            :key="entry.href"
+            class="row-link"
+            :data-testid="`me-${entry.testid}`"
+            @click="goTo(entry.href)"
+          >
+            <text class="hub-copy">
+              <text class="hub-label">{{ entry.label }}</text>
+            </text>
+            <text class="hub-note">{{ entry.note }}</text>
+          </button>
+        </template>
       </nav>
 
       <!-- Internal Shell 入口：仅操作者角色可见；普通用户看不到入口与
@@ -44,15 +47,15 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         data-testid="me-internal"
         aria-label="内部入口"
       >
+        <text class="hub-group" role="presentation">内部</text>
         <button
-          v-for="entry in INTERNAL_ENTRIES"
+          v-for="entry in visibleInternalEntries"
           :key="entry.href"
           class="row-link"
           :data-testid="`me-${entry.testid}`"
           @click="goTo(entry.href)"
         >
           <text class="hub-copy">
-            <text class="hub-group">内部</text>
             <text class="hub-label">{{ entry.label }}</text>
           </text>
           <text class="hub-note">{{ entry.note }}</text>
@@ -215,7 +218,7 @@ import {
 } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
-import { isOperatorRole } from "@/app/navigation";
+import { isOperatorRole, isVisibleToRole, routeSpecOf } from "@/app/navigation";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
@@ -241,6 +244,25 @@ export default {
       { group: "内部", label: "内部管理", note: "账户/审计/队列", href: "/pages/admin/admin", testid: "admin" },
     ] as const;
     const operatorVisible = computed(() => isOperatorRole(auth.role));
+    // 账号页只显示当前角色真正可进入的内部入口（route-specific allowedRoles）。
+    const groupedHubEntries = computed(() => {
+      const groups: Array<{ name: string; entries: typeof HUB_ENTRIES[number][] }> = [];
+      for (const entry of HUB_ENTRIES) {
+        const last = groups[groups.length - 1];
+        if (last && last.name === entry.group) {
+          last.entries.push(entry);
+        } else {
+          groups.push({ name: entry.group, entries: [entry] });
+        }
+      }
+      return groups;
+    });
+    const visibleInternalEntries = computed(() =>
+      INTERNAL_ENTRIES.filter((entry) => {
+        const spec = routeSpecOf(entry.href);
+        return spec ? isVisibleToRole(spec, auth.role) : false;
+      }),
+    );
 
     const auth = useAuthStore();
     const deleteOpen = ref(false);
@@ -418,6 +440,8 @@ export default {
       HUB_ENTRIES,
       INTERNAL_ENTRIES,
       operatorVisible,
+      groupedHubEntries,
+      visibleInternalEntries,
       auth,
       deleteOpen,
       deleteError,
@@ -518,10 +542,10 @@ export default {
 }
 
 .page-act {
-  min-height: 40px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-env);
+  border: 1px solid var(--vc-border-env-strong);
   border-radius: var(--vc-radius-s);
   background: transparent;
   color: var(--vc-on-env);
@@ -584,7 +608,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .danger-zone {
   display: flex;
@@ -654,8 +678,15 @@ export default {
 }
 
 .hub-group {
+  display: block;
+  margin-top: var(--vc-space-4);
   color: var(--vc-muted);
   font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.hub-group:first-child {
+  margin-top: 0;
 }
 
 .hub-label {

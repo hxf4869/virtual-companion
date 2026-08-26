@@ -285,7 +285,7 @@ export default {
   color: var(--vc-ink);
   border: 1px solid var(--vc-border-strong);
   border-radius: var(--vc-radius-s);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .appeal-row {

@@ -1,5 +1,5 @@
 <template>
-  <header class="vc-header" role="banner" data-testid="page-header">
+  <header class="vc-header vc-chrome" role="banner" data-testid="page-header">
     <!-- 统一页头：返回（可选）+ 标题（一级标题语义）+ 上下文操作。挂在
          暮色环境层上，替代 uni 原生标题栏（navigationStyle: custom），
          消除原生标题与页面标题重复。 -->
@@ -15,13 +15,6 @@
     </button>
 
     <view class="vc-header__copy">
-      <text
-        v-if="eyebrow"
-        class="vc-header__eyebrow"
-        data-testid="page-header-eyebrow"
-      >
-        {{ eyebrow }}
-      </text>
       <text class="vc-header__title" role="heading" aria-level="1">
         {{ title }}
       </text>
@@ -47,11 +40,6 @@ export default defineComponent({
     title: {
       type: String,
       required: true,
-    },
-    /** 页面上方的小字说明（内部页"内部"标识等）；消费者页不使用。 */
-    eyebrow: {
-      type: String,
-      default: "",
     },
     showBack: {
       type: Boolean,
@@ -84,10 +72,12 @@ export default defineComponent({
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--vc-space-2);
+  box-sizing: border-box;
+  width: 100%;
   max-width: 720px;
   margin: 0 auto;
   padding: var(--vc-space-2)
-    calc(var(--vc-space-3) + env(safe-area-inset-left, 0px))
+    calc(var(--vc-space-3) + env(safe-area-inset-right, 0px))
     var(--vc-space-2)
     calc(var(--vc-space-2) + env(safe-area-inset-left, 0px));
   background: var(--vc-env-raised);
@@ -99,8 +89,8 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -128,13 +118,6 @@ export default defineComponent({
   letter-spacing: 0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.vc-header__eyebrow {
-  flex: 0 0 auto;
-  color: var(--vc-on-env-muted);
-  font-size: var(--vc-text-xs);
-  font-weight: 600;
 }
 
 .vc-header__actions {

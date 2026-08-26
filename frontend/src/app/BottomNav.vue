@@ -1,6 +1,6 @@
 <template>
   <nav
-    class="vc-bottom-nav"
+    class="vc-bottom-nav vc-chrome"
     role="navigation"
     aria-label="主导航"
     data-testid="consumer-tabbar"

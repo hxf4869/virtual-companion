@@ -294,4 +294,27 @@ describe("account page", () => {
     expect(navigateTo).toHaveBeenLastCalledWith({ url: "/pages/admin/admin" });
     wrapper.unmount();
   });
+
+  it("internal entries are route-specific: each operator role sees only what it can enter", async () => {
+    const cases: Array<{ role: string; ops: boolean; admin: boolean }> = [
+      { role: "ADMIN", ops: true, admin: true },
+      { role: "SAFETY_REVIEWER", ops: true, admin: false },
+      { role: "PRIVACY_OPERATOR", ops: true, admin: true },
+      { role: "OPS_VIEWER", ops: true, admin: false },
+    ];
+    for (const c of cases) {
+      setActivePinia(createPinia());
+      stubFetch();
+      const auth = useAuthStore();
+      auth.accessToken = "t";
+      auth.role = c.role;
+      const wrapper = mount(AccountPage, { attachTo: document.body });
+      await flushPromises();
+
+      expect(wrapper.find('[data-testid="me-internal"]').exists(), c.role).toBe(true);
+      expect(wrapper.find('[data-testid="me-ops"]').exists(), `${c.role} ops`).toBe(c.ops);
+      expect(wrapper.find('[data-testid="me-admin"]').exists(), `${c.role} admin`).toBe(c.admin);
+      wrapper.unmount();
+    }
+  });
 });

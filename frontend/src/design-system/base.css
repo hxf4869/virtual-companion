@@ -18,6 +18,8 @@ page,
   --vc-on-env-muted: #a3b1c6;
   --vc-glow: #e5b566; /* 暖光：活动 tab、暗面强调（8.1:1） */
   --vc-border-env: rgba(233, 238, 247, 0.18);
+  /* 暗面真实控件边界（≥3:1 于 env/env-raised；装饰细线仍用 border-env） */
+  --vc-border-env-strong: #7386a3;
 
   /* ---- 纸面：亮着的窗（内容面板） ---- */
   --vc-paper: #f7f4ed;
@@ -61,8 +63,11 @@ page,
   --vc-radius-s: 8px;
   --vc-radius-m: 12px;
   --vc-radius-l: 16px;
+  --vc-radius-pill: 999px;
 
-  /* ---- 字号 ---- */
+  /* ---- 字号 ----
+     输入控件（input/select/textarea）一律 16px：低于该值 iOS Safari 会在
+     聚焦时自动放大视口。正文正文档位不受影响。 */
   --vc-text-xs: 12px;
   --vc-text-sm: 13px;
   --vc-text-md: 15px;

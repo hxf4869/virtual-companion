@@ -505,7 +505,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .consent-row {

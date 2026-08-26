@@ -4,7 +4,7 @@ intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. --
 <template>
   <ConsumerShell route="/pages/health/health">
 
-    
+   
 
     <view class="intro" data-testid="health-intro">
       <text>
@@ -333,7 +333,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .chip-row {
   display: flex;
@@ -346,7 +346,7 @@ export default {
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: transparent;
   color: var(--vc-ink);
   font: inherit;

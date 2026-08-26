@@ -45,6 +45,13 @@ export interface RouteSpec {
   readonly meGroup: MeGroup | null;
   /** 页面实际消费的深链 query 参数（只读透传参数不在此列）。 */
   readonly allowedQuery: readonly string[];
+  /**
+   * 路由级角色白名单（route-specific）：只有列出角色可见/可进入。
+   * 未设置表示不按角色限制。内部页按契约细分：ops 只读状态对全部
+   * 操作者开放；admin 的账户/审计/申诉面按 OpenAPI 只对 ADMIN 与
+   * PRIVACY_OPERATOR 开放。
+   */
+  readonly allowedRoles?: readonly string[];
 }
 
 export interface TabDef {
@@ -232,6 +239,7 @@ export const ROUTES: readonly RouteSpec[] = [
     section: "internal",
     meGroup: null,
     allowedQuery: [],
+    allowedRoles: ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER"],
   },
   {
     path: "/pages/admin/admin",
@@ -241,6 +249,7 @@ export const ROUTES: readonly RouteSpec[] = [
     section: "internal",
     meGroup: null,
     allowedQuery: [],
+    allowedRoles: ["ADMIN", "PRIVACY_OPERATOR"],
   },
 ];
 
@@ -268,6 +277,9 @@ export function isOperatorRole(role: string | null | undefined): boolean {
  */
 export function isVisibleToRole(spec: RouteSpec, role: string | null): boolean {
   if (spec.shell !== "internal") return true;
+  if (spec.allowedRoles) {
+    return typeof role === "string" && spec.allowedRoles.includes(role);
+  }
   return isOperatorRole(role);
 }
 

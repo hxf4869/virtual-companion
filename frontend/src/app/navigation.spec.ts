@@ -78,7 +78,7 @@ describe("navigation model vs nav-guard PageClass", () => {
     }
   });
 
-  it("internal routes are visible to operator roles only", () => {
+  it("internal routes are visible to operator roles only (route-specific)", () => {
     const internal = ROUTES.filter((spec) => spec.shell === "internal");
     expect(internal.map((spec) => spec.path).sort()).toEqual(
       ["/pages/admin/admin", "/pages/ops/ops"].sort(),
@@ -86,10 +86,12 @@ describe("navigation model vs nav-guard PageClass", () => {
     for (const spec of internal) {
       expect(isVisibleToRole(spec, null)).toBe(false);
       expect(isVisibleToRole(spec, "USER")).toBe(false);
-      expect(isVisibleToRole(spec, "ADMIN")).toBe(true);
-      expect(isVisibleToRole(spec, "SAFETY_REVIEWER")).toBe(true);
-      expect(isVisibleToRole(spec, "PRIVACY_OPERATOR")).toBe(true);
-      expect(isVisibleToRole(spec, "OPS_VIEWER")).toBe(true);
+      // 未设 allowedRoles 的内部路由回退到操作者角色全集。
+      if (!spec.allowedRoles) {
+        for (const role of ["ADMIN", "SAFETY_REVIEWER", "PRIVACY_OPERATOR", "OPS_VIEWER"]) {
+          expect(isVisibleToRole(spec, role)).toBe(true);
+        }
+      }
     }
     for (const spec of ROUTES.filter((s) => s.shell !== "internal")) {
       expect(isVisibleToRole(spec, "USER")).toBe(true);
@@ -246,5 +248,29 @@ describe("deep-link query contract", () => {
     expect(specOf("/pages/account/account").allowedQuery).toContain(
       "passwordChange",
     );
+  });
+});
+
+describe("route-specific allowedRoles (internal entries)", () => {
+  it("ops is visible to every operator role; admin only to ADMIN and PRIVACY_OPERATOR", () => {
+    const ops = routeSpecOf("/pages/ops/ops")!;
+    const admin = routeSpecOf("/pages/admin/admin")!;
+    const matrix: Record<string, { ops: boolean; admin: boolean }> = {
+      ADMIN: { ops: true, admin: true },
+      SAFETY_REVIEWER: { ops: true, admin: false },
+      PRIVACY_OPERATOR: { ops: true, admin: true },
+      OPS_VIEWER: { ops: true, admin: false },
+      USER: { ops: false, admin: false },
+    };
+    for (const [role, expected] of Object.entries(matrix)) {
+      expect(isVisibleToRole(ops, role), `${role} ops`).toBe(expected.ops);
+      expect(isVisibleToRole(admin, role), `${role} admin`).toBe(expected.admin);
+    }
+  });
+
+  it("consumer routes stay role-agnostic", () => {
+    const home = routeSpecOf("/pages/index/index")!;
+    expect(isVisibleToRole(home, "USER")).toBe(true);
+    expect(isVisibleToRole(home, null)).toBe(true);
   });
 });

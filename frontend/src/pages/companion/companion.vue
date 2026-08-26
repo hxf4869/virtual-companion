@@ -7,7 +7,7 @@ does not push. -->
 <template>
   <ConsumerShell route="/pages/companion/companion">
 
-    
+   
 
     <view class="intro">
       <text>
@@ -802,7 +802,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .primary-btn,
 .save-btn,
@@ -897,7 +897,7 @@ export default {
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: transparent;
   color: var(--vc-ink);
   font: inherit;
@@ -958,7 +958,7 @@ export default {
   background: var(--vc-sunken);
   color: var(--vc-ink);
   font: inherit;
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .check {

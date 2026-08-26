@@ -1,12 +1,11 @@
 <template>
-  <view class="vc-internal" :data-page="spec.path">
+  <view class="vc-internal vc-chrome" :data-page="spec.path">
     <!-- Internal Shell：ops/admin 独立外壳。同一 token 的中性高密度变体
          ——暮色深底 + 抬升面板，不借用消费者首页的暖纸布局；无消费者底栏。
          入口可见性由导航模型 + nav-guard 守卫；无权限时不渲染页面数据
          轮廓（shouldRenderPageData），本壳只负责已获授权页面的呈现。 -->
     <PageHeader
       :title="headerTitle"
-      eyebrow="内部"
       show-back
       back-label="返回首页"
       back-fallback="/pages/index/index"

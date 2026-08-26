@@ -198,8 +198,9 @@ states carry alert/live a11y semantics. -->
         </text>
         <!-- R44 (§11.11): the explicit supersede choice — confirm may replace
              one active canonical memory; nothing is auto-detected. -->
-        <select
-          v-if="memory.canonicalCount > 0"
+        <view v-if="memory.canonicalCount > 0" class="supersede-field">
+          <text class="supersede-label" :data-testid="`memory-supersede-label-${m.memoryId}`">替代哪条已有记忆（可选）</text>
+          <select
           v-model="supersedeChoice[m.memoryId]"
           class="supersede-select"
           :data-testid="`memory-supersede-${m.memoryId}`"
@@ -213,7 +214,8 @@ states carry alert/live a11y semantics. -->
           >
             替代：{{ old.summary.slice(0, 24) }}
           </option>
-        </select>
+          </select>
+        </view>
         <view class="actions">
           <button
             size="mini"
@@ -842,7 +844,7 @@ function goTo(url: string): void {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .section {
@@ -919,7 +921,7 @@ function goTo(url: string): void {
   margin-left: var(--vc-space-2);
   padding: 0 6px;
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   color: var(--vc-muted);
   font-size: var(--vc-text-xs);
 }
@@ -935,7 +937,7 @@ function goTo(url: string): void {
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
-  border-radius: 999px;
+  border-radius: var(--vc-radius-pill);
   background: transparent;
   color: var(--vc-ink);
   font: inherit;
@@ -974,7 +976,7 @@ function goTo(url: string): void {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .candidate-entry button {
@@ -1010,7 +1012,20 @@ function goTo(url: string): void {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
+}
+
+.supersede-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-1);
+  margin-top: var(--vc-space-1);
+}
+
+.supersede-label {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
 }
 
 .supersede-select {
@@ -1022,7 +1037,7 @@ function goTo(url: string): void {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-sm);
+  font-size: 16px;
 }
 
 .edit-row {
@@ -1041,7 +1056,7 @@ function goTo(url: string): void {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .delete-confirm {

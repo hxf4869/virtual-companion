@@ -150,15 +150,16 @@ describe("InternalShell", () => {
     setActivePinia(createPinia());
   });
 
-  it("renders internal chrome: eyebrow, back-to-home, no consumer bottom nav", async () => {
+  it("renders internal chrome: back-to-home, no consumer bottom nav", async () => {
     stubUni();
     const { navigateBack } = stubUni();
     const wrapper = mount(InternalShell, {
       props: { route: "/pages/ops/ops" },
       slots: { default: "<p>ops</p>" },
     });
-    expect(wrapper.find('[data-testid="page-header-eyebrow"]').text()).toBe(
-      "内部",
+    // eyebrow（kicker 式小字）已按 craft-floor 移除；标题即唯一头部文本。
+    expect(wrapper.find('[data-testid="page-header-eyebrow"]').exists()).toBe(
+      false,
     );
     expect(wrapper.find('[data-testid="page-back"]').attributes("aria-label")).toBe(
       "返回首页",

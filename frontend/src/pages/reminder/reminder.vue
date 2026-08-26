@@ -5,7 +5,7 @@ which only changes state on a confirmed API result. -->
 <template>
   <ConsumerShell route="/pages/reminder/reminder">
 
-    
+   
 
     <RelationshipSelector
       :relationships="relStore.relationships"
@@ -418,6 +418,18 @@ export default {
   font-size: var(--vc-text-sm);
 }
 
+.reminder-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-1);
+}
+
+.reminder-label {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
 .input,
 .reminder-input,
 .export-input,
@@ -431,7 +443,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .primary-btn,
 .save-btn,
@@ -538,7 +550,7 @@ export default {
   background: var(--vc-sunken);
   color: var(--vc-ink);
   font: inherit;
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .reminder-row {

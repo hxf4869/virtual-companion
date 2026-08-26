@@ -838,6 +838,30 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("context sheet 按模态焦点管理打开：焦点移入、Escape 关闭并归还", async () => {
+    stubFetch({ relationships: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const trigger = wrapper.find('[data-testid="chat-context-open"]').element as HTMLElement;
+    trigger.focus();
+    await openContextSheet(wrapper);
+    await flushPromises();
+
+    // MODAL-FOCUS：打开后焦点在对话框内。
+    const panel = wrapper.find('[data-testid="app-sheet-panel"]').element;
+    expect(panel.contains(document.activeElement)).toBe(true);
+
+    // Escape 发出 close：页面关闭 sheet 并把焦点归还触发按钮。
+    panel.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    await flushPromises();
+    expect(wrapper.find('[data-testid="app-sheet"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+    wrapper.unmount();
+  });
+
   it("renders a back-to-index entry even before a relationship is selected", async () => {
     stubFetch({ relationships: [] });
     const wrapper = mountPage();

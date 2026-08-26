@@ -7,7 +7,7 @@ notice and per-message aiGenerated markers. -->
   <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
   <ConsumerShell route="/pages/export/export">
 
-    
+   
 
     <view class="intro">
       <text>
@@ -365,7 +365,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .primary-btn,
 .save-btn,

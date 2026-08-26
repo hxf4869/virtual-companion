@@ -10,24 +10,31 @@
       </text>
 
       <view class="login-form">
-        <input
-          class="login-input"
-          data-testid="username"
-          v-model="username"
-          placeholder="用户名"
-          aria-label="用户名"
-          autocomplete="username"
-        />
-        <input
-          class="login-input"
-          data-testid="password"
-          v-model="password"
-          password
-          placeholder="密码"
-          aria-label="密码"
-          autocomplete="current-password"
-          @keydown.enter="onSubmit"
-        />
+        <!-- 持久可见标签：不依赖 placeholder/aria-label 承载字段语义。 -->
+        <view class="login-field">
+          <text class="login-label" data-testid="login-label-username">用户名</text>
+          <input
+            class="login-input"
+            data-testid="username"
+            v-model="username"
+            placeholder="输入内部用户名"
+            aria-label="用户名"
+            autocomplete="username"
+          />
+        </view>
+        <view class="login-field">
+          <text class="login-label" data-testid="login-label-password">密码</text>
+          <input
+            class="login-input"
+            data-testid="password"
+            v-model="password"
+            password
+            placeholder="输入密码"
+            aria-label="密码"
+            autocomplete="current-password"
+            @keydown.enter="onSubmit"
+          />
+        </view>
         <button
           class="login-submit"
           data-testid="submit"
@@ -362,6 +369,18 @@ export default defineComponent({
   gap: var(--vc-space-3);
 }
 
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-1);
+}
+
+.login-label {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
 .login-input {
   box-sizing: border-box;
   width: 100%;
@@ -371,7 +390,7 @@ export default defineComponent({
   border: 1px solid var(--vc-border-strong);
   border-radius: var(--vc-radius-s);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 
 .login-submit {

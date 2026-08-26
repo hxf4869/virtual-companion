@@ -1463,12 +1463,12 @@ export default defineComponent({
 }
 
 .admin-anchor__item {
-  min-height: 40px;
+  min-height: 44px;
   flex: 0 0 auto;
   margin: 0;
   padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-env);
-  border-radius: 999px;
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-pill);
   background: var(--vc-env-raised);
   color: var(--vc-on-env-muted);
   font: inherit;
@@ -1527,7 +1527,7 @@ export default defineComponent({
   border-radius: var(--vc-radius-s);
   background: var(--vc-env);
   color: var(--vc-on-env);
-  font-size: var(--vc-text-sm);
+  font-size: 16px;
 }
 
 .admin-submit {
@@ -1549,11 +1549,11 @@ export default defineComponent({
 }
 
 .admin-nav-index {
-  min-height: 40px;
+  min-height: 44px;
   flex: 0 0 auto;
   margin: 0;
   padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-env);
+  border: 1px solid var(--vc-border-env-strong);
   border-radius: var(--vc-radius-s);
   background: transparent;
   color: var(--vc-on-env);

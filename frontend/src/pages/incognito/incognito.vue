@@ -4,7 +4,7 @@ next new conversation and states that 无痕 ≠ 无必要安全记录. -->
 <template>
   <ConsumerShell route="/pages/incognito/incognito">
 
-    
+   
 
     <view class="intro" data-testid="incognito-intro">
       <text>
@@ -241,7 +241,7 @@ export default {
   border-radius: var(--vc-radius-s);
   background: var(--vc-sunken);
   color: var(--vc-ink);
-  font-size: var(--vc-text-md);
+  font-size: 16px;
 }
 .state {
   font-size: var(--vc-text-lg);
