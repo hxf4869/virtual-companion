@@ -18,33 +18,43 @@ which only changes state on a confirmed API result. -->
 
     <template v-if="store.relationshipId">
       <view class="reminder-form">
-        <input
-          v-model="text"
-          class="reminder-input"
-          data-testid="reminder-text"
-          placeholder="提醒内容，如：明天晚上问我面试怎么样"
-          aria-label="提醒内容"
-          :disabled="store.busy"
-        />
-        <input
-          v-model="remindAtLocal"
-          class="reminder-input"
-          data-testid="reminder-at"
-          type="datetime-local"
-          aria-label="提醒时间"
-          :disabled="store.busy"
-        />
-        <select
-          v-model="recurrence"
-          class="reminder-select"
-          data-testid="reminder-recurrence"
-          aria-label="重复"
-          :disabled="store.busy"
-        >
+        <!-- 持久可见标签：不依赖 placeholder/aria-label 承载字段语义。 -->
+        <view class="reminder-field">
+          <text class="reminder-label" data-testid="reminder-label-text">提醒内容</text>
+          <input
+            v-model="text"
+            class="reminder-input"
+            data-testid="reminder-text"
+            placeholder="明天晚上问我面试怎么样"
+            aria-label="提醒内容"
+            :disabled="store.busy"
+          />
+        </view>
+        <view class="reminder-field">
+          <text class="reminder-label" data-testid="reminder-label-at">提醒时间</text>
+          <input
+            v-model="remindAtLocal"
+            class="reminder-input"
+            data-testid="reminder-at"
+            type="datetime-local"
+            aria-label="提醒时间"
+            :disabled="store.busy"
+          />
+        </view>
+        <view class="reminder-field">
+          <text class="reminder-label" data-testid="reminder-label-recurrence">重复</text>
+          <select
+            v-model="recurrence"
+            class="reminder-select"
+            data-testid="reminder-recurrence"
+            aria-label="重复"
+            :disabled="store.busy"
+          >
           <option value="NONE">不重复</option>
           <option value="DAILY">每天</option>
           <option value="WEEKLY">每周</option>
         </select>
+        </view>
         <button
           data-testid="reminder-create"
           class="nav-index"

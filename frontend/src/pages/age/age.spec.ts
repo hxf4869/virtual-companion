@@ -83,6 +83,16 @@ describe("age page (FR-AUTH-002)", () => {
     vi.stubGlobal("uni", { navigateTo: vi.fn() });
   });
 
+  it("renders the admission shell (header + back) — 回归：漏注册会让页面无壳", async () => {
+    stubFetch({ state: "AGE_UNKNOWN" });
+    const wrapper = mount(AgePage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="page-header"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="page-back"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("loads the current age state and offers simulated verification", async () => {
     stubFetch({ state: "AGE_UNKNOWN" });
     const wrapper = mount(AgePage, { attachTo: document.body });

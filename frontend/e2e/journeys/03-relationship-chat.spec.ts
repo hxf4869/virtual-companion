@@ -76,8 +76,18 @@ test("a message report deep link carries messageId into the submit payload", asy
   page,
   request,
 }) => {
+  // 全量套跑时登录来源桶（10 次/60 秒）可能被前面的 journey 占满；
+  // 限流是真实行为，做一次有界等待重试，不放宽任何断言。
+  test.setTimeout(180_000);
   const user = await provisionUser(request, "relationship-chat");
-  const session = await uiLogin(page, user);
+  let session: Awaited<ReturnType<typeof uiLogin>>;
+  try {
+    session = await uiLogin(page, user);
+  } catch (err) {
+    if (!String(err).includes("429")) throw err;
+    await page.waitForTimeout(65_000);
+    session = await uiLogin(page, user);
+  }
   await prepareGenerationAccess(session.accessToken);
 
   await navigateToPage(page, "/pages/companion/companion");

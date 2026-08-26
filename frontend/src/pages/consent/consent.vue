@@ -244,6 +244,7 @@ const CONSENT_VERSION = "2026-08";
 
 export default {
   name: "ConsentPage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const store = useConsentStore();

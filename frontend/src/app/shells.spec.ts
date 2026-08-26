@@ -150,6 +150,24 @@ describe("InternalShell", () => {
     setActivePinia(createPinia());
   });
 
+  it("all dark shells carry vc-chrome so the --vc-focus-on-env ring can hit", async () => {
+    stubUni();
+    const header = mount(PageHeader, { props: { title: "记忆" } });
+    expect(header.find('[data-testid="page-header"]').classes()).toContain("vc-chrome");
+    header.unmount();
+
+    const nav = mount(BottomNav, { props: { active: "home" } });
+    expect(nav.find('[data-testid="consumer-tabbar"]').classes()).toContain("vc-chrome");
+    nav.unmount();
+
+    const internal = mount(InternalShell, {
+      props: { route: "/pages/ops/ops" },
+      slots: { default: "<p>ops</p>" },
+    });
+    expect(internal.find(".vc-internal").classes()).toContain("vc-chrome");
+    internal.unmount();
+  });
+
   it("renders internal chrome: back-to-home, no consumer bottom nav", async () => {
     stubUni();
     const { navigateBack } = stubUni();

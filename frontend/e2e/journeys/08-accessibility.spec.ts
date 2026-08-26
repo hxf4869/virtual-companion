@@ -329,7 +329,14 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
   // --vc-focus-on-env（#f0c983，暗面 ≥3:1），用真实渲染的 computed style
   // 验证，防止选择器写错导致覆盖不生效。
   test("dark-shell focus ring resolves to --vc-focus-on-env", async () => {
-    await navigateToPage(page, "/pages/index/index");
+    // 与"index 边界台"测试同因：uni 把首页规范化为 "#/"，webkit 上
+    // waitForURL 的 hash 目标不会出现，改用内容可见性判定位。
+    await page.evaluate(() => {
+      const uniApi = (globalThis as Record<string, unknown>).uni as {
+        redirectTo?: (options: { url: string }) => void;
+      };
+      uniApi?.redirectTo({ url: "/pages/index/index" });
+    });
     await expect(page.getByTestId("home-hero")).toBeVisible();
 
     // 真键盘 Tab 触发 :focus-visible（程序化 focus 不保证命中伪类）。
@@ -394,10 +401,15 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
     // 底栏导航项（vc-chrome）。
     await tabWalk("tab-memory");
 
-    // 页头返回（memory 二级页，vc-chrome）。
-    await navigateToPage(page, "/pages/memory/memory");
-    await expect(page.getByTestId("page-header")).toBeVisible();
-    await page.getByTestId("reload").click();
+    // 页头返回（help 是 consumer-sub 二级页，vc-chrome；四入口 tab 根页
+    // 如 memory 按 IA 无返回键，不是缺陷）。
+    await navigateToPage(page, "/pages/help/help");
+    await expect(page.getByTestId("page-back")).toBeVisible();
     await tabWalk("page-back");
+
+    // 沉浸式聊天头部（vc-chrome）：返回入口落在暗色头部内。
+    await navigateToPage(page, "/pages/chat/chat");
+    await expect(page.getByTestId("nav-conversations")).toBeVisible();
+    await tabWalk("nav-conversations");
   });
 });

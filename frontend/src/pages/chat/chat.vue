@@ -2491,9 +2491,41 @@ export default defineComponent({
 }
 
 /* LANDSCAPE / 短视口（≤480px 高）：优先保留消息阅读与输入。
-   非核心状态压缩为单行（语义不丢失：文字仍在，按钮仍可达），
-   chips 行保持 44px 触控高度但改为横向滚动不换行，避免叠加占满高度。 */
+   输入栏 fixed 常驻视口底（页面为它留出底垫，绝不覆盖消息）；
+   中段（状态/反馈/模式）整体可滚，语义不丢；模式行 sticky 贴在
+   中段可视底；消息区用 dvh 相对高度（96–240px clamp）。 */
 @media (max-height: 480px) {
+  .chat-page {
+    height: 100vh;
+    height: 100dvh;
+    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-main {
+    overflow-y: auto;
+  }
+
+  .chat-history {
+    flex: none;
+    height: clamp(96px, 38dvh, 240px);
+    min-height: 96px;
+  }
+
+  .chat-mode-row {
+    position: sticky;
+    bottom: 0;
+    padding: var(--vc-space-1) var(--vc-space-2);
+    background: var(--vc-env);
+    z-index: var(--vc-z-content);
+  }
+
+  .chat-input-area {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0 auto;
+  }
   .chat-header {
     padding-top: var(--vc-space-1);
     padding-bottom: var(--vc-space-1);

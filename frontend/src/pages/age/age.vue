@@ -126,6 +126,7 @@ import { useAuthStore } from "@/stores/auth";
 
 export default {
   name: "AgePage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const store = useAgeStore();

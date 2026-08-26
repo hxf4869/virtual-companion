@@ -56,6 +56,15 @@ describe("consent page (FR-AUTH-003)", () => {
     stubFetch(() => false);
   });
 
+  it("renders the admission shell (header + back) — 回归：漏注册会让页面无壳", async () => {
+    const wrapper = mount(ConsentPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="page-header"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="page-back"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("renders the eight-type catalogue with effective statuses", async () => {
     const wrapper = mount(ConsentPage, { attachTo: document.body });
     await flushPromises();
