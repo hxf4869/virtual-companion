@@ -33,16 +33,26 @@ function stubFetch(options: {
   conversations?: unknown[];
   memories?: unknown[];
   reminders?: unknown[];
+  fail?: { conversations?: boolean; memories?: boolean; reminders?: boolean };
 } = {}): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = typeof input === "string" ? input : input.toString();
+    const url = typeof input === "string" ? input.toString() : input.toString();
     if (/\/relationships\/[^/]+\/reminders$/.test(url)) {
+      if (options.fail?.reminders) {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
       return { ok: true, status: 200, json: async () => options.reminders ?? [] };
     }
     if (/\/relationships\/[^/]+\/memories/.test(url)) {
+      if (options.fail?.memories) {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
       return { ok: true, status: 200, json: async () => options.memories ?? [] };
     }
     if (url.startsWith("/api/v1/conversations")) {
+      if (options.fail?.conversations) {
+        throw new TypeError("offline");
+      }
       return { ok: true, status: 200, json: async () => options.conversations ?? [] };
     }
     if (url === "/api/v1/relationships") {
@@ -311,36 +321,199 @@ describe("首页：关系就绪后的主任务与摘要", () => {
     wrapper.unmount();
   });
 
-  it("摘要任一路径失败时如实提示，不把失败渲染成空成功", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url === "/api/v1/relationships") {
-        return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
-      }
-      if (url === "/api/v1/age/state") {
-        return { ok: true, status: 200, json: async () => ({ ageState: "ADULT_VERIFIED" }) };
-      }
-      if (url === "/api/v1/consents") {
-        return { ok: true, status: 200, json: async () => GRANTED_CONSENTS };
-      }
-      if (url.startsWith("/api/v1/conversations")) {
-        throw new TypeError("offline");
-      }
-      return { ok: true, status: 200, json: async () => [] };
+  it("会话路失败时只标记会话行，记忆与提醒不受污染", async () => {
+    stubFetch({
+      relationships: [ACTIVE_RELATIONSHIP],
+      conversations: [],
+      memories: [
+        { memoryId: "m1", scope: "RELATIONSHIP", status: "PENDING_CONFIRMATION", summary: "s" },
+      ],
+      reminders: [{
+      reminderId: "r1",
+      relationshipId: "rel-index-1",
+      text: "周五提醒我浇水",
+      remindAt: "2026-08-28T09:00:00Z",
+      recurrence: "NONE",
+      status: "ACTIVE",
+      createdAt: "2026-08-20T00:00:00Z",
+    }],
+      fail: { conversations: true },
     });
-    vi.stubGlobal("fetch", fetchMock);
-    const auth = useAuthStore();
-    auth.accessToken = "a-token";
-    auth.role = "USER";
+    login();
     const wrapper = mountPage();
     await flushPromises();
 
-    // 摘要失败态经 allSettled 落定后触发重渲染；用 waitFor 等待而非假设同步可见。
-    await vi.waitFor(() =>
-      expect(
-        wrapper.find('[data-testid="home-latest-conversation"]').text(),
-      ).toContain("加载失败"),
+    expect(
+      wrapper.find('[data-testid="home-latest-conversation"]').text(),
+    ).toContain("加载失败，点开可重试");
+    expect(
+      wrapper.find('[data-testid="home-row-conversations"]').attributes("data-state"),
+    ).toBe("error");
+    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
+      "1 条记忆等你确认",
     );
+    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
+      "周五提醒我浇水",
+    );
+    wrapper.unmount();
+  });
+
+  it("记忆路失败时不冒充空成功，会话与提醒照常成功", async () => {
+    stubFetch({
+      relationships: [ACTIVE_RELATIONSHIP],
+      conversations: [
+        {
+          conversationId: "conv-9",
+          relationshipId: "rel-index-1",
+          lastMessagePreview: "上次聊到一半的事",
+        },
+      ],
+      fail: { memories: true },
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
+      "加载失败，点开可重试",
+    );
+    expect(
+      wrapper.find('[data-testid="home-row-memory"]').attributes("data-state"),
+    ).toBe("error");
+    expect(
+      wrapper.find('[data-testid="home-latest-conversation"]').text(),
+    ).toContain("上次聊到一半的事");
+    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
+      "没有待处理的提醒",
+    );
+    wrapper.unmount();
+  });
+
+  it("提醒路失败时只标记提醒行，其余摘要成功", async () => {
+    stubFetch({
+      relationships: [ACTIVE_RELATIONSHIP],
+      fail: { reminders: true },
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
+      "加载失败，点开可重试",
+    );
+    expect(
+      wrapper.find('[data-testid="home-row-reminder"]').attributes("data-state"),
+    ).toBe("error");
+    expect(
+      wrapper.find('[data-testid="home-latest-conversation"]').text(),
+    ).toContain("还没有会话");
+    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
+      "没有待确认的记忆",
+    );
+    wrapper.unmount();
+  });
+
+  it("失败但保留旧数据时显示旧值并标注较早数据（stale）", async () => {
+    stubFetch({
+      relationships: [ACTIVE_RELATIONSHIP],
+      conversations: [
+        {
+          conversationId: "conv-9",
+          relationshipId: "rel-index-1",
+          lastMessagePreview: "上次聊到一半的事",
+        },
+      ],
+      memories: [
+        { memoryId: "m1", scope: "RELATIONSHIP", status: "PENDING_CONFIRMATION", summary: "s" },
+      ],
+      reminders: [{
+      reminderId: "r1",
+      relationshipId: "rel-index-1",
+      text: "周五提醒我浇水",
+      remindAt: "2026-08-28T09:00:00Z",
+      recurrence: "NONE",
+      status: "ACTIVE",
+      createdAt: "2026-08-20T00:00:00Z",
+    }],
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    // 第二轮全部失败：旧值保留并标注"较早数据"，不冒充成功也不误报空。
+    stubFetch({
+      relationships: [ACTIVE_RELATIONSHIP],
+      fail: { conversations: true, memories: true, reminders: true },
+    });
+    await (wrapper.vm as unknown as { loadSummaries: () => Promise<void> }).loadSummaries();
+    await flushPromises();
+
+    expect(
+      wrapper.find('[data-testid="home-latest-conversation"]').text(),
+    ).toContain("上次聊到一半的事（较早数据）");
+    expect(
+      wrapper.find('[data-testid="home-row-conversations"]').attributes("data-state"),
+    ).toBe("stale");
+    expect(wrapper.find('[data-testid="home-pending-memory"]').text()).toContain(
+      "1 条记忆等你确认（较早数据）",
+    );
+    expect(wrapper.find('[data-testid="home-next-reminder"]').text()).toContain(
+      "周五提醒我浇水（较早数据）",
+    );
+    wrapper.unmount();
+  });
+
+  it("会话摘要取整页中最大 id 为最新，不取升序第一条", async () => {
+    stubFetch({
+      relationships: [ACTIVE_RELATIONSHIP],
+      conversations: [
+        {
+          conversationId: "101",
+          relationshipId: "rel-index-1",
+          lastMessagePreview: "很早的一次对话",
+        },
+        {
+          conversationId: "37",
+          relationshipId: "rel-index-1",
+          lastMessagePreview: "中间的一次对话",
+        },
+        {
+          conversationId: "205",
+          relationshipId: "rel-index-1",
+          lastMessagePreview: "最新一次对话",
+        },
+      ],
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(
+      wrapper.find('[data-testid="home-latest-conversation"]').text(),
+    ).toContain("最新一次对话");
+    wrapper.unmount();
+  });
+
+  it("会话整页未取尽时不误称最近，退化为计数", async () => {
+    const fullPage = Array.from({ length: 50 }, (_, i) => ({
+      conversationId: String(i + 1),
+      relationshipId: "rel-index-1",
+      lastMessagePreview: `第 ${i + 1} 个会话`,
+    }));
+    stubFetch({
+      relationships: [ACTIVE_RELATIONSHIP],
+      conversations: fullPage,
+    });
+    login();
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(
+      wrapper.find('[data-testid="home-latest-conversation"]').text(),
+    ).toContain("50+ 个会话");
+    expect(
+      wrapper.find('[data-testid="home-latest-conversation"]').text(),
+    ).not.toContain("第 50 个会话");
     wrapper.unmount();
   });
 });

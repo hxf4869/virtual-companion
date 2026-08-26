@@ -112,4 +112,48 @@ describe("report page (REPORT-BE)", () => {
     expect(useReportStore().loaded).toBe(false);
     wrapper.unmount();
   });
+
+  it("reads messageId from an H5 hash deep link and sends it in the payload", async () => {
+    const { calls } = stubFetch();
+    // H5 hash routing keeps the query inside the hash, not location.search.
+    window.location.hash = "#/pages/report/report?messageId=msg-77";
+    const wrapper = mount(ReportPage, { attachTo: document.body });
+    await flushPromises();
+
+    const anchor = wrapper.find('[data-testid="report-anchor"]');
+    expect(anchor.exists()).toBe(true);
+    expect(anchor.text()).toContain("msg-77");
+
+    await wrapper.find('[data-testid="report-note"]').setValue("这条消息让我不安");
+    await wrapper.find('[data-testid="report-submit"]').trigger("click");
+    await flushPromises();
+
+    const post = calls.find((c) => c.method === "POST" && c.url === "/api/v1/reports");
+    expect(post?.body).toMatchObject({ messageId: "msg-77" });
+    wrapper.unmount();
+    window.location.hash = "";
+  });
+
+  it("still reads messageId from a path-form query string", async () => {
+    stubFetch();
+    window.location.hash = "";
+    window.history.replaceState(null, "", "/pages/report/report?messageId=msg-88");
+    const wrapper = mount(ReportPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="report-anchor"]').text()).toContain("msg-88");
+    wrapper.unmount();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("no messageId in the URL means no anchor row", async () => {
+    stubFetch();
+    window.location.hash = "#/pages/report/report";
+    const wrapper = mount(ReportPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="report-anchor"]').exists()).toBe(false);
+    wrapper.unmount();
+    window.location.hash = "";
+  });
 });

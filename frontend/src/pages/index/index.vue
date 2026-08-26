@@ -106,11 +106,12 @@
               v-if="relStore.current"
               class="home-row"
               data-testid="home-row-conversations"
+              :data-state="conversationChannel.state.value"
               @click="goTo(conversationsHref())"
             >
-              <text class="home-row__label">最近会话</text>
+              <text class="home-row__label">会话</text>
               <text class="home-row__value" data-testid="home-latest-conversation">
-                {{ latestConversationLabel }}
+                {{ conversationSummary }}
               </text>
             </button>
           </view>
@@ -120,6 +121,7 @@
               v-if="relStore.current"
               class="home-row"
               data-testid="home-row-memory"
+              :data-state="memoryChannel.state.value"
               @click="goTo(memoryHref())"
             >
               <text class="home-row__label">待确认记忆</text>
@@ -134,6 +136,7 @@
               v-if="relStore.current"
               class="home-row"
               data-testid="home-row-reminder"
+              :data-state="reminderChannel.state.value"
               @click="goTo(reminderHref())"
             >
               <text class="home-row__label">提醒</text>
@@ -149,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, type Ref } from "vue";
 
 import type { AuthTransport } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
@@ -176,7 +179,23 @@ const reminderStore = useReminderStore();
 const nextStep = ref<NextStep | null>(null);
 const admissionGate = ref<AdmissionGate>("unknown");
 const conversations = ref<ConversationListItem[]>([]);
-const summariesFailed = ref(false);
+
+// 三路摘要各自的真实状态：单路失败只标记自己，成功路不受污染；
+// 失败但已有一轮成功数据时显示旧值并标注"较早数据"，不冒充成功空态。
+type SummaryState = "idle" | "loading" | "ready" | "stale" | "error";
+
+interface SummaryChannel {
+  state: Ref<SummaryState>;
+  loadedOnce: Ref<boolean>;
+}
+
+function createChannel(): SummaryChannel {
+  return { state: ref<SummaryState>("idle"), loadedOnce: ref(false) };
+}
+
+const conversationChannel = createChannel();
+const memoryChannel = createChannel();
+const reminderChannel = createChannel();
 
 // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
 const transport: AuthTransport = createAuthenticatedTransport({
@@ -203,24 +222,62 @@ const heroLead = computed(() => {
     : "第一次对话随时可以开始。";
 });
 
-const latestConversationLabel = computed(() => {
-  if (summariesFailed.value) return "加载失败，点开可重试";
-  const latest = conversations.value[0];
-  if (!latest) return "还没有会话";
+// CONV-HIST：列表按 id 升序整页返回（默认页 50）。未满页即该关系全部
+// 会话，可取最大 id 为最新；满页无法断言最新，退化为计数，不误称"最近"。
+const CONVERSATION_PAGE_LIMIT = 50;
+
+const STALE_SUFFIX = "（较早数据）";
+
+function channelText(channel: SummaryChannel, readyText: string): string {
+  if (channel.state.value === "loading" || channel.state.value === "idle") {
+    return "正在加载…";
+  }
+  if (channel.state.value === "error") return "加载失败，点开可重试";
+  if (channel.state.value === "stale") return `${readyText}${STALE_SUFFIX}`;
+  return readyText;
+}
+
+function latestConversation(): ConversationListItem | null {
+  const list = conversations.value;
+  if (list.length === 0) return null;
+  if (list.length >= CONVERSATION_PAGE_LIMIT) return null;
+  const sorted = [...list].sort((a, b) => compareConversationId(b, a));
+  return sorted[0] ?? null;
+}
+
+function compareConversationId(a: ConversationListItem, b: ConversationListItem): number {
+  const na = Number(a.conversationId);
+  const nb = Number(b.conversationId);
+  if (Number.isSafeInteger(na) && Number.isSafeInteger(nb)) return na - nb;
+  return a.conversationId.localeCompare(b.conversationId);
+}
+
+const conversationSummary = computed(() => {
+  const latest = latestConversation();
+  if (!latest) {
+    if (conversations.value.length >= CONVERSATION_PAGE_LIMIT) {
+      return channelText(conversationChannel, `${conversations.value.length}+ 个会话`);
+    }
+    return channelText(conversationChannel, "还没有会话");
+  }
   const base = latest.title?.trim() || latest.lastMessagePreview?.trim() || "未发送消息的会话";
-  return latest.incognito ? `无痕 · ${base}` : base;
+  return channelText(conversationChannel, latest.incognito ? `无痕 · ${base}` : base);
 });
 
 const memorySummary = computed(() => {
-  if (summariesFailed.value) return "加载失败，点开可重试";
   const count = memoryStore.pendingCount;
-  return count > 0 ? `${count} 条记忆等你确认` : "没有待确认的记忆";
+  return channelText(
+    memoryChannel,
+    count > 0 ? `${count} 条记忆等你确认` : "没有待确认的记忆",
+  );
 });
 
 const reminderSummary = computed(() => {
-  if (summariesFailed.value) return "加载失败，点开可重试";
   const next = reminderStore.reminders.find((row) => row.status === "ACTIVE");
-  return next ? next.text : "没有待处理的提醒（不会主动推送）";
+  return channelText(
+    reminderChannel,
+    next ? next.text : "没有待处理的提醒（不会主动推送）",
+  );
 });
 
 function knownRelationshipIds(): string[] {
@@ -294,24 +351,49 @@ async function refreshNextStep(): Promise<void> {
   });
 }
 
-/** 关系就绪后并行加载三份摘要；单路失败不互相拖垮，也不冒充成功。 */
+/** 关系就绪后并行加载三份摘要；单路失败只标记该路，不拖垮其他路。 */
 async function loadSummaries(): Promise<void> {
   const relId = relStore.currentRelationshipId;
   if (!relId) return;
-  summariesFailed.value = false;
-  const results = await Promise.allSettled([
-    listConversations(transport, relId),
-    memoryStore.load(transport, relId),
-    reminderStore.load(transport, relId),
-  ]);
-  if (results[0].status === "fulfilled") {
-    conversations.value = results[0].value;
-  } else {
-    summariesFailed.value = true;
-  }
-  if (results[1].status === "rejected" || results[2].status === "rejected") {
-    summariesFailed.value = true;
-  }
+
+  conversationChannel.state.value = "loading";
+  memoryChannel.state.value = "loading";
+  reminderChannel.state.value = "loading";
+
+  const conversationsTask = listConversations(transport, relId, undefined, CONVERSATION_PAGE_LIMIT)
+    .then((list) => {
+      conversations.value = list;
+      conversationChannel.state.value = "ready";
+      conversationChannel.loadedOnce.value = true;
+    })
+    .catch(() => {
+      // 失败保留旧列表，仅在曾成功过时以 stale 展示旧值。
+      conversationChannel.state.value = conversationChannel.loadedOnce.value
+        ? "stale"
+        : "error";
+    });
+
+  // memory/reminder store 内部捕获异常并以状态位暴露，Promise 永不 reject。
+  const memoryTask = memoryStore.load(transport, relId).then(() => {
+    const failed = memoryStore.error === "load-failed" || memoryStore.error === "session-expired";
+    if (failed) {
+      memoryChannel.state.value = memoryChannel.loadedOnce.value ? "stale" : "error";
+      return;
+    }
+    memoryChannel.state.value = "ready";
+    memoryChannel.loadedOnce.value = true;
+  });
+
+  const reminderTask = reminderStore.load(transport, relId).then(() => {
+    if (reminderStore.loadFailed) {
+      reminderChannel.state.value = reminderChannel.loadedOnce.value ? "stale" : "error";
+      return;
+    }
+    reminderChannel.state.value = "ready";
+    reminderChannel.loadedOnce.value = true;
+  });
+
+  await Promise.all([conversationsTask, memoryTask, reminderTask]);
 }
 
 onMounted(async () => {
@@ -325,6 +407,9 @@ onMounted(async () => {
     await loadSummaries();
   }
 });
+
+// 组件测试需要驱动第二轮加载以验证 stale 语义（保留旧数据 + 失败标注）。
+defineExpose({ loadSummaries });
 </script>
 
 <style scoped>

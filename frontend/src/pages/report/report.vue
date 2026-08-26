@@ -99,6 +99,7 @@ import { computed, onMounted, ref } from "vue";
 import { REPORT_REASONS, type ReportReason, type ReportTransport } from "@/api/report";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { readContextFromLocation } from "@/domain/context-href";
 import { REPORT_REASON_LABELS, REPORT_STATUS_LABELS, useReportStore } from "@/stores/report";
 import { useAuthStore } from "@/stores/auth";
 
@@ -120,11 +121,17 @@ export default {
     });
 
     onMounted(async () => {
-      // A message report arrives from the chat page via ?messageId=.
+      // A message report arrives from the chat page via ?messageId=. H5 hash
+      // routing keeps the query inside the hash, so reuse the shared
+      // context-href reader (hash first, then search) instead of hand-parsing
+      // location.search.
       try {
-        const params = new URLSearchParams(String((globalThis as { location?: Location }).location?.search ?? ""));
-        const messageId = params.get("messageId");
-        anchoredMessageId.value = messageId && messageId.trim() ? messageId.trim() : null;
+        const ids = readContextFromLocation(
+          (globalThis as { location?: { pathname?: string; search?: string; hash?: string } })
+            .location,
+        );
+        anchoredMessageId.value =
+          ids.messageId && ids.messageId.trim() ? ids.messageId.trim() : null;
       } catch {
         anchoredMessageId.value = null;
       }
