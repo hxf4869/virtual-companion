@@ -16,7 +16,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text class="label">账号编号</text>
         <text data-testid="account-id">{{ auth.accountId ?? "未知" }}</text>
         <text class="label">角色</text>
-        <text data-testid="account-role">{{ auth.role ?? "未知" }}</text>
+        <text data-testid="account-role">{{ accountRoleLabel(auth.role) }}</text>
       </view>
 
       <!-- "我的"分组入口：全部二级任务的发现路径（Phase 5 IA）。 -->
@@ -120,7 +120,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text v-else-if="sessions.length === 0" class="meta">暂无有效会话。</text>
         <view v-for="session in sessions" :key="session.id" class="session-row" data-testid="session-row">
           <text>{{ session.clientLabel || "客户端" }}{{ session.current ? "（当前）" : "" }}</text>
-          <text class="meta">最近使用：{{ session.lastSeenAt }}；到期：{{ session.expiresAt }}</text>
+          <text class="meta">最近使用：{{ formatLocalDateTime(session.lastSeenAt) }}；到期：{{ formatLocalDateTime(session.expiresAt) }}</text>
           <button
             class="nav-index"
             data-testid="session-revoke"
@@ -219,6 +219,8 @@ import {
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import { isOperatorRole, isVisibleToRole, routeSpecOf } from "@/app/navigation";
+import { accountRoleLabel } from "@/domain/account-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
@@ -437,6 +439,8 @@ export default {
     }
 
     return {
+      accountRoleLabel,
+      formatLocalDateTime,
       HUB_ENTRIES,
       INTERNAL_ENTRIES,
       operatorVisible,

@@ -1214,6 +1214,52 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  // P1-B（round3）：改名输入绝不预填密文。直接读取 input.element.value 验证
+  // （不用 wrapper.text() 代替）：enc1:/enc2:、密文长 token、空值一律空串，
+  // 且不含内部 conversationId。
+  it("CONV-MGMT: the rename input never prefills an enc1/enc2 ciphertext title", async () => {
+    for (const title of [`enc1:${"B".repeat(120)}`, `enc2:${"A".repeat(120)}`, ""]) {
+      stubFetch({
+        conversationsJson: [{ conversationId: "9", relationshipId: "1", title }],
+      });
+      const wrapper = mountPage();
+      await flushPromises();
+      const store = useChatStore();
+      store.conversationId = "9";
+
+      await openConvSheet(wrapper);
+      await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+      await wrapper.vm.$nextTick();
+
+      const input = wrapper.find('[data-testid="rename-input"]');
+      expect(input.exists(), "rename row rendered").toBe(true);
+      const value = (input.element as HTMLInputElement).value;
+      expect(value).toBe("");
+      expect(value).not.toContain("enc1:");
+      expect(value).not.toContain("enc2:");
+      expect(value).not.toContain("9");
+      wrapper.unmount();
+    }
+  });
+
+  it("CONV-MGMT: a readable title prefills trimmed into the rename input", async () => {
+    stubFetch({
+      conversationsJson: [{ conversationId: "9", relationshipId: "1", title: "  周二夜聊  " }],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.conversationId = "9";
+
+    await openConvSheet(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const value = (wrapper.find('[data-testid="rename-input"]').element as HTMLInputElement).value;
+    expect(value).toBe("周二夜聊");
+    wrapper.unmount();
+  });
+
   it("CONV-MGMT: deletes the open conversation only after the two-step confirm", async () => {
     stubFetch({
       conversationsJson: [{ conversationId: "9", relationshipId: "1" }],

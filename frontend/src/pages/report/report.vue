@@ -85,7 +85,7 @@ promises or hotline role-play. Message reports arrive via ?messageId=. -->
         </text>
         <text class="row meta">{{ r.note }}</text>
         <text class="row meta" :data-testid="`report-status-${r.id}`">
-          {{ REPORT_STATUS_LABELS[r.status] }} · 提交于 {{ r.createdAt }}
+          {{ REPORT_STATUS_LABELS[r.status] }} · 提交于 {{ formatLocalDateTime(r.createdAt) }}
         </text>
         <text v-if="r.resolutionNote" class="row meta">处理说明：{{ r.resolutionNote }}</text>
       </view>
@@ -100,6 +100,7 @@ import { REPORT_REASONS, type ReportReason, type ReportTransport } from "@/api/r
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import { readContextFromLocation } from "@/domain/context-href";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { REPORT_REASON_LABELS, REPORT_STATUS_LABELS, useReportStore } from "@/stores/report";
 import { useAuthStore } from "@/stores/auth";
 
@@ -183,6 +184,7 @@ export default {
       submitResult,
       anchoredMessageId,
       canSubmit,
+      formatLocalDateTime,
       REPORT_REASONS,
       REPORT_REASON_LABELS,
       REPORT_STATUS_LABELS,
@@ -368,7 +370,8 @@ export default {
 }
 
 .reason-chip {
-  min-height: 40px;
+  /* P2（round3）：触控目标 ≥44px，与全站控件一致。 */
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-strong);

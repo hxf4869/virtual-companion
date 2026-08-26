@@ -130,14 +130,19 @@ test("a message report deep link carries messageId into the submit payload", asy
   expect(body.messageId).toBe(messageId);
 });
 
-// P1-1 回归（812×375 横屏）：真实浏览器几何断言。行级元素只滚不压——
-// 当前关系按钮不被裁切（≥44px）、消息区 ≥96px、输入栏完整；滚动到底后
-// mode/feedback 行完整可见且与固定输入栏不重叠。
-test("landscape 812x375 keeps the chat usable: rows scroll, nothing squashed or covered", async ({
+// P1-A（round3）：五视口几何矩阵。Codex 复审要求——单一滚动 ownership
+// （chat-history 是唯一纵向滚动容器，输入栏是 chat-main 之外的独立区域），
+// 375×812 / 390×844 / 812×375 / 768×1024 / 1440×900 下：
+//   1. 输入框与发送/取消/重试按钮始终完整落在视口内，可见高度 ≥44px；
+//   2. 消息历史与反馈/模式行是滚动内容，可见边界不与输入栏相交；
+//   3. 滚动容器到顶/底后上述断言仍成立，页头不滚出；
+//   4. scrollWidth ≤ innerWidth；
+//   5. round3 截图为完整 viewport page screenshot（非元素截图、非裁切）。
+test("chat viewport geometry holds across 375x812 / 390x844 / 812x375 / 768x1024 / 1440x900", async ({
   page,
   request,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const user = await provisionUser(request, "relationship-chat");
   let session: Awaited<ReturnType<typeof uiLogin>>;
   try {
@@ -159,88 +164,256 @@ test("landscape 812x375 keeps the chat usable: rows scroll, nothing squashed or 
   await navigateToPage(page, "/pages/chat/chat");
   const input = page.locator('[data-testid="message-input"] input');
   await expect(input).toBeVisible();
-  await input.fill("横屏短视口下也要能完整读到这条消息。");
+  await input.fill("五个视口下都要完整读到这条真实消息。");
   await page.getByTestId("send").click();
   await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
     timeout: 30_000,
   });
 
-  await page.setViewportSize({ width: 812, height: 375 });
+  type Box = {
+    top: number; bottom: number; left: number; right: number;
+    width: number; height: number;
+  };
   const measure = () =>
     page.evaluate(() => {
-      const box = (el: Element | null) => {
+      const box = (el: Element | null): Box | null => {
         if (!el) return null;
         const r = el.getBoundingClientRect();
         return {
-          top: r.top,
-          bottom: r.bottom,
-          left: r.left,
-          right: r.right,
-          width: r.width,
-          height: r.height,
+          top: r.top, bottom: r.bottom, left: r.left, right: r.right,
+          width: r.width, height: r.height,
         };
       };
       const history = document.querySelector('[data-testid="history"]');
+      const historyRect = history as HTMLElement | null;
+      const hv = historyRect
+        ? { top: historyRect.getBoundingClientRect().top, bottom: historyRect.getBoundingClientRect().bottom }
+        : null;
+      // 可见消息：与 history 可视区相交（滚出视口的消息布局位置可能在
+      // 容器之外，不参与“不被输入栏遮挡”断言）。
+      const visibleMessages = hv
+        ? Array.from(document.querySelectorAll('[data-testid="chat-message"]'))
+            .map(box)
+            .filter(
+              (b): b is Box =>
+                b !== null && b.top < hv.bottom - 0.5 && b.bottom > hv.top + 0.5,
+            )
+        : [];
+      const scrollContainers = Array.from(
+        document.querySelectorAll(".chat-main *"),
+      )
+        .filter((el) => {
+          const s = getComputedStyle(el);
+          return (s.overflowY === "auto" || s.overflowY === "scroll") &&
+            (el as HTMLElement).scrollHeight > (el as HTMLElement).clientHeight;
+        })
+        .map((el) => String((el as HTMLElement).className));
+      const mainEl = document.querySelector(".chat-main") as HTMLElement | null;
       return {
+        viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
-        relation: box(document.querySelector('[data-testid="current-relationship"]')),
-        relationBtn: box(document.querySelector('[data-testid="deactivate-relationship"]')),
-        history: box(history),
-        historyClientHeight: history ? history.clientHeight : 0,
-        message: box(document.querySelector('[data-testid="assistant-md"]')),
+        scrollWidth: document.documentElement.scrollWidth,
+        header: box(document.querySelector(".chat-header")),
         inputArea: box(document.querySelector(".chat-input-area")),
-        input: box(document.querySelector('[data-testid="message-input"] input')),
-        modeRow: box(document.querySelector('[data-testid="mode-row"]')),
+        nativeInput: box(document.querySelector('[data-testid="message-input"] input')),
+        send: box(document.querySelector('[data-testid="send"]')),
+        cancel: box(document.querySelector('[data-testid="cancel"]')),
+        retry: box(document.querySelector('[data-testid="retry"]')),
+        history: box(history),
+        historyClientHeight: historyRect ? historyRect.clientHeight : 0,
+        visibleMessages,
         feedbackRow: box(document.querySelector('[data-testid="feedback-row"]')),
-        mainScroll: (() => {
-          const main = document.querySelector(".chat-main") as HTMLElement | null;
-          return main
-            ? { scrollTop: main.scrollTop, scrollHeight: main.scrollHeight, clientHeight: main.clientHeight }
-            : null;
-        })(),
+        modeRow: box(document.querySelector('[data-testid="mode-row"]')),
+        assistantMessage: box(document.querySelector('[data-testid="assistant-md"]')),
+        scrollContainers,
+        mainOverflowY: mainEl ? getComputedStyle(mainEl).overflowY : null,
       };
     });
 
-  const before = await measure();
-  // 当前关系按钮：真实高度 ≥44px，且完整落在视口内（没有被行容器裁掉）。
-  expect(before.relationBtn, "relation button box").not.toBeNull();
-  expect(before.relationBtn!.height).toBeGreaterThanOrEqual(44);
-  expect(before.relationBtn!.width).toBeGreaterThanOrEqual(44);
-  expect(before.relationBtn!.bottom).toBeLessThanOrEqual(before.viewportHeight + 0.5);
-  expect(before.relation!.height).toBeGreaterThanOrEqual(before.relationBtn!.height);
+  const assertCoreGeometry = (
+    m: Awaited<ReturnType<typeof measure>>,
+    label: string,
+  ) => {
+    // 整页无横向溢出。
+    expect(m.scrollWidth, `${label} scrollWidth`).toBeLessThanOrEqual(m.viewportWidth);
+    // 页头完整在视口内（不随内容滚动）。
+    expect(m.header!.top, `${label} header top`).toBeGreaterThanOrEqual(-0.5);
+    expect(m.header!.bottom, `${label} header bottom`).toBeLessThanOrEqual(m.viewportHeight + 0.5);
+    // 输入栏：独立区域，完整落在视口底部。
+    expect(m.inputArea, `${label} inputArea box`).not.toBeNull();
+    expect(m.inputArea!.top, `${label} inputArea top`).toBeGreaterThanOrEqual(0);
+    expect(m.inputArea!.bottom, `${label} inputArea bottom`).toBeLessThanOrEqual(m.viewportHeight + 0.5);
+    // 原生输入框与发送按钮：可见高度 ≥44 且完整。
+    expect(m.nativeInput!.height, `${label} input height`).toBeGreaterThanOrEqual(44);
+    expect(m.nativeInput!.bottom, `${label} input bottom`).toBeLessThanOrEqual(m.viewportHeight + 0.5);
+    expect(m.send!.height, `${label} send height`).toBeGreaterThanOrEqual(44);
+    expect(m.send!.bottom, `${label} send bottom`).toBeLessThanOrEqual(m.viewportHeight + 0.5);
+    // 取消/重试只在流式/失败态渲染；存在时必须同样达标。
+    for (const [name, b] of [["cancel", m.cancel], ["retry", m.retry]] as const) {
+      if (b) {
+        expect(b.height, `${label} ${name} height`).toBeGreaterThanOrEqual(44);
+        expect(b.bottom, `${label} ${name} bottom`).toBeLessThanOrEqual(m.viewportHeight + 0.5);
+      }
+    }
+    // 消息历史是滚动内容：容器边界不越过输入栏；部分滚出的消息由
+    // history 自身 overflow 裁切（视觉），其可见段（与 history 视口的
+    // 交集）不得越过输入栏上沿——即输入栏从不覆盖消息。
+    expect(m.history!.bottom, `${label} history bottom`).toBeLessThanOrEqual(m.inputArea!.top + 0.5);
+    for (const [i, msg] of m.visibleMessages.entries()) {
+      expect(Math.min(msg.bottom, m.history!.bottom), `${label} visible message ${i} clipped bottom`)
+        .toBeLessThanOrEqual(m.inputArea!.top + 0.5);
+    }
+    // 单一纵向滚动 ownership：chat-main 自身永不滚，实际可滚的纵向容器
+    // 只能是 chat-history（内容不满时列表为空也成立）。
+    expect(m.mainOverflowY, `${label} chat-main overflow-y`).toBe("hidden");
+    for (const cls of m.scrollContainers) {
+      expect(cls, `${label} scrollable container class`).toContain("chat-history");
+    }
+  };
 
-  // 消息区：实际高度 ≥96px，且助手回复真实渲染（可读）。
-  expect(before.historyClientHeight).toBeGreaterThanOrEqual(96);
-  expect(before.message!.height).toBeGreaterThan(12);
-  expect(before.message!.width).toBeGreaterThan(60);
+  const scrollHistoryTo = async (position: "top" | "bottom") => {
+    await page.evaluate((pos) => {
+      const el = document.querySelector('[data-testid="history"]') as HTMLElement | null;
+      if (!el) return;
+      el.scrollTop = pos === "top" ? 0 : el.scrollHeight;
+    }, position);
+    await page.waitForTimeout(150);
+  };
 
-  // 输入栏：完整落在视口底部，不缺一角。
-  expect(before.inputArea!.bottom).toBeLessThanOrEqual(before.viewportHeight + 0.5);
-  expect(before.inputArea!.top).toBeGreaterThanOrEqual(before.viewportHeight - 80);
-  expect(before.input!.height).toBeGreaterThanOrEqual(44);
+  const VIEWPORTS: Array<{ w: number; h: number; name: string; deep: boolean }> = [
+    { w: 375, h: 812, name: "375x812", deep: true },
+    { w: 390, h: 844, name: "390x844", deep: false },
+    { w: 812, h: 375, name: "812x375", deep: true },
+    { w: 768, h: 1024, name: "768x1024", deep: false },
+    { w: 1440, h: 900, name: "1440x900", deep: false },
+  ];
 
-  // 滚动到底：mode/feedback 行完整可见，且不与固定输入栏重叠。
-  const scrolled = await page.evaluate(() => {
-    const main = document.querySelector(".chat-main") as HTMLElement | null;
-    if (!main) return false;
-    main.scrollTop = main.scrollHeight;
-    return true;
-  });
-  expect(scrolled).toBe(true);
-  await page.waitForTimeout(150);
-  const after = await measure();
-  expect(after.mainScroll!.scrollHeight).toBeGreaterThan(after.mainScroll!.clientHeight);
-  for (const [name, row] of [["mode-row", after.modeRow], ["feedback-row", after.feedbackRow]] as const) {
-    expect(row, `${name} box`).not.toBeNull();
-    expect(row!.bottom).toBeLessThanOrEqual(after.inputArea!.top + 0.5);
-    expect(row!.top).toBeGreaterThanOrEqual(0);
-    expect(row!.height).toBeGreaterThanOrEqual(44);
+  for (const vp of VIEWPORTS) {
+    await page.setViewportSize({ width: vp.w, height: vp.h });
+    await page.waitForTimeout(200);
+
+    // 初始态（打开会话即贴底）：核心几何 + 深度断言。
+    const initial = await measure();
+    assertCoreGeometry(initial, `${vp.name} initial`);
+    if (vp.deep) {
+      // 运行时几何证据（复审引用）：输入栏 / 原生输入框 / 发送按钮 / 消息区。
+      // eslint-disable-next-line no-console
+      console.log(
+        `[geometry] ${vp.name} inputArea=${JSON.stringify(initial.inputArea)} ` +
+        `input=${JSON.stringify(initial.nativeInput)} send=${JSON.stringify(initial.send)} ` +
+        `history=${JSON.stringify(initial.history)}`,
+      );
+    }
+    if (vp.deep) {
+      // 812×375 初始态必须完整读到真实用户/助手消息。
+      expect(initial.assistantMessage!.bottom, `${vp.name} assistant visible bottom`)
+        .toBeLessThanOrEqual(initial.history!.bottom + 0.5);
+      expect(initial.assistantMessage!.height, `${vp.name} assistant height`)
+        .toBeGreaterThan(12);
+      expect(initial.historyClientHeight, `${vp.name} history client height`)
+        .toBeGreaterThanOrEqual(96);
+      // 反馈/模式行是滚动内容：滚到底后完整可见且不与输入栏相交。
+      expect(initial.modeRow!.bottom, `${vp.name} mode row bottom`)
+        .toBeLessThanOrEqual(initial.inputArea!.top + 0.5);
+      if (initial.feedbackRow) {
+        expect(initial.feedbackRow.bottom, `${vp.name} feedback row bottom`)
+          .toBeLessThanOrEqual(initial.inputArea!.top + 0.5);
+      }
+    }
+    if (vp.name === "375x812") {
+      await page.screenshot({
+        path: ".impeccable/review/round3/chat-375x812.png",
+        fullPage: false,
+      });
+    }
+    if (vp.name === "390x844") {
+      await page.screenshot({
+        path: ".impeccable/review/round3/chat-390x844.png",
+        fullPage: false,
+      });
+    }
+    if (vp.name === "812x375") {
+      await page.screenshot({
+        path: ".impeccable/review/round3/chat-812x375.png",
+        fullPage: false,
+      });
+    }
+
+    // 滚动到顶：历史消息可见，输入栏与页头仍完整。
+    await scrollHistoryTo("top");
+    const top = await measure();
+    assertCoreGeometry(top, `${vp.name} scrolled-top`);
+    if (vp.name === "812x375") {
+      // 初始态已贴底（与 bottom 截图一致）；scrolled 取顶部状态，证明
+      // 滚动到任意位置输入栏仍完整。
+      await page.screenshot({
+        path: ".impeccable/review/round3/chat-812x375-scrolled.png",
+        fullPage: false,
+      });
+    }
+
+    // 滚动到底：反馈/模式行完整可见且不被输入栏遮挡。
+    await scrollHistoryTo("bottom");
+    const bottom = await measure();
+    assertCoreGeometry(bottom, `${vp.name} scrolled-bottom`);
+    if (bottom.modeRow) {
+      expect(bottom.modeRow.height, `${vp.name} mode row height at bottom`)
+        .toBeGreaterThanOrEqual(44);
+      expect(bottom.modeRow.bottom, `${vp.name} mode row bottom at bottom`)
+        .toBeLessThanOrEqual(bottom.inputArea!.top + 0.5);
+    }
+    if (bottom.feedbackRow) {
+      expect(bottom.feedbackRow.height, `${vp.name} feedback row height at bottom`)
+        .toBeGreaterThanOrEqual(44);
+      expect(bottom.feedbackRow.bottom, `${vp.name} feedback row bottom at bottom`)
+        .toBeLessThanOrEqual(bottom.inputArea!.top + 0.5);
+    }
+    if (vp.name === "768x1024") {
+      await page.screenshot({
+        path: ".impeccable/review/round3/chat-768x1024.png",
+        fullPage: false,
+      });
+    }
+    if (vp.name === "1440x900") {
+      await page.screenshot({
+        path: ".impeccable/review/round3/chat-1440x900.png",
+        fullPage: false,
+      });
+    }
   }
 
-  // 整页无横向溢出。
-  const geometry = await page.evaluate(() => ({
-    pageWidth: document.documentElement.scrollWidth,
-    viewportWidth: window.innerWidth,
-  }));
-  expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+  // 流式与失败态的取消/重试按钮几何：挂起 SSE 流让 streaming 可测
+  //（generations POST 正常完成才进入 streaming 相位），再 abort 制造
+  // failed 态（375×812 下验证 ≥44 且完整在视口内）。
+  await page.setViewportSize({ width: 375, height: 812 });
+  let releaseHang: (() => void) | undefined;
+  let streamHits = 0;
+  await page.route("**/api/v1/realtime/streams/*", async (route) => {
+    streamHits += 1;
+    if (streamHits === 1) {
+      // 仅第一次挂起（供测量 streaming 态）；重连请求直接失败，
+      // 让传输层收敛到 failed 而不是在挂起的 route 上死等。
+      await new Promise<void>((resolve) => {
+        releaseHang = resolve;
+      });
+    }
+    await route.abort("connectionfailed");
+  });
+  await input.fill("这条消息会失败，用来量取消与重试按钮。");
+  await page.getByTestId("send").click();
+  await expect(page.getByTestId("cancel")).toBeVisible({ timeout: 30_000 });
+
+  const streaming = await measure();
+  expect(streaming.cancel, "cancel box while streaming").not.toBeNull();
+  expect(streaming.cancel!.height).toBeGreaterThanOrEqual(44);
+  expect(streaming.cancel!.bottom).toBeLessThanOrEqual(streaming.viewportHeight + 0.5);
+
+  releaseHang?.();
+  await expect(page.getByTestId("retry")).toBeVisible({ timeout: 30_000 });
+  const failed = await measure();
+  expect(failed.retry, "retry box after failure").not.toBeNull();
+  expect(failed.retry!.height).toBeGreaterThanOrEqual(44);
+  expect(failed.retry!.bottom).toBeLessThanOrEqual(failed.viewportHeight + 0.5);
+  expect(failed.inputArea!.bottom).toBeLessThanOrEqual(failed.viewportHeight + 0.5);
+  await page.unroute("**/api/v1/realtime/streams/*");
 });

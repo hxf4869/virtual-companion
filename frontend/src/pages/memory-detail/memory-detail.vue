@@ -31,16 +31,16 @@ Reuses GET /memories/{id} and GET /memories/{id}/evidence. Existence hidden. -->
         <text class="meta" data-testid="memory-status">状态 {{ publicMemoryStatusLabel(record.status) }}</text>
         <text class="meta" data-testid="memory-scope">范围 {{ publicMemoryScopeLabel(record.scope) }}</text>
         <text v-if="record.createdAt" class="meta" data-testid="memory-created">
-          记录时间 {{ record.createdAt }}
+          记录时间 {{ formatLocalDateTime(record.createdAt) }}
         </text>
         <text v-if="record.autoSaved" class="meta" data-testid="memory-auto">
           自动保存条目（可随时删除）
         </text>
         <text v-if="record.eventAt" class="meta" data-testid="memory-event">
-          事件时间 {{ record.eventAt }} · 状态 {{ eventStatusLabel(record.eventStatus) }}
+          事件时间 {{ formatLocalDateTime(record.eventAt) }} · 状态 {{ eventStatusLabel(record.eventStatus) }}
         </text>
         <text v-if="record.eventExpiresAt" class="meta" data-testid="memory-event-expires">
-          事件过期 {{ record.eventExpiresAt }}（过期后不再使用，仅询问后续）
+          事件过期 {{ formatLocalDateTime(record.eventExpiresAt) }}（过期后不再使用，仅询问后续）
         </text>
         <text v-if="record.supersededAt" class="meta" data-testid="memory-superseded">
           已被 {{ record.supersededByMemoryId }} 替代，不作为已保存事实
@@ -68,6 +68,7 @@ import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
@@ -182,6 +183,7 @@ export default {
       memoryHref,
       goTo,
       eventStatusLabel,
+      formatLocalDateTime,
       publicMemoryScopeLabel,
       publicMemoryStatusLabel,
     };

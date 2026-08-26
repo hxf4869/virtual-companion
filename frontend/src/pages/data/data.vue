@@ -47,7 +47,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
         <button data-testid="data-open-account" class="row row-link" @click="goTo('/pages/account/account')">
           账号编号：{{ auth.accountId ?? "未登录" }}
         </button>
-        <text class="row">角色：{{ auth.role ?? "未知" }}</text>
+        <text class="row">角色：{{ accountRoleLabel(auth.role) }}</text>
       </view>
 
       <view class="section" data-testid="data-relationships">
@@ -121,7 +121,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           data-testid="data-open-consent"
           @click="goTo('/pages/consent/consent')"
         >
-          {{ item.consentType }} · {{ item.granted ? "已同意" : "已撤回" }}
+          {{ consentTypeLabel(item.consentType) }} · {{ item.granted ? "已同意" : "已撤回" }}
         </button>
         <text v-if="store.consents.length === 0" class="empty">没有同意记录。</text>
       </view>
@@ -131,7 +131,6 @@ Uses existing list APIs; report/appeal status reads the report intake list
         <button data-testid="data-open-ai-notice" class="row row-link" @click="goTo('/pages/ai-notice/ai-notice')">
           {{ store.serviceMode?.summary ?? "服务状态尚未读取。" }}
         </button>
-        <text v-if="store.serviceMode" class="meta">模式 {{ store.serviceMode.mode }}</text>
       </view>
 
       <view class="section" data-testid="data-appeals">
@@ -164,10 +163,12 @@ import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
 import { readableConversationTitle } from "@/domain/conversation-display";
+import { accountRoleLabel } from "@/domain/account-display";
 import { publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { personaDisplayName } from "@/domain/persona";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
+import { CONSENT_OPTIONS } from "@/stores/consent";
 import { useDataStore } from "@/stores/data";
 import { REPORT_REASON_LABELS, useReportStore } from "@/stores/report";
 
@@ -179,6 +180,13 @@ export default {
     const store = useDataStore();
     const reportStore = useReportStore();
     const requestIdCopy = ref("");
+
+    // P2（round3）：同意记录用与同意页一致的中文标签，不显示 SERVICE_TERMS
+    // 等原始码；类型集是封闭联合，兜底仍不露出内部码。
+    function consentTypeLabel(type: string): string {
+      return CONSENT_OPTIONS.find((o) => o.type === type)?.label ?? "同意项";
+    }
+
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
@@ -255,6 +263,8 @@ export default {
       auth,
       store,
       reportStore,
+      accountRoleLabel,
+      consentTypeLabel,
       readableConversationTitle,
       publicMemoryStatusLabel,
       REPORT_REASON_LABELS,

@@ -32,7 +32,7 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
           核验方式：{{ methodLabel }}
         </text>
         <text v-if="store.record.verifiedAt" class="meta" data-testid="age-verified-at">
-          记录时间：{{ store.record.verifiedAt }}
+          记录时间：{{ formatLocalDateTime(store.record.verifiedAt) }}
         </text>
       </view>
 
@@ -91,7 +91,7 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
         <text class="label">我的申诉</text>
         <view v-for="a in store.appeals" :key="a.id" class="appeal-row" :data-testid="`age-appeal-row-${a.id}`">
           <text class="meta">
-            {{ a.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }} · {{ a.createdAt }}
+            {{ a.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }} · {{ formatLocalDateTime(a.createdAt) }}
           </text>
           <text class="meta">{{ a.reason }}</text>
           <text v-if="a.resolutionNote" class="meta">处理说明：{{ a.resolutionNote }}</text>
@@ -121,6 +121,7 @@ import { AgeHttpError } from "@/api/age";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import { publicAgeMethodLabel } from "@/domain/public-age-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAgeStore } from "@/stores/age";
 import { useAuthStore } from "@/stores/auth";
 
@@ -198,6 +199,7 @@ export default {
       appealResult,
       canSubmitAppeal,
       methodLabel,
+      formatLocalDateTime,
       onRetry,
       onVerify,
       onSubmitAppeal,

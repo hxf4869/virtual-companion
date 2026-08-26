@@ -248,6 +248,46 @@ describe("independent conversation list page", () => {
     wrapper.unmount();
   });
 
+  // P1-B（round3）：改名输入绝不预填密文。打开管理 → 改名后直接读取
+  // input.element.value（不用 wrapper.text() 代替）：enc1:/enc2:、密文长
+  // token、空值一律空串，且不含内部 conversationId。
+  it("never prefills an enc1/enc2 ciphertext title into the rename input", async () => {
+    for (const title of [`enc1:${"B".repeat(120)}`, `enc2:${"A".repeat(120)}`, ""]) {
+      stubFetch({ conversations: [item({ title })] });
+      const wrapper = mount(ConversationsPage, { attachTo: document.body });
+      await flushPromises();
+
+      await openManage(wrapper);
+      await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+      await wrapper.vm.$nextTick();
+
+      const input = wrapper.find('[data-testid="conversation-rename-input"]');
+      expect(input.exists(), "rename row rendered").toBe(true);
+      const value = (input.element as HTMLInputElement).value;
+      expect(value).toBe("");
+      expect(value).not.toContain("enc1:");
+      expect(value).not.toContain("enc2:");
+      expect(value).not.toContain("c1");
+      wrapper.unmount();
+    }
+  });
+
+  it("prefills a readable trimmed title into the rename input", async () => {
+    stubFetch({ conversations: [item({ title: "  周二夜聊  " })] });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await openManage(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const value = (
+      wrapper.find('[data-testid="conversation-rename-input"]').element as HTMLInputElement
+    ).value;
+    expect(value).toBe("周二夜聊");
+    wrapper.unmount();
+  });
+
   it("deletes only after the two-step confirm and a confirmed DELETE", async () => {
     const { calls } = stubFetch();
     const wrapper = mount(ConversationsPage, { attachTo: document.body });

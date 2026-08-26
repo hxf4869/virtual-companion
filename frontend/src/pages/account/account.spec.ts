@@ -76,7 +76,8 @@ describe("account page", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="account-id"]').text()).toContain("42");
-    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("USER");
+    // P2（round3）：角色码不再直接展示，消费者界面渲染中文标签。
+    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("用户");
     expect(wrapper.find('[data-testid="public-computer-hint"]').text()).toContain("公共电脑");
     expect(wrapper.find('[data-testid="survey-card"]').exists()).toBe(true);
     expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);

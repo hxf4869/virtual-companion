@@ -125,8 +125,11 @@ describe("data page (FR-DATA-001)", () => {
     expect(wrapper.find('[data-testid="data-conversations"]').text()).toContain("夜聊");
     expect(wrapper.find('[data-testid="data-memories"]').text()).toContain("喜欢安静的晚上");
     expect(wrapper.find('[data-testid="data-reminders"]').text()).toContain("晚上十点提醒我休息");
-    expect(wrapper.find('[data-testid="data-consents"]').text()).toContain("SERVICE_TERMS");
+    expect(wrapper.find('[data-testid="data-consents"]').text()).toContain("用户服务协议");
     expect(wrapper.find('[data-testid="data-model"]').text()).toContain("无生成模型");
+    // P2（round3）：模型模式原值（ZERO_LLM/FULL_AI）不再渲染，只保留可读 summary。
+    expect(wrapper.find('[data-testid="data-model"]').text()).not.toContain("ZERO_LLM");
+    expect(wrapper.find('[data-testid="data-model"]').text()).not.toContain("FULL_AI");
     // REPORT-BE: the appeal-status section reads the real intake list.
     expect(calls).toContain("/api/v1/reports");
     expect(wrapper.find('[data-testid="data-appeals"]').text()).toContain("隐私与数据权利");

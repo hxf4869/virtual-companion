@@ -225,6 +225,10 @@
       </view>
 
       <template v-if="!hasRelationship">
+        <!-- P1-A（round3）：无关系分支同样只有这一个滚动容器（chat-setup），
+             与有关系分支的 chat-history 互斥——任何渲染路径下纵向滚动
+             ownership 都是唯一的。 -->
+        <view class="chat-setup">
         <!-- 统一创建流程在陪伴设置页；聊天空态只保留入口与既有关系的
              激活，不复制一份创建表单。 -->
         <view class="chat-create-entry" data-testid="chat-create-companion">
@@ -245,6 +249,7 @@
           :show-create="false"
           @activate="onRelActivate"
         />
+        </view>
       </template>
 
       <template v-else>
@@ -544,134 +549,145 @@
               加载更多
             </button>
           </view>
-        </view>
 
-        <view v-if="paintedDraft" class="chat-draft" data-testid="draft">
-          <text>{{ paintedDraft }}</text>
-        </view>
+          <!-- P1-A（round3）：状态/反馈/模式行进入唯一滚动容器尾部，
+               成为滚动内容而不是与输入栏争夺固定高度——输入栏在
+               chat-main 之外，任何位置都不会覆盖它们。 -->
+          <view v-if="paintedDraft" class="chat-draft" data-testid="draft">
+            <text>{{ paintedDraft }}</text>
+          </view>
 
-        <view class="chat-status" data-testid="status" role="status" aria-live="polite">
-          <text>{{ statusText }}</text>
-        </view>
+          <view class="chat-status" data-testid="status" role="status" aria-live="polite">
+            <text>{{ statusText }}</text>
+          </view>
 
-        <!-- SEND-FAIL: transport/5xx throw during send — restore the draft and
-             surface a retryable failure instead of a silent unhandled rejection. -->
-        <view v-if="sendError" class="chat-error" data-testid="chat-send-error" role="alert">
-          <text>消息发送失败，请重试</text>
-        </view>
+          <!-- SEND-FAIL: transport/5xx throw during send — restore the draft and
+               surface a retryable failure instead of a silent unhandled rejection. -->
+          <view v-if="sendError" class="chat-error" data-testid="chat-send-error" role="alert">
+            <text>消息发送失败，请重试</text>
+          </view>
 
-        <view v-if="actionError" class="chat-error" data-testid="chat-action-error" role="alert">
-          <text>操作未成功，请重试</text>
-        </view>
+          <view v-if="actionError" class="chat-error" data-testid="chat-action-error" role="alert">
+            <text>操作未成功，请重试</text>
+          </view>
 
-        <!-- USAGE-VIZ: settled token usage of the last completed turn -->
-        <view
-          v-if="usage"
-          class="chat-usage"
-          data-testid="usage"
-          role="status"
-        >
-          <text>{{ `本轮用量：输入 ${usage.inputTokens} / 输出 ${usage.outputTokens} 词元` }}</text>
-        </view>
-
-        <!-- FEEDBACK (FR-CHAT-003): one-tap feedback on the finished reply -->
-        <view
-          v-if="showFeedback"
-          class="chat-feedback-row"
-          data-testid="feedback-row"
-          role="group"
-          aria-label="回复反馈"
-        >
-          <text class="chat-feedback-label">这条回复有问题吗？</text>
-          <button
-            v-for="opt in FEEDBACK_OPTIONS"
-            :key="opt.value"
-            class="chat-feedback-chip"
-            :data-testid="`feedback-${opt.value}`"
-            :disabled="feedbackKinds.includes(opt.value)"
-            @click="onFeedback(opt.value)"
+          <!-- USAGE-VIZ: settled token usage of the last completed turn -->
+          <view
+            v-if="usage"
+            class="chat-usage"
+            data-testid="usage"
+            role="status"
           >
-            {{ feedbackKinds.includes(opt.value) ? `已反馈：${opt.label}` : opt.label }}
-          </button>
-        </view>
+            <text>{{ `本轮用量：输入 ${usage.inputTokens} / 输出 ${usage.outputTokens} 词元` }}</text>
+          </view>
 
-        <!-- MEM-PROMPT: pending candidates surfaced after a completed turn -->
-        <view
-          v-if="pendingMemoryCount > 0"
-          class="memory-prompt"
-          data-testid="memory-prompt"
-          role="status"
-        >
-          <text>{{ `有 ${pendingMemoryCount} 条新的记忆候选待确认` }}</text>
-          <button
-            data-testid="memory-prompt-link"
-            class="chat-nav-index"
-            @click="goTo(memoryHref())"
+          <!-- FEEDBACK (FR-CHAT-003): one-tap feedback on the finished reply -->
+          <view
+            v-if="showFeedback"
+            class="chat-feedback-row"
+            data-testid="feedback-row"
+            role="group"
+            aria-label="回复反馈"
           >
-            去确认
-          </button>
-        </view>
+            <text class="chat-feedback-label">这条回复有问题吗？</text>
+            <button
+              v-for="opt in FEEDBACK_OPTIONS"
+              :key="opt.value"
+              class="chat-feedback-chip"
+              :data-testid="`feedback-${opt.value}`"
+              :disabled="feedbackKinds.includes(opt.value)"
+              @click="onFeedback(opt.value)"
+            >
+              {{ feedbackKinds.includes(opt.value) ? `已反馈：${opt.label}` : opt.label }}
+            </button>
+          </view>
 
-        <!-- CHAT-MODE: turn-level interaction mode quick switcher (AUTO keeps
-             the persona default; explicit modes ride the next send). -->
-        <view
-          class="chat-mode-row"
-          data-testid="mode-row"
-          role="group"
-          aria-label="选择对话模式"
-        >
-          <button
-            v-for="opt in MODE_OPTIONS"
-            :key="opt.value"
-            class="chat-mode-chip"
-            :class="{ 'chat-mode-chip-active': selectedMode === opt.value }"
-            :data-testid="`mode-${opt.value.toLowerCase()}`"
-            :aria-pressed="selectedMode === opt.value"
-            :disabled="isStreaming"
-            @click="onSelectMode(opt.value)"
+          <!-- MEM-PROMPT: pending candidates surfaced after a completed turn -->
+          <view
+            v-if="pendingMemoryCount > 0"
+            class="memory-prompt"
+            data-testid="memory-prompt"
+            role="status"
           >
-            {{ opt.label }}
-          </button>
-        </view>
+            <text>{{ `有 ${pendingMemoryCount} 条新的记忆候选待确认` }}</text>
+            <button
+              data-testid="memory-prompt-link"
+              class="chat-nav-index"
+              @click="goTo(memoryHref())"
+            >
+              去确认
+            </button>
+          </view>
 
-        <view class="chat-input-area">
-          <input
-            v-model="inputText"
-            class="chat-input"
-            data-testid="message-input"
-            placeholder="输入消息…"
-            aria-label="消息输入"
-            :disabled="isStreaming"
-            @keydown.enter="onSend"
-          />
-          <button
-            data-testid="send"
-            class="chat-send"
-            :disabled="isStreaming || !canSend || !store.conversationId"
-            @click="onSend"
+          <!-- CHAT-MODE: turn-level interaction mode quick switcher (AUTO keeps
+               the persona default; explicit modes ride the next send). -->
+          <view
+            class="chat-mode-row"
+            data-testid="mode-row"
+            role="group"
+            aria-label="选择对话模式"
           >
-            发送
-          </button>
-          <button
-            v-if="isStreaming"
-            data-testid="cancel"
-            class="chat-cancel"
-            :aria-busy="isStreaming"
-            @click="onCancel"
-          >
-            取消
-          </button>
-          <button
-            v-if="canRetry"
-            data-testid="retry"
-            class="chat-retry"
-            @click="onRetry"
-          >
-            重试
-          </button>
+            <button
+              v-for="opt in MODE_OPTIONS"
+              :key="opt.value"
+              class="chat-mode-chip"
+              :class="{ 'chat-mode-chip-active': selectedMode === opt.value }"
+              :data-testid="`mode-${opt.value.toLowerCase()}`"
+              :aria-pressed="selectedMode === opt.value"
+              :disabled="isStreaming"
+              @click="onSelectMode(opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </view>
         </view>
       </template>
     </template>
+    </view>
+
+    <!-- P1-A（round3）：输入栏是 chat-main 之外的独立区域——不 fixed、
+         不覆盖任何滚动内容；视口再挤，先压缩的也是 chat-main 内部，
+         输入框与发送/取消/重试按钮始终完整落在视口内。 -->
+    <view
+      v-if="!initError && hasRelationship"
+      class="chat-input-area"
+      role="form"
+      aria-label="发送消息"
+    >
+      <input
+        v-model="inputText"
+        class="chat-input"
+        data-testid="message-input"
+        placeholder="输入消息…"
+        aria-label="消息输入"
+        :disabled="isStreaming"
+        @keydown.enter="onSend"
+      />
+      <button
+        data-testid="send"
+        class="chat-send"
+        :disabled="isStreaming || !canSend || !store.conversationId"
+        @click="onSend"
+      >
+        发送
+      </button>
+      <button
+        v-if="isStreaming"
+        data-testid="cancel"
+        class="chat-cancel"
+        :aria-busy="isStreaming"
+        @click="onCancel"
+      >
+        取消
+      </button>
+      <button
+        v-if="canRetry"
+        data-testid="retry"
+        class="chat-retry"
+        @click="onRetry"
+      >
+        重试
+      </button>
     </view>
   </view>
 </template>
@@ -701,7 +717,7 @@
 // The status region carries role="status" + aria-live="polite" and the cancel
 // button aria-busy while streaming, so async phase changes are announced to
 // assistive technology.
-import { computed, defineComponent, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, defineComponent, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   computeVirtualWindow,
   VIRTUAL_ESTIMATE_HEIGHT,
@@ -733,7 +749,7 @@ import { useIncognitoStore } from "@/stores/incognito";
 import type { MemoryImportPreview } from "@/api/relationship";
 import { requestIdLabel } from "@/domain/request-id";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
-import { readableConversationTitle } from "@/domain/conversation-display";
+import { isReadableConversationText, readableConversationTitle } from "@/domain/conversation-display";
 import { installStreamLifecycle } from "@/domain/stream-recovery";
 
 function resolveOrigin(): string {
@@ -867,7 +883,12 @@ export default defineComponent({
       historyObserver?.disconnect();
       const el = historyNode();
       if (!el) return;
-      historyObserver = new ResizeObserver(() => measureHistory());
+      historyObserver = new ResizeObserver(() => {
+        measureHistory();
+        // P1-A（round3）：视口/布局变化（旋转、软键盘）改变消息区高度时
+        // 保持贴底——否则切换视口后最新消息会沉出可视区一截。
+        if (stickToBottom.value) scrollHistoryToBottom();
+      });
       historyObserver.observe(el);
       measureHistory();
     }
@@ -896,11 +917,51 @@ export default defineComponent({
     );
 
     function onHistoryScroll(event: Event): void {
-      const target = event.target as { scrollTop?: number } | null;
+      const target = event.target as
+        | { scrollTop?: number; scrollHeight?: number; clientHeight?: number }
+        | null;
       if (target && typeof target.scrollTop === "number") {
         historyScrollTop.value = target.scrollTop;
+        // P1-A（round3）：距底超过一阈值即视为用户在翻历史，停止贴底跟随；
+        // 滚回底部附近自动恢复（812×375 初始态由此保证最新消息可见）。
+        if (typeof target.scrollHeight === "number" && typeof target.clientHeight === "number") {
+          stickToBottom.value =
+            target.scrollHeight - target.clientHeight - target.scrollTop < 80;
+        }
       }
     }
+
+    // P1-A（round3）：聊天默认贴底——打开会话、新消息与流式草稿到达时滚到
+    // 最新处；happy-dom 下 scrollTop 赋值是安全空操作，单测不受影响。
+    const stickToBottom = ref(true);
+
+    function scrollHistoryToBottom(): void {
+      const el = historyNode();
+      if (!el) return;
+      // 无布局环境（happy-dom）scrollHeight 为 0：跳过，不覆盖测试设置的
+      // scrollTop；真实浏览器 scrollHeight ≥ clientHeight > 0。
+      if (el.scrollHeight <= 0) return;
+      snapToBottom(el, 2);
+    }
+
+    /**
+     * 贴底收敛：设置 scrollTop 后虚拟窗口会因这次滚动重排（spacer 高度
+     * 变化会再次改变 scrollHeight），内容底部可能又沉出一截；最多补两帧
+     * （约 32ms，不与用户翻历史竞争）直到落在真实底部。
+     */
+    function snapToBottom(el: HTMLElement, frames: number): void {
+      el.scrollTop = el.scrollHeight;
+      historyScrollTop.value = el.scrollTop;
+      if (frames > 0 && typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => snapToBottom(el, frames - 1));
+      }
+    }
+
+    function followLatestIfStuck(): void {
+      if (!stickToBottom.value) return;
+      void nextTick(() => scrollHistoryToBottom());
+    }
+
     const conversations = computed(() => store.conversations);
     const pendingMemoryCount = computed(() => store.pendingMemoryCount);
     const draft = computed(() => store.draft);
@@ -942,6 +1003,18 @@ export default defineComponent({
     // transport failures with nothing to judge.
     const showFeedback = computed(
       () => store.phase === "completed" || store.phase === "blocked",
+    );
+    // P1-A（round3）：新消息、流式草稿与完成后的状态行（usage/feedback/
+    // 记忆候选）到达时贴底跟随；这些行异步晚到，逐一纳入信号集。
+    watch(
+      () => [
+        messages.value.length,
+        paintedDraft.value,
+        showFeedback.value,
+        usage.value,
+        pendingMemoryCount.value,
+      ],
+      () => followLatestIfStuck(),
     );
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
@@ -1412,6 +1485,8 @@ export default defineComponent({
       // INC-MODE: the toggle mirrors the opened conversation's frozen flag.
       const opened = store.conversations.find((c) => c.conversationId === id);
       incognitoNext.value = opened?.incognito === true;
+      // P1-A（round3）：切到会话即落在最新消息处（812×375 初始态可读）。
+      void nextTick(() => scrollHistoryToBottom());
     }
 
     async function onNewConversation(): Promise<void> {
@@ -1470,7 +1545,12 @@ export default defineComponent({
       const id = store.conversationId;
       if (!id) return;
       const current = store.conversations.find((c) => c.conversationId === id);
-      renameInput.value = current?.title ?? "";
+      // P1-B（round3）：改名输入绝不预填密文——title 经可读性判定通过才带出
+      // trim 后的原值；enc1:/enc2:、密文长 token、空值一律预填空字符串，
+      // preview/日期 fallback/内部 ID 从不进入可编辑输入框。
+      renameInput.value = isReadableConversationText(current?.title)
+        ? current!.title!.trim()
+        : "";
       renaming.value = true;
     }
 
@@ -1637,6 +1717,8 @@ export default defineComponent({
         const target = fromQuery ?? latest;
         if (target) {
           await store.openConversation(transport, target.conversationId);
+          // P1-A（round3）：进入页面直接落在最新消息处，短视口也能读到当前轮。
+          void nextTick(() => scrollHistoryToBottom());
         } else {
           await startConversation();
         }
@@ -1792,9 +1874,11 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* 沉浸式对话：暮色头部 + 暖纸对话面。消息内容占主导；状态行如实呈现。
-   LANDSCAPE: 外壳锁定视口高度，唯一滚动区是消息历史；输入栏不再依赖
-   sticky（外壳不滚动，输入栏常驻底部），消息区高度 = 真实剩余空间。 */
+/* 沉浸式对话：暮色头部 + 暖纸对话面。P1-A（round3）单一滚动 ownership：
+   页面外壳只做 flex 分配（header / chat-main / 独立输入栏），自身永不滚动；
+   有关系时唯一纵向滚动容器是 chat-history（含状态/反馈/模式行），无关系时
+   是 chat-setup。输入栏不是 fixed 覆盖层，而是布局流中的独立区域——无论
+   内容多挤，被压缩的只会是 chat-main 内部，输入栏与按钮始终完整可见。 */
 .chat-page {
   display: flex;
   flex-direction: column;
@@ -1811,6 +1895,13 @@ export default defineComponent({
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* 无关系分支的滚动容器（与 chat-history 互斥，保持唯一滚动 ownership）。 */
+.chat-setup {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .chat-header {
@@ -1938,8 +2029,6 @@ export default defineComponent({
    时进入滚动而不是被压扁（flex-shrink 会连 44px 按钮一起裁掉）。 */
 .service-mode,
 .usage-health-banner,
-.chat-usage,
-.memory-prompt,
 .incognito-notice,
 .current-relationship {
   flex: none;
@@ -1947,6 +2036,27 @@ export default defineComponent({
   width: calc(100% - var(--vc-space-6));
   max-width: 720px;
   margin: var(--vc-space-2) auto 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
+  color: var(--vc-ink);
+  font-size: var(--vc-text-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+}
+
+/* P1-A（round3）：以下低频状态行位于唯一滚动容器（chat-history）内部，
+   宽度即滚动内容宽度（history 自身已有水平留白），随消息一起滚动，
+   永远不会停在固定输入栏后方。 */
+.chat-usage,
+.memory-prompt {
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  margin: var(--vc-space-2) 0 0;
   padding: var(--vc-space-2) var(--vc-space-3);
   border-radius: var(--vc-radius-m);
   background: var(--vc-card);
@@ -2318,7 +2428,7 @@ export default defineComponent({
   padding: var(--vc-space-3) 0;
 }
 
-/* 草稿与状态行 */
+/* 草稿与状态行（P1-A round3：位于 chat-history 内部，随消息滚动） */
 .chat-draft,
 .chat-status,
 .chat-error,
@@ -2326,9 +2436,8 @@ export default defineComponent({
 .chat-mode-row {
   flex: none;
   box-sizing: border-box;
-  width: calc(100% - var(--vc-space-6));
-  max-width: 720px;
-  margin: var(--vc-space-2) auto 0;
+  width: 100%;
+  margin: var(--vc-space-2) 0 0;
   font-size: var(--vc-text-xs);
 }
 
@@ -2426,16 +2535,16 @@ export default defineComponent({
   font-weight: 600;
 }
 
+/* 输入区（P1-A round3）：chat-page 直接子级的独立区域，flex:none 常驻
+   视口底部；正确处理 safe-area；永不 fixed、永不覆盖滚动内容。 */
 .chat-input-area {
   flex: none;
-  position: static;
-  z-index: var(--vc-z-content);
   display: flex;
   gap: var(--vc-space-2);
   box-sizing: border-box;
   width: 100%;
   max-width: 720px;
-  margin: var(--vc-space-3) auto 0;
+  margin: 0 auto;
   padding: var(--vc-space-2)
     calc(var(--vc-space-3) + env(safe-area-inset-right, 0px))
     calc(var(--vc-space-2) + env(safe-area-inset-bottom, 0px))
@@ -2495,7 +2604,7 @@ export default defineComponent({
   border: 0;
 }
 
-.chat-error,
+/* initError 整页错误仍在 chat-main 固定区（history 尚未渲染）。 */
 .chat-init-error {
   width: calc(100% - var(--vc-space-6));
   max-width: 720px;
@@ -2507,19 +2616,10 @@ export default defineComponent({
   font-size: var(--vc-text-xs);
 }
 
-/* LANDSCAPE / 短视口（≤480px 高）：优先保留消息阅读与输入。
-   输入栏 fixed 常驻视口底；真实滚动容器（chat-main）自身预留底部空间
-   （1px 顶边框 + 4px 上下内距 + 44px 控件 = 53px），滚动内容绝不滑入
-   输入栏下方。行级元素一律 flex:none——只滚不压，状态、当前关系、反馈
-   与模式行都可滚动进入完整可见区（不再依赖 sticky）。 */
+/* LANDSCAPE / 短视口（≤480px 高）：结构不变——单一滚动容器 + 独立输入栏。
+   这里只压缩固定行与消息区的留白，让 812×375 初始态也读得到真实消息；
+   输入栏仍是布局流区域（上一轮的 fixed 覆盖方案已移除）。 */
 @media (max-height: 480px) {
-  .chat-main {
-    overflow-y: auto;
-    /* 1px 顶边框 + 4px 上下内距 + 46px 输入控件（uni-input 宿主含 1px 内距，
-     * 原生 input 实际 ≥44px 触控高）= 55px 输入栏真实高度。 */
-    padding-bottom: calc(55px + env(safe-area-inset-bottom, 0px));
-  }
-
   .chat-header {
     padding-top: var(--vc-space-1);
     padding-bottom: var(--vc-space-1);
@@ -2527,14 +2627,13 @@ export default defineComponent({
 
   .service-mode,
   .usage-health-banner,
-  .chat-usage,
-  .memory-prompt,
   .incognito-notice,
   .current-relationship,
+  .chat-usage,
+  .memory-prompt,
   .chat-status,
   .chat-draft,
-  .chat-error,
-  .chat-init-error {
+  .chat-error {
     margin-top: var(--vc-space-1);
     padding: var(--vc-space-1) var(--vc-space-2);
     font-size: var(--vc-text-xs);
@@ -2552,22 +2651,32 @@ export default defineComponent({
     white-space: nowrap;
   }
 
+  .conversation-panel {
+    /* 横屏单行：横滑会话列表与操作按钮同排（宽度足够），给消息区让出
+       一整行高度；竖屏保持列表独占一行的两行布局。 */
+    flex-wrap: nowrap;
+    align-items: center;
+    margin-top: var(--vc-space-1);
+    padding: var(--vc-space-1) var(--vc-space-2);
+  }
+
+  .conversation-list {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
   .chat-history {
-    flex: none;
-    height: clamp(96px, 38dvh, 240px);
-    min-height: 96px;
     margin-top: var(--vc-space-1);
     padding: var(--vc-space-2) 0;
   }
 
+  .chat-feedback-row,
+  .chat-mode-row {
+    margin-top: var(--vc-space-1);
+  }
+
   .chat-input-area {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: 0 auto;
     padding-top: var(--vc-space-1);
-    padding-bottom: calc(var(--vc-space-1) + env(safe-area-inset-bottom, 0px));
   }
 
   .chat-input,

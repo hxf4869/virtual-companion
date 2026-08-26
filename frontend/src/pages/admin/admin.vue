@@ -100,7 +100,7 @@
           <text class="account-cell">{{ account.displayName }}</text>
           <button
             v-if="account.status === 'ACTIVE' && account.accountId !== auth.accountId"
-            size="mini"
+            class="admin-row-btn"
             data-testid="disable-account"
             :disabled="busy"
             @click="onDisable(account)"
@@ -109,7 +109,7 @@
           </button>
           <button
             v-if="account.status === 'ACTIVE' && account.accountId !== auth.accountId"
-            size="mini"
+            class="admin-row-btn"
             data-testid="reset-account-select"
             :disabled="busy"
             @click="resetAccountId = account.accountId"
@@ -1633,6 +1633,26 @@ export default defineComponent({
 
 .usage-table {
   margin-top: var(--vc-space-2);
+}
+
+/* P2（round3）：账户行内操作补齐 ≥44px 触控尺寸；暗面（env-raised 面板上）
+   用 border-env-strong 保住真实控件边界，不再是 uni-app mini 默认样式。 */
+.admin-row-btn {
+  min-height: 44px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.admin-row-btn::after {
+  border: 0;
 }
 
 .sc-form {

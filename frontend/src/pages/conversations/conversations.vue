@@ -196,6 +196,7 @@ import RelationshipSelector from "@/components/RelationshipSelector.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import {
+  isReadableConversationText,
   readableConversationPreview,
   readableConversationTitle,
 } from "@/domain/conversation-display";
@@ -316,7 +317,11 @@ export default {
       confirmDeleteId.value = null;
       confirmEndId.value = null;
       renamingId.value = item.conversationId;
-      renameInput.value = item.title ?? "";
+      // P1-B（round3）：改名输入绝不预填密文——只有可读 title 才带出 trim
+      // 后的原值；enc1:/enc2:、密文长 token、空值一律预填空字符串。
+      renameInput.value = isReadableConversationText(item.title)
+        ? item.title!.trim()
+        : "";
     }
 
     async function saveRename(id: string): Promise<void> {
