@@ -2193,7 +2193,7 @@ export default defineComponent({
   border-radius: var(--vc-radius-s);
   background: var(--vc-env);
   color: var(--vc-on-env);
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--vc-font-mono);
   font-size: var(--vc-text-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

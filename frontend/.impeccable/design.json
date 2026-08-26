@@ -4,38 +4,172 @@
   "title": "Design System: Virtual Companion — The Lit Window",
   "extensions": {
     "colorMeta": {
-      "primary": { "role": "primary", "displayName": "Window Amber 窗光琥珀", "canonical": "#e8b45c", "tonalRamp": ["#3a2a0c", "#5c430f", "#8a661f", "#b98d3b", "#e8b45c", "#f0c884", "#f7dcae", "#fcefdb"] },
-      "env": { "role": "neutral", "displayName": "Dusk Blue 暮色墨蓝", "canonical": "#151d2b", "tonalRamp": ["#0a0f18", "#151d2b", "#1b2636", "#232f42", "#33425a", "#5d6d88", "#93a1ba", "#d3dbe8"] },
-      "paper": { "role": "neutral", "displayName": "Warm Paper 暖纸", "canonical": "#f7f4ed", "tonalRamp": ["#f7f4ed", "#efe9df", "#e2dac9", "#c9bfa8", "#a89d84", "#7d745f", "#556478", "#1f2b3a"] },
-      "card": { "role": "neutral", "displayName": "Card 卡面", "canonical": "#fffdf8" },
-      "ink": { "role": "neutral", "displayName": "Ink 墨字", "canonical": "#1f2b3a" },
-      "muted": { "role": "neutral", "displayName": "Muted 次要文字", "canonical": "#556478" },
-      "glow": { "role": "primary", "displayName": "Glow on Env 环境暖光", "canonical": "#e5b566" },
-      "danger": { "role": "tertiary", "displayName": "Danger 危险", "canonical": "#b3261e" },
-      "warning": { "role": "tertiary", "displayName": "Warning 警告", "canonical": "#8a5c00" },
-      "success": { "role": "tertiary", "displayName": "Success 成功", "canonical": "#2e6b4f" }
+      "primary": {
+        "role": "primary",
+        "displayName": "Window Amber 窗光琥珀",
+        "canonical": "#e8b45c",
+        "tonalRamp": [
+          "#3a2a0c",
+          "#5c430f",
+          "#8a661f",
+          "#b98d3b",
+          "#e8b45c",
+          "#f0c884",
+          "#f7dcae",
+          "#fcefdb"
+        ]
+      },
+      "env": {
+        "role": "neutral",
+        "displayName": "Dusk Blue 暮色墨蓝",
+        "canonical": "#151d2b",
+        "tonalRamp": [
+          "#0a0f18",
+          "#151d2b",
+          "#1b2636",
+          "#232f42",
+          "#33425a",
+          "#5d6d88",
+          "#93a1ba",
+          "#d3dbe8"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Warm Paper 暖纸",
+        "canonical": "#f7f4ed",
+        "tonalRamp": [
+          "#f7f4ed",
+          "#efe9df",
+          "#e2dac9",
+          "#c9bfa8",
+          "#a89d84",
+          "#7d745f",
+          "#556478",
+          "#1f2b3a"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card 卡面",
+        "canonical": "#fffdf8"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink 墨字",
+        "canonical": "#1f2b3a"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted 次要文字",
+        "canonical": "#556478"
+      },
+      "glow": {
+        "role": "primary",
+        "displayName": "Glow on Env 环境暖光",
+        "canonical": "#e5b566"
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Danger 危险",
+        "canonical": "#b3261e"
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Warning 警告",
+        "canonical": "#8a5c00"
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Success 成功",
+        "canonical": "#2e6b4f"
+      },
+      "border-env-strong": {
+        "role": "neutral",
+        "displayName": "Border Env Strong 暗面控件边界",
+        "canonical": "#7386a3"
+      }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "登录主张、关系首页伴侣名。" },
-      "headline": { "displayName": "Headline", "purpose": "PageHeader 页面主标题。" },
-      "title": { "displayName": "Title", "purpose": "卡片与区块标题。" },
-      "body": { "displayName": "Body", "purpose": "正文与控件文字。" },
-      "label": { "displayName": "Label", "purpose": "字段标签、状态字、meta 行。" }
+      "display": {
+        "displayName": "Display",
+        "purpose": "登录主张、关系首页伴侣名。"
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "PageHeader 页面主标题。"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "卡片与区块标题。"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "正文与控件文字。"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "字段标签、状态字、meta 行。"
+      },
+      "input": {
+        "displayName": "Input",
+        "purpose": "一切输入控件；16px 为 iOS 聚焦缩放硬阈值。"
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "错误详情/请求 id/导入预览（--vc-font-mono）。"
+      }
     },
     "shadows": [
-      { "name": "sheet-ambient", "value": "0 -8px 32px rgba(10, 15, 24, 0.35)", "purpose": "底部弹层（AppSheet）唯一的环境影；其余层级靠色温与明度。" }
+      {
+        "name": "sheet-ambient",
+        "value": "0 -8px 32px rgba(10, 15, 24, 0.35)",
+        "purpose": "底部弹层（AppSheet）唯一的环境影；其余层级靠色温与明度。"
+      }
     ],
     "motion": [
-      { "name": "fast", "value": "140ms", "purpose": "轻状态切换。" },
-      { "name": "base", "value": "220ms", "purpose": "默认状态过渡。" },
-      { "name": "ease-out", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "唯一缓动；动效只允许 transform/opacity，reduced-motion 下关闭。" }
+      {
+        "name": "fast",
+        "value": "140ms",
+        "purpose": "轻状态切换。"
+      },
+      {
+        "name": "base",
+        "value": "220ms",
+        "purpose": "默认状态过渡。"
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "唯一缓动；动效只允许 transform/opacity，reduced-motion 下关闭。"
+      }
     ],
     "breakpoints": [
-      { "name": "base", "value": "375px", "purpose": "最小基准视口（无横向溢出断言）。" },
-      { "name": "phone", "value": "390px", "purpose": "主证据视口（390×844 截图矩阵）。" },
-      { "name": "sheet-center", "value": "600px", "purpose": "弹层从底部 sheet 切换为居中卡片。" },
-      { "name": "tablet", "value": "768px", "purpose": "平板断点（内容列居中收束）。" },
-      { "name": "desktop", "value": "1440px", "purpose": "桌面断点（截图证据 index/chat/admin 1440×900）。" }
+      {
+        "name": "base",
+        "value": "375px",
+        "purpose": "最小基准视口（无横向溢出断言）。"
+      },
+      {
+        "name": "phone",
+        "value": "390px",
+        "purpose": "主证据视口（390×844 截图矩阵）。"
+      },
+      {
+        "name": "sheet-center",
+        "value": "600px",
+        "purpose": "弹层从底部 sheet 切换为居中卡片。"
+      },
+      {
+        "name": "tablet",
+        "value": "768px",
+        "purpose": "平板断点（内容列居中收束）。"
+      },
+      {
+        "name": "desktop",
+        "value": "1440px",
+        "purpose": "桌面断点（截图证据 index/chat/admin 1440×900）。"
+      }
     ]
   },
   "components": [
@@ -75,9 +209,9 @@
       "name": "Bottom Nav",
       "kind": "nav",
       "refersTo": "nav-item-active",
-      "description": "四入口底栏（首页/对话/记忆/我的）；活动项文字用环境暖光。",
+      "description": "四入口底栏；活动项 = On Env 文字 + 字重 600 + 18px 暖光顶线，无背景变化。",
       "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-item is-active\">首页</button><button class=\"ds-nav-item\">对话</button><button class=\"ds-nav-item\">记忆</button><button class=\"ds-nav-item\">我的</button></nav>",
-      "css": ".ds-nav { display: flex; background: var(--vc-env-raised, #1b2636); border-top: 1px solid rgba(233,238,247,0.18); padding: 6px 8px; } .ds-nav-item { flex: 1; background: none; color: var(--vc-on-env-muted, #a3b1c6); font-size: 12px; font-weight: 500; min-height: 44px; border: none; border-radius: 8px; cursor: pointer; } .ds-nav-item.is-active { color: var(--vc-glow, #e5b566); background: var(--vc-env-hover, #232f42); } .ds-nav-item:focus-visible { outline: 2px solid var(--vc-focus-on-env, #f0c983); outline-offset: 2px; }"
+      "css": ".ds-nav { display: flex; background: var(--vc-env-raised, #1b2636); border-top: 1px solid rgba(233,238,247,0.18); padding: 6px 8px; } .ds-nav-item { flex: 1; background: none; color: var(--vc-on-env-muted, #a3b1c6); font-size: 12px; font-weight: 500; min-height: 52px; border: none; border-radius: 8px; cursor: pointer; position: relative; } .ds-nav-item.is-active { color: var(--vc-on-env, #e9eef7); font-weight: 600; background: linear-gradient(var(--vc-glow, #e5b566), var(--vc-glow, #e5b566)) top center / 18px 2px no-repeat; } .ds-nav-item:focus-visible { outline: 2px solid var(--vc-focus-on-env, #f0c983); outline-offset: 2px; }"
     },
     {
       "name": "Status Chip",
@@ -99,10 +233,31 @@
       "语义状态色先有事实再有色，永远配文字"
     ],
     "rules": [
-      { "name": "The One Lit Window Rule", "body": "每屏至多一处琥珀主动作；活动 tab 与焦点是它仅有的非按钮用法。", "section": "colors" },
-      { "name": "The Paper Never Sinks Rule", "body": "可读内容只出现在纸面层或环境层高对比文字上；禁止在墨蓝底上直接排正文段落。", "section": "colors" },
-      { "name": "The Weight-Not-Face Rule", "body": "层级只由字号与字重表达；不得引入新字族、字距眉标或装饰性大写微标签。", "section": "typography" },
-      { "name": "The Temperature Rule", "body": "深度 = 色温与明度差（墨蓝→暖纸→卡面）；禁止用投影造层级，弹层环境影是唯一例外。", "section": "elevation" }
+      {
+        "name": "The One Lit Window Rule",
+        "body": "每屏至多一处琥珀主动作；活动 tab 与焦点是它仅有的非按钮用法。",
+        "section": "colors"
+      },
+      {
+        "name": "The Paper Never Sinks Rule",
+        "body": "可读内容只出现在纸面层或环境层高对比文字上；禁止在墨蓝底上直接排正文段落。",
+        "section": "colors"
+      },
+      {
+        "name": "The Weight-Not-Face Rule",
+        "body": "层级只由字号与字重表达；不得引入新字族、字距眉标或装饰性大写微标签。",
+        "section": "typography"
+      },
+      {
+        "name": "The Temperature Rule",
+        "body": "深度 = 色温与明度差（墨蓝→暖纸→卡面）；禁止用投影造层级，弹层环境影是唯一例外。",
+        "section": "elevation"
+      },
+      {
+        "name": "The Lit Focus Rule",
+        "body": "暗色外壳（.vc-chrome：页头/底栏/聊天头部/内部壳）键盘焦点环用 --vc-focus-on-env；纸面用 --vc-focus。焦点环不得移除。",
+        "section": "elevation"
+      }
     ],
     "dos": [
       "Do 每个新页面只用语义 token（--vc-*），从 design-system/base.css 取值",
@@ -114,7 +269,8 @@
       "Don't 新增 raw hex、页面私有导航色或未计算的对比度组合",
       "Don't 用 emoji 作结构图标；不用渐变文字、kicker/眉标、硬偏移投影",
       "Don't 让琥珀出现在一屏多处",
-      "Don't 引入外部字体或第二字族"
+      "Don't 引入外部字体或第二字族",
+      "Don't 输入控件字号低于 16px（iOS Safari 聚焦自动缩放）"
     ]
   }
 }

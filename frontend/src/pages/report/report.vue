@@ -16,7 +16,7 @@ promises or hotline role-play. Message reports arrive via ?messageId=. -->
     </template>
 
 
-   
+
 
     <view class="section" data-testid="report-intro" role="status">
       <text>

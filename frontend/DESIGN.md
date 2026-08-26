@@ -9,6 +9,7 @@ colors:
   on-env-muted: "#a3b1c6"
   glow: "#e5b566"
   border-env: "rgba(233, 238, 247, 0.18)"
+  border-env-strong: "#7386a3"
   paper: "#f7f4ed"
   card: "#fffdf8"
   sunken: "#efe9df"
@@ -60,10 +61,21 @@ typography:
     fontSize: "12px"
     fontWeight: 500
     lineHeight: 1.4
+  input:
+    fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
+    fontSize: "16px"
+    fontWeight: 400
+    lineHeight: 1.5
+  mono:
+    fontFamily: "ui-monospace, SF Mono, Menlo, Consolas, monospace"
+    fontSize: "13px"
+    fontWeight: 400
+    lineHeight: 1.5
 rounded:
   s: "8px"
   m: "12px"
   l: "16px"
+  pill: "999px"
 spacing:
   1: "4px"
   2: "8px"
@@ -95,8 +107,8 @@ components:
     rounded: "{rounded.s}"
     height: "44px"
   nav-item-active:
-    backgroundColor: "{colors.env-hover}"
-    textColor: "{colors.glow}"
+    backgroundColor: "{colors.env-raised}"
+    textColor: "{colors.on-env}"
     rounded: "{rounded.s}"
 ---
 
@@ -130,7 +142,7 @@ components:
 - **Env Raised / 环境浮面**（#1b2636）：底部导航、环境内按钮。
 - **Env Hover**（#232f42）：环境内悬停/按压。
 - **On Env**（#e9eef7）/ **On Env Muted**（#a3b1c6）：环境上的正文与次要文字。
-- **Border Env**（rgba(233,238,247,0.18)）：环境内细线。
+- **Border Env**（rgba(233,238,247,0.18)）：环境内装饰细线（分隔线）。真实控件边界用 **Border Env Strong**（#7386a3，≥3:1 于 env/env-raised）。
 
 ### Neutral — 纸面层（亮着的窗）
 - **Warm Paper / 暖纸**（#f7f4ed）：内容页面底色。
@@ -159,6 +171,8 @@ components:
 - **Body**（400，15px，1.6）：正文与控件文字；行宽随纸面容器。
 - **Body-sm**（400，13px，1.6）：摘要、辅助说明。
 - **Label**（500，12px，1.4）：字段标签、状态字、meta 行。
+- **Input**（400，16px，1.5）：一切输入控件（input/select/textarea）。16px 是 iOS Safari 聚焦自动缩放的硬阈值，不得降低。
+- **Mono**（400，13px，1.5，ui-monospace/"SF Mono"/Menlo/Consolas 栈，token --vc-font-mono）：错误详情、请求 id、导入预览等代码样文本。
 
 ### Named Rules
 **The Weight-Not-Face Rule.** 层级只由字号与字重表达；不得引入新字族、字距眉标（kicker）或装饰性大写微标签。
@@ -173,10 +187,11 @@ components:
 
 ### Named Rules
 **The Temperature Rule.** 深度 = 色温与明度差（墨蓝→暖纸→卡面），禁止用投影造层级；弹层环境影是唯一例外。
+**The Lit Focus Rule.** 暗色外壳（.vc-chrome：页头/底栏/聊天头部/内部壳）键盘焦点环用 --vc-focus-on-env（#f0c983）；纸面用 --vc-focus（#7d5a00）。焦点环不得移除。
 
 ## Shapes
 
-卡面 16px（--vc-radius-l）；卡片内嵌块与中卡 12px（--vc-radius-m）；按钮、输入、chips 8px（--vc-radius-s）；底栏弹层顶角 16px、≥600px 视口下四角 16px 居中。无圆形卡片、无切角、无描边双线。
+卡面 16px（--vc-radius-l）；卡片内嵌块与中卡 12px（--vc-radius-m）；按钮、输入 8px（--vc-radius-s）；chips 用胶囊（--vc-radius-pill 999px）；底栏弹层顶角 16px、≥600px 视口下四角 16px 居中。无圆形卡片、无切角、无描边双线。
 
 ## Components
 
@@ -193,7 +208,7 @@ components:
 - **Style:** 卡面或沉面底、8px 圆角、控件边界 #857a67（3.8:1）；**Focus:** 边界加深 + 2px 焦点环；**Error:** 危险色边 + 文字说明（不只靠颜色）。
 
 ### Navigation
-- **BottomNav（四入口）:** 环境浮面底栏，图标为 1.6 线宽 SVG；活动项文字用暖光 #e5b566；44px 触摸目标。
+- **BottomNav（四入口）:** 环境浮面底栏，图标为 1.6 线宽 SVG；活动项 = On Env 文字（#e9eef7）+ 字重 600 + 图标上方 18px×2px 暖光顶线（#e5b566，像亮着的窗），不变更背景；52px 触摸目标。
 - **PageHeader:** 环境色条，左返回、中标题（Headline 级）、右上下文动作；沉浸式聊天用同语言的全宽变体。
 
 ### Status Chip
@@ -208,6 +223,7 @@ components:
 - **Do** 状态变化同时给文字（状态 chip + 说明行），不只靠颜色。
 
 ### Don't:
+- **Don't** 输入控件字号低于 16px（iOS Safari 聚焦自动缩放）；输入一律 16px。
 - **Don't** 新增 raw hex、页面私有导航色或未计算的对比度组合。
 - **Don't** 用 emoji 作结构图标；不用渐变文字、kicker/眉标、硬偏移投影造层级。
 - **Don't** 让琥珀出现在一屏多处；非主动作一律用环境按钮或纸面次级样式。

@@ -4,7 +4,7 @@
 <template>
   <ConsumerShell route="/pages/help/help">
 
-   
+
 
     <view class="intro" data-testid="help-intro">
       <text>

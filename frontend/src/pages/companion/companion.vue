@@ -7,7 +7,7 @@ does not push. -->
 <template>
   <ConsumerShell route="/pages/companion/companion">
 
-   
+
 
     <view class="intro">
       <text>

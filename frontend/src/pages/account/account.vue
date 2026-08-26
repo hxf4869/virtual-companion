@@ -4,7 +4,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
   <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
   <ConsumerShell route="/pages/account/account">
 
-   
+
 
     <view v-if="!auth.isAuthenticated" class="notice" data-testid="account-signed-out" role="status">
       <text>当前未登录。登录后再查看账号或注销。</text>

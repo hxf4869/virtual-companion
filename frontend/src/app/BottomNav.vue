@@ -124,7 +124,8 @@ export default defineComponent({
   width: 18px;
   height: 2px;
   transform: translateX(-50%);
-  border-radius: 1px;
+  /* 2px 高暖光顶线的端帽圆角，非形状 token（waiver） */
+  border-radius: 1px; /* impeccable-disable-line design-system-radius */
   background: var(--vc-glow);
   content: "";
 }

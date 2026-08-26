@@ -324,4 +324,80 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
     await expect(page.getByTestId("account-card")).toBeVisible();
     await expectAccessible(page, "account");
   });
+
+  // P1-6：暗色外壳（底栏/页头/聊天头部/内部壳）键盘焦点环必须真的命中
+  // --vc-focus-on-env（#f0c983，暗面 ≥3:1），用真实渲染的 computed style
+  // 验证，防止选择器写错导致覆盖不生效。
+  test("dark-shell focus ring resolves to --vc-focus-on-env", async () => {
+    await navigateToPage(page, "/pages/index/index");
+    await expect(page.getByTestId("home-hero")).toBeVisible();
+
+    // 真键盘 Tab 触发 :focus-visible（程序化 focus 不保证命中伪类）。
+    // 触摸仿真引擎上 Tab 不一定命中伪类，因此分层验证：
+    // ① 键盘命中 :focus-visible 时，computed outline-color 必须 = #f0c983；
+    // ② 无论如何，页面已应用的样式表中必须存在 `.vc-chrome :focus-visible`
+    //    覆盖规则且变量解析为该值（真实渲染 DOM 的级联检查）。
+    async function tabWalk(testid: string, max = 24): Promise<void> {
+      let sawFocusVisible = false;
+      for (let i = 0; i < max; i += 1) {
+        await page.keyboard.press("Tab");
+        const hit = await page.evaluate(() => {
+          const active = document.activeElement;
+          const host = active?.closest("[data-testid]");
+          return {
+            id: host?.getAttribute("data-testid") ?? null,
+            matches: active ? active.matches(":focus-visible") : false,
+            color: active ? getComputedStyle(active).outlineColor : "",
+          };
+        });
+        if (hit.id === testid && hit.matches) {
+          sawFocusVisible = true;
+          expect(hit.color, `${testid} 焦点环颜色`).toBe("rgb(240, 201, 131)");
+          break;
+        }
+      }
+      expect(sawFocusVisible || (await chromeRuleOk()), `${testid} 未验证到焦点环`).toBe(true);
+    }
+
+    async function chromeRuleOk(): Promise<boolean> {
+      return page.evaluate(() => {
+        const target = "rgb(240, 201, 131)";
+        const probe = document.createElement("span");
+        document.querySelector(".vc-chrome")?.appendChild(probe);
+        const resolved = getComputedStyle(probe).getPropertyValue("--vc-focus-on-env").trim();
+        probe.remove();
+        if (resolved !== "#f0c983") return false;
+        for (const sheet of Array.from(document.styleSheets)) {
+          let rules: CSSRuleList;
+          try {
+            rules = sheet.cssRules;
+          } catch {
+            continue;
+          }
+          for (const rule of Array.from(rules)) {
+            if (rule instanceof CSSStyleRule) {
+              const sel = rule.selectorText ?? "";
+              if (
+                sel.includes(".vc-chrome") &&
+                sel.includes(":focus-visible") &&
+                rule.style.outlineColor.includes("--vc-focus-on-env")
+              ) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      });
+    }
+
+    // 底栏导航项（vc-chrome）。
+    await tabWalk("tab-memory");
+
+    // 页头返回（memory 二级页，vc-chrome）。
+    await navigateToPage(page, "/pages/memory/memory");
+    await expect(page.getByTestId("page-header")).toBeVisible();
+    await page.getByTestId("reload").click();
+    await tabWalk("page-back");
+  });
 });

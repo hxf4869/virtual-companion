@@ -95,6 +95,8 @@ page,
     "Segoe UI", sans-serif;
   --vc-font-tabular:
     "PingFang SC", "Hiragino Sans GB", system-ui, ui-monospace, monospace;
+  /* 等宽栈：错误详情/请求 id/导入预览等代码样文本。 */
+  --vc-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   color-scheme: dark light;
 }

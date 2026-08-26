@@ -15,7 +15,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
     </template>
 
 
-   
+
 
     <view class="intro">
       <text>

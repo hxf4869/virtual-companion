@@ -68,3 +68,54 @@ test("a user can create a relationship and complete a real chat turn", async ({
   }));
   expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewportWidth);
 });
+
+// P1-2 回归：聊天消息 → 举报页深链（hash 路由携带 messageId）→ 最终提交
+// 载荷必须包含正确的 messageId。举报页从 location.hash 读取，不再只读
+// location.search。
+test("a message report deep link carries messageId into the submit payload", async ({
+  page,
+  request,
+}) => {
+  const user = await provisionUser(request, "relationship-chat");
+  const session = await uiLogin(page, user);
+  await prepareGenerationAccess(session.accessToken);
+
+  await navigateToPage(page, "/pages/companion/companion");
+  await page.getByTestId("persona-select").selectOption("gentle-listener");
+  await page.getByTestId("create-relationship").click();
+  await expect(page.getByTestId("current-relationship")).toContainText(
+    "当前关系：温和倾听者",
+  );
+
+  await navigateToPage(page, "/pages/chat/chat");
+  const input = page.locator('[data-testid="message-input"] input');
+  await expect(input).toBeVisible();
+  await input.fill("这条消息将被举报");
+  await page.getByTestId("send").click();
+  await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
+    timeout: 30_000,
+  });
+
+  // 消息级"更多"展开后进入举报说明，再打开举报页。
+  const firstUser = page.locator('[data-testid="chat-message"]').filter({
+    hasText: "这条消息将被举报",
+  });
+  await firstUser.getByTestId(/msg-more-/).click();
+  await firstUser.getByTestId(/msg-report-/).first().click();
+  await firstUser.getByTestId("msg-report-open-page").click();
+
+  await expect(page.getByTestId("report-anchor")).toBeVisible();
+  const messageId = (await page.url()).match(/messageId=([^&/]+)/)?.[1] ?? "";
+  expect(messageId).not.toBe("");
+
+  await page.getByTestId("report-note").locator("textarea, input").first()
+    .fill("举报回归：消息内容让我不安");
+  const payloadPromise = page.waitForRequest(
+    (req) =>
+      req.method() === "POST" &&
+      new URL(req.url()).pathname === "/api/v1/reports",
+  );
+  await page.getByTestId("report-submit").click();
+  const body = (await payloadPromise).postDataJSON() as { messageId?: string };
+  expect(body.messageId).toBe(messageId);
+});

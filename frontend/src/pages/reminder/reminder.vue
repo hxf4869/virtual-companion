@@ -5,7 +5,7 @@ which only changes state on a confirmed API result. -->
 <template>
   <ConsumerShell route="/pages/reminder/reminder">
 
-   
+
 
     <RelationshipSelector
       :relationships="relStore.relationships"

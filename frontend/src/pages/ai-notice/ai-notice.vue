@@ -2,7 +2,7 @@
 <template>
   <ConsumerShell route="/pages/ai-notice/ai-notice">
 
-   
+
 
     <view class="intro" data-testid="ai-notice-intro">
       <text>
