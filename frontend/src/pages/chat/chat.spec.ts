@@ -244,8 +244,48 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
-  it("disables the send button when the input is empty", async () => {
+  // P1（round4）：流式草稿只在真实流式阶段渲染一次；正式消息提交后草稿
+  // 元素必须消失，completed 终态只有一份正式助手回复。
+  it("P1-R4: shows one live draft while streaming and drops it once the formal reply commits", async () => {
     const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+
+    // 流式阶段：一份实时草稿。
+    store.phase = "streaming";
+    store.stream = {
+      status: "streaming",
+      epoch: 1,
+      cursor: 1,
+      events: [
+        { eventSeq: 1, streamEpoch: 1, eventType: "chat.delta", payload: "正在" },
+        { eventSeq: 2, streamEpoch: 1, eventType: "chat.delta", payload: "生成" },
+      ],
+      terminal: false,
+      terminalEventType: null,
+    };
+    await flushPromises();
+
+    const drafts = wrapper.findAll('[data-testid="draft"]');
+    expect(drafts.length, "exactly one draft bubble while streaming").toBe(1);
+    expect(drafts[0]!.text()).toContain("正在生成");
+
+    // 终态：草稿消失，正式助手回复只出现一次。
+    store.phase = "completed";
+    store.messages = [
+      { messageId: "u1", conversationId: "1", role: "user", content: "嗨" },
+      { messageId: "a1", conversationId: "1", role: "assistant", content: "我在，慢慢说。" },
+    ];
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="draft"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="chat-message"].assistant').length).toBe(1);
+    expect(wrapper.findAll('[data-testid="assistant-md"]').length).toBe(1);
+    expect(wrapper.text()).not.toContain("正在生成");
+    wrapper.unmount();
+  });
+
+  it("disables the send button when the input is empty", async () => {    const wrapper = mountPage();
     await flushPromises();
 
     const send = wrapper.find('button[data-testid="send"]');
@@ -1240,6 +1280,28 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       expect(value).not.toContain("9");
       wrapper.unmount();
     }
+  });
+
+  // P2（round4）：不带 enc 前缀的长无空格 opaque token 同样不可读——
+  // 改名输入必须预填空串（chat 与 conversations 两处输入一致）。
+  it("CONV-MGMT: a long opaque token without an enc prefix prefills empty", async () => {
+    stubFetch({
+      conversationsJson: [
+        { conversationId: "9", relationshipId: "1", title: "K7f".repeat(40) },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    const store = useChatStore();
+    store.conversationId = "9";
+
+    await openConvSheet(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const value = (wrapper.find('[data-testid="rename-input"]').element as HTMLInputElement).value;
+    expect(value).toBe("");
+    wrapper.unmount();
   });
 
   it("CONV-MGMT: a readable title prefills trimmed into the rename input", async () => {

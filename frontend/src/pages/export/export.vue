@@ -120,6 +120,7 @@ import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useExportStore } from "@/stores/export";
+import { formatLocalDateTime } from "@/domain/timestamp";
 
 export default {
   name: "ExportPage",
@@ -189,10 +190,9 @@ export default {
       }
     }
 
+    // P2（round4）：与其它消费者页统一走本地时间 helper（YYYY-MM-DD HH:mm）。
     function formatTime(instant: string): string {
-      const date = new Date(instant);
-      if (Number.isNaN(date.getTime())) return instant;
-      return date.toLocaleString();
+      return formatLocalDateTime(instant);
     }
 
     function goTo(url: string): void {

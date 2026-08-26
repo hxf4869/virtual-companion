@@ -34,11 +34,15 @@ intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. --
         </text>
       </view>
 
-      <!-- ENT-TRIAL (V61): the live simulated trial budget, if any. -->
+      <!-- ENT-TRIAL (V61): the live simulated trial budget, if any.
+           P2（round4）：权益等级以中文呈现，到期时间本地化渲染。 -->
       <view v-if="trial && trial.active" class="state-card" data-testid="trial-status" role="status">
-        <text class="label">试用中（模拟 PREMIUM）</text>
+        <text class="label">试用权益进行中</text>
         <text class="state">剩余 {{ trial.remainingTurns }} 轮</text>
-        <text class="meta">到期时间 {{ trial.expiresAt }}。到期或用尽后自动回到原等级，不删除任何数据。</text>
+        <text class="meta" data-testid="trial-expires">
+          到期时间 {{ formatLocalDateTime(trial.expiresAt ?? undefined) }}。
+          到期或用尽后自动回到原等级，不删除任何数据。
+        </text>
       </view>
 
       <view class="section" data-testid="health-reminder-section">
@@ -94,6 +98,7 @@ import {
 } from "@/api/usage-health";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 import { useUsageHealthStore } from "@/stores/usage-health";
 
@@ -185,6 +190,7 @@ export default {
       actionError,
       reminderOptions,
       gapOptions,
+      formatLocalDateTime,
       onRetry,
       onSaveReminder,
       onSaveGap,

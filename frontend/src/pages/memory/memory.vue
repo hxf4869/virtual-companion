@@ -194,7 +194,7 @@ states carry alert/live a11y semantics. -->
         <text class="summary">{{ m.summary }}</text>
         <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
         <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
-          事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+          事件：{{ formatLocalDateTime(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
         </text>
         <!-- R44 (§11.11): the explicit supersede choice — confirm may replace
              one active canonical memory; nothing is auto-detected. -->
@@ -277,10 +277,10 @@ states carry alert/live a11y semantics. -->
             </view>
             <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
-              {{ formatTimestamp(m.createdAt) }}
+              {{ formatLocalDateTime(m.createdAt) }}
             </text>
             <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
-              事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+              事件：{{ formatLocalDateTime(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
             </text>
             <view
               v-if="confirmDeleteId === m.memoryId"
@@ -345,10 +345,10 @@ states carry alert/live a11y semantics. -->
             </view>
             <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
-              {{ formatTimestamp(m.createdAt) }}
+              {{ formatLocalDateTime(m.createdAt) }}
             </text>
             <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
-              事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+              事件：{{ formatLocalDateTime(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
             </text>
             <view
               v-if="confirmDeleteId === m.memoryId"
@@ -495,7 +495,7 @@ import { buildContextHref, readContextFromLocation } from "@/domain/context-href
 import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { matchesLooseText } from "@/domain/text-filter";
 import { lastRequestId } from "@/domain/request-id";
-import { formatTimestamp } from "@/domain/timestamp";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 import type { Memory, MemoryEventStatus, MemoryTransport } from "@/api/memory";
 import { getMemoryAutoSave, setMemoryAutoSave } from "@/api/memory";

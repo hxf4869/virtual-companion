@@ -117,118 +117,35 @@
     </AppSheet>
 
     <view class="chat-main" role="main">
-    <!-- SVC-MODE (FR-RES-005): the service mode is an ops fact, shown plainly
-         and never role-played. -->
-    <view
-      v-if="serviceModeSummary"
-      class="service-mode"
-      data-testid="service-mode"
-      role="status"
-    >
-      <text>服务状态：{{ serviceModeSummary }}</text>
-    </view>
-
-    <!-- USAGE-HEALTH (§20.7): system-layer continuous-use reminder. Never
-         role-played; the user may continue or end today's conversation. -->
-    <view
-      v-if="usageHealth.reminderDue"
-      class="usage-health-banner"
-      data-testid="usage-health-banner"
-      role="status"
-    >
-      <text data-testid="usage-health-copy">
-        你已连续使用 {{ usageHealth.continuousMinutes }} 分钟。这是系统提醒，不是角色在说话。
-        可以结束今天的对话，或继续使用。
-      </text>
-      <view class="usage-health-actions">
-        <button
-          data-testid="usage-health-continue"
-          class="chat-nav-index"
-          :disabled="usageHealth.busy"
-          @click="onUsageContinue"
-        >
-          继续使用
-        </button>
-        <button
-          data-testid="usage-health-end"
-          class="chat-nav-index conv-delete-btn"
-          :disabled="usageHealth.busy || !store.conversationId"
-          @click="onUsageEnd"
-        >
-          结束今天的对话
-        </button>
-      </view>
-    </view>
-
-    <view
-      v-if="relStore.status === 'ready'"
-      class="current-relationship"
-      data-testid="current-relationship"
-      role="status"
-    >
-      <text>{{
-        relStore.current
-          ? `当前关系：${personaDisplayName(relStore.current.personaRef)}`
-          : "还没有当前关系。"
-      }}</text>
-      <button
-        v-if="relStore.currentRelationshipId"
-        data-testid="deactivate-relationship"
-        class="chat-nav-index deactivate-btn"
-        :aria-busy="confirmDeactivate"
-        @click="onDeactivate"
-      >
-        {{ confirmDeactivate ? "确认解除？" : "解除关系" }}
-      </button>
-    </view>
-    <view
-      v-else-if="relStore.status === 'error'"
-      class="current-relationship"
-      data-testid="relationship-load-error"
-      role="status"
-    >
-      <text>关系列表加载失败。</text>
-    </view>
-
-    <view
-      v-if="importPreview && importPreview.acceptedCount > 0 && hasRelationship"
-      class="incognito-notice"
-      data-testid="memory-import-prompt"
-      role="status"
-    >
-      <text>有 {{ importPreview.acceptedCount }} 条已确认记忆可导入到当前角色。默认不会自动带上。</text>
-      <view class="usage-health-actions">
-        <button data-testid="memory-import-confirm" class="chat-nav-index" @click="onImportMemories">
-          导入这些记忆
-        </button>
-        <button data-testid="memory-import-discard" class="chat-nav-index" @click="onDiscardImport">
-          不要导入
-        </button>
-      </view>
-    </view>
-
     <view v-if="initError" class="chat-error" data-testid="chat-init-error" role="alert">
       <text>初始化失败，请刷新重试</text>
       <text v-if="initRequestId">{{ initRequestId }}</text>
     </view>
 
     <template v-else>
-      <!-- INC-MODE (FR-CHAT-005): incognito is not "no records at all" and
-           the UI says so plainly while the conversation is incognito. -->
-      <view
-        v-if="store.activeIncognito"
-        class="incognito-notice"
-        data-testid="incognito-notice"
-        role="status"
-      >
-        <text>当前为无痕会话：不会产生长期记忆候选；必要的安全与法定记录仍会保留。</text>
-      </view>
-
       <template v-if="!hasRelationship">
         <!-- P1-A（round3）：无关系分支同样只有这一个滚动容器（chat-setup），
              与有关系分支的 chat-history 互斥——任何渲染路径下纵向滚动
              ownership 都是唯一的。 -->
         <view class="chat-setup">
+        <!-- P1（round4）：无关系分支同样把条件系统行放进自己的滚动内容，
+             避免横屏下多行提示压扁滚动区。 -->
+        <ChatContextHead
+          :service-mode-summary="serviceModeSummary"
+          :reminder-due="usageHealth.reminderDue"
+          :continuous-minutes="usageHealth.continuousMinutes"
+          :reminder-busy="usageHealth.busy"
+          :end-today-available="false"
+          :active-incognito="false"
+          :import-count="0"
+          :relationship-text="relationshipContextLine"
+          :relationship-error="relStore.status === 'error'"
+          :deactivate-visible="!!relStore.currentRelationshipId"
+          :confirm-deactivate="confirmDeactivate"
+          @usage-continue="onUsageContinue"
+          @usage-end="onUsageEnd"
+          @deactivate="onDeactivate"
+        />
         <!-- 统一创建流程在陪伴设置页；聊天空态只保留入口与既有关系的
              激活，不复制一份创建表单。 -->
         <view class="chat-create-entry" data-testid="chat-create-companion">
@@ -368,8 +285,30 @@
           ref="historyEl"
           class="chat-history"
           data-testid="history"
-          @scroll="onHistoryScroll"
+          :data-following="followingLatest ? 'true' : 'false'"
         >
+          <!-- P1（round4）：条件系统行进入唯一滚动内容头部。它们仍然可达、
+               按钮 ≥44px，但不再占用 history 外的固定高度——横屏叠加改名行/
+               使用提醒/导入提示时 history 依旧保持真实可用高度，不会发生
+               overflow:hidden 式的外层裁切。 -->
+          <ChatContextHead
+            :service-mode-summary="serviceModeSummary"
+            :reminder-due="usageHealth.reminderDue"
+            :continuous-minutes="usageHealth.continuousMinutes"
+            :reminder-busy="usageHealth.busy"
+            :end-today-available="!!store.conversationId"
+            :active-incognito="store.activeIncognito"
+            :import-count="importCount"
+            :relationship-text="relationshipContextLine"
+            :relationship-error="relStore.status === 'error'"
+            :deactivate-visible="!!relStore.currentRelationshipId"
+            :confirm-deactivate="confirmDeactivate"
+            @usage-continue="onUsageContinue"
+            @usage-end="onUsageEnd"
+            @import-confirm="onImportMemories"
+            @import-discard="onDiscardImport"
+            @deactivate="onDeactivate"
+          />
           <view
             v-if="showEmptyHistory"
             class="chat-empty"
@@ -386,10 +325,11 @@
             :style="{ height: virtualWindow.offsetTop + 'px' }"
           />
           <view
-            v-for="msg in renderedMessages"
+            v-for="(msg, vi) in renderedMessages"
             :key="msg.messageId"
             class="chat-message"
             :class="msg.role"
+            :data-vindex="String(virtualWindow.startIndex + vi)"
             data-testid="chat-message"
           >
             <text class="role-tag">{{ roleLabel(msg.role) }}</text>
@@ -550,10 +490,10 @@
             </button>
           </view>
 
-          <!-- P1-A（round3）：状态/反馈/模式行进入唯一滚动容器尾部，
-               成为滚动内容而不是与输入栏争夺固定高度——输入栏在
-               chat-main 之外，任何位置都不会覆盖它们。 -->
-          <view v-if="paintedDraft" class="chat-draft" data-testid="draft">
+          <!-- P1（round4）：流式草稿只在真实流式阶段渲染一次；正式消息提交
+               并加载后该元素必须消失——completed/blocked/cancelled/failed
+               终态都只有一份明确的助手回复或结果呈现。 -->
+          <view v-if="isStreaming && paintedDraft" class="chat-draft" data-testid="draft">
             <text>{{ paintedDraft }}</text>
           </view>
 
@@ -739,6 +679,7 @@ import type { RealtimeDeps } from "@/api/realtime";
 import { asFeedbackKind } from "@/api/chat";
 import type { ConversationListItem } from "@/api/chat";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
+import ChatContextHead from "@/pages/chat/ChatContextHead.vue";
 import AppIcon from "@/design-system/AppIcon.vue";
 import AppSheet from "@/design-system/AppSheet.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -760,7 +701,7 @@ function resolveOrigin(): string {
 
 export default defineComponent({
   name: "ChatPage",
-  components: { RelationshipSelector, AppIcon, AppSheet },
+  components: { RelationshipSelector, AppIcon, AppSheet, ChatContextHead },
   setup() {
     const store = useChatStore();
     const relStore = useRelationshipStore();
@@ -858,6 +799,23 @@ export default defineComponent({
     const historyEl = ref<unknown>(null);
     const historyViewportPx = ref(VIRTUAL_VIEWPORT_HEIGHT);
     let historyObserver: { disconnect(): void; observe(target: Element): void } | null = null;
+    // P2（round4）：模板 @scroll 在 uni-h5 包装层下可能落不到真实滚动节点；
+    // 直接对 historyNode() 做原生监听，保证滚动手势一定进入跟随状态机。
+    const boundScrollHandler = (event: Event): void => onHistoryScroll(event);
+    const scrollBoundEls = new Set<HTMLElement>();
+
+    function bindHistoryScrollListener(el: HTMLElement): void {
+      if (scrollBoundEls.has(el)) return;
+      el.addEventListener("scroll", boundScrollHandler);
+      scrollBoundEls.add(el);
+    }
+
+    function unbindHistoryScrollListeners(): void {
+      for (const el of scrollBoundEls) {
+        el.removeEventListener("scroll", boundScrollHandler);
+      }
+      scrollBoundEls.clear();
+    }
 
     /** 模板 ref 在 uni-h5 可能是元素或组件实例（带 $el），统一取真实节点。 */
     function historyNode(): HTMLElement | null {
@@ -883,17 +841,80 @@ export default defineComponent({
       historyObserver?.disconnect();
       const el = historyNode();
       if (!el) return;
+      bindHistoryScrollListener(el);
       historyObserver = new ResizeObserver(() => {
         measureHistory();
-        // P1-A（round3）：视口/布局变化（旋转、软键盘）改变消息区高度时
-        // 保持贴底——否则切换视口后最新消息会沉出可视区一截。
-        if (stickToBottom.value) scrollHistoryToBottom();
+        // P1/P2（round4）：视口/布局变化（旋转、软键盘、spacer 重排）时按
+        // 跟随意图重对锚点；用户已滚离时绝不动 scrollTop。
+        if (followingLatest.value) requestFollow();
       });
       historyObserver.observe(el);
       measureHistory();
+      // 历史容器若被 Vue 重建（新节点从 0 开始），立即恢复一次锚定，
+      // 不依赖恰好还有信号在途。
+      requestFollow(undefined, { ignoreIntent: true });
     }
 
     watch(historyEl, () => bindHistoryObserver());
+
+    // P1（round4）：逐项实测高度回填。估算值与真实行高的累积偏差会在长
+    // 列表里制造“空白死带”（spacer 覆盖住真实内容带），逐条校准后虚拟
+    // 窗口与滚动位置重新对齐。
+    const measuredRowHeights = ref<Array<number | undefined>>([]);
+
+    /** 校准前的估算窗口：供测量时机观察 startIndex/endIndex 变化。 */
+    const virtualWindowSource = computed(() =>
+      computeVirtualWindow({
+        count: messages.value.length,
+        scrollTop: historyScrollTop.value,
+        viewportHeight: historyViewportPx.value,
+        estimateHeight: VIRTUAL_ESTIMATE_HEIGHT,
+        overscan: VIRTUAL_OVERSCAN,
+        heights: null,
+      }),
+    );
+
+    function recordRowHeights(): void {
+      const el = historyNode();
+      if (!el) return;
+      let mutated = false;
+      for (const node of Array.from(
+        el.querySelectorAll('[data-testid="chat-message"]'),
+      )) {
+        const host = node as HTMLElement & { dataset: { vindex?: string } };
+        const idx = Number(host.dataset.vindex);
+        if (!Number.isInteger(idx) || idx < 0) continue;
+        const h = Math.ceil(host.getBoundingClientRect().height);
+        if (h <= 0) continue;
+        if (measuredRowHeights.value[idx] !== h) {
+          if (!mutated) {
+            measuredRowHeights.value = [...measuredRowHeights.value];
+            mutated = true;
+          }
+          measuredRowHeights.value[idx] = h;
+        }
+      }
+      // 校准改变内容几何后：短暂静默重排引发的杂散滚动事件（不得误判为
+      // 用户手势），并强制跟随机重新收敛一次——先前的收敛结果可能已被
+      // 估算偏差的连锁重排推翻。
+      if (mutated) {
+        reflowQuietUntil = Date.now() + 120;
+        requestFollow(undefined, { ignoreIntent: true });
+      }
+    }
+
+    function scheduleRowMeasurement(): void {
+      void nextTick(() => recordRowHeights());
+    }
+
+    watch(
+      () => [
+        messages.value.length,
+        virtualWindowSource.value.startIndex,
+        virtualWindowSource.value.endIndex,
+      ],
+      () => scheduleRowMeasurement(),
+    );
 
     const virtualWindow = computed(() =>
       computeVirtualWindow({
@@ -902,64 +923,235 @@ export default defineComponent({
         viewportHeight: historyViewportPx.value,
         estimateHeight: VIRTUAL_ESTIMATE_HEIGHT,
         overscan: VIRTUAL_OVERSCAN,
+        heights: measuredRowHeights.value,
       }),
     );
+
     const renderedMessages = computed(() =>
       messages.value.slice(virtualWindow.value.startIndex, virtualWindow.value.endIndex),
     );
-    const virtualBottomPad = computed(() =>
-      Math.max(
+    const virtualBottomPad = computed(() => {
+      // P1（round4）：底垫按“总高−上垫−真实渲染段高度”计算；旧公式对渲染
+      // 段整段按估算值扣减，会在短内容行上留下幻影空白，把最新回复顶出
+      // 可视矩形上沿。
+      const win = virtualWindow.value;
+      let renderedHeight = 0;
+      for (
+        let i = win.startIndex;
+        i < win.startIndex + renderedMessages.value.length;
+        i += 1
+      ) {
+        renderedHeight += measuredRowHeights.value[i] ?? VIRTUAL_ESTIMATE_HEIGHT;
+      }
+      return Math.max(
         0,
-        virtualWindow.value.totalHeight -
-          virtualWindow.value.offsetTop -
-          renderedMessages.value.length * VIRTUAL_ESTIMATE_HEIGHT,
-      ),
-    );
+        win.totalHeight - win.offsetTop - renderedHeight,
+      );
+    });
 
     function onHistoryScroll(event: Event): void {
       const target = event.target as
         | { scrollTop?: number; scrollHeight?: number; clientHeight?: number }
         | null;
-      if (target && typeof target.scrollTop === "number") {
-        historyScrollTop.value = target.scrollTop;
-        // P1-A（round3）：距底超过一阈值即视为用户在翻历史，停止贴底跟随；
-        // 滚回底部附近自动恢复（812×375 初始态由此保证最新消息可见）。
-        if (typeof target.scrollHeight === "number" && typeof target.clientHeight === "number") {
-          stickToBottom.value =
-            target.scrollHeight - target.clientHeight - target.scrollTop < 80;
-        }
+      if (!target || typeof target.scrollTop !== "number") return;
+      historyScrollTop.value = target.scrollTop;
+      if (
+        (Date.now() < programmaticScrollUntil &&
+          Math.abs(target.scrollTop - lastProgrammaticTop) <= 2) ||
+        Date.now() < reflowQuietUntil
+      ) {
+        return;
       }
+      syncFollowFromLayout();
     }
 
-    // P1-A（round3）：聊天默认贴底——打开会话、新消息与流式草稿到达时滚到
-    // 最新处；happy-dom 下 scrollTop 赋值是安全空操作，单测不受影响。
-    const stickToBottom = ref(true);
+    // P1/P2（round4）：跟随状态机。跟随目标是“最新流式草稿 / 最新正式消息”
+    // 的底边，而不是尾部元数据行（status/usage/feedback/memory/mode）的绝对
+    // 底部——否则小视口初始态会被尾部行把最新回复顶出可视区。
+    //
+    // 令牌规则：每次排入一帧就递增 followSeq；每个延迟 rAF / ResizeObserver
+    // 动作执行前重新校验（令牌、followingLatest、当前 history 节点）——用户
+    // 滚离底部后，已排队帧、后续 delta、ResizeObserver、虚拟 spacer 重排都
+    // 不再写入 scrollTop；只有重新滚回锚点附近才恢复跟随。
+    const followingLatest = ref(true);
+    let followSeq = 0;
+    /** 程序性滚动后的静默窗口与最近写入的实际落点：窗口内的回声事件用于
+     * 与写入值比对——一致视为自己的回声，不一致（或窗外）一律按几何重新
+     * 判定用户意图。校准/收敛引起的重排也各自开一个更短的静默窗。 */
+    let programmaticScrollUntil = 0;
+    let lastProgrammaticTop = Number.NaN;
+    let reflowQuietUntil = 0;
 
-    function scrollHistoryToBottom(): void {
+    /** 跟随锚点：流式时是草稿元素，否则是最后一条真实消息。 */
+    function currentAnchorNode(): HTMLElement | null {
       const el = historyNode();
-      if (!el) return;
-      // 无布局环境（happy-dom）scrollHeight 为 0：跳过，不覆盖测试设置的
-      // scrollTop；真实浏览器 scrollHeight ≥ clientHeight > 0。
-      if (el.scrollHeight <= 0) return;
-      snapToBottom(el, 2);
+      if (!el) return null;
+      if (isStreaming.value && paintedDraft.value) {
+        const draftNode = el.querySelector('[data-testid="draft"]');
+        if (draftNode instanceof HTMLElement) return draftNode;
+      }
+      const nodes = el.querySelectorAll('[data-testid="chat-message"]');
+      for (let i = nodes.length - 1; i >= 0; i -= 1) {
+        const node = nodes[i];
+        if (node instanceof HTMLElement) return node;
+      }
+      return null;
     }
 
     /**
-     * 贴底收敛：设置 scrollTop 后虚拟窗口会因这次滚动重排（spacer 高度
-     * 变化会再次改变 scrollHeight），内容底部可能又沉出一截；最多补两帧
-     * （约 32ms，不与用户翻历史竞争）直到落在真实底部。
+     * 由滚动位置推断用户意图：与最近一次收敛后的“静止间隙”比较——
+     * 虚拟列表里“最后挂载的节点”不代表最新消息，不能用它的可视位置做判据；
+     * 距内容底间隙回落到静止带内即视为回到跟随位。
      */
-    function snapToBottom(el: HTMLElement, frames: number): void {
-      el.scrollTop = el.scrollHeight;
-      historyScrollTop.value = el.scrollTop;
-      if (frames > 0 && typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => snapToBottom(el, frames - 1));
+    let classificationArmed = false;
+
+    function syncFollowFromLayout(): void {
+      // 基线未建立（本轮尚未收敛过）时不做意图判定：挂载/翻页期的布局微滚
+      // 一旦被误判为“用户离开”，跟随会被永久饿死。收敛本身会把布防打开。
+      if (!classificationArmed) {
+        followingLatest.value = true;
+        return;
       }
+      const el = historyNode();
+      if (!el || el.scrollHeight <= el.clientHeight) {
+        followingLatest.value = true;
+        return;
+      }
+      const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+      followingLatest.value = gap <= restGapPx.value + 40;
     }
 
-    function followLatestIfStuck(): void {
-      if (!stickToBottom.value) return;
-      void nextTick(() => scrollHistoryToBottom());
+    /** 最近一次锚定收敛时的“距内容底间隙”，跟随静止带的基准。 */
+    const restGapPx = ref(48);
+
+    function setProgrammaticScroll(el: HTMLElement, top: number): void {
+      programmaticScrollUntil = Date.now() + 120;
+      el.scrollTop = top;
+      // 读回浏览器钳制后的实际值：回声比对用它，而非请求值。
+      lastProgrammaticTop = el.scrollTop;
+      historyScrollTop.value = el.scrollTop;
+    }
+
+    /**
+     * 两阶段锚定收敛（round4 重写）：第一阶段持续强制绝对底跳——估算高度与
+     * 真实行高的偏差会让虚拟窗口在贴近底部时发生“回流缩水”，把已到底的
+     * 视口再甩回列表中段，因此必须逐帧复核「是否仍在最大滚动位」直到连续
+     * 两帧稳定；第二阶段基于真实矩形把最新内容的底边精确对齐。 */
+    interface FollowPhase {
+      enforcedBottomFrames: number;
+      lastScrollHeight: number;
+      stableFrames: number;
+      confirmed: boolean;
+    }
+
+    function applyAnchorOnce(el: HTMLElement, state: FollowPhase): boolean {
+      // 布局稳定性闸门：校准回填会让 scrollHeight 逐帧变化；在连续两帧
+      // 稳定之前，任何“看起来已对齐”的读数都不可信——直接回到绝对底。
+      const stableLayout = state.lastScrollHeight === el.scrollHeight;
+      state.lastScrollHeight = el.scrollHeight;
+      if (!stableLayout) {
+        state.stableFrames = 0;
+        setProgrammaticScroll(el, el.scrollHeight);
+        return false;
+      }
+      state.stableFrames += 1;
+      const gapToMax =
+        el.scrollHeight - el.clientHeight - el.scrollTop;
+      if (state.stableFrames < 2) {
+        setProgrammaticScroll(el, el.scrollHeight);
+        return false;
+      }
+
+      // —— 第一阶段：强制贴底直到连续两帧站稳（防估高回流甩出）——
+      if (state.enforcedBottomFrames < 2) {
+        if (gapToMax > 6) {
+          setProgrammaticScroll(el, el.scrollHeight);
+          state.enforcedBottomFrames = 0;
+          return false;
+        }
+        state.enforcedBottomFrames += 1;
+        return false;
+      }
+      if (state.enforcedBottomFrames >= 2) {
+        // 站稳两帧：贴底基线成立，允许此后开始意图分类；仍继续精调。
+        classificationArmed = true;
+      }
+      if (gapToMax > 8) {
+        // 贴底期间又被重排推走：重新计时强制。
+        state.enforcedBottomFrames = 0;
+        return false;
+      }
+
+      // —— 第二阶段：真实矩形精调锚点对齐 ——
+      const anchor = currentAnchorNode();
+      if (!anchor) {
+        restGapPx.value = 24;
+        return true;
+      }
+      if (anchor.getBoundingClientRect().height > el.clientHeight) {
+        // 锚点高于可视区：静止在绝对底部兜底。
+        setProgrammaticScroll(el, el.scrollHeight);
+        restGapPx.value = Math.max(24, gapToMax);
+        return true;
+      }
+      const overflowing =
+        anchor.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
+      if (Math.abs(overflowing) <= 1) {
+        restGapPx.value = Math.max(24, gapToMax);
+        classificationArmed = true;
+        return true;
+      }
+      classificationArmed = true;
+      setProgrammaticScroll(el, el.scrollTop + Math.ceil(overflowing));
+      return false;
+    }
+
+    function stepFollow(
+      seq: number,
+      el: HTMLElement,
+      framesLeft: number,
+      state: FollowPhase,
+    ): void {
+      requestAnimationFrame(() => {
+        // 每帧执行前重新校验；spacer 重排可能再次改变 scrollHeight。
+        if (seq !== followSeq || !followingLatest.value || historyNode() !== el) return;
+        const settled = applyAnchorOnce(el, state);
+        if (!settled) {
+          // 任何位移之后都需要一次“下帧复核”，防止读到过渡中的矩形。
+          state.confirmed = false;
+          if (framesLeft > 0) {
+            stepFollow(seq, el, framesLeft - 1, state);
+          }
+          return;
+        }
+        if (!state.confirmed && framesLeft > 0) {
+          state.confirmed = true;
+          stepFollow(seq, el, framesLeft - 1, state);
+        }
+      });
+    }
+
+    function requestFollow(
+      maxFrames = 24,
+      opts: { ignoreIntent?: boolean } = {},
+    ): void {
+      // ignoreIntent：校准重排后的“恢复锚定”是机器自身的职责，即便用户
+      // 此刻被判定为离开也必须把内容重新收拢（用户下一次滚动仍会生效）。
+      if (!followingLatest.value && !opts.ignoreIntent) return;
+      const el = historyNode();
+      // 无布局环境（happy-dom）scrollHeight 为 0：跳过，不覆盖测试设置的
+      // scrollTop；真实浏览器 scrollHeight ≥ clientHeight > 0。
+      if (!el || el.scrollHeight <= 0) return;
+      const seq = ++followSeq;
+      void nextTick(() => {
+        if (seq !== followSeq || !followingLatest.value || historyNode() !== el) return;
+        stepFollow(seq, el, maxFrames, {
+          enforcedBottomFrames: 0,
+          lastScrollHeight: -1,
+          stableFrames: 0,
+          confirmed: false,
+        });
+      });
     }
 
     const conversations = computed(() => store.conversations);
@@ -998,14 +1190,31 @@ export default defineComponent({
     const feedbackKinds = computed(() => store.feedbackKinds);
     // SVC-MODE: plain summary of the current service mode (null hides the line).
     const serviceModeSummary = computed(() => store.serviceMode?.summary ?? "");
+    // P1（round4）：条件系统行统一由 ChatContextHead 渲染在滚动内容头部。
+    const importCount = computed(() =>
+      importPreview.value &&
+      importPreview.value.acceptedCount > 0 &&
+      hasRelationship.value
+        ? importPreview.value.acceptedCount
+        : 0,
+    );
+    const relationshipContextLine = computed(() => {
+      if (relStore.status === "error") return "关系列表加载失败。";
+      if (relStore.status === "ready") {
+        return relStore.current
+          ? `当前关系：${personaDisplayName(relStore.current.personaRef)}`
+          : "还没有当前关系。";
+      }
+      return "";
+    });
     // FEEDBACK: offer feedback only when the turn produced a visible reply
     // (completed) or refused one (blocked) — never mid-stream or for pure
     // transport failures with nothing to judge.
     const showFeedback = computed(
       () => store.phase === "completed" || store.phase === "blocked",
     );
-    // P1-A（round3）：新消息、流式草稿与完成后的状态行（usage/feedback/
-    // 记忆候选）到达时贴底跟随；这些行异步晚到，逐一纳入信号集。
+    // P1（round4）：新消息、流式草稿与完成后的尾部状态行到达，以及相位切换
+    //（草稿移除/终态呈现）都触发一次锚定跟随；是否真的滚动由令牌机决定。
     watch(
       () => [
         messages.value.length,
@@ -1013,8 +1222,23 @@ export default defineComponent({
         showFeedback.value,
         usage.value,
         pendingMemoryCount.value,
+        store.phase,
       ],
-      () => followLatestIfStuck(),
+      () => requestFollow(),
+    );
+    // P1（round4）：固定结构与滚动内容头部的变化都会平移锚点的可视位置，
+    // 显式触发一次重锚定（不等 ResizeObserver 的异步去重）。
+    watch(
+      () => [
+        renaming.value,
+        serviceModeSummary.value,
+        usageHealth.reminderDue,
+        importCount.value,
+        store.activeIncognito,
+      ],
+      () => {
+        if (followingLatest.value) requestFollow();
+      },
     );
     const isStreaming = computed(() => store.isStreaming);
     const canSend = computed(() => inputText.value.trim().length > 0);
@@ -1485,8 +1709,8 @@ export default defineComponent({
       // INC-MODE: the toggle mirrors the opened conversation's frozen flag.
       const opened = store.conversations.find((c) => c.conversationId === id);
       incognitoNext.value = opened?.incognito === true;
-      // P1-A（round3）：切到会话即落在最新消息处（812×375 初始态可读）。
-      void nextTick(() => scrollHistoryToBottom());
+      // P1（round4）：切到会话即锚定最新消息（812×375 初始态可读）。
+      requestFollow(2);
     }
 
     async function onNewConversation(): Promise<void> {
@@ -1544,6 +1768,8 @@ export default defineComponent({
     function startRename(): void {
       const id = store.conversationId;
       if (!id) return;
+      // 管理面板是选择器：选中"改名"即回到会话流内的改名行。
+      convSheetOpen.value = false;
       const current = store.conversations.find((c) => c.conversationId === id);
       // P1-B（round3）：改名输入绝不预填密文——title 经可读性判定通过才带出
       // trim 后的原值；enc1:/enc2:、密文长 token、空值一律预填空字符串，
@@ -1717,8 +1943,8 @@ export default defineComponent({
         const target = fromQuery ?? latest;
         if (target) {
           await store.openConversation(transport, target.conversationId);
-          // P1-A（round3）：进入页面直接落在最新消息处，短视口也能读到当前轮。
-          void nextTick(() => scrollHistoryToBottom());
+          // P1（round4）：进入页面直接锚定最新消息，短视口也能读到当前轮。
+          requestFollow(2);
         } else {
           await startConversation();
         }
@@ -1758,6 +1984,7 @@ export default defineComponent({
 
     onUnmounted(() => {
       stopLifecycle?.();
+      unbindHistoryScrollListeners();
       historyObserver?.disconnect();
       historyObserver = null;
       clearMemoryPoll();
@@ -1795,6 +2022,7 @@ export default defineComponent({
       virtualBottomPad,
       historyViewportPx,
       onHistoryScroll,
+      followingLatest,
       conversations,
       pendingMemoryCount,
       draft,
@@ -1806,6 +2034,8 @@ export default defineComponent({
       showLoadMore,
       canSend,
       hasRelationship,
+      importCount,
+      relationshipContextLine,
       inputText,
       initError,
       confirmDeactivate,
@@ -2025,28 +2255,11 @@ export default defineComponent({
   color: var(--vc-danger);
 }
 
-/* 状态与系统横幅：平实呈现，绝不角色化。列内行一律 flex:none——高度不足
-   时进入滚动而不是被压扁（flex-shrink 会连 44px 按钮一起裁掉）。 */
-.service-mode,
-.usage-health-banner,
-.incognito-notice,
-.current-relationship {
-  flex: none;
-  box-sizing: border-box;
-  width: calc(100% - var(--vc-space-6));
-  max-width: 720px;
-  margin: var(--vc-space-2) auto 0;
-  padding: var(--vc-space-2) var(--vc-space-3);
-  border-radius: var(--vc-radius-m);
-  background: var(--vc-card);
-  border: 1px solid var(--vc-border);
-  color: var(--vc-ink);
-  font-size: var(--vc-text-sm);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--vc-space-2);
-}
+/* P1-A（round3）：以下低频状态行位于唯一滚动容器（chat-history）内部，
+   宽度即滚动内容宽度（history 自身已有水平留白），随消息一起滚动，
+   永远不会停在固定输入栏后方。条件系统行（service-mode / usage-health /
+   incognito / 导入提示 / 当前关系）同样在滚动容器内，样式归属
+   ChatContextHead.vue。 */
 
 /* P1-A（round3）：以下低频状态行位于唯一滚动容器（chat-history）内部，
    宽度即滚动内容宽度（history 自身已有水平留白），随消息一起滚动，
@@ -2067,21 +2280,6 @@ export default defineComponent({
   flex-wrap: wrap;
   align-items: center;
   gap: var(--vc-space-2);
-}
-
-.usage-health-banner {
-  border-color: var(--vc-warning);
-  background: var(--vc-warning-bg);
-}
-
-.usage-health-actions {
-  display: flex;
-  gap: var(--vc-space-2);
-  margin-left: auto;
-}
-
-.current-relationship {
-  color: var(--vc-muted);
 }
 
 .chat-create-entry {
@@ -2202,11 +2400,6 @@ export default defineComponent({
   border: 0;
 }
 
-.deactivate-btn {
-  border-color: var(--vc-danger);
-  color: var(--vc-danger);
-}
-
 .conv-mgmt-btn {
   flex: 0 0 auto;
   min-height: 44px;
@@ -2264,6 +2457,9 @@ export default defineComponent({
   margin: var(--vc-space-3) auto 0;
   padding: var(--vc-space-3) 0;
   overflow-y: auto;
+  /* P2（round4）：关闭浏览器的 scroll anchoring——锚定跟随由跟随状态机
+     独家负责，虚拟 spacer 重排不得借浏览器之手挪动 scrollTop。 */
+  overflow-anchor: none;
   border-radius: var(--vc-radius-l);
   background: var(--vc-paper);
   border: 1px solid var(--vc-border);
@@ -2625,10 +2821,6 @@ export default defineComponent({
     padding-bottom: var(--vc-space-1);
   }
 
-  .service-mode,
-  .usage-health-banner,
-  .incognito-notice,
-  .current-relationship,
   .chat-usage,
   .memory-prompt,
   .chat-status,
@@ -2637,18 +2829,6 @@ export default defineComponent({
     margin-top: var(--vc-space-1);
     padding: var(--vc-space-1) var(--vc-space-2);
     font-size: var(--vc-text-xs);
-  }
-
-  .current-relationship {
-    flex-wrap: nowrap;
-    overflow: hidden;
-  }
-
-  .current-relationship text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .conversation-panel {

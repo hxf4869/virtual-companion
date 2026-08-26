@@ -168,8 +168,9 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
         <view class="emc-card" data-testid="emc-card">
           <text class="emc-line">{{ emergencyContact.label }} · {{ emergencyContact.contact }}</text>
           <text v-if="emergencyContact.status === 'VERIFIED'" class="consent-meta">
-            验证于 {{ emergencyContact.verifiedAt }}（方式 {{ emergencyContact.verifiedMethod }}，
-            条款版本 {{ emergencyContact.consentVersion }}，有效期至 {{ emergencyContact.verifiedExpiresAt }}）
+            验证于 {{ formatLocalDateTime(emergencyContact.verifiedAt) }}（方式 {{ verifiedMethodLabel }}，
+            条款版本 {{ emergencyContact.consentVersion }}，有效期至
+            {{ formatLocalDateTime(emergencyContact.verifiedExpiresAt) }}）
           </text>
           <text v-else class="consent-meta">未验证草稿：变更后需重新验证，未验证不可用于实际联络。</text>
         </view>
@@ -221,7 +222,7 @@ to "2026-08"; MODEL_TRAINING notes withdrawal never affects basic chat. -->
 // CONSENT (FR-AUTH-003/005): presentation-only page; the load-bearing flows
 // live in the tested api/store modules. Every grant/revoke routes through the
 // store, which only mutates state on a confirmed API result.
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 import type { ConsentType } from "@/api/consent";
 import { ConsentHttpError } from "@/api/consent";
@@ -236,11 +237,18 @@ import {
 } from "@/api/emergency-contact";
 import { createAuthenticatedTransport } from "@/api/transport";
 import ConsumerShell from "@/app/ConsumerShell.vue";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 import { CONSENT_OPTIONS, useConsentStore } from "@/stores/consent";
 
 /** Alpha demo pins the consent version the user saw. */
 const CONSENT_VERSION = "2026-08";
+
+// P2（round4）：用户可见的验证方式是运维通道枚举，渲染为中文；未知值
+// 一律落到中性文案，绝不显示原始码。
+const EMC_METHOD_LABELS: Record<string, string> = {
+  SIMULATED_EMAIL_LINK: "模拟邮件链接确认",
+};
 
 export default {
   name: "ConsentPage",
@@ -265,6 +273,12 @@ export default {
     // §20.14 enablement: the backend 403s every endpoint while the review is
     // pending — the whole section then hides (宁可不启用).
     const emcHidden = ref(false);
+
+    // P2（round4）：已验证卡上的"方式"渲染中文，不显示运维通道原值。
+    const verifiedMethodLabel = computed(
+      () => (emergencyContact.value?.verifiedMethod
+        && EMC_METHOD_LABELS[emergencyContact.value.verifiedMethod]) || "人工通道",
+    );
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
@@ -440,6 +454,8 @@ export default {
       emcError,
       emcHidden,
       emcConsentGranted,
+      verifiedMethodLabel,
+      formatLocalDateTime,
       onSaveContact,
       onStartVerification,
       onConfirmVerification,

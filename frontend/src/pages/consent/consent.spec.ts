@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ConsentPage from "./consent.vue";
 import { ConsentHttpError } from "@/api/consent";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useConsentStore } from "@/stores/consent";
 
 const EFFECTIVE = [
@@ -289,7 +290,18 @@ describe("consent page (FR-AUTH-003)", () => {
     await wrapper.find('[data-testid="emc-confirm"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="emc-status"]').text()).toContain("已验证");
-    expect(wrapper.find('[data-testid="emc-card"]').text()).toContain("SIMULATED_EMAIL_LINK");
+    // P2（round4）：运维通道枚举渲染中文，时间走本地 helper——最终文案里
+    // 不出现原始码或带 Z 的 ISO 串。
+    const verifiedCard = wrapper.find('[data-testid="emc-card"]').text();
+    expect(verifiedCard).toContain("方式 模拟邮件链接确认");
+    expect(verifiedCard).toContain(
+      `验证于 ${formatLocalDateTime("2026-08-19T09:00:00Z")}`,
+    );
+    expect(verifiedCard).toContain(
+      `有效期至 ${formatLocalDateTime("2027-02-15T09:00:00Z")}`,
+    );
+    expect(verifiedCard).not.toContain("SIMULATED_EMAIL_LINK");
+    expect(verifiedCard).not.toContain("Z（");
 
     wrapper.unmount();
   });

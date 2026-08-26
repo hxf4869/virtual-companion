@@ -272,6 +272,24 @@ describe("independent conversation list page", () => {
     }
   });
 
+  // P2（round4）：不带 enc 前缀的长无空格 opaque token 同样不可读，改名
+  // 输入必须预填空串。
+  it("never prefills a long opaque token without an enc prefix", async () => {
+    stubFetch({ conversations: [item({ title: "K7f".repeat(40) })] });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await openManage(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const value = (
+      wrapper.find('[data-testid="conversation-rename-input"]').element as HTMLInputElement
+    ).value;
+    expect(value).toBe("");
+    wrapper.unmount();
+  });
+
   it("prefills a readable trimmed title into the rename input", async () => {
     stubFetch({ conversations: [item({ title: "  周二夜聊  " })] });
     const wrapper = mount(ConversationsPage, { attachTo: document.body });

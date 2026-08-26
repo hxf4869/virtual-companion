@@ -137,6 +137,18 @@ describe("data page (FR-DATA-001)", () => {
     wrapper.unmount();
   });
 
+  // P2（round4）：内部只读角色的中文标签真实渲染（不只测 helper）。
+  it("renders the OPS_VIEWER role as a Chinese label", async () => {
+    stubFetch();
+    useAuthStore().role = "OPS_VIEWER";
+    const wrapper = mount(DataPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="data-account"]').text()).toContain("运维观察员");
+    expect(wrapper.find('[data-testid="data-account"]').text()).not.toContain("OPS_VIEWER");
+    wrapper.unmount();
+  });
+
   it("DATA-JUMP: stored rows open the matching existing pages", async () => {
     stubFetch();
     const navigateTo = vi.fn();

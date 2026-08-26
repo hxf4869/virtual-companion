@@ -87,6 +87,22 @@ describe("account page", () => {
     wrapper.unmount();
   });
 
+  // P2（round4）：OPS_VIEWER 等内部角色同样必须渲染中文标签（真实渲染，
+  // 不只测 helper）。
+  it("renders the OPS_VIEWER role as a Chinese label", async () => {
+    stubFetch();
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.accountId = "42";
+    auth.role = "OPS_VIEWER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("运维观察员");
+    expect(wrapper.find('[data-testid="account-role"]').text()).not.toContain("OPS_VIEWER");
+    wrapper.unmount();
+  });
+
   it("shows a signed-out notice and hides logout/delete when there is no session", async () => {
     stubFetch();
     const wrapper = mount(AccountPage, { attachTo: document.body });

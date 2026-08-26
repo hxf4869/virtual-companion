@@ -11,7 +11,7 @@ export interface VirtualWindowInput {
   viewportHeight: number;
   estimateHeight: number;
   overscan?: number;
-  heights?: ReadonlyArray<number>;
+  heights?: ReadonlyArray<number | undefined> | null;
 }
 
 export interface VirtualWindow {
@@ -21,12 +21,14 @@ export interface VirtualWindow {
   totalHeight: number;
 }
 
-function heightAt(index: number, estimateHeight: number, heights?: ReadonlyArray<number>): number {
+type HeightTable = ReadonlyArray<number | undefined> | null | undefined;
+
+function heightAt(index: number, estimateHeight: number, heights: HeightTable): number {
   const measured = heights?.[index];
   return measured !== undefined && measured > 0 ? measured : estimateHeight;
 }
 
-function offsetAt(index: number, estimateHeight: number, heights?: ReadonlyArray<number>): number {
+function offsetAt(index: number, estimateHeight: number, heights: HeightTable): number {
   if (!heights || heights.length === 0) {
     return index * estimateHeight;
   }

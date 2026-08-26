@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HealthPage from "./health.vue";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useUsageHealthStore } from "@/stores/usage-health";
 
 function stubFetch(opts?: {
@@ -18,6 +19,7 @@ function stubFetch(opts?: {
   };
   getStatus?: number;
   putStatus?: number;
+  trial?: { active: boolean; remainingTurns: number | null; expiresAt: string | null };
 }): { calls: { method: string; url: string; body?: unknown }[] } {
   const calls: { method: string; url: string; body?: unknown }[] = [];
   const status = opts?.status ?? {
@@ -27,39 +29,50 @@ function stubFetch(opts?: {
     reminderDue: false,
     sessionStartedAt: "2026-08-18T00:00:00Z",
   };
+  const baseFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = (init?.method ?? "GET").toUpperCase();
+    let body: unknown;
+    if (typeof init?.body === "string") {
+      try {
+        body = JSON.parse(init.body);
+      } catch {
+        body = init.body;
+      }
+    }
+    calls.push({ method, url, body });
+    if (url === "/api/v1/usage-health" && method === "GET") {
+      const http = opts?.getStatus ?? 200;
+      return {
+        ok: http === 200,
+        status: http,
+        json: async () => (http === 200 ? status : null),
+      };
+    }
+    if (url === "/api/v1/usage-health" && method === "PUT") {
+      const http = opts?.putStatus ?? 200;
+      const next = body && typeof body === "object" ? { ...status, ...(body as object) } : status;
+      return {
+        ok: http === 200,
+        status: http,
+        json: async () => (http === 200 ? next : { code: "INVALID_REQUEST" }),
+      };
+    }
+    return { ok: true, status: 200, json: async () => ({}) };
+  });
+  // ENT-TRIAL (V61)：可选的试用状态响应（P2 round4 中文/本地时间用例）。
+  const trial = opts?.trial;
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      const method = (init?.method ?? "GET").toUpperCase();
-      let body: unknown;
-      if (typeof init?.body === "string") {
-        try {
-          body = JSON.parse(init.body);
-        } catch {
-          body = init.body;
-        }
-      }
-      calls.push({ method, url, body });
-      if (url === "/api/v1/usage-health" && method === "GET") {
-        const http = opts?.getStatus ?? 200;
-        return {
-          ok: http === 200,
-          status: http,
-          json: async () => (http === 200 ? status : null),
-        };
-      }
-      if (url === "/api/v1/usage-health" && method === "PUT") {
-        const http = opts?.putStatus ?? 200;
-        const next = body && typeof body === "object" ? { ...status, ...(body as object) } : status;
-        return {
-          ok: http === 200,
-          status: http,
-          json: async () => (http === 200 ? next : { code: "INVALID_REQUEST" }),
-        };
-      }
-      return { ok: true, status: 200, json: async () => ({}) };
-    }),
+    trial
+      ? vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = typeof input === "string" ? input : input.toString();
+          if (url === "/api/v1/trial-status") {
+            return { ok: true, status: 200, json: async () => trial };
+          }
+          return baseFetch(input as RequestInfo, init);
+        })
+      : baseFetch,
   );
   return { calls };
 }
@@ -68,6 +81,24 @@ describe("health page (USAGE-HEALTH)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", { navigateTo: vi.fn() });
+  });
+
+  // P2（round4）：试用卡以中文权益文案与本地时间渲染，不出现 PREMIUM
+  // 原值或带 T/Z 的 ISO 串（真实渲染断言，不只测 helper）。
+  it("renders the active trial card in Chinese with a local-time expiry", async () => {
+    stubFetch({
+      trial: { active: true, remainingTurns: 8, expiresAt: "2026-09-30T12:00:00Z" },
+    });
+    const wrapper = mount(HealthPage, { attachTo: document.body });
+    await flushPromises();
+
+    const card = wrapper.find('[data-testid="trial-status"]').text();
+    expect(card).toContain("试用权益进行中");
+    expect(card).toContain("剩余 8 轮");
+    expect(card).toContain(`到期时间 ${formatLocalDateTime("2026-09-30T12:00:00Z")}`);
+    expect(card).not.toContain("PREMIUM");
+    expect(card).not.toContain("12:00Z");
+    wrapper.unmount();
   });
 
   it("loads defaults and states the reminder is a system-layer fact", async () => {

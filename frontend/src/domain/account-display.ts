@@ -6,6 +6,7 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: "管理员",
   SAFETY_REVIEWER: "安全审查员",
   PRIVACY_OPERATOR: "隐私运营员",
+  OPS_VIEWER: "运维观察员",
 };
 
 export function accountRoleLabel(role: string | null | undefined): string {

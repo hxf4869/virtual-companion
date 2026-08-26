@@ -13,7 +13,7 @@
     <view class="section" data-testid="ai-notice-what">
       <text class="section-title">你会看到什么</text>
       <text class="row">聊天里的助手气泡是 AI 生成内容；导出文件也会带 AI 内容标识。</text>
-      <text class="row">当前服务模式（FULL_AI 或 ZERO_LLM）是运维事实，会在聊天页顶部用平实文案展示，不会被写进角色口吻。</text>
+      <text class="row">当前服务模式是运维事实（全功能生成或零模型值守），会在聊天页顶部用平实中文展示，不会被写进角色口吻。</text>
     </view>
 
     <view class="section" data-testid="ai-notice-limits">
