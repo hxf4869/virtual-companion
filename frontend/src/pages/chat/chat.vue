@@ -854,8 +854,27 @@ export default defineComponent({
       // 取消/污染随后在新节点上启动的新 run。
       followGen += 1;
       cancelFollowRun();
+      // round9（三）：旧节点上的保持机制必须完整清算——泵令牌失效、活动
+      // 事务与覆盖窗释放、延迟定锚作废（followGen 已递增，attempt 闭包
+      // 校验后自弃）。abandon 仍指向旧 boundPreserveHost，恰好把 idle 与
+      // 清理发布到旧节点；遗留诊断属性在此一并抹除，新节点从当前真实视图
+      // 重建有效事务。
+      invalidatePreservePump();
+      abandonPreserveTransaction();
+      const stale = boundPreserveHost;
+      if (stale) {
+        // 生命周期终态（idle/released）保留在旧节点上供观察；锚点与
+        // 世代诊断属性清空。
+        delete stale.dataset.preserveGen;
+        delete stale.dataset.preserveConverged;
+        delete stale.dataset.preserveResidualPx;
+      }
       const el = historyNode();
-      if (!el) return;
+      if (!el) {
+        boundPreserveHost = null;
+        return;
+      }
+      boundPreserveHost = el;
       bindHistoryScrollListener(el);
       boundHistoryEl = el;
       historyObserver = new ResizeObserver((entries) => {
@@ -1032,11 +1051,46 @@ export default defineComponent({
       };
       // 冻结原点必须读取【已应用 override 之后】的顶垫高度。
       frozenTopPadPx.value = virtualWindow.value.offsetTop;
+      publishPreserveOverrideState(true);
+      selfInducedPreserveWinChange = true;
     }
 
     function releasePreserveWindowOverride(): void {
       preserveWindowOverride.value = null;
       frozenTopPadPx.value = null;
+      publishPreserveOverrideState(false);
+      selfInducedPreserveWinChange = true;
+    }
+
+    /** round9（二）：覆盖窗生命周期的诊断发布——释放必须是可外部观察的。 */
+    function publishPreserveOverrideState(open: boolean): void {
+      const el = boundPreserveHost ?? historyNode();
+      if (!el) return;
+      el.dataset.preserveOverride = open ? "open" : "released";
+    }
+
+    /**
+     * round9（二）：覆盖窗启用/释放是引擎自身动作，它引起的窗口签名变化
+     * 与外部布局信号必须区别对待——否则"预算耗尽→释放→窗口变化→复活→
+     * 再耗尽"会在高频刷新率下自激成无限失败循环。
+     *
+     * 折衷语义（有界自续期）：当且仅当【最近一次事务以预算耗尽告终】时，
+     * 自身释放引起的窗口变化允许把同一 settled 基准续期一次，让宽度重排
+     * 这类跨越单个预算窗的慢级联能继续被追击；连续自续期次数有硬上限，
+     * 成功、外部信号、用户滚动与会话重置都会清零。成功后的自释放保持
+     * 静默——静默稳态绝不自我重启。
+     */
+    let selfInducedPreserveWinChange = false;
+    const PRESERVE_SELF_REVIVAL_LIMIT = 8;
+    const PRESERVE_SELF_REVIVAL_TOTAL_CAP = 32;
+    let preserveRevivalStalls = 0;
+    let preserveRevivalTotal = 0;
+    let lastBudgetFailResidualPx: number | null = null;
+    /** 成功 / 外部信号 / 用户滚动 / 会话重置：追击账本清零。 */
+    function resetPreserveRevival(): void {
+      preserveRevivalStalls = 0;
+      preserveRevivalTotal = 0;
+      lastBudgetFailResidualPx = null;
     }
 
     function offsetForIndexInList(index: number): number {
@@ -1152,9 +1206,60 @@ export default defineComponent({
       return !messages.value.some((m) => m.messageId === mid);
     }
 
+    /**
+     * round9（四）：最终确认删除【之前】捕获确定性幸存行快照——列表序中
+     * 紧邻的前一行（不存在则后一行）与其当前 history-relative offset。
+     * 幸存行必须此刻已挂载（覆盖窗保证锚邻域在册）；单行列表无幸存者时
+     * 返回 null，删除后将显性失败而不是读取跳变后的视图。
+     */
+    function capturePreDeleteHandoff(deletedMid: string): PendingDeleteHandoff | null {
+      const el = historyNode();
+      if (!el) return null;
+      const list = messages.value;
+      const doomedIdx = list.findIndex((m) => m.messageId === deletedMid);
+      if (doomedIdx < 0) return null;
+      const survivorMid =
+        list[doomedIdx - 1]?.messageId ?? list[doomedIdx + 1]?.messageId;
+      if (!survivorMid) return null;
+      const rect = el.getBoundingClientRect();
+      const node = Array.from(
+        el.querySelectorAll('[data-testid="chat-message"]'),
+      ).find(
+        (n) => (n as HTMLElement & { dataset: { mid?: string } }).dataset.mid ===
+          survivorMid,
+      );
+      if (!(node instanceof HTMLElement)) return null;
+      return {
+        deletedMid,
+        survivorMid,
+        offset: node.getBoundingClientRect().top - rect.top,
+      };
+    }
+
     let activePreserveTx: PreserveTransaction | null = null;
     let preserveTxCounter = 0;
     let preservePumpRunning = false;
+    /**
+     * round9（一）：泵取消令牌。用户真实滚动、handoff、history 节点重建、
+     * 会话切换与卸载都递增它——运行中的旧泵在下一次逐帧校验时失配退出，
+     * 且绝不能被新事务“借壳”继承预算与稳定状态。
+     */
+    let preservePumpEpoch = 0;
+    function invalidatePreservePump(): void {
+      preservePumpEpoch += 1;
+    }
+    /**
+     * round9（四）：最终确认删除前冻结的幸存行快照（删除前 messageId、
+     * 确定性相邻幸存行、其 history-relative offset）。删除成功后由泵以该
+     * 快照建立 handoff——绝不允许把跳变后的当前偏移当新真值；删除失败则
+     * 丢弃，现有基准不动。
+     */
+    interface PendingDeleteHandoff {
+      deletedMid: string;
+      survivorMid: string;
+      offset: number;
+    }
+    let pendingDeleteHandoff: PendingDeleteHandoff | null = null;
     /**
      * 最近一次成功结算的事务基准（含原 generation）。宽度重排等新布局事
      * 件到来而当时没有活动事务时，从这里【以同一 generation】原样复活：
@@ -1189,6 +1294,16 @@ export default defineComponent({
         ownershipGeneration: followGen,
       };
       enablePreserveWindowOverride(activePreserveTx.anchorIndex);
+      // round9（二）：基准在事务诞生时即记录——基准的语义是"用户的阅读
+      // 位置"（messageId+偏移），不是收敛成功证书。高刷新率下 320ms 安静
+      // 窗可能跨越多个预算窗，若只在 success 时记录基准，布局信号会因
+      // basis=null 而把跳变后的当下视图当新真值，阅读位置被静默换掉。
+      settledPreserveBasis = {
+        generation,
+        mid,
+        offset,
+        index: activePreserveTx.anchorIndex,
+      };
       publishViewportPreserve(activePreserveTx);
       const host = boundPreserveHost ?? historyNode();
       if (host) host.dataset.preserveGen = String(activePreserveTx.generation);
@@ -1296,8 +1411,10 @@ export default defineComponent({
      * 生命周期发布回 idle；不做任何失败标注。
      */
     function abandonPreserveTransaction(): void {
+      invalidatePreservePump();
       activePreserveTx = null;
       settledPreserveBasis = null;
+      resetPreserveRevival();
       releasePreserveWindowOverride();
       clearPreserveAnchorDataset();
       publishPreserveRunState("idle");
@@ -1309,8 +1426,10 @@ export default defineComponent({
      * 不存在任何其他 scrollTop 写入者。
      */
     function rebasePreserveByUserScroll(): void {
+      invalidatePreservePump();
       activePreserveTx = null;
       settledPreserveBasis = null; // 所有权转移：旧基准作废。
+      resetPreserveRevival();
       releasePreserveWindowOverride();
       beginPreserveTransaction({ deferCapture: true });
     }
@@ -1332,9 +1451,18 @@ export default defineComponent({
       if (opts.deferCapture === true) {
         // 渲染完成后逐帧重试定锚：窗口行集与新视口脱节的过渡期里允许
         // 几何短暂不可用；捕获只读、单写者泵尚未启动，重试无副作用。
+        // round9（三）：闭包绑定发起时的 followGen——history 节点重建/
+        // 会话切换/卸载递增令牌后，尚未执行的尝试全部自弃。
+        const captureGen = followGen;
         let attemptsLeft = 16;
         const attempt = (): void => {
-          if (followingLatest.value || activePreserveTx) return;
+          if (
+            captureGen !== followGen ||
+            followingLatest.value ||
+            activePreserveTx
+          ) {
+            return;
+          }
           const captured = capturePreserveAnchor();
           if (captured) {
             spawnPreserveTransaction(captured.mid, captured.offset);
@@ -1379,13 +1507,19 @@ export default defineComponent({
     function routeLayoutSignalToPreserve(): void {
       if (followingLatest.value) return;
       if (!activePreserveTx) {
-        if (settledPreserveBasis) {
+        if (
+          settledPreserveBasis &&
+          !anchorRowDeletedForever(settledPreserveBasis.mid)
+        ) {
           spawnPreserveTxWith(
             settledPreserveBasis.generation,
             settledPreserveBasis.mid,
             settledPreserveBasis.offset,
           );
         } else {
+          // 基准缺失或其锚行已被真删除：以当下视图另立新基准（用户位置
+          // 的语义只随真实滚动/删除移交更换，死锚不构成可保持的基准）。
+          if (settledPreserveBasis) settledPreserveBasis = null;
           beginPreserveTransaction();
         }
         return;
@@ -1393,11 +1527,23 @@ export default defineComponent({
       markPreserveLayoutDirty();
     }
 
+    /**
+     * round9（一）：泵与【具体事务对象】一一绑定。运行中的泵绝不中途改道
+     * 新事务；继任事务（用户滚动重建/handoff 产生）在旧泵 finally 退出后
+     * 由这里显式启动属于它自己的新泵——帧预算、稳定批次、签名与安静窗
+     * 全部从零开始，不继承任何旧局部状态。
+     */
     function schedulePreserveTxFrame(): void {
-      if (preservePumpRunning || !activePreserveTx) return;
+      if (preservePumpRunning) return;
+      const tx = activePreserveTx;
+      if (!tx) return;
       preservePumpRunning = true;
-      void runPreserveTransactionPump().finally(() => {
+      void runPreserveTransactionPump(tx).finally(() => {
         preservePumpRunning = false;
+        const successor = activePreserveTx;
+        if (successor && successor !== tx && !followingLatest.value) {
+          schedulePreserveTxFrame();
+        }
       });
     }
 
@@ -1409,6 +1555,15 @@ export default defineComponent({
     const PRESERVE_TX_SETTLE_MS = 320;
 
     function succeedPreserveTransaction(tx: PreserveTransaction, residual: number): void {
+      // round9（二）：成功只允许发生在 post-release 相位——任何提前路径
+      // （含预算尾部的旧捷径）一律按显性失败处理，绝不让未走完
+      // aligning→stabilizing→post-release 的事务宣告收敛。
+      if (tx.phase !== "post-release") {
+        failPreserveTransaction(`success-out-of-phase:${tx.phase}`);
+        return;
+      }
+      // 防御性释放：任何异常路径都不允许遗留冻结窗口/顶垫。
+      releasePreserveWindowOverride();
       tx.phase = "done";
       const el = historyNode();
       if (el) {
@@ -1421,6 +1576,7 @@ export default defineComponent({
         offset: tx.originalViewportOffset,
         index: tx.anchorIndex,
       };
+      resetPreserveRevival();
       publishPreservePhase(null);
       publishPreserveRunState("idle");
       activePreserveTx = null;
@@ -1431,13 +1587,37 @@ export default defineComponent({
      * 不做任何偷偷重基准；窗口覆盖必须释放，否则虚拟列表此后死锁在旧
      * 邻域。
      */
-    function failPreserveTransaction(residualLabel: string): void {
+    function failPreserveTransaction(
+      residualLabel: string,
+      residualPx: number | null = null,
+    ): void {
       const el = boundPreserveHost ?? historyNode();
       if (el) {
         el.dataset.preserveConverged = "false";
         el.dataset.preserveResidualPx = residualLabel;
       }
       console.warn("[chat] preserve anchor did not settle:", residualLabel);
+      // round9（二）：预算耗尽的追击账本——残差已 <1px 说明钉住目标已达成
+      // （只剩安静窗装不进预算窗），立即停止自续期；残差仍在收敛（有进展）
+      // 不累计停转，慢级联（宽度重排）得以跨预算窗继续追击；无进展才累计，
+      // 加上总量硬上限，保证任何序列下都有界。
+      if (residualLabel.startsWith("budget:")) {
+        if (residualPx !== null && residualPx < 1) {
+          preserveRevivalStalls = PRESERVE_SELF_REVIVAL_LIMIT;
+        } else if (
+          lastBudgetFailResidualPx !== null &&
+          residualPx !== null &&
+          residualPx + 1 < lastBudgetFailResidualPx
+        ) {
+          preserveRevivalStalls = Math.max(0, preserveRevivalStalls - 1);
+        } else {
+          preserveRevivalStalls += 1;
+        }
+        lastBudgetFailResidualPx = residualPx;
+        preserveRevivalTotal += 1;
+      } else {
+        resetPreserveRevival();
+      }
       releasePreserveWindowOverride();
       publishPreservePhase(null);
       publishPreserveRunState("idle");
@@ -1448,8 +1628,15 @@ export default defineComponent({
      * 单写者泵：活动事务的唯一执行者。每个布局批次至多推进一帧校正
      * （一次 scrollTop 写入）；高度回填/窗口级联只通过 dirty 与窗口签名
      * 影响稳定性判定，由本泵继续补偿，绝无并行轮次。
+     *
+     * round9（一）：泵在启动时捕获【不可变的事务对象、泵令牌、ownership
+     * 世代与 history 节点】，此后每帧四重校验——任何失配即退出，旧泵永远
+     * 不能为继任事务写 scrollTop、也不能替它结算；继任事务由
+     * schedulePreserveTxFrame 的 finally 显式接力，其全部局部状态从零开始。
      */
-    async function runPreserveTransactionPump(): Promise<void> {
+    async function runPreserveTransactionPump(tx: PreserveTransaction): Promise<void> {
+      const myEpoch = preservePumpEpoch;
+      const hostEl = historyNode();
       let framesLeft = PRESERVE_TX_FRAME_BUDGET;
       let stableBatches = 0;
       let prevSignature = "";
@@ -1460,32 +1647,42 @@ export default defineComponent({
         new Promise<void>((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         );
+      const identityValid = (el: HTMLElement | null): boolean =>
+        activePreserveTx === tx &&
+        preservePumpEpoch === myEpoch &&
+        tx.ownershipGeneration === followGen &&
+        el !== null &&
+        el === hostEl;
       try {
         await nextTick();
         await waitLayoutFrame();
         while (framesLeft > 0) {
           framesLeft -= 1;
-          const tx = activePreserveTx;
-          if (!tx || followingLatest.value) return;
-          if (tx.ownershipGeneration !== followGen) return; // ownership 已易主。
+          if (followingLatest.value) return;
           const el = historyNode();
-          if (!el) return;
+          if (el === null || !identityValid(el)) return; // 身份/令牌/ownership/节点失配。
 
-          // 锚行真删除：无跳变移交幸存可视行——重建基准时先释放覆盖窗，
-          // 让移交偏移建立在释放后的真实布局上；找不到幸存可视行才显性失败。
+          // 锚行真删除：以【删除前冻结的幸存行快照】无跳变移交——先释放
+          // 覆盖窗让布局落到自然原点，再按快照偏移重建事务；没有预备快照
+          // 时一律显性失败，绝不允许把跳变后的当前偏移当新真值。
           if (anchorRowDeletedForever(tx.anchorMessageId)) {
             releasePreserveWindowOverride();
             clearPreserveAnchorDataset();
             await nextTick();
             await waitLayoutFrame();
-            const handoff = capturePreserveAnchor();
-            if (!handoff || handoff.mid === tx.anchorMessageId) {
+            if (!identityValid(historyNode())) return;
+            const handoff = pendingDeleteHandoff;
+            pendingDeleteHandoff = null;
+            if (!handoff || handoff.deletedMid !== tx.anchorMessageId) {
               failPreserveTransaction("anchor-unavailable");
               return;
             }
             activePreserveTx = null;
-            spawnPreserveTransaction(handoff.mid, handoff.offset);
-            continue;
+            // spawnPreserveTxWith 会立即记录幸存行基准：若 handoff 事务也
+            // 因预算耗尽失败，自续期从幸存行基准继续追击，绝不回退到已
+            // 删除锚行。
+            spawnPreserveTransaction(handoff.survivorMid, handoff.offset);
+            return; // 旧泵到此为止；继任事务由 finally 显式接力。
           }
 
           // 窗口签名：scrollHeight + 虚拟窗口边界共同构成"布局批次"判定；
@@ -1536,7 +1733,8 @@ export default defineComponent({
             continue;
           }
           // post-release：覆盖窗已释放、正常虚拟窗口模型回归。残余位移仍
-          // 由同一事务用真实矩形校正，随后连续静止 ≥320ms 才允许结算。
+          // 由同一事务用真实矩形校正，随后连续静止 ≥320ms 才允许结算；
+          // 安静窗从本事务自己进入 post-release 起算，不继承任何旧计时。
           if (absDelta < 1) {
             if (stableSinceMs < 0) stableSinceMs = Date.now();
             if (Date.now() - stableSinceMs >= PRESERVE_TX_SETTLE_MS) {
@@ -1550,19 +1748,17 @@ export default defineComponent({
           }
           await waitRaf();
         }
-        // 帧预算耗尽：终态显性评估——最后读数 <1px 视为成功结算；否则
-        // 失败标注（保留锚点与诊断）。
-        const endTx = activePreserveTx;
-        if (!endTx) return;
-        const elEnd = historyNode();
-        const endDelta = elEnd ? preserveDeltaFor(endTx) : null;
-        if (endDelta !== null && Math.abs(endDelta) < 1) {
-          succeedPreserveTransaction(endTx, Math.abs(endDelta));
-        } else {
-          failPreserveTransaction(
-            endDelta === null ? "anchor-unavailable" : `${Math.abs(endDelta).toFixed(2)}px`,
-          );
-        }
+        // round9（二）：帧预算耗尽一律显性失败。旧实现"瞬时残差 <1px 即
+        // 成功"的捷径绕过了相位门与 320ms 安静窗（120/144Hz 下 36 帧不足
+        // 320ms），已删除；失败保留锚点与最终残差诊断并释放覆盖窗。
+        if (!identityValid(historyNode())) return;
+        const endDelta = preserveDeltaFor(tx);
+        failPreserveTransaction(
+          endDelta === null
+            ? "budget:anchor-unavailable"
+            : `budget:${Math.abs(endDelta).toFixed(2)}px`,
+          endDelta === null ? null : Math.abs(endDelta),
+        );
       } finally {
         if (!activePreserveTx) publishPreserveRunState("idle");
       }
@@ -1581,6 +1777,23 @@ export default defineComponent({
           abandonPreserveTransaction();
           return;
         }
+        if (selfInducedPreserveWinChange) {
+          selfInducedPreserveWinChange = false;
+          // 引擎自身释放引起的窗口变化：仅当最近的事务以预算耗尽告终时，
+          // 在硬上限内续期同一 settled 基准继续追击慢级联（宽度重排跨越
+          // 单个预算窗）；成功后保持静默，绝不自我重启。
+          if (
+            !activePreserveTx &&
+            settledPreserveBasis &&
+            preserveRevivalStalls < PRESERVE_SELF_REVIVAL_LIMIT &&
+            preserveRevivalTotal < PRESERVE_SELF_REVIVAL_TOTAL_CAP
+          ) {
+            routeLayoutSignalToPreserve();
+          }
+          return;
+        }
+        // 外部布局信号：重置追击账本。
+        resetPreserveRevival();
         routeLayoutSignalToPreserve();
       },
     );
@@ -1629,7 +1842,11 @@ export default defineComponent({
       // 离开态的自我回声：保持引擎的复位写回也会产生与写入值一致的
       // 滚动事件——那是自己的动作，绝不能借此重定用户基准。
       const isSelfCorrection =
-        Date.now() < programmaticScrollUntil &&
+        // round9（一）：保持事务活动期间，它就是 scrollTop 的唯一写入者——
+        // 重排卡顿可能让自身写入的滚动事件迟到超过回声窗，只要读数仍等于
+        // 最近一次程序写入落点（±1px），就是引擎自己的动作，绝不能借此
+        // 重定用户基准；偏离写入落点的滚动仍是真实用户语义（rebase）。
+        (activePreserveTx !== null || Date.now() < programmaticScrollUntil) &&
         Math.abs(target.scrollTop - lastProgrammaticTop) <= ECHO_TOLERANCE_PX;
       if (isSelfCorrection) return;
       if (followingLatest.value) {
@@ -1755,6 +1972,7 @@ export default defineComponent({
       followGen += 1;
       cancelFollowRun();
       abandonPreserveTransaction();
+      pendingDeleteHandoff = null;
       measuredHeights.value = new Map();
       msgFlowTopPx.value = 0;
       const el = historyNode();
@@ -1815,8 +2033,10 @@ export default defineComponent({
       // 接管瞬间锁定“用户看到的视图”为后续引擎自纠错的唯一基准：
       // round8（二）——真实滚动是唯一允许取消旧事务并重建锚点的路径；
       // 锚在本轮渲染完成后定基（用户滚动后旧窗口挂载行可能整体脱节）。
+      invalidatePreservePump();
       activePreserveTx = null;
       releasePreserveWindowOverride();
+      resetPreserveRevival();
       beginPreserveTransaction({ deferCapture: true });
     }
 
@@ -2366,7 +2586,12 @@ export default defineComponent({
     async function onDeleteMessage(messageId: string): Promise<void> {
       if (confirmDeleteMsgId.value === messageId) {
         confirmDeleteMsgId.value = null;
+        // round9（四）：最终确认【之前】先冻结删除前幸存行快照；删除成功
+        // 后泵以该快照建立 handoff 并恢复原偏移——绝不把跳变后的当前偏移
+        // 当新真值。删除失败则丢弃预备快照，现有基准保持不动。
+        pendingDeleteHandoff = capturePreDeleteHandoff(messageId);
         await guarded(() => store.removeMessage(transport, messageId));
+        if (actionError.value) pendingDeleteHandoff = null;
         notifyLayoutMutation();
         return;
       }
@@ -2850,6 +3075,13 @@ export default defineComponent({
       // P1-2：卸载即取消挂起的 follow run，不让任何帧在拆卸后的节点上运行。
       cancelFollowRun();
       followGen += 1;
+      // round9（三）：卸载即清算保持机制——泵令牌失效、活动事务与覆盖窗
+      // 释放、延迟定锚作废（followGen 已递增）；此后任何迟到的 rAF 都因
+      // 身份校验退出，不再写 DOM。
+      invalidatePreservePump();
+      abandonPreserveTransaction();
+      pendingDeleteHandoff = null;
+      boundPreserveHost = null;
       unbindHistoryScrollListeners();
       historyObserver?.disconnect();
       historyObserver = null;

@@ -2330,10 +2330,13 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         /** 行高模型的活引用：测试改值后调用 relayout 同步钳制。 */
         heightRef: { value: number };
         bottomPad: number;
+        /** round9：底垫活引用（可选）——不移动行的情况下翻转 scrollHeight。 */
+        bottomPadRef?: { value: number };
       },
     ): CoupledHarness {
       let heightPerRow = initial.heightRef.value;
-      const totals = () => initial.rowCount * heightPerRow + initial.bottomPad;
+      const padRef = initial.bottomPadRef ?? { value: initial.bottomPad };
+      const totals = () => initial.rowCount * heightPerRow + padRef.value;
       let currentScrollTop = 0;
       Object.defineProperty(el, "scrollHeight", {
         configurable: true,
@@ -2483,13 +2486,18 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       store: ReturnType<typeof useChatStore>;
       frames: FrameHarness;
       heightRef: { value: number };
+      /** round9：底垫活引用——签名扰动用。 */
+      padRef: { value: number };
     }
 
     /**
      * 共享前置。注意：耦合几何是唯一的 scrollTop 定义者——后续任何相位都
      * 不能再叠加第二份 defineProperty 覆盖（旧值会冻结在第一层闭包里）。
      */
-    async function takeoverFixture(heightRef: { value: number } = { value: 80 }): Promise<TakeoverFixture> {
+    async function takeoverFixture(
+      heightRef: { value: number } = { value: 80 },
+      bottomPadRef: { value: number } = { value: 2000 },
+    ): Promise<TakeoverFixture> {
       // 跟随 run 的稳定窗按真实时钟计龄：这里与 round6 用例一致地使用假时钟，
       // 让"泵帧=时间前进"，无需挂钟等待。
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
@@ -2512,6 +2520,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         rowCount: 40,
         heightRef,
         bottomPad: 2000,
+        bottomPadRef,
       });
 
       const store = useChatStore();
@@ -2551,7 +2560,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         expect(el.dataset.preserveMid, "takeover captures a semantic anchor").toBeTruthy();
       }
 
-      return { wrapper, el, geo, ro: registry[0]!, store, frames, heightRef };
+      return { wrapper, el, geo, ro: registry[0]!, store, frames, heightRef, padRef: bottomPadRef };
     }
 
     /** 假时钟下把一次泵帧同时当作时间前进。 */
@@ -2614,38 +2623,50 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       }
     });
 
-    it("round7 三: deleting the anchored row hands continuity to the next survivor without abandoning", async () => {
+    it("round7 三 (round9 四语义): deleting the anchored row outside the confirm flow fails explicitly instead of re-reading the post-delete view", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
         const f = await takeoverFixture();
         const doomedMid = f.el.dataset.preserveMid!;
         expect(doomedMid).toBeTruthy();
 
-        // 真实删除锚行后触发一次重排级联：语义必须无跳变移交到幸存行。
+        // 绕过组件两步确认直接删除锚行（无删除前幸存行快照）：round9（四）
+        // 契约——绝不允许把跳变后的当前偏移当新真值，必须显性失败。
         f.store.messages = f.store.messages.filter((m) => m.messageId !== doomedMid);
         f.geo.relayout(80); // 行集合少一行：刷新矩形映射
         f.ro.emit({ width: 800, height: 599 }); // 仅高度维度 ⇒ 非 force 级联
+        let sawExplicitFail = false;
+        let afterClear = false;
         for (let i = 0; i < 500; i += 1) {
-          if (!!f.el.dataset.preserveMid && f.el.dataset.preserveMid !== doomedMid) break;
           pumpTicked(f.frames);
           await flushPromises();
           f.geo.refresh();
+          if (f.el.dataset.preserveConverged === "false") sawExplicitFail = true;
+          // 锚行删除被引擎观察到（mid 清空或换行）之后，任何时刻都不允许
+          // 把已删除行重新钉为基准。
+          const midNow = f.el.dataset.preserveMid;
+          if (midNow !== doomedMid) afterClear = true;
+          if (afterClear) expect(midNow, "doomed anchor never re-pinned").not.toBe(doomedMid);
         }
-
-        const info = anchoredErrorPx(f.el);
-        expect(info, "basis was handed to a surviving row").not.toBeNull();
-        expect(info!.mid, "no longer the deleted row").not.toBe(doomedMid);
-        if (!Number.isNaN(info!.error)) {
-          expect(info!.error, `handoff pinning error ${info!.error}px`).toBeLessThanOrEqual(4);
-          expect(f.el.dataset.preserveConverged).toBeUndefined();
-        } else {
-          // 幸存行同样缺席时必须诚实失败，绝不静默漂移。
-          expect(f.el.dataset.preserveConverged, "honest failure surfaced").toBe("false");
-        }
+        expect(
+          sawExplicitFail,
+          "explicit failure surfaced, never a post-delete re-basis",
+        ).toBe(true);
+        expect(f.el.dataset.preserveOverride ?? "", "override released on failure").toBe(
+          "released",
+        );
+        expect(
+          warnSpy.mock.calls.some((args) =>
+            /preserve anchor did not settle/.test(String(args[0])),
+          ),
+        ).toBe(true);
         vi.unstubAllGlobals();
         f.wrapper.unmount();
       } catch (err) {
         vi.unstubAllGlobals();
         throw err as Error;
+      } finally {
+        warnSpy.mockRestore();
       }
     });
 
@@ -2898,6 +2919,395 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         expect(
           info.error,
           `rebased anchor pins to user's current view (${info.error.toFixed(2)}px)`,
+        ).toBeLessThanOrEqual(1);
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    // ---- round9：PreserveTransaction 生命周期专项验收 -------------------
+
+    /** 给 history 的 scrollTop 写入装上记录器（geo.setScrollTop 不经此处）。 */
+    function spyScrollWrites(
+      el: HTMLElement,
+    ): { log: { gen: string; top: number; t: number }[]; restore(): void } {
+      const desc = Object.getOwnPropertyDescriptor(el, "scrollTop")!;
+      const log: { gen: string; top: number; t: number }[] = [];
+      Object.defineProperty(el, "scrollTop", {
+        configurable: true,
+        get: desc.get,
+        set(value: number) {
+          log.push({
+            gen: el.dataset.preserveGen ?? "",
+            top: Number(value),
+            t: Date.now(),
+          });
+          desc.set!.call(el, value);
+        },
+      });
+      return {
+        log,
+        restore(): void {
+          Object.defineProperty(el, "scrollTop", desc);
+        },
+      };
+    }
+
+    it("round9 一: a replacement transaction gets its own pump, budget and quiet window; the old pump can never write or settle it", async () => {
+      const f = await takeoverFixture();
+      try {
+        const spy = spyScrollWrites(f.el);
+
+        // 事务 A：先用签名扰动消耗大部分帧预算（每帧翻转 scrollHeight，
+        // 对齐写入全程追踪移动目标），随后停止扰动让其进入稳定阶段——
+        // A 泵此刻仍在活动。
+        for (let i = 0; i < 20; i += 1) {
+          f.heightRef.value = 80 + (i % 3);
+          f.geo.relayout(f.heightRef.value);
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+        }
+        f.heightRef.value = 80;
+        f.geo.relayout(80);
+        let guard = 0;
+        while ((f.el.dataset.preservePhase ?? "") !== "stabilizing" && guard < 40) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+          guard += 1;
+        }
+        expect(
+          f.el.dataset.preservePhase,
+          "A reached a stable phase with most of its budget spent",
+        ).toBe("stabilizing");
+        const genA = f.el.dataset.preserveGen!;
+        const writesBeforeB = spy.log.length;
+        expect(writesBeforeB, "A's pump has been actively writing").toBeGreaterThan(0);
+
+        // A 泵仍活动时的一次真实非回声滚动 → 事务 B。
+        vi.advanceTimersByTime(300); // 程序写入回声窗过期
+        f.geo.setScrollTop(2600);
+        f.el.dispatchEvent(new Event("scroll"));
+        await flushPromises();
+        f.geo.refresh();
+        // 随后的一次行高扰动让 B 存在真实校正写入（原位捕获的 B 本可以
+        // 零写入收敛；这里的写入归属证明才不是空真）。
+        f.heightRef.value = 88;
+        f.geo.relayout(88);
+
+        // 逐帧细粒度观察：gen 翻转、B 的相位序列、post-release 起算的
+        // 安静窗、旧泵队列清空与新泵独立启动。
+        const phasesOfB: string[] = [];
+        let postReleaseFirstAt = -1;
+        let convergedAt = -1;
+        let sawQuietHandoff = false;
+        let simT = 0;
+        for (let i = 0; i < 200 && convergedAt < 0; i += 1) {
+          vi.advanceTimersByTime(20);
+          simT += 20;
+          f.frames.pump();
+          const genNow = f.el.dataset.preserveGen ?? "";
+          if (genNow !== "" && genNow !== genA && f.frames.queued() === 0) {
+            sawQuietHandoff = true;
+          }
+          await flushPromises();
+          f.geo.refresh();
+          const gen = f.el.dataset.preserveGen ?? "";
+          if (gen === "" || gen === genA) continue;
+          const phase = f.el.dataset.preservePhase ?? "";
+          if (!phasesOfB.includes(phase)) phasesOfB.push(phase);
+          if (phase === "post-release" && postReleaseFirstAt < 0) {
+            postReleaseFirstAt = simT;
+          }
+          if (f.el.dataset.preserveConverged === "true" && convergedAt < 0) {
+            convergedAt = simT;
+          }
+        }
+
+        const genB = f.el.dataset.preserveGen ?? "";
+        expect(genB, "user scroll replaced the transaction").not.toBe(genA);
+        // B 重新经历完整相位序列（不是被旧泵带着旧状态直接送进终态）。
+        expect(phasesOfB, "B re-runs aligning→stabilizing→post-release").toContain("aligning");
+        expect(phasesOfB).toContain("stabilizing");
+        expect(phasesOfB).toContain("post-release");
+        expect(
+          convergedAt - postReleaseFirstAt,
+          `B's 320ms quiet window starts at its own post-release (=${convergedAt - postReleaseFirstAt}ms)`,
+        ).toBeGreaterThanOrEqual(300);
+        expect(sawQuietHandoff, "old pump's frame queue drained before B settled").toBe(true);
+        // A 永远不能再写 scrollTop：B 出现之后的每一次写入都属于 B。
+        const writesAfterB = spy.log.slice(writesBeforeB);
+        expect(
+          writesAfterB.length,
+          "B's pump wrote its own corrections",
+        ).toBeGreaterThan(0);
+        expect(
+          writesAfterB.every((w) => w.gen === genB),
+          "every write after B belongs to B",
+        ).toBe(true);
+        // A 永远不能结算 B：结算来自 B 自己的 post-release 完整过程。
+        expect(f.el.dataset.preserveConverged).toBe("true");
+        expect(f.el.dataset.preserveRun ?? "").toBe("idle");
+        expect(f.frames.queued()).toBe(0);
+        const info = anchoredErrorPx(f.el)!;
+        expect(
+          info.error,
+          `B pins to the user's current view (${info.error.toFixed(2)}px)`,
+        ).toBeLessThanOrEqual(1);
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round9 二: frame-budget exhaustion is always an explicit failure — no sub-320ms shortcut success", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      try {
+        // (a) 60Hz 节奏的成功路径：收敛后覆盖窗/冻结顶垫/帧队列全部释放。
+        await pumpMany(220);
+        expect(f.el.dataset.preserveConverged).toBe("true");
+        expect(f.el.dataset.preserveOverride, "override released on success").toBe("released");
+        expect(f.frames.queued()).toBe(0);
+
+        // (b) 120Hz 等价帧间隔（8ms/帧）：36 帧 = 288ms < 320ms 安静窗——
+        // 成功绝不允许发生，预算耗尽必须显性失败。
+        f.heightRef.value = 130;
+        f.geo.relayout(130);
+        f.ro.emit({ width: 375, height: 600 });
+        expect(f.el.dataset.preserveOverride, "override re-arms for the new tx").toBe("open");
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+          // round9（二）：预算耗尽后允许有限次自续期追击（硬上限 8），最终
+          // 必然静息——驱动到静息态再断言。
+          let quietSamples = 0;
+          for (let i = 0; i < 900; i += 1) {
+            vi.advanceTimersByTime(8);
+            f.frames.pump();
+            await flushPromises();
+            f.geo.refresh();
+            quietSamples =
+              (f.el.dataset.preserveRun ?? "") === "idle" && f.frames.queued() === 0
+                ? quietSamples + 1
+                : 0;
+            if (quietSamples >= 3) break;
+          }
+          expect(
+            f.el.dataset.preserveConverged,
+            "120Hz cadence can never shortcut-success within 36 frames",
+          ).toBe("false");
+          expect(f.el.dataset.preserveOverride).toBe("released");
+          expect(f.frames.queued()).toBe(0);
+          expect(
+            warnSpy.mock.calls.some((args) =>
+              /preserve anchor did not settle/.test(String(args[0])),
+            ),
+          ).toBe(true);
+        } finally {
+          warnSpy.mockRestore();
+        }
+
+        // (c) 连续翻转窗口签名但瞬时残差 <1px：永远到不了稳定批次，预算
+        // 耗尽必须显性失败（旧实现会在尾部以 <1px 捷径宣告成功）。
+        f.heightRef.value = 80;
+        f.geo.relayout(80);
+        f.ro.emit({ width: 380, height: 600 }); // 同一基准续期新事务
+        const warnSpy2 = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+          // 持续翻转签名直到有界自续期（硬上限 8）全部耗尽，然后停止扰动
+          // 驱动到静息——每个预算窗都必须显性失败，最终状态不得漂移。
+          let quietSamples2 = 0;
+          for (let i = 0; i < 1400; i += 1) {
+            if (i < 700) {
+              f.padRef.value = 2000 + (i % 2) * 4; // 只动 scrollHeight，行纹丝不动
+            }
+            vi.advanceTimersByTime(16);
+            f.frames.pump();
+            await flushPromises();
+            f.geo.refresh();
+            quietSamples2 =
+              (f.el.dataset.preserveRun ?? "") === "idle" && f.frames.queued() === 0
+                ? quietSamples2 + 1
+                : 0;
+            if (i > 720 && quietSamples2 >= 3) break;
+          }
+          expect(f.el.dataset.preserveConverged, "signature churn ends explicitly").toBe("false");
+          expect(f.el.dataset.preserveOverride).toBe("released");
+          expect(f.frames.queued()).toBe(0);
+          expect(
+            warnSpy2.mock.calls.some((args) =>
+              /preserve anchor did not settle/.test(String(args[0])),
+            ),
+          ).toBe(true);
+        } finally {
+          warnSpy2.mockRestore();
+        }
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round9 三-a: unmounting mid-transaction stops every pending frame with no writes and no warnings", async () => {
+      const f = await takeoverFixture();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        expect(f.el.dataset.preserveRun, "transaction is live at teardown").toBe("active");
+        const spy = spyScrollWrites(f.el);
+        f.wrapper.unmount();
+        const warnsAtUnmount = warnSpy.mock.calls.length;
+        // 卸载后继续泵时钟：不允许任何 DOM 写入、告警循环或残余回调。
+        for (let i = 0; i < 200; i += 1) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+        }
+        expect(spy.log.length, "no scrollTop writes after unmount").toBe(0);
+        expect(warnSpy.mock.calls.length).toBe(warnsAtUnmount);
+        expect(f.frames.queued()).toBe(0);
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it("round9 三-b: rebuilding the history node liquidates the old transaction; the new node converges independently", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      const relStore = useRelationshipStore();
+      try {
+        await pumpMany(120);
+        // 造一个活动事务：宽度级联续期（滚离态）。覆盖窗在级联同步时刻
+        // 重新武装；随后泵数帧让事务保持活动（post-release 也算活动）。
+        f.heightRef.value = 120;
+        f.geo.relayout(120);
+        f.ro.emit({ width: 375, height: 600 });
+        expect(f.el.dataset.preserveOverride, "override re-arms at cascade").toBe("open");
+        await pumpMany(6);
+        expect(f.el.dataset.preserveRun).toBe("active");
+        const oldEl = f.el;
+        const scrollTopOfOld = f.geo.scrollTop();
+
+        // 真实的 Vue 重建路径：解除关系 → 消息区整体卸载 → 恢复关系 →
+        // 新 history 节点挂载（模板 ref 两次变化都触发 bindHistoryObserver）。
+        relStore.currentRelationshipId = null;
+        await flushPromises();
+        await f.wrapper.vm.$nextTick();
+        expect(oldEl.dataset.preserveRun ?? "", "old node published idle").toBe("idle");
+        expect(oldEl.dataset.preserveOverride ?? "", "old override released").toBe("released");
+        expect(oldEl.dataset.preserveMid, "old anchor diagnostics cleared").toBeUndefined();
+        expect(oldEl.dataset.preserveGen, "old generation cleared").toBeUndefined();
+
+        relStore.currentRelationshipId = String(ACTIVE_RELATIONSHIP.relationshipId);
+        await flushPromises();
+        await f.wrapper.vm.$nextTick();
+        const newEl = f.wrapper.find('[data-testid="history"]').element as HTMLElement;
+        expect(newEl, "history node was rebuilt").not.toBe(oldEl);
+        const geo2 = installCoupledGeometry(newEl, {
+          clientHeight: 600,
+          rowCount: 40,
+          heightRef: f.heightRef,
+          bottomPad: 2000,
+          bottomPadRef: f.padRef,
+        });
+        geo2.setScrollTop(scrollTopOfOld);
+        geo2.refresh();
+        // 新节点的绑定先于几何替身存在：绑定时的 requestFollow 因
+        // scrollHeight=0 跳过，且滚离态下 requestFollow 本就不适用。
+        // 安装替身后 emit 一次 RO（布局信号）：引擎在滚离态经统一路由
+        // 从当前真实视图建立有效事务——这正是"新节点能独立收敛"的入口。
+        f.ro.emit({ width: 800, height: 600 });
+        expect(
+          newEl.dataset.preserveRun,
+          "a fresh preserve transaction starts on the rebuilt node",
+        ).toBe("active");
+        let guard = 0;
+        while ((newEl.dataset.preserveRun ?? "") !== "idle" && guard < 400) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          geo2.refresh();
+          guard += 1;
+        }
+        expect(newEl.dataset.preserveRun ?? "", "new node's own transaction went active→idle").toBe(
+          "idle",
+        );
+        expect(
+          newEl.dataset.preserveConverged,
+          "new node's transaction truly converged",
+        ).toBe("true");
+        expect(f.frames.queued()).toBe(0);
+        // 旧节点纹丝不动：重建后引擎的一切写入都落在新节点。
+        expect(f.geo.scrollTop()).toBe(scrollTopOfOld);
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round9 四: deleting the anchored row hands off via the pre-delete survivor snapshot, never a post-delete re-read", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      try {
+        await pumpMany(220);
+        expect(f.el.dataset.preserveConverged).toBe("true");
+        const anchorMid = f.el.dataset.preserveMid!;
+        const list = f.store.messages;
+        const idx = list.findIndex((m) => m.messageId === anchorMid);
+        expect(idx, "anchor row exists in the list").toBeGreaterThanOrEqual(0);
+        const survivorMid = list[idx - 1]!.messageId;
+        const survivorNode = Array.from(
+          f.el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'),
+        ).find((n) => n.dataset.mid === survivorMid);
+        expect(survivorNode, "survivor row is mounted").toBeTruthy();
+        // history rect top = 0（耦合几何），行 top 即 history-relative offset。
+        const preDeleteOffset = survivorNode!.getBoundingClientRect().top;
+        expect(f.store.conversationId, "conversation open for a real delete").toBeTruthy();
+
+        // 走组件真实的两步确认删除：arm → confirm（确认前生产代码冻结
+        // 幸存行快照；这里先安装生命周期观察再触发删除）。
+        const lifecycle: string[] = [];
+        lifecycle.push(f.el.dataset.preserveRun ?? "idle");
+        const vm = f.wrapper.vm as unknown as {
+          onDeleteMessage(mid: string): Promise<void>;
+        };
+        await vm.onDeleteMessage(anchorMid); // arm
+        await flushPromises();
+        await vm.onDeleteMessage(anchorMid); // confirm（快照在此同步冻结）
+        expect(
+          f.store.messages.some((m) => m.messageId === anchorMid),
+          "server-confirmed delete dropped the anchor row",
+        ).toBe(false);
+
+        let guard = 0;
+        while ((f.el.dataset.preserveRun ?? "") === "active" && guard < 20) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+          guard += 1;
+        }
+        lifecycle.push(f.el.dataset.preserveRun ?? "");
+        expect(lifecycle, "target transaction observed active→idle").toContain("active");
+        guard = 0;
+        while ((f.el.dataset.preserveRun ?? "") !== "idle" && guard < 400) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+          guard += 1;
+        }
+        expect(f.el.dataset.preserveRun ?? "").toBe("idle");
+        // 新基准＝删除前快照的幸存行与原偏移（绝不允许删除后重读当下视图）。
+        expect(f.el.dataset.preserveMid, "handoff anchors the pre-delete survivor").toBe(
+          survivorMid,
+        );
+        expect(f.el.dataset.preserveConverged).toBe("true");
+        expect(Number(f.el.dataset.preserveOff)).toBeCloseTo(preDeleteOffset, 0);
+        const info = anchoredErrorPx(f.el)!;
+        expect(info.mid).toBe(survivorMid);
+        expect(
+          info.error,
+          `survivor restored to its PRE-delete offset (${info.error.toFixed(2)}px ≤ 1)`,
         ).toBeLessThanOrEqual(1);
       } finally {
         f.wrapper.unmount();
