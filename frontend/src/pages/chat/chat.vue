@@ -1305,31 +1305,6 @@ export default defineComponent({
       beginPreserveTransaction({ deferCapture: true });
     }
 
-    /** 事务对象生成（唯一入口：两处调用的公共尾部）。 */
-    function spawnPreserveTransaction(mid: string, offset: number): void {
-      const idx = Math.max(
-        0,
-        messages.value.findIndex((m) => m.messageId === mid),
-      );
-      activePreserveTx = {
-        generation: ++preserveTxCounter,
-        anchorMessageId: mid,
-        anchorIndex: idx,
-        originalViewportOffset: offset,
-        phase: "aligning",
-        dirty: true,
-        measurementVersion: 0,
-        ownershipGeneration: followGen,
-      };
-      enablePreserveWindowOverride(activePreserveTx.anchorIndex);
-      publishViewportPreserve(activePreserveTx);
-      const host = boundPreserveHost ?? historyNode();
-      if (host) host.dataset.preserveGen = String(activePreserveTx.generation);
-      publishPreservePhase("aligning");
-      publishPreserveRunState("active");
-      schedulePreserveTxFrame();
-    }
-
     /**
      * 创建新事务并启用有界覆盖窗（冻结原点随其生效）。任何旧事务在此被
      * 无条件替换——只有两条路径会走到这里：用户滚动的所有权重建，与锚行
