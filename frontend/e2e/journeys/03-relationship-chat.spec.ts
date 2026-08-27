@@ -1417,10 +1417,15 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
   await jumpHistory(page, "bottom");
 
   // 回到底部附近（跳转产生真实滚动事件）→ 跟随恢复；随后真实点击重试。
+  // round9：runtime 对 SSE 订阅按 owner 维护并发租约（上限 3，TTL 130s）。
+  // 前两轮流被测试路由在 Playwright 层 abort，runtime 侧租约要等到 TTL
+  // 或写失败才释放——重试点击必须在租约窗口外仍能成功，因此给足 4 次
+  // ×45s（>130s TTL + 余量）。重试断言本身不放宽：最终成败仍是
+  // "已完成（安全终态）"。
   sseMode = "passthrough";
   await page.unroute("**/api/v1/realtime/streams/**");
   let retriedOk = false;
-  for (let attempt = 0; attempt < 2 && !retriedOk; attempt += 1) {
+  for (let attempt = 0; attempt < 4 && !retriedOk; attempt += 1) {
     await page.getByTestId("retry").click();
     try {
       await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
@@ -1428,7 +1433,7 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
       });
       retriedOk = true;
     } catch (err) {
-      if (attempt === 1) throw err;
+      if (attempt === 3) throw err;
       const stillFailed = await measure(page);
       expect(stillFailed.retry, "still retryable after another transport loss")
         .not.toBeNull();

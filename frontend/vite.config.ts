@@ -15,6 +15,18 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:8080",
         changeOrigin: false,
+        // round9 E2E 排障：客户端中止流式请求（取消生成、页面离开）时，
+        // http-proxy 默认不关闭上游连接——runtime 的 SSE 并发租约（上限 3、
+        // TTL 130s）要等写失败或超时才释放，期间同 owner 的新订阅一律 429。
+        // 生产环境客户端直连 runtime，断开立即可见；此钩子让代理层恢复
+        // 同等的断开传播语义。
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, _req, res) => {
+            res.on("close", () => {
+              if (!res.writableEnded) proxyReq.destroy();
+            });
+          });
+        },
       },
       "/actuator": {
         target: process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:8080",
