@@ -9,17 +9,23 @@ import {
   type E2EUserSuffix,
 } from "../helpers";
 
-// Journey 9（round6）——两个证据型测试：
+// Journey 9（round7）——三个证据型测试：
 //
-// 1) 流式增量发布（浏览器级生产 transport）：通过 addInitScript 替换
-//    window.fetch 仅劫持 /realtime/tickets 与 /realtime/streams/*，真实
-//    ReadableStream 由测试逐帧 enqueue，连接在终态前始终保持打开。这证明
-//    生产浏览器链路在同一连接内把 chat.delta 即时渲染为草稿；草稿至少
-//    增长两次。
-// 2) 长会话 A/B 切换：130/90 条合成历史的两个会话之间来回切换，
-//    每次切换后"最新消息完整可见"，且不沿用上一个会话的 scrollTop。
+// 1) 流式增量 + 真实服务端终态形态（浏览器级生产 transport）：
+//    addInitScript 劫持 window.fetch 仅接管 /realtime/tickets 与
+//    /realtime/streams/*，测试逐帧 enqueue 真实 ReadableStream 字节。
+//    终态按 0184 runtime 的真实形态发送——`event: snapshot` 元数据帧不含
+//    events，服务端只补发 cursor 后的 terminal 尾巴；预置历史中绝不出现
+//    流式全文，正式回复只有在终态之后才由分页路由放出，因此
+//    formalCount===1 只能由"本轮真实提交"满足。
+// 2) 快速连续切换会话（stale response 串写）：点击 B（其分页被路由延迟
+//    挂起），不等它返回立即点回 A；最终视图必须只含当前会话的消息，
+//    迟到的 B 响应不得改写消息、标题镜像或贴底锚。
+// 3) 稳定候选的前置验证（round7 六）：任何程序化滚动之前先断言
+//    following=true / followRun=idle / draftCount=0 且几何 ≥320ms 不变，
+//    然后才允许滚动；chat-812x375-settled.png 紧接该断言生成。
 
-const SHOTS6 = ".impeccable/review/round6";
+const SHOTS = ".impeccable/review/round7";
 
 type Box = { top: number; bottom: number; left: number; right: number; width: number; height: number };
 
@@ -27,8 +33,11 @@ interface SwitchGeometry {
   history: Box | null;
   assistantBubble: Box | null;
   assistantLastMid: string | null;
+  mids: string[];
   draftCount: number;
   following: string | null;
+  followRun: string | null;
+  incognitoMirror: string | null;
   scrollTop: number;
 }
 
@@ -40,22 +49,63 @@ async function measureSwitch(page: Page): Promise<SwitchGeometry> {
       return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height };
     };
     const historyEl = document.querySelector('[data-testid="history"]');
-    const hv = historyEl?.getBoundingClientRect() ?? null;
-    const assistants = document.querySelectorAll('[data-testid="chat-message"].assistant');
+    const assistants = Array.from(
+      document.querySelectorAll('[data-testid="chat-message"].assistant'),
+    ) as HTMLElement[];
     const last = assistants[assistants.length - 1] ?? null;
     const bubble = last?.querySelector(".msg-content") ?? null;
     return {
       history: box(historyEl),
       assistantBubble: box(bubble),
-      assistantLastMid:
-        last instanceof HTMLElement
-          ? (last as HTMLElement).dataset.mid ?? null
-          : null,
+      assistantLastMid: last?.dataset.mid ?? null,
+      mids: assistants.map((n) => n.dataset.mid ?? ""),
       draftCount: document.querySelectorAll('[data-testid="draft"]').length,
       following: (historyEl as HTMLElement | null)?.dataset.following ?? null,
+      followRun: (historyEl as HTMLElement | null)?.dataset.followRun ?? null,
+      incognitoMirror: (historyEl as HTMLElement | null)?.dataset.incognito ?? null,
       scrollTop: (historyEl as HTMLElement)?.scrollTop ?? 0,
     };
   });
+}
+
+/**
+ * round7：containment 必须在连续 N 个采样（间隔 ~150ms）里都成立才采信，
+ * 避免把收敛过程中的瞬时帧当作终态证据。返回最后一个稳定样本供断言。
+ */
+async function assertLatestContainedStable(
+  page: Page,
+  label: string,
+  opts: { samples?: number; interval?: number; timeout?: number } = {},
+): Promise<SwitchGeometry> {
+  const need = opts.samples ?? 3;
+  const interval = opts.interval ?? 150;
+  let streak = 0;
+  let lastStable: SwitchGeometry | null = null;
+  await expect
+    .poll(
+      async () => {
+        const m = await measureSwitch(page);
+        if (!m.assistantBubble || !m.history) {
+          streak = 0;
+          return false;
+        }
+        const contained =
+          m.assistantBubble.top >= m.history.top - 0.5 &&
+          m.assistantBubble.bottom <= m.history.bottom + 0.5;
+        if (contained) {
+          streak += 1;
+          lastStable = m;
+        } else {
+          streak = 0;
+        }
+        return streak >= need;
+      },
+      { timeout: opts.timeout ?? 12_000, intervals: [interval, interval * 2] },
+    )
+    .toBe(true);
+  expect(lastStable, `${label} stable sample captured`).not.toBeNull();
+  assertLatestContained(lastStable!, label);
+  return lastStable!;
 }
 
 /** 最新正式助手消息完整落在 history 可视矩形内。 */
@@ -66,6 +116,42 @@ function assertLatestContained(m: SwitchGeometry, label: string): void {
     .toBeGreaterThanOrEqual(m.history!.top - 0.5);
   expect(m.assistantBubble!.bottom, `${label} assistant.bottom ≤ history.bottom`)
     .toBeLessThanOrEqual(m.history!.bottom + 0.5);
+}
+
+/**
+ * 页头/标题/会话元数据稳定后再截图：字体就绪 + 连续两帧几何一致 +
+ * 320ms 无布局变化。仅取 chrome 区域盒子对比，避免内容驱动抖动误判。
+ */
+async function waitForChromeStable(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await document.fonts?.ready;
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+  });
+  await page.waitForFunction(
+    () => {
+      const key = (el: Element | null): string => {
+        if (!el) return "";
+        const r = el.getBoundingClientRect();
+        return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+      };
+      const chrome = [
+        document.querySelector('[data-testid="history"]'),
+        document.querySelector(".chat-page"),
+        document.querySelector("uni-page__header") ?? document.querySelector("uni-page"),
+      ].map((el) => key(el));
+      const w = window as unknown as Record<string, string | undefined>;
+      const stamp = JSON.stringify(chrome);
+      if (w.__chromeStamp !== stamp) {
+        w.__chromeStamp = stamp;
+        w.__chromeSince = String(Date.now());
+        return false;
+      }
+      return Date.now() - Number(w.__chromeSince ?? "0") >= 320;
+    },
+    { timeout: 15_000, polling: 60 },
+  );
 }
 
 interface SyntheticMsg {
@@ -93,20 +179,20 @@ function makeSynthetic(total: number, conversationId: string, tag: string, tailT
   });
 }
 
-function syntheticListHandler(synthetic: SyntheticMsg[]) {
-  return async (route: Route): Promise<void> => {
-    const url = new URL(route.request().url());
-    const after = url.searchParams.get("after");
-    const limit = Number(url.searchParams.get("limit") ?? "50");
-    const startIdx = after ? synthetic.findIndex((m) => m.messageId === after) + 1 : 0;
-    const slice =
-      startIdx > 0 ? synthetic.slice(startIdx, startIdx + limit) : synthetic.slice(0, limit);
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(slice),
-    });
-  };
+/** 计数所有正式助手行中出现 full 的次数（子串重复也如实计数）。 */
+function formalOccurrences(page: Page, full: string): Promise<number> {
+  return page.evaluate((fullText) => {
+    let occurrences = 0;
+    for (const node of document.querySelectorAll('[data-testid="chat-message"].assistant')) {
+      const text = node.textContent ?? "";
+      let idx = text.indexOf(fullText);
+      while (idx !== -1) {
+        occurrences += 1;
+        idx = text.indexOf(fullText, idx + fullText.length);
+      }
+    }
+    return occurrences;
+  }, full);
 }
 
 /** 套跑共享登录来源桶（10 次/60 秒）：429 时做有界多次等待重试，
@@ -154,13 +240,12 @@ async function loginWithRelationship(
   return { session, relationshipId };
 }
 
-test("in-browser production transport renders each delta while the SSE connection stays open", async ({
+test("in-browser transport streams deltas and completes through a real snapshot-metadata tail", async ({
   page,
   request,
 }) => {
   test.setTimeout(180_000);
-  // P1-1（round6）：仅劫持 realtime endpoints 的 fetch 补丁——其余请求
-  // （登录、关系、消息分页等）全部透传给原网络栈。
+  // 仅劫持 realtime endpoints 的 fetch 补丁——其余请求全部透传。
   await page.addInitScript(() => {
     const originalFetch = window.fetch.bind(window);
     const encoder = new TextEncoder();
@@ -246,7 +331,8 @@ test("in-browser production transport renders each delta while the SSE connectio
   const { relationshipId } = await loginWithRelationship(page, request, "streaming-evidence");
 
   // 会话列表返回空 → 页面自建一个真实 conversation；generations POST 伪造；
-  // 消息分页按会话提供合成历史，最后一条助手行携带与流式全文一致的内容。
+  // 消息分页按会话提供合成历史。种子收尾与流式全文刻意不同，并且分页路由
+  // 只在终态后才把本轮正式回复放进返回页——formalCount 从此不可能假绿。
   const CONV_ID = "e2e-conv-stream";
   const DRAFT_CHUNKS = [
     "夜色安静下来，",
@@ -255,26 +341,45 @@ test("in-browser production transport renders each delta while the SSE connectio
   ];
   const DRAFT_FULL = DRAFT_CHUNKS.join("");
   const USER_PROMPT = "今天有点累，想找人说说。";
-  const messages = makeSynthetic(20, CONV_ID, "s", DRAFT_FULL);
+  const SEED_TAIL = "这条会话此前的最后一条历史回复。";
+  const messages = makeSynthetic(20, CONV_ID, "s", SEED_TAIL);
   messages.unshift({
     messageId: "s-user-final",
     conversationId: CONV_ID,
     role: "user",
     content: USER_PROMPT,
   });
+  // 终态后释放的本轮正式回复（服务端提交形态）。
+  let formalReleased = false;
 
-  await page.route(/\/api\/v1\/conversations(\?.*)?$/, async (route) => {
+  await page.route(/\/api\/v1\/conversations(\?.*)?$/, async (route: Route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
       return;
     }
-    // 创建会话走真实后端（conversationId 由服务端分配）。
-    await route.fallback();
+    await route.fallback(); // 创建会话走真实后端
   });
-  await page.route(/\/api\/v1\/conversations\/[^/]+\/messages/, syntheticListHandler(messages));
-  await page.route(/\/api\/v1\/conversations\/[^/]+\/generations$/, async (route) => {
+  await page.route(/\/api\/v1\/conversations\/[^/]+\/messages/, async (route: Route) => {
+    const url = new URL(route.request().url());
+    const after = url.searchParams.get("after");
+    const limit = Number(url.searchParams.get("limit") ?? "50");
+    const view = formalReleased ? [...messages, {
+      messageId: "s-formal-commit",
+      conversationId: CONV_ID,
+      role: "assistant",
+      content: DRAFT_FULL,
+    }] : messages;
+    const startIdx = after ? view.findIndex((m) => m.messageId === after) + 1 : 0;
+    const slice =
+      startIdx > 0 ? view.slice(startIdx, startIdx + limit) : view.slice(0, limit);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(slice),
+    });
+  });
+  await page.route(/\/api\/v1\/conversations\/[^/]+\/generations$/, async (route: Route) => {
     expect(route.request().method()).toBe("POST");
-    // 会话 id 直接取自请求路径（挂载时由真实后端创建）。
     const convId =
       new URL(route.request().url()).pathname.match(/conversations\/([^/]+)\/generations$/)?.[1] ?? "";
     await route.fulfill({
@@ -287,19 +392,6 @@ test("in-browser production transport renders each delta while the SSE connectio
         status: "RUNNING",
         mode: "AUTO",
         createdAt: new Date().toISOString(),
-      }),
-    });
-  });
-  await page.route("**/api/v1/generations/gen-e2e-stream/snapshot**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        streamEpoch: 1,
-        events: [
-          { event: "chat.delta", eventSeq: 1, streamEpoch: 1, payload: DRAFT_FULL },
-          { event: "chat.completed", eventSeq: 4, streamEpoch: 1, payload: "" },
-        ],
       }),
     });
   });
@@ -327,28 +419,29 @@ test("in-browser production transport renders each delta while the SSE connectio
   await expect(page.getByTestId("cancel")).toBeVisible({ timeout: 30_000 });
   expect(await connectionOpen(), "SSE connection held open by the app").toBe(true);
 
-  // ---- 第一批 delta（连接仍打开）----
+  // ---- 终态前：正式回复绝不存在 ----
+  expect(await formalOccurrences(page, DRAFT_FULL), "no committed copy before terminal")
+    .toBe(0);
+
+  // 第一批 delta（连接仍打开）。
   await pushFrame(frame("chat.accepted", 1, {}));
   await pushFrame(frame("chat.delta", 2, DRAFT_CHUNKS[0]));
   await expect(page.getByTestId("draft")).toContainText(DRAFT_CHUNKS[0]!, { timeout: 15_000 });
-  const lenAfterFirst = await page.evaluate(
-    () => document.querySelector('[data-testid="draft"]')?.textContent?.length ?? 0,
-  );
+  expect(await formalOccurrences(page, DRAFT_FULL)).toBe(0);
   expect(await connectionOpen(), "connection still open at first batch").toBe(true);
 
-  // 短隔断后再推第二批：草稿必须继续增长（第 1 次增长）。
+  // 第二批：草稿增长一次。
   await page.waitForTimeout(120);
   await pushFrame(frame("chat.delta", 3, DRAFT_CHUNKS[1]));
   await expect(page.getByTestId("draft")).toContainText(DRAFT_CHUNKS[1]!, { timeout: 15_000 });
   const lenAfterSecond = await page.evaluate(
     () => document.querySelector('[data-testid="draft"]')?.textContent?.length ?? 0,
   );
-  expect(lenAfterSecond, "draft grows past the first batch").toBeGreaterThan(lenAfterFirst);
+  expect(lenAfterSecond).toBeGreaterThan(DRAFT_CHUNKS[0]!.length);
+  await waitForChromeStable(page);
+  await page.screenshot({ path: `${SHOTS}/streaming-draft-1.png` });
 
-  // 连接打开窗口内的第一批证据截图。
-  await page.screenshot({ path: `${SHOTS6}/chat-streaming-draft-1.png` });
-
-  // 第 2 次增长，随后立即取证。
+  // 第三批：草稿第二次增长；连接仍开着。
   await page.waitForTimeout(120);
   await pushFrame(frame("chat.delta", 4, DRAFT_CHUNKS[2]));
   await expect(page.getByTestId("draft")).toContainText(DRAFT_CHUNKS[2]!, { timeout: 15_000 });
@@ -358,11 +451,16 @@ test("in-browser production transport renders each delta while the SSE connectio
   expect(lenThird, "draft grows a second time in the same connection")
     .toBeGreaterThan(lenAfterSecond);
   expect(await connectionOpen(), "connection open through both growth observations").toBe(true);
-  await page.screenshot({ path: `${SHOTS6}/chat-streaming-draft-2.png` });
+  await waitForChromeStable(page);
+  await page.screenshot({ path: `${SHOTS}/streaming-draft-2.png` });
 
-  // 终态帧最后入队并关闭连接：completed、草稿消失、正式内容单份。
+  // ---- 真实服务端终态形态：snapshot 元数据（无 events）+ cursor 后尾巴 ----
+  formalReleased = true; // 只有终态后的分页才会放回正式回复
+  await pushFrame('event: snapshot\ndata: {"status":"COMPLETED","generationId":101}\n\n');
   await pushFrame(frame("chat.completed", 5, ""));
-  await pushFrame(frame("chat.delta", 99, "__LATE_NEVER_APPLIED__")); // 冻结后的事件必须被忽略
+  // 冻结之后的迟到事件与控制帧都不得改变结果。
+  await pushFrame(frame("chat.delta", 99, "__LATE_NEVER_APPLIED__"));
+  await pushFrame("event: stream.gap\n\n");
   await page.evaluate(() => {
     const ctrl = (window as unknown as Record<string, { close(): void } | undefined>).__sseCtrl!;
     ctrl.close();
@@ -370,43 +468,45 @@ test("in-browser production transport renders each delta while the SSE connectio
 
   await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", { timeout: 30_000 });
   await expect(page.locator('[data-testid="draft"]')).toHaveCount(0);
-  const formalCount = await page.evaluate((full) => {
-    let occurrences = 0;
-    for (const node of document.querySelectorAll('[data-testid="chat-message"].assistant')) {
-      const text = node.textContent ?? "";
-      let idx = text.indexOf(full);
-      while (idx !== -1) {
-        occurrences += 1;
-        idx = text.indexOf(full, idx + full.length);
-      }
-    }
-    return occurrences;
-  }, DRAFT_FULL);
-  expect(formalCount, "formal committed content appears exactly once").toBe(1);
+  // 正式回复恰好一份（终态后 store 会重开分页拉取提交行——轮询直到出现，
+  // 再钉死"恰好一份"）；迟到的标记文本无处可寻。
+  await expect
+    .poll(async () => formalOccurrences(page, DRAFT_FULL), {
+      timeout: 20_000,
+      intervals: [200, 400],
+    })
+    .toBe(1);
+  await page.waitForTimeout(400); // 迟到写入窗口
+  expect(await formalOccurrences(page, DRAFT_FULL), "stays exactly one").toBe(1);
+  expect((await page.content()).includes("__LATE_NEVER_APPLIED__")).toBe(false);
   await expect(
     page.locator('[data-testid="chat-message"].assistant').last(),
   ).toContainText(DRAFT_FULL.slice(-12));
   expect(await page.getAttribute('[data-testid="history"]', "data-following"), "follows latest on settle")
     .toBe("true");
+
+  await waitForChromeStable(page);
+  await page.screenshot({ path: `${SHOTS}/streaming-terminal.png` });
 });
 
 function setViewport812x375(page: Page): Promise<void> {
   return page.setViewportSize({ width: 812, height: 375 });
 }
 
-test("switching between two long conversations always lands on the latest message", async ({
+test("rapid conversation switching never lets a stale response paint the wrong window", async ({
   page,
   request,
 }) => {
   test.setTimeout(240_000);
+  await setViewport812x375(page);
   const { relationshipId } = await loginWithRelationship(page, request, "streaming-evidence");
 
-  // 两个长会话：A=130 条（默认打开），B=90 条。列表最后一项是挂载时自动
-  // 打开的会话 → A 放最后。
+  // A=130 条（默认打开），B=90 条但首个分页响应被路由层延迟挂起。
   const A_ID = "e2e-conv-a";
   const B_ID = "e2e-conv-b";
   const A_TAIL = "A 会话的收尾回复：夜已经深了，我把灯留给你。";
   const B_TAIL = "B 会话的收尾回复：泡好的茶放在桌上，慢慢喝。";
+
   const convListHandler = async (route: Route): Promise<void> => {
     await route.fulfill({
       status: 200,
@@ -442,20 +542,52 @@ test("switching between two long conversations always lands on the latest messag
     messageId: "b-user-000",
     conversationId: B_ID,
     role: "user",
-    content: "B 开场：另一段長长的陪伴记录。",
+    content: "B 开场：另一段长长的陪伴记录。",
   });
 
+  let bDelayMs = 0; // >0 时让 B 的分页挂起一段时间再返回
+
+  const bMessagesHandler = async (route: Route): Promise<void> => {
+    if (bDelayMs > 0) {
+      const wait = bDelayMs;
+      bDelayMs = 0; // 只延迟第一次
+      await page.waitForTimeout(wait);
+    }
+    const url = new URL(route.request().url());
+    const after = url.searchParams.get("after");
+    const limit = Number(url.searchParams.get("limit") ?? "50");
+    const startIdx = after ? convB.findIndex((m) => m.messageId === after) + 1 : 0;
+    const slice =
+      startIdx > 0 ? convB.slice(startIdx, startIdx + limit) : convB.slice(0, limit);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(slice),
+    });
+  };
+
   await page.route("**/api/v1/conversations?**", convListHandler);
-  await page.route(/\/api\/v1\/conversations\/e2e-conv-a\/messages/, syntheticListHandler(convA));
-  await page.route(/\/api\/v1\/conversations\/e2e-conv-b\/messages/, syntheticListHandler(convB));
+  await page.route(/\/api\/v1\/conversations\/e2e-conv-a\/messages/, async (route: Route) => {
+    const url = new URL(route.request().url());
+    const after = url.searchParams.get("after");
+    const limit = Number(url.searchParams.get("limit") ?? "50");
+    const startIdx = after ? convA.findIndex((m) => m.messageId === after) + 1 : 0;
+    const slice =
+      startIdx > 0 ? convA.slice(startIdx, startIdx + limit) : convA.slice(0, limit);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(slice),
+    });
+  });
+  await page.route(/\/api\/v1\/conversations\/e2e-conv-b\/messages/, bMessagesHandler);
 
   await navigateToPage(page, "/pages/chat/chat");
   await expect(page.getByTestId("conversation-panel")).toBeVisible();
-  // 挂载后自动打开列表最后一项=A；等待 A 的尾部助手行真实挂载。
   await expect(page.locator('[data-testid="chat-message"].assistant').last())
     .toContainText(A_TAIL.slice(0, 12), { timeout: 30_000 });
 
-  // 程序化滚离（如实命名）：锚点深入中段，ownership 转移给用户。
+  // 先把视口推离底部并交还给用户（如实命名：程序化跳转制造前提）。
   await jumpToMiddle(page);
   await expect
     .poll(() => page.getAttribute('[data-testid="history"]', "data-following"), {
@@ -467,36 +599,14 @@ test("switching between two long conversations always lands on the latest messag
     () => (document.querySelector('[data-testid="history"]') as HTMLElement)?.scrollTop ?? 0,
   );
 
-  // 切到 B（列表第一项）：B 的最新消息必须完整可见，而不是沿用 A 中段。
+  // ---- 快速连续点击：B 挂起 → 不等结果立刻切回 A ----
+  bDelayMs = 2_800;
   await page.locator('[data-testid="conversation-item"]').first().click();
-  await expect(page.locator('[data-testid="chat-message"].assistant').last())
-    .toContainText(B_TAIL.slice(0, 12), { timeout: 30_000 });
-  await expect
-    .poll(async () => (await measureSwitch(page)).following, { timeout: 8_000, intervals: [80, 160] })
-    .toBe("true");
-  // 收敛后再量：贴底跟随需要少量帧完成对齐。
-  await expect
-    .poll(
-      async () => {
-        const m = await measureSwitch(page);
-        if (!m.assistantBubble || !m.history) return false;
-        return (
-          m.assistantBubble.top >= m.history.top - 0.5 &&
-          m.assistantBubble.bottom <= m.history.bottom + 0.5
-        );
-      },
-      { timeout: 8_000, intervals: [80, 160] },
-    )
-    .toBe(true);
-  const bState = await measureSwitch(page);
-  assertLatestContained(bState, "conversation B landing");
-  expect(bState.draftCount).toBe(0);
-  expect(bState.scrollTop, "B lands near its own tail, not A's middle")
-    .toBeGreaterThanOrEqual(midTopA);
-  await page.screenshot({ path: `${SHOTS6}/chat-conversation-switch-latest.png` });
-
-  // 反向切回 A：同样落到 A 的最新消息。
+  // 不等 B 的任何内容，直接点回 A。
   await page.locator('[data-testid="conversation-item"]').nth(1).click();
+
+  // 当前窗口只能是 A：所有正式助手行的 messageId 都是 a-*；
+  // follow 收敛到最新消息且完整可见。
   await expect(page.locator('[data-testid="chat-message"].assistant').last())
     .toContainText(A_TAIL.slice(0, 12), { timeout: 30_000 });
   await expect
@@ -515,14 +625,39 @@ test("switching between two long conversations always lands on the latest messag
       { timeout: 8_000, intervals: [80, 160] },
     )
     .toBe(true);
-  const aAgain = await measureSwitch(page);
-  assertLatestContained(aAgain, "conversation A re-entry");
-  expect(aAgain.draftCount).toBe(0);
-  expect(aAgain.scrollTop, "re-entered A also lands on its tail")
+  const aFinal = await assertLatestContainedStable(page, "rapid switch final window");
+  expect(aFinal.mids.length, "window renders messages").toBeGreaterThan(0);
+  expect(aFinal.mids.filter((mid) => !mid.startsWith("a-")), "only A's own messageIds")
+    .toEqual([]);
+  expect(aFinal.draftCount).toBe(0);
+
+  // B 的迟到响应在此期间落回来——窗口必须原封不动。
+  await page.waitForTimeout(4_000);
+  const afterStale = await measureSwitch(page);
+  expect(afterStale.mids.filter((mid) => !mid.startsWith("a-")))
+    .toEqual([]);
+  expect(afterStale.mids.length).toBe(aFinal.mids.length);
+  expect(afterStale.assistantLastMid).toBe(aFinal.assistantLastMid);
+  expect(afterStale.draftCount).toBe(0);
+  expect(afterStale.scrollTop, "scrollTop not yanked by stale B chain")
+    .toBeGreaterThanOrEqual(midTopA);
+
+  await waitForChromeStable(page);
+  await page.screenshot({ path: `${SHOTS}/rapid-conversation-switch-final.png` });
+
+  // 反向核对仍可用：手动切到 B，等它的真实返回，尾部完整可见。
+  await page.locator('[data-testid="conversation-item"]').first().click();
+  await expect(page.locator('[data-testid="chat-message"].assistant').last())
+    .toContainText(B_TAIL.slice(0, 12), { timeout: 30_000 });
+  await expect
+    .poll(async () => (await measureSwitch(page)).following, { timeout: 8_000, intervals: [80, 160] })
+    .toBe("true");
+  const bState = await assertLatestContainedStable(page, "conversation B landing");
+  expect(bState.scrollTop, "B lands near its own tail, not A's middle")
     .toBeGreaterThanOrEqual(midTopA);
 });
 
-/** 程序化跳转到内容中段（P1-5 #7 如实命名）：制造“用户已滚离”的布局前提。 */
+/** 程序化跳转到内容中段（如实命名）：制造“用户已滚离”的布局前提。 */
 async function jumpToMiddle(page: Page): Promise<void> {
   await page.evaluate(() => {
     const el = document.querySelector('[data-testid="history"]') as HTMLElement | null;
