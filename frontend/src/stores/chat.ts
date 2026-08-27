@@ -94,6 +94,10 @@ export const useChatStore = defineStore("h5-chat", () => {
   // CONV-HIST: conversation list (first page) and the history load-more cursor.
   const conversations = ref<ConversationListItem[]>([]);
   const historyHasMore = ref(false);
+  // round7（P1）：消息窗口所有权令牌。每次窗口重建（init/open/reset/删除或
+  // 结束当前会话）递增；在途分页链路提交前必须持有与当前一致的令牌，晚到的
+  // 旧会话响应一律丢弃，禁止把 B 会话的页面串写进已切换到 A 的窗口。
+  let historyWindowToken = 0;
   // MEM-PROMPT: pending candidate count surfaced after a completed turn.
   const pendingMemoryCount = ref(0);
   let handle: StreamHandle | null = null;
@@ -494,6 +498,7 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversationId.value = "";
     messages.value = [];
     historyHasMore.value = false;
+    historyWindowToken += 1; // round7（P1）：窗口销毁作废一切在途分页链路
     pendingMemoryCount.value = 0;
     pendingUserContent.value = "";
     versionsByUserMessage.value = {};
@@ -551,10 +556,12 @@ export const useChatStore = defineStore("h5-chat", () => {
   /** Reload message history for the current conversation from scratch. */
   async function loadHistory(transport: ChatTransport): Promise<void> {
     if (!conversationId.value) return;
+    // 窗口重建即认领新令牌：任何更早的在途分页链路就此作废。
+    const token = ++historyWindowToken;
     messages.value = [];
     historyHasMore.value = true;
     try {
-      await advanceHistory(transport);
+      await advanceHistory(transport, token);
     } catch {
       // History load failure is non-fatal — the stream result is already
       // committed and the user can retry. Do not surface as a phase change.
@@ -600,6 +607,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       conversationId.value = "";
       messages.value = [];
       historyHasMore.value = false;
+      historyWindowToken += 1; // round7（P1）：窗口销毁作废在途分页
       pendingUserContent.value = "";
       usage.value = null;
       feedbackKinds.value = [];
@@ -621,6 +629,7 @@ export const useChatStore = defineStore("h5-chat", () => {
       conversationId.value = "";
       messages.value = [];
       historyHasMore.value = false;
+      historyWindowToken += 1; // round7（P1）：窗口销毁作废在途分页
     }
     return true;
   }
@@ -672,12 +681,14 @@ export const useChatStore = defineStore("h5-chat", () => {
     conversationId.value = id;
     messages.value = [];
     historyHasMore.value = true;
+    // round7（P1）：切窗即作废旧令牌；本链路此后持有自己的快照继续分页。
+    const token = ++historyWindowToken;
     feedbackKinds.value = []; // FEEDBACK: feedback tracks the active generation
     // INC-MODE: mirror the opened conversation's frozen flag.
     activeIncognito.value =
       conversations.value.find((c) => c.conversationId === id)?.incognito === true;
     try {
-      await advanceHistory(transport);
+      await advanceHistory(transport, token);
     } catch {
       // Non-fatal; the user keeps the loaded window.
     }
@@ -725,27 +736,40 @@ export const useChatStore = defineStore("h5-chat", () => {
     return !!updated;
   }
 
-  /** Append the next page of history after the last loaded message. */
-  async function loadMoreHistory(transport: ChatTransport): Promise<void> {
-    if (!conversationId.value || !historyHasMore.value) return;
+  /**
+   * Append the next page of history after the last loaded message.
+   * round7（P1）：响应落到本请求的局部缓冲里，提交前再校验窗口令牌与目标
+   * 会话——晚到的旧会话页面既不进全局 messages，也不改写 historyHasMore。
+   */
+  async function loadMoreHistory(transport: ChatTransport, token: number = historyWindowToken): Promise<void> {
+    if (!conversationId.value || !historyHasMore.value || token !== historyWindowToken) return;
+    const target = conversationId.value;
     const last = messages.value[messages.value.length - 1];
-    const page = await listMessages(
+    const bufferedPage = await listMessages(
       transport,
-      conversationId.value,
+      target,
       last?.messageId,
       HISTORY_PAGE_SIZE,
-    );    messages.value = [...messages.value, ...page];
-    historyHasMore.value = page.length >= HISTORY_PAGE_SIZE;
+    );
+    if (token !== historyWindowToken || conversationId.value !== target) return;
+    messages.value = [...messages.value, ...bufferedPage];
+    historyHasMore.value = bufferedPage.length >= HISTORY_PAGE_SIZE;
   }
 
   /**
    * Page forward until the end of the history or the auto-advance cap
    * ({@link MAX_AUTO_PAGES}); beyond the cap the page offers manual load-more.
+   * round7（P1）：持有窗口令牌的分页循环——令牌过期即刻停止发起下一页。
    */
-  async function advanceHistory(transport: ChatTransport): Promise<void> {
+  async function advanceHistory(transport: ChatTransport, token: number = historyWindowToken): Promise<void> {
     let pages = 0;
-    while (historyHasMore.value && pages < MAX_AUTO_PAGES) {
-      await loadMoreHistory(transport);
+    while (
+      historyHasMore.value &&
+      pages < MAX_AUTO_PAGES &&
+      token === historyWindowToken &&
+      conversationId.value
+    ) {
+      await loadMoreHistory(transport, token);
       pages += 1;
     }
   }
@@ -767,6 +791,9 @@ export const useChatStore = defineStore("h5-chat", () => {
       phase.value = "failed";
       return;
     }
+    // round7（P1）：turn 开始时持有窗口令牌；流期间窗口被销毁/切换的话，
+    // 终局后的补页不再写回（advanceHistory/loadHistory 内部再校验一次）。
+    const ownedToken = historyWindowToken;
     const idempotencyKey = crypto.randomUUID();
     const generation = await sendGeneration(
       transport,
@@ -785,8 +812,9 @@ export const useChatStore = defineStore("h5-chat", () => {
     // from scratch, so a long conversation keeps its earlier window intact.
     // A previously exhausted window has historyHasMore=false, but this turn
     // has just committed new rows after that cursor and must reopen one page.
+    if (ownedToken !== historyWindowToken || !conversationId.value) return;
     historyHasMore.value = true;
-    await advanceHistory(transport);
+    await advanceHistory(transport, ownedToken);
   }
 
   /** GEN-VER: regenerate against an existing user message (no second user row). */
