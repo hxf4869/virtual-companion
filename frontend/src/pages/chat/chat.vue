@@ -322,7 +322,7 @@
             v-if="messages.length > 0"
             class="virt-spacer"
             data-testid="virt-spacer-top"
-            :style="{ height: (frozenTopPadPx ?? virtualWindow.offsetTop) + 'px' }"
+            :style="{ height: virtualWindow.offsetTop + 'px' }"
           />
           <view
             v-for="(msg, vi) in renderedMessages"
@@ -1310,7 +1310,7 @@ export default defineComponent({
           viewportPreserveSession && elX ? anchorDeltaFor(viewportPreserveSession) : null;
         const residual =
           finalDelta === null ? Number.NaN : Math.abs(finalDelta);
-        if (!Number.isFinite(residual) || residual >= 2 * PRESERVE_SETTLE_PX) {
+        if (!Number.isFinite(residual) || residual >= 2) {
           if (elX) {
             elX.dataset.preserveConverged = "false";
             elX.dataset.preserveResidualPx = Number.isFinite(residual)
