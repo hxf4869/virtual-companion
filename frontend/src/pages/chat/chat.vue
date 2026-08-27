@@ -878,11 +878,11 @@ export default defineComponent({
           return;
         }
         // 视口/布局变化（旋转、软键盘、spacer 重排）：跟随时重对锚点；
-        // 用户已滚离时只把活动保持事务标记为 dirty，由单一泵继续补偿。
+        // 用户已滚离时交由保持事务路由统一处理。
         if (followingLatest.value) {
           requestFollow();
         } else {
-          markPreserveLayoutDirty();
+          routeLayoutSignalToPreserve();
         }
       });
       historyObserver.observe(el);
@@ -1210,6 +1210,8 @@ export default defineComponent({
       const el = historyNode();
       if (!el) return null;
       const rect = el.getBoundingClientRect();
+      const centerY = rect.top + rect.height / 2;
+      let best: { mid: string; offset: number; index: number; dist: number } | null = null;
       let fallback: { mid: string; offset: number; index: number } | null = null;
       for (const node of Array.from(
         el.querySelectorAll('[data-testid="chat-message"]'),
@@ -1230,15 +1232,23 @@ export default defineComponent({
             messages.value.findIndex((m) => m.messageId === mid),
           ),
         });
+        // round8：首选改为“最接近可视区垂直中心的完整可见行”——贴近视
+        // 口中心的基准行上下都保留有效内容，补偿方向的两侧行集均有意义；
+        // 同时给行内操作的验收语义留出上方邻域。
         if (
           r.top >= rect.top + 8 &&
           r.bottom <= rect.bottom + 0.5 &&
           r.top >= rect.top - 0.5
         ) {
-          return snapOf();
+          const dist = Math.abs(r.top + r.height / 2 - centerY);
+          if (!best || dist < best.dist) {
+            best = { ...snapOf(), dist };
+          }
+          continue;
         }
         if (!fallback) fallback = snapOf();
       }
+      if (best) return { mid: best.mid, offset: best.offset, index: best.index };
       return fallback;
     }
 
@@ -1344,13 +1354,11 @@ export default defineComponent({
 
     /**
      * 应用自身触发的布局突变（展开/折叠/删除行等）：若用户已接管视口，
-     * 全部信号汇入活动事务的单一泵——即使位移很大也不许被误判为"用户
-     * 重新定位"，不存在旁路轮次。
+     * 全部信号经统一路由汇入保持事务——即使位移很大也不许被误判为
+     * "用户重新定位"，不存在旁路轮次。
      */
     function notifyLayoutMutation(): void {
-      if (followingLatest.value) return;
-      if (!activePreserveTx) beginPreserveTransaction();
-      else markPreserveLayoutDirty();
+      routeLayoutSignalToPreserve();
     }
 
     /** 布局信号统一汇入点：只把活动事务标记为 dirty 并调度同一个泵。 */
@@ -1360,6 +1368,29 @@ export default defineComponent({
       tx.dirty = true;
       tx.measurementVersion += 1;
       schedulePreserveTxFrame();
+    }
+
+    /**
+     * 全部非滚动布局信号（ResizeObserver、virtualWindow/spacer watcher、
+     * 应用自身突变）的唯一路由：活动事务直接标 dirty；静止期则从最近一次
+     * 成功结算的基准【同 generation】复活，绝不允许布局级联读取"已被移动
+     * 过的当下视图"改写用户阅读位置；完全没有基准时才同步建立新事务。
+     */
+    function routeLayoutSignalToPreserve(): void {
+      if (followingLatest.value) return;
+      if (!activePreserveTx) {
+        if (settledPreserveBasis) {
+          spawnPreserveTxWith(
+            settledPreserveBasis.generation,
+            settledPreserveBasis.mid,
+            settledPreserveBasis.offset,
+          );
+        } else {
+          beginPreserveTransaction();
+        }
+        return;
+      }
+      markPreserveLayoutDirty();
     }
 
     function schedulePreserveTxFrame(): void {
@@ -1550,7 +1581,7 @@ export default defineComponent({
           abandonPreserveTransaction();
           return;
         }
-        markPreserveLayoutDirty();
+        routeLayoutSignalToPreserve();
       },
     );
 
@@ -1703,20 +1734,8 @@ export default defineComponent({
       }
       // round8（二）序列：先冻结不可变基准（messageId/index/history-relative
       // offset），并启用覆盖窗保证锚邻域持续挂载；然后才失效旧宽度的高度
-      // 缓存并触发批量重测。基准优先取最近一次成功结算的事务——重排绝不
-      // 读取"当下视图"改写用户阅读位置；只有真实滚动能更换它。
-      if (!activePreserveTx) {
-        if (settledPreserveBasis) {
-          // 同一 generation 原样续期：重排是同一保持意图的延续批次。
-          spawnPreserveTxWith(
-            settledPreserveBasis.generation,
-            settledPreserveBasis.mid,
-            settledPreserveBasis.offset,
-          );
-        } else {
-          beginPreserveTransaction();
-        }
-      }
+      // 缓存并触发批量重测。基准续期走统一路由。
+      routeLayoutSignalToPreserve();
       measuredHeights.value = new Map();
       heightCacheEpoch += 1;
       const host = boundHistoryEl ?? historyNode();

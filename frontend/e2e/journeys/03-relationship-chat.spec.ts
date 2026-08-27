@@ -532,25 +532,35 @@ interface ViewportAnchor {
 async function viewportAnchorSnapshot(page: Page): Promise<ViewportAnchor> {
   return page.evaluate(() => {
     const el = document.querySelector('[data-testid="history"]');
-    if (!el) return { mid: null, offsetFromHistoryTop: Number.NaN };
+    if (!(el instanceof HTMLElement)) return { mid: null, offsetFromHistoryTop: Number.NaN };
     const rect = el.getBoundingClientRect();
-    let fallback: { mid: string | null; offsetFromHistoryTop: number } | null = null;
+    const centerY = rect.top + rect.height / 2;
+    let best: { mid: string; off: number; dist: number } | null = null;
+    let fallback: { mid: string; off: number } | null = null;
     for (const node of el.querySelectorAll('[data-testid="chat-message"]')) {
       const host = node as HTMLElement;
       if (!host.dataset.mid) continue;
       const r = host.getBoundingClientRect();
       if (r.bottom <= rect.top + 1) continue;
       const snapOf = () => ({
-        mid: host.dataset.mid ?? null,
-        offsetFromHistoryTop: Math.max(0, r.top - rect.top),
+        mid: host.dataset.mid ?? "",
+        off: Math.max(0, r.top - rect.top),
       });
-      // 首选：首个完整落入可视区且离开顶缘 ≥8px 的行；否则退化取首行。
+      // round8：镜像产品的"最接近视口垂直中心的完整可见行"首选规则；
+      // 否则退化取首个与可视矩形真实相交的行。
       if (r.top >= rect.top + 8 && r.bottom <= rect.bottom + 0.5 && r.top >= rect.top - 0.5) {
-        return snapOf();
+        const dist = Math.abs(r.top + r.height / 2 - centerY);
+        if (!best || dist < best.dist) {
+          best = { ...snapOf(), dist };
+        }
+        continue;
       }
       if (!fallback) fallback = snapOf();
     }
-    return fallback ?? { mid: null, offsetFromHistoryTop: Number.NaN };
+    if (best) return { mid: best.mid, offsetFromHistoryTop: best.off };
+    return fallback
+      ? { mid: fallback.mid, offsetFromHistoryTop: fallback.off }
+      : { mid: null, offsetFromHistoryTop: Number.NaN };
   });
 }
 
@@ -618,9 +628,9 @@ async function readRowGeometry(page: Page, mid: string): Promise<RowGeometry | n
 }
 
 /**
- * round8（一）：收敛等待只认外部 DOM——同一 messageId 连续 ≥3 次采样、
- * 跨度 ≥320ms 内偏移波动 ≤1px，且期间该行完整落入 history 矩形；满足后
- * 返回最终几何。不接受任何引擎发布状态作为成功判据。
+ * round8（一）：收敛等待只认外部 DOM——同一 messageId 连续 ≥4 次采样、
+ * 时间跨度 ≥320ms 内偏移波动 ≤1px，且期间该行完整落入 history 矩形；
+ * 满足后返回最终几何。不接受任何引擎发布状态作为成功判据。
  */
 async function waitForSettledRowGeometry(
   page: Page,
@@ -638,11 +648,12 @@ async function waitForSettledRowGeometry(
             return false;
           }
           stamps.push({ t: Date.now(), off: g.offset });
-          if (stamps.length < 3) return false;
-          const win = stamps.slice(-3);
+          // 连续 ≥4 次采样、覆盖 ≥320ms、期间偏移波动 ≤1px。
+          if (stamps.length < 4) return false;
+          const win = stamps.slice(-4);
           const spanMs = win[win.length - 1]!.t - win[0]!.t;
           if (spanMs < 320) return false;
-          const offs = win.map((s) => s.off);
+          const offs = win.map((x) => x.off);
           return Math.max(...offs) - Math.min(...offs) <= 1;
         },
         { timeout: 24_000, intervals: [110] },
@@ -650,10 +661,46 @@ async function waitForSettledRowGeometry(
       .toBe(true);
   } catch (err) {
     const last = stamps[stamps.length - 1];
+    let liveNote = "";
+    if (!last) {
+      const live = await readRowGeometry(page, mid);
+      const ds = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="history"]');
+        if (!(el instanceof HTMLElement)) return null;
+        return {
+          run: el.dataset.preserveRun ?? null,
+          phase: el.dataset.preservePhase ?? null,
+          gen: el.dataset.preserveGen ?? null,
+          conv: el.dataset.preserveConverged ?? null,
+          resid: el.dataset.preserveResidualPx ?? null,
+          fol: el.dataset.following ?? null,
+        };
+      });
+      const hist = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="history"]');
+        return el instanceof HTMLElement ? { st: el.scrollTop, sh: el.scrollHeight, ch: el.clientHeight } : null;
+      });
+      liveNote = ` live=${JSON.stringify(live)} hist=${JSON.stringify(hist)} ds=${JSON.stringify(ds)}`;
+    }
+    const tail = stamps
+      .slice(-16)
+      .map((x) => `${x.off.toFixed(1)}@${x.t}`)
+      .join(",");
+    const spread = (() => {
+      if (stamps.length < 4) return NaN;
+      let bestSpan = Number.POSITIVE_INFINITY;
+      for (let i = 0; i + 3 < stamps.length; i += 1) {
+        const w = stamps.slice(i, i + 4);
+        const spanMs = w[3]!.t - w[0]!.t;
+        const range = Math.max(...w.map((x) => x.off)) - Math.min(...w.map((x) => x.off));
+        if (spanMs >= 320) bestSpan = Math.min(bestSpan, range);
+      }
+      return bestSpan;
+    })();
     throw new Error(
       `${label}: row ${mid} never settled (${stamps.length} samples, last=${
         last ? last.off.toFixed(2) : "unmounted/not-inside"
-      }) :: ${String(err)}`,
+      }, minStableRange=${Number.isNaN(spread) ? "n/a" : spread.toFixed(2)}, tail=${tail})${liveNote} :: ${String(err)}`,
     );
   }
   const final = await readRowGeometry(page, mid);
@@ -670,41 +717,66 @@ async function waitForSettledRowGeometry(
 async function pickMountedRowRelativeTo(
   page: Page,
   opts:
-    | { side: "above"; refMid: string; excludeMids: string[]; requirePrefix?: string }
-    | { side: "below"; refMid: string; excludeMids: string[]; requirePrefix?: string },
+    | {
+        side: "above";
+        refMid: string;
+        excludeMids: string[];
+        requirePrefix?: string;
+        requireVisible?: boolean;
+      }
+    | {
+        side: "below";
+        refMid: string;
+        excludeMids: string[];
+        requirePrefix?: string;
+        requireVisible?: boolean;
+      },
 ): Promise<string | null> {
-  return page.evaluate(({ side, refMid, excludeMids, requirePrefix }) => {
-    const el = document.querySelector('[data-testid="history"]');
-    if (!(el instanceof HTMLElement)) return null;
-    const ref = el.querySelector(`[data-mid="${refMid}"]`);
-    if (!(ref instanceof HTMLElement)) return null;
-    const refRect = ref.getBoundingClientRect();
-    let best: { mid: string; dist: number } | null = null;
-    for (const node of el.querySelectorAll('[data-testid="chat-message"]')) {
-      const host = node as HTMLElement & { dataset: { mid?: string } };
-      const mid = host.dataset.mid;
-      if (!mid || excludeMids.includes(mid)) continue;
-      if (requirePrefix && !mid.startsWith(requirePrefix)) continue;
-      const r = host.getBoundingClientRect();
-      // 完整可见，且整体位于参照行的指定一侧（留 2px 保护带）。
-      const strictly =
-        side === "above"
-          ? r.bottom <= refRect.top - 2
-          : r.top >= refRect.bottom + 2;
-      if (!strictly) continue;
-      const dist =
-        side === "above"
-          ? Math.abs(r.bottom - refRect.top)
-          : Math.abs(r.top - refRect.bottom);
-      if (!best || dist < best.dist) best = { mid, dist };
-    }
-    return best?.mid ?? null;
-  }, {
-    side: opts.side,
-    refMid: opts.refMid,
-    excludeMids: opts.excludeMids,
-    requirePrefix: opts.requirePrefix ?? null,
-  });
+  return page.evaluate(
+    ({ side, refMid, excludeMids, requirePrefix, requireVisible }) => {
+      const el = document.querySelector('[data-testid="history"]');
+      if (!(el instanceof HTMLElement)) return null;
+      const histRect = el.getBoundingClientRect();
+      const ref = el.querySelector(`[data-mid="${refMid}"]`);
+      if (!(ref instanceof HTMLElement)) return null;
+      const refRect = ref.getBoundingClientRect();
+      let best: { mid: string; dist: number } | null = null;
+      for (const node of el.querySelectorAll('[data-testid="chat-message"]')) {
+        const host = node as HTMLElement & { dataset: { mid?: string } };
+        const mid = host.dataset.mid;
+        if (!mid || excludeMids.includes(mid)) continue;
+        if (requirePrefix && !mid.startsWith(requirePrefix)) continue;
+        const r = host.getBoundingClientRect();
+        // round8：候补必须与参照行严格异侧（2px 保护带）；requireVisible
+        // 时还必须完整落入 history 可视矩形——选中视口外行只会诱使测试
+        // 框架隐式滚动，那是被禁止的越权操作。
+        const strictly =
+          side === "above"
+            ? r.bottom <= refRect.top - 2
+            : r.top >= refRect.bottom + 2;
+        if (!strictly) continue;
+        if (
+          requireVisible === true &&
+          !(r.top >= histRect.top + 1 && r.bottom <= histRect.bottom - 1)
+        ) {
+          continue;
+        }
+        const dist =
+          side === "above"
+            ? Math.abs(r.bottom - refRect.top)
+            : Math.abs(r.top - refRect.bottom);
+        if (!best || dist < best.dist) best = { mid, dist };
+      }
+      return best?.mid ?? null;
+    },
+    {
+      side: opts.side,
+      refMid: opts.refMid,
+      excludeMids: opts.excludeMids,
+      requirePrefix: opts.requirePrefix ?? null,
+      requireVisible: opts.requireVisible === true,
+    },
+  );
 }
 
 /**
@@ -1028,6 +1100,9 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
 
   {
     const firstName = VIEWPORTS[0]!.name;
+    // round8（六）：settled 截图必须名副其实——显式切到首个视口再验证与
+    // 拍摄；此刻测试尚未发生任何程序化滚动。
+    await setViewport(page, VIEWPORTS[0]!.w, VIEWPORTS[0]!.h);
     // P1-5（round6）：完成稳定性必须在任何程序化滚动之前、且只针对刚完成
     // 的这一轮对话验证一次——data-following=true、draftCount=0、follow run
     // 已 idle、assistant bounds 与 scrollTop 连续 ≥320ms 不变。
@@ -1555,7 +1630,9 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   expect(Number.isFinite(awayBaselineOffset), "away baseline finite").toBe(true);
 
   // 扰动矩阵一：同宽视口高度变化（ResizeObserver + spacer 重排）。
-  for (const [w0, hh] of [[812, 360], [800, 384]] as const) {
+  // round8（一）：收敛判据要求判据行完整落入 history 矩形——比基线 375 更
+  // 矮的视口会物理性裁掉该行，因此这两档只做加高方向的同宽微扰。
+  for (const [w0, hh] of [[812, 460], [800, 520]] as const) {
     await setViewport(page, w0, hh);
   }
   {
@@ -1571,6 +1648,9 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   // 基线与后态之间不得发生任何滚动操作。
   const trackedMid = awayMid;
   expect(trackedMid, "tracked anchor row id").not.toBeNull();
+  // round8（四）：等高微扰后显式恢复基线视口；before 截图前的实际视口
+  // 必须精确等于 812×375。
+  await setViewport(page, 812, 375);
   expect(await page.viewportSize(), "width-scenario before viewport").toEqual({
     width: 812,
     height: 375,
@@ -1621,74 +1701,94 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   await setViewport(page, 812, 375);
 
   // ---- 展开 / 折叠行内操作区（仍在滚离态，ownership 保持）----
-  // P1-5（round6）/round8（一）：判据为"展开前取基线 → 点击展开 → 比较"，
-  // oracle 是独立 DOM 尺的 history-relative 偏移。round8（四）：展开目标
-  // 必须明确位于锚行【上方】——否则布局变化天然不移动锚点，属于假绿。
-  const beforeExpandSnap = await stableViewportAnchor(page);
-  const expandAnchorMid = beforeExpandSnap.mid;
-  expect(expandAnchorMid, "expansion anchor row is mounted").not.toBeNull();
-  const expandBaselineGeometry = await readRowGeometry(page, expandAnchorMid!);
-  expect(expandBaselineGeometry, "expansion anchor geometry readable").not.toBeNull();
-  expect(expandBaselineGeometry!.fullyInside, "expansion anchor fully inside history").toBe(true);
-  const expandExclusions = [awayMid, expandAnchorMid].filter(
-    (m): m is string => m !== null,
-  );
+  // round8 编排说明：三重条件头把窄视口下的 history 压到 ~200px 高——这样
+  // 的窄盒里锚行上方不存在"既完整可见、又在其上方"的可操作行，Playwright
+  // 点击的 into-view 自动滚动必然发生，并被引擎按产品语义判为真实用户滚动
+  // 而重定基准（该语义本身正确）。因此行内操作组换到宽敞工作台视口执行；
+  // 切入作为一次普通布局事件交由保持事务钉回，并在读基线前自检 ≤4px。
+  await setViewport(page, 1200, 900);
+  {
+    const restored = await waitForSettledRowGeometry(
+      page,
+      awayMid!,
+      "workspace viewport restore keeps anchor",
+    );
+    const restoredErr = Math.abs(restored.offset - awayBaselineOffset);
+    expect(
+      restoredErr,
+      `viewport swap into workspace pins the anchor (err=${restoredErr.toFixed(2)}px ≤ 4px)`,
+    ).toBeLessThanOrEqual(4);
+  }
+  // P1-5（round6）/round8（一/四）：先做一次真实滚轮手势把视图推进到
+  // 中段开阔区（发生在任何基线读取之前——基线与后态之间无任何测试侧滚
+  // 动），ownership 由真实滚动语义重定，保持事务以当下视图建锚。此后
+  // 展开/折叠/删除的判据行＝该基准行（data-preserve-mid 仅用于选行编
+  // 排，成败完全由独立 DOM 几何裁定）；扰动目标必须完整可见且严格位于
+  // 基准行上方——否则布局变化天然不动锚点，属于假绿。
+  {
+    const rc0 = await historyRectCenter(page);
+    await page.mouse.move(rc0.x, rc0.y);
+    await page.mouse.wheel(0, -420);
+    await page.waitForTimeout(180);
+  }
+  const basisSnap = await stableViewportAnchor(page);
+  const judgeMid = basisSnap.mid;
+  expect(judgeMid, "inline-ops judge row captured").not.toBeNull();
+  const judgeReadiness = await readRowGeometry(page, judgeMid!);
+  expect(judgeReadiness, "judge geometry readable").not.toBeNull();
+  expect(judgeReadiness!.fullyInside, "judge fully inside history").toBe(true);
   const expandTargetMid = await pickMountedRowRelativeTo(page, {
     side: "above",
-    refMid: expandAnchorMid!,
-    excludeMids: expandExclusions,
+    refMid: judgeMid!,
+    excludeMids: [awayMid].filter((m): m is string => m !== null),
     requirePrefix: "seed-",
+    requireVisible: true,
   });
   expect(
     expandTargetMid,
-    "an expandable assistant row strictly above the anchor is mounted",
+    "an actionable row fully visible and strictly above the judge is mounted",
   ).not.toBeNull();
 
   await page.screenshot({ path: `${SHOTS}/expand-before.png` });
 
   const expandMore = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
-  await expandMore.click();
+  // round8：可见性已由判据预检保证——force 点击杜绝框架隐式滚动
+  // （隐式滚动属于被禁止的测试侧滚动，会触发引擎重定基准）。
+  await expandMore.click({ force: true });
   await expect(page.locator(`[data-testid="msg-actions-${expandTargetMid}"]`)).toBeVisible();
   // 展开/校准重排后跟随仍为 false；以"展开前基线的同一行位移"判定保持。
   expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
   {
-    // round8（一）：同一保留锚点的 history-relative 偏移误差 ≤4 CSS px；
-    // 展开插入的内容在锚行上方时由保持引擎钉回。
+    // round8（一）：基准行 history-relative 偏移误差 ≤4 CSS px——插入
+    // 内容位于其上方，由保持引擎精确补偿回原始视口偏移。
     const afterExpandGeometry = await waitForSettledRowGeometry(
       page,
-      expandAnchorMid!,
+      judgeMid!,
       "expansion keeps user position",
     );
-    const expandError = Math.abs(afterExpandGeometry.offset - expandBaselineGeometry!.offset);
+    const expandError = Math.abs(afterExpandGeometry.offset - judgeReadiness!.offset);
     expect(
       expandError,
-      `expansion pins the anchor history-relative offset (err=${expandError.toFixed(2)}px ≤ 4px)`,
+      `expansion pins the anchored row's offset (err=${expandError.toFixed(2)}px ≤ 4px)`,
     ).toBeLessThanOrEqual(4);
     await assertNoBlankBand(page, "after expansion");
   }
   await page.screenshot({ path: `${SHOTS}/expand-after.png` });
 
-  // 折叠：固定同一判据行，先读基线再点击；目标仍须严格位于其上方。
-  {
-    const stillAbove = await pickMountedRowRelativeTo(page, {
-      side: "above",
-      refMid: expandAnchorMid!,
-      excludeMids: expandExclusions.filter((m) => m !== expandTargetMid),
-      requirePrefix: "seed-",
-    });
-    expect(stillAbove, "collapse target remains mounted and selectable").not.toBeNull();
-  }
-  const collapseBaselineGeometry = await readRowGeometry(page, expandAnchorMid!);
+  // 折叠：固定同一判据行与目标，先读基线再点击（more 按钮常驻于行内
+  // 顶部区，展开态下它保持原可视位置）。
+  const collapseBaselineGeometry = await readRowGeometry(page, judgeMid!);
   expect(collapseBaselineGeometry, "collapse baseline geometry readable").not.toBeNull();
+  expect(collapseBaselineGeometry!.fullyInside, "collapse judge fully inside history").toBe(true);
   const expandMoreAgain = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
   if ((await expandMoreAgain.getAttribute("aria-expanded")) === "true") {
-    await expandMoreAgain.click();
+    await expandMoreAgain.click({ force: true });
   }
   await expect(page.locator(`[data-testid="msg-actions-${expandTargetMid}"]`)).toHaveCount(0);
   {
     const afterCollapseGeometry = await waitForSettledRowGeometry(
       page,
-      expandAnchorMid!,
+      judgeMid!,
       "collapse keeps user position",
     );
     const collapseError = Math.abs(
@@ -1696,7 +1796,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     );
     expect(
       collapseError,
-      `collapse pins the anchor history-relative offset (err=${collapseError.toFixed(2)}px ≤ 4px)`,
+      `collapse pins the anchored row's offset (err=${collapseError.toFixed(2)}px ≤ 4px)`,
     ).toBeLessThanOrEqual(4);
     await assertNoBlankBand(page, "after collapse");
   }
@@ -1710,49 +1810,48 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     },
   );
-  // round8（一/四）：所有基线——判据行 messageId、其 history-relative 偏移、
-  // 与下一邻行的间距——都必须在【点击最终确认之前】读定；杜绝"删后自比较"
-  // 蒙混。判据行必须明确位于删除目标【下方】，否则删除天然不动锚点。
+  // round8（一/四）：删除目标（expandTargetMid）严格位于基准行上方；
+  // 判据行仍是基准行，全部基线——messageId、其 history-relative 偏移、
+  // 邻行间距——在【点击最终确认之前】读定；杜绝"删后自比较"蒙混。
+  const preDeleteReadiness = await readRowGeometry(page, judgeMid!);
+  expect(preDeleteReadiness?.fullyInside ?? false, "pre-delete judge fully inside").toBe(true);
   const deleteMore = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
-  await deleteMore.click();
+  await deleteMore.click({ force: true });
   const deleteBtn = page.locator(`[data-testid="msg-delete-${expandTargetMid}"]`);
-  await deleteBtn.click();
+  await deleteBtn.click({ force: true });
   await expect(deleteBtn, "two-step delete arm label").toHaveText("确认删除");
 
-  const deleteAnchorMid = await pickMountedRowRelativeTo(page, {
-    side: "below",
-    refMid: expandTargetMid!,
-    excludeMids: [awayMid].filter((m): m is string => m !== null),
-  });
-  expect(deleteAnchorMid, "delete-phase judge row strictly below the target").not.toBeNull();
-  const deleteBaselineOffset = await rowOffsetInHistory(page, deleteAnchorMid!);
-  expect(Number.isFinite(deleteBaselineOffset), "pre-confirm judge offset finite").toBe(true);
-  const deleteJudgeInside = (await readRowGeometry(page, deleteAnchorMid!))?.fullyInside ?? false;
-  expect(deleteJudgeInside, "pre-confirm judge row fully inside history").toBe(true);
-  const gapBeforeConfirm = await rowGapToNext(page, deleteAnchorMid!);
+  // 菜单已展开、尚未确认：等保持事务对"arm 插入内容"的补偿完成、判据
+  // 行几何静止后再读全部基线（仍严格早于最终确认点击）。
+  const deleteBaselineGeometry = await waitForSettledRowGeometry(
+    page,
+    judgeMid!,
+    "pre-confirm judge settles",
+  );
+  expect(deleteBaselineGeometry.fullyInside, "pre-confirm judge fully inside history").toBe(true);
+  const gapBeforeConfirm = await rowGapToNext(page, judgeMid!);
   expect(Number.isFinite(gapBeforeConfirm), "pre-confirm neighbor gap measured").toBe(true);
   await page.screenshot({ path: `${SHOTS}/delete-before.png` });
 
-  await deleteBtn.click();
+  await deleteBtn.click({ force: true });
   await expect(page.locator(`[data-mid="${expandTargetMid}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-testid="msg-more-${expandTargetMid}"]`)).toHaveCount(0);
   expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
   await assertNoBlankBand(page, "after deleting an earlier row");
   {
-    // round8（一）主判据：同一判据行的 history-relative 偏移误差 ≤4 CSS px；
-    // 邻行间距作为辅助量给出真实数值。删除发生在判据行之外的另一行（其上
-    // 方），因此判据行的钉回是空间连续性的唯一直接证据。
+    // round8（一）主判据：同一基准行的 history-relative 偏移误差 ≤4 CSS
+    // px；邻行间距作为辅助量给出真实数值。
     const settledGeometry = await waitForSettledRowGeometry(
       page,
-      deleteAnchorMid!,
+      judgeMid!,
       "deletion keeps user position",
     );
-    const anchorError = Math.abs(settledGeometry.offset - deleteBaselineOffset);
-    const gapAfterDelete = await rowGapToNext(page, deleteAnchorMid!);
+    const anchorError = Math.abs(settledGeometry.offset - deleteBaselineGeometry!.offset);
+    const gapAfterDelete = await rowGapToNext(page, judgeMid!);
     expect(
       anchorError,
-      `deletion pins the judge row's history-relative offset (err=${anchorError.toFixed(2)}px ≤ 4px; ` +
-        `gap ${gapBeforeConfirm!.toFixed(1)}→${gapAfterDelete.toFixed(1)}px @${String(deleteAnchorMid)})`,
+      `deletion pins the anchored row's offset (err=${anchorError.toFixed(2)}px ≤ 4px; ` +
+        `gap ${gapBeforeConfirm!.toFixed(1)}→${gapAfterDelete.toFixed(1)}px @${judgeMid})`,
     ).toBeLessThanOrEqual(4);
     await page.screenshot({ path: `${SHOTS}/delete-after.png` });
   }
