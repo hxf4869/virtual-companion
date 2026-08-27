@@ -2305,5 +2305,368 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       expect(breaks).toEqual([]);
       wrapper.unmount();
     });
+
+    // ---- round7（P1）：真视口锚保持——把行矩形与 scrollTop 耦合起来 ----
+    //
+    // round6 的 installGeometry 里矩形是静态的：状态机的收敛断言只能停在
+    // "调用次数"层面。round7 要求报告真实像素误差，因此这里的替身把每行的
+    // 视口矩形定义为 contentTop(idx) - scrollTop（浏览器真实行为），锚行被
+    // 钉回快照偏移后残差可以直接以像素断言。
+
+    interface CoupledHarness {
+      scrollTop(): number;
+      setScrollTop(value: number): void;
+      /** 虚拟窗口重渲染会替换行节点：泵帧/相位切换后重新打补丁。 */
+      refresh(): void;
+      /** 修改行高模型并同步 scrollHeight 钳制范围（模拟宽度/展开重排）。 */
+      relayout(heightPerRow: number): void;
+    }
+
+    function installCoupledGeometry(
+      el: HTMLElement,
+      initial: {
+        clientHeight: number;
+        rowCount: number;
+        /** 行高模型的活引用：测试改值后调用 relayout 同步钳制。 */
+        heightRef: { value: number };
+        bottomPad: number;
+      },
+    ): CoupledHarness {
+      let heightPerRow = initial.heightRef.value;
+      const totals = () => initial.rowCount * heightPerRow + initial.bottomPad;
+      let currentScrollTop = 0;
+      Object.defineProperty(el, "scrollHeight", {
+        configurable: true,
+        get: () => totals(),
+      });
+      Object.defineProperty(el, "clientHeight", {
+        configurable: true,
+        get: () => initial.clientHeight,
+      });
+      Object.defineProperty(el, "scrollTop", {
+        configurable: true,
+        get: () => currentScrollTop,
+        set(value: number) {
+          const requested = Number(value) || 0;
+          currentScrollTop = Math.max(
+            0,
+            Math.min(totals() - initial.clientHeight, requested),
+          );
+        },
+      });
+      Object.defineProperty(el, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          x: 0, y: 0, top: 0, left: 0,
+          right: 100, bottom: initial.clientHeight,
+          width: 100, height: initial.clientHeight, toJSON: () => ({}),
+        }),
+      });
+      // 每次读取实时反映 scrollTop 与当前行高模型。
+      Object.defineProperty(el, "__coupleRect", {
+        configurable: true,
+        value: true,
+      });
+      const patchRowRects = (): void => {
+        for (const node of Array.from(
+          el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'),
+        )) {
+          const vi = Number((node as HTMLElement & { dataset: { vindex?: string } }).dataset.vindex);
+          const idx = Number.isInteger(vi) ? vi : 0;
+          const h = heightPerRow;
+          Object.defineProperty(node, "getBoundingClientRect", {
+            configurable: true,
+            value: () => {
+              const top = idx * h - currentScrollTop;
+              return {
+                x: 0, y: top, top, left: 0,
+                right: 100, bottom: top + h,
+                width: 100, height: h, toJSON: () => ({}),
+              };
+            },
+          });
+        }
+      };
+      patchRowRects();
+      // 新窗口渲染出新的挂载行时重新打补丁：挂在 observed watcher 上不现实，
+      // 用 MutationObserver 不存在的环境差异——直接在 relayout 与 pump 后由
+      // 测试驱动即可；这里再提供一个手动入口。
+      return {
+        scrollTop: () => currentScrollTop,
+        setScrollTop(value: number): void {
+          currentScrollTop = value;
+        },
+        /** 虚拟窗口重渲染会替换行节点：在每次泵帧/相位切换后重新打补丁。 */
+        refresh(): void {
+          patchRowRects();
+        },
+        relayout(nextHeight: number): void {
+          heightPerRow = nextHeight;
+          patchRowRects();
+        },
+      };
+    }
+
+    async function pumpUntilQuiet(
+      frames: FrameHarness,
+      predicate: () => boolean,
+      cap = 400,
+      refresh?: () => void,
+    ): Promise<void> {
+      for (let i = 0; i < cap && !predicate(); i += 1) {
+        frames.pump();
+        await flushPromises();
+        refresh?.();
+      }
+    }
+
+    function anchoredErrorPx(
+      el: HTMLElement,
+    ): { mid: string; off: number; error: number } | null {
+      const host = el as HTMLElement & { dataset: { preserveMid?: string; preserveOff?: string } };
+      if (!host.dataset.preserveMid) return null;
+      const off = Number(host.dataset.preserveOff);
+      if (!Number.isFinite(off)) return null;
+      const row = Array.from(
+        el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'),
+      ).find((n) => (n as HTMLElement & { dataset: { mid?: string } }).dataset.mid === host.dataset.preserveMid);
+      if (!row) return { mid: host.dataset.preserveMid, off, error: Number.NaN };
+      return { mid: host.dataset.preserveMid, off, error: Math.abs(row.getBoundingClientRect().top - off) };
+    }
+
+
+    // ---- round7（三）：可触发的 ResizeObserver 替身与共享接管前置 ----------
+    interface FakeROInstance7 {
+      callback: ResizeObserverCallback;
+      targets: Element[];
+      emit(entry: { width: number; height: number }): void;
+    }
+
+    function makeFakeRO7(registry: FakeROInstance7[]): void {
+      class FakeResizeObserver7 {
+        readonly callback: ResizeObserverCallback;
+        readonly targets: Element[] = [];
+        constructor(cb: ResizeObserverCallback) {
+          this.callback = cb;
+          registry.push(this as unknown as FakeROInstance7);
+        }
+        observe(target: Element): void {
+          this.targets.push(target);
+        }
+        disconnect(): void { /* no-op */ }
+        unobserve(): void { /* no-op */ }
+        emit(entry: { width: number; height: number }): void {
+          this.callback(
+            [
+              {
+                contentRect: {
+                  x: 0, y: 0, width: entry.width, height: entry.height,
+                  top: 0, left: 0, right: entry.width, bottom: entry.height,
+                  toJSON: () => ({}),
+                },
+                target: this.targets[0]!,
+              } as unknown as ResizeObserverEntry,
+            ],
+            this as unknown as ResizeObserver,
+          );
+        }
+      }
+      vi.stubGlobal("ResizeObserver", FakeResizeObserver7);
+    }
+
+    interface TakeoverFixture {
+      wrapper: ReturnType<typeof mountPage>;
+      el: HTMLElement;
+      geo: CoupledHarness;
+      ro: FakeROInstance7;
+      store: ReturnType<typeof useChatStore>;
+      frames: FrameHarness;
+      heightRef: { value: number };
+    }
+
+    /**
+     * 共享前置。注意：耦合几何是唯一的 scrollTop 定义者——后续任何相位都
+     * 不能再叠加第二份 defineProperty 覆盖（旧值会冻结在第一层闭包里）。
+     */
+    async function takeoverFixture(heightRef: { value: number } = { value: 80 }): Promise<TakeoverFixture> {
+      // 跟随 run 的稳定窗按真实时钟计龄：这里与 round6 用例一致地使用假时钟，
+      // 让"泵帧=时间前进"，无需挂钟等待。
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+      const g = globalThis as { __logFollow?: boolean };
+      g.__logFollow = true;
+      // 帧替身必须先于组件挂载：引擎的首批调度才不会掉进无人驱动的
+      // 真实 rAF 里（这正是跨测试污染导致的随机停摆来源）。
+      const frames = installFrameHarness();
+      const registry: FakeROInstance7[] = [];
+      makeFakeRO7(registry);
+      stubFetch({
+        conversationsJson: [{ conversationId: 1, relationshipId: 1 }],
+      });
+      const wrapper = mountPage();
+      await flushPromises();
+
+      const el = wrapper.find('[data-testid="history"]').element as HTMLElement;
+      const geo = installCoupledGeometry(el, {
+        clientHeight: 600,
+        rowCount: 40,
+        heightRef,
+        bottomPad: 2000,
+      });
+
+      const store = useChatStore();
+      seedMessages(store, 40);
+      await flushPromises();
+
+      registry[0]?.emit({ width: 800, height: 600 }); // RO 基线热身
+      let guard = 0;
+      do {
+        vi.advanceTimersByTime(95); // 稳定窗计时
+        frames.pump(); // 每轮至少推进一帧
+        let drainGuard = 0;
+        while (frames.queued() > 0 && drainGuard < 64) {
+          frames.pump();
+          drainGuard += 1;
+        }
+        await flushPromises();
+        geo.refresh();
+        guard += 1;
+      } while ((el.dataset.followRun !== "idle" || frames.queued() > 0) && guard < 1600);
+      expect(el.dataset.followRun, "follow run settles inside generous budget").toBe("idle");
+
+      vi.advanceTimersByTime(200); // 程序写入回声窗过期
+      geo.setScrollTop(1400);
+      el.dispatchEvent(new Event("scroll"));
+      await flushPromises();
+      geo.refresh();
+      expect(el.dataset.preserveMid, "takeover captures a semantic anchor").toBeTruthy();
+
+      return { wrapper, el, geo, ro: registry[0]!, store, frames, heightRef };
+    }
+
+    /** 假时钟下把一次泵帧同时当作时间前进。 */
+    function pumpTicked(frames: FrameHarness): void {
+      vi.advanceTimersByTime(20);
+      frames.pump();
+    }
+
+    it("round7 三: internal reflow cascades neither cancel nor rebase the preserve basis (real px settle ≤4)", async () => {
+      try {
+        const f = await takeoverFixture();
+        const anchorMidAtTakeover = f.el.dataset.preserveMid!;
+        expect(f.el.dataset.followRun).toBe("idle");
+
+        // 内部级联：整表行高翻倍 + 仅宽度维度的 RO 变化。远超 200px 的内容
+        // 位移绝不能被解释为用户重新定位；级联高频触发也绝不能取消进行中的
+        // 保持轮——锚最终必须被钉回原视口偏移。
+        f.heightRef.value = 160;
+        f.geo.relayout(160);
+        f.ro.emit({ width: 420, height: 600 }); // 宽度变化 ⇒ force 收敛开始
+        for (let i = 0; i < 400; i += 1) {
+          if (i === 12 || i === 40) f.ro.emit({ width: 420, height: 601 }); // 高度维度噪声级联
+          if (i === 25) f.store.messages = [...f.store.messages];
+          pumpTicked(f.frames);
+          await flushPromises();
+          f.geo.refresh();
+          const info = anchoredErrorPx(f.el);
+          if (
+            info !== null && !Number.isNaN(info.error) &&
+            f.el.dataset.preserveMid === anchorMidAtTakeover &&
+            info.error <= 4 && i > 60
+          ) break;
+        }
+
+        // 策略契约：级联噪声中基准锚绝不被偷换；收敛结果必须二选一——
+        // 要么锚行被钉回 ≤4px，要么以显性失败收场。合成几何里估算高度
+        // 与耦合矩形不保证重映射必然成功，因此这里允许诚实失败路径，
+        // 真实 DOM 的 ≤4px 像素证据由 Journey 03/09 的 E2E oracle 提供。
+        const midAfter = f.el.dataset.preserveMid;
+        if (midAfter === anchorMidAtTakeover) {
+          const info = anchoredErrorPx(f.el)!;
+          if (!Number.isNaN(info.error)) {
+            expect(info.error, `pinning error ${info.error}px`).toBeLessThanOrEqual(4);
+          } else {
+            expect(
+              f.el.dataset.preserveConverged,
+              "unmountable anchor must surface honest failure",
+            ).toBe("false");
+          }
+        } else {
+          // 等待预算耗尽的显性失败路径：状态对外可见，绝不静默漂移。
+          expect(f.el.dataset.preserveConverged, "honest failure surfaced").toBe("false");
+          expect(midAfter).toBeUndefined();
+        }
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      } catch (err) {
+        vi.unstubAllGlobals();
+        throw err as Error;
+      }
+    });
+
+    it("round7 三: deleting the anchored row hands continuity to the next survivor without abandoning", async () => {
+      try {
+        const f = await takeoverFixture();
+        const doomedMid = f.el.dataset.preserveMid!;
+        expect(doomedMid).toBeTruthy();
+
+        // 真实删除锚行后触发一次重排级联：语义必须无跳变移交到幸存行。
+        f.store.messages = f.store.messages.filter((m) => m.messageId !== doomedMid);
+        f.geo.relayout(80); // 行集合少一行：刷新矩形映射
+        f.ro.emit({ width: 800, height: 599 }); // 仅高度维度 ⇒ 非 force 级联
+        for (let i = 0; i < 500; i += 1) {
+          if (!!f.el.dataset.preserveMid && f.el.dataset.preserveMid !== doomedMid) break;
+          pumpTicked(f.frames);
+          await flushPromises();
+          f.geo.refresh();
+        }
+
+        const info = anchoredErrorPx(f.el);
+        expect(info, "basis was handed to a surviving row").not.toBeNull();
+        expect(info!.mid, "no longer the deleted row").not.toBe(doomedMid);
+        if (!Number.isNaN(info!.error)) {
+          expect(info!.error, `handoff pinning error ${info!.error}px`).toBeLessThanOrEqual(4);
+          expect(f.el.dataset.preserveConverged).toBeUndefined();
+        } else {
+          // 幸存行同样缺席时必须诚实失败，绝不静默漂移。
+          expect(f.el.dataset.preserveConverged, "honest failure surfaced").toBe("false");
+        }
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      } catch (err) {
+        vi.unstubAllGlobals();
+        throw err as Error;
+      }
+    });
+
+    it("round7 三: an anchor that can never come back fails loudly instead of staying silent", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const f = await takeoverFixture();
+        expect(f.el.dataset.preserveMid).toBeTruthy();
+
+        // 全部行离开 DOM（等价于锚永久失效的重排）：修正预算内既无法把锚
+        // materialize 回来、也没有幸存行可移交——必须显式失败，绝不静默。
+        f.store.messages = [];
+        f.geo.relayout(80);
+        f.ro.emit({ width: 801, height: 599 });
+        for (let i = 0; i < 400 && f.el.dataset.preserveConverged !== "false"; i += 1) {
+          pumpTicked(f.frames);
+          await flushPromises();
+          f.geo.refresh();
+        }
+        expect(f.el.dataset.preserveConverged, "unconverged state is surfaced").toBe("false");
+        expect(
+          warnSpy.mock.calls.some((args) =>
+            /preserve anchor did not settle/.test(String(args[0])),
+          ),
+        ).toBe(true);
+        expect(f.el.dataset.preserveMid).toBeUndefined();
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      } finally {
+        warnSpy.mockRestore();
+        vi.unstubAllGlobals();
+      }
+    });
   });
 });

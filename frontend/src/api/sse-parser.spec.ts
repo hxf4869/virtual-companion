@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  consumeSseFrames,
   readSseFrames,
   SseAbortedError,
   SseParseError,
@@ -156,5 +157,53 @@ describe("readSseFrames (P2-15)", () => {
     await expect(readSseFrames(streamThatNeverEnds(), controller.signal)).rejects.toBeInstanceOf(
       SseAbortedError,
     );
+  });
+});
+// ---- round7（P2）：consumeSseFrames 的资源释放契约 ----
+
+describe("consumeSseFrames resource release (round7 P2)", () => {
+  it("releases the reader lock on normal EOF", async () => {
+    const body = streamOf(['data: {"eventSeq":1}\n\n']);
+    await consumeSseFrames(body);
+    expect(body.locked).toBe(false);
+  });
+
+  it("releases the lock and stops when the onFrame callback throws mid-stream", async () => {
+    const body = streamOf([
+      'data: {"eventSeq":1}\n\n',
+      'data: {"eventSeq":2}\n\n',
+      'data: {"eventSeq":3}\n\n',
+    ]);
+    const seen: number[] = [];
+    await expect(
+      consumeSseFrames(body, undefined, (frame) => {
+        seen.push((frame.data as { eventSeq: number }).eventSeq);
+        if ((frame.data as { eventSeq: number }).eventSeq === 2) {
+          throw new Error("callback blew up");
+        }
+      }),
+    ).rejects.toThrow(/callback blew up/);
+    expect(seen).toEqual([1, 2]);
+    expect(body.locked).toBe(false);
+  });
+
+  it("releases the lock when a frame fails to parse", async () => {
+    const body = streamOf(["data: not-json-at-all\n\n"]);
+    await expect(consumeSseFrames(body)).rejects.toBeInstanceOf(SseParseError);
+    expect(body.locked).toBe(false);
+  });
+
+  it("cancels the underlying read and releases the lock when aborted while waiting", async () => {
+    const held = new ReadableStream<Uint8Array>({
+      start() {
+        // never enqueues, never closes
+      },
+    });
+    const ac = new AbortController();
+    const pending = consumeSseFrames(held, ac.signal);
+    await Promise.resolve();
+    ac.abort();
+    await expect(pending).rejects.toBeInstanceOf(SseAbortedError);
+    expect(held.locked).toBe(false);
   });
 });

@@ -139,6 +139,10 @@ export async function readSseFrames(
  * abort 监听（cancel 底层流并裁决挂起的 read），两路均抛 SseAbortedError，
  * 与真实 fetch body 在 signal 中止时 reject 读操作的行为一致。解析失败抛出
  * SseParseError；onFrame 自身抛出的异常原样传播。
+ *
+ * round7（P2）：资源释放走 try/finally——正常 EOF、回调异常、解析异常与
+ * abort 四条出口都会移除 abort 监听并 releaseLock；异常出口同时已 cancel
+ * reader。锁绝不跨调用泄漏。
  */
 export async function consumeSseFrames(
   body: ReadableStream<Uint8Array> | null,
@@ -151,51 +155,73 @@ export async function consumeSseFrames(
   if (typeof body.getReader !== "function") {
     throw new SseParseError("SSE response body is not a readable stream");
   }
-  const reader = body.getReader();
   if (signal?.aborted) {
     throw new SseAbortedError();
   }
+  const reader = body.getReader();
+  // round7：abort 与底层 read 的完成是竞态——cancel 会把挂起 read 以
+  // done:true 落定；无论谁先赢，本标志保证出口一致抛 SseAbortedError。
+  let abortRequested = false;
   // 挂起 read 的 abort 裁决通道：signal 触发即 cancel 底层流并 reject race。
-  const racedAbort =
-    signal === undefined
-      ? null
-      : new Promise<never>((_resolve, reject) => {
-          signal.addEventListener(
-            "abort",
-            () => {
-              void reader.cancel().catch(() => undefined);
-              reject(new SseAbortedError());
-            },
-            { once: true },
-          );
-        });
+  let settleAbortRace: ((reason: unknown) => void) | null = null;
+  const abortRace = new Promise<never>((_resolve, reject) => {
+    settleAbortRace = reject;
+  });
+  abortRace.catch(() => undefined); // 竞态败者不得悬挂成 unhandled rejection。
+  const onAbort = (): void => {
+    // 先裁决竞态再 cancel：cancel 会同步把挂起 read 落定为 done，若让
+    // read 先赢，abort 语义就会退化成"正常 EOF"。
+    settleAbortRace?.(new SseAbortedError());
+    void reader.cancel().catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  const releaseResources = (): void => {
+    signal?.removeEventListener("abort", onAbort);
+    // 正常 EOF 与各类错误路径下挂起 read 都已落定，releaseLock 合法；
+    // 引擎实现差异下可能拒绝，防御性收尾但不吞任何业务异常。
+    try {
+      reader.releaseLock();
+    } catch {
+      // 锁已被底层状态机释放。
+    }
+  };
 
   const decoder = new TextDecoder();
   let buffer = "";
 
-  for (;;) {
-    if (signal?.aborted) {
-      throw new SseAbortedError();
+  try {
+    for (;;) {
+      if (abortRequested) {
+        throw new SseAbortedError();
+      }
+      const read = await Promise.race([reader.read(), abortRace]);
+      if (abortRequested) {
+        throw new SseAbortedError();
+      }
+      if (read.done) {
+        break;
+      }
+      buffer += decoder.decode(read.value, { stream: true });
+      // Both "\n\n" and "\r\n\r\n" boundaries; consume the exact separator.
+      let boundary = buffer.search(/\r?\n\r?\n/);
+      while (boundary !== -1) {
+        const raw = buffer.slice(0, boundary);
+        const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/);
+        buffer = buffer.slice(boundary + (separator ? separator[0].length : 2));
+        // 始终解析（而不是挂在可选回调后面）：无消费者的调用同样受
+        // "malformed 帧 = 类型化失败"契约约束。
+        const frame = parseFrame(raw);
+        onFrame?.(frame);
+        boundary = buffer.search(/\r?\n\r?\n/);
+      }
     }
-    const read = await (racedAbort === null
-      ? reader.read()
-      : Promise.race([reader.read(), racedAbort]));
-    if (read.done) {
-      break;
+    // Tail flush: an unclosed final frame is a real event (SSE EOF dispatch).
+    if (buffer.trim() !== "") {
+      const frame = parseFrame(buffer);
+      onFrame?.(frame);
     }
-    buffer += decoder.decode(read.value, { stream: true });
-    // Both "\n\n" and "\r\n\r\n" boundaries; consume the exact separator.
-    let boundary = buffer.search(/\r?\n\r?\n/);
-    while (boundary !== -1) {
-      const raw = buffer.slice(0, boundary);
-      const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/);
-      buffer = buffer.slice(boundary + (separator ? separator[0].length : 2));
-      onFrame?.(parseFrame(raw));
-      boundary = buffer.search(/\r?\n\r?\n/);
-    }
-  }
-  // Tail flush: an unclosed final frame is a real event (SSE EOF dispatch).
-  if (buffer.trim() !== "") {
-    onFrame?.(parseFrame(buffer));
+  } finally {
+    releaseResources();
   }
 }

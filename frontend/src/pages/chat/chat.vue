@@ -806,6 +806,14 @@ export default defineComponent({
     const scrollBoundEls = new Set<HTMLElement>();
 
     function bindHistoryScrollListener(el: HTMLElement): void {
+      // round7（P2）：重绑定必须立刻摘掉旧节点的原生 scroll 监听——不能等
+      // 最终 unmount 才统一清理，否则旧节点上的残余事件还会进状态机。
+      for (const bound of Array.from(scrollBoundEls)) {
+        if (bound !== el) {
+          bound.removeEventListener("scroll", boundScrollHandler);
+          scrollBoundEls.delete(bound);
+        }
+      }
       if (scrollBoundEls.has(el)) return;
       el.addEventListener("scroll", boundScrollHandler);
       scrollBoundEls.add(el);
@@ -841,8 +849,10 @@ export default defineComponent({
     function bindHistoryObserver(): void {
       if (typeof ResizeObserver === "undefined") return;
       historyObserver?.disconnect();
-      // 节点替换（Vue 重建容器）必须先取消挂在旧节点上的 follow run，
-      // 否则陈旧 run 会以 dirty 标记阻塞新节点的跟随请求。
+      // 节点替换（Vue 重建容器）：先递增令牌作废旧节点上一切挂起帧，再取消
+      // run——顺序保证陈旧 rAF 回调即使晚到也因 gen 不匹配而退出，绝不能
+      // 取消/污染随后在新节点上启动的新 run。
+      followGen += 1;
       cancelFollowRun();
       const el = historyNode();
       if (!el) return;
@@ -1033,11 +1043,16 @@ export default defineComponent({
 
     // P1/P2（round5）：用户已滚离时的视口保持——校准/spacer 重排/宽度变化
     // 会平移内容，只保数值 scrollTop 不够。以“首个可见消息的 messageId +
-    // 相对 history 顶边偏移”为锚，在布局突变时迭代复位（多轮直到收敛，
-    // 覆盖“测量回填引起的第二跳”）；任何真实滚动立即作废会话。
+    // 相对 history 顶边（视口）偏移”为外部语义锚，在布局突变时迭代复位
+    // （多轮直到收敛，覆盖“测量回填引起的第二跳”）；任何真实滚动立即作废
+    // 会话。round7：偏移语义就是“把锚行钉回捕获时它在视口里的像素位置”，
+    // 与内容高度无关，跨宽度/展开/折叠/删除一律成立——钳制区之外可精确到
+    // ≤4px。
     interface ViewportAnchorSnapshot {
       mid: string;
       offsetFromHistoryTop: number;
+      /** 锚行的虚拟索引：锚行暂时卸载（虚拟窗口搬移）时按它 materialize 回来。 */
+      vindex: number;
     }
     let viewportPreserveSession: ViewportAnchorSnapshot | null = null;
     /** 会话纪元：每次布局突变重新起一个异步收敛循环；旧循环读到过期
@@ -1052,14 +1067,17 @@ export default defineComponent({
       for (const node of Array.from(
         el.querySelectorAll('[data-testid="chat-message"]'),
       )) {
-        const row = node as HTMLElement & { dataset: { mid?: string } };
+        const row = node as HTMLElement & { dataset: { mid?: string; vindex?: string } };
         const anchorMid = row.dataset.mid;
         if (!anchorMid) continue;
+        const vindex = Number(row.dataset.vindex);
+        if (!Number.isInteger(vindex)) continue;
         const r = row.getBoundingClientRect();
         if (r.bottom <= rect.top + 1) continue;
         const snapOf = (): ViewportAnchorSnapshot => ({
           mid: anchorMid,
           offsetFromHistoryTop: Math.max(0, r.top - rect.top),
+          vindex,
         });
         // 首选：首个“完整落入可视区且离开顶缘 ≥8px”的行——判据只依赖
         // 本行的顶/底，并与顶缘保持保护带，避免亚像素抖动翻转归属。
@@ -1075,21 +1093,38 @@ export default defineComponent({
       return fallback;
     }
 
-    /** 返回使锚行回到快照偏移所需的 scrollTop 增量；找不到锚行返回 null。 */
-    function anchorDeltaFor(snap: ViewportAnchorSnapshot): number | null {
-      const el = historyNode();
-      if (!el) return null;
-      let target: HTMLElement | null = null;
+    /**
+     * round7：按 messageId（缺位时退化到快照记录的虚拟索引）把锚行重新
+     * materialize 出来；锚行只是被虚拟窗口暂时搬出 DOM 时借此恢复定位，
+     * 不再把“找不到节点”等同于放弃保持语义。
+     */
+    function rematerializeAnchorRow(el: HTMLElement, snap: ViewportAnchorSnapshot): HTMLElement | null {
       for (const node of Array.from(
         el.querySelectorAll('[data-testid="chat-message"]'),
       )) {
         const row = node as HTMLElement & { dataset: { mid?: string } };
-        if (row.dataset.mid === snap.mid) {
-          target = row;
-          break;
+        if (row.dataset.mid === snap.mid) return row;
+      }
+      if (snap.vindex >= 0) {
+        const byIndex = el.querySelector(
+          '[data-testid="chat-message"][data-vindex="' + snap.vindex + '"]',
+        );
+        // 索引只是查找捷径，身份仍必须成立：删除会使索引错位，绝不把别的
+        // 行当成锚（mid 已在补丁帧暂时缺席时才允许按纯索引认领）。
+        if (byIndex instanceof HTMLElement) {
+          const row = byIndex as HTMLElement & { dataset: { mid?: string } };
+          if (row.dataset.mid === snap.mid || !row.dataset.mid) return row;
         }
       }
-      if (!target) return null; // 锚行已被删除：保留数值 scrollTop 兜底。
+      return null;
+    }
+
+    /** 返回使锚行回到快照偏移所需的 scrollTop 增量；锚行不在 DOM 返回 null。 */
+    function anchorDeltaFor(snap: ViewportAnchorSnapshot): number | null {
+      const el = historyNode();
+      if (!el) return null;
+      const target = rematerializeAnchorRow(el, snap);
+      if (!target) return null; // 暂时卸载：由收敛循环等待重挂载。
       return (
         target.getBoundingClientRect().top -
         el.getBoundingClientRect().top -
@@ -1099,6 +1134,8 @@ export default defineComponent({
 
     function abandonViewportPreserve(): void {
       viewportPreserveSession = null;
+      activePreserveRun = null;
+      publishViewportPreserve();
     }
 
     /** 以“此刻用户看到的视图”重建保持基准（接管与每次真实滚动时调用）。 */
@@ -1132,69 +1169,140 @@ export default defineComponent({
     /** 以当前基准执行一轮多帧视口复位（依赖 watcher 与 ResizeObserver 共同触发）。
      * P2（round6）：宽度重排等 force 场景允许更多收敛轮——整表高度失效会
      * 引起"测量回填→窗口二次跳"的多段位移，8 轮常常停在半途。 */
+    /**
+     * round7：收敛循环的独占权模型。活动轮存在时，来自 ResizeObserver /
+     * 虚拟窗口 watcher / 测量回填的级联触发不再另起新纪元（也就不会取消正在
+     * 进行的 force 收敛、不会把 >200px 的内部重排误判成用户重新定位）；只有
+     * 真实、非回声的用户滚动会经由 rebaseViewportPreserve 重建基准。
+     */
+    let activePreserveRun: { myEpoch: number; force: boolean } | null = null;
+
+    /** 残差验收：与快照偏移的绝对误差上限（CSS px）。 */
+    const PRESERVE_SETTLE_PX = 1;
+    /**
+     * 锚行暂时缺席（虚拟窗口重映射中）允许的最大等待帧——显著宽于写回
+     * 预算：等待期间窗口靠测量回填自行收敛。超过即按"锚不可用"显性失败。
+     */
+    const PRESERVE_UNMOUNTED_TICKS = 150;
+
+    /** 耗尽轮数仍未收敛：不静默——把残差发布到 DOM 并记录数值告警。 */
+    function failUnconverged(el: HTMLElement, residualPx: number): void {
+      el.dataset.preserveConverged = "false";
+      el.dataset.preserveResidualPx = Number.isFinite(residualPx)
+        ? residualPx.toFixed(2)
+        : "anchor-unavailable";
+      // 仅几何数值，不含任何对话内容或敏感标识。
+      console.warn("[chat] preserve anchor did not settle");
+    }
+
+    /**
+     * round7：messageId 是否仍存在于当前会话的消息列表——"真删除"与
+     * "虚拟窗口暂时卸载"的唯一权威区分。前者移交基准/显式失败，后者原地
+     * 等测量回填把行带回来，绝不偷换锚语义。
+     */
+    function anchorRowDeletedForever(mid: string): boolean {
+      return !store.messages.some((m) => m.messageId === mid);
+    }
+
     function runPreserveCorrection(opts: { force?: boolean } = {}): void {
+      if (!viewportPreserveSession) return;
+      // 级联去重：已有活动轮时只让它逐轮重读最新几何，绝不取消/重置。
+      if (!opts.force && activePreserveRun) return;
       const myEpoch = ++preserveEpoch;
+      activePreserveRun = { myEpoch, force: !!opts.force };
       void (async () => {
-        await nextTick();
-        // 双 rAF：等浏览器完成一次布局与绘制后再读几何。
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        );
-        let stableRounds = 0;
-        const maxRounds = opts.force ? 24 : 8;
-        for (let round = 0; round < maxRounds; round += 1) {
-          if (myEpoch !== preserveEpoch || !viewportPreserveSession) return;
-          if (followingLatest.value) {
-            abandonViewportPreserve();
-            return;
-          }
-          const el = historyNode();
-          if (!el) return;
-          const delta = anchorDeltaFor(viewportPreserveSession);
-          if (
-            !opts.force &&
-            delta !== null &&
-            Math.abs(delta) > 200
-          ) {
-            // 与基准相距过远＝用户已重新定位：以当前位置为新基准，
-            // 不做任何“拉回”（自体型突变走 force 路径，不进此分支）。
-            viewportPreserveSession = captureVisibleAnchor();
-            publishViewportPreserve();
-            return;
-          }
-          if (delta === null) {
-            abandonViewportPreserve();
-            return;
-          }
-          if (Math.abs(delta) < 1) {
-            // 连续两轮亚像素稳定才收尾：吸收迟到的测量回填。
-            stableRounds += 1;
-            if (stableRounds >= 2) {
-              // 迟到复核：某些布局输入（头部实测高度等）在收敛后还会
-              // 变化一次；延迟复核发现残余位移时以新纪元重启一轮。
-              setTimeout(() => {
-                if (
-                  myEpoch === preserveEpoch &&
-                  viewportPreserveSession &&
-                  !followingLatest.value
-                ) {
-                  const lateDelta = anchorDeltaFor(viewportPreserveSession);
-                  if (lateDelta !== null && Math.abs(lateDelta) >= 2) {
-                    runPreserveCorrection();
-                  }
-                }
-              }, 140);
-              publishViewportPreserve();
+        try {
+          await nextTick();
+          // 双 rAF：等浏览器完成一次布局与绘制后再读几何。
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+          let stableRounds = 0;
+          let unmountedTicks = 0;
+          const maxRounds = opts.force ? 24 : 8;
+          for (let round = 0; round < maxRounds || unmountedTicks < PRESERVE_UNMOUNTED_TICKS; round += 0) {
+            if (myEpoch !== preserveEpoch || !viewportPreserveSession) return;
+            if (followingLatest.value) {
+              abandonViewportPreserve();
               return;
             }
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            continue;
+            const el = historyNode();
+            if (!el) return;
+            const delta = anchorDeltaFor(viewportPreserveSession);
+            if (delta === null) {
+              if (anchorRowDeletedForever(viewportPreserveSession.mid)) {
+                // 真删除：把保持基准无跳变地移交给当前可视首行（同样的
+                // messageId+视口偏移语义）；没有幸存可视行才算真正失败。
+                const rebased = captureVisibleAnchor();
+                if (rebased && rebased.mid !== viewportPreserveSession.mid) {
+                  viewportPreserveSession = rebased;
+                  publishViewportPreserve();
+                  return;
+                }
+                failUnconverged(el, Number.NaN);
+                abandonViewportPreserve();
+                return;
+              }
+              // 只是暂时卸载：保持不动，同时主动驱动一次测量回填，让
+              // 虚拟窗口尽快把锚行带回 DOM；等待帧单独计数，超限走统一
+              // 的显性失败路径。
+              stableRounds = 0;
+              unmountedTicks += 1;
+              if (unmountedTicks >= PRESERVE_UNMOUNTED_TICKS) {
+                failUnconverged(el, Number.NaN);
+                abandonViewportPreserve();
+                return;
+              }
+              scheduleRowMeasurement();
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              continue;
+            }
+            if (Math.abs(delta) < PRESERVE_SETTLE_PX) {
+              // 连续两轮亚像素稳定才收尾：吸收迟到的测量回填。
+              stableRounds += 1;
+              if (stableRounds >= 2) {
+                // 迟到复核：某些布局输入（头部实测高度等）在收敛后还会
+                // 变化一次；延迟复核发现残余位移时以新纪元重启一轮。
+                setTimeout(() => {
+                  if (
+                    myEpoch === preserveEpoch &&
+                    viewportPreserveSession &&
+                    !followingLatest.value &&
+                    !activePreserveRun
+                  ) {
+                    const lateDelta = anchorDeltaFor(viewportPreserveSession);
+                    if (lateDelta !== null && Math.abs(lateDelta) >= 2) {
+                      runPreserveCorrection();
+                    }
+                  }
+                }, 140);
+                publishViewportPreserve();
+                delete el.dataset.preserveConverged;
+                delete el.dataset.preserveResidualPx;
+                return;
+              }
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              continue;
+            }
+            stableRounds = 0;
+            setProgrammaticScroll(el, el.scrollTop + delta);
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            );
           }
-          stableRounds = 0;
-          setProgrammaticScroll(el, el.scrollTop + delta);
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve()),
-          );
+          // round7：预算耗尽必须显式失败，绝不静默留下残差。以锚行当前位置
+          // 复测一次最终残差并对外可见。
+          const el2 = historyNode();
+          const finalDelta =
+            viewportPreserveSession && el2 ? anchorDeltaFor(viewportPreserveSession) : null;
+          const residual = finalDelta === null ? Number.NaN : Math.abs(finalDelta);
+          if (Number.isFinite(residual) && residual < PRESERVE_SETTLE_PX * 2) {
+            publishViewportPreserve();
+            return; // 已在实际意义上收敛（最后一写已生效）。
+          }
+          if (el2) failUnconverged(el2, residual);
+        } finally {
+          if (activePreserveRun?.myEpoch === myEpoch) activePreserveRun = null;
         }
       })();
     }
@@ -1379,6 +1487,7 @@ export default defineComponent({
       followGen += 1;
       cancelFollowRun();
       viewportPreserveSession = null;
+      activePreserveRun = null;
       preserveEpoch += 1;
       measuredHeights.value = new Map();
       msgFlowTopPx.value = 0;
@@ -1433,7 +1542,10 @@ export default defineComponent({
     function transferOwnership(): void {
       followingLatest.value = false;
       followGen += 1;
+      // round7（P2）：不能只把内部指针置空——必须同步发布 data-follow-run
+      // "idle"，外部观察者与测试才看得到状态机已停止。
       activeFollowRun = null;
+      publishFollowRunState();
       // 接管瞬间锁定“用户看到的视图”为后续引擎自纠错的唯一基准。
       rebaseViewportPreserve();
     }
