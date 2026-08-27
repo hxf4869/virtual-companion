@@ -17,6 +17,10 @@
 //     typed failure, never a silent empty stream.
 //   - An aborted signal throws SseAbortedError so the caller can distinguish
 //     cancellation from a transport failure.
+//
+// P1（round6）: 连接内流式消费。consumeSseFrames 在每个完整帧就绪时立即回调
+// onFrame——生产 transport 借此把 durable event 在同一连接内即时上交 reducer，
+// 不再缓存到 EOF；readSseFrames 退化为它的收集包装，语义与旧实现逐帧一致。
 
 export interface SseFrame {
   /**
@@ -49,11 +53,19 @@ export class SseAbortedError extends Error {
   }
 }
 
+/**
+ * P1（round6）：连接内流式消费回调。每解析出一个完整 SSE 帧（含终局尾部
+ * flush）立即派发一次。回调抛出的异常不包装、原样向上传播，由调用方归入
+ * 可恢复失败。
+ */
+export type SseFrameCallback = (frame: SseFrame) => void;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function flushFrame(raw: string, frames: SseFrame[]): void {
+/** Parse one raw frame text into an {@link SseFrame}; throws SseParseError on bad data. */
+function parseFrame(raw: string): SseFrame {
   const lines = raw.split(/\r?\n/);
   const dataLines = lines
     .filter((line) => line.startsWith("data:"))
@@ -67,11 +79,11 @@ function flushFrame(raw: string, frames: SseFrame[]): void {
     // SSE event name but no data: line. It is a real event and must be surfaced
     // so the transport can map it to a resume disposition. Only a frame with
     // neither an event nor a data line (a comment/keepalive, e.g. ": ping")
-    // carries no event and is skipped (R1 P3).
+    // carries no event and is skipped (R1 P3); it materializes as data === SKIP.
     if (eventName) {
-      frames.push({ event: eventName, data: null });
+      return { event: eventName, data: null };
     }
-    return;
+    return SKIP_FRAME;
   }
   let payload: unknown;
   try {
@@ -89,7 +101,18 @@ function flushFrame(raw: string, frames: SseFrame[]): void {
   if (typeof payload.disposition === "string") {
     frame.disposition = payload.disposition;
   }
-  frames.push(frame);
+  return frame;
+}
+
+/**
+ * Sentinel for a comment/keepalive frame that carries neither an event nor a
+ * data line (: ping). Consumers MUST ignore it; the callback contract stays
+ * "one call per parsed frame", so keep-alives surface instead of vanishing.
+ */
+const SKIP_FRAME: SseFrame = Object.freeze({ data: Symbol("sse-skip") }) as unknown as SseFrame;
+
+function isSkip(frame: SseFrame): boolean {
+  return frame === (SKIP_FRAME as unknown);
 }
 
 /**
@@ -103,39 +126,76 @@ export async function readSseFrames(
   body: ReadableStream<Uint8Array> | null,
   signal?: AbortSignal,
 ): Promise<SseFrame[]> {
+  const frames: SseFrame[] = [];
+  await consumeSseFrames(body, signal, (frame) => {
+    if (!isSkip(frame)) frames.push(frame);
+  });
+  return frames;
+}
+
+/**
+ * P1（round6）：帧级流式消费。逐块解码、切分完整帧并在每个帧就绪时立即调用
+ * {@link onFrame}，绝不缓存整条连接等待 EOF。abort 语义：读取前检查 + 一次性
+ * abort 监听（cancel 底层流并裁决挂起的 read），两路均抛 SseAbortedError，
+ * 与真实 fetch body 在 signal 中止时 reject 读操作的行为一致。解析失败抛出
+ * SseParseError；onFrame 自身抛出的异常原样传播。
+ */
+export async function consumeSseFrames(
+  body: ReadableStream<Uint8Array> | null,
+  signal?: AbortSignal,
+  onFrame?: SseFrameCallback,
+): Promise<void> {
   if (body === null) {
-    return [];
+    return;
   }
   if (typeof body.getReader !== "function") {
     throw new SseParseError("SSE response body is not a readable stream");
   }
   const reader = body.getReader();
+  if (signal?.aborted) {
+    throw new SseAbortedError();
+  }
+  // 挂起 read 的 abort 裁决通道：signal 触发即 cancel 底层流并 reject race。
+  const racedAbort =
+    signal === undefined
+      ? null
+      : new Promise<never>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              void reader.cancel().catch(() => undefined);
+              reject(new SseAbortedError());
+            },
+            { once: true },
+          );
+        });
+
   const decoder = new TextDecoder();
   let buffer = "";
-  const frames: SseFrame[] = [];
 
   for (;;) {
     if (signal?.aborted) {
       throw new SseAbortedError();
     }
-    const { value, done } = await reader.read();
-    if (done) {
+    const read = await (racedAbort === null
+      ? reader.read()
+      : Promise.race([reader.read(), racedAbort]));
+    if (read.done) {
       break;
     }
-    buffer += decoder.decode(value, { stream: true });
+    buffer += decoder.decode(read.value, { stream: true });
     // Both "\n\n" and "\r\n\r\n" boundaries; consume the exact separator.
     let boundary = buffer.search(/\r?\n\r?\n/);
     while (boundary !== -1) {
       const raw = buffer.slice(0, boundary);
       const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/);
       buffer = buffer.slice(boundary + (separator ? separator[0].length : 2));
-      flushFrame(raw, frames);
+      onFrame?.(parseFrame(raw));
       boundary = buffer.search(/\r?\n\r?\n/);
     }
   }
   // Tail flush: an unclosed final frame is a real event (SSE EOF dispatch).
   if (buffer.trim() !== "") {
-    flushFrame(buffer, frames);
+    onFrame?.(parseFrame(buffer));
   }
-  return frames;
 }
