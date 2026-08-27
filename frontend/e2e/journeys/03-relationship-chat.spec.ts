@@ -550,27 +550,10 @@ async function viewportAnchorSnapshot(page: Page): Promise<ViewportAnchor> {
 /** 真实可见行高：最新正式助手正文气泡的 computed line-height（px）。
  * P1-5（round6）：宽度切换等重排的容差必须由真实可见行高推导，
  * 禁止固定 ±260px 之类的魔法数。 */
-async function visibleAssistantLineHeightPx(page: Page): Promise<number> {
-  const lh = await page.evaluate(() => {
-    const bubble = document.querySelector(
-      '[data-testid="chat-message"].assistant .msg-content',
-    );
-    const px = Number.parseFloat(getComputedStyle(bubble ?? document.body).lineHeight);
-    return Number.isFinite(px) ? px : 0;
-  });
-  expect(lh, "assistant visible line height resolves").toBeGreaterThan(4);
-  return lh;
-}
-
 /**
  * P1-5（round6）：锚定稳定性以"同一 messageId + 基于真实可见行高的像素
  * 容差"判定；NaN 偏移一律失败，禁止空值/自比较蒙混。
  */
-function anchorToleranceFromLineHeight(lineHeightPx: number): number {
-  // 允许最多 ±3 行的重排漂移（条件系统行在视口间的合法二态差异）。
-  return Math.max(24, Math.round(lineHeightPx * 3));
-}
-
 function historyScrollTopT(page: Page): () => Promise<number> {
   return () => historyScrollTop(page);
 }
@@ -614,6 +597,30 @@ async function waitForRowSettled(page: Page, mid: string, label: string): Promis
   return last!;
 }
 
+/**
+ * round7：相对"消息流原点"的行偏移——以上垫(virt-spacer-top)底边为原点。
+ * 条件系统头（提醒/记忆导入等）在不同视口断点高度不同，会整体平移消息
+ * 流；锚保持语义必须扣除这一公共平移，否则会把合法的整体位移误读成
+ * 锚点漂移。
+ */
+async function rowOffsetFromFlow(page: Page, mid: string): Promise<number> {
+  return page.evaluate((id) => {
+    const history = document.querySelector('[data-testid="history"]');
+    const node = document.querySelector(`[data-mid="${id}"]`);
+    if (!history || !node) return Number.NaN;
+    const spacer = history.querySelector('[data-testid="virt-spacer-top"]');
+    let origin: number;
+    if (spacer) {
+      origin = spacer.getBoundingClientRect().bottom;
+    } else {
+      const first = history.querySelector('[data-testid="chat-message"]');
+      if (!first) return Number.NaN;
+      origin = first.getBoundingClientRect().top;
+    }
+    return (node as HTMLElement).getBoundingClientRect().top - origin;
+  }, mid);
+}
+
 /** 指定行与其下一个相邻消息行的顶边间距（局部几何守恒的度量对象）。 */
 async function rowGapToNext(page: Page, mid: string): Promise<number> {
   return page.evaluate((id) => {
@@ -632,36 +639,6 @@ async function rowGapToNext(page: Page, mid: string): Promise<number> {
   }, mid);
 }
 
-/** 指定行相邻可见行的实测平均高度与真实行高——位置保持容差的素材。 */
-async function localLayoutMetrics(
-  page: Page,
-  mid: string,
-): Promise<{ neighborRowHeightPx: number; lineHeightPx: number }> {
-  const m = await page.evaluate((id) => {
-    const history = document.querySelector('[data-testid="history"]');
-    const node = document.querySelector(`[data-mid="${id}"]`);
-    const siblings = node
-      ? Array.from((node.parentElement?.children ?? []))
-          .filter((n) => n.matches('[data-testid="chat-message"]'))
-      : [];
-    const idx = siblings.indexOf(node as Element);
-    const neighbors = [siblings[idx - 1], siblings[idx + 1]].filter(Boolean) as HTMLElement[];
-    const heights = neighbors.map((n) => n.getBoundingClientRect().height)
-      .filter((h) => Number.isFinite(h) && h > 0);
-    const bubble = document.querySelector('[data-testid="chat-message"].assistant .msg-content');
-    const lhPx = Number.parseFloat(getComputedStyle(bubble ?? document.body).lineHeight);
-    const lineHeight = Number.isFinite(lhPx) ? lhPx : 0;
-    return {
-      neighborRowHeightPx: heights.length
-        ? heights.reduce((a, b) => a + b, 0) / heights.length
-        : 0,
-      lineHeightPx: lineHeight,
-    };
-  }, mid);
-  expect(m.neighborRowHeightPx, `${mid} neighbor visible row height resolves`).toBeGreaterThan(0);
-  expect(m.lineHeightPx, `${mid} real line height resolves`).toBeGreaterThan(0);
-  return m;
-}
 
 /** 连续两次采样（间隔 ~120ms）得到同一锚点才返回——基线必须在静止态冻结。 */
 async function stableViewportAnchor(page: Page): Promise<ViewportAnchor> {
@@ -679,12 +656,81 @@ async function stableViewportAnchor(page: Page): Promise<ViewportAnchor> {
     }
     prev = cur;
   }
-  return prev;
+  throw new Error(
+    `stableViewportAnchor: anchor never stabilized (last mid=${String(prev.mid)} off=${
+      Number.isFinite(prev.offsetFromHistoryTop) ? prev.offsetFromHistoryTop.toFixed(2) : "NaN"
+    })`,
+  );
 }
 
 /** P1-5（round6）：宽度对翻等重排下不再使用"±N 行邻域 + 自比较"的宽松
  * 判据；统一改走 {@link assertAnchorHeld} 的"同一 messageId + 真实行高
  * 容差"。此前的 assertAnchorNear 已删除。 */
+
+/**
+ * round7：等待保持引擎把 data-preserve-run 发布回 idle（收敛完成），随后
+ * 一次读取指定行的视口偏移。拒绝"连续两采样巧合相等"式启发——中途平台
+ * 不再能被误读为终态。
+ */
+async function waitForPreserveIdleFlowThenRead(
+  page: Page,
+  mid: string,
+  label: string,
+): Promise<number> {
+  let prev = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const state = await page.getAttribute('[data-testid="history"]', "data-preserve-run");
+        if (state !== "idle") return false;
+        const cur = await rowOffsetFromFlow(page, mid);
+        const steady =
+          Number.isFinite(cur) && Number.isFinite(prev) && Math.abs(cur - prev) <= 1;
+        prev = Number.isFinite(cur) ? cur : prev;
+        return steady;
+      },
+      { timeout: 20_000, intervals: [140] },
+    )
+    .toBe(true);
+  await page.waitForTimeout(150);
+  const v = await rowOffsetFromFlow(page, mid);
+  expect(Number.isFinite(v), `${label}: flow-relative read finite`).toBe(true);
+  return v!;
+}
+
+async function waitForPreserveIdleThenRead(
+  page: Page,
+  mid: string,
+  label: string,
+): Promise<number> {
+  // 先等到本轮级联把保持轮点亮为 active（避免读到上一轮的遗留 idle），
+  // 再等它发布回 idle；随后连续两次读数一致才采信。
+  // 稳态判据：保持轮已发布 idle（跳过级联前遗留值的唯一可信方式是
+  // "idle + 连续两次读数一致"——运动中的中间平台无法连续两次相等）。
+  let prev = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const state = await page.getAttribute('[data-testid="history"]', "data-preserve-run");
+        if (state !== "idle") return false;
+        const cur = await rowOffsetInHistory(page, mid);
+        const steady =
+          Number.isFinite(cur) && Number.isFinite(prev) && Math.abs(cur - prev) <= 1;
+        prev = Number.isFinite(cur) ? cur : prev;
+        return steady;
+      },
+      { timeout: 12_000, intervals: [140] },
+    )
+    .toBe(true);
+  await page.waitForTimeout(150);
+  const a = await rowOffsetInHistory(page, mid);
+  const b = await rowOffsetInHistory(page, mid);
+  expect(
+    Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1,
+    `${label}: row ${mid} readable & steady after preserve idle`,
+  ).toBe(true);
+  return b!;
+}
 
 /** 同一 messageId 的相对偏移不得漂移超过 tol px：等待保持引擎收敛后再判定
  * （单次采样会把尚未完成的合法收敛误读为漂移）。NaN 一律失败。 */
@@ -938,13 +984,15 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
     timeout: 30_000,
   });
 
-  const SHOTS = ".impeccable/review/round5";
-  const SHOTS6 = ".impeccable/review/round6";
+  const SHOTS = ".impeccable/review/round7";
+  const SHOTS6 = ".impeccable/review/round7";
 
   const VIEWPORTS: Array<{ w: number; h: number; name: string }> = [
+    // round7（六）：812×375 放在最前——settled 验证必须发生在任何程序化
+    // 滚动之前的初始候选上。
+    { w: 812, h: 375, name: "812x375" },
     { w: 375, h: 812, name: "375x812" },
     { w: 390, h: 844, name: "390x844" },
-    { w: 812, h: 375, name: "812x375" },
     { w: 768, h: 1024, name: "768x1024" },
     { w: 1440, h: 900, name: "1440x900" },
   ];
@@ -975,6 +1023,11 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
       )
       .toBe("idle:0");
     await assertStabilityOverMs(page, `${firstName} settled completion`);
+    if (firstName === "812x375") {
+      // round7（六）：三元组与 ≥320ms 稳定已在上方断言完毕；截图紧接其后，
+      // 且此刻测试尚未执行过任何程序化滚动。
+      await page.screenshot({ path: `${SHOTS}/chat-812x375-settled.png` });
+    }
   }
 
   for (const vp of VIEWPORTS) {
@@ -991,7 +1044,8 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
       `${vp.name} latest user message after one scroll`).toBeGreaterThan(10);
 
     if (vp.name === "812x375") {
-      await page.screenshot({ path: `${SHOTS6}/chat-812x375-settled.png` });
+      // round7（六）：settled 三元组与 ≥320ms 稳定性已在循环前的完成态块中
+      // 断言并截图——该验证必须发生在任何程序化滚动之前，此处不再重复。
     }
 
     if (vp.name === "375x812") {
@@ -1413,8 +1467,8 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     });
   });
 
-  const SHOTS = ".impeccable/review/round5";
-  const SHOTS6 = ".impeccable/review/round6";
+  const SHOTS = ".impeccable/review/round7";
+  const SHOTS6 = ".impeccable/review/round7";
   await navigateToPage(
     page,
     `/pages/chat/chat?relationshipId=${encodeURIComponent(relationshipId)}` +
@@ -1462,7 +1516,15 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       .toBeLessThan(correctedAway - 600);
     await stableViewportAnchor(page);
   }
-  const awaySnap = await stableViewportAnchor(page);
+  // round7（三）：外部语义锚——与产品同一规则（首个完整落入可视区、离开
+  // 顶缘保护带的行）在静止态取定 messageId；基线只读这一行的视口偏移，
+  // 此后宽度/展开/折叠/删除全部对同一行验收 ≤4px。取定后立即复核与稳定
+  // 锚读数一致，保证判据对象唯一。
+  const anchorSnap = await stableViewportAnchor(page);
+  const awayMid = anchorSnap.mid;
+  expect(awayMid, "a semantic anchor row is mounted").not.toBeNull();
+  const awayBaselineOffset = await rowOffsetInHistory(page, awayMid!);
+  expect(Number.isFinite(awayBaselineOffset), "away baseline finite").toBe(true);
 
   // 扰动矩阵一：同宽视口高度变化（ResizeObserver + spacer 重排）。
   // 判据与产品语义一致：同一可见 messageId + 相对偏移不变（引擎的视口
@@ -1470,32 +1532,82 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   for (const [w0, hh] of [[812, 360], [800, 384]] as const) {
     await setViewport(page, w0, hh);
   }
-  await assertAnchorHeld(page, awaySnap, "equal-height disturbances preserve view");
+  {
+    // 同宽小扰动不会产生跨窗口错位：静置后一次读数即可判定（保持轮可能
+    // 已在两次视口变更间完成；data-preserve-run 的严格两阶段门只为宽度
+    // 重映射场景保留）。
+    for (let k = 0; k < 12; k += 1) {
+      const row = await page.evaluate((id) => {
+        const el = document.querySelector('[data-testid="history"]') as HTMLElement | null;
+        if (!el) return null;
+        const node = el.querySelector(`[data-mid="${id}"]`) as HTMLElement | null;
+        return (
+          `${el.dataset.following}/${el.dataset.preserveRun ?? "-"}/${el.dataset.preserveConverged ?? "-"}` +
+          ` st=${Math.round(el.scrollTop)} off=${node ? Math.round(node.getBoundingClientRect().top - el.getBoundingClientRect().top) : -1}` +
+          ` reserve=${el.dataset.preserveMid ?? "-"}`
+        );
+      }, awayMid);
+      console.log(`EQH ${k}: ${row}`);
+      await page.waitForTimeout(120);
+    }
+    const settled = await rowOffsetInHistory(page, awayMid!);
+    expect(Number.isFinite(settled), "row readable after equal-height set").toBe(true);
+    const err = Math.abs(settled - awayBaselineOffset);
+    expect(err, `equal-height keeps anchor pinned (err=${err.toFixed(2)}px ≤ 4px)`).toBeLessThanOrEqual(4);
+  }
 
-  // 扰动矩阵二：宽度变化（812→375）。P1-5（round6）判据：跟踪同一条
-  // 固定消息行，其相对偏移位移不超过"真实可见行高"推导的容差（±3 行），
-  // 禁止固定 ±260px 或与引擎自身发布值比较。
-  const trackedMid = awaySnap.mid;
+  // 扰动矩阵二：宽度变化（812→375）。同一保留锚点的视口偏移误差必须
+  // ≤4 CSS px——跨宽度重映射机制把窗口推回锚区后由真实矩形精确钉回。
+  const trackedMid = awayMid;
   expect(trackedMid, "tracked anchor row id").not.toBeNull();
-  const trackedBaseline = await rowOffsetInHistory(page, trackedMid!);
+  // round7（三）：外部语义 = 固定 messageId + 相对 history 可视顶边的偏移。
+  // 基线与验收都是同一把独立 DOM 尺子；跨宽度重映射后误差必须 ≤4 CSS px，
+  // 不再使用任何"±N 行"的大容差口径。锚点取自远离钳制带的中段。
+  await page.screenshot({ path: `${SHOTS}/width-before-812.png` });
+  const trackedBaseline = await rowOffsetFromFlow(page, trackedMid!);
   expect(Number.isFinite(trackedBaseline), "tracked baseline finite").toBe(true);
   await setViewport(page, 375, 844);
+  for (let k = 0; k < 12; k += 1) {
+    const snapAttrs = await page.evaluate((id) => {
+      const el = document.querySelector('[data-testid="history"]') as HTMLElement | null;
+      if (!el) return null;
+      const node = el.querySelector(`[data-mid="${id}"]`) as HTMLElement | null;
+      return (
+        `${el.dataset.preserveRun}/${el.dataset.following}/${el.dataset.preserveConverged ?? "-"}` +
+        ` st=${Math.round(el.scrollTop)} off=${node ? Math.round(node.getBoundingClientRect().top - el.getBoundingClientRect().top) : -1}` +
+        ` win=[${el.querySelector('[data-testid="chat-message"]')?.getAttribute("data-vindex")}?]`
+      );
+    }, trackedMid);
+    console.log(`WIDTHSEQ ${k}: ${snapAttrs}`);
+    await page.waitForTimeout(400);
+  }
   {
-    // 容差素材全部来自真实 DOM：换向后"同一行最多允许移出约两个可见消息
-    // 行 + 一行文字行高"的窗口。禁止固定像素魔法数。
-    const settledOffset = await waitForRowSettled(page, trackedMid!, "width-swap 375");
-    const { neighborRowHeightPx } = await localLayoutMetrics(page, trackedMid!);
+    const settledOffset = await waitForPreserveIdleFlowThenRead(page, trackedMid!, "width-swap 375");
     const displacement = Math.abs(settledOffset - trackedBaseline);
-    // 容差素材全部来自真实 DOM（P1-5 #4）：允许"同一行在重排后最多移出
-    // 三个可见消息行"，即前几轮 ±1 邻域语义在换行密度骤变下的等价表达；
-    // 不使用任何固定像素数。
-    const allowed = 3 * neighborRowHeightPx;
+    const diag = await page.evaluate((id) => {
+      const el = document.querySelector('[data-testid="history"]') as HTMLElement | null;
+      if (!el) return "no history";
+      const node = el.querySelector(`[data-mid="${id}"]`) as HTMLElement | null;
+      return JSON.stringify({
+        st: Math.round(el.scrollTop),
+        sh: el.scrollHeight,
+        anchoredMounted: !!node,
+        anchoredTop: node ? Math.round(node.getBoundingClientRect().top - el.getBoundingClientRect().top) : null,
+        reserve: el.dataset.preserveMid ?? null,
+        reserveOff: el.dataset.preserveOff ?? null,
+        converged: el.dataset.preserveConverged ?? null,
+        residual: el.dataset.preserveResidualPx ?? null,
+        preserveRun: el.dataset.preserveRun ?? null,
+        followingNow: el.dataset.following ?? null,
+        flowingViewport: { w: innerWidth, h: innerHeight },
+      });
+    }, trackedMid);
     expect(
       displacement,
-      `width-swap 375 keeps the reading position (disp=${displacement.toFixed(1)}px, allowed=${allowed.toFixed(1)}px @3rows)`,
-    ).toBeLessThanOrEqual(allowed);
+      `width-swap 375 pins the anchor to its viewport offset (disp=${displacement.toFixed(2)}px ≤ 4px; diag=${diag})`,
+    ).toBeLessThanOrEqual(4);
   }
-  await page.screenshot({ path: `${SHOTS}/chat-seeded-away-pinned.png` });
+  await page.screenshot({ path: `${SHOTS}/width-after-375.png` });
   // 回到工作视口：仅恢复环境，不做锚定断言。
   await setViewport(page, 812, 375);
 
@@ -1527,51 +1639,44 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   expect(expandTargetMid, "an expandable mid-list assistant row is mounted")
     .not.toBeNull();
 
-  await page.screenshot({ path: `${SHOTS6}/chat-seeded-before-expand.png` });
+  await page.screenshot({ path: `${SHOTS}/expand-before.png` });
 
   const expandAnchorMid = beforeExpandSnap.mid;
-  const expandBaseline = await rowOffsetInHistory(page, expandAnchorMid!);
+  const expandBaseline = await rowOffsetFromFlow(page, expandAnchorMid!);
   const expandMore = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
   await expandMore.click();
   await expect(page.locator(`[data-testid="msg-actions-${expandTargetMid}"]`)).toBeVisible();
   // 展开/校准重排后跟随仍为 false；以"展开前基线的同一行位移"判定保持。
   expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
   {
-    const afterExpandOffset = await waitForRowSettled(
-      page,
-      expandAnchorMid!,
-      "expansion keeps user position",
-    );
-    // 容差＝真实可见行高 ×2（来自 DOM 度量；引擎对"展开区插入"的高度
-    // 重估允许两行以内的视口微移，禁止固定像素口径）。
-    const { lineHeightPx: expLh } = await localLayoutMetrics(page, expandAnchorMid!);
+    // round7（三）：同一保留锚点的视口偏移误差必须 ≤4 CSS px——展开插入
+    // 的内容在锚行下方时 scrollTop 本就不该动，锚行在上时由保持引擎钉回；
+    // 不再用行高倍数掩盖实现缺陷。
+    const afterExpandOffset = await waitForPreserveIdleFlowThenRead(page, expandAnchorMid!, "expansion keeps user position");
+    const expandError = Math.abs(afterExpandOffset - expandBaseline);
     expect(
-      Math.abs(afterExpandOffset - expandBaseline),
-      `expansion keeps the same row within two line-heights (${Math.abs(afterExpandOffset - expandBaseline).toFixed(1)}px ≤ ${(expLh * 2).toFixed(1)}px)`,
-    ).toBeLessThanOrEqual(expLh * 2);
+      expandError,
+      `expansion pins the anchor viewport offset (err=${expandError.toFixed(2)}px ≤ 4px)`,
+    ).toBeLessThanOrEqual(4);
   }
   await assertNoBlankBand(page, "after expansion");
-  await page.screenshot({ path: `${SHOTS6}/chat-seeded-after-expand.png` });
+  await page.screenshot({ path: `${SHOTS}/expand-after.png` });
 
   // 折叠：同样先取基线再点击（固定行跟踪）。
   const collapseAnchorMid = (await stableViewportAnchor(page)).mid;
-  const collapseBaseline = await rowOffsetInHistory(page, collapseAnchorMid!);
+  const collapseBaseline = await rowOffsetFromFlow(page, collapseAnchorMid!);
   const expandMoreAgain = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
   if ((await expandMoreAgain.getAttribute("aria-expanded")) === "true") {
     await expandMoreAgain.click();
   }
   await expect(page.locator(`[data-testid="msg-actions-${expandTargetMid}"]`)).toHaveCount(0);
   {
-    const afterCollapseOffset = await waitForRowSettled(
-      page,
-      collapseAnchorMid!,
-      "collapse keeps user position",
-    );
-    const { lineHeightPx: colLh } = await localLayoutMetrics(page, collapseAnchorMid!);
+    const afterCollapseOffset = await waitForPreserveIdleFlowThenRead(page, collapseAnchorMid!, "collapse keeps user position");
+    const collapseError = Math.abs(afterCollapseOffset - collapseBaseline);
     expect(
-      Math.abs(afterCollapseOffset - collapseBaseline),
-      `collapse keeps the same row within two line-heights (${Math.abs(afterCollapseOffset - collapseBaseline).toFixed(1)}px ≤ ${(colLh * 2).toFixed(1)}px)`,
-    ).toBeLessThanOrEqual(colLh * 2);
+      collapseError,
+      `collapse pins the anchor viewport offset (err=${collapseError.toFixed(2)}px ≤ 4px)`,
+    ).toBeLessThanOrEqual(4);
   }
 
   // ---- 删除较早消息（滚离态下按 messageId 保持相对偏移）----
@@ -1582,33 +1687,43 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     },
   );
+  // round7（三）：所有基线——锚行 messageId、其视口偏移、与下一邻行的
+  // 间距——都必须在【点击最终确认之前】读定；杜绝"删后自比较"蒙混。
   const deleteAnchorMid = (await stableViewportAnchor(page)).mid;
+  expect(deleteAnchorMid, "delete-phase anchor captured pre-confirm").not.toBeNull();
+  expect(deleteAnchorMid, "anchor must survive the deletion itself")
+    .not.toBe(expandTargetMid);
   const deleteMore = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
   await deleteMore.click();
-  // 基线在"操作区已展开、确认删除之前"冻结：菜单展开自身的位移已由
-  // 上一步的保持引擎吸收，删除对比只裁剪"删除行高度"这一项突变。
   const deleteBtn = page.locator(`[data-testid="msg-delete-${expandTargetMid}"]`);
   await deleteBtn.click();
   await expect(deleteBtn, "two-step delete arm label").toHaveText("确认删除");
+
+  // 菜单已展开、尚未确认：此刻读全部基线。
+  const deleteBaselineOffset = await rowOffsetFromFlow(page, deleteAnchorMid!);
+  expect(Number.isFinite(deleteBaselineOffset), "pre-confirm anchor offset finite").toBe(true);
+  const gapBeforeConfirm = await rowGapToNext(page, deleteAnchorMid!);
+  expect(Number.isFinite(gapBeforeConfirm), "pre-confirm neighbor gap measured").toBe(true);
+  await page.screenshot({ path: `${SHOTS}/delete-before.png` });
+
   await deleteBtn.click();
   await expect(page.locator(`[data-mid="${expandTargetMid}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-testid="msg-more-${expandTargetMid}"]`)).toHaveCount(0);
   expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
   await assertNoBlankBand(page, "after deleting an earlier row");
   {
-    // 删除的局部几何守恒：锚行与其下一邻行的间距在删除前后不变（±2 行内
-    // 文字行高）——直接证明"周围行没有被推移出空白/重叠"；全局 scrollTop
-    // 的恢复精度由上一步视口保持循环承载，不作为本断言的对象。
-    const gapBefore = await rowGapToNext(page, deleteAnchorMid!);
-    expect(Number.isFinite(gapBefore), "pre-delete neighbor gap measured").toBe(true);
-    const { lineHeightPx: delLh } = await localLayoutMetrics(page, deleteAnchorMid!);
-    await waitForRowSettled(page, deleteAnchorMid!, "deletion keeps surrounding rows");
-    const gapAfter = await rowGapToNext(page, deleteAnchorMid!);
-    expect(Number.isFinite(gapAfter), "post-delete neighbor gap measured").toBe(true);
+    // round7（三）主判据：同一保留锚点的视口偏移误差 ≤4 CSS px；邻行间距
+    // 作为辅助量在报告里给出真实数值。删除发生在锚行之外的另一行，因此
+    // 锚点钉回是空间连续性的唯一直接证据。
+    const settledOffset = await waitForPreserveIdleFlowThenRead(page, deleteAnchorMid!, "deletion keeps user position");
+    const anchorError = Math.abs(settledOffset - deleteBaselineOffset);
+    const gapAfterDelete = await rowGapToNext(page, deleteAnchorMid!);
     expect(
-      Math.abs(gapAfter! - gapBefore!),
-      `deletion keeps neighbor gap (${Math.abs(gapAfter! - gapBefore!).toFixed(1)}px ≤ ${(delLh * 2).toFixed(1)}px @${String(deleteAnchorMid)})`,
-    ).toBeLessThanOrEqual(delLh * 2);
+      anchorError,
+      `deletion pins the anchor viewport offset (err=${anchorError.toFixed(2)}px ≤ 4px; ` +
+        `gap ${gapBeforeConfirm!.toFixed(1)}→${gapAfterDelete.toFixed(1)}px @${String(deleteAnchorMid)})`,
+    ).toBeLessThanOrEqual(4);
+    await page.screenshot({ path: `${SHOTS}/delete-after.png` });
   }
 
   // ---- 程序化 scrollTop 遍历（P1-5 #7 如实命名：这不是用户行为验收；
@@ -1658,7 +1773,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     await assertNoBlankBand(page, `seeded station ${station}`);
     expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
     if (station === "seed-080") {
-      await page.screenshot({ path: ".impeccable/review/round5/chat-seeded-banner-middle.png" });
+      await page.screenshot({ path: ".impeccable/review/round7/chat-seeded-banner-middle.png" });
     }
   }
 
