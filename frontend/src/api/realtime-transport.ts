@@ -162,19 +162,24 @@ interface FrameMapperState {
  * P1（round6）：把 SSE 帧序列状态化地映射为 disposition + 事件交付路径。
  * durable 帧 → parseStreamEvent → 有回调就即时派发（不回填 result.events，
  * 保证最终 ResumeResult 不重复应用）；无回调时保留旧的整批累积语义。
- * snapshot 元数据帧切 TERMINAL_SNAPSHOT；其后到达的 durable 帧属于快照的
- * 权威内容（0184 runtime 的"元数据后随有序事件帧"格式），逐个缓冲、EOF 后
- * 整体返回，由调用方以 applyTerminalSnapshot 原子替换草稿——绝不作为流式
- * 增量发布。control 帧（gap/reset/denied）裁定后仍会流出的 durable 帧不再
- * 应用——与旧 mapFrames 中"orchestrator 忽略非 RESUMED 批次事件"等价。
+ *
+ * round7：提供连接内回调的生产链路里，`event: snapshot` 元数据只是形态标记，
+ * 不再切换"整体替换"路径——0184 runtime 在已流式下发前缀后只补发 cursor 后的
+ * terminal 尾巴（元数据缺 events 数组），若按旧逻辑用尾巴整体替换草稿会丢掉
+ * 已发布的 delta。因此带 sink 时元数据帧是信息性的：其后到达的 durable 帧
+ * （以及元数据内联的 events）仍走同一个 pushCandidate → reducer 幂等应用点，
+ * 连续同 epoch 去重合并成 [前缀]+[尾巴]。无 sink 的旧批量消费者语义不变：
+ * 元数据切 TERMINAL_SNAPSHOT，缺 events 时后续 durable 帧缓冲为快照内容由
+ * applyTerminalSnapshot 原子替换；元数据已权威则丢弃同位置内容。control 帧
+ * （gap/reset/denied）裁定后仍会流出的 durable 帧不再应用——与批量实现中
+ * orchestrator 忽略非 RESUMED 批次事件的语义一致。
  */
 function createFrameMapper(fallbackEpoch: number, sink: DurableEventSink): FrameMapperState {
   let disposition: ResumeDisposition = "RESUMED";
   let nextEpoch: number | undefined;
   let snapshotEvents: StreamEvent[] | null = null;
-  // EVENT_SNAPSHOT 元数据缺 events 数组时为 true：其后到达的 durable 帧就是
-  // 快照内容（0184 runtime 格式），逐个吸收；元数据已权威则为 false，后到
-  // 内容整体丢弃。
+  // 仅无 sink 的批量路径使用：EVENT_SNAPSHOT 元数据缺 events 数组时为 true，
+  // 其后到达的 durable 帧就是快照内容（0184 runtime 格式），逐个吸收。
   let acceptSnapshotFrames = false;
   // 未提供回调时的旧批量语义：事件累积进 result.events。
   const batchEvents: StreamEvent[] = [];
@@ -199,21 +204,18 @@ function createFrameMapper(fallbackEpoch: number, sink: DurableEventSink): Frame
 
   function handleCandidates(payload: Record<string, unknown>): void {
     const isEnvelopeList = Array.isArray(payload.events);
+    const candidates = isEnvelopeList ? (payload.events as unknown[]) : [payload];
     if (disposition === "TERMINAL_SNAPSHOT") {
       if (!acceptSnapshotFrames) return; // 元数据已权威：丢弃同样位置的内容
-      for (const candidate of isEnvelopeList ? (payload.events as unknown[]) : [payload]) {
-        absorbSnapshotCandidate(candidate);
-      }
+      for (const candidate of candidates) absorbSnapshotCandidate(candidate);
       return;
     }
     if (disposition !== "RESUMED") {
       // gap/reset/denied 已裁定：durable 流出物不再应用（单一应用不变量），
-      // 与旧批量实现中 orchestrator 忽略非 RESUMED 批次事件的语义一致。
+      // 与旧批量实现中 orchestrator 忽略非 RESUMED 批次事件一致。
       return;
     }
-    for (const candidate of isEnvelopeList ? (payload.events as unknown[]) : [payload]) {
-      pushCandidate(candidate);
-    }
+    for (const candidate of candidates) pushCandidate(candidate);
   }
 
   return {
@@ -237,6 +239,15 @@ function createFrameMapper(fallbackEpoch: number, sink: DurableEventSink): Frame
         return;
       }
       if (eventName === EVENT_SNAPSHOT) {
+        if (sink) {
+          // round7：流式链路的元数据帧不改变 RESUMED 处理路径；内联 events
+          // 也按同一应用点即时派发，reducer 幂等合并。终局否决仍由 reducer 的
+          // 终态冻结与 epoch 校验承担。
+          if (frame.data !== null && typeof frame.data === "object") {
+            handleCandidates(frame.data as Record<string, unknown>);
+          }
+          return;
+        }
         disposition = "TERMINAL_SNAPSHOT";
         snapshotEvents = extractSnapshotEvents(frame.data, fallbackEpoch);
         acceptSnapshotFrames = snapshotEvents === null;

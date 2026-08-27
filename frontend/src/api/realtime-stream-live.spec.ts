@@ -231,6 +231,48 @@ describe("P1-round6 in-connection streaming (production-shaped)", () => {
     expect(result.events).toEqual([]);
   });
 
+  it("merges an in-band snapshot-metadata tail onto the streamed prefix ([1,2,3]+[4] -> [1,2,3,4])", async () => {
+    // 真实服务端形态：同一连接先逐帧下发 seq1..3（草稿已增长），随后
+    // `event: snapshot` 元数据帧不含 events 数组，服务端只继续发送 cursor 后的
+    // terminal 尾巴 seq4，然后 EOF。终局必须是连续同 epoch 去重后的
+    // [1,2,3,4]，草稿全文保持单份——绝不允许 [4] 整体替换掉 [1,2,3]。
+    const stack = wireLiveStack();
+    const { store, pending } = makeStore(stack, "gen-snapshot-tail");
+    const conn = await waitForConn(stack);
+
+    // 连接未关闭时逐帧可见。
+    conn.enqueueSse(delta(1, "第一段"));
+    await vi.waitFor(() => expect(store.draft).toBe("第一段"));
+    conn.enqueueSse(delta(2, "第二段"));
+    await vi.waitFor(() => expect(store.draft).toBe("第一段第二段"));
+    conn.enqueueSse(delta(3, "第三段"));
+    await vi.waitFor(() => expect(store.draft).toBe("第一段第二段第三段"));
+    expect(conn.open, "connection held open before the snapshot tail").toBe(true);
+    expect(conn.terminalSent).toBe(false);
+    expect(store.stream.status).toBe("streaming");
+
+    // snapshot 元数据（无 events）后跟 cursor 后的 terminal 尾巴；开头附带一个
+    // 已应用过的重放 seq3，必须被幂等忽略而不是拼进草稿。
+    conn.enqueueSse('event: snapshot\ndata: {"status":"COMPLETED","generationId":7}\n\n');
+    conn.enqueueSse(delta(3, "重放的尾巴"));
+    conn.enqueueSse(envelope("chat.completed", 4, 1, ""));
+    // 终态之后的迟到控制帧不得改写结果。
+    conn.enqueueSse("event: stream.gap\n\n");
+    conn.close();
+    await pending;
+
+    expect(store.phase).toBe("completed");
+    expect(store.outcome).toBe("completed");
+    expect(store.stream.epoch).toBe(1);
+    expect(store.stream.cursor).toBe(4);
+    const seqs = store.stream.events.map((e) => e.eventSeq);
+    expect(seqs).toEqual([1, 2, 3, 4]);
+    expect(new Set(seqs).size).toBe(4);
+    expect(store.draft).toBe("第一段第二段第三段");
+    expect(store.draft.split("第一段第二段第三段").length - 1).toBe(1);
+    expect(store.draft).not.toContain("重放的尾巴");
+  });
+
   it("stays recoverable when aborted mid-stream and never fabricates a terminal", async () => {
     const stack = wireLiveStack();
     const { store, pending } = makeStore(stack, "gen-abort");

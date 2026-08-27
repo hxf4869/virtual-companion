@@ -182,7 +182,15 @@ export async function streamGeneration(
     state = applyEvent(state, event);
     if (!Object.is(prev, state)) {
       attemptApplied = true;
-      options?.onProgress?.(state);
+      // round7（P2）：进度订阅者的异常只影响它自己——不得顺着回调链把
+      // （尤其已经 terminal 的）流判成传输失败而 exhausted。
+      if (options?.onProgress) {
+        try {
+          options.onProgress(state);
+        } catch {
+          // 订阅方异常不改变流状态机。
+        }
+      }
     }
   };
 
@@ -257,6 +265,11 @@ export async function streamGeneration(
       }
 
       case "TERMINAL_SNAPSHOT": {
+        // round7（P2）：终态后迟到的快照裁定不得穿透已冻结的流——outcome
+        // 只能由已应用的 terminal 事件决定，也不得再发恢复请求。
+        if (state.terminal || state.status === "cancelled") {
+          return { state, outcome: terminalOutcome(state) };
+        }
         // Only a genuine terminal snapshot completes (P1-07).
         state = applyTerminalSnapshot(state, result.events);
         return state.terminal
@@ -265,6 +278,9 @@ export async function streamGeneration(
       }
 
       case "GAP_EXPIRED": {
+        if (state.terminal || state.status === "cancelled") {
+          return { state, outcome: terminalOutcome(state) };
+        }
         state = markGap(state);
         const snapshot = await safeSnapshot(deps, generationId, handle);
         if (snapshot === null) {
