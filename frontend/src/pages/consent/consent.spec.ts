@@ -309,7 +309,16 @@ describe("consent page (FR-AUTH-003)", () => {
   // P2（round5）：未知/缺失的 verifiedMethod 不得编造“人工通道”这类未证实
   // 事实，必须落到中性兜底文案。
   it("EMERGENCY-CONTACT: unknown or missing verifiedMethod falls back to neutral copy", async () => {
-    for (const verifiedMethod of [null, "MYSTERY_CHANNEL_X", undefined]) {
+    // P2（round6）：原型链键（__proto__/constructor/toString）同样必须落到
+    // 中性兜底——普通 Record 字典会命中 Object.prototype，null 原型字典不会。
+    for (const verifiedMethod of [
+      null,
+      "MYSTERY_CHANNEL_X",
+      undefined,
+      "__proto__",
+      "constructor",
+      "toString",
+    ]) {
       vi.stubGlobal(
         "fetch",
         vi.fn(async (input: RequestInfo | URL) => {

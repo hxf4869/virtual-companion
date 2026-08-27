@@ -246,9 +246,13 @@ const CONSENT_VERSION = "2026-08";
 
 // P2（round4）：用户可见的验证方式是运维通道枚举，渲染为中文；未知值
 // 一律落到中性文案，绝不显示原始码。
-const EMC_METHOD_LABELS: Record<string, string> = {
-  SIMULATED_EMAIL_LINK: "模拟邮件链接确认",
-};
+// P2（round6）：null 原型字典——服务端返回 "__proto__"/"constructor"/
+// "toString" 等键时绝不能命中 Object.prototype（普通 Record 会把
+// constructor 解析成函数对象，`||` 兜底失效）。
+const EMC_METHOD_LABELS: Record<string, string> = Object.assign(
+  Object.create(null) as Record<string, string>,
+  { SIMULATED_EMAIL_LINK: "模拟邮件链接确认" },
+);
 
 export default {
   name: "ConsentPage",
