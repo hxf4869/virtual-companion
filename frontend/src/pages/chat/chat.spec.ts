@@ -2373,15 +2373,16 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         )) {
           const vi = Number((node as HTMLElement & { dataset: { vindex?: string } }).dataset.vindex);
           const idx = Number.isInteger(vi) ? vi : 0;
-          const h = heightPerRow;
           Object.defineProperty(node, "getBoundingClientRect", {
             configurable: true,
+            // round8：必须读活值——旧闭包以值捕获高度，relayout 后同一文档
+            // 内新旧行分属两个高度坐标系，任何"精确钉回"都无法收敛。
             value: () => {
-              const top = idx * h - currentScrollTop;
+              const top = idx * heightPerRow - currentScrollTop;
               return {
                 x: 0, y: top, top, left: 0,
-                right: 100, bottom: top + h,
-                width: 100, height: h, toJSON: () => ({}),
+                right: 100, bottom: top + heightPerRow,
+                width: 100, height: heightPerRow, toJSON: () => ({}),
               };
             },
           });
@@ -2536,9 +2537,19 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       vi.advanceTimersByTime(200); // 程序写入回声窗过期
       geo.setScrollTop(1400);
       el.dispatchEvent(new Event("scroll"));
-      await flushPromises();
-      geo.refresh();
-      expect(el.dataset.preserveMid, "takeover captures a semantic anchor").toBeTruthy();
+      // round8（二）：接管定锚推迟到本轮渲染完成之后，并逐帧重试到几何
+      // 可用——先渲染新窗口、补丁行矩形，再泵到事务基准出现。
+      {
+        let settle = 0;
+        while (!el.dataset.preserveMid && settle < 64) {
+          await flushPromises();
+          geo.refresh();
+          vi.advanceTimersByTime(20);
+          frames.pump();
+          settle += 1;
+        }
+        expect(el.dataset.preserveMid, "takeover captures a semantic anchor").toBeTruthy();
+      }
 
       return { wrapper, el, geo, ro: registry[0]!, store, frames, heightRef };
     }
@@ -2667,6 +2678,229 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       } finally {
         warnSpy.mockRestore();
         vi.unstubAllGlobals();
+      }
+    });
+
+    // ---- round8（三）：单写者保持事务的专项验收 --------------------------
+
+    /** 每帧同时推进假时钟与泵；320ms settle 门等真实(模拟)时间判据由此驱动。 */
+    function makeFrameDriver(f: TakeoverFixture): (n: number) => Promise<void> {
+      return async (n: number) => {
+        for (let i = 0; i < n; i += 1) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+        }
+      };
+    }
+
+    it("round8 三-1: width swap holds the frozen mid+offset through cascades and must converge", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      try {
+        await pumpMany(220); // 接管基准事务先完整收敛
+        expect(f.el.dataset.preserveRun ?? "").toBe("idle");
+        expect(f.el.dataset.preserveConverged).toBe("true");
+
+        const mid0 = f.el.dataset.preserveMid!;
+        const off0 = f.el.dataset.preserveOff!;
+
+        // 宽度重排入口：整表高度缓存失效 + 覆盖窗回填估算 + 批量实测级联。
+        f.heightRef.value = 130;
+        f.geo.relayout(130);
+        f.ro.emit({ width: 375, height: 600 });
+        // 后续的宽度级联可能落在上一个事务结算后的安静期：引擎以同一
+        // 基准续期新事务（generation 允许递增），但 mid 与 original offset
+        // 在整段流程中绝不允许被改写。
+        await pumpMany(60);
+        for (let w = 0; w < 4; w += 1) {
+          f.geo.relayout(132 + w);
+          f.ro.emit({ width: 376 + w, height: 600 });
+          await pumpMany(40);
+        }
+        await pumpMany(260);
+
+        // 同一 mid / original offset：用户阅读位置的锚语义从未被改写；
+        // 且必须真正收敛（不允许"失败也接受"二选一）。
+        expect(f.el.dataset.preserveMid, "anchor mid never rewritten").toBe(mid0);
+        expect(f.el.dataset.preserveOff, "original viewport offset never rewritten").toBe(off0);
+        expect(f.el.dataset.preserveConverged, "transaction truly converged").toBe("true");
+        expect(f.el.dataset.preserveRun ?? "").toBe("idle");
+        const info = anchoredErrorPx(f.el)!;
+        expect(info.mid).toBe(mid0);
+        expect(
+          info.error,
+          `width transaction residual ${info.error.toFixed(2)}px ≤ 1px`,
+        ).toBeLessThanOrEqual(1);
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round8 三-2: internal cascades never spawn a second correction nor rebase nor pin an overscan ghost", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      try {
+        await pumpMany(160);
+        const gen0 = f.el.dataset.preserveGen!;
+        const off0 = f.el.dataset.preserveOff!;
+
+        // 行高翻倍级联带来远超 200px 的瞬时位移——历史上会触发"大位移即
+        // rebase"旁路：如今只允许同一个事务把它精确补偿回来。
+        f.heightRef.value = 230;
+        f.geo.relayout(230);
+        f.ro.emit({ width: 377, height: 600 });
+
+        let peakMountedRows = 0;
+        let ghostCaptureObserved = false;
+        for (let i = 0; i < 420; i += 1) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+          if (i > 0 && (f.el.dataset.preserveRun ?? "") === "idle") break;
+
+          expect(f.el.dataset.preserveGen, "no parallel/preempting correction").toBe(gen0);
+          peakMountedRows = Math.max(
+            peakMountedRows,
+            f.el.querySelectorAll('[data-testid="chat-message"]').length,
+          );
+          // 锚行一旦出现在 dataset 上，就必须与 history 可视矩形真实相交
+          // ——捕获绝不能落在仅因 overscan 挂载、完全位于下方的幽灵行上。
+          const info = anchoredErrorPx(f.el);
+          if (info && Number.isFinite(info.error)) {
+            const hist = f.el.getBoundingClientRect();
+            const row = Array.from(f.el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]')).find(
+              (n) => (n as HTMLElement & { dataset: { mid?: string } }).dataset.mid === info.mid,
+            );
+            if (!row || row.getBoundingClientRect().bottom <= hist.top + 1) {
+              ghostCaptureObserved = true;
+            }
+          }
+        }
+
+        expect(f.el.dataset.preserveOff).toBe(off0);
+        expect(ghostCaptureObserved, "no overscan ghost ever pinned").toBe(false);
+        // 底线：事务全程任一帧都不允许全量挂载；稳态窗口保持硬上界。
+        expect(
+          peakMountedRows,
+          `never mounts the full row set during transaction (peak ${peakMountedRows})`,
+        ).toBeLessThan(40);
+        const settledRows = f.el.querySelectorAll('[data-testid="chat-message"]').length;
+        expect(settledRows, `settled window stays bounded (${settledRows})`).toBeLessThan(20);
+        expect(f.el.dataset.preserveConverged).toBe("true");
+        expect(anchoredErrorPx(f.el)!.error).toBeLessThanOrEqual(1);
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round8 三-3: after override release the pin survives with no pending frames or timers", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      try {
+        f.heightRef.value = 150;
+        f.geo.relayout(150);
+        f.ro.emit({ width: 378, height: 600 });
+        await pumpMany(400);
+
+        expect((f.el.dataset.preserveRun ?? "")).toBe("idle");
+        expect(f.el.dataset.preserveConverged).toBe("true");
+        expect(anchoredErrorPx(f.el)!.error).toBeLessThanOrEqual(1);
+        expect(f.frames.queued(), "no rAF left queued at settle").toBe(0);
+
+        // 放行一切残余 timer/microtask 后几何必须纹丝不动（没有脱离事务
+        // 的 setTimeout 复核在重启写路径）。
+        vi.advanceTimersByTime(5_000);
+        await flushPromises();
+        f.geo.refresh();
+        expect(f.frames.queued()).toBe(0);
+        expect((f.el.dataset.preserveRun ?? "")).toBe("idle");
+        expect(anchoredErrorPx(f.el)!.error).toBeLessThanOrEqual(1);
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round8 三-4: virtualization stays bounded while the width transaction runs", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      try {
+        await pumpMany(120);
+        f.heightRef.value = 170;
+        f.geo.relayout(170);
+        f.ro.emit({ width: 375, height: 600 });
+
+        const seen: number[] = [];
+        for (let i = 0; i < 200; i += 1) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+          seen.push(f.el.querySelectorAll('[data-testid="chat-message"]').length);
+          if (i > 8 && (f.el.dataset.preserveRun ?? "") === "idle") break;
+        }
+
+        expect(seen.length, "mid-transaction samples were taken").toBeGreaterThan(0);
+        // 底线：任何采样点都不允许全量挂载 40 行（虚拟化必须始终有界）。
+        const peak = Math.max(...seen);
+        expect(peak, `never mounts the full row set (peak ${peak})`).toBeLessThan(40);
+        // 稳态窗口尺寸硬上界（视口/估算 + overscan 邻域）。
+        const settledRows = f.el.querySelectorAll('[data-testid="chat-message"]').length;
+        expect(settledRows, `settled window stays bounded (${settledRows})`).toBeLessThan(20);
+        expect(f.el.dataset.preserveConverged).toBe("true");
+      } finally {
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round8 三-5: only a real user scroll cancels the running transaction and rebuilds the basis", async () => {
+      const f = await takeoverFixture();
+      const pumpMany = makeFrameDriver(f);
+      try {
+        await pumpMany(160);
+        const genBefore = f.el.dataset.preserveGen!;
+        const offBefore = f.el.dataset.preserveOff!;
+
+        // 布局信号：generation 与基准不动（对照组）。
+        f.heightRef.value = 165;
+        f.geo.relayout(165);
+        f.ro.emit({ width: 380, height: 600 });
+        await pumpMany(30);
+        expect(f.el.dataset.preserveGen).toBe(genBefore);
+
+        // 事务进行中的一次真实用户滚动：唯一允许取消并重建基准的路径。
+        vi.advanceTimersByTime(200); // 程序写入回声窗过期
+        f.geo.setScrollTop(2600);
+        f.el.dispatchEvent(new Event("scroll"));
+        await flushPromises();
+        f.geo.refresh();
+        let guard = 0;
+        while (
+          (f.el.dataset.preserveGen ?? "") === genBefore &&
+          guard < 64
+        ) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+          guard += 1;
+        }
+        expect(f.el.dataset.preserveGen ?? "", "user scroll replaced the transaction").not.toBe(genBefore);
+        expect(offBefore.length).toBeGreaterThan(0); // 前置记录存在性自检
+
+        await pumpMany(300);
+        // 新基准 = 用户此刻真实看到的视图（不是被拉回旧锚区）。
+        expect(f.el.dataset.preserveConverged).toBe("true");
+        const info = anchoredErrorPx(f.el)!;
+        expect(info.mid).toBe(f.el.dataset.preserveMid);
+        expect(
+          info.error,
+          `rebased anchor pins to user's current view (${info.error.toFixed(2)}px)`,
+        ).toBeLessThanOrEqual(1);
+      } finally {
+        f.wrapper.unmount();
       }
     });
   });

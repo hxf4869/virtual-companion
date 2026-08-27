@@ -873,16 +873,16 @@ export default defineComponent({
 
         measureHistory();
         if (widthChanged) {
-          // 仅宽度维度变化：整表高度失效 + 按当前 ownership 收敛。
+          // 仅宽度维度变化：走事务序列（冻结锚→覆盖窗→整表失效→重测）。
           remeasureAfterWidthChange();
           return;
         }
-        // 视口/布局变化（旋转、软键盘、spacer 重排）时按跟随意图重对锚点；
-        // 用户已滚离时绝不动 scrollTop——位置保持交给视口锚快照。
+        // 视口/布局变化（旋转、软键盘、spacer 重排）：跟随时重对锚点；
+        // 用户已滚离时只把活动保持事务标记为 dirty，由单一泵继续补偿。
         if (followingLatest.value) {
           requestFollow();
         } else {
-          runPreserveCorrection();
+          markPreserveLayoutDirty();
         }
       });
       historyObserver.observe(el);
@@ -1008,13 +1008,36 @@ export default defineComponent({
     // 挂载后的重测会在一两帧内以新宽度下的真实值覆盖；过渡偏移由视口锚
     // 快照按 messageId+相对偏移吸收。
 
-    // round7：保持轮的窗口覆盖——把虚拟窗口强制扩到覆盖锚行所在邻域，
-    // 并把上下垫冻结在进入时的像素值：锚行的绝对坐标由"冻结原点+窗口内
-    // 实测布局"唯一决定，宽度重排引起的估算漂移不再平移坐标系，钉回
-    // 从原理上精确收敛。仅 force 保持轮期间生效。
+    // round8（二）：保持事务的窗口覆盖——把虚拟窗口强制固定在锚行邻域
+    // [start,end)，保证事务全程锚行及其视口邻域持续挂载（绝不为此挂载全部
+    // 消息），并把顶垫冻结在启用瞬间的像素值：锚行的绝对坐标由"冻结原点 +
+    // 窗口内实测布局"唯一决定，高度缓存批量失效引起的估算漂移不再平移
+    // 坐标系。仅活动事务期间生效，释放后复核校正兜底残余位移。
     const preserveWindowOverride = ref<{ start: number; end: number } | null>(null);
     const frozenTopPadPx = ref<number | null>(null);
-    const frozenBottomPadPx = ref<number | null>(null);
+
+    /** 有界覆盖窗：锚行上、下各扩到足以盖住整个视口 + overscan 的行数。 */
+    function enablePreserveWindowOverride(anchorIndex: number): void {
+      const count = messages.value.length;
+      if (count === 0) return;
+      const up =
+        Math.ceil((historyViewportPx.value + 300) / VIRTUAL_ESTIMATE_HEIGHT) + 4;
+      const down =
+        Math.ceil(historyViewportPx.value / VIRTUAL_ESTIMATE_HEIGHT) +
+        VIRTUAL_OVERSCAN +
+        4;
+      preserveWindowOverride.value = {
+        start: Math.max(0, anchorIndex - up),
+        end: Math.min(count, anchorIndex + down),
+      };
+      // 冻结原点必须读取【已应用 override 之后】的顶垫高度。
+      frozenTopPadPx.value = virtualWindow.value.offsetTop;
+    }
+
+    function releasePreserveWindowOverride(): void {
+      preserveWindowOverride.value = null;
+      frozenTopPadPx.value = null;
+    }
 
     function offsetForIndexInList(index: number): number {
       const table = heightTable.value;
@@ -1040,15 +1063,20 @@ export default defineComponent({
       if (!ov || messages.value.length === 0) return base;
       const startIndex = Math.max(0, Math.min(messages.value.length - 1, ov.start));
       const endIndex = Math.max(startIndex + 1, Math.min(messages.value.length, ov.end));
-      return { ...base, startIndex, endIndex, offsetTop: offsetForIndexInList(startIndex) };
+      const topPad =
+        frozenTopPadPx.value !== null
+          ? frozenTopPadPx.value
+          : offsetForIndexInList(startIndex);
+      return { ...base, startIndex, endIndex, offsetTop: topPad };
     });
 
     const renderedMessages = computed(() =>
       messages.value.slice(virtualWindow.value.startIndex, virtualWindow.value.endIndex),
     );
     const virtualBottomPad = computed(() => {
-      // 底垫按“总高−上垫−真实渲染段高度”计算；估算值扣减会在短行上留下
-      // 幻影空白，把最新回复顶出可视矩形上沿。
+      // 底垫按"总高−原点−真实渲染段高度"计算；估算值扣减会在短行上留下
+      // 幻影空白，把最新回复顶出可视矩形上沿。事务期顶垫被冻结时底垫仍
+      // 按【未冻结的自然原点】推算，与释放后的稳态一致。
       const win = virtualWindow.value;
       let renderedHeight = 0;
       for (
@@ -1060,7 +1088,10 @@ export default defineComponent({
           measuredHeights.value.get(messages.value[i]?.messageId ?? "") ??
           VIRTUAL_ESTIMATE_HEIGHT;
       }
-      if (frozenBottomPadPx.value !== null) return frozenBottomPadPx.value;
+      if (frozenTopPadPx.value !== null) {
+        const naturalOffset = offsetForIndexInList(win.startIndex);
+        return Math.max(0, win.totalHeight - naturalOffset - renderedHeight);
+      }
       return Math.max(
         0,
         win.totalHeight - win.offsetTop - renderedHeight,
@@ -1068,16 +1099,36 @@ export default defineComponent({
     });
 
     // P1/P2（round5）：用户已滚离时的视口保持——校准/spacer 重排/宽度变化
-    // 会平移内容，只保数值 scrollTop 不够。以“首个可见消息的 messageId +
-    // 相对 history 顶边偏移”为锚，在布局突变时迭代复位（多轮直到收敛，
-    // 覆盖“测量回填引起的第二跳”）；任何真实滚动立即作废会话。
-    interface ViewportAnchorSnapshot {
-      mid: string;
-      offsetFromHistoryTop: number;
+    // 会平移内容，只保数值 scrollTop 不够。以“可见 messageId + 相对 history
+    // 顶边偏移”为锚，在布局突变时迭代复位。
+    //
+    // round8（二）：单写者保持事务——任何时刻最多一个活动事务
+    // （PreserveTransaction），它是 scrollTop 的唯一写入者：
+    //   • 只有真实、非回声的用户滚动可以取消当前事务、转移 ownership 并
+    //     重建锚点基准；
+    //   • ResizeObserver、行高回填、virtualWindow/spacer 级联只把当前事务
+    //     标记为 dirty 并汇入同一个泵；绝不新建轮次抢占、不把 force 降级、
+    //     不重捕获锚点、没有“大位移即 rebase”旁路；
+    //   • 收尾两段：事务内残差 <1px 且窗口签名连续稳定至少两个布局批次后
+    //     释放覆盖窗，nextTick+布局帧复核校正，再持续稳定 ≥320ms 才发布
+    //     idle/converged；预算耗尽显性失败并保留锚点与诊断。
+    interface PreserveTransaction {
+      /** 创建世代：单调用点递增，仅用户滚动重建/handoff 时更换对象。 */
+      generation: number;
+      anchorMessageId: string;
+      /** 冻结的列表索引（仅诊断/覆盖窗定位用；对齐始终按真实矩形）。 */
+      anchorIndex: number;
+      originalViewportOffset: number;
+      phase: "aligning" | "stabilizing" | "post-release" | "done";
+      dirty: boolean;
+      measurementVersion: number;
+      ownershipGeneration: number;
     }
+
     /**
-     * round7：保持轮生命周期发布到 history 的 data-preserve-run——E2E oracle
-     * 据此等待收敛完成后再做一次像素断言。
+     * round7 起：保持事务生命周期发布到 history 的 data-preserve-run /
+     * data-preserve-phase——E2E 与诊断据此观察 active→idle；数据集属性
+     * 不是成功 oracle，几何才是。
      */
     let boundPreserveHost: HTMLElement | null = null;
     function publishPreserveRunState(state: "active" | "idle"): void {
@@ -1085,39 +1136,100 @@ export default defineComponent({
       if (!el) return;
       el.dataset.preserveRun = state;
     }
+    function publishPreservePhase(phase: string | null): void {
+      const el = boundPreserveHost ?? historyNode();
+      if (!el) return;
+      if (phase === null) delete el.dataset.preservePhase;
+      else el.dataset.preservePhase = phase;
+    }
+
     /**
      * round7：messageId 是否仍存在于当前会话消息列表——"真删除"与"暂时
      * 卸载"的权威区分：真删除把基准无跳变移交给幸存可视行或显性失败，
      * 暂时卸载原地等待重挂载，绝不偷换锚语义。
      */
     function anchorRowDeletedForever(mid: string): boolean {
-      return !store.messages.some((m) => m.messageId === mid);
+      return !messages.value.some((m) => m.messageId === mid);
     }
 
-    let viewportPreserveSession: ViewportAnchorSnapshot | null = null;
-    /** 会话纪元：每次布局突变重新起一个异步收敛循环；旧循环读到过期
-     * 纪元即退出——多路修正串行化，杜绝相互覆盖的竞态。 */
-    let preserveEpoch = 0;
+    let activePreserveTx: PreserveTransaction | null = null;
+    let preserveTxCounter = 0;
+    let preservePumpRunning = false;
+    /**
+     * 最近一次成功结算的事务基准（含原 generation）。宽度重排等新布局事
+     * 件到来而当时没有活动事务时，从这里【以同一 generation】原样复活：
+     * 重排绝不读取当下视图，也绝不新建世代抢占——用户阅读位置的
+     * messageId+偏移语义只随真实滚动更换。
+     */
+    let settledPreserveBasis: {
+      generation: number;
+      mid: string;
+      offset: number;
+      index: number;
+    } | null = null;
 
-    function captureVisibleAnchor(): ViewportAnchorSnapshot | null {
+    /** 单写者事务的唯一构造尾部；generation 由调用方决定。 */
+    function spawnPreserveTxWith(
+      generation: number,
+      mid: string,
+      offset: number,
+    ): void {
+      const idx = Math.max(
+        0,
+        messages.value.findIndex((m) => m.messageId === mid),
+      );
+      activePreserveTx = {
+        generation,
+        anchorMessageId: mid,
+        anchorIndex: idx,
+        originalViewportOffset: offset,
+        phase: "aligning",
+        dirty: true,
+        measurementVersion: 0,
+        ownershipGeneration: followGen,
+      };
+      enablePreserveWindowOverride(activePreserveTx.anchorIndex);
+      publishViewportPreserve(activePreserveTx);
+      const host = boundPreserveHost ?? historyNode();
+      if (host) host.dataset.preserveGen = String(activePreserveTx.generation);
+      publishPreservePhase("aligning");
+      publishPreserveRunState("active");
+      schedulePreserveTxFrame();
+    }
+
+    function spawnPreserveTransaction(mid: string, offset: number): void {
+      spawnPreserveTxWith(++preserveTxCounter, mid, offset);
+    }
+
+    /**
+     * 以真实 DOM 捕获保持锚：首选"完整落入可视区且离开顶缘 ≥8px"的首行；
+     * fallback 必须与 history 可视矩形【真实相交】——绝不允许捕获只因
+     * overscan 挂载、完全位于可视区下方的行充当基准。
+     */
+    function capturePreserveAnchor(): { mid: string; offset: number; index: number } | null {
       const el = historyNode();
       if (!el) return null;
       const rect = el.getBoundingClientRect();
-      let fallback: ViewportAnchorSnapshot | null = null;
+      let fallback: { mid: string; offset: number; index: number } | null = null;
       for (const node of Array.from(
         el.querySelectorAll('[data-testid="chat-message"]'),
       )) {
         const row = node as HTMLElement & { dataset: { mid?: string } };
-        const anchorMid = row.dataset.mid;
-        if (!anchorMid) continue;
+        const mid = row.dataset.mid;
+        if (!mid) continue;
         const r = row.getBoundingClientRect();
+        // 完全位于顶缘上方的行（部分切出）不算候选起点；完全位于底缘
+        // 下方的行只有当它与可视矩形真正相交时才能成为 fallback。
         if (r.bottom <= rect.top + 1) continue;
-        const snapOf = (): ViewportAnchorSnapshot => ({
-          mid: anchorMid,
-          offsetFromHistoryTop: Math.max(0, r.top - rect.top),
+        if (r.top >= rect.bottom - 1) break;
+        const snapOf = () => ({
+          mid,
+          offset: Math.max(0, r.top - rect.top),
+          index: Math.max(
+            0,
+            messages.value.findIndex((m) => m.messageId === mid),
+          ),
         });
-        // 首选：首个“完整落入可视区且离开顶缘 ≥8px”的行——判据只依赖
-        // 本行的顶/底，并与顶缘保持保护带，避免亚像素抖动翻转归属。
         if (
           r.top >= rect.top + 8 &&
           r.bottom <= rect.bottom + 0.5 &&
@@ -1130,8 +1242,8 @@ export default defineComponent({
       return fallback;
     }
 
-    /** 返回使锚行回到快照偏移所需的 scrollTop 增量；找不到锚行返回 null。 */
-    function anchorDeltaFor(snap: ViewportAnchorSnapshot): number | null {
+    /** 返回使锚行回到事务原始视口偏移所需的 scrollTop 增量；未挂载返回 null。 */
+    function preserveDeltaFor(tx: PreserveTransaction): number | null {
       const el = historyNode();
       if (!el) return null;
       let target: HTMLElement | null = null;
@@ -1139,191 +1251,319 @@ export default defineComponent({
         el.querySelectorAll('[data-testid="chat-message"]'),
       )) {
         const row = node as HTMLElement & { dataset: { mid?: string } };
-        if (row.dataset.mid === snap.mid) {
+        if (row.dataset.mid === tx.anchorMessageId) {
           target = row;
           break;
         }
       }
-      if (!target) return null; // 锚行已被删除：保留数值 scrollTop 兜底。
+      if (!target) return null; // 暂时卸载：等待测量回填带回。
       return (
         target.getBoundingClientRect().top -
         el.getBoundingClientRect().top -
-        snap.offsetFromHistoryTop
+        tx.originalViewportOffset
       );
     }
 
-    function abandonViewportPreserve(): void {
-      viewportPreserveSession = null;
+    function publishViewportPreserve(tx: PreserveTransaction): void {
+      const el = historyNode() as
+        | (HTMLElement & { dataset: { preserveMid?: string; preserveOff?: string } })
+        | null;
+      if (!el) return;
+      el.dataset.preserveMid = tx.anchorMessageId;
+      el.dataset.preserveOff = tx.originalViewportOffset.toFixed(2);
+    }
+
+    function clearPreserveAnchorDataset(): void {
+      const el = boundPreserveHost ?? historyNode();
+      if (!el) return;
+      delete el.dataset.preserveMid;
+      delete el.dataset.preserveOff;
+      delete el.dataset.preservePhase;
+    }
+
+    /**
+     * 静默放弃事务（回到自动跟随 / ownership 全量重置）：释放覆盖窗并把
+     * 生命周期发布回 idle；不做任何失败标注。
+     */
+    function abandonPreserveTransaction(): void {
+      activePreserveTx = null;
+      settledPreserveBasis = null;
+      releasePreserveWindowOverride();
+      clearPreserveAnchorDataset();
       publishPreserveRunState("idle");
     }
 
-    /** 以“此刻用户看到的视图”重建保持基准（接管与每次真实滚动时调用）。 */
-    /** 把当前基准同步到 history 元素的 data 属性（测试与诊断的单一事实源）。 */
-    function publishViewportPreserve(): void {
-      const el = historyNode() as (HTMLElement & { dataset: { preserveMid?: string; preserveOff?: string } }) | null;
-      if (!el) return;
-      const snap = viewportPreserveSession;
-      if (!snap) {
-        delete el.dataset.preserveMid;
-        delete el.dataset.preserveOff;
+    /**
+     * 用户滚动路径（真实、非回声）：唯一的取消+重建基准入口。旧事务与其
+     * 覆盖窗立即作废；新基准在本轮渲染完成后定锚（deferCapture），期间
+     * 不存在任何其他 scrollTop 写入者。
+     */
+    function rebasePreserveByUserScroll(): void {
+      activePreserveTx = null;
+      settledPreserveBasis = null; // 所有权转移：旧基准作废。
+      releasePreserveWindowOverride();
+      beginPreserveTransaction({ deferCapture: true });
+    }
+
+    /** 事务对象生成（唯一入口：两处调用的公共尾部）。 */
+    function spawnPreserveTransaction(mid: string, offset: number): void {
+      const idx = Math.max(
+        0,
+        messages.value.findIndex((m) => m.messageId === mid),
+      );
+      activePreserveTx = {
+        generation: ++preserveTxCounter,
+        anchorMessageId: mid,
+        anchorIndex: idx,
+        originalViewportOffset: offset,
+        phase: "aligning",
+        dirty: true,
+        measurementVersion: 0,
+        ownershipGeneration: followGen,
+      };
+      enablePreserveWindowOverride(activePreserveTx.anchorIndex);
+      publishViewportPreserve(activePreserveTx);
+      const host = boundPreserveHost ?? historyNode();
+      if (host) host.dataset.preserveGen = String(activePreserveTx.generation);
+      publishPreservePhase("aligning");
+      publishPreserveRunState("active");
+      schedulePreserveTxFrame();
+    }
+
+    /**
+     * 创建新事务并启用有界覆盖窗（冻结原点随其生效）。任何旧事务在此被
+     * 无条件替换——只有两条路径会走到这里：用户滚动的所有权重建，与锚行
+     * 真删除时的幸存行移交。
+     *
+     * deferCapture：真实滚动后的首个布局批次之前，旧窗口的挂载行可能与
+     * 用户的新视口完全脱节——同步捕获只会拿到"恰好可见/相交"之外的全是
+     * overscan 区域的幽灵行（round7 缺陷的根源之一）。此路径把捕获推迟到
+     * 本轮渲染完成之后：期间没有任何其他写入者（单一泵尚未启动），语义
+     * 安全。应用自身突变（展开/改名前锁定基准）必须同步定锚，用默认值。
+     */
+    function beginPreserveTransaction(
+      opts: { deferCapture?: boolean } = {},
+    ): void {
+      if (opts.deferCapture === true) {
+        // 渲染完成后逐帧重试定锚：窗口行集与新视口脱节的过渡期里允许
+        // 几何短暂不可用；捕获只读、单写者泵尚未启动，重试无副作用。
+        let attemptsLeft = 16;
+        const attempt = (): void => {
+          if (followingLatest.value || activePreserveTx) return;
+          const captured = capturePreserveAnchor();
+          if (captured) {
+            spawnPreserveTransaction(captured.mid, captured.offset);
+            return;
+          }
+          attemptsLeft -= 1;
+          if (attemptsLeft <= 0) return; // 等待下一个布局信号路径兜底。
+          requestAnimationFrame(() => attempt());
+        };
+        void nextTick(() => attempt());
         return;
       }
-      el.dataset.preserveMid = snap.mid;
-      el.dataset.preserveOff = snap.offsetFromHistoryTop.toFixed(2);
+      const captured = capturePreserveAnchor();
+      if (!captured) return;
+      spawnPreserveTransaction(captured.mid, captured.offset);
     }
 
-    function rebaseViewportPreserve(): void {
-      viewportPreserveSession = captureVisibleAnchor();
-      publishViewportPreserve();
-    }
-    /** 应用自身触发的布局突变（展开/折叠/删除行等）：若用户已接管视口，
-     * 立刻按保持基准复位一次（由 runPreserveCorrection 的纪元机制串行）。 */
+    /**
+     * 应用自身触发的布局突变（展开/折叠/删除行等）：若用户已接管视口，
+     * 全部信号汇入活动事务的单一泵——即使位移很大也不许被误判为"用户
+     * 重新定位"，不存在旁路轮次。
+     */
     function notifyLayoutMutation(): void {
-      if (followingLatest.value || !viewportPreserveSession) return;
-      // 应用自身造成的布局变化：即使位移很大也必须把基准视图拉回来，
-      // 不允许被误判为“用户重新定位”。
-      runPreserveCorrection({ force: true });
+      if (followingLatest.value) return;
+      if (!activePreserveTx) beginPreserveTransaction();
+      else markPreserveLayoutDirty();
     }
 
-    /** 以当前基准执行一轮多帧视口复位（依赖 watcher 与 ResizeObserver 共同触发）。
-     * P2（round6）：宽度重排等 force 场景允许更多收敛轮——整表高度失效会
-     * 引起"测量回填→窗口二次跳"的多段位移，8 轮常常停在半途。 */
-    function runPreserveCorrection(opts: { force?: boolean } = {}): void {
-      const myEpoch = ++preserveEpoch;
-      boundPreserveHost = historyNode();
-      publishPreserveRunState("active");
-      void (async () => {
-        try {
-        await nextTick();
-        // 双 rAF：等浏览器完成一次布局与绘制后再读几何。
-        await new Promise<void>((resolve) =>
+    /** 布局信号统一汇入点：只把活动事务标记为 dirty 并调度同一个泵。 */
+    function markPreserveLayoutDirty(): void {
+      const tx = activePreserveTx;
+      if (!tx) return;
+      tx.dirty = true;
+      tx.measurementVersion += 1;
+      schedulePreserveTxFrame();
+    }
+
+    function schedulePreserveTxFrame(): void {
+      if (preservePumpRunning || !activePreserveTx) return;
+      preservePumpRunning = true;
+      void runPreserveTransactionPump().finally(() => {
+        preservePumpRunning = false;
+      });
+    }
+
+    /** 单事务校正帧预算；耗尽即显性失败（保留锚点与诊断），绝不 rebase。 */
+    const PRESERVE_TX_FRAME_BUDGET = 36;
+    /** 释放覆盖窗前要求窗口签名连续稳定的布局批次数。 */
+    const PRESERVE_TX_RELEASE_STABLE_BATCHES = 3;
+    /** 释放复核后要求持续静止的时长。 */
+    const PRESERVE_TX_SETTLE_MS = 320;
+
+    function succeedPreserveTransaction(tx: PreserveTransaction, residual: number): void {
+      tx.phase = "done";
+      const el = historyNode();
+      if (el) {
+        el.dataset.preserveConverged = "true";
+        el.dataset.preserveResidualPx = residual.toFixed(2);
+      }
+      settledPreserveBasis = {
+        generation: tx.generation,
+        mid: tx.anchorMessageId,
+        offset: tx.originalViewportOffset,
+        index: tx.anchorIndex,
+      };
+      publishPreservePhase(null);
+      publishPreserveRunState("idle");
+      activePreserveTx = null;
+    }
+
+    /**
+     * 预算耗尽 / 锚点不可用的显性失败：保留锚点与诊断属性供测试取证，
+     * 不做任何偷偷重基准；窗口覆盖必须释放，否则虚拟列表此后死锁在旧
+     * 邻域。
+     */
+    function failPreserveTransaction(residualLabel: string): void {
+      const el = boundPreserveHost ?? historyNode();
+      if (el) {
+        el.dataset.preserveConverged = "false";
+        el.dataset.preserveResidualPx = residualLabel;
+      }
+      console.warn("[chat] preserve anchor did not settle:", residualLabel);
+      releasePreserveWindowOverride();
+      publishPreservePhase(null);
+      publishPreserveRunState("idle");
+      activePreserveTx = null;
+    }
+
+    /**
+     * 单写者泵：活动事务的唯一执行者。每个布局批次至多推进一帧校正
+     * （一次 scrollTop 写入）；高度回填/窗口级联只通过 dirty 与窗口签名
+     * 影响稳定性判定，由本泵继续补偿，绝无并行轮次。
+     */
+    async function runPreserveTransactionPump(): Promise<void> {
+      let framesLeft = PRESERVE_TX_FRAME_BUDGET;
+      let stableBatches = 0;
+      let prevSignature = "";
+      let stableSinceMs = -1;
+      const waitRaf = () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const waitLayoutFrame = () =>
+        new Promise<void>((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         );
-        let stableRounds = 0;
-        let preserveRemountWaits = 0;
-        const maxRounds = opts.force ? 24 : 8;
-        const PRESERVE_REMOUNT_WAIT_LIMIT = 16;
-        for (let round = 0; round < maxRounds; round += 1) {
-          if (myEpoch !== preserveEpoch || !viewportPreserveSession) return;
-          if (followingLatest.value) {
-            abandonViewportPreserve();
-            return;
-          }
+      try {
+        await nextTick();
+        await waitLayoutFrame();
+        while (framesLeft > 0) {
+          framesLeft -= 1;
+          const tx = activePreserveTx;
+          if (!tx || followingLatest.value) return;
+          if (tx.ownershipGeneration !== followGen) return; // ownership 已易主。
           const el = historyNode();
           if (!el) return;
-          // round7：真删除优先判定——即便行仍短暂挂载，也不得对幽灵继续
-          // 对齐；立即无跳变移交幸存行，或显性失败。
-          if (anchorRowDeletedForever(viewportPreserveSession.mid)) {
-            const rebased0 = captureVisibleAnchor();
-            if (rebased0 && rebased0.mid !== viewportPreserveSession.mid) {
-              viewportPreserveSession = rebased0;
-              publishViewportPreserve();
-              publishPreserveRunState("idle");
+
+          // 锚行真删除：无跳变移交幸存可视行——重建基准时先释放覆盖窗，
+          // 让移交偏移建立在释放后的真实布局上；找不到幸存可视行才显性失败。
+          if (anchorRowDeletedForever(tx.anchorMessageId)) {
+            releasePreserveWindowOverride();
+            clearPreserveAnchorDataset();
+            await nextTick();
+            await waitLayoutFrame();
+            const handoff = capturePreserveAnchor();
+            if (!handoff || handoff.mid === tx.anchorMessageId) {
+              failPreserveTransaction("anchor-unavailable");
               return;
             }
-            abandonViewportPreserve();
-            el.dataset.preserveConverged = "false";
-            el.dataset.preserveResidualPx = "anchor-unavailable";
-            console.warn("[chat] preserve anchor did not settle");
-            publishPreserveRunState("idle");
-            return;
+            activePreserveTx = null;
+            spawnPreserveTransaction(handoff.mid, handoff.offset);
+            continue;
           }
-          const delta = anchorDeltaFor(viewportPreserveSession);
-          if (
-            !opts.force &&
-            delta !== null &&
-            Math.abs(delta) > 200
-          ) {
-            // 与基准相距过远＝用户已重新定位：以当前位置为新基准，
-            // 不做任何“拉回”（自体型突变走 force 路径，不进此分支）。
-            viewportPreserveSession = captureVisibleAnchor();
-            publishViewportPreserve();
-            return;
+
+          // 窗口签名：scrollHeight + 虚拟窗口边界共同构成"布局批次"判定；
+          // 回填导致的任何再排都会翻转签名并重置稳定计数。
+          const win = virtualWindow.value;
+          const signature = `${Math.round(el.scrollHeight)}|${win.startIndex}|${win.endIndex}|${Math.round(win.offsetTop)}`;
+          if (signature !== prevSignature) {
+            prevSignature = signature;
+            stableBatches = 0;
+          } else {
+            stableBatches += 1;
           }
+
+          const delta = preserveDeltaFor(tx);
           if (delta === null) {
-            // 暂时卸载：等待预算内静候测量回填把锚行带回；超限显性失败。
-            preserveRemountWaits += 1;
-            if (preserveRemountWaits <= PRESERVE_REMOUNT_WAIT_LIMIT) {
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            // 暂时卸载（测量回填中）：等待锚行被覆盖窗带回挂载。
+            await waitRaf();
+            continue;
+          }
+          const absDelta = Math.abs(delta);
+
+          if (tx.phase === "aligning") {
+            if (absDelta < 1 && stableBatches >= PRESERVE_TX_RELEASE_STABLE_BATCHES - 1) {
+              tx.phase = "stabilizing";
+              publishPreservePhase("stabilizing");
+            } else if (absDelta >= 1) {
+              stableBatches = 0;
+              setProgrammaticScroll(el, el.scrollTop + delta);
+              await waitRaf();
+              continue;
+            } else {
+              await waitRaf();
               continue;
             }
-            {
-              // 真删除：把保持基准无跳变地移交给当前可视首行（同样的
-              // messageId+视口偏移语义）；没有幸存可视行才算真正失败，
-              // 并显性对外报告，绝不静默放弃空间连续性。
-              const rebased = captureVisibleAnchor();
-              if (rebased && rebased.mid !== viewportPreserveSession.mid) {
-                viewportPreserveSession = rebased;
-                publishViewportPreserve();
-                return;
-              }
-              abandonViewportPreserve();
-              el.dataset.preserveConverged = "false";
-              el.dataset.preserveResidualPx = "anchor-unavailable";
-              console.warn("[chat] preserve anchor did not settle");
-              publishPreserveRunState("idle");
-              return;
+          }
+          if (tx.phase === "stabilizing") {
+            if (absDelta < 1 && stableBatches >= PRESERVE_TX_RELEASE_STABLE_BATCHES) {
+              releasePreserveWindowOverride();
+              prevSignature = "";
+              stableBatches = 0;
+              tx.phase = "post-release";
+              publishPreservePhase("post-release");
+              await nextTick();
+              await waitLayoutFrame();
+            } else {
+              await waitRaf();
             }
-            // 暂时卸载（测量回填中）：本帧只等待；等待预算由外层 rounds
-            // 计数承载，超限同样进入显性失败路径。
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
             continue;
           }
-          if (Math.abs(delta) < 1) {
-            // 连续两轮亚像素稳定才收尾：吸收迟到的测量回填。
-            stableRounds += 1;
-            if (stableRounds >= 2) {
-              // 迟到复核：某些布局输入（头部实测高度等）在收敛后还会
-              // 变化一次；延迟复核发现残余位移时以新纪元重启一轮。
-              setTimeout(() => {
-                if (
-                  myEpoch === preserveEpoch &&
-                  viewportPreserveSession &&
-                  !followingLatest.value
-                ) {
-                  const lateDelta = anchorDeltaFor(viewportPreserveSession);
-                  if (lateDelta !== null && Math.abs(lateDelta) >= 2) {
-                    runPreserveCorrection();
-                  }
-                }
-              }, 140);
-              publishViewportPreserve();
+          // post-release：覆盖窗已释放、正常虚拟窗口模型回归。残余位移仍
+          // 由同一事务用真实矩形校正，随后连续静止 ≥320ms 才允许结算。
+          if (absDelta < 1) {
+            if (stableSinceMs < 0) stableSinceMs = Date.now();
+            if (Date.now() - stableSinceMs >= PRESERVE_TX_SETTLE_MS) {
+              succeedPreserveTransaction(tx, absDelta);
               return;
             }
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            continue;
+          } else {
+            stableSinceMs = -1;
+            stableBatches = 0;
+            setProgrammaticScroll(el, el.scrollTop + delta);
           }
-          stableRounds = 0;
-          setProgrammaticScroll(el, el.scrollTop + delta);
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve()),
+          await waitRaf();
+        }
+        // 帧预算耗尽：终态显性评估——最后读数 <1px 视为成功结算；否则
+        // 失败标注（保留锚点与诊断）。
+        const endTx = activePreserveTx;
+        if (!endTx) return;
+        const elEnd = historyNode();
+        const endDelta = elEnd ? preserveDeltaFor(endTx) : null;
+        if (endDelta !== null && Math.abs(endDelta) < 1) {
+          succeedPreserveTransaction(endTx, Math.abs(endDelta));
+        } else {
+          failPreserveTransaction(
+            endDelta === null ? "anchor-unavailable" : `${Math.abs(endDelta).toFixed(2)}px`,
           );
         }
-        } finally {
-          if (myEpoch === preserveEpoch || viewportPreserveSession === null) {
-            publishPreserveRunState("idle");
-          }
-        }
-        // round7：轮预算耗尽后的显性残差评估——绝不静默留下未收敛状态。
-        const elX = historyNode();
-        const finalDelta =
-          viewportPreserveSession && elX ? anchorDeltaFor(viewportPreserveSession) : null;
-        const residual =
-          finalDelta === null ? Number.NaN : Math.abs(finalDelta);
-        if (!Number.isFinite(residual) || residual >= 2) {
-          if (elX) {
-            elX.dataset.preserveConverged = "false";
-            elX.dataset.preserveResidualPx = Number.isFinite(residual)
-              ? residual.toFixed(2)
-              : "anchor-unavailable";
-          }
-          console.warn("[chat] preserve anchor did not settle");
-          abandonViewportPreserve();
-        }
-      })();
+      } finally {
+        if (!activePreserveTx) publishPreserveRunState("idle");
+      }
     }
 
-    // 布局突变（虚拟 spacer / 窗口边界）时把被保锚点按 messageId+相对偏移复位。
+    // 布局突变（虚拟 spacer / 窗口边界）只把活动保持事务标记为 dirty——
+    // round8（二）：这些内部级联绝不允许新建轮次抢占事务或重捕获锚点。
     watch(
       () => [
         virtualWindow.value.offsetTop,
@@ -1332,13 +1572,10 @@ export default defineComponent({
       ],
       () => {
         if (followingLatest.value) {
-          abandonViewportPreserve();
+          abandonPreserveTransaction();
           return;
         }
-        // 活动窗（用户刚滚过）只意味着“此刻不要回写”，绝不废弃基准；
-        // 写回放循环内部逐轮重判。
-        if (!viewportPreserveSession) return;
-        runPreserveCorrection();
+        markPreserveLayoutDirty();
       },
     );
 
@@ -1392,12 +1629,12 @@ export default defineComponent({
       if (followingLatest.value) {
         transferOwnership();
       } else if (resumeFollowFromLayout()) {
-        abandonViewportPreserve();
+        abandonPreserveTransaction();
         requestFollow();
       } else {
-        // 已离开状态下的又一次真实滚动：把“值得保持”的基准更新为当前
-        // 用户位置。
-        rebaseViewportPreserve();
+        // 已离开状态下的又一次真实滚动：唯一允许的取消+重建基准路径
+        // （round8（二））——旧事务连同覆盖窗一并作废，新基准取当前视图。
+        rebasePreserveByUserScroll();
       }
     }
 
@@ -1474,22 +1711,43 @@ export default defineComponent({
       publishFollowRunState();
     }
 
-    /** P2（round6）：宽度变化 ⇒ 换行全变 ⇒ 按行高度缓存整体失效并重测。
-     * epoch 发布到 history 的 data-height-cache-epoch，供测试与诊断确认
-     * 失效确实发生（而不是沿用陈旧高度表）。 */
+    /** P2（round6）→ round8（二）：宽度变化 ⇒ 换行全变 ⇒ 按事务序列处理：
+     * 用户接管态下先确认冻结锚与有界覆盖窗就位（缺失则以当前视图补建，
+     * 冻结发生在高度缓存失效之前），随后才整表失效并批量重测；此后所有
+     * 布局批次都汇入同一事务的泵。epoch 发布到 history 的
+     * data-height-cache-epoch，供测试与诊断确认失效确实发生。 */
     function remeasureAfterWidthChange(): void {
+      if (followingLatest.value) {
+        measuredHeights.value = new Map();
+        heightCacheEpoch += 1;
+        const followHost = boundHistoryEl ?? historyNode();
+        if (followHost) followHost.dataset.heightCacheEpoch = String(heightCacheEpoch);
+        requestFollow();
+        scheduleRowMeasurement();
+        return;
+      }
+      // round8（二）序列：先冻结不可变基准（messageId/index/history-relative
+      // offset），并启用覆盖窗保证锚邻域持续挂载；然后才失效旧宽度的高度
+      // 缓存并触发批量重测。基准优先取最近一次成功结算的事务——重排绝不
+      // 读取"当下视图"改写用户阅读位置；只有真实滚动能更换它。
+      if (!activePreserveTx) {
+        if (settledPreserveBasis) {
+          // 同一 generation 原样续期：重排是同一保持意图的延续批次。
+          spawnPreserveTxWith(
+            settledPreserveBasis.generation,
+            settledPreserveBasis.mid,
+            settledPreserveBasis.offset,
+          );
+        } else {
+          beginPreserveTransaction();
+        }
+      }
       measuredHeights.value = new Map();
       heightCacheEpoch += 1;
       const host = boundHistoryEl ?? historyNode();
       if (host) host.dataset.heightCacheEpoch = String(heightCacheEpoch);
-      if (followingLatest.value) {
-        requestFollow();
-        scheduleRowMeasurement();
-      } else {
-        // 用户已接管：独立视口锚保持位置，重排后多轮收敛回来。
-        runPreserveCorrection({ force: true });
-        scheduleRowMeasurement();
-      }
+      markPreserveLayoutDirty();
+      scheduleRowMeasurement();
     }
 
     /**
@@ -1502,15 +1760,13 @@ export default defineComponent({
       followingLatest.value = true;
       followGen += 1;
       cancelFollowRun();
-      viewportPreserveSession = null;
-      preserveEpoch += 1;
-      publishPreserveRunState("idle");
+      abandonPreserveTransaction();
       measuredHeights.value = new Map();
       msgFlowTopPx.value = 0;
       const el = historyNode();
       if (el) {
-        delete el.dataset.preserveMid;
-        delete el.dataset.preserveOff;
+        delete el.dataset.preserveConverged;
+        delete el.dataset.preserveResidualPx;
         el.dataset.followRun = "idle";
         setProgrammaticScroll(el, 0);
         measureHistory();
@@ -1562,8 +1818,12 @@ export default defineComponent({
       // "idle"，外部观察者与测试才看得到状态机已停止。
       activeFollowRun = null;
       publishFollowRunState();
-      // 接管瞬间锁定“用户看到的视图”为后续引擎自纠错的唯一基准。
-      rebaseViewportPreserve();
+      // 接管瞬间锁定“用户看到的视图”为后续引擎自纠错的唯一基准：
+      // round8（二）——真实滚动是唯一允许取消旧事务并重建锚点的路径；
+      // 锚在本轮渲染完成后定基（用户滚动后旧窗口挂载行可能整体脱节）。
+      activePreserveTx = null;
+      releasePreserveWindowOverride();
+      beginPreserveTransaction({ deferCapture: true });
     }
 
     /** 已离开后是否回到了“底部附近”（回到阈值内即恢复自动跟随）。 */
@@ -2382,8 +2642,8 @@ export default defineComponent({
       // P1-3（round6）：打开改名行是应用发起的布局突变——变更前先把
       // "用户此刻看到的视图"定为保持基准，变更引起的视口收缩由保持引擎
       // 按基准精确复原（无会话时这里补建，防止无基准可依的失控位移）。
-      if (!followingLatest.value && !viewportPreserveSession) {
-        rebaseViewportPreserve();
+      if (!followingLatest.value && !activePreserveTx) {
+        beginPreserveTransaction();
       }
       renaming.value = true;
     }
