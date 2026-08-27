@@ -275,6 +275,13 @@ export const useChatStore = defineStore("h5-chat", () => {
     const result = await streamGeneration(deps, id, stream.value.epoch, current, {
       initialState: opts?.resumeFrom,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      // P1（round5）：每个 RESUMED 批次应用后增量发布中间状态，页面据此
+      // 逐批渲染流式草稿（旧实现整条连接结束才一次性提交，用户在流式
+      // 期间看不到任何增量内容）。发布是浅拷贝，终态写入仍是同一份。
+      onProgress: (progress) => {
+        if (sequence !== runSequence || current.cancelled) return;
+        stream.value = { ...progress, events: [...progress.events] };
+      },
     });
 
     // P2-17: only the current run commits; a stale run's late write is dropped.

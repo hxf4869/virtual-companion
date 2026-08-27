@@ -274,11 +274,13 @@ export default {
     // pending — the whole section then hides (宁可不启用).
     const emcHidden = ref(false);
 
-    // P2（round4）：已验证卡上的"方式"渲染中文，不显示运维通道原值。
-    const verifiedMethodLabel = computed(
-      () => (emergencyContact.value?.verifiedMethod
-        && EMC_METHOD_LABELS[emergencyContact.value.verifiedMethod]) || "人工通道",
-    );
+    // P2（round5）：已验证卡上的"方式"渲染中文；未知/缺失的 verifiedMethod
+    // 落到中性兜底「验证方式未知」——绝不编造“人工通道”这类未经证实的事实。
+    const EMC_METHOD_UNKNOWN_LABEL = "验证方式未知";
+    const verifiedMethodLabel = computed(() => {
+      const method = emergencyContact.value?.verifiedMethod;
+      return (method && EMC_METHOD_LABELS[method]) || EMC_METHOD_UNKNOWN_LABEL;
+    });
 
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,

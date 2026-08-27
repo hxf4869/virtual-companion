@@ -35,12 +35,19 @@ intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. --
       </view>
 
       <!-- ENT-TRIAL (V61): the live simulated trial budget, if any.
-           P2（round4）：权益等级以中文呈现，到期时间本地化渲染。 -->
+           P2（round5）：remainingTurns/expiresAt 是可空字段——缺失时渲染
+           中性文案，绝不出现“剩余  轮”“到期时间 。”这类空值残句。 -->
       <view v-if="trial && trial.active" class="state-card" data-testid="trial-status" role="status">
         <text class="label">试用权益进行中</text>
-        <text class="state">剩余 {{ trial.remainingTurns }} 轮</text>
+        <text class="state" data-testid="trial-remaining">
+          {{ trial.remainingTurns === null ? "剩余轮次暂不可知" : `剩余 ${trial.remainingTurns} 轮` }}
+        </text>
         <text class="meta" data-testid="trial-expires">
-          到期时间 {{ formatLocalDateTime(trial.expiresAt ?? undefined) }}。
+          {{
+            trial.expiresAt === null
+              ? "到期时间以系统记录为准。"
+              : `到期时间 ${formatLocalDateTime(trial.expiresAt)}。`
+          }}
           到期或用尽后自动回到原等级，不删除任何数据。
         </text>
       </view>

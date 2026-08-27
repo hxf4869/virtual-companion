@@ -306,6 +306,57 @@ describe("consent page (FR-AUTH-003)", () => {
     wrapper.unmount();
   });
 
+  // P2（round5）：未知/缺失的 verifiedMethod 不得编造“人工通道”这类未证实
+  // 事实，必须落到中性兜底文案。
+  it("EMERGENCY-CONTACT: unknown or missing verifiedMethod falls back to neutral copy", async () => {
+    for (const verifiedMethod of [null, "MYSTERY_CHANNEL_X", undefined]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = typeof input === "string" ? input : input.toString();
+          if (url === "/api/v1/consents") {
+            return { ok: true, status: 200, json: async () => EFFECTIVE };
+          }
+          if (url === "/api/v1/emergency-contact") {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                id: "42",
+                label: "妈妈",
+                contact: "+86 138 0000 0000",
+                status: "VERIFIED",
+                createdAt: "2026-08-19T08:00:00Z",
+                updatedAt: "2026-08-19T08:30:00Z",
+                consentVersion: "2026-08",
+                verifiedAt: "2026-08-19T09:00:00Z",
+                verifiedMethod,
+                verifiedExpiresAt: "2027-02-15T09:00:00Z",
+              }),
+            };
+          }
+          return { ok: true, status: 200, json: async () => ({}) };
+        }),
+      );
+      const wrapper = mount(ConsentPage, { attachTo: document.body });
+      await flushPromises();
+
+      if (!wrapper.find('[data-testid="emc-card"]').exists()) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[dbg method=${String(verifiedMethod)}]`,
+          JSON.stringify(
+            (fetch as unknown as { mock?: { calls: unknown[][] } }).mock?.calls ?? [],
+          ),
+        );
+      }
+      const card = wrapper.find('[data-testid="emc-card"]').text();
+      expect(card, `method=${String(verifiedMethod)}`).toContain("方式 验证方式未知");
+      expect(card).not.toContain("人工通道");
+      wrapper.unmount();
+    }
+  });
+
   it("EMERGENCY-CONTACT: hides the whole section while the capability is off (403, §20.14)", async () => {
     vi.stubGlobal(
       "fetch",

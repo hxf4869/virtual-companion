@@ -136,6 +136,12 @@ export interface StreamGenerationOptions {
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
   initialState?: StreamState;
+  /**
+   * RESUMED 批次应用后（无终态、继续续传前）的中间状态回调。store 用它
+   * 把进度增量发布到响应式层，页面得以逐批渲染流式草稿——单条连接内
+   * 不再需要等到终态才一次性呈现。
+   */
+  onProgress?: (state: StreamState) => void;
 }
 
 export async function streamGeneration(
@@ -219,6 +225,7 @@ export async function streamGeneration(
         }
         // status === "streaming": the batch ended without a terminal event ->
         // treat as a disconnect and resume again from the new cursor.
+        options?.onProgress?.(state);
         continue;
       }
 

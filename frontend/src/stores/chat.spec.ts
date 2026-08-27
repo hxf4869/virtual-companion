@@ -162,6 +162,44 @@ describe("useChatStore", () => {
     expect(store.isTerminal).toBe(false);
   });
 
+  // P1（round5）：RESUMED 批次之间增量发布中间流状态——页面逐批拿到
+  // 草稿文本（store.draft 在第一批后即可读），不再等整条连接结束。
+  it("publishes interim stream state between RESUMED batches so the live draft renders", async () => {
+    const store = useChatStore();
+    let releaseSecond: (() => void) | undefined;
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    let calls = 0;
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (req): Promise<ResumeResult> => {
+        calls += 1;
+        if (calls === 1) {
+          return { disposition: "RESUMED", events: [delta(1, 1, "你"), delta(2, 1, "好")] };
+        }
+        await secondGate;
+        expect(req.afterSeq).toBe(2);
+        return { disposition: "RESUMED", events: [delta(3, 1, "呀"), terminal(4, 1)] };
+      }),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    const pending = store.run(deps, "gen-live", 1);
+    // 第一批应用完毕（第二次 resume 已被调用并挂起）时，中间状态必须已经
+    // 可见于响应式层。
+    await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(2));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.isStreaming).toBe(true);
+    expect(store.draft, "interim draft visible between batches").toBe("你好");
+
+    releaseSecond?.();
+    await pending;
+
+    expect(store.draft).toBe("你好呀");
+    expect(store.phase).toBe("completed");
+  });
+
   it("S0-20: transport exhaustion keeps the refresh recovery binding", async () => {
     const rows = new Map<string, string>();
     vi.stubGlobal("sessionStorage", {

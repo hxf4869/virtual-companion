@@ -101,6 +101,23 @@ describe("health page (USAGE-HEALTH)", () => {
     wrapper.unmount();
   });
 
+  // P2（round5）：remainingTurns/expiresAt 是可空字段——active=true 但两者
+  // 为 null 时不得出现“剩余  轮”“到期时间 。”这类空值残句。
+  it("renders neutral copy for a trial with null remainingTurns and expiresAt", async () => {
+    stubFetch({ trial: { active: true, remainingTurns: null, expiresAt: null } });
+    const wrapper = mount(HealthPage, { attachTo: document.body });
+    await flushPromises();
+
+    const card = wrapper.find('[data-testid="trial-status"]').text();
+    expect(card).toContain("试用权益进行中");
+    expect(wrapper.find('[data-testid="trial-remaining"]').text()).toContain("剩余轮次暂不可知");
+    expect(card).toContain("到期时间以系统记录为准。");
+    // 空值残句反例（模板拼接退化的直接证据）。
+    expect(card).not.toContain("剩余 ");
+    expect(card).not.toMatch(/到期时间\s+。/);
+    wrapper.unmount();
+  });
+
   it("loads defaults and states the reminder is a system-layer fact", async () => {
     stubFetch();
     const wrapper = mount(HealthPage, { attachTo: document.body });

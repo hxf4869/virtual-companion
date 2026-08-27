@@ -329,6 +329,7 @@
             :key="msg.messageId"
             class="chat-message"
             :class="msg.role"
+            :data-mid="msg.messageId"
             :data-vindex="String(virtualWindow.startIndex + vi)"
             data-testid="chat-message"
           >
@@ -825,12 +826,6 @@ export default defineComponent({
       return el instanceof HTMLElement ? el : null;
     }
 
-    function measureHistory(): void {
-      const el = historyNode();
-      const height = el ? el.clientHeight : 0;
-      if (height > 0) historyViewportPx.value = height;
-    }
-
     /**
      * LANDSCAPE/深链：historyEl 可能晚于 onMounted 出现（关系异步加载后才
      * 渲染消息区）。ref 一变化就（重）绑定 ResizeObserver，保证直接深链或
@@ -844,86 +839,138 @@ export default defineComponent({
       bindHistoryScrollListener(el);
       historyObserver = new ResizeObserver(() => {
         measureHistory();
-        // P1/P2（round4）：视口/布局变化（旋转、软键盘、spacer 重排）时按
-        // 跟随意图重对锚点；用户已滚离时绝不动 scrollTop。
-        if (followingLatest.value) requestFollow();
+        // 视口/布局变化（旋转、软键盘、spacer 重排）时按跟随意图重对锚点；
+        // 用户已滚离时绝不动 scrollTop——位置保持交给视口锚快照。
+        if (followingLatest.value) {
+          requestFollow();
+        } else {
+          runPreserveCorrection();
+        }
       });
       historyObserver.observe(el);
       measureHistory();
       // 历史容器若被 Vue 重建（新节点从 0 开始），立即恢复一次锚定，
-      // 不依赖恰好还有信号在途。
-      requestFollow(undefined, { ignoreIntent: true });
+      // 不依赖恰好还有信号在途。ownership 语义不变：离开中的用户不会被打扰。
+      requestFollow();
     }
 
     watch(historyEl, () => bindHistoryObserver());
 
-    // P1（round4）：逐项实测高度回填。估算值与真实行高的累积偏差会在长
-    // 列表里制造“空白死带”（spacer 覆盖住真实内容带），逐条校准后虚拟
-    // 窗口与滚动位置重新对齐。
-    const measuredRowHeights = ref<Array<number | undefined>>([]);
+    // P2（round5）：逐项实测高度以 messageId 为键缓存。索引键在删除消息、
+    // 切换会话时全部错位；messageId 键让删除只淘汰被删行、切换按会话重建、
+    // 宽度变化整体失效重测。
+    const measuredHeights = ref<Map<string, number>>(new Map());
+    // 虚拟窗口的局部坐标修正：ChatContextHead 等条件系统行与消息流共用
+    // 同一滚动容器，容器的 scrollTop 包含头部高度，必须扣除后再交给
+    // computeVirtualWindow。头部高度由顶垫元素相对滚动内容原点的 offsetTop
+    // 实时测得（.chat-history 已声明 position:relative）。
+    const msgFlowTopPx = ref(0);
 
-    /** 校准前的估算窗口：供测量时机观察 startIndex/endIndex 变化。 */
-    const virtualWindowSource = computed(() =>
-      computeVirtualWindow({
-        count: messages.value.length,
-        scrollTop: historyScrollTop.value,
-        viewportHeight: historyViewportPx.value,
-        estimateHeight: VIRTUAL_ESTIMATE_HEIGHT,
-        overscan: VIRTUAL_OVERSCAN,
-        heights: null,
-      }),
+    function syncMsgFlowTop(host?: HTMLElement | null): void {
+      const el = host ?? historyNode();
+      if (!el) return;
+      const flow = el.querySelector('[data-testid="virt-spacer-top"]');
+      const top = flow instanceof HTMLElement ? flow.offsetTop : 0;
+      if (!Number.isFinite(top) || top < 0) return;
+      if (top !== msgFlowTopPx.value) msgFlowTopPx.value = top;
+    }
+
+    function measureHistory(): void {
+      const el = historyNode();
+      if (!el) return;
+      if (el.clientHeight > 0) historyViewportPx.value = el.clientHeight;
+      syncMsgFlowTop(el);
+    }
+
+    /** 消息流本地坐标下的滚动位置（虚拟窗口唯一可信的 scrollTop 输入）。 */
+    const messageScrollTop = computed(() =>
+      Math.max(0, historyScrollTop.value - msgFlowTopPx.value),
     );
 
+    /** messageId 键 → 索引表：交给 computeVirtualWindow 的稠密高度表。 */
+    const heightTable = computed<Array<number | undefined> | null>(() => {
+      const list = messages.value;
+      if (list.length === 0 || measuredHeights.value.size === 0) return null;
+      const table = new Array<number | undefined>(list.length);
+      let any = false;
+      for (let i = 0; i < list.length; i += 1) {
+        const h = measuredHeights.value.get(list[i]!.messageId);
+        if (h !== undefined && h > 0) {
+          table[i] = h;
+          any = true;
+        }
+      }
+      return any ? table : null;
+    });
+
+    /**
+     * 实测回填：只写真实 diff（防 RO/watcher 自激循环），且每轮顺带同步
+     * 头部高度与窗口尺寸。用户已接管视口时绝不为校准强制跟随——位置保持
+     * 由“可见 messageId + 相对偏移”快照负责。
+     */
     function recordRowHeights(): void {
       const el = historyNode();
       if (!el) return;
+      syncMsgFlowTop(el);
+      const next = measuredHeights.value;
       let mutated = false;
       for (const node of Array.from(
         el.querySelectorAll('[data-testid="chat-message"]'),
       )) {
-        const host = node as HTMLElement & { dataset: { vindex?: string } };
-        const idx = Number(host.dataset.vindex);
-        if (!Number.isInteger(idx) || idx < 0) continue;
+        const host = node as HTMLElement & { dataset: { mid?: string } };
+        const mid = host.dataset.mid;
+        if (!mid) continue;
         const h = Math.ceil(host.getBoundingClientRect().height);
         if (h <= 0) continue;
-        if (measuredRowHeights.value[idx] !== h) {
+        if (next.get(mid) !== h) {
           if (!mutated) {
-            measuredRowHeights.value = [...measuredRowHeights.value];
+            measuredHeights.value = new Map(next);
             mutated = true;
           }
-          measuredRowHeights.value[idx] = h;
+          measuredHeights.value.set(mid, h);
         }
       }
-      // 校准改变内容几何后：短暂静默重排引发的杂散滚动事件（不得误判为
-      // 用户手势），并强制跟随机重新收敛一次——先前的收敛结果可能已被
-      // 估算偏差的连锁重排推翻。
-      if (mutated) {
-        reflowQuietUntil = Date.now() + 120;
-        requestFollow(undefined, { ignoreIntent: true });
-      }
+      if (mutated && followingLatest.value) requestFollow();
     }
 
     function scheduleRowMeasurement(): void {
       void nextTick(() => recordRowHeights());
     }
 
+    // 会话切换：整表清空重建；删除：淘汰被删行；宽度变化：排版全变，
+    // 全部旧值失效，等新窗口重测。
     watch(
-      () => [
-        messages.value.length,
-        virtualWindowSource.value.startIndex,
-        virtualWindowSource.value.endIndex,
-      ],
-      () => scheduleRowMeasurement(),
+      () => store.conversationId,
+      () => {
+        if (measuredHeights.value.size > 0) measuredHeights.value = new Map();
+      },
     );
+    watch(
+      () => messages.value.length,
+      () => {
+        const size = measuredHeights.value.size;
+        if (size === 0) return;
+        const ids = new Set(messages.value.map((m) => m.messageId));
+        if (ids.size >= size) return;
+        const next = new Map(measuredHeights.value);
+        for (const key of next.keys()) {
+          if (!ids.has(key)) next.delete(key);
+        }
+        measuredHeights.value = next;
+      },
+    );
+    // 宽度变化不清空高度表：陈旧的按行实测值仍远优于整体估算，新窗口
+    // 挂载后的重测会在一两帧内以新宽度下的真实值覆盖；过渡偏移由视口锚
+    // 快照按 messageId+相对偏移吸收。
 
     const virtualWindow = computed(() =>
       computeVirtualWindow({
         count: messages.value.length,
-        scrollTop: historyScrollTop.value,
+        scrollTop: messageScrollTop.value,
         viewportHeight: historyViewportPx.value,
         estimateHeight: VIRTUAL_ESTIMATE_HEIGHT,
         overscan: VIRTUAL_OVERSCAN,
-        heights: measuredRowHeights.value,
+        heights: heightTable.value,
       }),
     );
 
@@ -931,9 +978,8 @@ export default defineComponent({
       messages.value.slice(virtualWindow.value.startIndex, virtualWindow.value.endIndex),
     );
     const virtualBottomPad = computed(() => {
-      // P1（round4）：底垫按“总高−上垫−真实渲染段高度”计算；旧公式对渲染
-      // 段整段按估算值扣减，会在短内容行上留下幻影空白，把最新回复顶出
-      // 可视矩形上沿。
+      // 底垫按“总高−上垫−真实渲染段高度”计算；估算值扣减会在短行上留下
+      // 幻影空白，把最新回复顶出可视矩形上沿。
       const win = virtualWindow.value;
       let renderedHeight = 0;
       for (
@@ -941,7 +987,9 @@ export default defineComponent({
         i < win.startIndex + renderedMessages.value.length;
         i += 1
       ) {
-        renderedHeight += measuredRowHeights.value[i] ?? VIRTUAL_ESTIMATE_HEIGHT;
+        renderedHeight +=
+          measuredHeights.value.get(messages.value[i]?.messageId ?? "") ??
+          VIRTUAL_ESTIMATE_HEIGHT;
       }
       return Math.max(
         0,
@@ -949,40 +997,302 @@ export default defineComponent({
       );
     });
 
+    // P1/P2（round5）：用户已滚离时的视口保持——校准/spacer 重排/宽度变化
+    // 会平移内容，只保数值 scrollTop 不够。以“首个可见消息的 messageId +
+    // 相对 history 顶边偏移”为锚，在布局突变时迭代复位（多轮直到收敛，
+    // 覆盖“测量回填引起的第二跳”）；任何真实滚动立即作废会话。
+    interface ViewportAnchorSnapshot {
+      mid: string;
+      offsetFromHistoryTop: number;
+    }
+    let viewportPreserveSession: ViewportAnchorSnapshot | null = null;
+    /** 会话纪元：每次布局突变重新起一个异步收敛循环；旧循环读到过期
+     * 纪元即退出——多路修正串行化，杜绝相互覆盖的竞态。 */
+    let preserveEpoch = 0;
+
+    function captureVisibleAnchor(): ViewportAnchorSnapshot | null {
+      const el = historyNode();
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      let fallback: ViewportAnchorSnapshot | null = null;
+      for (const node of Array.from(
+        el.querySelectorAll('[data-testid="chat-message"]'),
+      )) {
+        const row = node as HTMLElement & { dataset: { mid?: string } };
+        const anchorMid = row.dataset.mid;
+        if (!anchorMid) continue;
+        const r = row.getBoundingClientRect();
+        if (r.bottom <= rect.top + 1) continue;
+        const snapOf = (): ViewportAnchorSnapshot => ({
+          mid: anchorMid,
+          offsetFromHistoryTop: Math.max(0, r.top - rect.top),
+        });
+        // 首选：首个“完整落入可视区且离开顶缘 ≥8px”的行——判据只依赖
+        // 本行的顶/底，并与顶缘保持保护带，避免亚像素抖动翻转归属。
+        if (
+          r.top >= rect.top + 8 &&
+          r.bottom <= rect.bottom + 0.5 &&
+          r.top >= rect.top - 0.5
+        ) {
+          return snapOf();
+        }
+        if (!fallback) fallback = snapOf();
+      }
+      return fallback;
+    }
+
+    /** 返回使锚行回到快照偏移所需的 scrollTop 增量；找不到锚行返回 null。 */
+    function anchorDeltaFor(snap: ViewportAnchorSnapshot): number | null {
+      const el = historyNode();
+      if (!el) return null;
+      let target: HTMLElement | null = null;
+      for (const node of Array.from(
+        el.querySelectorAll('[data-testid="chat-message"]'),
+      )) {
+        const row = node as HTMLElement & { dataset: { mid?: string } };
+        if (row.dataset.mid === snap.mid) {
+          target = row;
+          break;
+        }
+      }
+      if (!target) return null; // 锚行已被删除：保留数值 scrollTop 兜底。
+      return (
+        target.getBoundingClientRect().top -
+        el.getBoundingClientRect().top -
+        snap.offsetFromHistoryTop
+      );
+    }
+
+    function abandonViewportPreserve(): void {
+      viewportPreserveSession = null;
+    }
+
+    /** 以“此刻用户看到的视图”重建保持基准（接管与每次真实滚动时调用）。 */
+    /** 把当前基准同步到 history 元素的 data 属性（测试与诊断的单一事实源）。 */
+    function publishViewportPreserve(): void {
+      const el = historyNode() as (HTMLElement & { dataset: { preserveMid?: string; preserveOff?: string } }) | null;
+      if (!el) return;
+      const snap = viewportPreserveSession;
+      if (!snap) {
+        delete el.dataset.preserveMid;
+        delete el.dataset.preserveOff;
+        return;
+      }
+      el.dataset.preserveMid = snap.mid;
+      el.dataset.preserveOff = snap.offsetFromHistoryTop.toFixed(2);
+    }
+
+    function rebaseViewportPreserve(): void {
+      viewportPreserveSession = captureVisibleAnchor();
+      publishViewportPreserve();
+    }
+    /** 应用自身触发的布局突变（展开/折叠/删除行等）：若用户已接管视口，
+     * 立刻按保持基准复位一次（由 runPreserveCorrection 的纪元机制串行）。 */
+    function notifyLayoutMutation(): void {
+      if (followingLatest.value || !viewportPreserveSession) return;
+      // 应用自身造成的布局变化：即使位移很大也必须把基准视图拉回来，
+      // 不允许被误判为“用户重新定位”。
+      runPreserveCorrection({ force: true });
+    }
+
+    /** 以当前基准执行一轮多帧视口复位（依赖 watcher 与 ResizeObserver 共同触发）。 */
+    function runPreserveCorrection(opts: { force?: boolean } = {}): void {
+      const myEpoch = ++preserveEpoch;
+      void (async () => {
+        await nextTick();
+        // 双 rAF：等浏览器完成一次布局与绘制后再读几何。
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        let stableRounds = 0;
+        for (let round = 0; round < 8; round += 1) {
+          if (myEpoch !== preserveEpoch || !viewportPreserveSession) return;
+          if (followingLatest.value) {
+            abandonViewportPreserve();
+            return;
+          }
+          const el = historyNode();
+          if (!el) return;
+          const delta = anchorDeltaFor(viewportPreserveSession);
+          if (
+            !opts.force &&
+            delta !== null &&
+            Math.abs(delta) > 200
+          ) {
+            // 与基准相距过远＝用户已重新定位：以当前位置为新基准，
+            // 不做任何“拉回”（自体型突变走 force 路径，不进此分支）。
+            viewportPreserveSession = captureVisibleAnchor();
+            publishViewportPreserve();
+            return;
+          }
+          if (delta === null) {
+            abandonViewportPreserve();
+            return;
+          }
+          if (Math.abs(delta) < 1) {
+            // 连续两轮亚像素稳定才收尾：吸收迟到的测量回填。
+            stableRounds += 1;
+            if (stableRounds >= 2) {
+              // 迟到复核：某些布局输入（头部实测高度等）在收敛后还会
+              // 变化一次；延迟复核发现残余位移时以新纪元重启一轮。
+              setTimeout(() => {
+                if (
+                  myEpoch === preserveEpoch &&
+                  viewportPreserveSession &&
+                  !followingLatest.value
+                ) {
+                  const lateDelta = anchorDeltaFor(viewportPreserveSession);
+                  if (lateDelta !== null && Math.abs(lateDelta) >= 2) {
+                    runPreserveCorrection();
+                  }
+                }
+              }, 140);
+              publishViewportPreserve();
+              return;
+            }
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            continue;
+          }
+          stableRounds = 0;
+          setProgrammaticScroll(el, el.scrollTop + delta);
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
+        }
+      })();
+    }
+
+    // 布局突变（虚拟 spacer / 窗口边界）时把被保锚点按 messageId+相对偏移复位。
+    watch(
+      () => [
+        virtualWindow.value.offsetTop,
+        virtualWindow.value.totalHeight,
+        virtualWindow.value.startIndex,
+      ],
+      () => {
+        if (followingLatest.value) {
+          abandonViewportPreserve();
+          return;
+        }
+        // 活动窗（用户刚滚过）只意味着“此刻不要回写”，绝不废弃基准；
+        // 写回放循环内部逐轮重判。
+        if (!viewportPreserveSession) return;
+        runPreserveCorrection();
+      },
+    );
+
+    // 测量时机观察最终渲染窗口（含已测高度参与计算的结果）：估算→实测的
+    // 重排会把窗口推到新的边界，只有观察最终输出才不会漏测新挂载行；展开/
+    // 折叠等行内状态变化也会改变行高，同样进入测量。
+    watch(
+      () => [
+        virtualWindow.value.startIndex,
+        virtualWindow.value.endIndex,
+        virtualWindow.value.totalHeight,
+        openMsgId.value,
+        reportMsgId.value,
+        confirmDeleteMsgId.value,
+      ],
+      () => scheduleRowMeasurement(),
+    );
+
+
     function onHistoryScroll(event: Event): void {
       const target = event.target as
         | { scrollTop?: number; scrollHeight?: number; clientHeight?: number }
         | null;
       if (!target || typeof target.scrollTop !== "number") return;
-      historyScrollTop.value = target.scrollTop;
+      // 引擎自身写值：无条件吞掉（两种 ownership 模式下都成立）。
       if (
-        (Date.now() < programmaticScrollUntil &&
-          Math.abs(target.scrollTop - lastProgrammaticTop) <= 2) ||
-        Date.now() < reflowQuietUntil
+        Date.now() < selfWriteUntil &&
+        Math.abs(target.scrollTop - selfWriteTop) <= ECHO_TOLERANCE_PX
       ) {
+        historyScrollTop.value = target.scrollTop;
         return;
       }
-      syncFollowFromLayout();
+      historyScrollTop.value = target.scrollTop;
+      // P1-B（round5）：精确回声过滤——只忽略“值等于最近一次程序写入落点”
+      // 的事件。没有静默窗、不做阈值宽限：任何偏离写入目标的滚动都立即
+      // 转移 ownership，校准重排/流式 delta 从此都不再写入 scrollTop。
+      // 回声抑制仅在跟随机活动（followingLatest=true）时生效：该机写入
+      // 会产生与目标一致的滚动事件，需要识别为自己的；用户接管后任何
+      // 滚动都是真实语义（含对保持基准的重定）。
+      const isEcho =
+        followingLatest.value &&
+        Date.now() < programmaticScrollUntil &&
+        Math.abs(target.scrollTop - lastProgrammaticTop) <= ECHO_TOLERANCE_PX;
+      if (isEcho) return;
+      // 离开态的自我回声：保持引擎的复位写回也会产生与写入值一致的
+      // 滚动事件——那是自己的动作，绝不能借此重定用户基准。
+      const isSelfCorrection =
+        Date.now() < programmaticScrollUntil &&
+        Math.abs(target.scrollTop - lastProgrammaticTop) <= ECHO_TOLERANCE_PX;
+      if (isSelfCorrection) return;
+      if (followingLatest.value) {
+        transferOwnership();
+      } else if (resumeFollowFromLayout()) {
+        abandonViewportPreserve();
+        requestFollow();
+      } else {
+        // 已离开状态下的又一次真实滚动：把“值得保持”的基准更新为当前
+        // 用户位置。
+        rebaseViewportPreserve();
+      }
     }
 
-    // P1/P2（round4）：跟随状态机。跟随目标是“最新流式草稿 / 最新正式消息”
-    // 的底边，而不是尾部元数据行（status/usage/feedback/memory/mode）的绝对
-    // 底部——否则小视口初始态会被尾部行把最新回复顶出可视区。
+    // P1/P2（round5）：跟随状态机。跟随目标是“最新流式草稿 / 最新正式消息”
+    // 的底边，而不是尾部元数据行的绝对底部。
     //
-    // 令牌规则：每次排入一帧就递增 followSeq；每个延迟 rAF / ResizeObserver
-    // 动作执行前重新校验（令牌、followingLatest、当前 history 节点）——用户
-    // 滚离底部后，已排队帧、后续 delta、ResizeObserver、虚拟 spacer 重排都
-    // 不再写入 scrollTop；只有重新滚回锚点附近才恢复跟随。
+    // 三阶段一次性收敛（禁止绝对底 ↔ 锚点对齐来回振荡）：
+    //   materialize-latest —— 虚拟窗口尚未挂载到尾部时向估算尾部推进；
+    //     这是唯一允许写 scrollHeight 绝对底的阶段，锚点一旦挂载即离开。
+    //   align-anchor —— 以锚点矩形为唯一目标做纯对齐：delta =
+    //     anchorBottom - containerBottom；尾部元数据造成的 gapToMax 与本
+    //     阶段无关，绝不构成再次跳绝对底的理由。
+    //   verify-stable —— scrollTop / scrollHeight / 锚点矩形连续多帧完全
+    //     一致且持续 ≥VERIFY_MIN_MS，且期间无新的 dirty 信号，才结算；
+    //     结算后状态机停止、不排队任何帧。
+    //
+    // 合并规则：进行中的 run 只把后续 delta 标记为 dirty，不递增令牌、
+    // 不取消前链；用户手势（非回声滚动）才递增 followGen 作废全部帧。
     const followingLatest = ref(true);
-    let followSeq = 0;
-    /** 程序性滚动后的静默窗口与最近写入的实际落点：窗口内的回声事件用于
-     * 与写入值比对——一致视为自己的回声，不一致（或窗外）一律按几何重新
-     * 判定用户意图。校准/收敛引起的重排也各自开一个更短的静默窗。 */
+    /** ownership 取消令牌：任何一次真实接管都会使未执行的帧作废。 */
+    let followGen = 0;
+    let activeFollowRun: FollowRun | null = null;
+
+    type FollowPhaseName = "materialize-latest" | "align-anchor" | "verify-stable";
+
+    interface FollowRun {
+      phase: FollowPhaseName;
+      dirty: boolean;
+      materializeWrites: number;
+      stallFrames: number;
+      prevAbsDelta: number;
+      lastScrollHeight: number;
+      stableFrames: number;
+      stableSinceMs: number;
+      lastSample: string;
+    }
+
+    const VERIFY_FRAMES = 3;
+    const VERIFY_MIN_MS = 250;
+    const MAX_MATERIALIZE_WRITES = 240;
+    const RESUME_GAP_PX = 48;
+    const STALL_FRAME_LIMIT = 120;
+    const MAX_ALIGN_WRITES = 400;
+    let alignWritesUsed = 0;
+
+    /** 程序性滚动后的极短回声窗口与最近写入的实际落点（读回钳制后的值）。 */
     let programmaticScrollUntil = 0;
     let lastProgrammaticTop = Number.NaN;
-    let reflowQuietUntil = 0;
+    const ECHO_WINDOW_MS = 120;
+    /** 最近一次引擎自身的 scrollTop 写入标记（时间窗+落点）。 */
+    let selfWriteUntil = 0;
+    let selfWriteTop = Number.NaN;
 
-    /** 跟随锚点：流式时是草稿元素，否则是最后一条真实消息。 */
+    const ECHO_TOLERANCE_PX = 1;
+
+    /** 跟随锚点：流式时是草稿元素，否则是最后一条真实消息行。 */
     function currentAnchorNode(): HTMLElement | null {
       const el = historyNode();
       if (!el) return null;
@@ -998,159 +1308,206 @@ export default defineComponent({
       return null;
     }
 
-    /**
-     * 由滚动位置推断用户意图：与最近一次收敛后的“静止间隙”比较——
-     * 虚拟列表里“最后挂载的节点”不代表最新消息，不能用它的可视位置做判据；
-     * 距内容底间隙回落到静止带内即视为回到跟随位。
-     */
-    let classificationArmed = false;
-
-    function syncFollowFromLayout(): void {
-      // 基线未建立（本轮尚未收敛过）时不做意图判定：挂载/翻页期的布局微滚
-      // 一旦被误判为“用户离开”，跟随会被永久饿死。收敛本身会把布防打开。
-      if (!classificationArmed) {
-        followingLatest.value = true;
-        return;
+    /** 最后一个挂载消息行的虚拟索引；无挂载返回 -1。 */
+    function lastMountedVindex(el: HTMLElement): number {
+      const nodes = el.querySelectorAll('[data-testid="chat-message"]');
+      for (let i = nodes.length - 1; i >= 0; i -= 1) {
+        const node = nodes[i] as HTMLElement & { dataset: { vindex?: string } };
+        const idx = Number(node.dataset.vindex);
+        if (Number.isInteger(idx)) return idx;
       }
-      const el = historyNode();
-      if (!el || el.scrollHeight <= el.clientHeight) {
-        followingLatest.value = true;
-        return;
-      }
-      const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
-      followingLatest.value = gap <= restGapPx.value + 40;
+      return -1;
     }
 
-    /** 最近一次锚定收敛时的“距内容底间隙”，跟随静止带的基准。 */
-    const restGapPx = ref(48);
+    function transferOwnership(): void {
+      followingLatest.value = false;
+      followGen += 1;
+      activeFollowRun = null;
+      // 接管瞬间锁定“用户看到的视图”为后续引擎自纠错的唯一基准。
+      rebaseViewportPreserve();
+    }
+
+    /** 已离开后是否回到了“底部附近”（回到阈值内即恢复自动跟随）。 */
+    function resumeFollowFromLayout(): boolean {
+      const el = historyNode();
+      if (!el) return false;
+      if (el.scrollHeight <= el.clientHeight) {
+        followingLatest.value = true;
+        return true;
+      }
+      const gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+      if (gap > RESUME_GAP_PX) return false;
+      followingLatest.value = true;
+      return true;
+    }
 
     function setProgrammaticScroll(el: HTMLElement, top: number): void {
-      programmaticScrollUntil = Date.now() + 120;
+      programmaticScrollUntil = Date.now() + ECHO_WINDOW_MS;
+      // 自身写值标记：离开态下保持引擎的复位写回也会发出滚动事件，
+      // 必须与真实手势严格区分（否则会吞掉用户的返回意图）。
+      selfWriteUntil = Date.now() + ECHO_WINDOW_MS;
+      selfWriteTop = top;
       el.scrollTop = top;
       // 读回浏览器钳制后的实际值：回声比对用它，而非请求值。
       lastProgrammaticTop = el.scrollTop;
       historyScrollTop.value = el.scrollTop;
     }
 
-    /**
-     * 两阶段锚定收敛（round4 重写）：第一阶段持续强制绝对底跳——估算高度与
-     * 真实行高的偏差会让虚拟窗口在贴近底部时发生“回流缩水”，把已到底的
-     * 视口再甩回列表中段，因此必须逐帧复核「是否仍在最大滚动位」直到连续
-     * 两帧稳定；第二阶段基于真实矩形把最新内容的底边精确对齐。 */
-    interface FollowPhase {
-      enforcedBottomFrames: number;
-      lastScrollHeight: number;
-      stableFrames: number;
-      confirmed: boolean;
-    }
-
-    function applyAnchorOnce(el: HTMLElement, state: FollowPhase): boolean {
-      // 布局稳定性闸门：校准回填会让 scrollHeight 逐帧变化；在连续两帧
-      // 稳定之前，任何“看起来已对齐”的读数都不可信——直接回到绝对底。
-      const stableLayout = state.lastScrollHeight === el.scrollHeight;
-      state.lastScrollHeight = el.scrollHeight;
-      if (!stableLayout) {
-        state.stableFrames = 0;
-        setProgrammaticScroll(el, el.scrollHeight);
-        return false;
-      }
-      state.stableFrames += 1;
-      const gapToMax =
-        el.scrollHeight - el.clientHeight - el.scrollTop;
-      if (state.stableFrames < 2) {
-        setProgrammaticScroll(el, el.scrollHeight);
-        return false;
-      }
-
-      // —— 第一阶段：强制贴底直到连续两帧站稳（防估高回流甩出）——
-      if (state.enforcedBottomFrames < 2) {
-        if (gapToMax > 6) {
-          setProgrammaticScroll(el, el.scrollHeight);
-          state.enforcedBottomFrames = 0;
-          return false;
-        }
-        state.enforcedBottomFrames += 1;
-        return false;
-      }
-      if (state.enforcedBottomFrames >= 2) {
-        // 站稳两帧：贴底基线成立，允许此后开始意图分类；仍继续精调。
-        classificationArmed = true;
-      }
-      if (gapToMax > 8) {
-        // 贴底期间又被重排推走：重新计时强制。
-        state.enforcedBottomFrames = 0;
-        return false;
-      }
-
-      // —— 第二阶段：真实矩形精调锚点对齐 ——
+    function sampleGeometry(el: HTMLElement): string {
       const anchor = currentAnchorNode();
-      if (!anchor) {
-        restGapPx.value = 24;
-        return true;
-      }
-      if (anchor.getBoundingClientRect().height > el.clientHeight) {
-        // 锚点高于可视区：静止在绝对底部兜底。
-        setProgrammaticScroll(el, el.scrollHeight);
-        restGapPx.value = Math.max(24, gapToMax);
-        return true;
-      }
-      const overflowing =
-        anchor.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom;
-      if (Math.abs(overflowing) <= 1) {
-        restGapPx.value = Math.max(24, gapToMax);
-        classificationArmed = true;
-        return true;
-      }
-      classificationArmed = true;
-      setProgrammaticScroll(el, el.scrollTop + Math.ceil(overflowing));
-      return false;
+      if (!anchor) return `s${el.scrollTop}h${el.scrollHeight}`;
+      const r = anchor.getBoundingClientRect();
+      return `${el.scrollTop}:${el.scrollHeight}:${Math.round(r.top)}:${Math.round(r.height)}`;
     }
 
-    function stepFollow(
-      seq: number,
-      el: HTMLElement,
-      framesLeft: number,
-      state: FollowPhase,
-    ): void {
-      requestAnimationFrame(() => {
-        // 每帧执行前重新校验；spacer 重排可能再次改变 scrollHeight。
-        if (seq !== followSeq || !followingLatest.value || historyNode() !== el) return;
-        const settled = applyAnchorOnce(el, state);
-        if (!settled) {
-          // 任何位移之后都需要一次“下帧复核”，防止读到过渡中的矩形。
-          state.confirmed = false;
-          if (framesLeft > 0) {
-            stepFollow(seq, el, framesLeft - 1, state);
-          }
+    function finishFollowRun(): void {
+      alignWritesUsed = 0;
+      activeFollowRun = null;
+    }
+
+    function followTick(gen: number, el: HTMLElement): void {
+      // 每帧执行前重新校验：令牌、ownership、当前节点同一性。
+      if (
+        gen !== followGen ||
+        !followingLatest.value ||
+        historyNode() !== el ||
+        !activeFollowRun
+      ) {
+        return;
+      }
+      const run = activeFollowRun;
+
+      if (run.phase === "materialize-latest") {
+        const count = messages.value.length;
+        const mounted = isStreaming.value && paintedDraft.value
+          ? count - 1 // 流式期锚点是草稿节点，永远位于内容尾端之后
+          : lastMountedVindex(el);
+        if (count === 0 || mounted >= count - 1) {
+          run.phase = "align-anchor";
+        } else if (run.materializeWrites >= MAX_MATERIALIZE_WRITES) {
+          finishFollowRun();
+          return;
+        } else {
+          run.materializeWrites += 1;
+          setProgrammaticScroll(el, el.scrollHeight);
+          requestAnimationFrame(() => followTick(gen, el));
           return;
         }
-        if (!state.confirmed && framesLeft > 0) {
-          state.confirmed = true;
-          stepFollow(seq, el, framesLeft - 1, state);
+      }
+
+      if (run.phase === "align-anchor") {
+        const unstable = run.lastScrollHeight !== el.scrollHeight;
+        run.lastScrollHeight = el.scrollHeight;
+        if (!unstable) {
+          const anchor = currentAnchorNode();
+          if (anchor) {
+            const delta =
+              Math.ceil(
+                anchor.getBoundingClientRect().bottom -
+                  el.getBoundingClientRect().bottom,
+              );
+            if (Math.abs(delta) > 1) {
+              if (alignWritesUsed >= MAX_ALIGN_WRITES) {
+                finishFollowRun();
+                return;
+              }
+              // 停滞保护：写入未能实质缩短距离 → 计数，超过限次放弃本轮
+              // （等待下一个真实信号重新发起），绝不空转振荡。
+              if (Math.abs(delta) + 1 >= run.prevAbsDelta) {
+                run.stallFrames += 1;
+              } else {
+                run.stallFrames = 0;
+              }
+              run.prevAbsDelta = Math.abs(delta);
+              if (run.stallFrames > STALL_FRAME_LIMIT) {
+                finishFollowRun();
+                return;
+              }
+              alignWritesUsed += 1;
+              setProgrammaticScroll(el, el.scrollTop + delta);
+              requestAnimationFrame(() => followTick(gen, el));
+              return;
+            }
+            run.prevAbsDelta = 0;
+            run.stallFrames = 0;
+            run.phase = "verify-stable";
+            run.stableFrames = 0;
+            run.stableSinceMs = Date.now();
+            run.lastSample = "";
+            requestAnimationFrame(() => followTick(gen, el));
+            return;
+          }
+          // 无锚点可对齐（空会话）：无事可做，直接结束。
+          finishFollowRun();
+          return;
         }
-      });
+        requestAnimationFrame(() => followTick(gen, el));
+        return;
+      }
+
+      // verify-stable：物理采样必须逐项一致；单帧相等不构成结算。
+      const sample = sampleGeometry(el);
+      if (sample !== run.lastSample) {
+        run.lastSample = sample;
+        run.stableFrames = 1;
+        run.stableSinceMs = Date.now();
+        run.phase = "align-anchor";
+        requestAnimationFrame(() => followTick(gen, el));
+        return;
+      }
+      run.stableFrames += 1;
+      if (
+        run.dirty &&
+        run.stableFrames >= VERIFY_FRAMES &&
+        Date.now() - run.stableSinceMs >= VERIFY_MIN_MS
+      ) {
+        run.dirty = false;
+        run.phase = "align-anchor";
+        requestAnimationFrame(() => followTick(gen, el));
+        return;
+      }
+      if (
+        run.stableFrames >= VERIFY_FRAMES &&
+        Date.now() - run.stableSinceMs >= VERIFY_MIN_MS
+      ) {
+        finishFollowRun();
+        return;
+      }
+      requestAnimationFrame(() => followTick(gen, el));
     }
 
-    function requestFollow(
-      maxFrames = 24,
-      opts: { ignoreIntent?: boolean } = {},
-    ): void {
-      // ignoreIntent：校准重排后的“恢复锚定”是机器自身的职责，即便用户
-      // 此刻被判定为离开也必须把内容重新收拢（用户下一次滚动仍会生效）。
-      if (!followingLatest.value && !opts.ignoreIntent) return;
+    /**
+     * 发起/合并一次跟随机运行。已有活动 run 时只标记 dirty——快速连续的
+     * 流式 delta 共享同一条收敛循环；新的合法工作顺带解除停滞预算，
+     * 因为调用者本身证明内容仍在推进。
+     */
+    function requestFollow(): void {
+      if (!followingLatest.value) return;
       const el = historyNode();
       // 无布局环境（happy-dom）scrollHeight 为 0：跳过，不覆盖测试设置的
       // scrollTop；真实浏览器 scrollHeight ≥ clientHeight > 0。
       if (!el || el.scrollHeight <= 0) return;
-      const seq = ++followSeq;
+      if (activeFollowRun) {
+        activeFollowRun.dirty = true;
+        return;
+      }
+      activeFollowRun = {
+        phase: "materialize-latest",
+        dirty: false,
+        materializeWrites: 0,
+        stallFrames: 0,
+        prevAbsDelta: 0,
+        lastScrollHeight: el.scrollHeight,
+        stableFrames: 0,
+        stableSinceMs: 0,
+        lastSample: "",
+      };
+      const gen = followGen;
       void nextTick(() => {
-        if (seq !== followSeq || !followingLatest.value || historyNode() !== el) return;
-        stepFollow(seq, el, maxFrames, {
-          enforcedBottomFrames: 0,
-          lastScrollHeight: -1,
-          stableFrames: 0,
-          confirmed: false,
-        });
+        if (gen !== followGen || !followingLatest.value || historyNode() !== el) {
+          return;
+        }
+        followTick(gen, el);
       });
     }
 
@@ -1501,10 +1858,12 @@ export default defineComponent({
     /** MSG-REPORT: toggle the "not wired" notice. Never calls an API. */
     function toggleMsgMenu(messageId: string): void {
       openMsgId.value = openMsgId.value === messageId ? null : messageId;
+      notifyLayoutMutation();
     }
 
     function onReportMessage(messageId: string): void {
       reportMsgId.value = reportMsgId.value === messageId ? null : messageId;
+      notifyLayoutMutation();
     }
 
     /** MSG-DELETE: two-step confirm, then delete through the store. */
@@ -1512,6 +1871,7 @@ export default defineComponent({
       if (confirmDeleteMsgId.value === messageId) {
         confirmDeleteMsgId.value = null;
         await guarded(() => store.removeMessage(transport, messageId));
+        notifyLayoutMutation();
         return;
       }
       confirmDeleteMsgId.value = messageId;
@@ -1709,8 +2069,8 @@ export default defineComponent({
       // INC-MODE: the toggle mirrors the opened conversation's frozen flag.
       const opened = store.conversations.find((c) => c.conversationId === id);
       incognitoNext.value = opened?.incognito === true;
-      // P1（round4）：切到会话即锚定最新消息（812×375 初始态可读）。
-      requestFollow(2);
+      // P1（round5 状态机）：切到会话即发起一次三阶段锚定收敛。
+      requestFollow();
     }
 
     async function onNewConversation(): Promise<void> {
@@ -1943,8 +2303,9 @@ export default defineComponent({
         const target = fromQuery ?? latest;
         if (target) {
           await store.openConversation(transport, target.conversationId);
-          // P1（round4）：进入页面直接锚定最新消息，短视口也能读到当前轮。
-          requestFollow(2);
+          // P1（round5 状态机）：进入页面直接锚定最新消息，短视口也能读到
+          // 当前轮。
+          requestFollow();
         } else {
           await startConversation();
         }
@@ -2457,6 +2818,9 @@ export default defineComponent({
   margin: var(--vc-space-3) auto 0;
   padding: var(--vc-space-3) 0;
   overflow-y: auto;
+  /* P2（round5）：滚动容器声明为定位上下文，消息行的 offsetTop 才是"相对
+     滚动内容原点"的局部坐标——虚拟窗口用它扣除头部条件行高度。 */
+  position: relative;
   /* P2（round4）：关闭浏览器的 scroll anchoring——锚定跟随由跟随状态机
      独家负责，虚拟 spacer 重排不得借浏览器之手挪动 scrollTop。 */
   overflow-anchor: none;
