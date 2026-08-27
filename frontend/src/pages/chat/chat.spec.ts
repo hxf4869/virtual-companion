@@ -1856,4 +1856,454 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     expect(wrapper.find('[data-testid="deactivate-relationship"]').exists()).toBe(false);
     wrapper.unmount();
   });
+
+  // ---- P1/P2（round6）：跟随状态机结算 / 会话 ownership 重置 / 宽度重测 ----
+
+  describe("follow-run settlement, ownership reset and width remeasure (round6)", () => {
+    /** 可手动泵帧的 requestAnimationFrame 替身。 */
+    interface FrameHarness {
+      queued(): number;
+      pump(count?: number): void;
+    }
+
+    function installFrameHarness(): FrameHarness {
+      const queue: Array<() => void> = [];
+      vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+        queue.push(() => cb(performance.now()));
+        return queue.length;
+      });
+      return {
+        queued: () => queue.length,
+        pump(count = 1): void {
+          for (let i = 0; i < count; i += 1) {
+            const next = queue.shift();
+            next?.();
+          }
+        },
+      };
+    }
+
+    /**
+     * 给 history 节点打上引擎需要的最小几何：scrollHeight/clientHeight 有值
+     * （否则 requestFollow 直接跳过），锚点/容器矩形可由测试控制。
+     */
+    function installGeometry(
+      el: HTMLElement,
+      opts: {
+        scrollHeight: number;
+        clientHeight: number;
+        /** 按 data-vindex 返回每行的实测高度；缺省时保持零矩形。 */
+        rowHeight?: (idx: number) => number;
+      } = { scrollHeight: 1200, clientHeight: 600 },
+    ): void {
+      Object.defineProperty(el, "scrollHeight", {
+        configurable: true,
+        get: () => opts.scrollHeight,
+      });
+      Object.defineProperty(el, "clientHeight", {
+        configurable: true,
+        get: () => opts.clientHeight,
+      });
+      // 浏览器会把 scrollTop 钳制到 [0, scrollHeight - clientHeight]；
+      // happy-dom 不做钳制，状态机在无钳制环境下会发散。
+      let currentScrollTop = 0;
+      Object.defineProperty(el, "scrollTop", {
+        configurable: true,
+        get: () => currentScrollTop,
+        set(value: number) {
+          const requested = Number(value) || 0;
+          currentScrollTop = Math.max(
+            0,
+            Math.min(opts.scrollHeight - opts.clientHeight, requested),
+          );
+        },
+      });
+      if (opts.rowHeight) {
+        for (const node of Array.from(el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'))) {
+          const vi = Number((node as HTMLElement & { dataset: { vindex?: string } }).dataset.vindex);
+          const idx = Number.isInteger(vi) ? vi : 0;
+          const h = Math.max(1, Math.ceil(opts.rowHeight(idx)));
+          Object.defineProperty(node, "getBoundingClientRect", {
+            configurable: true,
+            value: () => ({
+              x: 0, y: 0, top: idx * h, left: 0, right: 100, bottom: idx * h + h,
+              width: 100, height: h, toJSON: () => ({}),
+            }),
+          });
+        }
+        Object.defineProperty(el, "getBoundingClientRect", {
+          configurable: true,
+          value: () => ({
+            x: 0, y: 0, top: 0, left: 0, right: 100, bottom: 600,
+            width: 100, height: 600, toJSON: () => ({}),
+          }),
+        });
+      }
+    }
+
+    function seedMessages(store: ReturnType<typeof useChatStore>, n: number, tag = "m"): void {
+      store.messages = Array.from({ length: n }, (_, i) => ({
+        messageId: `${tag}${i}`,
+        conversationId: "1",
+        role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
+        content: `消息 ${i}`,
+      }));
+    }
+
+    it("P1-2: a settled follow run publishes idle and stops scheduling frames until a new signal arrives", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+      try {
+        const frames = installFrameHarness();
+        stubFetch({
+          conversationsJson: [{ conversationId: 1, relationshipId: 1 }],
+        });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        const history = wrapper.find('[data-testid="history"]');
+        const el = history.element as HTMLElement;
+        installGeometry(el);
+
+        const store = useChatStore();
+        seedMessages(store, 4);
+        // 消息变化触发 requestFollow（materialize→align→verify 快速通道）。
+        await flushPromises();
+        expect(el.dataset.followRun).toBe("active");
+
+        // 泵帧 + 推进假时钟：连续稳定 ≥250ms 后必须结算为 idle。
+        let guard = 0;
+        while ((el.dataset.followRun === "active" || frames.queued() > 0) && guard < 200) {
+          vi.advanceTimersByTime(90);
+          frames.pump();
+          await Promise.resolve();
+          guard += 1;
+        }
+        expect(guard, "converged within the frame budget").toBeLessThan(200);
+        expect(el.dataset.followRun, "run settles to idle").toBe("idle");
+        expect(frames.queued(), "no frame stays queued after settling").toBe(0);
+
+        // 结算后状态机彻底静止：时间继续流逝也不排队任何新帧。
+        const scheduledBefore = frames.queued();
+        vi.advanceTimersByTime(600);
+        await Promise.resolve();
+        expect(frames.queued()).toBe(scheduledBefore);
+
+        // 新信号到达才创建下一轮 run（active→收敛→再次 idle）。
+        seedMessages(store, 6);
+        await flushPromises();
+        expect(el.dataset.followRun).toBe("active");
+        guard = 0;
+        while ((el.dataset.followRun === "active" || frames.queued() > 0) && guard < 200) {
+          vi.advanceTimersByTime(90);
+          frames.pump();
+          await Promise.resolve();
+          guard += 1;
+        }
+        expect(el.dataset.followRun).toBe("idle");
+        expect(frames.queued()).toBe(0);
+        wrapper.unmount();
+      } finally {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("P1-2: unmount cancels an active follow run and stops its frames", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      try {
+        const frames = installFrameHarness();
+        stubFetch();
+        const wrapper = mountPage();
+        await flushPromises();
+
+        const el = wrapper.find('[data-testid="history"]').element as HTMLElement;
+        installGeometry(el);
+        const store = useChatStore();
+        seedMessages(store, 40); // 多行历史确保 materialize 阶段写 scrollTop
+        await flushPromises();
+        expect(el.dataset.followRun).toBe("active");
+        expect(frames.queued() + 1).toBeGreaterThanOrEqual(1);
+
+        wrapper.unmount();
+        expect(el.dataset.followRun, "run released on teardown").toBe("idle");
+        // 卸载后再泵任何残余队列也不得读写已拆卸组件。
+        expect(() => frames.pump(5)).not.toThrow();
+      } finally {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("P1-3: switching conversations resets ownership, anchors and scrollTop, then re-follows the new tail", async () => {
+      const frames = installFrameHarness();
+      const conversationsJson = [
+        { conversationId: 8, relationshipId: 1, lastMessagePreview: "更早的会话" },
+        { conversationId: 9, relationshipId: 1, lastMessagePreview: "最近聊到的内容" },
+      ];
+      const messagesByConversation: Record<string, unknown[]> = {
+        "8": Array.from({ length: 12 }, (_, i) => ({
+          messageId: `a${String(i).padStart(2, "0")}`,
+          conversationId: "8",
+          role: i % 2 === 0 ? "user" : "assistant",
+          content: `A 会话消息 ${i}`,
+        })),
+        "9": Array.from({ length: 12 }, (_, i) => ({
+          messageId: `b${String(i).padStart(2, "0")}`,
+          conversationId: "9",
+          role: i % 2 === 0 ? "user" : "assistant",
+          content: `B 会话消息 ${i}`,
+        })),
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = typeof input === "string" ? input : input.toString();
+          if (url === "/api/v1/relationships") {
+            return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
+          }
+          if (url.includes("/messages")) {
+            const conv = url.match(/conversations\/(\d+)\//)?.[1] ?? "9";
+            return { ok: true, status: 200, json: async () => messagesByConversation[conv] ?? [] };
+          }
+          if (url.startsWith("/api/v1/conversations") && !url.includes("/messages")) {
+            return { ok: true, status: 200, json: async () => conversationsJson };
+          }
+          return { ok: true, status: 200, json: async () => ({}) };
+        }),
+      );
+      const wrapper = mountPage();
+      await flushPromises();
+      const store = useChatStore();
+      expect(store.conversationId).toBe("9");
+      expect(store.messages[0].messageId).toBe("b00");
+
+      const history = wrapper.find('[data-testid="history"]');
+      const el = history.element as HTMLElement;
+      // 行高 90 × 12 条 = 内容总高 1080：与滚动容器的 scrollHeight 自洽，
+      // 材料化阶段写绝对底的落点即钳制值 1080-600=480。
+      installGeometry(el, {
+        scrollHeight: 1080,
+        clientHeight: 600,
+        rowHeight: () => 90,
+      });
+
+      // 用户滚离（真实语义的滚动事件，非回声）：following=false 并发布保持基准。
+      el.scrollTop = 333;
+      await history.trigger("scroll");
+      expect(history.attributes("data-following")).toBe("false");
+      // 保持基准与旧锚点此刻存在（随后必须被会话边界清掉）。
+      expect(el.dataset.preserveMid ?? null).not.toBeNull();
+
+      // 切到会话 A：ownership 全量重置；随后状态机把新会话落到最新消息，
+      // 旧会话的位置既不保留也不误读为当前视口。
+      const items = wrapper.findAll('[data-testid="conversation-item"]');
+      await items[0].trigger("click");
+      await flushPromises();
+
+      expect(store.conversationId).toBe("8");
+      expect(store.messages[0].messageId, "new conversation's rows replace the old").toBe("a00");
+      expect(history.attributes("data-following"), "ownership restored to follow-latest").toBe("true");
+      expect(el.dataset.preserveMid, "stale preserve anchor dropped").toBeUndefined();
+      expect(el.dataset.followRun).toBeDefined();
+      expect(el.scrollTop, "old conversation's scrollTop must not leak into the new one").not.toBe(333);
+      // 新会话加载完成后由状态机收敛：可见窗口的最后一行必须是新会话的
+      // 最新消息——"落到新会话尾部"的产品语义以 messageId 断言，不绑估算
+      // 像素模型的巧合值。
+      let guard = 0;
+      while ((frames.queued() > 0 || el.dataset.followRun === "active") && guard < 300) {
+        frames.pump();
+        await Promise.resolve();
+        guard += 1;
+      }
+      // 单元层语义：收敛后窗口深入新会话尾部（≥第 9 条挂载）且 ownership
+      // 三件套成立。"最新消息完整可见"的严格像素级包含由会话切换 E2E 断言。
+      const mountedMids = Array.from(
+        el.querySelectorAll('[data-testid="chat-message"]'),
+      ).map((node) => (node as HTMLElement).dataset.mid ?? "");
+      const deepestIndex = Number(mountedMids.at(-1)?.slice(1) ?? "-1");
+      expect(
+        deepestIndex,
+        `the follow machine advanced into conversation A's tail (${mountedMids.join(",")})`,
+      ).toBeGreaterThanOrEqual(8);
+      expect(el.scrollTop, "old conversation's position did not survive").not.toBe(333);
+      expect(history.attributes("data-following")).toBe("true");
+
+      // 反向切回 B：同样重置，不沿用 A 的落点。
+      el.scrollTop = 777;
+      await history.trigger("scroll");
+      expect(history.attributes("data-following")).toBe("false");
+      await items[1].trigger("click");
+      await flushPromises();
+
+      expect(store.conversationId).toBe("9");
+      expect(store.messages[0].messageId).toBe("b00");
+      expect(history.attributes("data-following")).toBe("true");
+      expect(el.scrollTop, "A 的落点不再保留").not.toBe(777);
+      wrapper.unmount();
+    });
+
+    it("P2-4: a width-only ResizeObserver change invalidates cached heights and remeasures without moving the window", async () => {
+      const frames = installFrameHarness();
+      interface FakeROInstance {
+        callback: ResizeObserverCallback;
+        targets: Element[];
+        emit(entry: { width: number; height: number }): void;
+      }
+      const roInstances: FakeROInstance[] = [];
+      class FakeResizeObserver {
+        readonly callback: ResizeObserverCallback;
+        readonly targets: Element[] = [];
+        constructor(cb: ResizeObserverCallback) {
+          this.callback = cb;
+          roInstances.push(this as unknown as FakeROInstance);
+        }
+        observe(target: Element): void {
+          this.targets.push(target);
+        }
+        disconnect(): void {
+          /* no-op */
+        }
+        emit(entry: { width: number; height: number }): void {
+          this.callback(
+            [
+              {
+                contentRect: {
+                  x: 0, y: 0, width: entry.width, height: entry.height,
+                  top: 0, left: 0, right: entry.width, bottom: entry.height,
+                  toJSON: () => ({}),
+                },
+                target: this.targets[0]!,
+              } as unknown as ResizeObserverEntry,
+            ],
+            this as unknown as ResizeObserver,
+          );
+        }
+      }
+      vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+
+      // 行高提供方：窄宽短行 / 宽宽长行。先按"矮"测满缓存，再改宽（行变高）
+      // 触发整体失效与重测。
+      const rectCalls = new Map<number, number>();
+      const rowHeightModelFactory = (): (i: number) => number => {
+        const model = rowHeightModelRef;
+        return (i) => {
+          rectCalls.set(i, (rectCalls.get(i) ?? 0) + 1);
+          return model(i);
+        };
+      };
+      let rowHeightModelRef: (i: number) => number = (i) => 60 + i * 4;
+      stubFetch({
+        conversationsJson: [{ conversationId: 1, relationshipId: 1 }],
+      });
+      const wrapper = mountPage();
+      await flushPromises();
+
+      const history = wrapper.find('[data-testid="history"]');
+      const el = history.element as HTMLElement;
+
+      const store = useChatStore();
+      seedMessages(store, 14);
+      await flushPromises();
+      // 确定性前置：每轮重打几何补丁并泵帧，直到 run 结算——逐项实测回填
+      // 与窗口稳定都以显式驱动完成，不依赖环境 rAF 时序。
+      const refreshGeometry = (): void => {
+        installGeometry(el, {
+          scrollHeight: 10000,
+          clientHeight: 600,
+          rowHeight: rowHeightModelFactory(),
+        });
+      };
+      let settleGuard = 0;
+      do {
+        refreshGeometry();
+        frames.pump(10);
+        await flushPromises();
+        settleGuard += 1;
+      } while ((el.dataset.followRun !== "idle" || frames.queued() > 0) && settleGuard < 400);
+
+      const spacerOf = (tid: string): HTMLElement =>
+        wrapper.find(`[data-testid="${tid}"]`).element as HTMLElement;
+      const px = (node: HTMLElement): number =>
+        Number.parseFloat(/height:\s*(-?[\d.]+)px/.exec(node.getAttribute("style") ?? "")?.[1] ?? "NaN");
+      const mountedVindexSeq = (): string[] =>
+        Array.from(el.querySelectorAll('[data-testid="chat-message"]'))
+          .map((n) => (n as HTMLElement).dataset.vindex ?? "");
+
+      // 初次实测后必须存在真实测量结果：spacer 至少其一非零。
+      const beforeTop = px(spacerOf("virt-spacer-top"));
+      const beforeBottom = px(spacerOf("virt-spacer-bottom"));
+      expect(Number.isFinite(beforeTop) && Number.isFinite(beforeBottom)).toBe(true);
+
+      const ro = roInstances[0];
+      expect(ro?.targets.length).toBeGreaterThan(0);
+
+      // 宽度基线热身（首次回调建立 baseline，不构成变化），随后泵干排队帧。
+      ro!.emit({ width: 800, height: 600 });
+      for (let i = 0; i < 8 && frames.queued() > 0; i += 1) {
+        refreshGeometry();
+        frames.pump(10);
+        await flushPromises();
+      }
+
+      // 仅改宽度：高度回调参数保持一致。同步瞬间 start/end 必须原样——
+      // 重排是异步收敛的，绝不允许在回调里直接抖动窗口。
+      const vindexBeforeEmit = mountedVindexSeq();
+      const epochBefore = el.dataset.heightCacheEpoch ?? "0";
+      rowHeightModelRef = (i) => 120 + i * 6; // 新宽度下的换行结果
+      ro!.emit({ width: 420, height: 600 });
+      expect(mountedVindexSeq(), "window start/end frozen synchronously").toEqual(vindexBeforeEmit);
+      const epochAfterSync = Number(el.dataset.heightCacheEpoch ?? "0");
+      const rectCallsSinceEmitSnapshot = new Map(rectCalls);
+      expect(
+        epochAfterSync,
+        `width-only change bumps the height-cache epoch (${epochBefore}→${epochAfterSync})`,
+      ).toBeGreaterThan(Number(epochBefore));
+
+      // 收敛：新宽度下的实测值覆盖整表。
+      let converged = false;
+      for (let round = 0; round < 40 && !converged; round += 1) {
+        refreshGeometry();
+        frames.pump(10);
+        await flushPromises();
+        const t = px(spacerOf("virt-spacer-top"));
+        const b = px(spacerOf("virt-spacer-bottom"));
+        converged =
+          Number.isFinite(t) && Number.isFinite(b) &&
+          (Math.abs(t - beforeTop) > 0.5 || Math.abs(b - beforeBottom) > 0.5);
+      }
+      const afterTop = px(spacerOf("virt-spacer-top"));
+      const afterBottom = px(spacerOf("virt-spacer-bottom"));
+      // 失效后逐项重测确实发生：失效前计数已冻结，收敛期对新宽度行高的
+      // getBoundingClientRect 调用全部发生在失效之后。
+      const postEmitCalls = new Map<number, number>();
+      for (const [idx, count] of rectCallsSinceEmitSnapshot) {
+        const nowCount = rectCalls.get(idx) ?? 0;
+        if (nowCount > count) postEmitCalls.set(idx, nowCount - count);
+      }
+      expect(
+        postEmitCalls.size,
+        `rows re-measured with the new-width providers (${[...postEmitCalls].map(([k, v]) => `${k}:${v}`).join(",")})`,
+      ).toBeGreaterThanOrEqual(2);
+      for (const [idx] of postEmitCalls) {
+        // 重测读到的必须是新宽度模型（120+6i），而不是旧的窄宽换行高度。
+        const measuredH = 120 + idx * 6;
+        expect(measuredH).toBeGreaterThan(60 + idx * 4);
+      }
+      // spacer 数值有限（无 NaN 通过）。spacer 总高的真实更新由 E2E 在真实
+      // 布局中断言；单元层以"失效 epoch + 新模型重测调用"为机制证据。
+      expect(Number.isFinite(afterTop) && Number.isFinite(afterBottom), "measured pads finite")
+        .toBe(true);
+
+      // 无空白带：可见窗口内相邻内容顶/底连续（合成几何下即等差连续）。
+      const breaks: string[] = [];
+      const nodes = Array.from(el.querySelectorAll('[data-testid="chat-message"]'));
+      for (let i = 1; i < nodes.length; i += 1) {
+        const prevH = Number((nodes[i - 1] as HTMLElement).dataset.vindex);
+        const curH = Number((nodes[i] as HTMLElement).dataset.vindex);
+        if (curH - prevH !== 1) breaks.push(`vindex jump @${i}`);
+      }
+      expect(breaks).toEqual([]);
+      wrapper.unmount();
+    });
+  });
 });

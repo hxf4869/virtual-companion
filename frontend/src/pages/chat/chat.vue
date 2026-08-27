@@ -830,15 +830,43 @@ export default defineComponent({
      * LANDSCAPE/深链：historyEl 可能晚于 onMounted 出现（关系异步加载后才
      * 渲染消息区）。ref 一变化就（重）绑定 ResizeObserver，保证直接深链或
      * 刷新后虚拟窗口也用实测高度；卸载时统一断开。
+     *
+     * P2（round6）：RO 同时追踪 history 的宽度——宽度变化意味着换行全部
+     * 重排，按行实测高度缓存整体失效并在新宽度下重测。
      */
+    const observedHistorySize = { width: 0, height: 0 };
+    /** P2（round6）：高度缓存失效纪元，宽度变化时递增并发布到 DOM。 */
+    let heightCacheEpoch = 0;
+
     function bindHistoryObserver(): void {
       if (typeof ResizeObserver === "undefined") return;
       historyObserver?.disconnect();
+      // 节点替换（Vue 重建容器）必须先取消挂在旧节点上的 follow run，
+      // 否则陈旧 run 会以 dirty 标记阻塞新节点的跟随请求。
+      cancelFollowRun();
       const el = historyNode();
       if (!el) return;
       bindHistoryScrollListener(el);
-      historyObserver = new ResizeObserver(() => {
+      boundHistoryEl = el;
+      historyObserver = new ResizeObserver((entries) => {
+        const target = entries[entries.length - 1];
+        const contentBox = target?.contentRect;
+        const nextWidth =
+          contentBox !== undefined
+            ? contentBox.width
+            : el.clientWidth;
+        const widthChanged =
+          observedHistorySize.width > 0 &&
+          Math.abs(nextWidth - observedHistorySize.width) >= 1;
+        observedHistorySize.width = nextWidth;
+        observedHistorySize.height = contentBox?.height ?? el.clientHeight;
+
         measureHistory();
+        if (widthChanged) {
+          // 仅宽度维度变化：整表高度失效 + 按当前 ownership 收敛。
+          remeasureAfterWidthChange();
+          return;
+        }
         // 视口/布局变化（旋转、软键盘、spacer 重排）时按跟随意图重对锚点；
         // 用户已滚离时绝不动 scrollTop——位置保持交给视口锚快照。
         if (followingLatest.value) {
@@ -848,6 +876,8 @@ export default defineComponent({
         }
       });
       historyObserver.observe(el);
+      observedHistorySize.width = el.clientWidth;
+      observedHistorySize.height = el.clientHeight;
       measureHistory();
       // 历史容器若被 Vue 重建（新节点从 0 开始），立即恢复一次锚定，
       // 不依赖恰好还有信号在途。ownership 语义不变：离开中的用户不会被打扰。
@@ -939,10 +969,14 @@ export default defineComponent({
 
     // 会话切换：整表清空重建；删除：淘汰被删行；宽度变化：排版全变，
     // 全部旧值失效，等新窗口重测。
+    // P1-3（round6）：conversationId 变化本身就是会话边界——旧 follow run、
+    // preserve 会话与旧 messageId 锚点/高度上下文全部作废，ownership 回到
+    // "跟随最新"，scrollTop 归零，等新会话加载完成后重新落到最新消息。
     watch(
       () => store.conversationId,
       () => {
         if (measuredHeights.value.size > 0) measuredHeights.value = new Map();
+        resetScrollOwnership();
       },
     );
     watch(
@@ -1240,7 +1274,7 @@ export default defineComponent({
       }
     }
 
-    // P1/P2（round5）：跟随状态机。跟随目标是“最新流式草稿 / 最新正式消息”
+    // P1/P2（round6）：跟随状态机。跟随目标是"最新流式草稿 / 最新正式消息"
     // 的底边，而不是尾部元数据行的绝对底部。
     //
     // 三阶段一次性收敛（禁止绝对底 ↔ 锚点对齐来回振荡）：
@@ -1249,12 +1283,13 @@ export default defineComponent({
     //   align-anchor —— 以锚点矩形为唯一目标做纯对齐：delta =
     //     anchorBottom - containerBottom；尾部元数据造成的 gapToMax 与本
     //     阶段无关，绝不构成再次跳绝对底的理由。
-    //   verify-stable —— scrollTop / scrollHeight / 锚点矩形连续多帧完全
-    //     一致且持续 ≥VERIFY_MIN_MS，且期间无新的 dirty 信号，才结算；
-    //     结算后状态机停止、不排队任何帧。
+    //   verify-stable —— 进入时用当前真实几何初始化采样基线；此后逐帧比对，
+    //     scrollTop / scrollHeight / 锚点矩形连续多帧一致且持续 ≥VERIFY_MIN_MS，
+    //     且期间无新的 dirty 信号，才结算为 idle；结算后状态机停止，
+    //     不排队任何帧、不读写布局。
     //
-    // 合并规则：进行中的 run 只把后续 delta 标记为 dirty，不递增令牌、
-    // 不取消前链；用户手势（非回声滚动）才递增 followGen 作废全部帧。
+    // 合并规则：进行中的 run 只把后续 delta 标记为 dirty（结算前只触发一次
+    // 重新对齐），不递增令牌；用户手势（非回声滚动）才递增 followGen 作废全部帧。
     const followingLatest = ref(true);
     /** ownership 取消令牌：任何一次真实接管都会使未执行的帧作废。 */
     let followGen = 0;
@@ -1265,7 +1300,11 @@ export default defineComponent({
     interface FollowRun {
       phase: FollowPhaseName;
       dirty: boolean;
+      /** 本轮已消耗的 dirty 重对齐次数（dirty 只允许触发一次）。 */
+      realignsUsed: number;
       materializeWrites: number;
+      /** P1-2：对齐写入预算属于当前 run，跨 run 不残留。 */
+      alignWrites: number;
       stallFrames: number;
       prevAbsDelta: number;
       lastScrollHeight: number;
@@ -1280,7 +1319,76 @@ export default defineComponent({
     const RESUME_GAP_PX = 48;
     const STALL_FRAME_LIMIT = 120;
     const MAX_ALIGN_WRITES = 400;
-    let alignWritesUsed = 0;
+
+    /**
+     * P1-2：run 生命周期可观察状态发布到 history 的 data-follow-run 属性——
+     * 单元测试 / E2E / 诊断共用同一事实源，idle 即"activeFollowRun=null 且
+     * 不再排队任何帧"。卸载时模板 ref 会先于 unmounted 钩子清空，这里用
+     * 绑定期缓存的节点兜底，保证卸载路径也能把 idle 发布出去。
+     */
+    let boundHistoryEl: HTMLElement | null = null;
+
+    function publishFollowRunState(): void {
+      const el = boundHistoryEl ?? historyNode();
+      if (!el) return;
+      el.dataset.followRun = activeFollowRun ? "active" : "idle";
+    }
+
+    /** 取消挂起的 follow run（节点替换 / 卸载 / ownership 重置）。不递增令牌。 */
+    function cancelFollowRun(): void {
+      if (!activeFollowRun) return;
+      activeFollowRun = null;
+      publishFollowRunState();
+    }
+
+    /** 结算当前 run：回到 idle，不再排队任何帧。 */
+    function finishFollowRun(): void {
+      activeFollowRun = null;
+      publishFollowRunState();
+    }
+
+    /** P2（round6）：宽度变化 ⇒ 换行全变 ⇒ 按行高度缓存整体失效并重测。
+     * epoch 发布到 history 的 data-height-cache-epoch，供测试与诊断确认
+     * 失效确实发生（而不是沿用陈旧高度表）。 */
+    function remeasureAfterWidthChange(): void {
+      measuredHeights.value = new Map();
+      heightCacheEpoch += 1;
+      const host = boundHistoryEl ?? historyNode();
+      if (host) host.dataset.heightCacheEpoch = String(heightCacheEpoch);
+      if (followingLatest.value) {
+        requestFollow();
+        scheduleRowMeasurement();
+      } else {
+        // 用户已接管：独立视口锚保持位置，重排后多轮收敛回来。
+        runPreserveCorrection({ force: true });
+        scheduleRowMeasurement();
+      }
+    }
+
+    /**
+     * P1-3 会话级 ownership 重置：切会话 / 新会话 / 关系解除后重新激活时——
+     * 取消旧 follow run 与 preserve 会话、清理旧 messageId 锚点和高度上下文、
+     * 恢复 followingLatest=true 并把旧会话遗留的 scrollTop 归零；新会话加载
+     * 完成后由三阶段状态机落到最新消息（两个长会话间互不沿用）。
+     */
+    function resetScrollOwnership(): void {
+      followingLatest.value = true;
+      followGen += 1;
+      cancelFollowRun();
+      viewportPreserveSession = null;
+      preserveEpoch += 1;
+      measuredHeights.value = new Map();
+      msgFlowTopPx.value = 0;
+      const el = historyNode();
+      if (el) {
+        delete el.dataset.preserveMid;
+        delete el.dataset.preserveOff;
+        el.dataset.followRun = "idle";
+        setProgrammaticScroll(el, 0);
+        measureHistory();
+      }
+    }
+
 
     /** 程序性滚动后的极短回声窗口与最近写入的实际落点（读回钳制后的值）。 */
     let programmaticScrollUntil = 0;
@@ -1360,19 +1468,14 @@ export default defineComponent({
       return `${el.scrollTop}:${el.scrollHeight}:${Math.round(r.top)}:${Math.round(r.height)}`;
     }
 
-    function finishFollowRun(): void {
-      alignWritesUsed = 0;
-      activeFollowRun = null;
-    }
-
     function followTick(gen: number, el: HTMLElement): void {
       // 每帧执行前重新校验：令牌、ownership、当前节点同一性。
-      if (
-        gen !== followGen ||
-        !followingLatest.value ||
-        historyNode() !== el ||
-        !activeFollowRun
-      ) {
+      if (gen !== followGen || !followingLatest.value || !activeFollowRun) {
+        return;
+      }
+      if (historyNode() !== el) {
+        // 节点被替换/卸载：本轮作废并释放 idle，允许新节点创建全新 run。
+        cancelFollowRun();
         return;
       }
       const run = activeFollowRun;
@@ -1407,7 +1510,7 @@ export default defineComponent({
                   el.getBoundingClientRect().bottom,
               );
             if (Math.abs(delta) > 1) {
-              if (alignWritesUsed >= MAX_ALIGN_WRITES) {
+              if (run.alignWrites >= MAX_ALIGN_WRITES) {
                 finishFollowRun();
                 return;
               }
@@ -1423,17 +1526,19 @@ export default defineComponent({
                 finishFollowRun();
                 return;
               }
-              alignWritesUsed += 1;
+              run.alignWrites += 1;
               setProgrammaticScroll(el, el.scrollTop + delta);
               requestAnimationFrame(() => followTick(gen, el));
               return;
             }
             run.prevAbsDelta = 0;
             run.stallFrames = 0;
+            // P1-2：进入 verify-stable 即用当前真实几何初始化采样基线，
+            // 首帧不再因空基线退回 align（旧实现因此永久振荡、rAF 不休）。
             run.phase = "verify-stable";
             run.stableFrames = 0;
             run.stableSinceMs = Date.now();
-            run.lastSample = "";
+            run.lastSample = sampleGeometry(el);
             requestAnimationFrame(() => followTick(gen, el));
             return;
           }
@@ -1445,35 +1550,36 @@ export default defineComponent({
         return;
       }
 
-      // verify-stable：物理采样必须逐项一致；单帧相等不构成结算。
+      // verify-stable：物理采样逐项一致才推进；与进入时的基线不同即真实
+      // 几何变化，回到 align 做一次重对齐。dirty 只触发一次额外重对齐；
+      // 连续稳定 ≥VERIFY_FRAMES 且持续 ≥VERIFY_MIN_MS 才结算为 idle——
+      // 结算后不再排队任何 rAF、不读写布局，直到新信号发起新的 run。
       const sample = sampleGeometry(el);
       if (sample !== run.lastSample) {
-        run.lastSample = sample;
-        run.stableFrames = 1;
-        run.stableSinceMs = Date.now();
         run.phase = "align-anchor";
+        run.stableFrames = 0;
         requestAnimationFrame(() => followTick(gen, el));
         return;
       }
       run.stableFrames += 1;
       if (
-        run.dirty &&
-        run.stableFrames >= VERIFY_FRAMES &&
-        Date.now() - run.stableSinceMs >= VERIFY_MIN_MS
+        run.stableFrames < VERIFY_FRAMES ||
+        Date.now() - run.stableSinceMs < VERIFY_MIN_MS
       ) {
-        run.dirty = false;
-        run.phase = "align-anchor";
         requestAnimationFrame(() => followTick(gen, el));
         return;
       }
-      if (
-        run.stableFrames >= VERIFY_FRAMES &&
-        Date.now() - run.stableSinceMs >= VERIFY_MIN_MS
-      ) {
-        finishFollowRun();
+      if (run.dirty && run.realignsUsed < 1) {
+        // 新内容标记只换来一次重对齐机会；绝不形成永久循环。
+        run.dirty = false;
+        run.realignsUsed += 1;
+        run.phase = "align-anchor";
+        run.stableFrames = 0;
+        run.lastSample = "";
+        requestAnimationFrame(() => followTick(gen, el));
         return;
       }
-      requestAnimationFrame(() => followTick(gen, el));
+      finishFollowRun();
     }
 
     /**
@@ -1494,7 +1600,9 @@ export default defineComponent({
       activeFollowRun = {
         phase: "materialize-latest",
         dirty: false,
+        realignsUsed: 0,
         materializeWrites: 0,
+        alignWrites: 0,
         stallFrames: 0,
         prevAbsDelta: 0,
         lastScrollHeight: el.scrollHeight,
@@ -1502,9 +1610,12 @@ export default defineComponent({
         stableSinceMs: 0,
         lastSample: "",
       };
+      publishFollowRunState();
       const gen = followGen;
       void nextTick(() => {
         if (gen !== followGen || !followingLatest.value || historyNode() !== el) {
+          // 作废路径同样释放 idle（节点替换由 cancelFollowRun 兜底）。
+          if (activeFollowRun && historyNode() !== el) cancelFollowRun();
           return;
         }
         followTick(gen, el);
@@ -2345,6 +2456,9 @@ export default defineComponent({
 
     onUnmounted(() => {
       stopLifecycle?.();
+      // P1-2：卸载即取消挂起的 follow run，不让任何帧在拆卸后的节点上运行。
+      cancelFollowRun();
+      followGen += 1;
       unbindHistoryScrollListeners();
       historyObserver?.disconnect();
       historyObserver = null;
