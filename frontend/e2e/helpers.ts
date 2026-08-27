@@ -35,6 +35,9 @@ export const E2E_USER_SUFFIXES = [
   // DOGFOOD-09：可访问性 journey（08）的独立账号，避免与其他 journey 的
   // 关系/记忆状态互相污染。
   "accessibility",
+  // round6：流式证据/会话切换 journey（09）的独立账号——同轮套跑中与
+  // journey-03 的登录次数解耦，避免共享登录限流桶。
+  "streaming-evidence",
 ] as const;
 
 export type E2EUserSuffix = (typeof E2E_USER_SUFFIXES)[number];

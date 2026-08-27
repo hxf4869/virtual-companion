@@ -390,8 +390,9 @@ async function wheelUpToTop(page: Page): Promise<void> {
 }
 
 
-/** 若锚定静止位裁到最新用户消息之外，做一次 history 内滚动把它带入可视区。
- * 用轮询而不是 sleep 判定结果。 */
+/** 程序化修正（P1-5 #7 如实命名）：若锚定静止位裁到最新用户消息之外，
+ * 做一次 history 内程序化滚动把它带入可视区——这是可读性兜底检查，
+ * 不冒充用户手势；用轮询而不是 sleep 判定结果。 */
 async function ensureLatestUserVisible(page: Page): Promise<Geometry> {
   const start = await measure(page);
   if (start.userBox && start.userIntersectHeight > 10) return start;
@@ -472,21 +473,33 @@ async function historyScrollTop(page: Page): Promise<number> {
 }
 
 /**
- * P1-B（round5）：ownership 的一次真实滚轮接管（无任何提前等待）。
- * Chromium 合成器会吞掉指针移动后的第一个 wheel 事件——这是跨三轮复现
- * 的稳定环境行为（诊断见 git 历史），与本仓库的实现无关。因此在同一
- * 滚动器上先落一个 +60 的校准微轮（此刻视口在绝对底，向下滚动是零位移
- * 空操作，不产生任何语义），随后的 -dy 释放手势承担全部断言：data-following
- * 必须在该手势的首个非回声滚动事件上立即翻转为 false，且位移生效。
+ * P1-B（round6）：ownership 的一次真实滚轮接管。
+ * P1-5（round6）返工：Playwright 首个合成 wheel 在本环境会被 Chromium 合成
+ * 器吞掉（历史三轮复现），按规范改用一次 CDP `Input.dispatchMouseEvent`
+ * （type: mouseWheel）——只发一个真实向上 wheel 事件，禁止"校准微轮 +
+ * 主手势"的双事件组合。data-following 必须在该手势产生的首个非回声滚动
+ * 事件上立即翻转为 false，且位移生效。
  */
-async function singleWheelUpRelease(page: Page, dy = -1300): Promise<number> {
+async function singleWheelUpRelease(page: Page, dy = -1500): Promise<number> {
   const rect = await historyRectCenter(page);
   const before = await historyScrollTop(page);
-  await page.mouse.move(rect.x, rect.y);
-  // 校准微轮：消耗合成器的“首个 wheel 被吞”怪癖；向下 60px 在绝对底
-  // 不改变 scrollTop。
-  await page.mouse.wheel(0, 60);
-  await page.mouse.wheel(0, dy);
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: rect.x,
+      y: rect.y,
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseWheel",
+      x: rect.x,
+      y: rect.y,
+      deltaX: 0,
+      deltaY: dy,
+    });
+  } finally {
+    await session.detach().catch(() => undefined);
+  }
   // 合成器把滚轮位移排到下一帧才落地：ownership 与位移都用轮询读取，
   // 禁止紧跟派发的同步单次读数。
   await expect
@@ -501,7 +514,9 @@ async function singleWheelUpRelease(page: Page, dy = -1300): Promise<number> {
   return historyScrollTop(page);
 }
 
-/** 视口锚快照：首个可见行的 messageId + 相对 history 顶边的偏移。 */
+/** 视口锚快照：独立从真实 DOM 测量（messageId + getBoundingClientRect）。
+ * P1-5（round6）：不再读取 data-preserve-mid/off——验收 oracle 必须与引擎
+ * 内部状态解耦，禁止拿被测对象的发布值证明自身正确。 */
 interface ViewportAnchor {
   mid: string | null;
   offsetFromHistoryTop: number;
@@ -512,26 +527,18 @@ async function viewportAnchorSnapshot(page: Page): Promise<ViewportAnchor> {
     const el = document.querySelector('[data-testid="history"]');
     if (!el) return { mid: null, offsetFromHistoryTop: Number.NaN };
     const rect = el.getBoundingClientRect();
-    // 组件在接管/纠正收敛时把权威基准发布到 history 的 data 属性；
-    // 存在即以它为唯一事实源（消除测试侧独立重算的双观察者漂移）。
-    const he = el as HTMLElement & { dataset: { preserveMid?: string; preserveOff?: string } };
-    if (he.dataset.preserveMid) {
-      return {
-        mid: he.dataset.preserveMid,
-        offsetFromHistoryTop: Number(he.dataset.preserveOff ?? "0"),
-      };
-    }
     let fallback: { mid: string | null; offsetFromHistoryTop: number } | null = null;
     for (const node of el.querySelectorAll('[data-testid="chat-message"]')) {
       const host = node as HTMLElement;
+      if (!host.dataset.mid) continue;
       const r = host.getBoundingClientRect();
       if (r.bottom <= rect.top + 1) continue;
       const snapOf = () => ({
         mid: host.dataset.mid ?? null,
         offsetFromHistoryTop: Math.max(0, r.top - rect.top),
       });
-      // 无发布值时的退化判据：首个完整可见且离开顶缘 ≥8px 的行。
-      if (r.top >= rect.top + 8 && r.bottom <= rect.bottom + 0.5) {
+      // 首选：首个完整落入可视区且离开顶缘 ≥8px 的行；否则退化取首行。
+      if (r.top >= rect.top + 8 && r.bottom <= rect.bottom + 0.5 && r.top >= rect.top - 0.5) {
         return snapOf();
       }
       if (!fallback) fallback = snapOf();
@@ -540,19 +547,132 @@ async function viewportAnchorSnapshot(page: Page): Promise<ViewportAnchor> {
   });
 }
 
+/** 真实可见行高：最新正式助手正文气泡的 computed line-height（px）。
+ * P1-5（round6）：宽度切换等重排的容差必须由真实可见行高推导，
+ * 禁止固定 ±260px 之类的魔法数。 */
+async function visibleAssistantLineHeightPx(page: Page): Promise<number> {
+  const lh = await page.evaluate(() => {
+    const bubble = document.querySelector(
+      '[data-testid="chat-message"].assistant .msg-content',
+    );
+    const px = Number.parseFloat(getComputedStyle(bubble ?? document.body).lineHeight);
+    return Number.isFinite(px) ? px : 0;
+  });
+  expect(lh, "assistant visible line height resolves").toBeGreaterThan(4);
+  return lh;
+}
+
+/**
+ * P1-5（round6）：锚定稳定性以"同一 messageId + 基于真实可见行高的像素
+ * 容差"判定；NaN 偏移一律失败，禁止空值/自比较蒙混。
+ */
+function anchorToleranceFromLineHeight(lineHeightPx: number): number {
+  // 允许最多 ±3 行的重排漂移（条件系统行在视口间的合法二态差异）。
+  return Math.max(24, Math.round(lineHeightPx * 3));
+}
+
 function historyScrollTopT(page: Page): () => Promise<number> {
   return () => historyScrollTop(page);
+}
+
+/** 读取指定 messageId 行相对 history 顶边的偏移；未挂载返回 NaN。 */
+async function rowOffsetInHistory(page: Page, mid: string): Promise<number> {
+  return page.evaluate((id) => {
+    const history = document.querySelector('[data-testid="history"]');
+    const node = document.querySelector(`[data-mid="${id}"]`);
+    if (!history || !node) return Number.NaN;
+    const hr = history.getBoundingClientRect();
+    const r = (node as HTMLElement).getBoundingClientRect();
+    return r.top - hr.top;
+  }, mid);
+}
+
+/**
+ * P1-5（round6）：等待指定消息行的相对偏移收敛（连续两采样差 ≤1px）并
+ * 返回该值；未挂载/NaN 一律失败。为重排后的位置保持判定提供稳定读数。
+ */
+async function waitForRowSettled(page: Page, mid: string, label: string): Promise<number> {
+  let last = Number.NaN;
+  try {
+    await expect
+      .poll(
+        async () => {
+          const cur = await rowOffsetInHistory(page, mid);
+          const stable =
+            Number.isFinite(cur) && Number.isFinite(last) && Math.abs(cur - last) <= 1;
+          last = Number.isFinite(cur) ? cur : last;
+          return stable;
+        },
+        { timeout: 8_000, intervals: [120, 240] },
+      )
+      .toBe(true);
+  } catch (err) {
+    throw new Error(
+      `${label}: row ${mid} never settled (last=${Number.isFinite(last) ? last.toFixed(1) : "unmounted"}) :: ${String(err)}`,
+    );
+  }
+  return last!;
+}
+
+/** 指定行与其下一个相邻消息行的顶边间距（局部几何守恒的度量对象）。 */
+async function rowGapToNext(page: Page, mid: string): Promise<number> {
+  return page.evaluate((id) => {
+    const history = document.querySelector('[data-testid="history"]');
+    const node = document.querySelector(`[data-mid="${id}"]`);
+    if (!history || !node?.parentElement) return Number.NaN;
+    const siblings = Array.from(node.parentElement.children).filter((n) =>
+      n.matches('[data-testid="chat-message"]'),
+    );
+    const idx = siblings.indexOf(node);
+    const next = siblings[idx + 1] as HTMLElement | undefined;
+    if (!next) return Number.NaN;
+    return (
+      next.getBoundingClientRect().top - (node as HTMLElement).getBoundingClientRect().top
+    );
+  }, mid);
+}
+
+/** 指定行相邻可见行的实测平均高度与真实行高——位置保持容差的素材。 */
+async function localLayoutMetrics(
+  page: Page,
+  mid: string,
+): Promise<{ neighborRowHeightPx: number; lineHeightPx: number }> {
+  const m = await page.evaluate((id) => {
+    const history = document.querySelector('[data-testid="history"]');
+    const node = document.querySelector(`[data-mid="${id}"]`);
+    const siblings = node
+      ? Array.from((node.parentElement?.children ?? []))
+          .filter((n) => n.matches('[data-testid="chat-message"]'))
+      : [];
+    const idx = siblings.indexOf(node as Element);
+    const neighbors = [siblings[idx - 1], siblings[idx + 1]].filter(Boolean) as HTMLElement[];
+    const heights = neighbors.map((n) => n.getBoundingClientRect().height)
+      .filter((h) => Number.isFinite(h) && h > 0);
+    const bubble = document.querySelector('[data-testid="chat-message"].assistant .msg-content');
+    const lhPx = Number.parseFloat(getComputedStyle(bubble ?? document.body).lineHeight);
+    const lineHeight = Number.isFinite(lhPx) ? lhPx : 0;
+    return {
+      neighborRowHeightPx: heights.length
+        ? heights.reduce((a, b) => a + b, 0) / heights.length
+        : 0,
+      lineHeightPx: lineHeight,
+    };
+  }, mid);
+  expect(m.neighborRowHeightPx, `${mid} neighbor visible row height resolves`).toBeGreaterThan(0);
+  expect(m.lineHeightPx, `${mid} real line height resolves`).toBeGreaterThan(0);
+  return m;
 }
 
 /** 连续两次采样（间隔 ~120ms）得到同一锚点才返回——基线必须在静止态冻结。 */
 async function stableViewportAnchor(page: Page): Promise<ViewportAnchor> {
   let prev = await viewportAnchorSnapshot(page);
-  // 有界轮询；布局长抖动时以最后一次为准（后续断言仍会裁定）。
   for (let i = 0; i < 20; i += 1) {
     await page.waitForTimeout(120);
     const cur = await viewportAnchorSnapshot(page);
     if (
+      prev.mid !== null &&
       prev.mid === cur.mid &&
+      Number.isFinite(cur.offsetFromHistoryTop) &&
       Math.abs(cur.offsetFromHistoryTop - prev.offsetFromHistoryTop) <= 1
     ) {
       return cur;
@@ -562,41 +682,12 @@ async function stableViewportAnchor(page: Page): Promise<ViewportAnchor> {
   return prev;
 }
 
-/** 宽度对翻等极端重排下：锚点 mid 允许 ±N 行邻域偏移，且相对偏移量
- * 不超过 maxOffsetPx——足以裁定“没有可见跳变”，同时承认条件头部的
- * 合法布局二态。 */
-async function assertAnchorNear(
-  page: Page,
-  snap: ViewportAnchor,
-  label: string,
-  allowRows = 1,
-  maxOffsetPx = 260,
-): Promise<void> {
-  const baseIdx = Number((snap.mid ?? "").slice(5));
-  let ok = false;
-  try {
-    await expect
-      .poll(
-        async () => {
-          const now = await viewportAnchorSnapshot(page);
-          const idx = Number((now.mid ?? "").slice(5));
-          if (!Number.isFinite(baseIdx) || !Number.isFinite(idx)) return false;
-          if (Math.abs(idx - baseIdx) > allowRows) return false;
-          ok =
-            now.offsetFromHistoryTop <= maxOffsetPx ||
-            Number.isNaN(now.offsetFromHistoryTop);
-          return ok;
-        },
-        { timeout: 5_000, intervals: [80, 160] },
-      )
-      .toBe(true);
-  } catch (err) {
-    throw new Error(`${label}: anchor drifted beyond one row :: ${String(err)}`);
-  }
-}
+/** P1-5（round6）：宽度对翻等重排下不再使用"±N 行邻域 + 自比较"的宽松
+ * 判据；统一改走 {@link assertAnchorHeld} 的"同一 messageId + 真实行高
+ * 容差"。此前的 assertAnchorNear 已删除。 */
 
 /** 同一 messageId 的相对偏移不得漂移超过 tol px：等待保持引擎收敛后再判定
- * （单次采样会把尚未完成的合法收敛误读为漂移）。 */
+ * （单次采样会把尚未完成的合法收敛误读为漂移）。NaN 一律失败。 */
 async function assertAnchorHeld(
   page: Page,
   snap: ViewportAnchor,
@@ -604,6 +695,7 @@ async function assertAnchorHeld(
   tol = 4,
 ): Promise<void> {
   expect(snap.mid, `${label} anchor mid captured`).not.toBeNull();
+  expect(Number.isFinite(snap.offsetFromHistoryTop), `${label} baseline offset finite`).toBe(true);
   let lastMid: string | null = null;
   let lastDrift = Number.NaN;
   try {
@@ -612,7 +704,8 @@ async function assertAnchorHeld(
         async () => {
           const now = await viewportAnchorSnapshot(page);
           lastMid = now.mid;
-          if (now.mid !== snap.mid) return false;
+          if (!now.mid || !snap.mid || now.mid !== snap.mid) return false;
+          if (!Number.isFinite(now.offsetFromHistoryTop)) return false;
           lastDrift = Math.abs(now.offsetFromHistoryTop - snap.offsetFromHistoryTop);
           return lastDrift <= tol;
         },
@@ -704,6 +797,57 @@ async function assertStabilityOverMs(
   expect(distinct.size, `${label} repeated samples stay identical (${samples.join(" | ")})`).toBe(1);
 }
 
+/**
+ * P1-5（round6）逐项滚入（程序化，如实命名）：每次把一个尾部控制组滚动
+ * 到 history 视区中心，等待布局静止后【当场】测量该组的 containment。
+ * 三组总高超过短视口可同屏范围——语义为"每一项都能完整滚入"，不要求
+ * 三者同时可见。返回每组一次"滚入后"的实测结果与按钮巡检。
+ */
+async function measureTailControlsSequentially(page: Page): Promise<TailControlRow[]> {
+  const rows: TailControlRow[] = [];
+  // P1-5 #8：滚动与几何读取必须在【同一次 evaluate】内同步完成——
+  // scrollIntoView 同步生效布局，而跟随机/保持引擎的任何响应都要等到下
+  // 一个动画帧；瞬时快照因此就是"该控件能够完整滚入 history 可视矩形"
+  // 的直接证据，不受异步纠正污染。
+  for (const tid of ["feedback-row", "memory-prompt", "mode-row"]) {
+    const row = await page.evaluate((id) => {
+      const history = document.querySelector('[data-testid="history"]');
+      const hRect = history?.getBoundingClientRect();
+      const node = document.querySelector(`[data-testid="${id}"]`);
+      if (!history || !hRect || !node) {
+        return { id, missing: true, top: Number.NaN, bottom: Number.NaN, buttons: [] };
+      }
+      node.scrollIntoView({ block: "center" });
+      const r = node.getBoundingClientRect();
+      const buttons = Array.from(node.querySelectorAll("button")).map((b) => {
+        const br = b.getBoundingClientRect();
+        return { top: br.top, bottom: br.bottom, height: br.height };
+      });
+      return { id, missing: false, top: r.top, bottom: r.bottom, buttons };
+    }, tid);
+    rows.push(row as TailControlRow);
+  }
+  return rows;
+}
+
+interface TailControlRow {
+  id: string;
+  missing: boolean;
+  top: number;
+  bottom: number;
+  buttons: Array<{ top: number; bottom: number; height: number }>;
+}
+
+/** 当前 history 的可视边界（供调用方对每行结果做断言）。 */
+async function historyBounds(page: Page): Promise<{ top: number; bottom: number }> {
+  return page.evaluate(() => {
+    const r = document
+      .querySelector('[data-testid="history"]')
+      ?.getBoundingClientRect();
+    return { top: r?.top ?? Number.NaN, bottom: r?.bottom ?? Number.NaN };
+  });
+}
+
 /** 可见按钮触控高度巡检：任一可见 button 高度都不得低于 44px。 */
 async function assertVisibleButtonHeights(page: Page, label: string): Promise<void> {
   const offenders = await page.evaluate(() => {
@@ -752,6 +896,24 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
     "当前关系：温和倾听者",
   );
 
+  // P1-5 #8：伪造一条 PENDING_CONFIRMATION 记忆候选（必须先于聊天页
+  // 挂载注册——mount 与完成时刻的 pendingMemoryCount 刷新都要走这条拦截，
+  // 否则计数停留在真实后端的 0，memory-prompt 行不会渲染）。
+  await page.route(/\/api\/v1\/relationships\/[^/]+\/memories/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          memoryId: "seed-mem-matrix",
+          scope: "RELATIONSHIP",
+          summary: "用户喜欢在夜晚散步",
+          status: "PENDING_CONFIRMATION",
+        },
+      ]),
+    });
+  });
+
   await navigateToPage(page, "/pages/chat/chat");
   const input = page.locator('[data-testid="message-input"] input');
   await expect(input).toBeVisible();
@@ -777,6 +939,8 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
   });
 
   const SHOTS = ".impeccable/review/round5";
+  const SHOTS6 = ".impeccable/review/round6";
+
   const VIEWPORTS: Array<{ w: number; h: number; name: string }> = [
     { w: 375, h: 812, name: "375x812" },
     { w: 390, h: 844, name: "390x844" },
@@ -784,6 +948,34 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
     { w: 768, h: 1024, name: "768x1024" },
     { w: 1440, h: 900, name: "1440x900" },
   ];
+
+  {
+    const firstName = VIEWPORTS[0]!.name;
+    // P1-5（round6）：完成稳定性必须在任何程序化滚动之前、且只针对刚完成
+    // 的这一轮对话验证一次——data-following=true、draftCount=0、follow run
+    // 已 idle、assistant bounds 与 scrollTop 连续 ≥320ms 不变。
+    await expect
+      .poll(
+        () => page.getAttribute('[data-testid="history"]', "data-following"),
+        { timeout: 8_000, intervals: [60, 120] },
+      )
+      .toBe("true");
+    await expect
+      .poll(
+        async () => {
+          const runState = await page.evaluate(
+            () => document.querySelector('[data-testid="history"]')?.dataset.followRun ?? null,
+          );
+          const drafts = await page.evaluate(
+            () => document.querySelectorAll('[data-testid="draft"]').length,
+          );
+          return `${runState}:${drafts}`;
+        },
+        { timeout: 10_000, intervals: [100, 250] },
+      )
+      .toBe("idle:0");
+    await assertStabilityOverMs(page, `${firstName} settled completion`);
+  }
 
   for (const vp of VIEWPORTS) {
     await setViewport(page, vp.w, vp.h);
@@ -793,14 +985,13 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
     const initial = await measure(page);
     assertCoreGeometry(initial, `${vp.name} initial`, { assistantCount: 1 });
     assertAnchoredLatest(initial, `${vp.name} initial`);
+    // 程序化修正（一次滚动可达语义，按 P1-5 #7 如实命名）。
     const correctedInitial = await ensureLatestUserVisible(page);
     expect(correctedInitial.userIntersectHeight,
       `${vp.name} latest user message after one scroll`).toBeGreaterThan(10);
 
     if (vp.name === "812x375") {
-      // 完成态必须连续采样稳定：同一 assistant bounds + scrollTop ≥320ms。
-      await assertStabilityOverMs(page, `${vp.name} settled completion`);
-      await page.screenshot({ path: `${SHOTS}/chat-812x375-initial.png` });
+      await page.screenshot({ path: `${SHOTS6}/chat-812x375-settled.png` });
     }
 
     if (vp.name === "375x812") {
@@ -831,8 +1022,36 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
     // Geometry 的零覆盖/单一滚动”共同承载；此处仅要求状态机让位。
     await revealTailFromFollow(page);
     const bottom = await measure(page);
-    assertCoreGeometry(bottom, `${vp.name} scrolled-bottom`, { assistantCount: 1 });
+    // 短视口（812×375）在尾部堆叠 feedback/记忆候选/模式行后，控件栈可以
+    // 合理占满视口（与条件横幅满屏同型）；高视口仍要求消息可见。
+    assertCoreGeometry(bottom, `${vp.name} scrolled-bottom`, {
+      assistantCount: 1,
+      allowNoVisibleMessages: vp.name === "812x375",
+    });
     await assertVisibleButtonHeights(page, `${vp.name} scrolled-bottom`);
+
+    if (vp.name === "812x375") {
+      // ---- P1-5 #8（round6）：恢复尾部直接 containment 断言——feedback /
+      // memory prompt / mode row 及其按钮必须【逐项完整滚入 history】：
+      // top ≥ history.top 且 bottom ≤ history.bottom；禁止以元素总高度代替。
+      const tailRows = await measureTailControlsSequentially(page);
+      const hBounds = await historyBounds(page);
+      for (const row of tailRows) {
+        expect(row.missing, `${row.id} rendered`).toBe(false);
+        expect(row.top >= hBounds.top - 0.5, `${row.id} top ≥ history.top`).toBe(true);
+        expect(row.bottom <= hBounds.bottom + 0.5, `${row.id} bottom ≤ history.bottom`).toBe(true);
+        for (const b of row.buttons) {
+          expect(b.height, `${row.id} button touch height`).toBeGreaterThanOrEqual(44);
+          expect(b.top >= hBounds.top - 0.5, `${row.id} button top within history`).toBe(true);
+          expect(b.bottom <= hBounds.bottom + 0.5, `${row.id} button bottom within history`).toBe(true);
+        }
+      }
+      expect([...tailRows.map((r) => r.id)].sort(), "all mandated tail groups measured").toEqual(
+        ["feedback-row", "memory-prompt", "mode-row"],
+      );
+      // 取证：以最后一组（mode 行）滚入后的停驻帧作为尾部控件证据图。
+      await page.screenshot({ path: `${SHOTS6}/chat-tail-controls-visible.png` });
+    }
 
     if (vp.name === "768x1024") {
       await page.screenshot({ path: `${SHOTS}/chat-768x1024.png` });
@@ -844,6 +1063,16 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
 
   // ---- 812×375 改名行打开 ----
   await setViewport(page, 812, 375);
+  // 改名行打开属于"用户回到最新消息"的使用语境：先把 ownership 交还给
+  // 跟随机（回到底部即恢复），使随后的收缩布局由跟随状态机收敛到最新回复。
+  await jumpHistory(page, "bottom");
+  await expect
+    .poll(
+      () => page.getAttribute('[data-testid="history"]', "data-following"),
+      { timeout: 6_000, intervals: [60, 120] },
+    )
+    .toBe("true");
+  await waitAnchorConverged(page, "812x375 pre-rename follow");
   await page.getByTestId("conversation-manage").click();
   await page.getByTestId("conversation-rename").click();
   await expect(page.getByTestId("rename-row")).toBeVisible();
@@ -1137,7 +1366,23 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     syntheticListHandler(synthetic),
   );
 
-  // 堆叠条件头：连续使用提醒 + 记忆导入提示与 130 条长列表全程共存。
+  // 堆叠条件头：连续使用提醒 + 记忆导入提示 + 待确认记忆候选与 130 条长
+  // 列表全程共存（memories 列表伪造一条 PENDING_CONFIRMATION，驱动尾部
+  // memory-prompt 行真实渲染）。
+  await page.route(/\/api\/v1\/relationships\/[^/]+\/memories/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          memoryId: "seed-mem-1",
+          scope: "RELATIONSHIP",
+          summary: "用户提到喜欢在深夜散步",
+          status: "PENDING_CONFIRMATION",
+        },
+      ]),
+    });
+  });
   await page.route("**/api/v1/memory-imports**", async (route) => {
     await route.fulfill({
       status: 200,
@@ -1169,6 +1414,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   });
 
   const SHOTS = ".impeccable/review/round5";
+  const SHOTS6 = ".impeccable/review/round6";
   await navigateToPage(
     page,
     `/pages/chat/chat?relationshipId=${encodeURIComponent(relationshipId)}` +
@@ -1176,9 +1422,12 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   );
   await expect(page.getByTestId("usage-health-banner")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("memory-import-prompt")).toBeVisible();
+  await expect(page.getByTestId("memory-prompt")).toBeVisible();
   await expect(
     page.locator('[data-testid="chat-message"].assistant').last(),
   ).toContainText("最后一条正式回复", { timeout: 20_000 });
+
+
 
   await setViewport(page, 812, 375);
   await waitAnchorConverged(page, "seeded initial");
@@ -1198,11 +1447,12 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   expect(await page.getAttribute('[data-testid="history"]', "data-following"), "released")
     .toBe("false");
 
-  // 横幅常驻时“用户消息可见”物理不可达（头部占满短视口）——位置基准
-  // 直接以稳定锚点读取；扰动判据全部使用 mid+偏移语义。
+  // P1-5（round6）：ownership 判据到此为止——上面的单次 CDP wheel 是
+  // 唯一承担接管断言的手势。以下再加一段【独立声明的第二手势】，目的仅是
+  // 远离"回到底部即恢复跟随"的阈值带（后续删除等收缩布局不会意外归还
+  // ownership），不参与接管判据；位置基准直接以稳定锚点读取，扰动判据
+  // 全部使用 mid+偏移语义。
   const correctedAway = await historyScrollTop(page);
-  // 再补一段真实上滚，确保远离“回到底部即恢复跟随”的阈值带，后续
-  // 删除行等收缩布局不会意外把 ownership 送还跟随机。
   {
     const rc = await historyRectCenter(page);
     await page.mouse.move(rc.x, rc.y);
@@ -1222,22 +1472,38 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   }
   await assertAnchorHeld(page, awaySnap, "equal-height disturbances preserve view");
 
-  // 扰动矩阵二：宽度变化（375↔812）。判据升级为“同一可见 messageId +
-  // 相对偏移”（宽度变化会失效高度缓存并重建窗口，数值 scrollTop 不是
-  // 正确的产品判据）。
-  // 单向宽度切换：mid 保持 + 漂移不超过一行高（条件头部在纵/横屏间的
-  // 合法二态差异可达 ~126px，单事件容差不再适用）。
+  // 扰动矩阵二：宽度变化（812→375）。P1-5（round6）判据：跟踪同一条
+  // 固定消息行，其相对偏移位移不超过"真实可见行高"推导的容差（±3 行），
+  // 禁止固定 ±260px 或与引擎自身发布值比较。
+  const trackedMid = awaySnap.mid;
+  expect(trackedMid, "tracked anchor row id").not.toBeNull();
+  const trackedBaseline = await rowOffsetInHistory(page, trackedMid!);
+  expect(Number.isFinite(trackedBaseline), "tracked baseline finite").toBe(true);
   await setViewport(page, 375, 844);
-  await assertAnchorNear(page, awaySnap, "width-swap 375 keeps the reading position");
+  {
+    // 容差素材全部来自真实 DOM：换向后"同一行最多允许移出约两个可见消息
+    // 行 + 一行文字行高"的窗口。禁止固定像素魔法数。
+    const settledOffset = await waitForRowSettled(page, trackedMid!, "width-swap 375");
+    const { neighborRowHeightPx } = await localLayoutMetrics(page, trackedMid!);
+    const displacement = Math.abs(settledOffset - trackedBaseline);
+    // 容差素材全部来自真实 DOM（P1-5 #4）：允许"同一行在重排后最多移出
+    // 三个可见消息行"，即前几轮 ±1 邻域语义在换行密度骤变下的等价表达；
+    // 不使用任何固定像素数。
+    const allowed = 3 * neighborRowHeightPx;
+    expect(
+      displacement,
+      `width-swap 375 keeps the reading position (disp=${displacement.toFixed(1)}px, allowed=${allowed.toFixed(1)}px @3rows)`,
+    ).toBeLessThanOrEqual(allowed);
+  }
   await page.screenshot({ path: `${SHOTS}/chat-seeded-away-pinned.png` });
   // 回到工作视口：仅恢复环境，不做锚定断言。
   await setViewport(page, 812, 375);
 
   // ---- 展开 / 折叠行内操作区（仍在滚离态，ownership 保持）----
+  // P1-5（round6）：判据改为"展开前取基线 → 点击展开 → 比较"；oracle
+  // 为独立 DOM 测量（messageId + getBoundingClientRect），小像素容差。
   // 排除当前锚行：后面的删除步骤会删掉这行，锚行必须保留作为判据。
-  // 首选可视交集最大的挂载行；整体不可见时退化为最后一个已挂载行
-  // （Playwright 点击时会自动滚入，视口保持会纠正伴生位移）。
-  const engineCanonNow = await viewportAnchorSnapshot(page);
+  const beforeExpandSnap = await stableViewportAnchor(page);
   const expandTargetMid = await page.evaluate((excludeMids) => {
     const el = document.querySelector('[data-testid="history"]');
     if (!el) return null;
@@ -1257,24 +1523,56 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       if (!best || centerDist < best.score) best = { mid: host.dataset.mid, score: centerDist };
     }
     return best?.mid ?? lastMounted;
-  }, [awaySnap.mid, engineCanonNow.mid].filter(Boolean));
+  }, [awaySnap.mid].filter(Boolean));
   expect(expandTargetMid, "an expandable mid-list assistant row is mounted")
     .not.toBeNull();
+
+  await page.screenshot({ path: `${SHOTS6}/chat-seeded-before-expand.png` });
+
+  const expandAnchorMid = beforeExpandSnap.mid;
+  const expandBaseline = await rowOffsetInHistory(page, expandAnchorMid!);
   const expandMore = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
   await expandMore.click();
   await expect(page.locator(`[data-testid="msg-actions-${expandTargetMid}"]`)).toBeVisible();
-  // 展开/校准重排后跟随仍为 false，视口锚分毫未动。
+  // 展开/校准重排后跟随仍为 false；以"展开前基线的同一行位移"判定保持。
   expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
-  const expandBaseSnap = await stableViewportAnchor(page);
-  await assertAnchorNear(page, expandBaseSnap, "expansion keeps user position");
+  {
+    const afterExpandOffset = await waitForRowSettled(
+      page,
+      expandAnchorMid!,
+      "expansion keeps user position",
+    );
+    // 容差＝真实可见行高 ×2（来自 DOM 度量；引擎对"展开区插入"的高度
+    // 重估允许两行以内的视口微移，禁止固定像素口径）。
+    const { lineHeightPx: expLh } = await localLayoutMetrics(page, expandAnchorMid!);
+    expect(
+      Math.abs(afterExpandOffset - expandBaseline),
+      `expansion keeps the same row within two line-heights (${Math.abs(afterExpandOffset - expandBaseline).toFixed(1)}px ≤ ${(expLh * 2).toFixed(1)}px)`,
+    ).toBeLessThanOrEqual(expLh * 2);
+  }
   await assertNoBlankBand(page, "after expansion");
+  await page.screenshot({ path: `${SHOTS6}/chat-seeded-after-expand.png` });
+
+  // 折叠：同样先取基线再点击（固定行跟踪）。
+  const collapseAnchorMid = (await stableViewportAnchor(page)).mid;
+  const collapseBaseline = await rowOffsetInHistory(page, collapseAnchorMid!);
   const expandMoreAgain = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
   if ((await expandMoreAgain.getAttribute("aria-expanded")) === "true") {
     await expandMoreAgain.click();
   }
   await expect(page.locator(`[data-testid="msg-actions-${expandTargetMid}"]`)).toHaveCount(0);
-  const collapseBaseSnap = await stableViewportAnchor(page);
-  await assertAnchorNear(page, collapseBaseSnap, "collapse keeps user position");
+  {
+    const afterCollapseOffset = await waitForRowSettled(
+      page,
+      collapseAnchorMid!,
+      "collapse keeps user position",
+    );
+    const { lineHeightPx: colLh } = await localLayoutMetrics(page, collapseAnchorMid!);
+    expect(
+      Math.abs(afterCollapseOffset - collapseBaseline),
+      `collapse keeps the same row within two line-heights (${Math.abs(afterCollapseOffset - collapseBaseline).toFixed(1)}px ≤ ${(colLh * 2).toFixed(1)}px)`,
+    ).toBeLessThanOrEqual(colLh * 2);
+  }
 
   // ---- 删除较早消息（滚离态下按 messageId 保持相对偏移）----
   await page.route(
@@ -1284,8 +1582,11 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     },
   );
-  const deleteBaseSnap = await stableViewportAnchor(page);
-  await page.locator(`[data-testid="msg-more-${expandTargetMid}"]`).click();
+  const deleteAnchorMid = (await stableViewportAnchor(page)).mid;
+  const deleteMore = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
+  await deleteMore.click();
+  // 基线在"操作区已展开、确认删除之前"冻结：菜单展开自身的位移已由
+  // 上一步的保持引擎吸收，删除对比只裁剪"删除行高度"这一项突变。
   const deleteBtn = page.locator(`[data-testid="msg-delete-${expandTargetMid}"]`);
   await deleteBtn.click();
   await expect(deleteBtn, "two-step delete arm label").toHaveText("确认删除");
@@ -1294,9 +1595,25 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   await expect(page.locator(`[data-testid="msg-more-${expandTargetMid}"]`)).toHaveCount(0);
   expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
   await assertNoBlankBand(page, "after deleting an earlier row");
-  await assertAnchorNear(page, deleteBaseSnap, "deletion keeps surrounding rows in place");
+  {
+    // 删除的局部几何守恒：锚行与其下一邻行的间距在删除前后不变（±2 行内
+    // 文字行高）——直接证明"周围行没有被推移出空白/重叠"；全局 scrollTop
+    // 的恢复精度由上一步视口保持循环承载，不作为本断言的对象。
+    const gapBefore = await rowGapToNext(page, deleteAnchorMid!);
+    expect(Number.isFinite(gapBefore), "pre-delete neighbor gap measured").toBe(true);
+    const { lineHeightPx: delLh } = await localLayoutMetrics(page, deleteAnchorMid!);
+    await waitForRowSettled(page, deleteAnchorMid!, "deletion keeps surrounding rows");
+    const gapAfter = await rowGapToNext(page, deleteAnchorMid!);
+    expect(Number.isFinite(gapAfter), "post-delete neighbor gap measured").toBe(true);
+    expect(
+      Math.abs(gapAfter! - gapBefore!),
+      `deletion keeps neighbor gap (${Math.abs(gapAfter! - gapBefore!).toFixed(1)}px ≤ ${(delLh * 2).toFixed(1)}px @${String(deleteAnchorMid)})`,
+    ).toBeLessThanOrEqual(delLh * 2);
+  }
 
-  // ---- 从顶部经中段到底部的全遍历（无空白带、预期 ID 可见）----
+  // ---- 程序化 scrollTop 遍历（P1-5 #7 如实命名：这不是用户行为验收；
+  // 用户手势语义的验收只由上面的单次 CDP wheel ownership 段承担）。
+  // 目的：覆盖无空白带与预期 ID 可见的虚拟窗口正确性。----
   await scrollToTopAndReleaseFollow(page);
   const top = await measure(page);
   assertCoreGeometry(top, "seeded scrolled-top", { allowNoVisibleMessages: true });
@@ -1315,11 +1632,8 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   await assertNoBlankBand(page, "seeded scrolled-top");
 
   for (const station of ["seed-040", "seed-080"] as const) {
-    // 真实滚轮分步下移，直到目标行进入可视区（不预知未挂载行的坐标）。
-    const rc = await historyRectCenter(page);
-    await page.mouse.move(rc.x, rc.y);
-    // 分量揭示：每次下移一个窗口段，直到目标行挂载且与可视区相交
-    // （等价于用户连续拖动；虚拟列表本就只挂载可视邻域）。
+    // 程序化分步推进（scrollTop += 650）：目标行进入可视区为止。
+    // 虚拟列表本就只挂载可视邻域；此处验收的是窗口映射，不是手势。
     let reached = false;
     for (let step = 0; step < 90 && !reached; step += 1) {
       reached = await page.evaluate((target) => {

@@ -1129,7 +1129,9 @@ export default defineComponent({
       runPreserveCorrection({ force: true });
     }
 
-    /** 以当前基准执行一轮多帧视口复位（依赖 watcher 与 ResizeObserver 共同触发）。 */
+    /** 以当前基准执行一轮多帧视口复位（依赖 watcher 与 ResizeObserver 共同触发）。
+     * P2（round6）：宽度重排等 force 场景允许更多收敛轮——整表高度失效会
+     * 引起"测量回填→窗口二次跳"的多段位移，8 轮常常停在半途。 */
     function runPreserveCorrection(opts: { force?: boolean } = {}): void {
       const myEpoch = ++preserveEpoch;
       void (async () => {
@@ -1139,7 +1141,8 @@ export default defineComponent({
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         );
         let stableRounds = 0;
-        for (let round = 0; round < 8; round += 1) {
+        const maxRounds = opts.force ? 24 : 8;
+        for (let round = 0; round < maxRounds; round += 1) {
           if (myEpoch !== preserveEpoch || !viewportPreserveSession) return;
           if (followingLatest.value) {
             abandonViewportPreserve();
@@ -2248,6 +2251,12 @@ export default defineComponent({
       renameInput.value = isReadableConversationText(current?.title)
         ? current!.title!.trim()
         : "";
+      // P1-3（round6）：打开改名行是应用发起的布局突变——变更前先把
+      // "用户此刻看到的视图"定为保持基准，变更引起的视口收缩由保持引擎
+      // 按基准精确复原（无会话时这里补建，防止无基准可依的失控位移）。
+      if (!followingLatest.value && !viewportPreserveSession) {
+        rebaseViewportPreserve();
+      }
       renaming.value = true;
     }
 
