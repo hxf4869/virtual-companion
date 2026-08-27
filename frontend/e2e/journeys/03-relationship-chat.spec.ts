@@ -1690,7 +1690,40 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       `virtualization stays bounded during width transaction (${afterGeometry.mountedRows} << ${TOTAL})`,
     ).toBeLessThan(TOTAL / 2);
     expect(String(diagState.following), "width scenario keeps ownership released").toBe("false");
-    expect(diagState.preserveConverged, "no explicit convergence failure marker").not.toBe("false");
+    // round9（二）：预算（36 帧）与 320ms 安静窗的关系取决于环境的真实帧
+    // 间隔。36 帧不足以覆盖 320ms 的高刷环境（帧间隔 <8.9ms，如 120Hz
+    // 显示器）下，预算耗尽显性失败是【规定语义】——这里如实断言失败被
+    // 显性标注（budget 诊断标签）；60Hz 级环境保持原有"必须收敛"断言。
+    // 两种环境下 ≤4px 的几何验收都不放宽。
+    const frameIntervalMs = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          let first = 0;
+          let samples = 0;
+          const tick = (t: number) => {
+            if (first === 0) first = t;
+            samples += 1;
+            if (samples >= 20) resolve((t - first) / 20);
+            else requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }),
+    );
+    const framesCannotCoverSettle = frameIntervalMs > 0 && frameIntervalMs * 36 < 320;
+    if (framesCannotCoverSettle) {
+      expect(
+        diagState.preserveConverged,
+        `high-refresh budget exhaustion is mandated to be explicit (frame=${frameIntervalMs.toFixed(2)}ms)`,
+      ).toBe("false");
+      expect(
+        String(diagState.residualPx),
+        "budget exhaustion carries the budget diagnostic label",
+      ).toContain("budget:");
+    } else {
+      expect(diagState.preserveConverged, "no explicit convergence failure marker").not.toBe(
+        "false",
+      );
+    }
     expect(
       displacement,
       `width-swap pins the anchor to its history-relative offset (disp=${displacement.toFixed(2)}px ≤ 4px; ${geometryTable}; state=${JSON.stringify(diagState)})`,
@@ -1854,6 +1887,98 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
         `gap ${gapBeforeConfirm!.toFixed(1)}→${gapAfterDelete.toFixed(1)}px @${judgeMid})`,
     ).toBeLessThanOrEqual(4);
     await page.screenshot({ path: `${SHOTS}/delete-after.png` });
+  }
+
+  // ---- round9（四）：删除【当前事务锚行】——以删除前幸存行快照 handoff ----
+  // 判据行即引擎基准行本身（data-preserve-mid 仅作生命周期同步门，成败
+  // 仍由独立 DOM 几何裁定）。确认删除之前先冻结幸存行基线；扰动前预装
+  // 生命周期观察，证明目标事务确实经历 active→idle，再执行 ≥320ms、
+  // 波动 ≤1px 的几何稳定判定。
+  const SHOTS9 = ".impeccable/review/round9";
+  {
+    // 生命周期同步门：当前引擎基准行确为判据行。
+    await expect
+      .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-mid"), {
+        timeout: 8_000,
+        intervals: [100, 200],
+      })
+      .toBe(judgeMid);
+
+    // 展开 judge 行内操作区并 arm 两步确认。
+    const judgeMore = page.locator(`[data-testid="msg-more-${judgeMid}"]`);
+    await judgeMore.click({ force: true });
+    await expect(page.locator(`[data-testid="msg-actions-${judgeMid}"]`)).toBeVisible();
+    const judgeDelete = page.locator(`[data-testid="msg-delete-${judgeMid}"]`);
+    await judgeDelete.click({ force: true });
+    await expect(judgeDelete, "two-step delete arm label").toHaveText("确认删除");
+
+    // 确定性幸存行：判据行上方最近的种子行（与生产快照选择规则一致）。
+    const survivorMid = await pickMountedRowRelativeTo(page, {
+      side: "above",
+      refMid: judgeMid!,
+      excludeMids: [awayMid].filter((m): m is string => m !== null),
+      requirePrefix: "seed-",
+      requireVisible: true,
+    });
+    expect(
+      survivorMid,
+      "a visible survivor row strictly above the anchor is mounted",
+    ).not.toBeNull();
+    await page.route(
+      new RegExp(`/api/v1/conversations/[^/]+/messages/${judgeMid}$`),
+      async (route) => {
+        expect(route.request().method()).toBe("DELETE");
+        await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+      },
+    );
+
+    // arm 插入内容后几何先静止，再在【最终确认前】冻结幸存行基线；
+    // 并确认此前的保持事务已回到 idle（生命周期观察起点）。
+    const survivorBaseline = await waitForSettledRowGeometry(
+      page,
+      survivorMid!,
+      "survivor pre-delete baseline",
+    );
+    await expect
+      .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-run"), {
+        timeout: 8_000,
+        intervals: [80, 160],
+      })
+      .toBe("idle");
+    await page.screenshot({ path: `${SHOTS9}/anchor-delete-before.png` });
+
+    await judgeDelete.click({ force: true });
+    await expect(page.locator(`[data-mid="${judgeMid}"]`)).toHaveCount(0);
+    // handoff 事务生命周期：确实经历 active→idle（同步门，不作成功判据）。
+    await expect
+      .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-run"), {
+        timeout: 4_000,
+        intervals: [60, 120],
+      })
+      .toBe("active");
+    await expect
+      .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-run"), {
+        timeout: 12_000,
+        intervals: [100, 200],
+      })
+      .toBe("idle");
+    expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
+    {
+      // 主判据（独立 DOM 几何）：同一幸存行删除前后 history-relative
+      // 偏移误差 ≤4 CSS px——恢复的是删除前快照，不是跳变后的视图。
+      const survivorAfter = await waitForSettledRowGeometry(
+        page,
+        survivorMid!,
+        "anchor-row deletion keeps the survivor at its pre-delete offset",
+      );
+      const survivorError = Math.abs(survivorAfter.offset - survivorBaseline.offset);
+      expect(
+        survivorError,
+        `deleting the anchored row pins the pre-delete survivor (err=${survivorError.toFixed(2)}px ≤ 4px; survivor=${survivorMid})`,
+      ).toBeLessThanOrEqual(4);
+      await assertNoBlankBand(page, "after deleting the anchored row");
+      await page.screenshot({ path: `${SHOTS9}/anchor-delete-after.png` });
+    }
   }
 
   // ---- 程序化 scrollTop 遍历（P1-5 #7 如实命名：这不是用户行为验收；
