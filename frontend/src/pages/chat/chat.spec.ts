@@ -3327,7 +3327,8 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     it("round10 P1-1: 120Hz (≈8ms) and 144Hz (≈7ms) stable inputs truly converge — write budget separated from quiet-window wall clock", async () => {
       const evidence: string[] = [];
-      for (const cadenceMs of [8, 7]) {
+      // 20ms/frame ≈ 50-60Hz 级作为基线档一起仪表化（对照）。
+      for (const cadenceMs of [20, 8, 7]) {
         const f = await takeoverFixture();
         const spy = spyScrollWrites(f.el);
         try {
