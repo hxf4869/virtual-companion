@@ -709,6 +709,65 @@ async function waitForSettledRowGeometry(
 }
 
 /**
+ * round10（P1-1/P2-2）：正常静止事务的收敛判据——converged=true、run=idle、
+ * override=released 三者同时成立。预算耗尽的显性失败不再是合法终态（高刷
+ * 环境下安静窗与写入预算已分离）；此判据只作生命周期同步门，几何成败仍由
+ * 独立 DOM 尺裁定。
+ */
+async function waitPreserveSettled(page: Page, label: string): Promise<void> {
+  const state = await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid="history"]');
+          if (!(el instanceof HTMLElement)) return "";
+          return [
+            el.dataset.preserveRun ?? "",
+            el.dataset.preserveConverged ?? "",
+            el.dataset.preserveOverride ?? "",
+          ].join("|");
+        }),
+      { timeout: 15_000, intervals: [80, 160, 320] },
+    )
+    .toBe("idle|true|released");
+  expect(state, `${label}: preserve lifecycle must settle as idle|true|released`)
+    .toBe("idle|true|released");
+}
+
+/**
+ * round10（P2-2.4）：在触发动作【之前】安装 data-preserve-run 生命周期监听
+ * （MutationObserver），避免轮询采样漏掉短暂的 active 状态。返回读取函数。
+ */
+async function installPreserveRunRecorder(
+  page: Page,
+): Promise<() => Promise<string[]>> {
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="history"]');
+    if (!(el instanceof HTMLElement)) {
+      throw new Error("history element missing for preserve-run recorder");
+    }
+    const holder = el as HTMLElement & { __preserveRunLog?: string[] };
+    const seen: string[] = [el.dataset.preserveRun ?? "absent"];
+    holder.__preserveRunLog = seen;
+    const record = (): void => {
+      const next = el.dataset.preserveRun ?? "absent";
+      if (seen[seen.length - 1] !== next) seen.push(next);
+    };
+    new MutationObserver(record).observe(el, {
+      attributes: true,
+      attributeFilter: ["data-preserve-run"],
+    });
+  });
+  return () =>
+    page.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="history"]',
+      ) as (HTMLElement & { __preserveRunLog?: string[] }) | null;
+      return el?.__preserveRunLog ? [...el.__preserveRunLog] : [];
+    });
+}
+
+/**
  * round8（四）：在可视且完整落入 history 的挂载行中，选出全部严格位于参照
  * 行上方/下方的候选取最贴近者——展开/折叠/删除的目标必须明确位于锚行上
  * 方（反之锚行必须明确位于删除目标下方），否则扰动天然不移动锚点，属于
@@ -1417,29 +1476,16 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
   await jumpHistory(page, "bottom");
 
   // 回到底部附近（跳转产生真实滚动事件）→ 跟随恢复；随后真实点击重试。
-  // round9：runtime 对 SSE 订阅按 owner 维护并发租约（上限 3，TTL 130s）。
-  // 前两轮流被测试路由在 Playwright 层 abort，runtime 侧租约要等到 TTL
-  // 或写失败才释放——重试点击必须在租约窗口外仍能成功，因此给足 4 次
-  // ×45s（>130s TTL + 余量）。重试断言本身不放宽：最终成败仍是
-  // "已完成（安全终态）"。
+  // round10（P2-3）：删除 4×45s 租约窗等待——vite 代理已把客户端断开传播
+  // 到 runtime（租约即时释放，证据见 Journey04 的代理传播用例），重试订阅
+  // 必须在单次有界时限内成功；失败即测试失败，不允许以等待 130s TTL 换
+  // 通过。
   sseMode = "passthrough";
   await page.unroute("**/api/v1/realtime/streams/**");
-  let retriedOk = false;
-  for (let attempt = 0; attempt < 4 && !retriedOk; attempt += 1) {
-    await page.getByTestId("retry").click();
-    try {
-      await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
-        timeout: 45_000,
-      });
-      retriedOk = true;
-    } catch (err) {
-      if (attempt === 3) throw err;
-      const stillFailed = await measure(page);
-      expect(stillFailed.retry, "still retryable after another transport loss")
-        .not.toBeNull();
-      await jumpHistory(page, "bottom");
-    }
-  }
+  await page.getByTestId("retry").click();
+  await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
+    timeout: 45_000,
+  });
   // 完成后：若仍处于离开态，则用一次真实“回到底部”恢复跟随；已在跟随
   // 中则任何多余的程序化跳转反而构成让位事件（所有权语义对称）。
   {
@@ -1695,21 +1741,17 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       `virtualization stays bounded during width transaction (${afterGeometry.mountedRows} << ${TOTAL})`,
     ).toBeLessThan(TOTAL / 2);
     expect(String(diagState.following), "width scenario keeps ownership released").toBe("false");
-    // round9（二）：预算耗尽的显性失败是指定语义——高刷环境下 320ms 安静窗
-    // 可能跨越多个预算窗。收敛标记按语义如实判定：允许 converged=true，也
-    // 允许携带 budget 诊断标签的显性失败（预算机制本身），除此之外的任何
-    // 失败标记都不可接受；≤4px 的几何验收独立且不放宽。
-    if (diagState.preserveConverged === "false") {
-      expect(
-        String(diagState.residualPx),
-        "explicit failures may only be budget exhaustion (mandated semantics)",
-      ).toContain("budget:");
-    }
     expect(
       displacement,
       `width-swap pins the anchor to its history-relative offset (disp=${displacement.toFixed(2)}px ≤ 4px; ${geometryTable}; state=${JSON.stringify(diagState)})`,
     ).toBeLessThanOrEqual(4);
     await assertNoBlankBand(page, "after width swap");
+    // round10（P1-1）：删除"converged=false + budget:* 也合法"分支——校正
+    // 写入预算与 320ms 安静窗的墙钟等待已分离，高刷环境不再是预算耗尽的
+    // 借口；正常静止事务必须真实收敛（converged=true、idle、released），
+    // 不再残留 rAF/活动事务。
+    await waitPreserveSettled(page, "width swap");
+    await page.screenshot({ path: `${SHOTS}/width-after-375x844-settled.png` });
   }
   // 回到工作视口：仅恢复环境，不做锚定断言。
   await setViewport(page, 812, 375);
@@ -1867,15 +1909,23 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       `deletion pins the anchored row's offset (err=${anchorError.toFixed(2)}px ≤ 4px; ` +
         `gap ${gapBeforeConfirm!.toFixed(1)}→${gapAfterDelete.toFixed(1)}px @${judgeMid})`,
     ).toBeLessThanOrEqual(4);
+    // round10（P2-2.3）：删除后必须 converged=true、idle、released。
+    await waitPreserveSettled(page, "earlier-row delete");
     await page.screenshot({ path: `${SHOTS}/delete-after.png` });
   }
 
-  // ---- round9（四）：删除【当前事务锚行】——以删除前幸存行快照 handoff ----
-  // 判据行即引擎基准行本身（data-preserve-mid 仅作生命周期同步门，成败
-  // 仍由独立 DOM 几何裁定）。确认删除之前先冻结幸存行基线；扰动前预装
-  // 生命周期观察，证明目标事务确实经历 active→idle，再执行 ≥320ms、
-  // 波动 ≤1px 的几何稳定判定。
+  // ---- round9（四）/round10（P2-2）：删除【当前事务锚行】——删除前幸存行
+  // 快照 handoff。判据行即引擎基准行本身（data-preserve-mid 仅作生命周期
+  // 同步门，成败仍由独立 DOM 几何裁定）。round10 加固：
+  //   • 生命周期监听在【最终确认前】安装（MutationObserver，轮询不会漏掉
+  //     短暂 active）；
+  //   • handoff 幸存行与偏移在确认点击前【立即重新读取并冻结】；
+  //   • 删除后必须 converged=true、idle、released；
+  //   • 删除后追加一次真实上游高度扰动（展开幸存行上方的行内操作区）——
+  //     没有有效 handoff 基准时该扰动必然把幸存行推离基线，杜绝"删除的
+  //     行位于锚上方、天然不动"式假绿。
   const SHOTS9 = ".impeccable/review/round9";
+  const SHOTS10 = ".impeccable/review/round10";
   {
     // 生命周期同步门：当前引擎基准行确为判据行。
     await expect
@@ -1913,9 +1963,9 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       },
     );
 
-    // arm 插入内容后几何先静止，再在【最终确认前】冻结幸存行基线；
-    // 并确认此前的保持事务已回到 idle（生命周期观察起点）。
-    const survivorBaseline = await waitForSettledRowGeometry(
+    // arm 插入内容后几何先静止；随后【最终确认前】依次：安装生命周期监听
+    // → 重新读取并冻结幸存行基线 → 截图 → 点击确认。
+    const survivorSettled = await waitForSettledRowGeometry(
       page,
       survivorMid!,
       "survivor pre-delete baseline",
@@ -1926,25 +1976,29 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
         intervals: [80, 160],
       })
       .toBe("idle");
+    const readPreserveRunLog = await installPreserveRunRecorder(page);
+    const survivorBaseline = await readRowGeometry(page, survivorMid!);
+    expect(survivorBaseline, "survivor baseline frozen before confirm").not.toBeNull();
+    expect(survivorBaseline!.fullyInside, "survivor fully inside before confirm").toBe(true);
+    expect(survivorBaseline!.offset, "frozen baseline matches the settled read")
+      .toBeCloseTo(survivorSettled.offset, 0.5);
     await page.screenshot({ path: `${SHOTS9}/anchor-delete-before.png` });
 
     await judgeDelete.click({ force: true });
     await expect(page.locator(`[data-mid="${judgeMid}"]`)).toHaveCount(0);
-    // handoff 事务生命周期：确实经历 active→idle（同步门，不作成功判据）。
-    await expect
-      .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-run"), {
-        timeout: 4_000,
-        intervals: [60, 120],
-      })
-      .toBe("active");
-    await expect
-      .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-run"), {
-        timeout: 12_000,
-        intervals: [100, 200],
-      })
-      .toBe("idle");
+    // handoff 事务生命周期：确实经历 active→idle（监听器证据，不作成功判据）。
+    {
+      const lifecycle = await readPreserveRunLog();
+      expect(
+        lifecycle.includes("active"),
+        `the handoff transaction went active (observed ${JSON.stringify(lifecycle)})`,
+      ).toBe(true);
+    }
+    await waitPreserveSettled(page, "anchor-row delete");
     expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
     {
+      const runLog = await readPreserveRunLog();
+      expect(runLog[runLog.length - 1], "lifecycle ends idle").toBe("idle");
       // 主判据（独立 DOM 几何）：同一幸存行删除前后 history-relative
       // 偏移误差 ≤4 CSS px——恢复的是删除前快照，不是跳变后的视图。
       const survivorAfter = await waitForSettledRowGeometry(
@@ -1952,14 +2006,125 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
         survivorMid!,
         "anchor-row deletion keeps the survivor at its pre-delete offset",
       );
-      const survivorError = Math.abs(survivorAfter.offset - survivorBaseline.offset);
+      const survivorError = Math.abs(survivorAfter.offset - survivorBaseline!.offset);
       expect(
         survivorError,
         `deleting the anchored row pins the pre-delete survivor (err=${survivorError.toFixed(2)}px ≤ 4px; survivor=${survivorMid})`,
       ).toBeLessThanOrEqual(4);
       await assertNoBlankBand(page, "after deleting the anchored row");
       await page.screenshot({ path: `${SHOTS9}/anchor-delete-after.png` });
+
+      // round10（P2-2.2）：删除后的真实上游扰动——展开幸存行【上方】最近
+      // 可见行的行内操作区（上游高度增加）。没有 handoff 基准时，引擎会把
+      // 扰动后的视图当新真值，幸存行必然离开冻结基线；有 handoff 基准时
+      // 同一幸存行必须被钉回 ≤4px。
+      const perturbMid = await pickMountedRowRelativeTo(page, {
+        side: "above",
+        refMid: survivorMid!,
+        excludeMids: [judgeMid, awayMid].filter((m): m is string => m !== null),
+        requirePrefix: "seed-",
+        requireVisible: true,
+      });
+      expect(
+        perturbMid,
+        "a visible row strictly above the survivor is mounted for the perturbation",
+      ).not.toBeNull();
+      await page.locator(`[data-testid="msg-more-${perturbMid}"]`).click({ force: true });
+      await expect(page.locator(`[data-testid="msg-actions-${perturbMid}"]`)).toBeVisible();
+      const survivorPerturbed = await waitForSettledRowGeometry(
+        page,
+        survivorMid!,
+        "post-delete upstream perturbation keeps the survivor pinned",
+      );
+      const perturbError = Math.abs(survivorPerturbed.offset - survivorBaseline!.offset);
+      expect(
+        perturbError,
+        `upstream perturbation after delete re-pins the handoff survivor (err=${perturbError.toFixed(2)}px ≤ 4px; perturbed=${perturbMid})`,
+      ).toBeLessThanOrEqual(4);
+      await waitPreserveSettled(page, "post-delete perturbation");
+      await assertNoBlankBand(page, "after post-delete perturbation");
+      await page.screenshot({ path: `${SHOTS10}/anchor-delete-perturbed.png` });
     }
+  }
+
+  // ---- round10（P1-3.4）：程序落点回声一次性消费——active 事务中用户回到
+  // 底部，必须被识别为真实用户滚动并恢复 following；随后布局变化自动重锚
+  // 到底（最新行完整可见）。End 的 keydown 意图先使未消费回声票据失效，
+  // scrollTop 赋值由浏览器发出真实 scroll 事件（非引擎写入，不铸造票据）。
+  {
+    // 记录引擎自身的程序写入落点（包装实例 scrollTop setter）。
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="history"]');
+      if (!(el instanceof HTMLElement)) throw new Error("history missing");
+      const holder = el as HTMLElement & {
+        __echoSpyInstalled?: boolean;
+        __engineLandings?: number[];
+      };
+      if (holder.__echoSpyInstalled) return;
+      holder.__echoSpyInstalled = true;
+      holder.__engineLandings = [];
+      const desc =
+        Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop") ??
+        Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
+      Object.defineProperty(el, "scrollTop", {
+        configurable: true,
+        get: desc.get,
+        set(v: number) {
+          holder.__engineLandings!.push(Number(v));
+          desc.set!.call(el, v);
+        },
+      });
+    });
+    expect(await page.getAttribute('[data-testid="history"]', "data-following"))
+      .toBe("false");
+
+    // 一次宽度微扰（1200→1188，同高）：重排使锚行移动 → 保持事务产生真实
+    // 校正写入；读取最近一次程序落点作为"恰好回到底部前"的回声对照。
+    await setViewport(page, 1188, 900);
+    await expect
+      .poll(
+        async () => {
+          const landings = await page.evaluate(() => {
+            const el = document.querySelector('[data-testid="history"]') as
+              | (HTMLElement & { __engineLandings?: number[] })
+              | null;
+            return el?.__engineLandings?.length ?? 0;
+          });
+          return landings;
+        },
+        { timeout: 10_000, intervals: [100, 200] },
+      )
+      .toBeGreaterThan(0);
+
+    // 用户 End 回底：keydown 意图 + 程序赋值产生真实 scroll 事件。即使落点
+    // 与最近程序写入相近，一次性票据 + 意图失效也必须判为用户语义 →
+    // 底部 gap=0 → following 恢复 true。
+    await page.evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" }));
+      const el = document.querySelector('[data-testid="history"]') as HTMLElement | null;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+    await expect
+      .poll(() => page.getAttribute('[data-testid="history"]', "data-following"), {
+        timeout: 6_000,
+        intervals: [60, 120],
+      })
+      .toBe("true");
+
+    // 跟随恢复后的布局变化自动重锚到底部：恢复工作台视口 → 最新种子行完整
+    // 落入可视区（自动跟随语义的可观测证据）。
+    await setViewport(page, 1200, 900);
+    await expect
+      .poll(
+        async () => {
+          const m = await measure(page);
+          return m.visibleIds[m.visibleIds.length - 1] ?? "";
+        },
+        { timeout: 10_000, intervals: [120, 240] },
+      )
+      .toBe(LAST_MID);
+    await waitPreserveSettled(page, "user-return-bottom follow re-anchor");
+    await page.screenshot({ path: `${SHOTS10}/user-return-bottom.png` });
   }
 
   // ---- 程序化 scrollTop 遍历（P1-5 #7 如实命名：这不是用户行为验收；
