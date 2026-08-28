@@ -331,4 +331,9 @@ test("a browser abort of a proxied SSE subscription propagates: the proxy destro
     report.secondAfterMs,
     `the next subscription succeeded in ${report.secondAfterMs?.toFixed(0)}ms — dramatically shorter than the 130s lease TTL`,
   ).toBeLessThan(10_000);
+  console.info(
+    `[round10 P2-3 evidence] gen=${report.generationId} ` +
+      `proxyDestroy="${destroyLine.slice(0, 120)}" ` +
+      `nextSubscriptionMs=${report.secondAfterMs?.toFixed(0)}`,
+  );
 });
