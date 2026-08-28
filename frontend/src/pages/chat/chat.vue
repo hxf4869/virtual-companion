@@ -285,6 +285,9 @@
           ref="historyEl"
           class="chat-history"
           data-testid="history"
+          role="region"
+          aria-label="消息历史"
+          tabindex="0"
           :data-following="followingLatest ? 'true' : 'false'"
         >
           <!-- P1（round4）：条件系统行进入唯一滚动内容头部。它们仍然可达、
@@ -409,14 +412,30 @@
               {{ msg.noMemory ? "恢复记忆" : "不记住" }}
             </button>
             <!-- MSG-DELETE: two-step delete for persisted messages only
-                 (the streaming/pending placeholders are not deletable). -->
+                 (the streaming/pending placeholders are not deletable).
+                 round11（P1-3）：同一 messageId 的 DELETE 在途期间按钮禁用并
+                 显示进行中语义——重复点击不得发出第二个请求，也不得覆盖现有
+                 handoff 快照。 -->
             <button
               class="msg-delete"
               :data-testid="`msg-delete-${msg.messageId}`"
-              :aria-label="confirmDeleteMsgId === msg.messageId ? '确认删除这条消息' : '删除这条消息'"
+              :disabled="deletingMessageIds.has(msg.messageId)"
+              :aria-label="
+                deletingMessageIds.has(msg.messageId)
+                  ? '正在删除这条消息'
+                  : confirmDeleteMsgId === msg.messageId
+                    ? '确认删除这条消息'
+                    : '删除这条消息'
+              "
               @click="onDeleteMessage(msg.messageId)"
             >
-              {{ confirmDeleteMsgId === msg.messageId ? "确认删除" : "删除" }}
+              {{
+                deletingMessageIds.has(msg.messageId)
+                  ? "删除中…"
+                  : confirmDeleteMsgId === msg.messageId
+                    ? "确认删除"
+                    : "删除"
+              }}
             </button>
             <!-- MSG-REPORT (REPORT-BE): the intake page takes the submission;
                  no invented tickets, statuses or SLA wording inline. -->
@@ -658,7 +677,7 @@
 // The status region carries role="status" + aria-live="polite" and the cancel
 // button aria-busy while streaming, so async phase changes are announced to
 // assistive technology.
-import { computed, defineComponent, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, defineComponent, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import {
   computeVirtualWindow,
   VIRTUAL_ESTIMATE_HEIGHT,
@@ -739,6 +758,10 @@ export default defineComponent({
     const renameInput = ref("");
     // MSG-DELETE: two-step confirm state for per-message deletion.
     const confirmDeleteMsgId = ref<string | null>(null);
+    // round11（P1-3）：同一 messageId 的 DELETE 单飞集合——在途期间该行的
+    // 删除按钮禁用（“删除中…”），重复 arm/confirm 一律早退：不发第二个
+    // DELETE，也不覆盖现有 handoff 快照；不同 messageId 互不影响。
+    const deletingMessageIds = reactive(new Set<string>());
     // 消息级"更多"展开状态与上下文/会话管理 Action Sheet。
     const openMsgId = ref<string | null>(null);
     const contextSheetOpen = ref(false);
@@ -898,6 +921,9 @@ export default defineComponent({
       abandonPreserveTransaction();
       // round10（P1-4）：节点重建即旧 handoff 的宿主身份失效。
       invalidatePendingDeleteHandoffs();
+      // round11（P2-1）：节点重建即旧 self 令牌与回声票据的宿主身份失效。
+      preserveSelfWindowToken = null;
+      invalidateScrollEchoAcks();
       const stale = boundPreserveHost;
       if (stale) {
         // 生命周期终态（idle/released）保留在旧节点上供观察；锚点与
@@ -1127,11 +1153,18 @@ export default defineComponent({
      * 键匹配 ⇒ 覆盖窗自身动作（release 才走有界自续期，arm 静默）；不匹配
      * ⇒ 外部信号（重置追击账本并正常路由）。两种结果都消费令牌——绝不
      * 跨事件残留。
+     *
+     * round11（P2-1）：令牌额外绑定完整身份——泵世代、follow 世代与
+     * history 宿主节点。身份失配（节点重建/ownership 转移/重置/卸载后）
+     * 的令牌按外部信号处理，绝不冒充自身级联。
      */
     type PreserveSelfWindowTokenKind = "arm" | "release";
     interface PreserveSelfWindowToken {
       kind: PreserveSelfWindowTokenKind;
       expectedKey: string;
+      epoch: number;
+      gen: number;
+      host: HTMLElement | null;
     }
     let preserveSelfWindowToken: PreserveSelfWindowToken | null = null;
     let preserveOverrideArmed = false;
@@ -1150,6 +1183,9 @@ export default defineComponent({
       preserveSelfWindowToken = {
         kind,
         expectedKey: preserveWindowKey(virtualWindow.value),
+        epoch: preservePumpEpoch,
+        gen: followGen,
+        host: historyNode(),
       };
     }
 
@@ -1422,7 +1458,17 @@ export default defineComponent({
       };
       publishViewportPreserve(activePreserveTx);
       const host = boundPreserveHost ?? historyNode();
-      if (host) host.dataset.preserveGen = String(activePreserveTx.generation);
+      if (host) {
+        host.dataset.preserveGen = String(activePreserveTx.generation);
+        // round11：同基准复活会复用 generation——上一轮【成功】的收敛标记
+        // 必须清除，否则外部观察者会把"复活中"误读成"已收敛"。上一轮的
+        // 显性失败标记（converged=false）保留到本事务自己的终态覆盖它：
+        // 预算耗尽等失败必须保持外部可观察，绝不在自续期链里被静默抹掉。
+        if (host.dataset.preserveConverged === "true") {
+          delete host.dataset.preserveConverged;
+          delete host.dataset.preserveResidualPx;
+        }
+      }
       publishPreservePhase("aligning");
       publishPreserveRunState("active");
       schedulePreserveTxFrame();
@@ -1562,6 +1608,12 @@ export default defineComponent({
      * overscan 区域的幽灵行（round7 缺陷的根源之一）。此路径把捕获推迟到
      * 本轮渲染完成之后：期间没有任何其他写入者（单一泵尚未启动），语义
      * 安全。应用自身突变（展开/改名前锁定基准）必须同步定锚，用默认值。
+     *
+     * round11（P1-4）：定锚必须等用户滚动【平息】——键盘 End/PageDown 等
+     * 产生浏览器平滑滚动动画，动画中帧会连续派发真实 scroll 事件；若在
+     * 动画中途定锚，事务会把"动画起点视图"当作用户阅读位置，在动画结束后
+     * 把视口拉回（实测可把 End 到底的视图拉离底部百余 px），用户的回底
+     * 意图被引擎吞掉。静默门要求最近一次真实滚动事件已过去 ≥80ms 才定锚。
      */
     function beginPreserveTransaction(
       opts: { deferCapture?: boolean } = {},
@@ -1572,13 +1624,21 @@ export default defineComponent({
         // round9（三）：闭包绑定发起时的 followGen——history 节点重建/
         // 会话切换/卸载递增令牌后，尚未执行的尝试全部自弃。
         const captureGen = followGen;
-        let attemptsLeft = 16;
+        // 平滑滚动可达 ~700ms：以帧重试 + 静默门共同覆盖动画全程。
+        let attemptsLeft = 96;
         const attempt = (): void => {
           if (
             captureGen !== followGen ||
             followingLatest.value ||
             activePreserveTx
           ) {
+            return;
+          }
+          if (Date.now() - lastUserScrollAt < SCROLL_CAPTURE_QUIET_MS) {
+            // 滚动动画仍在进行：本轮不定锚，也不消耗过多重试预算。
+            attemptsLeft -= 1;
+            if (attemptsLeft <= 0) return;
+            requestAnimationFrame(() => attempt());
             return;
           }
           const captured = capturePreserveAnchor();
@@ -1647,9 +1707,14 @@ export default defineComponent({
         } else {
           // 基准缺失或其锚行已被真删除且无有效快照：以当下视图另立新基准
           // （用户位置的语义只随真实滚动/删除移交更换，死锚不构成可保持
-          // 的基准）。
+          // 的基准）。round11（P1-4）：用户滚动动画仍在进行时（见
+          // SCROLL_CAPTURE_QUIET_MS）改走 deferCapture——静默门会把定锚
+          // 推迟到滚动平息后，绝不把动画中途的视图钉成阅读位置。
           if (settledPreserveBasis) settledPreserveBasis = null;
-          beginPreserveTransaction();
+          beginPreserveTransaction({
+            deferCapture:
+              Date.now() - lastUserScrollAt < SCROLL_CAPTURE_QUIET_MS,
+          });
         }
         return;
       }
@@ -1978,16 +2043,26 @@ export default defineComponent({
       () => {
         if (followingLatest.value) {
           abandonPreserveTransaction();
+          // round11（P2-1）：跟随分支消费/清空旧 self 令牌——abandon 的
+          // 防御性 release 可能刚铸造一张，跟随态不需要也不得残留。
+          preserveSelfWindowToken = null;
           return;
         }
         // round10（P1-2）：来源核对的一次性 self 令牌。键匹配 ⇒ 覆盖窗自身
         // 的 arm/release 级联（release 仅在最近一次事务预算耗尽后于硬上限内
         // 自续期同一基准；arm 静默）；不匹配或无令牌 ⇒ 外部信号，追击账本
         // 清零后正常路由——绝不继承前一次事务的耗尽状态。
+        // round11（P2-1）：令牌必须同时通过身份核对（泵世代/follow 世代/
+        // 宿主节点）；身份失配即外部信号。
         const token = preserveSelfWindowToken;
         preserveSelfWindowToken = null;
-        if (
+        const tokenIdentityValid =
           token !== null &&
+          token.epoch === preservePumpEpoch &&
+          token.gen === followGen &&
+          token.host === historyNode();
+        if (
+          tokenIdentityValid &&
           preserveWindowKey(virtualWindow.value) === token.expectedKey
         ) {
           if (token.kind === "release") {
@@ -2023,6 +2098,16 @@ export default defineComponent({
     );
 
 
+    // round11（P1-4）：上一个 scroll 事件观测到的 scrollHeight——布局收缩
+    // 钳制判别的基线（见 onHistoryScroll）。
+    let layoutCascadeSh = 0;
+    // round11（P1-4）：最近一次真实（非回声）滚动的时刻与定锚静默门——
+    // 键盘 End/PageDown 的浏览器平滑滚动动画期间连续派发真实 scroll 事件，
+    // 事件流平息 ≥80ms 前不得捕获保持锚（否则会把动画起点视图钉回，吞掉
+    // 用户的回底意图）。用 Date.now()：单测假时钟可控。
+    let lastUserScrollAt = -Infinity;
+    const SCROLL_CAPTURE_QUIET_MS = 80;
+
     function onHistoryScroll(event: Event): void {
       const target = event.target as
         | { scrollTop?: number; scrollHeight?: number; clientHeight?: number }
@@ -2033,17 +2118,78 @@ export default defineComponent({
       // 忽略。票据被用户意图失效或已消费/过期时，即使读数恰好等于最近一
       // 次程序写入落点，也是真实用户语义（ownership 转移/回底恢复跟随/
       // 重定基准），绝不无限承认同一落点。
-      if (consumeScrollEchoAck(target.scrollTop)) return;
+      if (consumeScrollEchoAck(target as HTMLElement, target.scrollTop)) return;
+      // round11（P1-4）：布局收缩钳制判别——菜单展开等应用自身突变引起
+      // 测量回填、scrollHeight 回落时，浏览器会把越界的 scrollTop 钳回并
+      // 发出 scroll 事件。它没有任何用户意图（wheel/触摸/滚动键都未发生），
+      // 却会触发"真实用户滚动"语义把 ownership 拖走、把保持锚重捕获到
+      // 钳制后的视图（实测把矮视口锚行漂移一行）。特征：st 恰在钳制位
+      // （sh-ch）且 sh 相比上一事件缩小、且近 1s 内无用户意图——按布局
+      // 级联处理：只更新读数，不转移 ownership、不重定基准。
+      const shNow = target.scrollHeight ?? 0;
+      const chNow = target.clientHeight ?? 0;
+      const clampedAtLimit =
+        Math.abs(target.scrollTop - (shNow - chNow)) <= 1;
+      const shrank = layoutCascadeSh > shNow + 1;
+      layoutCascadeSh = shNow;
+      if (clampedAtLimit && shrank) {
+        // 布局级联钳制：非用户语义，交给保持事务/跟随引擎消化视图跳变。
+        // （判据不依赖意图时间窗：菜单打开的 pointerdown 会把"最近意图"
+        // 刷新到钳制事件之前 1s 内，时间窗豁免反而放走真钳制。用户真实
+        // 滚到底部恰逢内容收缩时，gap=0 的回底语义本就不依赖 ownership
+        // 转移，吞掉这次转移无实际危害。）
+        return;
+      }
+      // round11（P2-1）：非回声滚动即真实用户语义——清空全部残余票据，
+      // 任何后续同落点事件不得再被旧票吞掉。
+      invalidateScrollEchoAcks();
+      // round11（P1-4）：记录最近一次真实滚动时刻——deferCapture 的静默门
+      // 以此判定滚动动画是否平息（见 beginPreserveTransaction）。
+      lastUserScrollAt = Date.now();
       if (followingLatest.value) {
+        // round11（P1-4）：底部粘性——跟随态下的滚动事件若仍在回底阈值内
+        // （End/PageDown 动画的过冲回弹、合成器微动），不构成"滚离"，
+        // 保持跟随；真正的滚离（gap 超阈值）才转移 ownership。
+        if (resumeFollowFromLayout()) {
+          return;
+        }
         transferOwnership();
       } else if (resumeFollowFromLayout()) {
         abandonPreserveTransaction();
-        requestFollow();
+        // round11（P1-4）：回底事件到达时 End/PageDown 的平滑滚动动画往往
+        // 还有余波——立刻 requestFollow 会用“最后挂载行”对齐容器底（尾部
+        // 行尚未挂载时是倒数第二行），把视图拉离真正的底部并与动画对抗。
+        // 跟随推迟到滚动平息（复用定锚静默门）后再发起。
+        scheduleFollowAfterScrollQuiet();
       } else {
         // 已离开状态下的又一次真实滚动：唯一允许的取消+重建基准路径
         // （round8（二））——旧事务连同覆盖窗一并作废，新基准取当前视图。
         rebasePreserveByUserScroll();
       }
+    }
+
+    /**
+     * round11（P1-4）：滚动平息后再发起跟随。回底恢复（gap≤阈值）发生
+     * 在平滑滚动动画的事件流里；此刻尾部行可能尚未挂载、合成器仍在滚动。
+     * 静默门（SCROLL_CAPTURE_QUIET_MS，与定锚共用）保证跟随引擎只在动画
+     * 结束后对齐，绝不与动画余波竞争写 scrollTop。每次回底事件重置调度
+     * （seq 自弃旧循环）；接管（transferOwnership）后循环自然失效。
+     */
+    let quietFollowSeq = 0;
+    function scheduleFollowAfterScrollQuiet(): void {
+      const seq = ++quietFollowSeq;
+      let attemptsLeft = 96;
+      const attempt = (): void => {
+        if (seq !== quietFollowSeq || !followingLatest.value) return;
+        if (Date.now() - lastUserScrollAt < SCROLL_CAPTURE_QUIET_MS) {
+          if (attemptsLeft <= 0) return;
+          attemptsLeft -= 1;
+          requestAnimationFrame(() => attempt());
+          return;
+        }
+        requestFollow();
+      };
+      requestAnimationFrame(() => attempt());
     }
 
     // P1/P2（round6）：跟随状态机。跟随目标是"最新流式草稿 / 最新正式消息"
@@ -2160,6 +2306,9 @@ export default defineComponent({
       cancelFollowRun();
       abandonPreserveTransaction();
       invalidatePendingDeleteHandoffs();
+      // round11（P2-1）：ownership 全量重置一并清空一次性身份票据。
+      preserveSelfWindowToken = null;
+      invalidateScrollEchoAcks();
       measuredHeights.value = new Map();
       msgFlowTopPx.value = 0;
       const el = historyNode();
@@ -2181,17 +2330,31 @@ export default defineComponent({
      * 以"事务仍 active"为理由无限期承认。用户滚动意图（wheel/touchstart/
      * pointerdown、Home/End/PageUp/PageDown/Space/方向键）先使全部未消费
      * 票据失效。
+     *
+     * round11（P2-1）：票据绑定铸造时的宿主节点与 follow 世代（不是保持泵
+     * 世代——跟随路径的 virtualWindow 观察者会在 following 分支清算保持
+     * 机制并递增泵令牌，那不是回声票据的身份边界）。节点重建、ownership
+     * 重置/接管、会话切换与卸载都递增 followGen：旧票随之失效。且只有
+     * scrollTop 实际发生变化的写入才铸造票据（浏览器钳制后的 no-op 写入
+     * 没有对应回声事件，不得留票）。
      */
     interface ScrollEchoAck {
       top: number;
       mintedAt: number;
+      host: HTMLElement | null;
+      epoch: number;
     }
     const SCROLL_ECHO_ACK_TTL_MS = 800;
     const SCROLL_ECHO_ACK_POOL_MAX = 4;
     let pendingScrollEchoAcks: ScrollEchoAck[] = [];
 
     function mintScrollEchoAck(top: number): void {
-      pendingScrollEchoAcks.push({ top, mintedAt: Date.now() });
+      pendingScrollEchoAcks.push({
+        top,
+        mintedAt: Date.now(),
+        host: historyNode(),
+        epoch: followGen,
+      });
       if (pendingScrollEchoAcks.length > SCROLL_ECHO_ACK_POOL_MAX) {
         pendingScrollEchoAcks.splice(
           0,
@@ -2204,11 +2367,19 @@ export default defineComponent({
       pendingScrollEchoAcks = [];
     }
 
-    /** 一次性消费：事件落点匹配一张未过期票据即消费该票据。 */
-    function consumeScrollEchoAck(top: number): boolean {
+    /**
+     * 一次性消费：事件落点匹配一张未过期且身份仍有效（宿主/follow 世代）
+     * 票据即消费该票据；身份失配的票据顺手清除。
+     */
+    function consumeScrollEchoAck(el: HTMLElement, top: number): boolean {
       const now = Date.now();
+      const host = historyNode();
+      const epoch = followGen;
       pendingScrollEchoAcks = pendingScrollEchoAcks.filter(
-        (ack) => now - ack.mintedAt <= SCROLL_ECHO_ACK_TTL_MS,
+        (ack) =>
+          now - ack.mintedAt <= SCROLL_ECHO_ACK_TTL_MS &&
+          ack.host === host &&
+          ack.epoch === epoch,
       );
       const idx = pendingScrollEchoAcks.findIndex(
         (ack) => Math.abs(top - ack.top) <= ECHO_TOLERANCE_PX,
@@ -2261,6 +2432,9 @@ export default defineComponent({
       activePreserveTx = null;
       releasePreserveWindowOverride();
       resetPreserveRevival();
+      // round11（P2-1）：ownership 转移即旧 self 令牌失效（防御性显式清空，
+      // 不依赖身份核对兜底）。
+      preserveSelfWindowToken = null;
       // round10（P1-4）：接管即旧 handoff 的 ownership 世代失效。
       invalidatePendingDeleteHandoffs();
       beginPreserveTransaction({ deferCapture: true });
@@ -2281,11 +2455,14 @@ export default defineComponent({
     }
 
     function setProgrammaticScroll(el: HTMLElement, top: number): void {
+      const before = el.scrollTop;
       el.scrollTop = top;
       // 读回浏览器钳制后的实际值：回声票据绑定真实落点，而非请求值。
       const landed = el.scrollTop;
-      mintScrollEchoAck(landed);
       historyScrollTop.value = landed;
+      // round11（P2-1）：只有真实改变 scrollTop 的写入才铸造回声票据——
+      // 钳制后的 no-op 写入不会产生回声事件，不得留票。
+      if (landed !== before) mintScrollEchoAck(landed);
     }
 
     function sampleGeometry(el: HTMLElement): string {
@@ -2309,9 +2486,25 @@ export default defineComponent({
 
       if (run.phase === "materialize-latest") {
         const count = messages.value.length;
+        // round11（P1-4）：materialize 判定改为「最后一条消息是否真的挂载」
+        // ——删除使 vindex 稀疏重排，lastMountedVindex 与 count-1 的比较
+        // 会把"倒数第二行已挂载"误判为"尾部已就位"，align-anchor 随即用
+        // 倒数第二行对齐容器底，把视图拉离真正的底部（用户回底后跟随被
+        // 拉走 150px+ 的实测缺陷）。流式期锚点是草稿节点，永远视为未就位。
+        const lastMid = messages.value[count - 1]?.messageId ?? "";
+        const tailMounted =
+          count > 0 &&
+          !isStreaming.value &&
+          Array.from(el.querySelectorAll('[data-testid="chat-message"]')).some(
+            (node) =>
+              (node as HTMLElement & { dataset: { mid?: string } }).dataset.mid ===
+              lastMid,
+          );
         const mounted = isStreaming.value && paintedDraft.value
           ? count - 1 // 流式期锚点是草稿节点，永远位于内容尾端之后
-          : lastMountedVindex(el);
+          : tailMounted
+            ? count - 1
+            : -1;
         if (count === 0 || mounted >= count - 1) {
           run.phase = "align-anchor";
         } else if (run.materializeWrites >= MAX_MATERIALIZE_WRITES) {
@@ -2804,8 +2997,15 @@ export default defineComponent({
       notifyLayoutMutation();
     }
 
-    /** MSG-DELETE: two-step confirm, then delete through the store. */
+    /**
+     * MSG-DELETE: two-step confirm, then delete through the store.
+     * round11（P1-3）：同一 messageId 单飞——在途期间重复 arm/confirm 一律
+     * 早退（按钮已禁用，这里防御程序化路径）：不发第二个 DELETE，也不覆盖
+     * 现有 handoff 快照。行已不在列表（前一次请求已成功删除）时同样早退。
+     */
     async function onDeleteMessage(messageId: string): Promise<void> {
+      if (deletingMessageIds.has(messageId)) return;
+      if (!messages.value.some((m) => m.messageId === messageId)) return;
       if (confirmDeleteMsgId.value === messageId) {
         confirmDeleteMsgId.value = null;
         // round10（P1-4/P2-1）：确认前冻结完整身份绑定的幸存行快照；只有
@@ -2815,7 +3015,13 @@ export default defineComponent({
         const requestSeq = ++deleteRequestSeq;
         const handoff = capturePreDeleteHandoff(messageId, requestSeq);
         if (handoff) storePendingDeleteHandoff(handoff);
-        const deleted = await guarded(() => store.removeMessage(transport, messageId));
+        deletingMessageIds.add(messageId);
+        let deleted: boolean | undefined;
+        try {
+          deleted = await guarded(() => store.removeMessage(transport, messageId));
+        } finally {
+          deletingMessageIds.delete(messageId);
+        }
         if (deleted !== true) {
           pendingDeleteHandoffs.delete(messageId);
         }
@@ -3307,6 +3513,10 @@ export default defineComponent({
       // 身份校验退出，不再写 DOM。
       invalidatePreservePump();
       abandonPreserveTransaction();
+      // round11（P2-1）：卸载清空一次性身份票据——self 窗口令牌与回声票据
+      // 都不跨页面生命周期残留。
+      preserveSelfWindowToken = null;
+      invalidateScrollEchoAcks();
       invalidatePendingDeleteHandoffs();
       boundPreserveHost = null;
       unbindHistoryScrollListeners();
@@ -3368,6 +3578,7 @@ export default defineComponent({
       onEndToday,
       confirmDeleteId,
       confirmDeleteMsgId,
+      deletingMessageIds,
       reportMsgId,
       openMsgId,
       contextSheetOpen,
