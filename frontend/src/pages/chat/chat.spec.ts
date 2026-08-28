@@ -2091,6 +2091,13 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       el.scrollTop = 333;
       await history.trigger("scroll");
       expect(history.attributes("data-following")).toBe("false");
+      // round11（P1-4）：定锚有滚动静默门——本测试用真实时钟，等待静默期
+      // （≥80ms）流过后泵帧，基准即出现。
+      for (let i = 0; i < 20 && !el.dataset.preserveMid; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        frames.pump();
+        await Promise.resolve();
+      }
       // 保持基准与旧锚点此刻存在（随后必须被会话边界清掉）。
       expect(el.dataset.preserveMid ?? null).not.toBeNull();
 
@@ -2128,8 +2135,12 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       expect(el.scrollTop, "old conversation's position did not survive").not.toBe(333);
       expect(history.attributes("data-following")).toBe("true");
 
-      // 反向切回 B：同样重置，不沿用 A 的落点。
-      el.scrollTop = 777;
+      // 反向切回 B：同样重置，不沿用 A 的落点。round11（P2-1）：钳制后
+      // 落点与引擎最近程序写入相同（300→480 系）——按回声票据契约，同
+      // 落点事件只有携带真实用户意图才构成用户语义；先派发一次 wheel
+      // 意图。滚离落点取 300（gap=180 > 回底阈值），避免落进底部粘性带。
+      el.dispatchEvent(new WheelEvent("wheel"));
+      el.scrollTop = 300;
       await history.trigger("scroll");
       expect(history.attributes("data-following")).toBe("false");
       await items[1].trigger("click");
@@ -2993,14 +3004,39 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         f.el.dispatchEvent(new Event("scroll"));
         await flushPromises();
         f.geo.refresh();
-        // 随后的一次行高扰动让 B 存在真实校正写入（原位捕获的 B 本可以
-        // 零写入收敛；这里的写入归属证明才不是空真）。
+        // round11（P1-4）：定锚有滚动静默门（deferCapture）——先泵过静默期
+        // （≥80ms 假时钟）让 B 以滚动平息后的视图定锚，并等 B 完整收敛；
+        // 随后的行高扰动经同基准复活产生真实校正写入。
+        const phasesOfB: string[] = [];
+        {
+          let settleGuard = 0;
+          while (f.el.dataset.preserveConverged !== "true" && settleGuard < 240) {
+            vi.advanceTimersByTime(20);
+            f.frames.pump();
+            await flushPromises();
+            f.geo.refresh();
+            const genNow = f.el.dataset.preserveGen ?? "";
+            if (genNow !== "" && genNow !== genA) {
+              const phase = f.el.dataset.preservePhase ?? "";
+              if (phase && phasesOfB[phasesOfB.length - 1] !== phase) phasesOfB.push(phase);
+            }
+            settleGuard += 1;
+          }
+          expect(f.el.dataset.preserveMid, "B captured after the scroll went quiet").toBeTruthy();
+        }
+        const genBPre = f.el.dataset.preserveGen ?? "";
+        // 随后的一次行高扰动让 B（同基准复活事务）存在真实校正写入（原位
+        // 捕获的 B 本可以零写入收敛；这里的写入归属证明才不是空真）。
         f.heightRef.value = 88;
         f.geo.relayout(88);
+        f.ro.emit({ width: 800, height: 600 }); // 外部布局信号 → 同基准复活
+        expect(
+          f.el.dataset.preserveGen ?? "",
+          "the revival keeps B's generation (never re-reads the moved view)",
+        ).toBe(genBPre);
 
-        // 逐帧细粒度观察：gen 翻转、B 的相位序列、post-release 起算的
-        // 安静窗、旧泵队列清空与新泵独立启动。
-        const phasesOfB: string[] = [];
+        // 逐帧细粒度观察：复活事务的相位序列、post-release 起算的安静窗、
+        // 旧泵队列清空与独立启动。
         let postReleaseFirstAt = -1;
         let convergedAt = -1;
         let sawQuietHandoff = false;
@@ -3325,66 +3361,113 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       };
     }
 
-    it("round10 P1-1: 120Hz (≈8ms) and 144Hz (≈7ms) stable inputs truly converge — write budget separated from quiet-window wall clock", async () => {
+    it("round11 P1-5: 20/8/7ms cadences — full phase order, ≥320ms post-release quiet window, <4s wall clock, 1≤writes<36, clean teardown", async () => {
+      // 20ms/frame ≈ 50-60Hz 级基线档 + 120Hz（≈8ms）+ 144Hz（≈7ms）三档
+      // 都做硬断言（round11：不再只是 console 证据）。
       const evidence: string[] = [];
-      // 20ms/frame ≈ 50-60Hz 级作为基线档一起仪表化（对照）。
       for (const cadenceMs of [20, 8, 7]) {
         const f = await takeoverFixture();
         const spy = spyScrollWrites(f.el);
+        let unmounted = false;
         try {
           const drive = makeCadenceDriver(f, cadenceMs);
           // 宽度级联（行高模型切换 + RO 宽度变化）产生需要真实校正写入的
           // 新事务；随后静置输入，高刷节奏下安静窗需要 40+ 帧。
           const phases: string[] = [];
-          const t0 = Date.now();
+          let postReleaseAt = -1;
+          let convergedAt = -1;
+          let simT = 0;
           f.heightRef.value = 150;
           f.geo.relayout(150);
           f.ro.emit({ width: 390, height: 600 });
-          let wallMs = -1;
-          for (let i = 0; i < 1_600 && wallMs < 0; i += 1) {
+          for (let i = 0; i < 4_000 && convergedAt < 0; i += 1) {
             await drive(1);
+            simT += cadenceMs;
             const phase = f.el.dataset.preservePhase ?? "";
             if (phase && phases[phases.length - 1] !== phase) phases.push(phase);
+            if (phase === "post-release" && postReleaseAt < 0) postReleaseAt = simT;
             if (
               (f.el.dataset.preserveRun ?? "") === "idle" &&
               f.el.dataset.preserveConverged === "true"
             ) {
-              wallMs = Date.now() - t0;
+              convergedAt = simT;
             }
           }
+          // 1) 相位序列按序完整包含 aligning → stabilizing → post-release。
+          const order = ["aligning", "stabilizing", "post-release"];
+          const positions = order.map((p) => phases.indexOf(p));
+          expect(
+            positions.every((p) => p >= 0),
+            `${cadenceMs}ms phase sequence covers all phases (saw ${phases.join("→")})`,
+          ).toBe(true);
+          expect(
+            positions[0]! < positions[1]! && positions[1]! < positions[2]!,
+            `${cadenceMs}ms phase order is aligning→stabilizing→post-release (saw ${phases.join("→")})`,
+          ).toBe(true);
+          // 2) post-release 起算的真实安静窗 ≥320ms。
+          expect(
+            convergedAt - postReleaseAt,
+            `${cadenceMs}ms quiet window from post-release to convergence is ≥320ms (was ${convergedAt - postReleaseAt}ms)`,
+          ).toBeGreaterThanOrEqual(320);
+          // 3) 总墙钟（假时钟推进的模拟墙钟）<4s。
+          expect(
+            convergedAt,
+            `${cadenceMs}ms total wall clock <4s (was ${convergedAt}ms)`,
+          ).toBeLessThan(4_000);
+          // 4) 真实校正写入至少一次，且 <36（写入预算未耗尽）。
+          const writes = spy.log.length;
+          expect(writes, `${cadenceMs}ms made at least one real correction write`)
+            .toBeGreaterThanOrEqual(1);
+          expect(
+            writes,
+            `${cadenceMs}ms stable input must not burn through the write budget (${writes})`,
+          ).toBeLessThan(36);
+          // 5) 最终 true|idle|released；residual <1px；DOM error <1px。
           expect(
             f.el.dataset.preserveConverged,
             `${cadenceMs}ms cadence truly converges`,
           ).toBe("true");
           expect(f.el.dataset.preserveRun ?? "").toBe("idle");
           expect(f.el.dataset.preserveOverride).toBe("released");
-          expect(f.frames.queued(), "no rAF left queued at settle").toBe(0);
+          expect(
+            Number(f.el.dataset.preserveResidualPx),
+            `${cadenceMs}ms published residual <1px`,
+          ).toBeLessThan(1);
           const info = anchoredErrorPx(f.el)!;
           expect(
             info.error,
-            `${cadenceMs}ms residual ${info.error.toFixed(2)}px ≤ 1px`,
-          ).toBeLessThanOrEqual(1);
-          const writes = spy.log.length;
-          expect(
-            writes,
-            "stable input must not burn through the write budget",
-          ).toBeLessThan(36);
-          // 静息：成功后不得自我重启（无残留事务/rAF/timer）。
+            `${cadenceMs}ms DOM error ${info.error.toFixed(2)}px <1px`,
+          ).toBeLessThan(1);
+          expect(f.frames.queued(), "no rAF left queued at settle").toBe(0);
+          // 6) 结算后静息：时间继续流逝也不得自我重启（无残留事务/rAF/
+          // timer——应用 timer 数在卸载后回到 0）。
           vi.advanceTimersByTime(5_000);
           await flushPromises();
           f.frames.pump();
           await flushPromises();
           expect(f.el.dataset.preserveRun ?? "").toBe("idle");
           expect(f.frames.queued()).toBe(0);
+          f.wrapper.unmount();
+          unmounted = true;
+          const timersAfterUnmount = vi.getTimerCount();
+          expect(
+            timersAfterUnmount,
+            `${cadenceMs}ms no application timer survives unmount`,
+          ).toBe(0);
+          // 卸载后泵任何残余队列也不得读写已拆卸组件。
+          expect(() => f.frames.pump(5)).not.toThrow();
           evidence.push(
-            `${cadenceMs}ms/frame: phases=[${phases.join("→")}] wallMs=${wallMs} writes=${writes} residual=${info.error.toFixed(2)}px domErr=${info.error.toFixed(2)}px`,
+            `${cadenceMs}ms/frame: phases=[${phases.join("→")}] postRelease→converged=${convergedAt - postReleaseAt}ms ` +
+              `total=${convergedAt}ms writes=${writes} residual=${info.error.toFixed(2)}px timers=${timersAfterUnmount}`,
           );
         } finally {
           spy.restore();
-          f.wrapper.unmount();
+          if (!unmounted) f.wrapper.unmount();
+          vi.useRealTimers();
+          vi.unstubAllGlobals();
         }
       }
-      console.info(`[round10 P1-1 lifecycle evidence] ${evidence.join(" | ")}`);
+      console.info(`[round11 P1-5 hard-assertion evidence] ${evidence.join(" | ")}`);
     });
 
     it("round10 P1-2: a real external layout signal after post-release budget failure is routed into a fresh transaction — never swallowed by a stale self flag", async () => {
@@ -3633,19 +3716,27 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       }
     });
 
-    /** 可控的 DELETE 拦截：按 messageId 决定挂起/立即返回指定状态。 */
+    /**
+     * 可控的 DELETE 拦截：按 messageId 决定挂起/立即返回指定状态。
+     * round11（P1-3.6）：挂起槽改为按 mid 计数的多槽队列——同一 mid 的多个
+     * 独立 deferred 请求（顺序发出）都能被表示；解除按到达顺序 FIFO。另附
+     * 按 mid 的请求计数，供单飞断言。
+     */
     interface DeleteGate {
       defer(mid: string): void;
+      /** FIFO 解除最早到达的挂起请求。 */
       resolveDeferred(status: number): void;
+      /** 定向解除指定 mid 的挂起请求（构造“后发先至”完成顺序）。 */
+      resolveDeferredFor(mid: string, status: number): void;
       immediate(mid: string, status: number): void;
+      calls(mid: string): number;
     }
     function installDeleteGate(): DeleteGate {
       const prevFetch = globalThis.fetch;
-      const deferredMid = { value: "" };
+      const hangTickets = new Map<string, number>();
+      const hanging: Array<{ mid: string; release(status: number): void }> = [];
       const immediate = new Map<string, number>();
-      // 挂起请求的解除函数：defer 置占位；真实请求到达后由 Promise
-      // executor 替换为 resolve 包装。
-      let releaseDeferred: ((status: number) => void) | null = null;
+      const counts = new Map<string, number>();
       vi.stubGlobal(
         "fetch",
         vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -3653,12 +3744,17 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
           const method = init?.method ?? "GET";
           const mid = url.match(/\/messages\/([^/?]+)$/)?.[1] ?? "";
           if (method === "DELETE" && mid) {
-            if (releaseDeferred !== null && mid === deferredMid.value) {
+            counts.set(mid, (counts.get(mid) ?? 0) + 1);
+            const tickets = hangTickets.get(mid) ?? 0;
+            if (tickets > 0) {
+              hangTickets.set(mid, tickets - 1);
               return new Promise((resolve) => {
-                releaseDeferred = (status: number) => {
-                  releaseDeferred = null;
-                  resolve({ ok: status === 200, status, json: async () => ({}) });
-                };
+                hanging.push({
+                  mid,
+                  release(status: number): void {
+                    resolve({ ok: status === 200, status, json: async () => ({}) });
+                  },
+                });
               });
             }
             const status = immediate.get(mid);
@@ -3672,16 +3768,22 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
       );
       return {
         defer(mid: string): void {
-          deferredMid.value = mid;
-          releaseDeferred = () => undefined; // 占位：标记该 mid 为挂起请求
+          hangTickets.set(mid, (hangTickets.get(mid) ?? 0) + 1);
         },
         resolveDeferred(status: number): void {
-          const release = releaseDeferred;
-          releaseDeferred = null;
-          release?.(status);
+          const first = hanging.find(() => true);
+          if (first) hanging.splice(hanging.indexOf(first), 1);
+          first?.release(status);
+        },
+        resolveDeferredFor(mid: string, status: number): void {
+          const idx = hanging.findIndex((h) => h.mid === mid);
+          if (idx >= 0) hanging.splice(idx, 1)[0]!.release(status);
         },
         immediate(mid: string, status: number): void {
           immediate.set(mid, status);
+        },
+        calls(mid: string): number {
+          return counts.get(mid) ?? 0;
         },
       };
     }
@@ -3907,6 +4009,429 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
           info.error,
           `isolated handoff restores the survivor offset (${info.error.toFixed(2)}px ≤ 1)`,
         ).toBeLessThanOrEqual(1);
+      } finally {
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      }
+    });
+
+    // ---- round11：同 mid 删除单飞、并发完成顺序与一次性身份票据 -----------
+
+    /** 等待当前保持事务收敛（converged=true、run=idle、override=released）。 */
+    async function driveUntilSettled(
+      f: TakeoverFixture,
+      drive: (n: number) => Promise<void>,
+      label: string,
+      maxFrames = 600,
+    ): Promise<void> {
+      let settled = false;
+      for (let i = 0; i < maxFrames && !settled; i += 1) {
+        await drive(1);
+        settled =
+          (f.el.dataset.preserveRun ?? "") === "idle" &&
+          f.el.dataset.preserveConverged === "true";
+      }
+      expect(
+        f.el.dataset.preserveConverged ?? "",
+        `${label}: transaction settled (true|idle|released)`,
+      ).toBe("true");
+      expect(f.el.dataset.preserveRun ?? "").toBe("idle");
+      expect(f.el.dataset.preserveOverride).toBe("released");
+    }
+
+    it("round11 P1-3a: while R1 for the same mid hangs, repeated arm/confirm neither issues a second DELETE nor overwrites the handoff", async () => {
+      const f = await takeoverFixture();
+      const drive = makeCadenceDriver(f, 20);
+      const gate = installDeleteGate();
+      try {
+        await driveUntilSettled(f, drive, "P1-3a baseline");
+        const doomedMid = f.el.dataset.preserveMid!;
+        expect(doomedMid).toBeTruthy();
+        const list = f.store.messages;
+        const idx = list.findIndex((m) => m.messageId === doomedMid);
+        const survivorMid = list[idx + 1]!.messageId;
+
+        // 展开菜单（渲染删除按钮）→ arm → 等插入内容被钉回 → 冻结基线 →
+        // confirm（R1 挂起）。
+        const vm = f.wrapper.vm as unknown as {
+          onDeleteMessage(mid: string): Promise<void>;
+          toggleMsgMenu(mid: string): void;
+        };
+        vm.toggleMsgMenu(doomedMid);
+        await flushPromises();
+        const delBtn = f.wrapper.find(`[data-testid="msg-delete-${doomedMid}"]`);
+        expect(delBtn.exists(), "delete button rendered with the menu open").toBe(true);
+        await vm.onDeleteMessage(doomedMid); // arm
+        await driveUntilSettled(f, drive, "P1-3a menu+arm settled");
+        const survivorNode = Array.from(
+          f.el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'),
+        ).find((n) => n.dataset.mid === survivorMid);
+        expect(survivorNode, "survivor mounted before confirm").toBeTruthy();
+        const preDeleteOffset = survivorNode!.getBoundingClientRect().top;
+        void vm.onDeleteMessage(doomedMid); // confirm — DELETE 挂起中
+        await flushPromises();
+
+        // 单飞语义：在途期间按钮禁用 + 进行中文案。
+        expect(
+          delBtn.attributes("disabled"),
+          "the in-flight delete button is disabled",
+        ).toBeDefined();
+        expect(delBtn.text(), "the in-flight label states progress").toContain("删除中");
+
+        // 重复 arm/confirm：一律早退——只有一个网络请求，无第二次快照捕获。
+        await vm.onDeleteMessage(doomedMid); // arm（在途 → 早退）
+        void vm.onDeleteMessage(doomedMid); // confirm（在途 → 早退）
+        await flushPromises();
+        expect(gate.calls(doomedMid), "exactly one DELETE left the page").toBe(1);
+
+        // R1 成功：行删除、它自己的幸存行快照被消费（非覆盖的旧快照）。
+        gate.resolveDeferred(200);
+        await driveUntilSettled(f, drive, "P1-3a after R1 resolves");
+        expect(f.store.messages.some((m) => m.messageId === doomedMid)).toBe(false);
+        expect(f.el.dataset.preserveMid, "R1's own survivor handoff consumed").toBe(survivorMid);
+        expect(Number(f.el.dataset.preserveOff)).toBeCloseTo(preDeleteOffset, 0);
+        const info = anchoredErrorPx(f.el)!;
+        expect(info.mid).toBe(survivorMid);
+        expect(
+          info.error,
+          `the correct request's snapshot pinned the survivor (${info.error.toFixed(2)}px ≤ 4)`,
+        ).toBeLessThanOrEqual(4);
+      } finally {
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round11 P1-3b: R1 false then R2 true for the same mid — sequential retries stay isolated and the fresh handoff pins the survivor", async () => {
+      const f = await takeoverFixture();
+      const drive = makeCadenceDriver(f, 20);
+      const gate = installDeleteGate();
+      try {
+        await driveUntilSettled(f, drive, "P1-3b baseline");
+        const doomedMid = f.el.dataset.preserveMid!;
+        const list = f.store.messages;
+        const idx = list.findIndex((m) => m.messageId === doomedMid);
+        const survivorMid = list[idx + 1]!.messageId;
+
+        // R1：403（存在性隐藏）→ false：行保留、handoff 清除、按钮恢复可用。
+        gate.immediate(doomedMid, 403);
+        const vm = f.wrapper.vm as unknown as {
+          onDeleteMessage(mid: string): Promise<void>;
+          toggleMsgMenu(mid: string): void;
+        };
+        vm.toggleMsgMenu(doomedMid);
+        await flushPromises();
+        const delBtn = f.wrapper.find(`[data-testid="msg-delete-${doomedMid}"]`);
+        await vm.onDeleteMessage(doomedMid); // arm
+        await vm.onDeleteMessage(doomedMid); // confirm — 403 → false
+        await flushPromises();
+        expect(f.store.messages.some((m) => m.messageId === doomedMid)).toBe(true);
+        expect(
+          delBtn.attributes("disabled"),
+          "the button re-enables after a failed request",
+        ).toBeUndefined();
+        expect(gate.calls(doomedMid)).toBe(1);
+
+        // R2（R1 完成后顺序发出）：arm 后等标签变化被钉回，再冻结基线、确认。
+        await driveUntilSettled(f, drive, "P1-3b after R1 false");
+        gate.immediate(doomedMid, 200);
+        await vm.onDeleteMessage(doomedMid); // arm
+        await driveUntilSettled(f, drive, "P1-3b R2 arm settled");
+        const survivorNode = Array.from(
+          f.el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'),
+        ).find((n) => n.dataset.mid === survivorMid);
+        expect(survivorNode, "survivor still mounted before R2").toBeTruthy();
+        const preDeleteOffset = survivorNode!.getBoundingClientRect().top;
+        await vm.onDeleteMessage(doomedMid); // confirm — 200
+        await driveUntilSettled(f, drive, "P1-3b after R2 succeeds");
+        expect(f.store.messages.some((m) => m.messageId === doomedMid)).toBe(false);
+        expect(gate.calls(doomedMid)).toBe(2);
+        expect(f.el.dataset.preserveMid, "R2's fresh handoff anchored the survivor")
+          .toBe(survivorMid);
+        expect(Number(f.el.dataset.preserveOff)).toBeCloseTo(preDeleteOffset, 0);
+        const info = anchoredErrorPx(f.el)!;
+        expect(
+          info.error,
+          `R2's snapshot pinned the survivor (${info.error.toFixed(2)}px ≤ 4)`,
+        ).toBeLessThanOrEqual(4);
+      } finally {
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round11 P1-3c: after R1 succeeds, a repeat delete on the same mid early-returns with no network call", async () => {
+      const f = await takeoverFixture();
+      const drive = makeCadenceDriver(f, 20);
+      const gate = installDeleteGate();
+      try {
+        await driveUntilSettled(f, drive, "P1-3c baseline");
+        const doomedMid = f.el.dataset.preserveMid!;
+        gate.immediate(doomedMid, 200);
+        const vm = f.wrapper.vm as unknown as {
+          onDeleteMessage(mid: string): Promise<void>;
+        };
+        await vm.onDeleteMessage(doomedMid); // arm
+        await vm.onDeleteMessage(doomedMid); // confirm — 200 → 行删除
+        await driveUntilSettled(f, drive, "P1-3c after R1 succeeds");
+        expect(f.store.messages.some((m) => m.messageId === doomedMid)).toBe(false);
+        expect(gate.calls(doomedMid)).toBe(1);
+
+        // 行已不在列表：重复 arm/confirm 不再发出任何 DELETE。
+        await vm.onDeleteMessage(doomedMid);
+        await vm.onDeleteMessage(doomedMid);
+        await flushPromises();
+        expect(
+          gate.calls(doomedMid),
+          "no second DELETE for an already-removed row",
+        ).toBe(1);
+      } finally {
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      }
+    });
+
+    /** 双 mid 并发删除：给定完成顺序后两行都消失、基准行幸存者被钉回 ≤4px。 */
+    async function concurrentDeleteOrder(order: "basis-first" | "other-first"): Promise<void> {
+      const f = await takeoverFixture();
+      const drive = makeCadenceDriver(f, 20);
+      const gate = installDeleteGate();
+      try {
+        await driveUntilSettled(f, drive, "baseline");
+        const basisMid = f.el.dataset.preserveMid!;
+        const list = f.store.messages;
+        const idx = list.findIndex((m) => m.messageId === basisMid);
+        // 上方两行作为“另一条”并发删除目标（不同 mid，允许并发）。
+        const otherMid = list[Math.max(0, idx - 2)]!.messageId;
+        const survivorMid = list[idx + 1]!.messageId;
+
+        gate.defer(basisMid);
+        gate.defer(otherMid);
+        const vm = f.wrapper.vm as unknown as {
+          onDeleteMessage(mid: string): Promise<void>;
+        };
+        // 两条确认重叠（不同 mid 各自独立在途，互不禁用）：A arm → A
+        // confirm（挂起）→ B arm → B confirm（挂起）；A 的 arm 标签变化被
+        // 钉回后再冻结幸存行基线。
+        await vm.onDeleteMessage(basisMid); // arm A
+        void vm.onDeleteMessage(basisMid); // confirm A — 挂起
+        await flushPromises();
+        await vm.onDeleteMessage(otherMid); // arm B（两步确认槽切到 B）
+        void vm.onDeleteMessage(otherMid); // confirm B — 挂起
+        await flushPromises();
+        expect(gate.calls(basisMid)).toBe(1);
+        expect(gate.calls(otherMid)).toBe(1);
+        await driveUntilSettled(f, drive, "concurrent baseline settled");
+        const survivorNode = Array.from(
+          f.el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'),
+        ).find((n) => n.dataset.mid === survivorMid);
+        expect(survivorNode, "survivor mounted before resolves").toBeTruthy();
+        const preDeleteOffset = survivorNode!.getBoundingClientRect().top;
+
+        // 两种相反完成顺序：基准行请求先完成 / 后完成。
+        if (order === "basis-first") {
+          gate.resolveDeferredFor(basisMid, 200); // 基准行请求先完成 → 消费自己的快照
+          await driveUntilSettled(f, drive, "basis request settled first");
+          expect(f.store.messages.some((m) => m.messageId === basisMid)).toBe(false);
+          gate.resolveDeferredFor(otherMid, 200); // 上方行请求后完成 → 上游扰动被钉回
+        } else {
+          gate.resolveDeferredFor(otherMid, 200); // 上方行请求先完成 → 上游删除
+          await driveUntilSettled(f, drive, "other request settled first");
+          expect(f.store.messages.some((m) => m.messageId === otherMid)).toBe(false);
+          expect(
+            f.el.dataset.preserveMid,
+            "the settled basis row survived the upstream delete",
+          ).toBe(basisMid);
+          gate.resolveDeferredFor(basisMid, 200); // 基准行请求后完成 → 消费自己的快照
+        }
+        await driveUntilSettled(f, drive, "both requests settled");
+        expect(f.store.messages.some((m) => m.messageId === basisMid)).toBe(false);
+        expect(f.store.messages.some((m) => m.messageId === otherMid)).toBe(false);
+        expect(
+          f.el.dataset.preserveMid,
+          `${order}: the basis request's snapshot owns the final basis`,
+        ).toBe(survivorMid);
+        expect(Number(f.el.dataset.preserveOff)).toBeCloseTo(preDeleteOffset, 0);
+        const info = anchoredErrorPx(f.el)!;
+        expect(
+          info.error,
+          `${order}: the survivor pinned within ≤4px (${info.error.toFixed(2)}px)`,
+        ).toBeLessThanOrEqual(4);
+      } finally {
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      }
+    }
+
+    it("round11 P1-3d1: opposite completion orders (basis request settles first) — only the correct request's snapshot is consumed", async () => {
+      await concurrentDeleteOrder("basis-first");
+    });
+
+    it("round11 P1-3d2: opposite completion orders (other request settles first) — only the correct request's snapshot is consumed", async () => {
+      await concurrentDeleteOrder("other-first");
+    });
+
+    it("round11 P2-1a: consecutive no-op programmatic writes mint no echo ack — a scroll at the clamped landing is user semantics", async () => {
+      // 两个【空】会话：无锚点、无行——跟随状态机不产生任何程序写入，
+      // 唯一的 scrollTop 写入来自会话切换的 reset（目标 0）。
+      const conversationsJson = [
+        { conversationId: 8, relationshipId: "1" },
+        { conversationId: 9, relationshipId: "1" },
+      ];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = typeof input === "string" ? input : input.toString();
+          if (url === "/api/v1/relationships") {
+            return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
+          }
+          if (url.includes("/messages")) {
+            return { ok: true, status: 200, json: async () => [] };
+          }
+          if (url.startsWith("/api/v1/conversations") && !url.includes("/messages")) {
+            return { ok: true, status: 200, json: async () => conversationsJson };
+          }
+          return { ok: true, status: 200, json: async () => ({}) };
+        }),
+      );
+      const wrapper = mountPage();
+      await flushPromises();
+      const el = wrapper.find('[data-testid="history"]').element as HTMLElement;
+      installGeometry(el);
+      try {
+        // 初始挂载后 scrollTop 已是 0：两次会话切换触发
+        // resetScrollOwnership 的 scrollTop=0 写入——浏览器钳制后是 no-op
+        // 连续写（0 → 0），绝不能铸造回声票据。
+        expect(el.scrollTop).toBe(0);
+        const items = wrapper.findAll('[data-testid="conversation-item"]');
+        expect(items.length).toBeGreaterThanOrEqual(2);
+        await items[0]!.trigger("click");
+        await flushPromises();
+        expect(el.scrollTop, "first reset landed at the clamped 0").toBe(0);
+        await items[1]!.trigger("click");
+        await flushPromises();
+        expect(el.scrollTop, "second reset is a no-op at the same landing").toBe(0);
+
+        // 同落点（0）的 scroll 事件：no-op 写入不留票 → 无票据可吞 →
+        // 真实用户语义 → 接管（following 翻 false）。若 no-op 写铸造了
+        // 票据，事件会被吞掉，following 保持 true，测试失败。
+        el.dispatchEvent(new Event("scroll"));
+        await flushPromises();
+        expect(
+          el.dataset.following,
+          "a no-op write leaves no ticket — the event transfers ownership",
+        ).toBe("false");
+      } finally {
+        vi.unstubAllGlobals();
+        wrapper.unmount();
+      }
+    });
+
+    it("round11 P2-1b: a node rebuild invalidates outstanding echo acks — the same landing on the new node is user semantics", async () => {
+      const f = await takeoverFixture();
+      const drive = makeCadenceDriver(f, 20);
+      const relStore = useRelationshipStore();
+      try {
+        await driveUntilSettled(f, drive, "P2-1b baseline");
+        // 一次真实校正写入（铸票据）且不派发任何 scroll 事件消费它。
+        const spy = spyScrollWrites(f.el);
+        f.heightRef.value = 96;
+        f.geo.relayout(96);
+        f.ro.emit({ width: 800, height: 599 });
+        for (let i = 0; i < 24 && spy.log.length === 0; i += 1) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+        }
+        expect(spy.log.length, "an engine write minted an ack").toBeGreaterThan(0);
+        spy.restore();
+        const landing = f.geo.scrollTop();
+
+        // 真实 Vue 重建路径：解除关系 → 卸载消息区 → 恢复关系 → 新节点。
+        relStore.currentRelationshipId = null;
+        await flushPromises();
+        await f.wrapper.vm.$nextTick();
+        relStore.currentRelationshipId = String(ACTIVE_RELATIONSHIP.relationshipId);
+        await flushPromises();
+        await f.wrapper.vm.$nextTick();
+        const newEl = f.wrapper.find('[data-testid="history"]').element as HTMLElement;
+        expect(newEl, "history node was rebuilt").not.toBe(f.el);
+        const geo2 = installCoupledGeometry(newEl, {
+          clientHeight: 600,
+          rowCount: 40,
+          heightRef: f.heightRef,
+          bottomPad: 2000,
+          bottomPadRef: f.padRef,
+        });
+        geo2.setScrollTop(landing);
+        geo2.refresh();
+
+        // 新节点上同落点的 scroll 事件：旧节点票据不得跨宿主消费 →
+        // 真实用户语义（rebase 到当前视图）。
+        newEl.dispatchEvent(new Event("scroll"));
+        await flushPromises();
+        geo2.refresh();
+        let sawBasis = false;
+        for (let i = 0; i < 120 && !sawBasis; i += 1) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          geo2.refresh();
+          sawBasis = Boolean(newEl.dataset.preserveMid);
+        }
+        expect(
+          sawBasis,
+          "the same landing after rebuild rebased onto the user's view (no cross-host ack)",
+        ).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+        f.wrapper.unmount();
+      }
+    });
+
+    it("round11 P2-1c: a self token left by the following branch is cleared — the next external signal after a new takeover routes into a fresh transaction", async () => {
+      const f = await takeoverFixture();
+      const drive = makeCadenceDriver(f, 20);
+      try {
+        await driveUntilSettled(f, drive, "P2-1c baseline");
+        // 回到底部恢复 following（abandon 的 release 会铸造 self 令牌；
+        // 观察者的 following 分支必须立刻消费/清空它）。
+        vi.advanceTimersByTime(1_000); // 回声票据 TTL 过期（保险）
+        f.geo.setScrollTop(f.el.scrollHeight - f.el.clientHeight);
+        f.el.dispatchEvent(new Event("scroll"));
+        await flushPromises();
+        f.geo.refresh();
+        expect(
+          f.el.dataset.following,
+          "returning to the bottom resumed following",
+        ).toBe("true");
+
+        // 再次接管（真实滚动语义）后，一次真实外部布局信号必须路由进
+        // 新事务——若 following 分支残留了旧 self 令牌，该信号会被当作
+        // 自身级联吞掉，新事务不再产生。
+        vi.advanceTimersByTime(1_000);
+        f.geo.setScrollTop(1_400);
+        f.el.dispatchEvent(new Event("scroll"));
+        await flushPromises();
+        f.geo.refresh();
+        expect(f.el.dataset.following, "a real scroll took over again").toBe("false");
+        f.heightRef.value = 104;
+        f.geo.relayout(104);
+        f.ro.emit({ width: 800, height: 601 });
+        let sawActive = false;
+        for (let i = 0; i < 200 && !sawActive; i += 1) {
+          vi.advanceTimersByTime(20);
+          f.frames.pump();
+          await flushPromises();
+          f.geo.refresh();
+          sawActive = (f.el.dataset.preserveRun ?? "") === "active";
+        }
+        expect(
+          sawActive,
+          "the external signal after the following-branch spawned a fresh transaction",
+        ).toBe(true);
+        await driveUntilSettled(f, drive, "P2-1c fresh transaction settled");
       } finally {
         vi.unstubAllGlobals();
         f.wrapper.unmount();
