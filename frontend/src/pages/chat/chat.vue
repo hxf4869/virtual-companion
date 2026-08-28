@@ -1697,6 +1697,8 @@ export default defineComponent({
       if (el) {
         el.dataset.preserveConverged = "true";
         el.dataset.preserveResidualPx = residual.toFixed(2);
+        // round10（诊断）：成功结算的最后锚点——失败排查用，不进入验收判据。
+        el.dataset.preserveLastMid = tx.anchorMessageId;
       }
       settledPreserveBasis = {
         generation: tx.generation,

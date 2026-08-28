@@ -682,6 +682,11 @@ async function waitForSettledRowGeometry(
           conv: el.dataset.preserveConverged ?? null,
           resid: el.dataset.preserveResidualPx ?? null,
           fol: el.dataset.following ?? null,
+          lastMid: el.dataset.preserveLastMid ?? null,
+          override: el.dataset.preserveOverride ?? null,
+          mounted: Array.from(
+            el.querySelectorAll('[data-testid="chat-message"]'),
+          ).map((n) => (n as HTMLElement).dataset.mid ?? ""),
         };
       });
       const hist = await page.evaluate(() => {
