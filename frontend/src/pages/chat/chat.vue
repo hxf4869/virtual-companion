@@ -2132,12 +2132,12 @@ export default defineComponent({
         Math.abs(target.scrollTop - (shNow - chNow)) <= 1;
       const shrank = layoutCascadeSh > shNow + 1;
       layoutCascadeSh = shNow;
-      if (clampedAtLimit && shrank) {
-        // 布局级联钳制：非用户语义，交给保持事务/跟随引擎消化视图跳变。
-        // （判据不依赖意图时间窗：菜单打开的 pointerdown 会把"最近意图"
-        // 刷新到钳制事件之前 1s 内，时间窗豁免反而放走真钳制。用户真实
-        // 滚到底部恰逢内容收缩时，gap=0 的回底语义本就不依赖 ownership
-        // 转移，吞掉这次转移无实际危害。）
+      if (!followingLatest.value && clampedAtLimit && shrank) {
+        // 布局级联钳制（仅滚离态）：菜单展开等测量回填使 scrollHeight
+        // 回落时，浏览器钳制产生的无意图 scroll 事件会触发"真实用户滚动"
+        // 语义，把保持锚重捕获到钳制后的视图（实测把矮视口锚行漂移一行）。
+        // 滚离态按布局级联处理：交给保持事务消化视图跳变，不转移 ownership。
+        // 跟随态不做此吸收——完成态的视口切换依赖原有事件语义重新对齐。
         return;
       }
       // round11（P2-1）：非回声滚动即真实用户语义——清空全部残余票据，
