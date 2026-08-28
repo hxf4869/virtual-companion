@@ -631,19 +631,27 @@ async function readRowGeometry(page: Page, mid: string): Promise<RowGeometry | n
  * round8（一）：收敛等待只认外部 DOM——同一 messageId 连续 ≥4 次采样、
  * 时间跨度 ≥320ms 内偏移波动 ≤1px，且期间该行完整落入 history 矩形；
  * 满足后返回最终几何。不接受任何引擎发布状态作为成功判据。
+ * round10（P2-2）：requireFull=false 时放宽为"与 history 可视矩形真实相交
+ * （>6px）"——锚行删除场景的下方幸存行可能部分超出底缘，其 history-relative
+ * 偏移依旧可测且必须被钉回。
  */
 async function waitForSettledRowGeometry(
   page: Page,
   mid: string,
   label: string,
+  opts: { requireFull?: boolean } = {},
 ): Promise<RowGeometry> {
+  const requireFull = opts.requireFull !== false;
   const stamps: { t: number; off: number }[] = [];
   try {
     await expect
       .poll(
         async () => {
           const g = await readRowGeometry(page, mid);
-          if (!g || !g.fullyInside) {
+          const placementOk = requireFull
+            ? !!g && g.fullyInside
+            : !!g && g.rowBottom - g.historyTop > 6 && g.historyBottom - g.rowTop > 6;
+          if (!g || !placementOk) {
             stamps.length = 0;
             return false;
           }
@@ -840,6 +848,43 @@ async function pickMountedRowRelativeTo(
       requirePrefix: opts.requirePrefix ?? null,
       requireVisible: opts.requireVisible === true,
     },
+  );
+}
+
+/**
+ * round10（P2-2）：选取参照行【下方】最近的、与 history 可视矩形真实相交
+ * （>6px）的种子行——锚行删除场景的下方幸存行可能因锚行展开的操作区被
+ * 推出底缘，部分可见行的 history-relative 偏移依旧可测且必须被钉回。
+ */
+async function pickIntersectingRowBelow(
+  page: Page,
+  refMid: string,
+  excludeMids: string[],
+): Promise<string | null> {
+  return page.evaluate(
+    ({ refMid, excludeMids }) => {
+      const el = document.querySelector('[data-testid="history"]');
+      if (!(el instanceof HTMLElement)) return null;
+      const histRect = el.getBoundingClientRect();
+      const ref = el.querySelector(`[data-mid="${refMid}"]`);
+      if (!(ref instanceof HTMLElement)) return null;
+      const refRect = ref.getBoundingClientRect();
+      let best: { mid: string; dist: number } | null = null;
+      for (const node of el.querySelectorAll('[data-testid="chat-message"]')) {
+        const host = node as HTMLElement & { dataset: { mid?: string } };
+        const mid = host.dataset.mid;
+        if (!mid || !mid.startsWith("seed-") || excludeMids.includes(mid)) continue;
+        const r = host.getBoundingClientRect();
+        if (r.top < refRect.bottom + 2) continue; // 必须严格位于参照行下方
+        if (Math.min(r.bottom, histRect.bottom) - Math.max(r.top, histRect.top) <= 6) {
+          continue; // 必须与可视矩形真实相交
+        }
+        const dist = Math.abs(r.top - refRect.bottom);
+        if (!best || dist < best.dist) best = { mid, dist };
+      }
+      return best?.mid ?? null;
+    },
+    { refMid, excludeMids },
   );
 }
 
@@ -1978,20 +2023,18 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     await judgeDelete.click({ force: true });
     await expect(judgeDelete, "two-step delete arm label").toHaveText("确认删除");
 
-    // 确定性幸存行：判据行【下方】最近的种子行（round10/P2-2 与生产快照
-    // 规则一致：优先后一行）。锚行删除后该行必然上移——只有真实消费
-    // pre-delete 快照才能把它钉回原位；没有 handoff 时引擎会把跳变后的
-    // 视图当新真值，该行离开冻结基线，测试必然失败。
-    const survivorMid = await pickMountedRowRelativeTo(page, {
-      side: "below",
-      refMid: judgeMid!,
-      excludeMids: [awayMid].filter((m): m is string => m !== null),
-      requirePrefix: "seed-",
-      requireVisible: true,
-    });
+    // 确定性幸存行：判据行【下方】最近的、与可视矩形真实相交的种子行
+    // （round10/P2-2 与生产快照规则一致：优先后一行）。锚行删除后该行必然
+    // 上移——只有真实消费 pre-delete 快照才能把它钉回原位；没有 handoff 时
+    // 引擎会把跳变后的视图当新真值，该行离开冻结基线，测试必然失败。
+    const survivorMid = await pickIntersectingRowBelow(
+      page,
+      judgeMid!,
+      [awayMid].filter((m): m is string => m !== null),
+    );
     expect(
       survivorMid,
-      "a visible survivor row strictly below the anchor is mounted",
+      "an intersecting survivor row strictly below the anchor is mounted",
     ).not.toBeNull();
     await page.route(
       new RegExp(`/api/v1/conversations/[^/]+/messages/${judgeMid}$`),
@@ -2007,6 +2050,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
       page,
       survivorMid!,
       "survivor pre-delete baseline",
+      { requireFull: false },
     );
     await expect
       .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-run"), {
@@ -2017,7 +2061,6 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     const readPreserveRunLog = await installPreserveRunRecorder(page);
     const survivorBaseline = await readRowGeometry(page, survivorMid!);
     expect(survivorBaseline, "survivor baseline frozen before confirm").not.toBeNull();
-    expect(survivorBaseline!.fullyInside, "survivor fully inside before confirm").toBe(true);
     expect(survivorBaseline!.offset, "frozen baseline matches the settled read")
       .toBeCloseTo(survivorSettled.offset, 0.5);
     await page.screenshot({ path: `${SHOTS9}/anchor-delete-before.png` });
@@ -2043,6 +2086,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
         page,
         survivorMid!,
         "anchor-row deletion keeps the survivor at its pre-delete offset",
+        { requireFull: false },
       );
       const survivorError = Math.abs(survivorAfter.offset - survivorBaseline!.offset);
       expect(
@@ -2073,6 +2117,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
         page,
         survivorMid!,
         "post-delete upstream perturbation keeps the survivor pinned",
+        { requireFull: false },
       );
       const perturbError = Math.abs(survivorPerturbed.offset - survivorBaseline!.offset);
       expect(

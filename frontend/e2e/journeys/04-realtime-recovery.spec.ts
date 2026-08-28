@@ -231,36 +231,90 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
         new Promise((resolve) => setTimeout(resolve, ms));
 
       // ---- 阶段一：abort 传播的决定性判据 ----
-      const gen1 = await createGeneration("用于验证代理断开传播的一次生成。");
-      const [a, b, c] = await Promise.all([
-        openStream(gen1, "hold-a"),
-        openStream(gen1, "hold-b"),
-        openStream(gen1, "hold-c"),
-      ]);
-      const holdStatuses = [a.status, b.status, c.status];
-      const holdDenied = [a, b, c].some((s) => s.firstChunk.includes("stream.denied"));
-      await waitMs(250);
-      const premiseBroken = [a, b, c].some((s) => s.closedByServer);
+      // worker 轮询间隔内生成必须保持运行（live-tail 持有租约）；轮询相位
+      // 可能恰好在持有建立后立即拾取并完成生成（前提失效），做有界重试。
+      interface Phase1 {
+        retryable: boolean;
+        reason?: string;
+        gen1?: string;
+        holdStatuses?: number[];
+        probeDStatus?: number;
+        probeDDenied?: boolean;
+        probeDAfterMs?: number;
+        probeEStatus?: number;
+        probeEDenied?: boolean;
+      }
+      const attemptPhase1 = async (): Promise<Phase1> => {
+        const gen = await createGeneration("用于验证代理断开传播的一次生成。");
+        const [a, b, c] = await Promise.all([
+          openStream(gen, "hold-a"),
+          openStream(gen, "hold-b"),
+          openStream(gen, "hold-c"),
+        ]);
+        const cleanup = async (): Promise<void> => {
+          a.abort();
+          b.abort();
+          c.abort();
+          await Promise.all([a.settled(), b.settled(), c.settled()]);
+        };
+        if ([a, b, c].some((s) => s.status === 429)) {
+          await cleanup();
+          return { retryable: true, reason: "hold hit a lingering lease (429)" };
+        }
+        if ([a, b, c].some((s) => s.firstChunk.includes("stream.denied"))) {
+          await cleanup();
+          return { retryable: true, reason: "hold denied (ticket/epoch mismatch)" };
+        }
+        await waitMs(250);
+        if ([a, b, c].some((s) => s.closedByServer)) {
+          await cleanup();
+          return { retryable: true, reason: "generation completed before holds settled" };
+        }
+        const probeStartAt = performance.now();
+        a.abort();
+        await a.settled();
+        const probeD = await openStream(gen, "probe-d");
+        const probeDAfterMs = performance.now() - probeStartAt;
+        const dStatus = probeD.status;
+        const dDenied = probeD.firstChunk.includes("stream.denied");
+        probeD.abort();
+        await probeD.settled();
 
-      const probeStartAt = performance.now();
-      a.abort();
-      await a.settled();
-      const probeD = await openStream(gen1, "probe-d");
-      const probeDAfterMs = performance.now() - probeStartAt;
-      const probeDStatus = probeD.status;
-      const probeDDenied = probeD.firstChunk.includes("stream.denied");
-      probeD.abort();
-      await probeD.settled();
+        b.abort();
+        await b.settled();
+        const probeE = await openStream(gen, "probe-e");
+        const eStatus = probeE.status;
+        const eDenied = probeE.firstChunk.includes("stream.denied");
+        probeE.abort();
+        await probeE.settled();
+        c.abort();
+        await c.settled();
+        return {
+          retryable: false,
+          gen1: gen,
+          holdStatuses: [a.status, b.status, c.status],
+          probeDStatus: dStatus,
+          probeDDenied: dDenied,
+          probeDAfterMs,
+          probeEStatus: eStatus,
+          probeEDenied: eDenied,
+        };
+      };
+      let phase1: Phase1 = { retryable: true, reason: "not attempted" };
+      const phase1RetryReasons: string[] = [];
+      for (let i = 0; i < 4 && phase1.retryable; i += 1) {
+        phase1 = await attemptPhase1();
+        if (phase1.retryable) {
+          phase1RetryReasons.push(phase1.reason ?? "?");
+          await waitMs(400);
+        }
+      }
 
-      b.abort();
-      await b.settled();
-      const probeE = await openStream(gen1, "probe-e");
-      const probeEStatus = probeE.status;
-      const probeEDenied = probeE.firstChunk.includes("stream.denied");
-      probeE.abort();
-      await probeE.settled();
-      c.abort();
-      await c.settled();
+      if (phase1.retryable) {
+        return {
+          error: `premise never held: ${phase1RetryReasons.join("; ")}`,
+        };
+      }
 
       // ---- 阶段二：自然完成的流之后，租约是否仍被占用（根因取证） ----
       const gen2 = await createGeneration("用于验证完成态流租约释放的第二次生成。");
@@ -276,6 +330,12 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
         openStream(gen3, "hold-g"),
       ]);
       const hold2Statuses = [f.status, g.status];
+      await waitMs(150);
+      // 前提：F/G 仍保持打开（生成运行中）——否则 probeI 不可解读。
+      const premise2Held =
+        hold2Statuses.every((s) => s === 200) &&
+        !f.closedByServer &&
+        !g.closedByServer;
       const probeI = await openStream(gen3, "probe-i");
       const probeIStatus = probeI.status;
       natural.abort();
@@ -290,16 +350,15 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
       ]);
 
       return {
-        gen1,
-        holdStatuses,
-        holdDenied,
-        premiseBroken,
-        probeDStatus,
-        probeDDenied,
-        probeDAfterMs,
-        probeEStatus,
-        probeEDenied,
+        gen1: phase1.gen1,
+        holdStatuses: phase1.holdStatuses,
+        probeDStatus: phase1.probeDStatus,
+        probeDDenied: phase1.probeDDenied,
+        probeDAfterMs: phase1.probeDAfterMs,
+        probeEStatus: phase1.probeEStatus,
+        probeEDenied: phase1.probeEDenied,
         naturallyClosed,
+        premise2Held,
         hold2Statuses,
         probeIStatus,
       };
@@ -307,15 +366,10 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
     { token: session.accessToken, conversationId: context.conversationId },
   );
 
+  expect(report.error ?? "", "the proxied SSE chain must be drivable").toBe("");
   expect(report.holdStatuses, "three real proxied holds must be admitted").toEqual([
     200, 200, 200,
   ]);
-  expect(report.holdDenied, "holds must not be denied (ticket/epoch mismatch)").toBe(false);
-  expect(
-    report.premiseBroken,
-    "the generation must still be running (live-tail holds the leases; a completed " +
-      "generation would release them naturally and void the premise)",
-  ).toBe(false);
   expect(
     report.probeDStatus,
     "the next subscription after a browser abort must be admitted (429 would mean " +
