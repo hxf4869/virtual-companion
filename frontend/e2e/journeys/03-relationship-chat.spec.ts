@@ -675,6 +675,8 @@ async function waitForSettledRowGeometry(
       const ds = await page.evaluate(() => {
         const el = document.querySelector('[data-testid="history"]');
         if (!(el instanceof HTMLElement)) return null;
+        const midLog = (el as HTMLElement & { __preserveMidLog?: string[] })
+          .__preserveMidLog;
         return {
           run: el.dataset.preserveRun ?? null,
           phase: el.dataset.preservePhase ?? null,
@@ -683,6 +685,7 @@ async function waitForSettledRowGeometry(
           resid: el.dataset.preserveResidualPx ?? null,
           fol: el.dataset.following ?? null,
           lastMid: el.dataset.preserveLastMid ?? null,
+          midLog: midLog ? midLog.slice(-12) : null,
           override: el.dataset.preserveOverride ?? null,
           mounted: Array.from(
             el.querySelectorAll('[data-testid="chat-message"]'),
@@ -764,25 +767,53 @@ async function installPreserveRunRecorder(
     if (!(el instanceof HTMLElement)) {
       throw new Error("history element missing for preserve-run recorder");
     }
-    const holder = el as HTMLElement & { __preserveRunLog?: string[] };
+    const holder = el as HTMLElement & {
+      __preserveRunLog?: string[];
+      __preserveMidLog?: string[];
+    };
     const seen: string[] = [el.dataset.preserveRun ?? "absent"];
     holder.__preserveRunLog = seen;
+    // round10 诊断：锚点（mid@off@scrollTop）转移序列——排查删除流程中的
+    // 异常重定锚。
+    const midSeen: string[] = [
+      `${el.dataset.preserveMid ?? "-"}@${el.dataset.preserveOff ?? "-"}@${el.scrollTop}`,
+    ];
+    holder.__preserveMidLog = midSeen;
+    const recordMid = (): void => {
+      const next = `${el.dataset.preserveMid ?? "-"}@${el.dataset.preserveOff ?? "-"}@${Math.round(el.scrollTop)}`;
+      if (midSeen[midSeen.length - 1] !== next) midSeen.push(next);
+    };
     const record = (): void => {
       const next = el.dataset.preserveRun ?? "absent";
       if (seen[seen.length - 1] !== next) seen.push(next);
+      recordMid();
     };
     new MutationObserver(record).observe(el, {
       attributes: true,
-      attributeFilter: ["data-preserve-run"],
+      attributeFilter: [
+        "data-preserve-run",
+        "data-preserve-mid",
+        "data-preserve-off",
+      ],
     });
   });
-  return () =>
-    page.evaluate(() => {
+  return async () => {
+    const data = await page.evaluate(() => {
       const el = document.querySelector(
         '[data-testid="history"]',
-      ) as (HTMLElement & { __preserveRunLog?: string[] }) | null;
-      return el?.__preserveRunLog ? [...el.__preserveRunLog] : [];
+      ) as
+        | (HTMLElement & {
+            __preserveRunLog?: string[];
+            __preserveMidLog?: string[];
+          })
+        | null;
+      return {
+        run: el?.__preserveRunLog ? [...el.__preserveRunLog] : [],
+        mid: el?.__preserveMidLog ? [...el.__preserveMidLog] : [],
+      };
     });
+    return data.run;
+  };
 }
 
 /**
