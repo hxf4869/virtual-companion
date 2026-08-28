@@ -28,6 +28,11 @@ export const E2E_USER_SUFFIXES = [
   "login-return",
   "admission-gate",
   "relationship-chat",
+  // round11：03 的视口/状态矩阵测试与 130 条种子流测试拆分账号——后端
+  // SSE 租约按用户计（上限 3，滞留至 130s TTL，见 Journey04 的
+  // READY_FOR_OWNER），同账号内新增的真实发送会把后续测试的流挤成
+  // 第 4 条而必然 429。
+  "relationship-viewport",
   "realtime-recovery",
   "memory-lifecycle",
   "export-lifecycle",

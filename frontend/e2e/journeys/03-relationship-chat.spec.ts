@@ -1246,7 +1246,9 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
   request,
 }) => {
   test.setTimeout(480_000);
-  const user = await provisionUser(request, "relationship-chat");
+  // round11：独立账号——与 130 条种子流测试（同文件、含真实发送）隔离
+  // SSE 租约（后端按用户计、滞留 130s TTL，见 helpers 注释）。
+  const user = await provisionUser(request, "relationship-viewport");
   const session = await uiLoginWithRetry(page, user);
   await prepareGenerationAccess(session.accessToken);
 
