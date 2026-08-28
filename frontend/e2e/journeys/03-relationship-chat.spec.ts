@@ -149,6 +149,8 @@ interface Geometry {
   windowScrollY: number;
   docScrollTop: number;
   header: Box | null;
+  /** round11（P1-2）：上下文区（会话切换行）固定铬层盒。 */
+  contextPanel: Box | null;
   inputArea: Box | null;
   nativeInput: Box | null;
   send: Box | null;
@@ -252,6 +254,7 @@ async function measure(page: Page): Promise<Geometry> {
       windowScrollY: window.scrollY,
       docScrollTop: (document.scrollingElement as HTMLElement | null)?.scrollTop ?? 0,
       header: box(document.querySelector(".chat-header")),
+      contextPanel: box(document.querySelector('[data-testid="conversation-panel"]')),
       inputArea: box(document.querySelector(".chat-input-area")),
       nativeInput: box(document.querySelector('[data-testid="message-input"] input')),
       send: box(document.querySelector('[data-testid="send"]')),
@@ -291,6 +294,13 @@ function assertCoreGeometry(
   // 页头完整在视口内（不随内容滚动）。
   expect(m.header!.top, `${label} header top`).toBeGreaterThanOrEqual(-0.5);
   expect(m.header!.bottom, `${label} header bottom`).toBeLessThanOrEqual(m.viewportHeight + 0.5);
+  // round11（P1-2）：上下文区（会话切换行）是页头与 history 之间的固定
+  // 铬层——完整落在视口内，夹在页头与 history 之间，不得被外层壳滚走。
+  expect(m.contextPanel, `${label} context panel box`).not.toBeNull();
+  expect(m.contextPanel!.top, `${label} context panel top`)
+    .toBeGreaterThanOrEqual(m.header!.bottom - 0.5);
+  expect(m.contextPanel!.bottom, `${label} context panel bottom`)
+    .toBeLessThanOrEqual(m.viewportHeight + 0.5);
   // 输入栏：独立区域，完整落在视口底部。
   expect(m.inputArea, `${label} inputArea box`).not.toBeNull();
   expect(m.inputArea!.top, `${label} inputArea top`).toBeGreaterThanOrEqual(0);
@@ -310,6 +320,8 @@ function assertCoreGeometry(
   expect(m.history!.bottom, `${label} history bottom`)
     .toBeLessThanOrEqual(m.inputArea!.top + 0.5);
   expect(m.history!.top, `${label} history top`).toBeGreaterThanOrEqual(m.header!.bottom - 0.5);
+  expect(m.history!.top, `${label} history top clears the context panel`)
+    .toBeGreaterThanOrEqual(m.contextPanel!.bottom - 0.5);
   expect(m.historyClientHeight, `${label} history client height`).toBeGreaterThan(60);
   // P2（round5）显式非零断言：可视区内必须有真实挂载的消息（本文件被测
   // 的内容承载状态至少有一条已落库内容），空数组不得继续通过。唯一的
@@ -858,10 +870,14 @@ async function pickMountedRowRelativeTo(
         // round8：候补必须与参照行严格异侧（2px 保护带）；requireVisible
         // 时还必须完整落入 history 可视矩形——选中视口外行只会诱使测试
         // 框架隐式滚动，那是被禁止的越权操作。
+        // round11：保护带从 2px 收紧到 0.5px 容差——消息行间零间距（紧贴
+        // 排版）下，紧邻上/下行的共享边缘恰好重合（bottom==refTop），2px
+        // 带会把唯一的完整可见异侧行排除掉，判据在数学上无解。0.5px 只
+        // 容忍浮点重合，真正的同侧/重叠行仍被排除。
         const strictly =
           side === "above"
-            ? r.bottom <= refRect.top - 2
-            : r.top >= refRect.bottom + 2;
+            ? r.bottom <= refRect.top + 0.5
+            : r.top >= refRect.bottom - 0.5;
         if (!strictly) continue;
         if (
           requireVisible === true &&
@@ -922,6 +938,59 @@ async function pickIntersectingRowBelow(
     },
     { refMid, excludeMids },
   );
+}
+
+/**
+ * round11（P1-2）：参照行【下一个】挂载行（按 data-vindex +1）。窄视口下
+ * 锚行展开的操作区会把下一行推出可视底缘——偏移型 oracle 只要求行仍被
+ * 虚拟窗口挂载（保持覆盖窗保证锚邻域在册），不要求相交。
+ */
+async function nextMountedRowBelow(page: Page, mid: string): Promise<string | null> {
+  return page.evaluate((id) => {
+    const el = document.querySelector(`[data-mid="${id}"]`);
+    const vi = Number((el as HTMLElement | null)?.dataset.vindex ?? Number.NaN);
+    if (!Number.isInteger(vi)) return null;
+    const next = document.querySelector(
+      `[data-testid="chat-message"][data-vindex="${vi + 1}"]`,
+    );
+    return (next as HTMLElement | null)?.dataset.mid ?? null;
+  }, mid);
+}
+
+/**
+ * round11（P1-2）：偏移稳定型收敛等待——同一行 history-relative 偏移连续
+ * ≥4 次采样、覆盖 ≥320ms、波动 ≤1px 即收敛；不要求行与可视矩形相交
+ * （行被锚行展开的操作区推出底缘时，钉回语义仍以偏移为唯一口径）。
+ */
+async function waitForSettledRowOffset(
+  page: Page,
+  mid: string,
+  label: string,
+  timeoutMs = 24_000,
+): Promise<number> {
+  const stamps: { t: number; off: number }[] = [];
+  let lastOff = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const g = await readRowGeometry(page, mid);
+        if (!g) {
+          stamps.length = 0;
+          return false;
+        }
+        lastOff = g.offset;
+        stamps.push({ t: Date.now(), off: g.offset });
+        if (stamps.length < 4) return false;
+        const win = stamps.slice(-4);
+        if (win[win.length - 1]!.t - win[0]!.t < 320) return false;
+        const offs = win.map((x) => x.off);
+        return Math.max(...offs) - Math.min(...offs) <= 1;
+      },
+      { timeout: timeoutMs, intervals: [110] },
+    )
+    .toBe(true);
+  expect(Number.isFinite(lastOff), `${label}: final offset of ${mid} readable`).toBe(true);
+  return lastOff;
 }
 
 /**
@@ -1655,7 +1724,10 @@ function makeSynthetic(total: number, conversationId: string): SyntheticMsg[] {
   });
 }
 
-function syntheticListHandler(synthetic: SyntheticMsg[]) {
+function syntheticListHandler(
+  synthetic: SyntheticMsg[],
+  liveExtras: { value: SyntheticMsg[] } = { value: [] },
+) {
   return async (route: Route): Promise<void> => {
     const url = new URL(route.request().url());
     const after = url.searchParams.get("after");
@@ -1665,10 +1737,14 @@ function syntheticListHandler(synthetic: SyntheticMsg[]) {
       : 0;
     const slice =
       startIdx > 0 ? synthetic.slice(startIdx, startIdx + limit) : synthetic.slice(0, limit);
+    // round11：真实发送后追加的行（合成 id）——advanceHistory 的补页请求
+    // 必须能看到新消息，跟随验收才有一条真实到达的新行。
+    const extras =
+      startIdx > 0 && startIdx + limit >= synthetic.length ? liveExtras.value : [];
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(slice),
+      body: JSON.stringify([...slice, ...extras]),
     });
   };
 }
@@ -1687,9 +1763,10 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   const TOTAL = 130;
   const LAST_MID = `seed-${String(TOTAL).padStart(3, "0")}`;
   const synthetic = makeSynthetic(TOTAL, conversationId);
+  const liveExtras: { value: SyntheticMsg[] } = { value: [] };
   await page.route(
     /\/api\/v1\/conversations\/[^/]+\/messages\?.*limit=/,
-    syntheticListHandler(synthetic),
+    syntheticListHandler(synthetic, liveExtras),
   );
 
   // 堆叠条件头：连续使用提醒 + 记忆导入提示 + 待确认记忆候选与 130 条长
@@ -1946,7 +2023,6 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     await assertNoBlankBand(page, "after expansion");
   }
   await page.screenshot({ path: `${SHOTS}/expand-after.png` });
-
   // 折叠：固定同一判据行与目标，先读基线再点击（more 按钮常驻于行内
   // 顶部区，展开态下它保持原可视位置）。
   const collapseBaselineGeometry = await readRowGeometry(page, judgeMid!);
@@ -1989,9 +2065,20 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   expect(preDeleteReadiness?.fullyInside ?? false, "pre-delete judge fully inside").toBe(true);
   const deleteMore = page.locator(`[data-testid="msg-more-${expandTargetMid}"]`);
   await deleteMore.click({ force: true });
+  await expect(page.locator(`[data-testid="msg-actions-${expandTargetMid}"]`)).toBeVisible();
+  // round11：菜单插入的高度变化由保持事务校正——点击删除按钮前等引擎
+  // 静止，避免点击坐标在布局校正中打偏（force 点击不追踪移动目标）。
+  await expect
+    .poll(
+      () => page.getAttribute('[data-testid="history"]', "data-preserve-run"),
+      { timeout: 10_000, intervals: [80, 160] },
+    )
+    .toBe("idle");
   const deleteBtn = page.locator(`[data-testid="msg-delete-${expandTargetMid}"]`);
   await deleteBtn.click({ force: true });
   await expect(deleteBtn, "two-step delete arm label").toHaveText("确认删除");
+  // round11（P1-2）：较早行删除流的每个阶段同样执行完整核心几何。
+  assertCoreGeometry(await measure(page), "workspace earlier-row delete armed");
 
   // 菜单已展开、尚未确认：等保持事务对"arm 插入内容"的补偿完成、判据
   // 行几何静止后再读全部基线（仍严格早于最终确认点击）。
@@ -2027,213 +2114,296 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     ).toBeLessThanOrEqual(4);
     // round10（P2-2.3）：删除后必须 converged=true、idle、released。
     await waitPreserveSettled(page, "earlier-row delete");
+    assertCoreGeometry(await measure(page), "workspace earlier-row delete settled");
     await page.screenshot({ path: `${SHOTS}/delete-after.png` });
   }
 
-  // ---- round9（四）/round10（P2-2）：删除【当前事务锚行】——删除前幸存行
-  // 快照 handoff。判据行即引擎基准行本身（data-preserve-mid 仅作生命周期
-  // 同步门，成败仍由独立 DOM 几何裁定）。round10 加固：
-  //   • 生命周期监听在【最终确认前】安装（MutationObserver，轮询不会漏掉
-  //     短暂 active）；
-  //   • handoff 幸存行与偏移在确认点击前【立即重新读取并冻结】；
-  //   • 删除后必须 converged=true、idle、released；
-  //   • 删除后追加一次真实上游高度扰动（展开幸存行上方的行内操作区）——
-  //     没有有效 handoff 基准时该扰动必然把幸存行推离基线，杜绝"删除的
-  //     行位于锚上方、天然不动"式假绿。
-  const SHOTS9 = ".impeccable/review/round9";
-  const SHOTS10 = ".impeccable/review/round10";
-  {
+  // ---- round11（P1-2/P1-4）：三档视口（375×812、812×375、1200×900）各
+  // 完整走一遍锚行删除流，每一步之后执行【完整】assertCoreGeometry（页头、
+  // 上下文区、history、输入栏全部落在 viewport 内，history 与输入栏零覆盖，
+  // 唯一纵向滚动 owner 是 chat-history，外层壳零滚动），并以真实键盘 End
+  // 验收用户回到底部。handoff 幸存行判据与 round10 相同：删除前冻结、
+  // 删除后钉回 ≤4px、converged=true、idle、released；删除后追加真实上游
+  // 高度扰动杜绝"删除的行天然不动"式假绿。最后一站（工作台档）附生命周期
+  // 监听（MutationObserver，轮询不漏短暂 active）。----
+  const SHOTS11 = ".impeccable/review/round11";
+  const deletedMids: string[] = [];
+  for (const [sw, sh] of [[375, 812], [812, 375], [1200, 900]] as const) {
+    const station = `${sw}x${sh}`;
+    const isWorkspace = station === "1200x900";
+    await setViewport(page, sw, sh);
+    // 上一站以真实 End 回底结束（following=true）：先真实滚轮接管，再一段
+    // 独立声明的第二手势远离回底阈值带（不参与接管判据）。
+    await singleWheelUpRelease(page);
+    {
+      const rc = await historyRectCenter(page);
+      await page.mouse.move(rc.x, rc.y);
+      await page.mouse.wheel(0, -1500);
+      await page.waitForTimeout(200);
+    }
+    const basisSnap = await stableViewportAnchor(page);
+    const basisMid = basisSnap.mid;
+    expect(basisMid, `${station}: a semantic anchor row is mounted`).not.toBeNull();
     // 生命周期同步门：当前引擎基准行确为判据行。
     await expect
       .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-mid"), {
         timeout: 8_000,
         intervals: [100, 200],
       })
-      .toBe(judgeMid);
+      .toBe(basisMid);
 
-    // 展开 judge 行内操作区并 arm 两步确认。
-    const judgeMore = page.locator(`[data-testid="msg-more-${judgeMid}"]`);
-    await judgeMore.click({ force: true });
-    await expect(page.locator(`[data-testid="msg-actions-${judgeMid}"]`)).toBeVisible();
-    const judgeDelete = page.locator(`[data-testid="msg-delete-${judgeMid}"]`);
-    await judgeDelete.click({ force: true });
-    await expect(judgeDelete, "two-step delete arm label").toHaveText("确认删除");
+    // 确定性幸存行在【arm 之后】选定：锚行展开的操作区会下推后续行，基线
+    // 必须在最终布局下冻结。优先取与可视矩形真实相交的下方行；窄视口下
+    // 该行可能被推出底缘，退化为按 data-vindex 的下一挂载行——偏移型
+    // oracle 只要求行仍被挂载。
+    // 1) 打开消息菜单。
+    await page.locator(`[data-testid="msg-more-${basisMid}"]`).click({ force: true });
+    await expect(page.locator(`[data-testid="msg-actions-${basisMid}"]`)).toBeVisible();
+    assertCoreGeometry(await measure(page), `${station} delete menu open`);
 
-    // 确定性幸存行：判据行【下方】最近的、与可视矩形真实相交的种子行
-    // （round10/P2-2 与生产快照规则一致：优先后一行）。锚行删除后该行必然
-    // 上移——只有真实消费 pre-delete 快照才能把它钉回原位；没有 handoff 时
-    // 引擎会把跳变后的视图当新真值，该行离开冻结基线，测试必然失败。
-    const survivorMid = await pickIntersectingRowBelow(
-      page,
-      judgeMid!,
-      [awayMid].filter((m): m is string => m !== null),
-    );
+    // 2) arm 删除（两步确认第一步）：arm 标签变化被钉回后冻结幸存行基线。
+    // round11：arm/confirm 一律 DOM click——Playwright click 的隐式
+    // scrollIntoView 在矮视口下构成被禁止的测试侧滚动，会把引擎锚滚离
+    // 判据行，污染 pre-delete 基线。
+    const del = page.locator(`[data-testid="msg-delete-${basisMid}"]`);
+    await del.evaluate((n) => (n as HTMLElement).click());
+    await expect(del, `${station}: two-step delete arm label`).toHaveText("确认删除");
+    // round11：幸存行判据与引擎锚软同步。任何残留的测试侧滚动都会触发
+    // 生产的"真实用户滚动"语义（rebase 到当下视图）——那本身是正确产品
+    // 行为；判据随之以当前引擎锚重新选取幸存行并冻结基线，保证
+    // "pre-delete 快照钉回"的语义判据始终针对引擎真实锚。
+    const engineAnchorNow = (): Promise<string | null> =>
+      page.getAttribute('[data-testid="history"]', "data-preserve-mid");
+    let anchorMid: string | null = await engineAnchorNow();
+    if (anchorMid !== basisMid) {
+      await expect
+        .poll(
+          async () =>
+            `${await engineAnchorNow()}|${await page.getAttribute('[data-testid="history"]', "data-preserve-run")}`,
+          { timeout: 10_000, intervals: [80, 160] },
+        )
+        .toMatch(/\|idle$/);
+      anchorMid = await engineAnchorNow();
+      expect(anchorMid, `${station}: a settled engine anchor exists`).not.toBeNull();
+    }
+    let survivorMid: string | null =
+      (await pickIntersectingRowBelow(page, anchorMid!, deletedMids)) ??
+      (await nextMountedRowBelow(page, anchorMid!));
     expect(
       survivorMid,
-      "an intersecting survivor row strictly below the anchor is mounted",
+      `${station}: a survivor row strictly below the anchor is mounted`,
     ).not.toBeNull();
+    let survivorBaselineOff = await waitForSettledRowOffset(
+      page,
+      survivorMid!,
+      `${station} pre-confirm survivor settles`,
+    );
+    // 基线冻结后若锚再次漂移，以漂移后的锚重新同步一次（有界）。
+    {
+      const drifted = await engineAnchorNow();
+      if (drifted !== anchorMid) {
+        await expect
+          .poll(
+            async () =>
+              `${await engineAnchorNow()}|${await page.getAttribute('[data-testid="history"]', "data-preserve-run")}`,
+            { timeout: 10_000, intervals: [80, 160] },
+          )
+          .toMatch(/\|idle$/);
+        const anchorMid2 = await engineAnchorNow();
+        const survivorMid2 =
+          (await pickIntersectingRowBelow(page, anchorMid2!, deletedMids)) ??
+          (await nextMountedRowBelow(page, anchorMid2!));
+        expect(survivorMid2, `${station}: resynced survivor mounted`).not.toBeNull();
+        anchorMid = anchorMid2;
+        survivorMid = survivorMid2;
+        survivorBaselineOff = await waitForSettledRowOffset(
+          page,
+          survivorMid!,
+          `${station} resynced survivor settles`,
+        );
+      }
+    }
+    assertCoreGeometry(await measure(page), `${station} delete armed`);
+    await page.screenshot({ path: `${SHOTS11}/delete-before-${station}.png` });
+
     await page.route(
-      new RegExp(`/api/v1/conversations/[^/]+/messages/${judgeMid}$`),
+      new RegExp(`/api/v1/conversations/[^/]+/messages/${basisMid}$`),
       async (route) => {
         expect(route.request().method()).toBe("DELETE");
         await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
       },
     );
 
-    // arm 插入内容后几何先静止；随后【最终确认前】依次：安装生命周期监听
-    // → 重新读取并冻结幸存行基线 → 截图 → 点击确认。
-    const survivorSettled = await waitForSettledRowGeometry(
-      page,
-      survivorMid!,
-      "survivor pre-delete baseline",
-      { requireFull: false },
-    );
+    // 3) 最终确认删除（最后一站附带生命周期监听）。
+    const readPreserveRunLog = isWorkspace
+      ? await installPreserveRunRecorder(page)
+      : null;
+    // confirm 前最后校验：引擎静止（判据行已与引擎锚软同步）。
     await expect
-      .poll(() => page.getAttribute('[data-testid="history"]', "data-preserve-run"), {
-        timeout: 8_000,
-        intervals: [80, 160],
-      })
+      .poll(
+        () => page.getAttribute('[data-testid="history"]', "data-preserve-run"),
+        { timeout: 10_000, intervals: [80, 160] },
+      )
       .toBe("idle");
-    const readPreserveRunLog = await installPreserveRunRecorder(page);
-    const survivorBaseline = await readRowGeometry(page, survivorMid!);
-    expect(survivorBaseline, "survivor baseline frozen before confirm").not.toBeNull();
-    expect(survivorBaseline!.offset, "frozen baseline matches the settled read")
-      .toBeCloseTo(survivorSettled.offset, 0.5);
-    await page.screenshot({ path: `${SHOTS9}/anchor-delete-before.png` });
-
-    await judgeDelete.click({ force: true });
-    await expect(page.locator(`[data-mid="${judgeMid}"]`)).toHaveCount(0);
-    // handoff 事务生命周期：确实经历 active→idle（监听器证据，不作成功判据）。
-    {
+    // round11：confirm 点击不得引入 Playwright 隐式滚动——矮视口下按钮
+    // 可能在视口外，click 的 scrollIntoView 会构成被禁止的测试侧滚动并
+    // 污染 pre-delete 基线（实测 812x375 被滚走 308px）。DOM click()
+    // 直接触发行处理器，无任何滚动。
+    await del.evaluate((n) => (n as HTMLElement).click());
+    await expect(page.locator(`[data-mid="${basisMid}"]`)).toHaveCount(0);
+    deletedMids.push(basisMid!);
+    if (readPreserveRunLog) {
       const lifecycle = await readPreserveRunLog();
       expect(
         lifecycle.includes("active"),
-        `the handoff transaction went active (observed ${JSON.stringify(lifecycle)})`,
+        `${station}: the handoff transaction went active (observed ${JSON.stringify(lifecycle)})`,
       ).toBe(true);
     }
-    await waitPreserveSettled(page, "anchor-row delete");
-    expect(await page.getAttribute('[data-testid="history"]', "data-following")).toBe("false");
-    {
-      const runLog = await readPreserveRunLog();
-      expect(runLog[runLog.length - 1], "lifecycle ends idle").toBe("idle");
-      // 主判据（独立 DOM 几何）：同一幸存行删除前后 history-relative
-      // 偏移误差 ≤4 CSS px——恢复的是删除前快照，不是跳变后的视图。
-      const survivorAfter = await waitForSettledRowGeometry(
-        page,
-        survivorMid!,
-        "anchor-row deletion keeps the survivor at its pre-delete offset",
-        { requireFull: false },
-      );
-      const survivorError = Math.abs(survivorAfter.offset - survivorBaseline!.offset);
-      expect(
-        survivorError,
-        `deleting the anchored row pins the pre-delete survivor (err=${survivorError.toFixed(2)}px ≤ 4px; survivor=${survivorMid})`,
-      ).toBeLessThanOrEqual(4);
-      await assertNoBlankBand(page, "after deleting the anchored row");
-      await page.screenshot({ path: `${SHOTS9}/anchor-delete-after.png` });
 
-      // round10（P2-2.2）：删除后的真实上游扰动——展开幸存行【上方】最近
-      // 可见行的行内操作区（上游高度增加）。没有 handoff 基准时，引擎会把
-      // 扰动后的视图当新真值，幸存行必然离开冻结基线；有 handoff 基准时
-      // 同一幸存行必须被钉回 ≤4px。
-      const perturbMid = await pickMountedRowRelativeTo(page, {
-        side: "above",
-        refMid: survivorMid!,
-        excludeMids: [judgeMid, awayMid].filter((m): m is string => m !== null),
-        requirePrefix: "seed-",
-        requireVisible: true,
-      });
-      expect(
-        perturbMid,
-        "a visible row strictly above the survivor is mounted for the perturbation",
-      ).not.toBeNull();
-      await page.locator(`[data-testid="msg-more-${perturbMid}"]`).click({ force: true });
-      await expect(page.locator(`[data-testid="msg-actions-${perturbMid}"]`)).toBeVisible();
-      const survivorPerturbed = await waitForSettledRowGeometry(
-        page,
-        survivorMid!,
-        "post-delete upstream perturbation keeps the survivor pinned",
-        { requireFull: false },
-      );
-      const perturbError = Math.abs(survivorPerturbed.offset - survivorBaseline!.offset);
-      expect(
-        perturbError,
-        `upstream perturbation after delete re-pins the handoff survivor (err=${perturbError.toFixed(2)}px ≤ 4px; perturbed=${perturbMid})`,
-      ).toBeLessThanOrEqual(4);
-      await waitPreserveSettled(page, "post-delete perturbation");
-      await assertNoBlankBand(page, "after post-delete perturbation");
-      await page.screenshot({ path: `${SHOTS10}/anchor-delete-perturbed.png` });
-    }
-  }
-
-  // ---- round10（P1-3.4）：程序落点回声一次性消费——active 事务中用户回到
-  // 底部，必须被识别为真实用户滚动并恢复 following；随后布局变化自动重锚
-  // 到底（最新行完整可见）。End 的 keydown 意图先使未消费回声票据失效，
-  // scrollTop 赋值由浏览器发出真实 scroll 事件（非引擎写入，不铸造票据）。
-  {
-    // 记录引擎自身的程序写入落点（包装实例 scrollTop setter）。
-    await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="history"]');
-      if (!(el instanceof HTMLElement)) throw new Error("history missing");
-      const holder = el as HTMLElement & {
-        __echoSpyInstalled?: boolean;
-        __engineLandings?: number[];
-      };
-      if (holder.__echoSpyInstalled) return;
-      holder.__echoSpyInstalled = true;
-      holder.__engineLandings = [];
-      const desc =
-        Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop") ??
-        Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
-      Object.defineProperty(el, "scrollTop", {
-        configurable: true,
-        get: desc.get,
-        set(v: number) {
-          holder.__engineLandings!.push(Number(v));
-          desc.set!.call(el, v);
-        },
-      });
-    });
+    // 4) handoff 收敛：converged=true、idle、released + 幸存行钉回 ≤4px。
+    await waitPreserveSettled(page, `${station} anchor delete`);
     expect(await page.getAttribute('[data-testid="history"]', "data-following"))
       .toBe("false");
+    if (readPreserveRunLog) {
+      const runLog = await readPreserveRunLog();
+      expect(runLog[runLog.length - 1], `${station}: lifecycle ends idle`).toBe("idle");
+    }
+    const survivorAfterOff = await waitForSettledRowOffset(
+      page,
+      survivorMid!,
+      `${station} anchor-row deletion keeps the survivor at its pre-delete offset`,
+    );
+    const survivorError = Math.abs(survivorAfterOff - survivorBaselineOff);
+    expect(
+      survivorError,
+      `${station}: deleting the anchored row pins the pre-delete survivor (err=${survivorError.toFixed(2)}px ≤ 4px; survivor=${survivorMid})`,
+    ).toBeLessThanOrEqual(4);
+    await assertNoBlankBand(page, `${station} after deleting the anchored row`);
+    assertCoreGeometry(await measure(page), `${station} delete settled`);
+    await page.screenshot({ path: `${SHOTS11}/delete-after-${station}.png` });
 
-    // 一次大幅宽度变化（1200→375，同高）：换行全变 → 锚行移动 → 保持事务
-    // 产生真实校正写入；读取最近一次程序落点作为"恰好回到底部前"的回声
-    // 对照。
-    await setViewport(page, 375, 900);
-    await expect
-      .poll(
-        async () => {
-          const landings = await page.evaluate(() => {
-            const el = document.querySelector('[data-testid="history"]') as
-              | (HTMLElement & { __engineLandings?: number[] })
-              | null;
-            return el?.__engineLandings?.length ?? 0;
-          });
-          return landings;
-        },
-        { timeout: 10_000, intervals: [100, 200] },
-      )
-      .toBeGreaterThan(0);
+    // 5) 删除后上游扰动（round11）：等高视口微扰——ResizeObserver +
+    // spacer 重排真实推挤全部内容；没有 handoff 基准时该扰动必然把幸存
+    // 行推离基线。矮视口下"展开上方行"的选行在数学上无解（上方行不完整
+    // 可见时 force 点击引入隐式滚动），等高微扰对全部视口通用。
+    await setViewport(page, sw, Math.min(sh + 60, 1_000));
+    const survivorPerturbedOff = await waitForSettledRowOffset(
+      page,
+      survivorMid!,
+      `${station} post-delete upstream perturbation keeps the survivor pinned`,
+    );
+    const perturbError = Math.abs(survivorPerturbedOff - survivorBaselineOff);
+    expect(
+      perturbError,
+      `${station}: upstream perturbation after delete re-pins the handoff survivor (err=${perturbError.toFixed(2)}px ≤ 4px)`,
+    ).toBeLessThanOrEqual(4);
+    await setViewport(page, sw, sh);
+    const survivorRestoredOff = await waitForSettledRowOffset(
+      page,
+      survivorMid!,
+      `${station} viewport restore keeps the survivor pinned`,
+    );
+    const restoredError = Math.abs(survivorRestoredOff - survivorBaselineOff);
+    expect(
+      restoredError,
+      `${station}: viewport restore keeps the handoff survivor (err=${restoredError.toFixed(2)}px ≤ 4px)`,
+    ).toBeLessThanOrEqual(4);
+    await waitPreserveSettled(page, `${station} post-delete perturbation`);
+    await assertNoBlankBand(page, `${station} after post-delete perturbation`);
+    assertCoreGeometry(await measure(page), `${station} post-delete perturbation`);
+    await page.screenshot({ path: `${SHOTS11}/delete-perturbed-${station}.png` });
 
-    // 用户 End 回底：keydown 意图 + 程序赋值产生真实 scroll 事件。即使落点
-    // 与最近程序写入相近，一次性票据 + 意图失效也必须判为用户语义 →
-    // 底部 gap=0 → following 恢复 true。
-    await page.evaluate(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "End" }));
-      const el = document.querySelector('[data-testid="history"]') as HTMLElement | null;
-      if (el) el.scrollTop = el.scrollHeight;
+    // 6) 用户回到底部（round11 P1-4：真实交互验收）。chat-history 是可聚焦
+    //    的滚动区域（role=region + aria-label + tabindex）；聚焦后按真实
+    //    End 键——浏览器对聚焦滚动容器的原生滚动产生真实 scroll 事件，
+    //    绝不用 evaluate 派发 KeyboardEvent 或直接赋 scrollTop 冒充。
+    expect(
+      await page.getAttribute('[data-testid="history"]', "data-following"),
+      `${station}: action starts in the scrolled-away state`,
+    ).toBe("false");
+    await expect(
+      page.locator('[data-testid="history"]'),
+      `${station}: the scroll region carries an accessible name`,
+    ).toHaveAccessibleName("消息历史");
+    await page.locator('[data-testid="history"]').focus();
+    // round11（P1-4）：真实 End 键。虚拟列表在平滑滚动途中会因行高实测
+    // 回填而增长内容（scrollHeight 变大），单次 End 可能停在回底阈值带
+    // 之外——真实用户会再按一次。有界的真实按键重试（每次都是
+    // page.keyboard.press 的真实用户输入，绝无程序化 scrollTop 赋值）。
+    let resumedFollowing = false;
+    for (let press = 0; press < 4 && !resumedFollowing; press += 1) {
+      await page.keyboard.press("End");
+      try {
+        await expect
+          .poll(() => page.getAttribute('[data-testid="history"]', "data-following"), {
+            timeout: 2_500,
+            intervals: [80, 160],
+          })
+          .toBe("true");
+        resumedFollowing = true;
+      } catch {
+        // 平滑滚动被内容增长截断：再按一次 End。
+      }
+    }
+    expect(resumedFollowing, `${station}: real End resumed following`).toBe(true);
+    await waitAnchorConverged(page, `${station} user return bottom`);
+    const returned = await measure(page);
+    assertCoreGeometry(returned, `${station} user return bottom`);
+    assertAnchoredLatest(returned, `${station} user return bottom`);
+    expect(
+      returned.visibleIds[returned.visibleIds.length - 1],
+      `${station}: the latest row is fully visible after the real End`,
+    ).toBe(LAST_MID);
+    await page.screenshot({ path: `${SHOTS11}/user-return-bottom-${station}.png` });
+  }
+
+  // ---- round11（P1-4.5）：跟随恢复后的真实状态更新——通过真实发送追加
+  // 一条新消息，流式回显的 pending 用户行必须被自动跟随完整显示；终态后
+  // 最新行完整可见、无草稿残留。----
+  {
+    // 真实发送需要服务端年龄/同意门（本测试独立运行时也要自足）。
+    await prepareGenerationAccess(session.accessToken);
+    const input = page.locator('[data-testid="message-input"] input');
+    await expect(input).toBeVisible();
+    await input.fill("删除之后回到底部，这条新消息必须被自动跟随。");
+    await page.getByTestId("send").click();
+    // round11：流式回显行（__pending_user__）在合成 provider 下的存在窗口
+    // 可能短于一次轮询间隔——跟随验收以终态为准：新 user 行真实到达
+    // （store/列表可见）+ 终态后最新行完整可见（自动跟随语义）。
+    // 真实 POST 到达后，把同内容的合成行接入补页列表（advanceHistory
+    // 的 GET 被本测试拦截，新行经由 liveExtras 到达 UI）。
+    await page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        /\/api\/v1\/conversations\/[^/]+\/generations$/.test(
+          new URL(response.url()).pathname,
+        ) &&
+        response.ok(),
+      { timeout: 15_000 },
+    );
+    liveExtras.value = [
+      {
+        messageId: "live-user-1",
+        conversationId,
+        role: "user",
+        content: "删除之后回到底部，这条新消息必须被自动跟随。",
+      },
+      {
+        messageId: "live-assistant-1",
+        conversationId,
+        role: "assistant",
+        content: "这条新消息被自动跟随完整显示。",
+      },
+    ];
+    await expect(
+      page.locator('[data-testid="chat-message"].user').filter({
+        hasText: "删除之后回到底部，这条新消息必须被自动跟随。",
+      }),
+      "the new user turn really arrived",
+    ).toHaveCount(1, { timeout: 15_000 });
+    await expect(page.getByTestId("status")).toContainText("已完成（安全终态）", {
+      timeout: 30_000,
     });
-    await expect
-      .poll(() => page.getAttribute('[data-testid="history"]', "data-following"), {
-        timeout: 6_000,
-        intervals: [60, 120],
-      })
-      .toBe("true");
-
-    // 跟随恢复后的布局变化自动重锚到底部：恢复工作台视口 → 最新种子行完整
-    // 落入可视区（自动跟随语义的可观测证据）。
-    await setViewport(page, 1200, 900);
     await expect
       .poll(
         async () => {
@@ -2242,9 +2412,16 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
         },
         { timeout: 10_000, intervals: [120, 240] },
       )
-      .toBe(LAST_MID);
-    await waitPreserveSettled(page, "user-return-bottom follow re-anchor");
-    await page.screenshot({ path: `${SHOTS10}/user-return-bottom.png` });
+      .toBe("live-assistant-1");
+    const afterSend = await measure(page);
+    assertCoreGeometry(afterSend, "post-send auto follow");
+    // 新行真实到达并被自动跟随完整显示（新尾部 assistant 完整可见）。
+    expect(
+      afterSend.visibleIds[afterSend.visibleIds.length - 1],
+      "the new tail row is followed into view",
+    ).toBe("live-assistant-1");
+    await waitAnchorConverged(page, "post-send follow settle");
+    await page.screenshot({ path: `${SHOTS11}/new-message-followed.png` });
   }
 
   // ---- 程序化 scrollTop 遍历（P1-5 #7 如实命名：这不是用户行为验收；
@@ -2322,5 +2499,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
   const resumed = await measure(page);
   assertCoreGeometry(resumed, "resumed follow");
   assertAnchoredLatest(resumed, "resumed follow");
-  expect(resumed.visibleIds[resumed.visibleIds.length - 1]).toBe(LAST_MID);
+  // round11：真实发送已在列表尾部追加新行——尾部锚定断言以实际最后一行
+  // （新 assistant 行）为准，消息总数随之 +2。
+  expect(resumed.visibleIds[resumed.visibleIds.length - 1]).toBe("live-assistant-1");
 });
