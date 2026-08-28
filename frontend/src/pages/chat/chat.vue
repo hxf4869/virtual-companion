@@ -1636,15 +1636,48 @@ export default defineComponent({
             settledPreserveBasis.mid,
             settledPreserveBasis.offset,
           );
+        } else if (
+          settledPreserveBasis &&
+          consumePendingDeleteHandoffIfValid(settledPreserveBasis.mid)
+        ) {
+          // round10（P1-4）：基准锚行刚被真删除且存在冻结快照——按 handoff
+          // 直接重建，绝不在此刻同步重捕获（重渲染前的 DOM 仍含已删行，
+          // 会把跳变后的过渡视图当新真值，坐标系随后崩塌）。
+          return;
         } else {
-          // 基准缺失或其锚行已被真删除：以当下视图另立新基准（用户位置
-          // 的语义只随真实滚动/删除移交更换，死锚不构成可保持的基准）。
+          // 基准缺失或其锚行已被真删除且无有效快照：以当下视图另立新基准
+          // （用户位置的语义只随真实滚动/删除移交更换，死锚不构成可保持
+          // 的基准）。
           if (settledPreserveBasis) settledPreserveBasis = null;
           beginPreserveTransaction();
         }
         return;
       }
       markPreserveLayoutDirty();
+    }
+
+    /**
+     * round10（P1-4）：按删除请求身份消费冻结的幸存行快照。只有全部身份
+     * （会话/follow 世代/泵令牌/宿主节点）仍匹配时才消费并以快照重建事务；
+     * 否则返回 false（走重捕获路径），绝不使用陈旧落点。
+     */
+    function consumePendingDeleteHandoffIfValid(deletedMid: string): boolean {
+      const handoff = pendingDeleteHandoffs.get(deletedMid);
+      if (!handoff) return false;
+      const host = historyNode();
+      const valid =
+        handoff.conversationId === store.conversationId &&
+        handoff.ownershipGeneration === followGen &&
+        handoff.pumpEpoch === preservePumpEpoch &&
+        handoff.host === host;
+      if (!valid) {
+        pendingDeleteHandoffs.delete(deletedMid);
+        return false;
+      }
+      pendingDeleteHandoffs.delete(deletedMid);
+      settledPreserveBasis = null;
+      spawnPreserveTransaction(handoff.survivorMid, handoff.offset);
+      return true;
     }
 
     /**
