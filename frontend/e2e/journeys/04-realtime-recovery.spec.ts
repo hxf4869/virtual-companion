@@ -90,21 +90,27 @@ test("reload recovers after the first SSE connection is interrupted", async ({
 });
 
 // ---------------------------------------------------------------------------
-// round10（P2-3）：真实经过 Vite proxy 的 SSE 断开传播证据。
+// round11（P1-1/P2-2）：真实经过 Vite proxy 的 SSE 断开传播证据（脱敏版）。
 //
-// 已实证的后端事实（round10 手动取证，DB 直查 vc.sensitive_route_lease）：
-// runtime 的 RealtimeStreamController 在 controller 线程内同步 complete()
-// emitter（Spring 7 的 async-启动前完成路径不触发 onCompletion 回调），
-// 因此【每条】SSE 租约都会滞留到 130s TTL——无论客户端断开与否、无论流
-// 自然完成还是中途 abort。租约释放是后端缺陷，本轮不修改后端；vite 代理
-// 钩子无法弥补它，但钩子本身的行为必须被真实证明：
-//   1. 建立真实代理链路（浏览器同源 fetch → vite /api 代理 → runtime），
-//      收到真实 SSE 事件；
-//   2. 浏览器 abort 后，代理钩子在严格时限内销毁上游（vite dev server
-//      日志中的 `[vite-proxy] ... upstream destroyed` 行，直接证据）；
-//   3. 下一次订阅在显著短于 130s TTL 的严格时限内成功（200 + 收到事件）。
+// 本测试只证明前端侧的两件事：
+//   1. 建立真实代理链路（浏览器同源 fetch → vite /api 代理 → runtime）并
+//      收到真实 SSE 字节；浏览器 abort 后，代理钩子在严格时限内关闭上游
+//      transport（vite dev server 日志中的固定事件行，直接证据）；
+//   2. 代理日志完全脱敏——新增日志片段不含 `?`/`secret=`/`ticketId=`，
+//      也不含本次测试实际持有的 secret 原值。
+//
+// 后端事实（round10 手动取证，DB 直查 vc.sensitive_route_lease）：runtime
+// 的 RealtimeStreamController 在 controller 线程内同步 complete() emitter
+// （Spring 7 的 async-启动前完成路径不触发 onCompletion 回调），因此【每条】
+// SSE 租约都滞留到 130s TTL——无论客户端断开与否、无论流自然完成还是中途
+// abort。这是后端缺陷（READY_FOR_OWNER：第 4 条流可能 429），本轮不修改
+// 后端；vite 代理钩子无法弥补它。后端租约上限为 3，因此本测试不把“下一条
+// 订阅成功”当作租约释放的证据——那没有证明力；也不等待 130s TTL，不用
+// 重试掩盖。
 // ---------------------------------------------------------------------------
-test("a browser abort of a proxied SSE subscription propagates: the proxy destroys the upstream and the next subscription succeeds promptly", async ({
+const PROXY_CLOSE_EVENT = "[vite-proxy] upstream transport closed after client disconnect";
+
+test("a browser abort of a proxied SSE subscription closes the proxy upstream transport, and the proxy log stays credential-free", async ({
   page,
   request,
 }: {
@@ -137,6 +143,7 @@ test("a browser abort of a proxied SSE subscription propagates: the proxy destro
   const logSizeBefore = (execSync(`stat -f %z ${h5Log} || stat -c %s ${h5Log}`).toString().trim());
   expect(Number.isFinite(Number(logSizeBefore)), "vite dev server log readable").toBe(true);
 
+  // secret 只回到测试进程内存做“日志不含原值”断言；绝不打印或落盘。
   const report = await page.evaluate(
     async ({ token, conversationId }) => {
       // 后端对状态变更请求要求 double-submit CSRF：从 vc_csrf cookie 读取
@@ -159,6 +166,7 @@ test("a browser abort of a proxied SSE subscription propagates: the proxy destro
         status: number;
         contentType: string;
         events: string;
+        secret: string;
         abort(): void;
         settled(): Promise<void>;
       }> => {
@@ -214,6 +222,7 @@ test("a browser abort of a proxied SSE subscription propagates: the proxy destro
           get events() {
             return state.events;
           },
+          secret: ticket.secret,
           abort(): void {
             controller.abort();
           },
@@ -251,28 +260,14 @@ test("a browser abort of a proxied SSE subscription propagates: the proxy destro
       const firstEvents = first.events;
 
       // 2) 浏览器主动 abort（未消费完即断开）。
-      const abortAt = performance.now();
       first.abort();
       await first.settled();
-
-      // 3) 下一次订阅：显著短于 130s TTL 的严格时限内成功，并收到事件。
-      const second = await subscribe(generationId, "second");
-      const secondAfterMs = performance.now() - abortAt;
-      const secondStatus = second.status;
-      for (let i = 0; i < 40 && second.events.length === 0; i += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-      const secondEvents = second.events;
-      second.abort();
-      await second.settled();
       return {
         generationId,
         firstStatus: first.status,
         firstContentType: first.contentType,
         firstEvents,
-        secondStatus,
-        secondEvents,
-        secondAfterMs,
+        firstSecret: first.secret,
       };
     },
     { token: session.accessToken, conversationId: context.conversationId },
@@ -289,8 +284,8 @@ test("a browser abort of a proxied SSE subscription propagates: the proxy destro
     "real SSE bytes were received through the proxy chain",
   ).toBeGreaterThan(0);
 
-  // 代理端及时断开上游：abort 后严格时限内出现销毁日志（直接证据）。
-  let destroyLine = "";
+  // 代理端及时关闭上游 transport：abort 后严格时限内出现固定关闭事件。
+  // 事件行是唯一被读取的内容；测试不得把代理日志原文再次输出。
   await expect
     .poll(
       () => {
@@ -301,39 +296,35 @@ test("a browser abort of a proxied SSE subscription propagates: the proxy destro
               .trim(),
           );
           if (size <= Number(logSizeBefore)) return "";
-          destroyLine = execSync(
-            `tail -c +$(( ${Number(logSizeBefore)} + 1 )) ${h5Log} | grep -F "upstream destroyed: /api/v1/realtime/streams/" | tail -1 || true`,
+          const added = execSync(
+            `tail -c +$(( ${Number(logSizeBefore)} + 1 )) ${h5Log}`,
           )
             .toString()
             .trim();
-          return destroyLine;
+          return added.includes(PROXY_CLOSE_EVENT) ? PROXY_CLOSE_EVENT : "";
         } catch {
           return "";
         }
       },
       { timeout: 10_000, intervals: [200, 500] },
     )
-    .not.toBe("");
-  expect(destroyLine, "the vite proxy destroyed the upstream promptly").toContain(
-    "upstream destroyed: /api/v1/realtime/streams/",
-  );
+    .toBe(PROXY_CLOSE_EVENT);
 
-  // 下一次订阅：200 + 收到事件 + 严格时限（<< 130s TTL）。
+  // 脱敏判据（round11 P1-1）：新增日志片段不含查询串/凭据参数形状，也不含
+  // 本次测试实际持有的 secret 原值。
+  const addedLog = execSync(
+    `tail -c +$(( ${Number(logSizeBefore)} + 1 )) ${h5Log}`,
+  )
+    .toString()
+    .trim();
   expect(
-    report.secondStatus,
-    "the next subscription after the abort is admitted promptly",
-  ).toBe(200);
+    addedLog.includes("?"),
+    "the added proxy log must not contain any query string",
+  ).toBe(false);
+  expect(addedLog.includes("secret="), "no secret= parameter in the log").toBe(false);
+  expect(addedLog.includes("ticketId="), "no ticketId= parameter in the log").toBe(false);
   expect(
-    (report.secondEvents ?? "").length,
-    "the next subscription received real SSE bytes",
-  ).toBeGreaterThan(0);
-  expect(
-    report.secondAfterMs,
-    `the next subscription succeeded in ${report.secondAfterMs?.toFixed(0)}ms — dramatically shorter than the 130s lease TTL`,
-  ).toBeLessThan(10_000);
-  console.info(
-    `[round10 P2-3 evidence] gen=${report.generationId} ` +
-      `proxyDestroy="${destroyLine.slice(0, 120)}" ` +
-      `nextSubscriptionMs=${report.secondAfterMs?.toFixed(0)}`,
-  );
+    addedLog.includes(report.firstSecret ?? "__no_secret__"),
+    "the live secret value must never reach the proxy log",
+  ).toBe(false);
 });
