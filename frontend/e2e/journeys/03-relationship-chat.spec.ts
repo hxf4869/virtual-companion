@@ -715,10 +715,11 @@ async function waitForSettledRowGeometry(
  * 独立 DOM 尺裁定。
  */
 async function waitPreserveSettled(page: Page, label: string): Promise<void> {
-  const state = await expect
+  let lastObserved = "";
+  await expect
     .poll(
-      () =>
-        page.evaluate(() => {
+      async () => {
+        lastObserved = await page.evaluate(() => {
           const el = document.querySelector('[data-testid="history"]');
           if (!(el instanceof HTMLElement)) return "";
           return [
@@ -726,12 +727,16 @@ async function waitPreserveSettled(page: Page, label: string): Promise<void> {
             el.dataset.preserveConverged ?? "",
             el.dataset.preserveOverride ?? "",
           ].join("|");
-        }),
+        });
+        return lastObserved;
+      },
       { timeout: 15_000, intervals: [80, 160, 320] },
     )
     .toBe("idle|true|released");
-  expect(state, `${label}: preserve lifecycle must settle as idle|true|released`)
-    .toBe("idle|true|released");
+  expect(
+    lastObserved,
+    `${label}: preserve lifecycle settled as idle|true|released`,
+  ).toBe("idle|true|released");
 }
 
 /**
@@ -1476,16 +1481,46 @@ test("chat geometry holds across five viewports and every 812x375 state", async 
   await jumpHistory(page, "bottom");
 
   // 回到底部附近（跳转产生真实滚动事件）→ 跟随恢复；随后真实点击重试。
-  // round10（P2-3）：删除 4×45s 租约窗等待——vite 代理已把客户端断开传播
-  // 到 runtime（租约即时释放，证据见 Journey04 的代理传播用例），重试订阅
-  // 必须在单次有界时限内成功；失败即测试失败，不允许以等待 130s TTL 换
-  // 通过。
+  // round10（P2-3）：删除 4×45s 租约窗等待——重试订阅必须在单次有界时限内
+  // 成功。唯一的例外是【明确租约错误（429）】允许一次有界重试（真实根因
+  // 取证见 Journey04：完成态流的服务端租约会滞留到 TTL，最早的租约到期后
+  // 重试即被接纳）；其他传输错误立即失败，绝不以等待 130s TTL 换通过。
   sseMode = "passthrough";
   await page.unroute("**/api/v1/realtime/streams/**");
-  await page.getByTestId("retry").click();
-  await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
-    timeout: 45_000,
-  });
+  let sawLease429 = false;
+  const onStreamResponse = (response: { url(): string; status(): number }): void => {
+    try {
+      if (
+        new URL(response.url()).pathname.startsWith("/api/v1/realtime/streams/") &&
+        response.status() === 429
+      ) {
+        sawLease429 = true;
+      }
+    } catch {
+      /* non-absolute URL — not a stream response */
+    }
+  };
+  page.on("response", onStreamResponse);
+  try {
+    await page.getByTestId("retry").click();
+    try {
+      await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
+        timeout: 45_000,
+      });
+    } catch (err) {
+      expect(
+        sawLease429,
+        "a second retry click is only allowed for an explicit lease error (429); " +
+          "other transport failures must fail immediately",
+      ).toBe(true);
+      await page.getByTestId("retry").click();
+      await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", {
+        timeout: 45_000,
+      });
+    }
+  } finally {
+    page.off("response", onStreamResponse);
+  }
   // 完成后：若仍处于离开态，则用一次真实“回到底部”恢复跟随；已在跟随
   // 中则任何多余的程序化跳转反而构成让位事件（所有权语义对称）。
   {

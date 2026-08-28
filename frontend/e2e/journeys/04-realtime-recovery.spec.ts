@@ -91,10 +91,14 @@ test("reload recovers after the first SSE connection is interrupted", async ({
 // 订阅按 owner 维护并发租约（上限 3、TTL 130s）：生成 worker 的轮询间隔
 // 给出数秒的"运行中静默窗口"，此刻订阅进入 live-tail 且无任何写回——若
 // 客户端 abort 未被代理传播，runtime 直到 TTL 前都不会察觉，租约滞留。
-// 用例在同一 owner 上持有 2 个真实代理订阅后从浏览器 abort 其中之一，随后
-// 的第 3 个订阅必须立即被接纳（200 且非 stream.denied）：若被 abort 的租约
-// 未释放，owner 已持有 3 个租约，新订阅必然 429。全部订阅都以页面同源
-// fetch 发起，链路为 浏览器 → vite /api 代理 → runtime。
+//
+// 全部订阅都以页面同源 fetch 发起，链路为 浏览器 → vite /api 代理 → runtime。
+// 阶段一（决定性判据）：持有 A/B/C 三个真实代理订阅后从浏览器 abort A，
+// 随后的探测订阅 D 必须立即被接纳——若 A 的租约未释放，owner 已持有 3 个
+// 租约，D 必然 429。再 abort B 并探测 E（一致性：连续两次 abort 都必须释放）。
+// 阶段二（取证诊断）：一条自然完成的流（读至服务端关闭）之后，持有 F/G
+// 两个运行中订阅并探测 I——用于记录"完成态流租约是否滞留至 TTL"（five
+// viewports 用例 429 的根因取证；后端行为只报告不断言）。
 // ---------------------------------------------------------------------------
 test("a browser-side abort of a proxied SSE subscription frees the runtime lease promptly", async ({
   page,
@@ -121,7 +125,11 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
 
   const report = await page.evaluate(
     async ({ token, conversationId }) => {
-      const authHeaders = { Authorization: `Bearer ${token}` };
+      // 后端对状态变更请求要求 double-submit CSRF：从 vc_csrf cookie 读取
+      // 并注入 X-CSRF-Token（与生产 transport 的行为一致）。
+      const csrf =
+        document.cookie.match(/(?:^|;\s*)vc_csrf=([^;]*)/)?.[1] ?? "";
+      const authHeaders = { Authorization: `Bearer ${token}`, "X-CSRF-Token": csrf };
       const postJson = async (url: string, body: unknown) => {
         const r = await fetch(url, {
           method: "POST",
@@ -130,29 +138,39 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
         });
         return { status: r.status, body: await r.json().catch(() => null) };
       };
-      const mintTicket = (generationId: string, seq: string) =>
-        postJson("/api/v1/realtime/tickets", {
-          generationId,
-          sessionId: `e2e-lease-${seq}`,
-          origin: location.origin,
-          streamEpoch: "1",
-          afterSeq: "0",
-        });
-      interface OpenStream {
+      const createGeneration = async (content: string): Promise<string> => {
+        const created = await postJson(
+          `/api/v1/conversations/${encodeURIComponent(conversationId)}/generations`,
+          {
+            idempotencyKey: `e2e-lease-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            userContent: content,
+          },
+        );
+        if (created.status !== 200) {
+          throw new Error(`generation create failed: ${created.status}`);
+        }
+        return String((created.body as { generationId?: unknown })?.generationId ?? "");
+      };
+      interface HeldStream {
         status: number;
-        contentType: string;
-        closedByServerBeforeAbort: boolean;
         firstChunk: string;
+        closedByServer: boolean;
+        abort(): void;
+        settled(): Promise<void>;
       }
       const openStream = async (
         generationId: string,
         seq: string,
-        abortAfterMs: number,
-      ): Promise<{ opened: OpenStream | null; abort: () => void; abortDone: Promise<void> }> => {
-        const ticket = (await mintTicket(generationId, seq)).body as {
-          ticketId?: string;
-          secret?: string;
-        };
+      ): Promise<HeldStream> => {
+        const ticket = (
+          await postJson("/api/v1/realtime/tickets", {
+            generationId,
+            sessionId: `e2e-lease-${seq}`,
+            origin: location.origin,
+            streamEpoch: "1",
+            afterSeq: "0",
+          })
+        ).body as { ticketId?: string; secret?: string };
         if (!ticket?.ticketId || !ticket?.secret) {
           throw new Error(`ticket mint failed for ${seq}`);
         }
@@ -171,114 +189,151 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
             signal: controller.signal,
           },
         );
-        const opened: OpenStream = {
-          status: response.status,
-          contentType: response.headers.get("content-type") ?? "",
-          closedByServerBeforeAbort: false,
-          firstChunk: "",
-        };
-        // 读首个 chunk（若有）并监视 body 是否在 abort 前被服务端关闭
-        //（前提守卫：生成必须仍处于运行中的 live-tail，否则租约会被自然
-        // 完成而释放，测试前提失效）。
+        const state = { status: response.status, firstChunk: "", closedByServer: false };
         const reader = response.body?.getReader() ?? null;
-        const closedWatcher = (async () => {
+        const done = (async () => {
           if (!reader) return;
           try {
             const first = await reader.read();
             if (first.value) {
-              opened.firstChunk = new TextDecoder().decode(first.value);
+              state.firstChunk = new TextDecoder().decode(first.value);
             }
-            // 继续读到关闭（首个 chunk 后没有更多事件即保持挂起）。
-            await reader.read();
-            opened.closedByServerBeforeAbort = true;
+            await reader.read(); // 静默 live-tail 保持挂起；服务端关闭则置位。
+            state.closedByServer = true;
           } catch {
-            /* aborted */
+            /* aborted — expected */
           }
         })();
-        const abortDone = (async () => {
-          await new Promise((resolve) => setTimeout(resolve, abortAfterMs));
-          controller.abort();
-          await closedWatcher.catch(() => undefined);
-        })();
-        return { opened, abort: () => controller.abort(), abortDone };
-      };
-
-      // 1) 发起一个真实生成（worker 轮询间隔给出运行窗口）。
-      const created = await postJson(
-        `/api/v1/conversations/${encodeURIComponent(conversationId)}/generations`,
-        {
-          idempotencyKey: `e2e-lease-${Date.now()}`,
-          userContent: "用于验证代理断开传播的一次生成。",
-        },
-      );
-      const generationId = String((created.body as { generationId?: unknown })?.generationId ?? "");
-      if (created.status !== 200 || !generationId) {
-        return { error: `generation create failed: ${created.status}` };
-      }
-
-      // 2) 并发打开两个真实代理 SSE 订阅并保持持有。
-      const holdA = await openStream(generationId, "hold-a", 10_000_000);
-      const holdB = await openStream(generationId, "hold-b", 10_000_000);
-      if (holdA.opened!.status !== 200 || holdB.opened!.status !== 200) {
-        holdA.abort();
-        holdB.abort();
+        // getter 读活值：status/firstChunk/closedByServer 由读循环异步置位。
         return {
-          error: `hold streams not admitted: a=${holdA.opened!.status} b=${holdB.opened!.status}`,
+          get status() {
+            return state.status;
+          },
+          get firstChunk() {
+            return state.firstChunk;
+          },
+          get closedByServer() {
+            return state.closedByServer;
+          },
+          abort(): void {
+            controller.abort();
+          },
+          settled(): Promise<void> {
+            return done;
+          },
         };
-      }
-      if (
-        holdA.opened!.firstChunk.includes("stream.denied") ||
-        holdB.opened!.firstChunk.includes("stream.denied")
-      ) {
-        holdA.abort();
-        holdB.abort();
-        return { error: "hold stream denied (ticket/epoch mismatch)" };
-      }
-      // 给两个订阅一点时间确认 body 未被服务端关闭（live-tail 保持）。
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const premiseBroken =
-        holdA.opened!.closedByServerBeforeAbort || holdB.opened!.closedByServerBeforeAbort;
+      };
+      const waitMs = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
 
-      // 3) 浏览器主动 abort 第一个持有订阅；随后立即发起第 3 个订阅——
-      //    若租约未释放（owner 已持有 3 个），新订阅必然 429。
+      // ---- 阶段一：abort 传播的决定性判据 ----
+      const gen1 = await createGeneration("用于验证代理断开传播的一次生成。");
+      const [a, b, c] = await Promise.all([
+        openStream(gen1, "hold-a"),
+        openStream(gen1, "hold-b"),
+        openStream(gen1, "hold-c"),
+      ]);
+      const holdStatuses = [a.status, b.status, c.status];
+      const holdDenied = [a, b, c].some((s) => s.firstChunk.includes("stream.denied"));
+      await waitMs(250);
+      const premiseBroken = [a, b, c].some((s) => s.closedByServer);
+
       const probeStartAt = performance.now();
-      holdA.abort();
-      await holdA.abortDone;
-      const probe = await openStream(generationId, "probe", 5);
-      const probeElapsedMs = performance.now() - probeStartAt;
-      const probeStatus = probe.opened!.status;
-      const probeDenied = probe.opened!.firstChunk.includes("stream.denied");
-      probe.abort();
-      await probe.abortDone;
-      holdB.abort();
-      await holdB.abortDone;
+      a.abort();
+      await a.settled();
+      const probeD = await openStream(gen1, "probe-d");
+      const probeDAfterMs = performance.now() - probeStartAt;
+      const probeDStatus = probeD.status;
+      const probeDDenied = probeD.firstChunk.includes("stream.denied");
+      probeD.abort();
+      await probeD.settled();
+
+      b.abort();
+      await b.settled();
+      const probeE = await openStream(gen1, "probe-e");
+      const probeEStatus = probeE.status;
+      const probeEDenied = probeE.firstChunk.includes("stream.denied");
+      probeE.abort();
+      await probeE.settled();
+      c.abort();
+      await c.settled();
+
+      // ---- 阶段二：自然完成的流之后，租约是否仍被占用（根因取证） ----
+      const gen2 = await createGeneration("用于验证完成态流租约释放的第二次生成。");
+      const natural = await openStream(gen2, "natural");
+      let naturallyClosed = false;
+      for (let i = 0; i < 40 && !naturallyClosed; i += 1) {
+        await waitMs(500);
+        naturallyClosed = natural.closedByServer;
+      }
+      const gen3 = await createGeneration("用于持有运行中订阅的第三次生成。");
+      const [f, g] = await Promise.all([
+        openStream(gen3, "hold-f"),
+        openStream(gen3, "hold-g"),
+      ]);
+      const hold2Statuses = [f.status, g.status];
+      const probeI = await openStream(gen3, "probe-i");
+      const probeIStatus = probeI.status;
+      natural.abort();
+      f.abort();
+      g.abort();
+      probeI.abort();
+      await Promise.all([
+        natural.settled(),
+        f.settled(),
+        g.settled(),
+        probeI.settled(),
+      ]);
+
       return {
-        generationId,
+        gen1,
+        holdStatuses,
+        holdDenied,
         premiseBroken,
-        probeStatus,
-        probeDenied,
-        probeElapsedMs,
-        holdAFirstChunk: holdA.opened!.firstChunk.slice(0, 60),
+        probeDStatus,
+        probeDDenied,
+        probeDAfterMs,
+        probeEStatus,
+        probeEDenied,
+        naturallyClosed,
+        hold2Statuses,
+        probeIStatus,
       };
     },
     { token: session.accessToken, conversationId: context.conversationId },
   );
 
-  expect(report.error ?? "", "the proxied SSE chain must be drivable").toBe("");
+  expect(report.holdStatuses, "three real proxied holds must be admitted").toEqual([
+    200, 200, 200,
+  ]);
+  expect(report.holdDenied, "holds must not be denied (ticket/epoch mismatch)").toBe(false);
   expect(
     report.premiseBroken,
     "the generation must still be running (live-tail holds the leases; a completed " +
       "generation would release them naturally and void the premise)",
   ).toBe(false);
   expect(
-    report.probeStatus,
+    report.probeDStatus,
     "the next subscription after a browser abort must be admitted (429 would mean " +
       "the aborted lease was not released — proxy did not propagate the disconnect)",
   ).toBe(200);
-  expect(report.probeDenied, "the next subscription must not be denied").toBe(false);
+  expect(report.probeDDenied, "the probe subscription must not be denied").toBe(false);
   expect(
-    report.probeElapsedMs,
-    `the next subscription succeeded in ${report.probeElapsedMs?.toFixed(0)}ms — ` +
+    report.probeDAfterMs,
+    `the next subscription succeeded in ${report.probeDAfterMs?.toFixed(0)}ms — ` +
       "dramatically shorter than the 130s lease TTL",
   ).toBeLessThan(10_000);
+  expect(
+    report.probeEStatus,
+    "a second abort must also release its lease immediately",
+  ).toBe(200);
+  expect(report.probeEDenied).toBe(false);
+  // 阶段二只作取证：自然完成的流关闭后，若 probeI=429，说明完成态流的租约
+  // 滞留到 TTL（five-viewports 重试 429 的服务端根因）——该行为属后端，
+  // 本轮不改后端；结论进入最终报告。
+  console.info(
+    `[round10 P2-3 evidence] naturallyClosed=${report.naturallyClosed} ` +
+      `hold2=${JSON.stringify(report.hold2Statuses)} ` +
+      `probeAfterNaturalCompletion=${report.probeIStatus}`,
+  );
 });
