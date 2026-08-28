@@ -15,15 +15,21 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:8080",
         changeOrigin: false,
-        // round9 E2E 排障：客户端中止流式请求（取消生成、页面离开）时，
-        // http-proxy 默认不关闭上游连接——runtime 的 SSE 并发租约（上限 3、
-        // TTL 130s）要等写失败或超时才释放，期间同 owner 的新订阅一律 429。
-        // 生产环境客户端直连 runtime，断开立即可见；此钩子让代理层恢复
-        // 同等的断开传播语义。
+        // round9/round10 E2E：客户端中止流式请求（取消生成、页面离开）时，
+        // http-proxy 默认不关闭上游连接。此钩子恢复断开传播语义并打日志——
+        // E2E（Journey04）读取 vite dev server 日志作为"浏览器 abort → 代理
+        // 端及时销毁上游"的真实链路证据。runtime 侧 SSE 租约的释放缺陷
+        // （controller 在 async 启动前 complete，onCompletion 回调不触发，
+        // 租约滞留至 130s TTL）属后端问题，本轮不动后端，见 Journey04 注释。
         configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq, _req, res) => {
+          proxy.on("proxyReq", (proxyReq, req, res) => {
             res.on("close", () => {
-              if (!res.writableEnded) proxyReq.destroy();
+              if (!res.writableEnded) {
+                console.info(
+                  `[vite-proxy] client disconnected before response end; upstream destroyed: ${req.url}`,
+                );
+                proxyReq.destroy();
+              }
             });
           });
         },

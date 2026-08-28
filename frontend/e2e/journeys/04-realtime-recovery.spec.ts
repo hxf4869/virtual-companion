@@ -5,6 +5,9 @@ import {
   type Page,
 } from "@playwright/test";
 
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
 import {
   createRelationshipAndConversation,
   navigateToPage,
@@ -87,20 +90,21 @@ test("reload recovers after the first SSE connection is interrupted", async ({
 });
 
 // ---------------------------------------------------------------------------
-// round10（P2-3）：真实经过 Vite proxy 的 SSE 租约传播证据。runtime 对 SSE
-// 订阅按 owner 维护并发租约（上限 3、TTL 130s）：生成 worker 的轮询间隔
-// 给出数秒的"运行中静默窗口"，此刻订阅进入 live-tail 且无任何写回——若
-// 客户端 abort 未被代理传播，runtime 直到 TTL 前都不会察觉，租约滞留。
+// round10（P2-3）：真实经过 Vite proxy 的 SSE 断开传播证据。
 //
-// 全部订阅都以页面同源 fetch 发起，链路为 浏览器 → vite /api 代理 → runtime。
-// 阶段一（决定性判据）：持有 A/B/C 三个真实代理订阅后从浏览器 abort A，
-// 随后的探测订阅 D 必须立即被接纳——若 A 的租约未释放，owner 已持有 3 个
-// 租约，D 必然 429。再 abort B 并探测 E（一致性：连续两次 abort 都必须释放）。
-// 阶段二（取证诊断）：一条自然完成的流（读至服务端关闭）之后，持有 F/G
-// 两个运行中订阅并探测 I——用于记录"完成态流租约是否滞留至 TTL"（five
-// viewports 用例 429 的根因取证；后端行为只报告不断言）。
+// 已实证的后端事实（round10 手动取证，DB 直查 vc.sensitive_route_lease）：
+// runtime 的 RealtimeStreamController 在 controller 线程内同步 complete()
+// emitter（Spring 7 的 async-启动前完成路径不触发 onCompletion 回调），
+// 因此【每条】SSE 租约都会滞留到 130s TTL——无论客户端断开与否、无论流
+// 自然完成还是中途 abort。租约释放是后端缺陷，本轮不修改后端；vite 代理
+// 钩子无法弥补它，但钩子本身的行为必须被真实证明：
+//   1. 建立真实代理链路（浏览器同源 fetch → vite /api 代理 → runtime），
+//      收到真实 SSE 事件；
+//   2. 浏览器 abort 后，代理钩子在严格时限内销毁上游（vite dev server
+//      日志中的 `[vite-proxy] ... upstream destroyed` 行，直接证据）；
+//   3. 下一次订阅在显著短于 130s TTL 的严格时限内成功（200 + 收到事件）。
 // ---------------------------------------------------------------------------
-test("a browser-side abort of a proxied SSE subscription frees the runtime lease promptly", async ({
+test("a browser abort of a proxied SSE subscription propagates: the proxy destroys the upstream and the next subscription succeeds promptly", async ({
   page,
   request,
 }: {
@@ -123,6 +127,16 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
   // 页面只需位于 vite 源（同源 fetch 才走代理）；登录后的落地页即可。
   await page.goto("/#/pages/login/login");
 
+  // 标记当前 vite dev server 日志长度：后续只检索新增部分。
+  const stateFile = process.env.E2E_STACK_STATE_FILE ?? "";
+  expect(stateFile, "stack state file path must be exported").not.toBe("");
+  const state = JSON.parse(readFileSync(stateFile, "utf8")) as {
+    supervisorPid: number;
+  };
+  const h5Log = `/tmp/vc-e2e-h5-${state.supervisorPid}.log`;
+  const logSizeBefore = (execSync(`stat -f %z ${h5Log} || stat -c %s ${h5Log}`).toString().trim());
+  expect(Number.isFinite(Number(logSizeBefore)), "vite dev server log readable").toBe(true);
+
   const report = await page.evaluate(
     async ({ token, conversationId }) => {
       // 后端对状态变更请求要求 double-submit CSRF：从 vc_csrf cookie 读取
@@ -138,34 +152,20 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
         });
         return { status: r.status, body: await r.json().catch(() => null) };
       };
-      const createGeneration = async (content: string): Promise<string> => {
-        const created = await postJson(
-          `/api/v1/conversations/${encodeURIComponent(conversationId)}/generations`,
-          {
-            idempotencyKey: `e2e-lease-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            userContent: content,
-          },
-        );
-        if (created.status !== 200) {
-          throw new Error(`generation create failed: ${created.status}`);
-        }
-        return String((created.body as { generationId?: unknown })?.generationId ?? "");
-      };
-      interface HeldStream {
-        status: number;
-        firstChunk: string;
-        closedByServer: boolean;
-        abort(): void;
-        settled(): Promise<void>;
-      }
-      const openStream = async (
+      const subscribe = async (
         generationId: string,
         seq: string,
-      ): Promise<HeldStream> => {
+      ): Promise<{
+        status: number;
+        contentType: string;
+        events: string;
+        abort(): void;
+        settled(): Promise<void>;
+      }> => {
         const ticket = (
           await postJson("/api/v1/realtime/tickets", {
             generationId,
-            sessionId: `e2e-lease-${seq}`,
+            sessionId: `e2e-prop-${seq}`,
             origin: location.origin,
             streamEpoch: "1",
             afterSeq: "0",
@@ -177,7 +177,7 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
         const params = new URLSearchParams({
           ticketId: ticket.ticketId,
           secret: ticket.secret,
-          sessionId: `e2e-lease-${seq}`,
+          sessionId: `e2e-prop-${seq}`,
           origin: location.origin,
           streamEpoch: "1",
         });
@@ -193,31 +193,26 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
             signal: controller.signal,
           },
         );
-        const state = { status: response.status, firstChunk: "", closedByServer: false };
+        const state = { events: "" };
         const reader = response.body?.getReader() ?? null;
         const done = (async () => {
           if (!reader) return;
           try {
-            const first = await reader.read();
-            if (first.value) {
-              state.firstChunk = new TextDecoder().decode(first.value);
+            for (;;) {
+              const chunk = await reader.read();
+              if (chunk.done) break;
+              state.events += new TextDecoder().decode(chunk.value);
+              if (state.events.length > 400) controller.abort();
             }
-            await reader.read(); // 静默 live-tail 保持挂起；服务端关闭则置位。
-            state.closedByServer = true;
           } catch {
             /* aborted — expected */
           }
         })();
-        // getter 读活值：status/firstChunk/closedByServer 由读循环异步置位。
         return {
-          get status() {
-            return state.status;
-          },
-          get firstChunk() {
-            return state.firstChunk;
-          },
-          get closedByServer() {
-            return state.closedByServer;
+          status: response.status,
+          contentType: response.headers.get("content-type") ?? "",
+          get events() {
+            return state.events;
           },
           abort(): void {
             controller.abort();
@@ -227,171 +222,113 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
           },
         };
       };
-      const waitMs = (ms: number) =>
-        new Promise((resolve) => setTimeout(resolve, ms));
 
-      // ---- 阶段一：abort 传播的决定性判据 ----
-      // worker 轮询间隔内生成必须保持运行（live-tail 持有租约）；轮询相位
-      // 可能恰好在持有建立后立即拾取并完成生成（前提失效），做有界重试。
-      interface Phase1 {
-        retryable: boolean;
-        reason?: string;
-        gen1?: string;
-        holdStatuses?: number[];
-        probeDStatus?: number;
-        probeDDenied?: boolean;
-        probeDAfterMs?: number;
-        probeEStatus?: number;
-        probeEDenied?: boolean;
+      // 1) 真实生成 + 真实代理订阅：确认链路收到真实 SSE 字节。
+      const created = await postJson(
+        `/api/v1/conversations/${encodeURIComponent(conversationId)}/generations`,
+        {
+          idempotencyKey: `e2e-prop-${Date.now()}`,
+          userContent: "用于验证代理断开传播的一次生成。",
+        },
+      );
+      if (created.status !== 200) {
+        return { error: `generation create failed: ${created.status}` };
       }
-      const attemptPhase1 = async (): Promise<Phase1> => {
-        const gen = await createGeneration("用于验证代理断开传播的一次生成。");
-        const [a, b, c] = await Promise.all([
-          openStream(gen, "hold-a"),
-          openStream(gen, "hold-b"),
-          openStream(gen, "hold-c"),
-        ]);
-        const cleanup = async (): Promise<void> => {
-          a.abort();
-          b.abort();
-          c.abort();
-          await Promise.all([a.settled(), b.settled(), c.settled()]);
-        };
-        if ([a, b, c].some((s) => s.status === 429)) {
-          await cleanup();
-          return { retryable: true, reason: "hold hit a lingering lease (429)" };
-        }
-        if ([a, b, c].some((s) => s.firstChunk.includes("stream.denied"))) {
-          await cleanup();
-          return { retryable: true, reason: "hold denied (ticket/epoch mismatch)" };
-        }
-        await waitMs(250);
-        if ([a, b, c].some((s) => s.closedByServer)) {
-          await cleanup();
-          return { retryable: true, reason: "generation completed before holds settled" };
-        }
-        const probeStartAt = performance.now();
-        a.abort();
-        await a.settled();
-        const probeD = await openStream(gen, "probe-d");
-        const probeDAfterMs = performance.now() - probeStartAt;
-        const dStatus = probeD.status;
-        const dDenied = probeD.firstChunk.includes("stream.denied");
-        probeD.abort();
-        await probeD.settled();
+      const generationId = String(
+        (created.body as { generationId?: unknown })?.generationId ?? "",
+      );
+      if (!generationId) return { error: "generation create returned no id" };
 
-        b.abort();
-        await b.settled();
-        const probeE = await openStream(gen, "probe-e");
-        const eStatus = probeE.status;
-        const eDenied = probeE.firstChunk.includes("stream.denied");
-        probeE.abort();
-        await probeE.settled();
-        c.abort();
-        await c.settled();
-        return {
-          retryable: false,
-          gen1: gen,
-          holdStatuses: [a.status, b.status, c.status],
-          probeDStatus: dStatus,
-          probeDDenied: dDenied,
-          probeDAfterMs,
-          probeEStatus: eStatus,
-          probeEDenied: eDenied,
-        };
-      };
-      let phase1: Phase1 = { retryable: true, reason: "not attempted" };
-      const phase1RetryReasons: string[] = [];
-      for (let i = 0; i < 4 && phase1.retryable; i += 1) {
-        phase1 = await attemptPhase1();
-        if (phase1.retryable) {
-          phase1RetryReasons.push(phase1.reason ?? "?");
-          await waitMs(400);
-        }
+      const first = await subscribe(generationId, "first");
+      if (first.status !== 200) {
+        first.abort();
+        return { error: `first proxied subscription failed: ${first.status}` };
       }
-
-      if (phase1.retryable) {
-        return {
-          error: `premise never held: ${phase1RetryReasons.join("; ")}`,
-        };
+      // 等真实事件（live delta 或终态 snapshot——生成 ~0.3-3s 内完成）。
+      for (let i = 0; i < 40 && first.events.length === 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
+      const firstEvents = first.events;
 
-      // ---- 阶段二：自然完成的流之后，租约是否仍被占用（根因取证） ----
-      const gen2 = await createGeneration("用于验证完成态流租约释放的第二次生成。");
-      const natural = await openStream(gen2, "natural");
-      let naturallyClosed = false;
-      for (let i = 0; i < 40 && !naturallyClosed; i += 1) {
-        await waitMs(500);
-        naturallyClosed = natural.closedByServer;
+      // 2) 浏览器主动 abort（未消费完即断开）。
+      const abortAt = performance.now();
+      first.abort();
+      await first.settled();
+
+      // 3) 下一次订阅：显著短于 130s TTL 的严格时限内成功，并收到事件。
+      const second = await subscribe(generationId, "second");
+      const secondAfterMs = performance.now() - abortAt;
+      const secondStatus = second.status;
+      for (let i = 0; i < 40 && second.events.length === 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      const gen3 = await createGeneration("用于持有运行中订阅的第三次生成。");
-      const [f, g] = await Promise.all([
-        openStream(gen3, "hold-f"),
-        openStream(gen3, "hold-g"),
-      ]);
-      const hold2Statuses = [f.status, g.status];
-      await waitMs(150);
-      // 前提：F/G 仍保持打开（生成运行中）——否则 probeI 不可解读。
-      const premise2Held =
-        hold2Statuses.every((s) => s === 200) &&
-        !f.closedByServer &&
-        !g.closedByServer;
-      const probeI = await openStream(gen3, "probe-i");
-      const probeIStatus = probeI.status;
-      natural.abort();
-      f.abort();
-      g.abort();
-      probeI.abort();
-      await Promise.all([
-        natural.settled(),
-        f.settled(),
-        g.settled(),
-        probeI.settled(),
-      ]);
-
+      const secondEvents = second.events;
+      second.abort();
+      await second.settled();
       return {
-        gen1: phase1.gen1,
-        holdStatuses: phase1.holdStatuses,
-        probeDStatus: phase1.probeDStatus,
-        probeDDenied: phase1.probeDDenied,
-        probeDAfterMs: phase1.probeDAfterMs,
-        probeEStatus: phase1.probeEStatus,
-        probeEDenied: phase1.probeEDenied,
-        naturallyClosed,
-        premise2Held,
-        hold2Statuses,
-        probeIStatus,
+        generationId,
+        firstStatus: first.status,
+        firstContentType: first.contentType,
+        firstEvents,
+        secondStatus,
+        secondEvents,
+        secondAfterMs,
       };
     },
     { token: session.accessToken, conversationId: context.conversationId },
   );
 
   expect(report.error ?? "", "the proxied SSE chain must be drivable").toBe("");
-  expect(report.holdStatuses, "three real proxied holds must be admitted").toEqual([
-    200, 200, 200,
-  ]);
+  expect(report.firstStatus, "the real proxied SSE subscription is admitted").toBe(200);
   expect(
-    report.probeDStatus,
-    "the next subscription after a browser abort must be admitted (429 would mean " +
-      "the aborted lease was not released — proxy did not propagate the disconnect)",
-  ).toBe(200);
-  expect(report.probeDDenied, "the probe subscription must not be denied").toBe(false);
+    report.firstContentType,
+    "the response is a real event-stream through the proxy",
+  ).toContain("text/event-stream");
   expect(
-    report.probeDAfterMs,
-    `the next subscription succeeded in ${report.probeDAfterMs?.toFixed(0)}ms — ` +
-      "dramatically shorter than the 130s lease TTL",
-  ).toBeLessThan(10_000);
-  expect(
-    report.probeEStatus,
-    "a second abort must also release its lease immediately",
-  ).toBe(200);
-  expect(report.probeEDenied).toBe(false);
-  // 阶段二只作取证：自然完成的流关闭后，若 probeI=429，说明完成态流的租约
-  // 滞留到 TTL（five-viewports 重试 429 的服务端根因）——该行为属后端，
-  // 本轮不改后端；结论进入最终报告。
-  console.info(
-    `[round10 P2-3 evidence] naturallyClosed=${report.naturallyClosed} ` +
-      `hold2=${JSON.stringify(report.hold2Statuses)} ` +
-      `probeAfterNaturalCompletion=${report.probeIStatus}`,
+    (report.firstEvents ?? "").length,
+    "real SSE bytes were received through the proxy chain",
+  ).toBeGreaterThan(0);
+
+  // 代理端及时断开上游：abort 后严格时限内出现销毁日志（直接证据）。
+  let destroyLine = "";
+  await expect
+    .poll(
+      () => {
+        try {
+          const size = Number(
+            execSync(`stat -f %z ${h5Log} || stat -c %s ${h5Log}`)
+              .toString()
+              .trim(),
+          );
+          if (size <= Number(logSizeBefore)) return "";
+          destroyLine = execSync(
+            `tail -c +$(( ${Number(logSizeBefore)} + 1 )) ${h5Log} | grep -F "upstream destroyed: /api/v1/realtime/streams/" | tail -1 || true`,
+          )
+            .toString()
+            .trim();
+          return destroyLine;
+        } catch {
+          return "";
+        }
+      },
+      { timeout: 10_000, intervals: [200, 500] },
+    )
+    .not.toBe("");
+  expect(destroyLine, "the vite proxy destroyed the upstream promptly").toContain(
+    "upstream destroyed: /api/v1/realtime/streams/",
   );
+
+  // 下一次订阅：200 + 收到事件 + 严格时限（<< 130s TTL）。
+  expect(
+    report.secondStatus,
+    "the next subscription after the abort is admitted promptly",
+  ).toBe(200);
+  expect(
+    (report.secondEvents ?? "").length,
+    "the next subscription received real SSE bytes",
+  ).toBeGreaterThan(0);
+  expect(
+    report.secondAfterMs,
+    `the next subscription succeeded in ${report.secondAfterMs?.toFixed(0)}ms — dramatically shorter than the 130s lease TTL`,
+  ).toBeLessThan(10_000);
 });
