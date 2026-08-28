@@ -185,7 +185,11 @@ test("a browser-side abort of a proxied SSE subscription frees the runtime lease
         const response = await fetch(
           `/api/v1/realtime/streams/${encodeURIComponent(generationId)}?${params}`,
           {
-            headers: { Accept: "text/event-stream", "Last-Event-ID": "0" },
+            headers: {
+              ...authHeaders,
+              Accept: "text/event-stream",
+              "Last-Event-ID": "0",
+            },
             signal: controller.signal,
           },
         );

@@ -1978,9 +1978,12 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     await judgeDelete.click({ force: true });
     await expect(judgeDelete, "two-step delete arm label").toHaveText("确认删除");
 
-    // 确定性幸存行：判据行上方最近的种子行（与生产快照选择规则一致）。
+    // 确定性幸存行：判据行【下方】最近的种子行（round10/P2-2 与生产快照
+    // 规则一致：优先后一行）。锚行删除后该行必然上移——只有真实消费
+    // pre-delete 快照才能把它钉回原位；没有 handoff 时引擎会把跳变后的
+    // 视图当新真值，该行离开冻结基线，测试必然失败。
     const survivorMid = await pickMountedRowRelativeTo(page, {
-      side: "above",
+      side: "below",
       refMid: judgeMid!,
       excludeMids: [awayMid].filter((m): m is string => m !== null),
       requirePrefix: "seed-",
@@ -1988,7 +1991,7 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     });
     expect(
       survivorMid,
-      "a visible survivor row strictly above the anchor is mounted",
+      "a visible survivor row strictly below the anchor is mounted",
     ).not.toBeNull();
     await page.route(
       new RegExp(`/api/v1/conversations/[^/]+/messages/${judgeMid}$`),

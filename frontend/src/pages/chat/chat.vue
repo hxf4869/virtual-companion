@@ -1279,10 +1279,14 @@ export default defineComponent({
     }
 
     /**
-     * round9（四）/round10（P1-4）：最终确认删除【之前】捕获确定性幸存行
-     * 快照——列表序中紧邻的前一行（不存在则后一行）与其当前 history-relative
-     * offset。幸存行必须此刻已挂载（覆盖窗保证锚邻域在册）；单行列表无幸存
-     * 者时返回 null，删除后将显性失败而不是读取跳变后的视图。
+     * round9（四）/round10（P1-4/P2-2）：最终确认删除【之前】捕获确定性幸存行
+     * 快照——列表序中紧邻的【后一行】（不存在则前一行）与其当前 history-relative
+     * offset。round10（P2-2）改为优先后一行：锚行被删后后一行会上移，只有
+     * 真实消费 pre-delete 快照才能把它钉回原位——这是"保持用户阅读位置"
+     * （下一条消息滑入被删消息的位置）的可判定语义；前一行不被删除移动，
+     * 以它为基准的视图与"删后重读"不可区分。幸存行必须此刻已挂载（覆盖窗
+     * 保证锚邻域在册）；无幸存者时返回 null，删除后将显性失败而不是读取
+     * 跳变后的视图。
      *
      * round10（P1-4）：快照绑定完整 ownership 身份——会话、follow 世代、
      * 泵令牌、history 宿主节点与删除请求身份。消费时全部匹配才可用；
@@ -1299,7 +1303,7 @@ export default defineComponent({
       const doomedIdx = list.findIndex((m) => m.messageId === deletedMid);
       if (doomedIdx < 0) return null;
       const survivorMid =
-        list[doomedIdx - 1]?.messageId ?? list[doomedIdx + 1]?.messageId;
+        list[doomedIdx + 1]?.messageId ?? list[doomedIdx - 1]?.messageId;
       if (!survivorMid) return null;
       const rect = el.getBoundingClientRect();
       const node = Array.from(

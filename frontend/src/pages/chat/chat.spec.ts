@@ -3247,7 +3247,9 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         const list = f.store.messages;
         const idx = list.findIndex((m) => m.messageId === anchorMid);
         expect(idx, "anchor row exists in the list").toBeGreaterThanOrEqual(0);
-        const survivorMid = list[idx - 1]!.messageId;
+        // round10（P2-2）：生产快照规则改为优先后一行（下方）——锚行删除后
+        // 后一行上移，只有真实消费 pre-delete 快照才能钉回原位。
+        const survivorMid = list[idx + 1]!.messageId;
         const survivorNode = Array.from(
           f.el.querySelectorAll<HTMLElement>('[data-testid="chat-message"]'),
         ).find((n) => n.dataset.mid === survivorMid);
@@ -3864,8 +3866,9 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
         const list = f.store.messages;
         const anchorIdx = list.findIndex((m) => m.messageId === anchorMid);
         expect(anchorIdx).toBeGreaterThanOrEqual(0);
-        const survivorMid = list[anchorIdx - 1]!.messageId;
-        const otherMid = list[anchorIdx + 2]!.messageId;
+        // round10（P2-2）：生产快照规则优先后一行（下方）。
+        const survivorMid = list[anchorIdx + 1]!.messageId;
+        const otherMid = list[anchorIdx + 3]!.messageId;
         // 事务锚行（anchorMid）的删除请求挂起；另一行（otherMid）的删除
         // 立即成功。两条确认重叠，快照按请求隔离。
         gate.defer(anchorMid);
