@@ -2078,9 +2078,10 @@ test("anchored follow state machine holds over 130 seeded messages", async ({
     expect(await page.getAttribute('[data-testid="history"]', "data-following"))
       .toBe("false");
 
-    // 一次宽度微扰（1200→1188，同高）：重排使锚行移动 → 保持事务产生真实
-    // 校正写入；读取最近一次程序落点作为"恰好回到底部前"的回声对照。
-    await setViewport(page, 1188, 900);
+    // 一次大幅宽度变化（1200→375，同高）：换行全变 → 锚行移动 → 保持事务
+    // 产生真实校正写入；读取最近一次程序落点作为"恰好回到底部前"的回声
+    // 对照。
+    await setViewport(page, 375, 900);
     await expect
       .poll(
         async () => {
