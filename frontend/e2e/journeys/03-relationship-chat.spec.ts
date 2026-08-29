@@ -379,6 +379,10 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
       deleteResponses.push(new URL(response.url()).pathname);
     }
   });
+  // 阅读位置基线在确认点击之前取（首击已把该行滚入视口，二击不再滚动）。
+  const scrollTopBeforeDelete = await page
+    .locator('[data-testid="history"]')
+    .evaluate((el) => Math.round(el.scrollTop));
   await deleteBtn.click();
 
   // 该行从列表消失；只发生一次真实 DELETE。
@@ -387,11 +391,11 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
   });
   expect(deleteResponses).toHaveLength(1);
 
-  // ---- 删除后阅读区域大致保持：不跳顶、不跳底 ----
+  // ---- 删除后阅读区域大致保持：不跳顶、不跳底（与删除前差值在一行高内）----
   const scrollTopAfterDelete = await page
     .locator('[data-testid="history"]')
-    .evaluate((el) => el.scrollTop);
-  expect(scrollTopAfterDelete).toBeGreaterThan(0);
+    .evaluate((el) => Math.round(el.scrollTop));
+  expect(Math.abs(scrollTopAfterDelete - scrollTopBeforeDelete)).toBeLessThanOrEqual(80);
 
   // ---- 失败与重试在 Journey07 覆盖（provider 故障注入）；此处不复述。----
 });
