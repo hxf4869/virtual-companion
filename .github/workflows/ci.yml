@@ -27,6 +27,13 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: python -m pip install PyYAML==6.0.3
+      - name: Set up Go
+        # actions/setup-go@v5.5.0 -> d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        # 升级流程：在受审 PR 中同时更新 40-char SHA 与下方注释 tag，禁止直接使用可变 tag。
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
       - name: Run quick checks
         run: bash scripts/check.sh --quick
 

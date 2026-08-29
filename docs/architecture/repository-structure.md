@@ -10,7 +10,8 @@ virtual-companion/
 │   └── generated/             确定性生成物，禁止手改
 ├── service/
 │   ├── platform/catalog/      生成 Java Catalog 的编译模块
-│   └── apps/runtime/          当前唯一可启动后端
+│   └── apps/runtime/          当前唯一可启动后端（cutover 前）
+├── backend/                   Go companiond（G2 起；cutover 前不接生产流量）
 ├── frontend/                  uni-app H5
 ├── scripts/
 │   ├── checks/                秒级仓库检查（catalog/licenses/paid）及其数据文件

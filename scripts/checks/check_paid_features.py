@@ -27,6 +27,8 @@ DEPENDENCY_NAMES = {
     "compose.yml",
     "docker-compose.yaml",
     "docker-compose.yml",
+    "go.mod",
+    "go.sum",
 }
 CONFIG_SUFFIXES = {".properties", ".toml"}
 CONFIG_DIR_PREFIXES = ("deploy/", "src/main/resources/", "service/", "frontend/")

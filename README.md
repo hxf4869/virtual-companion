@@ -29,7 +29,10 @@ bash scripts/check.sh --quick  # 仅秒级仓库检查
   admission limiter 与 production profile fail-closed 配置；
 - uni-app + Vue 3 + TypeScript + Pinia 的 Login、Chat、Memory、Reminder、Companion、Consent、
   Age、Data、Help、AI-Notice、Health、Incognito、Export、Memory-Detail、Conversations、Account、Report、Ops、Admin H5 页面、typed transport 与组件/状态测试；
-- GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁。
+- GitHub Actions 的后端、前端、数据库、供应链与快速检查门禁；
+- Go `companiond` 骨架（`backend/`，go 1.26.7）：config、health/readiness、slog、
+  process metrics、graceful shutdown，以及 `api-migration`/`full` 硬隔离。
+  **当前常驻 runtime 仍是 Java**；companiond 不接生产流量、不写当前生产 DB。
 
 这些组件的存在不等于端到端产品已经接线。当前 runtime 固定提供：
 

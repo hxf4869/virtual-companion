@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 唯一日常检查入口：秒级仓库检查 + 前端测试与类型检查。
+# 唯一日常检查入口：秒级仓库检查 + Go 单元测试 + 前端测试与类型检查。
 # 用法：bash scripts/check.sh          全量（约 1 分钟内）
 #       bash scripts/check.sh --quick  仅秒级仓库检查（CI checks job 使用）
 set -u
@@ -46,6 +46,7 @@ run openapi-validate "${PY[@]}" scripts/dev/openapi_tool.py validate
 run openapi-drift    "${PY[@]}" scripts/dev/openapi_tool.py diff --fail-on-drift
 run paid-features    "${PY[@]}" scripts/checks/check_paid_features.py
 run licenses         "${PY[@]}" scripts/checks/check_licenses.py
+run go-test          bash -c 'command -v go >/dev/null || { echo "需要 Go（backend/go.mod 锁定 go1.26.7）" >&2; exit 1; }; GOPROXY=off go test -C backend -count=1 ./... >&2'
 
 if [ "$QUICK" -eq 0 ]; then
   if ! command -v pnpm >/dev/null 2>&1; then
