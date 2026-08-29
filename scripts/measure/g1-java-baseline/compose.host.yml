@@ -1,0 +1,76 @@
+# Overlay used only when Docker bridge inter-container TCP is broken.
+# Observed on this Linux vfs sandbox: bridge-nf-call-iptables=1 and no
+# iptables/nft rules, so containers resolve each other but TCP times out.
+# Host network keeps the same four product processes (Caddy, Java, PostgreSQL,
+# MinIO); it is a measurement-host quirk, not a product topology change.
+# Owner Mac / OrbStack ICC should keep using compose.yml alone.
+
+services:
+  db:
+    network_mode: host
+    environment:
+      PGPORT: "15432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 15432 -U vc_migrator -d vc"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    network_mode: host
+    command: server --address 127.0.0.1:19002 --console-address 127.0.0.1:19001 /data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:19002/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  minio-gw:
+    network_mode: host
+    command: ["-V"]
+    restart: "no"
+
+  minio-init:
+    network_mode: host
+    environment:
+      VC_EXPORT_S3_ACCESS_KEY: ${VC_EXPORT_S3_ACCESS_KEY:?}
+      VC_EXPORT_S3_SECRET_KEY: ${VC_EXPORT_S3_SECRET_KEY:?}
+      VC_EXPORT_S3_BUCKET: ${VC_EXPORT_S3_BUCKET:-vc-exports}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        i=0
+        while [ "$$i" -lt 15 ]; do
+          if mc alias set local http://127.0.0.1:19002 "$$VC_EXPORT_S3_ACCESS_KEY" "$$VC_EXPORT_S3_SECRET_KEY"; then
+            break
+          fi
+          i=$$((i + 1))
+          sleep 2
+        done
+        mc mb --ignore-existing local/"$$VC_EXPORT_S3_BUCKET"
+        perm=$$(mc anonymous get local/"$$VC_EXPORT_S3_BUCKET")
+        echo "anonymous_perm=$$perm"
+        case "$$perm" in
+          *none*|*private*|*disabled*) ;;
+          *) echo 'export bucket must not allow anonymous access'; exit 1 ;;
+        esac
+
+  runtime:
+    network_mode: host
+    environment:
+      SERVER_PORT: "18081"
+      VC_MIGRATOR_DB_URL: jdbc:postgresql://127.0.0.1:15432/vc
+      VC_DB_URL: jdbc:postgresql://127.0.0.1:15432/vc
+      VC_EXPORT_S3_ENDPOINT: http://127.0.0.1:19002
+
+  fake-provider:
+    network_mode: host
+
+  caddy:
+    network_mode: host
+    environment:
+      G1_CADDY_PORT: "18080"
+      G1_RUNTIME_UPSTREAM: 127.0.0.1:18081
+      VC_DOMAIN: ${VC_DOMAIN:-localhost}

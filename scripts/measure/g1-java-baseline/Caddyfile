@@ -1,0 +1,32 @@
+# G1 measurement edge: HTTP reverse proxy only (no ACME).
+# TLS CPU/RSS is therefore NOT in this Linux baseline; Owner Mac dogfood uses HTTPS.
+{
+	auto_https off
+	admin off
+}
+
+:{$G1_CADDY_PORT:80} {
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy {$G1_RUNTIME_UPSTREAM:runtime:8080} {
+			flush_interval -1
+		}
+	}
+
+	handle /actuator/health {
+		reverse_proxy {$G1_RUNTIME_UPSTREAM:runtime:8080}
+	}
+
+	handle {
+		root * /srv/h5
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

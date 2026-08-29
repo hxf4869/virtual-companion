@@ -7,7 +7,7 @@
 实施基线：`docs/planning/2026-08-30-go-companion-runtime-redesign.md`。一次一个可验证 slice。
 
 - [x] `G0` ADR/Catalog/OpenAPI scope 与 API consumer matrix（catalog/openapi check；不写 Go 业务代码）
-- [ ] `G1` Java 资源/事务基线与 benchmark workload
+- [x] `G1` Java 资源/事务基线与 benchmark workload（Linux 可重复报告：`docs/planning/g1-java-resource-baseline.md`；Owner Mac 门槛未冻结）
 
 ## 当前里程碑（2026-08-19 第四十三轮起）：V0.3 需求全文差距复审收尾
 

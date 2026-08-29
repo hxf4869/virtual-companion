@@ -70,3 +70,6 @@ ops/deploy/.local/
 
 # Planning-with-files process artifacts (local only, never committed)
 .planning/
+
+# G1 measurement local run (synthetic secrets, docker env, raw snapshots)
+scripts/measure/g1-java-baseline/.run/

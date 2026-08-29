@@ -1,0 +1,3 @@
+FROM caddy:2
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY h5-stub/ /srv/h5

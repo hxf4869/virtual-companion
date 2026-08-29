@@ -1,6 +1,6 @@
 # Virtual Companion：Pi-inspired Agent Runtime 与 Go 服务端重构实施规范
 
-> 状态：implementation baseline（G0 已合入：ADR-0007 与 Catalog/OpenAPI scope；下一步 G1）
+> 状态：implementation baseline（G0 已合入；G1 Linux 资源报告已写入 `docs/planning/g1-java-resource-baseline.md`，Owner Mac 门槛未冻结）
 > 日期：2026-08-30
 > 适用阶段：Owner-only 本地 Technical Alpha 及其后续单机并发验证
 > 实施目标：用 Go 重写并优化常驻服务端，以 Pi Agent Core 的小核心、显式状态、上下文变换和事件流思想重构陪伴对话运行时
@@ -1347,18 +1347,20 @@ Java 只允许一次有界的公平基线调优：合理 container memory limit 
 
 ### 19.2 Phase 0 冻结资源门槛的方法
 
-在真实 Java 基线产生前，不用任意百分比假装精确门槛。Phase 0 对每个场景先 warm-up，再至少执行 3 次独立测量，把下表的数值直接补回本文并由 Owner 确认；在该表没有冻结前不得进入大规模 Go handler 实现：
+在真实 Java 基线产生前，不用任意百分比假装精确门槛。Phase 0 对每个场景先 warm-up，再至少执行 3 次独立测量，把下表的数值直接补回本文并由 Owner 确认；在该表没有冻结前不得进入大规模 Go handler 实现。
+
+2026-08-29 Linux 样本（方法与完整场景见 `docs/planning/g1-java-resource-baseline.md`）**不是** Owner Mac 数字，**不能**当作已冻结的 Go 硬上限或 Owner 绝对预算。复跑：`bash scripts/measure/g1-java-baseline/run.sh`。
 
 | 指标 | 调优 Java 中位数 | Java 波动范围 | Go 硬上限 | 选择理由 |
 |---|---:|---:|---:|---|
-| runtime idle RSS/PSS | Phase 0 填写 | Phase 0 填写 | Owner 冻结 | 必须明显降低常驻内存 |
-| runtime `4 turn + 8 SSE` peak RSS/PSS | Phase 0 填写 | Phase 0 填写 | Owner 冻结 | 覆盖目标并发 |
-| runtime 同 workload CPU time | Phase 0 填写 | Phase 0 填写 | Owner 冻结 | 必须明显降低 CPU |
-| cold start/readiness | Phase 0 填写 | Phase 0 填写 | Owner 冻结 | 防止启动回归 |
-| API app-overhead p95 | Phase 0 填写 | Phase 0 填写 | Owner 冻结 | 不能用资源节省换明显延迟 |
-| retained stack idle/peak RSS/PSS | Phase 0 填写 | Phase 0 填写 | Owner 的 Mac 绝对预算 | 反映实际常驻成本 |
-| retained stack workload CPU time | Phase 0 填写 | Phase 0 填写 | Owner 的 Mac 绝对预算 | 反映实际 CPU 成本 |
-| runtime image size | Phase 0 填写 | n/a | Owner 冻结 | 只作发布资源，不凌驾正确性 |
+| runtime idle RSS/PSS | 372.5 / 369.3 MiB（Linux） | 371.5–373.0 / 368.4–370.0 MiB | Owner 冻结 | 必须明显降低常驻内存 |
+| runtime `4 turn + 8 SSE` peak RSS/PSS | 409.2 / 406.0 MiB（Linux；4gen 窗口） | 采样窗口，见 G1 报告 | Owner 冻结 | 覆盖目标并发 |
+| runtime 同 workload CPU time | 0.67 s（1gen+1sse，Linux） | 0.46–1.15 s | Owner 冻结 | 必须明显降低 CPU |
+| cold start/readiness | 6.22 s（schema 已在，Linux） | 6.20–6.24 s | Owner 冻结 | 防止启动回归 |
+| API app-overhead p95 | 19.17 ms p50；本轮 max 40.71 ms（intake，Linux） | 15.70–40.71 ms | Owner 冻结 | 不能用资源节省换明显延迟 |
+| retained stack idle/peak RSS/PSS | idle 633.7 MiB RSS（Linux；MinIO 进程 RSS 本机 NOT_RUN） | 633.6–634.8 MiB | Owner 的 Mac 绝对预算 | 反映实际常驻成本 |
+| retained stack workload CPU time | idle 窗 runtime 分量 4.71 s / 600 s（Linux） | 3.62–6.35 s | Owner 的 Mac 绝对预算 | 反映实际 CPU 成本 |
+| runtime image size | 432.1 MiB（Linux JRE 镜像） | n/a | Owner 冻结 | 只作发布资源，不凌驾正确性 |
 
 冻结值必须满足这些最低规则：
 

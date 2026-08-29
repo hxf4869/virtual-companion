@@ -1,0 +1,1189 @@
+{
+  "artifacts": {
+    "boot_jar": "/home/box/projects/virtual-companion/service/apps/runtime/target/virtual-companion-runtime-0.1.0-SNAPSHOT.jar",
+    "boot_jar_bytes": 58576795,
+    "runtime_image_bytes": 453060273,
+    "runtime_image_id": "sha256:2a91ff5c2"
+  },
+  "cipher_baseline": {
+    "columns": [
+      {
+        "column_name": "summary",
+        "enc1": 0,
+        "enc2_malformed": 0,
+        "enc2_wellformed": 21,
+        "expected_current_write": "rest_field_cipher_enc2",
+        "null_value": 0,
+        "row_count": 21,
+        "table_name": "vc.conversation_summary",
+        "unprefixed": 0,
+        "unrecognized": 0
+      },
+      {
+        "column_name": "content",
+        "enc1": 0,
+        "enc2_malformed": 0,
+        "enc2_wellformed": 29,
+        "expected_current_write": "rest_field_cipher_enc2",
+        "null_value": 0,
+        "row_count": 29,
+        "table_name": "vc.generation_candidate",
+        "unprefixed": 0,
+        "unrecognized": 0
+      },
+      {
+        "column_name": "summary",
+        "enc1": 0,
+        "enc2_malformed": 0,
+        "enc2_wellformed": 29,
+        "expected_current_write": "rest_field_cipher_enc2",
+        "null_value": 0,
+        "row_count": 29,
+        "table_name": "vc.memory_item",
+        "unprefixed": 0,
+        "unrecognized": 0
+      },
+      {
+        "column_name": "content",
+        "enc1": 0,
+        "enc2_malformed": 0,
+        "enc2_wellformed": 166,
+        "expected_current_write": "rest_field_cipher_enc2",
+        "null_value": 0,
+        "row_count": 166,
+        "table_name": "vc.message",
+        "unprefixed": 0,
+        "unrecognized": 0
+      }
+    ],
+    "machine": "linux-synthetic-g1-volume",
+    "not_owner_mac_data": true,
+    "note": "Counts only. No ciphertext or plaintext values were returned. Owner must re-run cipher_counts.sql against the Mac volume to freeze real-data numbers.",
+    "status": "PASS"
+  },
+  "final_snapshot": {
+    "components": {
+      "caddy": {
+        "cgroup_memory_bytes": 19775488,
+        "clk_tck": 100,
+        "container_id": "cc12bb9ac368",
+        "cpu_sys_ticks": 462,
+        "cpu_user_ticks": 1037,
+        "fd": 21,
+        "nproc": 2,
+        "present": true,
+        "pss_bytes": 52997120,
+        "rss_bytes": 53768192,
+        "threads": 15
+      },
+      "db": {
+        "cgroup_memory_bytes": 151060480,
+        "clk_tck": 100,
+        "container_id": "ae17568b4c75",
+        "cpu_sys_ticks": 292,
+        "cpu_user_ticks": 108,
+        "fd": 443,
+        "nproc": 16,
+        "present": true,
+        "pss_bytes": 299008,
+        "rss_bytes": 306368512,
+        "threads": 16
+      },
+      "fake-provider": {
+        "cgroup_memory_bytes": 10989568,
+        "clk_tck": 100,
+        "container_id": "66f34acc98b3",
+        "cpu_sys_ticks": 3,
+        "cpu_user_ticks": 8,
+        "fd": 23,
+        "nproc": 2,
+        "present": true,
+        "pss_bytes": 43840512,
+        "rss_bytes": 46915584,
+        "threads": 12
+      },
+      "minio": {
+        "container_id": "69c9698f60d4",
+        "error": "sh: line 14: sed: command not found\nsh: line 16: sed: command not found\nsh: line 18: sed: command not found\nsh: line 30: awk: command not found\nsh: line 27: stime + /proc/1/status: syntax error: operand expected (error token is \"/proc/1/status\")",
+        "present": true
+      },
+      "runtime": {
+        "cgroup_memory_bytes": 364343296,
+        "clk_tck": 100,
+        "container_id": "8bb6409a4817",
+        "cpu_sys_ticks": 99,
+        "cpu_user_ticks": 2324,
+        "fd": 55,
+        "nproc": 2,
+        "present": true,
+        "pss_bytes": 384397312,
+        "rss_bytes": 387432448,
+        "threads": 39
+      }
+    },
+    "db": {
+      "row_counts": {
+        "_owner_binding_secret": 1,
+        "account_deletion_intent": 0,
+        "age_appeal": 0,
+        "age_verification": 24,
+        "alert_webhook_outbox": 0,
+        "attempt_intent": 29,
+        "authorization_snapshot": 74,
+        "consent_record": 40,
+        "conversation": 8,
+        "conversation_summary": 21,
+        "data_retention_policy": 8,
+        "embedding_reembed_job": 0,
+        "emergency_contact": 0,
+        "entitlement_snapshot": 37,
+        "export_object_fence": 0,
+        "export_request": 0,
+        "export_upload_intent": 0,
+        "generation": 121,
+        "generation_attempt": 0,
+        "generation_candidate": 30,
+        "generation_feedback": 0,
+        "generation_route": 37,
+        "generation_usage": 29,
+        "identity_account": 9,
+        "identity_auth_event": 18,
+        "identity_refresh_token": 9,
+        "incognito_pref": 0,
+        "invite_code": 0,
+        "job_lease": 4,
+        "job_run": 152,
+        "memory_auto_save_pref": 0,
+        "memory_embedding": 0,
+        "memory_evidence": 29,
+        "memory_import_bundle": 0,
+        "memory_item": 29,
+        "message": 150,
+        "model_cost_reservation": 29,
+        "model_unit_price": 1,
+        "month_cost_budget": 1,
+        "ops_case": 0,
+        "ops_case_event": 0,
+        "outbox_event": 0,
+        "product_quota_account": 4,
+        "product_quota_reservation": 29,
+        "provider_attempt": 0,
+        "provider_deployment": 1,
+        "provider_rollback_history": 1,
+        "quota_ledger_entry": 29,
+        "realtime_event": 74,
+        "realtime_stream": 43,
+        "realtime_ticket": 20,
+        "relationship": 8,
+        "release_gate": 1,
+        "reminder": 0,
+        "report_request": 0,
+        "retention_legal_hold": 0,
+        "safety_event": 0,
+        "sensitive_route_admission": 61,
+        "sensitive_route_lease": 6,
+        "service_class_assignment": 0,
+        "shared_auth_source_admission": 1,
+        "survey_response": 0,
+        "trial_grant": 0,
+        "usage_health_prefs": 0,
+        "usage_reminder_event": 0,
+        "usage_session": 0,
+        "vc_user": 9,
+        "work_item": 150
+      },
+      "runtime_login": {
+        "active": 0,
+        "idle": 1,
+        "idle_in_transaction": 5,
+        "max_xact_age_s": 91.370016,
+        "total": 6
+      },
+      "xact": [
+        {
+          "application_name": "PostgreSQL JDBC Driver",
+          "backend_age_s": 93.206527,
+          "pid": 21761,
+          "query_age_s": 91.349132,
+          "state": "idle in transaction",
+          "usename": "vc_runtime_login",
+          "wait_event": "ClientRead",
+          "wait_event_type": "Client",
+          "xact_age_s": 91.370016
+        },
+        {
+          "application_name": "PostgreSQL JDBC Driver",
+          "backend_age_s": 93.316297,
+          "pid": 21758,
+          "query_age_s": 91.349235,
+          "state": "idle in transaction",
+          "usename": "vc_runtime_login",
+          "wait_event": "ClientRead",
+          "wait_event_type": "Client",
+          "xact_age_s": 91.364221
+        },
+        {
+          "application_name": "PostgreSQL JDBC Driver",
+          "backend_age_s": 93.426098,
+          "pid": 21757,
+          "query_age_s": 91.34898,
+          "state": "idle in transaction",
+          "usename": "vc_runtime_login",
+          "wait_event": "ClientRead",
+          "wait_event_type": "Client",
+          "xact_age_s": 91.361323
+        },
+        {
+          "application_name": "PostgreSQL JDBC Driver",
+          "backend_age_s": 93.280229,
+          "pid": 21759,
+          "query_age_s": 91.34517,
+          "state": "idle in transaction",
+          "usename": "vc_runtime_login",
+          "wait_event": "ClientRead",
+          "wait_event_type": "Client",
+          "xact_age_s": 91.353755
+        },
+        {
+          "application_name": "PostgreSQL JDBC Driver",
+          "backend_age_s": 93.243725,
+          "pid": 21760,
+          "query_age_s": 91.343699,
+          "state": "idle in transaction",
+          "usename": "vc_runtime_login",
+          "wait_event": "ClientRead",
+          "wait_event_type": "Client",
+          "xact_age_s": 91.353482
+        },
+        {
+          "application_name": "PostgreSQL JDBC Driver",
+          "backend_age_s": 94.997752,
+          "pid": 21745,
+          "query_age_s": 4.943147,
+          "state": "idle",
+          "usename": "vc_runtime_login",
+          "wait_event": "ClientRead",
+          "wait_event_type": "Client",
+          "xact_age_s": null
+        }
+      ]
+    },
+    "fake_provider": {
+      "cgroup_memory_bytes": 10989568,
+      "clk_tck": 100,
+      "container_id": "66f34acc98b3",
+      "cpu_sys_ticks": 3,
+      "cpu_user_ticks": 8,
+      "fd": 23,
+      "nproc": 2,
+      "present": true,
+      "pss_bytes": 43840512,
+      "rss_bytes": 46915584,
+      "threads": 12
+    },
+    "host_ollama": null,
+    "jvm": {
+      "error": "HTTPError:401",
+      "scrape_ok": false
+    },
+    "measurement_basis": {
+      "cgroup_memory": "/sys/fs/cgroup/memory.current (or v1 usage_in_bytes) inside container",
+      "cpu_ticks": "/proc/<pid>/stat utime+stime, clk_tck from container",
+      "do_not_mix": "Do not compare process RSS with cgroup memory.current in the same cell",
+      "rss_pss": "sum of /proc/<pid>/status VmRSS and smaps_rollup Pss inside each container"
+    },
+    "retained_stack": {
+      "cgroup_memory_bytes": 535179264,
+      "fd": 519,
+      "missing": [
+        "minio"
+      ],
+      "pss_bytes": 437693440,
+      "rss_bytes": 747569152,
+      "threads": 70
+    },
+    "runtime_only": {
+      "cgroup_memory_bytes": 364343296,
+      "clk_tck": 100,
+      "container_id": "8bb6409a4817",
+      "cpu_sys_ticks": 99,
+      "cpu_user_ticks": 2324,
+      "fd": 55,
+      "nproc": 2,
+      "present": true,
+      "pss_bytes": 384397312,
+      "rss_bytes": 387432448,
+      "threads": 39
+    },
+    "ts_iso": "2026-08-29T22:59:16Z",
+    "ts_unix": 1788044356.590635
+  },
+  "finished_at": "2026-08-29T22:59:16Z",
+  "git_head": "60d63176d1b983d9f7a971739c3d36d06002ef5e",
+  "machine": {
+    "cpu_count": 8,
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "hostname": "cursor",
+    "is_owner_mac": false,
+    "machine": "x86_64",
+    "mem_available_bytes": 14581596160,
+    "mem_total_bytes": 16791228416,
+    "notes": "This is a Linux measurement host, not the Owner Mac. Numbers here are not frozen Owner gates.",
+    "ollama_binary": false,
+    "ollama_processes": 0,
+    "os": "Linux 6.12.94+",
+    "python": "3.13.5"
+  },
+  "measurement_network": "host",
+  "scenarios": {
+    "admin_login": {
+      "note": "admin token cached locally for prometheus scrape; never committed",
+      "status": "PASS"
+    },
+    "cancel_reconnect_slow": {
+      "cancel": {
+        "reason": "parse",
+        "status": "FAIL"
+      },
+      "note": "Second-ticket reconnect on a live generation is single-use tickets; a true mid-stream reconnect is NOT_RUN if the first stream already consumed the generation ticket.",
+      "reason": "cancel POST timed out; reconnect/slow still recorded",
+      "reconnect_first_stream": {
+        "generationId": "19",
+        "intake_ms": 28601.932973999283,
+        "ok": false,
+        "sse": {
+          "bytes": 503,
+          "content_type": "text/event-stream",
+          "denied": false,
+          "elapsed_ms": 4091.06959500059,
+          "events": 5,
+          "first_event_ms": 4091.0595519999333,
+          "status": 200
+        },
+        "status": "FAILED_FINAL",
+        "wait_ms": 4180.477619000158
+      },
+      "slow_subscriber": {
+        "generationId": "20",
+        "intake_ms": 14.477769000222906,
+        "ok": false,
+        "sse": {
+          "bytes": 0,
+          "content_type": "text/event-stream",
+          "denied": false,
+          "elapsed_ms": 12947.596801001055,
+          "events": 0,
+          "first_event_ms": null,
+          "status": 200
+        },
+        "status": "CREATED",
+        "wait_ms": 20183.1331329995
+      },
+      "status": "PARTIAL"
+    },
+    "capacity_16_64": {
+      "completed": 0,
+      "elapsed_ms": 60336.85721999791,
+      "gen_statuses": [
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401,
+        401
+      ],
+      "note": "Capacity portrait only, not a product promise. Java generation lease=4/owner and SSE lease=3/owner, so 16+64 on few owners saturates with 429.",
+      "requested_generations": 16,
+      "requested_sse": 16,
+      "sixty_four_sse": "NOT_RUN",
+      "sixty_four_sse_reason": "Opening 64 concurrent live-tails would require many owners or raising Java SSE_MAX_CONCURRENT; G1 does not change product caps. 16 streams already portrait saturation.",
+      "sse_statuses": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "status": "PARTIAL"
+    },
+    "cold_start": {
+      "readiness_s": {
+        "max": 6.239,
+        "median": 6.216,
+        "min": 6.202,
+        "n": 3,
+        "range": 0.03699999999999992
+      },
+      "retained_rss_bytes": {
+        "max": 647557120,
+        "median": 639635456,
+        "min": 633688064,
+        "n": 3,
+        "range": 13869056
+      },
+      "runtime_pss_bytes": {
+        "max": 386675712,
+        "median": 376669184,
+        "min": 374403072,
+        "n": 3,
+        "range": 12272640
+      },
+      "runtime_rss_bytes": {
+        "max": 389976064,
+        "median": 379916288,
+        "min": 377667584,
+        "n": 3,
+        "range": 12308480
+      },
+      "status": "PASS",
+      "trials": [
+        {
+          "jvm": {
+            "error": "HTTPError:401",
+            "scrape_ok": false
+          },
+          "readiness_s": 6.239,
+          "retained_pss_bytes": 422313984,
+          "retained_rss_bytes": 633688064,
+          "runtime_cgroup_bytes": 354332672,
+          "runtime_pss_bytes": 374403072,
+          "runtime_rss_bytes": 377667584,
+          "status": "PASS",
+          "trial": 1
+        },
+        {
+          "jvm": {
+            "error": "HTTPError:401",
+            "scrape_ok": false
+          },
+          "readiness_s": 6.216,
+          "retained_pss_bytes": 434573312,
+          "retained_rss_bytes": 647557120,
+          "runtime_cgroup_bytes": 365920256,
+          "runtime_pss_bytes": 386675712,
+          "runtime_rss_bytes": 389976064,
+          "status": "PASS",
+          "trial": 2
+        },
+        {
+          "jvm": {
+            "error": "HTTPError:401",
+            "scrape_ok": false
+          },
+          "readiness_s": 6.202,
+          "retained_pss_bytes": 424523776,
+          "retained_rss_bytes": 639635456,
+          "runtime_cgroup_bytes": 355053568,
+          "runtime_pss_bytes": 376669184,
+          "runtime_rss_bytes": 379916288,
+          "status": "PASS",
+          "trial": 3
+        }
+      ]
+    },
+    "db_seed": {
+      "status": "PASS"
+    },
+    "first_boot_includes_flyway": {
+      "note": "First process start after empty volume; Flyway applies all migrations. Not the restart baseline.",
+      "readiness_s": 21.423,
+      "status": "PASS"
+    },
+    "four_gen_eight_sse": {
+      "eight_owners_8gen_8sse": {
+        "completed": 0,
+        "elapsed_ms": 60066.20659100008,
+        "gen_statuses": [
+          401,
+          401,
+          401
+        ],
+        "n": 8,
+        "note": "Java per-owner SSE cap is 3; this uses extra owners so 8 connections can exist. Not a product promise.",
+        "sse_statuses": [
+          null,
+          null,
+          null
+        ]
+      },
+      "java_caps": {
+        "GENERATION_MAX_CONCURRENT": 4,
+        "SSE_MAX_CONCURRENT": 3,
+        "hikari_maximum_pool_size": 5
+      },
+      "one_owner_4gen_3sse": {
+        "completed": 4,
+        "elapsed_ms": 4015.9172820003732,
+        "gen_statuses": [
+          "COMPLETED",
+          "COMPLETED",
+          "COMPLETED",
+          "COMPLETED"
+        ],
+        "n": 4,
+        "sse_statuses": [
+          429,
+          429,
+          null,
+          429
+        ]
+      },
+      "resource_samples_n": 47,
+      "retained_rss_peak_bytes": 793165824,
+      "runtime_pss_peak_bytes": 425761792,
+      "runtime_rss_peak_bytes": 429060096,
+      "status": "PASS"
+    },
+    "http_version": {
+      "status": "PASS"
+    },
+    "hundred_generations": {
+      "db_after_idle15s": {
+        "active": 0,
+        "idle": 6,
+        "idle_in_transaction": 0,
+        "max_xact_age_s": 0,
+        "total": 6
+      },
+      "db_after_post_idle": {
+        "active": 0,
+        "idle": 6,
+        "idle_in_transaction": 0,
+        "max_xact_age_s": 0,
+        "total": 6
+      },
+      "db_before": {
+        "active": 0,
+        "idle": 6,
+        "idle_in_transaction": 0,
+        "max_xact_age_s": 0,
+        "total": 6
+      },
+      "elapsed_ms": 2469915.873984999,
+      "fail": 78,
+      "http_429": 0,
+      "intake_ms": {
+        "max": 24.66955300042173,
+        "median": 12.51449000028515,
+        "min": 10.730158001024392,
+        "n": 22,
+        "p95": 14.829423000264796
+      },
+      "note": "Java generation admission is 20 POSTs / 60s / owner. Workload retries 429 using Retry-After.",
+      "ok": 22,
+      "requested": 100,
+      "runtime_fd_after_idle15s": 40,
+      "runtime_fd_after_post_idle": 40,
+      "runtime_fd_before": 41,
+      "runtime_pss_after_post_idle": 452898816,
+      "runtime_rss_after_idle15s": 456118272,
+      "runtime_rss_after_post_idle": 456118272,
+      "runtime_rss_before": 431484928,
+      "status": "PARTIAL",
+      "wait_ms": {
+        "max": 5175.955382999746,
+        "median": 4973.170333500093,
+        "min": 4367.45367200092,
+        "n": 22,
+        "p95": 4981.706434000444
+      }
+    },
+    "idle": {
+      "retained_rss_bytes": {
+        "max": 665583616,
+        "median": 664518656,
+        "min": 664412160,
+        "n": 3,
+        "range": 1171456
+      },
+      "runtime_cpu_seconds": {
+        "max": 6.35,
+        "median": 4.71,
+        "min": 3.62,
+        "n": 3,
+        "range": 2.7299999999999995
+      },
+      "runtime_idle_cpu_percent": {
+        "max": 1.0583333333333333,
+        "median": 0.7849999999999999,
+        "min": 0.6033333333333333,
+        "n": 3,
+        "range": 0.45500000000000007
+      },
+      "runtime_pss_bytes": {
+        "max": 387928064,
+        "median": 387233792,
+        "min": 386316288,
+        "n": 3,
+        "range": 1611776
+      },
+      "runtime_rss_bytes": {
+        "max": 391139328,
+        "median": 390557696,
+        "min": 389566464,
+        "n": 3,
+        "range": 1572864
+      },
+      "status": "PASS",
+      "trials": [
+        {
+          "components": {
+            "caddy": {
+              "cgroup_memory_bytes": 14467072,
+              "clk_tck": 100,
+              "container_id": "cc12bb9ac368",
+              "cpu_sys_ticks": 3,
+              "cpu_user_ticks": 13,
+              "fd": 11,
+              "nproc": 2,
+              "present": true,
+              "pss_bytes": 47529984,
+              "rss_bytes": 48234496,
+              "threads": 13
+            },
+            "db": {
+              "cgroup_memory_bytes": 131715072,
+              "clk_tck": 100,
+              "container_id": "ae17568b4c75",
+              "cpu_sys_ticks": 66,
+              "cpu_user_ticks": 92,
+              "fd": 210,
+              "nproc": 16,
+              "present": true,
+              "pss_bytes": 353280,
+              "rss_bytes": 226717696,
+              "threads": 16
+            },
+            "minio": {
+              "container_id": "69c9698f60d4",
+              "error": "sh: line 14: sed: command not found\nsh: line 16: sed: command not found\nsh: line 18: sed: command not found\nsh: line 30: awk: command not found\nsh: line 27: stime + /proc/1/status: syntax error: operand expected (error token is \"/proc/1/status\")",
+              "present": true
+            },
+            "runtime": {
+              "cgroup_memory_bytes": 365817856,
+              "clk_tck": 100,
+              "container_id": "f67b2dd68534",
+              "cpu_sys_ticks": 124,
+              "cpu_user_ticks": 2742,
+              "fd": 39,
+              "nproc": 2,
+              "present": true,
+              "pss_bytes": 386316288,
+              "rss_bytes": 389566464,
+              "threads": 37
+            }
+          },
+          "db_runtime_login": {
+            "active": 0,
+            "idle": 6,
+            "idle_in_transaction": 0,
+            "max_xact_age_s": 0,
+            "total": 6
+          },
+          "fd_end": 39,
+          "host_ollama": null,
+          "jvm": {
+            "error": "HTTPError:401",
+            "scrape_ok": false
+          },
+          "retained_pss_end": 434199552,
+          "retained_rss_end": 664518656,
+          "runtime_cgroup_end": 365817856,
+          "runtime_cpu_seconds": 6.35,
+          "runtime_idle_cpu_percent": 1.0583333333333333,
+          "runtime_pss_end": 386316288,
+          "runtime_rss_end": 389566464,
+          "runtime_rss_start": 382038016,
+          "threads_end": 37,
+          "trial": 1,
+          "window_s": 600.0
+        },
+        {
+          "components": {
+            "caddy": {
+              "cgroup_memory_bytes": 14856192,
+              "clk_tck": 100,
+              "container_id": "cc12bb9ac368",
+              "cpu_sys_ticks": 3,
+              "cpu_user_ticks": 17,
+              "fd": 11,
+              "nproc": 2,
+              "present": true,
+              "pss_bytes": 47444992,
+              "rss_bytes": 48115712,
+              "threads": 13
+            },
+            "db": {
+              "cgroup_memory_bytes": 131207168,
+              "clk_tck": 100,
+              "container_id": "ae17568b4c75",
+              "cpu_sys_ticks": 112,
+              "cpu_user_ticks": 158,
+              "fd": 210,
+              "nproc": 16,
+              "present": true,
+              "pss_bytes": 344064,
+              "rss_bytes": 226910208,
+              "threads": 16
+            },
+            "minio": {
+              "container_id": "69c9698f60d4",
+              "error": "sh: line 14: sed: command not found\nsh: line 16: sed: command not found\nsh: line 18: sed: command not found\nsh: line 30: awk: command not found\nsh: line 27: stime + /proc/1/status: syntax error: operand expected (error token is \"/proc/1/status\")",
+              "present": true
+            },
+            "runtime": {
+              "cgroup_memory_bytes": 366714880,
+              "clk_tck": 100,
+              "container_id": "f67b2dd68534",
+              "cpu_sys_ticks": 177,
+              "cpu_user_ticks": 3161,
+              "fd": 39,
+              "nproc": 2,
+              "present": true,
+              "pss_bytes": 387233792,
+              "rss_bytes": 390557696,
+              "threads": 37
+            }
+          },
+          "db_runtime_login": {
+            "active": 0,
+            "idle": 6,
+            "idle_in_transaction": 0,
+            "max_xact_age_s": 0,
+            "total": 6
+          },
+          "fd_end": 39,
+          "host_ollama": null,
+          "jvm": {
+            "error": "HTTPError:401",
+            "scrape_ok": false
+          },
+          "retained_pss_end": 435022848,
+          "retained_rss_end": 665583616,
+          "runtime_cgroup_end": 366714880,
+          "runtime_cpu_seconds": 4.71,
+          "runtime_idle_cpu_percent": 0.7849999999999999,
+          "runtime_pss_end": 387233792,
+          "runtime_rss_end": 390557696,
+          "runtime_rss_start": 389722112,
+          "threads_end": 37,
+          "trial": 2,
+          "window_s": 600.0
+        },
+        {
+          "components": {
+            "caddy": {
+              "cgroup_memory_bytes": 14245888,
+              "clk_tck": 100,
+              "container_id": "cc12bb9ac368",
+              "cpu_sys_ticks": 4,
+              "cpu_user_ticks": 21,
+              "fd": 11,
+              "nproc": 2,
+              "present": true,
+              "pss_bytes": 47416320,
+              "rss_bytes": 48193536,
+              "threads": 13
+            },
+            "db": {
+              "cgroup_memory_bytes": 130613248,
+              "clk_tck": 100,
+              "container_id": "ae17568b4c75",
+              "cpu_sys_ticks": 76,
+              "cpu_user_ticks": 33,
+              "fd": 194,
+              "nproc": 16,
+              "present": true,
+              "pss_bytes": 334848,
+              "rss_bytes": 225079296,
+              "threads": 16
+            },
+            "minio": {
+              "container_id": "69c9698f60d4",
+              "error": "sh: line 14: sed: command not found\nsh: line 16: sed: command not found\nsh: line 18: sed: command not found\nsh: line 30: awk: command not found\nsh: line 27: stime + /proc/1/status: syntax error: operand expected (error token is \"/proc/1/status\")",
+              "present": true
+            },
+            "runtime": {
+              "cgroup_memory_bytes": 366940160,
+              "clk_tck": 100,
+              "container_id": "f67b2dd68534",
+              "cpu_sys_ticks": 228,
+              "cpu_user_ticks": 3475,
+              "fd": 39,
+              "nproc": 2,
+              "present": true,
+              "pss_bytes": 387928064,
+              "rss_bytes": 391139328,
+              "threads": 37
+            }
+          },
+          "db_runtime_login": {
+            "active": 0,
+            "idle": 6,
+            "idle_in_transaction": 0,
+            "max_xact_age_s": 0,
+            "total": 6
+          },
+          "fd_end": 39,
+          "host_ollama": null,
+          "jvm": {
+            "error": "HTTPError:401",
+            "scrape_ok": false
+          },
+          "retained_pss_end": 435679232,
+          "retained_rss_end": 664412160,
+          "runtime_cgroup_end": 366940160,
+          "runtime_cpu_seconds": 3.62,
+          "runtime_idle_cpu_percent": 0.6033333333333333,
+          "runtime_pss_end": 387928064,
+          "runtime_rss_end": 391139328,
+          "runtime_rss_start": 390467584,
+          "threads_end": 37,
+          "trial": 3,
+          "window_s": 600.0
+        }
+      ]
+    },
+    "login_revoke": {
+      "elapsed_ms": 30022.439755997766,
+      "errors": 7,
+      "logins": 0,
+      "reason": "8 threads, 0 successful logins (auth admission bulkhead/rate)",
+      "revokes": 0,
+      "status": "PARTIAL",
+      "threads": 8
+    },
+    "one_gen_one_sse": {
+      "intake_ms": {
+        "max": 40.714792001381284,
+        "median": 19.17160899938608,
+        "min": 15.69587300036801,
+        "n": 3,
+        "range": 25.018919001013273
+      },
+      "runtime_cpu_seconds": {
+        "max": 1.15,
+        "median": 0.67,
+        "min": 0.46,
+        "n": 3,
+        "range": 0.69
+      },
+      "runtime_rss_peak": {
+        "max": 415715328,
+        "median": 415641600,
+        "min": 415117312,
+        "n": 3,
+        "range": 598016
+      },
+      "sse_first_event_ms": {
+        "max": 3807.2984969985555,
+        "median": 3582.9113479994703,
+        "min": 3547.6241310007026,
+        "n": 3,
+        "range": 259.6743659978529
+      },
+      "status": "PASS",
+      "trials": [
+        {
+          "intake_ms": 40.714792001381284,
+          "ok": true,
+          "retained_rss_after": 720785408,
+          "runtime_cpu_seconds": 1.15,
+          "runtime_rss_peak": 415641600,
+          "sse_first_event_ms": 3807.2984969985555,
+          "sse_status": 200,
+          "status": "COMPLETED",
+          "trial": 1,
+          "wait_ms": 3812.0109499996033
+        },
+        {
+          "intake_ms": 19.17160899938608,
+          "ok": true,
+          "retained_rss_after": 721125376,
+          "runtime_cpu_seconds": 0.67,
+          "runtime_rss_peak": 415715328,
+          "sse_first_event_ms": 3547.6241310007026,
+          "sse_status": 200,
+          "status": "COMPLETED",
+          "trial": 2,
+          "wait_ms": 3570.870423998713
+        },
+        {
+          "intake_ms": 15.69587300036801,
+          "ok": true,
+          "retained_rss_after": 735502336,
+          "runtime_cpu_seconds": 0.46,
+          "runtime_rss_peak": 415117312,
+          "sse_first_event_ms": 3582.9113479994703,
+          "sse_status": 200,
+          "status": "COMPLETED",
+          "trial": 3,
+          "wait_ms": 3790.219557000455
+        }
+      ],
+      "wait_ms": {
+        "max": 3812.0109499996033,
+        "median": 3790.219557000455,
+        "min": 3570.870423998713,
+        "n": 3,
+        "range": 241.14052600089053
+      }
+    },
+    "owners": {
+      "owners": [
+        {
+          "accountId": "1000001",
+          "conversationId": "1",
+          "ok": true,
+          "username": "g1-user-1"
+        },
+        {
+          "accountId": "1000002",
+          "conversationId": "2",
+          "ok": true,
+          "username": "g1-user-2"
+        },
+        {
+          "accountId": "1000003",
+          "conversationId": "3",
+          "ok": true,
+          "username": "g1-user-3"
+        },
+        {
+          "accountId": "1000004",
+          "conversationId": "4",
+          "ok": true,
+          "username": "g1-user-4"
+        },
+        {
+          "accountId": "1000005",
+          "conversationId": "5",
+          "ok": true,
+          "username": "g1-user-5"
+        },
+        {
+          "accountId": "1000006",
+          "conversationId": "6",
+          "ok": true,
+          "username": "g1-user-6"
+        },
+        {
+          "accountId": "1000007",
+          "conversationId": "7",
+          "ok": true,
+          "username": "g1-user-7"
+        },
+        {
+          "accountId": "1000008",
+          "conversationId": "8",
+          "ok": true,
+          "username": "g1-user-8"
+        }
+      ],
+      "prepared": 8,
+      "status": "PASS"
+    },
+    "seed": {
+      "admin_login_ms": 221.80950000074517,
+      "ok": true,
+      "users": 8
+    },
+    "sse_db_transaction_hold": {
+      "java_facts": {
+        "OwnerInjectionFilter_wraps_entire_request": true,
+        "hikari_maximum_pool_size": 5,
+        "live_tail_timeout_s": 120,
+        "sse_max_concurrent_per_owner": 3
+      },
+      "method": "fake provider holdMs=20000; 3 concurrent SSE live-tails; sample pg_stat_activity every 2s. Query text is never selected.",
+      "note": "If max_xact_age_s stays near the 20s hold, the SSE request is holding a DB transaction. Go must not copy this.",
+      "observed_max_idle_in_transaction": 0,
+      "observed_max_runtime_login_active": 0,
+      "observed_max_runtime_login_xact_age_s": 0.0,
+      "reason": "20s hold streams returned 429: the preceding 3x 1gen+SSE occupied Java SSE_MAX_CONCURRENT=3 leases (TTL 130s). pg_stat_activity therefore saw idle pool connections, not a 20s xact. Code-level OwnerInjectionFilter + sync liveTail still holds the request transaction; Go must not copy it.",
+      "samples": [
+        {
+          "active": 0,
+          "file": "snap-1.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 415703040,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-10.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417787904,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-11.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417783808,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-12.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417800192,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-2.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 416428032,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-3.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417656832,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-4.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417980416,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-5.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417820672,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-6.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417763328,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-7.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417886208,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-8.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417898496,
+          "total": 6
+        },
+        {
+          "active": 0,
+          "file": "snap-9.json",
+          "hikari_active": null,
+          "hikari_idle": null,
+          "idle": 6,
+          "idle_in_transaction": 0,
+          "max_xact_age_s": 0.0,
+          "runtime_rss": 417959936,
+          "total": 6
+        }
+      ],
+      "status": "PARTIAL"
+    },
+    "worker_crash": {
+      "claim_point": "NOT_RUN",
+      "db_after_kill": {
+        "active": 0,
+        "idle": 6,
+        "idle_in_transaction": 0,
+        "max_xact_age_s": 0,
+        "total": 6
+      },
+      "db_before_kill": {
+        "active": 0,
+        "idle": 6,
+        "idle_in_transaction": 0,
+        "max_xact_age_s": 0,
+        "total": 6
+      },
+      "finalize_point": "NOT_RUN",
+      "point": "provider_stream",
+      "reason_not_run": "Claim and finalize windows are milliseconds-wide without crash hooks; G1 does not add Java instrumentation.",
+      "status": "PASS",
+      "xact_after_s": 0,
+      "xact_before_s": 0
+    }
+  },
+  "schema": "g1-java-resource-baseline/v1",
+  "started_at": "2026-08-29T21:39:53Z",
+  "tuning": {
+    "container_mem_limit": "1536m",
+    "java_tool_options": "-XX:MaxRAMPercentage=70.0 -XX:InitialRAMPercentage=20.0",
+    "note": "Single bounded fair baseline. Production compose still has no memory limit."
+  },
+  "workload": {
+    "caddy": "HTTP-only stub H5; TLS not included",
+    "fake_provider": "loopback OpenAI-compatible, fixed reply, configurable delay",
+    "idle_seconds": 600,
+    "profile": "production + loopback fake provider + MinIO enabled",
+    "trials": 3
+  }
+}
