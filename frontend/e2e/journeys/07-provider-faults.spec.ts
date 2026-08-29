@@ -42,7 +42,7 @@ test("provider safety and timeout faults surface as safe terminal states", async
     page,
     `/pages/chat/chat?relationshipId=${context.relationshipId}&conversationId=${context.conversationId}`,
   );
-  const input = page.locator('[data-testid="message-input"] input');
+  const input = page.locator('[data-testid="message-input"] textarea');
   await expect(input).toBeVisible();
 
   const blockedResponse = page.waitForResponse((response) =>

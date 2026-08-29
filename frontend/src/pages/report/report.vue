@@ -81,7 +81,7 @@ promises or hotline role-play. Message reports arrive via ?messageId=. -->
       </text>
       <view v-for="r in store.reports" :key="r.id" class="report-row" :data-testid="`report-row-${r.id}`">
         <text class="row">
-          {{ REPORT_REASON_LABELS[r.reason] }}<text v-if="r.messageId"> · 关联消息 {{ r.messageId }}</text>
+          {{ REPORT_REASON_LABELS[r.reason] }}<text v-if="r.messageId"> · 已关联到你举报的那条消息</text>
         </text>
         <text class="row meta">{{ r.note }}</text>
         <text class="row meta" :data-testid="`report-status-${r.id}`">

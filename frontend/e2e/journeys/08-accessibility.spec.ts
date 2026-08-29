@@ -279,10 +279,9 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
       );
     }
     await navigateToPage(page, "/pages/chat/chat");
-    await expect(page.getByTestId("current-relationship")).toContainText(
-      "当前关系：",
-    );
-    await expect(page.getByTestId("conversation-panel")).toBeVisible();
+    // 纠偏式重构：聊天页顶栏展示陪伴名；会话面板收进"更多"菜单。
+    await expect(page.getByTestId("chat-companion-name")).toBeVisible();
+    await expect(page.locator('[data-testid="message-input"] textarea')).toBeVisible();
 
     await expectAccessible(page, "chat");
   });
@@ -326,9 +325,9 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
   });
 
   // P1-6：暗色外壳（底栏/页头/聊天头部/内部壳）键盘焦点环必须真的命中
-  // --vc-focus-on-env（#f0c983，暗面 ≥3:1），用真实渲染的 computed style
+  // --vc-focus-on-env（#2b5c8f，浅色 chrome ≥3:1），用真实渲染的 computed style
   // 验证，防止选择器写错导致覆盖不生效。
-  test("dark-shell focus ring resolves to --vc-focus-on-env", async () => {
+  test("chrome-shell focus ring resolves to --vc-focus-on-env", async () => {
     // 与"index 边界台"测试同因：uni 把首页规范化为 "#/"，webkit 上
     // waitForURL 的 hash 目标不会出现，改用内容可见性判定位。
     await page.evaluate(() => {
@@ -341,7 +340,7 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
 
     // 真键盘 Tab 触发 :focus-visible（程序化 focus 不保证命中伪类）。
     // 触摸仿真引擎上 Tab 不一定命中伪类，因此分层验证：
-    // ① 键盘命中 :focus-visible 时，computed outline-color 必须 = #f0c983；
+    // ① 键盘命中 :focus-visible 时，computed outline-color 必须 = #2b5c8f；
     // ② 无论如何，页面已应用的样式表中必须存在 `.vc-chrome :focus-visible`
     //    覆盖规则且变量解析为该值（真实渲染 DOM 的级联检查）。
     async function tabWalk(testid: string, max = 24): Promise<void> {
@@ -359,7 +358,7 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
         });
         if (hit.id === testid && hit.matches) {
           sawFocusVisible = true;
-          expect(hit.color, `${testid} 焦点环颜色`).toBe("rgb(240, 201, 131)");
+          expect(hit.color, `${testid} 焦点环颜色`).toBe("rgb(43, 92, 143)");
           break;
         }
       }
@@ -368,12 +367,12 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
 
     async function chromeRuleOk(): Promise<boolean> {
       return page.evaluate(() => {
-        const target = "rgb(240, 201, 131)";
+        const target = "rgb(43, 92, 143)";
         const probe = document.createElement("span");
         document.querySelector(".vc-chrome")?.appendChild(probe);
         const resolved = getComputedStyle(probe).getPropertyValue("--vc-focus-on-env").trim();
         probe.remove();
-        if (resolved !== "#f0c983") return false;
+        if (resolved !== "#2b5c8f") return false;
         for (const sheet of Array.from(document.styleSheets)) {
           let rules: CSSRuleList;
           try {

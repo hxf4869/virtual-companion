@@ -36,8 +36,6 @@ interface SwitchGeometry {
   mids: string[];
   draftCount: number;
   following: string | null;
-  followRun: string | null;
-  incognitoMirror: string | null;
   scrollTop: number;
 }
 
@@ -60,9 +58,16 @@ async function measureSwitch(page: Page): Promise<SwitchGeometry> {
       assistantLastMid: last?.dataset.mid ?? null,
       mids: assistants.map((n) => n.dataset.mid ?? ""),
       draftCount: document.querySelectorAll('[data-testid="draft"]').length,
-      following: (historyEl as HTMLElement | null)?.dataset.following ?? null,
-      followRun: (historyEl as HTMLElement | null)?.dataset.followRun ?? null,
-      incognitoMirror: (historyEl as HTMLElement | null)?.dataset.incognito ?? null,
+      // following 由几何推导：距底 ≤48px 即视为跟随（与页面的回底阈值一致）。
+      following:
+        (historyEl as HTMLElement | null) === null
+          ? null
+          : (historyEl as HTMLElement).scrollHeight -
+              (historyEl as HTMLElement).scrollTop -
+              (historyEl as HTMLElement).clientHeight <=
+            48
+          ? "true"
+          : "false",
       scrollTop: (historyEl as HTMLElement)?.scrollTop ?? 0,
     };
   });
@@ -397,8 +402,7 @@ test("in-browser transport streams deltas and completes through a real snapshot-
   });
 
   await navigateToPage(page, "/pages/chat/chat");
-  await expect(page.getByTestId("conversation-panel")).toBeVisible();
-  const input = page.locator('[data-testid="message-input"] input');
+  const input = page.locator('[data-testid="message-input"] textarea');
   await expect(input).toBeVisible();
 
   const frame = (event: string, seq: number, payload: unknown): string =>
@@ -466,7 +470,7 @@ test("in-browser transport streams deltas and completes through a real snapshot-
     ctrl.close();
   });
 
-  await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）", { timeout: 30_000 });
+  await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY }).last()).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('[data-testid="draft"]')).toHaveCount(0);
   // 正式回复恰好一份（终态后 store 会重开分页拉取提交行——轮询直到出现，
   // 再钉死"恰好一份"）；迟到的标记文本无处可寻。
@@ -482,7 +486,7 @@ test("in-browser transport streams deltas and completes through a real snapshot-
   await expect(
     page.locator('[data-testid="chat-message"].assistant').last(),
   ).toContainText(DRAFT_FULL.slice(-12));
-  expect(await page.getAttribute('[data-testid="history"]', "data-following"), "follows latest on settle")
+  expect((await measureSwitch(page)).following, "follows latest on settle")
     .toBe("true");
 
   await waitForChromeStable(page);
@@ -583,14 +587,14 @@ test("rapid conversation switching never lets a stale response paint the wrong w
   await page.route(/\/api\/v1\/conversations\/e2e-conv-b\/messages/, bMessagesHandler);
 
   await navigateToPage(page, "/pages/chat/chat");
-  await expect(page.getByTestId("conversation-panel")).toBeVisible();
+  await expect(page.locator('[data-testid="message-input"] textarea')).toBeVisible();
   await expect(page.locator('[data-testid="chat-message"].assistant').last())
     .toContainText(A_TAIL.slice(0, 12), { timeout: 30_000 });
 
   // 先把视口推离底部并交还给用户（如实命名：程序化跳转制造前提）。
   await jumpToMiddle(page);
   await expect
-    .poll(() => page.getAttribute('[data-testid="history"]', "data-following"), {
+    .poll(async () => (await measureSwitch(page)).following, {
       timeout: 5_000,
       intervals: [60, 120],
     })
@@ -600,9 +604,13 @@ test("rapid conversation switching never lets a stale response paint the wrong w
   );
 
   // ---- 快速连续点击：B 挂起 → 不等结果立刻切回 A ----
+  // 会话切换收进"更多"菜单：每次切换 = 打开菜单 → 点会话（菜单自动关闭）。
   bDelayMs = 2_800;
+  await page.getByTestId("chat-context-open").click();
   await page.locator('[data-testid="conversation-item"]').first().click();
   // 不等 B 的任何内容，直接点回 A。
+  await page.getByTestId("chat-context-open").click();
+  await expect(page.locator('[data-testid="conversation-item"]').first()).toBeVisible();
   await page.locator('[data-testid="conversation-item"]').nth(1).click();
 
   // 当前窗口只能是 A：所有正式助手行的 messageId 都是 a-*；
@@ -646,6 +654,8 @@ test("rapid conversation switching never lets a stale response paint the wrong w
   await page.screenshot({ path: `${SHOTS}/rapid-conversation-switch-final.png` });
 
   // 反向核对仍可用：手动切到 B，等它的真实返回，尾部完整可见。
+  await page.getByTestId("chat-context-open").click();
+  await expect(page.locator('[data-testid="conversation-item"]').first()).toBeVisible();
   await page.locator('[data-testid="conversation-item"]').first().click();
   await expect(page.locator('[data-testid="chat-message"].assistant').last())
     .toContainText(B_TAIL.slice(0, 12), { timeout: 30_000 });

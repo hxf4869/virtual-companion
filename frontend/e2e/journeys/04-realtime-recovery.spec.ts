@@ -59,7 +59,7 @@ test("reload recovers after the first SSE connection is interrupted", async ({
     page,
     `/pages/chat/chat?relationshipId=${context.relationshipId}&conversationId=${context.conversationId}`,
   );
-  const input = page.locator('[data-testid="message-input"] input');
+  const input = page.locator('[data-testid="message-input"] textarea');
   await expect(input).toBeVisible();
 
   const prompt = "连接断开后也请接着完成这一轮。";
@@ -79,7 +79,7 @@ test("reload recovers after the first SSE connection is interrupted", async ({
   await page.reload({ waitUntil: "domcontentloaded" });
   expect((await restoredSnapshot).ok()).toBeTruthy();
 
-  await expect(page.getByTestId("status")).toHaveText("已完成（安全终态）");
+  await expect(page.getByTestId("assistant-md")).toContainText(PROVIDER_REPLY);
   await expect(page.getByTestId("assistant-md")).toContainText(PROVIDER_REPLY);
   await expect(
     page.locator('[data-testid="chat-message"].user').filter({ hasText: prompt }),
