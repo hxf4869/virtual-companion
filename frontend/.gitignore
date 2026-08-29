@@ -19,3 +19,5 @@ dist
 *.njsproj
 *.sln
 *.sw?
+# Impeccable 本地视觉证据（截图不入库；design.json sidecar 入库）
+.impeccable/review/

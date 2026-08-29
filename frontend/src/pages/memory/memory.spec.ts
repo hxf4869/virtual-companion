@@ -47,6 +47,16 @@ function mountPage() {
   return mount(MemoryPage, { attachTo: document.body });
 }
 
+/** 受约束的关系来源：通过选择器选中默认可用的 rel-pick-1（raw relationship
+    id 输入已移除；选中即自动加载）。 */
+async function pickRel(wrapper: ReturnType<typeof mountPage>): Promise<void> {
+  await flushPromises();
+  await wrapper
+    .find('select[data-testid="relationship-select"]')
+    .setValue("rel-pick-1");
+  await flushPromises();
+}
+
 describe("memory page glue (P2-19 component test)", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -54,9 +64,9 @@ describe("memory page glue (P2-19 component test)", () => {
     stubRelationshipFetch();
   });
 
-  it("renders a stable aria-label on the relationship input (P3-04)", () => {
+  it("does not expose a raw relationship-id input (constrained source)", () => {
     const wrapper = mountPage();
-    expect(wrapper.find('input[aria-label="relationship id"]').exists()).toBe(true);
+    expect(wrapper.find('input[aria-label="relationship id"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -125,8 +135,8 @@ describe("memory page glue (P2-19 component test)", () => {
     const store = useMemoryStore();
     vi.spyOn(store, "load").mockResolvedValue();
     const wrapper = mountPage();
-    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
-    await wrapper.findAll("button")[0].trigger("click");
+    await pickRel(wrapper);
+    await wrapper.find('[data-testid="reload"]').trigger("click");
     await flushPromises();
 
     const pending = wrapper.find('[data-testid="empty-pending"]');
@@ -229,8 +239,8 @@ describe("memory page glue (P2-19 component test)", () => {
       store.canonical = [canonicalMemory("c1")];
     });
     const wrapper = mountPage();
-    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
-    await wrapper.findAll("button")[0].trigger("click");
+    await pickRel(wrapper);
+    await wrapper.find('[data-testid="reload"]').trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
@@ -244,8 +254,8 @@ describe("memory page glue (P2-19 component test)", () => {
       store.error = "load-failed";
     });
     const wrapper = mountPage();
-    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
-    await wrapper.findAll("button")[0].trigger("click");
+    await pickRel(wrapper);
+    await wrapper.find('[data-testid="reload"]').trigger("click");
     await flushPromises();
 
     expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
@@ -260,8 +270,8 @@ describe("memory page glue (P2-19 component test)", () => {
       store.canonical = [canonicalMemory("c-del", "喜欢安静的晚上")];
     });
     const wrapper = mountPage();
-    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
-    await wrapper.findAll("button")[0].trigger("click");
+    await pickRel(wrapper);
+    await wrapper.find('[data-testid="reload"]').trigger("click");
     await flushPromises();
 
     const del = wrapper.find('[data-testid="memory-delete"]');
@@ -288,8 +298,8 @@ describe("memory page glue (P2-19 component test)", () => {
       store.canonical = [canonicalMemory("c-del", "喜欢安静的晚上")];
     });
     const wrapper = mountPage();
-    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
-    await wrapper.findAll("button")[0].trigger("click");
+    await pickRel(wrapper);
+    await wrapper.find('[data-testid="reload"]').trigger("click");
     await flushPromises();
 
     const del = wrapper.find('[data-testid="memory-delete"]');
@@ -301,116 +311,27 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("renders a back-to-index entry before a relationship id is entered", () => {
+  it("renders no boundary-era nav entries (IA moved to the tab shell)", () => {
     const wrapper = mountPage();
-    const nav = wrapper.find('[data-testid="nav-index"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("返回边界台");
+    expect(wrapper.find('[data-testid="nav-index"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="nav-login"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("navigates to the preflight index without calling load or confirm", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    const store = useMemoryStore();
-    const loadSpy = vi.spyOn(store, "load");
-    const confirmSpy = vi.spyOn(store, "confirm");
-
-    await wrapper.find('[data-testid="nav-index"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/index/index" });
-    expect(loadSpy).not.toHaveBeenCalled();
-    expect(confirmSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("renders a login entry before a relationship id is entered", () => {
-    const wrapper = mountPage();
-    const nav = wrapper.find('[data-testid="nav-login"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("登录");
-    wrapper.unmount();
-  });
-
-  it("navigates to the login page without calling load or confirm", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    const store = useMemoryStore();
-    const loadSpy = vi.spyOn(store, "load");
-    const confirmSpy = vi.spyOn(store, "confirm");
-
-    await wrapper.find('[data-testid="nav-login"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
-    expect(loadSpy).not.toHaveBeenCalled();
-    expect(confirmSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("renders a back-to-chat entry before a relationship id is entered", () => {
-    const wrapper = mountPage();
-    const nav = wrapper.find('[data-testid="nav-chat"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("离线聊天");
-    wrapper.unmount();
-  });
-
-  it("navigates to the chat page without calling load or confirm", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    const store = useMemoryStore();
-    const loadSpy = vi.spyOn(store, "load");
-    const confirmSpy = vi.spyOn(store, "confirm");
-
-    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/chat/chat" });
-    expect(loadSpy).not.toHaveBeenCalled();
-    expect(confirmSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("carries a filled relationship id to chat without loading memory", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    const store = useMemoryStore();
-    const loadSpy = vi.spyOn(store, "load");
-
-    await wrapper.find('input[aria-label="relationship id"]').setValue("rel-1");
-    await wrapper.find('[data-testid="nav-chat"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({
-      url: "/pages/chat/chat?relationshipId=rel-1",
-    });
-    expect(loadSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("prefills relationship id from the query and does not auto-load", async () => {
+  it("auto-loads from a valid query relationship and never shows the raw id", async () => {
     vi.stubGlobal("location", { search: "?relationshipId=rel-pick-1" });
     const store = useMemoryStore();
-    const loadSpy = vi.spyOn(store, "load");
+    const loadSpy = vi.spyOn(store, "load").mockResolvedValue();
     const wrapper = mountPage();
     await flushPromises();
 
-    const input = wrapper.find('input[aria-label="relationship id"]');
-    expect((input.element as HTMLInputElement).value).toBe("rel-pick-1");
-    expect(loadSpy).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="empty-relationship-id"]').exists()).toBe(
-      false,
-    );
-    const hint = wrapper.find('[data-testid="prefill-hint"]');
-    expect(hint.exists()).toBe(true);
-    expect(hint.text()).toContain("已填入关系");
-    expect(hint.text()).toContain("刷新记忆");
-    expect(hint.text()).not.toContain("聊天");
-    await wrapper.vm.$nextTick();
-    expect(document.activeElement?.getAttribute("data-testid")).toBe("reload");
+    expect(loadSpy).toHaveBeenCalledOnce();
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.text()).toContain("当前关系：");
+    expect(status.text()).not.toContain("rel-pick-1");
+    expect(wrapper.find('[data-testid="empty-relationship-id"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -419,8 +340,9 @@ describe("memory page glue (P2-19 component test)", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const input = wrapper.find('input[aria-label="relationship id"]');
-    expect((input.element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find('[data-testid="current-relationship"]').text()).toContain(
+      "还没有当前关系",
+    );
     expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -430,25 +352,22 @@ describe("memory page glue (P2-19 component test)", () => {
     const empty = wrapper.find('[data-testid="empty-relationship-id"]');
     expect(empty.exists()).toBe(true);
     expect(empty.attributes("role")).toBe("status");
-    expect(empty.text()).toContain("选择或填写");
-    expect(empty.text()).toContain("relationship id");
+    expect(empty.text()).toContain("选择当前关系");
     expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("hides the prefill hint after a successful load", async () => {
+  it("keeps manual reload available after the auto-load", async () => {
     vi.stubGlobal("location", { search: "?relationshipId=rel-pick-1" });
     const store = useMemoryStore();
-    vi.spyOn(store, "load").mockResolvedValue();
+    const loadSpy = vi.spyOn(store, "load").mockResolvedValue();
     const wrapper = mountPage();
     await flushPromises();
-    expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(true);
-
-    await wrapper.findAll("button")[0].trigger("click");
-    await flushPromises();
-
     expect(wrapper.find('[data-testid="prefill-hint"]').exists()).toBe(false);
-    wrapper.unmount();
+
+    await wrapper.find('[data-testid="reload"]').trigger("click");
+    await flushPromises();
+    expect(loadSpy).toHaveBeenCalledTimes(2);
   });
 
   it("renders the relationship selector", async () => {
@@ -460,7 +379,7 @@ describe("memory page glue (P2-19 component test)", () => {
     wrapper.unmount();
   });
 
-  it("fills the relationship id from the selector without activate, create, or memory load", async () => {
+  it("loads memories from the selector pick without activate or create", async () => {
     const wrapper = mountPage();
     await flushPromises();
     const relStore = useRelationshipStore();
@@ -472,28 +391,22 @@ describe("memory page glue (P2-19 component test)", () => {
     await wrapper.find('[data-testid="relationship-select"]').setValue("rel-pick-1");
     await flushPromises();
 
-    const input = wrapper.find('input[aria-label="relationship id"]');
-    expect((input.element as HTMLInputElement).value).toBe("rel-pick-1");
+    const status = wrapper.find('[data-testid="current-relationship"]');
+    expect(status.text()).toContain("当前关系：");
+    expect(status.text()).not.toContain("rel-pick-1");
     expect(activateSpy).not.toHaveBeenCalled();
     expect(createSpy).not.toHaveBeenCalled();
-    expect(memLoadSpy).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-testid="empty-pending"]').exists()).toBe(false);
-    const hint = wrapper.find('[data-testid="prefill-hint"]');
-    expect(hint.exists()).toBe(true);
-    expect(hint.text()).toContain("已填入关系");
-    expect(hint.text()).not.toContain("聊天");
-    expect(document.activeElement?.getAttribute("data-testid")).toBe("reload");
+    expect(memLoadSpy).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 
-  it("points an empty relationship list to offline chat", async () => {
+  it("points an empty relationship list to the unified creation flow", async () => {
     stubRelationshipFetch([]);
     const wrapper = mountPage();
     await flushPromises();
     const empty = wrapper.find('[data-testid="empty-relationships"]');
     expect(empty.exists()).toBe(true);
-    expect(empty.text()).toContain("离线聊天");
-    expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(true);
+    expect(empty.text()).toContain("创建你的陪伴");
     wrapper.unmount();
   });
 
@@ -578,9 +491,10 @@ describe("memory page glue (P2-19 component test)", () => {
 
     const status = wrapper.find('[data-testid="current-relationship"]');
     expect(status.exists()).toBe(true);
-    expect(status.text()).toContain("当前关系：rel-pick-1");
+    expect(status.text()).toContain("当前关系：");
+    expect(status.text()).toContain("温和倾听者");
+    expect(status.text()).not.toContain("rel-pick-1");
     expect(activateSpy).not.toHaveBeenCalled();
-    expect(memLoadSpy).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -595,8 +509,7 @@ describe("memory page glue (P2-19 component test)", () => {
           { memoryId: "man-1", scope: "RELATIONSHIP", summary: "手动记忆", status: "PENDING_CONFIRMATION" },
         ];
       });
-    const relInput = wrapper.find('input[aria-label="relationship id"]');
-    await relInput.setValue("rel-pick-1");
+    await pickRel(wrapper);
     const candidateInput = wrapper.find('[data-testid="candidate-input"]');
     await candidateInput.setValue("手动记忆");
 

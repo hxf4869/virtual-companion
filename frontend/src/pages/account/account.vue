@@ -2,13 +2,9 @@
 Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
 <template>
   <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
-  <view class="account-page" role="main">
-    <view class="bar">
-      <text class="title" role="heading" aria-level="1">账号与注销</text>
-      <button data-testid="nav-index" class="nav-index" aria-label="返回边界台" @click="goTo('/pages/index/index')">
-        返回边界台
-      </button>
-    </view>
+  <ConsumerShell route="/pages/account/account">
+
+
 
     <view v-if="!auth.isAuthenticated" class="notice" data-testid="account-signed-out" role="status">
       <text>当前未登录。登录后再查看账号或注销。</text>
@@ -16,13 +12,68 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
     </view>
 
     <template v-else>
-      <view class="card" data-testid="account-card">
-        <text class="label">账号编号</text>
-        <text data-testid="account-id">{{ auth.accountId ?? "未知" }}</text>
-        <text class="label">角色</text>
-        <text data-testid="account-role">{{ auth.role ?? "未知" }}</text>
+      <!-- "我的"分组导航枢纽：每行一个清楚任务；分组名独立分隔行。 -->
+      <nav class="hub" data-testid="me-hub" aria-label="我的分组入口">
+        <template v-for="group in groupedHubEntries" :key="group.name">
+          <text class="hub-group" role="presentation">{{ group.name }}</text>
+          <button
+            v-for="entry in group.entries"
+            :key="entry.href"
+            class="row-link"
+            :data-testid="`me-${entry.testid}`"
+            @click="goTo(entry.href)"
+          >
+            <text class="hub-copy">
+              <text class="hub-label">{{ entry.label }}</text>
+            </text>
+            <text class="hub-note">{{ entry.note }}</text>
+          </button>
+        </template>
+      </nav>
+
+      <!-- Internal Shell 入口：仅操作者角色可见；普通用户看不到入口与
+           内部数据轮廓。 -->
+      <nav
+        v-if="operatorVisible"
+        class="hub hub--internal"
+        data-testid="me-internal"
+        aria-label="内部入口"
+      >
+        <text class="hub-group" role="presentation">内部</text>
+        <button
+          v-for="entry in visibleInternalEntries"
+          :key="entry.href"
+          class="row-link"
+          :data-testid="`me-${entry.testid}`"
+          @click="goTo(entry.href)"
+        >
+          <text class="hub-copy">
+            <text class="hub-label">{{ entry.label }}</text>
+          </text>
+          <text class="hub-note">{{ entry.note }}</text>
+        </button>
+      </nav>
+
+      <view class="card" data-testid="survey-card">
+        <text class="label">本期体验评分</text>
+        <text class="meta">这段对话让你感到「被理解」了吗？1 分完全没被理解，5 分非常被理解。每天可评一次。</text>
+        <view class="actions" data-testid="survey-buttons">
+          <button
+            v-for="s in [1, 2, 3, 4, 5]"
+            :key="s"
+            class="nav-index"
+            :data-testid="'survey-score-' + s"
+            :disabled="busy"
+            @click="onSurvey(s)"
+          >
+            {{ s }}
+          </button>
+        </view>
+        <text v-if="surveyMsg" class="meta" data-testid="survey-msg">{{ surveyMsg }}</text>
       </view>
 
+      <!-- 账号与安全：改密、会话管理、登出；账号编号与角色是次要信息。 -->
+      <text class="hub-group" role="presentation">账号与安全</text>
       <view class="card" data-testid="password-card">
         <text class="label">修改密码</text>
         <text v-if="auth.passwordMustChange" class="error" data-testid="password-required">
@@ -81,7 +132,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text v-else-if="sessions.length === 0" class="meta">暂无有效会话。</text>
         <view v-for="session in sessions" :key="session.id" class="session-row" data-testid="session-row">
           <text>{{ session.clientLabel || "客户端" }}{{ session.current ? "（当前）" : "" }}</text>
-          <text class="meta">最近使用：{{ session.lastSeenAt }}；到期：{{ session.expiresAt }}</text>
+          <text class="meta">最近使用：{{ formatLocalDateTime(session.lastSeenAt) }}；到期：{{ formatLocalDateTime(session.expiresAt) }}</text>
           <button
             class="nav-index"
             data-testid="session-revoke"
@@ -102,22 +153,9 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text class="meta">在公共或共用电脑上使用后，请「登出」并关闭页面；建议使用浏览器无痕模式。登出会清除本机缓存的会话数据。</text>
       </view>
 
-      <view class="card" data-testid="survey-card">
-        <text class="label">本期体验评分</text>
-        <text class="meta">这段对话让你感到「被理解」了吗？1 分完全没被理解，5 分非常被理解。每天可评一次。</text>
-        <view class="actions" data-testid="survey-buttons">
-          <button
-            v-for="s in [1, 2, 3, 4, 5]"
-            :key="s"
-            class="nav-index"
-            :data-testid="'survey-score-' + s"
-            :disabled="busy"
-            @click="onSurvey(s)"
-          >
-            {{ s }}
-          </button>
-        </view>
-        <text v-if="surveyMsg" class="meta" data-testid="survey-msg">{{ surveyMsg }}</text>
+      <view class="account-meta" data-testid="account-card">
+        <text class="meta">账号编号 <text data-testid="account-id">{{ auth.accountId ?? "未知" }}</text></text>
+        <text class="meta">角色 <text data-testid="account-role">{{ accountRoleLabel(auth.role) }}</text></text>
       </view>
 
       <view class="danger">
@@ -162,7 +200,7 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         </view>
       </view>
     </template>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -178,11 +216,55 @@ import {
   type AuthSession,
 } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
+import { isOperatorRole, isVisibleToRole, routeSpecOf } from "@/app/navigation";
+import { accountRoleLabel } from "@/domain/account-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
   name: "AccountPage",
+  components: { ConsumerShell },
   setup() {
+    // "我的"分组导航（静态 IA 数据；运行时消费导航模型的分组）。
+    const HUB_ENTRIES = [
+      { group: "陪伴", label: "陪伴设置", note: "称呼、偏好与危险操作", href: "/pages/companion/companion", testid: "companion" },
+      { group: "提醒与休息", label: "提醒", note: "本地列表，不会主动推送", href: "/pages/reminder/reminder", testid: "reminder" },
+      { group: "提醒与休息", label: "使用与休息", note: "连续使用提醒间隔", href: "/pages/health/health", testid: "health" },
+      { group: "隐私与 AI", label: "无痕默认", note: "下次新会话是否默认无痕", href: "/pages/incognito/incognito", testid: "incognito" },
+      { group: "隐私与 AI", label: "成年状态", note: "核验结果与申诉", href: "/pages/age/age", testid: "age" },
+      { group: "隐私与 AI", label: "同意管理", note: "版本化同意与撤回", href: "/pages/consent/consent", testid: "consent" },
+      { group: "隐私与 AI", label: "AI 说明", note: "模型与 AI 标识", href: "/pages/ai-notice/ai-notice", testid: "ai-notice" },
+      { group: "数据", label: "我的数据", note: "账号数据汇总", href: "/pages/data/data", testid: "data" },
+      { group: "数据", label: "数据导出", note: "二次认证后异步导出", href: "/pages/export/export", testid: "export" },
+      { group: "帮助", label: "帮助与反馈", note: "边界说明与支持", href: "/pages/help/help", testid: "help" },
+      { group: "帮助", label: "举报和申诉", note: "人工处理，不编造工单", href: "/pages/report/report", testid: "report" },
+    ] as const;
+    const INTERNAL_ENTRIES = [
+      { group: "内部", label: "运行与合规", note: "Runtime 与边界状态", href: "/pages/ops/ops", testid: "ops" },
+      { group: "内部", label: "内部管理", note: "账户/审计/队列", href: "/pages/admin/admin", testid: "admin" },
+    ] as const;
+    const operatorVisible = computed(() => isOperatorRole(auth.role));
+    // 账号页只显示当前角色真正可进入的内部入口（route-specific allowedRoles）。
+    const groupedHubEntries = computed(() => {
+      const groups: Array<{ name: string; entries: typeof HUB_ENTRIES[number][] }> = [];
+      for (const entry of HUB_ENTRIES) {
+        const last = groups[groups.length - 1];
+        if (last && last.name === entry.group) {
+          last.entries.push(entry);
+        } else {
+          groups.push({ name: entry.group, entries: [entry] });
+        }
+      }
+      return groups;
+    });
+    const visibleInternalEntries = computed(() =>
+      INTERNAL_ENTRIES.filter((entry) => {
+        const spec = routeSpecOf(entry.href);
+        return spec ? isVisibleToRole(spec, auth.role) : false;
+      }),
+    );
+
     const auth = useAuthStore();
     const deleteOpen = ref(false);
     const deleteError = ref("");
@@ -356,6 +438,13 @@ export default {
     }
 
     return {
+      accountRoleLabel,
+      formatLocalDateTime,
+      HUB_ENTRIES,
+      INTERNAL_ENTRIES,
+      operatorVisible,
+      groupedHubEntries,
+      visibleInternalEntries,
       auth,
       deleteOpen,
       deleteError,
@@ -384,74 +473,277 @@ export default {
 </script>
 
 <style scoped>
-.account-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
+.intro {
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
+
+.section {
+  margin-bottom: var(--vc-space-5);
 }
-.title {
-  font-size: 32rpx;
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
   font-weight: 600;
-  margin-right: auto;
 }
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  color: var(--vc-muted);
+}
+
+.label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+}
+
 .nav-index {
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
-.danger-btn {
-  background-color: #5a1a1a;
+
+.nav-index::after {
+  border: 0;
 }
-.card,
-.notice,
+
+.page-act {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
+}
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
+}
+.account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-3);
+  margin: var(--vc-space-4) 0 0;
+}
+
 .danger {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
-  line-height: 1.6;
-  color: #d5deee;
+  align-items: flex-start;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-6);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
-.label {
-  font-size: 22rpx;
-  color: #8fa0bd;
+
+.danger-title {
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
-.meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
+
+.danger-lead,
+.danger-copy {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  line-height: 1.7;
 }
-.actions {
+
+.danger-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-danger);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.danger-btn::after {
+  border: 0;
+}
+
+.danger-confirm {
   display: flex;
-  gap: 8rpx;
+  flex-direction: column;
+  gap: var(--vc-space-2);
+  width: 100%;
 }
-.account-input {
-  padding: 12rpx;
-  border: 2rpx solid #425579;
-  border-radius: 8rpx;
-  color: #f5f5f5;
+.hub {
+  margin: var(--vc-space-4) 0;
+}
+
+.hub .row-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vc-space-3);
+}
+
+.hub-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hub-group {
+  display: block;
+  margin-top: var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.hub-group:first-child {
+  margin-top: 0;
+}
+
+.hub-label {
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.hub-note {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  text-align: right;
+}
+
+.hub--internal {
+  padding: var(--vc-space-2) var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
 
 .session-row {
   display: flex;
-  flex-direction: column;
-  gap: 6rpx;
-  padding-top: 10rpx;
-  border-top: 1rpx solid #425579;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-2) 0;
+  border-bottom: 1px solid var(--vc-border);
+  font-size: var(--vc-text-sm);
 }
 
-.error {
-  color: #f0b4b4;
+.notice {
+  display: block;
+  margin: var(--vc-space-2) 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
 </style>

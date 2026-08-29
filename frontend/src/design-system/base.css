@@ -1,0 +1,192 @@
+/**
+ * 语义 token 与全局基础（前端纠偏式重构，2026-08-29）。
+ *
+ * 视觉方向："熟悉、安静、清晰、浅色优先的移动端陪伴产品"。浅色中性背景、
+ * 白色内容面、接近黑色的主文字、一种克制低饱和的冷蓝强调。页面只消费
+ * 语义 token，不得新增 raw hex、随机圆角或页面私有导航色。
+ *
+ * 对比度按 WCAG 计算：正文 ≥4.5:1，非文本控件边界 ≥3:1。
+ * 变量名保持与迁移前一致（--vc-env 等如今表示浅色 chrome 层），避免一次性
+ * 改动全部页面；语义以本注释为准。
+ */
+
+page,
+:root {
+  /* ---- chrome 层：页面底色与导航/页头表面（浅色） ---- */
+  --vc-env: #f4f6f8; /* 页面底色：浅中性灰蓝 */
+  --vc-env-raised: #ffffff; /* chrome 表面：页头/底栏 */
+  --vc-env-hover: #edf0f4; /* chrome 悬停/按压 */
+  --vc-on-env: #1c2430; /* chrome 主文字（15.6:1） */
+  --vc-on-env-muted: #5b6675; /* chrome 次要文字（5.8:1） */
+  --vc-glow: #3d6b99; /* chrome 强调 = 品牌冷蓝（5.5:1） */
+  --vc-border-env: #e3e8ee; /* chrome 装饰细线 */
+  /* chrome 真实控件边界（≥3:1） */
+  --vc-border-env-strong: #76828f;
+
+  /* ---- 内容层：白色内容面 ---- */
+  --vc-paper: #f7f8fa; /* 内容区底色 */
+  --vc-card: #ffffff; /* 卡片与输入底 */
+  --vc-sunken: #eef1f5; /* 沉面：次级面板、用户气泡 */
+  --vc-ink: #1c2430; /* 主文字（15.6:1） */
+  --vc-muted: #5b6675; /* 次要文字（5.8:1） */
+  --vc-border: #e3e8ee; /* 装饰细线 */
+  --vc-border-strong: #76828f; /* 控件边界（3.9:1） */
+
+  /* ---- 主动作：品牌冷蓝（白字 5.5:1） ---- */
+  --vc-primary: #3d6b99;
+  --vc-primary-hover: #335c85;
+  --vc-on-primary: #ffffff;
+
+  /* ---- 语义状态（先有事实，再有色；不得仅靠颜色传达） ---- */
+  --vc-success: #2e6b4f;
+  --vc-success-bg: #e7f2ec;
+  --vc-warning: #8a5a00; /* 5.3:1；仅真实警告 */
+  --vc-warning-bg: #f9f0dc;
+  --vc-warning-on-env: #8a5a00;
+  --vc-danger: #b3261e; /* 6.0:1 */
+  --vc-danger-bg: #faeae8;
+  --vc-danger-on-env: #b3261e;
+
+  /* ---- 焦点 ---- */
+  --vc-focus: #2b5c8f;
+  --vc-focus-on-env: #2b5c8f;
+
+  /* ---- 间距（4px 基） ---- */
+  --vc-space-1: 4px;
+  --vc-space-2: 8px;
+  --vc-space-3: 12px;
+  --vc-space-4: 16px;
+  --vc-space-5: 20px;
+  --vc-space-6: 24px;
+  --vc-space-7: 32px;
+  --vc-space-8: 48px;
+
+  /* ---- 圆角（卡面 12–16px；小控件 8px 或胶囊） ---- */
+  --vc-radius-s: 8px;
+  --vc-radius-m: 12px;
+  --vc-radius-l: 16px;
+  --vc-radius-pill: 999px;
+
+  /* ---- 字号 ----
+     正文与输入一律 ≥16px（低于 16px 时 iOS Safari 聚焦自动放大视口）；
+     辅助说明/标签可用 sm/xs。 */
+  --vc-text-xs: 12px;
+  --vc-text-sm: 14px;
+  --vc-text-md: 16px;
+  --vc-text-lg: 17px;
+  --vc-text-xl: 20px;
+  --vc-text-2xl: 24px;
+  --vc-text-3xl: 28px;
+
+  /* ---- 层级 ---- */
+  --vc-z-content: 0;
+  --vc-z-header: 10;
+  --vc-z-nav: 20;
+  --vc-z-overlay: 30;
+  --vc-z-toast: 40;
+
+  /* ---- 动效（只允许 transform/opacity；reduced-motion 下全部关闭） ---- */
+  --vc-motion-fast: 140ms;
+  --vc-motion-base: 220ms;
+  --vc-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ---- 字体：中文系统栈（无外部字体） ---- */
+  --vc-font:
+    "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC",
+    "Noto Sans CJK SC", "Microsoft YaHei", system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --vc-font-tabular:
+    "PingFang SC", "Hiragino Sans GB", system-ui, ui-monospace, monospace;
+  /* 等宽栈：错误详情/请求 id 等代码样文本。 */
+  --vc-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: light;
+}
+
+/* 全局盒模型：所有尺寸含 padding 与 border（修复 390px 下 2px 溢出类缺陷）。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ---- 全局排版 ---- */
+
+page {
+  min-height: 100%;
+  color: var(--vc-ink);
+  background: var(--vc-env);
+  font-family: var(--vc-font);
+  font-size: var(--vc-text-md);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-size-adjust: 100%;
+}
+
+/* ---- 浏览器表面：选区、光标、焦点环与主题一致 ---- */
+
+::selection {
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+}
+
+:focus-visible {
+  outline: 2px solid var(--vc-focus);
+  outline-offset: 2px;
+}
+
+.vc-on-env :focus-visible,
+.vc-chrome :focus-visible {
+  outline-color: var(--vc-focus-on-env);
+}
+
+/* ---- 触摸与点击 ---- */
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+.vc-tap {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ---- 安全区 ---- */
+
+.vc-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.vc-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ---- 读屏专用 ---- */
+
+.vc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- 减少动效：动效全部可关，正确性不依赖动画结束 ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

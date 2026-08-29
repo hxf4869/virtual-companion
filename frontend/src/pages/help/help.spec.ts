@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HelpPage from "./help.vue";
 
 describe("help page", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
   it("states the service boundary without a report or appeal form inline", () => {
     vi.stubGlobal("uni", { navigateTo: vi.fn() });
     const wrapper = mount(HelpPage, { attachTo: document.body });

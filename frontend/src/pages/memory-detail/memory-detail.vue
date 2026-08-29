@@ -1,26 +1,18 @@
 <!-- MEM-DETAIL: independent memory + evidence page (product §8.2 item 10).
 Reuses GET /memories/{id} and GET /memories/{id}/evidence. Existence hidden. -->
 <template>
-  <view class="detail-page">
-    <view class="bar">
-      <text class="title">记忆详情</text>
+  <ConsumerShell route="/pages/memory-detail/memory-detail">
+    <template #header-actions>
+      <!-- E2E 05 锚点：返回记忆列表（携带关系上下文）。 -->
       <button
         data-testid="nav-memory"
-        class="nav-index"
+        class="mem-back"
         aria-label="返回记忆管理"
         @click="goTo(memoryHref())"
       >
-        记忆管理
+        记忆列表
       </button>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
-    </view>
+    </template>
 
     <view v-if="missing" class="error" data-testid="memory-missing" role="alert">
       <text>未找到或无权访问。</text>
@@ -39,16 +31,16 @@ Reuses GET /memories/{id} and GET /memories/{id}/evidence. Existence hidden. -->
         <text class="meta" data-testid="memory-status">状态 {{ publicMemoryStatusLabel(record.status) }}</text>
         <text class="meta" data-testid="memory-scope">范围 {{ publicMemoryScopeLabel(record.scope) }}</text>
         <text v-if="record.createdAt" class="meta" data-testid="memory-created">
-          记录时间 {{ record.createdAt }}
+          记录时间 {{ formatLocalDateTime(record.createdAt) }}
         </text>
         <text v-if="record.autoSaved" class="meta" data-testid="memory-auto">
           自动保存条目（可随时删除）
         </text>
         <text v-if="record.eventAt" class="meta" data-testid="memory-event">
-          事件时间 {{ record.eventAt }} · 状态 {{ eventStatusLabel(record.eventStatus) }}
+          事件时间 {{ formatLocalDateTime(record.eventAt) }} · 状态 {{ eventStatusLabel(record.eventStatus) }}
         </text>
         <text v-if="record.eventExpiresAt" class="meta" data-testid="memory-event-expires">
-          事件过期 {{ record.eventExpiresAt }}（过期后不再使用，仅询问后续）
+          事件过期 {{ formatLocalDateTime(record.eventExpiresAt) }}（过期后不再使用，仅询问后续）
         </text>
         <text v-if="record.supersededAt" class="meta" data-testid="memory-superseded">
           已被 {{ record.supersededByMemoryId }} 替代，不作为已保存事实
@@ -65,7 +57,7 @@ Reuses GET /memories/{id} and GET /memories/{id}/evidence. Existence hidden. -->
         <text>没有可展示的来源。</text>
       </view>
     </template>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -73,12 +65,15 @@ import { onMounted, ref } from "vue";
 
 import { getMemory, listMemoryEvidence, type Memory, type MemoryEvidence } from "@/api/memory";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
   name: "MemoryDetailPage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const record = ref<Memory | null>(null);
@@ -188,6 +183,7 @@ export default {
       memoryHref,
       goTo,
       eventStatusLabel,
+      formatLocalDateTime,
       publicMemoryScopeLabel,
       publicMemoryStatusLabel,
     };
@@ -196,56 +192,82 @@ export default {
 </script>
 
 <style scoped>
-.detail-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
+.mem-back {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
   font-weight: 600;
-  margin-right: auto;
 }
-.nav-index {
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
+
+.mem-back::after {
+  border: 0;
 }
+
 .card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
+
 .label {
-  font-size: 24rpx;
-  color: #8fa0bd;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
+
 .summary {
-  font-size: 30rpx;
+  font-size: var(--vc-text-md);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
+
 .meta,
 .source {
-  font-size: 22rpx;
-  color: #8fa0bd;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  overflow-wrap: anywhere;
 }
+
 .error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.error button {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-danger);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.error button::after {
+  border: 0;
 }
 </style>

@@ -1,211 +1,36 @@
 <template>
-  <view class="page">
-    <view class="console" role="main">
-      <view class="masthead">
-        <view class="masthead__copy">
-          <text class="eyebrow">INTERNAL · TECHNICAL ALPHA</text>
-          <text class="title" role="heading" aria-level="1">
-            夜间预检边界台
-          </text>
-          <text class="description">
-            只核对本地 Runtime 连通性与冻结的关闭边界，不代表模型、身份或真实用户能力可用。
-          </text>
-        </view>
-
-        <!-- DOGFOOD-STABILIZATION-05 缺陷四：Enter/Space 键盘激活统一由
-             h5-a11y 状态机提供（Enter keydown 单次、Space keydown arm +
-             keyup 单次 click，repeat 一律不激活），页面不得再挂按钮级
-             keydown 处理器，否则长按 repeat 会多次触发动作。 -->
-        <button
-          class="retry"
-          :disabled="state === 'loading'"
-          role="button"
-          :tabindex="state === 'loading' ? -1 : 0"
-          :aria-disabled="state === 'loading' ? 'true' : 'false'"
-          :aria-label="state === 'loading' ? '正在校验 Runtime' : '重新校验 Runtime'"
-          @click="retryLoad"
-        >
-          <text class="retry__mark" aria-hidden="true">↻</text>
-          <text>{{ state === "loading" ? "校验中…" : "重新校验" }}</text>
-        </button>
-      </view>
-
-      <view
-        class="alpha-nav"
-        data-testid="alpha-nav"
-        role="navigation"
-        aria-label="内部页面"
+  <ConsumerShell route="/pages/index/index">
+    <!-- 匿名：唯一主动作是登录。 -->
+    <view v-if="auth.sessionStatus === 'anonymous'" class="home-hero home-hero--entry" data-testid="home-hero">
+      <text class="home-hero__title">虚拟陪伴</text>
+      <text class="home-hero__lead">
+        这里是一段安静的陪伴关系：文字对话、透明可控的长期记忆。
+        AI 陪伴 · 非真人。
+      </text>
+      <button
+        class="home-hero__primary"
+        data-testid="home-login"
+        @click="goTo('/pages/login/login')"
       >
-        <button
-          data-testid="nav-chat"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="离线聊天"
-          @click="goTo(chatHref())"
-        >
-          <text>离线聊天</text>
-        </button>
-        <button
-          data-testid="nav-conversations"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="会话列表"
-          @click="goTo(conversationsHref())"
-        >
-          <text>会话列表</text>
-        </button>
-        <button
-          data-testid="nav-memory"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="记忆管理"
-          @click="goTo(memoryHref())"
-        >
-          <text>记忆管理</text>
-        </button>
-        <button
-          data-testid="nav-companion"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="角色设置"
-          @click="goTo('/pages/companion/companion')"
-        >
-          <text>角色设置</text>
-        </button>
-        <button
-          data-testid="nav-reminder"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="提醒管理"
-          @click="goTo('/pages/reminder/reminder')"
-        >
-          <text>提醒管理</text>
-        </button>
-        <button
-          data-testid="nav-consent"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="同意管理"
-          @click="goTo('/pages/consent/consent')"
-        >
-          <text>同意管理</text>
-        </button>
-        <button
-          data-testid="nav-age"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="成年核验"
-          @click="goTo('/pages/age/age')"
-        >
-          <text>成年核验</text>
-        </button>
-        <button
-          data-testid="nav-export"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="数据导出"
-          @click="goTo('/pages/export/export')"
-        >
-          <text>数据导出</text>
-        </button>
-        <button
-          data-testid="nav-data"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="我的数据"
-          @click="goTo('/pages/data/data')"
-        >
-          <text>我的数据</text>
-        </button>
-        <button
-          data-testid="nav-help"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="帮助与安全支持"
-          @click="goTo('/pages/help/help')"
-        >
-          <text>帮助与安全支持</text>
-        </button>
-        <button
-          data-testid="nav-report"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="举报和申诉"
-          @click="goTo('/pages/report/report')"
-        >
-          <text>举报和申诉</text>
-        </button>
-        <button
-          data-testid="nav-ai-notice"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="模型与 AI 标识"
-          @click="goTo('/pages/ai-notice/ai-notice')"
-        >
-          <text>模型与 AI 标识</text>
-        </button>
-        <button
-          data-testid="nav-health"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="使用时长"
-          @click="goTo('/pages/health/health')"
-        >
-          <text>使用时长</text>
-        </button>
-        <button
-          data-testid="nav-incognito"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="无痕模式"
-          @click="goTo('/pages/incognito/incognito')"
-        >
-          <text>无痕模式</text>
-        </button>
-        <button
-          data-testid="nav-login"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="登录"
-          @click="goTo('/pages/login/login')"
-        >
-          <text>登录</text>
-        </button>
-        <button
-          data-testid="nav-account"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="账号与注销"
-          @click="goTo('/pages/account/account')"
-        >
-          <text>账号与注销</text>
-        </button>
-        <!-- ADMIN-UI: internal account provisioning, ADMIN only -->
-        <button
-          v-if="auth.role === 'ADMIN'"
-          data-testid="nav-ops"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="运行与合规"
-          @click="goTo('/pages/ops/ops')"
-        >
-          <text>运行与合规</text>
-        </button>
-        <button
-          v-if="auth.role === 'ADMIN'"
-          data-testid="nav-admin"
-          class="alpha-nav__link"
-          role="button"
-          aria-label="账户管理"
-          @click="goTo('/pages/admin/admin')"
-        >
-          <text>账户管理</text>
-        </button>
-      </view>
+        登录后继续
+      </button>
+    </view>
 
+    <!-- 会话未知：不编造任何状态。 -->
+    <view
+      v-else-if="auth.sessionStatus === 'unknown'"
+      class="home-pending"
+      data-testid="home-pending"
+      role="status"
+    >
+      <text>正在确认访问条件…</text>
+    </view>
+
+    <template v-else>
+      <!-- 准入未就绪：线性准入（登录 → 成年 → 同意 → 建立陪伴）。 -->
       <view
-        v-if="auth.isAuthenticated && admissionGate === 'unknown'"
-        class="next-step"
+        v-if="admissionGate === 'unknown'"
+        class="home-admission"
         data-testid="admission-gate"
         data-state="unknown"
         role="status"
@@ -214,325 +39,252 @@
       </view>
 
       <view
-        v-if="auth.isAuthenticated && nextStep && admissionGate !== 'unknown'"
-        class="next-step"
+        v-else-if="admissionGate === 'blocked' && nextStep"
+        class="home-admission home-admission--blocked"
         data-testid="next-step"
         role="status"
       >
-        <text>{{ nextStep.copy }}</text>
+        <text class="home-admission__copy">{{ nextStep.copy }}</text>
         <button
+          class="home-admission__go"
           data-testid="next-step-go"
-          class="alpha-nav__link"
-          role="button"
           :aria-label="nextStep.action"
           @click="goTo(nextStepHref)"
         >
-          <text>{{ nextStep.action }}</text>
+          {{ nextStep.action }}
         </button>
       </view>
 
       <view
-        v-if="relStore.status === 'ready'"
-        class="current-relationship"
-        data-testid="current-relationship"
-        role="status"
-      >
-        <text>{{
-          relStore.current
-            ? `当前关系：${personaDisplayName(relStore.current.personaRef)}`
-            : "还没有当前关系。"
-        }}</text>
-      </view>
-      <view
         v-else-if="relStore.status === 'error'"
-        class="current-relationship"
+        class="home-load-error"
         data-testid="relationship-load-error"
         role="status"
       >
         <text>关系列表加载失败。</text>
+        <button class="home-link-btn" data-testid="relationship-retry" @click="reloadRelationships">
+          重试
+        </button>
       </view>
 
-      <view
-        class="connection"
-        :class="`connection--${state}`"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        <view class="connection__signal" aria-hidden="true">
-          <view class="signal-dot"></view>
-          <view class="signal-line"></view>
-        </view>
-
-        <view class="connection__copy">
-          <text class="section-label">RUNTIME CONNECTION</text>
-          <text class="connection__title">{{ connectionTitle }}</text>
-          <text class="connection__description">
-            {{ connectionDescription }}
-          </text>
-        </view>
-
-        <view v-if="state === 'ready' && baseline" class="baseline-stamp">
-          <view class="stamp-item">
-            <text class="stamp-item__label">PHASE</text>
-            <text class="stamp-item__value">{{ baseline.phase }}</text>
-          </view>
-          <view class="stamp-item">
-            <text class="stamp-item__label">TRANSPORT</text>
-            <text class="stamp-item__value">{{ baseline.transport }}</text>
-          </view>
-          <view v-if="versionInfo" class="stamp-item">
-            <text class="stamp-item__label">VERSION</text>
-            <text class="stamp-item__value">{{ versionInfo.version }}</text>
-          </view>
-          <view v-if="versionInfo?.commit" class="stamp-item">
-            <text class="stamp-item__label">COMMIT</text>
-            <text class="stamp-item__value">{{ versionInfo.commit }}</text>
-          </view>
-        </view>
-
-        <view v-else class="connection__flag">
-          <text class="connection__flag-label">{{ connectionFlag }}</text>
-          <text class="connection__flag-note">当前读数不作保留</text>
-        </view>
-      </view>
-
-      <view v-if="state === 'error'" class="failure" role="alert">
-        <view class="failure__heading">
-          <text class="failure__kind">{{ errorKindLabel }}</text>
-          <text class="failure__policy">
-            能力状态未验证，继续按关闭处理
-          </text>
-        </view>
-        <text class="failure__message">{{ errorMessage }}</text>
-      </view>
-
-      <view class="boundary">
-        <view class="boundary__header">
-          <view>
-            <text class="section-label section-label--dark">CLOSED BOUNDARY</text>
-            <text class="boundary__title" role="heading" aria-level="2">
-              七项关闭门禁
-            </text>
-          </view>
-          <text class="boundary__count">
-            {{ gateSummary }}
-          </text>
-        </view>
-
-        <view
-          class="boundary-rail"
-          :class="`boundary-rail--${state}`"
-          role="list"
-          aria-label="Technical Alpha 关闭门禁"
-        >
-          <view class="boundary-track" aria-hidden="true"></view>
-
-          <view
-            v-for="gate in capabilityGates"
-            :key="gate.key"
-            class="gate-card"
-            :class="`gate-card--${gate.state}`"
-            role="listitem"
+      <template v-else>
+        <!-- 首屏：当前陪伴 + 唯一主动作。 -->
+        <view class="home-hero" data-testid="home-hero">
+          <text
+            v-if="relStore.current"
+            class="home-hero__companion"
+            data-testid="current-relationship"
           >
-            <view class="gate-node" aria-hidden="true">
-              <text>{{ gate.state === "closed" ? "关" : "?" }}</text>
-            </view>
-            <text class="gate-card__label">{{ gate.label }}</text>
-            <text class="gate-card__status">{{ gate.statusLabel }}</text>
-            <text class="gate-card__boundary">{{ gate.boundary }}</text>
+            {{ homeCompanionName }}
+          </text>
+          <text v-else class="home-hero__companion">还没有陪伴</text>
+          <text class="home-hero__lead">{{ heroLead }}</text>
+          <button
+            v-if="relStore.current"
+            class="home-hero__primary"
+            data-testid="home-continue-chat"
+            @click="goTo(chatHref())"
+          >
+            继续聊聊
+          </button>
+          <button
+            v-else
+            class="home-hero__primary"
+            data-testid="home-create-companion"
+            @click="goTo('/pages/companion/companion')"
+          >
+            开始创建陪伴
+          </button>
+        </view>
+
+        <!-- 窄摘要：最近会话 / 待确认记忆 / 提醒。与当前关系相关，不平铺功能。 -->
+        <view class="home-summaries" data-testid="home-summaries">
+          <view class="home-row-wrap">
+            <button
+              v-if="relStore.current"
+              class="home-row"
+              data-testid="home-row-conversations"
+              :data-state="conversationChannel.state.value"
+              @click="goTo(conversationsHref())"
+            >
+              <text class="home-row__label">会话</text>
+              <text class="home-row__value" data-testid="home-latest-conversation">
+                {{ conversationSummary }}
+              </text>
+            </button>
+          </view>
+
+          <view class="home-row-wrap">
+            <button
+              v-if="relStore.current"
+              class="home-row"
+              data-testid="home-row-memory"
+              :data-state="memoryChannel.state.value"
+              @click="goTo(memoryHref())"
+            >
+              <text class="home-row__label">待确认记忆</text>
+              <text class="home-row__value" data-testid="home-pending-memory">
+                {{ memorySummary }}
+              </text>
+            </button>
+          </view>
+
+          <view class="home-row-wrap">
+            <button
+              v-if="relStore.current"
+              class="home-row"
+              data-testid="home-row-reminder"
+              :data-state="reminderChannel.state.value"
+              @click="goTo(reminderHref())"
+            >
+              <text class="home-row__label">提醒</text>
+              <text class="home-row__value" data-testid="home-next-reminder">
+                {{ reminderSummary }}
+              </text>
+            </button>
           </view>
         </view>
-
-        <view v-if="state !== 'ready'" class="fail-closed-note">
-          <text class="fail-closed-note__mark" aria-hidden="true">!</text>
-          <text>
-            {{
-              state === "loading"
-                ? "校验完成前，七项能力全部保持关闭。"
-                : "没有可信读数时，不沿用上一次结果，七项能力全部按关闭处理。"
-            }}
-          </text>
-        </view>
-      </view>
-
-      <view class="technical">
-        <!-- 键盘激活同上：统一走 h5-a11y 状态机，不挂页面级 keydown 处理器。 -->
-        <button
-          id="technical-detail-toggle"
-          class="technical__toggle"
-          :disabled="state !== 'ready'"
-          role="button"
-          :tabindex="state === 'ready' ? 0 : -1"
-          :aria-disabled="state === 'ready' ? 'false' : 'true'"
-          :aria-expanded="detailsOpen ? 'true' : 'false'"
-          aria-controls="technical-detail-panel"
-          @click="toggleTechnicalDetails"
-        >
-          <view class="technical__toggle-copy">
-            <text class="section-label section-label--dark">RAW DETAIL</text>
-            <text class="technical__toggle-title">
-              {{ detailsOpen ? "收起技术详情" : "展开技术详情" }}
-            </text>
-          </view>
-          <text class="technical__chevron" aria-hidden="true">
-            {{ detailsOpen ? "−" : "+" }}
-          </text>
-        </button>
-
-        <view
-          v-if="detailsOpen && state === 'ready'"
-          id="technical-detail-panel"
-          class="technical__panel"
-          aria-labelledby="technical-detail-toggle"
-        >
-          <text class="technical__notice">
-            Catalog 枚举值不是运行状态；本页不据此推断模型或身份能力。
-          </text>
-          <text class="payload" selectable>{{ baselineText }}</text>
-        </view>
-      </view>
-
-      <!-- ACCT-DELETE (FR-AUTH-004) + DOGFOOD-08: server-side deletion now
-           re-authenticates the current password, so the flow lives on the
-           account page; this entry only navigates there. -->
-      <view class="danger-zone">
-        <button
-          data-testid="delete-account-open"
-          class="alpha-nav__link danger-btn"
-          role="button"
-          aria-label="注销账号，前往账号与注销页"
-          @click="goTo('/pages/account/account')"
-        >
-          <text>注销账号</text>
-        </button>
-      </view>
-
-      <view class="footer-note">
-        <text>INTERNAL PREFLIGHT · LOCAL READ ONLY</text>
-        <text>失败关闭 / 不缓存读数</text>
-      </view>
-    </view>
-  </view>
+      </template>
+    </template>
+  </ConsumerShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
+import { computed, onMounted, ref, type Ref } from "vue";
 
+import type { AuthTransport } from "@/api/auth";
 import { createAuthenticatedTransport } from "@/api/transport";
-import { fetchVersion, type VersionInfo } from "@/api/version";
+import { listConversations, type ConversationListItem } from "@/api/chat";
+import { goTo } from "@/app/navigate";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import { buildContextHref } from "@/domain/context-href";
+import { readableConversationTitle } from "@/domain/conversation-display";
 import { resolveAdmissionGate, type AdmissionGate } from "@/domain/nav-guard";
 import { resolveNextStep, type NextStep } from "@/domain/next-step";
 import { personaDisplayName } from "@/domain/persona";
 import { useAgeStore } from "@/stores/age";
 import { useAuthStore } from "@/stores/auth";
-import { useBaselineStore } from "@/stores/baseline";
 import { useConsentStore } from "@/stores/consent";
+import { useMemoryStore } from "@/stores/memory";
+import { useReminderStore } from "@/stores/reminder";
 import { useRelationshipStore } from "@/stores/relationship";
 
-const store = useBaselineStore();
 const auth = useAuthStore();
 const relStore = useRelationshipStore();
 const age = useAgeStore();
 const consent = useConsentStore();
+const memoryStore = useMemoryStore();
+const reminderStore = useReminderStore();
 const nextStep = ref<NextStep | null>(null);
 const admissionGate = ref<AdmissionGate>("unknown");
+const conversations = ref<ConversationListItem[]>([]);
+
+// 三路摘要各自的真实状态：单路失败只标记自己，成功路不受污染；
+// 失败但已有一轮成功数据时显示旧值并标注"较早数据"，不冒充成功空态。
+type SummaryState = "idle" | "loading" | "ready" | "stale" | "error";
+
+interface SummaryChannel {
+  state: Ref<SummaryState>;
+  loadedOnce: Ref<boolean>;
+}
+
+function createChannel(): SummaryChannel {
+  return { state: ref<SummaryState>("idle"), loadedOnce: ref(false) };
+}
+
+const conversationChannel = createChannel();
+const memoryChannel = createChannel();
+const reminderChannel = createChannel();
+
 // SESS-REVIVE: a 401 first tries one silent refresh and replays the request.
-const transport = createAuthenticatedTransport({
+const transport: AuthTransport = createAuthenticatedTransport({
   getAccessToken: () => auth.accessToken,
   renewAccessToken: () => auth.renewAccessToken(transport),
   onUnauthorized: () => auth.onUnauthorized(),
 });
-const {
-  state,
-  baseline,
-  baselineText,
-  capabilityGates,
-  verifiedGateCount,
-  errorKind,
-  errorMessage,
-} = storeToRefs(store);
-const { load } = store;
-const detailsOpen = ref(false);
-// VERSION-UI: build identity for the boundary console stamp (public contract
-// endpoint; a failure degrades to null and the stamp simply stays empty).
-const versionInfo = ref<VersionInfo | null>(null);
 
-const connectionTitle = computed(() => {
-  switch (state.value) {
-    case "loading":
-      return "正在校验 Runtime 响应";
-    case "ready":
-      return "Runtime 连接与边界响应已验证";
-    case "error":
-      return "Runtime 未通过连接预检";
-    default:
-      return "等待 Runtime 读数";
-  }
+const nextStepHref = computed(() => nextStep.value?.href ?? "/pages/index/index");
+
+const homeCompanionName = computed(() => {
+  const rel = relStore.current;
+  if (!rel) return "";
+  const persona = personaDisplayName(rel.personaRef);
+  return rel.companionName?.trim() ? `${rel.companionName} · ${persona}` : persona;
 });
 
-const connectionDescription = computed(() => {
-  switch (state.value) {
-    case "loading":
-      return "旧读数已清空，正在读取并校验阶段、传输方式和七项门禁。";
-    case "ready":
-      return "连接通过只表示本次内部基线响应可信，不会打开任何受限能力。";
-    case "error":
-      return "本次读数不可用于确认能力边界，请按下方提示修复后重新校验。";
-    default:
-      return "页面将读取本地只读端点，并在显示前完成严格校验。";
+const heroLead = computed(() => {
+  if (!relStore.current) {
+    return "创建一段陪伴关系，随时可以开始对话。";
   }
+  return conversations.value.length > 0
+    ? "上次聊到的事，随时可以接着说。"
+    : "第一次对话随时可以开始。";
 });
 
-const connectionFlag = computed(() => {
-  switch (state.value) {
-    case "loading":
-      return "读取中";
-    case "error":
-      return "未验证";
-    default:
-      return "待校验";
-  }
-});
+// CONV-HIST：列表按 id 升序整页返回（默认页 50）。未满页即该关系全部
+// 会话，可取最大 id 为最新；满页无法断言最新，退化为计数，不误称"最近"。
+const CONVERSATION_PAGE_LIMIT = 50;
 
-const errorKindLabel = computed(() => {
-  switch (errorKind.value) {
-    case "timeout":
-      return "读取超时";
-    case "unreachable":
-      return "无法连接";
-    case "http":
-      return "HTTP 错误";
-    case "invalid-response":
-      return "响应不可信";
-    default:
-      return "预检失败";
-  }
-});
+const STALE_SUFFIX = "（较早数据）";
 
-const gateSummary = computed(() =>
-  state.value === "ready"
-    ? `${verifiedGateCount.value} / 7 已验证关闭`
-    : "0 / 7 已验证 · 全部保持关闭",
-);
-
-function retryLoad(): void {
-  if (state.value !== "loading") {
-    void load();
+function channelText(channel: SummaryChannel, readyText: string): string {
+  if (channel.state.value === "loading" || channel.state.value === "idle") {
+    return "正在加载…";
   }
+  if (channel.state.value === "error") return "加载失败，点开可重试";
+  if (channel.state.value === "stale") return `${readyText}${STALE_SUFFIX}`;
+  return readyText;
 }
+
+function latestConversation(): ConversationListItem | null {
+  const list = conversations.value;
+  if (list.length === 0) return null;
+  if (list.length >= CONVERSATION_PAGE_LIMIT) return null;
+  const sorted = [...list].sort((a, b) => compareConversationId(b, a));
+  return sorted[0] ?? null;
+}
+
+function compareConversationId(a: ConversationListItem, b: ConversationListItem): number {
+  const na = Number(a.conversationId);
+  const nb = Number(b.conversationId);
+  if (Number.isSafeInteger(na) && Number.isSafeInteger(nb)) return na - nb;
+  return a.conversationId.localeCompare(b.conversationId);
+}
+
+const conversationSummary = computed(() => {
+  const latest = latestConversation();
+  if (!latest) {
+    if (conversations.value.length >= CONVERSATION_PAGE_LIMIT) {
+      return channelText(conversationChannel, `${conversations.value.length}+ 个会话`);
+    }
+    return channelText(conversationChannel, "还没有会话");
+  }
+  // P1-5：enc2 密文/空值不直接展示，统一走用户可读标题 helper。
+  const base =
+    readableConversationTitle(latest) === "未命名会话"
+      ? "未发送消息的会话"
+      : readableConversationTitle(latest);
+  return channelText(conversationChannel, latest.incognito ? `无痕 · ${base}` : base);
+});
+
+const memorySummary = computed(() => {
+  const count = memoryStore.pendingCount;
+  return channelText(
+    memoryChannel,
+    count > 0 ? `${count} 条记忆等你确认` : "没有待确认的记忆",
+  );
+});
+
+const reminderSummary = computed(() => {
+  const next = reminderStore.reminders.find((row) => row.status === "ACTIVE");
+  return channelText(
+    reminderChannel,
+    next ? next.text : "没有待处理的提醒（不会主动推送）",
+  );
+});
 
 function knownRelationshipIds(): string[] {
   return relStore.relationships.map((row) => row.relationshipId);
-}
-
-function memoryHref(): string {
-  return buildContextHref("memory", {
-    relationshipId: relStore.currentRelationshipId,
-    knownRelationshipIds: knownRelationshipIds(),
-  });
 }
 
 function chatHref(): string {
@@ -549,18 +301,29 @@ function conversationsHref(): string {
   });
 }
 
-const nextStepHref = computed(() => {
-  if (!nextStep.value) return "/pages/chat/chat";
-  if (nextStep.value.kind === "companion" || nextStep.value.kind === "ready") {
-    return chatHref();
-  }
-  return nextStep.value.href;
-});
+function memoryHref(): string {
+  return buildContextHref("memory", {
+    relationshipId: relStore.currentRelationshipId,
+    knownRelationshipIds: knownRelationshipIds(),
+  });
+}
+
+function reminderHref(): string {
+  return buildContextHref("reminder", {
+    relationshipId: relStore.currentRelationshipId,
+    knownRelationshipIds: knownRelationshipIds(),
+  });
+}
+
+async function reloadRelationships(): Promise<void> {
+  await relStore.load(transport);
+}
 
 async function refreshNextStep(): Promise<void> {
   if (!auth.isAuthenticated) {
     nextStep.value = null;
-    admissionGate.value = auth.sessionStatus === "anonymous" ? "blocked" : "unknown";
+    admissionGate.value =
+      auth.sessionStatus === "anonymous" ? "blocked" : "unknown";
     return;
   }
   await Promise.all([age.load(transport), consent.load(transport)]);
@@ -591,989 +354,287 @@ async function refreshNextStep(): Promise<void> {
   });
 }
 
-function goTo(url: string): void {
-  try {
-    const uniApi = (globalThis as Record<string, unknown>).uni as
-      | { navigateTo?: (options: { url: string }) => void }
-      | undefined;
-    if (uniApi?.navigateTo) {
-      uniApi.navigateTo({ url });
-    } else if (typeof location !== "undefined") {
-      location.href = url.startsWith("/pages/") ? `/#${url}` : url;
+/** 关系就绪后并行加载三份摘要；单路失败只标记该路，不拖垮其他路。 */
+async function loadSummaries(): Promise<void> {
+  const relId = relStore.currentRelationshipId;
+  if (!relId) return;
+
+  conversationChannel.state.value = "loading";
+  memoryChannel.state.value = "loading";
+  reminderChannel.state.value = "loading";
+
+  const conversationsTask = listConversations(transport, relId, undefined, CONVERSATION_PAGE_LIMIT)
+    .then((list) => {
+      conversations.value = list;
+      conversationChannel.state.value = "ready";
+      conversationChannel.loadedOnce.value = true;
+    })
+    .catch(() => {
+      // 失败保留旧列表，仅在曾成功过时以 stale 展示旧值。
+      conversationChannel.state.value = conversationChannel.loadedOnce.value
+        ? "stale"
+        : "error";
+    });
+
+  // memory/reminder store 内部捕获异常并以状态位暴露，Promise 永不 reject。
+  const memoryTask = memoryStore.load(transport, relId).then(() => {
+    const failed = memoryStore.error === "load-failed" || memoryStore.error === "session-expired";
+    if (failed) {
+      memoryChannel.state.value = memoryChannel.loadedOnce.value ? "stale" : "error";
+      return;
     }
-  } catch {
-    // Presentation-only navigation; never break the preflight console.
-  }
-}
+    memoryChannel.state.value = "ready";
+    memoryChannel.loadedOnce.value = true;
+  });
 
-function toggleTechnicalDetails(): void {
-  if (state.value === "ready") {
-    detailsOpen.value = !detailsOpen.value;
-  }
-}
+  const reminderTask = reminderStore.load(transport, relId).then(() => {
+    if (reminderStore.loadFailed) {
+      reminderChannel.state.value = reminderChannel.loadedOnce.value ? "stale" : "error";
+      return;
+    }
+    reminderChannel.state.value = "ready";
+    reminderChannel.loadedOnce.value = true;
+  });
 
-watch(state, (nextState) => {
-  if (nextState !== "ready") {
-    detailsOpen.value = false;
-  }
-});
+  await Promise.all([conversationsTask, memoryTask, reminderTask]);
+}
 
 onMounted(async () => {
   // SESS-REVIVE: restore the session from the HttpOnly refresh cookie first.
   if (!auth.isAuthenticated) {
     await auth.tryRefresh(transport);
   }
-  void load();
   await relStore.load(transport);
   await refreshNextStep();
-  // VERSION-UI: independent of the baseline preflight (public endpoint); a
-  // non-OK response yields null and the stamp simply omits the fields.
-  // A transport failure also degrades to null (non-OK already does) — the
-  // stamp is best-effort and must never break page init.
-  try {
-    versionInfo.value = await fetchVersion(transport);
-  } catch {
-    versionInfo.value = null;
+  if (auth.isAuthenticated && admissionGate.value !== "unknown") {
+    await loadSummaries();
   }
 });
+
+// 组件测试需要驱动第二轮加载以验证 stale 语义（保留旧数据 + 失败标注）。
+defineExpose({ loadSummaries });
 </script>
 
 <style scoped>
-.page {
-  --deep-sea: #14213d;
-  --signal: #168c84;
-  --coral: #d95d55;
-  --amber: #b77a16;
-  --mist: #eef3f9;
-  --paper: #fbfcfe;
-  min-height: 100vh;
-  box-sizing: border-box;
-  overflow-x: hidden;
-  padding: clamp(24px, 4vw, 58px) clamp(16px, 4vw, 52px);
-  color: var(--paper);
-  background-color: var(--deep-sea);
-  background-image:
-    linear-gradient(rgba(238, 243, 249, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(238, 243, 249, 0.035) 1px, transparent 1px);
-  background-size: 32px 32px;
-  font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-
-.console {
-  width: min(100%, 1240px);
-  margin: 0 auto;
-}
-
-.masthead {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 32px;
-  margin-bottom: 28px;
-}
-
-.masthead__copy {
-  max-width: 760px;
-}
-
-.eyebrow,
-.section-label,
-.boundary__count,
-.stamp-item__label,
-.stamp-item__value,
-.footer-note {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-}
-
-.eyebrow,
-.section-label {
-  display: block;
-  color: rgba(238, 243, 249, 0.64);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  line-height: 1.4;
-}
-
-.title {
-  display: block;
-  margin-top: 9px;
-  font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI",
-    "PingFang SC", sans-serif;
-  font-size: clamp(36px, 5vw, 68px);
-  font-weight: 700;
-  letter-spacing: -0.045em;
-  line-height: 1.04;
-}
-
-.description {
-  display: block;
-  max-width: 680px;
-  margin-top: 16px;
-  color: rgba(238, 243, 249, 0.76);
-  font-size: clamp(14px, 1.6vw, 17px);
-  line-height: 1.75;
-}
-
-.retry,
-.technical__toggle {
-  box-sizing: border-box;
-  margin: 0;
-  border: 0;
-}
-
-.retry::after,
-.technical__toggle::after {
-  border: 0;
-}
-
-.retry {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  min-height: 46px;
-  padding: 0 20px;
-  border: 1px solid rgba(238, 243, 249, 0.35);
-  border-radius: 8px;
-  color: var(--deep-sea);
-  background: var(--paper);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background-color 160ms ease;
-}
-
-.retry:not([disabled]):hover {
-  transform: translateY(-1px);
-  border-color: var(--signal);
-  background: var(--mist);
-}
-
-.retry[disabled] {
-  color: rgba(20, 33, 61, 0.54);
-  opacity: 1;
-}
-
-.retry__mark {
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 17px;
-}
-
-.retry:focus-visible {
-  outline: 3px solid #ffffff;
-  outline-offset: 4px;
-}
-
-.alpha-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 0 0 20px;
-}
-
-.alpha-nav__link {
-  box-sizing: border-box;
-  margin: 0;
-  min-height: 40px;
-  padding: 0 16px;
-  border: 1px solid rgba(238, 243, 249, 0.28);
-  border-radius: 8px;
-  color: var(--paper);
-  background: rgba(251, 252, 254, 0.08);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.alpha-nav__link::after {
-  border: 0;
-}
-
-.alpha-nav__link:focus-visible {
-  outline: 3px solid #ffffff;
-  outline-offset: 3px;
-}
-
-.current-relationship {
-  margin: -8px 0 20px;
-  color: rgba(238, 243, 249, 0.78);
-  font-size: 13px;
-}
-
-.next-step {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 0 20px;
-  padding: 12px 14px;
-  border: 1px solid rgba(238, 243, 249, 0.22);
-  border-radius: 10px;
-  color: rgba(238, 243, 249, 0.88);
-  background: rgba(251, 252, 254, 0.08);
-  font-size: 13px;
-}
-
-.technical__toggle:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 3px var(--deep-sea);
-}
-
-.connection {
-  position: relative;
+/* 首屏：当前陪伴 + 唯一主动作；白色卡面，无装饰光效。 */
+.home-hero {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: clamp(18px, 3vw, 34px);
-  min-width: 0;
-  padding: clamp(22px, 3vw, 34px);
-  overflow: hidden;
-  border: 1px solid rgba(238, 243, 249, 0.18);
-  border-radius: 14px;
-  background: rgba(251, 252, 254, 0.075);
+  gap: var(--vc-space-3);
+  padding: var(--vc-space-6);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
 
-.connection::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: rgba(238, 243, 249, 0.34);
-  content: "";
-}
-
-.connection--ready::before {
-  background: var(--signal);
-}
-
-.connection--loading::before {
-  background: var(--amber);
-}
-
-.connection--error::before {
-  background: var(--coral);
-}
-
-.connection__signal {
-  display: flex;
-  align-items: center;
-  width: 72px;
-}
-
-.signal-dot {
-  z-index: 1;
-  width: 16px;
-  height: 16px;
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  border: 4px solid var(--deep-sea);
-  border-radius: 50%;
-  outline: 2px solid rgba(238, 243, 249, 0.54);
-  background: rgba(238, 243, 249, 0.54);
-}
-
-.signal-line {
-  width: 100%;
-  height: 1px;
-  background: rgba(238, 243, 249, 0.26);
-}
-
-.connection--ready .signal-dot {
-  outline-color: var(--signal);
-  background: var(--signal);
-}
-
-.connection--loading .signal-dot {
-  outline-color: var(--amber);
-  background: var(--amber);
-  animation: signal-pulse 1.4s ease-in-out infinite;
-}
-
-.connection--error .signal-dot {
-  outline-color: var(--coral);
-  background: var(--coral);
-}
-
-.connection__copy {
-  min-width: 0;
-}
-
-.connection__title {
-  display: block;
-  margin-top: 6px;
-  font-family: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
-  font-size: clamp(20px, 2.5vw, 30px);
-  font-weight: 650;
-  letter-spacing: -0.025em;
-  line-height: 1.24;
-}
-
-.connection__description {
-  display: block;
-  max-width: 650px;
-  margin-top: 8px;
-  color: rgba(238, 243, 249, 0.7);
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.baseline-stamp {
-  display: flex;
-  align-items: stretch;
-  overflow: hidden;
-  border: 1px solid rgba(238, 243, 249, 0.2);
-  border-radius: 8px;
-}
-
-.stamp-item {
-  min-width: 132px;
-  padding: 13px 15px;
-}
-
-.stamp-item + .stamp-item {
-  border-left: 1px solid rgba(238, 243, 249, 0.2);
-}
-
-.stamp-item__label {
-  display: block;
-  color: rgba(238, 243, 249, 0.65);
-  font-size: 9px;
-  letter-spacing: 0.13em;
-}
-
-.stamp-item__value {
-  display: block;
-  margin-top: 7px;
-  color: #89d3cc;
-  font-size: 12px;
+.home-hero__title {
+  font-size: var(--vc-text-2xl);
   font-weight: 700;
-  white-space: nowrap;
+  color: var(--vc-ink);
 }
 
-.connection__flag {
-  min-width: 134px;
-  padding-left: 22px;
-  border-left: 1px solid rgba(238, 243, 249, 0.18);
-}
-
-.connection__flag-label,
-.connection__flag-note {
-  display: block;
-}
-
-.connection__flag-label {
-  color: #e4b96d;
-  font-size: 14px;
+.home-hero__companion {
+  font-size: var(--vc-text-2xl);
   font-weight: 700;
-}
-
-.connection--error .connection__flag-label {
-  color: #f19a94;
-}
-
-.connection__flag-note {
-  margin-top: 6px;
-  color: rgba(238, 243, 249, 0.65);
-  font-size: 11px;
-}
-
-.failure {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
-  gap: 20px;
-  margin-top: 14px;
-  padding: 18px 22px;
-  border: 1px solid rgba(217, 93, 85, 0.55);
-  border-radius: 10px;
-  color: var(--paper);
-  background: rgba(217, 93, 85, 0.1);
-}
-
-.failure__kind,
-.failure__policy,
-.failure__message {
-  display: block;
-}
-
-.failure__kind {
-  color: #f4aba6;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.failure__policy {
-  margin-top: 5px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.failure__message {
-  align-self: center;
-  color: rgba(251, 252, 254, 0.78);
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.boundary {
-  margin-top: 24px;
-  padding: clamp(24px, 3.5vw, 42px);
-  border-radius: 18px;
-  color: var(--deep-sea);
-  background: var(--mist);
-}
-
-.boundary__header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.section-label--dark {
-  color: rgba(20, 33, 61, 0.72);
-}
-
-.boundary__title {
-  display: block;
-  margin-top: 7px;
-  font-family: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
-  font-size: clamp(24px, 3vw, 36px);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1.2;
-}
-
-.boundary__count {
-  color: rgba(20, 33, 61, 0.66);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-align: right;
-}
-
-.boundary-rail {
-  position: relative;
-  margin-top: 28px;
-}
-
-.boundary-track {
-  position: absolute;
-  z-index: 0;
-  top: 17px;
-  right: calc(100% / 14);
-  left: calc(100% / 14);
-  height: 2px;
-  overflow: visible;
-  background: rgba(20, 33, 61, 0.24);
-}
-
-.boundary-rail--ready .boundary-track {
-  background: var(--signal);
-}
-
-.boundary-rail--error .boundary-track {
-  background: repeating-linear-gradient(
-    90deg,
-    var(--coral) 0 16px,
-    transparent 16px 25px
-  );
-}
-
-.boundary-rail--loading .boundary-track,
-.boundary-rail--idle .boundary-track {
-  background: repeating-linear-gradient(
-    90deg,
-    rgba(183, 122, 22, 0.58) 0 10px,
-    transparent 10px 17px
-  );
-}
-
-.boundary-rail--loading .boundary-track::after {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--mist);
-  border-radius: 50%;
-  background: var(--amber);
-  box-shadow: 0 0 0 1px var(--amber);
-  content: "";
-  animation: rail-scan-x 2.2s ease-in-out infinite;
-}
-
-.gate-card {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 48px 12px 16px;
-  text-align: center;
-}
-
-.gate-node {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  box-sizing: border-box;
-  transform: translateX(-50%);
-  border: 2px solid var(--amber);
-  border-radius: 50%;
-  color: #7b510d;
-  background: var(--mist);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.gate-card--closed .gate-node {
-  border-color: var(--signal);
-  color: #0e625c;
-}
-
-.gate-card__label,
-.gate-card__status,
-.gate-card__boundary {
-  display: block;
-}
-
-.gate-card__label {
-  min-height: 44px;
-  font-size: 14px;
-  font-weight: 750;
-  line-height: 1.45;
-}
-
-.gate-card__status {
-  margin-top: 7px;
-  color: #8a5b0f;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.45;
-}
-
-.gate-card--closed .gate-card__status {
-  color: #0f6f68;
-}
-
-.gate-card__boundary {
-  margin-top: 8px;
-  color: rgba(20, 33, 61, 0.75);
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.gate-card + .gate-card {
-  border-left: 1px solid rgba(20, 33, 61, 0.09);
-}
-
-.boundary-rail {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-}
-
-.boundary-track {
-  grid-column: 1 / -1;
-}
-
-.fail-closed-note {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(20, 33, 61, 0.12);
-  color: rgba(20, 33, 61, 0.72);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.55;
-}
-
-.fail-closed-note__mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  border: 1px solid var(--amber);
-  border-radius: 50%;
-  color: #7b510d;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.technical {
-  margin-top: 14px;
-  overflow: hidden;
-  border: 1px solid rgba(238, 243, 249, 0.18);
-  border-radius: 12px;
-  background: var(--paper);
-}
-
-.technical__toggle {
-  width: 100%;
-  min-height: 74px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 16px 22px;
-  border-radius: 0;
-  color: var(--deep-sea);
-  background: var(--paper);
-  text-align: left;
-}
-
-.technical__toggle:not([disabled]):hover {
-  background: var(--mist);
-}
-
-.technical__toggle[disabled] {
-  color: rgba(20, 33, 61, 0.44);
-  opacity: 1;
-}
-
-.technical__toggle-copy {
-  min-width: 0;
-}
-
-.technical__toggle-title {
-  display: block;
-  margin-top: 4px;
-  font-size: 14px;
-  font-weight: 750;
-}
-
-.technical__chevron {
-  color: var(--signal);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 24px;
-  font-weight: 500;
-}
-
-.technical__toggle[disabled] .technical__chevron {
-  color: rgba(20, 33, 61, 0.35);
-}
-
-.technical__panel {
-  padding: 0 22px 22px;
-}
-
-.technical__notice {
-  display: block;
-  padding: 14px 16px;
-  border-left: 3px solid var(--signal);
-  color: rgba(20, 33, 61, 0.72);
-  background: var(--mist);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.payload {
-  display: block;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow-x: auto;
-  margin-top: 12px;
-  padding: 18px;
-  border-radius: 8px;
-  color: #dce7f3;
-  background: #0e192f;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 11px;
-  line-height: 1.65;
-  white-space: pre-wrap;
+  letter-spacing: -0.01em;
+  color: var(--vc-ink);
   overflow-wrap: anywhere;
 }
 
-.footer-note {
+.home-hero__lead {
+  max-width: 34em;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
+.home-hero__primary {
+  justify-self: start;
+  min-height: 48px;
+  margin: var(--vc-space-2) 0 0;
+  padding: 0 var(--vc-space-7);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+  transition: background-color var(--vc-motion-fast) var(--vc-ease-out);
+}
+
+.home-hero__primary::after {
+  border: 0;
+}
+
+.home-hero__primary:not([disabled]):active {
+  background: var(--vc-primary-hover);
+}
+
+.home-hero--entry {
+  margin-top: var(--vc-space-7);
+  text-align: left;
+}
+
+.home-pending,
+.home-admission {
   display: flex;
+  align-items: center;
+  gap: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  border: 1px solid var(--vc-border);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.home-admission--blocked {
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 20px;
-  margin-top: 16px;
-  color: rgba(238, 243, 249, 0.72);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  line-height: 1.5;
+  color: var(--vc-ink);
 }
 
-.danger-zone {
-  margin-top: 14px;
-  padding: 16px 18px;
-  border: 1px solid rgba(217, 93, 85, 0.45);
-  border-radius: 12px;
-  background: rgba(217, 93, 85, 0.08);
+.home-admission__copy {
+  flex: 1 1 16em;
+  min-width: 0;
 }
 
-.danger-btn {
-  border-color: rgba(217, 93, 85, 0.65);
-  color: #f4aba6;
+.home-admission__go {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
 
-.danger-confirm {
-  margin-top: 12px;
+.home-admission__go::after {
+  border: 0;
+}
+
+.home-load-error {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
 }
 
-.danger-copy {
-  color: rgba(238, 243, 249, 0.82);
-  font-size: 12px;
-  line-height: 1.6;
+.home-link-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--vc-text-sm);
 }
 
-.danger-actions {
-  display: flex;
-  gap: 10px;
+.home-link-btn::after {
+  border: 0;
 }
 
-.danger-error {
-  color: #f4aba6;
-  font-size: 12px;
+/* 摘要行：窄行，不是卡片网格；行内左侧类别、右侧状态。 */
+.home-summaries {
+  display: grid;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-5);
 }
 
-@keyframes signal-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(183, 122, 22, 0.1);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(183, 122, 22, 0.2);
-  }
+.home-row-wrap {
+  display: grid;
 }
 
-@keyframes rail-scan-x {
-  0%,
-  100% {
-    left: 0;
-    transform: translate(-50%, -50%);
-  }
-  50% {
-    left: 100%;
-    transform: translate(-50%, -50%);
-  }
+.home-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vc-space-3);
+  min-height: 56px;
+  margin: 0;
+  padding: var(--vc-space-2) var(--vc-space-4);
+  border: 0;
+  border-bottom: 1px solid var(--vc-border);
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  text-align: left;
 }
 
-@keyframes rail-scan-y {
-  0%,
-  100% {
-    top: 0;
-    transform: translate(-50%, -50%);
-  }
-  50% {
-    top: 100%;
-    transform: translate(-50%, -50%);
-  }
+.home-row::after {
+  border: 0;
 }
 
-@media (max-width: 899px) {
-  .masthead {
-    align-items: flex-start;
-  }
-
-  .connection {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .connection__signal {
-    width: 48px;
-  }
-
-  .baseline-stamp,
-  .connection__flag {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .connection__flag {
-    padding: 12px 0 0;
-    border-top: 1px solid rgba(238, 243, 249, 0.18);
-    border-left: 0;
-  }
-
-  .boundary-rail {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .boundary-track {
-    top: 22px;
-    right: auto;
-    bottom: 22px;
-    left: 17px;
-    width: 2px;
-    height: auto;
-  }
-
-  .boundary-rail--error .boundary-track {
-    background: repeating-linear-gradient(
-      180deg,
-      var(--coral) 0 16px,
-      transparent 16px 25px
-    );
-  }
-
-  .boundary-rail--loading .boundary-track,
-  .boundary-rail--idle .boundary-track {
-    background: repeating-linear-gradient(
-      180deg,
-      rgba(183, 122, 22, 0.58) 0 10px,
-      transparent 10px 17px
-    );
-  }
-
-  .boundary-rail--loading .boundary-track::after {
-    top: 0;
-    left: 50%;
-    animation-name: rail-scan-y;
-  }
-
-  .gate-card {
-    min-height: 92px;
-    padding: 16px 16px 16px 56px;
-    border: 1px solid rgba(20, 33, 61, 0.1);
-    border-radius: 9px;
-    background: rgba(251, 252, 254, 0.66);
-    text-align: left;
-  }
-
-  .gate-card + .gate-card {
-    border-left: 1px solid rgba(20, 33, 61, 0.1);
-  }
-
-  .gate-node {
-    top: 50%;
-    left: 0;
-    transform: translateY(-50%);
-  }
-
-  .gate-card__label {
-    min-height: 0;
-  }
-
-  .gate-card__status,
-  .gate-card__boundary {
-    margin-top: 4px;
-  }
+.home-row__label {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  white-space: nowrap;
 }
 
-@media (max-width: 599px) {
-  .page {
-    padding: 22px 14px 30px;
-    background-size: 24px 24px;
-  }
-
-  .masthead {
-    display: block;
-    margin-bottom: 22px;
-  }
-
-  .title {
-    font-size: 40px;
-  }
-
-  .retry {
-    width: 100%;
-    margin-top: 22px;
-  }
-
-  .connection {
-    grid-template-columns: 1fr;
-    padding: 22px 20px;
-  }
-
-  .connection__signal {
-    width: 100%;
-  }
-
-  .connection__copy,
-  .baseline-stamp,
-  .connection__flag {
-    grid-column: 1;
-  }
-
-  .baseline-stamp {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .stamp-item {
-    min-width: 0;
-  }
-
-  .stamp-item + .stamp-item {
-    border-top: 1px solid rgba(238, 243, 249, 0.2);
-    border-left: 0;
-  }
-
-  .failure {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .boundary {
-    padding: 22px 18px;
-  }
-
-  .boundary__header {
-    display: block;
-  }
-
-  .boundary__count {
-    display: block;
-    margin-top: 12px;
-    text-align: left;
-  }
-
-  .technical__toggle {
-    padding-right: 18px;
-    padding-left: 18px;
-  }
-
-  .technical__panel {
-    padding-right: 14px;
-    padding-bottom: 14px;
-    padding-left: 14px;
-  }
-
-  .footer-note {
-    display: grid;
-    gap: 5px;
-  }
+.home-row__value {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .retry {
-    transition: none;
+.home-row .home-row__value {
+  grid-column: 3;
+}
+
+.home-row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* LANDSCAPE / 短视口：压缩首屏信息优先级——伴侣名与主动作保留，
+   摘要行收窄，保证四入口底栏之上能看到完整主动作与至少一行摘要。 */
+@media (max-height: 480px) {
+  .home-hero {
+    gap: var(--vc-space-2);
+    padding: var(--vc-space-4);
   }
 
-  .retry:not([disabled]):hover {
-    transform: none;
+  .home-hero__companion {
+    font-size: var(--vc-text-xl);
   }
 
-  .connection--loading .signal-dot,
-  .boundary-rail--loading .boundary-track::after {
-    animation: none;
+  .home-hero__lead {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
   }
 
-  .boundary-rail--loading .boundary-track::after {
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  .home-hero__primary {
+    min-height: 44px;
+    margin-top: var(--vc-space-1);
+  }
+
+  .home-hero--entry {
+    margin-top: var(--vc-space-4);
+  }
+
+  .home-summaries {
+    gap: var(--vc-space-1);
+    margin-top: var(--vc-space-3);
+  }
+
+  .home-row {
+    min-height: 44px;
+    padding: var(--vc-space-1) var(--vc-space-3);
   }
 }
 </style>

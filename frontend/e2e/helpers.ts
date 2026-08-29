@@ -14,7 +14,7 @@ export const PROVIDER_REPLY = "I hear you. Take a breath; there's no rush.";
 export const SAFETY_BLOCK_SENTINEL = "[[E2E_SAFETY_BLOCK]]";
 export const PROVIDER_TIMEOUT_SENTINEL = "[[E2E_PROVIDER_TIMEOUT]]";
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.E2E_BASE_URL ??
   `http://127.0.0.1:${process.env.E2E_H5_PORT ?? "5173"}`;
 
@@ -28,6 +28,14 @@ export const E2E_USER_SUFFIXES = [
   "login-return",
   "admission-gate",
   "relationship-chat",
+  // round11：03 的视口/状态矩阵测试与 130 条种子流测试拆分账号——后端
+  // SSE 租约按用户计（上限 3，滞留至 130s TTL，见 Journey04 的
+  // READY_FOR_OWNER），同账号内新增的真实发送会把后续测试的流挤成
+  // 第 4 条而必然 429。
+  "relationship-viewport",
+  "relationship-viewport-wide",
+  // 纠偏重写：03 的操作与边界测试独立账号，避免与 smoke/举报共享登录限流桶。
+  "relationship-ops",
   "realtime-recovery",
   "memory-lifecycle",
   "export-lifecycle",
@@ -35,6 +43,9 @@ export const E2E_USER_SUFFIXES = [
   // DOGFOOD-09：可访问性 journey（08）的独立账号，避免与其他 journey 的
   // 关系/记忆状态互相污染。
   "accessibility",
+  // round6：流式证据/会话切换 journey（09）的独立账号——同轮套跑中与
+  // journey-03 的登录次数解耦，避免共享登录限流桶。
+  "streaming-evidence",
 ] as const;
 
 export type E2EUserSuffix = (typeof E2E_USER_SUFFIXES)[number];

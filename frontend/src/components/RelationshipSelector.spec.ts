@@ -130,7 +130,7 @@ describe("RelationshipSelector (TASK-0187)", () => {
     const empty = wrapper.find('[data-testid="empty-relationships"]');
 
     expect(empty.exists()).toBe(true);
-    expect(empty.text()).toBe("还没有关系。请到离线聊天新建。");
+    expect(empty.text()).toBe("还没有关系。选择一个人设，创建你的陪伴。");
     wrapper.unmount();
   });
 

@@ -76,13 +76,30 @@ describe("account page", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="account-id"]').text()).toContain("42");
-    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("USER");
+    // P2（round3）：角色码不再直接展示，消费者界面渲染中文标签。
+    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("用户");
     expect(wrapper.find('[data-testid="public-computer-hint"]').text()).toContain("公共电脑");
     expect(wrapper.find('[data-testid="survey-card"]').exists()).toBe(true);
     expect(wrapper.findAll('[data-testid="session-row"]')).toHaveLength(1);
     expect(wrapper.get('[data-testid="session-row"]').text()).toContain("h5（当前）");
     expect(wrapper.text()).not.toContain("family-opaque");
     expect(wrapper.find('[data-testid="account-signed-out"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // P2（round4）：OPS_VIEWER 等内部角色同样必须渲染中文标签（真实渲染，
+  // 不只测 helper）。
+  it("renders the OPS_VIEWER role as a Chinese label", async () => {
+    stubFetch();
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.accountId = "42";
+    auth.role = "OPS_VIEWER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="account-role"]').text()).toContain("运维观察员");
+    expect(wrapper.find('[data-testid="account-role"]').text()).not.toContain("OPS_VIEWER");
     wrapper.unmount();
   });
 
@@ -223,5 +240,99 @@ describe("account page", () => {
     expect(auth.accessToken).toBe("t");
     expect(navigateTo).not.toHaveBeenCalled();
     wrapper.unmount();
+  });
+
+  // ---- Phase 5 IA："我的"分组入口 + 操作者内部区 ----
+
+  it("renders the me hub with all secondary entries for a USER session", async () => {
+    stubFetch();
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    const hub = wrapper.find('[data-testid="me-hub"]');
+    expect(hub.exists()).toBe(true);
+    expect(hub.attributes("aria-label")).toBe("我的分组入口");
+    for (const tid of [
+      "me-companion",
+      "me-reminder",
+      "me-health",
+      "me-incognito",
+      "me-age",
+      "me-consent",
+      "me-ai-notice",
+      "me-data",
+      "me-export",
+      "me-help",
+      "me-report",
+    ]) {
+      expect(wrapper.find(`[data-testid="${tid}"]`).exists(), tid).toBe(true);
+    }
+    // 普通用户看不到内部入口与内部数据轮廓。
+    expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="me-ops"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="me-admin"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("navigates to a hub entry without calling any account API", async () => {
+    const { calls } = stubFetch();
+    const navigateTo = vi.fn();
+    vi.stubGlobal("uni", { navigateTo });
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.role = "USER";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="me-companion"]').trigger("click");
+
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/companion/companion" });
+    expect(calls.some((call) => String(call).includes("/auth/account"))).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the internal section only for operator roles", async () => {
+    stubFetch();
+    const auth = useAuthStore();
+    auth.accessToken = "t";
+    auth.role = "ADMIN";
+    const wrapper = mount(AccountPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="me-internal"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="me-ops"]').trigger("click");
+    const navigateTo = (globalThis as { uni?: { navigateTo: ReturnType<typeof vi.fn> } })
+      .uni?.navigateTo;
+    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/ops/ops" });
+    await wrapper.find('[data-testid="me-admin"]').trigger("click");
+    expect(navigateTo).toHaveBeenLastCalledWith({ url: "/pages/admin/admin" });
+    wrapper.unmount();
+  });
+
+  it("internal entries are route-specific: each operator role sees only what it can enter", async () => {
+    // 与页面真实守卫一致：ops（Runtime 预检）仅 ADMIN；admin 面全操作者可进。
+    const cases: Array<{ role: string; ops: boolean; admin: boolean }> = [
+      { role: "ADMIN", ops: true, admin: true },
+      { role: "SAFETY_REVIEWER", ops: false, admin: true },
+      { role: "PRIVACY_OPERATOR", ops: false, admin: true },
+      { role: "OPS_VIEWER", ops: false, admin: true },
+    ];
+    for (const c of cases) {
+      setActivePinia(createPinia());
+      stubFetch();
+      const auth = useAuthStore();
+      auth.accessToken = "t";
+      auth.role = c.role;
+      const wrapper = mount(AccountPage, { attachTo: document.body });
+      await flushPromises();
+
+      expect(wrapper.find('[data-testid="me-internal"]').exists(), c.role).toBe(true);
+      expect(wrapper.find('[data-testid="me-ops"]').exists(), `${c.role} ops`).toBe(c.ops);
+      expect(wrapper.find('[data-testid="me-admin"]').exists(), `${c.role} admin`).toBe(c.admin);
+      wrapper.unmount();
+    }
   });
 });

@@ -5,26 +5,9 @@ through the authenticated transport. The document carries the AI-content
 notice and per-message aiGenerated markers. -->
 <template>
   <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义。 -->
-  <view class="export-page" role="main">
-    <view class="bar">
-      <text class="title" role="heading" aria-level="1">数据导出</text>
-      <button
-        data-testid="nav-chat"
-        class="nav-index"
-        aria-label="离线聊天"
-        @click="goTo('/pages/chat/chat')"
-      >
-        离线聊天
-      </button>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
-    </view>
+  <ConsumerShell route="/pages/export/export">
+
+
 
     <view class="intro">
       <text>
@@ -124,7 +107,7 @@ notice and per-message aiGenerated markers. -->
         {{ store.download.consents.length }} 条
       </text>
     </view>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -134,11 +117,14 @@ notice and per-message aiGenerated markers. -->
 import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useExportStore } from "@/stores/export";
+import { formatLocalDateTime } from "@/domain/timestamp";
 
 export default {
   name: "ExportPage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const store = useExportStore();
@@ -204,10 +190,9 @@ export default {
       }
     }
 
+    // P2（round4）：与其它消费者页统一走本地时间 helper（YYYY-MM-DD HH:mm）。
     function formatTime(instant: string): string {
-      const date = new Date(instant);
-      if (Number.isNaN(date.getTime())) return instant;
-      return date.toLocaleString();
+      return formatLocalDateTime(instant);
     }
 
     function goTo(url: string): void {
@@ -242,106 +227,238 @@ export default {
 </script>
 
 <style scoped>
-.export-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
-.nav-index {
-  flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
-.primary-btn {
-  background-color: #16503e;
-}
-.download-btn {
-  background-color: #16503e;
-}
 .intro {
-  margin: 16rpx 0;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
-  color: #8fa0bd;
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
+
+.section {
+  margin-bottom: var(--vc-space-5);
+}
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  color: var(--vc-muted);
+}
+
+.label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
-  margin: 16rpx 0;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
 }
-.export-input {
-  flex: 1 1 320rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 26rpx;
+
+.nav-index {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.page-act {
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
+}
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
+}
+.primary-btn,
+.save-btn,
+.submit-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.primary-btn::after,
+.save-btn::after,
+.submit-btn::after {
+  border: 0;
+}
+
+.primary-btn[disabled],
+.save-btn[disabled],
+.submit-btn[disabled] {
+  color: var(--vc-muted);
 }
 .status-card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  padding: 16rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  border: 2rpx solid #2a3a5a;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
+
 .status-label {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #89d3cc;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
+
 .status-meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
-}
-.error-text {
-  color: #f19a94;
-}
-.download-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 16rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  border: 2rpx solid #2a3a5a;
-}
-.preview-title {
-  font-size: 26rpx;
+  color: var(--vc-ink);
+  font-size: var(--vc-text-md);
   font-weight: 600;
 }
+
+.error-text {
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.download-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.download-btn::after {
+  border: 0;
+}
+
+.download-preview {
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-sunken);
+  font-size: var(--vc-text-xs);
+}
+
+.preview-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-weight: 600;
+}
+
 .preview-notice {
-  font-size: 22rpx;
-  color: #e4b96d;
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  color: var(--vc-warning);
 }
+
 .preview-line {
-  font-size: 22rpx;
-  color: #8fa0bd;
-}
-.error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
+  display: block;
+  overflow-wrap: anywhere;
 }
 </style>

@@ -1,16 +1,18 @@
 <template>
-  <view class="admin-page">
-    <view class="admin-header">
-      <text class="admin-title">账户管理（ADMIN）</text>
+  <InternalShell route="/pages/admin/admin">
+    <!-- 稳定内部导航：按账户 / 用量 / 审计 / 安全 / 队列 / 权益 / 邀请分区
+         （Phase 6）；窄屏为可横滑的锚点条。 -->
+    <nav class="admin-anchor" data-testid="admin-section-nav" aria-label="内部分区导航">
       <button
-        data-testid="nav-index"
-        class="admin-nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
+        v-for="section in SECTIONS"
+        :key="section.id"
+        class="admin-anchor__item"
+        :data-testid="`admin-anchor-${section.id}`"
+        @click="jumpTo(section.id)"
       >
-        返回边界台
+        {{ section.label }}
       </button>
-    </view>
+    </nav>
 
     <view
       v-if="!isOperator"
@@ -69,6 +71,7 @@
         </button>
       </view>
 
+      <view id="admin-sec-accounts">
       <!-- ADMIN-ACCTS: the account registry with per-account disable. -->
       <view class="account-list">
         <view class="account-list-head">
@@ -97,7 +100,7 @@
           <text class="account-cell">{{ account.displayName }}</text>
           <button
             v-if="account.status === 'ACTIVE' && account.accountId !== auth.accountId"
-            size="mini"
+            class="admin-row-btn"
             data-testid="disable-account"
             :disabled="busy"
             @click="onDisable(account)"
@@ -106,7 +109,7 @@
           </button>
           <button
             v-if="account.status === 'ACTIVE' && account.accountId !== auth.accountId"
-            size="mini"
+            class="admin-row-btn"
             data-testid="reset-account-select"
             :disabled="busy"
             @click="resetAccountId = account.accountId"
@@ -229,6 +232,8 @@
         </view>
       </view>
 
+      </view>
+      <view id="admin-sec-usage">
       <!-- ADMIN-OPS: per-day usage/cost summary -->
       <view class="ops-section">
         <view class="account-list-head">
@@ -258,6 +263,8 @@
         </view>
       </view>
 
+      </view>
+      <view id="admin-sec-audit">
       <!-- ADMIN-OPS: append-only audit trail -->
       <view class="ops-section">
         <view class="account-list-head">
@@ -295,6 +302,8 @@
         </button>
       </view>
 
+      </view>
+      <view id="admin-sec-safety">
       <!-- SAFETY-QUEUE (V59): read-only deterministic safety queue; triage
            stays a human action outside this page. -->
       <view class="ops-section">
@@ -337,6 +346,8 @@
         </view>
       </view>
 
+      </view>
+      <view id="admin-sec-queues">
       <!-- ADMIN-BETA (V64): read-only intake queues — report, age appeal,
            export task and memory-anomaly sampling. Triage and disposition
            stay human actions outside this page. -->
@@ -437,6 +448,8 @@
         </view>
       </view>
 
+      </view>
+      <view id="admin-sec-entitlements">
       <!-- ENT-TRIAL (V61): simulated PREMIUM trial budgets. -->
       <view class="ops-section">
         <view class="account-list-head">
@@ -501,6 +514,8 @@
         </view>
       </view>
 
+      </view>
+      <view id="admin-sec-invites">
       <!-- INVITE (V60): single-use invite codes; registration itself is
            config-gated on the server (default off). -->
       <view class="ops-section">
@@ -602,6 +617,7 @@
         <view v-if="scResult" class="admin-result" data-testid="sc-result" role="status">
           <text>{{ `已分配：${scResult.username} → ${scResult.serviceClass}` }}</text>
         </view>
+      </view>
       </view>
       </template>
 
@@ -722,7 +738,7 @@
         </view>
       </view>
     </template>
-  </view>
+  </InternalShell>
 </template>
 
 <script lang="ts">
@@ -776,9 +792,10 @@ import {
   type UsageSummaryItem,
   type ProviderPlanStatus,
 } from "@/api/auth";
-import { OPERATOR_ROLES } from "@/domain/nav-guard";
+import { canEnterAdminPage } from "@/domain/nav-guard";
 import type { PublicOpsCase } from "@/domain/ops-case-redact";
 import { createAuthenticatedTransport } from "@/api/transport";
+import InternalShell from "@/app/InternalShell.vue";
 import { useAuthStore } from "@/stores/auth";
 
 /** ADMIN-OPS: audit page size (the server clamps its own band). */
@@ -786,7 +803,29 @@ const AUDIT_PAGE_SIZE = 50;
 
 export default defineComponent({
   name: "AdminPage",
+  components: { InternalShell },
   setup() {
+    // 内部分区导航（运行时锚点；不做第二套路由）。
+    const SECTIONS = [
+      { id: "accounts", label: "账户" },
+      { id: "usage", label: "用量" },
+      { id: "audit", label: "审计" },
+      { id: "safety", label: "安全" },
+      { id: "queues", label: "队列" },
+      { id: "entitlements", label: "权益" },
+      { id: "invites", label: "邀请" },
+    ] as const;
+
+    function jumpTo(id: string): void {
+      try {
+        document
+          .getElementById(`admin-sec-${id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch {
+        // Presentation-only scroll.
+      }
+    }
+
     const auth = useAuthStore();
     const username = ref("");
     const password = ref("");
@@ -850,7 +889,7 @@ export default defineComponent({
     const caseInternalRead = ref<Record<string, string>>({});
     const casesFailed = ref(false);
     const isAdmin = computed(() => auth.role === "ADMIN");
-    const isOperator = computed(() => auth.role != null && OPERATOR_ROLES.has(auth.role));
+    const isOperator = computed(() => canEnterAdminPage(auth.role));
     const canMutateCases = computed(() =>
       auth.role === "ADMIN" || auth.role === "SAFETY_REVIEWER" || auth.role === "PRIVACY_OPERATOR");
 
@@ -1326,6 +1365,8 @@ export default defineComponent({
     }
 
     return {
+      SECTIONS,
+      jumpTo,
       auth,
       username,
       password,
@@ -1407,143 +1448,213 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.admin-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
+/* 窄屏表格换为摘要行（audit-row 网格），不做不可读的 nowrap 横向堆叠。 */
+.admin-anchor {
+  position: sticky;
+  top: 0;
+  z-index: var(--vc-z-header);
   display: flex;
-  flex-direction: column;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-3);
+  padding: var(--vc-space-2) 0;
+  overflow-x: auto;
+  background: var(--vc-env);
 }
-.admin-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  margin-bottom: 24rpx;
-}
-.admin-title {
-  font-size: 32rpx;
-  font-weight: 600;
-}
-.admin-nav-index {
+
+.admin-anchor__item {
+  min-height: 44px;
   flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-pill);
+  background: var(--vc-env-raised);
+  color: var(--vc-on-env-muted);
+  font: inherit;
+  font-size: var(--vc-text-xs);
   font-weight: 600;
 }
-.admin-notice {
-  padding: 24rpx;
-  background-color: #5a1a1a;
-  border-radius: 12rpx;
+
+.admin-anchor__item::after {
+  border: 0;
 }
-.admin-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  max-width: 640rpx;
-}
-.admin-input,
-.admin-select {
-  padding: 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 28rpx;
-}
-.admin-submit {
-  background-color: #2a6a9a;
-  color: #ffffff;
-}
+
+.ops-section,
 .account-list {
-  margin-top: 32rpx;
-  max-width: 800rpx;
+  margin-top: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-env-raised);
+  color: var(--vc-on-env);
+  font-size: var(--vc-text-sm);
+  line-height: 1.6;
 }
+
 .account-list-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12rpx;
+  gap: var(--vc-space-3);
+  margin-bottom: var(--vc-space-2);
 }
+
 .account-list-title {
-  font-size: 28rpx;
+  font-size: var(--vc-text-md);
   font-weight: 600;
 }
-.account-row {
+
+.admin-form {
   display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 12rpx;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  margin-bottom: 8rpx;
-  font-size: 24rpx;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-env-raised);
 }
-.account-cell {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+.admin-input,
+.admin-select,
+.rename-input {
+  box-sizing: border-box;
+  flex: 1 1 10em;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-env);
+  color: var(--vc-on-env);
+  font-size: 16px;
 }
-.admin-result {
-  margin-top: 24rpx;
-  padding: 16rpx;
-  background-color: #1a3a2a;
-  border-radius: 12rpx;
-  font-size: 26rpx;
+
+.admin-submit {
+  min-height: 44px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
+
+.admin-submit::after {
+  border: 0;
+}
+
+.admin-nav-index {
+  min-height: 44px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.admin-nav-index::after {
+  border: 0;
+}
+
+.admin-notice {
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-env-raised);
+  color: var(--vc-on-env-muted);
+  font-size: var(--vc-text-sm);
+}
+
 .admin-error {
-  margin-top: 24rpx;
-  padding: 16rpx;
-  background-color: #5a1a1a;
-  border-radius: 12rpx;
-  font-size: 26rpx;
+  margin: var(--vc-space-2) 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border: 1px solid var(--vc-danger-on-env);
+  border-radius: var(--vc-radius-s);
+  color: var(--vc-danger-on-env);
+  font-size: var(--vc-text-xs);
 }
-/* ADMIN-OPS: usage + audit sections */
-.ops-section {
-  margin-top: 32rpx;
-}
-.usage-table {
-  margin-top: 12rpx;
-  border-radius: 12rpx;
-  overflow: hidden;
-  border: 2rpx solid #2a3a5a;
-}
-.usage-row,
-.audit-row {
-  display: flex;
-  gap: 12rpx;
-  padding: 12rpx 16rpx;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
-  border-bottom: 2rpx solid #2a3a5a;
-}
-.usage-row:last-child,
-.audit-row:last-child {
-  border-bottom: none;
-}
-.usage-cell,
-.audit-cell {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+
 .admin-empty {
-  margin-top: 12rpx;
-  padding: 16rpx;
-  background-color: #1c2b4a;
-  border-radius: 12rpx;
-  font-size: 24rpx;
-  color: #8fa0bd;
+  color: var(--vc-on-env-muted);
+  font-size: var(--vc-text-xs);
 }
-/* ENT-SNAP: assignment form row */
+
+.admin-result {
+  margin-top: var(--vc-space-2);
+  color: var(--vc-glow);
+  font-size: var(--vc-text-xs);
+}
+
+.admin-hint {
+  display: block;
+  margin: var(--vc-space-1) 0 var(--vc-space-2);
+  color: var(--vc-on-env-muted);
+  font-size: var(--vc-text-xs);
+  line-height: 1.6;
+}
+
+/* 行式摘要：窄屏可读，宽屏成网格；不做 nowrap 溢出。 */
+.audit-row,
+.account-row,
+.sc-row,
+.usage-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9em, 1fr));
+  gap: var(--vc-space-1) var(--vc-space-3);
+  padding: var(--vc-space-2) 0;
+  border-bottom: 1px solid var(--vc-border-env);
+  font-size: var(--vc-text-xs);
+}
+
+.audit-row:last-child,
+.account-row:last-child,
+.sc-row:last-child,
+.usage-row:last-child {
+  border-bottom: 0;
+}
+
+.audit-cell,
+.account-cell,
+.usage-cell {
+  overflow-wrap: anywhere;
+  color: var(--vc-on-env);
+}
+
+.usage-table {
+  margin-top: var(--vc-space-2);
+}
+
+.admin-row-btn {
+  min-height: 44px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.admin-row-btn::after {
+  border: 0;
+}
+
 .sc-form {
   display: flex;
-  gap: 12rpx;
-  margin-top: 12rpx;
   flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-2);
 }
 </style>

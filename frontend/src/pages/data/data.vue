@@ -2,16 +2,20 @@
 Uses existing list APIs; report/appeal status reads the report intake list
 (REPORT-BE). -->
 <template>
-  <view class="data-page">
-    <view class="bar">
-      <text class="title">我的数据</text>
-      <button data-testid="nav-export" class="nav-index" aria-label="数据导出" @click="goTo('/pages/export/export')">
+  <ConsumerShell route="/pages/data/data">
+    <template #header-actions>
+      <button
+        data-testid="nav-export"
+        class="page-act"
+        aria-label="数据导出"
+        @click="goTo('/pages/export/export')"
+      >
         数据导出
       </button>
-      <button data-testid="nav-index" class="nav-index" aria-label="返回边界台" @click="goTo('/pages/index/index')">
-        返回边界台
-      </button>
-    </view>
+    </template>
+
+
+
 
     <view class="intro">
       <text>
@@ -39,11 +43,10 @@ Uses existing list APIs; report/appeal status reads the report intake list
 
     <template v-if="!store.loadFailed">
       <view class="section" data-testid="data-account">
-        <text class="section-title">账号</text>
+        <text class="section-title">账号与安全</text>
         <button data-testid="data-open-account" class="row row-link" @click="goTo('/pages/account/account')">
-          账号编号：{{ auth.accountId ?? "未登录" }}
+          查看账号、安全与登录设置
         </button>
-        <text class="row">角色：{{ auth.role ?? "未知" }}</text>
       </view>
 
       <view class="section" data-testid="data-relationships">
@@ -69,7 +72,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           data-testid="data-open-conversation"
           @click="goTo(conversationHref(item))"
         >
-          {{ item.title || item.lastMessagePreview || `会话 ${item.conversationId}` }}
+          {{ readableConversationTitle(item) }}
         </button>
         <text v-if="store.conversations.length === 0" class="empty">没有会话记录。</text>
       </view>
@@ -83,7 +86,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           data-testid="data-open-memory"
           @click="goTo(memoryHref(item))"
         >
-          {{ item.summary }}（{{ item.status }}）
+          {{ item.summary }}（{{ publicMemoryStatusLabel(item.status) }}）
         </button>
         <EmptyState
           v-if="store.memories.length === 0 && !store.asyncState.failedDomains.includes('memory')"
@@ -117,7 +120,7 @@ Uses existing list APIs; report/appeal status reads the report intake list
           data-testid="data-open-consent"
           @click="goTo('/pages/consent/consent')"
         >
-          {{ item.consentType }} · {{ item.granted ? "已同意" : "已撤回" }}
+          {{ consentTypeLabel(item.consentType) }} · {{ item.granted ? "已同意" : "已撤回" }}
         </button>
         <text v-if="store.consents.length === 0" class="empty">没有同意记录。</text>
       </view>
@@ -127,7 +130,6 @@ Uses existing list APIs; report/appeal status reads the report intake list
         <button data-testid="data-open-ai-notice" class="row row-link" @click="goTo('/pages/ai-notice/ai-notice')">
           {{ store.serviceMode?.summary ?? "服务状态尚未读取。" }}
         </button>
-        <text v-if="store.serviceMode" class="meta">模式 {{ store.serviceMode.mode }}</text>
       </view>
 
       <view class="section" data-testid="data-appeals">
@@ -147,31 +149,42 @@ Uses existing list APIs; report/appeal status reads the report intake list
         </text>
       </view>
     </template>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
 import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
-import EmptyState from "@/components/EmptyState.vue";
-import ErrorNotice from "@/components/ErrorNotice.vue";
-import RetryButton from "@/components/RetryButton.vue";
+import ConsumerShell from "@/app/ConsumerShell.vue";
+import EmptyState from "@/design-system/EmptyState.vue";
+import ErrorNotice from "@/design-system/ErrorNotice.vue";
+import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
+import { readableConversationTitle } from "@/domain/conversation-display";
+import { publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { personaDisplayName } from "@/domain/persona";
 import { requestIdLabel } from "@/domain/request-id";
 import { useAuthStore } from "@/stores/auth";
+import { CONSENT_OPTIONS } from "@/stores/consent";
 import { useDataStore } from "@/stores/data";
 import { REPORT_REASON_LABELS, useReportStore } from "@/stores/report";
 
 export default {
   name: "DataPage",
-  components: { EmptyState, ErrorNotice, RetryButton },
+  components: { ConsumerShell, EmptyState, ErrorNotice, RetryButton },
   setup() {
     const auth = useAuthStore();
     const store = useDataStore();
     const reportStore = useReportStore();
     const requestIdCopy = ref("");
+
+    // P2（round3）：同意记录用与同意页一致的中文标签，不显示 SERVICE_TERMS
+    // 等原始码；类型集是封闭联合，兜底仍不露出内部码。
+    function consentTypeLabel(type: string): string {
+      return CONSENT_OPTIONS.find((o) => o.type === type)?.label ?? "同意项";
+    }
+
     const transport = createAuthenticatedTransport({
       getAccessToken: () => auth.accessToken,
       renewAccessToken: () => auth.renewAccessToken(transport),
@@ -248,6 +261,9 @@ export default {
       auth,
       store,
       reportStore,
+      consentTypeLabel,
+      readableConversationTitle,
+      publicMemoryStatusLabel,
       REPORT_REASON_LABELS,
       personaDisplayName,
       requestIdCopy,
@@ -263,66 +279,165 @@ export default {
 </script>
 
 <style scoped>
-.data-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
+.intro {
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
-.nav-index {
-  flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
-.intro,
-.empty,
-.meta {
-  font-size: 24rpx;
-  color: #8fa0bd;
-  line-height: 1.6;
-}
+
 .section {
-  margin-top: 20rpx;
-  padding: 16rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
+  margin-bottom: var(--vc-space-5);
+}
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  color: var(--vc-muted);
+}
+
+.label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+}
+
+.nav-index {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.page-act {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.state-card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
 }
-.section-title {
-  font-size: 26rpx;
-  font-weight: 600;
-}
-.row {
-  font-size: 24rpx;
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
 .row-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-3);
+  width: 100%;
+  min-height: 52px;
   margin: 0;
-  padding: 0;
+  padding: var(--vc-space-2) 0;
   border: 0;
+  border-bottom: 1px solid var(--vc-border);
+  border-radius: 0;
   background: transparent;
-  color: #d7e4ff;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-md);
   text-align: left;
 }
-.error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
+
+.row-link::after {
+  border: 0;
 }
 </style>

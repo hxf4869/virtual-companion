@@ -131,7 +131,7 @@ export default defineComponent({
     const emptyRelationshipsText = computed(() =>
       props.showCreate
         ? "还没有关系。请先新建一条陪伴关系。"
-        : "还没有关系。请到离线聊天新建。",
+        : "还没有关系。选择一个人设，创建你的陪伴。",
     );
 
     function onSelect(event: Event): void {
@@ -164,55 +164,78 @@ export default defineComponent({
 
 <style scoped>
 .rel-selector {
-  padding: 24rpx;
-  background-color: #1c2b4a;
-  border-radius: 12rpx;
-  margin-bottom: 24rpx;
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  margin-bottom: var(--vc-space-4);
+  background: var(--vc-card);
+  color: var(--vc-ink);
 }
 .rel-error {
-  padding: 16rpx;
-  background-color: #5a1a1a;
-  border-radius: 12rpx;
-  margin-bottom: 16rpx;
+  padding: var(--vc-space-3);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  border-radius: var(--vc-radius-s);
+  margin-bottom: var(--vc-space-3);
 }
 .rel-row {
-  margin-bottom: 16rpx;
+  margin-bottom: var(--vc-space-3);
 }
 .rel-select {
   width: 100%;
-  padding: 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #14213d;
-  color: #f5f5f5;
-  font-size: 28rpx;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  border: 1px solid var(--vc-border-strong);
+  background-color: var(--vc-sunken);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: 16px;
 }
 .rel-create {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12rpx;
+  gap: var(--vc-space-3);
 }
 .rel-input {
-  flex: 1;
-  padding: 16rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #14213d;
-  color: #f5f5f5;
-  font-size: 28rpx;
+  /* min-width:0 让 select 能在窄屏收缩；放不下时按钮换到下一行独占。 */
+  flex: 1 1 16em;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  border: 1px solid var(--vc-border-strong);
+  background-color: var(--vc-sunken);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: 16px;
 }
 .rel-create-btn {
-  background-color: #2a6a9a;
-  color: #ffffff;
+  flex: none;
+  min-height: 44px;
+  padding: 0 var(--vc-space-4);
+  border-radius: var(--vc-radius-s);
+  background-color: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rel-create-btn::after {
+  border: 0;
+}
+.rel-create-btn:not([disabled]):active {
+  background-color: var(--vc-primary-hover);
 }
 .rel-status {
-  font-size: 26rpx;
-  opacity: 0.85;
-  margin-top: 16rpx;
+  font-size: var(--vc-text-sm);
+  color: var(--vc-muted);
+  margin-top: var(--vc-space-3);
 }
 .rel-empty {
-  font-size: 26rpx;
-  opacity: 0.85;
-  margin-top: 16rpx;
+  font-size: var(--vc-text-sm);
+  color: var(--vc-muted);
+  margin-top: var(--vc-space-3);
 }
 </style>

@@ -17,6 +17,16 @@ export const OPERATOR_ROLES: ReadonlySet<string> = new Set([
   "OPS_VIEWER",
 ]);
 
+/** OPS 页真实守卫：Runtime 预检面仅 ADMIN（与 ops 页 isAdminRole 一致）。 */
+export function canEnterOpsPage(role: string | null | undefined): boolean {
+  return role === "ADMIN";
+}
+
+/** ADMIN 页真实守卫：内部管理面对全部操作者开放；分区权限在页面内部。 */
+export function canEnterAdminPage(role: string | null | undefined): boolean {
+  return typeof role === "string" && OPERATOR_ROLES.has(role);
+}
+
 export interface GateSnapshot {
   session: SessionStatus;
   role: string | null;

@@ -311,6 +311,8 @@ set -m
 (
     cd frontend
     export VITE_PROXY_TARGET="http://127.0.0.1:${E2E_RUNTIME_PORT}"
+    # round11（P1-1）：代理断开传播的固定脱敏事件只在 E2E trace 开关下输出。
+    export E2E_PROXY_TRACE=1
     exec pnpm exec uni --host 127.0.0.1 --port "$E2E_H5_PORT" --strictPort
 ) >"$H5_LOG" 2>&1 &
 H5_PID=$!

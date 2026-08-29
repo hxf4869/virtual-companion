@@ -162,6 +162,44 @@ describe("useChatStore", () => {
     expect(store.isTerminal).toBe(false);
   });
 
+  // P1（round5）：RESUMED 批次之间增量发布中间流状态——页面逐批拿到
+  // 草稿文本（store.draft 在第一批后即可读），不再等整条连接结束。
+  it("publishes interim stream state between RESUMED batches so the live draft renders", async () => {
+    const store = useChatStore();
+    let releaseSecond: (() => void) | undefined;
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    let calls = 0;
+    const deps: RealtimeDeps = {
+      resume: vi.fn(async (req): Promise<ResumeResult> => {
+        calls += 1;
+        if (calls === 1) {
+          return { disposition: "RESUMED", events: [delta(1, 1, "你"), delta(2, 1, "好")] };
+        }
+        await secondGate;
+        expect(req.afterSeq).toBe(2);
+        return { disposition: "RESUMED", events: [delta(3, 1, "呀"), terminal(4, 1)] };
+      }),
+      fetchSnapshot: vi.fn(async () => ({ ok: true, status: 200, events: [] })),
+    };
+
+    const pending = store.run(deps, "gen-live", 1);
+    // 第一批应用完毕（第二次 resume 已被调用并挂起）时，中间状态必须已经
+    // 可见于响应式层。
+    await vi.waitFor(() => expect(calls).toBeGreaterThanOrEqual(2));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.isStreaming).toBe(true);
+    expect(store.draft, "interim draft visible between batches").toBe("你好");
+
+    releaseSecond?.();
+    await pending;
+
+    expect(store.draft).toBe("你好呀");
+    expect(store.phase).toBe("completed");
+  });
+
   it("S0-20: transport exhaustion keeps the refresh recovery binding", async () => {
     const rows = new Map<string, string>();
     vi.stubGlobal("sessionStorage", {
@@ -1182,6 +1220,144 @@ describe("useChatStore", () => {
     await store.openConversation(transport, "6");
 
     expect(store.conversationId).toBe("5");
+  });
+
+  // ---- round7（P1）：快速切换会话的 stale response 不得串写当前窗口 ----
+
+  /** 与 store 的 HISTORY_PAGE_SIZE 一致的整页行数。 */
+  const PAGE_ROWS = 50;
+
+  function pageOf(
+    conversationId: string,
+    startId: number,
+    count: number,
+  ): Array<{ messageId: number; conversationId: string; role: string; content: string }> {
+    return Array.from({ length: count }, (_, i) => ({
+      messageId: startId + i,
+      conversationId,
+      role: "user",
+      content: `m${startId + i}`,
+    }));
+  }
+
+  function flushStore(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  interface DeferredPage {
+    resolve(rows: unknown[]): void;
+  }
+
+  /**
+   * 每个会话的消息分页请求都挂起，由测试按任意顺序放行——复现
+   * B→A、A 先返回、B 后返回以及相反返回顺序四种交错。
+   */
+  function gatedMessagesTransport(): {
+    transport: ChatTransport;
+    answer(conversationId: string, rows: unknown[]): boolean;
+    pendingCount(conversationId: string): number;
+  } {
+    const gates: Record<string, DeferredPage[]> = {};
+    const transport: ChatTransport = {
+      request(method, path) {
+        const match = path.match(/^\/api\/v1\/conversations\/(\d+)\/messages/);
+        if (method === "GET" && match) {
+          const id = match[1];
+          return new Promise((resolve) => {
+            (gates[id] ??= []).push({
+              resolve: (rows: unknown[]) => {
+                resolve({ ok: true, status: 200, json: rows });
+              },
+            });
+          });
+        }
+        // openConversation 只依赖已缓存的会话列表镜像，其余端点一律空回。
+        return Promise.resolve({ ok: true, status: 200, json: [] });
+      },
+    };
+    return {
+      transport,
+      answer(conversationId: string, rows: unknown[]): boolean {
+        const gate = gates[conversationId]?.shift();
+        if (!gate) return false;
+        gate.resolve(rows);
+        return true;
+      },
+      pendingCount(conversationId: string): number {
+        return (gates[conversationId] ?? []).length;
+      },
+    };
+  }
+
+  it("drops every late A page once the user switched away mid-flight (B->A ordering, A resolves first)", async () => {
+    const store = useChatStore();
+    store.conversations = [
+      { conversationId: "11", relationshipId: "1", incognito: true, lastMessagePreview: "" },
+      { conversationId: "22", relationshipId: "1", incognito: false, lastMessagePreview: "" },
+    ];
+    const { transport, answer } = gatedMessagesTransport();
+
+    const pending11 = store.openConversation(transport, "11");
+    expect(store.conversationId).toBe("11");
+    // A 的页面挂在半途；用户立刻切到 22。
+    const pending22 = store.openConversation(transport, "22");
+    expect(store.conversationId).toBe("22");
+    expect(store.activeIncognito).toBe(false);
+
+    // A（11）先返回：令牌过期 ⇒ 整页丢弃，窗口归属与分页标志原样保留。
+    expect(answer("11", pageOf("11", 101, PAGE_ROWS))).toBe(true);
+    await flushStore();
+    expect(store.messages).toHaveLength(0);
+    expect(store.historyHasMore).toBe(true);
+    // 作废链路不再发起后续页。
+    expect(answer("11", pageOf("11", 900, PAGE_ROWS))).toBe(false);
+
+    // 新会话逐页提交：整页后继续自动翻页，局部不足一页收尾。
+    expect(answer("22", pageOf("22", 201, PAGE_ROWS))).toBe(true);
+    await flushStore();
+    expect(store.messages).toHaveLength(PAGE_ROWS);
+    expect(answer("22", pageOf("22", 300, PAGE_ROWS - 1))).toBe(true);
+    await Promise.all([pending11, pending22]);
+
+    expect(store.conversationId).toBe("22");
+    expect(store.messages).toHaveLength(PAGE_ROWS + PAGE_ROWS - 1);
+    expect(store.messages.every((m) => m.conversationId === "22")).toBe(true);
+    expect(store.historyHasMore).toBe(false);
+    // INC 镜像没有被迟到的旧会话改写。
+    expect(store.activeIncognito).toBe(false);
+  });
+
+  it("keeps the switched-to window intact when the old conversation lands afterwards (reverse order)", async () => {
+    const store = useChatStore();
+    store.conversations = [
+      { conversationId: "31", relationshipId: "1", incognito: false, lastMessagePreview: "" },
+      { conversationId: "42", relationshipId: "1", incognito: true, lastMessagePreview: "" },
+    ];
+    const { transport, answer } = gatedMessagesTransport();
+
+    const pending31 = store.openConversation(transport, "31");
+    const pending42 = store.openConversation(transport, "42");
+    expect(store.conversationId).toBe("42");
+
+    // 先让新会话完整落地。
+    expect(answer("42", pageOf("42", 301, PAGE_ROWS))).toBe(true);
+    await flushStore();
+    expect(answer("42", pageOf("42", 301 + PAGE_ROWS, PAGE_ROWS))).toBe(true);
+    await flushStore();
+    expect(answer("42", pageOf("42", 301 + 2 * PAGE_ROWS, PAGE_ROWS - 3))).toBe(true);
+    await pending42;
+    const settledLength = store.messages.length;
+    expect(settledLength).toBe(2 * PAGE_ROWS + PAGE_ROWS - 3);
+    expect(store.messages.every((m) => m.conversationId === "42")).toBe(true);
+
+    // 旧会话 31 的页面此时才慢速返回：必须整体作废。
+    expect(answer("31", pageOf("31", 401, PAGE_ROWS))).toBe(true);
+    await flushStore();
+
+    expect(store.messages.length).toBe(settledLength);
+    expect(store.messages.some((m) => m.conversationId !== "42")).toBe(false);
+    expect(store.activeIncognito).toBe(true);
+    void pending31;
   });
 
   // ---- MEM-PROMPT: pending candidate count ----

@@ -1,134 +1,119 @@
 <template>
-  <!-- DOGFOOD-09：页面容器声明 main landmark，页面标题声明一级标题语义
-       （uni-app h5 不会为 view/text 生成任何 landmark/heading）。 -->
+  <!-- 线性准入流程：登录。只突出登录本身；凭码开通保持折叠，不与主层级
+       竞争。旧的边界台导航入口已随 IA 移除（375px 溢出根因）。 -->
   <view class="login-page" role="main">
-    <view class="login-header">
-      <text role="heading" aria-level="1">Virtual Companion · 登录</text>
-      <view class="login-header-nav">
-        <button
-          data-testid="nav-index"
-          class="nav-index"
-          aria-label="返回边界台"
-          @click="goToIndex"
-        >
-          返回边界台
-        </button>
-        <button
-          data-testid="nav-chat"
-          class="nav-index"
-          aria-label="离线聊天"
-          @click="goToChat"
-        >
-          离线聊天
-        </button>
-        <button
-          data-testid="nav-memory"
-          class="nav-index"
-          aria-label="记忆管理"
-          @click="goToMemory"
-        >
-          记忆管理
-        </button>
-      </view>
-    </view>
-    <view class="login-form">
-      <input
-        class="login-input"
-        data-testid="username"
-        v-model="username"
-        placeholder="用户名"
-        aria-label="用户名"
-        autocomplete="username"
-      />
-      <input
-        class="login-input"
-        data-testid="password"
-        v-model="password"
-        password
-        placeholder="密码"
-        aria-label="密码"
-        autocomplete="current-password"
-        @keydown.enter="onSubmit"
-      />
-      <button
-        class="login-submit"
-        data-testid="submit"
-        :disabled="!canSubmit || submitting"
-        :aria-busy="submitting"
-        @click="onSubmit"
-      >
-        {{ submitting ? "登录中…" : "登录" }}
-      </button>
-      <view
-        v-if="message"
-        class="login-error"
-        data-testid="error"
-        role="alert"
-      >
-        <text>{{ message }}</text>
-        <text v-if="requestIdCopy" data-testid="login-request-id">{{ requestIdCopy }}</text>
-      </view>
-      <view class="login-hint">
-        <text>内部账号登录 · 凭据经批准渠道注入，不落仓库</text>
-      </view>
+    <view class="login-window">
+      <text class="login-title" role="heading" aria-level="1">登录</text>
+      <text class="login-lead">
+        虚拟陪伴 · Technical Alpha 内部账号。AI 陪伴，非真人。
+      </text>
 
-      <!-- INVITE (V60): provisioning through a single-use invite code. The
-           server fail-closes to 403 while invite-registration-enabled=false;
-           the page shows that plain wording instead of guessing. -->
-      <button
-        class="login-invite-toggle"
-        data-testid="invite-toggle"
-        :aria-expanded="inviteOpen"
-        @click="inviteOpen = !inviteOpen"
-      >
-        {{ inviteOpen ? "收起凭邀请码开通" : "凭邀请码开通测试账号" }}
-      </button>
-      <view v-if="inviteOpen" class="login-invite" data-testid="invite-panel">
-        <input
-          v-model="inviteCode"
-          class="login-input"
-          data-testid="invite-code"
-          placeholder="邀请码"
-          aria-label="邀请码"
-        />
-        <input
-          v-model="inviteUsername"
-          class="login-input"
-          data-testid="invite-username"
-          placeholder="用户名"
-          aria-label="用户名"
-        />
-        <input
-          v-model="invitePassword"
-          class="login-input"
-          data-testid="invite-password"
-          type="password"
-          placeholder="密码"
-          aria-label="密码"
-          autocomplete="new-password"
-        />
-        <input
-          v-model="inviteDisplayName"
-          class="login-input"
-          data-testid="invite-display-name"
-          placeholder="昵称"
-          aria-label="昵称"
-        />
+      <view class="login-form">
+        <!-- 持久可见标签：不依赖 placeholder/aria-label 承载字段语义。 -->
+        <view class="login-field">
+          <text class="login-label" data-testid="login-label-username">用户名</text>
+          <input
+            class="login-input"
+            data-testid="username"
+            v-model="username"
+            placeholder="输入内部用户名"
+            aria-label="用户名"
+            autocomplete="username"
+          />
+        </view>
+        <view class="login-field">
+          <text class="login-label" data-testid="login-label-password">密码</text>
+          <input
+            class="login-input"
+            data-testid="password"
+            v-model="password"
+            password
+            placeholder="输入密码"
+            aria-label="密码"
+            autocomplete="current-password"
+            @keydown.enter="onSubmit"
+          />
+        </view>
         <button
           class="login-submit"
-          data-testid="invite-submit"
-          :disabled="!canInviteSubmit || submitting"
-          @click="onInviteRegister"
+          data-testid="submit"
+          :disabled="!canSubmit || submitting"
+          :aria-busy="submitting"
+          @click="onSubmit"
         >
-          {{ submitting ? "开通中…" : "凭码开通" }}
+          {{ submitting ? "登录中…" : "登录" }}
         </button>
         <view
-          v-if="inviteMessage"
+          v-if="message"
           class="login-error"
-          data-testid="invite-result"
-          role="status"
+          data-testid="error"
+          role="alert"
         >
-          <text>{{ inviteMessage }}</text>
+          <text>{{ message }}</text>
+          <text v-if="requestIdCopy" data-testid="login-request-id">{{ requestIdCopy }}</text>
+        </view>
+        <view class="login-hint">
+          <text>内部账号登录 · 凭据经批准渠道注入，不落仓库</text>
+        </view>
+
+        <!-- INVITE (V60): provisioning through a single-use invite code. The
+             server fail-closes to 403 while invite-registration-enabled=false;
+             the page shows that plain wording instead of guessing. -->
+        <button
+          class="login-invite-toggle"
+          data-testid="invite-toggle"
+          :aria-expanded="inviteOpen"
+          @click="inviteOpen = !inviteOpen"
+        >
+          {{ inviteOpen ? "收起凭邀请码开通" : "凭邀请码开通测试账号" }}
+        </button>
+        <view v-if="inviteOpen" class="login-invite" data-testid="invite-panel">
+          <input
+            v-model="inviteCode"
+            class="login-input"
+            data-testid="invite-code"
+            placeholder="邀请码"
+            aria-label="邀请码"
+          />
+          <input
+            v-model="inviteUsername"
+            class="login-input"
+            data-testid="invite-username"
+            placeholder="用户名"
+            aria-label="用户名"
+          />
+          <input
+            v-model="invitePassword"
+            class="login-input"
+            data-testid="invite-password"
+            type="password"
+            placeholder="密码"
+            aria-label="密码"
+            autocomplete="new-password"
+          />
+          <input
+            v-model="inviteDisplayName"
+            class="login-input"
+            data-testid="invite-display-name"
+            placeholder="昵称"
+            aria-label="昵称"
+          />
+          <button
+            class="login-submit"
+            data-testid="invite-submit"
+            :disabled="!canInviteSubmit || submitting"
+            @click="onInviteRegister"
+          >
+            {{ submitting ? "开通中…" : "凭码开通" }}
+          </button>
+          <view
+            v-if="inviteMessage"
+            class="login-error"
+            data-testid="invite-result"
+            role="status"
+          >
+            <text>{{ inviteMessage }}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -189,33 +174,6 @@ export default defineComponent({
       getAccessToken: () => store.accessToken,
       onUnauthorized: () => store.onUnauthorized(),
     });
-
-    function goToIndex(): void {
-      navigatePresentation("/pages/index/index");
-    }
-
-    function goToChat(): void {
-      navigatePresentation("/pages/chat/chat");
-    }
-
-    function goToMemory(): void {
-      navigatePresentation("/pages/memory/memory");
-    }
-
-    function navigatePresentation(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url.startsWith("/pages/") ? `/#${url}` : url;
-        }
-      } catch {
-        // Presentation-only navigation; never break login submit/fail.
-      }
-    }
 
     function redirectHome(url = "/pages/index/index"): void {
       try {
@@ -340,84 +298,132 @@ export default defineComponent({
       inviteMessage,
       canInviteSubmit,
       onInviteRegister,
-      goToIndex,
-      goToChat,
-      goToMemory,
     };
   },
 });
 </script>
 
 <style scoped>
+/* 线性准入视觉：浅色卡片式登录窗。窄屏不出现横向溢出。 */
 .login-page {
-  padding: 48rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
   min-height: 100vh;
+  min-height: 100dvh;
+  padding: calc(var(--vc-space-7) + env(safe-area-inset-top, 0px))
+    var(--vc-space-4)
+    calc(var(--vc-space-7) + env(safe-area-inset-bottom, 0px));
+  background: var(--vc-env);
 }
-.login-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  font-size: 36rpx;
-  font-weight: 600;
-  margin-bottom: 40rpx;
+
+.login-window {
+  display: grid;
+  gap: var(--vc-space-3);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 420px;
+  align-self: start;
+  padding: var(--vc-space-6);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-l);
+  background: var(--vc-card);
+  color: var(--vc-ink);
 }
-.login-header-nav {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
+
+.login-title {
+  font-size: var(--vc-text-2xl);
+  font-weight: 700;
 }
-.nav-index {
-  flex: 0 0 auto;
-  font-size: 26rpx;
-  font-weight: 400;
+
+.login-lead {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
 }
+
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 24rpx;
+  gap: var(--vc-space-3);
 }
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vc-space-1);
+}
+
+.login-label {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
 .login-input {
-  height: 88rpx;
-  padding: 0 24rpx;
-  background-color: #1c2b4a;
-  border-radius: 12rpx;
-  color: #f5f5f5;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--vc-space-3);
+  background-color: var(--vc-sunken);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
+
 .login-submit {
-  margin-top: 12rpx;
-  /* DOGFOOD-STABILIZATION-03 缺陷 F：白字对原主题青 #2a9d8f 对比度仅
-     3.32:1 < WCAG AA 4.5:1（axe color-contrast 在启用态扫描会失败）。
-     加深为同色系深青 #1e8076 → 4.77:1，保持品牌观感。 */
-  background-color: #1e8076;
-  color: #ffffff;
+  min-height: 48px;
+  margin: var(--vc-space-1) 0 0;
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background-color: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font-weight: 600;
+  font-size: var(--vc-text-md);
 }
-/* disabled 态不受对比度约束（axe 跳过禁用元素），但全局 uni-button[disabled]
-   的 #6e6e6e 灰字叠在加深的启用青上会从 1.53:1 退化到 1.07:1；换成更深的
-   失活底 #17403c（2.24:1）保持禁用观感可辨且不劣于原状。 */
-.login-submit[disabled] {
-  background-color: #17403c;
+
+.login-submit::after {
+  border: 0;
 }
+
+.login-submit:not([disabled]):active {
+  background-color: var(--vc-primary-hover);
+}
+
 .login-error {
-  color: #e63946;
-  font-size: 26rpx;
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+  overflow-wrap: anywhere;
 }
+
 .login-hint {
-  opacity: 0.7;
-  font-size: 24rpx;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
+
 .login-invite-toggle {
   align-self: flex-start;
-  background: transparent;
-  color: #8fa0bd;
-  font-size: 24rpx;
+  min-height: 44px;
+  margin: 0;
   padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
+
+.login-invite-toggle::after {
+  border: 0;
+}
+
 .login-invite {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: var(--vc-space-3);
+  padding-top: var(--vc-space-2);
+  border-top: 1px solid var(--vc-border);
 }
 </style>

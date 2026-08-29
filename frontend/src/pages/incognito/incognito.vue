@@ -2,16 +2,9 @@
 stays frozen on the conversation. This page only sets the default for the
 next new conversation and states that 无痕 ≠ 无必要安全记录. -->
 <template>
-  <view class="incognito-page">
-    <view class="bar">
-      <text class="title">无痕模式</text>
-      <button data-testid="nav-chat" class="nav-index" aria-label="离线聊天" @click="goTo('/pages/chat/chat')">
-        离线聊天
-      </button>
-      <button data-testid="nav-index" class="nav-index" aria-label="返回边界台" @click="goTo('/pages/index/index')">
-        返回边界台
-      </button>
-    </view>
+  <ConsumerShell route="/pages/incognito/incognito">
+
+
 
     <view class="intro" data-testid="incognito-intro">
       <text>
@@ -47,18 +40,20 @@ next new conversation and states that 无痕 ≠ 无必要安全记录. -->
         <text>保存失败，无痕默认设置未改变，请重试。</text>
       </view>
     </template>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
 import { onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useIncognitoStore } from "@/stores/incognito";
 
 export default {
   name: "IncognitoPage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const store = useIncognitoStore();
@@ -108,60 +103,147 @@ export default {
 </script>
 
 <style scoped>
-.incognito-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
-.nav-index {
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
-.nav-index.on {
-  background-color: #3d5a80;
-}
 .intro {
-  margin: 16rpx 0;
-  font-size: 24rpx;
-  color: #8fa0bd;
-  line-height: 1.6;
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
+
+.section {
+  margin-bottom: var(--vc-space-5);
+}
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  color: var(--vc-muted);
+}
+
+.label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+}
+
+.nav-index {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.page-act {
+  min-height: 40px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
 .state-card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin: 16rpx 0;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
 }
-.label {
-  font-size: 24rpx;
-  color: #8fa0bd;
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
 .state {
-  font-size: 30rpx;
+  font-size: var(--vc-text-lg);
   font-weight: 600;
-}
-.error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
 }
 </style>

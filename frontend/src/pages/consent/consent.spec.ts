@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ConsentPage from "./consent.vue";
 import { ConsentHttpError } from "@/api/consent";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useConsentStore } from "@/stores/consent";
 
 const EFFECTIVE = [
@@ -54,6 +55,15 @@ describe("consent page (FR-AUTH-003)", () => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", undefined);
     stubFetch(() => false);
+  });
+
+  it("renders the admission shell (header + back) — 回归：漏注册会让页面无壳", async () => {
+    const wrapper = mount(ConsentPage, { attachTo: document.body });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="page-header"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="page-back"]').exists()).toBe(true);
+    wrapper.unmount();
   });
 
   it("renders the eight-type catalogue with effective statuses", async () => {
@@ -280,9 +290,80 @@ describe("consent page (FR-AUTH-003)", () => {
     await wrapper.find('[data-testid="emc-confirm"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="emc-status"]').text()).toContain("已验证");
-    expect(wrapper.find('[data-testid="emc-card"]').text()).toContain("SIMULATED_EMAIL_LINK");
+    // P2（round4）：运维通道枚举渲染中文，时间走本地 helper——最终文案里
+    // 不出现原始码或带 Z 的 ISO 串。
+    const verifiedCard = wrapper.find('[data-testid="emc-card"]').text();
+    expect(verifiedCard).toContain("方式 模拟邮件链接确认");
+    expect(verifiedCard).toContain(
+      `验证于 ${formatLocalDateTime("2026-08-19T09:00:00Z")}`,
+    );
+    expect(verifiedCard).toContain(
+      `有效期至 ${formatLocalDateTime("2027-02-15T09:00:00Z")}`,
+    );
+    expect(verifiedCard).not.toContain("SIMULATED_EMAIL_LINK");
+    expect(verifiedCard).not.toContain("Z（");
 
     wrapper.unmount();
+  });
+
+  // P2（round5）：未知/缺失的 verifiedMethod 不得编造“人工通道”这类未证实
+  // 事实，必须落到中性兜底文案。
+  it("EMERGENCY-CONTACT: unknown or missing verifiedMethod falls back to neutral copy", async () => {
+    // P2（round6）：原型链键（__proto__/constructor/toString）同样必须落到
+    // 中性兜底——普通 Record 字典会命中 Object.prototype，null 原型字典不会。
+    for (const verifiedMethod of [
+      null,
+      "MYSTERY_CHANNEL_X",
+      undefined,
+      "__proto__",
+      "constructor",
+      "toString",
+    ]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = typeof input === "string" ? input : input.toString();
+          if (url === "/api/v1/consents") {
+            return { ok: true, status: 200, json: async () => EFFECTIVE };
+          }
+          if (url === "/api/v1/emergency-contact") {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                id: "42",
+                label: "妈妈",
+                contact: "+86 138 0000 0000",
+                status: "VERIFIED",
+                createdAt: "2026-08-19T08:00:00Z",
+                updatedAt: "2026-08-19T08:30:00Z",
+                consentVersion: "2026-08",
+                verifiedAt: "2026-08-19T09:00:00Z",
+                verifiedMethod,
+                verifiedExpiresAt: "2027-02-15T09:00:00Z",
+              }),
+            };
+          }
+          return { ok: true, status: 200, json: async () => ({}) };
+        }),
+      );
+      const wrapper = mount(ConsentPage, { attachTo: document.body });
+      await flushPromises();
+
+      if (!wrapper.find('[data-testid="emc-card"]').exists()) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[dbg method=${String(verifiedMethod)}]`,
+          JSON.stringify(
+            (fetch as unknown as { mock?: { calls: unknown[][] } }).mock?.calls ?? [],
+          ),
+        );
+      }
+      const card = wrapper.find('[data-testid="emc-card"]').text();
+      expect(card, `method=${String(verifiedMethod)}`).toContain("方式 验证方式未知");
+      expect(card).not.toContain("人工通道");
+      wrapper.unmount();
+    }
   });
 
   it("EMERGENCY-CONTACT: hides the whole section while the capability is off (403, §20.14)", async () => {

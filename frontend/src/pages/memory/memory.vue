@@ -7,50 +7,20 @@ TASK-0105 (P2-16/P3-03/P3-04): transport is the shared authenticated transport
 confirmed save; empty evidence does not render a container; error and busy
 states carry alert/live a11y semantics. -->
 <template>
-  <!-- DOGFOOD-09：页面容器声明 main landmark；本页没有可见页面标题，用与
-       导航栏标题同文案的视觉隐藏一级标题保住标题语义。 -->
-  <view class="memory-page" role="main">
-    <text class="vc-sr-only" role="heading" aria-level="1">记忆管理</text>
-    <view class="bar">
-      <input
-        v-model="relationshipId"
-        class="rel-input"
-        placeholder="relationship id"
-        aria-label="relationship id"
-      />
+  <!-- MEM 重构（Phase 4）：受约束的关系来源（选择器 + 深链），raw
+       relationship id 输入移除；刷新动作在页头。 -->
+  <ConsumerShell route="/pages/memory/memory">
+    <template #header-actions>
       <button
         data-testid="reload"
+        class="mem-reload"
         :disabled="!relationshipId || busy"
         :aria-busy="busy"
         @click="reload"
       >
         刷新记忆
       </button>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
-      <button
-        data-testid="nav-chat"
-        class="nav-index"
-        aria-label="离线聊天"
-        @click="goTo(chatHref())"
-      >
-        离线聊天
-      </button>
-      <button
-        data-testid="nav-login"
-        class="nav-index"
-        aria-label="登录"
-        @click="goTo('/pages/login/login')"
-      >
-        登录
-      </button>
-    </view>
+    </template>
 
     <RelationshipSelector
       :relationships="relStore.relationships"
@@ -74,11 +44,7 @@ states carry alert/live a11y semantics. -->
       data-testid="current-relationship"
       role="status"
     >
-      <text>{{
-        relationshipId.trim()
-          ? `当前关系：${relationshipId.trim()}`
-          : "还没有当前关系。"
-      }}</text>
+      <text>{{ relationshipLabel || "还没有当前关系。" }}</text>
     </view>
     <view
       v-else-if="relStore.status === 'error'"
@@ -95,7 +61,7 @@ states carry alert/live a11y semantics. -->
       data-testid="empty-relationship-id"
       role="status"
     >
-      <text>请先选择或填写 relationship id 再刷新记忆。</text>
+      <text>请先选择当前关系，再刷新记忆。</text>
     </view>
     <view
       v-if="showPrefillHint"
@@ -222,14 +188,15 @@ states carry alert/live a11y semantics. -->
         class="card pending"
       >
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }}</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
         <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
-          事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+          事件：{{ formatLocalDateTime(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
         </text>
         <!-- R44 (§11.11): the explicit supersede choice — confirm may replace
              one active canonical memory; nothing is auto-detected. -->
-        <select
-          v-if="memory.canonicalCount > 0"
+        <view v-if="memory.canonicalCount > 0" class="supersede-field">
+          <text class="supersede-label" :data-testid="`memory-supersede-label-${m.memoryId}`">替代哪条已有记忆（可选）</text>
+          <select
           v-model="supersedeChoice[m.memoryId]"
           class="supersede-select"
           :data-testid="`memory-supersede-${m.memoryId}`"
@@ -243,7 +210,8 @@ states carry alert/live a11y semantics. -->
           >
             替代：{{ old.summary.slice(0, 24) }}
           </option>
-        </select>
+          </select>
+        </view>
         <view class="actions">
           <button
             size="mini"
@@ -305,10 +273,10 @@ states carry alert/live a11y semantics. -->
             </view>
             <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
-              {{ formatTimestamp(m.createdAt) }}
+              {{ formatLocalDateTime(m.createdAt) }}
             </text>
             <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
-              事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+              事件：{{ formatLocalDateTime(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
             </text>
             <view
               v-if="confirmDeleteId === m.memoryId"
@@ -373,10 +341,10 @@ states carry alert/live a11y semantics. -->
             </view>
             <text class="meta">{{ publicMemoryScopeLabel(m.scope) }}</text>
             <text v-if="m.createdAt" class="meta" :data-testid="`memory-created-${m.memoryId}`">
-              {{ formatTimestamp(m.createdAt) }}
+              {{ formatLocalDateTime(m.createdAt) }}
             </text>
             <text v-if="m.eventAt" class="meta" :data-testid="`memory-event-${m.memoryId}`">
-              事件：{{ formatTimestamp(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
+              事件：{{ formatLocalDateTime(m.eventAt) }} · {{ eventStatusLabel(m.eventStatus) }}
             </text>
             <view
               v-if="confirmDeleteId === m.memoryId"
@@ -427,7 +395,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些候选已被拒绝，不作为已保存事实。</text>
       <view v-for="m in visibleRejected" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · {{ m.status }}</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · {{ publicMemoryStatusLabel(m.status) }}</text>
         <view class="actions">
           <button
             size="mini"
@@ -450,7 +418,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些记录已过期，不作为已保存事实。</text>
       <view v-for="m in visibleExpired" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · {{ m.status }}</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · {{ publicMemoryStatusLabel(m.status) }}</text>
         <view class="actions">
           <button
             size="mini"
@@ -473,7 +441,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些记忆已被更新的确认事实替代，不作为已保存事实。</text>
       <view v-for="m in visibleSuperseded" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · 已被替代</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · 已被替代</text>
         <view class="actions">
           <button
             size="mini"
@@ -496,7 +464,7 @@ states carry alert/live a11y semantics. -->
       <text class="hint">这些记录已删除，不作为已保存事实。</text>
       <view v-for="m in visibleDeleted" :key="m.memoryId" class="card">
         <text class="summary">{{ m.summary }}</text>
-        <text class="meta">{{ m.scope }} · 已删除</text>
+        <text class="meta">{{ publicMemoryScopeLabel(m.scope) }} · 已删除</text>
         <view class="actions">
           <button
             size="mini"
@@ -508,21 +476,23 @@ states carry alert/live a11y semantics. -->
         </view>
       </view>
     </view>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
 
 import { createAuthenticatedTransport } from "@/api/transport";
-import ErrorNotice from "@/components/ErrorNotice.vue";
+import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
-import RetryButton from "@/components/RetryButton.vue";
+import ConsumerShell from "@/app/ConsumerShell.vue";
+import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
-import { publicMemoryScopeLabel } from "@/domain/public-memory-display";
+import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
+import { personaDisplayName } from "@/domain/persona";
 import { matchesLooseText } from "@/domain/text-filter";
 import { lastRequestId } from "@/domain/request-id";
-import { formatTimestamp } from "@/domain/timestamp";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 import type { Memory, MemoryEventStatus, MemoryTransport } from "@/api/memory";
 import { getMemoryAutoSave, setMemoryAutoSave } from "@/api/memory";
@@ -583,6 +553,16 @@ async function onToggleAutoSave(): Promise<void> {
     busy.value = false;
   }
 }
+
+const relationshipLabel = computed(() => {
+  if (!relationshipId.value.trim()) return "";
+  const rel = relStore.relationships.find(
+    (row) => String(row.relationshipId) === relationshipId.value.trim(),
+  );
+  if (!rel) return "当前关系";
+  const persona = personaDisplayName(rel.personaRef);
+  return rel.companionName?.trim() ? `当前关系：${rel.companionName} · ${persona}` : `当前关系：${persona}`;
+});
 
 function visibleMemories(list: Memory[]): Memory[] {
   return list.filter((item) => matchesLooseText(item.summary, filterQuery.value));
@@ -670,7 +650,7 @@ function focusReload(): void {
 function onPickRelationship(id: string): void {
   if (!id) return;
   relationshipId.value = id;
-  focusReload();
+  void reload();
 }
 
 onMounted(async () => {
@@ -682,8 +662,15 @@ onMounted(async () => {
   void loadAutoSave();
   const prefill = readQueryRelationshipId();
   const known = knownRelationshipIds();
-  if (prefill && known?.includes(prefill) && !relationshipId.value) {
+  if (prefill && known?.includes(prefill)) {
     relationshipId.value = prefill;
+  } else if (!relationshipId.value && relStore.currentRelationshipId) {
+    // 默认跟随当前关系，自动加载一次；不再要求用户手动挑选+刷新。
+    relationshipId.value = relStore.currentRelationshipId;
+  }
+  if (relationshipId.value) {
+    await reload();
+  } else {
     focusReload();
   }
 });
@@ -840,140 +827,312 @@ function goTo(url: string): void {
 </script>
 
 <style scoped>
-.memory-page {
-  padding: 12px;
-}
-.bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.rel-input {
-  flex: 1;
-  border: 1px solid #ccc;
-  padding: 6px;
-}
-.nav-index {
-  flex: 0 0 auto;
-}
-.section {
-  margin-bottom: 16px;
-}
-.section-title {
-  font-weight: bold;
-  display: block;
-  margin-bottom: 4px;
-}
-.section-subtitle {
+/* 记忆中心：来源、状态与用户控制优先。待确认置顶，分组清晰。 */
+.mem-reload {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
   font-weight: 600;
-  display: block;
-  margin: 8px 0 4px;
-  font-size: 13px;
-  color: #444;
 }
+
+.mem-reload::after {
+  border: 0;
+}
+
+.mem-reload[disabled] {
+  color: var(--vc-on-env-muted);
+}
+
+.rel-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
+}
+
+.section {
+  margin-bottom: var(--vc-space-5);
+}
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-1);
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  color: var(--vc-muted);
+}
+
 .hint {
-  color: #5a6b7b;
-  font-size: 12px;
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: var(--vc-space-2);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
+
 .empty-status {
-  color: #666;
-  font-size: 13px;
-  margin-bottom: 8px;
-}
-.current-relationship {
-  color: #555;
-  font-size: 13px;
-  margin-bottom: 8px;
-}
-.card {
-  border: 1px solid #eee;
-  border-radius: 6px;
-  padding: 10px;
-  margin-bottom: 8px;
-}
-.card.pending {
-  border-left: 3px solid #d97706;
-}
-.card.canonical {
-  border-left: 3px solid #2563eb;
-}
-.summary {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
   display: block;
+  padding: var(--vc-space-3);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
 }
+
+.current-relationship {
+  margin: var(--vc-space-2) 0;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-top: var(--vc-space-2);
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+}
+
+.card.pending {
+  border-color: var(--vc-primary);
+  background: var(--vc-card);
+}
+
+.summary {
+  font-size: var(--vc-text-md);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .meta {
-  color: #666;
-  font-size: 12px;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
+
+.auto-badge {
+  display: inline-block;
+  margin-left: var(--vc-space-2);
+  padding: 0 6px;
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-pill);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
 .actions {
   display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
 }
-.edit-row {
-  display: flex;
-  gap: 6px;
+
+.actions button {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-pill);
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
 }
-.edit-input {
-  flex: 1;
-  border: 1px solid #ccc;
-  padding: 4px;
+
+.actions button::after {
+  border: 0;
 }
+
+.actions button[data-testid="memory-confirm"] {
+  border: 0;
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+}
+
+.actions button[data-testid="memory-delete"] {
+  border-color: var(--vc-danger);
+  color: var(--vc-danger);
+}
+
 .candidate-entry {
   display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-bottom: var(--vc-space-2);
 }
+
 .candidate-input {
-  flex: 1;
-  border: 1px solid #ccc;
-  padding: 6px;
+  flex: 1 1 14em;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
+
+.candidate-entry button {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.candidate-entry button::after {
+  border: 0;
+}
+
 .candidate-event {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-  align-items: center;
+  gap: var(--vc-space-2);
+  margin-bottom: var(--vc-space-2);
 }
+
 .event-input {
-  border: 1px solid #ccc;
-  padding: 4px;
+  box-sizing: border-box;
+  flex: 1 1 12em;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
-.supersede-select {
-  margin-top: 6px;
-  border: 1px solid #ccc;
-  padding: 4px;
-  max-width: 100%;
-}
-.error {
-  color: #b91c1c;
-  margin-bottom: 8px;
-}
-.auto-save-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-  border: 1px solid #d8dce6;
-  border-radius: 8px;
-  background-color: #f7f8fb;
-}
-.auto-save-copy {
-  flex: 1 1 auto;
+
+.supersede-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--vc-space-1);
+  margin-top: var(--vc-space-1);
 }
-.auto-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background-color: #e3f0fb;
-  color: #1c5d99;
-  font-size: 12px;
+
+.supersede-label {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.supersede-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
+}
+
+.edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  width: 100%;
+}
+
+.edit-input {
+  flex: 1 1 12em;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
+}
+
+.delete-confirm {
+  width: 100%;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-xs);
+  line-height: 1.6;
+}
+
+.auto-save-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vc-space-3);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+}
+
+.auto-save-copy {
+  flex: 1 1 16em;
+  min-width: 0;
+}
+
+.auto-save-card .meta {
+  margin-top: 2px;
+}
+
+.auto-save-card button {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.auto-save-card button::after {
+  border: 0;
+}
+
+.error {
+  display: block;
+  margin: var(--vc-space-2) 0;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
 }
 </style>

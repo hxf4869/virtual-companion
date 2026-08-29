@@ -1,12 +1,12 @@
 {
-  "name": "Technical Alpha 内部边界台",
+  "name": "虚拟陪伴",
   "appid": "",
-  "description": "Technical Alpha Runtime 连通性与关闭门禁内部预检页",
+  "description": "AI 陪伴 · 非真人 · Technical Alpha",
   "versionName": "0.0.1",
   "versionCode": "1",
   "transformPx": false,
   "h5": {
-    "title": "Technical Alpha 内部边界台"
+    "title": "虚拟陪伴"
   },
   "uniStatistics": {
     "enable": false

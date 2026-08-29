@@ -4,39 +4,18 @@ Technical Alpha uses the simulated port; no identity document is stored.
 AGE-APPEAL: a wrong verdict can be appealed from an appealable state — the
 appeal is recorded and reviewed by a human; the page never rewrites results. -->
 <template>
-  <view class="age-page">
-    <view class="bar">
-      <text class="title">成年核验</text>
-      <button
-        data-testid="nav-chat"
-        class="nav-index"
-        aria-label="离线聊天"
-        @click="goTo('/pages/chat/chat')"
-      >
-        离线聊天
-      </button>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
-    </view>
-
+  <ConsumerShell route="/pages/age/age">
     <view class="intro">
       <text>
-        服务默认面向 18 岁以上用户。本页读取成年核验结果，并可运行 Technical
-        Alpha 的模拟核验。系统只保存结果、年龄段、时间和供应商凭证，不保存身份证件。
-        模拟核验供本地联调，不能当作公开上线的成年证明；真实供应商只替换端口实现，
-        不改本页调用。认为核验结果有误时，可以从本页提交申诉，由人工处理。
+        服务默认面向 18 岁以上用户。当前为内部测试，使用模拟核验；只保存核验
+        结果、年龄段与时间，不保存任何身份证件。认为结果有误时，可从本页提交
+        申诉，由人工处理。
       </text>
     </view>
 
     <view v-if="store.loadFailed" class="error" data-testid="age-load-failed" role="alert">
       <text>成年核验状态加载失败，请重试。</text>
-      <button data-testid="age-retry" class="nav-index" :disabled="store.busy" @click="onRetry">
+      <button data-testid="age-retry" class="action-btn" :disabled="store.busy" @click="onRetry">
         重试
       </button>
     </view>
@@ -52,7 +31,7 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
           核验方式：{{ methodLabel }}
         </text>
         <text v-if="store.record.verifiedAt" class="meta" data-testid="age-verified-at">
-          记录时间：{{ store.record.verifiedAt }}
+          记录时间：{{ formatLocalDateTime(store.record.verifiedAt) }}
         </text>
       </view>
 
@@ -77,7 +56,7 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
         />
         <button
           data-testid="age-appeal-submit"
-          class="nav-index verify-btn"
+          class="action-btn primary"
           :disabled="store.busy || !canSubmitAppeal"
           @click="onSubmitAppeal"
         >
@@ -111,7 +90,7 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
         <text class="label">我的申诉</text>
         <view v-for="a in store.appeals" :key="a.id" class="appeal-row" :data-testid="`age-appeal-row-${a.id}`">
           <text class="meta">
-            {{ a.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }} · {{ a.createdAt }}
+            {{ a.status === "SUBMITTED" ? "已提交，等待人工处理" : "已处理" }} · {{ formatLocalDateTime(a.createdAt) }}
           </text>
           <text class="meta">{{ a.reason }}</text>
           <text v-if="a.resolutionNote" class="meta">处理说明：{{ a.resolutionNote }}</text>
@@ -121,7 +100,7 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
       <button
         v-if="store.canVerify"
         data-testid="age-verify"
-        class="nav-index verify-btn"
+        class="action-btn primary"
         :disabled="store.busy"
         @click="onVerify"
       >
@@ -131,7 +110,7 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
         已完成成年核验。模拟核验对已核验账号是幂等的，本页不再发起写入。
       </text>
     </template>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -139,12 +118,15 @@ import { computed, onMounted, ref } from "vue";
 
 import { AgeHttpError } from "@/api/age";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
 import { publicAgeMethodLabel } from "@/domain/public-age-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAgeStore } from "@/stores/age";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
   name: "AgePage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const store = useAgeStore();
@@ -209,21 +191,6 @@ export default {
       }
     }
 
-    function goTo(url: string): void {
-      try {
-        const uniApi = (globalThis as Record<string, unknown>).uni as
-          | { navigateTo?: (options: { url: string }) => void }
-          | undefined;
-        if (uniApi?.navigateTo) {
-          uniApi.navigateTo({ url });
-        } else if (typeof location !== "undefined") {
-          location.href = url;
-        }
-      } catch {
-        // Presentation-only navigation.
-      }
-    }
-
     return {
       store,
       actionError,
@@ -231,109 +198,123 @@ export default {
       appealResult,
       canSubmitAppeal,
       methodLabel,
+      formatLocalDateTime,
       onRetry,
       onVerify,
       onSubmitAppeal,
-      goTo,
     };
   },
 };
 </script>
 
 <style scoped>
-.age-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
-.nav-index {
-  flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
 .intro,
 .blocked {
-  margin: 16rpx 0;
-  font-size: 24rpx;
-  color: #8fa0bd;
-  line-height: 1.6;
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
 }
+
 .state-card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
+  gap: var(--vc-space-1);
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
+
 .label {
-  font-size: 24rpx;
-  color: #8fa0bd;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
+
 .state {
-  font-size: 30rpx;
+  font-size: var(--vc-text-lg);
   font-weight: 600;
 }
+
 .meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  overflow-wrap: anywhere;
 }
-.verify-btn {
-  margin-top: 20rpx;
+
+.action-btn {
+  min-height: 44px;
+  margin: var(--vc-space-2) 0 0;
+  padding: 0 var(--vc-space-5);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
+
+.action-btn::after {
+  border: 0;
+}
+
+.action-btn.primary {
+  border: 0;
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+}
+
 .appeal-card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
+  gap: var(--vc-space-2);
+  align-items: flex-start;
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
+
 .appeal-input {
   width: 100%;
-  min-height: 120rpx;
+  min-height: 96px;
   box-sizing: border-box;
-  background-color: #14213d;
-  color: #f5f5f5;
-  border: 2rpx solid #2a3a5a;
-  border-radius: 12rpx;
-  padding: 12rpx;
-  font-size: 24rpx;
+  padding: var(--vc-space-2);
+  background-color: var(--vc-sunken);
+  color: var(--vc-ink);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  font-size: 16px;
 }
+
 .appeal-row {
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
-  padding: 10rpx 0;
-  border-bottom: 2rpx solid #24365c;
+  gap: 4px;
+  padding: var(--vc-space-2) 0;
+  border-bottom: 1px solid var(--vc-border);
 }
+
 .done {
-  margin-top: 16rpx;
-  font-size: 24rpx;
-  color: #8fd18f;
+  display: block;
+  margin-top: var(--vc-space-3);
+  color: var(--vc-success);
+  font-size: var(--vc-text-sm);
 }
+
 .error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
 }
 </style>

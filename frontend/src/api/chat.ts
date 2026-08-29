@@ -438,6 +438,7 @@ export async function sendGeneration(
   mode?: ChatMode,
   sourceUserMessageId?: string,
 ): Promise<Generation | null> {
+
   const body: Record<string, unknown> = { idempotencyKey };
   if (userContent !== undefined) {
     body.userContent = userContent;

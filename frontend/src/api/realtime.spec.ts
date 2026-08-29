@@ -107,9 +107,26 @@ describe("streamGeneration offline success", () => {
   );
 });
 
+describe("streamGeneration progress subscriber isolation (round7 P2)", () => {
+  it("keeps a terminal outcome when onProgress throws during streaming", async () => {
+    const { deps } = depsWith([
+      { disposition: "RESUMED", events: [delta(1), delta(2), terminal(3)] },
+    ]);
+
+    const result = await streamGeneration(deps, "gen-1", 1, undefined, {
+      onProgress: () => {
+        throw new Error("subscriber exploded");
+      },
+    });
+
+    expect(result.outcome).toBe("completed");
+    expect(result.state.status).toBe("terminal");
+    expect(result.state.cursor).toBe(3);
+  });
+});
+
 describe("streamGeneration disconnect then resume", () => {
-  it("resumes from the last cursor after a non-terminal disconnect", async () => {
-    const { deps, resumeCalls } = depsWith([
+  it("resumes from the last cursor after a non-terminal disconnect", async () => {    const { deps, resumeCalls } = depsWith([
       { disposition: "RESUMED", events: [delta(1)] }, // disconnect before terminal
       { disposition: "RESUMED", events: [delta(2), terminal(3)] }, // resume from cursor 1
     ]);

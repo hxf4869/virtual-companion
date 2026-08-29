@@ -15,6 +15,14 @@ const REL = {
   createdAt: "2026-08-18T00:00:00Z",
 };
 
+/** 行级管理操作（改名/结束/删除）收进"管理"展开区（Phase 3 IA）。 */
+async function openManage(wrapper: { find: (sel: string) => { attributes: (n: string) => string | undefined; trigger: (e: string) => Promise<void> } }): Promise<void> {
+  const btn = wrapper.find('[data-testid^="conversation-manage-"]');
+  if (btn.attributes("aria-expanded") !== "true") {
+    await btn.trigger("click");
+  }
+}
+
 function item(overrides: Record<string, unknown> = {}) {
   return {
     conversationId: "c1",
@@ -222,6 +230,7 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
     await wrapper.find('[data-testid="conversation-rename-input"]').setValue("新标题");
     await wrapper.find('[data-testid="conversation-rename-save"]').trigger("click");
@@ -239,16 +248,76 @@ describe("independent conversation list page", () => {
     wrapper.unmount();
   });
 
+  // P1-B（round3）：改名输入绝不预填密文。打开管理 → 改名后直接读取
+  // input.element.value（不用 wrapper.text() 代替）：enc1:/enc2:、密文长
+  // token、空值一律空串，且不含内部 conversationId。
+  it("never prefills an enc1/enc2 ciphertext title into the rename input", async () => {
+    for (const title of [`enc1:${"B".repeat(120)}`, `enc2:${"A".repeat(120)}`, ""]) {
+      stubFetch({ conversations: [item({ title })] });
+      const wrapper = mount(ConversationsPage, { attachTo: document.body });
+      await flushPromises();
+
+      await openManage(wrapper);
+      await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+      await wrapper.vm.$nextTick();
+
+      const input = wrapper.find('[data-testid="conversation-rename-input"]');
+      expect(input.exists(), "rename row rendered").toBe(true);
+      const value = (input.element as HTMLInputElement).value;
+      expect(value).toBe("");
+      expect(value).not.toContain("enc1:");
+      expect(value).not.toContain("enc2:");
+      expect(value).not.toContain("c1");
+      wrapper.unmount();
+    }
+  });
+
+  // P2（round4）：不带 enc 前缀的长无空格 opaque token 同样不可读，改名
+  // 输入必须预填空串。
+  it("never prefills a long opaque token without an enc prefix", async () => {
+    stubFetch({ conversations: [item({ title: "K7f".repeat(40) })] });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await openManage(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const value = (
+      wrapper.find('[data-testid="conversation-rename-input"]').element as HTMLInputElement
+    ).value;
+    expect(value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("prefills a readable trimmed title into the rename input", async () => {
+    stubFetch({ conversations: [item({ title: "  周二夜聊  " })] });
+    const wrapper = mount(ConversationsPage, { attachTo: document.body });
+    await flushPromises();
+
+    await openManage(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const value = (
+      wrapper.find('[data-testid="conversation-rename-input"]').element as HTMLInputElement
+    ).value;
+    expect(value).toBe("周二夜聊");
+    wrapper.unmount();
+  });
+
   it("deletes only after the two-step confirm and a confirmed DELETE", async () => {
     const { calls } = stubFetch();
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     const del = wrapper.find('[data-testid="conversation-delete"]');
     await del.trigger("click");
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
     await flushPromises();
     expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/v1/conversations/c1")).toBe(
@@ -263,7 +332,9 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
     await flushPromises();
 
@@ -277,9 +348,11 @@ describe("independent conversation list page", () => {
     const wrapper = mount(ConversationsPage, { attachTo: document.body });
     await flushPromises();
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-end"]').trigger("click");
     expect(calls.some((c) => c.url.endsWith("/end"))).toBe(false);
 
+    await openManage(wrapper);
     await wrapper.find('[data-testid="conversation-end"]').trigger("click");
     await flushPromises();
     expect(

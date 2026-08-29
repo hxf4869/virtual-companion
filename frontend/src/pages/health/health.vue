@@ -2,26 +2,9 @@
 computes continuous minutes; this page only reads status and writes approved
 intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. -->
 <template>
-  <view class="health-page">
-    <view class="bar">
-      <text class="title">使用时长</text>
-      <button
-        data-testid="nav-chat"
-        class="nav-index"
-        aria-label="离线聊天"
-        @click="goTo('/pages/chat/chat')"
-      >
-        离线聊天
-      </button>
-      <button
-        data-testid="nav-index"
-        class="nav-index"
-        aria-label="返回边界台"
-        @click="goTo('/pages/index/index')"
-      >
-        返回边界台
-      </button>
-    </view>
+  <ConsumerShell route="/pages/health/health">
+
+
 
     <view class="intro" data-testid="health-intro">
       <text>
@@ -51,11 +34,22 @@ intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. --
         </text>
       </view>
 
-      <!-- ENT-TRIAL (V61): the live simulated trial budget, if any. -->
+      <!-- ENT-TRIAL (V61): the live simulated trial budget, if any.
+           P2（round5）：remainingTurns/expiresAt 是可空字段——缺失时渲染
+           中性文案，绝不出现“剩余  轮”“到期时间 。”这类空值残句。 -->
       <view v-if="trial && trial.active" class="state-card" data-testid="trial-status" role="status">
-        <text class="label">试用中（模拟 PREMIUM）</text>
-        <text class="state">剩余 {{ trial.remainingTurns }} 轮</text>
-        <text class="meta">到期时间 {{ trial.expiresAt }}。到期或用尽后自动回到原等级，不删除任何数据。</text>
+        <text class="label">试用权益进行中</text>
+        <text class="state" data-testid="trial-remaining">
+          {{ trial.remainingTurns === null ? "剩余轮次暂不可知" : `剩余 ${trial.remainingTurns} 轮` }}
+        </text>
+        <text class="meta" data-testid="trial-expires">
+          {{
+            trial.expiresAt === null
+              ? "到期时间以系统记录为准。"
+              : `到期时间 ${formatLocalDateTime(trial.expiresAt)}。`
+          }}
+          到期或用尽后自动回到原等级，不删除任何数据。
+        </text>
       </view>
 
       <view class="section" data-testid="health-reminder-section">
@@ -94,7 +88,7 @@ intervals. Reminders are system-layer facts — no role-play, no 挽留 copy. --
         </view>
       </view>
     </template>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -110,11 +104,14 @@ import {
   type SessionGapMinutes,
 } from "@/api/usage-health";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { useAuthStore } from "@/stores/auth";
 import { useUsageHealthStore } from "@/stores/usage-health";
 
 export default {
   name: "HealthPage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const store = useUsageHealthStore();
@@ -200,6 +197,7 @@ export default {
       actionError,
       reminderOptions,
       gapOptions,
+      formatLocalDateTime,
       onRetry,
       onSaveReminder,
       onSaveGap,
@@ -210,77 +208,178 @@ export default {
 </script>
 
 <style scoped>
-.health-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
-.nav-index {
-  flex: 0 0 auto;
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
 .intro {
-  margin: 16rpx 0;
-  font-size: 24rpx;
-  color: #8fa0bd;
-  line-height: 1.6;
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
-.state-card,
+
 .section {
+  margin-bottom: var(--vc-space-5);
+}
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  color: var(--vc-muted);
+}
+
+.label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+}
+
+.nav-index {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.page-act {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.state-card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
 }
-.label {
-  font-size: 24rpx;
-  color: #8fa0bd;
-}
-.state {
-  font-size: 30rpx;
-  font-weight: 600;
-}
-.meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
 .chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 8rpx;
+  gap: var(--vc-space-2);
 }
+
 .chip {
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-pill);
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
 }
-.chip-on {
-  background-color: #3d5a80;
+
+.chip::after {
+  border: 0;
 }
-.error {
-  margin-top: 16rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #5a1a1a;
-  font-size: 24rpx;
+
+.chip.chip-on {
+  border: 0;
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font-weight: 600;
+}
+
+.minutes {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
 </style>

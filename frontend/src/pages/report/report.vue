@@ -3,16 +3,20 @@ submission is stored with a catalog reason and a bounded note; status stays
 SUBMITTED until a human review resolves it. No invented ticket numbers, SLA
 promises or hotline role-play. Message reports arrive via ?messageId=. -->
 <template>
-  <view class="report-page">
-    <view class="bar">
-      <text class="title">举报和申诉</text>
-      <button data-testid="nav-help" class="nav-index" aria-label="帮助与安全支持" @click="goTo('/pages/help/help')">
+  <ConsumerShell route="/pages/report/report">
+    <template #header-actions>
+      <button
+        data-testid="nav-help"
+        class="page-act"
+        aria-label="帮助与安全支持"
+        @click="goTo('/pages/help/help')"
+      >
         帮助
       </button>
-      <button data-testid="nav-index" class="nav-index" aria-label="返回边界台" @click="goTo('/pages/index/index')">
-        返回边界台
-      </button>
-    </view>
+    </template>
+
+
+
 
     <view class="section" data-testid="report-intro" role="status">
       <text>
@@ -77,16 +81,16 @@ promises or hotline role-play. Message reports arrive via ?messageId=. -->
       </text>
       <view v-for="r in store.reports" :key="r.id" class="report-row" :data-testid="`report-row-${r.id}`">
         <text class="row">
-          {{ REPORT_REASON_LABELS[r.reason] }}<text v-if="r.messageId"> · 关联消息 {{ r.messageId }}</text>
+          {{ REPORT_REASON_LABELS[r.reason] }}<text v-if="r.messageId"> · 已关联到你举报的那条消息</text>
         </text>
         <text class="row meta">{{ r.note }}</text>
         <text class="row meta" :data-testid="`report-status-${r.id}`">
-          {{ REPORT_STATUS_LABELS[r.status] }} · 提交于 {{ r.createdAt }}
+          {{ REPORT_STATUS_LABELS[r.status] }} · 提交于 {{ formatLocalDateTime(r.createdAt) }}
         </text>
         <text v-if="r.resolutionNote" class="row meta">处理说明：{{ r.resolutionNote }}</text>
       </view>
     </view>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -94,11 +98,15 @@ import { computed, onMounted, ref } from "vue";
 
 import { REPORT_REASONS, type ReportReason, type ReportTransport } from "@/api/report";
 import { createAuthenticatedTransport } from "@/api/transport";
+import ConsumerShell from "@/app/ConsumerShell.vue";
+import { readContextFromLocation } from "@/domain/context-href";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { REPORT_REASON_LABELS, REPORT_STATUS_LABELS, useReportStore } from "@/stores/report";
 import { useAuthStore } from "@/stores/auth";
 
 export default {
   name: "ReportPage",
+  components: { ConsumerShell },
   setup() {
     const auth = useAuthStore();
     const store = useReportStore();
@@ -114,11 +122,17 @@ export default {
     });
 
     onMounted(async () => {
-      // A message report arrives from the chat page via ?messageId=.
+      // A message report arrives from the chat page via ?messageId=. H5 hash
+      // routing keeps the query inside the hash, so reuse the shared
+      // context-href reader (hash first, then search) instead of hand-parsing
+      // location.search.
       try {
-        const params = new URLSearchParams(String((globalThis as { location?: Location }).location?.search ?? ""));
-        const messageId = params.get("messageId");
-        anchoredMessageId.value = messageId && messageId.trim() ? messageId.trim() : null;
+        const ids = readContextFromLocation(
+          (globalThis as { location?: { pathname?: string; search?: string; hash?: string } })
+            .location,
+        );
+        anchoredMessageId.value =
+          ids.messageId && ids.messageId.trim() ? ids.messageId.trim() : null;
       } catch {
         anchoredMessageId.value = null;
       }
@@ -170,6 +184,7 @@ export default {
       submitResult,
       anchoredMessageId,
       canSubmit,
+      formatLocalDateTime,
       REPORT_REASONS,
       REPORT_REASON_LABELS,
       REPORT_STATUS_LABELS,
@@ -182,98 +197,217 @@ export default {
 </script>
 
 <style scoped>
-.report-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
+.intro {
+  margin: 0 0 var(--vc-space-4);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+  line-height: 1.75;
 }
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
-.nav-index {
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
-}
+
 .section {
+  margin-bottom: var(--vc-space-5);
+}
+
+.section-title {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+}
+
+.section-subtitle {
+  display: block;
+  margin: var(--vc-space-2) 0 var(--vc-space-1);
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+  color: var(--vc-muted);
+}
+
+.label {
+  display: block;
+  margin: var(--vc-space-3) 0 var(--vc-space-1);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
+}
+
+.row {
+  display: block;
+  margin-bottom: var(--vc-space-2);
+  font-size: var(--vc-text-sm);
+  line-height: 1.7;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-3);
+}
+
+.nav-index {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.page-act {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-env-strong);
+  border-radius: var(--vc-radius-s);
+  background: transparent;
+  color: var(--vc-on-env);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
+}
+
+.page-act::after {
+  border: 0;
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-3) var(--vc-space-4);
+  border: 1px solid var(--vc-danger);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
+}
+
+.empty {
+  display: block;
+  margin: var(--vc-space-3) 0;
+  padding: var(--vc-space-4);
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius-m);
+  color: var(--vc-muted);
+  font-size: var(--vc-text-sm);
+}
+
+.state-card {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
-  line-height: 1.6;
-  color: #d5deee;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-bottom: var(--vc-space-4);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
 }
-.section-title {
+
+.input,
+.reminder-input,
+.export-input,
+.account-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-sunken);
+  color: var(--vc-ink);
+  font-size: 16px;
+}
+.primary-btn,
+.save-btn,
+.submit-btn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-5);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
   font-weight: 600;
 }
-.row {
-  color: #d5deee;
+
+.primary-btn::after,
+.save-btn::after,
+.submit-btn::after {
+  border: 0;
 }
-.meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
+
+.primary-btn[disabled],
+.save-btn[disabled],
+.submit-btn[disabled] {
+  color: var(--vc-muted);
 }
 .reason-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10rpx;
+  gap: var(--vc-space-2);
 }
+
 .reason-chip {
-  background-color: #22345a;
-  color: #d5deee;
-  font-size: 22rpx;
-  border: 2rpx solid #2a3a5a;
+  /* P2（round3）：触控目标 ≥44px，与全站控件一致。 */
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-pill);
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
 }
+
+.reason-chip::after {
+  border: 0;
+}
+
 .reason-chip.active {
-  background-color: #3a5a8a;
-  color: #ffffff;
+  border: 0;
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font-weight: 600;
 }
-.note-input {
-  width: 100%;
-  min-height: 140rpx;
-  box-sizing: border-box;
-  background-color: #14213d;
-  color: #f5f5f5;
-  border: 2rpx solid #2a3a5a;
-  border-radius: 12rpx;
-  padding: 12rpx;
-  font-size: 24rpx;
-}
-.submit-btn {
-  align-self: flex-start;
-}
-.result {
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  font-size: 24rpx;
-}
-.ok {
-  background-color: #1a4a2a;
-  color: #bfe8c6;
-}
-.err {
-  background-color: #5a1a1a;
-  color: #f2c4c4;
-}
+
 .report-row {
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
-  padding: 12rpx 0;
-  border-bottom: 2rpx solid #24365c;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  padding: var(--vc-space-3) 0;
+  border-bottom: 1px solid var(--vc-border);
+}
+
+.ok {
+  color: var(--vc-success);
+  font-size: var(--vc-text-sm);
+}
+
+.err {
+  color: var(--vc-danger);
+  font-size: var(--vc-text-sm);
 }
 </style>

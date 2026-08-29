@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
-// TASK-0186/TASK-0187: chat page component glue test. TASK-0187 wires the
-// relationship selector: the page loads the owner's relationships on mount and
-// creates a conversation under the active one, or shows the selector when none
-// is active. The send-flow UI (input/send/status/history) renders only after a
-// relationship is selected.
+// 聊天页组件胶水测试（纠偏式重写）。只测用户可见行为与稳定契约：
+// 顶栏标识、发送/取消/重试、消息级操作、会话管理菜单、最小滚动行为
+// （跟随/滚离/回底）、上下文提示与错误恢复。不测 preserve/follow/echo
+// 等内部机制——那些机制已删除，也不再作为验收判据。
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,12 +49,69 @@ function mountPage() {
   return mount(ChatPage, { attachTo: document.body });
 }
 
-describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", () => {
+/** 消息级操作收进"更多"展开区：先展开再触发原 testid。 */
+async function openMsgMenu(
+  wrapper: ReturnType<typeof mountPage>,
+  messageId: string,
+): Promise<void> {
+  const more = wrapper.find(`[data-testid="msg-more-${messageId}"]`);
+  if (more.attributes("aria-expanded") !== "true") {
+    await more.trigger("click");
+  }
+}
+
+/** 低频管理动作全部收进"更多"菜单。 */
+async function openMenu(wrapper: ReturnType<typeof mountPage>): Promise<void> {
+  await wrapper.find('[data-testid="chat-context-open"]').trigger("click");
+}
+
+/** 等待一个合并写入 rAF（happy-dom 的 rAF 由定时器驱动）。 */
+async function nextFrame(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+
+function controlAnimationFrames(): Map<number, FrameRequestCallback> {
+  const frames = new Map<number, FrameRequestCallback>();
+  let nextId = 1;
+  vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+    const id = nextId++;
+    frames.set(id, callback);
+    return id;
+  });
+  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((id) => {
+    frames.delete(id);
+  });
+  return frames;
+}
+
+function runNextControlledFrame(frames: Map<number, FrameRequestCallback>): void {
+  const entry = frames.entries().next().value;
+  expect(entry).toBeDefined();
+  const [id, callback] = entry as [number, FrameRequestCallback];
+  frames.delete(id);
+  callback(0);
+}
+
+/** 用固定的几何属性驱动最小滚动状态机（happy-dom 无真实布局）。 */
+function installScrollGeometry(el: Element, scrollHeight: number, clientHeight: number): void {
+  Object.defineProperty(el, "scrollHeight", { configurable: true, value: scrollHeight });
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: clientHeight });
+}
+
+function historyElOf(wrapper: ReturnType<typeof mountPage>): HTMLElement {
+  const el = wrapper.find('[data-testid="history"]').element as HTMLElement;
+  expect(el).toBeTruthy();
+  return el;
+}
+
+describe("chat page glue（纠偏式重写）", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.stubGlobal("uni", undefined);
     stubFetch();
   });
+
+  // ---- 顶栏与安全标识 ----
 
   it("states the AI-companion non-human disclosure in the header", async () => {
     stubFetch({ relationships: [] });
@@ -64,7 +120,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     const label = wrapper.find('[data-testid="chat-ai-label"]');
     expect(label.exists()).toBe(true);
-    expect(label.text()).toContain("AI 陪伴");
+    expect(label.text()).toContain("AI");
     expect(label.text()).toContain("非真人");
     wrapper.unmount();
   });
@@ -77,7 +133,7 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
-  it("CHAT-PRES: prefers the saved companion name and curated avatar in the header", async () => {
+  it("CHAT-PRES: prefers the saved companion name in the header", async () => {
     stubFetch({
       relationships: [
         {
@@ -92,18 +148,19 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
 
     expect(wrapper.find('[data-testid="chat-companion-name"]').text()).toContain("小安");
     expect(wrapper.find('[data-testid="chat-companion-name"]').text()).not.toContain("温和倾听者");
-    const avatar = wrapper.find('[data-testid="chat-companion-avatar"]');
-    expect(avatar.exists()).toBe(true);
-    expect(avatar.text()).toContain("F");
-    expect(avatar.attributes("aria-label")).toContain("温婉");
     wrapper.unmount();
   });
+
+  // ---- 基础结构与状态区域 ----
 
   it("renders the message input and send button once a relationship is active", async () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(true);
+    const input = wrapper.find('[data-testid="message-input"]');
+    expect(input.exists()).toBe(true);
+    expect(input.attributes()).toHaveProperty("auto-height");
+    expect(input.attributes()).not.toHaveProperty("rows");
     expect(wrapper.find('[data-testid="send"]').exists()).toBe(true);
     wrapper.unmount();
   });
@@ -145,6 +202,20 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
+  it("BLOCKED: states the safety refusal and a real-world help line, never a role voice", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "blocked";
+    await wrapper.vm.$nextTick();
+
+    const text = wrapper.find('[data-testid="status"]').text();
+    expect(text).toContain("没有通过安全审查");
+    expect(text).toContain("紧急危险");
+    wrapper.unmount();
+  });
+
   it("reloads committed history after a restored generation settles", async () => {
     stubFetch({
       conversationsJson: [
@@ -167,24 +238,766 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     wrapper.unmount();
   });
 
-  it("CHAT-MODE: renders the four quick-mode chips and selects on click", async () => {
+  it("renders the empty-history hint on a fresh conversation", async () => {
     const wrapper = mountPage();
     await flushPromises();
 
+    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- 无关系分支 ----
+
+  it("offers the unified companion-create entry when no relationship exists", async () => {
+    stubFetch({ relationships: [] });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-create-companion"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="chat-create-companion-go"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the relationship selector with existing relationships when none is active", async () => {
+    stubFetch({
+      relationships: [
+        { ...ACTIVE_RELATIONSHIP, relationshipId: 1, active: false },
+        { ...ACTIVE_RELATIONSHIP, relationshipId: 2, active: false },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="relationship-selector"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- 发送 / 取消 / 重试 ----
+
+  it("SEND: sends the typed text through the store and clears the input", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.conversationId = "1";
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("今天有点累。");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+
+    expect(sendSpy).toHaveBeenCalledOnce();
+    const [transportArg, depsArg, textArg] = sendSpy.mock.calls[0] as unknown[];
+    expect(textArg).toBe("今天有点累。");
+    expect(transportArg).toBeTruthy();
+    expect(depsArg).toBeTruthy();
+    expect((wrapper.find('[data-testid="message-input"]').element as HTMLInputElement).value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("SEND: Enter submits and Shift+Enter does not", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.conversationId = "1";
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("第一句");
+    await input.trigger("keydown", { key: "Enter", shiftKey: false });
+    expect(sendSpy).toHaveBeenCalledOnce();
+
+    await input.setValue("第二句");
+    await input.trigger("keydown", { key: "Enter", shiftKey: true });
+    expect(sendSpy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("SEND: the send button is disabled while streaming and cancel is offered", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "streaming";
+    await wrapper.vm.$nextTick();
+
+    expect((wrapper.find('[data-testid="send"]').element as HTMLButtonElement).disabled).toBe(true);
+    expect(wrapper.find('[data-testid="cancel"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("SEND: keeps the draft and shows a retryable error when the request never lands", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.conversationId = "1";
+    vi.spyOn(store, "send").mockRejectedValue(new Error("transport down"));
+
+    const input = wrapper.find('[data-testid="message-input"]');
+    await input.setValue("这条不该丢");
+    await wrapper.find('[data-testid="send"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-send-error"]').exists()).toBe(true);
+    expect((input.element as HTMLInputElement).value).toBe("这条不该丢");
+    wrapper.unmount();
+  });
+
+  it("RETRY: offers one-click retry of the last failed turn", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "failed";
+    store.pendingUserContent = "重试这句话";
+    await wrapper.vm.$nextTick();
+
+    const retry = wrapper.find('[data-testid="retry"]');
+    expect(retry.exists()).toBe(true);
+    const sendSpy = vi.spyOn(store, "send").mockResolvedValue();
+    await retry.trigger("click");
+    expect(sendSpy).toHaveBeenCalledOnce();
+    expect(sendSpy.mock.calls[0]?.[2]).toBe("重试这句话");
+    wrapper.unmount();
+  });
+
+  // ---- 流式草稿与滚动 ----
+
+  it("STREAM: renders exactly one streaming draft bubble while streaming", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.phase = "streaming";
+    store.pendingUserContent = "在吗";
+    store.stream = {
+      status: "streaming",
+      epoch: 1,
+      cursor: 1,
+      events: [
+        { eventSeq: 1, streamEpoch: 1, eventType: "chat.delta", payload: "我在听。" },
+      ],
+      terminal: false,
+      terminalEventType: null,
+    };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.findAll('[data-testid="draft"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="draft"]').text()).toContain("我在听。");
+    const texts = wrapper
+      .findAll('[data-testid="chat-message"] [data-testid="assistant-md"], [data-testid="draft"]')
+      .map((n) => n.text());
+    expect(texts.join("|").split("我在听。").length - 1).toBe(1);
+    wrapper.unmount();
+  });
+
+  it("SCROLL: starts following the latest and pins to the bottom on new content", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const el = historyElOf(wrapper);
+    installScrollGeometry(el, 800, 400);
+    el.scrollTop = 400;
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+
+    const store = useChatStore();
+    store.messages = [
+      { messageId: "m1", conversationId: "1", role: "user", content: "第一条" },
+    ];
+    await wrapper.vm.$nextTick();
+    await nextFrame();
+
+    expect(el.scrollTop).toBe(800);
+    wrapper.unmount();
+  });
+
+  it("SCROLL: real user input cancels a queued bottom frame, then following resumes at the tail", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    await nextFrame();
+
+    const el = historyElOf(wrapper);
+    installScrollGeometry(el, 2000, 400);
+    el.scrollTop = 1600;
+    const queuedFrames = controlAnimationFrames();
+
+    const store = useChatStore();
+    store.messages = [
+      { messageId: "m1", conversationId: "1", role: "user", content: "第一条" },
+    ];
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(1);
+
+    // 帧排队后真实滚动输入先到，待执行帧被取消；随后的 scroll 只更新跟随意图。
+    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -120 }));
+    el.scrollTop = 300;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(0);
+    expect(el.scrollTop).toBe(300);
+
+    // 用户回到底部后，下一条消息仍应正常跟随。
+    el.scrollTop = 1580;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    store.messages = [
+      ...store.messages,
+      { messageId: "m2", conversationId: "1", role: "assistant", content: "第二条" },
+    ];
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(1);
+    runNextControlledFrame(queuedFrames);
+    expect(el.scrollTop).toBe(2000);
+    wrapper.unmount();
+  });
+
+  it("SCROLL: a real scroll away stops following, keeps the reading spot and offers back-to-latest", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const el = historyElOf(wrapper);
+    installScrollGeometry(el, 2000, 400);
+    el.scrollTop = 1900;
+    await nextFrame();
+
+    // 用户向上滚动（真实 scroll 事件），远离底部。
+    el.scrollTop = 300;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+
+    // 滚离后新内容到达不抢走阅读位置。
+    const store = useChatStore();
+    store.messages = [{ messageId: "m2", conversationId: "1", role: "user", content: "新消息" }];
+    await wrapper.vm.$nextTick();
+    await nextFrame();
+    expect(el.scrollTop).toBe(300);
+
+    // 点击"回到最新"恢复跟随并落底。
+    await wrapper.find('[data-testid="back-to-latest"]').trigger("click");
+    await nextFrame();
+    expect(el.scrollTop).toBe(2000);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("SCROLL: scrolling back near the bottom restores following without the button", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const el = historyElOf(wrapper);
+    installScrollGeometry(el, 2000, 400);
+    el.scrollTop = 1900;
+    await nextFrame();
+
+    el.scrollTop = 300;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+
+    // 用户滚回底部附近（如 End 键产生的原生滚动）。
+    el.scrollTop = 1580; // gap = 2000-400-1580 = 20 ≤ 48
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("SCROLL: a late clamp after switching conversations cannot swallow the new tail frame", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    await nextFrame();
+
+    const el = historyElOf(wrapper);
+    installScrollGeometry(el, 2000, 400);
+    el.scrollTop = 1600;
+    const queuedFrames = controlAnimationFrames();
+
+    const store = useChatStore();
+    store.messages = [
+      { messageId: "a1", conversationId: "1", role: "user", content: "旧会话" },
+    ];
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(1);
+    const [staleId, staleFrame] = queuedFrames.entries().next().value as [
+      number,
+      FrameRequestCallback,
+    ];
+
+    store.conversationId = "2";
+    queuedFrames.delete(staleId);
+    el.scrollTop = 321;
+    staleFrame(0);
+    expect(el.scrollTop).toBe(321);
+    await wrapper.vm.$nextTick();
+
+    store.messages = [{ messageId: "n1", conversationId: "2", role: "user", content: "新会话" }];
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(1);
+
+    // A 清空后的迟到 clamp 没有用户输入前因；它可暂时翻转 following，
+    // 但不能取消或吞掉已经登记给 B 的落底帧。
+    el.scrollTop = 0;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+    runNextControlledFrame(queuedFrames);
+    await wrapper.vm.$nextTick();
+    expect(el.scrollTop).toBe(2000);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("SCROLL: a viewport resize re-pins once when following and leaves reading alone otherwise", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const el = historyElOf(wrapper);
+    installScrollGeometry(el, 800, 400);
+    el.scrollTop = 700;
+    await nextFrame();
+
+    window.dispatchEvent(new Event("resize"));
+    await nextFrame();
+    expect(el.scrollTop).toBe(800);
+
+    // 滚离后 resize 不打扰阅读位置。
+    el.scrollTop = 100;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    window.dispatchEvent(new Event("resize"));
+    await nextFrame();
+    expect(el.scrollTop).toBe(100);
+    wrapper.unmount();
+  });
+
+  it("SCROLL: the history region is the only scroll area and carries no legacy diagnostics", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const el = historyElOf(wrapper);
+    expect(el.getAttribute("tabindex")).toBe("0");
+    expect(el.hasAttribute("data-following")).toBe(false);
+    expect(el.hasAttribute("data-follow-run")).toBe(false);
+    expect(el.hasAttribute("data-preserve-run")).toBe(false);
+    expect(el.hasAttribute("data-preserve-phase")).toBe(false);
+    expect(el.hasAttribute("data-preserve-mid")).toBe(false);
+    expect(wrapper.find('[data-testid="virt-spacer-top"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="virt-spacer-bottom"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // ---- 加载更多 ----
+
+  it("CONV-HIST: offers manual load-more when the auto-advance cap left pages behind", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.historyHasMore = true;
+    store.messages = [{ messageId: "m1", conversationId: "1", role: "user", content: "旧消息" }];
+    await wrapper.vm.$nextTick();
+
+    const more = wrapper.find('[data-testid="load-more"]');
+    expect(more.exists()).toBe(true);
+    const spy = vi.spyOn(store, "loadMoreHistory").mockResolvedValue();
+    await more.trigger("click");
+    expect(spy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  // ---- 消息级操作 ----
+
+  function seedMessages(store: ReturnType<typeof useChatStore>): void {
+    store.messages = [
+      { messageId: "u1", conversationId: "1", role: "user", content: "用户消息" },
+      {
+        messageId: "a1",
+        conversationId: "1",
+        role: "assistant",
+        content: "我在听。**重点**在这里。",
+      },
+    ];
+  }
+
+  it("renders user and assistant messages with a safe markdown subset", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    seedMessages(store);
+    await wrapper.vm.$nextTick();
+
+    const rows = wrapper.findAll('[data-testid="chat-message"]');
+    expect(rows).toHaveLength(2);
+    expect(wrapper.find('[data-testid="assistant-md"]').text()).toContain("重点");
+    wrapper.unmount();
+  });
+
+  it("MSG-COPY: copies assistant text and carries the AI-content notice", async () => {
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { ...globalThis.navigator, clipboard: { writeText } });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    seedMessages(store);
+    await wrapper.vm.$nextTick();
+    await openMsgMenu(wrapper, "a1");
+    await wrapper.find('[data-testid="msg-copy-a1"]').trigger("click");
+    await flushPromises();
+
+    expect(writeText).toHaveBeenCalledWith("我在听。**重点**在这里。");
+    expect(wrapper.find('[data-testid="msg-copy-a1"]').text()).toContain("已复制 · AI 生成");
+    wrapper.unmount();
+  });
+
+  it("MEM-NEG: flips the 不记住 marker of a user message through the store", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    seedMessages(store);
+    await wrapper.vm.$nextTick();
+    await openMsgMenu(wrapper, "u1");
+
+    const spy = vi
+      .spyOn(store, "setMessageNoMemory")
+      .mockResolvedValue(true);
+    await wrapper.find('[data-testid="msg-no-memory-u1"]').trigger("click");
+    expect(spy).toHaveBeenCalledWith(expect.anything(), "u1", true);
+    wrapper.unmount();
+  });
+
+  it("MSG-DELETE: requires a two-step confirm before the DELETE", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    seedMessages(store);
+    await wrapper.vm.$nextTick();
+    await openMsgMenu(wrapper, "u1");
+
+    const spy = vi.spyOn(store, "removeMessage").mockResolvedValue(true);
+    await wrapper.find('[data-testid="msg-delete-u1"]').trigger("click");
+    expect(spy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="msg-delete-u1"]').text()).toContain("确认删除");
+
+    await wrapper.find('[data-testid="msg-delete-u1"]').trigger("click");
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0]?.[1]).toBe("u1");
+    wrapper.unmount();
+  });
+
+  it("MSG-DELETE single-flight: repeated confirmation during an in-flight DELETE issues no second request", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    seedMessages(store);
+    await wrapper.vm.$nextTick();
+    await openMsgMenu(wrapper, "u1");
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const spy = vi.fn(() => gate.then(() => true));
+    vi.spyOn(store, "removeMessage").mockImplementation(spy);
+
+    await wrapper.find('[data-testid="msg-delete-u1"]').trigger("click"); // arm
+    await wrapper.find('[data-testid="msg-delete-u1"]').trigger("click"); // confirm → in-flight
+    await flushPromises();
+    await wrapper.find('[data-testid="msg-delete-u1"]').trigger("click"); // repeat during flight
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    release();
+    await flushPromises();
+    wrapper.unmount();
+  });
+
+  it("MSG-REPORT: explains the human queue and deep-links the report page", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    seedMessages(store);
+    await wrapper.vm.$nextTick();
+    await openMsgMenu(wrapper, "a1");
+    await wrapper.find('[data-testid="msg-report-a1"]').trigger("click");
+
+    const notice = wrapper.find('[data-testid="msg-report-notice-a1"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toContain("人工处理队列");
+    expect(wrapper.find('[data-testid="msg-report-open-page"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("GEN-VER: offers regenerate on the last user message after a completed turn", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    seedMessages(store);
+    store.phase = "completed";
+    await wrapper.vm.$nextTick();
+    await openMsgMenu(wrapper, "u1");
+
+    const regen = wrapper.find('[data-testid="regenerate"]');
+    expect(regen.exists()).toBe(true);
+    const spy = vi.spyOn(store, "regenerate").mockResolvedValue();
+    await regen.trigger("click");
+    expect(spy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  // ---- 更多菜单：会话管理与模式 ----
+
+  it("MENU: keeps conversation switching, create and the incognito toggle in one sheet", async () => {
+    stubFetch({
+      conversationsJson: [
+        { conversationId: 1, relationshipId: 1, lastMessagePreview: "旧" },
+        { conversationId: 2, relationshipId: 1, lastMessagePreview: "新", incognito: true },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openMenu(wrapper);
+    expect(wrapper.find('[data-testid="conversation-panel"]').exists()).toBe(true);
+    const items = wrapper.findAll('[data-testid="conversation-item"]');
+    expect(items.length).toBe(2);
+    expect(items[1]?.text()).toContain("无痕");
+
+    const store = useChatStore();
+    const openSpy = vi.spyOn(store, "openConversation").mockResolvedValue();
+    await items[1]!.trigger("click");
+    expect(openSpy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("CHAT-MODE: the four approved modes are selectable in the menu", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openMenu(wrapper);
     const row = wrapper.find('[data-testid="mode-row"]');
     expect(row.exists()).toBe(true);
     for (const mode of ["auto", "listen", "discuss", "casual"]) {
       expect(wrapper.find(`button[data-testid="mode-${mode}"]`).exists()).toBe(true);
     }
 
-    // AUTO starts active; clicking DISCUSS flips the active chip and the store.
     expect(wrapper.find('button[data-testid="mode-auto"]').attributes("aria-pressed")).toBe("true");
     await wrapper.find('button[data-testid="mode-discuss"]').trigger("click");
     expect(wrapper.find('button[data-testid="mode-discuss"]').attributes("aria-pressed")).toBe("true");
-    expect(wrapper.find('button[data-testid="mode-auto"]').attributes("aria-pressed")).toBe("false");
-
     const store = useChatStore();
     expect(store.selectedMode).toBe("DISCUSS");
+    wrapper.unmount();
+  });
+
+  it("CONV-MGMT: rename round-trip through the menu", async () => {
+    stubFetch({
+      conversationsJson: [
+        { conversationId: 1, relationshipId: 1, title: "睡前聊天" },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    await openMenu(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    const row = wrapper.find('[data-testid="rename-row"]');
+    expect(row.exists()).toBe(true);
+    expect((wrapper.find('[data-testid="rename-input"]').element as HTMLInputElement).value).toBe(
+      "睡前聊天",
+    );
+
+    const renameSpy = vi
+      .spyOn(store, "renameConversation")
+      .mockResolvedValue(true);
+    await wrapper.find('[data-testid="rename-input"]').setValue("晚安时间");
+    await wrapper.find('[data-testid="rename-apply"]').trigger("click");
+    await flushPromises();
+    expect(renameSpy).toHaveBeenCalledOnce();
+    expect(renameSpy.mock.calls[0]?.[2]).toBe("晚安时间");
+    wrapper.unmount();
+  });
+
+  it("CONV-MGMT: rename never prefills an unreadable ciphertext title", async () => {
+    stubFetch({
+      conversationsJson: [
+        { conversationId: 1, relationshipId: 1, title: "enc2:AAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+      ],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await openMenu(wrapper);
+    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
+    await wrapper.vm.$nextTick();
+
+    expect((wrapper.find('[data-testid="rename-input"]').element as HTMLInputElement).value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("END-TODAY: ends only after the two-step confirm", async () => {
+    stubFetch({
+      conversationsJson: [{ conversationId: 1, relationshipId: 1 }],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const endSpy = vi.spyOn(store, "endToday").mockResolvedValue(true);
+    await openMenu(wrapper);
+
+    await wrapper.find('[data-testid="end-today"]').trigger("click");
+    expect(endSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="end-today"]').text()).toContain("确认结束");
+
+    await wrapper.find('[data-testid="end-today"]').trigger("click");
+    expect(endSpy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("CONV-DELETE: deletes the open conversation only after the two-step confirm", async () => {
+    stubFetch({
+      conversationsJson: [{ conversationId: 1, relationshipId: 1 }],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const deleteSpy = vi.spyOn(store, "removeConversation").mockResolvedValue(true);
+    await openMenu(wrapper);
+
+    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
+
+    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
+    expect(deleteSpy).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it("NEW-CONV: creates a fresh conversation with the current incognito choice", async () => {
+    stubFetch({
+      conversationsJson: [{ conversationId: 1, relationshipId: 1 }],
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    const initSpy = vi
+      .spyOn(store, "initConversation")
+      .mockResolvedValue({ conversationId: 9 } as never);
+    await openMenu(wrapper);
+    await wrapper.find('[data-testid="incognito-toggle"]').trigger("click");
+    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
+    await flushPromises();
+
+    expect(initSpy).toHaveBeenCalledOnce();
+    expect(initSpy.mock.calls[0]?.[2]).toBe(true);
+    wrapper.unmount();
+  });
+
+  // ---- 上下文提示与恢复 ----
+
+  it("USAGE-HEALTH: shows the system-layer reminder with plain actions", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const usage = useUsageHealthStore();
+    usage.status = {
+      reminderAfterMinutes: 120,
+      sessionGapMinutes: 30,
+      continuousMinutes: 130,
+      reminderDue: true,
+      sessionStartedAt: null,
+    };
+    await wrapper.vm.$nextTick();
+
+    const banner = wrapper.find('[data-testid="usage-health-banner"]');
+    expect(banner.exists()).toBe(true);
+    expect(banner.text()).not.toContain("让我");
+    expect(wrapper.find('[data-testid="usage-health-continue"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("SVC-MODE: surfaces a non-normal service mode as a dismissible hint", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.serviceMode = { mode: "ZERO_LLM", summary: "当前以确定性回复运行" };
+    await wrapper.vm.$nextTick();
+
+    const hint = wrapper.find('[data-testid="service-mode-hint"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain("确定性回复");
+
+    await wrapper.find('[data-testid="service-mode-hint"] button').trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="service-mode-hint"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("SVC-MODE: stays quiet when the service is normal", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.serviceMode = { mode: "FULL_AI", summary: "一切正常" };
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="service-mode-hint"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("MEM-IMPORT: offers the archive import with explicit confirm/discard", async () => {
+    const relStore = useRelationshipStore();
+    vi.spyOn(relStore, "listMemoryImports").mockResolvedValue({
+      personaRef: "gentle-listener",
+      acceptedCount: 4,
+      items: [],
+    } as never);
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="memory-import-prompt"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="memory-import-prompt"]').text()).toContain("4 条");
+    wrapper.unmount();
+  });
+
+  it("MEM-PROMPT: surfaces pending memory candidates with a link", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.pendingMemoryCount = 3;
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="memory-prompt"]').text()).toContain("3 条");
+    expect(wrapper.find('[data-testid="memory-prompt-link"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("USAGE-VIZ: shows the settled token usage of the last completed turn", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const store = useChatStore();
+    store.usage = { inputTokens: 12, outputTokens: 34 };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="usage"]').text()).toContain("12");
+    expect(wrapper.find('[data-testid="usage"]').text()).toContain("34");
     wrapper.unmount();
   });
 
@@ -192,1351 +1005,69 @@ describe("chat page glue (TASK-0186 send flow + TASK-0187 relationship gate)", (
     const wrapper = mountPage();
     await flushPromises();
 
-    // Idle: no feedback row.
+    const store = useChatStore();
+    store.phase = "idle";
+    await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-testid="feedback-row"]').exists()).toBe(false);
 
-    const store = useChatStore();
-    const feedbackSpy = vi
-      .spyOn(store, "sendFeedback")
-      .mockResolvedValue(true);
     store.phase = "completed";
     await wrapper.vm.$nextTick();
-
     const row = wrapper.find('[data-testid="feedback-row"]');
     expect(row.exists()).toBe(true);
-    for (const kind of [
-      "TOO_MECHANICAL",
-      "FORGOT_CONTEXT",
-      "CROSSED_BOUNDARY",
-      "FACTUAL_ERROR",
-      "UNSAFE",
-    ]) {
-      expect(wrapper.find(`button[data-testid="feedback-${kind}"]`).exists()).toBe(true);
+    for (const kind of ["TOO_MECHANICAL", "FORGOT_CONTEXT", "CROSSED_BOUNDARY", "FACTUAL_ERROR", "UNSAFE"]) {
+      expect(wrapper.find(`[data-testid="feedback-${kind}"]`).exists()).toBe(true);
     }
 
-    await wrapper.find('button[data-testid="feedback-UNSAFE"]').trigger("click");
-    expect(feedbackSpy).toHaveBeenCalledWith(expect.anything(), "UNSAFE");
+    const spy = vi.spyOn(store, "sendFeedback").mockResolvedValue(true);
+    await wrapper.find('[data-testid="feedback-TOO_MECHANICAL"]').trigger("click");
+    expect(spy).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 
-  it("disables the send button when the input is empty", async () => {
+  it("shows the init error with the request id when initialization fails", async () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const send = wrapper.find('button[data-testid="send"]');
-    expect(send.attributes("disabled")).toBeDefined();
-    wrapper.unmount();
-  });
-
-  it("enables the send button after the user types", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const input = wrapper.find('input[data-testid="message-input"]');
-    const send = wrapper.find('button[data-testid="send"]');
-
-    await input.setValue("Hello world");
-    expect(send.attributes("disabled")).toBeUndefined();
-
-    wrapper.unmount();
-  });
-
-  it("renders the message history container", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="history"]').exists()).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("shows an empty-history status when the conversation has no messages", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const empty = wrapper.find('[data-testid="empty-history"]');
-    expect(empty.exists()).toBe(true);
-    expect(empty.attributes("role")).toBe("status");
-    expect(empty.text()).toContain("还没有消息");
-    wrapper.unmount();
-  });
-
-  it("hides the empty-history status after committed messages exist", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "user",
-        content: "你好",
-      },
-    ];
+    const vm = wrapper.vm as unknown as { initError: boolean; initRequestId: string };
+    vm.initError = true;
+    vm.initRequestId = "req-123";
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.find('[data-testid="empty-history"]').exists()).toBe(false);
-    expect(wrapper.find(".msg-content").text()).toContain("你好");
+    const error = wrapper.find('[data-testid="chat-init-error"]');
+    expect(error.exists()).toBe(true);
+    expect(error.text()).toContain("初始化失败");
+    expect(error.text()).toContain("req-123");
     wrapper.unmount();
   });
 
-  it("MSG-DELETE: deletes a persisted message only after the two-step confirm", async () => {
+  it("REL-DEACT: deactivates the relationship only after the two-step confirm", async () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "user",
-        content: "你好",
-      },
-    ];
-    const removeSpy = vi.spyOn(store, "removeMessage").mockResolvedValue(true);
-    await wrapper.vm.$nextTick();
+    const relStore = useRelationshipStore();
+    relStore.currentRelationshipId = "1";
+    const spy = vi.spyOn(relStore, "deactivate").mockResolvedValue(null);
+    await openMenu(wrapper);
 
-    const button = wrapper.find('[data-testid="msg-delete-m1"]');
-    expect(button.exists()).toBe(true);
-    expect(button.text()).toContain("删除");
+    await wrapper.find('[data-testid="chat-deactivate"]').trigger("click");
+    expect(spy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="chat-deactivate"]').text()).toContain("确认停用");
 
-    // First click only arms the confirm; nothing is deleted yet.
-    await button.trigger("click");
-    expect(removeSpy).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-testid="msg-delete-m1"]').text()).toContain("确认删除");
-
-    // Second click confirms and deletes through the store.
-    await wrapper.find('[data-testid="msg-delete-m1"]').trigger("click");
-    expect(removeSpy).toHaveBeenCalledWith(expect.anything(), "m1");
+    await wrapper.find('[data-testid="chat-deactivate"]').trigger("click");
+    expect(spy).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
 
-  it("MSG-COPY: copies the message text via the async clipboard and flips the label", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...globalThis.navigator, clipboard: { writeText } });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "assistant",
-        content: "这是一段需要复制的内容",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    const copyButton = wrapper.find('[data-testid="msg-copy-m1"]');
-    expect(copyButton.exists()).toBe(true);
-    expect(copyButton.text()).toContain("复制");
-
-    await copyButton.trigger("click");
-    await flushPromises();
-
-    expect(writeText).toHaveBeenCalledWith("这是一段需要复制的内容");
-    // COPY-LABEL (§21.4.1): an assistant copy carries the AI-content notice.
-    expect(wrapper.find('[data-testid="msg-copy-m1"]').text()).toContain("已复制 · AI 生成");
-    wrapper.unmount();
-  });
-
-  it("MSG-COPY: a user-message copy stays a plain 已复制 with no AI notice", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...globalThis.navigator, clipboard: { writeText } });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "u1",
-        conversationId: "1",
-        role: "user",
-        content: "用户自己说的话",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    await wrapper.find('[data-testid="msg-copy-u1"]').trigger("click");
-    await flushPromises();
-
-    expect(writeText).toHaveBeenCalledWith("用户自己说的话");
-    expect(wrapper.find('[data-testid="msg-copy-u1"]').text()).toContain("已复制");
-    expect(wrapper.find('[data-testid="msg-copy-u1"]').text()).not.toContain("AI 生成");
-    wrapper.unmount();
-  });
-
-  it("MSG-REPORT: persisted messages offer report and open the intake page anchored to the message", async () => {
-    stubFetch();
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "assistant",
-        content: "一条助手回复",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    const button = wrapper.find('[data-testid="msg-report-m1"]');
-    expect(button.exists()).toBe(true);
-    expect(button.text()).toContain("举报");
-    expect(wrapper.find('[data-testid="msg-report-notice-m1"]').exists()).toBe(false);
-
-    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-    const callsBefore = fetchMock.mock.calls.length;
-    await button.trigger("click");
-    await wrapper.vm.$nextTick();
-
-    const notice = wrapper.find('[data-testid="msg-report-notice-m1"]');
-    expect(notice.exists()).toBe(true);
-    expect(notice.text()).toContain("人工处理队列");
-    expect(notice.text()).not.toMatch(/工单号|回电|客服热线/);
-    expect(fetchMock.mock.calls.length).toBe(callsBefore);
-
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    await wrapper.find('[data-testid="msg-report-open-page"]').trigger("click");
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/report/report?messageId=m1" });
-    wrapper.unmount();
-  });
-
-  it("MSG-REPORT: no report button on streaming placeholder rows", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "__pending-1",
-        conversationId: "1",
-        role: "assistant",
-        content: "生成中",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find('[data-testid="msg-report-__pending-1"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("MSG-COPY: no copy button on streaming placeholder rows", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "__pending-1",
-        conversationId: "1",
-        role: "assistant",
-        content: "生成中",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find('[data-testid="msg-copy-__pending-1"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("MEM-NEG: 不记住 flips the marker through the store on a user message", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "user",
-        content: "这条不要记住",
-      },
-    ];
-    const noMemorySpy = vi.spyOn(store, "setMessageNoMemory").mockResolvedValue(true);
-    await wrapper.vm.$nextTick();
-
-    const button = wrapper.find('[data-testid="msg-no-memory-m1"]');
-    expect(button.exists()).toBe(true);
-    expect(button.text()).toContain("不记住");
-
-    await button.trigger("click");
-    await flushPromises();
-
-    expect(noMemorySpy).toHaveBeenCalledWith(expect.anything(), "m1", true);
-    wrapper.unmount();
-  });
-
-  it("MEM-NEG: shows 恢复记忆 on a flagged message and flips it back", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "user",
-        content: "这条不要记住",
-        noMemory: true,
-      },
-    ];
-    const noMemorySpy = vi.spyOn(store, "setMessageNoMemory").mockResolvedValue(true);
-    await wrapper.vm.$nextTick();
-
-    const button = wrapper.find('[data-testid="msg-no-memory-m1"]');
-    expect(button.text()).toContain("恢复记忆");
-
-    await button.trigger("click");
-    await flushPromises();
-
-    expect(noMemorySpy).toHaveBeenCalledWith(expect.anything(), "m1", false);
-    wrapper.unmount();
-  });
-
-  it("MEM-NEG: no 不记住 button on assistant messages", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "assistant",
-        content: "回复内容",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find('[data-testid="msg-no-memory-m1"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("VIRT-SCROLL: long histories only mount the visible window, not a 200-row slice", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = Array.from({ length: 250 }, (_, i) => ({
-      messageId: `m${i}`,
-      conversationId: "1",
-      role: (i % 2 === 0 ? "user" : "assistant") as string,
-      content: `消息 ${i}`,
-    }));
-    await wrapper.vm.$nextTick();
-
-    const rows = wrapper.findAll(".chat-message");
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.length).toBeLessThan(40);
-    expect(store.messages.length).toBe(250);
-    expect(wrapper.find('[data-testid="history-truncated"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="virt-spacer-top"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="virt-spacer-bottom"]').exists()).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("MD-SAFE: assistant markdown uses the whitelist and never mounts HTML tags", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "a1",
-        conversationId: "1",
-        role: "assistant",
-        content: '看 **这里** <img src=x onerror="alert(1)"><script>x</script>',
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find(".md-strong").text()).toBe("这里");
-    expect(wrapper.find("img").exists()).toBe(false);
-    expect(wrapper.find("script").exists()).toBe(false);
-    expect(wrapper.text()).toContain("<img");
-    wrapper.unmount();
-  });
-
-  it("MD-SAFE: user text stays literal and is not parsed as markdown", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "u1",
-        conversationId: "1",
-        role: "user",
-        content: "我说 **不是强调**",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find(".md-strong").exists()).toBe(false);
-    expect(wrapper.text()).toContain("我说 **不是强调**");
-    wrapper.unmount();
-  });
-
-  it("VIRT-SCROLL: short histories still render every row", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = [
-      {
-        messageId: "m1",
-        conversationId: "1",
-        role: "user",
-        content: "你好",
-      },
-    ];
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find('[data-testid="history-truncated"]').exists()).toBe(false);
-    expect(wrapper.findAll(".chat-message").length).toBe(1);
-    wrapper.unmount();
-  });
-
-  it("VIRT-SCROLL: scrolling the viewport remounts later rows", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.messages = Array.from({ length: 250 }, (_, i) => ({
-      messageId: `m${i}`,
-      conversationId: "1",
-      role: "user",
-      content: `消息 ${i}`,
-    }));
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.findAll(".chat-message")[0].text()).toContain("消息 0");
-
-    const history = wrapper.find('[data-testid="history"]');
-    const el = history.element as HTMLElement;
-    el.scrollTop = 96 * 40;
-    await history.trigger("scroll");
-    await wrapper.vm.$nextTick();
-
-    const rows = wrapper.findAll(".chat-message");
-    expect(rows[0].text()).not.toContain("消息 0");
-    expect(rows[0].text()).toContain("消息 36");
-    wrapper.unmount();
-  });
-
-  it("SVC-MODE: shows the plain service-mode status line when the API reports one", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        if (url === "/api/v1/service-mode") {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({ mode: "ZERO_LLM", summary: "当前为无生成模型的受限服务" }),
-          };
-        }
-        if (url === "/api/v1/relationships") {
-          return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
-        }
-        if (url.includes("/messages")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const line = wrapper.find('[data-testid="service-mode"]');
-    expect(line.exists()).toBe(true);
-    expect(line.text()).toContain("当前为无生成模型的受限服务");
-    wrapper.unmount();
-  });
-
-  it("REQ-ID: an init failure shows the last request id", async () => {
-    const { rememberRequestId } = await import("@/domain/request-id");
-    rememberRequestId("req-chat-1");
-    const store = useChatStore();
-    vi.spyOn(store, "initConversation").mockRejectedValue(new Error("boom"));
-    const wrapper = mountPage();
-    await flushPromises();
-    const alert = wrapper.find('[data-testid="chat-init-error"]');
-    expect(alert.exists()).toBe(true);
-    expect(alert.text()).toContain("req-chat-1");
-    rememberRequestId(null);
-    wrapper.unmount();
-  });
-
-  it("CHAT-TITLE: shows the open conversation title in the header", async () => {
-    stubFetch({
-      conversationsJson: [
-        {
-          conversationId: 1,
-          relationshipId: 1,
-          title: "周二夜聊",
-          lastMessagePreview: "今晚早点休息",
-          createdAt: "2026-08-18T01:00:00Z",
-          incognito: false,
-        },
-      ],
-    });
-    const wrapper = mountPage();
-    await flushPromises();
-    const title = wrapper.find('[data-testid="chat-conversation-title"]');
-    expect(title.exists()).toBe(true);
-    expect(title.text()).toContain("周二夜聊");
-    wrapper.unmount();
-  });
-
-  it("INC-MODE: the toggle decides the next conversation's incognito flag", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    const initSpy = vi
-      .spyOn(store, "initConversation")
-      .mockResolvedValue({ conversationId: "9" });
-
-    const toggle = wrapper.find('[data-testid="incognito-toggle"]');
-    expect(toggle.exists()).toBe(true);
-    expect(toggle.attributes("aria-pressed")).toBe("false");
-
-    await toggle.trigger("click");
-    expect(toggle.attributes("aria-pressed")).toBe("true");
-
-    await wrapper.find('[data-testid="new-conversation"]').trigger("click");
-    await flushPromises();
-    expect(initSpy).toHaveBeenCalledWith(expect.anything(), expect.any(String), true);
-    wrapper.unmount();
-  });
-
-  it("INC-MODE: shows the plain incognito notice while the open conversation is incognito", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    store.activeIncognito = true;
-    await wrapper.vm.$nextTick();
-
-    const notice = wrapper.find('[data-testid="incognito-notice"]');
-    expect(notice.exists()).toBe(true);
-    expect(notice.text()).toContain("无痕会话");
-    wrapper.unmount();
-  });
-
-  it("INC-PREF: seeds the next-conversation toggle from the saved default", async () => {
-    useAuthStore().accessToken = "a-token";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        if (url === "/api/v1/incognito-pref") {
-          return { ok: true, status: 200, json: async () => ({ defaultIncognito: true }) };
-        }
-        if (url === "/api/v1/relationships") {
-          return { ok: true, status: 200, json: async () => [ACTIVE_RELATIONSHIP] };
-        }
-        if (url.includes("/messages")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="incognito-toggle"]').text()).toContain("无痕：开");
-    wrapper.unmount();
-  });
-
-  it("restores the input when send fails before a generation exists", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    vi.spyOn(store, "send").mockImplementation(async () => {
-      store.phase = "failed";
-      store.generationId = "";
-    });
-
-    const input = wrapper.find('input[data-testid="message-input"]');
-    await input.setValue("  请再听我说一次  ");
-    await wrapper.find('button[data-testid="send"]').trigger("click");
-    await flushPromises();
-
-    expect((input.element as HTMLInputElement).value).toBe("请再听我说一次");
-    wrapper.unmount();
-  });
-
-  it("does not restore the input when send fails after a generation id exists", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const store = useChatStore();
-    vi.spyOn(store, "send").mockImplementation(async () => {
-      store.phase = "failed";
-      store.generationId = "gen-1";
-    });
-
-    const input = wrapper.find('input[data-testid="message-input"]');
-    await input.setValue("已经发出去的话");
-    await wrapper.find('button[data-testid="send"]').trigger("click");
-    await flushPromises();
-
-    expect((input.element as HTMLInputElement).value).toBe("");
-    wrapper.unmount();
-  });
-
-  it("shows the relationship selector and hides the chat input when no relationship is active", async () => {
-    stubFetch({ relationships: [] });
-
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="relationship-selector"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("renders a back-to-index entry even before a relationship is selected", async () => {
-    stubFetch({ relationships: [] });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const nav = wrapper.find('[data-testid="nav-index"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("返回边界台");
-    wrapper.unmount();
-  });
-
-  it("navigates to the preflight index without calling send or cancel", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    const sendSpy = vi.spyOn(store, "send");
-    const cancelSpy = vi.spyOn(store, "cancel");
-
-    await wrapper.find('[data-testid="nav-index"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/index/index" });
-    expect(sendSpy).not.toHaveBeenCalled();
-    expect(cancelSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("navigates to the conversation list without calling send or cancel", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    const sendSpy = vi.spyOn(store, "send");
-    const cancelSpy = vi.spyOn(store, "cancel");
-
-    await wrapper.find('[data-testid="nav-conversations"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({
-      url: "/pages/conversations/conversations?relationshipId=1",
-    });
-    expect(sendSpy).not.toHaveBeenCalled();
-    expect(cancelSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("renders a memory-page entry even before a relationship is selected", async () => {
-    stubFetch({ relationships: [] });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const nav = wrapper.find('[data-testid="nav-memory"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("记忆管理");
-    wrapper.unmount();
-  });
-
-  it("navigates to the memory page without calling send or cancel", async () => {
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    const sendSpy = vi.spyOn(store, "send");
-    const cancelSpy = vi.spyOn(store, "cancel");
-
-    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({
-      url: "/pages/memory/memory?relationshipId=1",
-    });
-    expect(sendSpy).not.toHaveBeenCalled();
-    expect(cancelSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("omits relationshipId from the memory href when none is selected", async () => {
-    stubFetch({ relationships: [] });
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    await wrapper.find('[data-testid="nav-memory"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/memory/memory" });
-    wrapper.unmount();
-  });
-
-  it("renders a login entry even before a relationship is selected", async () => {
-    stubFetch({ relationships: [] });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const nav = wrapper.find('[data-testid="nav-login"]');
-    expect(nav.exists()).toBe(true);
-    expect(nav.text()).toContain("登录");
-    wrapper.unmount();
-  });
-
-  it("navigates to the login page without calling send or cancel", async () => {
-    stubFetch({ relationships: [] });
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    const sendSpy = vi.spyOn(store, "send");
-    const cancelSpy = vi.spyOn(store, "cancel");
-
-    await wrapper.find('[data-testid="nav-login"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
-    expect(sendSpy).not.toHaveBeenCalled();
-    expect(cancelSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("SESS-REVIVE: renders a logout entry only for an authenticated session", async () => {
+  it("MENU: offers logout for an authenticated session and login otherwise", async () => {
     stubFetch({ relationships: [] });
     const auth = useAuthStore();
     auth.accessToken = "a-token";
     const wrapper = mountPage();
     await flushPromises();
 
-    const logout = wrapper.find('[data-testid="logout"]');
-    expect(logout.exists()).toBe(true);
-    expect(logout.text()).toContain("登出");
-    wrapper.unmount();
-  });
-
-  it("SESS-REVIVE: logout revokes the session and navigates to login", async () => {
-    stubFetch({ relationships: [] });
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    const auth = useAuthStore();
-    auth.accessToken = "a-token";
-    auth.role = "USER";
-    const logoutSpy = vi.spyOn(auth, "logout").mockResolvedValue();
-    const wrapper = mountPage();
-    await flushPromises();
-
-    await wrapper.find('[data-testid="logout"]').trigger("click");
-    await flushPromises();
-
-    expect(logoutSpy).toHaveBeenCalledTimes(1);
-    expect(navigateTo).toHaveBeenCalledWith({ url: "/pages/login/login" });
-    wrapper.unmount();
-  });
-
-  it("SESS-REVIVE: restores the session on mount before loading relationships", async () => {
-    stubFetch({ relationships: [] });
-    const auth = useAuthStore();
-    const refreshSpy = vi
-      .spyOn(auth, "tryRefresh")
-      .mockImplementation(async (t) => {
-        auth.accessToken = "renewed";
-        return true;
-      });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
-    expect(auth.accessToken).toBe("renewed");
-    wrapper.unmount();
-  });
-
-  it("CONV-LIST: opens the conversationId from the query instead of the latest", async () => {
-    vi.stubGlobal("location", { search: "?relationshipId=1&conversationId=9" });
-    stubFetch({
-      conversationsJson: [
-        { conversationId: "9", relationshipId: "1", title: "指定会话" },
-        { conversationId: "2", relationshipId: "1", title: "更新的会话" },
-      ],
-    });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-
-    expect(store.conversationId).toBe("9");
-    wrapper.unmount();
-  });
-
-  it("CONV-MGMT: renames the open conversation through the inline row", async () => {
-    stubFetch({
-      conversationsJson: [{ conversationId: "9", relationshipId: "1", title: "旧标题" }],
-    });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    const renameSpy = vi.spyOn(store, "renameConversation").mockResolvedValue(true);
-    store.conversationId = "9";
-
-    await wrapper.find('[data-testid="conversation-rename"]').trigger("click");
-    await wrapper.find('[data-testid="rename-input"]').setValue("新标题");
-    await wrapper.find('[data-testid="rename-apply"]').trigger("click");
-    await flushPromises();
-
-    expect(renameSpy).toHaveBeenCalledWith(expect.anything(), "9", "新标题");
-    expect(wrapper.find('[data-testid="rename-row"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("CONV-MGMT: deletes the open conversation only after the two-step confirm", async () => {
-    stubFetch({
-      conversationsJson: [{ conversationId: "9", relationshipId: "1" }],
-    });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    const removeSpy = vi.spyOn(store, "removeConversation").mockResolvedValue(true);
-    store.conversationId = "9";
-
-    // First click arms the confirm; nothing is deleted yet.
-    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
-    expect(removeSpy).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-testid="conversation-delete"]').text()).toContain("确认删除");
-
-    // Second click deletes.
-    await wrapper.find('[data-testid="conversation-delete"]').trigger("click");
-    expect(removeSpy).toHaveBeenCalledWith(expect.anything(), "9");
-    wrapper.unmount();
-  });
-
-  it("shows the current relationship id after a successful load", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-    const relStore = useRelationshipStore();
-    const activateSpy = vi.spyOn(relStore, "activate");
-    const store = useChatStore();
-    const sendSpy = vi.spyOn(store, "send");
-
-    const status = wrapper.find('[data-testid="current-relationship"]');
-    expect(status.exists()).toBe(true);
-    expect(status.text()).toContain("当前关系：温和倾听者");
-    expect(activateSpy).not.toHaveBeenCalled();
-    expect(sendSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("shows an empty current-relationship copy when none is selected", async () => {
-    stubFetch({ relationships: [] });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const status = wrapper.find('[data-testid="current-relationship"]');
-    expect(status.exists()).toBe(true);
-    expect(status.text()).toContain("还没有当前关系。");
-    wrapper.unmount();
-  });
-
-  it("shows a relationship load error without calling send or activate", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = typeof input === "string" ? input : input.toString();
-        if (url === "/api/v1/relationships") {
-          return { ok: false, status: 500, json: async () => ({}) };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
-    const wrapper = mountPage();
-    await flushPromises();
-    const relStore = useRelationshipStore();
-    const activateSpy = vi.spyOn(relStore, "activate");
-    const store = useChatStore();
-    const sendSpy = vi.spyOn(store, "send");
-    const cancelSpy = vi.spyOn(store, "cancel");
-
-    const err = wrapper.find('[data-testid="relationship-load-error"]');
-    expect(err.exists()).toBe(true);
-    expect(err.text()).toContain("关系列表加载失败。");
-    expect(wrapper.find('[data-testid="current-relationship"]').exists()).toBe(false);
-    expect(activateSpy).not.toHaveBeenCalled();
-    expect(sendSpy).not.toHaveBeenCalled();
-    expect(cancelSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("selects a query relationship locally without activate", async () => {
-    stubFetch({
-      relationships: [
-        ACTIVE_RELATIONSHIP,
-        {
-          relationshipId: "2",
-          personaRef: "other",
-          active: false,
-          createdAt: "2026-08-13T02:00:00Z",
-        },
-      ],
-    });
-    vi.stubGlobal("location", { search: "?relationshipId=2" });
-    const relStore = useRelationshipStore();
-    const activateSpy = vi.spyOn(relStore, "activate");
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(relStore.currentRelationshipId).toBe("2");
-    expect(activateSpy).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(true);
-    wrapper.unmount();
-  });
-
-  // ---- CONV-HIST: conversation panel / switching / load-more ----
-
-  it("renders the conversation panel and resumes the newest conversation on mount", async () => {
-    stubFetch({
-      conversationsJson: [
-        { conversationId: 8, relationshipId: "1", lastMessagePreview: "更早的会话" },
-        { conversationId: 9, relationshipId: "1", lastMessagePreview: "最近聊到的内容" },
-      ],
-    });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-
-    expect(wrapper.find('[data-testid="conversation-panel"]').exists()).toBe(true);
-    expect(wrapper.findAll('[data-testid="conversation-item"]')).toHaveLength(2);
-    expect(store.conversationId).toBe("9");
-    expect(wrapper.find('[data-testid="conversation-item"]').text()).toContain("更早的会话");
-    wrapper.unmount();
-  });
-
-  it("creates a fresh conversation when the list is empty", async () => {
-    stubFetch({ conversationsJson: [] });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-
-    expect(store.conversationId).toBe("1");
-    expect(wrapper.find('[data-testid="conversation-panel"]').exists()).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("switches to another conversation when its entry is clicked", async () => {
-    stubFetch({
-      conversationsJson: [
-        { conversationId: 8, relationshipId: "1", lastMessagePreview: "更早的会话" },
-        { conversationId: 9, relationshipId: "1", lastMessagePreview: "最近聊到的内容" },
-      ],
-    });
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    expect(store.conversationId).toBe("9");
-
-    const items = wrapper.findAll('[data-testid="conversation-item"]');
-    await items[0].trigger("click");
-    await flushPromises();
-
-    expect(store.conversationId).toBe("8");
-    wrapper.unmount();
-  });
-
-  it("shows and triggers the load-more button when more history remains", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.messages = [
-      { messageId: "1", conversationId: "1", role: "user", content: "A" },
-    ];
-    store.historyHasMore = true;
-    const loadMoreSpy = vi.spyOn(store, "loadMoreHistory").mockResolvedValue();
-    await wrapper.vm.$nextTick();
-
-    const loadMore = wrapper.find('[data-testid="load-more"]');
-    expect(loadMore.exists()).toBe(true);
-    await loadMore.trigger("click");
-
-    expect(loadMoreSpy).toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("hides the load-more button when no more history remains", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.messages = [
-      { messageId: "1", conversationId: "1", role: "user", content: "A" },
-    ];
-    store.historyHasMore = false;
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find('[data-testid="load-more"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  // ---- MEM-PROMPT: pending candidate hint ----
-
-  it("renders the memory prompt when pending candidates exist and links to the memory page", async () => {
-    stubFetch();
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.pendingMemoryCount = 2;
-    await wrapper.vm.$nextTick();
-
-    const prompt = wrapper.find('[data-testid="memory-prompt"]');
-    expect(prompt.exists()).toBe(true);
-    expect(prompt.text()).toContain("2 条新的记忆候选");
-
-    const navigateTo = vi.fn();
-    vi.stubGlobal("uni", { navigateTo });
-    await wrapper.find('[data-testid="memory-prompt-link"]').trigger("click");
-
-    expect(navigateTo).toHaveBeenCalledWith({
-      url: "/pages/memory/memory?relationshipId=1",
-    });
-    wrapper.unmount();
-  });
-
-  it("hides the memory prompt when no candidates are pending", async () => {
-    stubFetch();
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.pendingMemoryCount = 0;
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find('[data-testid="memory-prompt"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("re-checks pending candidates once after the extraction delay", async () => {
-    vi.useFakeTimers();
-    try {
-      stubFetch();
-      const wrapper = mountPage();
-      await flushPromises();
-      const store = useChatStore();
-      const refreshSpy = vi
-        .spyOn(store, "refreshPendingMemoryCount")
-        .mockResolvedValue();
-      vi.spyOn(store, "send").mockImplementation(async () => {
-        store.phase = "completed";
-      });
-
-      const input = wrapper.find('input[data-testid="message-input"]');
-      await input.setValue("hello");
-      await wrapper.find('button[data-testid="send"]').trigger("click");
-      await flushPromises();
-      expect(refreshSpy).toHaveBeenCalledTimes(1);
-
-      await vi.advanceTimersByTimeAsync(8000);
-      await flushPromises();
-      expect(refreshSpy).toHaveBeenCalledTimes(2);
-      wrapper.unmount();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // ---- REL-DEACT: two-step relationship deactivation ----
-
-  it("deactivates the current relationship only after the two-step confirm", async () => {
-    const relationships = [{ ...ACTIVE_RELATIONSHIP }];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        const method = init?.method ?? "GET";
-        if (url === "/api/v1/relationships" && method === "GET") {
-          return { ok: true, status: 200, json: async () => relationships };
-        }
-        if (url.includes("/deactivate")) {
-          relationships[0] = { ...relationships[0], active: false };
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({ ...ACTIVE_RELATIONSHIP, active: false }),
-          };
-        }
-        if (url.includes("/messages")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations") && method === "GET") {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations")) {
-          return { ok: true, status: 200, json: async () => ({ conversationId: 1 }) };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
-    const wrapper = mountPage();
-    await flushPromises();
-    const relStore = useRelationshipStore();
-    const store = useChatStore();
-    expect(relStore.currentRelationshipId).toBe("1");
-
-    const button = wrapper.find('[data-testid="deactivate-relationship"]');
-    expect(button.exists()).toBe(true);
-    expect(button.text()).toContain("解除关系");
-
-    // First click only arms the confirm state; nothing is deactivated.
-    await button.trigger("click");
-    await flushPromises();
-    expect(relStore.currentRelationshipId).toBe("1");
-    expect(wrapper.find('[data-testid="deactivate-relationship"]').text()).toContain("确认解除？");
-
-    // Second click deactivates: current cleared, chat reset, selector shown.
-    await wrapper.find('[data-testid="deactivate-relationship"]').trigger("click");
-    await flushPromises();
-
-    expect(relStore.currentRelationshipId).toBeNull();
-    expect(store.conversationId).toBe("");
-    expect(wrapper.find('[data-testid="relationship-selector"]').exists()).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("ends today's conversation only after the two-step confirm", async () => {
-    const calls: { method: string; url: string }[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        const method = (init?.method ?? "GET").toUpperCase();
-        calls.push({ method, url });
-        if (url === "/api/v1/relationships") {
-          return { ok: true, status: 200, json: async () => [{ ...ACTIVE_RELATIONSHIP }] };
-        }
-        if (url.includes("/deactivate") || url.includes("/relationships/1") && method === "DELETE") {
-          throw new Error("end today must not deactivate or delete the companion");
-        }
-        if (url.endsWith("/end") && method === "POST") {
-          return { ok: true, status: 200, json: async () => ({ ok: true, incognitoCleared: false }) };
-        }
-        if (url.includes("/messages")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations") && method === "GET") {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => [
-              { conversationId: 1, relationshipId: 1, createdAt: "2026-08-18T00:00:00Z", lastMessagePreview: "hello" },
-            ],
-          };
-        }
-        if (url.startsWith("/api/v1/conversations") && method === "POST") {
-          return { ok: true, status: 200, json: async () => ({ conversationId: 2 }) };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const button = wrapper.find('[data-testid="end-today"]');
-    expect(button.exists()).toBe(true);
-    expect(button.text()).toContain("结束今天的对话");
-    expect(wrapper.text()).not.toMatch(/挽留|难过|再考虑|舍不得/);
-
-    await button.trigger("click");
-    await flushPromises();
-    expect(calls.some((c) => c.url.endsWith("/end"))).toBe(false);
-    expect(wrapper.find('[data-testid="end-today"]').text()).toContain("确认结束？");
-    expect(useRelationshipStore().currentRelationshipId).toBe("1");
-
-    await wrapper.find('[data-testid="end-today"]').trigger("click");
-    await flushPromises();
-
-    expect(calls.some((c) => c.method === "POST" && c.url === "/api/v1/conversations/1/end")).toBe(
-      true,
-    );
-    expect(useRelationshipStore().current).not.toBeNull();
-    wrapper.unmount();
-  });
-
-  it("USAGE-HEALTH: shows a system-layer banner and continues without role-play", async () => {
-    const reminderPosts: unknown[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        const method = (init?.method ?? "GET").toUpperCase();
-        if (url === "/api/v1/relationships") {
-          return { ok: true, status: 200, json: async () => [{ ...ACTIVE_RELATIONSHIP }] };
-        }
-        if (url.includes("/messages")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations") && method === "GET") {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => [
-              { conversationId: 1, relationshipId: 1, createdAt: "2026-08-18T00:00:00Z" },
-            ],
-          };
-        }
-        if (url === "/api/v1/usage-health/reminder" && method === "POST") {
-          const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
-          reminderPosts.push(body);
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({
-              reminderAfterMinutes: 120,
-              sessionGapMinutes: 30,
-              continuousMinutes: 125,
-              reminderDue: body.result !== "CONTINUED",
-              sessionStartedAt: "2026-08-18T00:00:00Z",
-            }),
-          };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const health = useUsageHealthStore();
-    health.status = {
-      reminderAfterMinutes: 120,
-      sessionGapMinutes: 30,
-      continuousMinutes: 125,
-      reminderDue: true,
-      sessionStartedAt: "2026-08-18T00:00:00Z",
-    };
-    await wrapper.vm.$nextTick();
-    await flushPromises();
-
-    const banner = wrapper.find('[data-testid="usage-health-banner"]');
-    expect(banner.exists()).toBe(true);
-    expect(wrapper.find('[data-testid="usage-health-copy"]').text()).toContain("系统提醒");
-    expect(wrapper.find('[data-testid="usage-health-copy"]').text()).toContain("125 分钟");
-    expect(wrapper.text()).not.toMatch(/舍不得|再陪我一会儿|我很难过/);
-
-    await wrapper.find('[data-testid="usage-health-continue"]').trigger("click");
-    await flushPromises();
-
-    expect(reminderPosts.some((body) => (body as { result?: string }).result === "CONTINUED")).toBe(
-      true,
-    );
-    expect(wrapper.find('[data-testid="usage-health-banner"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("GEN-VER: offers regenerate on the last user message after a completed turn", async () => {
-    const wrapper = mountPage();
-    await flushPromises();
-    const store = useChatStore();
-    store.phase = "completed";
-    store.messages = [
-      {
-        messageId: "9",
-        conversationId: "1",
-        role: "user",
-        content: "hello",
-      },
-      {
-        messageId: "10",
-        conversationId: "1",
-        role: "assistant",
-        content: "hi",
-      },
-    ];
-    store.versionsByUserMessage = {
-      "9": [
-        { generationId: "55", selected: false, status: "COMPLETED" },
-        { generationId: "56", selected: true, status: "COMPLETED" },
-      ],
-    };
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.find('[data-testid="regenerate"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="version-row"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="version-2"]').attributes("aria-pressed")).toBe("true");
-    wrapper.unmount();
-  });
-
-  it("MEM-IMPORT: offers import when an archive exists for the current persona", async () => {
-    const calls: { method: string; url: string }[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        const method = (init?.method ?? "GET").toUpperCase();
-        calls.push({ method, url });
-        if (url === "/api/v1/relationships") {
-          return { ok: true, status: 200, json: async () => [{ ...ACTIVE_RELATIONSHIP }] };
-        }
-        if (url.startsWith("/api/v1/memory-imports") && method === "GET") {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({
-              personaRef: "gentle-listener",
-              acceptedCount: 2,
-              createdAt: "2026-08-19T00:00:00Z",
-            }),
-          };
-        }
-        if (url.includes("/memory-imports") && method === "POST") {
-          return { ok: true, status: 200, json: async () => ({ importedCount: 2 }) };
-        }
-        if (url.includes("/messages")) {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations") && method === "GET") {
-          return { ok: true, status: 200, json: async () => [] };
-        }
-        if (url.startsWith("/api/v1/conversations")) {
-          return { ok: true, status: 200, json: async () => ({ conversationId: 1 }) };
-        }
-        return { ok: true, status: 200, json: async () => ({}) };
-      }),
-    );
-    const wrapper = mountPage();
-    await flushPromises();
-
-    const prompt = wrapper.find('[data-testid="memory-import-prompt"]');
-    expect(prompt.exists()).toBe(true);
-    expect(prompt.text()).toContain("2 条");
-    await wrapper.find('[data-testid="memory-import-confirm"]').trigger("click");
-    await flushPromises();
-    expect(
-      calls.some((c) => c.method === "POST" && c.url === "/api/v1/relationships/1/memory-imports"),
-    ).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("hides the deactivate button when no relationship is selected", async () => {
-    stubFetch({ relationships: [] });
-    const wrapper = mountPage();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="deactivate-relationship"]').exists()).toBe(false);
+    await openMenu(wrapper);
+    expect(wrapper.find('[data-testid="logout"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="nav-login"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

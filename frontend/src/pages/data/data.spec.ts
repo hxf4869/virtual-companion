@@ -120,17 +120,37 @@ describe("data page (FR-DATA-001)", () => {
     expect(calls).toContain("/api/v1/relationships/7/reminders");
     expect(calls).toContain("/api/v1/consents");
     expect(calls).toContain("/api/v1/service-mode");
-    expect(wrapper.find('[data-testid="data-account"]').text()).toContain("42");
+    const accountSummary = wrapper.find('[data-testid="data-account"]').text();
+    expect(accountSummary).toContain("账号与安全");
+    expect(accountSummary).toContain("查看账号、安全与登录设置");
+    expect(accountSummary).not.toContain("42");
+    expect(accountSummary).not.toContain("USER");
     expect(wrapper.find('[data-testid="data-relationships"]').text()).toContain("小安");
     expect(wrapper.find('[data-testid="data-conversations"]').text()).toContain("夜聊");
     expect(wrapper.find('[data-testid="data-memories"]').text()).toContain("喜欢安静的晚上");
     expect(wrapper.find('[data-testid="data-reminders"]').text()).toContain("晚上十点提醒我休息");
-    expect(wrapper.find('[data-testid="data-consents"]').text()).toContain("SERVICE_TERMS");
+    expect(wrapper.find('[data-testid="data-consents"]').text()).toContain("用户服务协议");
     expect(wrapper.find('[data-testid="data-model"]').text()).toContain("无生成模型");
+    // P2（round3）：模型模式原值（ZERO_LLM/FULL_AI）不再渲染，只保留可读 summary。
+    expect(wrapper.find('[data-testid="data-model"]').text()).not.toContain("ZERO_LLM");
+    expect(wrapper.find('[data-testid="data-model"]').text()).not.toContain("FULL_AI");
     // REPORT-BE: the appeal-status section reads the real intake list.
     expect(calls).toContain("/api/v1/reports");
     expect(wrapper.find('[data-testid="data-appeals"]').text()).toContain("隐私与数据权利");
     expect(wrapper.find('[data-testid="data-appeals"]').text()).toContain("已提交，等待人工处理");
+    wrapper.unmount();
+  });
+
+  it("does not expose the internal account role in the overview", async () => {
+    stubFetch();
+    useAuthStore().role = "OPS_VIEWER";
+    const wrapper = mount(DataPage, { attachTo: document.body });
+    await flushPromises();
+
+    const accountSummary = wrapper.find('[data-testid="data-account"]').text();
+    expect(accountSummary).toContain("查看账号、安全与登录设置");
+    expect(accountSummary).not.toContain("运维观察员");
+    expect(accountSummary).not.toContain("OPS_VIEWER");
     wrapper.unmount();
   });
 

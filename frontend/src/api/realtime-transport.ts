@@ -27,10 +27,15 @@ import type {
   ResumeResult,
   SnapshotResult,
 } from "@/api/realtime";
-import { parseStreamEvent } from "@/api/realtime-envelope";
-import { readSseFrames, SseAbortedError, SseParseError, type SseFrame } from "@/api/sse-parser";
-import type { SnapshotUsage } from "@/api/realtime";
 import type { StreamEvent } from "@/domain/stream-reducer";
+import { parseStreamEvent } from "@/api/realtime-envelope";
+import {
+  consumeSseFrames,
+  SseAbortedError,
+  SseParseError,
+  type SseFrame,
+} from "@/api/sse-parser";
+import type { SnapshotUsage } from "@/api/realtime";
 
 const TICKETS_ENDPOINT = "/api/v1/realtime/tickets";
 const STREAMS_ENDPOINT = "/api/v1/realtime/streams";
@@ -73,7 +78,8 @@ export function createBrowserRealtimeDeps(
 ): RealtimeDeps {
   const doFetch = fetchImpl ?? fetch;
   return {
-    resume: (request, signal) => resumeWithTicket(doFetch, context, request, signal),
+    resume: (request, signal, onDurableEvent) =>
+      resumeWithTicket(doFetch, context, request, signal, onDurableEvent),
     fetchSnapshot: (generationId, signal) => fetchSnapshot(doFetch, generationId, signal),
   };
 }
@@ -89,12 +95,18 @@ interface MintedTicket {
  * afterSeq); owner and transport are server-fixed and never sent in the body.
  * Each resume opens a fresh ticket because the ticket is single-use with a 45s
  * TTL, so the orchestrator's reconnect loop mints one per attempt.
+ *
+ * P1（round6）：连接内流式。每个完整解析的 durable event 帧到达时立即通过
+ * {@link onDurableEvent} 派发（同一连接内不等 EOF）；已派发的事件不再进入
+ * 返回的 ResumeResult——最终结果只携带 disposition/nextEpoch 与未被流式
+ * 派发的内容（snapshot 事件、未提供回调时的整批事件）。
  */
 async function resumeWithTicket(
   doFetch: FetchImpl,
   context: BrowserRealtimeContext,
   request: ResumeRequest,
   signal?: AbortSignal,
+  onDurableEvent?: (event: StreamEvent) => void,
 ): Promise<ResumeResult> {
   const ticket = await mintTicket(doFetch, context, request, signal);
   if (ticket === null) {
@@ -127,16 +139,139 @@ async function resumeWithTicket(
     throw new Error(`resume failed with status ${response.status}`);
   }
 
-  let frames: SseFrame[];
+  const mapper = createFrameMapper(request.streamEpoch, onDurableEvent);
   try {
-    frames = await readSseFrames(response.body, signal);
+    await consumeSseFrames(response.body, signal, mapper.onFrame);
   } catch (error) {
     if (error instanceof SseAbortedError) {
       throw error; // cancellation surfaces through the handle
     }
     throw error instanceof SseParseError ? error : new SseParseError("resume stream failed");
   }
-  return mapFrames(frames, request.streamEpoch);
+  return mapper.result();
+}
+
+type DurableEventSink = ((event: StreamEvent) => void) | undefined;
+
+interface FrameMapperState {
+  onFrame(frame: SseFrame): void;
+  result(): ResumeResult;
+}
+
+/**
+ * P1（round6）：把 SSE 帧序列状态化地映射为 disposition + 事件交付路径。
+ * durable 帧 → parseStreamEvent → 有回调就即时派发（不回填 result.events，
+ * 保证最终 ResumeResult 不重复应用）；无回调时保留旧的整批累积语义。
+ *
+ * round7：提供连接内回调的生产链路里，`event: snapshot` 元数据只是形态标记，
+ * 不再切换"整体替换"路径——0184 runtime 在已流式下发前缀后只补发 cursor 后的
+ * terminal 尾巴（元数据缺 events 数组），若按旧逻辑用尾巴整体替换草稿会丢掉
+ * 已发布的 delta。因此带 sink 时元数据帧是信息性的：其后到达的 durable 帧
+ * （以及元数据内联的 events）仍走同一个 pushCandidate → reducer 幂等应用点，
+ * 连续同 epoch 去重合并成 [前缀]+[尾巴]。无 sink 的旧批量消费者语义不变：
+ * 元数据切 TERMINAL_SNAPSHOT，缺 events 时后续 durable 帧缓冲为快照内容由
+ * applyTerminalSnapshot 原子替换；元数据已权威则丢弃同位置内容。control 帧
+ * （gap/reset/denied）裁定后仍会流出的 durable 帧不再应用——与批量实现中
+ * orchestrator 忽略非 RESUMED 批次事件的语义一致。
+ */
+function createFrameMapper(fallbackEpoch: number, sink: DurableEventSink): FrameMapperState {
+  let disposition: ResumeDisposition = "RESUMED";
+  let nextEpoch: number | undefined;
+  let snapshotEvents: StreamEvent[] | null = null;
+  // 仅无 sink 的批量路径使用：EVENT_SNAPSHOT 元数据缺 events 数组时为 true，
+  // 其后到达的 durable 帧就是快照内容（0184 runtime 格式），逐个吸收。
+  let acceptSnapshotFrames = false;
+  // 未提供回调时的旧批量语义：事件累积进 result.events。
+  const batchEvents: StreamEvent[] = [];
+
+  function pushCandidate(candidate: unknown): void {
+    const event = parseStreamEvent(candidate, fallbackEpoch);
+    if (!event) return;
+    if (sink) {
+      // 连接内即时派发；不回填 result——最终 ResumeResult 不重复应用。
+      sink(event);
+    } else {
+      batchEvents.push(event);
+    }
+  }
+
+  function absorbSnapshotCandidate(candidate: unknown): void {
+    const event = parseStreamEvent(candidate, fallbackEpoch);
+    if (!event) return;
+    if (snapshotEvents === null) snapshotEvents = [];
+    snapshotEvents.push(event);
+  }
+
+  function handleCandidates(payload: Record<string, unknown>): void {
+    const isEnvelopeList = Array.isArray(payload.events);
+    const candidates = isEnvelopeList ? (payload.events as unknown[]) : [payload];
+    if (disposition === "TERMINAL_SNAPSHOT") {
+      if (!acceptSnapshotFrames) return; // 元数据已权威：丢弃同样位置的内容
+      for (const candidate of candidates) absorbSnapshotCandidate(candidate);
+      return;
+    }
+    if (disposition !== "RESUMED") {
+      // gap/reset/denied 已裁定：durable 流出物不再应用（单一应用不变量），
+      // 与旧批量实现中 orchestrator 忽略非 RESUMED 批次事件一致。
+      return;
+    }
+    for (const candidate of candidates) pushCandidate(candidate);
+  }
+
+  return {
+    onFrame(frame) {
+      const eventName = frame.event;
+      if (eventName === EVENT_GAP) {
+        disposition = "GAP_EXPIRED";
+        return;
+      }
+      if (eventName === EVENT_RESET) {
+        disposition = "RESET_REQUIRED";
+        const data = frame.data;
+        if (data !== null && typeof data === "object" && !Array.isArray(data)) {
+          const next = (data as { nextEpoch?: unknown }).nextEpoch;
+          if (typeof next === "number") nextEpoch = next;
+        }
+        return;
+      }
+      if (eventName === EVENT_DENIED) {
+        disposition = "NOT_FOUND_OR_FORBIDDEN";
+        return;
+      }
+      if (eventName === EVENT_SNAPSHOT) {
+        if (sink) {
+          // round7：流式链路的元数据帧不改变 RESUMED 处理路径；内联 events
+          // 也按同一应用点即时派发，reducer 幂等合并。终局否决仍由 reducer 的
+          // 终态冻结与 epoch 校验承担。
+          if (frame.data !== null && typeof frame.data === "object") {
+            handleCandidates(frame.data as Record<string, unknown>);
+          }
+          return;
+        }
+        disposition = "TERMINAL_SNAPSHOT";
+        snapshotEvents = extractSnapshotEvents(frame.data, fallbackEpoch);
+        acceptSnapshotFrames = snapshotEvents === null;
+        return;
+      }
+      // 无 data 行的控制帧（无载荷）跳过；其余按 durable 处理。
+      if (frame.data === null) return;
+      const payload = frame.data as Record<string, unknown>;
+      if (typeof payload.disposition === "string") {
+        disposition = payload.disposition as ResumeDisposition;
+      }
+      handleCandidates(payload);
+    },
+    result() {
+      if (disposition === "TERMINAL_SNAPSHOT" && snapshotEvents !== null) {
+        return { disposition, events: snapshotEvents };
+      }
+      const result: ResumeResult = { disposition, events: sink ? [] : batchEvents };
+      if (nextEpoch !== undefined) {
+        result.nextEpoch = nextEpoch;
+      }
+      return result;
+    },
+  };
 }
 
 /**
@@ -182,72 +317,7 @@ async function mintTicket(
   return { ticketId: data.ticketId, secret: data.secret };
 }
 
-/**
- * Map the parsed SSE frames back onto a {@link ResumeResult}. The 0184
- * controller encodes the disposition as the SSE event name; a legacy
- * {disposition, events} envelope shape is still honoured for robustness. Durable
- * event envelopes are parsed via the catalog `event` field (realtime-envelope).
- */
-function mapFrames(frames: SseFrame[], fallbackEpoch: number): ResumeResult {
-  let disposition: ResumeDisposition = "RESUMED";
-  let nextEpoch: number | undefined;
-  let snapshotEvents: StreamEvent[] | null = null;
-  const events: StreamEvent[] = [];
-
-  for (const frame of frames) {
-    const eventName = frame.event;
-    if (eventName === EVENT_GAP) {
-      disposition = "GAP_EXPIRED";
-      continue;
-    }
-    if (eventName === EVENT_RESET) {
-      disposition = "RESET_REQUIRED";
-      const data = frame.data;
-      if (isRecord(data) && typeof data.nextEpoch === "number") {
-        nextEpoch = data.nextEpoch;
-      }
-      continue;
-    }
-    if (eventName === EVENT_DENIED) {
-      disposition = "NOT_FOUND_OR_FORBIDDEN";
-      continue;
-    }
-    if (eventName === EVENT_SNAPSHOT) {
-      // TERMINAL_SNAPSHOT: the authoritative committed snapshot. Its events
-      // replace the draft (applyTerminalSnapshot); extract them here.
-      disposition = "TERMINAL_SNAPSHOT";
-      snapshotEvents = extractSnapshotEvents(frame.data, fallbackEpoch);
-      continue;
-    }
-    // Durable event envelope (event: <type>, data: {event,eventSeq,...}) or the
-    // legacy {disposition, events:[...]} envelope shape. A control event with
-    // no data line (data === null) carries no durable event and is skipped.
-    if (frame.data === null) {
-      continue;
-    }
-    const payload = frame.data as Record<string, unknown>;
-    if (typeof payload.disposition === "string") {
-      disposition = payload.disposition as ResumeDisposition;
-    }
-    const candidates = Array.isArray(payload.events) ? payload.events : [payload];
-    for (const candidate of candidates) {
-      const event = parseStreamEvent(candidate, fallbackEpoch);
-      if (event) {
-        events.push(event);
-      }
-    }
-  }
-
-  if (disposition === "TERMINAL_SNAPSHOT" && snapshotEvents !== null) {
-    return { disposition, events: snapshotEvents };
-  }
-  const result: ResumeResult = { disposition, events };
-  if (nextEpoch !== undefined) {
-    result.nextEpoch = nextEpoch;
-  }
-  return result;
-}
-
+/** Extract a snapshot frame's authoritative `events` array (null when absent). */
 function extractSnapshotEvents(data: unknown, fallbackEpoch: number): StreamEvent[] | null {
   if (!isRecord(data) || !Array.isArray(data.events)) {
     // The runtime emits snapshot metadata followed by the ordered durable

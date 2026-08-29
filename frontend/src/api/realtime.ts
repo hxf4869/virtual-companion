@@ -70,8 +70,19 @@ export interface SnapshotResult {
 }
 
 export interface RealtimeDeps {
-  /** Open (or reopen) the Fetch-SSE stream and return its disposition + events. */
-  resume: (request: ResumeRequest, signal?: AbortSignal) => Promise<ResumeResult>;
+  /**
+   * Open (or reopen) the Fetch-SSE stream and return its disposition + events.
+   * P1（round6）：第三个参数是连接内帧级回调——每个已完整解析的 durable
+   * event 到达时立即调用（不等 EOF）。生产 transport 保证经回调派发的事件
+   * 不再重复出现在返回的 ResumeResult.events 里；未实现该参数的注入依赖
+   * （测试 mock / 旧批量 transport）仍以整批 events 返回，两种形态都能被
+   * orchestrator 正确消费。
+   */
+  resume: (
+    request: ResumeRequest,
+    signal?: AbortSignal,
+    onDurableEvent?: (event: StreamEvent) => void,
+  ) => Promise<ResumeResult>;
   /** Fetch the consistent terminal snapshot for snapshot recovery. */
   fetchSnapshot: (generationId: string, signal?: AbortSignal) => Promise<SnapshotResult>;
 }
@@ -136,6 +147,12 @@ export interface StreamGenerationOptions {
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
   initialState?: StreamState;
+  /**
+   * 每次事件应用（流式逐帧或 RESUMED 批内）后的中间状态回调。store 用它
+   * 把不可变进度快照发布到响应式层，页面得以逐帧渲染流式草稿——单条连接
+   * 内不再需要等到 EOF 才呈现。发布的是浅拷贝，终态写入仍是同一份。
+   */
+  onProgress?: (state: StreamState) => void;
 }
 
 export async function streamGeneration(
@@ -148,11 +165,42 @@ export async function streamGeneration(
   let state = options?.initialState ?? initialState(initialEpoch);
   let epoch = state.epoch;
 
+  // P1（round6）：单一应用点。连接内到达的 durable event 经 onDurableEvent
+  // 在此立即过 reducer 并发布中间状态；一旦进入 gap / reset / 终态就停止
+  // 应用后续事件（与旧"批内 break"语义一致）。返回批里与 cursor 相同的
+  // 事件是幂等 no-op，因此注入依赖无论走流式还是批量路径都恰好应用一次。
+  let attemptApplied = false;
+  const applyAndPublish = (event: StreamEvent): void => {
+    if (
+      state.terminal ||
+      state.status === "gap" ||
+      state.status === "reset_required"
+    ) {
+      return;
+    }
+    const prev = state;
+    state = applyEvent(state, event);
+    if (!Object.is(prev, state)) {
+      attemptApplied = true;
+      // round7（P2）：进度订阅者的异常只影响它自己——不得顺着回调链把
+      // （尤其已经 terminal 的）流判成传输失败而 exhausted。
+      if (options?.onProgress) {
+        try {
+          options.onProgress(state);
+        } catch {
+          // 订阅方异常不改变流状态机。
+        }
+      }
+    }
+  };
+
   for (let attempt = 0; attempt < MAX_RESUME_ATTEMPTS; attempt++) {
     if (isCancel(handle)) {
       return { state: cancelStream(state), outcome: "cancelled" };
     }
 
+    // P1（round6）：每个 attempt 重新累计"本连接是否应用过事件"。
+    attemptApplied = false;
     let result: ResumeResult;
     try {
       result = await deps.resume(
@@ -162,6 +210,7 @@ export async function streamGeneration(
           streamEpoch: epoch,
         },
         handle?.signal,
+        applyAndPublish,
       );
     } catch {
       if (isCancel(handle)) {
@@ -180,22 +229,10 @@ export async function streamGeneration(
 
     switch (result.disposition) {
       case "RESUMED": {
-        if (result.events.length === 0) {
-          // Empty RESUMED without terminal: disconnected before any event.
-          // Resume again from the same cursor.
-          continue;
-        }
+        // 流式回调已应用的事件在 reducer 中幂等；这里只兜底应用 mock/旧
+        // 批量 transport 直接随批次返回的事件。
         for (const event of result.events) {
-          state = applyEvent(state, event);
-          if (state.terminal) {
-            return { state, outcome: terminalOutcome(state) };
-          }
-          if (state.status === "gap") {
-            break; // recover via snapshot below
-          }
-          if (state.status === "reset_required") {
-            break; // re-sync below
-          }
+          applyAndPublish(event);
         }
         if (state.terminal) {
           return { state, outcome: terminalOutcome(state) };
@@ -217,12 +254,22 @@ export async function streamGeneration(
           state = beginStreaming(state, epoch);
           continue;
         }
-        // status === "streaming": the batch ended without a terminal event ->
-        // treat as a disconnect and resume again from the new cursor.
+        if (!attemptApplied) {
+          // Empty RESUMED without any applied event: disconnected before
+          // anything arrived. Resume again from the same cursor.
+          continue;
+        }
+        // status === "streaming"：连接在无终态事件的情况下结束（逐帧已发布，
+        // 不再重复发布）→ 视为断线，从新 cursor 续传。
         continue;
       }
 
       case "TERMINAL_SNAPSHOT": {
+        // round7（P2）：终态后迟到的快照裁定不得穿透已冻结的流——outcome
+        // 只能由已应用的 terminal 事件决定，也不得再发恢复请求。
+        if (state.terminal || state.status === "cancelled") {
+          return { state, outcome: terminalOutcome(state) };
+        }
         // Only a genuine terminal snapshot completes (P1-07).
         state = applyTerminalSnapshot(state, result.events);
         return state.terminal
@@ -231,6 +278,9 @@ export async function streamGeneration(
       }
 
       case "GAP_EXPIRED": {
+        if (state.terminal || state.status === "cancelled") {
+          return { state, outcome: terminalOutcome(state) };
+        }
         state = markGap(state);
         const snapshot = await safeSnapshot(deps, generationId, handle);
         if (snapshot === null) {

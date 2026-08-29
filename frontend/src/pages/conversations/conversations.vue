@@ -1,16 +1,17 @@
 <!-- CONV-LIST: independent conversation list (§8.2). Reuses GET/PATCH/DELETE
 /conversations and POST /end. Existence hidden. Chat still owns new sessions. -->
 <template>
-  <view class="conv-page">
-    <view class="bar">
-      <text class="title">会话列表</text>
-      <button data-testid="nav-chat" class="nav-index" aria-label="离线聊天" @click="goTo(chatHref())">
-        离线聊天
+  <ConsumerShell route="/pages/conversations/conversations">
+    <template #header-actions>
+      <button
+        data-testid="nav-chat"
+        class="conv-new-chat"
+        aria-label="去聊天"
+        @click="goTo(chatHref())"
+      >
+        去聊天
       </button>
-      <button data-testid="nav-index" class="nav-index" aria-label="返回边界台" @click="goTo('/pages/index/index')">
-        返回边界台
-      </button>
-    </view>
+    </template>
 
     <RelationshipSelector
       :relationships="relStore.relationships"
@@ -40,26 +41,47 @@
       data-testid="conversations-empty"
       role="status"
     >
-      <text>还没有会话。打开离线聊天可以开始新的对话。</text>
+      <text>还没有会话。点右上角"去聊天"开始新的对话。</text>
     </view>
 
     <view
       v-for="item in visibleItems"
       :key="item.conversationId"
-      class="card"
+      class="row"
       data-testid="conversation-card"
     >
-      <text class="summary">{{ item.title || item.lastMessagePreview || `会话 ${item.conversationId}` }}</text>
-      <text v-if="item.title && item.lastMessagePreview" class="meta">{{ item.lastMessagePreview }}</text>
-      <text v-if="item.createdAt" class="meta">{{ item.createdAt }}</text>
-      <text v-if="item.incognito" class="meta" data-testid="conversation-incognito">无痕</text>
-      <view class="actions">
-        <button data-testid="conversation-open" class="nav-index" @click="openChat(item)">
-          打开
+      <button
+        data-testid="conversation-open"
+        class="row-main"
+        @click="openChat(item)"
+      >
+        <text class="summary" data-testid="conversation-title">{{ readableConversationTitle(item) }}</text>
+        <text
+          v-if="readableConversationTitle(item) !== readableConversationPreview(item)"
+          class="meta"
+        >{{ readableConversationPreview(item) }}</text>
+        <text v-if="item.createdAt" class="meta">{{ formatLocalDateTime(item.createdAt) }}</text>
+      </button>
+      <view class="row-side">
+        <text v-if="item.incognito" class="meta" data-testid="conversation-incognito">无痕</text>
+        <button
+          class="conv-btn"
+          :data-testid="`conversation-manage-${item.conversationId}`"
+          :aria-expanded="manageId === item.conversationId ? 'true' : 'false'"
+          :disabled="busy"
+          @click="toggleManage(item.conversationId)"
+        >
+          管理
         </button>
+      </view>
+      <view
+        v-if="manageId === item.conversationId"
+        class="manage-row"
+        :data-testid="`conversation-manage-row-${item.conversationId}`"
+      >
         <button
           data-testid="conversation-rename"
-          class="nav-index"
+          class="conv-btn"
           :disabled="busy"
           @click="startRename(item)"
         >
@@ -67,7 +89,7 @@
         </button>
         <button
           data-testid="conversation-end"
-          class="nav-index"
+          class="conv-btn"
           :disabled="busy"
           @click="onEnd(item.conversationId)"
         >
@@ -75,7 +97,7 @@
         </button>
         <button
           data-testid="conversation-delete"
-          class="nav-index danger"
+          class="conv-btn conv-btn--danger"
           :disabled="busy"
           @click="onDelete(item.conversationId)"
         >
@@ -153,7 +175,7 @@
         <text>删除未完成，请重试。列表保持当前状态。</text>
       </view>
     </view>
-  </view>
+  </ConsumerShell>
 </template>
 
 <script lang="ts">
@@ -171,10 +193,17 @@ import {
   type ConversationListItem,
 } from "@/api/chat";
 import { createAuthenticatedTransport } from "@/api/transport";
-import ErrorNotice from "@/components/ErrorNotice.vue";
+import ConsumerShell from "@/app/ConsumerShell.vue";
+import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RelationshipSelector from "@/components/RelationshipSelector.vue";
-import RetryButton from "@/components/RetryButton.vue";
+import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
+import {
+  isReadableConversationText,
+  readableConversationPreview,
+  readableConversationTitle,
+} from "@/domain/conversation-display";
+import { formatLocalDateTime } from "@/domain/timestamp";
 import { matchesLooseText } from "@/domain/text-filter";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
@@ -182,7 +211,7 @@ import { useRelationshipStore } from "@/stores/relationship";
 
 export default {
   name: "ConversationsPage",
-  components: { ErrorNotice, RelationshipSelector, RetryButton },
+  components: { ConsumerShell, ErrorNotice, RelationshipSelector, RetryButton },
   setup() {
     const auth = useAuthStore();
     const relStore = useRelationshipStore();
@@ -196,6 +225,7 @@ export default {
     const renamingId = ref<string | null>(null);
     const renameInput = ref("");
     const confirmDeleteId = ref<string | null>(null);
+    const manageId = ref<string | null>(null);
     const confirmEndId = ref<string | null>(null);
     const hasMore = ref(false);
     const loadMoreFailed = ref(false);
@@ -282,11 +312,19 @@ export default {
       void reload();
     }
 
+    function toggleManage(conversationId: string): void {
+      manageId.value = manageId.value === conversationId ? null : conversationId;
+    }
+
     function startRename(item: ConversationListItem): void {
       confirmDeleteId.value = null;
       confirmEndId.value = null;
       renamingId.value = item.conversationId;
-      renameInput.value = item.title ?? "";
+      // P1-B（round3）：改名输入绝不预填密文——只有可读 title 才带出 trim
+      // 后的原值；enc1:/enc2:、密文长 token、空值一律预填空字符串。
+      renameInput.value = isReadableConversationText(item.title)
+        ? item.title!.trim()
+        : "";
     }
 
     async function saveRename(id: string): Promise<void> {
@@ -435,6 +473,9 @@ export default {
 
     return {
       relStore,
+      readableConversationTitle,
+      formatLocalDateTime,
+      readableConversationPreview,
       items,
       visibleItems,
       filterQuery,
@@ -445,6 +486,8 @@ export default {
       renamingId,
       renameInput,
       confirmDeleteId,
+      manageId,
+      toggleManage,
       confirmEndId,
       reload,
       onPickRelationship,
@@ -471,107 +514,203 @@ export default {
 </script>
 
 <style scoped>
-.conv-page {
-  padding: 24rpx;
-  background-color: #14213d;
-  color: #f5f5f5;
-  min-height: 100vh;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-right: auto;
-}
 .filter-input {
   box-sizing: border-box;
   width: 100%;
-  margin: 0 0 16rpx;
-  padding: 12rpx 16rpx;
-  border: 2rpx solid #2a3a5a;
-  border-radius: 12rpx;
-  background-color: #1c2b4a;
-  color: #f5f5f5;
-  font-size: 24rpx;
+  min-height: 44px;
+  margin: 0 0 var(--vc-space-2);
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
-.nav-index {
-  background-color: #2a3a5a;
-  color: #ffffff;
-  font-size: 24rpx;
+
+.conv-new-chat {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-4);
+  border: 0;
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-primary);
+  color: var(--vc-on-primary);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+  font-weight: 600;
 }
-.danger {
-  background-color: #5a1a1a;
+
+.conv-new-chat::after {
+  border: 0;
 }
-.card,
+
+/* 正常移动端列表：细线分隔的行，不是卡片网格。 */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-3) 0;
+  border-bottom: 1px solid var(--vc-border);
+}
+
+.row-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  text-align: left;
+}
+
+.row-main::after {
+  border: 0;
+}
+
+.row-side {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin-left: auto;
+}
+
+.conv-btn {
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+}
+
+.conv-btn::after {
+  border: 0;
+}
+
+.conv-btn--danger {
+  border-color: var(--vc-danger);
+  background: var(--vc-card);
+  color: var(--vc-danger);
+}
+
 .notice,
 .error {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #1c2b4a;
-  font-size: 24rpx;
+  align-items: flex-start;
+  gap: var(--vc-space-1);
+  margin-top: var(--vc-space-3);
+  padding: var(--vc-space-4);
+  border-radius: var(--vc-radius-m);
+  border: 1px solid var(--vc-border);
+  background: var(--vc-card);
+  font-size: var(--vc-text-sm);
   line-height: 1.6;
-  color: #d5deee;
+  color: var(--vc-ink);
 }
+
 .error {
-  background-color: #5a1a1a;
+  background: var(--vc-danger-bg);
+  color: var(--vc-danger);
 }
+
 .summary {
-  font-size: 30rpx;
+  font-size: var(--vc-text-md);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
+
 .meta {
-  font-size: 22rpx;
-  color: #8fa0bd;
+  color: var(--vc-muted);
+  font-size: var(--vc-text-xs);
 }
-.actions,
+
+.manage-row,
 .rename-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8rpx;
+  gap: var(--vc-space-2);
+  width: 100%;
 }
+
+.manage-row {
+  padding-top: var(--vc-space-2);
+}
+
 .rename-input {
-  flex: 1;
-  min-width: 200rpx;
-  border: 2rpx solid #2a3a5a;
-  background-color: #14213d;
-  color: #f5f5f5;
-  padding: 8rpx;
+  flex: 1 1 12em;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 var(--vc-space-3);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font-size: 16px;
 }
+
+.nav-index {
+  min-height: 44px;
+  margin: var(--vc-space-3) 0 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.nav-index.danger {
+  border-color: var(--vc-danger);
+  color: var(--vc-danger);
+}
+
+/* 危险区：与普通操作明显分离，放列表底部；预览 → 两步确认，文案只陈述数量。 */
 .wipe-zone {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10rpx;
-  margin-top: 32rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  border: 2rpx solid #5a2a2a;
-  background-color: #2a1c1c;
+  gap: var(--vc-space-2);
+  margin-top: var(--vc-space-7);
+  padding: var(--vc-space-4);
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius-m);
+  background: var(--vc-card);
 }
+
 .wipe-title {
-  font-size: 26rpx;
+  font-size: var(--vc-text-sm);
   font-weight: 600;
-  color: #f2c4c4;
+  color: var(--vc-danger);
 }
+
 .wipe-zone .meta {
-  font-size: 24rpx;
-  color: #d5b0b0;
+  color: var(--vc-muted);
 }
+
 .wipe-preview {
-  padding: 12rpx 16rpx;
-  border-radius: 12rpx;
-  background-color: #1a4a2a;
-  color: #bfe8c6;
-  font-size: 24rpx;
+  padding: var(--vc-space-2) var(--vc-space-3);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-success-bg);
+  color: var(--vc-success);
+  font-size: var(--vc-text-sm);
 }
 </style>
