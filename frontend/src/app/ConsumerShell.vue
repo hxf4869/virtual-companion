@@ -1,8 +1,8 @@
 <template>
   <view class="vc-shell" :data-page="spec.path">
-    <!-- Consumer Shell：消费者页面的统一外框。暮色环境 chrome（页头 + 四
-         入口底栏）+ 一整面"亮着的窗"内容层（暖纸面）。tab 根页与二级页
-         渲染底栏（登录态）；沉浸式/准入/内部页不消费本组件。 -->
+    <!-- Consumer Shell：消费者页面的统一外框。浅色 chrome（页头 + 四
+         入口底栏）+ 浅色内容区。tab 根页与二级页渲染底栏（登录态）；
+         沉浸式/准入/内部页不消费本组件。 -->
     <PageHeader
       :title="headerTitle"
       :show-back="spec.shell === 'consumer-sub' || spec.shell === 'admission'"
@@ -92,16 +92,15 @@ export default defineComponent({
   background: var(--vc-env);
 }
 
-/* 亮着的窗：内容层是一整面暖纸，圆角窗框落在暮色环境上。 */
+/* 浅色内容层：页面是一整面浅色内容区，无窗框装饰。 */
 .vc-shell__main {
   flex: 1;
   box-sizing: border-box;
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: var(--vc-space-5) var(--vc-space-4)
+  padding: var(--vc-space-4) var(--vc-space-4)
     calc(76px + env(safe-area-inset-bottom, 0px));
-  border-radius: var(--vc-radius-l) var(--vc-radius-l) 0 0;
   background: var(--vc-paper);
   color: var(--vc-ink);
 }

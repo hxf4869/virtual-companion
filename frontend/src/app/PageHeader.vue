@@ -114,7 +114,7 @@ export default defineComponent({
   overflow: hidden;
   color: var(--vc-on-env);
   font-size: var(--vc-text-lg);
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;

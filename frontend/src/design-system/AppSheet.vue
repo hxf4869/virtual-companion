@@ -144,7 +144,7 @@ export default defineComponent({
 .vc-sheet__scrim {
   position: absolute;
   inset: 0;
-  background: rgba(10, 15, 24, 0.62);
+  background: rgba(28, 36, 48, 0.4);
 }
 
 .vc-sheet__panel {
@@ -160,9 +160,9 @@ export default defineComponent({
     calc(var(--vc-space-5) + env(safe-area-inset-bottom, 0px))
     calc(var(--vc-space-4) + env(safe-area-inset-left, 0px));
   border-radius: var(--vc-radius-l) var(--vc-radius-l) 0 0;
-  background: var(--vc-paper);
+  background: var(--vc-card);
   color: var(--vc-ink);
-  box-shadow: 0 -8px 32px rgba(10, 15, 24, 0.35);
+  box-shadow: 0 -8px 32px rgba(28, 36, 48, 0.16);
 }
 
 .vc-sheet__panel:focus-visible {
@@ -189,7 +189,7 @@ export default defineComponent({
 
 .vc-sheet__title {
   font-size: var(--vc-text-lg);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .vc-sheet__close {

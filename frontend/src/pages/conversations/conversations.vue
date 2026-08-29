@@ -41,26 +41,29 @@
       data-testid="conversations-empty"
       role="status"
     >
-      <text>还没有会话。打开离线聊天可以开始新的对话。</text>
+      <text>还没有会话。点右上角"去聊天"开始新的对话。</text>
     </view>
 
     <view
       v-for="item in visibleItems"
       :key="item.conversationId"
-      class="card"
+      class="row"
       data-testid="conversation-card"
     >
-      <text class="summary" data-testid="conversation-title">{{ readableConversationTitle(item) }}</text>
-      <text
-        v-if="readableConversationTitle(item) !== readableConversationPreview(item)"
-        class="meta"
-      >{{ readableConversationPreview(item) }}</text>
-      <text v-if="item.createdAt" class="meta">{{ formatLocalDateTime(item.createdAt) }}</text>
-      <text v-if="item.incognito" class="meta" data-testid="conversation-incognito">无痕</text>
-      <view class="actions">
-        <button data-testid="conversation-open" class="conv-btn conv-btn--primary" @click="openChat(item)">
-          打开
-        </button>
+      <button
+        data-testid="conversation-open"
+        class="row-main"
+        @click="openChat(item)"
+      >
+        <text class="summary" data-testid="conversation-title">{{ readableConversationTitle(item) }}</text>
+        <text
+          v-if="readableConversationTitle(item) !== readableConversationPreview(item)"
+          class="meta"
+        >{{ readableConversationPreview(item) }}</text>
+        <text v-if="item.createdAt" class="meta">{{ formatLocalDateTime(item.createdAt) }}</text>
+      </button>
+      <view class="row-side">
+        <text v-if="item.incognito" class="meta" data-testid="conversation-incognito">无痕</text>
         <button
           class="conv-btn"
           :data-testid="`conversation-manage-${item.conversationId}`"
@@ -515,11 +518,11 @@ export default {
   box-sizing: border-box;
   width: 100%;
   min-height: 44px;
-  margin: 0 0 var(--vc-space-3);
+  margin: 0 0 var(--vc-space-2);
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
   border-radius: var(--vc-radius-s);
-  background: var(--vc-sunken);
+  background: var(--vc-card);
   color: var(--vc-ink);
   font-size: 16px;
 }
@@ -528,49 +531,79 @@ export default {
   min-height: 40px;
   margin: 0;
   padding: 0 var(--vc-space-4);
-  border: 1px solid var(--vc-border-env);
+  border: 0;
   border-radius: var(--vc-radius-s);
   background: var(--vc-primary);
   color: var(--vc-on-primary);
   font: inherit;
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .conv-new-chat::after {
   border: 0;
 }
 
+/* 正常移动端列表：细线分隔的行，不是卡片网格。 */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vc-space-2);
+  padding: var(--vc-space-3) 0;
+  border-bottom: 1px solid var(--vc-border);
+}
+
+.row-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vc-ink);
+  font: inherit;
+  text-align: left;
+}
+
+.row-main::after {
+  border: 0;
+}
+
+.row-side {
+  display: flex;
+  align-items: center;
+  gap: var(--vc-space-2);
+  margin-left: auto;
+}
+
 .conv-btn {
   min-height: 40px;
   margin: 0;
-  padding: 0 var(--vc-space-4);
+  padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
   border-radius: var(--vc-radius-s);
   background: var(--vc-card);
   color: var(--vc-ink);
   font: inherit;
-  font-size: var(--vc-text-xs);
-  font-weight: 600;
+  font-size: var(--vc-text-sm);
 }
 
 .conv-btn::after {
   border: 0;
 }
 
-.conv-btn--primary {
-  border: 0;
-  background: var(--vc-primary);
-  color: var(--vc-on-primary);
-}
-
 .conv-btn--danger {
   border-color: var(--vc-danger);
-  background: var(--vc-danger-bg);
+  background: var(--vc-card);
   color: var(--vc-danger);
 }
 
-.card,
 .notice,
 .error {
   display: flex;
@@ -603,18 +636,16 @@ export default {
   font-size: var(--vc-text-xs);
 }
 
-.actions,
 .manage-row,
 .rename-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--vc-space-2);
+  width: 100%;
 }
 
 .manage-row {
-  width: 100%;
-  padding-top: var(--vc-space-1);
-  border-top: 1px dashed var(--vc-border);
+  padding-top: var(--vc-space-2);
 }
 
 .rename-input {
@@ -623,12 +654,34 @@ export default {
   min-height: 44px;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
-  background: var(--vc-sunken);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
   color: var(--vc-ink);
   font-size: 16px;
 }
 
-/* 危险区：预览 → 两步确认；文案只陈述数量。 */
+.nav-index {
+  min-height: 44px;
+  margin: var(--vc-space-3) 0 0;
+  padding: 0 var(--vc-space-4);
+  border: 1px solid var(--vc-border-strong);
+  border-radius: var(--vc-radius-s);
+  background: var(--vc-card);
+  color: var(--vc-ink);
+  font: inherit;
+  font-size: var(--vc-text-sm);
+}
+
+.nav-index::after {
+  border: 0;
+}
+
+.nav-index.danger {
+  border-color: var(--vc-danger);
+  color: var(--vc-danger);
+}
+
+/* 危险区：与普通操作明显分离，放列表底部；预览 → 两步确认，文案只陈述数量。 */
 .wipe-zone {
   display: flex;
   flex-direction: column;
@@ -636,14 +689,14 @@ export default {
   gap: var(--vc-space-2);
   margin-top: var(--vc-space-7);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-danger);
+  border: 1px solid var(--vc-border);
   border-radius: var(--vc-radius-m);
-  background: var(--vc-danger-bg);
+  background: var(--vc-card);
 }
 
 .wipe-title {
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
   color: var(--vc-danger);
 }
 

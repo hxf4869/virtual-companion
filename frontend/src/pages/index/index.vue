@@ -1,8 +1,7 @@
 <template>
   <ConsumerShell route="/pages/index/index">
-    <!-- 匿名：一盏还没点亮的窗。唯一主动作是登录。 -->
+    <!-- 匿名：唯一主动作是登录。 -->
     <view v-if="auth.sessionStatus === 'anonymous'" class="home-hero home-hero--entry" data-testid="home-hero">
-      <view class="home-hero__glow" aria-hidden="true"></view>
       <text class="home-hero__title">虚拟陪伴</text>
       <text class="home-hero__lead">
         这里是一段安静的陪伴关系：文字对话、透明可控的长期记忆。
@@ -70,8 +69,7 @@
 
       <template v-else>
         <!-- 首屏：当前陪伴 + 唯一主动作。 -->
-        <view class="home-hero" data-testid="home-hero" :class="{ 'home-hero--dim': !relStore.current }">
-          <view class="home-hero__glow" aria-hidden="true"></view>
+        <view class="home-hero" data-testid="home-hero">
           <text
             v-if="relStore.current"
             class="home-hero__companion"
@@ -216,7 +214,7 @@ const homeCompanionName = computed(() => {
 
 const heroLead = computed(() => {
   if (!relStore.current) {
-    return "创建一段陪伴关系后，这里会一直为你留一盏灯。";
+    return "创建一段陪伴关系，随时可以开始对话。";
   }
   return conversations.value.length > 0
     ? "上次聊到的事，随时可以接着说。"
@@ -418,42 +416,23 @@ defineExpose({ loadSummaries });
 </script>
 
 <style scoped>
-/* 首屏：亮着的窗。暖光从右上角落进纸面，其余层级安静退后。 */
+/* 首屏：当前陪伴 + 唯一主动作；白色卡面，无装饰光效。 */
 .home-hero {
-  position: relative;
   display: grid;
   gap: var(--vc-space-3);
-  overflow: hidden;
   padding: var(--vc-space-6);
   border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius-l);
+  border-radius: var(--vc-radius-m);
   background: var(--vc-card);
 }
 
-.home-hero__glow {
-  position: absolute;
-  top: -40%;
-  right: -18%;
-  width: 78%;
-  height: 110%;
-  pointer-events: none;
-  background: radial-gradient(
-    closest-side,
-    rgba(232, 180, 92, 0.34),
-    rgba(232, 180, 92, 0) 78%
-  );
-}
-
-.home-hero--entry .home-hero__glow {
-  opacity: 0.5;
-}
-
-.home-hero--dim .home-hero__glow {
-  opacity: 0.4;
+.home-hero__title {
+  font-size: var(--vc-text-2xl);
+  font-weight: 700;
+  color: var(--vc-ink);
 }
 
 .home-hero__companion {
-  position: relative;
   font-size: var(--vc-text-2xl);
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -462,7 +441,6 @@ defineExpose({ loadSummaries });
 }
 
 .home-hero__lead {
-  position: relative;
   max-width: 34em;
   color: var(--vc-muted);
   font-size: var(--vc-text-sm);
@@ -470,20 +448,18 @@ defineExpose({ loadSummaries });
 }
 
 .home-hero__primary {
-  position: relative;
   justify-self: start;
-  min-height: 52px;
+  min-height: 48px;
   margin: var(--vc-space-2) 0 0;
   padding: 0 var(--vc-space-7);
   border: 0;
-  border-radius: var(--vc-radius-m);
+  border-radius: var(--vc-radius-s);
   background: var(--vc-primary);
   color: var(--vc-on-primary);
   font: inherit;
-  font-size: var(--vc-text-lg);
-  font-weight: 650;
-  transition: background-color var(--vc-motion-fast) var(--vc-ease-out),
-    transform var(--vc-motion-fast) var(--vc-ease-out);
+  font-size: var(--vc-text-md);
+  font-weight: 600;
+  transition: background-color var(--vc-motion-fast) var(--vc-ease-out);
 }
 
 .home-hero__primary::after {
@@ -492,7 +468,6 @@ defineExpose({ loadSummaries });
 
 .home-hero__primary:not([disabled]):active {
   background: var(--vc-primary-hover);
-  transform: translateY(1px);
 }
 
 .home-hero--entry {
@@ -534,7 +509,7 @@ defineExpose({ loadSummaries });
   color: var(--vc-on-primary);
   font: inherit;
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .home-admission__go::after {

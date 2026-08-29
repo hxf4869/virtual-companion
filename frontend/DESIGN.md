@@ -1,46 +1,46 @@
 ---
-name: Virtual Companion — The Lit Window
-description: 暮色墨蓝环境里一盏暖纸亮窗：克制暖光作主动作的中文 AI 陪伴产品视觉系统。
+name: Virtual Companion — 浅色陪伴
+description: 浅色中性背景、白色内容面、冷蓝强调的中文 AI 陪伴产品视觉系统。
 colors:
-  env: "#151d2b"
-  env-raised: "#1b2636"
-  env-hover: "#232f42"
-  on-env: "#e9eef7"
-  on-env-muted: "#a3b1c6"
-  glow: "#e5b566"
-  border-env: "rgba(233, 238, 247, 0.18)"
-  border-env-strong: "#7386a3"
-  paper: "#f7f4ed"
-  card: "#fffdf8"
-  sunken: "#efe9df"
-  ink: "#1f2b3a"
-  muted: "#556478"
-  border: "#d9d2c4"
-  border-strong: "#857a67"
-  primary: "#e8b45c"
-  primary-hover: "#d9a441"
-  on-primary: "#241a08"
+  env: "#f4f6f8"
+  env-raised: "#ffffff"
+  env-hover: "#edf0f4"
+  on-env: "#1c2430"
+  on-env-muted: "#5b6675"
+  glow: "#3d6b99"
+  border-env: "#e3e8ee"
+  border-env-strong: "#76828f"
+  paper: "#f7f8fa"
+  card: "#ffffff"
+  sunken: "#eef1f5"
+  ink: "#1c2430"
+  muted: "#5b6675"
+  border: "#e3e8ee"
+  border-strong: "#76828f"
+  primary: "#3d6b99"
+  primary-hover: "#335c85"
+  on-primary: "#ffffff"
   success: "#2e6b4f"
-  success-bg: "#e6efe9"
-  warning: "#8a5c00"
-  warning-bg: "#f6ecd7"
-  warning-on-env: "#e0a458"
+  success-bg: "#e7f2ec"
+  warning: "#8a5a00"
+  warning-bg: "#f9f0dc"
+  warning-on-env: "#8a5a00"
   danger: "#b3261e"
-  danger-bg: "#f9e7e4"
-  danger-on-env: "#f0a8a0"
-  focus: "#7d5a00"
-  focus-on-env: "#f0c983"
+  danger-bg: "#faeae8"
+  danger-on-env: "#b3261e"
+  focus: "#2b5c8f"
+  focus-on-env: "#2b5c8f"
 typography:
   display:
     fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
-    fontSize: "30px"
+    fontSize: "28px"
     fontWeight: 700
     lineHeight: 1.25
   headline:
     fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
-    fontSize: "24px"
-    fontWeight: 650
-    lineHeight: 1.3
+    fontSize: "20px"
+    fontWeight: 600
+    lineHeight: 1.35
   title:
     fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
     fontSize: "17px"
@@ -48,14 +48,14 @@ typography:
     lineHeight: 1.4
   body:
     fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
-    fontSize: "15px"
+    fontSize: "16px"
     fontWeight: 400
     lineHeight: 1.6
   body-sm:
     fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
-    fontSize: "13px"
+    fontSize: "14px"
     fontWeight: 400
-    lineHeight: 1.6
+    lineHeight: 1.55
   label:
     fontFamily: "PingFang SC, Hiragino Sans GB, Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, system-ui, sans-serif"
     fontSize: "12px"
@@ -91,15 +91,15 @@ components:
     textColor: "{colors.on-primary}"
     rounded: "{rounded.s}"
     height: "44px"
-  button-env:
-    backgroundColor: "{colors.env-raised}"
-    textColor: "{colors.on-env}"
+  button-secondary:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.ink}"
     rounded: "{rounded.s}"
     height: "44px"
   card:
     backgroundColor: "{colors.card}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.l}"
+    rounded: "{rounded.m}"
     padding: "16px"
   input:
     backgroundColor: "{colors.card}"
@@ -107,124 +107,144 @@ components:
     rounded: "{rounded.s}"
     height: "44px"
   nav-item-active:
-    backgroundColor: "{colors.env-raised}"
-    textColor: "{colors.on-env}"
+    backgroundColor: "transparent"
+    textColor: "{colors.primary}"
     rounded: "{rounded.s}"
 ---
 
-# Design System: Virtual Companion — The Lit Window
+# Design System: Virtual Companion — 浅色陪伴
 
 ## Overview
 
-**Creative North Star: "The Lit Window / 一盏仍亮着的窗"**
+**方向：熟悉、安静、清晰、浅色优先的移动端陪伴产品。**
 
-夜晚的墨蓝环境里，亮着一扇温暖的纸色窗。整个产品由三层构成：暮色墨蓝的**环境层**（外壳、页面头部、底部导航、页面底色）、清晰明亮的**纸面层**（活动内容面板，承载阅读与操作）、以及克制的**暖光**（琥珀色，只给主动作与活动态）。它表达产品的核心叙事：安静、在场、不喧哗的陪伴。
+这是 Operate 模式的产品界面，不是品牌海报。页面首先服务任务：继续一段对话、
+确认记忆、管理提醒与隐私。以常见 iOS/Android 移动端产品为熟悉度基准：
+浅色中性页面、白色内容面、接近黑色的主文字、一种克制的低饱和冷蓝
+（#3d6b99）作为唯一品牌强调。中文系统字体，无外部字体。
 
-密度克制、留白充分；每个屏幕只有一个暖光主动作。图标全部为代码原生 SVG 细线（1.6 线宽），无 emoji、无装饰性图形。动效只允许 transform/opacity，且在 `prefers-reduced-motion` 下全部关闭。所有语义颜色均按 WCAG 计算：正文对比 ≥4.5:1，非文本控件边界 ≥3:1。
+密度正常、留白适度；每屏一个主动作。图标为代码原生 SVG 细线（1.6 线宽），
+无 emoji、无装饰性图形。动效只允许 transform/opacity，且在
+`prefers-reduced-motion` 下全部关闭。语义颜色按 WCAG 计算：正文 ≥4.5:1，
+非文本控件边界 ≥3:1。
+
+**明确禁止**：AI 紫粉、琥珀主题、大面积深蓝壳、墨蓝持久页头底栏、暖纸/
+琥珀灯光/夜景隐喻、玻璃拟态、大面积渐变、卡片套卡片、每区块圆角容器、
+chip/badge/pill 泛滥、emoji 结构图标、营销大标题、装饰性英文 kicker、
+低对比灰字、阴影造层级、无功能装饰。
 
 **Key Characteristics:**
-- 环境（墨蓝）与内容（暖纸）的强分层；纸面永不沉入环境色。
-- 暖光 = 主动作。一屏一处，稀缺即语义。
-- 中文人文无衬线系统栈，无外部字体依赖。
-- 4px 间距基；卡面圆角 12–16px，小控件 8px 或胶囊。
-- 语义状态色（成功/警告/危险）先有事实再有色，永远配文字，不只靠颜色传达。
+- 页面（#f4f6f8）与内容面（#ffffff）的轻微分层；层级靠底色差与 1px 细线，
+  不靠投影。
+- 冷蓝 = 主动作。一屏一处；活动 tab、链接、选中态是它仅有的非按钮用法。
+- 中文系统栈，靠字号（28/20/17/16/14/12）与字重（400/500/600/700）分层。
+- 4px 间距基；卡面圆角 12px，按钮/输入 8px。
+- 语义状态色先有事实再有色，永远配文字，不只靠颜色传达。
 
 ## Colors
 
-暮色墨蓝的环境包裹一张暖纸，琥珀暖光只负责"现在可以做什么"。
+浅色页面上一张白色内容面，冷蓝只负责"现在可以做什么"。
 
 ### Primary
-- **Window Amber / 窗光琥珀**（#e8b45c）：唯一主动作色。主 CTA 填充、发送按钮、活动 tab 指示。悬停加深为 #d9a441。深色文字 #241a08 保证 9.1:1。
-- **Glow on Env / 环境暖光**（#e5b566）：暗面上的强调——活动导航项文字、暗面高亮（8.1:1）。
+- **品牌冷蓝**（#3d6b99）：唯一主动作色。主 CTA 填充（白字 5.5:1）、发送
+  按钮、活动 tab、链接。悬停加深 #335c85。
 
-### Neutral — 环境层（暮色墨蓝）
-- **Dusk Blue / 暮色墨蓝**（#151d2b）：页面底色、外壳、沉浸式聊天头部。
-- **Env Raised / 环境浮面**（#1b2636）：底部导航、环境内按钮。
-- **Env Hover**（#232f42）：环境内悬停/按压。
-- **On Env**（#e9eef7）/ **On Env Muted**（#a3b1c6）：环境上的正文与次要文字。
-- **Border Env**（rgba(233,238,247,0.18)）：环境内装饰细线（分隔线）。真实控件边界用 **Border Env Strong**（#7386a3，≥3:1 于 env/env-raised）。
+### Neutral
+- **页面底**（#f4f6f8）：页面背景、chrome 底色。
+- **Chrome 表面**（#ffffff）：页头、底部导航。
+- **内容面**（#f7f8fa）/ **卡面**（#ffffff）：内容区与卡片。
+- **沉面**（#eef1f5）：用户气泡、次级填充。
+- **Ink**（#1c2430）/ **Muted**（#5b6675）：主/次文字。
+- **Border**（#e3e8ee）装饰细线；**Border Strong**（#76828f）承担控件边界
+  （3.9:1）。
 
-### Neutral — 纸面层（亮着的窗）
-- **Warm Paper / 暖纸**（#f7f4ed）：内容页面底色。
-- **Card / 卡面**（#fffdf8）：卡片与输入底。
-- **Sunken / 沉面**（#efe9df）：输入沉面、次级面板。
-- **Ink**（#1f2b3a）/ **Muted**（#556478）：纸面正文与次要文字（5.5:1）。
-- **Border**（#d9d2c4）装饰细线；**Border Strong**（#857a67）承担控件边界（3.8:1）。
-
-### 状态色（纸面 / 环境双版本）
-- 成功 #2e6b4f / 底 #e6efe9；警告 #8a5c00（暗面 #e0a458）/ 底 #f6ecd7；危险 #b3261e（暗面 #f0a8a0）/ 底 #f9e7e4。
+### 状态色
+- 成功 #2e6b4f / 底 #e7f2ec；警告 #8a5a00 / 底 #f9f0dc；危险 #b3261e /
+  底 #faeae8。
 
 ### Named Rules
-**The One Lit Window Rule.** 每屏至多一处琥珀主动作；活动 tab 与焦点是它仅有的非按钮用法。它的稀缺就是它的语义。
-**The Paper Never Sinks Rule.** 可读内容只出现在纸面层（#f7f4ed/#fffdf8）或环境层高对比文字上；禁止在墨蓝底上直接排正文段落。
+**The One Action Rule.** 每屏至多一处冷蓝主动作；活动 tab 与焦点是它仅有
+的非按钮用法。
+**The Hairline Rule.** 分层靠底色差与 1px 细线（#e3e8ee）；不用投影造层级
+（底部弹层 AppSheet 的一片柔和环境影是唯一例外）。
 
 ## Typography
 
-**Display/Body/Label Font:** 同一人文无衬线系统栈（"PingFang SC", "Hiragino Sans GB", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif）。无外部字体、无衬线标题、无等宽正文。
+**Display/Body/Label Font:** 同一中文系统栈（"PingFang SC", "Hiragino Sans
+GB", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui,
+sans-serif）。无外部字体、无衬线标题、无等宽正文。
 
-**Character:** 中文阅读优先的人文无衬线；靠字重（400/500/600/650/700）与字号分层，不靠字族切换。
+**Character:** 中文阅读优先；靠字号与字重分层，不靠字族切换。
 
 ### Hierarchy
-- **Display**（700，30px，1.25）：登录页主张、关系首页伴侣名。
-- **Headline**（650，24px，1.3）：页面主标题（PageHeader 层级）。
-- **Title**（600，17px，1.4）：卡片标题、区块题。
-- **Body**（400，15px，1.6）：正文与控件文字；行宽随纸面容器。
-- **Body-sm**（400，13px，1.6）：摘要、辅助说明。
-- **Label**（500，12px，1.4）：字段标签、状态字、meta 行。
-- **Input**（400，16px，1.5）：一切输入控件（input/select/textarea）。16px 是 iOS Safari 聚焦自动缩放的硬阈值，不得降低。
-- **Mono**（400，13px，1.5，ui-monospace/"SF Mono"/Menlo/Consolas 栈，token --vc-font-mono）：错误详情、请求 id、导入预览等代码样文本。
-
-### Named Rules
-**The Weight-Not-Face Rule.** 层级只由字号与字重表达；不得引入新字族、字距眉标（kicker）或装饰性大写微标签。
+- **Display**（700，28px，1.25）：登录页主张。
+- **Headline**（600，20px，1.35）：页面主标题。
+- **Title**（600，17px，1.4）：卡片标题、页头标题。
+- **Body**（400，16px，1.6）：正文与控件文字。正文与输入一律 ≥16px——
+  这同时是 iOS Safari 聚焦自动缩放的硬阈值。
+- **Body-sm**（400，14px，1.55）：辅助说明、摘要。
+- **Label**（500，12px，1.4）：字段标签、meta 行。
+- **Mono**（400，13px，1.5，ui-monospace/"SF Mono"/Menlo/Consolas 栈）：
+  请求 id 等代码样文本。
 
 ## Layout
 
-移动优先的单列产品：375–390px 为基准视口，内容列在宽屏（≥768px）居中收束，底部导航固定于视口底。页面结构 = PageHeader（环境色，含返回）+ role=main 纸面内容 + 底部导航（四入口：首页/对话/记忆/我的）。内部页（运维/管理）用同 token 的高密度行式变体。间距全部取 4px 基刻度（4/8/12/16/20/24/32/48）。触摸目标 ≥44×44px（.vc-tap）。全局 border-box 盒模型（含 padding 与 border 计宽，杜绝小屏 1–2px 溢出）。
+移动优先单列：390×844 主设计（375×812 小屏、812×375 横屏、768×1024 平板），
+≥768px 内容列居中收束——桌面是移动布局的自然扩展，不另造 Dashboard。底部
+导航固定于视口底（四入口：首页/对话/记忆/我的，图标+文字）。二级页使用
+统一返回页头，不重复底栏层级。间距取 4px 基刻度。触摸目标 ≥44×44px
+（.vc-tap）。全局 border-box。无横向溢出；处理 safe-area；键盘打开时输入
+不被遮挡。
 
 ## Elevation & Depth
 
-分层靠色温与明度，不靠投影：环境（最冷最暗）→ 纸面（最亮）→ 卡面（亮上加亮）。唯一的 box-shadow 是底部弹层（AppSheet）的一片柔和环境影 `0 -8px 32px rgba(10,15,24,0.35)`，只表达"浮在内容之上"。焦点环 2px（--vc-focus / 暗面 --vc-focus-on-env，offset 2px）。
-
-### Named Rules
-**The Temperature Rule.** 深度 = 色温与明度差（墨蓝→暖纸→卡面），禁止用投影造层级；弹层环境影是唯一例外。
-**The Lit Focus Rule.** 暗色外壳（.vc-chrome：页头/底栏/聊天头部/内部壳）键盘焦点环用 --vc-focus-on-env（#f0c983）；纸面用 --vc-focus（#7d5a00）。焦点环不得移除。
+分层靠底色差（页面 #f4f6f8 → 内容面 #f7f8fa → 卡面 #ffffff）与 1px 细线。
+唯一 box-shadow 是底部弹层（AppSheet）的柔和环境影，只表达"浮在内容之上"。
+焦点环 2px（#2b5c8f，offset 2px），不得移除。
 
 ## Shapes
 
-卡面 16px（--vc-radius-l）；卡片内嵌块与中卡 12px（--vc-radius-m）；按钮、输入 8px（--vc-radius-s）；chips 用胶囊（--vc-radius-pill 999px）；底栏弹层顶角 16px、≥600px 视口下四角 16px 居中。无圆形卡片、无切角、无描边双线。
+卡面 12px（--vc-radius-m）；按钮、输入 8px（--vc-radius-s）；chips 少用，
+必要时用胶囊（--vc-radius-pill）；底栏弹层顶角 16px。无圆形卡片、无描边
+双线。
 
 ## Components
 
 ### Buttons
-- **Shape:** 8px 圆角（胶囊仅限聊天发送等小圆控件），高 ≥44px。
-- **Primary:** 琥珀填充（#e8b45c）+ 墨棕文字（#241a08）；hover #d9a441；一屏一处。
-- **Env Button:** 环境浮面（#1b2636）+ On Env 文字，用于头部动作与暗面次级操作。
-- **Focus:** 2px 焦点环（暗面 --vc-focus-on-env）；无渐变、无投影、无 emoji 图标。
+- **Shape:** 8px 圆角，高 ≥44px。
+- **Primary:** 冷蓝填充（#3d6b99）+ 白字；hover #335c85；一屏一处。
+- **Secondary:** 白底 + 控件边界 + Ink 文字，用于次级操作。
+- **Danger:** 危险色文字/边界；破坏性操作与普通操作明显分离，放独立区域。
+- **Focus:** 2px 焦点环；无渐变、无投影、无 emoji 图标。
 
 ### Cards / Containers
-- **Corner:** 16px；**Background:** 卡面 #fffdf8 于暖纸底上；**Border:** 细线 #d9d2c4（装饰性）；**Padding:** 16px 起步；**Shadow:** 无。
+- 卡片仅用于真实分组；不得把每一行都变成卡片，不得卡片套卡片。
+- **Background:** #ffffff；**Border:** 1px #e3e8ee；**Padding:** 16px；
+  **Shadow:** 无。
 
 ### Inputs / Fields
-- **Style:** 卡面或沉面底、8px 圆角、控件边界 #857a67（3.8:1）；**Focus:** 边界加深 + 2px 焦点环；**Error:** 危险色边 + 文字说明（不只靠颜色）。
+- 白底、8px 圆角、控件边界 #76828f；字号 16px；**Focus:** 边界加深 + 2px
+  焦点环；**Error:** 危险色边 + 文字说明（不只靠颜色）；字段有可见 label。
 
 ### Navigation
-- **BottomNav（四入口）:** 环境浮面底栏，图标为 1.6 线宽 SVG；活动项 = On Env 文字（#e9eef7）+ 字重 600 + 图标上方 18px×2px 暖光顶线（#e5b566，像亮着的窗），不变更背景；52px 触摸目标。
-- **PageHeader:** 环境色条，左返回、中标题（Headline 级）、右上下文动作；沉浸式聊天用同语言的全宽变体。
-
-### Status Chip
-- 状态胶囊：语义底色（success/warning/danger-bg）+ 同族深色文字 + 8px 圆角；永远带文字标签。
+- **BottomNav（四入口）:** 白底 + 顶部细线；图标为 1.6 线宽 SVG；活动项 =
+  冷蓝图标 + 文字 + 字重 600 + aria-current；52px 触摸目标。
+- **PageHeader:** 白底 + 底部细线，左返回、中标题（Title 级）、右上下文动作。
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** 每个新页面只用语义 token（`--vc-*`），从 `design-system/base.css` 取值；对比度不合格的颜色不进入系统。
-- **Do** 保持"环境/纸面/暖光"三层结构：内容进纸面，动作给暖光，其余归环境。
-- **Do** 图标用 `design-system/AppIcon.vue` 的原生 SVG（1.6 线宽），动效只用 transform/opacity 并尊重 prefers-reduced-motion。
-- **Do** 状态变化同时给文字（状态 chip + 说明行），不只靠颜色。
+- **Do** 每个新页面只用语义 token（`--vc-*`），从 `design-system/base.css`
+  取值；对比度不合格的颜色不进入系统。
+- **Do** 保持"页面/内容面/卡面"的浅色分层：内容进卡面，动作给冷蓝。
+- **Do** 图标用 `design-system/AppIcon.vue` 的原生 SVG（1.6 线宽）；动效只
+  用 transform/opacity 并尊重 prefers-reduced-motion。
+- **Do** 状态变化同时给文字（状态行 + 说明），不只靠颜色。
 
 ### Don't:
-- **Don't** 输入控件字号低于 16px（iOS Safari 聚焦自动缩放）；输入一律 16px。
+- **Don't** 输入控件字号低于 16px；正文低于 16px。
 - **Don't** 新增 raw hex、页面私有导航色或未计算的对比度组合。
-- **Don't** 用 emoji 作结构图标；不用渐变文字、kicker/眉标、硬偏移投影造层级。
-- **Don't** 让琥珀出现在一屏多处；非主动作一律用环境按钮或纸面次级样式。
-- **Don't** 引入外部字体或第二字族；层级靠字号与字重。
+- **Don't** 用 emoji 作结构图标；不用渐变、kicker/眉标、投影造层级。
+- **Don't** 让冷蓝出现在一屏多处；非主动作一律用次级样式。
+- **Don't** 引入外部字体或第二字族。
+- **Don't** 首页做成功能仪表盘、聊天页做成状态控制台。

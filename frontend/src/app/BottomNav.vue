@@ -6,8 +6,8 @@
     data-testid="consumer-tabbar"
   >
     <!-- 四入口 Consumer Shell 底栏：自定义 H5 底栏（非 pages.json 原生
-         tabBar），保留 query、深链、返回栈与 uni 导航守卫。活动 tab 用暖光
-         顶线 + 文字强调（不只靠颜色：aria-current + 字重）。触摸目标 ≥48px。 -->
+         tabBar），保留 query、深链、返回栈与 uni 导航守卫。活动 tab 用品牌
+         色图标与文字强调（不只靠颜色：aria-current + 字重）。触摸目标 ≥48px。 -->
     <button
       v-for="tab in CONSUMER_TABS"
       :key="tab.key"
@@ -103,31 +103,16 @@ export default defineComponent({
 }
 
 .vc-bottom-nav__item.is-active {
-  color: var(--vc-on-env);
+  color: var(--vc-glow);
   font-weight: 600;
 }
 
 .vc-bottom-nav__icon {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 24px;
-}
-
-/* 暖光顶线：活动 tab 像亮着的窗，稳定出现在同一位置。 */
-.vc-bottom-nav__item.is-active .vc-bottom-nav__icon::before {
-  position: absolute;
-  top: -5px;
-  left: 50%;
-  width: 18px;
-  height: 2px;
-  transform: translateX(-50%);
-  /* 2px 高暖光顶线的端帽圆角，非形状 token（waiver） */
-  border-radius: 1px; /* impeccable-disable-line design-system-radius */
-  background: var(--vc-glow);
-  content: "";
 }
 
 .vc-bottom-nav__item.is-active .vc-bottom-nav__icon {

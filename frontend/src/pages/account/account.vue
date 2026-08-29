@@ -12,16 +12,8 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
     </view>
 
     <template v-else>
-      <view class="card" data-testid="account-card">
-        <text class="label">账号编号</text>
-        <text data-testid="account-id">{{ auth.accountId ?? "未知" }}</text>
-        <text class="label">角色</text>
-        <text data-testid="account-role">{{ accountRoleLabel(auth.role) }}</text>
-      </view>
-
-      <!-- "我的"分组入口：全部二级任务的发现路径（Phase 5 IA）。 -->
+      <!-- "我的"分组导航枢纽：每行一个清楚任务；分组名独立分隔行。 -->
       <nav class="hub" data-testid="me-hub" aria-label="我的分组入口">
-        <!-- 分组名作为独立分隔行；行内只显示标签，避免"陪伴·陪伴设置"式粘连。 -->
         <template v-for="group in groupedHubEntries" :key="group.name">
           <text class="hub-group" role="presentation">{{ group.name }}</text>
           <button
@@ -62,6 +54,26 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         </button>
       </nav>
 
+      <view class="card" data-testid="survey-card">
+        <text class="label">本期体验评分</text>
+        <text class="meta">这段对话让你感到「被理解」了吗？1 分完全没被理解，5 分非常被理解。每天可评一次。</text>
+        <view class="actions" data-testid="survey-buttons">
+          <button
+            v-for="s in [1, 2, 3, 4, 5]"
+            :key="s"
+            class="nav-index"
+            :data-testid="'survey-score-' + s"
+            :disabled="busy"
+            @click="onSurvey(s)"
+          >
+            {{ s }}
+          </button>
+        </view>
+        <text v-if="surveyMsg" class="meta" data-testid="survey-msg">{{ surveyMsg }}</text>
+      </view>
+
+      <!-- 账号与安全：改密、会话管理、登出；账号编号与角色是次要信息。 -->
+      <text class="hub-group" role="presentation">账号与安全</text>
       <view class="card" data-testid="password-card">
         <text class="label">修改密码</text>
         <text v-if="auth.passwordMustChange" class="error" data-testid="password-required">
@@ -141,22 +153,9 @@ Reuses POST /auth/logout and DELETE /auth/account. No register, no payment. -->
         <text class="meta">在公共或共用电脑上使用后，请「登出」并关闭页面；建议使用浏览器无痕模式。登出会清除本机缓存的会话数据。</text>
       </view>
 
-      <view class="card" data-testid="survey-card">
-        <text class="label">本期体验评分</text>
-        <text class="meta">这段对话让你感到「被理解」了吗？1 分完全没被理解，5 分非常被理解。每天可评一次。</text>
-        <view class="actions" data-testid="survey-buttons">
-          <button
-            v-for="s in [1, 2, 3, 4, 5]"
-            :key="s"
-            class="nav-index"
-            :data-testid="'survey-score-' + s"
-            :disabled="busy"
-            @click="onSurvey(s)"
-          >
-            {{ s }}
-          </button>
-        </view>
-        <text v-if="surveyMsg" class="meta" data-testid="survey-msg">{{ surveyMsg }}</text>
+      <view class="account-meta" data-testid="account-card">
+        <text class="meta">账号编号 <text data-testid="account-id">{{ auth.accountId ?? "未知" }}</text></text>
+        <text class="meta">角色 <text data-testid="account-role">{{ accountRoleLabel(auth.role) }}</text></text>
       </view>
 
       <view class="danger">
@@ -230,12 +229,12 @@ export default {
     // "我的"分组导航（静态 IA 数据；运行时消费导航模型的分组）。
     const HUB_ENTRIES = [
       { group: "陪伴", label: "陪伴设置", note: "称呼、偏好与危险操作", href: "/pages/companion/companion", testid: "companion" },
-      { group: "提醒", label: "提醒", note: "本地列表，不会主动推送", href: "/pages/reminder/reminder", testid: "reminder" },
-      { group: "健康", label: "使用与休息", note: "连续使用提醒间隔", href: "/pages/health/health", testid: "health" },
-      { group: "隐私", label: "无痕默认", note: "下次新会话是否默认无痕", href: "/pages/incognito/incognito", testid: "incognito" },
-      { group: "隐私", label: "成年状态", note: "核验结果与申诉", href: "/pages/age/age", testid: "age" },
-      { group: "隐私", label: "同意管理", note: "版本化同意与撤回", href: "/pages/consent/consent", testid: "consent" },
-      { group: "隐私", label: "AI 说明", note: "模型与 AI 标识", href: "/pages/ai-notice/ai-notice", testid: "ai-notice" },
+      { group: "提醒与休息", label: "提醒", note: "本地列表，不会主动推送", href: "/pages/reminder/reminder", testid: "reminder" },
+      { group: "提醒与休息", label: "使用与休息", note: "连续使用提醒间隔", href: "/pages/health/health", testid: "health" },
+      { group: "隐私与 AI", label: "无痕默认", note: "下次新会话是否默认无痕", href: "/pages/incognito/incognito", testid: "incognito" },
+      { group: "隐私与 AI", label: "成年状态", note: "核验结果与申诉", href: "/pages/age/age", testid: "age" },
+      { group: "隐私与 AI", label: "同意管理", note: "版本化同意与撤回", href: "/pages/consent/consent", testid: "consent" },
+      { group: "隐私与 AI", label: "AI 说明", note: "模型与 AI 标识", href: "/pages/ai-notice/ai-notice", testid: "ai-notice" },
       { group: "数据", label: "我的数据", note: "账号数据汇总", href: "/pages/data/data", testid: "data" },
       { group: "数据", label: "数据导出", note: "二次认证后异步导出", href: "/pages/export/export", testid: "export" },
       { group: "帮助", label: "帮助与反馈", note: "边界说明与支持", href: "/pages/help/help", testid: "help" },
@@ -490,7 +489,7 @@ export default {
   display: block;
   margin-bottom: var(--vc-space-2);
   font-size: var(--vc-text-md);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .section-subtitle {
@@ -614,22 +613,29 @@ export default {
   color: var(--vc-ink);
   font-size: 16px;
 }
-.danger-zone {
+.account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vc-space-3);
+  margin: var(--vc-space-4) 0 0;
+}
+
+.danger {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--vc-space-2);
   margin-top: var(--vc-space-6);
   padding: var(--vc-space-4);
-  border: 1px solid var(--vc-danger);
+  border: 1px solid var(--vc-border);
   border-radius: var(--vc-radius-m);
-  background: var(--vc-danger-bg);
+  background: var(--vc-card);
 }
 
 .danger-title {
   color: var(--vc-danger);
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .danger-lead,
@@ -649,7 +655,7 @@ export default {
   color: var(--vc-danger);
   font: inherit;
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .danger-btn::after {

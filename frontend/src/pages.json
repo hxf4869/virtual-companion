@@ -144,8 +144,8 @@
 	"globalStyle": {
 		"navigationStyle": "custom",
 		"navigationBarTitleText": "虚拟陪伴",
-		"navigationBarTextStyle": "white",
-		"navigationBarBackgroundColor": "#151d2b",
-		"backgroundColor": "#151d2b"
+		"navigationBarTextStyle": "black",
+		"navigationBarBackgroundColor": "#f4f6f8",
+		"backgroundColor": "#f4f6f8"
 	}
 }

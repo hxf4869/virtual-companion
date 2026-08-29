@@ -70,7 +70,7 @@ export default defineComponent({
   margin: 0 auto;
   padding: var(--vc-space-4) var(--vc-space-4)
     calc(var(--vc-space-6) + env(safe-area-inset-bottom, 0px));
-  color: var(--vc-on-env);
+  color: var(--vc-ink);
   font-size: var(--vc-text-sm);
   line-height: 1.55;
 }
