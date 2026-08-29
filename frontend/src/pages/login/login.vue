@@ -3,7 +3,6 @@
        竞争。旧的边界台导航入口已随 IA 移除（375px 溢出根因）。 -->
   <view class="login-page" role="main">
     <view class="login-window">
-      <view class="login-window__glow" aria-hidden="true"></view>
       <text class="login-title" role="heading" aria-level="1">登录</text>
       <text class="login-lead">
         虚拟陪伴 · Technical Alpha 内部账号。AI 陪伴，非真人。
@@ -305,8 +304,7 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* 线性准入视觉：暮色环境上一扇亮着的登录窗。窄屏不出现横向溢出
-   （max-width + 盒模型收缩替代旧的无换行 flex 头部）。 */
+/* 线性准入视觉：浅色卡片式登录窗。窄屏不出现横向溢出。 */
 .login-page {
   display: flex;
   justify-content: center;
@@ -320,10 +318,8 @@ export default defineComponent({
 }
 
 .login-window {
-  position: relative;
   display: grid;
   gap: var(--vc-space-3);
-  overflow: hidden;
   box-sizing: border-box;
   width: 100%;
   max-width: 420px;
@@ -335,35 +331,18 @@ export default defineComponent({
   color: var(--vc-ink);
 }
 
-.login-window__glow {
-  position: absolute;
-  top: -40%;
-  right: -18%;
-  width: 78%;
-  height: 110%;
-  pointer-events: none;
-  background: radial-gradient(
-    closest-side,
-    rgba(232, 180, 92, 0.3),
-    rgba(232, 180, 92, 0) 78%
-  );
-}
-
 .login-title {
-  position: relative;
   font-size: var(--vc-text-2xl);
   font-weight: 700;
 }
 
 .login-lead {
-  position: relative;
   color: var(--vc-muted);
   font-size: var(--vc-text-sm);
   line-height: 1.7;
 }
 
 .login-form {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--vc-space-3);
@@ -400,7 +379,7 @@ export default defineComponent({
   border-radius: var(--vc-radius-s);
   background-color: var(--vc-primary);
   color: var(--vc-on-primary);
-  font-weight: 650;
+  font-weight: 600;
   font-size: var(--vc-text-md);
 }
 

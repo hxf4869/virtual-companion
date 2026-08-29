@@ -213,7 +213,7 @@ export default {
   display: block;
   margin-bottom: var(--vc-space-2);
   font-size: var(--vc-text-md);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .section-subtitle {
@@ -349,7 +349,7 @@ export default {
   color: var(--vc-on-primary);
   font: inherit;
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .primary-btn::after,

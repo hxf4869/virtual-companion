@@ -635,7 +635,7 @@ export default {
 
 .emc-title {
   font-size: var(--vc-text-md);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .emc-section .intro {

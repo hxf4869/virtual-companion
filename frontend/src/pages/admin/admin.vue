@@ -1502,7 +1502,7 @@ export default defineComponent({
 
 .account-list-title {
   font-size: var(--vc-text-md);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .admin-form {
@@ -1542,7 +1542,7 @@ export default defineComponent({
   color: var(--vc-on-primary);
   font: inherit;
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .admin-submit::after {

@@ -210,7 +210,7 @@ export default {
 .ops-title {
   display: block;
   font-size: var(--vc-text-md);
-  font-weight: 650;
+  font-weight: 600;
   color: var(--vc-on-env);
 }
 

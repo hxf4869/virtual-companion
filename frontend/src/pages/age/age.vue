@@ -7,10 +7,9 @@ appeal is recorded and reviewed by a human; the page never rewrites results. -->
   <ConsumerShell route="/pages/age/age">
     <view class="intro">
       <text>
-        服务默认面向 18 岁以上用户。本页读取成年核验结果，并可运行 Technical
-        Alpha 的模拟核验。系统只保存结果、年龄段、时间和供应商凭证，不保存身份证件。
-        模拟核验供本地联调，不能当作公开上线的成年证明；真实供应商只替换端口实现，
-        不改本页调用。认为核验结果有误时，可以从本页提交申诉，由人工处理。
+        服务默认面向 18 岁以上用户。当前为内部测试，使用模拟核验；只保存核验
+        结果、年龄段与时间，不保存任何身份证件。认为结果有误时，可从本页提交
+        申诉，由人工处理。
       </text>
     </view>
 
@@ -235,7 +234,7 @@ export default {
 
 .state {
   font-size: var(--vc-text-lg);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .meta {

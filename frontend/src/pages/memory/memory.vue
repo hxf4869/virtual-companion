@@ -44,11 +44,7 @@ states carry alert/live a11y semantics. -->
       data-testid="current-relationship"
       role="status"
     >
-      <text>{{
-        relationshipId.trim()
-          ? `当前关系：${relationshipId.trim()}`
-          : "还没有当前关系。"
-      }}</text>
+      <text>{{ relationshipLabel || "还没有当前关系。" }}</text>
     </view>
     <view
       v-else-if="relStore.status === 'error'"
@@ -493,6 +489,7 @@ import ConsumerShell from "@/app/ConsumerShell.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref, readContextFromLocation } from "@/domain/context-href";
 import { publicMemoryScopeLabel, publicMemoryStatusLabel } from "@/domain/public-memory-display";
+import { personaDisplayName } from "@/domain/persona";
 import { matchesLooseText } from "@/domain/text-filter";
 import { lastRequestId } from "@/domain/request-id";
 import { formatLocalDateTime } from "@/domain/timestamp";
@@ -556,6 +553,16 @@ async function onToggleAutoSave(): Promise<void> {
     busy.value = false;
   }
 }
+
+const relationshipLabel = computed(() => {
+  if (!relationshipId.value.trim()) return "";
+  const rel = relStore.relationships.find(
+    (row) => String(row.relationshipId) === relationshipId.value.trim(),
+  );
+  if (!rel) return "当前关系";
+  const persona = personaDisplayName(rel.personaRef);
+  return rel.companionName?.trim() ? `当前关系：${rel.companionName} · ${persona}` : `当前关系：${persona}`;
+});
 
 function visibleMemories(list: Memory[]): Memory[] {
   return list.filter((item) => matchesLooseText(item.summary, filterQuery.value));
@@ -643,7 +650,7 @@ function focusReload(): void {
 function onPickRelationship(id: string): void {
   if (!id) return;
   relationshipId.value = id;
-  focusReload();
+  void reload();
 }
 
 onMounted(async () => {
@@ -655,8 +662,15 @@ onMounted(async () => {
   void loadAutoSave();
   const prefill = readQueryRelationshipId();
   const known = knownRelationshipIds();
-  if (prefill && known?.includes(prefill) && !relationshipId.value) {
+  if (prefill && known?.includes(prefill)) {
     relationshipId.value = prefill;
+  } else if (!relationshipId.value && relStore.currentRelationshipId) {
+    // 默认跟随当前关系，自动加载一次；不再要求用户手动挑选+刷新。
+    relationshipId.value = relStore.currentRelationshipId;
+  }
+  if (relationshipId.value) {
+    await reload();
+  } else {
     focusReload();
   }
 });
@@ -855,7 +869,7 @@ function goTo(url: string): void {
   display: block;
   margin-bottom: var(--vc-space-1);
   font-size: var(--vc-text-md);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .section-subtitle {
@@ -989,7 +1003,7 @@ function goTo(url: string): void {
   color: var(--vc-on-primary);
   font: inherit;
   font-size: var(--vc-text-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .candidate-entry button::after {

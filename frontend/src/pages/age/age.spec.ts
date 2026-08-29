@@ -101,7 +101,7 @@ describe("age page (FR-AUTH-002)", () => {
     expect(wrapper.find('[data-testid="age-state-label"]').text()).toBe("尚未核验");
     expect(wrapper.find('[data-testid="age-state-code"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="age-verify"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain("不保存身份证件");
+    expect(wrapper.text()).toContain("不保存任何身份证件");
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
     expect(wrapper.text()).not.toMatch(/我已成年/);
     wrapper.unmount();
