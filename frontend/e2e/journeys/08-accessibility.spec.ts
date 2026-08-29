@@ -456,6 +456,17 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
       .toBeGreaterThan(48);
     expect(await page.getByTestId("message-input").evaluate((el) => el.getBoundingClientRect().height))
       .toBeLessThanOrEqual(120);
+    await expect(page.getByTestId("back-to-latest")).toBeVisible();
+    const [historyBox, controlBox, composerBox] = await Promise.all([
+      page.getByTestId("history").boundingBox(),
+      page.getByTestId("back-to-latest").boundingBox(),
+      page.locator(".chat-input-area").boundingBox(),
+    ]);
+    expect(historyBox).not.toBeNull();
+    expect(controlBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(controlBox!.y).toBeGreaterThanOrEqual(historyBox!.y + historyBox!.height - 1);
+    expect(controlBox!.y + controlBox!.height).toBeLessThanOrEqual(composerBox!.y + 1);
     if (captureFinalShots) {
       await page.screenshot({ path: `${FINAL_SHOTS}/chat-390x844-multiline.png` });
     }

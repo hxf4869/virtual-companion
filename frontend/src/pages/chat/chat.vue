@@ -214,7 +214,7 @@
         </view>
 
         <template v-else>
-          <!-- 唯一纵向滚动区：消息历史。回底按钮悬浮在滚动区可视底部内侧。 -->
+          <!-- 唯一纵向滚动区：消息历史。回底按钮在历史与输入区之间独立占位。 -->
           <view class="history-wrap">
             <view
               ref="historyEl"
@@ -1792,9 +1792,8 @@ export default defineComponent({
   font-size: var(--vc-text-sm);
 }
 
-/* 消息历史：唯一纵向滚动区。wrap 提供回底按钮的定位上下文（滚动区可视底部）。 */
+/* 消息历史：唯一纵向滚动区。wrap 负责历史与回底按钮的纵向布局。 */
 .history-wrap {
-  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -1808,7 +1807,7 @@ export default defineComponent({
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: 0 var(--vc-space-3) calc(44px + var(--vc-space-5));
+  padding: 0 var(--vc-space-3) var(--vc-space-3);
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
@@ -1984,15 +1983,13 @@ export default defineComponent({
   font-size: var(--vc-text-xs);
 }
 
-/* 回到底部：悬浮在输入区上方的轻量按钮。 */
+/* 回到底部：在历史与输入区之间占位，避免遮挡消息。 */
 .back-to-latest {
-  position: absolute;
-  bottom: var(--vc-space-3);
-  left: 50%;
-  z-index: var(--vc-z-content);
+  flex: none;
+  align-self: center;
   min-width: 44px;
   min-height: 44px;
-  margin: 0;
+  margin: var(--vc-space-2) 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
   border-radius: var(--vc-radius-pill);
@@ -2000,7 +1997,6 @@ export default defineComponent({
   color: var(--vc-ink);
   font: inherit;
   font-size: var(--vc-text-xs);
-  transform: translateX(-50%);
 }
 
 .back-to-latest::after {
