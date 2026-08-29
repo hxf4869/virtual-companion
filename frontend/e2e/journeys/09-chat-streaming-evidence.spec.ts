@@ -11,7 +11,7 @@ import {
 
 // Journey 9（round7）——三个证据型测试：
 //
-// 1) 流式增量 + 真实服务端终态形态（浏览器级生产 transport）：
+// 1) synthetic 慢流 + 服务端终态形态（浏览器级生产 transport）：
 //    addInitScript 劫持 window.fetch 仅接管 /realtime/tickets 与
 //    /realtime/streams/*，测试逐帧 enqueue 真实 ReadableStream 字节。
 //    终态按 0184 runtime 的真实形态发送——`event: snapshot` 元数据帧不含
@@ -200,26 +200,13 @@ function formalOccurrences(page: Page, full: string): Promise<number> {
   }, full);
 }
 
-/** 套跑共享登录来源桶（10 次/60 秒）：429 时做有界多次等待重试，
- * 不放宽任何断言。 */
-async function uiLoginWithRetry(page: Page, user: { username: string; password: string }): Promise<E2ESession> {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await uiLogin(page, user);
-    } catch (err) {
-      if (attempt >= 3 || !String(err).includes("429")) throw err;
-      await page.waitForTimeout(65_000);
-    }
-  }
-}
-
 async function loginWithRelationship(
   page: Page,
   requestFixture: Parameters<typeof provisionUser>[0],
   suffix: E2EUserSuffix,
 ): Promise<{ session: E2ESession; relationshipId: string }> {
   const user = await provisionUser(requestFixture, suffix);
-  const session = await uiLoginWithRetry(page, user);
+  const session = await uiLogin(page, user);
   await prepareGenerationAccess(session.accessToken);
 
   await navigateToPage(page, "/pages/companion/companion");
@@ -245,7 +232,7 @@ async function loginWithRelationship(
   return { session, relationshipId };
 }
 
-test("in-browser transport streams deltas and completes through a real snapshot-metadata tail", async ({
+test("synthetic slow stream: in-browser transport completes through a snapshot-metadata tail", async ({
   page,
   request,
 }) => {
@@ -458,7 +445,7 @@ test("in-browser transport streams deltas and completes through a real snapshot-
   await waitForChromeStable(page);
   await page.screenshot({ path: `${SHOTS}/streaming-draft-2.png` });
 
-  // ---- 真实服务端终态形态：snapshot 元数据（无 events）+ cursor 后尾巴 ----
+  // ---- synthetic 慢流按服务端终态形态发送：snapshot 元数据 + cursor 后尾巴 ----
   formalReleased = true; // 只有终态后的分页才会放回正式回复
   await pushFrame('event: snapshot\ndata: {"status":"COMPLETED","generationId":101}\n\n');
   await pushFrame(frame("chat.completed", 5, ""));
@@ -470,7 +457,16 @@ test("in-browser transport streams deltas and completes through a real snapshot-
     ctrl.close();
   });
 
-  await expect(page.getByTestId("assistant-md").filter({ hasText: DRAFT_FULL }).last()).toBeVisible({ timeout: 30_000 });
+  const formalReplies = page.getByTestId("assistant-md").filter({ hasText: DRAFT_FULL });
+  await expect(formalReplies).toHaveCount(1, { timeout: 30_000 });
+  const formalReply = formalReplies.first();
+  const formalRender = await formalReply.evaluate((el) => ({
+    text: (el.textContent ?? "").trim(),
+    height: el.getBoundingClientRect().height,
+  }));
+  expect(formalRender.text).not.toBe("");
+  expect(formalRender.height).toBeGreaterThan(0);
+  await expect(formalReply).toBeVisible();
   await expect(page.locator('[data-testid="draft"]')).toHaveCount(0);
   // 正式回复恰好一份（终态后 store 会重开分页拉取提交行——轮询直到出现，
   // 再钉死"恰好一份"）；迟到的标记文本无处可寻。

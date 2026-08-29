@@ -70,6 +70,28 @@ async function nextFrame(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
+function controlAnimationFrames(): Map<number, FrameRequestCallback> {
+  const frames = new Map<number, FrameRequestCallback>();
+  let nextId = 1;
+  vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+    const id = nextId++;
+    frames.set(id, callback);
+    return id;
+  });
+  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((id) => {
+    frames.delete(id);
+  });
+  return frames;
+}
+
+function runNextControlledFrame(frames: Map<number, FrameRequestCallback>): void {
+  const entry = frames.entries().next().value;
+  expect(entry).toBeDefined();
+  const [id, callback] = entry as [number, FrameRequestCallback];
+  frames.delete(id);
+  callback(0);
+}
+
 /** 用固定的几何属性驱动最小滚动状态机（happy-dom 无真实布局）。 */
 function installScrollGeometry(el: Element, scrollHeight: number, clientHeight: number): void {
   Object.defineProperty(el, "scrollHeight", { configurable: true, value: scrollHeight });
@@ -135,7 +157,10 @@ describe("chat page glue（纠偏式重写）", () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="message-input"]').exists()).toBe(true);
+    const input = wrapper.find('[data-testid="message-input"]');
+    expect(input.exists()).toBe(true);
+    expect(input.attributes()).toHaveProperty("auto-height");
+    expect(input.attributes()).not.toHaveProperty("rows");
     expect(wrapper.find('[data-testid="send"]').exists()).toBe(true);
     wrapper.unmount();
   });
@@ -389,6 +414,46 @@ describe("chat page glue（纠偏式重写）", () => {
     wrapper.unmount();
   });
 
+  it("SCROLL: real user input cancels a queued bottom frame, then following resumes at the tail", async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    await nextFrame();
+
+    const el = historyElOf(wrapper);
+    installScrollGeometry(el, 2000, 400);
+    el.scrollTop = 1600;
+    const queuedFrames = controlAnimationFrames();
+
+    const store = useChatStore();
+    store.messages = [
+      { messageId: "m1", conversationId: "1", role: "user", content: "第一条" },
+    ];
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(1);
+
+    // 帧排队后真实滚动输入先到，待执行帧被取消；随后的 scroll 只更新跟随意图。
+    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -120 }));
+    el.scrollTop = 300;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(0);
+    expect(el.scrollTop).toBe(300);
+
+    // 用户回到底部后，下一条消息仍应正常跟随。
+    el.scrollTop = 1580;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    store.messages = [
+      ...store.messages,
+      { messageId: "m2", conversationId: "1", role: "assistant", content: "第二条" },
+    ];
+    await wrapper.vm.$nextTick();
+    expect(queuedFrames.size).toBe(1);
+    runNextControlledFrame(queuedFrames);
+    expect(el.scrollTop).toBe(2000);
+    wrapper.unmount();
+  });
+
   it("SCROLL: a real scroll away stops following, keeps the reading spot and offers back-to-latest", async () => {
     const wrapper = mountPage();
     await flushPromises();
@@ -442,28 +507,48 @@ describe("chat page glue（纠偏式重写）", () => {
     wrapper.unmount();
   });
 
-  it("SCROLL: switching conversations cancels the pending state and re-follows the new tail", async () => {
+  it("SCROLL: a late clamp after switching conversations cannot swallow the new tail frame", async () => {
     const wrapper = mountPage();
     await flushPromises();
+    await nextFrame();
 
     const el = historyElOf(wrapper);
     installScrollGeometry(el, 2000, 400);
-    el.scrollTop = 1900;
-    await nextFrame();
-    el.scrollTop = 300;
-    el.dispatchEvent(new Event("scroll"));
-    await wrapper.vm.$nextTick();
-    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+    el.scrollTop = 1600;
+    const queuedFrames = controlAnimationFrames();
 
     const store = useChatStore();
-    store.conversationId = "2";
+    store.messages = [
+      { messageId: "a1", conversationId: "1", role: "user", content: "旧会话" },
+    ];
     await wrapper.vm.$nextTick();
-    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
+    expect(queuedFrames.size).toBe(1);
+    const [staleId, staleFrame] = queuedFrames.entries().next().value as [
+      number,
+      FrameRequestCallback,
+    ];
+
+    store.conversationId = "2";
+    queuedFrames.delete(staleId);
+    el.scrollTop = 321;
+    staleFrame(0);
+    expect(el.scrollTop).toBe(321);
+    await wrapper.vm.$nextTick();
 
     store.messages = [{ messageId: "n1", conversationId: "2", role: "user", content: "新会话" }];
     await wrapper.vm.$nextTick();
-    await nextFrame();
+    expect(queuedFrames.size).toBe(1);
+
+    // A 清空后的迟到 clamp 没有用户输入前因；它可暂时翻转 following，
+    // 但不能取消或吞掉已经登记给 B 的落底帧。
+    el.scrollTop = 0;
+    el.dispatchEvent(new Event("scroll"));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(true);
+    runNextControlledFrame(queuedFrames);
+    await wrapper.vm.$nextTick();
     expect(el.scrollTop).toBe(2000);
+    expect(wrapper.find('[data-testid="back-to-latest"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

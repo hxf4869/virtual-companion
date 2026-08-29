@@ -1,7 +1,7 @@
 <template>
   <header class="vc-header vc-chrome" role="banner" data-testid="page-header">
-    <!-- 统一页头：返回（可选）+ 标题（一级标题语义）+ 上下文操作。挂在
-         暮色环境层上，替代 uni 原生标题栏（navigationStyle: custom），
+    <!-- 统一页头：返回（可选）+ 标题（一级标题语义）+ 上下文操作。替代
+         uni 原生标题栏（navigationStyle: custom），
          消除原生标题与页面标题重复。 -->
     <button
       v-if="showBack"

@@ -1448,8 +1448,7 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* 内部壳高密度变体：暮色深底、抬升面板、紧凑行距。窄屏表格换为摘要行
-   （audit-row 网格），不做不可读的 nowrap 横向堆叠。 */
+/* 窄屏表格换为摘要行（audit-row 网格），不做不可读的 nowrap 横向堆叠。 */
 .admin-anchor {
   position: sticky;
   top: 0;
@@ -1523,7 +1522,6 @@ export default defineComponent({
   flex: 1 1 10em;
   min-height: 44px;
   padding: 0 var(--vc-space-3);
-  /* 暗面上的真实控件边界 ≥3:1，不用装饰级 border-env。 */
   border: 1px solid var(--vc-border-env-strong);
   border-radius: var(--vc-radius-s);
   background: var(--vc-env);
@@ -1635,8 +1633,6 @@ export default defineComponent({
   margin-top: var(--vc-space-2);
 }
 
-/* P2（round3）：账户行内操作补齐 ≥44px 触控尺寸；暗面（env-raised 面板上）
-   用 border-env-strong 保住真实控件边界，不再是 uni-app mini 默认样式。 */
 .admin-row-btn {
   min-height: 44px;
   flex: 0 0 auto;

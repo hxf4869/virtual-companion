@@ -6,6 +6,7 @@ import {
   navigateToPage,
   prepareGenerationAccess,
   PROVIDER_REPLY,
+  PROVIDER_TIMEOUT_SENTINEL,
   provisionUser,
   uiLogin,
 } from "../helpers";
@@ -138,18 +139,8 @@ test("a message report deep link carries messageId into the submit payload", asy
   page,
   request,
 }) => {
-  // 全量套跑时登录来源桶（10 次/60 秒）可能被前面的 journey 占满；
-  // 限流是真实行为，做一次有界等待重试，不放宽任何断言。
-  test.setTimeout(180_000);
   const user = await provisionUser(request, "relationship-chat");
-  let session: Awaited<ReturnType<typeof uiLogin>>;
-  try {
-    session = await uiLogin(page, user);
-  } catch (err) {
-    if (!String(err).includes("429")) throw err;
-    await page.waitForTimeout(65_000);
-    session = await uiLogin(page, user);
-  }
+  const session = await uiLogin(page, user);
   await prepareGenerationAccess(session.accessToken);
 
   await navigateToPage(page, "/pages/companion/companion");
@@ -329,16 +320,14 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
   await expect(page.getByTestId("incognito-hint")).toBeVisible();
   await expect(page.getByTestId("incognito-hint")).toContainText("不会进入长期记忆");
 
-  // ---- 取消：流式仍在进行时取消是诚实终态；本地 provider 可能瞬时完成，
-  //      取消按钮不可用就让它完成——两种结果都不伪造状态。----
-  await sendFromComposer(page, "这句话会被取消");
+  // ---- 取消：故障注入让流保持进行中，取消按钮必须真实出现并被点击。----
+  await sendFromComposer(page, `这句话会被取消 ${PROVIDER_TIMEOUT_SENTINEL}`);
   const cancelBtn = page.getByTestId("cancel");
-  if ((await cancelBtn.count()) > 0 && (await cancelBtn.isEnabled())) {
-    await cancelBtn.click();
-  }
-  await expect
-    .poll(() => page.getByTestId("draft").count(), { timeout: 30_000 })
-    .toBe(0);
+  await expect(cancelBtn).toBeVisible({ timeout: 10_000 });
+  await expect(cancelBtn).toBeEnabled();
+  await cancelBtn.click();
+  await expect(page.getByTestId("status")).toHaveText("已取消", { timeout: 30_000 });
+  await expect(page.getByTestId("draft")).toHaveCount(0);
 
   // ---- 消息删除：经菜单切回原会话（同页 hash 变更不会重挂页面组件，
   //      深链只在跨页进入时生效；菜单切换是真实用户路径），
@@ -379,10 +368,18 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
       deleteResponses.push(new URL(response.url()).pathname);
     }
   });
-  // 阅读位置基线在确认点击之前取（首击已把该行滚入视口，二击不再滚动）。
-  const scrollTopBeforeDelete = await page
-    .locator('[data-testid="history"]')
-    .evaluate((el) => Math.round(el.scrollTop));
+  // 取被删行之前的同一幸存消息作为阅读锚点；单看 scrollTop 会假绿，
+  // 取之后的消息又会把正常内容回流误判为需要补偿的滚动跳变。
+  const survivor = page
+    .locator('[data-testid="chat-message"]')
+    .filter({ hasText: "种子消息 1" })
+    .first();
+  await expect(survivor).toBeAttached();
+  const survivorTop = await survivor.evaluate((el) => {
+    const history = el.closest('[data-testid="history"]');
+    if (!history) throw new Error("history not found");
+    return Math.round(el.getBoundingClientRect().top - history.getBoundingClientRect().top);
+  });
   await deleteBtn.click();
 
   // 该行从列表消失；只发生一次真实 DELETE。
@@ -391,11 +388,17 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
   });
   expect(deleteResponses).toHaveLength(1);
 
-  // ---- 删除后阅读区域大致保持：不跳顶、不跳底（与删除前差值在一行高内）----
-  const scrollTopAfterDelete = await page
-    .locator('[data-testid="history"]')
-    .evaluate((el) => Math.round(el.scrollTop));
-  expect(Math.abs(scrollTopAfterDelete - scrollTopBeforeDelete)).toBeLessThanOrEqual(80);
+  // ---- 删除后，同一幸存消息仍留在原阅读位置。----
+  await expect
+    .poll(async () => {
+      const after = await survivor.evaluate((el) => {
+        const history = el.closest('[data-testid="history"]');
+        if (!history) throw new Error("history not found");
+        return Math.round(el.getBoundingClientRect().top - history.getBoundingClientRect().top);
+      });
+      return Math.abs(after - survivorTop);
+    })
+    .toBeLessThanOrEqual(4);
 
   // ---- 失败与重试在 Journey07 覆盖（provider 故障注入）；此处不复述。----
 });

@@ -177,7 +177,6 @@ export default {
 </script>
 
 <style scoped>
-/* 内部壳：同一 token 的中性高密度变体（暮色深底 + 抬升面板）。 */
 .notice {
   padding: var(--vc-space-4);
   border: 1px solid var(--vc-border-env);

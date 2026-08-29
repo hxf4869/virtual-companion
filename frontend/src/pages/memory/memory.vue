@@ -829,7 +829,8 @@ function goTo(url: string): void {
 <style scoped>
 /* 记忆中心：来源、状态与用户控制优先。待确认置顶，分组清晰。 */
 .mem-reload {
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-env);
@@ -943,11 +944,12 @@ function goTo(url: string): void {
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--vc-space-1);
+  gap: var(--vc-space-2);
 }
 
 .actions button {
-  min-height: 36px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);

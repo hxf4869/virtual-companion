@@ -150,7 +150,7 @@ describe("InternalShell", () => {
     setActivePinia(createPinia());
   });
 
-  it("all dark shells carry vc-chrome so the --vc-focus-on-env ring can hit", async () => {
+  it("all chrome regions carry vc-chrome so the focus ring can hit", async () => {
     stubUni();
     const header = mount(PageHeader, { props: { title: "记忆" } });
     expect(header.find('[data-testid="page-header"]').classes()).toContain("vc-chrome");

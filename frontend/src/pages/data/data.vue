@@ -43,11 +43,10 @@ Uses existing list APIs; report/appeal status reads the report intake list
 
     <template v-if="!store.loadFailed">
       <view class="section" data-testid="data-account">
-        <text class="section-title">账号</text>
+        <text class="section-title">账号与安全</text>
         <button data-testid="data-open-account" class="row row-link" @click="goTo('/pages/account/account')">
-          账号编号：{{ auth.accountId ?? "未登录" }}
+          查看账号、安全与登录设置
         </button>
-        <text class="row">角色：{{ accountRoleLabel(auth.role) }}</text>
       </view>
 
       <view class="section" data-testid="data-relationships">
@@ -163,7 +162,6 @@ import ErrorNotice from "@/design-system/ErrorNotice.vue";
 import RetryButton from "@/design-system/RetryButton.vue";
 import { buildContextHref } from "@/domain/context-href";
 import { readableConversationTitle } from "@/domain/conversation-display";
-import { accountRoleLabel } from "@/domain/account-display";
 import { publicMemoryStatusLabel } from "@/domain/public-memory-display";
 import { personaDisplayName } from "@/domain/persona";
 import { requestIdLabel } from "@/domain/request-id";
@@ -263,7 +261,6 @@ export default {
       auth,
       store,
       reportStore,
-      accountRoleLabel,
       consentTypeLabel,
       readableConversationTitle,
       publicMemoryStatusLabel,
@@ -282,7 +279,6 @@ export default {
 </script>
 
 <style scoped>
-/* The Lit Window 语义 token（Phase 5 迁移）。 */
 .intro {
   margin: 0 0 var(--vc-space-4);
   color: var(--vc-muted);
@@ -357,7 +353,6 @@ export default {
   min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
-  /* 暗面页头上的真实控件边界 ≥3:1。 */
   border: 1px solid var(--vc-border-env-strong);
   border-radius: var(--vc-radius-s);
   background: transparent;

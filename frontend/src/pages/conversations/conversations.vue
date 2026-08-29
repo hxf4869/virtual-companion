@@ -528,7 +528,8 @@ export default {
 }
 
 .conv-new-chat {
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 0;
@@ -583,7 +584,8 @@ export default {
 }
 
 .conv-btn {
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);

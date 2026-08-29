@@ -120,7 +120,11 @@ describe("data page (FR-DATA-001)", () => {
     expect(calls).toContain("/api/v1/relationships/7/reminders");
     expect(calls).toContain("/api/v1/consents");
     expect(calls).toContain("/api/v1/service-mode");
-    expect(wrapper.find('[data-testid="data-account"]').text()).toContain("42");
+    const accountSummary = wrapper.find('[data-testid="data-account"]').text();
+    expect(accountSummary).toContain("账号与安全");
+    expect(accountSummary).toContain("查看账号、安全与登录设置");
+    expect(accountSummary).not.toContain("42");
+    expect(accountSummary).not.toContain("USER");
     expect(wrapper.find('[data-testid="data-relationships"]').text()).toContain("小安");
     expect(wrapper.find('[data-testid="data-conversations"]').text()).toContain("夜聊");
     expect(wrapper.find('[data-testid="data-memories"]').text()).toContain("喜欢安静的晚上");
@@ -137,15 +141,16 @@ describe("data page (FR-DATA-001)", () => {
     wrapper.unmount();
   });
 
-  // P2（round4）：内部只读角色的中文标签真实渲染（不只测 helper）。
-  it("renders the OPS_VIEWER role as a Chinese label", async () => {
+  it("does not expose the internal account role in the overview", async () => {
     stubFetch();
     useAuthStore().role = "OPS_VIEWER";
     const wrapper = mount(DataPage, { attachTo: document.body });
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="data-account"]').text()).toContain("运维观察员");
-    expect(wrapper.find('[data-testid="data-account"]').text()).not.toContain("OPS_VIEWER");
+    const accountSummary = wrapper.find('[data-testid="data-account"]').text();
+    expect(accountSummary).toContain("查看账号、安全与登录设置");
+    expect(accountSummary).not.toContain("运维观察员");
+    expect(accountSummary).not.toContain("OPS_VIEWER");
     wrapper.unmount();
   });
 

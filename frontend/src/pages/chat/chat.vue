@@ -218,12 +218,15 @@
           <view class="history-wrap">
             <view
               ref="historyEl"
-            class="chat-history"
-            data-testid="history"
-            role="region"
-            aria-label="消息历史"
-            tabindex="0"
-          >
+              class="chat-history"
+              data-testid="history"
+              role="region"
+              aria-label="消息历史"
+              tabindex="0"
+              @wheel.passive="onHistoryUserScrollIntent"
+              @touchmove.passive="onHistoryUserScrollIntent"
+              @keydown="onHistoryUserScrollIntent"
+            >
             <!-- 条件上下文提示：可关闭，位于滚动内容头部。 -->
             <view v-if="serviceHint" class="context-hint" data-testid="service-mode-hint">
               <text>{{ serviceHint }}</text>
@@ -500,10 +503,9 @@
               data-testid="message-input"
               placeholder="输入消息…"
               aria-label="消息输入"
-              rows="1"
+              auto-height
               :disabled="isStreaming"
               @keydown.enter="onEnterKey"
-              @input="autoGrowInput"
             />
             <button
               data-testid="send"
@@ -655,20 +657,31 @@ export default defineComponent({
       pendingScrollFrame = 0;
     }
 
+    /** 真实输入发生在 scroll 之前；只取消待执行落底帧，位置仍由唯一 scroll handler 判定。 */
+    function onHistoryUserScrollIntent(event: Event): void {
+      if (
+        event instanceof KeyboardEvent &&
+        (event.target !== event.currentTarget ||
+          !["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key))
+      ) {
+        return;
+      }
+      cancelPendingScrollFrame();
+    }
+
     /** 跟随状态下把视图落到最新内容；同一帧内的多次更新合并为一次写入。 */
-    /** 跟随状态下把视图落到最新内容；同一帧内的多次更新合并为一次写入。
-     * 帧以注册时刻的意图为准（入口已检查 following）：会话清空时 scrollTop
-     * 被 clamp 产生的 scroll 事件会在新内容渲染后才派发，把 following 翻
-     * false——若帧执行时复查就会放弃落底，视图停在顶部。用户滚离时入口
-     * 检查会拒绝注册新帧，防抢位置语义不变。 */
     function scheduleScrollToBottom(): void {
       if (!followingLatest.value || pendingScrollFrame) return;
-      const el = historyNode();
-      if (!el) return;
+      const node = historyNode();
+      if (!node) return;
+      const conversationId = store.conversationId;
       pendingScrollFrame = requestAnimationFrame(() => {
         pendingScrollFrame = 0;
-        const node = historyNode();
-        if (!node) return;
+        if (
+          store.conversationId !== conversationId ||
+          historyNode() !== node
+        ) return;
+        followingLatest.value = true;
         node.scrollTop = node.scrollHeight;
       });
     }
@@ -852,7 +865,6 @@ export default defineComponent({
         return;
       }
       inputText.value = "";
-      resetInputHeight();
       sendError.value = false;
       try {
         await store.send(transport, deps, text);
@@ -877,18 +889,6 @@ export default defineComponent({
       if (event.shiftKey) return;
       event.preventDefault();
       void onSend();
-    }
-
-    function autoGrowInput(event: Event): void {
-      const el = event.target as HTMLTextAreaElement | null;
-      if (!el) return;
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-    }
-
-    function resetInputHeight(): void {
-      const el = globalThis.document.querySelector<HTMLTextAreaElement>('[data-testid="message-input"]');
-      if (el) el.style.height = "";
     }
 
     const onUsageContinue = () => usageHealth.record(transport, "CONTINUED");
@@ -1415,6 +1415,7 @@ export default defineComponent({
       usageHealth,
       historyEl,
       followingLatest,
+      onHistoryUserScrollIntent,
       onBackToLatest,
       headerCompanionName,
       displayMessages,
@@ -1466,7 +1467,6 @@ export default defineComponent({
       canRetry,
       onSend,
       onEnterKey,
-      autoGrowInput,
       onRegenerate,
       onSelectVersion,
       canRegenerateMessage,
@@ -1642,7 +1642,8 @@ export default defineComponent({
 
 .msg-more,
 .hint-btn {
-  min-height: 36px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0 var(--vc-space-2);
   border: 0;
   color: var(--vc-muted);
@@ -1758,8 +1759,8 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -1807,7 +1808,7 @@ export default defineComponent({
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: 0 var(--vc-space-3) var(--vc-space-3);
+  padding: 0 var(--vc-space-3) calc(44px + var(--vc-space-5));
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
@@ -1890,7 +1891,7 @@ export default defineComponent({
 .msg-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--vc-space-1);
+  gap: var(--vc-space-2);
   margin-top: var(--vc-space-1);
   justify-content: flex-start;
 }
@@ -1916,7 +1917,7 @@ export default defineComponent({
   flex: 1 1 100%;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--vc-space-1);
+  gap: var(--vc-space-2);
 }
 
 .history-more {
@@ -1989,7 +1990,8 @@ export default defineComponent({
   bottom: var(--vc-space-3);
   left: 50%;
   z-index: var(--vc-z-content);
-  min-height: 36px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-3);
   border: 1px solid var(--vc-border-strong);
@@ -1999,7 +2001,6 @@ export default defineComponent({
   font: inherit;
   font-size: var(--vc-text-xs);
   transform: translateX(-50%);
-  box-shadow: 0 2px 8px rgba(28, 36, 48, 0.12);
 }
 
 .back-to-latest::after {
@@ -2056,7 +2057,7 @@ export default defineComponent({
   box-sizing: border-box;
   min-height: 44px;
   max-height: 120px;
-  padding: 10px var(--vc-space-3);
+  padding: 0;
   border: 1px solid var(--vc-border-strong);
   border-radius: var(--vc-radius-m);
   background: var(--vc-card);
@@ -2064,7 +2065,15 @@ export default defineComponent({
   font-family: var(--vc-font);
   font-size: 16px;
   line-height: 1.5;
+  overflow-y: auto;
   resize: none;
+}
+
+.chat-input :deep(.uni-textarea-placeholder),
+.chat-input :deep(.uni-textarea-compute),
+.chat-input :deep(.uni-textarea-textarea) {
+  box-sizing: border-box;
+  padding: 10px var(--vc-space-3);
 }
 
 .chat-send {

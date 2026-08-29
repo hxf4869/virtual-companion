@@ -48,10 +48,10 @@ export type AppIconName =
   | "plus";
 
 const ICON_PATHS: Record<AppIconName, string> = {
-  // 首页：一扇亮着的窗（十字窗棂 + 底部光线）
-  home: `<rect x="5" y="4" width="14" height="13" rx="2"/>
-    <path d="M12 4v13M5 10.5h14" />
-    <path d="M9 21h6M12 17v4" />`,
+  // 首页：房屋
+  home: `<path d="M3.5 10.5 12 3.5l8.5 7" />
+    <path d="M5.5 9.5V20h13V9.5" />
+    <path d="M9.5 20v-6h5v6" />`,
   // 对话：两个交叠的气泡
   chats: `<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h7A2.5 2.5 0 0 1 16 6.5v3A2.5 2.5 0 0 1 13.5 12H9l-3.5 3v-3.2A2.5 2.5 0 0 1 4 9.5z" />
     <path d="M16 8.5h1.5A2.5 2.5 0 0 1 20 11v3a2.5 2.5 0 0 1-2 2.45V20l-3.4-2.9H12" />`,

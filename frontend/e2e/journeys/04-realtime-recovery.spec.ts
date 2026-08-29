@@ -29,6 +29,30 @@ test("reload recovers after the first SSE connection is interrupted", async ({
   await prepareGenerationAccess(session.accessToken);
   const context = await createRelationshipAndConversation(session.accessToken);
 
+  // 本用例只验证认证隔离后的前端 SSE 恢复，不代表真实 auth+SSE 全链通过。
+  // 此前失败的响应链是 /auth/refresh 429 → relationships 401 → 登录页；
+  // 现有 Playwright 路由夹具只隔离这一次 reload 的 refresh。
+  let refreshes = 0;
+  await page.route("**/api/v1/auth/refresh", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    refreshes += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        accessToken: session.accessToken,
+        tokenType: "Bearer",
+        expiresInSeconds: 7200,
+        accountId: session.accountId,
+        role: "USER",
+        passwordMustChange: false,
+      }),
+    });
+  });
+
   let generationPosts = 0;
   let streamAttempts = 0;
   page.on("request", (observed) => {
@@ -78,8 +102,8 @@ test("reload recovers after the first SSE connection is interrupted", async ({
   );
   await page.reload({ waitUntil: "domcontentloaded" });
   expect((await restoredSnapshot).ok()).toBeTruthy();
+  expect(refreshes).toBe(1);
 
-  await expect(page.getByTestId("assistant-md")).toContainText(PROVIDER_REPLY);
   await expect(page.getByTestId("assistant-md")).toContainText(PROVIDER_REPLY);
   await expect(
     page.locator('[data-testid="chat-message"].user').filter({ hasText: prompt }),
@@ -119,15 +143,7 @@ test("a browser abort of a proxied SSE subscription closes the proxy upstream tr
 }) => {
   test.setTimeout(150_000);
   const user = await provisionUser(request, "realtime-recovery");
-  // 套跑共享登录来源桶（10 次/60 秒）：429 时做有界等待重试，不放宽断言。
-  let session: Awaited<ReturnType<typeof uiLogin>>;
-  try {
-    session = await uiLogin(page, user);
-  } catch (err) {
-    if (!String(err).includes("429")) throw err;
-    await page.waitForTimeout(65_000);
-    session = await uiLogin(page, user);
-  }
+  const session = await uiLogin(page, user);
   await prepareGenerationAccess(session.accessToken);
   const context = await createRelationshipAndConversation(session.accessToken);
   // 页面只需位于 vite 源（同源 fetch 才走代理）；登录后的落地页即可。

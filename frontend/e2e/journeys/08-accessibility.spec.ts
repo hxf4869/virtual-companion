@@ -5,7 +5,6 @@ import {
   test,
   type BrowserContext,
   type Page,
-  type Response,
 } from "@playwright/test";
 
 import {
@@ -74,6 +73,43 @@ async function expectAccessible(page: Page, label: string): Promise<void> {
     results.violations,
     `[${label}] axe violations:\n${summarize(results.violations)}`,
   ).toEqual([]);
+}
+
+async function expectTouchTargets(
+  page: Page,
+  label: string,
+  selectors: string[],
+  gapContainers: string[] = [],
+): Promise<void> {
+  const result = await page.evaluate(
+    ({ targetSelectors, containerSelectors }) => ({
+      targets: targetSelectors.flatMap((selector) => {
+        const matches = [...document.querySelectorAll(selector)];
+        if (matches.length === 0) return [{ selector, index: 0, width: 0, height: 0 }];
+        return matches.map((el, index) => {
+          const rect = el.getBoundingClientRect();
+          return { selector, index, width: rect.width, height: rect.height };
+        });
+      }),
+      gaps: containerSelectors.map((selector) => {
+        const el = document.querySelector(selector);
+        const style = el ? getComputedStyle(el) : null;
+        return {
+          selector,
+          gap: style ? Math.max(parseFloat(style.columnGap), parseFloat(style.rowGap)) : 0,
+        };
+      }),
+    }),
+    { targetSelectors: selectors, containerSelectors: gapContainers },
+  );
+  for (const target of result.targets) {
+    const targetLabel = `${label} ${target.selector}[${target.index}]`;
+    expect(target.width, `${targetLabel} width`).toBeGreaterThanOrEqual(43.5);
+    expect(target.height, `${targetLabel} height`).toBeGreaterThanOrEqual(43.5);
+  }
+  for (const container of result.gaps) {
+    expect(container.gap, `${label} ${container.selector} gap`).toBeGreaterThanOrEqual(8);
+  }
 }
 
 test("login：axe 全量 + 键盘 Tab 焦点顺序 + Enter/Space 激活", async ({ page }) => {
@@ -148,27 +184,16 @@ test("login：axe 全量 + 键盘 Tab 焦点顺序 + Enter/Space 激活", async 
   await page.keyboard.press("Space");
   await expect(page.getByTestId("invite-panel")).toBeVisible();
 
-  // Enter 激活提交：凭据已在上方填好，聚焦 submit 按 Enter，必须走完整登录
-  // （请求发出 + 离开登录页）。全量套跑可能撞上真实限流（AuthAbuseGuard），
-  // 不放宽任何限流：429 时按 Retry-After 等待后重试（有界 3 次）。
-  const enterToLogin = async (): Promise<Response> => {
-    const responsePromise = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/v1/auth/login",
-    );
-    await page.getByTestId("submit").focus();
-    await page.keyboard.press("Enter");
-    return responsePromise;
-  };
-  let response = await enterToLogin();
-  for (let attempt = 1; response.status() === 429 && attempt < 3; attempt += 1) {
-    const parsed = Number(response.headers()["retry-after"]);
-    const waitSeconds =
-      Number.isFinite(parsed) && parsed >= 1 && parsed <= 65 ? parsed : 61;
-    await page.waitForTimeout((waitSeconds + 1) * 1000);
-    response = await enterToLogin();
-  }
+  // Enter 激活提交：凭据已在上方填好，聚焦 submit 按 Enter，必须走一次
+  // 完整登录。若真实限流返回 429，本测试直接失败并披露，不等待后重登。
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/auth/login",
+  );
+  await page.getByTestId("submit").focus();
+  await page.keyboard.press("Enter");
+  const response = await responsePromise;
   expect(
     response.ok(),
     `Enter 提交登录失败：${response.status()}`,
@@ -184,43 +209,13 @@ test("login：axe 全量 + 键盘 Tab 焦点顺序 + Enter/Space 激活", async 
 const BASE_URL =
   process.env.E2E_BASE_URL ??
   `http://127.0.0.1:${process.env.E2E_H5_PORT ?? "5173"}`;
-
-/**
- * 全量套跑时，admin setup + 7 个 journey + 本 journey 的 UI 登录都来自同一
- * 回环 source，可能吃满后端真实限流（AuthAbuseGuard 10 次/60 秒/来源）。
- * 这里不放宽任何限流：429 时按响应头 Retry-After 等待后重试（有界 3 次）。
- */
-async function uiLoginRespectingSourceLimiter(
-  page: Page,
-  user: { username: string; password: string },
-): Promise<E2ESession> {
-  for (let attempt = 1; ; attempt += 1) {
-    let retryAfterSeconds: number | null = null;
-    const onResponse = (response: Response): void => {
-      const isLogin =
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/v1/auth/login";
-      if (!isLogin || response.status() !== 429) return;
-      const parsed = Number(response.headers()["retry-after"]);
-      retryAfterSeconds =
-        Number.isFinite(parsed) && parsed >= 1 && parsed <= 65 ? parsed : 61;
-    };
-    page.on("response", onResponse);
-    try {
-      return await uiLogin(page, user);
-    } catch (error) {
-      if (retryAfterSeconds === null || attempt >= 3) throw error;
-      await page.waitForTimeout((retryAfterSeconds + 1) * 1000);
-    } finally {
-      page.removeListener("response", onResponse);
-    }
-  }
-}
+const FINAL_SHOTS = ".impeccable/review/final-correction";
 
 test.describe.serial("登录后页面（共享一次登录）", () => {
   let page: Page;
   let context: BrowserContext;
   let session: E2ESession;
+  let testRoutePatterns: string[] = [];
 
   test.beforeAll(async ({ browser }, testInfo) => {
     const device =
@@ -232,7 +227,7 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
     context = await browser.newContext({ ...contextOptions, baseURL: BASE_URL });
     page = await context.newPage();
     const user = await provisionUser(undefined, "accessibility");
-    session = await uiLoginRespectingSourceLimiter(page, user);
+    session = await uiLogin(page, user);
     // 登录后应用把新用户重定向到成年核验/同意引导页；先经真实 API 满足
     // 服务端准入，后续页面导航才不会被引导流再次劫持。
     await prepareGenerationAccess(session.accessToken);
@@ -240,6 +235,13 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
 
   test.afterAll(async () => {
     await context?.close();
+  });
+
+  test.afterEach(async () => {
+    for (const routePattern of testRoutePatterns) {
+      await page.unroute(routePattern);
+    }
+    testRoutePatterns = [];
   });
 
   test("index 边界台：axe 全量", async () => {
@@ -312,6 +314,210 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
     await expectAccessible(page, "memory");
   });
 
+  test("移动端触控区与输入栏采用一个数据驱动浏览器检查", async ({}, testInfo) => {
+    const captureFinalShots = testInfo.project.name === "chromium-android";
+    const originalViewport = page.viewportSize();
+    const rel = await createRelationshipAndConversation(session.accessToken);
+    const memoryId = await createMemoryCandidate(
+      session.accessToken,
+      rel.relationshipId,
+      "触控区检查用的合成记忆摘要",
+      "message:touch-target",
+    );
+    const messages = Array.from({ length: 16 }, (_, index) => ({
+      messageId: `touch-${index + 1}`,
+      conversationId: rel.conversationId,
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `触控区检查消息 ${index + 1}：这段普通文本用于让消息历史形成真实滚动高度。`,
+      createdAt: "2026-08-29T00:00:00Z",
+    }));
+    const dueStatus = {
+      reminderAfterMinutes: 60,
+      sessionGapMinutes: 30,
+      continuousMinutes: 61,
+      reminderDue: true,
+      sessionStartedAt: "2026-08-29T00:00:00Z",
+    };
+
+    const routes = {
+      serviceMode: "**/api/v1/service-mode",
+      heartbeat: "**/api/v1/usage-health/heartbeat",
+      usageReminder: "**/api/v1/usage-health/reminder",
+      messages: `**/api/v1/conversations/${rel.conversationId}/messages*`,
+      reminders: `**/api/v1/relationships/${rel.relationshipId}/reminders*`,
+    } as const;
+    testRoutePatterns = Object.values(routes);
+
+    await page.route(routes.serviceMode, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ mode: "ZERO_LLM", summary: "AI 服务当前以受限模式运行。" }),
+      }),
+    );
+    await page.route(routes.heartbeat, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(dueStatus) }),
+    );
+    await page.route(routes.usageReminder, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(dueStatus) }),
+    );
+    await page.route(routes.messages, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(messages) }),
+    );
+    await page.route(routes.reminders, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            reminderId: "touch-reminder",
+            relationshipId: rel.relationshipId,
+            text: "触控区检查提醒",
+            remindAt: "2026-08-30T00:00:00Z",
+            recurrence: "NONE",
+            status: "ACTIVE",
+            createdAt: "2026-08-29T00:00:00Z",
+          },
+        ]),
+      });
+    });
+
+    await navigateToPage(
+      page,
+      `/pages/chat/chat?relationshipId=${rel.relationshipId}&conversationId=${rel.conversationId}`,
+    );
+    await expect(page.getByTestId("chat-message").first()).toBeVisible();
+    await expect(page.getByTestId("usage-health-banner")).toBeVisible();
+    await expect(page.getByTestId("service-mode-hint")).toBeVisible();
+    await page.getByTestId("history").evaluate((el) => {
+      el.scrollTop = 0;
+      el.dispatchEvent(new Event("scroll"));
+    });
+    await expect(page.getByTestId("back-to-latest")).toBeVisible();
+    await expectTouchTargets(
+      page,
+      "chat",
+      [
+        '[data-testid^="msg-more-"]',
+        '[data-testid="usage-health-continue"]',
+        '[aria-label="关闭服务状态提示"]',
+        '[data-testid="back-to-latest"]',
+      ],
+      [".context-hint__actions"],
+    );
+
+    for (const viewport of [
+      { width: 375, height: 812 },
+      { width: 390, height: 844 },
+      { width: 812, height: 375 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const layout = await page.evaluate(() => {
+        const input = document.querySelector('[data-testid="message-input"]');
+        const history = document.querySelector('[data-testid="history"]');
+        const composer = document.querySelector(".chat-input-area");
+        if (!input || !history || !composer) return null;
+        const inputRect = input.getBoundingClientRect();
+        const historyRect = history.getBoundingClientRect();
+        const composerRect = composer.getBoundingClientRect();
+        return {
+          inputHeight: inputRect.height,
+          historyHeight: historyRect.height,
+          historyBottom: historyRect.bottom,
+          composerTop: composerRect.top,
+          pageHeight: document.documentElement.scrollHeight,
+          viewportHeight: window.innerHeight,
+        };
+      });
+      expect(layout, `${viewport.width}x${viewport.height} layout`).not.toBeNull();
+      expect(layout!.inputHeight).toBeGreaterThanOrEqual(44);
+      expect(layout!.inputHeight).toBeLessThanOrEqual(48);
+      expect(layout!.historyHeight).toBeGreaterThanOrEqual(120);
+      expect(layout!.historyBottom).toBeLessThanOrEqual(layout!.composerTop + 1);
+      expect(layout!.pageHeight).toBeLessThanOrEqual(layout!.viewportHeight + 1);
+      if (captureFinalShots && viewport.width === 390 && viewport.height === 844) {
+        await page.screenshot({ path: `${FINAL_SHOTS}/chat-390x844-empty-input.png` });
+      }
+      if (captureFinalShots && viewport.width === 812 && viewport.height === 375) {
+        await page.screenshot({ path: `${FINAL_SHOTS}/chat-812x375-empty-input.png` });
+      }
+    }
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const nativeInput = page.locator('[data-testid="message-input"] textarea');
+    await nativeInput.fill("第一行\n第二行\n第三行\n第四行");
+    await expect
+      .poll(() => page.getByTestId("message-input").evaluate((el) => el.getBoundingClientRect().height))
+      .toBeGreaterThan(48);
+    expect(await page.getByTestId("message-input").evaluate((el) => el.getBoundingClientRect().height))
+      .toBeLessThanOrEqual(120);
+    if (captureFinalShots) {
+      await page.screenshot({ path: `${FINAL_SHOTS}/chat-390x844-multiline.png` });
+    }
+    // uni-h5 对 textarea 输入同步有 100ms 节流；等本次输入稳定后再模拟点击。
+    await page.waitForTimeout(150);
+    await page.getByTestId("send").click();
+    await expect(nativeInput).toHaveValue("");
+    await expect
+      .poll(() => page.getByTestId("message-input").evaluate((el) => el.getBoundingClientRect().height))
+      .toBeLessThanOrEqual(48);
+    await expect(page.getByTestId("cancel")).toHaveCount(0, { timeout: 30_000 });
+    if (originalViewport) await page.setViewportSize(originalViewport);
+
+    await navigateToPage(
+      page,
+      `/pages/conversations/conversations?relationshipId=${rel.relationshipId}`,
+    );
+    await expect(page.getByTestId("conversation-card").first()).toBeVisible();
+    await expectTouchTargets(page, "conversations", [
+      '[data-testid="nav-chat"]',
+      `[data-testid="conversation-manage-${rel.conversationId}"]`,
+    ]);
+
+    await navigateToPage(page, `/pages/memory/memory?relationshipId=${rel.relationshipId}`);
+    await expect(page.locator(".card.pending").first()).toBeVisible();
+    await expectTouchTargets(
+      page,
+      "memory",
+      [
+        '[data-testid="reload"]',
+        '[data-testid="memory-confirm"]',
+        '[data-testid="memory-open-detail"]',
+      ],
+      [".actions"],
+    );
+
+    await navigateToPage(
+      page,
+      `/pages/memory-detail/memory-detail?relationshipId=${rel.relationshipId}&memoryId=${memoryId}`,
+    );
+    await expect(page.getByTestId("memory-card")).toBeVisible();
+    await expectTouchTargets(page, "memory detail", ['[data-testid="nav-memory"]']);
+
+    await navigateToPage(page, `/pages/companion/companion?relationshipId=${rel.relationshipId}`);
+    await expect(page.locator(".gender-chip").first()).toBeVisible();
+    await expectTouchTargets(page, "companion", [".gender-chip"], [".gender-row"]);
+
+    await navigateToPage(page, "/pages/health/health");
+    await expect(page.getByTestId("health-after-60")).toBeVisible();
+    await expectTouchTargets(page, "health", ['[data-testid="health-after-60"]'], [".chip-row"]);
+
+    await navigateToPage(page, `/pages/reminder/reminder?relationshipId=${rel.relationshipId}`);
+    await expect(page.getByTestId("reminder-delete")).toBeVisible();
+    await expectTouchTargets(page, "reminder", ['[data-testid="reminder-delete"]']);
+
+    if (captureFinalShots) {
+      await navigateToPage(page, "/pages/data/data");
+      await expect(page.getByTestId("data-account")).toBeVisible();
+      await page.screenshot({ path: `${FINAL_SHOTS}/data-account-and-security.png` });
+    }
+  });
+
   test("export 数据导出：axe 全量", async () => {
     await navigateToPage(page, "/pages/export/export");
     await expect(page.getByTestId("export-create")).toBeVisible();
@@ -324,9 +530,8 @@ test.describe.serial("登录后页面（共享一次登录）", () => {
     await expectAccessible(page, "account");
   });
 
-  // P1-6：暗色外壳（底栏/页头/聊天头部/内部壳）键盘焦点环必须真的命中
-  // --vc-focus-on-env（#2b5c8f，浅色 chrome ≥3:1），用真实渲染的 computed style
-  // 验证，防止选择器写错导致覆盖不生效。
+  // 底栏、页头、聊天头部和内部壳的键盘焦点环必须命中
+  // --vc-focus-on-env；用真实 computed style 验证选择器与变量都生效。
   test("chrome-shell focus ring resolves to --vc-focus-on-env", async () => {
     // 与"index 边界台"测试同因：uni 把首页规范化为 "#/"，webkit 上
     // waitForURL 的 hash 目标不会出现，改用内容可见性判定位。

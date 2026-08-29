@@ -24,18 +24,8 @@ test("provider safety and timeout faults surface as safe terminal states", async
   page,
   request,
 }) => {
-  // 全量套跑时登录来源桶（10 次/60 秒）可能被前面的 journey 占满；限流是
-  // 真实行为，做一次有界等待重试（与 03 journey 同模式），不放宽断言。
-  test.setTimeout(180_000);
   const user = await provisionUser(request, "provider-faults");
-  let session: Awaited<ReturnType<typeof uiLogin>>;
-  try {
-    session = await uiLogin(page, user);
-  } catch (err) {
-    if (!String(err).includes("429")) throw err;
-    await page.waitForTimeout(65_000);
-    session = await uiLogin(page, user);
-  }
+  const session = await uiLogin(page, user);
   await prepareGenerationAccess(session.accessToken);
   const context = await createRelationshipAndConversation(session.accessToken);
   await navigateToPage(

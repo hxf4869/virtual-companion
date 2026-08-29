@@ -208,7 +208,6 @@ export default {
 </script>
 
 <style scoped>
-/* The Lit Window 语义 token（Phase 5 迁移）。 */
 .intro {
   margin: 0 0 var(--vc-space-4);
   color: var(--vc-muted);
@@ -280,7 +279,8 @@ export default {
 }
 
 .page-act {
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-env);
@@ -355,7 +355,8 @@ export default {
 }
 
 .chip {
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-strong);

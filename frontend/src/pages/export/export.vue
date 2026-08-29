@@ -227,7 +227,6 @@ export default {
 </script>
 
 <style scoped>
-/* The Lit Window 语义 token（Phase 5 迁移）。 */
 .intro {
   margin: 0 0 var(--vc-space-4);
   color: var(--vc-muted);

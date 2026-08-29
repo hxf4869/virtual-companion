@@ -193,7 +193,8 @@ export default {
 
 <style scoped>
 .mem-back {
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 0;
   padding: 0 var(--vc-space-4);
   border: 1px solid var(--vc-border-env);
