@@ -1,5 +1,11 @@
 # 前端产品化重构长线执行方案（zcode / GLM-5.3）
 
+> **SUPERSEDED（2026-08-29）**：本计划已被纠偏式重构计划取代——
+> `docs/planning/2026-08-29-frontend-simplification-redesign.md`。
+> 本文件仅作历史追溯。其视觉方向（The Lit Window）、seed `d2f84655`、
+> Round 1–11 的逐像素锚定目标、≤4px 精度要求与帧级状态机证明均不再具有
+> 实施约束力；旧视觉方向按新计划作为反例处理，不再是视觉真源。
+
 ## 1. 任务定义
 
 ### 单一目标
