@@ -20,7 +20,7 @@ test("an unverified account cannot create its first generation", async ({
     page,
     `/pages/chat/chat?relationshipId=${context.relationshipId}&conversationId=${context.conversationId}`,
   );
-  const input = page.locator('[data-testid="message-input"] input');
+  const input = page.locator('[data-testid="message-input"] textarea');
   await expect(input).toBeVisible();
 
   const prompt = "我们开始第一次聊天吧";

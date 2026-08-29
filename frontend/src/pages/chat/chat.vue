@@ -214,15 +214,15 @@
         </view>
 
         <template v-else>
-          <!-- 唯一纵向滚动区：消息历史。 -->
-          <view
-            ref="historyEl"
+          <!-- 唯一纵向滚动区：消息历史。回底按钮悬浮在滚动区可视底部内侧。 -->
+          <view class="history-wrap">
+            <view
+              ref="historyEl"
             class="chat-history"
             data-testid="history"
             role="region"
             aria-label="消息历史"
             tabindex="0"
-            @scroll="onHistoryScroll"
           >
             <!-- 条件上下文提示：可关闭，位于滚动内容头部。 -->
             <view v-if="serviceHint" class="context-hint" data-testid="service-mode-hint">
@@ -473,6 +473,7 @@
           >
             回到最新
           </button>
+          </view>
 
           <view v-if="renaming" class="rename-row" data-testid="rename-row">
             <input
@@ -667,15 +668,15 @@ export default defineComponent({
       });
     }
 
-    /** 唯一的 scroll handler：仅维护 isFollowingLatest。 */
+    /** 唯一的 scroll handler：仅维护 isFollowingLatest。scroll 事件不冒泡，
+     * 且 uni-h5 的 <view> 不透传模板 @scroll（真机收不到）；在 document
+     * 捕获阶段统一接收，只处理消息历史容器自身的滚动。 */
     function onHistoryScroll(event: Event): void {
-      const el = event.target as
-        | { scrollTop?: number; scrollHeight?: number; clientHeight?: number }
-        | null;
-      if (!el || typeof el.scrollTop !== "number") return;
+      const node = historyNode();
+      if (!node || event.target !== node) return;
       const nearBottom =
-        (el.scrollHeight ?? 0) <= (el.clientHeight ?? 0) ||
-        (el.scrollHeight ?? 0) - (el.clientHeight ?? 0) - el.scrollTop <= RESUME_GAP_PX;
+        node.scrollHeight <= node.clientHeight ||
+        node.scrollHeight - node.clientHeight - node.scrollTop <= RESUME_GAP_PX;
       if (nearBottom && !followingLatest.value) {
         followingLatest.value = true;
       } else if (!nearBottom && followingLatest.value) {
@@ -1325,6 +1326,10 @@ export default defineComponent({
             void store.recoverInFlight(deps);
           },
         });
+        document.addEventListener("scroll", onHistoryScroll, {
+          capture: true,
+          passive: true,
+        });
         window.addEventListener("resize", onViewportChange);
         window.visualViewport?.addEventListener("resize", onViewportChange);
       }
@@ -1382,7 +1387,8 @@ export default defineComponent({
     onUnmounted(() => {
       stopLifecycle?.();
       cancelPendingScrollFrame();
-      if (typeof window !== "undefined") {
+      if (typeof document !== "undefined" && typeof window !== "undefined") {
+        document.removeEventListener("scroll", onHistoryScroll, true);
         window.removeEventListener("resize", onViewportChange);
         window.visualViewport?.removeEventListener("resize", onViewportChange);
       }
@@ -1404,7 +1410,6 @@ export default defineComponent({
       usageHealth,
       historyEl,
       followingLatest,
-      onHistoryScroll,
       onBackToLatest,
       headerCompanionName,
       displayMessages,
@@ -1781,7 +1786,15 @@ export default defineComponent({
   font-size: var(--vc-text-sm);
 }
 
-/* 消息历史：唯一纵向滚动区。 */
+/* 消息历史：唯一纵向滚动区。wrap 提供回底按钮的定位上下文（滚动区可视底部）。 */
+.history-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-history {
   flex: 1 1 auto;
   min-height: 96px;
@@ -1968,7 +1981,7 @@ export default defineComponent({
 /* 回到底部：悬浮在输入区上方的轻量按钮。 */
 .back-to-latest {
   position: absolute;
-  bottom: 96px;
+  bottom: var(--vc-space-3);
   left: 50%;
   z-index: var(--vc-z-content);
   min-height: 36px;
@@ -2076,8 +2089,5 @@ export default defineComponent({
     min-height: 44px;
   }
 
-  .back-to-latest {
-    bottom: 72px;
-  }
 }
 </style>

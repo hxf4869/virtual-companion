@@ -470,7 +470,7 @@ test("in-browser transport streams deltas and completes through a real snapshot-
     ctrl.close();
   });
 
-  await expect(page.getByTestId("assistant-md").filter({ hasText: PROVIDER_REPLY }).last()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("assistant-md").filter({ hasText: DRAFT_FULL }).last()).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('[data-testid="draft"]')).toHaveCount(0);
   // 正式回复恰好一份（终态后 store 会重开分页拉取提交行——轮询直到出现，
   // 再钉死"恰好一份"）；迟到的标记文本无处可寻。

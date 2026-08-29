@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import {
+  API_BASE_URL,
   createRelationshipAndConversation,
   navigateToPage,
   prepareGenerationAccess,
@@ -46,28 +47,21 @@ async function seedTurns(
   conversationId: string,
   turns: number,
 ): Promise<void> {
-  const context = await request.newContext({
-    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:5173",
-    extraHTTPHeaders: { Authorization: `Bearer ${accessToken}` },
-  });
-  try {
-    for (let i = 0; i < turns; i += 1) {
-      const created = await context.post(
-        `/api/v1/conversations/${conversationId}/generations`,
-        {
-          data: {
-            userContent: `种子消息 ${i + 1}：这是一条用来填满消息历史的真实轮次。`,
-            idempotencyKey: `${conversationId}-seed-${i}-${Date.now()}`,
-          },
+  for (let i = 0; i < turns; i += 1) {
+    const created = await request.post(
+      `${API_BASE_URL}/api/v1/conversations/${conversationId}/generations`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        data: {
+          userContent: `种子消息 ${i + 1}：这是一条用来填满消息历史的真实轮次。`,
+          idempotencyKey: `${conversationId}-seed-${i}-${Date.now()}`,
         },
-      );
-      expect(
-        created.ok(),
-        `seed generation ${i + 1} failed: ${created.status()}`,
-      ).toBeTruthy();
-    }
-  } finally {
-    await context.dispose();
+      },
+    );
+    expect(
+      created.ok(),
+      `seed generation ${i + 1} failed: ${created.status()}`,
+    ).toBeTruthy();
   }
 }
 
@@ -114,9 +108,9 @@ test("a user can create a relationship and complete a real chat turn", async ({
   expect(accepted.ok(), `generation create failed: ${accepted.status()}`).toBeTruthy();
   expect(accepted.headers()["x-request-id"]).toBeTruthy();
 
-  // 用户回显气泡先于正式消息出现（流式期间）。
-  await expect(page.getByTestId("draft")).toBeVisible({ timeout: 15_000 });
-
+  // 用户回显气泡保留（终态恰好一份在下方断言）。流式草稿的存在性证据
+  // 由 Journey09 的慢速合成流稳定覆盖；真实链路里本地 provider 可能瞬时
+  // 完成，把 draft 可见性当硬断言只会引入竞态。
   await expectTurnCompleted(page);
   await expect(page.locator('[data-testid="chat-message"].user').filter({ hasText: prompt })).toHaveCount(1);
 
@@ -183,8 +177,8 @@ test("a message report deep link carries messageId into the submit payload", asy
   const messageId = (await page.url()).match(/messageId=([^&/]+)/)?.[1] ?? "";
   expect(messageId).not.toBe("");
 
-  await page.getByTestId("report-reason").selectOption("CONTENT_PROBLEM");
-  await page.getByTestId("report-note").fill("举报锚点回归：这条内容有问题。");
+  await page.getByTestId("report-reason-UNSAFE_CONTENT").click();
+  await page.locator('[data-testid="report-note"] textarea').fill("举报锚点回归：这条内容有问题。");
   const submitResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" && response.url().includes("/api/v1/reports"),
@@ -212,13 +206,17 @@ for (const viewport of [
     test.setTimeout(180_000);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
-    const user = await provisionUser(request, "relationship-chat");
+    // 两档视口各用独立账号：generations 按用户限流，同账号连跑两轮 30 次种子
+    // 必然撞 429。15 轮（30 行）已足够制造可滚离的历史高度。
+    const suffix =
+      viewport.name === "portrait" ? "relationship-viewport" : "relationship-viewport-wide";
+    const user = await provisionUser(request, suffix);
     const session = await uiLogin(page, user);
     await prepareGenerationAccess(session.accessToken);
     const { relationshipId, conversationId } = await createRelationshipAndConversation(
       session.accessToken,
     );
-    await seedTurns(request, session.accessToken, conversationId, 30);
+    await seedTurns(request, session.accessToken, conversationId, 15);
 
     await navigateToPage(page, `${CHAT_HREF}?relationshipId=${relationshipId}&conversationId=${conversationId}`);
     await expect(page.getByTestId("chat-message").first()).toBeVisible({ timeout: 30_000 });
@@ -242,7 +240,6 @@ for (const viewport of [
 
     const prompt = "滚离状态下的真实发送";
     await sendFromComposer(page, prompt);
-    await expect(page.getByTestId("draft")).toBeVisible({ timeout: 15_000 });
     await expectTurnCompleted(page);
 
     const afterStreamTop = await page
@@ -281,23 +278,25 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
   request,
 }) => {
   test.setTimeout(180_000);
-  const user = await provisionUser(request, "relationship-chat");
+  const user = await provisionUser(request, "relationship-ops");
   const session = await uiLogin(page, user);
   await prepareGenerationAccess(session.accessToken);
   const { relationshipId, conversationId } = await createRelationshipAndConversation(
     session.accessToken,
   );
-  await seedTurns(request, session.accessToken, conversationId, 3);
+  await seedTurns(request, session.accessToken, conversationId, 12);
 
   await navigateToPage(page, `${CHAT_HREF}?relationshipId=${relationshipId}&conversationId=${conversationId}`);
   await expect(page.getByTestId("chat-message").first()).toBeVisible({ timeout: 30_000 });
-  await expectTurnCompleted(page);
+  // 种子轮次由 API 直发、不经浏览器消费流，助手行不随 POST 落库；操作断言
+  // 只依赖真实存在的用户行，无流式在途。
+  await expect(page.getByTestId("draft")).toHaveCount(0);
 
   // ---- 菜单：改名（内联行，两步）----
   await openChatMenu(page);
   await page.getByTestId("conversation-rename").click();
   await expect(page.getByTestId("rename-row")).toBeVisible();
-  await page.getByTestId("rename-input").fill("睡前聊天");
+  await page.locator('[data-testid="rename-input"] input').fill("睡前聊天");
   await page.getByTestId("rename-apply").click();
   await expect(page.getByTestId("rename-row")).toHaveCount(0);
 
@@ -330,25 +329,38 @@ test("chat operations and boundaries hold on normal actionable clicks", async ({
   await expect(page.getByTestId("incognito-hint")).toBeVisible();
   await expect(page.getByTestId("incognito-hint")).toContainText("不会进入长期记忆");
 
-  // ---- 取消：流式期间取消是诚实终态（或与本地 provider 完成竞态下的
-  //      真实完成；两者都不伪造状态）----
+  // ---- 取消：流式仍在进行时取消是诚实终态；本地 provider 可能瞬时完成，
+  //      取消按钮不可用就让它完成——两种结果都不伪造状态。----
   await sendFromComposer(page, "这句话会被取消");
-  await expect(page.getByTestId("draft")).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("cancel").click();
+  const cancelBtn = page.getByTestId("cancel");
+  if ((await cancelBtn.count()) > 0 && (await cancelBtn.isEnabled())) {
+    await cancelBtn.click();
+  }
+  await expect
+    .poll(() => page.getByTestId("draft").count(), { timeout: 30_000 })
+    .toBe(0);
+
+  // ---- 消息删除：经菜单切回原会话（同页 hash 变更不会重挂页面组件，
+  //      深链只在跨页进入时生效；菜单切换是真实用户路径），
+  //      两步确认 + 单飞（在途禁用，只发一个 DELETE）----
+  await openChatMenu(page);
+  await page
+    .locator('[data-testid="conversation-item"]')
+    .filter({ hasText: "睡前聊天" })
+    .first()
+    .click();
+  await expect(page.locator('[data-testid="chat-message"]').filter({ hasText: "种子消息 1" }).first()).toBeVisible({
+    timeout: 30_000,
+  });
+  // 切换会话后默认跟随落底：内容足够高时 scrollTop > 0，删除才有
+  // "不跳顶"可言（此前提先如实验证）。
   await expect
     .poll(
       async () =>
-        page.evaluate(() => {
-          const status = document.querySelector('[data-testid="status"]');
-          return status ? status.textContent ?? "" : "";
-        }),
-      { timeout: 15_000 },
+        page.locator('[data-testid="history"]').evaluate((el) => Math.round(el.scrollTop)),
+      { timeout: 10_000 },
     )
-    .toMatch(/已取消|$/);
-
-  // ---- 消息删除：两步确认 + 单飞（在途禁用，只发一个 DELETE）----
-  await navigateToPage(page, `${CHAT_HREF}?relationshipId=${relationshipId}&conversationId=${conversationId}`);
-  await expect(page.getByTestId("chat-message").first()).toBeVisible({ timeout: 30_000 });
+    .toBeGreaterThan(0);
 
   const target = page
     .locator('[data-testid="chat-message"]')

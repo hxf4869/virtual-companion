@@ -14,7 +14,7 @@ export const PROVIDER_REPLY = "I hear you. Take a breath; there's no rush.";
 export const SAFETY_BLOCK_SENTINEL = "[[E2E_SAFETY_BLOCK]]";
 export const PROVIDER_TIMEOUT_SENTINEL = "[[E2E_PROVIDER_TIMEOUT]]";
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.E2E_BASE_URL ??
   `http://127.0.0.1:${process.env.E2E_H5_PORT ?? "5173"}`;
 
@@ -33,6 +33,9 @@ export const E2E_USER_SUFFIXES = [
   // READY_FOR_OWNER），同账号内新增的真实发送会把后续测试的流挤成
   // 第 4 条而必然 429。
   "relationship-viewport",
+  "relationship-viewport-wide",
+  // 纠偏重写：03 的操作与边界测试独立账号，避免与 smoke/举报共享登录限流桶。
+  "relationship-ops",
   "realtime-recovery",
   "memory-lifecycle",
   "export-lifecycle",
